@@ -165,7 +165,7 @@ export async function analyzeIfcReference(
         }
         geometry.delete();
       }
-      mesh.delete();
+      if (typeof mesh.delete === "function") mesh.delete();
       if (index % 250 === 0 || index + 1 === total) {
         onProgress?.({
           ratio: 0.38 + ((index + 1) / Math.max(1, total)) * 0.57,

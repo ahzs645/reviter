@@ -50,7 +50,11 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 - metadata: Revit `2027`, build `20260417_1515(x64)`, locale `ENU`
 - native Rust reader: file and schema open successfully, but the version is beyond its verified 2016–2026 range
 - standards-aware element result: zero validated building elements, nine diagnostic candidates, scaffold-only native IFC readiness
-- Reviter recovery: roughly nine thousand focused coordinate candidates and about 108 thousand display triangles in approximately four seconds on the development machine
+- Reviter recovery: roughly nine thousand focused coordinate candidates and about 108 thousand display triangles in approximately twelve seconds while indexing every partition chunk on the development machine
+- paired index evidence: 8,902 `ElemTable` IDs plus 2,943 partition-leading IDs
+- IFC join: 4,332 of 41,293 tagged IFC elements matched an RVT record (10.5%)
+- strongest class joins: 1,602 walls, 1,436 members, 466 plates, 355 curtain walls, 182 openings, 54 columns, and 28 doors
+- reference gates: failed extents (`2.89× / 1.77× / 1.26×`), triangle density (`0.11×`), and typed semantics (`0%`), so the coordinate mesh is automatically rejected
 
 Exact recovery counts can move as the filtering algorithm improves. They must not be treated as Revit element counts.
 
