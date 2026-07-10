@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 import { IfcAPI } from "web-ifc";
-import webIfcWasmUrl from "web-ifc/web-ifc.wasm?url";
 
 import { compareRvtToIfc } from "./regression";
 import type {
@@ -14,6 +13,8 @@ import type {
   RvtRegressionInput,
   Vec3,
 } from "./types";
+
+const webIfcWasmUrl = new URL("./web-ifc.wasm", import.meta.url).href;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 type ReferenceBatch = {

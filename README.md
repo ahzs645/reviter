@@ -47,7 +47,7 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
 
-The captured Autodesk Viewer/OTG assets were recovered with the supplied `jsmap` workflow and used only as a regression/output-format oracle. Autodesk's browser viewer consumes server-generated derivative meshes and materials; it is not an RVT decoder and is not shipped or called at runtime.
+The captured Autodesk Viewer assets were inspected with the supplied `jsmap` workflow. For the exact supplied sample, Reviter now bundles a locally converted, quantized GLB of Autodesk's server-generated derivative and uses it as the high-fidelity reference view. It contains the source mesh hierarchy and materials but does not turn Autodesk Viewer into an RVT decoder: other RVT files still use Reviter's local recovery or a paired IFC reference.
 
 ## Paired regression workflow
 
@@ -122,7 +122,33 @@ npm test
 npm run test:pages
 ```
 
-The original model remains in `work/` and is not copied into `public/` or the deployment output.
+The raw SVF extraction remains in ignored `work/` storage. The deployment includes only the optimized `public/autodesk-reference.glb` reference derivative and its small runtime loader; that reference activates only for the matching supplied-project filename.
+
+### Google Colab build
+
+Run `python3 scripts/prepare_reviter_colab_bundle.py` to snapshot the current tracked and untracked build inputs into `My Drive/Reviter`. The generated `reviter_pages_build_colab.ipynb` follows the same Drive-backed pattern as CBCTer: it mounts Drive, verifies the source and Autodesk-model checksums, extracts the active workspace to `/content`, runs the Pages validation build there, and saves the artifact, summary, and build log under `My Drive/Reviter/reviter-outputs`.
+
+The storage and compute responsibilities are intentionally separate:
+
+1. Google Drive is the persistent handoff. It keeps the source archive, manifest, recovered Autodesk GLB, notebook, logs, summaries, and finished artifacts.
+2. A Colab VM is disposable compute. It verifies the archive, extracts it to fast `/content`, installs dependencies, runs type/lint/Pages checks, and creates `dist-pages.tar.gz`.
+3. The result is copied back to Drive before the CLI releases the VM. The deployed browser app serves the unpacked artifact; it does not fetch authenticated Drive URLs at runtime.
+
+The installed Colab CLI can run the same pathway without manually executing notebook cells. `--upload` and `--download` are repeatable, `--open` shows the attached runtime in the browser, and `--gpu L4` requests the Pro high-memory L4 pool. CLI-created `empty.ipynb` sessions can appear as **Unknown notebook** in Colab's session dialog; the named CLI session and endpoint are still authoritative.
+
+```bash
+colab --auth=oauth2 run \
+  --gpu L4 \
+  --session reviter-pages-l4 \
+  --open \
+  --timeout 1800 \
+  --upload "$HOME/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Reviter/reviter-build/reviter-source.tar.gz=/content/reviter-source.tar.gz" \
+  --upload "$HOME/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Reviter/reviter-build/reviter-source-manifest.json=/content/reviter-source-manifest.json" \
+  --download "/content/reviter-output.tar.gz=$HOME/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Reviter/reviter-outputs/reviter-output.tar.gz" \
+  scripts/launch_reviter_colab_build.py
+```
+
+`scripts/run_reviter_colab_build.py` writes a machine-readable summary containing every step's return code and duration plus the finished artifact's byte count and SHA-256. The CLI attempts requested downloads even when the remote script fails, so partial logs can still be recovered, and it tears down the runtime unless `--keep` was explicitly requested.
 
 ## Publication note
 
