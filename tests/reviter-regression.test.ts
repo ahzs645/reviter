@@ -53,5 +53,5 @@ test("rejects recovered geometry when identity, extents, topology, and semantics
   const result = compareRvtToIfc(rvt, reference);
   assert.equal(result.status, "fail");
   assert.equal(result.gates.every((gate) => gate.status === "fail"), true);
-  assert.match(result.conclusion, /rejected/);
+  assert.match(result.conclusion, /fails/);
 });

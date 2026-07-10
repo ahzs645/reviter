@@ -121,8 +121,18 @@ export type RegressionGate = {
   detail: string;
 };
 
+export type ReferenceMeshData = {
+  name: string;
+  positions: Float32Array;
+  indices: Uint32Array;
+  color: [number, number, number];
+  matched: boolean;
+};
+
 export type PairedRegressionResult = {
   reference: IfcReferenceManifest;
+  referenceMeshes: ReferenceMeshData[];
+  referenceBoundsMetres: Bounds3;
   status: GateStatus;
   identityCoverage: number;
   rvtIndexCoverage: number;

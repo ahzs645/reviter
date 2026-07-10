@@ -41,6 +41,8 @@ After opening an RVT, choose its matching IFC export in the **Regression fixture
 4. measures IFC geometry with `web-ifc`; and
 5. rejects or accepts the recovered output against identity, extent, topology, and semantic gates.
 
+When the recovery fails those gates, the viewer now switches to the coherent IFC ground-truth geometry automatically. IFC elements whose `Tag` resolves to an RVT record are highlighted, the remainder stays as darker model context, and the broken coordinate recovery remains available only through the **RVT diagnostic** toggle.
+
 The partition leading-u32 join is recorded as diagnostic evidence, not yet treated as a decoded Revit object. On the supplied UNBC pair it strongly correlates with IFC walls, curtain walls, openings, and columns, which makes walls the first practical class for partition-body reverse engineering.
 
 ## Sample evidence

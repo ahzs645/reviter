@@ -91,6 +91,8 @@ export function compareRvtToIfc(
 
   return {
     reference,
+    referenceMeshes: [],
+    referenceBoundsMetres: reference.boundsMetres,
     status,
     identityCoverage,
     rvtIndexCoverage,
@@ -105,6 +107,6 @@ export function compareRvtToIfc(
         ? "The recovered model meets every current reference gate."
         : status === "warn"
           ? "The pair is linked, but one or more recovery metrics need review."
-          : "The IFC is linked to RVT records, but the recovered geometry is rejected by the reference gates.",
+          : "The IFC ground truth is shown. The RVT-only recovered geometry fails the reference gates.",
   };
 }

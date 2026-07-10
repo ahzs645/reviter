@@ -17,6 +17,7 @@ import {
   type IfcWorkerRequest,
   type IfcWorkerResponse,
   type PairedRegressionResult,
+  type ReferenceMeshData,
   type WorkerRequest,
   type WorkerResponse,
 } from "../lib/reviter";
@@ -24,6 +25,7 @@ import {
 type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 type ViewMode = "perspective" | "plan";
 type ReferencePhase = "idle" | "reading" | "ready" | "error";
+type GeometrySource = "reference" | "recovered";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -75,6 +77,31 @@ function meshGroup(result: ConvertResult): THREE.Group {
   return group;
 }
 
+function referenceMeshGroup(meshes: ReferenceMeshData[]): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "IFC reference geometry";
+  group.userData = { source: "paired-ifc", fidelity: "reference" };
+  for (const data of meshes) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geometry.computeVertexNormals();
+    const color = new THREE.Color().setRGB(...data.color);
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: data.matched ? color.clone().multiplyScalar(0.08) : new THREE.Color(0x000000),
+      roughness: data.matched ? 0.58 : 0.82,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = data.name;
+    mesh.renderOrder = data.matched ? 2 : 1;
+    group.add(mesh);
+  }
+  return group;
+}
+
 function disposeGroup(group: THREE.Group) {
   group.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -84,7 +111,17 @@ function disposeGroup(group: THREE.Group) {
   });
 }
 
-function ModelCanvas({ result, view }: { result: ConvertResult; view: ViewMode }) {
+function ModelCanvas({
+  result,
+  comparison,
+  source,
+  view,
+}: {
+  result: ConvertResult;
+  comparison: PairedRegressionResult | null;
+  source: GeometrySource;
+  view: ViewMode;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -107,27 +144,29 @@ function ModelCanvas({ result, view }: { result: ConvertResult; view: ViewMode }
     controls.dampingFactor = 0.075;
     controls.screenSpacePanning = true;
 
-    const root = meshGroup(result);
+    const useReference = source === "reference" && comparison?.referenceMeshes.length;
+    const root = useReference ? referenceMeshGroup(comparison.referenceMeshes) : meshGroup(result);
+    const bounds = useReference ? comparison.referenceBoundsMetres : result.bbox;
     scene.add(root);
     scene.add(new THREE.HemisphereLight(0xccefff, 0x102026, 1.45));
     const sun = new THREE.DirectionalLight(0xfff4d8, 2.3);
     sun.position.set(180, -120, 280);
     scene.add(sun);
 
-    const dx = result.bbox.max.x - result.bbox.min.x;
-    const dy = result.bbox.max.y - result.bbox.min.y;
-    const dz = result.bbox.max.z - result.bbox.min.z;
+    const dx = bounds.max.x - bounds.min.x;
+    const dy = bounds.max.y - bounds.min.y;
+    const dz = bounds.max.z - bounds.min.z;
     const radius = Math.max(25, dx, dy, dz) * 0.62;
     const center = new THREE.Vector3(
-      (result.bbox.min.x + result.bbox.max.x) / 2,
-      (result.bbox.min.y + result.bbox.max.y) / 2,
-      (result.bbox.min.z + result.bbox.max.z) / 2,
+      (bounds.min.x + bounds.max.x) / 2,
+      (bounds.min.y + bounds.max.y) / 2,
+      (bounds.min.z + bounds.max.z) / 2,
     );
     controls.target.copy(center);
 
     const grid = new THREE.GridHelper(Math.max(dx, dy, 100) * 1.35, 32, 0x3c7176, 0x17363d);
     grid.rotation.x = Math.PI / 2;
-    grid.position.z = result.bbox.min.z - 0.04;
+    grid.position.z = bounds.min.z - 0.04;
     scene.add(grid);
 
     if (view === "plan") {
@@ -172,7 +211,7 @@ function ModelCanvas({ result, view }: { result: ConvertResult; view: ViewMode }
       disposeGroup(root);
       renderer.dispose();
     };
-  }, [result, view]);
+  }, [comparison, result, source, view]);
 
   return <canvas ref={canvasRef} className="model-canvas" aria-label="Interactive recovered Revit geometry" />;
 }
@@ -255,6 +294,7 @@ export default function ReviterStudio() {
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [view, setView] = useState<ViewMode>("perspective");
+  const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
   const [exporting, setExporting] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
   const [referenceProgress, setReferenceProgress] = useState(0);
@@ -305,6 +345,7 @@ export default function ReviterStudio() {
     setFile(nextFile);
     setResult(null);
     setComparison(null);
+    setGeometrySource("recovered");
     setReferencePhase("idle");
     setReferenceError(null);
     setMetadata(null);
@@ -399,6 +440,7 @@ export default function ReviterStudio() {
           return;
         }
         setComparison(message.result);
+        setGeometrySource("reference");
         setReferenceProgress(1);
         setReferenceMessage("Paired regression complete");
         setReferencePhase("ready");
@@ -536,11 +578,15 @@ export default function ReviterStudio() {
             <div className="section-heading"><span>Fidelity ledger</span></div>
             <FidelityRow label="File metadata" value={metadata ? "Verified" : "Awaiting file"} tone={metadata ? "good" : "off"} />
             <FidelityRow label="OLE / CFB streams" value={result ? "Parsed" : "Awaiting file"} tone={result ? "good" : "off"} />
-            <FidelityRow label="3D geometry" value={result ? "Experimental" : "Not evaluated"} tone={result ? "warn" : "off"} />
+            <FidelityRow
+              label="3D geometry"
+              value={geometrySource === "reference" && comparison ? "IFC reference" : result ? "Experimental" : "Not evaluated"}
+              tone={geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
+            />
             <FidelityRow
               label="BIM semantics"
-              value={result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Unavailable"}
-              tone={result?.readerDiagnostics?.productionElements ? "warn" : "off"}
+              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Unavailable"}
+              tone={geometrySource === "reference" && comparison ? "good" : result?.readerDiagnostics?.productionElements ? "warn" : "off"}
             />
           </section>
 
@@ -579,20 +625,35 @@ export default function ReviterStudio() {
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? `${formatNumber(result.stats.candidatesUsed)} recovered centerlines` : "Your file never leaves this browser tab"}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
             </div>
-            <div className="segmented-control" aria-label="Camera view">
-              <button className={view === "perspective" ? "active" : ""} onClick={() => setView("perspective")} disabled={!result}>3D</button>
-              <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} disabled={!result}>Plan</button>
+            <div className="toolbar-controls">
+              {comparison?.referenceMeshes.length ? (
+                <div className="segmented-control source-control" aria-label="Geometry source">
+                  <button className={geometrySource === "reference" ? "active" : ""} onClick={() => setGeometrySource("reference")}>IFC reference</button>
+                  <button className={geometrySource === "recovered" ? "active diagnostic-active" : ""} onClick={() => setGeometrySource("recovered")}>RVT diagnostic</button>
+                </div>
+              ) : null}
+              <div className="segmented-control" aria-label="Camera view">
+                <button className={view === "perspective" ? "active" : ""} onClick={() => setView("perspective")} disabled={!result}>3D</button>
+                <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} disabled={!result}>Plan</button>
+              </div>
             </div>
           </div>
 
           <div className="viewport">
             {result ? (
               <>
-                <ModelCanvas result={result} view={view} />
-                <div className="viewport-legend"><span><i className="legend-cyan" />Recovered solid</span><span><i className="legend-grid" />Model grid</span></div>
-                <div className="viewport-stamp">experimental geometry · feet · z-up</div>
+                <ModelCanvas result={result} comparison={comparison} source={geometrySource} view={view} />
+                <div className="viewport-legend">
+                  {geometrySource === "reference" && comparison ? (
+                    <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
+                  ) : (
+                    <span><i className="legend-amber" />Rejected diagnostic recovery</span>
+                  )}
+                  <span><i className="legend-grid" />Model grid</span>
+                </div>
+                <div className="viewport-stamp">{geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">

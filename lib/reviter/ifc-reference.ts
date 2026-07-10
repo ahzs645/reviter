@@ -10,11 +10,61 @@ import type {
   IfcReferenceManifest,
   PairedRegressionResult,
   ProgressUpdate,
+  ReferenceMeshData,
   RvtRegressionInput,
   Vec3,
 } from "./types";
 
 type ProgressCallback = (update: ProgressUpdate) => void;
+type ReferenceBatch = {
+  positions: number[];
+  indices: number[];
+  vertexCount: number;
+  matched: boolean;
+  batchNumber: number;
+};
+
+const MAX_REFERENCE_BATCH_VERTICES = 240_000;
+
+function flushReferenceBatch(batch: ReferenceBatch, meshes: ReferenceMeshData[]): void {
+  if (!batch.vertexCount) return;
+  meshes.push({
+    name: `${batch.matched ? "Matched RVT records" : "IFC context"} ${batch.batchNumber}`,
+    positions: new Float32Array(batch.positions),
+    indices: new Uint32Array(batch.indices),
+    color: batch.matched ? [0.2, 0.86, 0.76] : [0.1, 0.28, 0.32],
+    matched: batch.matched,
+  });
+  batch.positions = [];
+  batch.indices = [];
+  batch.vertexCount = 0;
+  batch.batchNumber += 1;
+}
+
+function appendReferenceGeometry(
+  batch: ReferenceBatch,
+  meshes: ReferenceMeshData[],
+  vertices: Float32Array,
+  indices: Uint32Array,
+  matrix: Array<number>,
+): void {
+  const incomingVertices = vertices.length / 6;
+  if (batch.vertexCount && batch.vertexCount + incomingVertices > MAX_REFERENCE_BATCH_VERTICES) {
+    flushReferenceBatch(batch, meshes);
+  }
+  const vertexOffset = batch.vertexCount;
+  for (let vertex = 0; vertex + 2 < vertices.length; vertex += 6) {
+    const point = transformPoint(
+      matrix,
+      vertices[vertex]!,
+      vertices[vertex + 1]!,
+      vertices[vertex + 2]!,
+    );
+    batch.positions.push(point.x, -point.z, point.y);
+  }
+  for (const index of indices) batch.indices.push(index + vertexOffset);
+  batch.vertexCount += incomingVertices;
+}
 
 function scalar(value: unknown): string {
   if (value && typeof value === "object" && "value" in value) {
@@ -133,6 +183,13 @@ export async function analyzeIfcReference(
     const min: Vec3 = { x: Infinity, y: Infinity, z: Infinity };
     const max: Vec3 = { x: -Infinity, y: -Infinity, z: -Infinity };
     const geometryExpressIds = new Set<number>();
+    const referenceMeshes: ReferenceMeshData[] = [];
+    const matchedBatch: ReferenceBatch = {
+      positions: [], indices: [], vertexCount: 0, matched: true, batchNumber: 1,
+    };
+    const contextBatch: ReferenceBatch = {
+      positions: [], indices: [], vertexCount: 0, matched: false, batchNumber: 1,
+    };
     let geometryProducts = 0;
     let placedGeometries = 0;
     let vertexCount = 0;
@@ -146,6 +203,13 @@ export async function analyzeIfcReference(
         const geometry = api.GetGeometry(modelId, placed.geometryExpressID);
         const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
         const indices = api.GetIndexArray(geometry.GetIndexData(), geometry.GetIndexDataSize());
+        appendReferenceGeometry(
+          matchedExpressIds.has(mesh.expressID) ? matchedBatch : contextBatch,
+          referenceMeshes,
+          vertices,
+          indices,
+          placed.flatTransformation,
+        );
         placedGeometries += 1;
         vertexCount += vertices.length / 6;
         triangleCount += indices.length / 3;
@@ -173,6 +237,8 @@ export async function analyzeIfcReference(
         });
       }
     });
+    flushReferenceBatch(matchedBatch, referenceMeshes);
+    flushReferenceBatch(contextBatch, referenceMeshes);
 
     for (const sample of matchedSamples) sample.hasGeometry = geometryExpressIds.has(sample.expressId);
     const matchedGeometryProducts = [...matchedExpressIds].filter((id) => geometryExpressIds.has(id)).length;
@@ -199,7 +265,13 @@ export async function analyzeIfcReference(
       durationMs: performance.now() - started,
     };
     onProgress?.({ ratio: 0.98, message: "Applying paired regression gates" });
-    return compareRvtToIfc(rvt, manifest);
+    const comparison = compareRvtToIfc(rvt, manifest);
+    comparison.referenceMeshes = referenceMeshes;
+    comparison.referenceBoundsMetres = {
+      min: { x: min.x, y: -max.z, z: min.y },
+      max: { x: max.x, y: -min.z, z: max.y },
+    };
+    return comparison;
   } finally {
     api.CloseModel(modelId);
     api.Dispose();

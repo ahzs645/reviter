@@ -27,6 +27,7 @@ export type {
   MeshData,
   ProgressUpdate,
   ReaderDiagnostics,
+  ReferenceMeshData,
   RegressionGate,
   RvtElementIndex,
   RvtRegressionInput,

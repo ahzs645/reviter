@@ -167,8 +167,11 @@ button { color: inherit; }
 .status-error { background: #ec786f; }
 @keyframes pulse { 50% { opacity: .45; } }
 .segmented-control { padding: 3px; display: flex; border: 1px solid #30464b; border-radius: 8px; background: #09171b; }
+.toolbar-controls { display: flex; align-items: center; gap: 8px; }
 .segmented-control button { min-width: 54px; padding: 6px 10px; border: 0; border-radius: 5px; color: #8ea1a4; background: transparent; cursor: pointer; font-family: var(--font-plex-mono); font-size: 8px; text-transform: uppercase; }
 .segmented-control button.active { color: white; background: #24444a; }
+.source-control button { min-width: 92px; }
+.source-control button.diagnostic-active { color: #ffe4b4; background: #644822; }
 .segmented-control button:disabled { opacity: .4; cursor: default; }
 
 .viewport { position: relative; min-height: 430px; flex: 1 0 48vh; overflow: hidden; background: var(--stage); }
@@ -178,7 +181,7 @@ button { color: inherit; }
 .viewport-legend { position: absolute; z-index: 2; left: 18px; bottom: 16px; display: flex; gap: 13px; color: #91a9ac; font-family: var(--font-plex-mono); font-size: 8px; text-transform: uppercase; }
 .viewport-legend span { display: flex; align-items: center; gap: 5px; }
 .viewport-legend i { width: 9px; height: 3px; border-radius: 2px; }
-.legend-cyan { background: var(--cyan); }.legend-grid { background: #386067; }
+.legend-cyan { background: var(--cyan); }.legend-context { background: #607d80; }.legend-amber { background: var(--amber); }.legend-grid { background: #386067; }
 .viewport-stamp { position: absolute; z-index: 2; right: 18px; bottom: 16px; color: #678184; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; letter-spacing: .1em; }
 
 .empty-stage { position: relative; z-index: 1; width: min(560px, calc(100% - 48px)); height: 100%; min-height: 430px; margin: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: white; }
@@ -267,6 +270,9 @@ button { color: inherit; }
   .rail-intro h1 { font-size: 38px; }
   .stage { overflow: visible; }
   .stage-title strong { max-width: 55vw; }
+  .stage-toolbar { height: auto; min-height: 58px; padding-top: 8px; padding-bottom: 8px; gap: 8px; }
+  .toolbar-controls { align-items: stretch; flex-direction: column; }
+  .source-control button { min-width: 74px; padding-left: 7px; padding-right: 7px; font-size: 7px; }
   .viewport, .empty-stage { min-height: 480px; }
   .results-dock { display: block; }
   .result-summary, .export-panel, .regression-panel { padding: 20px 18px; }

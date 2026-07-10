@@ -22,7 +22,14 @@ context.onmessage = async (event: MessageEvent<IfcWorkerRequest>) => {
         } satisfies IfcWorkerResponse);
       },
     );
-    context.postMessage({ id: request.id, type: "result", result } satisfies IfcWorkerResponse);
+    const transfers: Transferable[] = [];
+    for (const mesh of result.referenceMeshes) {
+      transfers.push(mesh.positions.buffer, mesh.indices.buffer);
+    }
+    context.postMessage(
+      { id: request.id, type: "result", result } satisfies IfcWorkerResponse,
+      transfers,
+    );
   } catch (error) {
     context.postMessage({
       id: request.id,
