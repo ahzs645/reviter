@@ -1,4 +1,6 @@
 export { convertRvtBytes } from "./convert";
+export { detectElemTableLayout, parseElemTable } from "./elem-table";
+export { compareRvtToIfc } from "./regression";
 export {
   downloadBlob,
   makeDxf,
@@ -14,10 +16,22 @@ export type {
   ConvertOutcome,
   ConvertResult,
   ConvertStats,
+  ElemTableLayout,
+  GateStatus,
+  IfcElementTypeMatch,
+  IfcMatchedElement,
+  IfcReferenceManifest,
+  IfcWorkerRequest,
+  IfcWorkerResponse,
   LevelBand,
   MeshData,
   ProgressUpdate,
   ReaderDiagnostics,
+  RegressionGate,
+  RvtElementIndex,
+  RvtRegressionInput,
+  PairedRegressionResult,
+  PartitionRecordLocator,
   Segment,
   Vec3,
   WorkerRequest,

@@ -108,6 +108,12 @@ context.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       for (const mesh of result.meshes) {
         transfers.push(mesh.positions.buffer, mesh.indices.buffer, mesh.colors.buffer);
       }
+      if (result.elementIndex) {
+        transfers.push(
+          result.elementIndex.uniqueElementIds.buffer,
+          result.elementIndex.partitionRecordIds.buffer,
+        );
+      }
       context.postMessage(response, transfers);
     } else {
       context.postMessage(response);

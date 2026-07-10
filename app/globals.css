@@ -142,6 +142,18 @@ button { color: inherit; }
 .fidelity-warn { color: #91631f; }.fidelity-warn i { background: var(--amber); }
 .fidelity-off { color: #8a9697; }.fidelity-off i { background: #bdc5c4; }
 
+.reference-section > p { margin: 0; color: #657477; font-size: 9px; line-height: 1.55; }
+.reference-section > button { width: 100%; margin-top: 11px; padding: 9px 11px; border: 1px solid #8fb0aa; border-radius: 7px; color: #eafffa; background: var(--teal); cursor: pointer; font-size: 10px; font-weight: 700; }
+.reference-section > button:disabled { opacity: .6; cursor: wait; }
+.reference-section > small { display: block; margin-top: 9px; color: #718083; font-family: var(--font-plex-mono); font-size: 7px; }
+.fixture-pass { color: #527330; }.fixture-warn { color: #91631f; }.fixture-fail { color: #a3473e; }
+.fixture-progress { margin-top: 10px; }
+.fixture-progress div { display: flex; justify-content: space-between; gap: 8px; color: #617174; font-family: var(--font-plex-mono); font-size: 7px; line-height: 1.4; }
+.fixture-progress div span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fixture-progress div b { color: var(--teal); }
+.fixture-progress > i { height: 3px; margin-top: 6px; display: block; overflow: hidden; border-radius: 99px; background: #e1e8e4; }
+.fixture-progress > i span { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
+
 .stage { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; background: #e5e6df; }
 .stage-toolbar { height: 58px; flex: 0 0 58px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #263a3d; background: #102126; color: white; }
 .stage-title { min-width: 0; display: flex; align-items: center; gap: 10px; }
@@ -182,6 +194,33 @@ button { color: inherit; }
 .results-dock { flex: 0 0 auto; display: grid; grid-template-columns: minmax(340px, .9fr) minmax(460px, 1.1fr); border-top: 1px solid #cbd2ce; background: var(--panel); }
 .result-summary, .export-panel { padding: 21px 24px; }
 .result-summary { border-right: 1px solid var(--line); }
+.regression-panel { grid-column: 1 / -1; padding: 22px 24px 24px; border-bottom: 1px solid var(--line); background: #f8faf5; }
+.regression-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.regression-heading h3 { max-width: 820px; margin: 5px 0 4px; font-size: 18px; letter-spacing: -.035em; }
+.regression-heading div > p:last-child { margin: 0; color: var(--muted); font-family: var(--font-plex-mono); font-size: 7px; }
+.regression-heading > span { padding: 6px 9px; border-radius: 99px; font-family: var(--font-plex-mono); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.regression-pass .regression-heading > span { color: #426730; background: #e4f1cf; }
+.regression-warn .regression-heading > span { color: #805d1d; background: #f9e7bd; }
+.regression-fail .regression-heading > span { color: #8e3e36; background: #f8d6cf; }
+.regression-metrics { margin-top: 16px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.regression-metrics div { padding: 10px 11px; border: 1px solid #dce3dc; border-radius: 8px; background: white; }
+.regression-metrics strong, .regression-metrics span { display: block; }
+.regression-metrics strong { font-size: 20px; letter-spacing: -.045em; }
+.regression-metrics span { margin-top: 3px; color: var(--muted); font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; }
+.gate-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.gate-card { min-width: 0; padding: 11px; border: 1px solid #d9e0dc; border-radius: 8px; background: white; }
+.gate-card > span { display: flex; align-items: center; gap: 6px; color: #5f7073; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; }
+.gate-card > span i { width: 6px; height: 6px; border-radius: 50%; }
+.gate-pass > span i { background: #91bd50; }.gate-warn > span i { background: var(--amber); }.gate-fail > span i { background: #df6f65; }
+.gate-card > strong { display: block; margin-top: 6px; font-family: var(--font-plex-mono); font-size: 12px; }
+.gate-card > p { margin: 5px 0 0; color: #758184; font-size: 7px; line-height: 1.5; }
+.match-evidence-grid { margin-top: 17px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.match-table, .sample-list { margin-top: 8px; border-top: 1px solid #dde3de; }
+.match-table > div { min-height: 28px; display: grid; grid-template-columns: 1fr auto minmax(150px, auto); align-items: center; gap: 10px; border-bottom: 1px solid #e4e8e4; font-family: var(--font-plex-mono); font-size: 7px; }
+.match-table strong { font-size: 8px; }.match-table small { color: #7c898b; text-align: right; }
+.sample-list > div { min-height: 32px; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid #e4e8e4; }
+.sample-list strong { font-family: var(--font-plex-mono); font-size: 8px; }
+.sample-list span { margin-top: 3px; color: #7c898b; font-family: var(--font-plex-mono); font-size: 7px; text-transform: capitalize; }
 .metric-row { margin-top: 13px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .metric-row div { min-width: 0; }
 .metric-row strong, .metric-row span { display: block; }
@@ -214,6 +253,8 @@ button { color: inherit; }
   .results-dock { grid-template-columns: 1fr; }
   .result-summary { border-right: 0; border-bottom: 1px solid var(--line); }
   .export-grid { grid-template-columns: repeat(3, 1fr); }
+  .gate-grid { grid-template-columns: repeat(2, 1fr); }
+  .match-evidence-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -228,8 +269,12 @@ button { color: inherit; }
   .stage-title strong { max-width: 55vw; }
   .viewport, .empty-stage { min-height: 480px; }
   .results-dock { display: block; }
-  .result-summary, .export-panel { padding: 20px 18px; }
+  .result-summary, .export-panel, .regression-panel { padding: 20px 18px; }
   .metric-row { grid-template-columns: repeat(2, 1fr); gap: 15px; }
+  .regression-metrics { grid-template-columns: repeat(2, 1fr); }
+  .gate-grid { grid-template-columns: 1fr; }
+  .match-table > div { grid-template-columns: 1fr auto; }
+  .match-table small { grid-column: 1 / -1; padding-bottom: 7px; text-align: left; }
   .export-grid { grid-template-columns: repeat(3, 1fr); }
   .viewport-stamp { display: none; }
   .evidence-banner { align-items: flex-start; padding: 14px 18px; }

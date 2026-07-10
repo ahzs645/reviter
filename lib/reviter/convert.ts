@@ -1,12 +1,15 @@
 import CFB from "cfb";
 import { inflateSync } from "fflate";
 
+import { parseElemTable } from "./elem-table";
+
 import type {
   ConvertOptions,
   ConvertOutcome,
   ConvertResult,
   LevelBand,
   MeshData,
+  PartitionRecordLocator,
   ProgressUpdate,
   Segment,
   Vec3,
@@ -109,6 +112,16 @@ function scanSegments(data: Uint8Array, target: Segment[], limit: number): void 
     target.push({ x0, y0, z0, x1, y1, z1 });
     offset += 40;
   }
+}
+
+function leadingU32(data: Uint8Array): number | null {
+  if (data.length < 4) return null;
+  return (
+    ((data[0] ?? 0) |
+      ((data[1] ?? 0) << 8) |
+      ((data[2] ?? 0) << 16) |
+      ((data[3] ?? 0) << 24)) >>> 0
+  );
 }
 
 function segmentKey(segment: Segment): string {
@@ -301,6 +314,16 @@ export function convertRvtBytes(
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
     const cfb = CFB.read(bytes, { type: "buffer" });
+    const elemTableEntry = cfb.FileIndex
+      .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+      .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
+    let elementIndex;
+    if (elemTableEntry) {
+      const elemTableBytes = asBytes(elemTableEntry.entry.content);
+      const offset = gzipOffsets(elemTableBytes, 1)[0];
+      const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
+      if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
+    }
     const partitions = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .filter(({ entry, path }) => entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path));
@@ -308,6 +331,8 @@ export function convertRvtBytes(
     if (!partitions.length) throw new Error("No Revit partition stream was found.");
 
     const candidates: Segment[] = [];
+    const partitionRecords: PartitionRecordLocator[] = [];
+    const partitionRecordIds = new Set<number>();
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
@@ -318,13 +343,25 @@ export function convertRvtBytes(
       const offsets = gzipOffsets(data);
       const stride = offsets.length > 900 ? Math.ceil(offsets.length / 700) : 1;
 
-      for (let index = 0; index < offsets.length; index += stride) {
-        if (candidates.length >= scanLimit) break;
+      for (let index = 0; index < offsets.length; index += 1) {
         const inflated = inflateRevitChunk(data, offsets[index]!);
-        if (!inflated || inflated.byteLength < 48) continue;
+        if (!inflated) continue;
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
-        scanSegments(inflated, candidates, scanLimit);
+        const elementId = leadingU32(inflated);
+        if (elementId && elementId !== 0xffffffff) {
+          partitionRecordIds.add(elementId);
+          partitionRecords.push({
+            elementId,
+            stream: partition.path.replace(/^Root Entry\//, ""),
+            chunkIndex: index,
+            rawOffset: offsets[index]!,
+            inflatedBytes: inflated.byteLength,
+          });
+        }
+        if (inflated.byteLength >= 48 && index % stride === 0 && candidates.length < scanLimit) {
+          scanSegments(inflated, candidates, scanLimit);
+        }
         if (gzipChunks % 36 === 0) {
           onProgress?.({
             ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
@@ -371,6 +408,15 @@ export function convertRvtBytes(
       bbox: relativeBounds,
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
+      elementIndex: elementIndex
+        ? {
+            ...elementIndex,
+            partitionRecordIds: Uint32Array.from(
+              [...partitionRecordIds].sort((a, b) => a - b),
+            ),
+            partitionRecords,
+          }
+        : undefined,
       warnings: [
         "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         focused.length < unique.length

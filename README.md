@@ -8,6 +8,9 @@ Reviter is a browser-only Revit inspection and experimental geometry conversion 
 - `BasicFileInfo` metadata, including Revit version, build, locale, and document identity
 - embedded Revit thumbnail extraction
 - truncated-gzip partition decompression
+- `Global/ElemTable` framing and native Revit element-ID inventory
+- optional IFC reference parsing and geometry measurement with `web-ifc`
+- paired regression gates for element identity, extents, topology, and typed semantics
 - open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC proxy centerlines, and JSON audit data
 
 ## What is experimental
@@ -26,7 +29,19 @@ The included IFC exporter deliberately writes `IfcBuildingElementProxy` centerli
 | `rvt2ifc-fe-master` | The openBIM viewer/export direction; current Reviter exports can be handed to IFC viewers |
 | `rvt-convert-main` | Export-format and configuration ideas only; its Autodesk/Azure upload flow is intentionally excluded because it conflicts with client-only processing |
 
-The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, and [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export. For downstream IFC parsing, [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) is a browser-native option, but it reads IFC—not RVT.
+The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
+
+## Paired regression workflow
+
+After opening an RVT, choose its matching IFC export in the **Regression fixture** panel. Both files remain local. Reviter then:
+
+1. parses native IDs from `Global/ElemTable`;
+2. inventories the leading-u32 record evidence in every decompressible `Partitions/*` chunk;
+3. joins numeric IFC `Tag` values back to those RVT records;
+4. measures IFC geometry with `web-ifc`; and
+5. rejects or accepts the recovered output against identity, extent, topology, and semantic gates.
+
+The partition leading-u32 join is recorded as diagnostic evidence, not yet treated as a decoded Revit object. On the supplied UNBC pair it strongly correlates with IFC walls, curtain walls, openings, and columns, which makes walls the first practical class for partition-body reverse engineering.
 
 ## Sample evidence
 
@@ -64,6 +79,8 @@ if (result.ok) {
 ```
 
 For production UI work, use `lib/reviter/worker.ts` as the entry point so large files do not block the main thread.
+
+IFC reference analysis is deliberately isolated in `lib/reviter/ifc-worker.ts`, keeping the 3 MB parser bundle and its WebAssembly binary out of the main interface bundle until an IFC is actually selected.
 
 ## Development
 

@@ -14,12 +14,16 @@ import {
   makeReport,
   outputName,
   type ConvertResult,
+  type IfcWorkerRequest,
+  type IfcWorkerResponse,
+  type PairedRegressionResult,
   type WorkerRequest,
   type WorkerResponse,
 } from "../lib/reviter";
 
 type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 type ViewMode = "perspective" | "plan";
+type ReferencePhase = "idle" | "reading" | "ready" | "error";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -182,6 +186,64 @@ function FidelityRow({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
+function RegressionPanel({ comparison }: { comparison: PairedRegressionResult }) {
+  const reference = comparison.reference;
+  return (
+    <section className={`regression-panel regression-${comparison.status}`}>
+      <div className="regression-heading">
+        <div>
+          <p className="eyebrow">Paired RVT / IFC regression</p>
+          <h3>{comparison.conclusion}</h3>
+          <p>{reference.fileName} · {reference.schema} · {(reference.durationMs / 1_000).toFixed(1)}s local analysis</p>
+        </div>
+        <span>{comparison.status === "pass" ? "accepted" : comparison.status === "warn" ? "review" : "rejected"}</span>
+      </div>
+
+      <div className="regression-metrics">
+        <div><strong>{reference.matchedElementCount.toLocaleString()}</strong><span>matched RVT records</span></div>
+        <div><strong>{(comparison.identityCoverage * 100).toFixed(1)}%</strong><span>IFC tag coverage</span></div>
+        <div><strong>{reference.elementCount.toLocaleString()}</strong><span>typed IFC elements</span></div>
+        <div><strong>{reference.storeyCount}</strong><span>IFC storeys</span></div>
+        <div><strong>{reference.triangleCount.toLocaleString()}</strong><span>IFC triangles</span></div>
+      </div>
+
+      <div className="gate-grid">
+        {comparison.gates.map((gate) => (
+          <div className={`gate-card gate-${gate.status}`} key={gate.id}>
+            <span><i />{gate.label}</span><strong>{gate.value}</strong><p>{gate.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="match-evidence-grid">
+        <div>
+          <p className="eyebrow">Object-class matches</p>
+          <div className="match-table" role="table" aria-label="IFC object class matches to RVT records">
+            {reference.elementTypes.filter((row) => row.matchedRvtRecords).slice(0, 8).map((row) => (
+              <div role="row" key={row.ifcType}>
+                <span role="cell">{row.ifcType.replace(/^IFC/, "")}</span>
+                <strong role="cell">{row.matchedRvtRecords.toLocaleString()} / {row.count.toLocaleString()}</strong>
+                <small role="cell">index {row.matchedElemTable.toLocaleString()} · partition {row.matchedPartitionRecords.toLocaleString()}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="eyebrow">Matched record samples</p>
+          <div className="sample-list">
+            {reference.matchedSamples.slice(0, 6).map((sample) => (
+              <div key={`${sample.expressId}-${sample.revitElementId}`}>
+                <strong>#{sample.revitElementId} · {sample.ifcType.replace(/^IFC/, "")}</strong>
+                <span>{sample.evidence.replaceAll("-", " ")}{sample.partitionRecord ? ` · ${sample.partitionRecord.stream} chunk ${sample.partitionRecord.chunkIndex}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function ReviterStudio() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
@@ -194,12 +256,21 @@ export default function ReviterStudio() {
   const [dragging, setDragging] = useState(false);
   const [view, setView] = useState<ViewMode>("perspective");
   const [exporting, setExporting] = useState<string | null>(null);
+  const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
+  const [referenceProgress, setReferenceProgress] = useState(0);
+  const [referenceMessage, setReferenceMessage] = useState("Choose the matching IFC export");
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const ifcWorkerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
+  const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const ifcInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => {
     workerRef.current?.terminate();
+    ifcWorkerRef.current?.terminate();
     if (thumbnail) URL.revokeObjectURL(thumbnail);
   }, [thumbnail]);
 
@@ -208,6 +279,13 @@ export default function ReviterStudio() {
       workerRef.current = new Worker(new URL("../lib/reviter/worker.ts", import.meta.url), { type: "module" });
     }
     return workerRef.current;
+  }, []);
+
+  const getIfcWorker = useCallback(() => {
+    if (!ifcWorkerRef.current) {
+      ifcWorkerRef.current = new Worker(new URL("../lib/reviter/ifc-worker.ts", import.meta.url), { type: "module" });
+    }
+    return ifcWorkerRef.current;
   }, []);
 
   const processFile = useCallback(async (nextFile: File) => {
@@ -226,6 +304,9 @@ export default function ReviterStudio() {
     const requestId = requestIdRef.current;
     setFile(nextFile);
     setResult(null);
+    setComparison(null);
+    setReferencePhase("idle");
+    setReferenceError(null);
     setMetadata(null);
     setError(null);
     setProgress(0.03);
@@ -282,6 +363,67 @@ export default function ReviterStudio() {
       setPhase("error");
     }
   }, [getWorker, thumbnail]);
+
+  const processIfcFile = useCallback(async (referenceFile: File) => {
+    if (!result?.elementIndex) {
+      setReferenceError("Open and finish processing the RVT before pairing an IFC reference.");
+      setReferencePhase("error");
+      return;
+    }
+    if (!/\.ifc$/i.test(referenceFile.name)) {
+      setReferenceError("Choose an IFC STEP file ending in .ifc.");
+      setReferencePhase("error");
+      return;
+    }
+    referenceRequestIdRef.current += 1;
+    const requestId = referenceRequestIdRef.current;
+    setComparison(null);
+    setReferenceError(null);
+    setReferencePhase("reading");
+    setReferenceProgress(0.02);
+    setReferenceMessage("Reading IFC reference in this browser");
+    try {
+      const buffer = await referenceFile.arrayBuffer();
+      const worker = getIfcWorker();
+      worker.onmessage = (event: MessageEvent<IfcWorkerResponse>) => {
+        const message = event.data;
+        if (message.id !== requestId || requestId !== referenceRequestIdRef.current) return;
+        if (message.type === "progress") {
+          setReferenceProgress(message.ratio);
+          setReferenceMessage(message.message);
+          return;
+        }
+        if (message.type === "error") {
+          setReferenceError(message.error);
+          setReferencePhase("error");
+          return;
+        }
+        setComparison(message.result);
+        setReferenceProgress(1);
+        setReferenceMessage("Paired regression complete");
+        setReferencePhase("ready");
+      };
+      const request: IfcWorkerRequest = {
+        id: requestId,
+        type: "analyze-ifc",
+        fileName: referenceFile.name,
+        buffer,
+        rvt: {
+          elemTableIds: result.elementIndex.uniqueElementIds,
+          partitionRecordIds: result.elementIndex.partitionRecordIds,
+          partitionRecords: result.elementIndex.partitionRecords,
+          boundsFeet: result.bbox,
+          triangleCount: result.stats.triangleCount,
+          productionElements: result.readerDiagnostics?.productionElements ?? 0,
+        },
+      };
+      worker.postMessage(request, [buffer]);
+    } catch (caught) {
+      if (requestId !== referenceRequestIdRef.current) return;
+      setReferenceError(caught instanceof Error ? caught.message : String(caught));
+      setReferencePhase("error");
+    }
+  }, [getIfcWorker, result]);
 
   const exportText = (kind: string, extension: string, content: () => string, type = "text/plain") => {
     if (!result) return;
@@ -401,6 +543,36 @@ export default function ReviterStudio() {
               tone={result?.readerDiagnostics?.productionElements ? "warn" : "off"}
             />
           </section>
+
+          {result && (
+            <section className="rail-section reference-section">
+              <div className="section-heading"><span>Regression fixture</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
+              <p>Pair the matching IFC export to join native Revit IDs and test geometry against typed ground truth.</p>
+              <button type="button" onClick={() => ifcInputRef.current?.click()} disabled={referencePhase === "reading"}>
+                {referencePhase === "reading" ? "Analyzing IFC…" : comparison ? "Choose another IFC" : "Pair IFC reference"}
+              </button>
+              <input
+                ref={ifcInputRef}
+                className="visually-hidden"
+                type="file"
+                accept=".ifc"
+                onChange={(event) => {
+                  const selected = event.target.files?.[0];
+                  if (selected) void processIfcFile(selected);
+                  event.currentTarget.value = "";
+                }}
+              />
+              {referencePhase !== "idle" && (
+                <div className="fixture-progress" aria-live="polite">
+                  <div><span>{referenceError ?? referenceMessage}</span><b>{Math.round(referenceProgress * 100)}%</b></div>
+                  <i><span style={{ width: `${Math.max(2, referenceProgress * 100)}%` }} /></i>
+                </div>
+              )}
+              {result.elementIndex && (
+                <small>{result.elementIndex.uniqueElementIds.length.toLocaleString()} indexed IDs · {result.elementIndex.partitionRecordIds.length.toLocaleString()} partition IDs</small>
+              )}
+            </section>
+          )}
         </aside>
 
         <section className="stage">
@@ -435,6 +607,7 @@ export default function ReviterStudio() {
 
           {result && (
             <div className="results-dock">
+              {comparison && <RegressionPanel comparison={comparison} />}
               <section className="result-summary">
                 <p className="eyebrow">Recovery summary</p>
                 <div className="metric-row">
