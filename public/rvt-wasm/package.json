@@ -1,0 +1,32 @@
+{
+  "name": "rvt",
+  "type": "module",
+  "collaborators": [
+    "Griffin Long <151978260+DrunkOnJava@users.noreply.github.com>"
+  ],
+  "description": "Apache-2 clean-room toolkit for inspecting Autodesk Revit files (.rvt, .rfa, .rte, .rft) without a Revit installation. Opens the CFB container, decodes streams, parses the embedded schema, and classifies field encodings across 2016-2026. Full per-element extraction + geometry are active research.",
+  "version": "0.1.2",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DrunkOnJava/rvt-rs"
+  },
+  "files": [
+    "rvt_bg.wasm",
+    "rvt.js",
+    "rvt.d.ts"
+  ],
+  "main": "rvt.js",
+  "homepage": "https://github.com/DrunkOnJava/rvt-rs",
+  "types": "rvt.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "revit",
+    "bim",
+    "autodesk",
+    "ifc",
+    "rfa"
+  ]
+}
