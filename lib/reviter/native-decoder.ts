@@ -1,19 +1,19 @@
-import type { MaterialData, Segment } from "./types";
+import type { Bounds3, MaterialData } from "./types";
 
 const ARC_WALL_2023_TAG = 0x0191;
 const ARC_WALL_2023_VARIANT = 0x07fa;
 const ARC_WALL_2023_FAMILY = 0x0008_8004;
 const ARC_WALL_2023_RECORD_BYTES = 0x73;
 
-export type NativeProfileRecord = {
+export type ArcWall2023BoundsRecord = {
   decoderId: "revit-2023-arcwall-standard-v1";
   revitVersion: 2023;
   recordOffset: number;
   tag: number;
   variant: number;
-  centerline: Segment;
+  boundsFeet: Bounds3;
   duplicateMatches: boolean;
-  confidence: "corpus-validated";
+  confidence: "bounds-hypothesis";
 };
 
 export type DecoderPlan = {
@@ -80,7 +80,9 @@ export function decoderPlanForVersion(revitVersion?: number): DecoderPlan {
   const version = Number.isInteger(revitVersion) ? revitVersion! : null;
   return {
     revitVersion: version,
-    nativeProfileDecoder: version === 2023 ? "revit-2023-arcwall-standard-v1" : null,
+    // The 2023 envelope is decodable, but its six-double geometry semantics
+    // remain unresolved in the source corpus. Do not promote it to profiles.
+    nativeProfileDecoder: null,
     elementBoundsDecoder: version === 2027 ? "revit-2027-duplicated-bounds-v1" : null,
     diagnosticCoordinateScanner: true,
   };
@@ -88,14 +90,15 @@ export function decoderPlanForVersion(revitVersion?: number): DecoderPlan {
 
 /**
  * Strict, release-gated decoder for the standard ArcWall record documented by
- * the supplied clean-room rvt-rs corpus. The six doubles are two native wall
- * centerline endpoints in Revit 2023; they must not be interpreted as bounds.
+ * the supplied clean-room rvt-rs corpus. The six doubles strongly resemble an
+ * AABB, but the upstream report leaves their semantics unresolved; expose the
+ * values as bounds-hypothesis evidence and do not emit typed wall geometry.
  */
 export function decodeArcWall2023Record(
   data: Uint8Array,
   offset = 0,
   revitVersion = 2023,
-): NativeProfileRecord | null {
+): ArcWall2023BoundsRecord | null {
   if (revitVersion !== 2023 || offset < 0 || offset + ARC_WALL_2023_RECORD_BYTES > data.length) {
     return null;
   }
@@ -120,9 +123,9 @@ export function decodeArcWall2023Record(
   );
   if (!primary.every(finiteModelCoordinate) || !duplicate.every(finiteModelCoordinate)) return null;
 
-  const [x0, y0, z0, x1, y1, z1] = primary as [number, number, number, number, number, number];
-  const length = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
-  if (length < 0.01 || length > 5_000) return null;
+  const [minX, minY, minZ, maxX, maxY, maxZ] = primary as [number, number, number, number, number, number];
+  const spans = [maxX - minX, maxY - minY, maxZ - minZ];
+  if (spans.some((span) => span < -1e-8 || span > 5_000) || spans.filter((span) => span > 0.001).length < 2) return null;
 
   return {
     decoderId: "revit-2023-arcwall-standard-v1",
@@ -130,18 +133,21 @@ export function decodeArcWall2023Record(
     recordOffset: offset,
     tag: ARC_WALL_2023_TAG,
     variant: ARC_WALL_2023_VARIANT,
-    centerline: { x0, y0, z0, x1, y1, z1 },
+    boundsFeet: {
+      min: { x: minX, y: minY, z: minZ },
+      max: { x: maxX, y: maxY, z: maxZ },
+    },
     duplicateMatches: primary.every((value, index) => value === duplicate[index]),
-    confidence: "corpus-validated",
+    confidence: "bounds-hypothesis",
   };
 }
 
 export function scanArcWall2023Records(
   data: Uint8Array,
   revitVersion?: number,
-): NativeProfileRecord[] {
+): ArcWall2023BoundsRecord[] {
   if (revitVersion !== 2023 || data.length < ARC_WALL_2023_RECORD_BYTES) return [];
-  const records: NativeProfileRecord[] = [];
+  const records: ArcWall2023BoundsRecord[] = [];
   for (let offset = 0; offset <= data.length - ARC_WALL_2023_RECORD_BYTES; offset += 1) {
     if (data[offset] !== 0x91 || data[offset + 1] !== 0x01) continue;
     const record = decodeArcWall2023Record(data, offset, revitVersion);

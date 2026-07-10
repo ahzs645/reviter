@@ -1,11 +1,13 @@
 "use client";
 
 import { basicFileInfo, openFile, tryThumbnail, type FileInfo } from "@phi-ag/rvt";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
+  boundsDimensions,
+  cameraPoseForPreset,
   downloadBlob,
   makeDxf,
   makeGlb,
@@ -14,11 +16,15 @@ import {
   makePlanSvg,
   makeReport,
   outputName,
+  solidElementBounds,
+  type CameraPreset,
   type ConvertResult,
   type IfcWorkerRequest,
   type IfcWorkerResponse,
   type PairedRegressionResult,
   type ReferenceMeshData,
+  type NavigationMode,
+  type RenderMode,
   type WorkerRequest,
   type WorkerResponse,
 } from "../lib/reviter";
@@ -27,6 +33,8 @@ type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 type ViewMode = "perspective" | "plan";
 type ReferencePhase = "idle" | "reading" | "ready" | "error";
 type GeometrySource = "reference" | "recovered";
+type ViewerPanel = "none" | "model" | "properties";
+type CameraRequest = { preset: CameraPreset; sequence: number };
 
 function formatBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -49,9 +57,10 @@ function savedFileName(path: string | undefined): string | null {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? null;
 }
 
-function meshGroup(result: ConvertResult): THREE.Group {
+function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.Group {
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
+  const technical = renderMode === "technical";
   group.name = "Reviter recovered geometry";
   group.userData = {
     sourceFile: result.fileName,
@@ -66,30 +75,35 @@ function meshGroup(result: ConvertResult): THREE.Group {
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeVertexNormals();
     const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
+    const sourceColor = sourceMaterial
+      ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
+      : new THREE.Color(0xb9cbe0);
+    const glazingProxy = data.name.startsWith("Glazing");
     const material = new THREE.MeshStandardMaterial({
-      color: sourceMaterial
-        ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
-        : new THREE.Color(0x33bfbe),
-      vertexColors: true,
-      roughness: sourceMaterial?.roughness ?? 0.74,
-      metalness: sourceMaterial?.metallic ?? 0.04,
+      color: sourceColor,
+      vertexColors: !technical,
+      roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
+      metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
       flatShading: true,
       side: THREE.DoubleSide,
-      transparent: isElementBounds,
-      opacity: isElementBounds ? 0.32 : 1,
-      depthWrite: !isElementBounds,
+      transparent: isElementBounds && (!technical || glazingProxy),
+      opacity: isElementBounds ? (technical ? (glazingProxy ? 0.58 : 1) : 0.32) : 1,
+      depthWrite: technical ? !glazingProxy : !isElementBounds,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
+    mesh.castShadow = technical;
+    mesh.receiveShadow = technical;
+    mesh.userData.elementIds = data.elementIds;
     mesh.renderOrder = 1;
     group.add(mesh);
     if (isElementBounds) {
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(geometry, 1),
         new THREE.LineBasicMaterial({
-          color: 0x9be7e3,
+          color: technical ? 0x263c55 : 0x9be7e3,
           transparent: true,
-          opacity: 0.68,
+          opacity: technical ? 0.56 : 0.68,
           depthWrite: false,
         }),
       );
@@ -101,8 +115,9 @@ function meshGroup(result: ConvertResult): THREE.Group {
   return group;
 }
 
-function referenceMeshGroup(meshes: ReferenceMeshData[]): THREE.Group {
+function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: RenderMode): THREE.Group {
   const group = new THREE.Group();
+  const technical = renderMode === "technical";
   group.name = "IFC reference geometry";
   group.userData = { source: "paired-ifc", fidelity: "reference" };
   for (const data of meshes) {
@@ -110,18 +125,30 @@ function referenceMeshGroup(meshes: ReferenceMeshData[]): THREE.Group {
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeVertexNormals();
-    const color = new THREE.Color().setRGB(...data.color);
+    const color = technical
+      ? new THREE.Color(data.matched ? 0xc6d6e8 : 0xaebed2)
+      : new THREE.Color().setRGB(...data.color);
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: data.matched ? color.clone().multiplyScalar(0.08) : new THREE.Color(0x000000),
-      roughness: data.matched ? 0.58 : 0.82,
-      metalness: 0.02,
+      roughness: technical ? 0.84 : data.matched ? 0.58 : 0.82,
+      metalness: technical ? 0 : 0.02,
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
+    mesh.castShadow = technical;
+    mesh.receiveShadow = technical;
     mesh.renderOrder = data.matched ? 2 : 1;
     group.add(mesh);
+    if (technical && data.indices.length <= 600_000) {
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry, 28),
+        new THREE.LineBasicMaterial({ color: 0x263c55, transparent: true, opacity: 0.42 }),
+      );
+      edges.name = `${data.name} edges`;
+      group.add(edges);
+    }
   }
   return group;
 }
@@ -135,46 +162,86 @@ function disposeGroup(group: THREE.Group) {
   });
 }
 
+function applyNavigationMode(controls: OrbitControls, mode: NavigationMode) {
+  controls.mouseButtons.LEFT = mode === "pan"
+    ? THREE.MOUSE.PAN
+    : mode === "zoom"
+      ? THREE.MOUSE.DOLLY
+      : THREE.MOUSE.ROTATE;
+  controls.mouseButtons.RIGHT = mode === "orbit" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+}
+
 function ModelCanvas({
   result,
   comparison,
   source,
   view,
+  renderMode,
+  navigationMode,
+  cameraRequest,
+  sectionEnabled,
+  selectedElementId,
+  onSelectElement,
 }: {
   result: ConvertResult;
   comparison: PairedRegressionResult | null;
   source: GeometrySource;
   view: ViewMode;
+  renderMode: RenderMode;
+  navigationMode: NavigationMode;
+  cameraRequest: CameraRequest;
+  sectionEnabled: boolean;
+  selectedElementId: number | null;
+  onSelectElement: (elementId: number | null) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const runtimeRef = useRef<{
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    renderer: THREE.WebGLRenderer;
+    controls: OrbitControls;
+    root: THREE.Group;
+    center: THREE.Vector3;
+    radius: number;
+    selectionOverlay: THREE.Group | null;
+  } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const technical = renderMode === "technical";
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x081419);
-    scene.fog = new THREE.FogExp2(0x081419, 0.00045);
+    scene.background = new THREE.Color(technical ? 0xb8d0ee : 0x081419);
+    scene.fog = new THREE.FogExp2(technical ? 0xb8d0ee : 0x081419, technical ? 0.00018 : 0.00045);
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+    renderer.toneMappingExposure = technical ? 1.16 : 1.08;
+    renderer.shadowMap.enabled = technical;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.localClippingEnabled = false;
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.075;
     controls.screenSpacePanning = true;
+    applyNavigationMode(controls, "orbit");
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
-    const root = useReference ? referenceMeshGroup(comparison.referenceMeshes) : meshGroup(result);
+    const root = useReference
+      ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
+      : meshGroup(result, renderMode);
     const bounds = useReference ? comparison.referenceBoundsMetres : result.bbox;
     scene.add(root);
-    scene.add(new THREE.HemisphereLight(0xccefff, 0x102026, 1.45));
-    const sun = new THREE.DirectionalLight(0xfff4d8, 2.3);
+    scene.add(new THREE.HemisphereLight(technical ? 0xf8fbff : 0xccefff, technical ? 0x7589a1 : 0x102026, technical ? 2.1 : 1.45));
+    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, technical ? 0.58 : 0.18));
+    const sun = new THREE.DirectionalLight(technical ? 0xfff7e8 : 0xfff4d8, technical ? 2.8 : 2.3);
     sun.position.set(180, -120, 280);
+    sun.castShadow = technical;
     scene.add(sun);
 
     const dx = bounds.max.x - bounds.min.x;
@@ -188,23 +255,89 @@ function ModelCanvas({
     );
     controls.target.copy(center);
 
-    const grid = new THREE.GridHelper(Math.max(dx, dy, 100) * 1.35, 32, 0x3c7176, 0x17363d);
+    if (technical) {
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -radius * 1.5;
+      sun.shadow.camera.right = radius * 1.5;
+      sun.shadow.camera.top = radius * 1.5;
+      sun.shadow.camera.bottom = -radius * 1.5;
+      sun.shadow.camera.near = 0.1;
+      sun.shadow.camera.far = radius * 8;
+      sun.shadow.bias = -0.0002;
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(Math.max(dx, dy, 100) * 2.2, Math.max(dx, dy, 100) * 2.2),
+        new THREE.ShadowMaterial({ color: 0x6f829a, opacity: 0.16 }),
+      );
+      ground.position.set(center.x, center.y, bounds.min.z - 0.06);
+      ground.receiveShadow = true;
+      scene.add(ground);
+    }
+
+    const grid = new THREE.GridHelper(
+      Math.max(dx, dy, 100) * 1.35,
+      32,
+      technical ? 0x667f9b : 0x3c7176,
+      technical ? 0x91a7bf : 0x17363d,
+    );
     grid.rotation.x = Math.PI / 2;
     grid.position.z = bounds.min.z - 0.04;
+    if (technical && Array.isArray(grid.material)) {
+      for (const material of grid.material) {
+        material.transparent = true;
+        material.opacity = 0.34;
+      }
+    }
     scene.add(grid);
 
-    if (view === "plan") {
-      camera.up.set(0, 1, 0);
-      camera.position.set(center.x, center.y, center.z + radius * 2.25);
-    } else {
-      camera.up.set(0, 0, 1);
-      camera.position.set(center.x + radius, center.y - radius * 1.2, center.z + radius * 0.82);
-    }
+    const pose = cameraPoseForPreset(center, radius, "home");
+    camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.near = Math.max(0.1, radius / 1_000);
     camera.far = radius * 30;
     camera.lookAt(center);
     camera.updateProjectionMatrix();
     controls.update();
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let pointerStart: { x: number; y: number } | null = null;
+    const handlePointerDown = (event: PointerEvent) => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      if (useReference || !pointerStart) return;
+      const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+      pointerStart = null;
+      if (movement > 5) return;
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(root.children, false).find((intersection) =>
+        intersection.object instanceof THREE.Mesh && intersection.faceIndex != null,
+      );
+      if (!hit || hit.faceIndex == null) {
+        onSelectElement(null);
+        return;
+      }
+      const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
+      const elementId = elementIds?.[Math.floor(hit.faceIndex / 12)];
+      onSelectElement(elementId ?? null);
+    };
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointerup", handlePointerUp);
+    runtimeRef.current = {
+      scene,
+      camera,
+      renderer,
+      controls,
+      root,
+      center,
+      radius,
+      selectionOverlay: null,
+    };
 
     const resize = () => {
       const width = canvas.clientWidth || 1;
@@ -231,13 +364,87 @@ function ModelCanvas({
       active = false;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointerup", handlePointerUp);
       controls.dispose();
       disposeGroup(root);
+      if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
+      runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, result, source, view]);
+  }, [comparison, onSelectElement, renderMode, result, source]);
 
-  return <canvas ref={canvasRef} className="model-canvas" aria-label="Interactive recovered Revit geometry" />;
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    const preset = view === "plan" ? "top" : cameraRequest.preset;
+    const pose = cameraPoseForPreset(runtime.center, runtime.radius, preset);
+    runtime.camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+    runtime.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+    runtime.controls.target.copy(runtime.center);
+    runtime.camera.lookAt(runtime.center);
+    runtime.camera.updateProjectionMatrix();
+    runtime.controls.update();
+  }, [cameraRequest, comparison, renderMode, result, source, view]);
+
+  useEffect(() => {
+    const controls = runtimeRef.current?.controls;
+    if (!controls) return;
+    applyNavigationMode(controls, navigationMode);
+  }, [comparison, navigationMode, renderMode, result, source]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    runtime.renderer.localClippingEnabled = sectionEnabled;
+    const clippingPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), runtime.center.z);
+    runtime.root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.LineSegments)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        material.clippingPlanes = sectionEnabled ? [clippingPlane] : [];
+        material.clipShadows = sectionEnabled;
+        material.needsUpdate = true;
+      }
+    });
+  }, [comparison, renderMode, result, sectionEnabled, source]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    if (runtime.selectionOverlay) {
+      runtime.scene.remove(runtime.selectionOverlay);
+      disposeGroup(runtime.selectionOverlay);
+      runtime.selectionOverlay = null;
+    }
+    if (source === "reference" || selectedElementId == null) return;
+    const record = result.elementBounds.find((candidate) => candidate.elementId === selectedElementId);
+    if (!record) return;
+    const dimensions = boundsDimensions(record.boundsFeet);
+    const selectedCenter = new THREE.Vector3(
+      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - result.origin.x,
+      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - result.origin.y,
+      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - result.origin.z,
+    );
+    const selectedGeometry = new THREE.BoxGeometry(dimensions.x, dimensions.y, dimensions.z);
+    const fill = new THREE.Mesh(
+      selectedGeometry,
+      new THREE.MeshBasicMaterial({ color: 0xffc441, transparent: true, opacity: 0.22, depthWrite: false }),
+    );
+    fill.position.copy(selectedCenter);
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(selectedGeometry),
+      new THREE.LineBasicMaterial({ color: 0xff9f1c, linewidth: 2, depthTest: false }),
+    );
+    outline.position.copy(selectedCenter);
+    outline.renderOrder = 20;
+    const overlay = new THREE.Group();
+    overlay.add(fill, outline);
+    runtime.selectionOverlay = overlay;
+    runtime.scene.add(overlay);
+  }, [comparison, renderMode, result, selectedElementId, source]);
+
+  return <canvas ref={canvasRef} className={`model-canvas nav-${navigationMode}`} aria-label="Interactive recovered Revit geometry" />;
 }
 
 function FidelityRow({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "off" }) {
@@ -319,6 +526,14 @@ export default function ReviterStudio() {
   const [dragging, setDragging] = useState(false);
   const [view, setView] = useState<ViewMode>("perspective");
   const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
+  const [renderMode, setRenderMode] = useState<RenderMode>("technical");
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>("orbit");
+  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: "home", sequence: 0 });
+  const [sectionEnabled, setSectionEnabled] = useState(false);
+  const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
+  const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
+  const [modelSearch, setModelSearch] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
   const [referenceProgress, setReferenceProgress] = useState(0);
@@ -370,6 +585,14 @@ export default function ReviterStudio() {
     setResult(null);
     setComparison(null);
     setGeometrySource("recovered");
+    setRenderMode("technical");
+    setNavigationMode("orbit");
+    setCameraRequest({ preset: "home", sequence: requestId });
+    setSectionEnabled(false);
+    setViewerPanel("none");
+    setSelectedElementId(null);
+    setModelSearch("");
+    setDetailsOpen(false);
     setReferencePhase("idle");
     setReferenceError(null);
     setMetadata(null);
@@ -520,6 +743,34 @@ export default function ReviterStudio() {
   const versionNumber = Number(metadata?.version ?? 0);
   const isFutureVersion = versionNumber > 2026;
   const savedName = savedFileName(metadata?.path);
+  const displayedElementIds = useMemo(() => {
+    if (!result) return new Set<number>();
+    return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
+  }, [result]);
+  const solidRecords = useMemo(
+    () => result
+      ? solidElementBounds(result.elementBounds).filter((record) => displayedElementIds.has(record.elementId))
+      : [],
+    [displayedElementIds, result],
+  );
+  const selectedRecord = useMemo(
+    () => selectedElementId == null
+      ? null
+      : result?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
+    [result, selectedElementId],
+  );
+  const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
+  const visibleModelRecords = useMemo(() => {
+    const query = modelSearch.trim();
+    const records = query
+      ? solidRecords.filter((record) => String(record.elementId).includes(query))
+      : solidRecords;
+    return records.slice(0, 180);
+  }, [modelSearch, solidRecords]);
+  const requestCamera = useCallback((preset: CameraPreset) => {
+    setView(preset === "top" ? "plan" : "perspective");
+    setCameraRequest((current) => ({ preset, sequence: current.sequence + 1 }));
+  }, []);
 
   return (
     <main className="studio-shell">
@@ -532,7 +783,7 @@ export default function ReviterStudio() {
         <div className="privacy-badge"><span />Local-only processing</div>
       </header>
 
-      <section className="workspace">
+      <section className={`workspace ${result ? "model-open" : ""}`}>
         <aside className="control-rail">
           <div className="rail-intro">
             <p className="eyebrow">RVT → open geometry</p>
@@ -654,7 +905,7 @@ export default function ReviterStudio() {
           )}
         </aside>
 
-        <section className="stage">
+        <section className={`stage ${result ? "viewer-active" : ""}`}>
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
@@ -663,7 +914,7 @@ export default function ReviterStudio() {
             <div className="toolbar-controls">
               {comparison?.referenceMeshes.length ? (
                 <div className="segmented-control source-control" aria-label="Geometry source">
-                  <button className={geometrySource === "reference" ? "active" : ""} onClick={() => setGeometrySource("reference")}>IFC reference</button>
+                  <button className={geometrySource === "reference" ? "active" : ""} onClick={() => { setGeometrySource("reference"); setSelectedElementId(null); }}>IFC reference</button>
                   <button className={geometrySource === "recovered" ? "active diagnostic-active" : ""} onClick={() => setGeometrySource("recovered")}>RVT diagnostic</button>
                 </div>
               ) : null}
@@ -674,10 +925,109 @@ export default function ReviterStudio() {
             </div>
           </div>
 
-          <div className="viewport">
+          <div className={`viewport viewport-${renderMode}`}>
             {result ? (
               <>
-                <ModelCanvas result={result} comparison={comparison} source={geometrySource} view={view} />
+                <ModelCanvas
+                  result={result}
+                  comparison={comparison}
+                  source={geometrySource}
+                  view={view}
+                  renderMode={renderMode}
+                  navigationMode={navigationMode}
+                  cameraRequest={cameraRequest}
+                  sectionEnabled={sectionEnabled}
+                  selectedElementId={selectedElementId}
+                  onSelectElement={setSelectedElementId}
+                />
+                <nav className="viewer-commandbar" aria-label="Model tools">
+                  <button
+                    className={viewerPanel === "model" ? "active" : ""}
+                    onClick={() => setViewerPanel((current) => current === "model" ? "none" : "model")}
+                    aria-pressed={viewerPanel === "model"}
+                  ><i>☷</i>Model browser</button>
+                  <button
+                    className={viewerPanel === "properties" ? "active" : ""}
+                    onClick={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
+                    aria-pressed={viewerPanel === "properties"}
+                  ><i>ⓘ</i>Properties</button>
+                  <button
+                    className={detailsOpen ? "active" : ""}
+                    onClick={() => setDetailsOpen((current) => !current)}
+                    aria-pressed={detailsOpen}
+                  ><i>▤</i>Report & exports</button>
+                  <span className="command-divider" />
+                  <div className="render-switch" aria-label="Render style">
+                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
+                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
+                  </div>
+                  <span className="viewer-fidelity-chip">{result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
+                </nav>
+
+                {viewerPanel === "model" && (
+                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Model browser">
+                    <div className="viewer-panel-heading"><div><strong>Model browser</strong><span>{solidRecords.length.toLocaleString()} recovered elements</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close model browser">×</button></div>
+                    <label className="model-search"><span>Search native ID</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} inputMode="numeric" placeholder="e.g. 290618" /></label>
+                    <div className="model-tree" role="listbox" aria-label="Recovered Revit elements">
+                      {visibleModelRecords.map((record) => {
+                        const dimensions = boundsDimensions(record.boundsFeet);
+                        return (
+                          <button
+                            key={record.elementId}
+                            className={selectedElementId === record.elementId ? "selected" : ""}
+                            onClick={() => setSelectedElementId(record.elementId)}
+                            role="option"
+                            aria-selected={selectedElementId === record.elementId}
+                          >
+                            <span><i />Revit element {record.elementId}</span>
+                            <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {solidRecords.length > visibleModelRecords.length && <p>Showing {visibleModelRecords.length} of {solidRecords.length.toLocaleString()} elements. Search by native ID to narrow the list.</p>}
+                  </aside>
+                )}
+
+                {viewerPanel === "properties" && (
+                  <aside className="viewer-sidepanel properties-panel" aria-label="Element properties">
+                    <div className="viewer-panel-heading"><div><strong>Properties</strong><span>{selectedRecord ? `Element ${selectedRecord.elementId}` : "No selection"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
+                    {selectedRecord && selectedDimensions ? (
+                      <dl className="property-table">
+                        <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
+                        <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
+                        <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
+                        <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>
+                        <div><dt>Depth</dt><dd>{selectedDimensions.y.toFixed(3)} ft</dd></div>
+                        <div><dt>Height</dt><dd>{selectedDimensions.z.toFixed(3)} ft</dd></div>
+                        <div><dt>Minimum Z</dt><dd>{selectedRecord.boundsFeet.min.z.toFixed(3)} ft</dd></div>
+                        <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
+                      </dl>
+                    ) : (
+                      <div className="property-empty"><b>Pick an envelope in the viewport</b><p>Click a recovered solid or choose an element from Model browser. Native IDs and record evidence stay local.</p></div>
+                    )}
+                  </aside>
+                )}
+
+                <div className="view-cube" aria-label="Camera orientation">
+                  <button className="cube-top" onClick={() => requestCamera("top")}>TOP</button>
+                  <button className="cube-front" onClick={() => requestCamera("front")}>FRONT</button>
+                  <button className="cube-right" onClick={() => requestCamera("right")}>RIGHT</button>
+                </div>
+
+                <nav className="viewer-navigation" aria-label="Viewport navigation">
+                  <button onClick={() => requestCamera("home")}><i>⌂</i><span>Home</span></button>
+                  <button onClick={() => requestCamera(cameraRequest.preset)}><i>⛶</i><span>Fit</span></button>
+                  <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
+                  <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
+                  <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>
+                  <span />
+                  <button className={sectionEnabled ? "active" : ""} onClick={() => setSectionEnabled((current) => !current)} aria-pressed={sectionEnabled}><i>◩</i><span>Section</span></button>
+                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); requestCamera("home"); }}><i>↺</i><span>Reset</span></button>
+                </nav>
+
+                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>Element {selectedRecord.elementId}<span>View properties</span></button>}
                 <div className="viewport-legend">
                   {geometrySource === "reference" && comparison ? (
                     <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
@@ -699,7 +1049,7 @@ export default function ReviterStudio() {
             )}
           </div>
 
-          {result && (
+          {result && detailsOpen && (
             <div className="results-dock">
               {comparison && <RegressionPanel comparison={comparison} />}
               <section className="result-summary">
@@ -731,7 +1081,7 @@ export default function ReviterStudio() {
             </div>
           )}
 
-          {(result || isFutureVersion) && (
+          {detailsOpen && (result || isFutureVersion) && (
             <aside className="evidence-banner">
               <span className="evidence-icon">!</span>
               <div>

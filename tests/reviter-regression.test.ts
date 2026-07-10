@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import { detectDuplicatedBoundsRecord } from "../lib/reviter/convert.ts";
+import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/convert.ts";
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
@@ -28,13 +28,22 @@ test("decodes a duplicated Revit 2027 element bounding record", () => {
   const data = new Uint8Array(168);
   const view = new DataView(data.buffer);
   view.setUint32(0, 290618, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(18, 30, true);
+  view.setUint32(26, 290618, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, 5, true);
+  view.setUint32(42, 3, true);
   const bounds = [4.836536977943411, -160.39049213391746, 0, 6.476956925449996, -146.11883859061035, 14.435695538057743];
   for (let copy = 0; copy < 2; copy += 1) {
     bounds.forEach((value, index) => view.setFloat64(72 + copy * 48 + index * 8, value, true));
   }
   assert.deepEqual(detectDuplicatedBoundsRecord(data), {
     elementId: 290618,
-    recordOffset: 72,
+    recordOffset: 0,
+    boundsOffset: 72,
+    recordCode: 30,
+    recordCount: 5,
     boundsFeet: {
       min: { x: bounds[0], y: bounds[1], z: bounds[2] },
       max: { x: bounds[3], y: bounds[4], z: bounds[5] },
@@ -42,7 +51,36 @@ test("decodes a duplicated Revit 2027 element bounding record", () => {
   });
 });
 
-test("decodes the proven Revit 2023 ArcWall profile and rejects it on other releases", () => {
+test("finds multiple nested Revit 2027 records in one inflated partition page", () => {
+  const data = new Uint8Array(380);
+  const view = new DataView(data.buffer);
+  const writeRecord = (offset: number, elementId: number, recordCode: number, count: number) => {
+    view.setUint32(offset, elementId, true);
+    view.setUint16(offset + 16, 0x08c6, true);
+    view.setUint32(offset + 18, recordCode, true);
+    view.setUint32(offset + 26, elementId, true);
+    view.setUint32(offset + 34, 0x0008_8004, true);
+    view.setUint32(offset + 38, count, true);
+    view.setUint32(offset + 42, 3, true);
+    const boundsOffset = offset + 42 + count * 6;
+    const bounds = [elementId / 10_000, -20, 0, elementId / 10_000 + 1, -18, 9];
+    for (let copy = 0; copy < 2; copy += 1) {
+      bounds.forEach((value, index) => view.setFloat64(boundsOffset + copy * 48 + index * 8, value, true));
+    }
+  };
+  writeRecord(7, 290618, 30, 5);
+  writeRecord(201, 1080819, 116, 1);
+
+  const records = detectDuplicatedBoundsRecords(data);
+  assert.deepEqual(records.map(({ elementId, recordOffset, recordCode, recordCount }) => ({
+    elementId, recordOffset, recordCode, recordCount,
+  })), [
+    { elementId: 290618, recordOffset: 7, recordCode: 30, recordCount: 5 },
+    { elementId: 1080819, recordOffset: 201, recordCode: 116, recordCount: 1 },
+  ]);
+});
+
+test("keeps the Revit 2023 ArcWall block as a bounds hypothesis and rejects it on other releases", () => {
   const data = new Uint8Array(0x73);
   const view = new DataView(data.buffer);
   view.setUint16(0, 0x0191, true);
@@ -58,9 +96,14 @@ test("decodes the proven Revit 2023 ArcWall profile and rejects it on other rele
 
   const decoded = decodeArcWall2023Record(data, 0, 2023);
   assert.ok(decoded);
-  assert.deepEqual(decoded.centerline, { x0: 9.23, y0: 25.66, z0: 0, x1: 12.51, y1: 26.49, z1: 6.56 });
+  assert.deepEqual(decoded.boundsFeet, {
+    min: { x: 9.23, y: 25.66, z: 0 },
+    max: { x: 12.51, y: 26.49, z: 6.56 },
+  });
+  assert.equal(decoded.confidence, "bounds-hypothesis");
   assert.equal(decoded.duplicateMatches, true);
   assert.equal(decodeArcWall2023Record(data, 0, 2024), null);
+  assert.equal(decoderPlanForVersion(2023).nativeProfileDecoder, null);
   assert.equal(decoderPlanForVersion(2027).nativeProfileDecoder, null);
   assert.equal(decoderPlanForVersion(2027).elementBoundsDecoder, "revit-2027-duplicated-bounds-v1");
   assert.equal(decoderPlanForVersion().elementBoundsDecoder, null);

@@ -2,7 +2,7 @@ import CFB from "cfb";
 import { inflateSync } from "fflate";
 
 import { parseElemTable } from "./elem-table.ts";
-import { decoderPlanForVersion, scanArcWall2023Records } from "./native-decoder.ts";
+import { decoderPlanForVersion } from "./native-decoder.ts";
 
 import type {
   Bounds3,
@@ -22,22 +22,37 @@ import type {
 
 const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 const DEFAULT_MAX_SEGMENTS = 12_000;
-const BOUNDS_SCAN_BYTES = 1_024;
 const BOUNDS_DUPLICATE_BYTES = 48;
 const MIN_SOLID_SPAN_FEET = 0.001;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
 function displayMaterials(): MaterialData[] {
-  return [{
-    name: "Reviter unassigned display material",
-    baseColorLinear: [0.2, 0.75, 0.78, 1],
-    metallic: 0.04,
-    roughness: 0.74,
+  const fallback = (
+    name: string,
+    color: [number, number, number, number],
+    roughness = 0.82,
+  ): MaterialData => ({
+    name,
+    baseColorLinear: color,
+    metallic: 0,
+    roughness,
     doubleSided: true,
     source: "display-fallback",
     assignedElements: 0,
-  }];
+  });
+  return [
+    fallback("Unclassified display proxy", [0.58, 0.68, 0.79, 1]),
+    fallback("Wall display proxy", [0.68, 0.75, 0.83, 1], 0.9),
+    fallback("Door display proxy", [0.72, 0.55, 0.34, 1], 0.74),
+    fallback("Panel display proxy", [0.62, 0.75, 0.84, 1], 0.68),
+    fallback("Frame display proxy", [0.24, 0.32, 0.41, 1], 0.58),
+    fallback("Structural display proxy", [0.52, 0.60, 0.69, 1], 0.86),
+    fallback("Railing display proxy", [0.32, 0.39, 0.47, 1], 0.6),
+    fallback("Slab and roof display proxy", [0.72, 0.77, 0.82, 1], 0.93),
+    fallback("Covering display proxy", [0.76, 0.78, 0.76, 1], 0.9),
+    fallback("Glazing display proxy", [0.55, 0.76, 0.85, 0.72], 0.42),
+  ];
 }
 
 function asBytes(value: number[] | Uint8Array): Uint8Array {
@@ -147,24 +162,43 @@ function leadingU32(data: Uint8Array): number | null {
 export type DetectedBoundsRecord = {
   elementId: number;
   recordOffset: number;
+  boundsOffset: number;
+  recordCode: number;
+  recordCount: number;
   boundsFeet: Bounds3;
 };
 
-export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRecord | null {
-  const elementId = leadingU32(data);
-  if (!elementId || elementId === 0xffffffff || data.byteLength < BOUNDS_DUPLICATE_BYTES * 2) {
-    return null;
-  }
-
+export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsRecord[] {
+  const records: DetectedBoundsRecord[] = [];
+  if (data.byteLength < 138) return records;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const scanEnd = Math.min(
-    data.byteLength - BOUNDS_DUPLICATE_BYTES * 2,
-    BOUNDS_SCAN_BYTES,
-  );
-  for (let offset = 0; offset <= scanEnd; offset += 1) {
+  for (
+    let tagOffset = data.indexOf(0xc6, 16);
+    tagOffset >= 0 && tagOffset + 122 < data.byteLength;
+    tagOffset = data.indexOf(0xc6, tagOffset + 1)
+  ) {
+    if (data[tagOffset + 1] !== 0x08) continue;
+    const recordOffset = tagOffset - 16;
+    const elementId = view.getUint32(recordOffset, true);
+    if (
+      !elementId ||
+      elementId === 0xffffffff ||
+      view.getUint32(recordOffset + 4, true) !== 0 ||
+      view.getUint32(recordOffset + 26, true) !== elementId ||
+      view.getUint32(recordOffset + 30, true) !== 0 ||
+      view.getUint32(recordOffset + 34, true) !== 0x0008_8004 ||
+      view.getUint32(recordOffset + 42, true) !== 3
+    ) {
+      continue;
+    }
+    const recordCount = view.getUint32(recordOffset + 38, true);
+    if (recordCount < 1 || recordCount > 10_000) continue;
+    const boundsOffset = 42 + recordCount * 6;
+    const boundsStart = recordOffset + boundsOffset;
+    if (boundsStart + BOUNDS_DUPLICATE_BYTES * 2 > data.byteLength) continue;
     let duplicate = true;
     for (let byte = 0; byte < BOUNDS_DUPLICATE_BYTES; byte += 1) {
-      if (data[offset + byte] !== data[offset + BOUNDS_DUPLICATE_BYTES + byte]) {
+      if (data[boundsStart + byte] !== data[boundsStart + BOUNDS_DUPLICATE_BYTES + byte]) {
         duplicate = false;
         break;
       }
@@ -172,7 +206,7 @@ export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRe
     if (!duplicate) continue;
 
     const values = Array.from({ length: 6 }, (_, index) =>
-      view.getFloat64(offset + index * 8, true),
+      view.getFloat64(boundsStart + index * 8, true),
     );
     if (!values.every((value) => Number.isFinite(value) && Math.abs(value) <= 50_000)) {
       continue;
@@ -192,16 +226,23 @@ export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRe
     ) {
       continue;
     }
-    return {
+    records.push({
       elementId,
-      recordOffset: offset,
+      recordOffset,
+      boundsOffset,
+      recordCode: view.getUint32(recordOffset + 18, true),
+      recordCount,
       boundsFeet: {
         min: { x: minX, y: minY, z: minZ },
         max: { x: maxX, y: maxY, z: maxZ },
       },
-    };
+    });
   }
-  return null;
+  return records;
+}
+
+export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRecord | null {
+  return detectDuplicatedBoundsRecords(data)[0] ?? null;
 }
 
 function segmentKey(segment: Segment): string {
@@ -406,12 +447,54 @@ function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
   return { min, max };
 }
 
+type DisplayRole = "wall" | "door" | "panel" | "frame" | "structure" | "railing" | "slab" | "covering" | "glazing";
+
+function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "unknown" {
+  const code = record.recordCode;
+  const count = record.recordCount;
+  if (code === 30 && count === 5) return "wall";
+  if (code === 30 && count != null && count >= 8 && count <= 10) return "wrapper";
+  if (code === 44 && count === 1) return "door";
+  if (code === 114 && count === 1) return "panel";
+  if ((code === 116 && count === 1) || (code === 179015 && count === 3)) return "frame";
+  if (code === 79 && (count === 1 || count === 3)) return "structure";
+  if (code === 101 && (count === 2 || count === 3)) return "railing";
+  if ((code === 54 || code === 58) && count === 1) return "slab";
+  if (code === 62 && count === 1) return "covering";
+  if (code === 34 && count === 1) return "glazing";
+  if (code === 81 || (code === 107 && count === 4)) return "structure";
+  return "unknown";
+}
+
+const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
+  wall: 1,
+  door: 2,
+  panel: 3,
+  frame: 4,
+  structure: 5,
+  railing: 6,
+  slab: 7,
+  covering: 8,
+  glazing: 9,
+};
+
 function selectDisplayBounds(records: ElementBoundsRecord[]): {
   records: ElementBoundsRecord[];
   omittedContainerCount: number;
+  omittedWrapperCount: number;
+  omittedUnknownCount: number;
 } {
-  if (records.length < 2) return { records, omittedContainerCount: 0 };
-  const byFootprint = records
+  let classified = records.filter((record) => displayRole(record) !== "unknown" && displayRole(record) !== "wrapper");
+  const omittedWrapperCount = records.filter((record) => displayRole(record) === "wrapper").length;
+  let omittedUnknownCount = records.length - classified.length - omittedWrapperCount;
+  if (!classified.length) {
+    classified = records;
+    omittedUnknownCount = 0;
+  }
+  if (classified.length < 2) {
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
+  }
+  const byFootprint = classified
     .map((record) => {
       const { min, max } = record.boundsFeet;
       const dx = max.x - min.x;
@@ -423,10 +506,14 @@ function selectDisplayBounds(records: ElementBoundsRecord[]): {
   const runnerUp = byFootprint[1]!;
   const isDominantContainer =
     largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
-  if (!isDominantContainer) return { records, omittedContainerCount: 0 };
+  if (!isDominantContainer) {
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
+  }
   return {
-    records: records.filter((record) => record !== largest.record),
+    records: classified.filter((record) => record !== largest.record),
     omittedContainerCount: 1,
+    omittedWrapperCount,
+    omittedUnknownCount,
   };
 }
 
@@ -448,12 +535,21 @@ function boxGeometry(bounds: Bounds3, origin: Vec3) {
 function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
   const meshes: MeshData[] = [];
   const batchSize = 2_000;
-  for (let start = 0; start < records.length; start += batchSize) {
+  const grouped = new Map<DisplayRole, ElementBoundsRecord[]>();
+  for (const record of records) {
+    const role = displayRole(record);
+    if (role === "unknown" || role === "wrapper") continue;
+    const group = grouped.get(role) ?? [];
+    group.push(record);
+    grouped.set(role, group);
+  }
+  for (const [role, roleRecords] of grouped) for (let start = 0; start < roleRecords.length; start += batchSize) {
     const positions: number[] = [];
     const indices: number[] = [];
     const colors: number[] = [];
     let vertexOffset = 0;
-    for (const record of records.slice(start, start + batchSize)) {
+    const batch = roleRecords.slice(start, start + batchSize);
+    for (const record of batch) {
       const box = boxGeometry(record.boundsFeet, origin);
       positions.push(...box.positions);
       indices.push(...box.indices.map((index) => index + vertexOffset));
@@ -464,11 +560,12 @@ function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshDa
       }
     }
     meshes.push({
-      name: `RVT element bounds ${meshes.length + 1}`,
+      name: `${role[0]!.toUpperCase()}${role.slice(1)} proxies ${Math.floor(start / batchSize) + 1}`,
       positions: new Float32Array(positions),
       indices: new Uint32Array(indices),
       colors: new Float32Array(colors),
-      materialIndex: 0,
+      materialIndex: DISPLAY_MATERIAL_INDEX[role],
+      elementIds: Uint32Array.from(batch.map((record) => record.elementId)),
     });
   }
   return meshes;
@@ -531,6 +628,7 @@ export function convertRvtBytes(
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
+    const locatedPartitionIds = new Set<number>();
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
@@ -549,31 +647,33 @@ export function convertRvtBytes(
         const elementId = leadingU32(inflated);
         if (elementId && elementId !== 0xffffffff) {
           partitionRecordIds.add(elementId);
-          partitionRecords.push({
-            elementId,
-            stream: partition.path.replace(/^Root Entry\//, ""),
-            chunkIndex: index,
-            rawOffset: offsets[index]!,
-            inflatedBytes: inflated.byteLength,
-          });
+          if (!locatedPartitionIds.has(elementId)) {
+            locatedPartitionIds.add(elementId);
+            partitionRecords.push({
+              elementId,
+              stream: partition.path.replace(/^Root Entry\//, ""),
+              chunkIndex: index,
+              rawOffset: offsets[index]!,
+              inflatedBytes: inflated.byteLength,
+            });
+          }
         }
-        for (const profile of scanArcWall2023Records(inflated, decoderPlan.revitVersion ?? undefined)) {
-          nativeProfiles.push({
-            decoderId: profile.decoderId,
-            revitVersion: profile.revitVersion,
-            stream: partition.path.replace(/^Root Entry\//, ""),
-            chunkIndex: index,
-            rawOffset: offsets[index]!,
-            recordOffset: profile.recordOffset,
-            variant: profile.variant,
-            centerline: profile.centerline,
-            duplicateMatches: profile.duplicateMatches,
-          });
-        }
-        const detectedBounds = decoderPlan.elementBoundsDecoder
-          ? detectDuplicatedBoundsRecord(inflated)
-          : null;
-        if (detectedBounds && !boundedElementIds.has(detectedBounds.elementId)) {
+        const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
+          ? detectDuplicatedBoundsRecords(inflated)
+          : [];
+        for (const detectedBounds of detectedBoundsRecords) {
+          partitionRecordIds.add(detectedBounds.elementId);
+          if (!locatedPartitionIds.has(detectedBounds.elementId)) {
+            locatedPartitionIds.add(detectedBounds.elementId);
+            partitionRecords.push({
+              elementId: detectedBounds.elementId,
+              stream: partition.path.replace(/^Root Entry\//, ""),
+              chunkIndex: index,
+              rawOffset: offsets[index]!,
+              inflatedBytes: inflated.byteLength,
+            });
+          }
+          if (boundedElementIds.has(detectedBounds.elementId)) continue;
           boundedElementIds.add(detectedBounds.elementId);
           elementBounds.push({
             elementId: detectedBounds.elementId,
@@ -581,16 +681,24 @@ export function convertRvtBytes(
             chunkIndex: index,
             rawOffset: offsets[index]!,
             recordOffset: detectedBounds.recordOffset,
+            boundsOffset: detectedBounds.boundsOffset,
+            recordCode: detectedBounds.recordCode,
+            recordCount: detectedBounds.recordCount,
             boundsFeet: detectedBounds.boundsFeet,
           });
         }
-        if (inflated.byteLength >= 48 && index % stride === 0 && candidates.length < scanLimit) {
+        if (
+          !decoderPlan.elementBoundsDecoder &&
+          inflated.byteLength >= 48 &&
+          index % stride === 0 &&
+          candidates.length < scanLimit
+        ) {
           scanSegments(inflated, candidates, scanLimit);
         }
         if (gzipChunks % 36 === 0) {
           onProgress?.({
             ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
-            message: `Reading partition geometry · ${nativeProfiles.length.toLocaleString()} native profiles · ${elementBounds.length.toLocaleString()} exact bounds`,
+            message: `Reading partition geometry · ${elementBounds.length.toLocaleString()} exact element bounds`,
           });
         }
       }
@@ -601,83 +709,6 @@ export function convertRvtBytes(
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
     const boundedSolids = elementBounds.filter(solidBounds);
-    if (nativeProfiles.length) {
-      const nativeSegments = sampleEvenly(
-        deduplicate(nativeProfiles.map((profile) => profile.centerline)),
-        maxSegments,
-      );
-      const bounds = rawBounds(nativeSegments);
-      const origin = {
-        x: (bounds.min.x + bounds.max.x) / 2,
-        y: (bounds.min.y + bounds.max.y) / 2,
-        z: bounds.min.z,
-      };
-      const height = options.wallHeight ?? 10;
-      const meshes = buildMeshes(nativeSegments, origin, options.wallThickness ?? 0.5, height);
-      const relativeBounds = {
-        min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
-        max: {
-          x: bounds.max.x - origin.x,
-          y: bounds.max.y - origin.y,
-          z: bounds.max.z - origin.z + height,
-        },
-      };
-      const result: ConvertResult = {
-        ok: true,
-        fileName,
-        byteLength: bytes.byteLength,
-        meshes,
-        materials: displayMaterials(),
-        segments: nativeSegments,
-        elementBounds,
-        nativeProfiles,
-        decoderCoverage: {
-          revitVersion: decoderPlan.revitVersion,
-          activeDecoders: ["revit-2023-arcwall-standard-v1"],
-          nativeCurves: nativeProfiles.length,
-          nativeProfiles: nativeProfiles.length,
-          nativeMeshes: 0,
-          nativeMaterialDefinitions: 0,
-          nativeMaterialAssignments: 0,
-          approximateSolids: nativeSegments.length,
-          geometryFidelity: "native-profile-approximate-solid",
-          materialFidelity: "display-fallback",
-        },
-        origin,
-        bbox: relativeBounds,
-        levels: levelsFor(nativeSegments),
-        method: "native-profile-recovery",
-        elementIndex: elementIndex
-          ? {
-              ...elementIndex,
-              partitionRecordIds: Uint32Array.from([...partitionRecordIds].sort((a, b) => a - b)),
-              partitionRecords,
-            }
-          : undefined,
-        warnings: [
-          `${nativeProfiles.length.toLocaleString()} Revit 2023 ArcWall records supplied native centerline profiles.`,
-          "Displayed wall thickness and height are explicit defaults because those dimensions are not decoded from this record yet.",
-          "No native mesh, opening, layer assignment, or texture asset was decoded; the cyan material is a display fallback.",
-        ],
-        stats: {
-          streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
-          partitionStreams: partitions.length,
-          gzipChunks,
-          inflatedBytes,
-          candidatesFound: nativeProfiles.length,
-          candidatesFocused: nativeProfiles.length,
-          candidatesUsed: nativeSegments.length,
-          vertexCount: nativeSegments.length * 8,
-          triangleCount: nativeSegments.length * 12,
-          meshCount: meshes.length,
-          boundsRecordsFound: elementBounds.length,
-          solidBoundsRecords: boundedSolids.length,
-          durationMs: performance.now() - started,
-        },
-      };
-      onProgress?.({ ratio: 1, message: "Ready" });
-      return result;
-    }
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
       const displayBounds = displaySelection.records;
@@ -733,6 +764,12 @@ export function convertRvtBytes(
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
+            : []),
+          ...(displaySelection.omittedWrapperCount
+            ? [`${displaySelection.omittedWrapperCount.toLocaleString()} curtain-wall/opening wrapper envelopes are hidden by default so their detailed child elements remain visible.`]
+            : []),
+          ...(displaySelection.omittedUnknownCount
+            ? [`${displaySelection.omittedUnknownCount.toLocaleString()} unclassified record envelopes remain in the audit/export but are hidden from the default category scene.`]
             : []),
           "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
         ],

@@ -15,6 +15,8 @@ export type MeshData = {
   indices: Uint32Array;
   colors: Float32Array;
   materialIndex: number;
+  /** One native Revit element id per 12-triangle box, when the mesh is an element-envelope batch. */
+  elementIds?: Uint32Array;
 };
 
 export type MaterialData = {
@@ -57,7 +59,12 @@ export type ElementBoundsRecord = {
   stream: string;
   chunkIndex: number;
   rawOffset: number;
+  /** Start of the nested element record inside the inflated chunk. */
   recordOffset: number;
+  /** Byte offset from record start to the first of the duplicated bounds blocks. */
+  boundsOffset?: number;
+  recordCode?: number;
+  recordCount?: number;
   boundsFeet: Bounds3;
 };
 
