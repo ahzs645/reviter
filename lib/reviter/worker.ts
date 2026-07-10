@@ -15,8 +15,7 @@ type RvtWasmModule = {
 
 async function readStandardsDiagnostics(bytes: Uint8Array): Promise<ReaderDiagnostics> {
   try {
-    const moduleUrl = "/rvt-wasm/rvt.js";
-    const wasm = (await import(/* @vite-ignore */ moduleUrl)) as RvtWasmModule;
+    const wasm = (await import("../rvt-wasm/rvt.js")) as RvtWasmModule;
     await wasm.default();
     const summary = wasm.quickSummary(bytes);
     const summaryVersion = summary.version ?? 0;
