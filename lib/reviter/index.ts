@@ -7,6 +7,7 @@ export {
 } from "./native-decoder";
 export { detectElemTableLayout, parseElemTable } from "./elem-table";
 export { compareRvtToIfc } from "./regression";
+export { boundsDimensions, cameraPoseForPreset, solidElementBounds } from "./viewer";
 export {
   downloadBlob,
   makeDxf,
@@ -49,3 +50,4 @@ export type {
   WorkerRequest,
   WorkerResponse,
 } from "./types";
+export type { CameraPose, CameraPreset, NavigationMode, RenderMode } from "./viewer";

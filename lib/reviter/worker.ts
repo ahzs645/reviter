@@ -128,6 +128,7 @@ context.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       const transfers: Transferable[] = [];
       for (const mesh of result.meshes) {
         transfers.push(mesh.positions.buffer, mesh.indices.buffer, mesh.colors.buffer);
+        if (mesh.elementIds) transfers.push(mesh.elementIds.buffer);
       }
       if (result.elementIndex) {
         transfers.push(

@@ -15,24 +15,24 @@ Every push to `main` is tested, built as a static Vite application, and deployed
 - `Global/ElemTable` framing and native Revit element-ID inventory
 - optional IFC reference parsing and geometry measurement with `web-ifc`
 - paired regression gates for element identity, extents, topology, and typed semantics
-- Revit 2027 duplicated-bounds record detection, with native element IDs and axis-aligned bounds in feet
-- release-gated Revit 2023 standard `ArcWall` decoding, with native centerline endpoints from the fixed record envelope
-- standards-aware Revit `Material` definition decoding (name, packed color, and transparency) for reader-supported releases
+- Revit 2027 nested duplicated-bounds record detection, with native element IDs, record codes, field counts, and axis-aligned bounds in feet
+- evidence-backed display classification for walls, doors, panels, frames, columns, railings, slabs/roofs, coverings, windows, stairs, and ramps in the supplied 2027 model
+- a standards-aware Revit `Material` schema adapter for reader-supported releases (real-file extraction and element assignment are not wired yet)
 - open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC solid proxies, and JSON audit data
 
 ## What is experimental
 
-Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. Reviter now selects decoders by the `BasicFileInfo` release rather than applying a byte pattern universally. In Revit 2023, the proven standard `ArcWall` envelope stores two centerline endpoints. In the supplied Revit 2027 model, a different record signature contains two identical six-`f64` axis-aligned bounds blocks. Unknown signatures fall back to the coordinate-diagnostic scanner and are labeled diagnostic-only.
+Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. Reviter selects decoders by the `BasicFileInfo` release rather than applying a byte pattern universally. In the supplied Revit 2027 model, a strict nested record signature contains the native element ID plus two identical six-`f64` axis-aligned bounds blocks. The old Revit 2023 `ArcWall` six-coordinate interpretation is retained only as a bounds hypothesis in tests; it is disabled as production profile geometry because its coordinate semantics have not been proven.
 
-The 2023 centerline is native profile evidence, but its displayed thickness and height are still explicit defaults. A 2027 envelope is not an element's native shape. Native family meshes, curved faces, openings, compound-layer assignments, texture/image assets, parameters, constraints, and general typed BIM semantics remain undecoded. Material definitions decoded by the standards-aware reader are carried into GLB/IFC/JSON but stay unassigned until the element-material reference is proven. The IFC exporter therefore writes clearly described `IfcBuildingElementProxy` geometry; it does not mislabel proxies as native `IfcWall`, `IfcSlab`, or family geometry.
+A 2027 envelope is not an element's native shape. Native family meshes, curved faces, openings, compound-layer assignments, element-material references, parameters, constraints, and general typed BIM semantics remain undecoded. Appearance/material strings, colors, and embedded previews exist in the partition corpus, but production extraction and assignment are not implemented. The IFC exporter therefore writes clearly described `IfcBuildingElementProxy` geometry; it does not mislabel proxies as native `IfcWall`, `IfcSlab`, or family geometry.
 
 ## Decoder compatibility
 
 | Revit release | Native evidence | Rendered geometry | Materials |
 | --- | --- | --- | --- |
-| 2023 | standard `ArcWall` centerline record | default-width/default-height wall proxy | definitions when surfaced by the standards reader; assignments pending |
-| 2024–2026 | version-specific wall record not yet proven | diagnostic fallback unless the standards reader produces elements | definitions supported by the standards reader |
-| 2027 | supplied-project duplicated bounds + native element ID | axis-aligned envelope proxy | disabled in the current standards reader because 2027 is outside its verified range |
+| 2023 | fixed `ArcWall` six-coordinate record detected as a bounds hypothesis | production promotion disabled pending paired proof | schema adapter only; real extraction pending |
+| 2024–2026 | version-specific geometry record not yet proven | diagnostic fallback only | schema adapter only; real extraction pending |
+| 2027 | supplied-project nested duplicated bounds + native element ID and record classification | filtered, category-styled axis-aligned envelope proxies | category display fallbacks; native assignment pending |
 | unknown | no release-specific decoder | diagnostic fallback only | no claim |
 
 ## Supplied-project synthesis
@@ -54,14 +54,14 @@ The captured Autodesk Viewer/OTG assets were recovered with the supplied `jsmap`
 After opening an RVT, choose its matching IFC export in the **Regression fixture** panel. Both files remain local. Reviter then:
 
 1. parses native IDs from `Global/ElemTable`;
-2. detects duplicated-bounds records and inventories leading-u32 evidence in every decompressible `Partitions/*` chunk;
+2. detects every strict nested duplicated-bounds record in each decompressible `Partitions/*` page and inventories leading-u32 evidence;
 3. joins numeric IFC `Tag` values back to those RVT records;
 4. measures IFC geometry with `web-ifc`; and
 5. rejects or accepts the recovered output against identity, extent, topology, and semantic gates.
 
 When the recovery fails those gates, the viewer now switches to the coherent IFC ground-truth geometry automatically. IFC elements whose `Tag` resolves to an RVT record are highlighted, the remainder stays as darker model context, and the broken coordinate recovery remains available only through the **RVT diagnostic** toggle.
 
-The partition leading-u32 join remains diagnostic evidence. A duplicated-bounds record is stronger: on the supplied pair, 119 joined records match all six Autodesk-derived bounds coordinates within `0.0001 ft`, and 125 match within `0.01 ft`. That validates the record as an element envelope, but not as a native shape or object class.
+The partition leading-u32 join remains diagnostic evidence. A duplicated-bounds record is stronger. Correlation against the supplied IFC joins 25,180 unique recovered IDs to known IFC products/types and yields strong record-code clusters for walls, doors, panels, members, columns, railings, slabs, roofs, coverings, and windows. This validates the record as an element envelope and supports the supplied-model display classification, but it still does not prove a native shape or a universal Revit object class mapping.
 
 ## Sample evidence
 
@@ -69,13 +69,14 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 
 - metadata: Revit `2027`, build `20260417_1515(x64)`, locale `ENU`
 - native Rust reader: file and schema open successfully, but the version is beyond its verified 2016–2026 range
-- duplicated-bounds recovery: 861 native-ID records, of which 804 have non-zero 3D volume
-- RVT-only default scene: 803 axis-aligned element envelopes; one dominant container-like envelope is retained in audit/IFC output but hidden from the scene
-- paired index evidence: 8,902 `ElemTable` IDs plus 2,943 partition-leading IDs
+- nested duplicated-bounds recovery: 35,677 record occurrences, 35,633 unique native IDs, and 33,985 non-zero 3D envelopes
+- RVT-only default scene: 28,225 category-classified element proxies; 1,569 curtain-wall/opening wrapper envelopes and 4,191 unclassified envelopes remain auditable/exportable but are hidden from the default view
+- generated scene: 225,800 vertices, 338,700 triangles, and 21 category batches
+- paired index evidence: 8,902 `ElemTable` IDs plus 37,324 partition-record IDs
 - Autodesk derivative cross-check: 59,582 stable Revit IDs and 51,420 fragments in the signed-in reference capture
-- generated IFC validation: IFC4 opens in `web-ifc` with 804 products, 804 placed geometries, 27,336 vertices, and 9,648 triangles
-- strongest class joins: 1,602 walls, 1,436 members, 466 plates, 355 curtain walls, 182 openings, 54 columns, and 28 doors
-- reference gates: failed extents (`2.89× / 1.77× / 1.26×`), triangle density (`0.11×`), and typed semantics (`0%`), so the coordinate mesh is automatically rejected
+- Autodesk derivative presentation evidence: 22 materials and no bitmap textures; its screenshot look comes primarily from detailed meshes, technical shading, feature edges, and shadows
+- strongest supplied-pair clusters include 1,044 standard walls, 1,294 doors, 15,654 members, 4,972 plates, 95 columns, 136 railings, and 53 slabs
+- local RVT-only conversion completes in about 12 seconds on the development machine after replacing byte-by-byte scanning with native typed-array signature search
 
 The bounds signature is currently confirmed for this supplied Revit 2027 file. It must be regression-tested on more RVT versions before being treated as a general Revit decoder.
 
