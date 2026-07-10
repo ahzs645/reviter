@@ -1,4 +1,4 @@
-import type { Segment } from "./types";
+import type { MaterialData, Segment } from "./types";
 
 const ARC_WALL_2023_TAG = 0x0191;
 const ARC_WALL_2023_VARIANT = 0x07fa;
@@ -22,6 +22,47 @@ export type DecoderPlan = {
   elementBoundsDecoder: "revit-2027-duplicated-bounds-v1" | null;
   diagnosticCoordinateScanner: true;
 };
+
+export type RvtMaterialRecord = {
+  name?: string;
+  color_packed?: number | null;
+  transparency?: number | null;
+};
+
+function srgbToLinear(value: number): number {
+  return value <= 0.04045
+    ? value / 12.92
+    : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+/** Convert typed rvt-rs Material fields into glTF-compatible linear PBR data. */
+export function decodeRvtMaterialDefinitions(source: RvtMaterialRecord[]): MaterialData[] {
+  return source.flatMap((material) => {
+    if (!material.name) return [];
+    const packed = material.color_packed;
+    const rgb = packed == null
+      ? [0.522, 0.522, 0.522]
+      : [
+          srgbToLinear((packed & 0xff) / 255),
+          srgbToLinear(((packed >> 8) & 0xff) / 255),
+          srgbToLinear(((packed >> 16) & 0xff) / 255),
+        ];
+    return [{
+      name: material.name,
+      baseColorLinear: [
+        rgb[0]!,
+        rgb[1]!,
+        rgb[2]!,
+        1 - Math.max(0, Math.min(1, material.transparency ?? 0)),
+      ] as [number, number, number, number],
+      metallic: /metal|steel|alum|iron|chrome/i.test(material.name) ? 0.8 : 0,
+      roughness: /glass|polish|chrome/i.test(material.name) ? 0.2 : 0.7,
+      doubleSided: true,
+      source: "rvt-material" as const,
+      assignedElements: 0,
+    }];
+  });
+}
 
 function getU16(view: DataView, offset: number): number {
   return view.getUint16(offset, true);

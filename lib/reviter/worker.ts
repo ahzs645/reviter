@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import { convertRvtBytes } from "./convert";
+import { decodeRvtMaterialDefinitions } from "./native-decoder";
 import type { MaterialData, ReaderDiagnostics, WorkerRequest, WorkerResponse } from "./types";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
@@ -21,37 +22,6 @@ type RvtWasmModule = {
 };
 
 type StandardsEvidence = { diagnostics: ReaderDiagnostics; materials: MaterialData[] };
-
-function srgbToLinear(value: number): number {
-  return value <= 0.04045
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-function decodedMaterials(
-  source: Array<{ name?: string; color_packed?: number | null; transparency?: number | null }>,
-): MaterialData[] {
-  return source.flatMap((material) => {
-    if (!material.name) return [];
-    const packed = material.color_packed;
-    const rgb = packed == null
-      ? [0.522, 0.522, 0.522]
-      : [
-          srgbToLinear((packed & 0xff) / 255),
-          srgbToLinear(((packed >> 8) & 0xff) / 255),
-          srgbToLinear(((packed >> 16) & 0xff) / 255),
-        ];
-    return [{
-      name: material.name,
-      baseColorLinear: [rgb[0]!, rgb[1]!, rgb[2]!, 1 - Math.max(0, Math.min(1, material.transparency ?? 0))] as [number, number, number, number],
-      metallic: /metal|steel|alum|iron|chrome/i.test(material.name) ? 0.8 : 0,
-      roughness: /glass|polish|chrome/i.test(material.name) ? 0.2 : 0.7,
-      doubleSided: true,
-      source: "rvt-material" as const,
-      assignedElements: 0,
-    }];
-  });
-}
 
 async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEvidence> {
   try {
@@ -81,7 +51,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
     const productionElements = diagnostics.decoded?.production_walker_elements ?? 0;
     const diagnosticCandidates = diagnostics.decoded?.diagnostic_proxy_candidates ?? 0;
     const supportedVersion = version >= 2016 && version <= 2026;
-    const materials = decodedMaterials(result.model?.materials ?? []);
+    const materials = decodeRvtMaterialDefinitions(result.model?.materials ?? []);
     return { diagnostics: {
         available: true,
         supportedVersion,

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
 import { detectDuplicatedBoundsRecord } from "../lib/reviter/convert.ts";
-import { decodeArcWall2023Record, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
+import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import type { ConvertResult, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
@@ -64,6 +64,21 @@ test("decodes the proven Revit 2023 ArcWall profile and rejects it on other rele
   assert.equal(decoderPlanForVersion(2027).nativeProfileDecoder, null);
   assert.equal(decoderPlanForVersion(2027).elementBoundsDecoder, "revit-2027-duplicated-bounds-v1");
   assert.equal(decoderPlanForVersion().elementBoundsDecoder, null);
+});
+
+test("maps native Revit material fields to linear PBR without inventing assignments", () => {
+  const materials = decodeRvtMaterialDefinitions([
+    { name: "Glass - Blue", color_packed: 0x00ff_8000, transparency: 0.25 },
+    { name: "Steel", color_packed: 0x0080_8080, transparency: 2 },
+    {},
+  ]);
+  assert.equal(materials.length, 2);
+  assert.equal(materials[0]!.name, "Glass - Blue");
+  assert.equal(materials[0]!.baseColorLinear[3], 0.75);
+  assert.equal(materials[0]!.roughness, 0.2);
+  assert.equal(materials[0]!.assignedElements, 0);
+  assert.equal(materials[1]!.metallic, 0.8);
+  assert.equal(materials[1]!.baseColorLinear[3], 0);
 });
 
 test("emits rendered IFC solids from RVT element bounds", () => {

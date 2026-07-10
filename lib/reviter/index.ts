@@ -1,6 +1,7 @@
 export { convertRvtBytes } from "./convert";
 export {
   decodeArcWall2023Record,
+  decodeRvtMaterialDefinitions,
   decoderPlanForVersion,
   scanArcWall2023Records,
 } from "./native-decoder";
