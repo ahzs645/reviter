@@ -2,6 +2,7 @@ import CFB from "cfb";
 import { inflateSync } from "fflate";
 
 import { parseElemTable } from "./elem-table.ts";
+import { decoderPlanForVersion, scanArcWall2023Records } from "./native-decoder.ts";
 
 import type {
   Bounds3,
@@ -11,6 +12,8 @@ import type {
   ElementBoundsRecord,
   LevelBand,
   MeshData,
+  MaterialData,
+  NativeProfileLocator,
   PartitionRecordLocator,
   ProgressUpdate,
   Segment,
@@ -24,6 +27,18 @@ const BOUNDS_DUPLICATE_BYTES = 48;
 const MIN_SOLID_SPAN_FEET = 0.001;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
+
+function displayMaterials(): MaterialData[] {
+  return [{
+    name: "Reviter unassigned display material",
+    baseColorLinear: [0.2, 0.75, 0.78, 1],
+    metallic: 0.04,
+    roughness: 0.74,
+    doubleSided: true,
+    source: "display-fallback",
+    assignedElements: 0,
+  }];
+}
 
 function asBytes(value: number[] | Uint8Array): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -361,6 +376,7 @@ function buildMeshes(
       positions: new Float32Array(positions),
       indices: new Uint32Array(indices),
       colors: new Float32Array(colors),
+      materialIndex: 0,
     });
   }
   return meshes;
@@ -452,6 +468,7 @@ function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshDa
       positions: new Float32Array(positions),
       indices: new Uint32Array(indices),
       colors: new Float32Array(colors),
+      materialIndex: 0,
     });
   }
   return meshes;
@@ -487,6 +504,7 @@ export function convertRvtBytes(
   const started = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
+  const decoderPlan = decoderPlanForVersion(options.revitVersion);
 
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
@@ -509,6 +527,7 @@ export function convertRvtBytes(
 
     const candidates: Segment[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
+    const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
@@ -538,7 +557,22 @@ export function convertRvtBytes(
             inflatedBytes: inflated.byteLength,
           });
         }
-        const detectedBounds = detectDuplicatedBoundsRecord(inflated);
+        for (const profile of scanArcWall2023Records(inflated, decoderPlan.revitVersion ?? undefined)) {
+          nativeProfiles.push({
+            decoderId: profile.decoderId,
+            revitVersion: profile.revitVersion,
+            stream: partition.path.replace(/^Root Entry\//, ""),
+            chunkIndex: index,
+            rawOffset: offsets[index]!,
+            recordOffset: profile.recordOffset,
+            variant: profile.variant,
+            centerline: profile.centerline,
+            duplicateMatches: profile.duplicateMatches,
+          });
+        }
+        const detectedBounds = decoderPlan.elementBoundsDecoder
+          ? detectDuplicatedBoundsRecord(inflated)
+          : null;
         if (detectedBounds && !boundedElementIds.has(detectedBounds.elementId)) {
           boundedElementIds.add(detectedBounds.elementId);
           elementBounds.push({
@@ -556,7 +590,7 @@ export function convertRvtBytes(
         if (gzipChunks % 36 === 0) {
           onProgress?.({
             ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
-            message: `Reading partition geometry · ${elementBounds.length.toLocaleString()} exact bounds`,
+            message: `Reading partition geometry · ${nativeProfiles.length.toLocaleString()} native profiles · ${elementBounds.length.toLocaleString()} exact bounds`,
           });
         }
       }
@@ -567,6 +601,83 @@ export function convertRvtBytes(
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
     const boundedSolids = elementBounds.filter(solidBounds);
+    if (nativeProfiles.length) {
+      const nativeSegments = sampleEvenly(
+        deduplicate(nativeProfiles.map((profile) => profile.centerline)),
+        maxSegments,
+      );
+      const bounds = rawBounds(nativeSegments);
+      const origin = {
+        x: (bounds.min.x + bounds.max.x) / 2,
+        y: (bounds.min.y + bounds.max.y) / 2,
+        z: bounds.min.z,
+      };
+      const height = options.wallHeight ?? 10;
+      const meshes = buildMeshes(nativeSegments, origin, options.wallThickness ?? 0.5, height);
+      const relativeBounds = {
+        min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
+        max: {
+          x: bounds.max.x - origin.x,
+          y: bounds.max.y - origin.y,
+          z: bounds.max.z - origin.z + height,
+        },
+      };
+      const result: ConvertResult = {
+        ok: true,
+        fileName,
+        byteLength: bytes.byteLength,
+        meshes,
+        materials: displayMaterials(),
+        segments: nativeSegments,
+        elementBounds,
+        nativeProfiles,
+        decoderCoverage: {
+          revitVersion: decoderPlan.revitVersion,
+          activeDecoders: ["revit-2023-arcwall-standard-v1"],
+          nativeCurves: nativeProfiles.length,
+          nativeProfiles: nativeProfiles.length,
+          nativeMeshes: 0,
+          nativeMaterialDefinitions: 0,
+          nativeMaterialAssignments: 0,
+          approximateSolids: nativeSegments.length,
+          geometryFidelity: "native-profile-approximate-solid",
+          materialFidelity: "display-fallback",
+        },
+        origin,
+        bbox: relativeBounds,
+        levels: levelsFor(nativeSegments),
+        method: "native-profile-recovery",
+        elementIndex: elementIndex
+          ? {
+              ...elementIndex,
+              partitionRecordIds: Uint32Array.from([...partitionRecordIds].sort((a, b) => a - b)),
+              partitionRecords,
+            }
+          : undefined,
+        warnings: [
+          `${nativeProfiles.length.toLocaleString()} Revit 2023 ArcWall records supplied native centerline profiles.`,
+          "Displayed wall thickness and height are explicit defaults because those dimensions are not decoded from this record yet.",
+          "No native mesh, opening, layer assignment, or texture asset was decoded; the cyan material is a display fallback.",
+        ],
+        stats: {
+          streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
+          partitionStreams: partitions.length,
+          gzipChunks,
+          inflatedBytes,
+          candidatesFound: nativeProfiles.length,
+          candidatesFocused: nativeProfiles.length,
+          candidatesUsed: nativeSegments.length,
+          vertexCount: nativeSegments.length * 8,
+          triangleCount: nativeSegments.length * 12,
+          meshCount: meshes.length,
+          boundsRecordsFound: elementBounds.length,
+          solidBoundsRecords: boundedSolids.length,
+          durationMs: performance.now() - started,
+        },
+      };
+      onProgress?.({ ratio: 1, message: "Ready" });
+      return result;
+    }
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
       const displayBounds = displaySelection.records;
@@ -591,8 +702,22 @@ export function convertRvtBytes(
         fileName,
         byteLength: bytes.byteLength,
         meshes,
+        materials: displayMaterials(),
         segments,
         elementBounds,
+        nativeProfiles,
+        decoderCoverage: {
+          revitVersion: decoderPlan.revitVersion,
+          activeDecoders: ["revit-2027-duplicated-bounds-v1"],
+          nativeCurves: 0,
+          nativeProfiles: 0,
+          nativeMeshes: 0,
+          nativeMaterialDefinitions: 0,
+          nativeMaterialAssignments: 0,
+          approximateSolids: displayBounds.length,
+          geometryFidelity: "native-bounds-envelope",
+          materialFidelity: "display-fallback",
+        },
         origin,
         bbox: relativeBounds,
         levels: levelsForBounds(displayBounds),
@@ -658,8 +783,22 @@ export function convertRvtBytes(
       fileName,
       byteLength: bytes.byteLength,
       meshes,
+      materials: displayMaterials(),
       segments: used,
       elementBounds,
+      nativeProfiles,
+      decoderCoverage: {
+        revitVersion: decoderPlan.revitVersion,
+        activeDecoders: [],
+        nativeCurves: 0,
+        nativeProfiles: 0,
+        nativeMeshes: 0,
+        nativeMaterialDefinitions: 0,
+        nativeMaterialAssignments: 0,
+        approximateSolids: used.length,
+        geometryFidelity: "diagnostic-only",
+        materialFidelity: "display-fallback",
+      },
       origin,
       bbox: relativeBounds,
       levels: levelsFor(used),
@@ -674,6 +813,9 @@ export function convertRvtBytes(
           }
         : undefined,
       warnings: [
+        ...(decoderPlan.revitVersion == null
+          ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
+          : []),
         "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

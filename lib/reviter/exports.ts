@@ -108,7 +108,7 @@ export function makeGlb(result: ConvertResult): ArrayBuffer {
       primitives: [{
         attributes: { POSITION: positionAccessor, NORMAL: normalAccessor },
         indices: indexAccessor,
-        material: 0,
+        material: Math.min(mesh.materialIndex, Math.max(0, result.materials.length - 1)),
       }],
     }) - 1;
     nodes.push({ name: mesh.name, mesh: meshIndex });
@@ -132,15 +132,20 @@ export function makeGlb(result: ConvertResult): ArrayBuffer {
     scenes: [{ name: result.fileName, nodes: [rootNode] }],
     nodes,
     meshes,
-    materials: [{
-      name: "RVT recovered envelope",
+    materials: result.materials.map((material) => ({
+      name: material.name,
       pbrMetallicRoughness: {
-        baseColorFactor: [0.2, 0.75, 0.78, 1],
-        metallicFactor: 0.04,
-        roughnessFactor: 0.74,
+        baseColorFactor: material.baseColorLinear,
+        metallicFactor: material.metallic,
+        roughnessFactor: material.roughness,
       },
-      doubleSided: true,
-    }],
+      doubleSided: material.doubleSided,
+      ...(material.baseColorLinear[3] < 1 ? { alphaMode: "BLEND" } : {}),
+      extras: {
+        source: material.source,
+        assignedElements: material.assignedElements,
+      },
+    })),
     buffers: [{ byteLength: binary.byteLength }],
     bufferViews,
     accessors,
@@ -151,6 +156,7 @@ export function makeGlb(result: ConvertResult): ArrayBuffer {
       sourceUpAxis: "Z",
       gltfUpAxis: "Y",
       warnings: result.warnings,
+      decoderCoverage: result.decoderCoverage,
     },
   };
   const json = new TextEncoder().encode(JSON.stringify(document));
@@ -280,6 +286,9 @@ export function makeIfcCenterlines(result: ConvertResult): string {
   add(`IFCRELAGGREGATES('${ifcGuid(5)}',#${ownerHistory},$,$,#${project},(#${site}))`);
   add(`IFCRELAGGREGATES('${ifcGuid(6)}',#${ownerHistory},$,$,#${site},(#${building}))`);
   add(`IFCRELAGGREGATES('${ifcGuid(7)}',#${ownerHistory},$,$,#${building},(#${storey}))`);
+  for (const material of result.materials.filter((entry) => entry.source === "rvt-material")) {
+    add(`IFCMATERIAL('${ifcText(material.name)}',$,'Decoded RVT material definition; element assignment unavailable')`);
+  }
 
   const proxies: number[] = [];
   const toMetres = (value: number) => Number((value * 0.3048).toFixed(6));
@@ -356,12 +365,19 @@ export function makeReport(
           ? "validated-rvt-element-bounds"
           : "experimental-coordinate-recovery",
         bimSemantics: "unavailable",
+        nativeProfiles: result.decoderCoverage.nativeProfiles,
+        nativeMeshes: result.decoderCoverage.nativeMeshes,
+        materialDefinitions: result.decoderCoverage.nativeMaterialDefinitions,
+        materialAssignments: result.decoderCoverage.nativeMaterialAssignments,
       },
       file: { name: result.fileName, byteLength: result.byteLength, metadata: safeMetadata },
       originFeet: result.origin,
       boundsLocalFeet: result.bbox,
       levels: result.levels,
       stats: result.stats,
+      decoderCoverage: result.decoderCoverage,
+      nativeProfiles: result.nativeProfiles,
+      materials: result.materials,
       standardsAwareReader: result.readerDiagnostics ?? null,
       warnings: result.warnings,
     },

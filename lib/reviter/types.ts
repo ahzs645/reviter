@@ -14,6 +14,42 @@ export type MeshData = {
   positions: Float32Array;
   indices: Uint32Array;
   colors: Float32Array;
+  materialIndex: number;
+};
+
+export type MaterialData = {
+  name: string;
+  baseColorLinear: [number, number, number, number];
+  metallic: number;
+  roughness: number;
+  doubleSided: boolean;
+  source: "rvt-material" | "display-fallback";
+  assignedElements: number;
+};
+
+export type NativeProfileLocator = {
+  decoderId: "revit-2023-arcwall-standard-v1";
+  revitVersion: 2023;
+  stream: string;
+  chunkIndex: number;
+  rawOffset: number;
+  recordOffset: number;
+  variant: number;
+  centerline: Segment;
+  duplicateMatches: boolean;
+};
+
+export type DecoderCoverage = {
+  revitVersion: number | null;
+  activeDecoders: string[];
+  nativeCurves: number;
+  nativeProfiles: number;
+  nativeMeshes: number;
+  nativeMaterialDefinitions: number;
+  nativeMaterialAssignments: number;
+  approximateSolids: number;
+  geometryFidelity: "native-profile-approximate-solid" | "native-bounds-envelope" | "diagnostic-only";
+  materialFidelity: "native-definitions-unassigned" | "native-assigned" | "display-fallback";
 };
 
 export type ElementBoundsRecord = {
@@ -170,14 +206,17 @@ export type ConvertResult = {
   fileName: string;
   byteLength: number;
   meshes: MeshData[];
+  materials: MaterialData[];
   segments: Segment[];
   elementBounds: ElementBoundsRecord[];
+  nativeProfiles: NativeProfileLocator[];
+  decoderCoverage: DecoderCoverage;
   origin: Vec3;
   bbox: { min: Vec3; max: Vec3 };
   levels: LevelBand[];
   stats: ConvertStats;
   warnings: string[];
-  method: "partition-bounds-recovery" | "partition-coordinate-recovery";
+  method: "native-profile-recovery" | "partition-bounds-recovery" | "partition-coordinate-recovery";
   readerDiagnostics?: ReaderDiagnostics;
   elementIndex?: RvtElementIndex;
 };
@@ -194,6 +233,7 @@ export type ConvertOptions = {
   maxSegments?: number;
   wallHeight?: number;
   wallThickness?: number;
+  revitVersion?: number;
 };
 
 export type ProgressUpdate = {

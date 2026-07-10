@@ -1,4 +1,9 @@
 export { convertRvtBytes } from "./convert";
+export {
+  decodeArcWall2023Record,
+  decoderPlanForVersion,
+  scanArcWall2023Records,
+} from "./native-decoder";
 export { detectElemTableLayout, parseElemTable } from "./elem-table";
 export { compareRvtToIfc } from "./regression";
 export {
@@ -17,6 +22,7 @@ export type {
   ConvertOutcome,
   ConvertResult,
   ConvertStats,
+  DecoderCoverage,
   ElemTableLayout,
   ElementBoundsRecord,
   GateStatus,
@@ -26,7 +32,9 @@ export type {
   IfcWorkerRequest,
   IfcWorkerResponse,
   LevelBand,
+  MaterialData,
   MeshData,
+  NativeProfileLocator,
   ProgressUpdate,
   ReaderDiagnostics,
   ReferenceMeshData,

@@ -65,10 +65,14 @@ function meshGroup(result: ConvertResult): THREE.Group {
     geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeVertexNormals();
+    const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
     const material = new THREE.MeshStandardMaterial({
+      color: sourceMaterial
+        ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
+        : new THREE.Color(0x33bfbe),
       vertexColors: true,
-      roughness: 0.74,
-      metalness: 0.04,
+      roughness: sourceMaterial?.roughness ?? 0.74,
+      metalness: sourceMaterial?.metallic ?? 0.04,
       flatShading: true,
       side: THREE.DoubleSide,
       transparent: isElementBounds,
@@ -415,7 +419,10 @@ export default function ReviterStudio() {
         type: "convert",
         fileName: nextFile.name,
         buffer,
-        options: { maxSegments: 12_000 },
+        options: {
+          maxSegments: 12_000,
+          revitVersion: Number.parseInt(info.version, 10),
+        },
       };
       worker.postMessage(request, [buffer]);
     } catch (caught) {
@@ -596,8 +603,18 @@ export default function ReviterStudio() {
             <FidelityRow label="OLE / CFB streams" value={result ? "Parsed" : "Awaiting file"} tone={result ? "good" : "off"} />
             <FidelityRow
               label="3D geometry"
-              value={geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
+              value={geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "native-profile-recovery" ? "Native wall profiles" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
               tone={geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
+            />
+            <FidelityRow
+              label="Native meshes"
+              value={result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
+              tone={result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
+            />
+            <FidelityRow
+              label="RVT materials"
+              value={result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
               label="BIM semantics"
@@ -641,7 +658,7 @@ export default function ReviterStudio() {
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
             </div>
             <div className="toolbar-controls">
               {comparison?.referenceMeshes.length ? (
@@ -665,11 +682,11 @@ export default function ReviterStudio() {
                   {geometrySource === "reference" && comparison ? (
                     <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
                   ) : (
-                    <span><i className="legend-amber" />{result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
+                    <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
                   <span><i className="legend-grid" />Model grid</span>
                 </div>
-                <div className="viewport-stamp">{geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
+                <div className="viewport-stamp">{geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">
@@ -706,10 +723,10 @@ export default function ReviterStudio() {
                   <button onClick={() => exportText("OBJ", "obj", () => makeObj(result))} disabled={Boolean(exporting)}><strong>OBJ</strong><span>mesh</span></button>
                   <button onClick={() => exportText("DXF", "dxf", () => makeDxf(result))} disabled={Boolean(exporting)}><strong>DXF</strong><span>3D lines</span></button>
                   <button onClick={() => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml")} disabled={Boolean(exporting)}><strong>SVG</strong><span>plan</span></button>
-                  <button onClick={() => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step")} disabled={Boolean(exporting)}><strong>IFC</strong><span>{result.method === "partition-bounds-recovery" ? "solid proxies" : "proxies"}</span></button>
+                  <button onClick={() => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step")} disabled={Boolean(exporting)}><strong>IFC</strong><span>{result.method === "partition-bounds-recovery" ? "solid proxies" : result.method === "native-profile-recovery" ? "profile proxies" : "proxies"}</span></button>
                   <button onClick={() => exportText("JSON", "json", () => makeReport(result, metadata as unknown as Record<string, unknown>), "application/json")} disabled={Boolean(exporting)}><strong>JSON</strong><span>audit</span></button>
                 </div>
-                <p className="export-disclaimer">Exports preserve {result.method === "partition-bounds-recovery" ? "native-ID element envelopes" : "the recovered geometry"}, not decoded families, materials, parameters, constraints, curved profiles, or openings.</p>
+                <p className="export-disclaimer">Exports preserve {result.method === "native-profile-recovery" ? "native ArcWall centerlines with explicitly approximate solids" : result.method === "partition-bounds-recovery" ? "native-ID element envelopes" : "the recovered geometry"}. The audit records {result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and {result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable.</p>
               </section>
             </div>
           )}

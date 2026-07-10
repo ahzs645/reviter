@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
 import { detectDuplicatedBoundsRecord } from "../lib/reviter/convert.ts";
+import { decodeArcWall2023Record, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import type { ConvertResult, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
@@ -41,12 +42,37 @@ test("decodes a duplicated Revit 2027 element bounding record", () => {
   });
 });
 
+test("decodes the proven Revit 2023 ArcWall profile and rejects it on other releases", () => {
+  const data = new Uint8Array(0x73);
+  const view = new DataView(data.buffer);
+  view.setUint16(0, 0x0191, true);
+  view.setUint32(0x04, 0x0008_8004, true);
+  view.setUint32(0x08, 1, true);
+  view.setUint32(0x0c, 3, true);
+  view.setUint16(0x10, 0x07fa, true);
+  const coordinates = [9.23, 25.66, 0, 12.51, 26.49, 6.56];
+  for (let copy = 0; copy < 2; copy += 1) {
+    coordinates.forEach((value, index) => view.setFloat64(0x12 + copy * 48 + index * 8, value, true));
+  }
+  data[0x72] = 0x03;
+
+  const decoded = decodeArcWall2023Record(data, 0, 2023);
+  assert.ok(decoded);
+  assert.deepEqual(decoded.centerline, { x0: 9.23, y0: 25.66, z0: 0, x1: 12.51, y1: 26.49, z1: 6.56 });
+  assert.equal(decoded.duplicateMatches, true);
+  assert.equal(decodeArcWall2023Record(data, 0, 2024), null);
+  assert.equal(decoderPlanForVersion(2027).nativeProfileDecoder, null);
+  assert.equal(decoderPlanForVersion(2027).elementBoundsDecoder, "revit-2027-duplicated-bounds-v1");
+  assert.equal(decoderPlanForVersion().elementBoundsDecoder, null);
+});
+
 test("emits rendered IFC solids from RVT element bounds", () => {
   const result: ConvertResult = {
     ok: true,
     fileName: "sample.rvt",
     byteLength: 1,
     meshes: [],
+    materials: [{ name: "fallback", baseColorLinear: [0.2, 0.75, 0.78, 1], metallic: 0, roughness: 0.7, doubleSided: true, source: "display-fallback", assignedElements: 0 }],
     segments: [],
     elementBounds: [{
       elementId: 290618,
@@ -59,6 +85,12 @@ test("emits rendered IFC solids from RVT element bounds", () => {
         max: { x: 6, y: -146, z: 14 },
       },
     }],
+    nativeProfiles: [],
+    decoderCoverage: {
+      revitVersion: 2027, activeDecoders: ["revit-2027-duplicated-bounds-v1"], nativeCurves: 0,
+      nativeProfiles: 0, nativeMeshes: 0, nativeMaterialDefinitions: 0, nativeMaterialAssignments: 0,
+      approximateSolids: 1, geometryFidelity: "native-bounds-envelope", materialFidelity: "display-fallback",
+    },
     origin: { x: 5, y: -153, z: 0 },
     bbox: { min: { x: -1, y: -7, z: 0 }, max: { x: 1, y: 7, z: 14 } },
     levels: [],
@@ -87,9 +119,17 @@ test("emits a standalone GLB from recovered browser geometry", () => {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       colors: new Float32Array([0.2, 0.7, 0.8, 0.2, 0.7, 0.8, 0.2, 0.7, 0.8]),
       indices: new Uint32Array([0, 1, 2]),
+      materialIndex: 0,
     }],
+    materials: [{ name: "fallback", baseColorLinear: [0.2, 0.75, 0.78, 1], metallic: 0, roughness: 0.7, doubleSided: true, source: "display-fallback", assignedElements: 0 }],
     segments: [],
     elementBounds: [],
+    nativeProfiles: [],
+    decoderCoverage: {
+      revitVersion: null, activeDecoders: [], nativeCurves: 0, nativeProfiles: 0, nativeMeshes: 0,
+      nativeMaterialDefinitions: 0, nativeMaterialAssignments: 0, approximateSolids: 1,
+      geometryFidelity: "diagnostic-only", materialFidelity: "display-fallback",
+    },
     origin: { x: 0, y: 0, z: 0 },
     bbox: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
     levels: [],

@@ -12,13 +12,24 @@ Reviter is a browser-only Revit inspection and experimental geometry conversion 
 - optional IFC reference parsing and geometry measurement with `web-ifc`
 - paired regression gates for element identity, extents, topology, and typed semantics
 - Revit 2027 duplicated-bounds record detection, with native element IDs and axis-aligned bounds in feet
+- release-gated Revit 2023 standard `ArcWall` decoding, with native centerline endpoints from the fixed record envelope
+- standards-aware Revit `Material` definition decoding (name, packed color, and transparency) for reader-supported releases
 - open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC solid proxies, and JSON audit data
 
 ## What is experimental
 
-Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. In the supplied Revit 2027 model, Reviter detects a record signature containing two identical six-`f64` axis-aligned bounds blocks. Those records produce correctly located element envelopes and native Revit IDs using the RVT alone. Older/unknown signatures fall back to the coordinate-diagnostic scanner.
+Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. Reviter now selects decoders by the `BasicFileInfo` release rather than applying a byte pattern universally. In Revit 2023, the proven standard `ArcWall` envelope stores two centerline endpoints. In the supplied Revit 2027 model, a different record signature contains two identical six-`f64` axis-aligned bounds blocks. Unknown signatures fall back to the coordinate-diagnostic scanner and are labeled diagnostic-only.
 
-An envelope is not an element's native shape. Curves, slopes, wall profiles, openings, compound layers, family meshes, materials, parameters, constraints, and typed BIM semantics remain undecoded. The IFC exporter therefore writes `IfcBuildingElementProxy` rectangular extrusion solids with an explicit envelope description; it does not mislabel them as native `IfcWall`, `IfcSlab`, or family geometry.
+The 2023 centerline is native profile evidence, but its displayed thickness and height are still explicit defaults. A 2027 envelope is not an element's native shape. Native family meshes, curved faces, openings, compound-layer assignments, texture/image assets, parameters, constraints, and general typed BIM semantics remain undecoded. Material definitions decoded by the standards-aware reader are carried into GLB/IFC/JSON but stay unassigned until the element-material reference is proven. The IFC exporter therefore writes clearly described `IfcBuildingElementProxy` geometry; it does not mislabel proxies as native `IfcWall`, `IfcSlab`, or family geometry.
+
+## Decoder compatibility
+
+| Revit release | Native evidence | Rendered geometry | Materials |
+| --- | --- | --- | --- |
+| 2023 | standard `ArcWall` centerline record | default-width/default-height wall proxy | definitions when surfaced by the standards reader; assignments pending |
+| 2024–2026 | version-specific wall record not yet proven | diagnostic fallback unless the standards reader produces elements | definitions supported by the standards reader |
+| 2027 | supplied-project duplicated bounds + native element ID | axis-aligned envelope proxy | disabled in the current standards reader because 2027 is outside its verified range |
+| unknown | no release-specific decoder | diagnostic fallback only | no claim |
 
 ## Supplied-project synthesis
 
@@ -31,6 +42,8 @@ An envelope is not an element's native shape. Curves, slopes, wall profiles, ope
 | `rvt-convert-main` | Export-format and configuration ideas only; its Autodesk/Azure upload flow is intentionally excluded because it conflicts with client-only processing |
 
 The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
+
+The captured Autodesk Viewer/OTG assets were recovered with the supplied `jsmap` workflow and used only as a regression/output-format oracle. Autodesk's browser viewer consumes server-generated derivative meshes and materials; it is not an RVT decoder and is not shipped or called at runtime.
 
 ## Paired regression workflow
 
@@ -75,7 +88,11 @@ import {
 } from "./lib/reviter";
 
 const bytes = await file.arrayBuffer();
-const result = convertRvtBytes(bytes, file.name, { maxSegments: 12_000 });
+const result = convertRvtBytes(bytes, file.name, {
+  maxSegments: 12_000,
+  // Read from BasicFileInfo; release-specific native decoders are disabled if omitted.
+  revitVersion: 2027,
+});
 
 if (result.ok) {
   const obj = makeObj(result);
