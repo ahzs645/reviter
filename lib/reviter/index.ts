@@ -4,6 +4,7 @@ export { compareRvtToIfc } from "./regression";
 export {
   downloadBlob,
   makeDxf,
+  makeGlb,
   makeIfcCenterlines,
   makeObj,
   makePlanSvg,

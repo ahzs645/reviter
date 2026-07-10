@@ -8,6 +8,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   downloadBlob,
   makeDxf,
+  makeGlb,
   makeIfcCenterlines,
   makeObj,
   makePlanSvg,
@@ -499,16 +500,12 @@ export default function ReviterStudio() {
   const exportGlb = async () => {
     if (!result) return;
     setExporting("GLB");
-    const group = meshGroup(result);
     try {
-      const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
-      const data = await new GLTFExporter().parseAsync(group, { binary: true, onlyVisible: true });
-      if (!(data instanceof ArrayBuffer)) throw new Error("GLB exporter returned an unexpected value.");
+      const data = makeGlb(result);
       downloadBlob(new Blob([data], { type: "model/gltf-binary" }), outputName(result.fileName, "glb"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      disposeGroup(group);
       setExporting(null);
     }
   };

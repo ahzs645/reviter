@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
 import { detectDuplicatedBoundsRecord } from "../lib/reviter/convert.ts";
-import { makeIfcCenterlines } from "../lib/reviter/exports.ts";
+import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import type { ConvertResult, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 
@@ -75,6 +75,39 @@ test("emits rendered IFC solids from RVT element bounds", () => {
   assert.match(ifc, /IFCEXTRUDEDAREASOLID/);
   assert.match(ifc, /Revit element 290618/);
   assert.match(ifc, /duplicated-bounds record/);
+});
+
+test("emits a standalone GLB from recovered browser geometry", () => {
+  const result: ConvertResult = {
+    ok: true,
+    fileName: "sample.rvt",
+    byteLength: 1,
+    meshes: [{
+      name: "sample bounds",
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      colors: new Float32Array([0.2, 0.7, 0.8, 0.2, 0.7, 0.8, 0.2, 0.7, 0.8]),
+      indices: new Uint32Array([0, 1, 2]),
+    }],
+    segments: [],
+    elementBounds: [],
+    origin: { x: 0, y: 0, z: 0 },
+    bbox: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+    levels: [],
+    stats: {
+      streamCount: 1, partitionStreams: 1, gzipChunks: 1, inflatedBytes: 1,
+      candidatesFound: 1, candidatesFocused: 1, candidatesUsed: 1,
+      vertexCount: 3, triangleCount: 1, meshCount: 1,
+      boundsRecordsFound: 0, solidBoundsRecords: 0, durationMs: 1,
+    },
+    warnings: [],
+    method: "partition-coordinate-recovery",
+  };
+  const glb = makeGlb(result);
+  const view = new DataView(glb);
+  assert.equal(view.getUint32(0, true), 0x46546c67);
+  assert.equal(view.getUint32(4, true), 2);
+  assert.equal(view.getUint32(8, true), glb.byteLength);
+  assert.equal(view.getUint32(16, true), 0x4e4f534a);
 });
 
 test("rejects recovered geometry when identity, extents, topology, and semantics diverge", () => {
