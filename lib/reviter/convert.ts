@@ -1,12 +1,14 @@
 import CFB from "cfb";
 import { inflateSync } from "fflate";
 
-import { parseElemTable } from "./elem-table";
+import { parseElemTable } from "./elem-table.ts";
 
 import type {
+  Bounds3,
   ConvertOptions,
   ConvertOutcome,
   ConvertResult,
+  ElementBoundsRecord,
   LevelBand,
   MeshData,
   PartitionRecordLocator,
@@ -17,6 +19,9 @@ import type {
 
 const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 const DEFAULT_MAX_SEGMENTS = 12_000;
+const BOUNDS_SCAN_BYTES = 1_024;
+const BOUNDS_DUPLICATE_BYTES = 48;
+const MIN_SOLID_SPAN_FEET = 0.001;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
@@ -122,6 +127,66 @@ function leadingU32(data: Uint8Array): number | null {
       ((data[2] ?? 0) << 16) |
       ((data[3] ?? 0) << 24)) >>> 0
   );
+}
+
+export type DetectedBoundsRecord = {
+  elementId: number;
+  recordOffset: number;
+  boundsFeet: Bounds3;
+};
+
+export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRecord | null {
+  const elementId = leadingU32(data);
+  if (!elementId || elementId === 0xffffffff || data.byteLength < BOUNDS_DUPLICATE_BYTES * 2) {
+    return null;
+  }
+
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const scanEnd = Math.min(
+    data.byteLength - BOUNDS_DUPLICATE_BYTES * 2,
+    BOUNDS_SCAN_BYTES,
+  );
+  for (let offset = 0; offset <= scanEnd; offset += 1) {
+    let duplicate = true;
+    for (let byte = 0; byte < BOUNDS_DUPLICATE_BYTES; byte += 1) {
+      if (data[offset + byte] !== data[offset + BOUNDS_DUPLICATE_BYTES + byte]) {
+        duplicate = false;
+        break;
+      }
+    }
+    if (!duplicate) continue;
+
+    const values = Array.from({ length: 6 }, (_, index) =>
+      view.getFloat64(offset + index * 8, true),
+    );
+    if (!values.every((value) => Number.isFinite(value) && Math.abs(value) <= 50_000)) {
+      continue;
+    }
+    const [minX, minY, minZ, maxX, maxY, maxZ] = values as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    const spans = [maxX - minX, maxY - minY, maxZ - minZ];
+    if (
+      spans.some((span) => span < -1e-8 || span > 5_000) ||
+      spans.filter((span) => span > MIN_SOLID_SPAN_FEET).length < 2
+    ) {
+      continue;
+    }
+    return {
+      elementId,
+      recordOffset: offset,
+      boundsFeet: {
+        min: { x: minX, y: minY, z: minZ },
+        max: { x: maxX, y: maxY, z: maxZ },
+      },
+    };
+  }
+  return null;
 }
 
 function segmentKey(segment: Segment): string {
@@ -301,6 +366,118 @@ function buildMeshes(
   return meshes;
 }
 
+function solidBounds(record: ElementBoundsRecord): boolean {
+  const { min, max } = record.boundsFeet;
+  return (
+    max.x - min.x > MIN_SOLID_SPAN_FEET &&
+    max.y - min.y > MIN_SOLID_SPAN_FEET &&
+    max.z - min.z > MIN_SOLID_SPAN_FEET
+  );
+}
+
+function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const record of records) {
+    const bounds = record.boundsFeet;
+    min.x = Math.min(min.x, bounds.min.x);
+    min.y = Math.min(min.y, bounds.min.y);
+    min.z = Math.min(min.z, bounds.min.z);
+    max.x = Math.max(max.x, bounds.max.x);
+    max.y = Math.max(max.y, bounds.max.y);
+    max.z = Math.max(max.z, bounds.max.z);
+  }
+  return { min, max };
+}
+
+function selectDisplayBounds(records: ElementBoundsRecord[]): {
+  records: ElementBoundsRecord[];
+  omittedContainerCount: number;
+} {
+  if (records.length < 2) return { records, omittedContainerCount: 0 };
+  const byFootprint = records
+    .map((record) => {
+      const { min, max } = record.boundsFeet;
+      const dx = max.x - min.x;
+      const dy = max.y - min.y;
+      return { record, footprint: dx * dy, longestSide: Math.max(dx, dy) };
+    })
+    .sort((a, b) => b.footprint - a.footprint);
+  const largest = byFootprint[0]!;
+  const runnerUp = byFootprint[1]!;
+  const isDominantContainer =
+    largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
+  if (!isDominantContainer) return { records, omittedContainerCount: 0 };
+  return {
+    records: records.filter((record) => record !== largest.record),
+    omittedContainerCount: 1,
+  };
+}
+
+function boxGeometry(bounds: Bounds3, origin: Vec3) {
+  const { min, max } = bounds;
+  const points = [
+    [min.x, min.y, min.z], [max.x, min.y, min.z], [max.x, max.y, min.z], [min.x, max.y, min.z],
+    [min.x, min.y, max.z], [max.x, min.y, max.z], [max.x, max.y, max.z], [min.x, max.y, max.z],
+  ];
+  return {
+    positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
+    indices: [
+      0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+      1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+    ],
+  };
+}
+
+function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
+  const meshes: MeshData[] = [];
+  const batchSize = 2_000;
+  for (let start = 0; start < records.length; start += batchSize) {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const colors: number[] = [];
+    let vertexOffset = 0;
+    for (const record of records.slice(start, start + batchSize)) {
+      const box = boxGeometry(record.boundsFeet, origin);
+      positions.push(...box.positions);
+      indices.push(...box.indices.map((index) => index + vertexOffset));
+      vertexOffset += 8;
+      const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
+      for (let vertex = 0; vertex < 8; vertex += 1) {
+        colors.push(0.18 + elevation * 0.2, 0.72 + elevation * 0.1, 0.74 + elevation * 0.18);
+      }
+    }
+    meshes.push({
+      name: `RVT element bounds ${meshes.length + 1}`,
+      positions: new Float32Array(positions),
+      indices: new Uint32Array(indices),
+      colors: new Float32Array(colors),
+    });
+  }
+  return meshes;
+}
+
+function boundsPlanSegments(records: ElementBoundsRecord[]): Segment[] {
+  return records.flatMap(({ boundsFeet: { min, max } }) => [
+    { x0: min.x, y0: min.y, z0: min.z, x1: max.x, y1: min.y, z1: min.z },
+    { x0: max.x, y0: min.y, z0: min.z, x1: max.x, y1: max.y, z1: min.z },
+    { x0: max.x, y0: max.y, z0: min.z, x1: min.x, y1: max.y, z1: min.z },
+    { x0: min.x, y0: max.y, z0: min.z, x1: min.x, y1: min.y, z1: min.z },
+  ]);
+}
+
+function levelsForBounds(records: ElementBoundsRecord[]): LevelBand[] {
+  const bands = new Map<number, number>();
+  for (const record of records) {
+    const elevation = Math.round(record.boundsFeet.min.z * 2) / 2;
+    bands.set(elevation, (bands.get(elevation) ?? 0) + 1);
+  }
+  return [...bands.entries()]
+    .map(([elevation, candidates]) => ({ elevation, candidates }))
+    .sort((a, b) => b.candidates - a.candidates)
+    .slice(0, 8);
+}
+
 export function convertRvtBytes(
   input: ArrayBuffer | Uint8Array,
   fileName = "model.rvt",
@@ -331,6 +508,8 @@ export function convertRvtBytes(
     if (!partitions.length) throw new Error("No Revit partition stream was found.");
 
     const candidates: Segment[] = [];
+    const elementBounds: ElementBoundsRecord[] = [];
+    const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
     let gzipChunks = 0;
@@ -359,13 +538,25 @@ export function convertRvtBytes(
             inflatedBytes: inflated.byteLength,
           });
         }
+        const detectedBounds = detectDuplicatedBoundsRecord(inflated);
+        if (detectedBounds && !boundedElementIds.has(detectedBounds.elementId)) {
+          boundedElementIds.add(detectedBounds.elementId);
+          elementBounds.push({
+            elementId: detectedBounds.elementId,
+            stream: partition.path.replace(/^Root Entry\//, ""),
+            chunkIndex: index,
+            rawOffset: offsets[index]!,
+            recordOffset: detectedBounds.recordOffset,
+            boundsFeet: detectedBounds.boundsFeet,
+          });
+        }
         if (inflated.byteLength >= 48 && index % stride === 0 && candidates.length < scanLimit) {
           scanSegments(inflated, candidates, scanLimit);
         }
         if (gzipChunks % 36 === 0) {
           onProgress?.({
             ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
-            message: `Reading partition geometry · ${candidates.length.toLocaleString()} candidates`,
+            message: `Reading partition geometry · ${elementBounds.length.toLocaleString()} exact bounds`,
           });
         }
       }
@@ -375,6 +566,70 @@ export function convertRvtBytes(
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
+    const boundedSolids = elementBounds.filter(solidBounds);
+    if (boundedSolids.length) {
+      const displaySelection = selectDisplayBounds(boundedSolids);
+      const displayBounds = displaySelection.records;
+      const bounds = boundsOfRecords(displayBounds);
+      const origin = {
+        x: (bounds.min.x + bounds.max.x) / 2,
+        y: (bounds.min.y + bounds.max.y) / 2,
+        z: bounds.min.z,
+      };
+      const meshes = buildBoundsMeshes(displayBounds, origin);
+      const segments = boundsPlanSegments(displayBounds);
+      const relativeBounds = {
+        min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
+        max: {
+          x: bounds.max.x - origin.x,
+          y: bounds.max.y - origin.y,
+          z: bounds.max.z - origin.z,
+        },
+      };
+      const result: ConvertResult = {
+        ok: true,
+        fileName,
+        byteLength: bytes.byteLength,
+        meshes,
+        segments,
+        elementBounds,
+        origin,
+        bbox: relativeBounds,
+        levels: levelsForBounds(displayBounds),
+        method: "partition-bounds-recovery",
+        elementIndex: elementIndex
+          ? {
+              ...elementIndex,
+              partitionRecordIds: Uint32Array.from([...partitionRecordIds].sort((a, b) => a - b)),
+              partitionRecords,
+            }
+          : undefined,
+        warnings: [
+          `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
+          ...(displaySelection.omittedContainerCount
+            ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
+            : []),
+          "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
+        ],
+        stats: {
+          streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
+          partitionStreams: partitions.length,
+          gzipChunks,
+          inflatedBytes,
+          candidatesFound: elementBounds.length,
+          candidatesFocused: displayBounds.length,
+          candidatesUsed: displayBounds.length,
+          vertexCount: displayBounds.length * 8,
+          triangleCount: displayBounds.length * 12,
+          meshCount: meshes.length,
+          boundsRecordsFound: elementBounds.length,
+          solidBoundsRecords: boundedSolids.length,
+          durationMs: performance.now() - started,
+        },
+      };
+      onProgress?.({ ratio: 1, message: "Ready" });
+      return result;
+    }
     if (!used.length) throw new Error("The file opened, but no plausible geometry was recovered.");
 
     const bounds = rawBounds(used);
@@ -404,6 +659,7 @@ export function convertRvtBytes(
       byteLength: bytes.byteLength,
       meshes,
       segments: used,
+      elementBounds,
       origin,
       bbox: relativeBounds,
       levels: levelsFor(used),
@@ -434,6 +690,8 @@ export function convertRvtBytes(
         vertexCount: used.length * 8,
         triangleCount: used.length * 12,
         meshCount: meshes.length,
+        boundsRecordsFound: elementBounds.length,
+        solidBoundsRecords: boundedSolids.length,
         durationMs: performance.now() - started,
       },
     };

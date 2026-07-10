@@ -128,16 +128,44 @@ export function makeIfcCenterlines(result: ConvertResult): string {
 
   const proxies: number[] = [];
   const toMetres = (value: number) => Number((value * 0.3048).toFixed(6));
-  for (let index = 0; index < result.segments.length; index += 1) {
-    const segment = result.segments[index]!;
-    const start = add(`IFCCARTESIANPOINT((${toMetres(segment.x0)},${toMetres(segment.y0)},${toMetres(segment.z0)}))`);
-    const end = add(`IFCCARTESIANPOINT((${toMetres(segment.x1)},${toMetres(segment.y1)},${toMetres(segment.z1)}))`);
-    const line = add(`IFCPOLYLINE((#${start},#${end}))`);
-    const representation = add(`IFCSHAPEREPRESENTATION(#${context},'Axis','Curve3D',(#${line}))`);
-    const shape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
-    proxies.push(
-      add(`IFCBUILDINGELEMENTPROXY('${ifcGuid(index + 20, 17)}',#${ownerHistory},'Recovered segment ${index + 1}','Heuristic centerline; not a decoded Revit element',$,#${placement},#${shape},$,.ELEMENT.)`),
-    );
+  const solidRecords = result.elementBounds.filter(({ boundsFeet: { min, max } }) =>
+    max.x - min.x > 0.001 && max.y - min.y > 0.001 && max.z - min.z > 0.001,
+  );
+  if (solidRecords.length) {
+    const extrusionDirection = add("IFCDIRECTION((0.,0.,1.))");
+    const profileOrigin = add("IFCCARTESIANPOINT((0.,0.))");
+    const profilePosition = add(`IFCAXIS2PLACEMENT2D(#${profileOrigin},$)`);
+    for (let index = 0; index < solidRecords.length; index += 1) {
+      const record = solidRecords[index]!;
+      const { min, max } = record.boundsFeet;
+      const width = toMetres(max.x - min.x);
+      const depth = toMetres(max.y - min.y);
+      const height = toMetres(max.z - min.z);
+      const location = add(
+        `IFCCARTESIANPOINT((${toMetres((min.x + max.x) / 2)},${toMetres((min.y + max.y) / 2)},${toMetres(min.z)}))`,
+      );
+      const axis = add(`IFCAXIS2PLACEMENT3D(#${location},$,$)`);
+      const objectPlacement = add(`IFCLOCALPLACEMENT(#${placement},#${axis})`);
+      const profile = add(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profilePosition},${width},${depth})`);
+      const solid = add(`IFCEXTRUDEDAREASOLID(#${profile},#${worldAxis},#${extrusionDirection},${height})`);
+      const representation = add(`IFCSHAPEREPRESENTATION(#${context},'Body','SweptSolid',(#${solid}))`);
+      const shape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
+      proxies.push(
+        add(`IFCBUILDINGELEMENTPROXY('${ifcGuid(record.elementId, 17)}',#${ownerHistory},'Revit element ${record.elementId}','RVT partition duplicated-bounds record; exact axis-aligned envelope',$,#${objectPlacement},#${shape},'${record.elementId}',.ELEMENT.)`),
+      );
+    }
+  } else {
+    for (let index = 0; index < result.segments.length; index += 1) {
+      const segment = result.segments[index]!;
+      const start = add(`IFCCARTESIANPOINT((${toMetres(segment.x0)},${toMetres(segment.y0)},${toMetres(segment.z0)}))`);
+      const end = add(`IFCCARTESIANPOINT((${toMetres(segment.x1)},${toMetres(segment.y1)},${toMetres(segment.z1)}))`);
+      const line = add(`IFCPOLYLINE((#${start},#${end}))`);
+      const representation = add(`IFCSHAPEREPRESENTATION(#${context},'Axis','Curve3D',(#${line}))`);
+      const shape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
+      proxies.push(
+        add(`IFCBUILDINGELEMENTPROXY('${ifcGuid(index + 20, 17)}',#${ownerHistory},'Recovered segment ${index + 1}','Heuristic centerline; not a decoded Revit element',$,#${placement},#${shape},$,.ELEMENT.)`),
+      );
+    }
   }
   add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid(8)}',#${ownerHistory},$,$,(${proxies.map((id) => `#${id}`).join(",")}),#${storey})`);
 
@@ -169,7 +197,9 @@ export function makeReport(
       fidelity: {
         metadata: "verified",
         container: "verified",
-        geometry: "experimental-coordinate-recovery",
+        geometry: result.method === "partition-bounds-recovery"
+          ? "validated-rvt-element-bounds"
+          : "experimental-coordinate-recovery",
         bimSemantics: "unavailable",
       },
       file: { name: result.fileName, byteLength: result.byteLength, metadata: safeMetadata },

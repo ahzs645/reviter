@@ -17,6 +17,7 @@ export type {
   ConvertResult,
   ConvertStats,
   ElemTableLayout,
+  ElementBoundsRecord,
   GateStatus,
   IfcElementTypeMatch,
   IfcMatchedElement,

@@ -16,6 +16,15 @@ export type MeshData = {
   colors: Float32Array;
 };
 
+export type ElementBoundsRecord = {
+  elementId: number;
+  stream: string;
+  chunkIndex: number;
+  rawOffset: number;
+  recordOffset: number;
+  boundsFeet: Bounds3;
+};
+
 export type LevelBand = {
   elevation: number;
   candidates: number;
@@ -32,6 +41,8 @@ export type ConvertStats = {
   vertexCount: number;
   triangleCount: number;
   meshCount: number;
+  boundsRecordsFound: number;
+  solidBoundsRecords: number;
   durationMs: number;
 };
 
@@ -160,12 +171,13 @@ export type ConvertResult = {
   byteLength: number;
   meshes: MeshData[];
   segments: Segment[];
+  elementBounds: ElementBoundsRecord[];
   origin: Vec3;
   bbox: { min: Vec3; max: Vec3 };
   levels: LevelBand[];
   stats: ConvertStats;
   warnings: string[];
-  method: "partition-coordinate-recovery";
+  method: "partition-bounds-recovery" | "partition-coordinate-recovery";
   readerDiagnostics?: ReaderDiagnostics;
   elementIndex?: RvtElementIndex;
 };

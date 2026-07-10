@@ -26,7 +26,7 @@ test("server-renders the Reviter client-only converter", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
-test("conversion core contains no upload or remote conversion path", async () => {
+test("the converter and browser interface contain no upload or remote conversion path", async () => {
   const [converter, worker, component, packageJson] = await Promise.all([
     readFile(new URL("../lib/reviter/convert.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/reviter/worker.ts", import.meta.url), "utf8"),
@@ -37,6 +37,8 @@ test("conversion core contains no upload or remote conversion path", async () =>
     assert.doesNotMatch(source, /\bfetch\s*\(|XMLHttpRequest|WebSocket|FormData/);
     assert.doesNotMatch(source, /forge|autodesk\.com|model.?derivative/i);
   }
+  assert.doesNotMatch(component, /\bfetch\s*\(|XMLHttpRequest|WebSocket|FormData/);
+  assert.doesNotMatch(component, /\/api\/|forge|autodesk\.com|model.?derivative/i);
   assert.match(component, /new Worker\(/);
   assert.match(component, /openFile\(nextFile\)/);
   assert.match(packageJson, /"@phi-ag\/rvt"/);

@@ -50,6 +50,7 @@ function savedFileName(path: string | undefined): string | null {
 
 function meshGroup(result: ConvertResult): THREE.Group {
   const group = new THREE.Group();
+  const isElementBounds = result.method === "partition-bounds-recovery";
   group.name = "Reviter recovered geometry";
   group.userData = {
     sourceFile: result.fileName,
@@ -69,10 +70,28 @@ function meshGroup(result: ConvertResult): THREE.Group {
       metalness: 0.04,
       flatShading: true,
       side: THREE.DoubleSide,
+      transparent: isElementBounds,
+      opacity: isElementBounds ? 0.32 : 1,
+      depthWrite: !isElementBounds,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
+    mesh.renderOrder = 1;
     group.add(mesh);
+    if (isElementBounds) {
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry, 1),
+        new THREE.LineBasicMaterial({
+          color: 0x9be7e3,
+          transparent: true,
+          opacity: 0.68,
+          depthWrite: false,
+        }),
+      );
+      edges.name = `${data.name} edges`;
+      edges.renderOrder = 2;
+      group.add(edges);
+    }
   }
   return group;
 }
@@ -104,7 +123,7 @@ function referenceMeshGroup(meshes: ReferenceMeshData[]): THREE.Group {
 
 function disposeGroup(group: THREE.Group) {
   group.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
+    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.LineSegments)) return;
     object.geometry.dispose();
     if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose());
     else object.material.dispose();
@@ -580,7 +599,7 @@ export default function ReviterStudio() {
             <FidelityRow label="OLE / CFB streams" value={result ? "Parsed" : "Awaiting file"} tone={result ? "good" : "off"} />
             <FidelityRow
               label="3D geometry"
-              value={geometrySource === "reference" && comparison ? "IFC reference" : result ? "Experimental" : "Not evaluated"}
+              value={geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
               tone={geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
             />
             <FidelityRow
@@ -625,7 +644,7 @@ export default function ReviterStudio() {
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
             </div>
             <div className="toolbar-controls">
               {comparison?.referenceMeshes.length ? (
@@ -649,11 +668,11 @@ export default function ReviterStudio() {
                   {geometrySource === "reference" && comparison ? (
                     <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
                   ) : (
-                    <span><i className="legend-amber" />Rejected diagnostic recovery</span>
+                    <span><i className="legend-amber" />{result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
                   <span><i className="legend-grid" />Model grid</span>
                 </div>
-                <div className="viewport-stamp">{geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : "rejected heuristic · feet · z-up"}</div>
+                <div className="viewport-stamp">{geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">
@@ -690,10 +709,10 @@ export default function ReviterStudio() {
                   <button onClick={() => exportText("OBJ", "obj", () => makeObj(result))} disabled={Boolean(exporting)}><strong>OBJ</strong><span>mesh</span></button>
                   <button onClick={() => exportText("DXF", "dxf", () => makeDxf(result))} disabled={Boolean(exporting)}><strong>DXF</strong><span>3D lines</span></button>
                   <button onClick={() => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml")} disabled={Boolean(exporting)}><strong>SVG</strong><span>plan</span></button>
-                  <button onClick={() => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step")} disabled={Boolean(exporting)}><strong>IFC</strong><span>proxies</span></button>
+                  <button onClick={() => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step")} disabled={Boolean(exporting)}><strong>IFC</strong><span>{result.method === "partition-bounds-recovery" ? "solid proxies" : "proxies"}</span></button>
                   <button onClick={() => exportText("JSON", "json", () => makeReport(result, metadata as unknown as Record<string, unknown>), "application/json")} disabled={Boolean(exporting)}><strong>JSON</strong><span>audit</span></button>
                 </div>
-                <p className="export-disclaimer">Exports preserve the recovered geometry, not native Revit elements, families, materials, parameters, or constraints.</p>
+                <p className="export-disclaimer">Exports preserve {result.method === "partition-bounds-recovery" ? "native-ID element envelopes" : "the recovered geometry"}, not decoded families, materials, parameters, constraints, curved profiles, or openings.</p>
               </section>
             </div>
           )}

@@ -11,13 +11,14 @@ Reviter is a browser-only Revit inspection and experimental geometry conversion 
 - `Global/ElemTable` framing and native Revit element-ID inventory
 - optional IFC reference parsing and geometry measurement with `web-ifc`
 - paired regression gates for element identity, extents, topology, and typed semantics
-- open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC proxy centerlines, and JSON audit data
+- Revit 2027 duplicated-bounds record detection, with native element IDs and axis-aligned bounds in feet
+- open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC solid proxies, and JSON audit data
 
 ## What is experimental
 
-Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. Reviter scans decompressed partition data for plausible 3D line records, removes duplicates and spatial outliers, and extrudes the retained centerlines into overview solids. These are useful for orientation and forensic work, but they are not decoded walls, floors, doors, families, materials, parameters, constraints, or a faithful BIM handoff.
+Revit's element-instance wire format is proprietary and is not fully decoded by the supplied open-source readers. In the supplied Revit 2027 model, Reviter detects a record signature containing two identical six-`f64` axis-aligned bounds blocks. Those records produce correctly located element envelopes and native Revit IDs using the RVT alone. Older/unknown signatures fall back to the coordinate-diagnostic scanner.
 
-The included IFC exporter deliberately writes `IfcBuildingElementProxy` centerlines with an experimental description. It does not label inferred lines as native `IfcWall` elements.
+An envelope is not an element's native shape. Curves, slopes, wall profiles, openings, compound layers, family meshes, materials, parameters, constraints, and typed BIM semantics remain undecoded. The IFC exporter therefore writes `IfcBuildingElementProxy` rectangular extrusion solids with an explicit envelope description; it does not mislabel them as native `IfcWall`, `IfcSlab`, or family geometry.
 
 ## Supplied-project synthesis
 
@@ -36,14 +37,14 @@ The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cf
 After opening an RVT, choose its matching IFC export in the **Regression fixture** panel. Both files remain local. Reviter then:
 
 1. parses native IDs from `Global/ElemTable`;
-2. inventories the leading-u32 record evidence in every decompressible `Partitions/*` chunk;
+2. detects duplicated-bounds records and inventories leading-u32 evidence in every decompressible `Partitions/*` chunk;
 3. joins numeric IFC `Tag` values back to those RVT records;
 4. measures IFC geometry with `web-ifc`; and
 5. rejects or accepts the recovered output against identity, extent, topology, and semantic gates.
 
 When the recovery fails those gates, the viewer now switches to the coherent IFC ground-truth geometry automatically. IFC elements whose `Tag` resolves to an RVT record are highlighted, the remainder stays as darker model context, and the broken coordinate recovery remains available only through the **RVT diagnostic** toggle.
 
-The partition leading-u32 join is recorded as diagnostic evidence, not yet treated as a decoded Revit object. On the supplied UNBC pair it strongly correlates with IFC walls, curtain walls, openings, and columns, which makes walls the first practical class for partition-body reverse engineering.
+The partition leading-u32 join remains diagnostic evidence. A duplicated-bounds record is stronger: on the supplied pair, 119 joined records match all six Autodesk-derived bounds coordinates within `0.0001 ft`, and 125 match within `0.01 ft`. That validates the record as an element envelope, but not as a native shape or object class.
 
 ## Sample evidence
 
@@ -51,14 +52,15 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 
 - metadata: Revit `2027`, build `20260417_1515(x64)`, locale `ENU`
 - native Rust reader: file and schema open successfully, but the version is beyond its verified 2016–2026 range
-- standards-aware element result: zero validated building elements, nine diagnostic candidates, scaffold-only native IFC readiness
-- Reviter recovery: roughly nine thousand focused coordinate candidates and about 108 thousand display triangles in approximately twelve seconds while indexing every partition chunk on the development machine
+- duplicated-bounds recovery: 861 native-ID records, of which 804 have non-zero 3D volume
+- RVT-only default scene: 803 axis-aligned element envelopes; one dominant container-like envelope is retained in audit/IFC output but hidden from the scene
 - paired index evidence: 8,902 `ElemTable` IDs plus 2,943 partition-leading IDs
-- IFC join: 4,332 of 41,293 tagged IFC elements matched an RVT record (10.5%)
+- Autodesk derivative cross-check: 59,582 stable Revit IDs and 51,420 fragments in the signed-in reference capture
+- generated IFC validation: IFC4 opens in `web-ifc` with 804 products, 804 placed geometries, 27,336 vertices, and 9,648 triangles
 - strongest class joins: 1,602 walls, 1,436 members, 466 plates, 355 curtain walls, 182 openings, 54 columns, and 28 doors
 - reference gates: failed extents (`2.89× / 1.77× / 1.26×`), triangle density (`0.11×`), and typed semantics (`0%`), so the coordinate mesh is automatically rejected
 
-Exact recovery counts can move as the filtering algorithm improves. They must not be treated as Revit element counts.
+The bounds signature is currently confirmed for this supplied Revit 2027 file. It must be regression-tested on more RVT versions before being treated as a general Revit decoder.
 
 ## Library surface
 
@@ -79,6 +81,7 @@ if (result.ok) {
   const obj = makeObj(result);
   const dxf = makeDxf(result);
   const svg = makePlanSvg(result);
+  // Historical API name; duplicated-bounds results export as IFC solid proxies.
   const ifc = makeIfcCenterlines(result);
   const audit = makeReport(result, null);
 }
