@@ -6,6 +6,7 @@ import type { PartitionName } from "./partition-names.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
+export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.ts";
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
@@ -86,6 +87,10 @@ export type ElementBoundsRecord = {
   categorySource?: NativeCategorySource;
   /** Instance parameters decoded from the element's own parameter table. */
   parameters?: ElementParameter[];
+  /** Element id of this element's type element. */
+  typeId?: number;
+  /** Type name read from that type element, for system families. */
+  typeName?: string;
   boundsFeet: Bounds3;
 };
 
@@ -143,6 +148,10 @@ export type ConvertStats = {
   parameterElements?: number;
   /** Native analytic surface patches decoded from the partition stream. */
   surfaces?: SurfaceSummary;
+  /** Elements linked to their type element. */
+  typedElements?: number;
+  /** Elements whose type element also yielded a name. */
+  namedTypeElements?: number;
   /** Release-specific object marker observed in this file, e.g. 0x08c6 in 2027. */
   elementObjectMarker?: number;
   durationMs: number;

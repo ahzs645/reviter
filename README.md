@@ -67,6 +67,18 @@ The trim range is the wall **as modelled**, before Revit's join trimming. The di
 
 **What is not solved: attribution.** These patches cannot yet be tied to the element that owns them. The nearest preceding element id is the owning wall for only 0.6% of matches, because a blob interleaves a wall with its join neighbours. Surfaces are therefore reported as a decoded inventory, and the viewer keeps drawing element envelopes rather than pretending a patch belongs to a particular element. A partially decoded container sits immediately before each run of surface records — `[u64 elementId][u32 n][n × u32 itemIndex]`, preceded by 20-byte topology links and followed by 100-byte transforms — and resolving `itemIndex → surface record` is the missing link.
 
+## Element types and names
+
+A Revit element does not carry its family or type name. It carries the element id of a **type element**, and that type element holds the name. Both decoders work off the same record framing — element id at `+0`, a zero word at `+4`, a per-record stamp at `+8`, class discriminators at `+16` and `+22`, and an `ff ff ff ff` null-field marker at `+18`.
+
+In records whose second discriminator is `0x0c93` — walls, curtain walls, and openings — the type id follows the `0x116f` field slot: skip its `[u32 n][n × (u32, u16)]` index list, then take the 64-bit value beginning where the following zero run ends. Jumping to the *end* of the run rather than assuming a fixed pad is what makes this work on curtain walls, which otherwise return the type id shifted by a byte. The type record then stores its name behind the `0x1104` slot as `ff ff ff ff 04 11 [u32 charCount][UTF-16LE]`.
+
+**Verification** against the paired IFC export, whose product names have the form `Family:Type:ElementId`: the type reference is correct for **8,009 of 8,013** predictions — **99.95%** — and following it through to the name reproduces the IFC type string for **5,619 elements with no disagreements**.
+
+Selecting an element in the viewer now shows its type name, its type element id, and its decoded parameters.
+
+Scope: this covers system families, whose type records live in the same partition. Loadable families — mullions, columns, furniture — keep their type names inside family-document blobs elsewhere and are not decoded.
+
 ## Element parameters
 
 An element's instance parameters are a flat table of `(BuiltInParameter id, value)` pairs:

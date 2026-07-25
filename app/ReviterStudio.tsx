@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Element types"
+              value={result?.stats.typedElements
+                ? `${result.stats.typedElements.toLocaleString()} linked · ${(result.stats.namedTypeElements ?? 0).toLocaleString()} named`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.typedElements ? "good" : "off"}
+            />
+            <FidelityRow
               label="Native surfaces"
               value={result?.stats.surfaces?.planes
                 ? `${result.stats.surfaces.planes.toLocaleString()} planes · ${result.stats.surfaces.cylinders.toLocaleString()} cylinders`
@@ -578,6 +585,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
                         )}
                         <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {selectedRecord.typeName && (
+                          <div><dt>Type</dt><dd>{selectedRecord.typeName}</dd></div>
+                        )}
+                        {selectedRecord.typeId != null && (
+                          <div><dt>Type element</dt><dd>{selectedRecord.typeId}</dd></div>
+                        )}
                         {selectedRecord.parameters?.map((parameter) => (
                           <div key={parameter.parameterId}>
                             <dt>{parameter.name}</dt>

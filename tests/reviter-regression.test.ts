@@ -10,6 +10,7 @@ import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage
 import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
+import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -523,4 +524,30 @@ test("decodes a trimmed analytic plane and rejects a non-orthonormal one", () =>
   assert.deepEqual(collectSurfaces(build([0, 1, 0], [0, 1, 0])), []);
   // Nor are directions that are not unit length.
   assert.deepEqual(collectSurfaces(build([0, 2, 0], [0, 0, 1])), []);
+});
+
+test("reads a type name from behind the 0x1104 field slot", () => {
+  const name = "Interior Wall - 120mm";
+  const data = new Uint8Array(64 + name.length * 2);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 609157, true);      // the type element's own id
+  view.setUint32(4, 0, true);
+  view.setUint32(8, 0x1234_5678, true); // per-record stamp, not all zero or ones
+  view.setUint32(12, 0x9abc_def0, true);
+  view.setUint16(16, 0x0f3b, true);
+  view.setUint32(18, 0xffff_ffff, true);
+  view.setUint16(22, 0x0c93, true);
+  // ff ff ff ff 04 11 then the length-prefixed UTF-16 name.
+  data.set([0xff, 0xff, 0xff, 0xff, 0x04, 0x11], 28);
+  view.setUint32(34, name.length, true);
+  for (let index = 0; index < name.length; index += 1) {
+    view.setUint16(38 + index * 2, name.charCodeAt(index), true);
+  }
+
+  const { names } = collectTypeLinks(data);
+  assert.deepEqual(names, [{ typeId: 609157, name: "Interior Wall - 120mm" }]);
+
+  // A character count that runs past the buffer is not a name.
+  view.setUint32(34, 5_000, true);
+  assert.deepEqual(collectTypeLinks(data).names, []);
 });

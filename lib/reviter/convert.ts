@@ -21,6 +21,7 @@ import {
 } from "./bounds-records.ts";
 import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import { collectTypeLinks } from "./element-types.ts";
 import { collectSurfaces } from "./surfaces.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
@@ -142,6 +143,8 @@ export function convertRvtBytes(
     const elementObjects: ElementObject[] = [];
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
+    const typeReferences = new Map<number, number>();
+    const typeNames = new Map<number, string>();
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
@@ -175,6 +178,15 @@ export function convertRvtBytes(
               inflatedBytes: inflated.byteLength,
             });
           }
+        }
+        const typeLinks = collectTypeLinks(inflated);
+        for (const reference of typeLinks.references) {
+          if (!typeReferences.has(reference.elementId)) {
+            typeReferences.set(reference.elementId, reference.typeId);
+          }
+        }
+        for (const entry of typeLinks.names) {
+          if (!typeNames.has(entry.typeId)) typeNames.set(entry.typeId, entry.name);
         }
         for (const surface of collectSurfaces(inflated)) {
           surfaceCounts.planes += surface.kind === "plane" ? 1 : 0;
@@ -268,9 +280,18 @@ export function convertRvtBytes(
       elementIndex?.uniqueElementIds,
     );
 
+    let namedTypeElements = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
+      const typeId = typeReferences.get(record.elementId);
+      if (typeId == null) continue;
+      record.typeId = typeId;
+      const typeName = typeNames.get(typeId);
+      if (typeName) {
+        record.typeName = typeName;
+        namedTypeElements += 1;
+      }
     }
 
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
@@ -371,6 +392,8 @@ export function convertRvtBytes(
           elementObjects: elementObjects.length,
           parameterElements: elementParameters.size,
           surfaces: surfaceCounts,
+          typedElements: typeReferences.size,
+          namedTypeElements,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
           durationMs: performance.now() - started,
         },

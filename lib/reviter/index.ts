@@ -21,6 +21,7 @@ export { builtInParameterName, parameterDisplayName } from "./built-in-parameter
 export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
 export { collectSurfaces, summariseSurfaces } from "./surfaces";
+export { collectTypeLinks } from "./element-types";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";
 export { parseSchemaTags, summariseSchema } from "./schema";
