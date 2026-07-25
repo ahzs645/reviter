@@ -141,6 +141,8 @@ The shaded view draws each element flat in its category colour, so the palette i
 
 The curtain-wall suppression that also hides records was checked while looking into this and left alone: of the 1,569 records it hides, 1,488 are genuinely `IfcCurtainWall` containers whose panels and mullions are drawn separately, and only 27 are ordinary walls.
 
+Curtain wall panels are drawn as glazing rather than as opaque panels. They are the glass of a facade, and drawing them opaque walls the building off from its own interior — with them glazed, the structure behind a curtain wall is visible, which is the point of looking at the model at all.
+
 What remains is a real limit rather than a cosmetic one. Curtain panels and mullions dominate this model by count and are drawn as envelopes, because they are loadable-family instances whose geometry sits in family-document blobs — the same reason their type names do not resolve.
 
 ## Stream coverage

@@ -65,6 +65,10 @@ export type DisplayRole =
   | "native";
 
 /**
+ * Display role per native Revit category. Curtain wall panels map to glazing
+ * rather than an opaque panel: they are the glass of a facade, and drawing them
+ * opaque walls the building off from its own interior.
+ *
  * Display role per native Revit category. Every decoded id now resolves to a
  * published Revit category name; this table only decides shading, so a category
  * missing from it still displays under its real name.
@@ -79,7 +83,7 @@ const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
   [-2000100]: "structure",
   [-2000120]: "structure",
   [-2000126]: "railing",
-  [-2000170]: "panel",
+  [-2000170]: "glazing",
   [-2000171]: "frame",
   [-2000180]: "structure",
   [-2001330]: "structure",

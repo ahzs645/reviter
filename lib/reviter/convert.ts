@@ -280,13 +280,19 @@ export function convertRvtBytes(
     }
 
     const solidStream = partitions[0]!.path.replace(/^Root Entry\//, "");
+    // An element can own more than one solid — a wall built from several
+    // segments. One record maps to one element for picking and properties, so
+    // the longest solid becomes the element's body and the others are not
+    // drawn. That loses 170 of 10,198 solids on the supplied project.
+    const allSolids = wallSolids(planesByElement);
     const solidsByElement = new Map<number, ReturnType<typeof wallSolids>[number]>();
-    for (const solid of wallSolids(planesByElement)) {
-      // One element can own several solids; keep the longest as its body.
+    const solidLength = (candidate: (typeof allSolids)[number]) =>
+      Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
+    for (const solid of allSolids) {
       const existing = solidsByElement.get(solid.elementId);
-      const length = (candidate: typeof solid) =>
-        Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
-      if (!existing || length(solid) > length(existing)) solidsByElement.set(solid.elementId, solid);
+      if (!existing || solidLength(solid) > solidLength(existing)) {
+        solidsByElement.set(solid.elementId, solid);
+      }
     }
 
     // Most elements that own native geometry have no duplicated-bounds record —
