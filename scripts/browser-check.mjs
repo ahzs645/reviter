@@ -8,16 +8,23 @@
  * check rather than part of `npm test`.
  *
  *   npm run build:pages
- *   node scripts/browser-check.mjs dist-pages /path/to/model.rvt [screenshot.png]
+ *   node scripts/browser-check.mjs dist-pages /path/to/model.rvt [screenshot.png] [reference.ifc]
+ *
+ * Passing a matching IFC export additionally pairs it in the same tab and
+ * reports the regression gates.
+ *
+ * Build with the default base path. A bundle built for GitHub Pages
+ * (`PAGES_BASE_PATH=/reviter/`) requests its assets from that subpath and will
+ * not boot under the local root server.
  */
 import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-const [root, revitFile, screenshot = "browser-check.png"] = process.argv.slice(2);
+const [root, revitFile, screenshot = "browser-check.png", ifcFile] = process.argv.slice(2);
 if (!root || !revitFile) {
-  console.error("usage: node scripts/browser-check.mjs <pages-dir> <model.rvt> [screenshot.png]");
+  console.error("usage: node scripts/browser-check.mjs <pages-dir> <model.rvt> [screenshot.png] [reference.ifc]");
   process.exit(2);
 }
 
@@ -71,6 +78,18 @@ for (let attempt = 0; attempt < 400; attempt += 1) {
 
 console.log("conversion wall clock", `${((Date.now() - started) / 1000).toFixed(1)}s`);
 console.log(rendered);
+
+if (ifcFile) {
+  const pairingStarted = Date.now();
+  await page.setInputFiles('input[type="file"][accept=".ifc"]', resolve(ifcFile));
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    await page.waitForTimeout(2_000);
+    const text = await page.evaluate(() => document.body.innerText);
+    if (/typed IFC elements/i.test(text) && !/Analyzing IFC/i.test(text)) break;
+  }
+  console.log("ifc pairing wall clock", `${((Date.now() - pairingStarted) / 1000).toFixed(1)}s`);
+  console.log(await page.evaluate(() => document.body.innerText.slice(0, 4_000)));
+}
 if (logs.length) console.log(`--- browser log ---\n${logs.slice(-20).join("\n")}`);
 await page.screenshot({ path: screenshot });
 console.log("screenshot", screenshot);

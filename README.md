@@ -137,8 +137,10 @@ npm run test:pages
 
 ```bash
 npm run build:pages
-node scripts/browser-check.mjs dist-pages /path/to/model.rvt
+node scripts/browser-check.mjs dist-pages /path/to/model.rvt shot.png /path/to/reference.ifc
 ```
+
+Build it with the default base path for that check; a bundle built for GitHub Pages requests its assets from `/reviter/` and will not boot under the local root server. Passing the matching IFC export also pairs it in the same tab, which is how the paired workflow below was verified: the 67 MB model converts in about 25 seconds and the 80 MB IFC pairs to 41,312 typed elements, both without leaving the browser.
 
 The raw SVF extraction remains in ignored `work/` storage. The deployment includes only the optimized `public/autodesk-reference.glb` reference derivative and its small runtime loader; that reference activates only for the matching supplied-project filename.
 
