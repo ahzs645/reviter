@@ -23,6 +23,13 @@ import { chainElementObjects, dominantMarker, type ElementObject } from "./eleme
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
+import {
+  instanceCorners,
+  readInstancePlacement,
+  readLocalBounds,
+  type InstancePlacement,
+  type LocalBounds,
+} from "./instanced-geometry.ts";
 import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
@@ -142,6 +149,8 @@ export function convertRvtBytes(
     const categoryTokens: CategoryToken[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
     const elementObjects: ElementObject[] = [];
+    const instancePlacements = new Map<number, InstancePlacement>();
+    const localBounds = new Map<number, LocalBounds>();
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
     const planesByElement = new Map<number, PlanePatch[]>();
@@ -224,6 +233,12 @@ export function convertRvtBytes(
           )) {
             elementObjects.push(object);
             partitionRecordIds.add(object.elementId);
+            const placement = readInstancePlacement(inflated, object);
+            if (placement) instancePlacements.set(placement.elementId, placement);
+            else {
+              const local = readLocalBounds(inflated, object);
+              if (local) localBounds.set(local.elementId, local);
+            }
             if (!locatedPartitionIds.has(object.elementId)) {
               locatedPartitionIds.add(object.elementId);
               partitionRecords.push({
@@ -293,6 +308,16 @@ export function convertRvtBytes(
       if (!existing || solidLength(solid) > solidLength(existing)) {
         solidsByElement.set(solid.elementId, solid);
       }
+    }
+
+    // Loadable families are placed rather than written out: each instance holds
+    // a rigid transform and points at a shared shape. Resolving the pair gives
+    // the instance its true orientation instead of an axis-aligned envelope.
+    const orientedBoxes = new Map<number, [number, number, number][]>();
+    for (const [elementId, placement] of instancePlacements) {
+      const shape = localBounds.get(placement.geometryId);
+      if (!shape) continue;
+      orientedBoxes.set(elementId, instanceCorners(placement, shape));
     }
 
     // Elements with surfaces that do not form a wall triple still have real
@@ -370,6 +395,7 @@ export function convertRvtBytes(
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
+      record.orientedBox = orientedBoxes.get(record.elementId);
       const typeId = typeReferences.get(record.elementId);
       if (typeId == null) continue;
       record.typeId = typeId;
@@ -480,6 +506,7 @@ export function convertRvtBytes(
           surfaces: surfaceCounts,
           nativeSolids: solidsByElement.size,
           faceOnlyElements: quadsByElement.size,
+          placedInstances: orientedBoxes.size,
           solidOnlyElements,
           typedElements: typeReferences.size,
           namedTypeElements,

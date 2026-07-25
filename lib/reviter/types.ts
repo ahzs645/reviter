@@ -97,6 +97,8 @@ export type ElementBoundsRecord = {
   solid?: WallSolid;
   /** Native faces, for elements with surfaces that do not form a solid. */
   quads?: SurfaceQuad[];
+  /** Eight world corners of a placed family instance, in box-index order. */
+  orientedBox?: [number, number, number][];
   boundsFeet: Bounds3;
 };
 
@@ -160,6 +162,8 @@ export type ConvertStats = {
   solidOnlyElements?: number;
   /** Elements drawn from native faces because their surfaces form no solid. */
   faceOnlyElements?: number;
+  /** Family instances placed from a transform and a shared shape. */
+  placedInstances?: number;
   /** Elements linked to their type element. */
   typedElements?: number;
   /** Elements whose type element also yielded a name. */

@@ -271,6 +271,14 @@ function quadGeometry(quad: SurfaceQuad, origin: Vec3) {
   };
 }
 
+/** Eight already-placed world corners, in box-index order. */
+function cornersGeometry(corners: [number, number, number][], origin: Vec3) {
+  return {
+    positions: corners.flatMap(([x, y, z]) => [x - origin.x, y - origin.y, z - origin.z]),
+    indices: BOX_INDICES,
+  };
+}
+
 function boxGeometry(bounds: Bounds3, origin: Vec3) {
   const { min, max } = bounds;
   const points = [
@@ -366,9 +374,11 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
       for (const record of batch) {
         // Prefer the element's own reconstructed geometry — its faces if it has
         // them, else its rebuilt solid — and fall back to the envelope.
-        const items = record.quads?.length
-          ? record.quads.map((quad) => quadGeometry(quad, origin))
-          : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
+        const items = record.orientedBox
+          ? [cornersGeometry(record.orientedBox, origin)]
+          : record.quads?.length
+            ? record.quads.map((quad) => quadGeometry(quad, origin))
+            : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));

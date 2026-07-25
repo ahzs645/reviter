@@ -22,6 +22,8 @@ export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
 export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces";
 export { surfaceQuadsFor, wallSolids, wallSolidsFor } from "./native-geometry";
+export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
+export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
 export { collectTypeLinks } from "./element-types";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";

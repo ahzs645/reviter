@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Placed instances"
+              value={result?.stats.placedInstances
+                ? `${result.stats.placedInstances.toLocaleString()} oriented`
+                : result ? "Not placed" : "Not evaluated"}
+              tone={result?.stats.placedInstances ? "good" : "off"}
+            />
+            <FidelityRow
               label="Native solids"
               value={result?.stats.nativeSolids
                 ? `${result.stats.nativeSolids.toLocaleString()} rebuilt`

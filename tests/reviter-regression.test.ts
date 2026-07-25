@@ -12,6 +12,7 @@ import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { surfaceQuadsFor, wallSolidsFor } from "../lib/reviter/native-geometry.ts";
+import { instanceCorners } from "../lib/reviter/instanced-geometry.ts";
 import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
@@ -608,4 +609,27 @@ test("draws a trimmed plane as its four corners in trim order", () => {
 
   // A plane with no extent in one direction is an edge, not a face.
   assert.deepEqual(surfaceQuadsFor(1, [{ ...plane, uMax: 0 }]), []);
+});
+
+test("places a family instance through its transform and shared shape", () => {
+  // A quarter turn about Z: the columns of the row-major 3x3 are the local axes.
+  const placement = {
+    elementId: 1_080_812,
+    basis: [0, -1, 0, 1, 0, 0, 0, 0, 1],
+    origin: [10, 20, 3] as [number, number, number],
+    geometryId: 4_242,
+  };
+  const shape = {
+    elementId: 4_242,
+    min: [0, 0, 0] as [number, number, number],
+    max: [2, 1, 4] as [number, number, number],
+  };
+
+  const corners = instanceCorners(placement, shape);
+  assert.equal(corners.length, 8);
+  // Local +X maps to world +Y, so the 2 ft length runs along Y from the origin.
+  assert.deepEqual(corners[0], [10, 20, 3]);
+  assert.deepEqual(corners[1], [10, 22, 3]);
+  assert.deepEqual(corners[2], [9, 22, 3]);
+  assert.deepEqual(corners[6], [9, 22, 7]);
 });
