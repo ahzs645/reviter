@@ -15,6 +15,7 @@
 import CFB from "cfb";
 
 import {
+  boundsOfRecords,
   detectDuplicatedBoundsRecords,
   framingBoundsOfRecords,
   solidBounds,
@@ -133,6 +134,15 @@ const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
  * only in the first case.
  */
 const ORIENTED_BOX_AGREEMENT_FEET = 1;
+
+/** Plan distance from the project datum inside which an envelope is unplaced. */
+const DATUM_PILE_RADIUS_FEET = 1;
+
+/** Below this a model is too small to tell a datum pile from real geometry. */
+const DATUM_PILE_MIN_MODEL_SPAN_FEET = 50;
+
+/** Records needed before a pile on the datum can be told apart from a few elements. */
+const MIN_RECORDS_FOR_DATUM_PILE = 500;
 
 /** Pages sampled to learn which object markers this file uses. */
 const MARKER_SAMPLE_PAGES = 12;
@@ -607,6 +617,33 @@ export function convertRvtBytes(
       }
     }
 
+    // Elements whose envelope was never placed.
+    //
+    // A second pile sits on the project datum, and it is not the cached shapes
+    // removed above — these are ordinary elements whose bounds were read in
+    // their family's local frame, so every one of them is centred on (0, 0)
+    // instead of where the element stands. In the supplied project that is
+    // 3,238 records — 2,012 balusters, 373 mullions, 309 panels — and the
+    // paired export has *nothing* within two feet of the datum, against 85.4%
+    // of recovered records matching it everywhere else. Real geometry does not
+    // stack thousands of elements on a single point.
+    let unplacedRecords = 0;
+    if (elementBounds.length > MIN_RECORDS_FOR_DATUM_PILE) {
+      const spread = boundsOfRecords(elementBounds);
+      const wide = Math.max(spread.max.x - spread.min.x, spread.max.y - spread.min.y);
+      // A component-scale file legitimately sits on its own origin; a building
+      // does not.
+      if (wide > DATUM_PILE_MIN_MODEL_SPAN_FEET) {
+        for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
+          const { min, max } = elementBounds[index]!.boundsFeet;
+          if (Math.abs((min.x + max.x) / 2) > DATUM_PILE_RADIUS_FEET) continue;
+          if (Math.abs((min.y + max.y) / 2) > DATUM_PILE_RADIUS_FEET) continue;
+          elementBounds.splice(index, 1);
+          unplacedRecords += 1;
+        }
+      }
+    }
+
     onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
     const nativeCategories = applyNativeCategories(
       elementBounds,
@@ -781,6 +818,7 @@ export function convertRvtBytes(
           placedInstances: orientedBoxes.size,
           rejectedOrientedBoxes,
           cachedShapeRecords,
+          unplacedRecords,
           sketchBoundaryElements,
           unnamedSketchElements,
           sketchCurves,

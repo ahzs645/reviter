@@ -185,6 +185,8 @@ export type ConvertStats = {
   rejectedOrientedBoxes?: number;
   /** Cached family shapes removed from the model; they are not elements. */
   cachedShapeRecords?: number;
+  /** Envelopes read in a family's local frame, so never placed in the model. */
+  unplacedRecords?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
