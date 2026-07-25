@@ -4,7 +4,7 @@ import test from "node:test";
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
 import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
 import { gzipOffsets } from "../lib/reviter/revit-container.ts";
-import { parseSchemaTags } from "../lib/reviter/schema.ts";
+import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
@@ -352,32 +352,45 @@ test("reads a component-scale coordinate window for family files", () => {
   assert.equal(segmentScaleFor("model.rvt", "family"), family);
 });
 
-test("inventories tagged serializable classes from the embedded schema", () => {
+test("inventories tagged classes only when a parent record corroborates them", () => {
   const encoder = new TextEncoder();
-  const build = (entries: [string, number | null][]) => {
-    const parts: number[] = [];
-    for (const [name, tag] of entries) {
-      const bytes = encoder.encode(name);
-      parts.push(bytes.length & 0xff, bytes.length >> 8, ...bytes);
-      const word = tag == null ? 0 : tag | 0x8000;
-      parts.push(word & 0xff, word >> 8);
-    }
-    return new Uint8Array(parts);
+  const bytes: number[] = [];
+  const name = (text: string) => {
+    const encoded = encoder.encode(text);
+    bytes.push(encoded.length & 0xff, encoded.length >> 8, ...encoded);
+  };
+  const word = (value: number) => bytes.push(value & 0xff, (value >> 8) & 0xff);
+  const dword = (value: number) => {
+    bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+  const declare = (className: string, tag: number, parent: string, version: number, fields: number) => {
+    name(className);
+    word(tag | 0x8000);
+    word(0);
+    name(parent);
+    word(0);
+    dword(version);
+    dword(fields);
   };
 
-  const classes = parseSchemaTags(build([
-    ["ArcWall", 0x01c3],
-    ["HostObjAttr", 0x006f],
-    // An untagged class is a mixin or embedded type, not a top-level record.
-    ["GeomStep", null],
-    // A repeat is a reference back to the first declaration.
-    ["ArcWall", 0x01c3],
-  ]));
+  declare("ArcWall", 0x01c3, "VWall", 2, 0);
+  declare("HostObjAttr", 0x006f, "Symbol", 3, 0);
+  // A tagged name with no parent record after it is compressed noise, not a
+  // class. Scanning loosely admits mangled strings exactly like this one.
+  name("Cuuuuuuuaaaas");
+  word(0x0123 | 0x8000);
+  word(0);
+  bytes.push(0xff, 0xfe, 0x01, 0x02);
 
-  assert.deepEqual(classes.map(({ name, tag }) => ({ name, tag })), [
-    { name: "ArcWall", tag: 0x01c3 },
-    { name: "HostObjAttr", tag: 0x006f },
-  ]);
+  const summary = summariseSchema(new Uint8Array(bytes));
+  assert.deepEqual(
+    summary.taggedClasses.map(({ name: className, tag, parent, version }) => ({ className, tag, parent, version })),
+    [
+      { className: "HostObjAttr", tag: 0x006f, parent: "Symbol", version: 3 },
+      { className: "ArcWall", tag: 0x01c3, parent: "VWall", version: 2 },
+    ],
+  );
+  assert.equal(summary.rejectedCandidates, 1);
 });
 
 test("reads partition names as UTF-16 with a character count", () => {

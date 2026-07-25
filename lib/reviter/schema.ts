@@ -3,37 +3,59 @@
  *
  * `Formats/Latest` is Autodesk's own dictionary for the on-disk object graph:
  * roughly half a megabyte of class names, inheritance, and field declarations.
- * A class that is serializable at the top level carries a `u16` tag with the
- * `0x8000` bit set immediately after its name, and that tag is what identifies
- * the class in `Partitions/NN` records.
+ * A class that is serializable at the top level is written as
  *
  * ```text
- * [u16 nameLen] [nameLen bytes ASCII class name] [u16 tag | 0x8000]
+ * [u16 nameLen] [name] [u16 tag | 0x8000] [u16 pad]
+ * [u16 parentLen] [parent name]
+ * [u16 flag] [u32 version] [u32 declared field count]
  * ```
  *
- * Only that inventory is decoded here. The rest of a class record — parent
- * class, field list, and the inline definitions nested inside fields — is
- * genuinely ambiguous to walk from the outside: several layouts fit the
- * observed bytes and none of them close cleanly across the corpus. Reporting a
- * field graph that is probably wrong would be worse than reporting none, so the
- * parser stops at what the bytes prove.
+ * and the tag is what identifies the class in `Partitions/NN` records.
  *
- * The tag inventory itself is verified. Across the Revit 2020, 2023, and 2026
- * family files it reproduces all 218 checkable class-to-tag pairs in the
- * independently produced tag-drift dataset published by the Apache-2.0 `rvt-rs`
- * project, with no disagreements.
+ * The parent name is what makes the record trustworthy. A name-and-tag pattern
+ * alone also matches compressed noise — scanning for it loosely over the
+ * supplied 2027 project yields 232 candidates, 48 of which are mangled strings
+ * such as `Cuuuuuuuaaaas` and `HostTrfCreatDr`, including one name carrying four
+ * different tags. Requiring a well-formed parent-class name to begin exactly
+ * four bytes after the class name removes every one of those without losing a
+ * single corroborated class.
+ *
+ * Corroboration: across the Revit 2020, 2023, and 2026 family files this parser
+ * reproduces all 218 checkable class-to-tag pairs in the independently produced
+ * tag-drift dataset published by the Apache-2.0 `rvt-rs` project, with no
+ * disagreements, both before and after the parent-name filter.
+ *
+ * The field *list* is deliberately not walked. The declared field count is read
+ * because it sits at a fixed offset, but the field records that follow contain
+ * inline class definitions whose layout does not close cleanly across the
+ * corpus — several framings fit the observed bytes and each leaves a variable
+ * unexplained remainder. `rvt-rs` reports the same gap as field-count
+ * mismatches. A field graph that is probably wrong would be worse than none.
  */
 
 /** Class names are C++ identifiers, including templates such as `std::pair<>`. */
-const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_:<>, ()[\]*&]*$/;
+const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_:<>, ()[\]*&~]*$/;
 
 const MIN_NAME_LENGTH = 3;
 const MAX_NAME_LENGTH = 80;
+
+/** Bytes between the end of a class name and the start of its parent's name. */
+const PARENT_NAME_GAP = 4;
+
+/** Declared field counts above this are noise rather than a real preamble. */
+const MAX_DECLARED_FIELDS = 500;
 
 export type SchemaClass = {
   name: string;
   /** Serialization tag with the definition bit stripped. */
   tag: number;
+  /** Immediate base class, e.g. `ArcWall` → `VWall`, `HostObjAttr` → `Symbol`. */
+  parent: string;
+  /** Schema version of this class, incremented as Autodesk changes it. */
+  version?: number;
+  /** Field count the record declares. The fields themselves are not walked. */
+  declaredFieldCount?: number;
   /** Byte offset of the record inside the inflated schema stream. */
   offset: number;
 };
@@ -41,63 +63,102 @@ export type SchemaClass = {
 export type SchemaSummary = {
   /** Inflated size of `Formats/Latest`. */
   byteLength: number;
-  /** Classes that carry a top-level serialization tag. */
+  /** Classes that carry a top-level serialization tag and a parent record. */
   taggedClasses: SchemaClass[];
+  /** Name-and-tag matches rejected for having no well-formed parent record. */
+  rejectedCandidates: number;
 };
 
-function isAscii(bytes: Uint8Array): boolean {
-  for (const byte of bytes) if (byte < 0x20 || byte > 0x7e) return false;
+type NameCandidate = { offset: number; name: string; word: number; end: number };
+
+function isAscii(data: Uint8Array, start: number, end: number): boolean {
+  for (let index = start; index < end; index += 1) {
+    const byte = data[index]!;
+    if (byte < 0x20 || byte > 0x7e) return false;
+  }
   return true;
 }
 
-/**
- * Inventory every top-level serializable class in an inflated `Formats/Latest`
- * stream. The first declaration of a name wins; later repeats are references.
- */
-export function parseSchemaTags(data: Uint8Array): SchemaClass[] {
-  const classes: SchemaClass[] = [];
-  const seen = new Set<string>();
-  if (data.byteLength < 8) return classes;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+/** Every position that reads as `[u16 len][ASCII class name][u16 word]`. */
+function nameCandidates(data: Uint8Array, view: DataView): NameCandidate[] {
+  const candidates: NameCandidate[] = [];
   const decoder = new TextDecoder("ascii");
-
   for (let offset = 0; offset + 4 <= data.byteLength; ) {
     const nameLength = view.getUint16(offset, true);
     if (
       nameLength < MIN_NAME_LENGTH ||
       nameLength > MAX_NAME_LENGTH ||
-      offset + 2 + nameLength + 2 > data.byteLength
+      offset + 2 + nameLength + 2 > data.byteLength ||
+      !isAscii(data, offset + 2, offset + 2 + nameLength)
     ) {
       offset += 1;
       continue;
     }
-    const nameBytes = data.subarray(offset + 2, offset + 2 + nameLength);
-    if (!isAscii(nameBytes)) {
-      offset += 1;
-      continue;
-    }
-    const name = decoder.decode(nameBytes);
+    const name = decoder.decode(data.subarray(offset + 2, offset + 2 + nameLength));
     if (!CLASS_NAME.test(name)) {
       offset += 1;
       continue;
     }
-    const tag = view.getUint16(offset + 2 + nameLength, true);
-    if (!(tag & 0x8000)) {
-      offset += 1;
-      continue;
+    const end = offset + 2 + nameLength;
+    candidates.push({ offset, name, word: view.getUint16(end, true), end });
+    offset = end;
+  }
+  return candidates;
+}
+
+/**
+ * Inventory every top-level serializable class. A candidate is accepted only
+ * when a well-formed parent-class name begins exactly `PARENT_NAME_GAP` bytes
+ * after it, which is what separates real records from compressed noise.
+ */
+export function parseSchemaTags(data: Uint8Array): SchemaClass[] {
+  const classes: SchemaClass[] = [];
+  if (data.byteLength < 8) return classes;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const candidates = nameCandidates(data, view);
+  const seen = new Set<string>();
+
+  for (let index = 0; index < candidates.length - 1; index += 1) {
+    const candidate = candidates[index]!;
+    if (!(candidate.word & 0x8000)) continue;
+    const parent = candidates[index + 1]!;
+    if (parent.offset !== candidate.end + PARENT_NAME_GAP) continue;
+    if (seen.has(candidate.name)) continue;
+
+    let version: number | undefined;
+    let declaredFieldCount: number | undefined;
+    if (parent.end + 10 <= data.byteLength) {
+      const declared = view.getUint32(parent.end + 6, true);
+      if (declared <= MAX_DECLARED_FIELDS) {
+        version = view.getUint32(parent.end + 2, true);
+        declaredFieldCount = declared;
+      }
     }
-    if (!seen.has(name)) {
-      seen.add(name);
-      classes.push({ name, tag: tag & 0x7fff, offset });
-    }
-    offset += 2 + nameLength + 2;
+
+    seen.add(candidate.name);
+    classes.push({
+      name: candidate.name,
+      tag: candidate.word & 0x7fff,
+      parent: parent.name,
+      version,
+      declaredFieldCount,
+      offset: candidate.offset,
+    });
   }
   return classes;
 }
 
 export function summariseSchema(data: Uint8Array): SchemaSummary {
+  if (data.byteLength < 8) {
+    return { byteLength: data.byteLength, taggedClasses: [], rejectedCandidates: 0 };
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const candidates = nameCandidates(data, view);
+  const tagged = candidates.filter((candidate) => candidate.word & 0x8000).length;
+  const taggedClasses = parseSchemaTags(data).sort((a, b) => a.tag - b.tag);
   return {
     byteLength: data.byteLength,
-    taggedClasses: parseSchemaTags(data).sort((a, b) => a.tag - b.tag),
+    taggedClasses,
+    rejectedCandidates: Math.max(0, tagged - taggedClasses.length),
   };
 }

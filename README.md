@@ -46,17 +46,21 @@ The category decoder is not gated on the release, because it is self-validating:
 
 ## Embedded schema
 
-`Formats/Latest` is Autodesk's own dictionary for the on-disk object graph — roughly half a megabyte of class names, inheritance, and field declarations shipped inside every Revit file. Reviter inventories the classes that are serializable at the top level, each of which carries a `u16` tag with the `0x8000` bit set immediately after its name:
+`Formats/Latest` is Autodesk's own dictionary for the on-disk object graph — roughly half a megabyte of class names, inheritance, and field declarations shipped inside every Revit file. A class that is serializable at the top level is written as:
 
 ```text
-[u16 nameLen] [nameLen bytes ASCII class name] [u16 tag | 0x8000]
+[u16 nameLen] [name] [u16 tag | 0x8000] [u16 pad]
+[u16 parentLen] [parent name]
+[u16 flag] [u32 version] [u32 declared field count]
 ```
 
-That tag is what identifies the class in `Partitions/NN` records, and it drifts between releases as Autodesk inserts classes into the ordering — in the local corpus `ArcWall` moves `0x14f` → `0x1b8` → `0x1c3` across 2020, 2026, and 2027, and `HostObjAttr` moves `0x5d` → `0x70` → `0x6f`.
+The tag is what identifies the class in `Partitions/NN` records, and it drifts between releases as Autodesk inserts classes into the ordering — in the local corpus `ArcWall` moves `0x14f` → `0x1b8` → `0x1c3` across 2020, 2026, and 2027 while its parent stays `VWall`.
 
-The inventory is verified against an independent source: across the Revit 2020, 2023, and 2026 family files it reproduces all 218 checkable class-to-tag pairs in the tag-drift dataset published by `rvt-rs`, with no disagreements. The supplied 2027 project yields 232 tagged classes.
+**The parent name is what makes the record trustworthy.** A name-and-tag pattern alone also matches compressed noise: scanning for it loosely over the supplied 2027 project yields 232 candidates, of which 48 are mangled strings such as `Cuuuuuuuaaaas` and `HostTrfCreatDr`, including one name carrying four different tags. Requiring a well-formed parent-class name to begin exactly four bytes after the class name removes every one of those and leaves 184 classes, each with its base class — `ArcWall` → `VWall`, `HostObjAttr` → `Symbol`, `Cell` → `CellInterface`, `GeomStep` → `GeomGenerator`.
 
-The rest of a class record is **not** decoded. Parent class, field list, and the class definitions nested inside fields are genuinely ambiguous to walk from the outside — several layouts fit the observed bytes and none close cleanly across the corpus, and `rvt-rs` reports the same gap as field-count mismatches. Reporting a field graph that is probably wrong would be worse than reporting none, so the parser stops at what the bytes prove.
+The inventory is corroborated against an independent source: across the Revit 2020, 2023, and 2026 family files it reproduces all 218 checkable class-to-tag pairs in the tag-drift dataset published by `rvt-rs`, with no disagreements — before and after the parent-name filter, so the filter costs no true positives.
+
+The field *list* is deliberately not walked. The declared count and schema version are read because they sit at a fixed offset after the parent name, but the field records that follow contain inline class definitions whose layout does not close across the corpus. Several framings fit the observed bytes and each leaves a variable unexplained remainder — measured over the 2026 family file, the bytes following a zero-field class run 18, 33, 34, 40, 42, 54, 55, 82, and longer. `rvt-rs` reports the same gap as field-count mismatches. A field graph that is probably wrong would be worse than none, so the parser stops at what the bytes prove.
 
 `Global/PartitionTable` is also read, for its UTF-16 partition names. In a project these are worksets; in a family the stream carries the family partition path instead, so the decoder reports the names without asserting which kind they are.
 
