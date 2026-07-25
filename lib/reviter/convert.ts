@@ -2,6 +2,13 @@ import CFB from "cfb";
 import { inflateSync } from "fflate";
 
 import { parseElemTable } from "./elem-table.ts";
+import {
+  categoryDisplayName,
+  collectCategoryTokens,
+  deriveRecordCodeCategories,
+  recordCodeKey,
+  resolveElementCategories,
+} from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
 
 import type {
@@ -13,6 +20,7 @@ import type {
   LevelBand,
   MeshData,
   MaterialData,
+  NativeCategorySummary,
   NativeProfileLocator,
   PartitionRecordLocator,
   ProgressUpdate,
@@ -24,6 +32,12 @@ const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 const DEFAULT_MAX_SEGMENTS = 12_000;
 const BOUNDS_DUPLICATE_BYTES = 48;
 const MIN_SOLID_SPAN_FEET = 0.001;
+/** Backstop so a pathological stream cannot turn category recovery quadratic. */
+const MAX_CATEGORY_TOKENS = 400_000;
+/** Bound on gzip FNAME/FCOMMENT scanning; Revit writes neither field. */
+const GZIP_OPTIONAL_FIELD_LIMIT = 1_024;
+/** Input cap when re-reading a chunk truncated by a false gzip signature. */
+const GZIP_RETRY_BYTES = 8 << 20;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
@@ -59,6 +73,18 @@ function asBytes(value: number[] | Uint8Array): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
 }
 
+/**
+ * Length of the gzip header at `offset`, or `null` when the signature is not a
+ * usable header.
+ *
+ * The three-byte gzip signature also occurs by chance inside DEFLATE payloads.
+ * Those false positives previously reached `inflateSync` with the entire
+ * remaining stream as input, and fflate sizes its output buffer from the input
+ * length — so a single false signature in a 69 MB partition allocated and
+ * decoded hundreds of megabytes of garbage. Rejecting headers whose reserved
+ * flag bits are set removes every false signature observed in the corpus, and
+ * the optional-field scans are bounded so a surviving one stays cheap.
+ */
 function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
   if (
     offset + 10 > data.length ||
@@ -70,6 +96,7 @@ function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
   }
 
   const flags = data[offset + 3] ?? 0;
+  if (flags & 0xe0) return null;
   let cursor = offset + 10;
 
   if (flags & 0x04) {
@@ -80,7 +107,9 @@ function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
 
   for (const flag of [0x08, 0x10]) {
     if (!(flags & flag)) continue;
-    while (cursor < data.length && data[cursor] !== 0) cursor += 1;
+    const scanLimit = Math.min(data.length, cursor + GZIP_OPTIONAL_FIELD_LIMIT);
+    while (cursor < scanLimit && data[cursor] !== 0) cursor += 1;
+    if (cursor >= scanLimit) return null;
     cursor += 1;
   }
 
@@ -88,7 +117,8 @@ function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
   return cursor <= data.length ? cursor - offset : null;
 }
 
-function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
+/** Offsets of every candidate gzip signature that also carries a usable header. */
+export function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
   const result: number[] = [];
   for (let i = 0; i + 3 <= data.length && result.length < limit; i += 1) {
     if (
@@ -96,20 +126,33 @@ function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
       data[i + 1] === GZIP_MAGIC[1] &&
       data[i + 2] === GZIP_MAGIC[2]
     ) {
-      result.push(i);
+      if (gzipHeaderLength(data, i) != null) result.push(i);
       i += 9;
     }
   }
   return result;
 }
 
-function inflateRevitChunk(data: Uint8Array, offset: number): Uint8Array | null {
+/**
+ * Inflate one Revit chunk. `end` is the start of the next chunk, which bounds
+ * both the DEFLATE input and fflate's output allocation. A false signature that
+ * survives header validation would truncate a real chunk, so a failed bounded
+ * read retries against a capped tail rather than the whole stream.
+ */
+function inflateRevitChunk(data: Uint8Array, offset: number, end?: number): Uint8Array | null {
   const headerLength = gzipHeaderLength(data, offset);
   if (headerLength == null) return null;
-  const body = data.subarray(offset + headerLength);
-  if (!body.length) return null;
+  const start = offset + headerLength;
+  if (start >= data.length) return null;
+  const limit = Math.min(end ?? data.length, data.length);
+  if (limit <= start) return null;
   try {
-    return inflateSync(body);
+    return inflateSync(data.subarray(start, limit));
+  } catch {
+    if (limit >= data.length) return null;
+  }
+  try {
+    return inflateSync(data.subarray(start, Math.min(data.length, start + GZIP_RETRY_BYTES)));
   } catch {
     return null;
   }
@@ -447,11 +490,59 @@ function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
   return { min, max };
 }
 
-type DisplayRole = "wall" | "door" | "panel" | "frame" | "structure" | "railing" | "slab" | "covering" | "glazing";
+type DisplayRole =
+  | "wall"
+  | "door"
+  | "panel"
+  | "frame"
+  | "structure"
+  | "railing"
+  | "slab"
+  | "covering"
+  | "glazing"
+  /** Category decoded natively, but with no dedicated shading role. */
+  | "native";
+
+/**
+ * Display role per native Revit category. Categories outside this table still
+ * carry their decoded id and name; they simply fall back to the record-code
+ * heuristic for shading.
+ */
+const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
+  [-2000011]: "wall",
+  [-2000014]: "glazing",
+  [-2000023]: "door",
+  [-2000032]: "slab",
+  [-2000035]: "slab",
+  [-2000038]: "covering",
+  [-2000100]: "structure",
+  [-2000120]: "structure",
+  [-2000126]: "railing",
+  [-2000170]: "panel",
+  [-2000171]: "frame",
+  [-2000180]: "structure",
+  [-2001330]: "structure",
+  [-2000045]: "railing",
+  [-2000067]: "railing",
+  [-2000123]: "railing",
+  [-2000127]: "railing",
+  [-2000919]: "railing",
+  [-2000920]: "railing",
+  [-2000938]: "railing",
+  [-2000945]: "railing",
+  [-2000946]: "railing",
+  [-2000954]: "railing",
+};
 
 function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "unknown" {
   const code = record.recordCode;
   const count = record.recordCount;
+  // A curtain-wall container stays a wrapper even once its category is known,
+  // so its child panels and mullions are not swallowed by one large envelope.
+  const isWrapper = code === 30 && count != null && count >= 8 && count <= 10;
+  if (!isWrapper && record.categoryId != null) {
+    return CATEGORY_DISPLAY_ROLE[record.categoryId] ?? "native";
+  }
   if (code === 30 && count === 5) return "wall";
   if (code === 30 && count != null && count >= 8 && count <= 10) return "wrapper";
   if (code === 44 && count === 1) return "door";
@@ -467,6 +558,7 @@ function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "un
 }
 
 const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
+  native: 0,
   wall: 1,
   door: 2,
   panel: 3,
@@ -535,15 +627,18 @@ function boxGeometry(bounds: Bounds3, origin: Vec3) {
 function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
   const meshes: MeshData[] = [];
   const batchSize = 2_000;
-  const grouped = new Map<DisplayRole, ElementBoundsRecord[]>();
+  // Batch by decoded Revit category when one is available so the model browser
+  // lists real categories; otherwise fall back to the record-code display role.
+  const grouped = new Map<string, { role: DisplayRole; records: ElementBoundsRecord[] }>();
   for (const record of records) {
     const role = displayRole(record);
     if (role === "unknown" || role === "wrapper") continue;
-    const group = grouped.get(role) ?? [];
-    group.push(record);
-    grouped.set(role, group);
+    const label = record.categoryName ?? `${role[0]!.toUpperCase()}${role.slice(1)} proxies`;
+    const group = grouped.get(label) ?? { role, records: [] };
+    group.records.push(record);
+    grouped.set(label, group);
   }
-  for (const [role, roleRecords] of grouped) for (let start = 0; start < roleRecords.length; start += batchSize) {
+  for (const [label, { role, records: roleRecords }] of grouped) for (let start = 0; start < roleRecords.length; start += batchSize) {
     const positions: number[] = [];
     const indices: number[] = [];
     const colors: number[] = [];
@@ -560,7 +655,7 @@ function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshDa
       }
     }
     meshes.push({
-      name: `${role[0]!.toUpperCase()}${role.slice(1)} proxies ${Math.floor(start / batchSize) + 1}`,
+      name: `${label} ${Math.floor(start / batchSize) + 1}`,
       positions: new Float32Array(positions),
       indices: new Uint32Array(indices),
       colors: new Float32Array(colors),
@@ -590,6 +685,65 @@ function levelsForBounds(records: ElementBoundsRecord[]): LevelBand[] {
     .map(([elevation, candidates]) => ({ elevation, candidates }))
     .sort((a, b) => b.candidates - a.candidates)
     .slice(0, 8);
+}
+
+/**
+ * Resolve category tokens against the element ids the scan actually proved,
+ * then fill the remainder from per-record-code consensus. Mutates `records`
+ * and returns the evidence behind every assignment.
+ */
+function applyNativeCategories(
+  records: ElementBoundsRecord[],
+  tokens: ReturnType<typeof collectCategoryTokens>,
+  elemTableIds?: Uint32Array,
+): NativeCategorySummary {
+  const knownElementIds = new Set<number>(records.map((record) => record.elementId));
+  if (elemTableIds) for (const elementId of elemTableIds) knownElementIds.add(elementId);
+
+  const resolved = resolveElementCategories(tokens, knownElementIds);
+  const consensus = deriveRecordCodeCategories(records, resolved);
+
+  let directElements = 0;
+  let inheritedElements = 0;
+  const counts = new Map<number, number>();
+  for (const record of records) {
+    const direct = resolved.get(record.elementId);
+    const inherited = direct == null
+      ? consensus.get(recordCodeKey(record.recordCode, record.recordCount))
+      : undefined;
+    const categoryId = direct ?? inherited?.categoryId;
+    if (categoryId == null) continue;
+    record.categoryId = categoryId;
+    record.categoryName = categoryDisplayName(categoryId);
+    record.categorySource = direct == null ? "record-code-consensus" : "native-token";
+    if (direct == null) inheritedElements += 1;
+    else directElements += 1;
+    counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1);
+  }
+
+  const codeConsensus = [...consensus.entries()]
+    .map(([recordCode, entry]) => ({
+      recordCode,
+      categoryId: entry.categoryId,
+      categoryName: categoryDisplayName(entry.categoryId),
+      support: entry.support,
+      purity: entry.purity,
+    }))
+    .sort((a, b) => b.support - a.support);
+
+  return {
+    tokensFound: tokens.length,
+    directElements,
+    inheritedElements,
+    categories: [...counts.entries()]
+      .map(([categoryId, elements]) => ({
+        categoryId,
+        name: categoryDisplayName(categoryId),
+        elements,
+      }))
+      .sort((a, b) => b.elements - a.elements),
+    codeConsensus,
+  };
 }
 
 export function convertRvtBytes(
@@ -623,6 +777,7 @@ export function convertRvtBytes(
     if (!partitions.length) throw new Error("No Revit partition stream was found.");
 
     const candidates: Segment[] = [];
+    const categoryTokens: ReturnType<typeof collectCategoryTokens> = [];
     const elementBounds: ElementBoundsRecord[] = [];
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
@@ -640,7 +795,7 @@ export function convertRvtBytes(
       const stride = offsets.length > 900 ? Math.ceil(offsets.length / 700) : 1;
 
       for (let index = 0; index < offsets.length; index += 1) {
-        const inflated = inflateRevitChunk(data, offsets[index]!);
+        const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1]);
         if (!inflated) continue;
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
@@ -657,6 +812,9 @@ export function convertRvtBytes(
               inflatedBytes: inflated.byteLength,
             });
           }
+        }
+        if (categoryTokens.length < MAX_CATEGORY_TOKENS) {
+          for (const token of collectCategoryTokens(inflated)) categoryTokens.push(token);
         }
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
@@ -704,10 +862,18 @@ export function convertRvtBytes(
       }
     }
 
+    onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
+    const nativeCategories = applyNativeCategories(
+      elementBounds,
+      categoryTokens,
+      elementIndex?.uniqueElementIds,
+    );
+
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
+    const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
     const boundedSolids = elementBounds.filter(solidBounds);
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
@@ -737,17 +903,23 @@ export function convertRvtBytes(
         segments,
         elementBounds,
         nativeProfiles,
+        nativeCategories,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
-          activeDecoders: ["revit-2027-duplicated-bounds-v1"],
+          activeDecoders: [
+            "revit-2027-duplicated-bounds-v1",
+            ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
+          ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: 0,
           nativeMaterialAssignments: 0,
           approximateSolids: displayBounds.length,
+          nativeCategorisedElements: categorisedElements,
           geometryFidelity: "native-bounds-envelope",
           materialFidelity: "display-fallback",
+          semanticFidelity: categorisedElements ? "native-categories" : "record-code-heuristic",
         },
         origin,
         bbox: relativeBounds,
@@ -762,6 +934,9 @@ export function convertRvtBytes(
           : undefined,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
+          ...(categorisedElements
+            ? [`${categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`]
+            : ["No native Revit category tokens were decoded, so element display falls back to record-code clusters."]),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
             : []),
@@ -824,17 +999,20 @@ export function convertRvtBytes(
       segments: used,
       elementBounds,
       nativeProfiles,
+      nativeCategories,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
-        activeDecoders: [],
+        activeDecoders: nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : [],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: 0,
         nativeMaterialAssignments: 0,
         approximateSolids: used.length,
+        nativeCategorisedElements: categorisedElements,
         geometryFidelity: "diagnostic-only",
         materialFidelity: "display-fallback",
+        semanticFidelity: categorisedElements ? "native-categories" : "none",
       },
       origin,
       bbox: relativeBounds,

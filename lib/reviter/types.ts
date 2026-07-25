@@ -50,8 +50,11 @@ export type DecoderCoverage = {
   nativeMaterialDefinitions: number;
   nativeMaterialAssignments: number;
   approximateSolids: number;
+  /** Elements carrying a natively decoded Revit `BuiltInCategory`. */
+  nativeCategorisedElements: number;
   geometryFidelity: "native-profile-approximate-solid" | "native-bounds-envelope" | "diagnostic-only";
   materialFidelity: "native-definitions-unassigned" | "native-assigned" | "display-fallback";
+  semanticFidelity: "native-categories" | "record-code-heuristic" | "none";
 };
 
 export type ElementBoundsRecord = {
@@ -65,7 +68,41 @@ export type ElementBoundsRecord = {
   boundsOffset?: number;
   recordCode?: number;
   recordCount?: number;
+  /** Negative Revit `BuiltInCategory` id decoded from the partition stream. */
+  categoryId?: number;
+  categoryName?: string;
+  categorySource?: NativeCategorySource;
   boundsFeet: Bounds3;
+};
+
+/**
+ * `native-token` means the element's own category token was decoded.
+ * `record-code-consensus` means the category was inherited from sibling records
+ * that share the element's record code.
+ */
+export type NativeCategorySource = "native-token" | "record-code-consensus";
+
+export type NativeCategoryCount = {
+  categoryId: number;
+  name: string;
+  elements: number;
+};
+
+export type NativeCategoryCodeConsensus = {
+  /** `recordCode:recordCount` key of the cluster. */
+  recordCode: string;
+  categoryId: number;
+  categoryName: string;
+  support: number;
+  purity: number;
+};
+
+export type NativeCategorySummary = {
+  tokensFound: number;
+  directElements: number;
+  inheritedElements: number;
+  categories: NativeCategoryCount[];
+  codeConsensus: NativeCategoryCodeConsensus[];
 };
 
 export type LevelBand = {
@@ -217,6 +254,7 @@ export type ConvertResult = {
   segments: Segment[];
   elementBounds: ElementBoundsRecord[];
   nativeProfiles: NativeProfileLocator[];
+  nativeCategories?: NativeCategorySummary;
   decoderCoverage: DecoderCoverage;
   origin: Vec3;
   bbox: { min: Vec3; max: Vec3 };

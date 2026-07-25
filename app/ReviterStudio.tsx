@@ -76,8 +76,10 @@ const AUTODESK_PREVIEW_RESULT: ConvertResult = {
     nativeMaterialDefinitions: 0,
     nativeMaterialAssignments: 0,
     approximateSolids: 0,
+    nativeCategorisedElements: 0,
     geometryFidelity: "diagnostic-only",
     materialFidelity: "display-fallback",
+    semanticFidelity: "none",
   },
   origin: { x: 0, y: 0, z: 0 },
   bbox: AUTODESK_REFERENCE_BOUNDS,
@@ -1113,9 +1115,16 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Revit categories"
+              value={result?.decoderCoverage.nativeCategorisedElements
+                ? `${result.decoderCoverage.nativeCategorisedElements.toLocaleString()} native`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.decoderCoverage.nativeCategorisedElements ? "good" : "off"}
+            />
+            <FidelityRow
               label="BIM semantics"
-              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Unavailable"}
-              tone={geometrySource === "reference" && comparison ? "good" : result?.readerDiagnostics?.productionElements ? "warn" : "off"}
+              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Categories only"}
+              tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
 
@@ -1243,6 +1252,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     {selectedRecord && selectedDimensions ? (
                       <dl className="property-table">
                         <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
+                        {selectedRecord.categoryName && (
+                          <div><dt>Revit category</dt><dd>{selectedRecord.categoryName}</dd></div>
+                        )}
+                        {selectedRecord.categoryId != null && (
+                          <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
+                        )}
                         <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
                         <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
                         <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>

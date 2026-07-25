@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/convert.ts";
+import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords, gzipOffsets } from "../lib/reviter/convert.ts";
+import {
+  categoryDisplayName,
+  collectCategoryTokens,
+  deriveRecordCodeCategories,
+  recordCodeKey,
+  resolveElementCategories,
+} from "../lib/reviter/native-categories.ts";
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
@@ -147,7 +154,8 @@ test("emits rendered IFC solids from RVT element bounds", () => {
     decoderCoverage: {
       revitVersion: 2027, activeDecoders: ["revit-2027-duplicated-bounds-v1"], nativeCurves: 0,
       nativeProfiles: 0, nativeMeshes: 0, nativeMaterialDefinitions: 0, nativeMaterialAssignments: 0,
-      approximateSolids: 1, geometryFidelity: "native-bounds-envelope", materialFidelity: "display-fallback",
+      approximateSolids: 1, nativeCategorisedElements: 0, geometryFidelity: "native-bounds-envelope",
+      materialFidelity: "display-fallback", semanticFidelity: "record-code-heuristic",
     },
     origin: { x: 5, y: -153, z: 0 },
     bbox: { min: { x: -1, y: -7, z: 0 }, max: { x: 1, y: 7, z: 14 } },
@@ -186,7 +194,8 @@ test("emits a standalone GLB from recovered browser geometry", () => {
     decoderCoverage: {
       revitVersion: null, activeDecoders: [], nativeCurves: 0, nativeProfiles: 0, nativeMeshes: 0,
       nativeMaterialDefinitions: 0, nativeMaterialAssignments: 0, approximateSolids: 1,
-      geometryFidelity: "diagnostic-only", materialFidelity: "display-fallback",
+      nativeCategorisedElements: 0, geometryFidelity: "diagnostic-only",
+      materialFidelity: "display-fallback", semanticFidelity: "none",
     },
     origin: { x: 0, y: 0, z: 0 },
     bbox: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
@@ -241,4 +250,71 @@ test("rejects recovered geometry when identity, extents, topology, and semantics
   assert.equal(result.status, "fail");
   assert.equal(result.gates.every((gate) => gate.status === "fail"), true);
   assert.match(result.conclusion, /fails/);
+});
+
+test("decodes a native Revit BuiltInCategory token and its preceding element id", () => {
+  const data = new Uint8Array(64);
+  const view = new DataView(data.buffer);
+  // Element id written as a 64-bit value ahead of the token.
+  view.setUint32(8, 978605, true);
+  view.setUint32(12, 0, true);
+  const token = 24;
+  data[token] = 0x04;
+  data[token + 1] = 0x00;
+  view.setUint32(token + 2, 0x0000_0006, true);
+  view.setUint32(token + 6, (-2_000_011 + 0x1_0000_0000) >>> 0, true);
+  view.setUint32(token + 10, 0xffff_ffff, true);
+  view.setUint32(token + 14, 0xffff_ffff, true);
+
+  const tokens = collectCategoryTokens(data);
+  assert.equal(tokens.length, 1);
+  assert.equal(tokens[0]!.categoryId, -2_000_011);
+  assert.ok(tokens[0]!.ownerCandidates.includes(978605));
+
+  const resolved = resolveElementCategories(tokens, new Set([978605]));
+  assert.deepEqual([...resolved], [[978605, -2_000_011]]);
+  assert.equal(categoryDisplayName(-2_000_011), "Walls");
+});
+
+test("ignores category-shaped bytes outside the Revit BuiltInCategory range", () => {
+  const data = new Uint8Array(32);
+  const view = new DataView(data.buffer);
+  data[8] = 0x04;
+  view.setUint32(10, 6, true);
+  view.setUint32(14, (-1_000_110 + 0x1_0000_0000) >>> 0, true);
+  view.setUint32(18, 0xffff_ffff, true);
+  view.setUint32(22, 0xffff_ffff, true);
+  assert.deepEqual(collectCategoryTokens(data), []);
+});
+
+test("derives a record-code category consensus only above the support and purity floors", () => {
+  const walls = Array.from({ length: 12 }, (_, index) => ({
+    elementId: 1_000 + index,
+    recordCode: 30,
+    recordCount: 5,
+  }));
+  const thin = [{ elementId: 2_000, recordCode: 44, recordCount: 1 }];
+  const resolved = new Map<number, number>([
+    ...walls.map((record, index) => [record.elementId, index === 0 ? -2_000_023 : -2_000_011] as const),
+    [2_000, -2_000_023],
+  ]);
+
+  const consensus = deriveRecordCodeCategories([...walls, ...thin], resolved);
+  assert.deepEqual(consensus.get(recordCodeKey(30, 5)), {
+    categoryId: -2_000_011,
+    support: 12,
+    purity: 11 / 12,
+  });
+  // One supporting element is below the floor, so no consensus is published.
+  assert.equal(consensus.get(recordCodeKey(44, 1)), undefined);
+});
+
+test("skips gzip signatures whose reserved header flag bits are set", () => {
+  const data = new Uint8Array(64);
+  // A real Revit chunk header: signature, DEFLATE method, no flags.
+  data.set([0x1f, 0x8b, 0x08, 0x00], 0);
+  // A signature that occurs by chance inside compressed data: flag byte 0xb2
+  // sets reserved bits, so it must not be treated as a chunk boundary.
+  data.set([0x1f, 0x8b, 0x08, 0xb2], 32);
+  assert.deepEqual(gzipOffsets(data), [0]);
 });

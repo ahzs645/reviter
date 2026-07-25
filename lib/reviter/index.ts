@@ -6,6 +6,14 @@ export {
   scanArcWall2023Records,
 } from "./native-decoder";
 export { detectElemTableLayout, parseElemTable } from "./elem-table";
+export {
+  categoryDisplayName,
+  collectCategoryTokens,
+  deriveRecordCodeCategories,
+  isNamedCategory,
+  recordCodeKey,
+  resolveElementCategories,
+} from "./native-categories";
 export { compareRvtToIfc } from "./regression";
 export { boundsDimensions, cameraPoseForPreset, solidElementBounds } from "./viewer";
 export {
@@ -36,6 +44,10 @@ export type {
   LevelBand,
   MaterialData,
   MeshData,
+  NativeCategoryCodeConsensus,
+  NativeCategoryCount,
+  NativeCategorySource,
+  NativeCategorySummary,
   NativeProfileLocator,
   ProgressUpdate,
   ReaderDiagnostics,
