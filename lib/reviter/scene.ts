@@ -6,6 +6,8 @@
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
 import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+import { groupRings, triangulate, type Point2 } from "./polygon.ts";
+import type { Point3 } from "./sketch-curves.ts";
 
 import type {
   Bounds3,
@@ -21,6 +23,9 @@ const MESH_BATCH_SIZE = 2_000;
 
 /** Token thickness given to a face so it can be drawn as a pickable box. */
 const FACE_THICKNESS_FEET = 0.02;
+
+/** Fallback depth for a sketch whose element bounds have no vertical extent. */
+const MIN_PRISM_THICKNESS_FEET = 0.02;
 
 export function displayMaterials(): MaterialData[] {
   const fallback = (
@@ -279,6 +284,52 @@ function cornersGeometry(corners: [number, number, number][], origin: Vec3) {
   };
 }
 
+/**
+ * A slab, floor or roof as Revit models it: its sketch boundary extruded
+ * through the element's own thickness. The outer ring is the body and the
+ * remaining rings are its openings, so a stair well stays a hole instead of
+ * being paved over.
+ */
+function prismGeometry(loops: Point3[][], bounds: Bounds3, origin: Vec3) {
+  const plan = loops.map((ring): Point2[] => ring.map(([x, y]) => [x, y]));
+  const z0 = bounds.min.z;
+  const z1 = bounds.max.z > bounds.min.z ? bounds.max.z : bounds.min.z + MIN_PRISM_THICKNESS_FEET;
+
+  const items: { positions: number[]; indices: number[] }[] = [];
+  for (const { outer, holes } of groupRings(plan)) {
+    const cap = triangulate(outer, holes);
+    if (!cap.length) continue;
+
+    const rings = [outer, ...holes];
+    const vertices = rings.flat();
+    const positions: number[] = [];
+    for (const z of [z0, z1]) {
+      for (const [x, y] of vertices) positions.push(x - origin.x, y - origin.y, z - origin.z);
+    }
+
+    const top = vertices.length;
+    const indices: number[] = [];
+    // Bottom cap wound the other way so both caps face outwards.
+    for (let index = 0; index < cap.length; index += 3) {
+      indices.push(cap[index]!, cap[index + 2]!, cap[index + 1]!);
+      indices.push(top + cap[index]!, top + cap[index + 1]!, top + cap[index + 2]!);
+    }
+    // Sides, ring by ring, so the seam bridging an opening into its shell never
+    // becomes a wall that does not exist.
+    let base = 0;
+    for (const ring of rings) {
+      for (let index = 0; index < ring.length; index += 1) {
+        const a = base + index;
+        const b = base + ((index + 1) % ring.length);
+        indices.push(a, b, top + b, a, top + b, top + a);
+      }
+      base += ring.length;
+    }
+    items.push({ positions, indices });
+  }
+  return items;
+}
+
 function boxGeometry(bounds: Bounds3, origin: Vec3) {
   const { min, max } = bounds;
   const points = [
@@ -372,24 +423,33 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
       const batch = roleRecords.slice(start, start + MESH_BATCH_SIZE);
       const drawnIds: number[] = [];
       for (const record of batch) {
-        // Prefer the element's own reconstructed geometry — its faces if it has
-        // them, else its rebuilt solid — and fall back to the envelope.
-        const items = record.orientedBox
-          ? [cornersGeometry(record.orientedBox, origin)]
-          : record.quads?.length
-            ? record.quads.map((quad) => quadGeometry(quad, origin))
-            : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
+        // Prefer the element's own reconstructed geometry — its sketch boundary
+        // if it has one, then its faces, then its rebuilt solid — and fall back
+        // to the envelope.
+        const prism = record.loops?.length
+          ? prismGeometry(record.loops, record.boundsFeet, origin)
+          : [];
+        const items = prism.length
+          ? prism
+          : record.orientedBox
+            ? [cornersGeometry(record.orientedBox, origin)]
+            : record.quads?.length
+              ? record.quads.map((quad) => quadGeometry(quad, origin))
+              : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
         const shade = 0.88 + elevation * 0.22;
         const [tintR, tintG, tintB] = ROLE_TINT[role];
         for (const item of items) {
+          const vertices = item.positions.length / 3;
           positions.push(...item.positions);
           indices.push(...item.indices.map((index) => index + vertexOffset));
-          vertexOffset += 8;
-          drawnIds.push(record.elementId);
-          for (let vertex = 0; vertex < 8; vertex += 1) {
+          vertexOffset += vertices;
+          for (let triangle = 0; triangle < item.indices.length / 3; triangle += 1) {
+            drawnIds.push(record.elementId);
+          }
+          for (let vertex = 0; vertex < vertices; vertex += 1) {
             colors.push(tintR * shade, tintG * shade, tintB * shade);
           }
         }
@@ -400,7 +460,8 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         indices: new Uint32Array(indices),
         colors: new Float32Array(colors),
         materialIndex: DISPLAY_MATERIAL_INDEX[role],
-        // One entry per 12-triangle group, which is what picking indexes.
+        // One entry per triangle: drawn items vary in size, so the face index
+        // picking reports is the only thing that indexes them all.
         elementIds: Uint32Array.from(drawnIds),
       });
     }

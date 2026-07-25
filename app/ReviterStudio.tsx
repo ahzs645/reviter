@@ -406,6 +406,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={result?.stats.placedInstances ? "good" : "off"}
             />
             <FidelityRow
+              label="Sketch boundaries"
+              value={result?.stats.sketchBoundaryElements
+                ? `${result.stats.sketchBoundaryElements.toLocaleString()} extruded`
+                : result ? "Not recovered" : "Not evaluated"}
+              tone={result?.stats.sketchBoundaryElements ? "good" : "off"}
+            />
+            <FidelityRow
               label="Native solids"
               value={result?.stats.nativeSolids
                 ? `${result.stats.nativeSolids.toLocaleString()} rebuilt`

@@ -215,7 +215,9 @@ export function ModelCanvas({
         return;
       }
       const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-      const elementId = elementIds?.[Math.floor(hit.faceIndex / 12)];
+      // One id per triangle: drawn items range from a 12-triangle box to an
+      // extruded sketch boundary with as many triangles as its ring has edges.
+      const elementId = elementIds?.[hit.faceIndex];
       onSelectElement(elementId ?? null);
     };
     canvas.addEventListener("pointerdown", handlePointerDown);

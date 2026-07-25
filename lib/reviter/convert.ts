@@ -31,6 +31,7 @@ import {
   type LocalBounds,
 } from "./instanced-geometry.ts";
 import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
+import { boundaryLoopsFor, collectSketchCurves, type SketchCurve } from "./sketch-curves.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -78,6 +79,23 @@ const DEFAULT_MAX_SEGMENTS = 12_000;
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
+
+/** Same backstop for sketch edges, which are chained pairwise per element. */
+const MAX_SKETCH_CURVES = 400_000;
+
+/**
+ * Categories Revit models as a sketch extruded through a thickness. Boundary
+ * recovery is limited to these because chaining is quadratic in the edges an
+ * element owns, and because outside them a closed ring is not the element's
+ * shape — a wall's edges bound its faces, not its footprint.
+ */
+const SKETCH_BOUNDARY_CATEGORIES = new Set([
+  -2000032, // Floors
+  -2000035, // Roofs
+  -2000038, // Ceilings
+  -2000180, // Ramps
+  -2001300, // StructuralFoundation
+]);
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
@@ -154,6 +172,8 @@ export function convertRvtBytes(
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
     const planesByElement = new Map<number, PlanePatch[]>();
+    const curvesByOwner = new Map<number, SketchCurve[]>();
+    let sketchCurves = 0;
     const typeReferences = new Map<number, number>();
     const typeNames = new Map<number, string>();
     const nativeProfiles: NativeProfileLocator[] = [];
@@ -209,6 +229,14 @@ export function convertRvtBytes(
           const planes = planesByElement.get(owner);
           if (planes) planes.push(surface);
           else planesByElement.set(owner, [surface]);
+        }
+        if (sketchCurves < MAX_SKETCH_CURVES) {
+          for (const curve of collectSketchCurves(inflated)) {
+            sketchCurves += 1;
+            const owned = curvesByOwner.get(curve.owner);
+            if (owned) owned.push(curve);
+            else curvesByOwner.set(curve.owner, [curve]);
+          }
         }
         for (const table of collectElementParameters(inflated)) {
           const existing = elementParameters.get(table.elementId);
@@ -390,12 +418,20 @@ export function convertRvtBytes(
 
 
     let namedTypeElements = 0;
+    let sketchBoundaryElements = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
       record.orientedBox = orientedBoxes.get(record.elementId);
+      if (record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId)) {
+        const loops = boundaryLoopsFor(record.elementId, curvesByOwner);
+        if (loops.length) {
+          record.loops = loops;
+          sketchBoundaryElements += 1;
+        }
+      }
       const typeId = typeReferences.get(record.elementId);
       if (typeId == null) continue;
       record.typeId = typeId;
@@ -496,8 +532,10 @@ export function convertRvtBytes(
           candidatesFound: elementBounds.length,
           candidatesFocused: displayBounds.length,
           candidatesUsed: displayBounds.length,
-          vertexCount: displayBounds.length * 8,
-          triangleCount: displayBounds.length * 12,
+          // Counted from the batches themselves: a drawn item is no longer
+          // always an eight-vertex box.
+          vertexCount: meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0),
+          triangleCount: meshes.reduce((total, mesh) => total + mesh.indices.length / 3, 0),
           meshCount: meshes.length,
           boundsRecordsFound: elementBounds.length,
           solidBoundsRecords: boundedSolids.length,
@@ -507,6 +545,8 @@ export function convertRvtBytes(
           nativeSolids: solidsByElement.size,
           faceOnlyElements: quadsByElement.size,
           placedInstances: orientedBoxes.size,
+          sketchBoundaryElements,
+          sketchCurves,
           solidOnlyElements,
           typedElements: typeReferences.size,
           namedTypeElements,

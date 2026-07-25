@@ -2,6 +2,7 @@ import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
 import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 
@@ -11,6 +12,7 @@ export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.t
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
 export type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -30,7 +32,11 @@ export type MeshData = {
   indices: Uint32Array;
   colors: Float32Array;
   materialIndex: number;
-  /** One native Revit element id per 12-triangle box, when the mesh is an element-envelope batch. */
+  /**
+   * One native Revit element id per triangle, indexed by face index. Drawn
+   * items are no longer all 12-triangle boxes — an extruded sketch boundary has
+   * as many triangles as its ring has edges — so picking indexes per triangle.
+   */
   elementIds?: Uint32Array;
 };
 
@@ -99,6 +105,8 @@ export type ElementBoundsRecord = {
   quads?: SurfaceQuad[];
   /** Eight world corners of a placed family instance, in box-index order. */
   orientedBox?: [number, number, number][];
+  /** Sketch boundary rings, outer first, for a floor, roof, ceiling or ramp. */
+  loops?: Point3[][];
   boundsFeet: Bounds3;
 };
 
@@ -164,6 +172,10 @@ export type ConvertStats = {
   faceOnlyElements?: number;
   /** Family instances placed from a transform and a shared shape. */
   placedInstances?: number;
+  /** Elements extruded from a recovered sketch boundary rather than boxed. */
+  sketchBoundaryElements?: number;
+  /** Sketch edge records decoded from the partition stream. */
+  sketchCurves?: number;
   /** Elements linked to their type element. */
   typedElements?: number;
   /** Elements whose type element also yielded a name. */

@@ -13,6 +13,9 @@ import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { surfaceQuadsFor, wallSolidsFor } from "../lib/reviter/native-geometry.ts";
 import { instanceCorners } from "../lib/reviter/instanced-geometry.ts";
+import { boundaryLoopsFor, collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
+import { groupRings, ringArea, triangulate } from "../lib/reviter/polygon.ts";
+import type { Point2 } from "../lib/reviter/polygon.ts";
 import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
@@ -632,4 +635,94 @@ test("places a family instance through its transform and shared shape", () => {
   assert.deepEqual(corners[1], [10, 22, 3]);
   assert.deepEqual(corners[2], [9, 22, 3]);
   assert.deepEqual(corners[6], [9, 22, 7]);
+});
+
+test("decodes sketch edges and chains them into a ring regardless of stored order", () => {
+  // Four edges of a 10 x 6 rectangle, written out of order and each written
+  // twice in opposite directions, which is how the file stores them.
+  const corners: [number, number][] = [[0, 0], [10, 0], [10, 6], [0, 6]];
+  const edges: [number, number, number, number][] = [
+    [1, 2], [3, 0], [0, 1], [2, 3],
+  ].map(([from, to]) => {
+    const a = corners[from!]!;
+    const b = corners[to!]!;
+    return [a[0], a[1], b[0], b[1]];
+  }) as [number, number, number, number][];
+
+  const records = edges.flatMap((edge) => [edge, [edge[2], edge[3], edge[0], edge[1]]]);
+  const data = new Uint8Array(18 + records.length * 84);
+  const view = new DataView(data.buffer);
+  data.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], 0);
+  view.setUint32(10, 400238, true);
+
+  records.forEach((record, index) => {
+    const at = 18 + index * 84;
+    data.set([0x04, 0x00, 0x08, 0x01], at);
+    const [x0, y0, x1, y1] = record as [number, number, number, number];
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    const put = (slot: number, value: number) => view.setFloat64(at + 4 + slot * 8, value, true);
+    put(0, 0);
+    put(1, length);
+    put(2, x0);
+    put(3, y0);
+    put(4, 0);
+    put(5, (x1 - x0) / length);
+    put(6, (y1 - y0) / length);
+    put(7, 0);
+  });
+
+  const curves = collectSketchCurves(data);
+  assert.equal(curves.length, records.length);
+  assert.ok(curves.every((curve) => curve.owner === 400238 && curve.kind === "line"));
+
+  const rings = boundaryLoopsFor(400238, new Map([[400238, curves]]));
+  assert.equal(rings.length, 1, "the reversed copies must not become rings of their own");
+  assert.equal(rings[0]!.length, 4);
+  // Same four corners, in ring order, whatever order the records were in.
+  const plan = rings[0]!.map(([x, y]) => `${x},${y}`).sort();
+  assert.deepEqual(plan, ["0,0", "0,6", "10,0", "10,6"]);
+});
+
+test("triangulates a sketch boundary without paving over its openings", () => {
+  const outer: Point2[] = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  const hole: Point2[] = [[3, 3], [3, 6], [6, 6], [6, 3]];
+  const vertices = [...outer, ...hole];
+  const triangles = triangulate(outer, [hole]);
+  let covered = 0;
+  for (let index = 0; index < triangles.length; index += 3) {
+    const p = vertices[triangles[index]!]!;
+    const q = vertices[triangles[index + 1]!]!;
+    const r = vertices[triangles[index + 2]!]!;
+    covered += Math.abs((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])) / 2;
+  }
+  assert.equal(covered, ringArea(outer) - ringArea(hole));
+
+  // Revit sketches wind either way, and the hole has to survive both.
+  const reversed = triangulate([...outer].reverse(), [hole]);
+  assert.equal(reversed.length, triangles.length);
+});
+
+test("keeps disjoint sketch regions apart instead of subtracting one from the other", () => {
+  // Two separate wings and one opening in the first: ranked by area alone the
+  // second wing would be treated as a hole in the first.
+  const wingA: Point2[] = [[0, 0], [20, 0], [20, 20], [0, 20]];
+  const opening: Point2[] = [[5, 5], [5, 10], [10, 10], [10, 5]];
+  const wingB: Point2[] = [[30, 0], [45, 0], [45, 15], [30, 15]];
+
+  const groups = groupRings([wingA, wingB, opening]);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.holes.length).sort(), [0, 1]);
+
+  let covered = 0;
+  for (const group of groups) {
+    const vertices = [group.outer, ...group.holes].flat();
+    const triangles = triangulate(group.outer, group.holes);
+    for (let index = 0; index < triangles.length; index += 3) {
+      const p = vertices[triangles[index]!]!;
+      const q = vertices[triangles[index + 1]!]!;
+      const r = vertices[triangles[index + 2]!]!;
+      covered += Math.abs((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])) / 2;
+    }
+  }
+  assert.equal(covered, ringArea(wingA) + ringArea(wingB) - ringArea(opening));
 });

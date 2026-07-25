@@ -24,6 +24,10 @@ export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surf
 export { surfaceQuadsFor, wallSolids, wallSolidsFor } from "./native-geometry";
 export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
 export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
+export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";
+export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves";
+export { ringArea, triangulate } from "./polygon";
+export type { Point2 } from "./polygon";
 export { collectTypeLinks } from "./element-types";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";
