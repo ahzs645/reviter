@@ -1,8 +1,10 @@
+import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 
-export type { SchemaClass, SchemaSummary } from "./schema.ts";
+export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
+export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
 export type { PartitionName } from "./partition-names.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
@@ -80,6 +82,8 @@ export type ElementBoundsRecord = {
   categoryId?: number;
   categoryName?: string;
   categorySource?: NativeCategorySource;
+  /** Instance parameters decoded from the element's own parameter table. */
+  parameters?: ElementParameter[];
   boundsFeet: Bounds3;
 };
 
@@ -133,6 +137,8 @@ export type ConvertStats = {
   solidBoundsRecords: number;
   /** Length-delimited element objects recovered by chaining. */
   elementObjects?: number;
+  /** Elements carrying a decoded instance parameter table. */
+  parameterElements?: number;
   /** Release-specific object marker observed in this file, e.g. 0x08c6 in 2027. */
   elementObjectMarker?: number;
   durationMs: number;

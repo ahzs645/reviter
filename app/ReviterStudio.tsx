@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Element parameters"
+              value={result?.stats.parameterElements
+                ? `${result.stats.parameterElements.toLocaleString()} elements`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.parameterElements ? "good" : "off"}
+            />
+            <FidelityRow
               label="Element objects"
               value={result?.stats.elementObjects
                 ? `${result.stats.elementObjects.toLocaleString()} chained`
@@ -428,7 +435,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             />
             <FidelityRow
               label="BIM semantics"
-              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : result?.decoderCoverage.nativeCategorisedElements ? "Categories only" : "Unavailable"}
+              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.stats.parameterElements ? "Categories and parameters" : result?.decoderCoverage.nativeCategorisedElements ? "Categories only" : "Unavailable"}
               tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
@@ -564,6 +571,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
                         )}
                         <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {selectedRecord.parameters?.map((parameter) => (
+                          <div key={parameter.parameterId}>
+                            <dt>{parameter.name}</dt>
+                            <dd>{parameter.value.toFixed(4)} ft</dd>
+                          </div>
+                        ))}
                         <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
                         <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
                         <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>

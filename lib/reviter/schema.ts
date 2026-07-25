@@ -60,11 +60,31 @@ export type SchemaClass = {
   offset: number;
 };
 
+/**
+ * A class named in the schema that has no definition record of its own.
+ *
+ * The `u16` after the name references one of the tags this file *does* define.
+ * What the reference means is not established — it is not the nearest preceding
+ * definition (472 of 504 differ, so it is not a proximity artefact), and it may
+ * be an ancestor, a mixin, or a protocol. It is reported as a reference and
+ * nothing stronger. Requiring it to match a known tag is what keeps these
+ * clean: matching 1 of 184 specific values out of 65,536 by chance predicts
+ * about six false entries across the whole stream.
+ */
+export type SchemaReference = {
+  name: string;
+  /** Tag referenced by this name; resolves to one of `taggedClasses`. */
+  tagReference: number;
+  offset: number;
+};
+
 export type SchemaSummary = {
   /** Inflated size of `Formats/Latest`. */
   byteLength: number;
   /** Classes that carry a top-level serialization tag and a parent record. */
   taggedClasses: SchemaClass[];
+  /** Classes named without a definition record, referencing a defined tag. */
+  referencedClasses: SchemaReference[];
   /** Name-and-tag matches rejected for having no well-formed parent record. */
   rejectedCandidates: number;
 };
@@ -150,15 +170,38 @@ export function parseSchemaTags(data: Uint8Array): SchemaClass[] {
 
 export function summariseSchema(data: Uint8Array): SchemaSummary {
   if (data.byteLength < 8) {
-    return { byteLength: data.byteLength, taggedClasses: [], rejectedCandidates: 0 };
+    return {
+      byteLength: data.byteLength,
+      taggedClasses: [],
+      referencedClasses: [],
+      rejectedCandidates: 0,
+    };
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const candidates = nameCandidates(data, view);
   const tagged = candidates.filter((candidate) => candidate.word & 0x8000).length;
   const taggedClasses = parseSchemaTags(data).sort((a, b) => a.tag - b.tag);
+
+  const definedTags = new Set(taggedClasses.map((entry) => entry.tag));
+  const definedNames = new Set(taggedClasses.map((entry) => entry.name));
+  const referencedClasses: SchemaReference[] = [];
+  const seenReferences = new Set<string>();
+  for (const candidate of candidates) {
+    if (candidate.word & 0x8000) continue;
+    if (definedNames.has(candidate.name) || seenReferences.has(candidate.name)) continue;
+    if (!definedTags.has(candidate.word)) continue;
+    seenReferences.add(candidate.name);
+    referencedClasses.push({
+      name: candidate.name,
+      tagReference: candidate.word,
+      offset: candidate.offset,
+    });
+  }
+
   return {
     byteLength: data.byteLength,
     taggedClasses,
+    referencedClasses: referencedClasses.sort((a, b) => a.name.localeCompare(b.name)),
     rejectedCandidates: Math.max(0, tagged - taggedClasses.length),
   };
 }

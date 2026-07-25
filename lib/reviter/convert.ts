@@ -20,6 +20,7 @@ import {
   solidBounds,
 } from "./bounds-records.ts";
 import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
+import { collectElementParameters } from "./element-parameters.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -58,6 +59,7 @@ import type {
   ElementBoundsRecord,
   NativeProfileLocator,
   PartitionRecordLocator,
+  ElementParameter,
   ProgressUpdate,
   Segment,
 } from "./types";
@@ -137,6 +139,7 @@ export function convertRvtBytes(
     const categoryTokens: CategoryToken[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
     const elementObjects: ElementObject[] = [];
+    const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
@@ -170,6 +173,14 @@ export function convertRvtBytes(
               inflatedBytes: inflated.byteLength,
             });
           }
+        }
+        for (const table of collectElementParameters(inflated)) {
+          const existing = elementParameters.get(table.elementId);
+          if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
+          else elementParameters.set(
+            table.elementId,
+            new Map(table.parameters.map((parameter) => [parameter.parameterId, parameter])),
+          );
         }
         if (categoryTokens.length < MAX_CATEGORY_TOKENS) {
           for (const token of collectCategoryTokens(inflated)) categoryTokens.push(token);
@@ -247,6 +258,11 @@ export function convertRvtBytes(
       categoryTokens,
       elementIndex?.uniqueElementIds,
     );
+
+    for (const record of elementBounds) {
+      const parameters = elementParameters.get(record.elementId);
+      if (parameters?.size) record.parameters = [...parameters.values()];
+    }
 
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
     const unique = deduplicate(candidates);
@@ -344,6 +360,7 @@ export function convertRvtBytes(
           boundsRecordsFound: elementBounds.length,
           solidBoundsRecords: boundedSolids.length,
           elementObjects: elementObjects.length,
+          parameterElements: elementParameters.size,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
           durationMs: performance.now() - started,
         },

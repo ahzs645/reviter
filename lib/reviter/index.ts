@@ -17,7 +17,10 @@ export {
 export type { DisplayRole, DisplaySelection } from "./scene";
 export { scanSegments, segmentScaleFor } from "./segment-scan";
 export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories";
+export { builtInParameterName, parameterDisplayName } from "./built-in-parameters";
 export { chainElementObjects, dominantMarker } from "./element-objects";
+export { collectElementParameters } from "./element-parameters";
+export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";
 export { parseSchemaTags, summariseSchema } from "./schema";
 export { parsePartitionNames } from "./partition-names";
@@ -75,6 +78,7 @@ export type {
   NativeCategorySummary,
   NativeProfileLocator,
   SchemaClass,
+  SchemaReference,
   SchemaSummary,
   CoverageSummary,
   PartitionName,

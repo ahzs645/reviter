@@ -44,6 +44,22 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
 
+## Element parameters
+
+An element's instance parameters are a flat table of `(BuiltInParameter id, value)` pairs:
+
+```text
+[u32 count] [count x ( i64 negative parameter id, f64 value in feet )]
+```
+
+The table carries no element id. Ownership comes from the anchor in front of it, where the element restates its own id — `ff ff ff ff 10 03 01 00 00 00 [u64 element id]`. Which anchor is used matters: resolving by "nearest preceding record start" instead lets the type-reference slot inside an element steal ownership, collapsing the assignment and misfiling most wall tables onto ids the IFC export has never heard of.
+
+**Verification.** Over the 6,278 walls that have both a decoded table and an IFC swept-solid depth, the value stored under parameter `-1001101` reproduces that depth to within 1e-6 ft on **6,272 of them — 99.9%**. The next best parameter matches 2.3%. That single check confirms the table framing, the f64-in-feet encoding, and the element join at once.
+
+Parameter names come from the `BuiltInParameter` values published in Autodesk's Revit 2026 API documentation, and are corroborating evidence rather than part of the decode: 125 of the 131 parameter ids found in the supplied project resolve, and the names that land beside the verified height are `WALL_USER_HEIGHT_PARAM` "Unconnected Height", `WALL_BASE_OFFSET` "Base Offset", and `WALL_TOP_OFFSET` "Top Offset" — exactly the company a wall height should keep. Six ids, `-1001101` among them, are absent from the published enum; the whole `-1000000…-1000999` band is empty there while its neighbours are dense, so these are most likely internal parameters Autodesk does not surface. They are reported by number rather than guessed at.
+
+Selecting an element in the viewer now lists its decoded parameters by name.
+
 ## Element objects
 
 Elements in `Partitions/*` are length-delimited, and the length is written **behind** the object rather than in front of it:

@@ -8,6 +8,7 @@ import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
 import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
+import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -462,4 +463,32 @@ test("chains element objects through the length echo behind each object", () => 
   const broken = build([64, 48, 80]);
   new DataView(broken.buffer).setUint32(64 + 16, 999, true);
   assert.deepEqual(chainElementObjects(broken, [0]).map((object) => object.elementId), []);
+});
+
+test("decodes an element parameter table from its own anchor", () => {
+  const parameters: [number, number][] = [[-1001105, 13.123359580052492], [-1001108, -0.65616797900262]];
+  const data = new Uint8Array(64 + parameters.length * 16);
+  const view = new DataView(data.buffer);
+  // ff ff ff ff 10 03 01 00 00 00 then the element restating its own id.
+  data.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], 8);
+  view.setUint32(18, 978605, true);
+  view.setUint32(22, 0, true);
+  const table = 32;
+  view.setUint32(table, parameters.length, true);
+  parameters.forEach(([id, value], index) => {
+    view.setUint32(table + 4 + index * 16, id + 0x1_0000_0000, true);
+    view.setUint32(table + 8 + index * 16, 0xffff_ffff, true);
+    view.setFloat64(table + 12 + index * 16, value, true);
+  });
+
+  const decoded = collectElementParameters(data);
+  assert.equal(decoded.length, 1);
+  assert.equal(decoded[0]!.elementId, 978605);
+  assert.deepEqual(
+    decoded[0]!.parameters.map(({ parameterId, name, value }) => ({ parameterId, name, value })),
+    [
+      { parameterId: -1001105, name: "Unconnected Height", value: 13.123359580052492 },
+      { parameterId: -1001108, name: "Base Offset", value: -0.65616797900262 },
+    ],
+  );
 });
