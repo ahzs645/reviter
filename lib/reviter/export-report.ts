@@ -35,6 +35,7 @@ export function makeReport(
       nativeCategories: result.nativeCategories ?? null,
       schema: result.schema ?? null,
       partitionNames: result.partitionNames ?? null,
+      streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       materials: result.materials,
       standardsAwareReader: result.readerDiagnostics ?? null,

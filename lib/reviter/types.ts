@@ -1,8 +1,10 @@
 import type { SchemaSummary } from "./schema.ts";
+import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 
 export type { SchemaClass, SchemaSummary } from "./schema.ts";
 export type { PartitionName } from "./partition-names.ts";
+export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -265,6 +267,8 @@ export type ConvertResult = {
   schema?: SchemaSummary;
   /** Workset or family partition names decoded from `Global/PartitionTable`. */
   partitionNames?: PartitionName[];
+  /** Every container stream, and which decoder claims it. */
+  coverage?: CoverageSummary;
   decoderCoverage: DecoderCoverage;
   origin: Vec3;
   bbox: { min: Vec3; max: Vec3 };

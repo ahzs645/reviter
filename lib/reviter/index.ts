@@ -18,6 +18,7 @@ export type { DisplayRole, DisplaySelection } from "./scene";
 export { scanSegments, segmentScaleFor } from "./segment-scan";
 export { parseSchemaTags, summariseSchema } from "./schema";
 export { parsePartitionNames } from "./partition-names";
+export { measureStream, summariseCoverage } from "./stream-coverage";
 export type { SegmentScale } from "./segment-scan";
 export {
   decodeArcWall2023Record,
@@ -72,7 +73,10 @@ export type {
   NativeProfileLocator,
   SchemaClass,
   SchemaSummary,
+  CoverageSummary,
   PartitionName,
+  StreamCoverage,
+  StreamDecoder,
   ProgressUpdate,
   ReaderDiagnostics,
   ReferenceMeshData,

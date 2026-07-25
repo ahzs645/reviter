@@ -44,6 +44,26 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
 
+## Stream coverage
+
+Reviter reports what is inside a Revit file and how much of it is understood, stream by stream, so the remaining gap is measurable instead of invisible. Every CFB stream is listed whether or not anything is decoded from it, with its stored size, chunk count, inflated size, and the decoder that claims it.
+
+Each stream is graded by depth rather than weighed by bytes. Weighing by bytes would be flattering and wrong: the partition stream is 69 MB of the 70 MB file, so "claiming" it would read as 99% coverage while the decoders recover element envelopes and category tokens from a payload that inflates to 384 MB. For the supplied 2027 project the honest figure is **2 streams read fully, 4 read partially, and 8 not decoded at all**:
+
+| Stream | Stored | Depth | What is read |
+| --- | --- | --- | --- |
+| `Partitions/325` | 69.00 MB | partial | element bounds records and `BuiltInCategory` tokens; shapes, materials, and parameters are not decoded |
+| `Global/ContentDocuments` | 0.47 MB | none | structured content index; its ID space does not join `ElemTable` |
+| `Global/ElemTable` | 0.39 MB | partial | native element-ID index; the remaining record fields are not decoded |
+| `Formats/Latest` | 0.19 MB | partial | serializable class inventory; field lists are not walked |
+| `Global/Latest` | 0.14 MB | none | document-level object graph; wire format not decoded |
+| `Global/DocumentIncrementTable` | 0.02 MB | none | incremental save table |
+| `Global/History` | 0.02 MB | none | document edit history |
+| `Global/PartitionTable` | small | partial | workset / family partition names |
+| `BasicFileInfo` | small | full | release, build, locale, document identity |
+| `RevitPreview4.0` | small | full | embedded preview image |
+| `ProjectInformation`, `TransmissionData`, `Contents`, `PartAtom` | small | none | not decoded |
+
 ## Embedded schema
 
 `Formats/Latest` is Autodesk's own dictionary for the on-disk object graph — roughly half a megabyte of class names, inheritance, and field declarations shipped inside every Revit file. A class that is serializable at the top level is written as:

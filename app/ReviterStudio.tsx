@@ -398,6 +398,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Container streams"
+              value={result?.coverage
+                ? `${result.coverage.fullStreams} full · ${result.coverage.partialStreams} partial · ${result.coverage.undecodedStreams} undecoded`
+                : result ? "Not evaluated" : "Not evaluated"}
+              tone={result?.coverage?.undecodedStreams ? "warn" : result?.coverage ? "good" : "off"}
+            />
+            <FidelityRow
               label="Embedded schema"
               value={result?.schema
                 ? `${result.schema.taggedClasses.length} tagged classes`

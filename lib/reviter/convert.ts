@@ -28,6 +28,7 @@ import {
 import { decoderPlanForVersion } from "./native-decoder.ts";
 import { asBytes, gzipOffsets, inflateRevitChunk, leadingU32 } from "./revit-container.ts";
 import { summariseSchema } from "./schema.ts";
+import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
 import {
   buildBoundsMeshes,
@@ -113,6 +114,15 @@ export function convertRvtBytes(
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
       if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
     }
+    const coverage = summariseCoverage(
+      cfb.FileIndex
+        .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+        .filter(({ entry }) => entry.size > 0)
+        .map(({ entry, path }) =>
+          measureStream(path.replace(/^Root Entry\//, ""), asBytes(entry.content)),
+        ),
+    );
+
     const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, summariseSchema);
     const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
@@ -252,6 +262,7 @@ export function convertRvtBytes(
         nativeCategories,
         schema,
         partitionNames,
+        coverage,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
           activeDecoders: [
@@ -351,6 +362,7 @@ export function convertRvtBytes(
       nativeCategories,
       schema,
       partitionNames,
+      coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
         activeDecoders: nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : [],

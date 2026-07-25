@@ -6,6 +6,7 @@ import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../
 import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
+import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -405,4 +406,27 @@ test("reads partition names as UTF-16 with a character count", () => {
   // A count that overruns the stream is not a name.
   view.setUint32(0, 4_000, true);
   assert.deepEqual(parsePartitionNames(data), []);
+});
+
+test("accounts for every container stream and grades how deeply it is read", () => {
+  const streams = [
+    measureStream("BasicFileInfo", new Uint8Array(16)),
+    measureStream("Global/ElemTable", new Uint8Array(32)),
+    measureStream("Global/History", new Uint8Array(64)),
+    measureStream("Something/Unknown", new Uint8Array(8)),
+  ];
+  assert.deepEqual(streams.map((stream) => [stream.decoder, stream.depth]), [
+    ["metadata", "full"],
+    ["element-index", "partial"],
+    ["none", "none"],
+    ["none", "none"],
+  ]);
+
+  const summary = summariseCoverage(streams);
+  assert.deepEqual(
+    { full: summary.fullStreams, partial: summary.partialStreams, undecoded: summary.undecodedStreams },
+    { full: 1, partial: 1, undecoded: 2 },
+  );
+  // Largest stream first, so the biggest unread payload is never buried.
+  assert.equal(summary.streams[0]!.path, "Global/History");
 });
