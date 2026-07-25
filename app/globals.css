@@ -456,3 +456,14 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.coverage-panel { margin-top: 18px; padding: 16px 18px; border: 1px solid rgba(83, 100, 104, .18); border-radius: 12px; background: rgba(255, 255, 255, .55); }
+.coverage-table { width: 100%; border-collapse: collapse; font-family: var(--font-plex-mono); font-size: 10px; }
+.coverage-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid rgba(83, 100, 104, .1); color: #3d4d51; white-space: nowrap; }
+.coverage-table td:first-child { font-weight: 600; }
+.coverage-table td:nth-child(2), .coverage-table td:nth-child(3) { text-align: right; color: #6b7b7f; }
+.coverage-table td:nth-child(4) { text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
+.coverage-table td:last-child { white-space: normal; color: #6b7b7f; }
+.coverage-full td:nth-child(4) { color: #1f7a5a; }
+.coverage-partial td:nth-child(4) { color: #a8730f; }
+.coverage-none td:nth-child(4) { color: #97514b; }

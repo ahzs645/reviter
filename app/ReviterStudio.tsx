@@ -2,13 +2,9 @@
 
 import { basicFileInfo, openFile, tryThumbnail, type FileInfo } from "@phi-ag/rvt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import {
   boundsDimensions,
-  cameraPoseForPreset,
   downloadBlob,
   makeDxf,
   makeGlb,
@@ -23,735 +19,24 @@ import {
   type IfcWorkerRequest,
   type IfcWorkerResponse,
   type PairedRegressionResult,
-  type ReferenceMeshData,
   type NavigationMode,
   type RenderMode,
   type WorkerRequest,
   type WorkerResponse,
 } from "../lib/reviter";
 
-type Phase = "idle" | "reading" | "converting" | "ready" | "error";
-type ViewMode = "perspective" | "plan";
-type ReferencePhase = "idle" | "reading" | "ready" | "error";
-type GeometrySource = "autodesk" | "reference" | "recovered";
-type ViewerPanel = "none" | "model" | "properties";
-type CameraRequest = { preset: CameraPreset; sequence: number };
-type ReferenceLoadState = "idle" | "loading" | "ready" | "error";
-type ReviterGlobal = typeof globalThis & {
-  __REVITER_STATIC_WORKERS__?: { rvt?: string; ifc?: string };
-};
-type AutodeskMeshRecord = {
-  id: number;
-  name: string;
-  material: string;
-  triangles: number;
-};
-
-const AUTODESK_REFERENCE_FILE = "UNBC Model - 2026-06-30 - FINAL (Fixed Library).rvt";
-const AUTODESK_REFERENCE_BOUNDS = {
-  min: { x: -108.9497, y: -9.7, z: -187.3832 },
-  max: { x: 108.9497, y: 9.7, z: 187.3832 },
-};
-const AUTODESK_HOME_CAMERA = {
-  position: new THREE.Vector3(41.734, 26.243, -88.721),
-  target: new THREE.Vector3(128.105, 17.516, -36.128),
-  up: new THREE.Vector3(0.07347, 0.99629, 0.04472),
-  fov: 62.7447,
-};
-const AUTODESK_PREVIEW_RESULT: ConvertResult = {
-  ok: true,
-  fileName: AUTODESK_REFERENCE_FILE,
-  byteLength: 0,
-  meshes: [],
-  materials: [],
-  segments: [],
-  elementBounds: [],
-  nativeProfiles: [],
-  decoderCoverage: {
-    revitVersion: 2026,
-    activeDecoders: [],
-    nativeCurves: 0,
-    nativeProfiles: 0,
-    nativeMeshes: 0,
-    nativeMaterialDefinitions: 0,
-    nativeMaterialAssignments: 0,
-    approximateSolids: 0,
-    geometryFidelity: "diagnostic-only",
-    materialFidelity: "display-fallback",
-  },
-  origin: { x: 0, y: 0, z: 0 },
-  bbox: AUTODESK_REFERENCE_BOUNDS,
-  levels: [],
-  stats: {
-    streamCount: 0,
-    partitionStreams: 0,
-    gzipChunks: 0,
-    inflatedBytes: 0,
-    candidatesFound: 0,
-    candidatesFocused: 0,
-    candidatesUsed: 0,
-    vertexCount: 0,
-    triangleCount: 1_220_000,
-    meshCount: 8_698,
-    boundsRecordsFound: 0,
-    solidBoundsRecords: 0,
-    durationMs: 0,
-  },
-  warnings: [],
-  method: "partition-coordinate-recovery",
-};
-
-function hasAutodeskReference(fileName: string): boolean {
-  return fileName.localeCompare(AUTODESK_REFERENCE_FILE, undefined, { sensitivity: "base" }) === 0;
-}
-
-function publicAssetUrl(fileName: string): string {
-  const base = document.baseURI.replace(/[?#].*$/, "").replace(/[^/]*$/, "");
-  return `${base}${fileName}`;
-}
-
-function staticWorkerUrl(kind: "rvt" | "ifc"): string | undefined {
-  return (globalThis as ReviterGlobal).__REVITER_STATIC_WORKERS__?.[kind];
-}
-
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1_024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1_024;
-  let unit = units[0];
-  for (let index = 1; index < units.length && value >= 1_024; index += 1) {
-    value /= 1_024;
-    unit = units[index];
-  }
-  return `${value.toFixed(value >= 100 ? 0 : 1)} ${unit}`;
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
-}
-
-function savedFileName(path: string | undefined): string | null {
-  if (!path) return null;
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? null;
-}
-
-function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.Group {
-  const group = new THREE.Group();
-  const isElementBounds = result.method === "partition-bounds-recovery";
-  const technical = renderMode === "technical";
-  group.name = "Reviter recovered geometry";
-  group.userData = {
-    sourceFile: result.fileName,
-    method: result.method,
-    originFeet: result.origin,
-    fidelity: "experimental",
-  };
-  for (const data of result.meshes) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
-    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geometry.computeVertexNormals();
-    const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
-    const sourceColor = sourceMaterial
-      ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
-      : new THREE.Color(0xb9cbe0);
-    const glazingProxy = data.name.startsWith("Glazing");
-    const material = new THREE.MeshStandardMaterial({
-      color: sourceColor,
-      vertexColors: !technical,
-      roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
-      metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
-      flatShading: true,
-      side: THREE.DoubleSide,
-      transparent: isElementBounds && (!technical || glazingProxy),
-      opacity: isElementBounds ? (technical ? (glazingProxy ? 0.58 : 1) : 0.32) : 1,
-      depthWrite: technical ? !glazingProxy : !isElementBounds,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = data.name;
-    mesh.castShadow = technical;
-    mesh.receiveShadow = technical;
-    mesh.userData.elementIds = data.elementIds;
-    mesh.renderOrder = 1;
-    group.add(mesh);
-    if (isElementBounds) {
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geometry, 1),
-        new THREE.LineBasicMaterial({
-          color: technical ? 0x263c55 : 0x9be7e3,
-          transparent: true,
-          opacity: technical ? 0.56 : 0.68,
-          depthWrite: false,
-        }),
-      );
-      edges.name = `${data.name} edges`;
-      edges.renderOrder = 2;
-      group.add(edges);
-    }
-  }
-  return group;
-}
-
-function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: RenderMode): THREE.Group {
-  const group = new THREE.Group();
-  const technical = renderMode === "technical";
-  group.name = "IFC reference geometry";
-  group.userData = { source: "paired-ifc", fidelity: "reference" };
-  for (const data of meshes) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
-    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geometry.computeVertexNormals();
-    const color = technical
-      ? new THREE.Color(data.matched ? 0xc6d6e8 : 0xaebed2)
-      : new THREE.Color().setRGB(...data.color);
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      emissive: data.matched ? color.clone().multiplyScalar(0.08) : new THREE.Color(0x000000),
-      roughness: technical ? 0.84 : data.matched ? 0.58 : 0.82,
-      metalness: technical ? 0 : 0.02,
-      side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = data.name;
-    mesh.castShadow = technical;
-    mesh.receiveShadow = technical;
-    mesh.renderOrder = data.matched ? 2 : 1;
-    group.add(mesh);
-    if (technical && data.indices.length <= 600_000) {
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geometry, 28),
-        new THREE.LineBasicMaterial({ color: 0x263c55, transparent: true, opacity: 0.42 }),
-      );
-      edges.name = `${data.name} edges`;
-      group.add(edges);
-    }
-  }
-  return group;
-}
-
-function styleAutodeskReference(root: THREE.Object3D, renderMode: RenderMode) {
-  const styled = new Set<THREE.Material>();
-  root.name = "Autodesk derivative reference";
-  root.userData = {
-    source: "autodesk-svf-derivative",
-    fidelity: "reference",
-    fragments: 51_420,
-    materials: 22,
-  };
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.castShadow = renderMode === "technical";
-    mesh.receiveShadow = renderMode === "technical";
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const material of materials) {
-      if (styled.has(material)) continue;
-      styled.add(material);
-      material.side = THREE.DoubleSide;
-      const standard = material as THREE.MeshStandardMaterial;
-      if (standard.isMeshStandardMaterial) {
-        standard.metalness = 0;
-        standard.roughness = renderMode === "technical" ? 0.82 : 0.68;
-        if (renderMode === "technical") {
-          standard.color.lerp(new THREE.Color(0xe3e7ec), 0.18);
-        } else {
-          standard.transparent = true;
-          standard.opacity = Math.min(standard.opacity, 0.24);
-          standard.depthWrite = false;
-        }
-      }
-      material.needsUpdate = true;
-    }
-  });
-}
-
-function autodeskPoseForPreset(preset: CameraPreset, radius: number) {
-  const target = new THREE.Vector3();
-  if (preset === "home") {
-    return {
-      position: AUTODESK_HOME_CAMERA.position.clone(),
-      target: AUTODESK_HOME_CAMERA.target.clone(),
-      up: AUTODESK_HOME_CAMERA.up.clone(),
-      fov: AUTODESK_HOME_CAMERA.fov,
-    };
-  }
-  if (preset === "top") {
-    return {
-      position: new THREE.Vector3(0, radius * 2.25, 0),
-      target,
-      up: new THREE.Vector3(0, 0, -1),
-      fov: 45,
-    };
-  }
-  if (preset === "front") {
-    return {
-      position: new THREE.Vector3(0, radius * 0.22, radius * 2.25),
-      target,
-      up: new THREE.Vector3(0, 1, 0),
-      fov: 45,
-    };
-  }
-  return {
-    position: new THREE.Vector3(radius * 2.25, radius * 0.22, 0),
-    target,
-    up: new THREE.Vector3(0, 1, 0),
-    fov: 45,
-  };
-}
-
-function autodeskFitPose(radius: number) {
-  const fovRadians = THREE.MathUtils.degToRad(AUTODESK_HOME_CAMERA.fov);
-  const fitDistance = (radius / Math.sin(fovRadians / 2)) * 0.55;
-  const direction = AUTODESK_HOME_CAMERA.position
-    .clone()
-    .sub(AUTODESK_HOME_CAMERA.target)
-    .normalize();
-  return {
-    position: direction.multiplyScalar(fitDistance),
-    target: new THREE.Vector3(),
-    up: AUTODESK_HOME_CAMERA.up.clone(),
-    fov: AUTODESK_HOME_CAMERA.fov,
-  };
-}
-
-function disposeGroup(group: THREE.Object3D) {
-  const geometries = new Set<THREE.BufferGeometry>();
-  const materials = new Set<THREE.Material>();
-  group.traverse((object) => {
-    const renderable = object as THREE.Mesh | THREE.LineSegments;
-    if (!(object as THREE.Mesh).isMesh && !(object as THREE.LineSegments).isLineSegments) return;
-    geometries.add(renderable.geometry);
-    if (Array.isArray(renderable.material)) renderable.material.forEach((material) => materials.add(material));
-    else materials.add(renderable.material);
-  });
-  geometries.forEach((geometry) => geometry.dispose());
-  materials.forEach((material) => material.dispose());
-}
-
-function applyNavigationMode(controls: OrbitControls, mode: NavigationMode) {
-  controls.mouseButtons.LEFT = mode === "pan"
-    ? THREE.MOUSE.PAN
-    : mode === "zoom"
-      ? THREE.MOUSE.DOLLY
-      : THREE.MOUSE.ROTATE;
-  controls.mouseButtons.RIGHT = mode === "orbit" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
-}
-
-function ModelCanvas({
-  result,
-  comparison,
-  source,
-  view,
-  renderMode,
-  navigationMode,
-  cameraRequest,
-  sectionEnabled,
-  selectedElementId,
-  onSelectElement,
-}: {
-  result: ConvertResult;
-  comparison: PairedRegressionResult | null;
-  source: GeometrySource;
-  view: ViewMode;
-  renderMode: RenderMode;
-  navigationMode: NavigationMode;
-  cameraRequest: CameraRequest;
-  sectionEnabled: boolean;
-  selectedElementId: number | null;
-  onSelectElement: (elementId: number | null) => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const runtimeRef = useRef<{
-    scene: THREE.Scene;
-    camera: THREE.PerspectiveCamera;
-    renderer: THREE.WebGLRenderer;
-    controls: OrbitControls;
-    root: THREE.Group;
-    center: THREE.Vector3;
-    radius: number;
-    selectionOverlay: THREE.Group | null;
-  } | null>(null);
-  const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const technical = renderMode === "technical";
-    const isAutodesk = source === "autodesk";
-    const scene = new THREE.Scene();
-    scene.background = isAutodesk && technical ? null : new THREE.Color(technical ? 0xb8d0ee : 0x081419);
-    scene.fog = isAutodesk && technical
-      ? new THREE.FogExp2(0xeaf1f8, 0.00015)
-      : new THREE.FogExp2(technical ? 0xb8d0ee : 0x081419, technical ? 0.00018 : 0.00045);
-
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isAutodesk && technical, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = isAutodesk ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isAutodesk ? 0.95 : technical ? 1.16 : 1.08;
-    renderer.shadowMap.enabled = technical;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.localClippingEnabled = false;
-    if (isAutodesk && technical) renderer.setClearColor(0xffffff, 0);
-
-    const controls = new OrbitControls(camera, canvas);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.075;
-    controls.screenSpacePanning = true;
-    applyNavigationMode(controls, "orbit");
-
-    const useReference = source === "reference" && comparison?.referenceMeshes.length;
-    const root = isAutodesk
-      ? new THREE.Group()
-      : useReference
-        ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-        : meshGroup(result, renderMode);
-    const bounds = isAutodesk
-      ? AUTODESK_REFERENCE_BOUNDS
-      : useReference
-        ? comparison.referenceBoundsMetres
-        : result.bbox;
-    scene.add(root);
-    scene.add(new THREE.HemisphereLight(
-      technical ? 0xf8fbff : 0xccefff,
-      isAutodesk ? 0x9da6ad : technical ? 0x7589a1 : 0x102026,
-      isAutodesk ? 0.9 : technical ? 2.1 : 1.45,
-    ));
-    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, isAutodesk ? 0.25 : technical ? 0.58 : 0.18));
-    const sun = new THREE.DirectionalLight(
-      technical ? 0xfff7e8 : 0xfff4d8,
-      isAutodesk ? 1.6 : technical ? 2.8 : 2.3,
-    );
-    sun.position.set(180, isAutodesk ? 280 : -120, isAutodesk ? -120 : 280);
-    sun.castShadow = technical;
-    scene.add(sun);
-
-    const dx = bounds.max.x - bounds.min.x;
-    const dy = bounds.max.y - bounds.min.y;
-    const dz = bounds.max.z - bounds.min.z;
-    const radius = Math.max(25, dx, dy, dz) * 0.62;
-    const center = new THREE.Vector3(
-      (bounds.min.x + bounds.max.x) / 2,
-      (bounds.min.y + bounds.max.y) / 2,
-      (bounds.min.z + bounds.max.z) / 2,
-    );
-    controls.target.copy(center);
-
-    if (technical) {
-      sun.shadow.mapSize.set(2048, 2048);
-      sun.shadow.camera.left = -radius * 1.5;
-      sun.shadow.camera.right = radius * 1.5;
-      sun.shadow.camera.top = radius * 1.5;
-      sun.shadow.camera.bottom = -radius * 1.5;
-      sun.shadow.camera.near = 0.1;
-      sun.shadow.camera.far = radius * 8;
-      sun.shadow.bias = -0.0002;
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(Math.max(dx, dy, 100) * 2.2, Math.max(dx, dy, 100) * 2.2),
-        new THREE.ShadowMaterial({ color: isAutodesk ? 0x857f76 : 0x6f829a, opacity: isAutodesk ? 0.2 : 0.16 }),
-      );
-      if (isAutodesk) {
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.set(center.x, bounds.min.y - 0.06, center.z);
-      } else {
-        ground.position.set(center.x, center.y, bounds.min.z - 0.06);
-      }
-      ground.receiveShadow = true;
-      (ground.material as THREE.Material).userData.outlineParameters = { visible: false };
-      scene.add(ground);
-    }
-
-    const grid = new THREE.GridHelper(
-      Math.max(dx, isAutodesk ? dz : dy, 100) * 1.35,
-      32,
-      technical ? 0x667f9b : 0x3c7176,
-      technical ? 0x91a7bf : 0x17363d,
-    );
-    if (isAutodesk) grid.position.y = bounds.min.y - 0.04;
-    else {
-      grid.rotation.x = Math.PI / 2;
-      grid.position.z = bounds.min.z - 0.04;
-    }
-    grid.visible = !isAutodesk;
-    if (technical && Array.isArray(grid.material)) {
-      for (const material of grid.material) {
-        material.transparent = true;
-        material.opacity = 0.34;
-      }
-    }
-    scene.add(grid);
-
-    const pose = isAutodesk
-      ? autodeskPoseForPreset("home", radius)
-      : { ...cameraPoseForPreset(center, radius, "home"), target: center, fov: 45 };
-    const poseTarget = pose.target;
-    camera.fov = pose.fov;
-    camera.up.set(pose.up.x, pose.up.y, pose.up.z);
-    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    camera.near = Math.max(0.1, radius / 1_000);
-    camera.far = radius * 30;
-    camera.lookAt(poseTarget);
-    controls.target.copy(poseTarget);
-    camera.updateProjectionMatrix();
-    controls.update();
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let pointerStart: { x: number; y: number } | null = null;
-    const handlePointerDown = (event: PointerEvent) => {
-      pointerStart = { x: event.clientX, y: event.clientY };
-    };
-    const handlePointerUp = (event: PointerEvent) => {
-      if (useReference || isAutodesk || !pointerStart) return;
-      const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
-      pointerStart = null;
-      if (movement > 5) return;
-      const rect = canvas.getBoundingClientRect();
-      pointer.set(
-        ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-        -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-      );
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(root.children, false).find((intersection) =>
-        intersection.object instanceof THREE.Mesh && intersection.faceIndex != null,
-      );
-      if (!hit || hit.faceIndex == null) {
-        onSelectElement(null);
-        return;
-      }
-      const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-      const elementId = elementIds?.[Math.floor(hit.faceIndex / 12)];
-      onSelectElement(elementId ?? null);
-    };
-    canvas.addEventListener("pointerdown", handlePointerDown);
-    canvas.addEventListener("pointerup", handlePointerUp);
-    runtimeRef.current = {
-      scene,
-      camera,
-      renderer,
-      controls,
-      root,
-      center,
-      radius,
-      selectionOverlay: null,
-    };
-
-    let active = true;
-    if (isAutodesk) {
-      queueMicrotask(() => active && setReferenceLoadState("loading"));
-      const moduleUrl = publicAssetUrl("autodesk-gltf-loader.js");
-      void import(/* @vite-ignore */ moduleUrl).then((module) =>
-        (module as AutodeskLoaderModule).loadAutodeskModel(publicAssetUrl("autodesk-reference.glb")),
-      ).then((loadedScene) => {
-        if (!active) {
-          disposeGroup(loadedScene);
-          return;
-        }
-        styleAutodeskReference(loadedScene, renderMode);
-        root.add(loadedScene);
-        setReferenceLoadState("ready");
-      }).catch(() => {
-        if (active) setReferenceLoadState("error");
-      });
-    } else {
-      queueMicrotask(() => active && setReferenceLoadState("idle"));
-    }
-
-    const resize = () => {
-      const width = canvas.clientWidth || 1;
-      const height = canvas.clientHeight || 1;
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    resize();
-
-    let frame = 0;
-    const render = () => {
-      if (!active) return;
-      frame = requestAnimationFrame(render);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    render();
-
-    return () => {
-      active = false;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      canvas.removeEventListener("pointerdown", handlePointerDown);
-      canvas.removeEventListener("pointerup", handlePointerUp);
-      controls.dispose();
-      disposeGroup(root);
-      if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
-      runtimeRef.current = null;
-      renderer.dispose();
-    };
-  }, [comparison, onSelectElement, renderMode, result, source]);
-
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime) return;
-    const preset = view === "plan" ? "top" : cameraRequest.preset;
-    const pose = source === "autodesk"
-      ? autodeskPoseForPreset(preset, runtime.radius)
-      : { ...cameraPoseForPreset(runtime.center, runtime.radius, preset), target: runtime.center, fov: 45 };
-    const target = pose.target;
-    runtime.camera.fov = pose.fov;
-    runtime.camera.up.set(pose.up.x, pose.up.y, pose.up.z);
-    runtime.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    runtime.controls.target.copy(target);
-    runtime.camera.lookAt(target);
-    runtime.camera.updateProjectionMatrix();
-    runtime.controls.update();
-  }, [cameraRequest, comparison, renderMode, result, source, view]);
-
-  useEffect(() => {
-    const controls = runtimeRef.current?.controls;
-    if (!controls) return;
-    applyNavigationMode(controls, navigationMode);
-  }, [comparison, navigationMode, renderMode, result, source]);
-
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime) return;
-    runtime.renderer.localClippingEnabled = sectionEnabled;
-    const clippingPlane = source === "autodesk"
-      ? new THREE.Plane(new THREE.Vector3(0, -1, 0), runtime.center.y)
-      : new THREE.Plane(new THREE.Vector3(0, 0, -1), runtime.center.z);
-    runtime.root.traverse((object) => {
-      const renderable = object as THREE.Mesh | THREE.LineSegments;
-      if (!(object as THREE.Mesh).isMesh && !(object as THREE.LineSegments).isLineSegments) return;
-      const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
-      for (const material of materials) {
-        material.clippingPlanes = sectionEnabled ? [clippingPlane] : [];
-        material.clipShadows = sectionEnabled;
-        material.needsUpdate = true;
-      }
-    });
-  }, [comparison, renderMode, result, sectionEnabled, source]);
-
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime) return;
-    if (runtime.selectionOverlay) {
-      runtime.scene.remove(runtime.selectionOverlay);
-      disposeGroup(runtime.selectionOverlay);
-      runtime.selectionOverlay = null;
-    }
-    if (source !== "recovered" || selectedElementId == null) return;
-    const record = result.elementBounds.find((candidate) => candidate.elementId === selectedElementId);
-    if (!record) return;
-    const dimensions = boundsDimensions(record.boundsFeet);
-    const selectedCenter = new THREE.Vector3(
-      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - result.origin.x,
-      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - result.origin.y,
-      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - result.origin.z,
-    );
-    const selectedGeometry = new THREE.BoxGeometry(dimensions.x, dimensions.y, dimensions.z);
-    const fill = new THREE.Mesh(
-      selectedGeometry,
-      new THREE.MeshBasicMaterial({ color: 0xffc441, transparent: true, opacity: 0.22, depthWrite: false }),
-    );
-    fill.position.copy(selectedCenter);
-    const outline = new THREE.LineSegments(
-      new THREE.EdgesGeometry(selectedGeometry),
-      new THREE.LineBasicMaterial({ color: 0xff9f1c, linewidth: 2, depthTest: false }),
-    );
-    outline.position.copy(selectedCenter);
-    outline.renderOrder = 20;
-    const overlay = new THREE.Group();
-    overlay.add(fill, outline);
-    runtime.selectionOverlay = overlay;
-    runtime.scene.add(overlay);
-  }, [comparison, renderMode, result, selectedElementId, source]);
-
-  return (
-    <>
-      <canvas ref={canvasRef} className={`model-canvas nav-${navigationMode}`} aria-label="Interactive Revit geometry" />
-      {source === "autodesk" && referenceLoadState !== "ready" && (
-        <div className={`reference-load-state reference-load-${referenceLoadState}`} role="status">
-          <i />
-          <span>{referenceLoadState === "error" ? "Reference model failed to load" : "Loading Autodesk reference geometry"}</span>
-        </div>
-      )}
-    </>
-  );
-}
-
-function FidelityRow({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "off" }) {
-  return (
-    <div className="fidelity-row">
-      <span>{label}</span>
-      <span className={`fidelity-value fidelity-${tone}`}><i />{value}</span>
-    </div>
-  );
-}
-
-function RegressionPanel({ comparison }: { comparison: PairedRegressionResult }) {
-  const reference = comparison.reference;
-  return (
-    <section className={`regression-panel regression-${comparison.status}`}>
-      <div className="regression-heading">
-        <div>
-          <p className="eyebrow">Paired RVT / IFC regression</p>
-          <h3>{comparison.conclusion}</h3>
-          <p>{reference.fileName} · {reference.schema} · {(reference.durationMs / 1_000).toFixed(1)}s local analysis</p>
-        </div>
-        <span>{comparison.status === "pass" ? "accepted" : comparison.status === "warn" ? "review" : "rejected"}</span>
-      </div>
-
-      <div className="regression-metrics">
-        <div><strong>{reference.matchedElementCount.toLocaleString()}</strong><span>matched RVT records</span></div>
-        <div><strong>{(comparison.identityCoverage * 100).toFixed(1)}%</strong><span>IFC tag coverage</span></div>
-        <div><strong>{reference.elementCount.toLocaleString()}</strong><span>typed IFC elements</span></div>
-        <div><strong>{reference.storeyCount}</strong><span>IFC storeys</span></div>
-        <div><strong>{reference.triangleCount.toLocaleString()}</strong><span>IFC triangles</span></div>
-      </div>
-
-      <div className="gate-grid">
-        {comparison.gates.map((gate) => (
-          <div className={`gate-card gate-${gate.status}`} key={gate.id}>
-            <span><i />{gate.label}</span><strong>{gate.value}</strong><p>{gate.detail}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="match-evidence-grid">
-        <div>
-          <p className="eyebrow">Object-class matches</p>
-          <div className="match-table" role="table" aria-label="IFC object class matches to RVT records">
-            {reference.elementTypes.filter((row) => row.matchedRvtRecords).slice(0, 8).map((row) => (
-              <div role="row" key={row.ifcType}>
-                <span role="cell">{row.ifcType.replace(/^IFC/, "")}</span>
-                <strong role="cell">{row.matchedRvtRecords.toLocaleString()} / {row.count.toLocaleString()}</strong>
-                <small role="cell">index {row.matchedElemTable.toLocaleString()} · partition {row.matchedPartitionRecords.toLocaleString()}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="eyebrow">Matched record samples</p>
-          <div className="sample-list">
-            {reference.matchedSamples.slice(0, 6).map((sample) => (
-              <div key={`${sample.expressId}-${sample.revitElementId}`}>
-                <strong>#{sample.revitElementId} · {sample.ifcType.replace(/^IFC/, "")}</strong>
-                <span>{sample.evidence.replaceAll("-", " ")}{sample.partitionRecord ? ` · ${sample.partitionRecord.stream} chunk ${sample.partitionRecord.chunkIndex}` : ""}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+import { AUTODESK_PREVIEW_RESULT, hasAutodeskReference, staticWorkerUrl } from "./studio/autodesk-reference.ts";
+import { formatBytes, formatNumber, savedFileName } from "./studio/format.ts";
+import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { FidelityRow, RegressionPanel } from "./studio/panels.tsx";
+import type {
+  CameraRequest,
+  GeometrySource,
+  Phase,
+  ReferencePhase,
+  ViewMode,
+  ViewerPanel,
+} from "./studio/types.ts";
 
 export default function ReviterStudio({ referencePreview = false }: { referencePreview?: boolean }) {
   const [phase, setPhase] = useState<Phase>(referencePreview ? "ready" : "idle");
@@ -773,6 +58,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [sectionEnabled, setSectionEnabled] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
+  const [schemaSearch, setSchemaSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -1113,9 +399,79 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Placed instances"
+              value={result?.stats.placedInstances
+                ? `${result.stats.placedInstances.toLocaleString()} oriented`
+                : result ? "Not placed" : "Not evaluated"}
+              tone={result?.stats.placedInstances ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Sketch boundaries"
+              value={result?.stats.sketchBoundaryElements
+                ? `${result.stats.sketchBoundaryElements.toLocaleString()} extruded`
+                : result ? "Not recovered" : "Not evaluated"}
+              tone={result?.stats.sketchBoundaryElements ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Native solids"
+              value={result?.stats.nativeSolids
+                ? `${result.stats.nativeSolids.toLocaleString()} rebuilt`
+                : result ? "Not rebuilt" : "Not evaluated"}
+              tone={result?.stats.nativeSolids ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Element types"
+              value={result?.stats.typedElements
+                ? `${result.stats.typedElements.toLocaleString()} linked · ${(result.stats.namedTypeElements ?? 0).toLocaleString()} named`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.typedElements ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Native surfaces"
+              value={result?.stats.surfaces?.planes
+                ? `${result.stats.surfaces.planes.toLocaleString()} planes · ${result.stats.surfaces.cylinders.toLocaleString()} cylinders`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.surfaces?.planes ? "warn" : "off"}
+            />
+            <FidelityRow
+              label="Element parameters"
+              value={result?.stats.parameterElements
+                ? `${result.stats.parameterElements.toLocaleString()} elements`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.parameterElements ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Element objects"
+              value={result?.stats.elementObjects
+                ? `${result.stats.elementObjects.toLocaleString()} chained`
+                : result ? "Not chained" : "Not evaluated"}
+              tone={result?.stats.elementObjects ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Container streams"
+              value={result?.coverage
+                ? `${result.coverage.fullStreams} full · ${result.coverage.partialStreams} partial · ${result.coverage.undecodedStreams} undecoded`
+                : result ? "Not evaluated" : "Not evaluated"}
+              tone={result?.coverage?.undecodedStreams ? "warn" : result?.coverage ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Embedded schema"
+              value={result?.schema
+                ? `${result.schema.taggedClasses.length} tagged classes`
+                : result ? "Not found" : "Not evaluated"}
+              tone={result?.schema?.taggedClasses.length ? "good" : "off"}
+            />
+            <FidelityRow
+              label="Revit categories"
+              value={result?.decoderCoverage.nativeCategorisedElements
+                ? `${result.decoderCoverage.nativeCategorisedElements.toLocaleString()} native`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.decoderCoverage.nativeCategorisedElements ? "good" : "off"}
+            />
+            <FidelityRow
               label="BIM semantics"
-              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Unavailable"}
-              tone={geometrySource === "reference" && comparison ? "good" : result?.readerDiagnostics?.productionElements ? "warn" : "off"}
+              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.stats.parameterElements ? "Categories and parameters" : result?.decoderCoverage.nativeCategorisedElements ? "Categories only" : "Unavailable"}
+              tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
 
@@ -1243,7 +599,28 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     {selectedRecord && selectedDimensions ? (
                       <dl className="property-table">
                         <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
+                        {selectedRecord.categoryName && (
+                          <div><dt>Revit category</dt><dd>{selectedRecord.categoryName}</dd></div>
+                        )}
+                        {selectedRecord.categoryId != null && (
+                          <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
+                        )}
                         <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {selectedRecord.solid && (
+                          <div><dt>Native geometry</dt><dd>{Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · {(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick</dd></div>
+                        )}
+                        {selectedRecord.typeName && (
+                          <div><dt>Type</dt><dd>{selectedRecord.typeName}</dd></div>
+                        )}
+                        {selectedRecord.typeId != null && (
+                          <div><dt>Type element</dt><dd>{selectedRecord.typeId}</dd></div>
+                        )}
+                        {selectedRecord.parameters?.map((parameter) => (
+                          <div key={parameter.parameterId}>
+                            <dt>{parameter.name}</dt>
+                            <dd>{parameter.value.toFixed(4)} ft</dd>
+                          </div>
+                        ))}
                         <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
                         <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
                         <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>
@@ -1315,6 +692,62 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   {result.levels.slice(0, 5).map((level) => <b key={level.elevation}>{level.elevation.toFixed(1)}′ <small>{level.candidates}</small></b>)}
                 </div>
               </section>
+
+              {result.coverage && (
+                <section className="coverage-panel">
+                  <div className="section-heading">
+                    <span>Container streams</span>
+                    <span>{result.coverage.fullStreams} full · {result.coverage.partialStreams} partial · {result.coverage.undecodedStreams} undecoded</span>
+                  </div>
+                  <table className="coverage-table">
+                    <tbody>
+                      {result.coverage.streams.map((stream) => (
+                        <tr key={stream.path} className={`coverage-${stream.depth}`}>
+                          <td>{stream.path}</td>
+                          <td>{formatBytes(stream.storedBytes)}</td>
+                          <td>{stream.inflatedBytes == null ? "—" : formatBytes(stream.inflatedBytes)}</td>
+                          <td>{stream.depth}</td>
+                          <td title={stream.note}>{stream.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="export-disclaimer">Depth is graded per stream rather than weighted by bytes: the partition stream is most of the file, so counting it as covered because a decoder reads part of it would overstate the result.</p>
+                </section>
+              )}
+
+              {result.schema && result.schema.taggedClasses.length > 0 && (
+                <section className="coverage-panel">
+                  <div className="section-heading">
+                    <span>Embedded schema · Formats/Latest</span>
+                    <span>{result.schema.taggedClasses.length} tagged classes{result.schema.rejectedCandidates ? ` · ${result.schema.rejectedCandidates} rejected` : ""}</span>
+                  </div>
+                  <label className="model-search"><span>Search class or base class</span>
+                    <input value={schemaSearch} onChange={(event) => setSchemaSearch(event.target.value)} placeholder="e.g. Wall" />
+                  </label>
+                  <table className="coverage-table">
+                    <tbody>
+                      {result.schema.taggedClasses
+                        .filter((entry) => {
+                          const query = schemaSearch.trim().toLowerCase();
+                          if (!query) return true;
+                          return entry.name.toLowerCase().includes(query) || entry.parent.toLowerCase().includes(query);
+                        })
+                        .slice(0, 60)
+                        .map((entry) => (
+                          <tr key={`${entry.tag}-${entry.name}`}>
+                            <td>{entry.name}</td>
+                            <td>0x{entry.tag.toString(16).padStart(4, "0")}</td>
+                            <td>{entry.parent}</td>
+                            <td>{entry.version == null ? "—" : `v${entry.version}`}</td>
+                            <td>{entry.declaredFieldCount == null ? "—" : `${entry.declaredFieldCount} field${entry.declaredFieldCount === 1 ? "" : "s"} declared`}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  <p className="export-disclaimer">Class names, serialization tags, and base classes are decoded from the file. Field lists are declared but not walked — their layout does not close across the corpus, so they are counted, not invented.</p>
+                </section>
+              )}
 
               <section className="export-panel">
                 <div className="export-heading"><div><p className="eyebrow">Export recovered data</p><h3>Choose an open format</h3></div><span>client generated</span></div>

@@ -1,595 +1,122 @@
+/**
+ * The conversion pipeline.
+ *
+ * This module orchestrates; it does not decode. It walks the container, hands
+ * each inflated page to the record decoders, then assembles the result from the
+ * scene and category modules:
+ *
+ *   `revit-container`  → OLE/CFB streams and truncated-gzip chunks
+ *   `elem-table`       → the native element-id index
+ *   `bounds-records`   → Revit 2027 duplicated-bounds element envelopes
+ *   `native-categories`→ BuiltInCategory tokens and their element ownership
+ *   `segment-scan`     → the diagnostic fallback for undecoded releases
+ *   `scene`            → display selection, batching, and materials
+ */
 import CFB from "cfb";
-import { inflateSync } from "fflate";
 
+import {
+  boundsOfRecords,
+  detectDuplicatedBoundsRecords,
+  solidBounds,
+} from "./bounds-records.ts";
+import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
+import { collectElementParameters } from "./element-parameters.ts";
+import { collectTypeLinks } from "./element-types.ts";
+import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
+import {
+  instanceCorners,
+  readInstancePlacement,
+  readLocalBounds,
+  type InstancePlacement,
+  type LocalBounds,
+} from "./instanced-geometry.ts";
+import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
+import { boundaryLoopsFor, collectSketchCurves, type SketchCurve } from "./sketch-curves.ts";
 import { parseElemTable } from "./elem-table.ts";
+import {
+  applyNativeCategories,
+  collectCategoryTokens,
+  type CategoryToken,
+} from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
+import { asBytes, gzipOffsets, inflateRevitChunk, leadingU32 } from "./revit-container.ts";
+import { summariseSchema } from "./schema.ts";
+import { measureStream, summariseCoverage } from "./stream-coverage.ts";
+import { parsePartitionNames } from "./partition-names.ts";
+import {
+  buildBoundsMeshes,
+  buildMeshes,
+  boundsPlanSegments,
+  displayMaterials,
+  levelsForBounds,
+  selectDisplayBounds,
+} from "./scene.ts";
+import {
+  FAMILY_SEGMENT_SCALE,
+  deduplicate,
+  focusPrimaryCluster,
+  levelsFor,
+  rawBounds,
+  sampleEvenly,
+  scanSegments,
+  segmentScaleFor,
+  trimVerticalOutliers,
+} from "./segment-scan.ts";
 
 import type {
-  Bounds3,
   ConvertOptions,
   ConvertOutcome,
   ConvertResult,
   ElementBoundsRecord,
-  LevelBand,
-  MeshData,
-  MaterialData,
   NativeProfileLocator,
   PartitionRecordLocator,
+  ElementParameter,
   ProgressUpdate,
   Segment,
-  Vec3,
 } from "./types";
 
-const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 const DEFAULT_MAX_SEGMENTS = 12_000;
-const BOUNDS_DUPLICATE_BYTES = 48;
-const MIN_SOLID_SPAN_FEET = 0.001;
+
+/** Backstop so a pathological stream cannot turn category recovery quadratic. */
+const MAX_CATEGORY_TOKENS = 400_000;
+
+/** Same backstop for sketch edges, which are chained pairwise per element. */
+const MAX_SKETCH_CURVES = 400_000;
+
+/**
+ * Categories Revit models as a sketch extruded through a thickness. Boundary
+ * recovery is limited to these because chaining is quadratic in the edges an
+ * element owns, and because outside them a closed ring is not the element's
+ * shape — a wall's edges bound its faces, not its footprint.
+ */
+const SKETCH_BOUNDARY_CATEGORIES = new Set([
+  -2000032, // Floors
+  -2000035, // Roofs
+  -2000038, // Ceilings
+  -2000180, // Ramps
+  -2001300, // StructuralFoundation
+]);
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
-function displayMaterials(): MaterialData[] {
-  const fallback = (
-    name: string,
-    color: [number, number, number, number],
-    roughness = 0.82,
-  ): MaterialData => ({
-    name,
-    baseColorLinear: color,
-    metallic: 0,
-    roughness,
-    doubleSided: true,
-    source: "display-fallback",
-    assignedElements: 0,
-  });
-  return [
-    fallback("Unclassified display proxy", [0.58, 0.68, 0.79, 1]),
-    fallback("Wall display proxy", [0.68, 0.75, 0.83, 1], 0.9),
-    fallback("Door display proxy", [0.72, 0.55, 0.34, 1], 0.74),
-    fallback("Panel display proxy", [0.62, 0.75, 0.84, 1], 0.68),
-    fallback("Frame display proxy", [0.24, 0.32, 0.41, 1], 0.58),
-    fallback("Structural display proxy", [0.52, 0.60, 0.69, 1], 0.86),
-    fallback("Railing display proxy", [0.32, 0.39, 0.47, 1], 0.6),
-    fallback("Slab and roof display proxy", [0.72, 0.77, 0.82, 1], 0.93),
-    fallback("Covering display proxy", [0.76, 0.78, 0.76, 1], 0.9),
-    fallback("Glazing display proxy", [0.55, 0.76, 0.85, 0.72], 0.42),
-  ];
-}
-
-function asBytes(value: number[] | Uint8Array): Uint8Array {
-  return value instanceof Uint8Array ? value : new Uint8Array(value);
-}
-
-function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
-  if (
-    offset + 10 > data.length ||
-    data[offset] !== GZIP_MAGIC[0] ||
-    data[offset + 1] !== GZIP_MAGIC[1] ||
-    data[offset + 2] !== GZIP_MAGIC[2]
-  ) {
-    return null;
-  }
-
-  const flags = data[offset + 3] ?? 0;
-  let cursor = offset + 10;
-
-  if (flags & 0x04) {
-    if (cursor + 2 > data.length) return null;
-    const extraLength = (data[cursor] ?? 0) | ((data[cursor + 1] ?? 0) << 8);
-    cursor += 2 + extraLength;
-  }
-
-  for (const flag of [0x08, 0x10]) {
-    if (!(flags & flag)) continue;
-    while (cursor < data.length && data[cursor] !== 0) cursor += 1;
-    cursor += 1;
-  }
-
-  if (flags & 0x02) cursor += 2;
-  return cursor <= data.length ? cursor - offset : null;
-}
-
-function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
-  const result: number[] = [];
-  for (let i = 0; i + 3 <= data.length && result.length < limit; i += 1) {
-    if (
-      data[i] === GZIP_MAGIC[0] &&
-      data[i + 1] === GZIP_MAGIC[1] &&
-      data[i + 2] === GZIP_MAGIC[2]
-    ) {
-      result.push(i);
-      i += 9;
-    }
-  }
-  return result;
-}
-
-function inflateRevitChunk(data: Uint8Array, offset: number): Uint8Array | null {
-  const headerLength = gzipHeaderLength(data, offset);
-  if (headerLength == null) return null;
-  const body = data.subarray(offset + headerLength);
-  if (!body.length) return null;
-  try {
-    return inflateSync(body);
-  } catch {
-    return null;
-  }
-}
-
-function plausibleCoordinate(value: number): boolean {
-  return (
-    Number.isFinite(value) &&
-    (value === 0 || Math.abs(value) >= 1e-6) &&
-    Math.abs(value) <= 50_000
-  );
-}
-
-function scanSegments(data: Uint8Array, target: Segment[], limit: number): void {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let offset = 0; offset + 48 <= data.byteLength && target.length < limit; offset += 8) {
-    const values = Array.from({ length: 6 }, (_, index) =>
-      view.getFloat64(offset + index * 8, true),
-    );
-    if (!values.every(plausibleCoordinate)) continue;
-
-    const [x0, y0, z0, x1, y1, z1] = values as [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-    ];
-    const length = Math.hypot(x1 - x0, y1 - y0);
-    if (Math.abs(z1 - z0) > 0.5 || z0 < -50 || z0 > 400) continue;
-    if (length < 2 || length > 400) continue;
-    if (Math.abs(x0) + Math.abs(y0) + Math.abs(x1) + Math.abs(y1) < 1) continue;
-
-    target.push({ x0, y0, z0, x1, y1, z1 });
-    offset += 40;
-  }
-}
-
-function leadingU32(data: Uint8Array): number | null {
-  if (data.length < 4) return null;
-  return (
-    ((data[0] ?? 0) |
-      ((data[1] ?? 0) << 8) |
-      ((data[2] ?? 0) << 16) |
-      ((data[3] ?? 0) << 24)) >>> 0
-  );
-}
-
-export type DetectedBoundsRecord = {
-  elementId: number;
-  recordOffset: number;
-  boundsOffset: number;
-  recordCode: number;
-  recordCount: number;
-  boundsFeet: Bounds3;
-};
-
-export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsRecord[] {
-  const records: DetectedBoundsRecord[] = [];
-  if (data.byteLength < 138) return records;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let tagOffset = data.indexOf(0xc6, 16);
-    tagOffset >= 0 && tagOffset + 122 < data.byteLength;
-    tagOffset = data.indexOf(0xc6, tagOffset + 1)
-  ) {
-    if (data[tagOffset + 1] !== 0x08) continue;
-    const recordOffset = tagOffset - 16;
-    const elementId = view.getUint32(recordOffset, true);
-    if (
-      !elementId ||
-      elementId === 0xffffffff ||
-      view.getUint32(recordOffset + 4, true) !== 0 ||
-      view.getUint32(recordOffset + 26, true) !== elementId ||
-      view.getUint32(recordOffset + 30, true) !== 0 ||
-      view.getUint32(recordOffset + 34, true) !== 0x0008_8004 ||
-      view.getUint32(recordOffset + 42, true) !== 3
-    ) {
-      continue;
-    }
-    const recordCount = view.getUint32(recordOffset + 38, true);
-    if (recordCount < 1 || recordCount > 10_000) continue;
-    const boundsOffset = 42 + recordCount * 6;
-    const boundsStart = recordOffset + boundsOffset;
-    if (boundsStart + BOUNDS_DUPLICATE_BYTES * 2 > data.byteLength) continue;
-    let duplicate = true;
-    for (let byte = 0; byte < BOUNDS_DUPLICATE_BYTES; byte += 1) {
-      if (data[boundsStart + byte] !== data[boundsStart + BOUNDS_DUPLICATE_BYTES + byte]) {
-        duplicate = false;
-        break;
-      }
-    }
-    if (!duplicate) continue;
-
-    const values = Array.from({ length: 6 }, (_, index) =>
-      view.getFloat64(boundsStart + index * 8, true),
-    );
-    if (!values.every((value) => Number.isFinite(value) && Math.abs(value) <= 50_000)) {
-      continue;
-    }
-    const [minX, minY, minZ, maxX, maxY, maxZ] = values as [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-    ];
-    const spans = [maxX - minX, maxY - minY, maxZ - minZ];
-    if (
-      spans.some((span) => span < -1e-8 || span > 5_000) ||
-      spans.filter((span) => span > MIN_SOLID_SPAN_FEET).length < 2
-    ) {
-      continue;
-    }
-    records.push({
-      elementId,
-      recordOffset,
-      boundsOffset,
-      recordCode: view.getUint32(recordOffset + 18, true),
-      recordCount,
-      boundsFeet: {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      },
-    });
-  }
-  return records;
-}
-
-export function detectDuplicatedBoundsRecord(data: Uint8Array): DetectedBoundsRecord | null {
-  return detectDuplicatedBoundsRecords(data)[0] ?? null;
-}
-
-function segmentKey(segment: Segment): string {
-  const round = (value: number) => Math.round(value * 20) / 20;
-  return [segment.x0, segment.y0, segment.z0, segment.x1, segment.y1, segment.z1]
-    .map(round)
-    .join(",");
-}
-
-function deduplicate(segments: Segment[]): Segment[] {
-  const seen = new Set<string>();
-  const result: Segment[] = [];
-  for (const segment of segments) {
-    const forward = segmentKey(segment);
-    const reverse = segmentKey({
-      x0: segment.x1,
-      y0: segment.y1,
-      z0: segment.z1,
-      x1: segment.x0,
-      y1: segment.y0,
-      z1: segment.z0,
-    });
-    if (seen.has(forward) || seen.has(reverse)) continue;
-    seen.add(forward);
-    result.push(segment);
-  }
-  return result;
-}
-
-function cellKey(x: number, y: number, cellSize: number): string {
-  return `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
-}
-
-function focusPrimaryCluster(segments: Segment[]): Segment[] {
-  if (segments.length < 250) return segments;
-
-  const cellSize = 250;
-  const counts = new Map<string, number>();
-  for (const segment of segments) {
-    const key = cellKey((segment.x0 + segment.x1) / 2, (segment.y0 + segment.y1) / 2, cellSize);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  const densest = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (!densest) return segments;
-
-  const threshold = Math.max(4, Math.floor(densest[1] * 0.002));
-  const accepted = new Set<string>();
-  const queue = [densest[0]];
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    if (accepted.has(current) || (counts.get(current) ?? 0) < threshold) continue;
-    accepted.add(current);
-    const [cx, cy] = current.split(",").map(Number);
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        if (dx || dy) queue.push(`${cx + dx},${cy + dy}`);
-      }
-    }
-  }
-
-  const focused = segments.filter((segment) =>
-    accepted.has(
-      cellKey((segment.x0 + segment.x1) / 2, (segment.y0 + segment.y1) / 2, cellSize),
-    ),
-  );
-  return focused.length >= Math.min(100, segments.length * 0.1) ? focused : segments;
-}
-
-function sampleEvenly(segments: Segment[], limit: number): Segment[] {
-  if (segments.length <= limit) return segments;
-  const result: Segment[] = [];
-  const stride = segments.length / limit;
-  for (let i = 0; i < limit; i += 1) result.push(segments[Math.floor(i * stride)]!);
-  return result;
-}
-
-function trimVerticalOutliers(segments: Segment[]): Segment[] {
-  if (segments.length < 1_000) return segments;
-  const elevations = segments.map((segment) => segment.z0).sort((a, b) => a - b);
-  const low = elevations[Math.floor((elevations.length - 1) * 0.005)]!;
-  const high = elevations[Math.floor((elevations.length - 1) * 0.985)]!;
-  const trimmed = segments.filter((segment) => segment.z0 >= low && segment.z0 <= high);
-  return trimmed.length >= segments.length * 0.9 ? trimmed : segments;
-}
-
-function rawBounds(segments: Segment[]): { min: Vec3; max: Vec3 } {
-  const min = { x: Infinity, y: Infinity, z: Infinity };
-  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  for (const segment of segments) {
-    for (const point of [
-      { x: segment.x0, y: segment.y0, z: segment.z0 },
-      { x: segment.x1, y: segment.y1, z: segment.z1 },
-    ]) {
-      min.x = Math.min(min.x, point.x);
-      min.y = Math.min(min.y, point.y);
-      min.z = Math.min(min.z, point.z);
-      max.x = Math.max(max.x, point.x);
-      max.y = Math.max(max.y, point.y);
-      max.z = Math.max(max.z, point.z);
-    }
-  }
-  if (!Number.isFinite(min.x)) return { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
-  return { min, max };
-}
-
-function levelsFor(segments: Segment[]): LevelBand[] {
-  const bands = new Map<number, number>();
-  for (const segment of segments) {
-    const elevation = Math.round(segment.z0 * 2) / 2;
-    bands.set(elevation, (bands.get(elevation) ?? 0) + 1);
-  }
-  return [...bands.entries()]
-    .map(([elevation, candidates]) => ({ elevation, candidates }))
-    .sort((a, b) => b.candidates - a.candidates)
-    .slice(0, 8);
-}
-
-function extrude(segment: Segment, origin: Vec3, thickness: number, height: number) {
-  const dx = segment.x1 - segment.x0;
-  const dy = segment.y1 - segment.y0;
-  const length = Math.hypot(dx, dy) || 1;
-  const nx = (-dy / length) * thickness * 0.5;
-  const ny = (dx / length) * thickness * 0.5;
-  const z0 = Math.min(segment.z0, segment.z1);
-  const z1 = z0 + height;
-  const points = [
-    [segment.x0 + nx, segment.y0 + ny, z0],
-    [segment.x0 - nx, segment.y0 - ny, z0],
-    [segment.x1 - nx, segment.y1 - ny, z0],
-    [segment.x1 + nx, segment.y1 + ny, z0],
-    [segment.x0 + nx, segment.y0 + ny, z1],
-    [segment.x0 - nx, segment.y0 - ny, z1],
-    [segment.x1 - nx, segment.y1 - ny, z1],
-    [segment.x1 + nx, segment.y1 + ny, z1],
-  ];
-  const positions = points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]);
-  const indices = [
-    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
-    1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
-  ];
-  return { positions, indices };
-}
-
-function buildMeshes(
-  segments: Segment[],
-  origin: Vec3,
-  thickness: number,
-  height: number,
-): MeshData[] {
-  const meshes: MeshData[] = [];
-  const batchSize = 2_000;
-  for (let start = 0; start < segments.length; start += batchSize) {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const colors: number[] = [];
-    const batch = segments.slice(start, start + batchSize);
-    let vertexOffset = 0;
-    for (const segment of batch) {
-      const box = extrude(segment, origin, thickness, height);
-      positions.push(...box.positions);
-      indices.push(...box.indices.map((index) => index + vertexOffset));
-      vertexOffset += 8;
-      const level = Math.max(0, Math.min(1, (segment.z0 - origin.z + 10) / 80));
-      for (let vertex = 0; vertex < 8; vertex += 1) {
-        colors.push(0.2 + level * 0.18, 0.68 + level * 0.12, 0.78 + level * 0.16);
-      }
-    }
-    meshes.push({
-      name: `Recovered geometry ${meshes.length + 1}`,
-      positions: new Float32Array(positions),
-      indices: new Uint32Array(indices),
-      colors: new Float32Array(colors),
-      materialIndex: 0,
-    });
-  }
-  return meshes;
-}
-
-function solidBounds(record: ElementBoundsRecord): boolean {
-  const { min, max } = record.boundsFeet;
-  return (
-    max.x - min.x > MIN_SOLID_SPAN_FEET &&
-    max.y - min.y > MIN_SOLID_SPAN_FEET &&
-    max.z - min.z > MIN_SOLID_SPAN_FEET
-  );
-}
-
-function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
-  const min = { x: Infinity, y: Infinity, z: Infinity };
-  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  for (const record of records) {
-    const bounds = record.boundsFeet;
-    min.x = Math.min(min.x, bounds.min.x);
-    min.y = Math.min(min.y, bounds.min.y);
-    min.z = Math.min(min.z, bounds.min.z);
-    max.x = Math.max(max.x, bounds.max.x);
-    max.y = Math.max(max.y, bounds.max.y);
-    max.z = Math.max(max.z, bounds.max.z);
-  }
-  return { min, max };
-}
-
-type DisplayRole = "wall" | "door" | "panel" | "frame" | "structure" | "railing" | "slab" | "covering" | "glazing";
-
-function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "unknown" {
-  const code = record.recordCode;
-  const count = record.recordCount;
-  if (code === 30 && count === 5) return "wall";
-  if (code === 30 && count != null && count >= 8 && count <= 10) return "wrapper";
-  if (code === 44 && count === 1) return "door";
-  if (code === 114 && count === 1) return "panel";
-  if ((code === 116 && count === 1) || (code === 179015 && count === 3)) return "frame";
-  if (code === 79 && (count === 1 || count === 3)) return "structure";
-  if (code === 101 && (count === 2 || count === 3)) return "railing";
-  if ((code === 54 || code === 58) && count === 1) return "slab";
-  if (code === 62 && count === 1) return "covering";
-  if (code === 34 && count === 1) return "glazing";
-  if (code === 81 || (code === 107 && count === 4)) return "structure";
-  return "unknown";
-}
-
-const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
-  wall: 1,
-  door: 2,
-  panel: 3,
-  frame: 4,
-  structure: 5,
-  railing: 6,
-  slab: 7,
-  covering: 8,
-  glazing: 9,
-};
-
-function selectDisplayBounds(records: ElementBoundsRecord[]): {
-  records: ElementBoundsRecord[];
-  omittedContainerCount: number;
-  omittedWrapperCount: number;
-  omittedUnknownCount: number;
-} {
-  let classified = records.filter((record) => displayRole(record) !== "unknown" && displayRole(record) !== "wrapper");
-  const omittedWrapperCount = records.filter((record) => displayRole(record) === "wrapper").length;
-  let omittedUnknownCount = records.length - classified.length - omittedWrapperCount;
-  if (!classified.length) {
-    classified = records;
-    omittedUnknownCount = 0;
-  }
-  if (classified.length < 2) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
-  }
-  const byFootprint = classified
-    .map((record) => {
-      const { min, max } = record.boundsFeet;
-      const dx = max.x - min.x;
-      const dy = max.y - min.y;
-      return { record, footprint: dx * dy, longestSide: Math.max(dx, dy) };
-    })
-    .sort((a, b) => b.footprint - a.footprint);
-  const largest = byFootprint[0]!;
-  const runnerUp = byFootprint[1]!;
-  const isDominantContainer =
-    largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
-  if (!isDominantContainer) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
-  }
-  return {
-    records: classified.filter((record) => record !== largest.record),
-    omittedContainerCount: 1,
-    omittedWrapperCount,
-    omittedUnknownCount,
-  };
-}
-
-function boxGeometry(bounds: Bounds3, origin: Vec3) {
-  const { min, max } = bounds;
-  const points = [
-    [min.x, min.y, min.z], [max.x, min.y, min.z], [max.x, max.y, min.z], [min.x, max.y, min.z],
-    [min.x, min.y, max.z], [max.x, min.y, max.z], [max.x, max.y, max.z], [min.x, max.y, max.z],
-  ];
-  return {
-    positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
-    indices: [
-      0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
-      1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
-    ],
-  };
-}
-
-function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
-  const meshes: MeshData[] = [];
-  const batchSize = 2_000;
-  const grouped = new Map<DisplayRole, ElementBoundsRecord[]>();
-  for (const record of records) {
-    const role = displayRole(record);
-    if (role === "unknown" || role === "wrapper") continue;
-    const group = grouped.get(role) ?? [];
-    group.push(record);
-    grouped.set(role, group);
-  }
-  for (const [role, roleRecords] of grouped) for (let start = 0; start < roleRecords.length; start += batchSize) {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const colors: number[] = [];
-    let vertexOffset = 0;
-    const batch = roleRecords.slice(start, start + batchSize);
-    for (const record of batch) {
-      const box = boxGeometry(record.boundsFeet, origin);
-      positions.push(...box.positions);
-      indices.push(...box.indices.map((index) => index + vertexOffset));
-      vertexOffset += 8;
-      const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
-      for (let vertex = 0; vertex < 8; vertex += 1) {
-        colors.push(0.18 + elevation * 0.2, 0.72 + elevation * 0.1, 0.74 + elevation * 0.18);
-      }
-    }
-    meshes.push({
-      name: `${role[0]!.toUpperCase()}${role.slice(1)} proxies ${Math.floor(start / batchSize) + 1}`,
-      positions: new Float32Array(positions),
-      indices: new Uint32Array(indices),
-      colors: new Float32Array(colors),
-      materialIndex: DISPLAY_MATERIAL_INDEX[role],
-      elementIds: Uint32Array.from(batch.map((record) => record.elementId)),
-    });
-  }
-  return meshes;
-}
-
-function boundsPlanSegments(records: ElementBoundsRecord[]): Segment[] {
-  return records.flatMap(({ boundsFeet: { min, max } }) => [
-    { x0: min.x, y0: min.y, z0: min.z, x1: max.x, y1: min.y, z1: min.z },
-    { x0: max.x, y0: min.y, z0: min.z, x1: max.x, y1: max.y, z1: min.z },
-    { x0: max.x, y0: max.y, z0: min.z, x1: min.x, y1: max.y, z1: min.z },
-    { x0: min.x, y0: max.y, z0: min.z, x1: min.x, y1: min.y, z1: min.z },
-  ]);
-}
-
-function levelsForBounds(records: ElementBoundsRecord[]): LevelBand[] {
-  const bands = new Map<number, number>();
-  for (const record of records) {
-    const elevation = Math.round(record.boundsFeet.min.z * 2) / 2;
-    bands.set(elevation, (bands.get(elevation) ?? 0) + 1);
-  }
-  return [...bands.entries()]
-    .map(([elevation, candidates]) => ({ elevation, candidates }))
-    .sort((a, b) => b.candidates - a.candidates)
-    .slice(0, 8);
+/**
+ * Inflate the first chunk of a named stream and hand it to `decode`. Returns
+ * `undefined` when the stream is absent or does not decompress, so an optional
+ * stream never fails the conversion.
+ */
+function readStreamSummary<T>(
+  cfb: ReturnType<typeof CFB.read>,
+  pattern: RegExp,
+  decode: (data: Uint8Array) => T,
+): T | undefined {
+  const entry = cfb.FileIndex
+    .map((candidate, index) => ({ entry: candidate, path: cfb.FullPaths[index] ?? "" }))
+    .find(({ entry: candidate, path }) => candidate.size > 0 && pattern.test(path));
+  if (!entry) return undefined;
+  const bytes = asBytes(entry.entry.content);
+  const offset = gzipOffsets(bytes, 1)[0];
+  const inflated = offset == null ? null : inflateRevitChunk(bytes, offset);
+  return inflated ? decode(inflated) : undefined;
 }
 
 export function convertRvtBytes(
@@ -602,6 +129,8 @@ export function convertRvtBytes(
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const decoderPlan = decoderPlanForVersion(options.revitVersion);
+  const segmentScale = segmentScaleFor(fileName, options.geometryScale);
+  const familyScale = segmentScale === FAMILY_SEGMENT_SCALE;
 
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
@@ -616,6 +145,18 @@ export function convertRvtBytes(
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
       if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
     }
+    const coverage = summariseCoverage(
+      cfb.FileIndex
+        .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+        .filter(({ entry }) => entry.size > 0)
+        .map(({ entry, path }) =>
+          measureStream(path.replace(/^Root Entry\//, ""), asBytes(entry.content)),
+        ),
+    );
+
+    const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, summariseSchema);
+    const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
+
     const partitions = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .filter(({ entry, path }) => entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path));
@@ -623,7 +164,18 @@ export function convertRvtBytes(
     if (!partitions.length) throw new Error("No Revit partition stream was found.");
 
     const candidates: Segment[] = [];
+    const categoryTokens: CategoryToken[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
+    const elementObjects: ElementObject[] = [];
+    const instancePlacements = new Map<number, InstancePlacement>();
+    const localBounds = new Map<number, LocalBounds>();
+    const elementParameters = new Map<number, Map<number, ElementParameter>>();
+    const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
+    const planesByElement = new Map<number, PlanePatch[]>();
+    const curvesByOwner = new Map<number, SketchCurve[]>();
+    let sketchCurves = 0;
+    const typeReferences = new Map<number, number>();
+    const typeNames = new Map<number, string>();
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
@@ -640,7 +192,7 @@ export function convertRvtBytes(
       const stride = offsets.length > 900 ? Math.ceil(offsets.length / 700) : 1;
 
       for (let index = 0; index < offsets.length; index += 1) {
-        const inflated = inflateRevitChunk(data, offsets[index]!);
+        const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1]);
         if (!inflated) continue;
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
@@ -658,9 +210,75 @@ export function convertRvtBytes(
             });
           }
         }
+        const typeLinks = collectTypeLinks(inflated);
+        for (const reference of typeLinks.references) {
+          if (!typeReferences.has(reference.elementId)) {
+            typeReferences.set(reference.elementId, reference.typeId);
+          }
+        }
+        for (const entry of typeLinks.names) {
+          if (!typeNames.has(entry.typeId)) typeNames.set(entry.typeId, entry.name);
+        }
+        for (const { owner, surface } of collectOwnedSurfaces(inflated)) {
+          if (surface.kind === "cylinder") {
+            surfaceCounts.cylinders += 1;
+            continue;
+          }
+          surfaceCounts.planes += 1;
+          if (Math.abs(Math.abs(surface.vDir.z) - 1) <= 1e-9) surfaceCounts.verticalPlanes += 1;
+          const planes = planesByElement.get(owner);
+          if (planes) planes.push(surface);
+          else planesByElement.set(owner, [surface]);
+        }
+        if (sketchCurves < MAX_SKETCH_CURVES) {
+          for (const curve of collectSketchCurves(inflated)) {
+            sketchCurves += 1;
+            const owned = curvesByOwner.get(curve.owner);
+            if (owned) owned.push(curve);
+            else curvesByOwner.set(curve.owner, [curve]);
+          }
+        }
+        for (const table of collectElementParameters(inflated)) {
+          const existing = elementParameters.get(table.elementId);
+          if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
+          else elementParameters.set(
+            table.elementId,
+            new Map(table.parameters.map((parameter) => [parameter.parameterId, parameter])),
+          );
+        }
+        if (categoryTokens.length < MAX_CATEGORY_TOKENS) {
+          for (const token of collectCategoryTokens(inflated)) categoryTokens.push(token);
+        }
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
+        // Seed the object chain from the records just found: objects that carry
+        // no bounds record are still linked into the chain and recoverable.
+        if (detectedBoundsRecords.length) {
+          for (const object of chainElementObjects(
+            inflated,
+            detectedBoundsRecords.map((record) => record.recordOffset),
+          )) {
+            elementObjects.push(object);
+            partitionRecordIds.add(object.elementId);
+            const placement = readInstancePlacement(inflated, object);
+            if (placement) instancePlacements.set(placement.elementId, placement);
+            else {
+              const local = readLocalBounds(inflated, object);
+              if (local) localBounds.set(local.elementId, local);
+            }
+            if (!locatedPartitionIds.has(object.elementId)) {
+              locatedPartitionIds.add(object.elementId);
+              partitionRecords.push({
+                elementId: object.elementId,
+                stream: partition.path.replace(/^Root Entry\//, ""),
+                chunkIndex: index,
+                rawOffset: offsets[index]!,
+                inflatedBytes: inflated.byteLength,
+              });
+            }
+          }
+        }
         for (const detectedBounds of detectedBoundsRecords) {
           partitionRecordIds.add(detectedBounds.elementId);
           if (!locatedPartitionIds.has(detectedBounds.elementId)) {
@@ -693,7 +311,7 @@ export function convertRvtBytes(
           index % stride === 0 &&
           candidates.length < scanLimit
         ) {
-          scanSegments(inflated, candidates, scanLimit);
+          scanSegments(inflated, candidates, scanLimit, segmentScale);
         }
         if (gzipChunks % 36 === 0) {
           onProgress?.({
@@ -704,10 +322,131 @@ export function convertRvtBytes(
       }
     }
 
+    const solidStream = partitions[0]!.path.replace(/^Root Entry\//, "");
+    // An element can own more than one solid — a wall built from several
+    // segments. One record maps to one element for picking and properties, so
+    // the longest solid becomes the element's body and the others are not
+    // drawn. That loses 170 of 10,198 solids on the supplied project.
+    const allSolids = wallSolids(planesByElement);
+    const solidsByElement = new Map<number, ReturnType<typeof wallSolids>[number]>();
+    const solidLength = (candidate: (typeof allSolids)[number]) =>
+      Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
+    for (const solid of allSolids) {
+      const existing = solidsByElement.get(solid.elementId);
+      if (!existing || solidLength(solid) > solidLength(existing)) {
+        solidsByElement.set(solid.elementId, solid);
+      }
+    }
+
+    // Loadable families are placed rather than written out: each instance holds
+    // a rigid transform and points at a shared shape. Resolving the pair gives
+    // the instance its true orientation instead of an axis-aligned envelope.
+    const orientedBoxes = new Map<number, [number, number, number][]>();
+    for (const [elementId, placement] of instancePlacements) {
+      const shape = localBounds.get(placement.geometryId);
+      if (!shape) continue;
+      orientedBoxes.set(elementId, instanceCorners(placement, shape));
+    }
+
+    // Elements with surfaces that do not form a wall triple still have real
+    // faces; drawing those beats falling back to a bounding box.
+    const quadsByElement = new Map<number, ReturnType<typeof surfaceQuadsFor>>();
+    for (const [elementId, planes] of planesByElement) {
+      if (solidsByElement.has(elementId)) continue;
+      const quads = surfaceQuadsFor(elementId, planes);
+      if (quads.length) quadsByElement.set(elementId, quads);
+    }
+
+    // Most elements that own native geometry have no duplicated-bounds record —
+    // 2,818 wall records exist against 7,401 wall objects — so building the
+    // scene only from bounds records drops the majority of the walls. Elements
+    // with a rebuilt solid and no bounds record get a record synthesised from
+    // the solid itself, so they reach the scene as the geometry they are.
+    const boundedIds = new Set(elementBounds.map((record) => record.elementId));
+    let solidOnlyElements = 0;
+    for (const [elementId, quads] of quadsByElement) {
+      if (boundedIds.has(elementId)) continue;
+      const xs = quads.flatMap((quad) => quad.corners.map((corner) => corner[0]));
+      const ys = quads.flatMap((quad) => quad.corners.map((corner) => corner[1]));
+      const zs = quads.flatMap((quad) => quad.corners.map((corner) => corner[2]));
+      elementBounds.push({
+        elementId,
+        stream: solidStream,
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        boundsFeet: {
+          min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
+          max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+        },
+      });
+      boundedIds.add(elementId);
+      solidOnlyElements += 1;
+    }
+    for (const [elementId, solid] of solidsByElement) {
+      if (boundedIds.has(elementId)) continue;
+      const halfThickness = solid.thickness / 2;
+      elementBounds.push({
+        elementId,
+        stream: solidStream,
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        boundsFeet: {
+          min: {
+            x: Math.min(solid.start.x, solid.end.x) - halfThickness,
+            y: Math.min(solid.start.y, solid.end.y) - halfThickness,
+            z: solid.baseElevation,
+          },
+          max: {
+            x: Math.max(solid.start.x, solid.end.x) + halfThickness,
+            y: Math.max(solid.start.y, solid.end.y) + halfThickness,
+            z: solid.topElevation,
+          },
+        },
+      });
+      solidOnlyElements += 1;
+    }
+
+    onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
+    const nativeCategories = applyNativeCategories(
+      elementBounds,
+      categoryTokens,
+      elementIndex?.uniqueElementIds,
+    );
+
+
+
+    let namedTypeElements = 0;
+    let sketchBoundaryElements = 0;
+    for (const record of elementBounds) {
+      const parameters = elementParameters.get(record.elementId);
+      if (parameters?.size) record.parameters = [...parameters.values()];
+      record.solid = solidsByElement.get(record.elementId);
+      record.quads = quadsByElement.get(record.elementId);
+      record.orientedBox = orientedBoxes.get(record.elementId);
+      if (record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId)) {
+        const loops = boundaryLoopsFor(record.elementId, curvesByOwner);
+        if (loops.length) {
+          record.loops = loops;
+          sketchBoundaryElements += 1;
+        }
+      }
+      const typeId = typeReferences.get(record.elementId);
+      if (typeId == null) continue;
+      record.typeId = typeId;
+      const typeName = typeNames.get(typeId);
+      if (typeName) {
+        record.typeName = typeName;
+        namedTypeElements += 1;
+      }
+    }
+
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
+    const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
     const boundedSolids = elementBounds.filter(solidBounds);
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
@@ -737,17 +476,26 @@ export function convertRvtBytes(
         segments,
         elementBounds,
         nativeProfiles,
+        nativeCategories,
+        schema,
+        partitionNames,
+        coverage,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
-          activeDecoders: ["revit-2027-duplicated-bounds-v1"],
+          activeDecoders: [
+            "revit-2027-duplicated-bounds-v1",
+            ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
+          ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: 0,
           nativeMaterialAssignments: 0,
           approximateSolids: displayBounds.length,
+          nativeCategorisedElements: categorisedElements,
           geometryFidelity: "native-bounds-envelope",
           materialFidelity: "display-fallback",
+          semanticFidelity: categorisedElements ? "native-categories" : "record-code-heuristic",
         },
         origin,
         bbox: relativeBounds,
@@ -762,6 +510,9 @@ export function convertRvtBytes(
           : undefined,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
+          ...(categorisedElements
+            ? [`${categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`]
+            : ["No native Revit category tokens were decoded, so element display falls back to record-code clusters."]),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
             : []),
@@ -781,11 +532,25 @@ export function convertRvtBytes(
           candidatesFound: elementBounds.length,
           candidatesFocused: displayBounds.length,
           candidatesUsed: displayBounds.length,
-          vertexCount: displayBounds.length * 8,
-          triangleCount: displayBounds.length * 12,
+          // Counted from the batches themselves: a drawn item is no longer
+          // always an eight-vertex box.
+          vertexCount: meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0),
+          triangleCount: meshes.reduce((total, mesh) => total + mesh.indices.length / 3, 0),
           meshCount: meshes.length,
           boundsRecordsFound: elementBounds.length,
           solidBoundsRecords: boundedSolids.length,
+          elementObjects: elementObjects.length,
+          parameterElements: elementParameters.size,
+          surfaces: surfaceCounts,
+          nativeSolids: solidsByElement.size,
+          faceOnlyElements: quadsByElement.size,
+          placedInstances: orientedBoxes.size,
+          sketchBoundaryElements,
+          sketchCurves,
+          solidOnlyElements,
+          typedElements: typeReferences.size,
+          namedTypeElements,
+          elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
           durationMs: performance.now() - started,
         },
       };
@@ -800,18 +565,19 @@ export function convertRvtBytes(
       y: (bounds.min.y + bounds.max.y) / 2,
       z: bounds.min.z,
     };
-    const meshes = buildMeshes(
-      used,
-      origin,
-      options.wallThickness ?? 0.5,
-      options.wallHeight ?? 10,
-    );
+    // The diagnostic scan recovers curves, not solids, so each candidate is
+    // extruded only to make it visible. At family scale a 10 ft extrusion would
+    // bury the component, so the defaults follow the recovered extent instead.
+    const diagonal = Math.hypot(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y);
+    const extrusionHeight = options.wallHeight ?? (familyScale ? Math.max(0.05, diagonal * 0.04) : 10);
+    const extrusionThickness = options.wallThickness ?? (familyScale ? Math.max(0.01, diagonal * 0.004) : 0.5);
+    const meshes = buildMeshes(used, origin, extrusionThickness, extrusionHeight);
     const relativeBounds = {
       min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
       max: {
         x: bounds.max.x - origin.x,
         y: bounds.max.y - origin.y,
-        z: bounds.max.z - origin.z + (options.wallHeight ?? 10),
+        z: bounds.max.z - origin.z + extrusionHeight,
       },
     };
 
@@ -824,17 +590,23 @@ export function convertRvtBytes(
       segments: used,
       elementBounds,
       nativeProfiles,
+      nativeCategories,
+      schema,
+      partitionNames,
+      coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
-        activeDecoders: [],
+        activeDecoders: nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : [],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: 0,
         nativeMaterialAssignments: 0,
         approximateSolids: used.length,
+        nativeCategorisedElements: categorisedElements,
         geometryFidelity: "diagnostic-only",
         materialFidelity: "display-fallback",
+        semanticFidelity: categorisedElements ? "native-categories" : "none",
       },
       origin,
       bbox: relativeBounds,
@@ -853,7 +625,9 @@ export function convertRvtBytes(
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
           : []),
-        "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
+        familyScale
+          ? "Family file: geometry is inferred from component-scale coordinate-like partition records and is not a native Revit element model."
+          : "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`
           : "No isolated spatial cluster was removed.",
@@ -871,6 +645,7 @@ export function convertRvtBytes(
         meshCount: meshes.length,
         boundsRecordsFound: elementBounds.length,
         solidBoundsRecords: boundedSolids.length,
+        elementObjects: elementObjects.length,
         durationMs: performance.now() - started,
       },
     };
