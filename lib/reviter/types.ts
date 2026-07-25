@@ -183,6 +183,8 @@ export type ConvertStats = {
   placedInstances?: number;
   /** Placed boxes discarded for disagreeing with the element's own envelope. */
   rejectedOrientedBoxes?: number;
+  /** Cached family shapes removed from the model; they are not elements. */
+  cachedShapeRecords?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */

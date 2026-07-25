@@ -351,16 +351,19 @@ export function convertRvtBytes(
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
-        // Seed the object chain from the records just found: objects that carry
-        // no bounds record are still linked into the chain and recoverable.
-        // A page holding no bounds record at all used to be skipped outright,
-        // taking every placement and shared shape on it out of the model, so
-        // such a page is seeded from its own object markers instead.
-        const chainSeeds = detectedBoundsRecords.length
-          ? detectedBoundsRecords.map((record) => record.recordOffset)
-          : decoderPlan.elementBoundsDecoder
-            ? markerObjectSeeds(inflated)
-            : [];
+        // Seed the object chain from every validated object marker on the page,
+        // not only from the bounds records.
+        //
+        // Chaining walks until an object fails to verify, and about one record
+        // in two hundred does, so a chain grown from a handful of seeds loses
+        // everything downstream of its first break. Marker seeds are already
+        // self-validating — each candidate has to echo its own length — so
+        // seeding from all of them makes a break local instead of terminal, and
+        // reaches pages that carry no bounds record at all.
+        const chainSeeds = decoderPlan.elementBoundsDecoder
+          ? markerObjectSeeds(inflated)
+          : [];
+        for (const record of detectedBoundsRecords) chainSeeds.push(record.recordOffset);
         if (chainSeeds.length) {
           for (const object of chainElementObjects(inflated, chainSeeds)) {
             elementObjects.push(object);
@@ -544,6 +547,28 @@ export function convertRvtBytes(
       instanceOnlyElements += 1;
     }
 
+    // A cached family shape is not a building element. Its object carries the
+    // same bounds sub-record an element does, so it was being decoded into the
+    // model as though it were one — and its box is in the family's own local
+    // frame, so it landed at the model origin. In the supplied project 5,995 of
+    // them were drawn that way, 97% of them stacked within 50 ft of the origin,
+    // and only 7 corresponded to anything in the paired export.
+    //
+    // The file names them: an instance's trailer points at the shape it uses, so
+    // the referenced set is read straight out of the placements rather than
+    // guessed at from position. No id is both a shape and an instance in this
+    // model, so removing them cannot take an element with them.
+    const sharedGeometryIds = new Set<number>();
+    for (const placement of instancePlacements.values()) sharedGeometryIds.add(placement.geometryId);
+    let cachedShapeRecords = 0;
+    if (sharedGeometryIds.size) {
+      for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
+        if (!sharedGeometryIds.has(elementBounds[index]!.elementId)) continue;
+        elementBounds.splice(index, 1);
+        cachedShapeRecords += 1;
+      }
+    }
+
     onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
     const nativeCategories = applyNativeCategories(
       elementBounds,
@@ -717,6 +742,7 @@ export function convertRvtBytes(
           faceOnlyElements: quadsByElement.size,
           placedInstances: orientedBoxes.size,
           rejectedOrientedBoxes,
+          cachedShapeRecords,
           sketchBoundaryElements,
           unnamedSketchElements,
           sketchCurves,

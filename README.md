@@ -163,22 +163,22 @@ On the supplied 67 MB Revit 2027 project:
 
 | IFC product type | in IFC | seen | recovered | drawn | drawn before |
 | --- | --- | --- | --- | --- | --- |
-| `IfcWallStandardCase` | 7,381 | 7,151 | 6,403 | 6,324 | 6,324 |
+| `IfcWallStandardCase` | 7,381 | 7,173 | 6,403 | 6,324 | 6,324 |
 | `IfcWall` | 140 | 139 | 124 | 110 | 110 |
 | `IfcCurtainWall` | 1,835 | 1,796 | 1,790 | 253 | 253 |
-| `IfcMember` | 19,707 | 16,340 | 15,918 | 15,916 | 15,916 |
+| `IfcMember` | 19,707 | 16,342 | 15,918 | 15,916 | 15,916 |
 | `IfcPlate` | 6,235 | 5,085 | 4,973 | 4,973 | 4,973 |
-| `IfcDoor` | 1,912 | 1,398 | 1,339 | 1,294 | 1,294 |
+| `IfcDoor` | 1,912 | 1,405 | 1,349 | 1,294 | 1,294 |
 | `IfcWindow` | 20 | 5 | 5 | 3 | 3 |
-| `IfcColumn` | 311 | 248 | 99 | 95 | 95 |
-| `IfcRailing` | 229 | 157 | 147 | 147 | 144 |
+| `IfcColumn` | 311 | 256 | 99 | 95 | 95 |
+| `IfcRailing` | 229 | 174 | 147 | 147 | 144 |
 | `IfcSlab` | 161 | 155 | 151 | 150 | 135 |
 | `IfcRoof` | 20 | 18 | 16 | 16 | 14 |
 | `IfcCovering` | 46 | 42 | 42 | 38 | 23 |
-| `IfcStair` | 92 | 68 | 64 | 64 | 58 |
-| `IfcStairFlight` | 121 | 112 | 86 | 77 | 77 |
+| `IfcStair` | 92 | 69 | 52 | 52 | 58 |
+| `IfcStairFlight` | 121 | 113 | 85 | 76 | 77 |
 | `IfcRamp` | 12 | 5 | 5 | 5 | 5 |
-| building elements | 38,222 | | | 29,465 | 29,424 |
+| building elements | 38,222 | | | 29,452 | 29,424 |
 
 `IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
 
@@ -191,7 +191,7 @@ On the supplied 67 MB Revit 2027 project:
 
 Two recovery gates were also leaking. Object chaining was seeded only from bounds records, so a page holding none went unwalked and took every placement and shared shape on it out of the model; such a page now seeds itself from its own object markers, and recovered objects rise from 47,265 to **48,488**. Placed family instances were resolved into oriented boxes and then discarded unless the element reached the scene some other way.
 
-Together these take drawn elements from 38,353 to **39,114**, and coverings from 50.0% to 82.6% of the export's count, slabs from 83.9% to 93.2%, stairs from 63.0% to 69.6%.
+Together these took drawn elements from 38,353 to 39,114, and coverings from 50.0% to 82.6% of the export's count, slabs from 83.9% to 93.2%. Removing the cached shapes described below then took the drawn count down to **33,117**, because most of what it removed was never a building element.
 
 **Where the remaining loss is.** After these changes `recovered` and `drawn` are within a few elements of each other for every category except the two that are held back deliberately. The gap that is left is in *recovery*, and the `seen` column locates it:
 
@@ -220,7 +220,7 @@ node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
 | `IfcWall` | 110 | 63.6% | 30.9% | 0.252 ft |
 | `IfcSlab` | 102 | 53.9% | 49.0% | 0.328 ft |
 | `IfcColumn` | 95 | 100.0% | 100.0% | 0.000 ft |
-| `IfcStairFlight` | 66 | 22.7% | 28.8% | 5.413 ft |
+| `IfcStairFlight` | 65 | 21.5% | 27.7% | 5.413 ft |
 | `IfcCovering` | 38 | 97.4% | 89.5% | 0.000 ft |
 
 "ok" means within half a foot on every axis. The wall size column is expected rather than wrong: the record is the wall **as modelled**, before Revit's join trimming, and the difference is half a wall thickness.
@@ -236,6 +236,30 @@ Stair flights remain wrong at 5.4 ft and are not addressed here.
 - **round columns** account for most of the 149 columns that are seen but yield no geometry — 75% of `Round Column:24" Diameter`, 87% of `20"`, 89% of `16"`. Cylinder surface patches exist in the file but only 146 of them, so a round column is not stored as a cylinder patch; 47 of these columns are instances whose shared shape never resolved.
 - **5,260 of 24,616 instance placements reference a shared geometry object that is never read.** 1,637 of those objects are found in the chain and rejected, because `readLocalBounds` reads the local AABB at `+48` and these larger objects do not keep it there. An offset search against the export found no consistent alternative, so the layout is still open. This costs 540 elements outright and coarsens the rest.
 - **ramps and windows are simply absent** — 7 of 12 ramps and 15 of 20 windows appear nowhere in any pass, so there is nothing to place.
+
+## Cached shapes are not building elements
+
+A loadable family stores its shape once and places it many times. That cached shape is an ordinary object in the partition stream, and it carries the same bounds sub-record an element does — so it was being decoded into the model as though it were an element. Its box is in the family's own local frame, so it landed at the model origin.
+
+The scale of it: **9,655 of 42,348 records — 22.8% — were centred within 50 ft of the origin**, a window that is 1.1% of the building's footprint, and only 3.9% of them corresponded to anything in the paired export. Everywhere else in the model 93.8% of records match. The view had a solid blob of several thousand boxes sitting in the middle of the building.
+
+The file names them, so they do not have to be guessed at from position: an instance's trailer points at the shape it uses, and the referenced set is read straight out of the placements. In the supplied project 6,627 shape ids are referenced, **6,013 of them were being drawn as elements, and 97% of those sat at the origin**. No id is both a shape and an instance, so removing them cannot take an element with it.
+
+The cost is 13 counted elements: one stair flight that was drawn correctly, and six `IfcStair` containers that carry no geometry in the export at all. That is why the stair rows above go down. Removing roughly 6,000 phantom boxes for one correctly drawn element is worth it, and the drawn set goes from 75% real to **89% real**.
+
+**A shape's bounds are not at a fixed offset.** `readLocalBounds` read six f64 at `+48`, which is the `recordCount == 1` case of the same `42 + 6 * count` framing the element bounds record uses — so every shape with a longer field table was rejected, 12,038 of them. Reading the count-derived offset, with the duplicated-block check that makes it safe, recovers 4,874 more and takes resolved placements from 19,356 to **21,257**.
+
+## Three things that turned out not to be the problem
+
+Each of these was a plausible cause with a cheap test, and the test said no. They are recorded so they are not tried again.
+
+**Page seams do not hide the missing elements.** Chaining and record detection run per inflated page, so an object spanning two pages should be invisible to both. Objects are under 64 KB, so joining each page's tail to the next page's head contains every straddler. Scanning those seams across the whole stream finds **1 extra object and 0 extra bounds records**. The 3,439 elements the export knows about and no pass sees are not there to be found.
+
+**Chain breaks were real but minor.** Chaining walks until an object fails to verify, and about one record in two hundred does, so a chain grown from a few seeds loses everything downstream of its first break. Seeding from every validated object marker rather than only from bounds records makes a break local instead of terminal, and takes recovered objects from 48,488 to **51,457**. It moves `seen` a little — walls 7,151 → 7,173, railings 157 → 174, openings 2,458 → 2,501 — and `drawn` almost not at all. Ramps and windows are unchanged.
+
+**Stair flights are not drawn from the wrong source.** 50 of the 56 stair flights drawn from native faces have exactly one face, and one face is not a solid, so preferring the element's envelope looked like an obvious improvement. Measured, the envelope is *worse*: 7.95 ft median error against the 5.413 ft the faces already give. Both readings are wrong by several feet, so the fault is in how stair geometry is attributed rather than in which of the two the viewer picks, and no change was made.
+
+**And one that is simply not recoverable yet.** Of the 748 walls that are proven real and yield no geometry, 709 are found as objects in the chain — and **745 of the 748 own zero decoded surface patches**, against 6,242 of the 6,403 recovered walls that do own them. There is no bounds record, no plane, no sketch and no placement for these elements. Nothing in the currently decoded record types describes their shape, so this needs a new record decoded rather than a pipeline change.
 
 The record-code consensus floor was also widened, so that a cluster too small to reach the old flat support floor of 8 can qualify by being near-unanimous instead — a building holds a dozen ramps and their cluster could never reach 8 no matter how consistent the evidence was. On this model it changes almost nothing: the small categories are limited by not being seen, not by failing to reach consensus. It is kept because the bias it removes is real and the tail categories are the ones a widened floor exists for, but it is recorded here as having produced no measurable gain.
 
@@ -318,8 +342,8 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 - metadata: Revit `2027`, build `20260417_1515(x64)`, locale `ENU`
 - native Rust reader: file and schema open successfully, but the version is beyond its verified 2016–2026 range
 - nested duplicated-bounds recovery: 35,677 record occurrences, 35,633 unique native IDs, and 33,985 non-zero 3D envelopes
-- RVT-only default scene: 39,114 element proxies across 25 decoded Revit categories, 731 of them drawn as uncategorised; 1,569 curtain-wall/opening wrapper envelopes remain auditable/exportable but are held back so their child panels and mullions stay visible
-- generated scene: 336,146 vertices, 509,824 triangles, and 44 batches
+- RVT-only default scene: 33,117 element proxies, 578 of them drawn as uncategorised; 6,013 cached family shapes are excluded because they are not elements, and 1,569 curtain-wall/opening wrapper envelopes remain auditable/exportable but are held back so their child panels and mullions stay visible
+- generated scene: 435,242 triangles
 - paired index evidence: 8,902 `ElemTable` IDs plus 37,324 partition-record IDs
 - Autodesk derivative cross-check: 59,582 stable Revit IDs and 51,420 fragments in the signed-in reference capture
 - Autodesk derivative presentation evidence: 22 materials and no bitmap textures; its screenshot look comes primarily from detailed meshes, technical shading, feature edges, and shadows

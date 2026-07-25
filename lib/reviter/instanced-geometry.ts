@@ -97,14 +97,43 @@ export function readInstancePlacement(
   return { elementId: object.elementId, basis, origin, geometryId };
 }
 
+/** Constant word introducing an object's bounds sub-record. */
+const BOUNDS_FAMILY_WORD = 0x0008_8004;
+
+/**
+ * Offset of the bounds block within an object, from the object's own start.
+ *
+ * A shape's AABB is not at a fixed place: it sits behind the field table, whose
+ * length is driven by the record count, exactly as it does in the element bounds
+ * record — `42 + 6 * count`. Reading a fixed `+48` is the `count == 1` case, and
+ * it is the only case that was handled, so every shape with a longer field table
+ * was rejected. The block is written twice, and that duplication is what makes
+ * the read safe to widen: a false positive has to reproduce 48 bytes exactly.
+ */
+function boundsOffsetWithin(data: Uint8Array, start: number): number | null {
+  if (start + 46 > data.byteLength) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(start + 34, true) !== BOUNDS_FAMILY_WORD) return null;
+  const count = view.getUint32(start + 38, true);
+  if (count < 1 || count > 10_000) return null;
+  if (view.getUint32(start + 42, true) !== 3) return null;
+  const at = start + 42 + count * 6;
+  if (at + 96 > data.byteLength) return null;
+  for (let byte = 0; byte < 48; byte += 1) {
+    if (data[at + byte] !== data[at + 48 + byte]) return null;
+  }
+  return at;
+}
+
 /** Read a shared geometry object's bounds, expressed in the local frame. */
 export function readLocalBounds(data: Uint8Array, object: ElementObject): LocalBounds | null {
   if (object.objectLength === INSTANCE_OBJECT_LENGTH) return null;
   if (object.offset + 96 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const at = boundsOffsetWithin(data, object.offset) ?? object.offset + 48;
   const values: number[] = [];
   for (let index = 0; index < 6; index += 1) {
-    values.push(view.getFloat64(object.offset + 48 + index * 8, true));
+    values.push(view.getFloat64(at + index * 8, true));
   }
   if (!values.every(finite)) return null;
   const [minX, minY, minZ, maxX, maxY, maxZ] = values as [

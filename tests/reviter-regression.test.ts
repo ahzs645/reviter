@@ -17,7 +17,7 @@ import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { surfaceQuadsFor, wallSolidsFor } from "../lib/reviter/native-geometry.ts";
-import { instanceCorners } from "../lib/reviter/instanced-geometry.ts";
+import { instanceCorners, readLocalBounds } from "../lib/reviter/instanced-geometry.ts";
 import { boundaryLoopsFor, collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
 import { groupRings, ringArea, triangulate } from "../lib/reviter/polygon.ts";
 import type { Point2 } from "../lib/reviter/polygon.ts";
@@ -894,4 +894,54 @@ test("keeps the absolute extent when there are too few records to trim a tail", 
     boundsFeet: { min: { x: index, y: 0, z: 0 }, max: { x: index + 1, y: 1, z: 1 } },
   }));
   assert.deepEqual(framingBoundsOfRecords(records), boundsOfRecords(records));
+});
+
+test("reads a shared shape whose bounds sit behind a longer field table", () => {
+  // The AABB is framed as `42 + 6 * recordCount`, exactly as it is in the
+  // element bounds record. Reading a fixed +48 is only the count == 1 case, and
+  // every shape with a longer field table was rejected because of it.
+  const count = 3;
+  const at = 42 + count * 6;
+  const data = new Uint8Array(at + 96 + 20);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 290_064, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, count, true);
+  view.setUint32(42, 3, true);
+  const box = [-1, -2, -3, 4, 5, 6];
+  for (let copy = 0; copy < 2; copy += 1) {
+    for (let field = 0; field < 6; field += 1) {
+      view.setFloat64(at + copy * 48 + field * 8, box[field]!, true);
+    }
+  }
+
+  const local = readLocalBounds(data, {
+    offset: 0, elementId: 290_064, objectLength: 6_179, marker: 0x08c6, typeCode: 0,
+  });
+  assert.ok(local);
+  assert.deepEqual(local.min, [-1, -2, -3]);
+  assert.deepEqual(local.max, [4, 5, 6]);
+});
+
+test("ignores a shape whose two bounds copies disagree", () => {
+  const count = 2;
+  const at = 42 + count * 6;
+  const data = new Uint8Array(at + 96 + 20);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 1, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, count, true);
+  view.setUint32(42, 3, true);
+  for (let field = 0; field < 6; field += 1) {
+    view.setFloat64(at + field * 8, field, true);
+    view.setFloat64(at + 48 + field * 8, field + 1, true);
+  }
+  // The framed read is refused, so whatever the fixed +48 fallback returns, it
+  // is not the disagreeing block — a shape is never built from bytes that
+  // failed their own duplication check.
+  const local = readLocalBounds(data, {
+    offset: 0, elementId: 1, objectLength: 900, marker: 0x08c6, typeCode: 0,
+  });
+  assert.notDeepEqual(local?.min, [0, 1, 2]);
+  assert.notDeepEqual(local?.max, [3, 4, 5]);
 });
