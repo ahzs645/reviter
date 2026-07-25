@@ -58,6 +58,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [sectionEnabled, setSectionEnabled] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
+  const [schemaSearch, setSchemaSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -648,6 +649,39 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     </tbody>
                   </table>
                   <p className="export-disclaimer">Depth is graded per stream rather than weighted by bytes: the partition stream is most of the file, so counting it as covered because a decoder reads part of it would overstate the result.</p>
+                </section>
+              )}
+
+              {result.schema && result.schema.taggedClasses.length > 0 && (
+                <section className="coverage-panel">
+                  <div className="section-heading">
+                    <span>Embedded schema · Formats/Latest</span>
+                    <span>{result.schema.taggedClasses.length} tagged classes{result.schema.rejectedCandidates ? ` · ${result.schema.rejectedCandidates} rejected` : ""}</span>
+                  </div>
+                  <label className="model-search"><span>Search class or base class</span>
+                    <input value={schemaSearch} onChange={(event) => setSchemaSearch(event.target.value)} placeholder="e.g. Wall" />
+                  </label>
+                  <table className="coverage-table">
+                    <tbody>
+                      {result.schema.taggedClasses
+                        .filter((entry) => {
+                          const query = schemaSearch.trim().toLowerCase();
+                          if (!query) return true;
+                          return entry.name.toLowerCase().includes(query) || entry.parent.toLowerCase().includes(query);
+                        })
+                        .slice(0, 60)
+                        .map((entry) => (
+                          <tr key={`${entry.tag}-${entry.name}`}>
+                            <td>{entry.name}</td>
+                            <td>0x{entry.tag.toString(16).padStart(4, "0")}</td>
+                            <td>{entry.parent}</td>
+                            <td>{entry.version == null ? "—" : `v${entry.version}`}</td>
+                            <td>{entry.declaredFieldCount == null ? "—" : `${entry.declaredFieldCount} field${entry.declaredFieldCount === 1 ? "" : "s"} declared`}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  <p className="export-disclaimer">Class names, serialization tags, and base classes are decoded from the file. Field lists are declared but not walked — their layout does not close across the corpus, so they are counted, not invented.</p>
                 </section>
               )}
 
