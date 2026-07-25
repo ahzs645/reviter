@@ -5,6 +5,8 @@
  * shown: which envelopes belong in the default scene, how they are grouped and
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
+import type { WallSolid } from "./native-geometry.ts";
+
 import type {
   Bounds3,
   ElementBoundsRecord,
@@ -176,6 +178,35 @@ const BOX_INDICES = [
   1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
 ];
 
+/**
+ * Oriented box for an element whose native surfaces rebuilt a solid. Unlike the
+ * axis-aligned envelope this follows the element's real direction, length, and
+ * thickness, so a wall at an angle is drawn at that angle.
+ */
+function solidGeometry(solid: WallSolid, origin: Vec3) {
+  const dx = solid.end.x - solid.start.x;
+  const dy = solid.end.y - solid.start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / length) * solid.thickness * 0.5;
+  const ny = (dx / length) * solid.thickness * 0.5;
+  const z0 = solid.baseElevation;
+  const z1 = solid.topElevation;
+  const points = [
+    [solid.start.x + nx, solid.start.y + ny, z0],
+    [solid.start.x - nx, solid.start.y - ny, z0],
+    [solid.end.x - nx, solid.end.y - ny, z0],
+    [solid.end.x + nx, solid.end.y + ny, z0],
+    [solid.start.x + nx, solid.start.y + ny, z1],
+    [solid.start.x - nx, solid.start.y - ny, z1],
+    [solid.end.x - nx, solid.end.y - ny, z1],
+    [solid.end.x + nx, solid.end.y + ny, z1],
+  ];
+  return {
+    positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
+    indices: BOX_INDICES,
+  };
+}
+
 function boxGeometry(bounds: Bounds3, origin: Vec3) {
   const { min, max } = bounds;
   const points = [
@@ -268,7 +299,10 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
       let vertexOffset = 0;
       const batch = roleRecords.slice(start, start + MESH_BATCH_SIZE);
       for (const record of batch) {
-        const box = boxGeometry(record.boundsFeet, origin);
+        // Prefer the element's own reconstructed solid; fall back to its envelope.
+        const box = record.solid
+          ? solidGeometry(record.solid, origin)
+          : boxGeometry(record.boundsFeet, origin);
         positions.push(...box.positions);
         indices.push(...box.indices.map((index) => index + vertexOffset));
         vertexOffset += 8;

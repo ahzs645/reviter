@@ -1,6 +1,7 @@
 import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
+import type { WallSolid } from "./native-geometry.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 
@@ -8,7 +9,8 @@ export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
 export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.ts";
 export type { PartitionName } from "./partition-names.ts";
-export type { CylinderPatch, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
+export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
+export type { WallSolid } from "./native-geometry.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -91,6 +93,8 @@ export type ElementBoundsRecord = {
   typeId?: number;
   /** Type name read from that type element, for system families. */
   typeName?: string;
+  /** Oriented solid rebuilt from the element's own native surface patches. */
+  solid?: WallSolid;
   boundsFeet: Bounds3;
 };
 
@@ -148,6 +152,8 @@ export type ConvertStats = {
   parameterElements?: number;
   /** Native analytic surface patches decoded from the partition stream. */
   surfaces?: SurfaceSummary;
+  /** Elements whose native surfaces rebuild an oriented solid. */
+  nativeSolids?: number;
   /** Elements linked to their type element. */
   typedElements?: number;
   /** Elements whose type element also yielded a name. */

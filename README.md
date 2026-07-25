@@ -65,7 +65,19 @@ A surface point is `origin + u·uDir + v·vDir`. For a wall the plane is its cen
 
 The trim range is the wall **as modelled**, before Revit's join trimming. The difference between `uMin`/`uMax` and the IFC axis endpoints is, element by element, exactly half of a wall thickness present in this model — 60 mm, 100 mm, 125 mm, 150 mm. The IFC axis is the post-join version, so that disagreement is evidence the record is genuine rather than evidence of an error.
 
-**What is not solved: attribution.** These patches cannot yet be tied to the element that owns them. The nearest preceding element id is the owning wall for only 0.6% of matches, because a blob interleaves a wall with its join neighbours. Surfaces are therefore reported as a decoded inventory, and the viewer keeps drawing element envelopes rather than pretending a patch belongs to a particular element. A partially decoded container sits immediately before each run of surface records — `[u64 elementId][u32 n][n × u32 itemIndex]`, preceded by 20-byte topology links and followed by 100-byte transforms — and resolving `itemIndex → surface record` is the missing link.
+**Attribution.** Geometry lives in per-element blobs, and each blob is introduced by an owner record that names its element outright: `ff ff ff ff 10 03 [u32 count][count × u64 element id]`. A surface belongs to the last such record before it — and that is the same anchor the parameter tables hang off, so one scan serves both.
+
+The rule verifies at **99.87%** on the 4,544 wall plane-triples that have a unique geometric owner, against **0.04%** when the truth is shuffled and **0.00%** for a random tag. Across all categories, **96.9%** of attributed planes have their origin inside the owner's own bounding box, against 5.5% for a random element.
+
+Two earlier readings were wrong and are recorded so they are not retried: the nearest preceding element id owns the surface only 0.6% of the time, and the `[u64 elementId][u32 n][n × u32 itemIndex]` table nearby contains the true owner only 0.4% of the time — its indices address a face/edge graph, not surfaces.
+
+## Rebuilt solids
+
+A wall's geometry is three consecutive plane records at a 105-byte stride: the centre plane, then the two face planes offset by half the thickness along the plane normal. That triple is everything needed to rebuild the wall as Revit modelled it — location line from `origin + t·uDir` over `[uMin, uMax]`, height from `vMin` to `vMax`, thickness from the separation of the faces.
+
+**10,028 elements in the supplied project are rebuilt this way**, and the viewer draws those instead of their bounding boxes. Against the paired IFC export the rebuilt location line is collinear with the IFC axis for **6,280 of 6,284 — 99.9%** — and the rebuilt height matches the IFC extrusion depth for **98.2%**. The recovered thicknesses come out as the round millimetre figures a real building has: 90, 140, 150, 250, 300 mm.
+
+This is oriented geometry, not an envelope. A wall running at an angle is drawn at that angle, with its true length and thickness, where the bounding-box path could only draw the box enclosing it.
 
 ## Element types and names
 

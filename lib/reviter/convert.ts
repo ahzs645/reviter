@@ -22,7 +22,8 @@ import {
 import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
-import { collectSurfaces } from "./surfaces.ts";
+import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
+import { wallSolids } from "./native-geometry.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -143,6 +144,7 @@ export function convertRvtBytes(
     const elementObjects: ElementObject[] = [];
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
+    const planesByElement = new Map<number, PlanePatch[]>();
     const typeReferences = new Map<number, number>();
     const typeNames = new Map<number, string>();
     const nativeProfiles: NativeProfileLocator[] = [];
@@ -188,12 +190,16 @@ export function convertRvtBytes(
         for (const entry of typeLinks.names) {
           if (!typeNames.has(entry.typeId)) typeNames.set(entry.typeId, entry.name);
         }
-        for (const surface of collectSurfaces(inflated)) {
-          surfaceCounts.planes += surface.kind === "plane" ? 1 : 0;
-          surfaceCounts.cylinders += surface.kind === "cylinder" ? 1 : 0;
-          if (surface.kind === "plane" && Math.abs(Math.abs(surface.vDir.z) - 1) <= 1e-9) {
-            surfaceCounts.verticalPlanes += 1;
+        for (const { owner, surface } of collectOwnedSurfaces(inflated)) {
+          if (surface.kind === "cylinder") {
+            surfaceCounts.cylinders += 1;
+            continue;
           }
+          surfaceCounts.planes += 1;
+          if (Math.abs(Math.abs(surface.vDir.z) - 1) <= 1e-9) surfaceCounts.verticalPlanes += 1;
+          const planes = planesByElement.get(owner);
+          if (planes) planes.push(surface);
+          else planesByElement.set(owner, [surface]);
         }
         for (const table of collectElementParameters(inflated)) {
           const existing = elementParameters.get(table.elementId);
@@ -280,10 +286,20 @@ export function convertRvtBytes(
       elementIndex?.uniqueElementIds,
     );
 
+    const solidsByElement = new Map<number, ReturnType<typeof wallSolids>[number]>();
+    for (const solid of wallSolids(planesByElement)) {
+      // One element can own several solids; keep the longest as its body.
+      const existing = solidsByElement.get(solid.elementId);
+      const length = (candidate: typeof solid) =>
+        Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
+      if (!existing || length(solid) > length(existing)) solidsByElement.set(solid.elementId, solid);
+    }
+
     let namedTypeElements = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
+      record.solid = solidsByElement.get(record.elementId);
       const typeId = typeReferences.get(record.elementId);
       if (typeId == null) continue;
       record.typeId = typeId;
@@ -392,6 +408,7 @@ export function convertRvtBytes(
           elementObjects: elementObjects.length,
           parameterElements: elementParameters.size,
           surfaces: surfaceCounts,
+          nativeSolids: solidsByElement.size,
           typedElements: typeReferences.size,
           namedTypeElements,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,

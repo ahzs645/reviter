@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Native solids"
+              value={result?.stats.nativeSolids
+                ? `${result.stats.nativeSolids.toLocaleString()} rebuilt`
+                : result ? "Not rebuilt" : "Not evaluated"}
+              tone={result?.stats.nativeSolids ? "good" : "off"}
+            />
+            <FidelityRow
               label="Element types"
               value={result?.stats.typedElements
                 ? `${result.stats.typedElements.toLocaleString()} linked · ${(result.stats.namedTypeElements ?? 0).toLocaleString()} named`
@@ -585,6 +592,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
                         )}
                         <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {selectedRecord.solid && (
+                          <div><dt>Native geometry</dt><dd>{Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · {(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick</dd></div>
+                        )}
                         {selectedRecord.typeName && (
                           <div><dt>Type</dt><dd>{selectedRecord.typeName}</dd></div>
                         )}

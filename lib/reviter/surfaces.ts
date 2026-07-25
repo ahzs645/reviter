@@ -35,12 +35,30 @@
  * 125 mm, 150 mm…). The IFC axis is the post-join version, so the disagreement
  * is evidence the record is genuine rather than evidence of an error.
  *
- * **What is not solved: attribution.** These records cannot currently be tied to
- * the element that owns them. The nearest preceding element id is the owning
- * wall for only 0.6% of matches, because a blob interleaves a wall with its join
- * neighbours. Surfaces are therefore reported as a decoded inventory, not
- * attached to elements, and the viewer keeps drawing element envelopes.
+ * **Attribution.** Geometry lives in per-element blobs, and each blob is
+ * introduced by an owner record that names its element outright:
+ *
+ * ```text
+ * ff ff ff ff 10 03 [u32 count][count x u64 element id]
+ * ```
+ *
+ * A surface belongs to the last such record before it. That record is the same
+ * anchor the parameter tables hang off, so one scan serves both.
+ *
+ * The rule verifies at 99.87% on the 4,544 wall plane-triples that have a unique
+ * geometric owner, against 0.04% when the truth is shuffled and 0.00% for a
+ * random tag. Across all categories, 96.9% of attributed planes have their
+ * origin inside the owner's own bounding box, against 5.5% for a random element.
+ *
+ * Two earlier readings were wrong and are recorded so they are not retried: the
+ * nearest preceding element id owns the surface only 0.6% of the time, and the
+ * `[u64 elementId][u32 n][n x u32 itemIndex]` table nearby contains the true
+ * owner only 0.4% of the time — its indices address a face/edge graph, not
+ * surfaces.
  */
+
+/** `ff ff ff ff 10 03` — the owner record that introduces an element's blob. */
+const OWNER_RECORD = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03] as const;
 
 /** Record sizes, in bytes. */
 const PLANE_BYTES = 105;
@@ -86,6 +104,9 @@ export type CylinderPatch = {
 };
 
 export type SurfacePatch = PlanePatch | CylinderPatch;
+
+/** A surface together with the element whose blob it was found in. */
+export type OwnedSurface = { owner: number; surface: SurfacePatch };
 
 export type SurfaceSummary = {
   planes: number;
@@ -216,6 +237,55 @@ export function collectSurfaces(data: Uint8Array): SurfacePatch[] {
     }
   }
   return surfaces;
+}
+
+/**
+ * Decode surfaces and attribute each to the element that owns its blob, in one
+ * pass: owner records and surface records are found in the same scan, and a
+ * surface takes the id of the most recent owner record before it.
+ */
+export function collectOwnedSurfaces(data: Uint8Array): OwnedSurface[] {
+  const owned: OwnedSurface[] = [];
+  if (data.byteLength < PLANE_BYTES) return owned;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let owner = 0;
+
+  for (let offset = 0; offset + PLANE_BYTES <= data.byteLength; ) {
+    if (data[offset] === 0xff && matchesOwnerRecord(data, view, offset)) {
+      owner = view.getUint32(offset + 10, true);
+      offset += 18;
+      continue;
+    }
+    if (data[offset] !== 0x01) {
+      offset += 1;
+      continue;
+    }
+    const cylinder = readCylinder(view, offset, data.byteLength);
+    if (cylinder) {
+      if (owner) owned.push({ owner, surface: cylinder });
+      offset += CYLINDER_BYTES;
+      continue;
+    }
+    const plane = readPlane(view, offset, data.byteLength);
+    if (plane) {
+      if (owner) owned.push({ owner, surface: plane });
+      offset += PLANE_BYTES;
+      continue;
+    }
+    offset += 1;
+  }
+  return owned;
+}
+
+function matchesOwnerRecord(data: Uint8Array, view: DataView, offset: number): boolean {
+  if (offset + 18 > data.byteLength) return false;
+  for (let index = 0; index < OWNER_RECORD.length; index += 1) {
+    if (data[offset + index] !== OWNER_RECORD[index]) return false;
+  }
+  // A single-element owner record; the id follows as a 64-bit value.
+  if (view.getUint32(offset + 6, true) !== 1) return false;
+  if (view.getUint32(offset + 14, true) !== 0) return false;
+  return view.getUint32(offset + 10, true) > 0;
 }
 
 export function summariseSurfaces(surfaces: Iterable<SurfacePatch>): SurfaceSummary {

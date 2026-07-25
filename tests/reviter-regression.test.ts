@@ -11,6 +11,8 @@ import { chainElementObjects, dominantMarker } from "../lib/reviter/element-obje
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
+import { wallSolidsFor } from "../lib/reviter/native-geometry.ts";
+import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -550,4 +552,34 @@ test("reads a type name from behind the 0x1104 field slot", () => {
   // A character count that runs past the buffer is not a name.
   view.setUint32(34, 5_000, true);
   assert.deepEqual(collectTypeLinks(data).names, []);
+});
+
+test("rebuilds an oriented solid from a wall's plane triple", () => {
+  // Centre plane plus two face planes at the fixed stride, offset by half the
+  // thickness along the plane normal.
+  const plane = (offset: number, sideways: number): PlanePatch => ({
+    kind: "plane",
+    offset,
+    origin: { x: 10 + sideways * 0, y: 20 + sideways, z: 3 },
+    uDir: { x: 1, y: 0, z: 0 },
+    vDir: { x: 0, y: 0, z: 1 },
+    uMin: 0,
+    vMin: 0,
+    uMax: 25,
+    vMax: 13.779527559055119,
+  });
+  const solids = wallSolidsFor(978605, [plane(0, 0), plane(105, -0.5), plane(210, 0.5)]);
+
+  assert.equal(solids.length, 1);
+  const solid = solids[0]!;
+  assert.deepEqual(solid.start, { x: 10, y: 20 });
+  assert.deepEqual(solid.end, { x: 35, y: 20 });
+  assert.equal(solid.baseElevation, 3);
+  assert.ok(Math.abs(solid.topElevation - 16.779527559055119) < 1e-12);
+  // 1 ft between the faces, and the wall is 25 ft long — not the 25x1 box that
+  // an axis-aligned envelope would give for a wall running at an angle.
+  assert.ok(Math.abs(solid.thickness - 1) < 1e-12);
+
+  // Planes that are not at the fixed stride are not one wall's triple.
+  assert.deepEqual(wallSolidsFor(1, [plane(0, 0), plane(200, -0.5), plane(400, 0.5)]), []);
 });
