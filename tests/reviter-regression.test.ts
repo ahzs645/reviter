@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
+import {
+  boundsOfRecords,
+  detectDuplicatedBoundsRecord,
+  detectDuplicatedBoundsRecords,
+  framingBoundsOfRecords,
+} from "../lib/reviter/bounds-records.ts";
 import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
@@ -853,4 +858,40 @@ test("seeds an object chain from markers when a page carries no bounds record", 
   // and shared shape on it out of the model.
   const chained = chainElementObjects(data, markerObjectSeeds(data));
   assert.deepEqual(chained.map((object) => object.elementId), [290_064]);
+});
+
+test("frames the scene to the building rather than to a displaced outlier", () => {
+  const envelope = (x: number, y: number): ElementBoundsRecord => ({
+    elementId: 1,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x, y, z: 0 }, max: { x: x + 4, y: y + 4, z: 10 } },
+  });
+  const building = Array.from({ length: 3_000 }, (_, index) =>
+    envelope((index % 60) * 5, Math.floor(index / 60) * 5));
+  // Three misparsed records thousands of feet away. Taking the absolute extent
+  // puts the centre of the scene in empty ground, and the camera with it.
+  const strays = [envelope(0, -4_000), envelope(50, -3_900), envelope(90, -3_800)];
+
+  const absolute = boundsOfRecords([...building, ...strays]);
+  const framing = framingBoundsOfRecords([...building, ...strays]);
+  assert.equal(absolute.min.y, -4_000);
+  assert.equal(framing.min.y, 0);
+  assert.equal(framing.max.y, boundsOfRecords(building).max.y);
+  // Nothing is discarded — this decides where the viewer looks, not what exists.
+  assert.equal(framing.min.x, 0);
+});
+
+test("keeps the absolute extent when there are too few records to trim a tail", () => {
+  const records: ElementBoundsRecord[] = Array.from({ length: 20 }, (_, index) => ({
+    elementId: index,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: index, y: 0, z: 0 }, max: { x: index + 1, y: 1, z: 1 } },
+  }));
+  assert.deepEqual(framingBoundsOfRecords(records), boundsOfRecords(records));
 });

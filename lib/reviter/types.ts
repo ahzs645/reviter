@@ -181,6 +181,8 @@ export type ConvertStats = {
   faceOnlyElements?: number;
   /** Family instances placed from a transform and a shared shape. */
   placedInstances?: number;
+  /** Placed boxes discarded for disagreeing with the element's own envelope. */
+  rejectedOrientedBoxes?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */

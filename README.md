@@ -200,6 +200,43 @@ Together these take drawn elements from 38,353 to **39,114**, and coverings from
 
 Neither is a display problem, so neither is fixed by the changes above. `IfcRamp` is unchanged at 5 drawn for that reason.
 
+## Overlay against the paired export
+
+Counting elements answers whether something is present. It cannot answer whether it is in the right place, and an element can be drawn and drawn wrong. `scripts/overlay-diff.ts` puts both models in one frame and measures the disagreement:
+
+```sh
+node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
+```
+
+`web-ifc` returns metres in a Y-up frame and the recovered model is feet, Z-up, so the export is mapped through `(x, y, z) → (x, −z, y)` — the same mapping `ifc-reference.ts` already applies — and scaled. The comparison is against the geometry the viewer actually **draws**, following the same precedence `buildBoundsMeshes` uses, because for a placed family the drawn shape is its oriented box rather than its axis-aligned bounds.
+
+| IFC product type | drawn | centre ok | size ok | median centre error |
+| --- | --- | --- | --- | --- |
+| `IfcMember` | 15,886 | 98.7% | 98.6% | 0.000 ft |
+| `IfcWallStandardCase` | 6,324 | 96.2% | 49.3% | 0.098 ft |
+| `IfcPlate` | 4,973 | 99.9% | 99.7% | 0.000 ft |
+| `IfcDoor` | 1,294 | 0.0% | 0.0% | 1.426 ft |
+| `IfcRailing` | 137 | 93.4% | 93.4% | 0.000 ft |
+| `IfcWall` | 110 | 63.6% | 30.9% | 0.252 ft |
+| `IfcSlab` | 102 | 53.9% | 49.0% | 0.328 ft |
+| `IfcColumn` | 95 | 100.0% | 100.0% | 0.000 ft |
+| `IfcStairFlight` | 66 | 22.7% | 28.8% | 5.413 ft |
+| `IfcCovering` | 38 | 97.4% | 89.5% | 0.000 ft |
+
+"ok" means within half a foot on every axis. The wall size column is expected rather than wrong: the record is the wall **as modelled**, before Revit's join trimming, and the difference is half a wall thickness.
+
+**The scene was framed to the wrong place.** The origin was the midpoint of the absolute extent of every drawn record, so the handful of misparsed envelopes that land thousands of feet from the building dragged it with them — the supplied model's centre came out at `177.4, 448.5, −56` where the export puts the building at `−5.4, 287.6, 24`. The camera opened on empty ground. Ignoring one part in a thousand at each end of each axis puts it at `−1.5, 287.3, 21.7`, within **4 ft**. Nothing is discarded; this decides only where the viewer looks.
+
+**A placed box is now checked against the element's own envelope.** An instance's oriented box and its duplicated-bounds record are independent readings of the same element, so their agreement costs nothing to test. For curtain-wall mullions and panels — 18,357 elements — they agree to 0.000 ft and the box is exact. For doors they disagree by 7.15 ft, and the box is wrong by that full amount while the record is wrong by 2.75: the shared shape a door instance points at is not the door's own extent. Using the box only where it agrees leaves members, plates and columns untouched and takes the median door error from **3.458 ft to 1.426 ft**. 942 of 19,356 placed boxes are rejected this way.
+
+Stair flights remain wrong at 5.4 ft and are not addressed here.
+
+**Where the unrecovered elements actually go.** Joining the export's family and storey data to the elements that never appear shows the losses are not spread evenly:
+
+- **round columns** account for most of the 149 columns that are seen but yield no geometry — 75% of `Round Column:24" Diameter`, 87% of `20"`, 89% of `16"`. Cylinder surface patches exist in the file but only 146 of them, so a round column is not stored as a cylinder patch; 47 of these columns are instances whose shared shape never resolved.
+- **5,260 of 24,616 instance placements reference a shared geometry object that is never read.** 1,637 of those objects are found in the chain and rejected, because `readLocalBounds` reads the local AABB at `+48` and these larger objects do not keep it there. An offset search against the export found no consistent alternative, so the layout is still open. This costs 540 elements outright and coarsens the rest.
+- **ramps and windows are simply absent** — 7 of 12 ramps and 15 of 20 windows appear nowhere in any pass, so there is nothing to place.
+
 The record-code consensus floor was also widened, so that a cluster too small to reach the old flat support floor of 8 can qualify by being near-unanimous instead — a building holds a dozen ramps and their cluster could never reach 8 no matter how consistent the evidence was. On this model it changes almost nothing: the small categories are limited by not being seen, not by failing to reach consensus. It is kept because the bias it removes is real and the tail categories are the ones a widened floor exists for, but it is recorded here as having produced no measurable gain.
 
 ## Stream coverage

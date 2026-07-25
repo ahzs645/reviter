@@ -111,6 +111,46 @@ export function solidBounds(record: ElementBoundsRecord): boolean {
   );
 }
 
+/** Records below which a tail trim would be guesswork rather than statistics. */
+const MIN_RECORDS_FOR_ROBUST_BOUNDS = 500;
+
+/** Share of records ignored at each end of each axis when framing the scene. */
+const ROBUST_BOUNDS_TAIL = 0.001;
+
+function quantile(sorted: number[], fraction: number): number {
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * fraction)));
+  return sorted[index]!;
+}
+
+/**
+ * The extent the scene should be *framed* to, as opposed to the extent it
+ * contains.
+ *
+ * A handful of misparsed records land thousands of feet from the building, and
+ * because the origin is the midpoint of the absolute extent, three of them were
+ * enough to move the supplied model's centre 1,811 ft — more than a building
+ * length — so the camera opened on empty space. Ignoring one part in a thousand
+ * at each end of each axis reproduces the paired export's building extent to
+ * within a few feet, where the absolute min/max does not.
+ *
+ * Nothing is discarded: every record is still drawn, exported, and audited.
+ * This decides only where the viewer looks.
+ */
+export function framingBoundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
+  if (records.length < MIN_RECORDS_FOR_ROBUST_BOUNDS) return boundsOfRecords(records);
+  const axes = ["x", "y", "z"] as const;
+  const min = { x: 0, y: 0, z: 0 };
+  const max = { x: 0, y: 0, z: 0 };
+  for (const axis of axes) {
+    const lower = records.map((record) => record.boundsFeet.min[axis]).sort((a, b) => a - b);
+    const upper = records.map((record) => record.boundsFeet.max[axis]).sort((a, b) => a - b);
+    min[axis] = quantile(lower, ROBUST_BOUNDS_TAIL);
+    max[axis] = quantile(upper, 1 - ROBUST_BOUNDS_TAIL);
+  }
+  // A degenerate axis would collapse the view; fall back rather than produce it.
+  return axes.every((axis) => max[axis] > min[axis]) ? { min, max } : boundsOfRecords(records);
+}
+
 export function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };

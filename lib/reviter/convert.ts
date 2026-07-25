@@ -15,8 +15,8 @@
 import CFB from "cfb";
 
 import {
-  boundsOfRecords,
   detectDuplicatedBoundsRecords,
+  framingBoundsOfRecords,
   solidBounds,
 } from "./bounds-records.ts";
 import {
@@ -74,6 +74,7 @@ import {
 } from "./segment-scan.ts";
 
 import type {
+  Bounds3,
   ConvertOptions,
   ConvertOutcome,
   ConvertResult,
@@ -117,7 +118,41 @@ const MAX_UNNAMED_SKETCH_CURVES = 512;
 /** Plan agreement required before an unnamed element's ring is trusted, in feet. */
 const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
 
+/**
+ * How far a placed instance's oriented box may sit from the element's own
+ * duplicated-bounds record before the box is disbelieved, in feet.
+ *
+ * The two are independent readings of the same element, so their agreement is a
+ * free check on both. Measured against the paired export they agree to 0.000 ft
+ * for curtain-wall mullions and panels — 18,357 elements — and the placed box
+ * is exact there. For doors they disagree by 7.15 ft, the box is wrong by that
+ * same amount, and the bounds record is wrong by 2.75: the shared shape a door
+ * instance points at is not the door's own extent. The box is worth more than
+ * the record when they agree and worth nothing when they do not, so it is used
+ * only in the first case.
+ */
+const ORIENTED_BOX_AGREEMENT_FEET = 1;
+
 type ProgressCallback = (update: ProgressUpdate) => void;
+
+/** True when a placed oriented box lands on the element's own decoded envelope. */
+function agreesWithBounds(corners: [number, number, number][], bounds: Bounds3): boolean {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const [x, y, z] of corners) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  }
+  return (
+    Math.abs(minX - bounds.min.x) <= ORIENTED_BOX_AGREEMENT_FEET &&
+    Math.abs(minY - bounds.min.y) <= ORIENTED_BOX_AGREEMENT_FEET &&
+    Math.abs(minZ - bounds.min.z) <= ORIENTED_BOX_AGREEMENT_FEET &&
+    Math.abs(maxX - bounds.max.x) <= ORIENTED_BOX_AGREEMENT_FEET &&
+    Math.abs(maxY - bounds.max.y) <= ORIENTED_BOX_AGREEMENT_FEET &&
+    Math.abs(maxZ - bounds.max.z) <= ORIENTED_BOX_AGREEMENT_FEET
+  );
+}
 
 /**
  * Boundary loops for one element.
@@ -521,13 +556,21 @@ export function convertRvtBytes(
     let namedTypeElements = 0;
     let sketchBoundaryElements = 0;
     let unnamedSketchElements = 0;
+    let rejectedOrientedBoxes = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
       record.solids = solidGroups.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
-      record.orientedBox = orientedBoxes.get(record.elementId);
+      const orientedBox = orientedBoxes.get(record.elementId);
+      // A record synthesised from the instance itself has nothing to check
+      // against; one that also carries a bounds record does.
+      if (orientedBox && (record.recordOffset < 0 || agreesWithBounds(orientedBox, record.boundsFeet))) {
+        record.orientedBox = orientedBox;
+      } else if (orientedBox) {
+        rejectedOrientedBoxes += 1;
+      }
       const knownSketchCategory =
         record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId);
       // Boundary recovery used to require the category to have decoded first,
@@ -577,7 +620,9 @@ export function convertRvtBytes(
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
       const displayBounds = displaySelection.records;
-      const bounds = boundsOfRecords(displayBounds);
+      // Framed to the building rather than to the outermost record, so a few
+      // misparsed envelopes cannot throw the camera off the model.
+      const bounds = framingBoundsOfRecords(displayBounds);
       const origin = {
         x: (bounds.min.x + bounds.max.x) / 2,
         y: (bounds.min.y + bounds.max.y) / 2,
@@ -671,6 +716,7 @@ export function convertRvtBytes(
           nativeSolids: solidsByElement.size,
           faceOnlyElements: quadsByElement.size,
           placedInstances: orientedBoxes.size,
+          rejectedOrientedBoxes,
           sketchBoundaryElements,
           unnamedSketchElements,
           sketchCurves,
