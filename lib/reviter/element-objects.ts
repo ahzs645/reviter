@@ -83,6 +83,36 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
 export const DEFAULT_OBJECT_MARKER = 0x08c6;
 
 /**
+ * Which markers head verified objects on this page, and how many each heads.
+ *
+ * `0x08c6` is not the only object class in the stream. Scanning one page for the
+ * framing itself — a zero high word on the id, a length in range, and the
+ * trailer echoing that length — turns up several more, and one of them,
+ * `0x07ef`, heads the objects of 4,312 elements the paired export knows about
+ * and no other pass sees. The markers are therefore measured from the file
+ * rather than listed in the source, which also keeps this working across
+ * releases, where the tags drift.
+ *
+ * This walks every byte offset, so it is meant for calibrating on a sample of
+ * pages, not for running over a whole stream.
+ */
+export function scanObjectMarkers(data: Uint8Array): Map<number, number> {
+  const markers = new Map<number, number>();
+  if (data.byteLength < 64) return markers;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
+    // The id's high word is zero, which is four byte compares and rejects
+    // almost every offset before anything more expensive happens.
+    if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
+    if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
+    const object = readObject(view, offset, data.byteLength);
+    if (!object) continue;
+    markers.set(object.marker, (markers.get(object.marker) ?? 0) + 1);
+  }
+  return markers;
+}
+
+/**
  * Candidate object starts found from the marker alone.
  *
  * Chaining is normally seeded from bounds records, but a page that contains no

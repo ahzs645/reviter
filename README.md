@@ -166,18 +166,18 @@ On the supplied 67 MB Revit 2027 project:
 | `IfcWallStandardCase` | 7,381 | 7,173 | 6,403 | 6,324 | 6,324 |
 | `IfcWall` | 140 | 139 | 124 | 110 | 110 |
 | `IfcCurtainWall` | 1,835 | 1,796 | 1,790 | 253 | 253 |
-| `IfcMember` | 19,707 | 16,342 | 15,918 | 15,916 | 15,916 |
-| `IfcPlate` | 6,235 | 5,085 | 4,973 | 4,973 | 4,973 |
-| `IfcDoor` | 1,912 | 1,405 | 1,349 | 1,294 | 1,294 |
-| `IfcWindow` | 20 | 5 | 5 | 3 | 3 |
-| `IfcColumn` | 311 | 256 | 99 | 95 | 95 |
-| `IfcRailing` | 229 | 174 | 147 | 147 | 144 |
-| `IfcSlab` | 161 | 155 | 151 | 150 | 135 |
-| `IfcRoof` | 20 | 18 | 16 | 16 | 14 |
+| `IfcMember` | 19,707 | 19,213 | 15,918 | 15,916 | 15,916 |
+| `IfcPlate` | 6,235 | 6,074 | 4,973 | 4,973 | 4,973 |
+| `IfcDoor` | 1,912 | 1,827 | 1,349 | 1,294 | 1,294 |
+| `IfcWindow` | 20 | 20 | 5 | 3 | 3 |
+| `IfcColumn` | 311 | 300 | 99 | 95 | 95 |
+| `IfcRailing` | 229 | 215 | 147 | 147 | 144 |
+| `IfcSlab` | 161 | 159 | 151 | 150 | 135 |
+| `IfcRoof` | 20 | 20 | 16 | 16 | 14 |
 | `IfcCovering` | 46 | 42 | 42 | 38 | 23 |
-| `IfcStair` | 92 | 69 | 52 | 52 | 58 |
-| `IfcStairFlight` | 121 | 113 | 85 | 76 | 77 |
-| `IfcRamp` | 12 | 5 | 5 | 5 | 5 |
+| `IfcStair` | 92 | 88 | 52 | 52 | 58 |
+| `IfcStairFlight` | 121 | 115 | 85 | 76 | 77 |
+| `IfcRamp` | 12 | 12 | 5 | 5 | 5 |
 | building elements | 38,222 | | | 29,452 | 29,424 |
 
 `IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
@@ -255,7 +255,31 @@ Each of these was a plausible cause with a cheap test, and the test said no. The
 
 **Page seams do not hide the missing elements.** Chaining and record detection run per inflated page, so an object spanning two pages should be invisible to both. Objects are under 64 KB, so joining each page's tail to the next page's head contains every straddler. Scanning those seams across the whole stream finds **1 extra object and 0 extra bounds records**. The 3,439 elements the export knows about and no pass sees are not there to be found.
 
-**Chain breaks were real but minor.** Chaining walks until an object fails to verify, and about one record in two hundred does, so a chain grown from a few seeds loses everything downstream of its first break. Seeding from every validated object marker rather than only from bounds records makes a break local instead of terminal, and takes recovered objects from 48,488 to **51,457**. It moves `seen` a little — walls 7,151 → 7,173, railings 157 → 174, openings 2,458 → 2,501 — and `drawn` almost not at all. Ramps and windows are unchanged.
+**Chain breaks were real but minor.** Chaining walks until an object fails to verify, and about one record in two hundred does, so a chain grown from a few seeds loses everything downstream of its first break. Seeding from every validated object marker rather than only from bounds records makes a break local instead of terminal, and takes recovered objects from 48,488 to **51,457**. It moves `seen` a little — walls 7,151 → 7,173, railings 157 → 174, openings 2,458 → 2,501 — and `drawn` almost not at all.
+
+## The elements that were nowhere are objects of another class
+
+5,449 elements the export names appeared in no pass at all. They are in the file: searching 385 MB of inflated pages for their ids finds **98.8% of them**, a median of ten times each, against 100% for a control of ids that are recovered. So they were written; they were just not being read.
+
+Sixteen bytes past those ids — where an object keeps its marker — sits `0x07ef`, and the rest of the object framing holds there: the length is in range and the trailer echoes it. `0x08c6` is not the only object class in the stream, and it was the only one anything looked for. Scanning a page for the framing itself rather than for one marker turns up **51,455 objects under `0x08c6` and 27,078 under `0x07ef`**, plus a tail of smaller classes, and `0x07ef` alone heads the objects of 4,312 of the missing elements.
+
+The markers are now measured from the file — a sample of twelve pages, keeping any marker that heads at least 24 verified objects — rather than listed in the source, which also survives the tag drift between releases. Elements the scan can account for rise sharply:
+
+| | seen before | seen now | in the export |
+| --- | --- | --- | --- |
+| `IfcMember` | 16,342 | **19,213** | 19,707 |
+| `IfcPlate` | 5,085 | **6,074** | 6,235 |
+| `IfcDoor` | 1,405 | **1,827** | 1,912 |
+| `IfcColumn` | 256 | **300** | 311 |
+| `IfcWindow` | 5 | **20** | 20 |
+| `IfcRamp` | 5 | **12** | 12 |
+| `IfcRoof` | 18 | **20** | 20 |
+
+Every ramp and every window in the building is now accounted for. The conversion also got faster, 57s to **40s**, because more seeds mean each chain walk is shorter.
+
+**What this does not do is draw them.** A `0x07ef` object carries no bounds sub-record, no instance placement, and — tested directly — no world extent anywhere in its payload. Searching every offset of 24,620 of them for six f64 reproducing the element's exported bounding box returns **nothing at all**, and the same search against a deliberately mismatched target also returns nothing, so the search was sharp rather than merely unlucky. Reading three f64 as a centre finds a best offset with 5 hits out of 24,620, which is noise.
+
+These elements are therefore *known* rather than *drawn*, and the coverage table now says so honestly: the gap between `seen` and `recovered` is the real remaining decoder work, and it is no longer hidden inside a gap between `in IFC` and `seen`. Their geometry lives in the family-document blobs the type-name decoder already cannot reach.
 
 **Stair flights are not drawn from the wrong source.** 50 of the 56 stair flights drawn from native faces have exactly one face, and one face is not a solid, so preferring the element's envelope looked like an obvious improvement. Measured, the envelope is *worse*: 7.95 ft median error against the 5.413 ft the faces already give. Both readings are wrong by several feet, so the fault is in how stair geometry is attributed rather than in which of the two the viewer picks, and no change was made.
 

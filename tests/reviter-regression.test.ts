@@ -12,7 +12,12 @@ import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
-import { chainElementObjects, dominantMarker, markerObjectSeeds } from "../lib/reviter/element-objects.ts";
+import {
+  chainElementObjects,
+  dominantMarker,
+  markerObjectSeeds,
+  scanObjectMarkers,
+} from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
@@ -944,4 +949,30 @@ test("ignores a shape whose two bounds copies disagree", () => {
   });
   assert.notDeepEqual(local?.min, [0, 1, 2]);
   assert.notDeepEqual(local?.max, [3, 4, 5]);
+});
+
+test("measures the object markers a file uses instead of assuming one", () => {
+  // 0x08c6 is not the only object class in the stream. In the supplied project
+  // 0x07ef heads the objects of thousands of elements that no other pass sees,
+  // so the markers worth seeding from are read from the file.
+  const data = new Uint8Array(512);
+  const view = new DataView(data.buffer);
+  const write = (start: number, elementId: number, marker: number, objectLength: number) => {
+    view.setUint32(start, elementId, true);
+    view.setUint32(start + 12, objectLength, true);
+    view.setUint16(start + 16, marker, true);
+    view.setUint32(start + objectLength + 16, objectLength, true);
+  };
+  write(0, 290_064, 0x08c6, 64);
+  write(84, 290_210, 0x07ef, 64);
+  // A marker with no matching length echo behind it is not an object.
+  view.setUint16(300, 0x07ef, true);
+
+  const markers = scanObjectMarkers(data);
+  assert.equal(markers.get(0x08c6), 1);
+  assert.equal(markers.get(0x07ef), 1);
+  assert.deepEqual(
+    [...markers.keys()].sort((a, b) => a - b),
+    [0x07ef, 0x08c6],
+  );
 });

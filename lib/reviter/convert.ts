@@ -23,6 +23,7 @@ import {
   chainElementObjects,
   dominantMarker,
   markerObjectSeeds,
+  scanObjectMarkers,
   type ElementObject,
 } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
@@ -132,6 +133,15 @@ const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
  * only in the first case.
  */
 const ORIENTED_BOX_AGREEMENT_FEET = 1;
+
+/** Pages sampled to learn which object markers this file uses. */
+const MARKER_SAMPLE_PAGES = 12;
+
+/** Objects a marker must head across the sample before it is seeded from. */
+const MARKER_MIN_SUPPORT = 24;
+
+/** Cap on marker scans per page, so seeding cost stays bounded. */
+const MAX_OBJECT_MARKERS = 12;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
@@ -262,6 +272,33 @@ export function convertRvtBytes(
 
     if (!partitions.length) throw new Error("No Revit partition stream was found.");
 
+    // Learn which object markers this file actually uses, from a sample of its
+    // pages, so seeding is not limited to the one class the bounds decoder
+    // happens to look for. Calibrating on a sample keeps the byte-by-byte scan
+    // off the other 3,300 pages.
+    const objectMarkers: number[] = [];
+    if (decoderPlan.elementBoundsDecoder) {
+      const sampleCounts = new Map<number, number>();
+      const samplePartition = partitions[0]!;
+      const sampleData = asBytes(samplePartition.entry.content);
+      const sampleOffsets = gzipOffsets(sampleData);
+      const stride = Math.max(1, Math.floor(sampleOffsets.length / MARKER_SAMPLE_PAGES));
+      for (let index = 0; index < sampleOffsets.length; index += stride) {
+        const page = inflateRevitChunk(sampleData, sampleOffsets[index]!, sampleOffsets[index + 1]);
+        if (!page) continue;
+        for (const [marker, count] of scanObjectMarkers(page)) {
+          sampleCounts.set(marker, (sampleCounts.get(marker) ?? 0) + count);
+        }
+      }
+      objectMarkers.push(
+        ...[...sampleCounts]
+          .filter(([, count]) => count >= MARKER_MIN_SUPPORT)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, MAX_OBJECT_MARKERS)
+          .map(([marker]) => marker),
+      );
+    }
+
     const candidates: Segment[] = [];
     const categoryTokens: CategoryToken[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
@@ -360,9 +397,10 @@ export function convertRvtBytes(
         // self-validating — each candidate has to echo its own length — so
         // seeding from all of them makes a break local instead of terminal, and
         // reaches pages that carry no bounds record at all.
-        const chainSeeds = decoderPlan.elementBoundsDecoder
-          ? markerObjectSeeds(inflated)
-          : [];
+        const chainSeeds: number[] = [];
+        for (const marker of objectMarkers) {
+          for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
+        }
         for (const record of detectedBoundsRecords) chainSeeds.push(record.recordOffset);
         if (chainSeeds.length) {
           for (const object of chainElementObjects(inflated, chainSeeds)) {
