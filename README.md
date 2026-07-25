@@ -291,6 +291,52 @@ This also retires the earlier conclusion that these elements had "no geometry
 anywhere in the file". They did. The decoder was asking the bytes the wrong
 question.
 
+## Four remaining gaps, and which of them are reachable
+
+After the second-copy fix, four things still separate the recovery from the
+export. Each was tested rather than assumed, and only one of the four turns out
+to be a decoder problem that a rule could reach.
+
+**Curtain walls are held back on purpose, and the suppression is precise.** 1,794
+are recovered and 241 drawn; the other 1,553 are containers whose panels and
+mullions are drawn in their place. Of the 1,585 envelopes held back as wrappers,
+**1,553 are genuinely `IfcCurtainWall`** — the rule mistakes 32 elements, or 2%.
+The facade is represented by 15,984 members and 4,973 plates, not by 1,553 boxes
+that would hide them.
+
+**Doors are not a choice between the two bounds copies.** Doors are drawn about
+2.8 ft oversized, and after the wall fix the obvious guess was that the other
+copy holds the leaf. It does not: across 1,398 doors the mean error is **2.767 ft
+from the first copy and 2.760 ft from the second**, and the copies differ for
+only 7% of them. Both copies are the opening. The door leaf is not in this
+record, and no reading of it will produce one.
+
+**Stair components are not either.** A stringer carriage is drawn 10.08 ft tall
+where the export's own bounding box is 4.71, and a landing 9.84 ft where the
+export has 0.16. Across 79 stair flights the two copies score **4.221 and 4.035
+ft** — both wrong, by about a storey. The envelope recorded for a stair
+sub-component is the assembly's, not the component's.
+
+**The remaining mullions and panels carry no geometry at all, and this is now
+settled by three independent tests.** 3,169 members, 1,090 plates, 426 doors, 36
+columns and 15 windows the export names are still missing. Every one of them is
+rejected on the same check — the object's marker is `0x07ef` rather than
+`0x08c6` — which is exactly the shape of the wall bug, so it was worth asking
+whether the marker was again the only thing in the way. It is not:
+
+- running the entire bounds framing on those objects with the marker check
+  removed, **0 of 4,707 produce a valid bounds block**;
+- searching every offset of 24,620 such objects for six `f64` reproducing the
+  element's exported bounding box returns **nothing**, with a mismatched-target
+  control that also returns nothing;
+- **0 of 4,933** of these elements have an instance-placement object, so there is
+  no transform-plus-shared-shape route either. Almost all have exactly one
+  object, about 567 bytes long.
+
+So these elements are named in the file, and their position is not. That is the
+family-document boundary the type-name decoder already runs into, and it is not
+reachable by reading partition records more carefully.
+
 ## Cached shapes are not building elements
 
 A loadable family stores its shape once and places it many times. That cached shape is an ordinary object in the partition stream, and it carries the same bounds sub-record an element does — so it was being decoded into the model as though it were an element. Its box is in the family's own local frame, so it landed at the model origin.
