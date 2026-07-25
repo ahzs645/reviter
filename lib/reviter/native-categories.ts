@@ -21,6 +21,8 @@
  * previous, weaker classification instead of inventing one.
  */
 
+import type { ElementBoundsRecord, NativeCategorySummary } from "./types";
+
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
 const CATEGORY_ID_MIN = -2_100_000;
 const CATEGORY_ID_MAX = -1_999_000;
@@ -216,4 +218,63 @@ export function deriveRecordCodeCategories(
     consensus.set(key, { categoryId: bestCategory, support, purity });
   }
   return consensus;
+}
+
+/**
+ * Resolve category tokens against the element ids the scan actually proved,
+ * then fill the remainder from per-record-code consensus. Mutates `records`
+ * and returns the evidence behind every assignment.
+ */
+export function applyNativeCategories(
+  records: ElementBoundsRecord[],
+  tokens: CategoryToken[],
+  elemTableIds?: Uint32Array,
+): NativeCategorySummary {
+  const knownElementIds = new Set<number>(records.map((record) => record.elementId));
+  if (elemTableIds) for (const elementId of elemTableIds) knownElementIds.add(elementId);
+
+  const resolved = resolveElementCategories(tokens, knownElementIds);
+  const consensus = deriveRecordCodeCategories(records, resolved);
+
+  let directElements = 0;
+  let inheritedElements = 0;
+  const counts = new Map<number, number>();
+  for (const record of records) {
+    const direct = resolved.get(record.elementId);
+    const inherited = direct == null
+      ? consensus.get(recordCodeKey(record.recordCode, record.recordCount))
+      : undefined;
+    const categoryId = direct ?? inherited?.categoryId;
+    if (categoryId == null) continue;
+    record.categoryId = categoryId;
+    record.categoryName = categoryDisplayName(categoryId);
+    record.categorySource = direct == null ? "record-code-consensus" : "native-token";
+    if (direct == null) inheritedElements += 1;
+    else directElements += 1;
+    counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1);
+  }
+
+  const codeConsensus = [...consensus.entries()]
+    .map(([recordCode, entry]) => ({
+      recordCode,
+      categoryId: entry.categoryId,
+      categoryName: categoryDisplayName(entry.categoryId),
+      support: entry.support,
+      purity: entry.purity,
+    }))
+    .sort((a, b) => b.support - a.support);
+
+  return {
+    tokensFound: tokens.length,
+    directElements,
+    inheritedElements,
+    categories: [...counts.entries()]
+      .map(([categoryId, elements]) => ({
+        categoryId,
+        name: categoryDisplayName(categoryId),
+        elements,
+      }))
+      .sort((a, b) => b.elements - a.elements),
+    codeConsensus,
+  };
 }

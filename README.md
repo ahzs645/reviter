@@ -91,6 +91,27 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 
 The bounds signature is currently confirmed for this supplied Revit 2027 file. It must be regression-tested on more RVT versions before being treated as a general Revit decoder.
 
+## Module map
+
+Each stage of the pipeline is its own module, so a decoder change cannot reach into the renderer and an export-format change cannot reach into the parser.
+
+| Module | Responsibility |
+| --- | --- |
+| `lib/reviter/revit-container.ts` | OLE/CFB stream payloads and the truncated-gzip chunk framing |
+| `lib/reviter/elem-table.ts` | `Global/ElemTable` layout detection and the native element-ID index |
+| `lib/reviter/bounds-records.ts` | the Revit 2027 duplicated-bounds element record |
+| `lib/reviter/native-categories.ts` | `BuiltInCategory` tokens, element ownership, and record-code consensus |
+| `lib/reviter/native-decoder.ts` | release gating, the 2023 `ArcWall` hypothesis, and the material schema adapter |
+| `lib/reviter/segment-scan.ts` | the diagnostic coordinate scanner and its cleanup passes |
+| `lib/reviter/scene.ts` | display selection, category batching, and display materials |
+| `lib/reviter/convert.ts` | the pipeline that orchestrates the modules above |
+| `lib/reviter/export-*.ts` | one module per output format, re-exported by `exports.ts` |
+| `lib/reviter/worker.ts`, `ifc-worker.ts` | the Web Worker entry points |
+| `lib/reviter/ifc-reference.ts`, `regression.ts` | paired IFC analysis and the regression gates |
+| `lib/reviter/types.ts` | the shared public types |
+
+The interface is split the same way: `app/ReviterStudio.tsx` is the composition root, with the viewport in `app/studio/ModelCanvas.tsx`, Three.js group assembly in `three-scene.ts`, the Autodesk reference in `autodesk-reference.ts`, and the summary panels in `panels.tsx`.
+
 ## Library surface
 
 ```ts

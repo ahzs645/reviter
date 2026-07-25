@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import {
-  detectDuplicatedBoundsRecord,
-  detectDuplicatedBoundsRecords,
-  gzipOffsets,
-  segmentScaleFor,
-} from "../lib/reviter/convert.ts";
+import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
+import { gzipOffsets } from "../lib/reviter/revit-container.ts";
+import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
   collectCategoryTokens,

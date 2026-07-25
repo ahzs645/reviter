@@ -1,5 +1,23 @@
 export { convertRvtBytes } from "./convert";
 export {
+  boundsOfRecords,
+  detectDuplicatedBoundsRecord,
+  detectDuplicatedBoundsRecords,
+  solidBounds,
+} from "./bounds-records";
+export type { DetectedBoundsRecord } from "./bounds-records";
+export { asBytes, gzipOffsets, inflateRevitChunk } from "./revit-container";
+export {
+  buildBoundsMeshes,
+  boundsPlanSegments,
+  displayMaterials,
+  displayRole,
+  selectDisplayBounds,
+} from "./scene";
+export type { DisplayRole, DisplaySelection } from "./scene";
+export { scanSegments, segmentScaleFor } from "./segment-scan";
+export type { SegmentScale } from "./segment-scan";
+export {
   decodeArcWall2023Record,
   decodeRvtMaterialDefinitions,
   decoderPlanForVersion,
@@ -7,6 +25,7 @@ export {
 } from "./native-decoder";
 export { detectElemTableLayout, parseElemTable } from "./elem-table";
 export {
+  applyNativeCategories,
   categoryDisplayName,
   collectCategoryTokens,
   deriveRecordCodeCategories,
