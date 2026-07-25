@@ -44,6 +44,29 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
 
+## Native surfaces
+
+Revit does not store element shapes as vertex soup. It stores **trimmed analytic surfaces** — a plane or a cylinder plus the parameter range over which it is used:
+
+```text
+plane, 105 bytes            cylinder, 137 bytes
++0    u8  0x01              +0    u8  0x01
++1    f64 origin (3)        +1    f64 origin (3)          arc centre
++25   f64 uDir (3)          +25   f64 xDir (3)
++49   f64 vDir (3)          +49   f64 yDir (3)
++73   f64 uMin, vMin,       +73   f64 zDir (3)
+          uMax, vMax        +97   f64 radius
+                            +105  f64 uMin, vMin, uMax, vMax
+```
+
+A surface point is `origin + u·uDir + v·vDir`. For a wall the plane is its centre plane, so the location line is `origin + t·uDir` over `t ∈ [uMin, uMax]` and the height is `vMax − vMin`.
+
+**Verification.** Of 7,443 walls with a two-point axis in the paired IFC export, **90.9% have a vertical plane record exactly collinear with that axis** — the in-plane line passes through the axis start within 1e-6 ft. The controls are what make this conclusive: shifting the query line sideways by **0.01 ft drops the hit rate to 0.0%**, and rotating it by **half a degree also drops it to 0.0%**. Separately, `vMax − vMin` matches the IFC extrusion height to within 1e-9 ft for 94.2% of walls, against 34.2% under randomised re-pairing. 78 of 78 curved walls have their arc centre present as an exact coordinate triple, 77 have a cylinder record there, and 65 match the IFC radius exactly.
+
+The trim range is the wall **as modelled**, before Revit's join trimming. The difference between `uMin`/`uMax` and the IFC axis endpoints is, element by element, exactly half of a wall thickness present in this model — 60 mm, 100 mm, 125 mm, 150 mm. The IFC axis is the post-join version, so that disagreement is evidence the record is genuine rather than evidence of an error.
+
+**What is not solved: attribution.** These patches cannot yet be tied to the element that owns them. The nearest preceding element id is the owning wall for only 0.6% of matches, because a blob interleaves a wall with its join neighbours. Surfaces are therefore reported as a decoded inventory, and the viewer keeps drawing element envelopes rather than pretending a patch belongs to a particular element. A partially decoded container sits immediately before each run of surface records — `[u64 elementId][u32 n][n × u32 itemIndex]`, preceded by 20-byte topology links and followed by 100-byte transforms — and resolving `itemIndex → surface record` is the missing link.
+
 ## Element parameters
 
 An element's instance parameters are a flat table of `(BuiltInParameter id, value)` pairs:

@@ -20,6 +20,7 @@ export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories
 export { builtInParameterName, parameterDisplayName } from "./built-in-parameters";
 export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
+export { collectSurfaces, summariseSurfaces } from "./surfaces";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";
 export { parseSchemaTags, summariseSchema } from "./schema";

@@ -21,6 +21,7 @@ import {
 } from "./bounds-records.ts";
 import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import { collectSurfaces } from "./surfaces.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -140,6 +141,7 @@ export function convertRvtBytes(
     const elementBounds: ElementBoundsRecord[] = [];
     const elementObjects: ElementObject[] = [];
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
+    const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
@@ -172,6 +174,13 @@ export function convertRvtBytes(
               rawOffset: offsets[index]!,
               inflatedBytes: inflated.byteLength,
             });
+          }
+        }
+        for (const surface of collectSurfaces(inflated)) {
+          surfaceCounts.planes += surface.kind === "plane" ? 1 : 0;
+          surfaceCounts.cylinders += surface.kind === "cylinder" ? 1 : 0;
+          if (surface.kind === "plane" && Math.abs(Math.abs(surface.vDir.z) - 1) <= 1e-9) {
+            surfaceCounts.verticalPlanes += 1;
           }
         }
         for (const table of collectElementParameters(inflated)) {
@@ -361,6 +370,7 @@ export function convertRvtBytes(
           solidBoundsRecords: boundedSolids.length,
           elementObjects: elementObjects.length,
           parameterElements: elementParameters.size,
+          surfaces: surfaceCounts,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
           durationMs: performance.now() - started,
         },

@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Native surfaces"
+              value={result?.stats.surfaces?.planes
+                ? `${result.stats.surfaces.planes.toLocaleString()} planes · ${result.stats.surfaces.cylinders.toLocaleString()} cylinders`
+                : result ? "Not decoded" : "Not evaluated"}
+              tone={result?.stats.surfaces?.planes ? "warn" : "off"}
+            />
+            <FidelityRow
               label="Element parameters"
               value={result?.stats.parameterElements
                 ? `${result.stats.parameterElements.toLocaleString()} elements`

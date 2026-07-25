@@ -9,6 +9,7 @@ import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
 import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
+import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -491,4 +492,35 @@ test("decodes an element parameter table from its own anchor", () => {
       { parameterId: -1001108, name: "Base Offset", value: -0.65616797900262 },
     ],
   );
+});
+
+test("decodes a trimmed analytic plane and rejects a non-orthonormal one", () => {
+  const build = (uDir: number[], vDir: number[]) => {
+    const data = new Uint8Array(105);
+    const view = new DataView(data.buffer);
+    data[0] = 0x01;
+    [4.5, -160.25, 0].forEach((value, index) => view.setFloat64(1 + index * 8, value, true));
+    uDir.forEach((value, index) => view.setFloat64(25 + index * 8, value, true));
+    vDir.forEach((value, index) => view.setFloat64(49 + index * 8, value, true));
+    // uMin, vMin, uMax, vMax — the wall runs 0..14.27 ft and is 13.78 ft tall.
+    [0, 0, 14.271653543307087, 13.779527559055119].forEach((value, index) =>
+      view.setFloat64(73 + index * 8, value, true),
+    );
+    return data;
+  };
+
+  const surfaces = collectSurfaces(build([0, 1, 0], [0, 0, 1]));
+  assert.equal(surfaces.length, 1);
+  const plane = surfaces[0]!;
+  assert.equal(plane.kind, "plane");
+  if (plane.kind !== "plane") return;
+  assert.deepEqual(plane.origin, { x: 4.5, y: -160.25, z: 0 });
+  // Wall height is the v-range; the location line runs along uDir over u.
+  assert.ok(Math.abs(plane.vMax - plane.vMin - 13.779527559055119) < 1e-12);
+  assert.deepEqual(summariseSurfaces(surfaces), { planes: 1, cylinders: 0, verticalPlanes: 1 });
+
+  // Directions that are not perpendicular are not a surface record.
+  assert.deepEqual(collectSurfaces(build([0, 1, 0], [0, 1, 0])), []);
+  // Nor are directions that are not unit length.
+  assert.deepEqual(collectSurfaces(build([0, 2, 0], [0, 0, 1])), []);
 });
