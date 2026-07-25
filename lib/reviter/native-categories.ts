@@ -21,6 +21,8 @@
  * previous, weaker classification instead of inventing one.
  */
 
+import { builtInCategoryName, humaniseCategoryName } from "./built-in-categories.ts";
+
 import type { ElementBoundsRecord, NativeCategorySummary } from "./types";
 
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
@@ -43,49 +45,14 @@ const CODE_CONSENSUS_MIN_SUPPORT = 8;
 /** Minimum share of a code cluster that must agree on one category. */
 const CODE_CONSENSUS_MIN_PURITY = 0.7;
 
-/**
- * Category ids corroborated against the paired IFC export of the supplied
- * Revit 2027 project. Ids outside this table stay numeric rather than being
- * guessed at from Revit's much larger BuiltInCategory enumeration.
- */
-const CATEGORY_NAMES: Record<number, string> = {
-  [-2000011]: "Walls",
-  [-2000014]: "Windows",
-  [-2000023]: "Doors",
-  [-2000032]: "Floors",
-  [-2000035]: "Roofs",
-  [-2000038]: "Ceilings",
-  [-2000100]: "Columns",
-  [-2000120]: "Stairs",
-  [-2000126]: "Railings",
-  [-2000170]: "Curtain Panels",
-  [-2000171]: "Curtain Wall Mullions",
-  [-2000180]: "Ramps",
-  [-2001330]: "Structural Columns",
-};
-
-/**
- * Stair and railing sub-component categories. Each one resolves to stair or
- * railing products in the paired IFC export, but the individual Revit
- * sub-category names are not corroborated, so they share one display label.
- */
-const STAIR_RAILING_COMPONENT_IDS = new Set([
-  -2000045, -2000067, -2000123, -2000127, -2000919, -2000920, -2000938,
-  -2000945, -2000946, -2000954,
-]);
-
 export function categoryDisplayName(categoryId: number): string {
-  const known = CATEGORY_NAMES[categoryId];
-  if (known) return known;
-  if (STAIR_RAILING_COMPONENT_IDS.has(categoryId)) {
-    return `Stair and railing components (${categoryId})`;
-  }
-  return `Revit category ${categoryId}`;
+  const name = builtInCategoryName(categoryId);
+  return name ? humaniseCategoryName(name) : `Revit category ${categoryId}`;
 }
 
-/** True when the category is corroborated by name rather than left numeric. */
+/** True when the category id resolves to a published Revit category name. */
 export function isNamedCategory(categoryId: number): boolean {
-  return CATEGORY_NAMES[categoryId] != null;
+  return builtInCategoryName(categoryId) != null;
 }
 
 export type CategoryToken = {

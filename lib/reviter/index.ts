@@ -16,6 +16,9 @@ export {
 } from "./scene";
 export type { DisplayRole, DisplaySelection } from "./scene";
 export { scanSegments, segmentScaleFor } from "./segment-scan";
+export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories";
+export { chainElementObjects, dominantMarker } from "./element-objects";
+export type { ElementObject } from "./element-objects";
 export { parseSchemaTags, summariseSchema } from "./schema";
 export { parsePartitionNames } from "./partition-names";
 export { measureStream, summariseCoverage } from "./stream-coverage";

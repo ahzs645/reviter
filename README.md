@@ -44,6 +44,32 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
 
+## Element objects
+
+Elements in `Partitions/*` are length-delimited, and the length is written **behind** the object rather than in front of it:
+
+```text
+S+0            u64 element id
+S+8            u32 near-unique discriminator (not decoded)
+S+12           u32 objLen          // object length, counted from S
+S+16           u16 marker          // constant per release: 0x08c6 in the 2027 project
+S+18           u64 type code       // element class discriminator
+S+26           u64 element id, repeated
+...            payload, including the duplicated-bounds sub-record
+S+objLen+16    u32 objLen          // echoed
+S+objLen+20    next object
+```
+
+The echo is what makes the chain safe to walk. It holds for **99.5%** of known records, while probing the echo at `+12` or `+20` instead of `+16`, or testing for `objLen ± 4`, all score **0%**, and shifting the whole probe a megabyte away scores 0.06%. Reading the length as a *header* instead scores only 61.7%, and its failures arrive in symmetric pairs — the signature of reading the previous object's length — so the trailer reading is the correct one.
+
+Chaining forward and backward from records the bounds scanner already found recovers **47,265 objects against 35,677 bounds records**, because an object with no bounds record is still linked into the chain. Element identity coverage against the paired IFC export rises from **65.9% to 77.1%**.
+
+The `u64` at `S+18` is an element class discriminator, and it is sharp: joined against the IFC export its modal purity is **94.58%**, with `116`→`IfcMember`, `114`→`IfcPlate`, `44`→`IfcOpeningElement`, `79`→`IfcColumn`, `101`→`IfcRailing`, `54`→`IfcSlab`, `62`→`IfcCovering` all at 1.000, and the one impure code (`30`) impure only in which *kind* of wall it is.
+
+The marker drifts by release exactly as schema tags do — `0x086d` in 2024, `0x08a4` in 2025, `0x08cc` in 2026, `0x08c6` in the 2027 project — so it is measured from the file rather than hard-coded. Releases 2020 and 2023 produce no chains; older releases frame objects differently.
+
+Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 384 MB payload. And the marker is not resolvable through `Formats/Latest`: that stream defines roughly 200 classes and references the rest by tag, so `0x08c6` is a tag in Revit's internal class registry that this file never names.
+
 ## Stream coverage
 
 Reviter reports what is inside a Revit file and how much of it is understood, stream by stream, so the remaining gap is measurable instead of invisible. Every CFB stream is listed whether or not anything is decoded from it, with its stored size, chunk count, inflated size, and the decoder that claims it.

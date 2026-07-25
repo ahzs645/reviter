@@ -399,6 +399,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Element objects"
+              value={result?.stats.elementObjects
+                ? `${result.stats.elementObjects.toLocaleString()} chained`
+                : result ? "Not chained" : "Not evaluated"}
+              tone={result?.stats.elementObjects ? "good" : "off"}
+            />
+            <FidelityRow
               label="Container streams"
               value={result?.coverage
                 ? `${result.coverage.fullStreams} full · ${result.coverage.partialStreams} partial · ${result.coverage.undecodedStreams} undecoded`

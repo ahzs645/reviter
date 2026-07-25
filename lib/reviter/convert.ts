@@ -19,6 +19,7 @@ import {
   detectDuplicatedBoundsRecords,
   solidBounds,
 } from "./bounds-records.ts";
+import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -135,6 +136,7 @@ export function convertRvtBytes(
     const candidates: Segment[] = [];
     const categoryTokens: CategoryToken[] = [];
     const elementBounds: ElementBoundsRecord[] = [];
+    const elementObjects: ElementObject[] = [];
     const nativeProfiles: NativeProfileLocator[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
@@ -175,6 +177,27 @@ export function convertRvtBytes(
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
+        // Seed the object chain from the records just found: objects that carry
+        // no bounds record are still linked into the chain and recoverable.
+        if (detectedBoundsRecords.length) {
+          for (const object of chainElementObjects(
+            inflated,
+            detectedBoundsRecords.map((record) => record.recordOffset),
+          )) {
+            elementObjects.push(object);
+            partitionRecordIds.add(object.elementId);
+            if (!locatedPartitionIds.has(object.elementId)) {
+              locatedPartitionIds.add(object.elementId);
+              partitionRecords.push({
+                elementId: object.elementId,
+                stream: partition.path.replace(/^Root Entry\//, ""),
+                chunkIndex: index,
+                rawOffset: offsets[index]!,
+                inflatedBytes: inflated.byteLength,
+              });
+            }
+          }
+        }
         for (const detectedBounds of detectedBoundsRecords) {
           partitionRecordIds.add(detectedBounds.elementId);
           if (!locatedPartitionIds.has(detectedBounds.elementId)) {
@@ -320,6 +343,8 @@ export function convertRvtBytes(
           meshCount: meshes.length,
           boundsRecordsFound: elementBounds.length,
           solidBoundsRecords: boundedSolids.length,
+          elementObjects: elementObjects.length,
+          elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
           durationMs: performance.now() - started,
         },
       };
@@ -414,6 +439,7 @@ export function convertRvtBytes(
         meshCount: meshes.length,
         boundsRecordsFound: elementBounds.length,
         solidBoundsRecords: boundedSolids.length,
+        elementObjects: elementObjects.length,
         durationMs: performance.now() - started,
       },
     };

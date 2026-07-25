@@ -59,9 +59,9 @@ export type DisplayRole =
   | "native";
 
 /**
- * Display role per native Revit category. Categories outside this table still
- * carry their decoded id and name; they simply fall back to the record-code
- * heuristic for shading.
+ * Display role per native Revit category. Every decoded id now resolves to a
+ * published Revit category name; this table only decides shading, so a category
+ * missing from it still displays under its real name.
  */
 const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
   [-2000011]: "wall",

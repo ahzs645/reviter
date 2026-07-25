@@ -131,6 +131,10 @@ export type ConvertStats = {
   meshCount: number;
   boundsRecordsFound: number;
   solidBoundsRecords: number;
+  /** Length-delimited element objects recovered by chaining. */
+  elementObjects?: number;
+  /** Release-specific object marker observed in this file, e.g. 0x08c6 in 2027. */
+  elementObjectMarker?: number;
   durationMs: number;
 };
 

@@ -7,6 +7,7 @@ import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
+import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -429,4 +430,36 @@ test("accounts for every container stream and grades how deeply it is read", () 
   );
   // Largest stream first, so the biggest unread payload is never buried.
   assert.equal(summary.streams[0]!.path, "Global/History");
+});
+
+test("chains element objects through the length echo behind each object", () => {
+  const build = (lengths: number[]) => {
+    const total = lengths.reduce((sum, length) => sum + length + 20, 0);
+    const data = new Uint8Array(total);
+    const view = new DataView(data.buffer);
+    let offset = 0;
+    lengths.forEach((length, index) => {
+      view.setUint32(offset, 5_000 + index, true);   // element id
+      view.setUint32(offset + 4, 0, true);
+      view.setUint32(offset + 12, length, true);     // objLen
+      view.setUint16(offset + 16, 0x08c6, true);     // marker
+      view.setUint32(offset + 18, 30, true);         // type code
+      view.setUint32(offset + length + 16, length, true); // echo
+      offset += length + 20;
+    });
+    return data;
+  };
+
+  const data = build([64, 48, 80]);
+  // Seed on the middle object only: the walk must reach its neighbours in both
+  // directions, which is what recovers objects that carry no bounds record.
+  const objects = chainElementObjects(data, [84]);
+  assert.deepEqual(objects.map((object) => object.elementId), [5_000, 5_001, 5_002]);
+  assert.deepEqual(objects.map((object) => object.objectLength), [64, 48, 80]);
+  assert.equal(dominantMarker(objects), 0x08c6);
+
+  // Break the echo and the chain must stop rather than walk into noise.
+  const broken = build([64, 48, 80]);
+  new DataView(broken.buffer).setUint32(64 + 16, 999, true);
+  assert.deepEqual(chainElementObjects(broken, [0]).map((object) => object.elementId), []);
 });
