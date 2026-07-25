@@ -154,6 +154,8 @@ export type ConvertStats = {
   surfaces?: SurfaceSummary;
   /** Elements whose native surfaces rebuild an oriented solid. */
   nativeSolids?: number;
+  /** Elements reaching the scene from a solid alone, with no bounds record. */
+  solidOnlyElements?: number;
   /** Elements linked to their type element. */
   typedElements?: number;
   /** Elements whose type element also yielded a name. */

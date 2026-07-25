@@ -137,7 +137,11 @@ Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of 
 
 The shaded view draws each element flat in its category colour, so the palette is what separates one category from another on screen. It was previously a narrow pale band that rendered the whole building as a single wash; it is now separated in hue and value, which is why glazing, doors, and framing read apart. The other render mode uses per-vertex colour, and that is tinted by category too rather than by elevation alone.
 
-The ceiling on the picture is geometric, not cosmetic. Of the 31,864 elements in the default scene, **10,028 are rebuilt as oriented solids** from their own surface patches; the rest are drawn as their axis-aligned envelopes because their geometry is not in this partition stream. Only 10,535 elements have any attributed surface here at all, and 10,028 of those already resolve to a solid — so the remaining envelopes are not a decoding gap that better plane handling would close, they are elements whose surfaces live elsewhere. Curtain panels and mullions, which dominate this model by count, are loadable-family instances whose geometry sits in family-document blobs, the same reason their type names do not resolve.
+**Most walls used to be missing from the view, and the cause was the scene's entry condition rather than the decoder.** The scene was assembled only from elements carrying a duplicated-bounds record, and most walls do not have one — 2,818 wall records exist against roughly 7,400 wall objects. Those walls did have native geometry the whole time. Elements with a rebuilt solid and no bounds record now get a record synthesised from the solid itself, which takes walls in the scene from 1,250 to **6,846**, against 7,381 `IfcWallStandardCase` plus 1,835 `IfcCurtainWall` in the paired export.
+
+The curtain-wall suppression that also hides records was checked while looking into this and left alone: of the 1,569 records it hides, 1,488 are genuinely `IfcCurtainWall` containers whose panels and mullions are drawn separately, and only 27 are ordinary walls.
+
+What remains is a real limit rather than a cosmetic one. Curtain panels and mullions dominate this model by count and are drawn as envelopes, because they are loadable-family instances whose geometry sits in family-document blobs — the same reason their type names do not resolve.
 
 ## Stream coverage
 

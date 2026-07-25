@@ -279,13 +279,7 @@ export function convertRvtBytes(
       }
     }
 
-    onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
-    const nativeCategories = applyNativeCategories(
-      elementBounds,
-      categoryTokens,
-      elementIndex?.uniqueElementIds,
-    );
-
+    const solidStream = partitions[0]!.path.replace(/^Root Entry\//, "");
     const solidsByElement = new Map<number, ReturnType<typeof wallSolids>[number]>();
     for (const solid of wallSolids(planesByElement)) {
       // One element can own several solids; keep the longest as its body.
@@ -294,6 +288,47 @@ export function convertRvtBytes(
         Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
       if (!existing || length(solid) > length(existing)) solidsByElement.set(solid.elementId, solid);
     }
+
+    // Most elements that own native geometry have no duplicated-bounds record —
+    // 2,818 wall records exist against 7,401 wall objects — so building the
+    // scene only from bounds records drops the majority of the walls. Elements
+    // with a rebuilt solid and no bounds record get a record synthesised from
+    // the solid itself, so they reach the scene as the geometry they are.
+    const boundedIds = new Set(elementBounds.map((record) => record.elementId));
+    let solidOnlyElements = 0;
+    for (const [elementId, solid] of solidsByElement) {
+      if (boundedIds.has(elementId)) continue;
+      const halfThickness = solid.thickness / 2;
+      elementBounds.push({
+        elementId,
+        stream: solidStream,
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        boundsFeet: {
+          min: {
+            x: Math.min(solid.start.x, solid.end.x) - halfThickness,
+            y: Math.min(solid.start.y, solid.end.y) - halfThickness,
+            z: solid.baseElevation,
+          },
+          max: {
+            x: Math.max(solid.start.x, solid.end.x) + halfThickness,
+            y: Math.max(solid.start.y, solid.end.y) + halfThickness,
+            z: solid.topElevation,
+          },
+        },
+      });
+      solidOnlyElements += 1;
+    }
+
+    onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
+    const nativeCategories = applyNativeCategories(
+      elementBounds,
+      categoryTokens,
+      elementIndex?.uniqueElementIds,
+    );
+
+
 
     let namedTypeElements = 0;
     for (const record of elementBounds) {
@@ -409,6 +444,7 @@ export function convertRvtBytes(
           parameterElements: elementParameters.size,
           surfaces: surfaceCounts,
           nativeSolids: solidsByElement.size,
+          solidOnlyElements,
           typedElements: typeReferences.size,
           namedTypeElements,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
