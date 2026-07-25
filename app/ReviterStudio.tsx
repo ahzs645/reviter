@@ -56,6 +56,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [navigationMode, setNavigationMode] = useState<NavigationMode>("orbit");
   const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: "home", sequence: 0 });
   const [sectionEnabled, setSectionEnabled] = useState(false);
+  const [walking, setWalking] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [schemaSearch, setSchemaSearch] = useState("");
@@ -74,9 +75,21 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
 
+  // Tear the workers down when the studio unmounts, and only then. This was
+  // keyed on the thumbnail, so opening a second file — which sets a new
+  // thumbnail — terminated the worker that was about to convert it, left the
+  // dead worker in the ref for `getWorker` to hand back, and hung the progress
+  // bar at 8% with no error and no timeout.
   useEffect(() => () => {
     workerRef.current?.terminate();
+    workerRef.current = null;
     ifcWorkerRef.current?.terminate();
+    ifcWorkerRef.current = null;
+  }, []);
+
+  // The previous preview URL is revoked where the next one is created, so the
+  // object URL's lifetime no longer depends on an unmount cleanup.
+  useEffect(() => () => {
     if (thumbnail) URL.revokeObjectURL(thumbnail);
   }, [thumbnail]);
 
@@ -517,6 +530,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                 <div className="segmented-control source-control" aria-label="Geometry source">
                   {autodeskReferenceAvailable && <button className={geometrySource === "autodesk" ? "active" : ""} onClick={() => { setGeometrySource("autodesk"); setSelectedElementId(null); }}>Autodesk</button>}
                   {comparison?.referenceMeshes.length ? <button className={geometrySource === "reference" ? "active" : ""} onClick={() => { setGeometrySource("reference"); setSelectedElementId(null); }}>IFC reference</button> : null}
+                  {comparison?.referenceMeshes.length ? <button className={geometrySource === "overlay" ? "active" : ""} onClick={() => setGeometrySource("overlay")} title="Recovered model over the paired export: matched elements ghosted, elements missing from the recovery in red">Overlay</button> : null}
                   <button className={geometrySource === "recovered" ? "active diagnostic-active" : ""} onClick={() => setGeometrySource("recovered")}>RVT diagnostic</button>
                 </div>
               ) : null}
@@ -539,6 +553,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   navigationMode={navigationMode}
                   cameraRequest={cameraRequest}
                   sectionEnabled={sectionEnabled}
+                  walking={walking}
+                  onWalkingChange={setWalking}
                   selectedElementId={selectedElementId}
                   onSelectElement={setSelectedElementId}
                 />
@@ -647,6 +663,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
                   <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
                   <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>
+                  <button
+                    className={walking ? "active" : ""}
+                    onClick={() => setWalking((current) => !current)}
+                    aria-pressed={walking}
+                    title="Walk the model at eye level — W A S D to move, mouse to look, Shift to run, Esc to leave"
+                  ><i>⇱</i><span>Walk</span></button>
                   <span />
                   <button className={sectionEnabled ? "active" : ""} onClick={() => setSectionEnabled((current) => !current)} aria-pressed={sectionEnabled}><i>◩</i><span>Section</span></button>
                   <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); requestCamera("home"); }}><i>↺</i><span>Reset</span></button>

@@ -19,7 +19,14 @@ import {
   publicAssetUrl,
   styleAutodeskReference,
 } from "./autodesk-reference.ts";
-import { applyNavigationMode, disposeGroup, meshGroup, referenceMeshGroup } from "./three-scene.ts";
+import {
+  applyNavigationMode,
+  disposeGroup,
+  meshGroup,
+  overlayMeshGroup,
+  referenceMeshGroup,
+} from "./three-scene.ts";
+import { createWalkControls, WALK_EYE_HEIGHT, type WalkControls } from "./walk-controls.ts";
 import type { CameraRequest, GeometrySource, ReferenceLoadState, ViewMode } from "./types.ts";
 
 /**
@@ -39,6 +46,8 @@ export function ModelCanvas({
   navigationMode,
   cameraRequest,
   sectionEnabled,
+  walking,
+  onWalkingChange,
   selectedElementId,
   onSelectElement,
 }: {
@@ -50,6 +59,8 @@ export function ModelCanvas({
   navigationMode: NavigationMode;
   cameraRequest: CameraRequest;
   sectionEnabled: boolean;
+  walking: boolean;
+  onWalkingChange: (walking: boolean) => void;
   selectedElementId: number | null;
   onSelectElement: (elementId: number | null) => void;
 }) {
@@ -62,8 +73,11 @@ export function ModelCanvas({
     root: THREE.Group;
     center: THREE.Vector3;
     radius: number;
+    floor: number;
+    up: "y" | "z";
     selectionOverlay: THREE.Group | null;
   } | null>(null);
+  const walkRef = useRef<WalkControls | null>(null);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
 
   useEffect(() => {
@@ -96,11 +110,16 @@ export function ModelCanvas({
     applyNavigationMode(controls, "orbit");
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
+    // The overlay is drawn in the recovered model's own frame, so it keeps that
+    // model's bounds and stays pickable.
+    const useOverlay = source === "overlay" && comparison?.referenceMeshes.length;
     const root = isAutodesk
       ? new THREE.Group()
-      : useReference
-        ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-        : meshGroup(result, renderMode);
+      : useOverlay
+        ? overlayMeshGroup(result, comparison.referenceMeshes, renderMode)
+        : useReference
+          ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
+          : meshGroup(result, renderMode);
     const bounds = isAutodesk
       ? AUTODESK_REFERENCE_BOUNDS
       : useReference
@@ -207,8 +226,13 @@ export function ModelCanvas({
         -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(root.children, false).find((intersection) =>
-        intersection.object instanceof THREE.Mesh && intersection.faceIndex != null,
+      // In the overlay the recovered meshes sit a level deeper, under their own
+      // group, and the export's meshes carry no element ids — so the search goes
+      // recursive and takes the first hit that can actually name an element.
+      const hit = raycaster.intersectObjects(root.children, Boolean(useOverlay)).find((intersection) =>
+        intersection.object instanceof THREE.Mesh
+        && intersection.faceIndex != null
+        && (!useOverlay || intersection.object.userData.elementIds != null),
       );
       if (!hit || hit.faceIndex == null) {
         onSelectElement(null);
@@ -230,6 +254,10 @@ export function ModelCanvas({
       root,
       center,
       radius,
+      // Where the walker's feet go: the bottom of the model on whichever axis
+      // this source stands on.
+      floor: isAutodesk ? bounds.min.y : bounds.min.z,
+      up: (isAutodesk ? "y" : "z") as "y" | "z",
       selectionOverlay: null,
     };
 
@@ -266,10 +294,17 @@ export function ModelCanvas({
     resize();
 
     let frame = 0;
+    let previous = performance.now();
     const render = () => {
       if (!active) return;
       frame = requestAnimationFrame(render);
-      controls.update();
+      const now = performance.now();
+      const delta = (now - previous) / 1000;
+      previous = now;
+      // Exactly one of the two drives the camera; orbit damping would fight the
+      // walker for it otherwise.
+      if (walkRef.current) walkRef.current.update(delta);
+      else controls.update();
       renderer.render(scene, camera);
     };
     render();
@@ -310,6 +345,63 @@ export function ModelCanvas({
     if (!controls) return;
     applyNavigationMode(controls, navigationMode);
   }, [comparison, navigationMode, renderMode, result, source]);
+
+  /**
+   * Walk mode. Orbiting is how you look at a building from outside; walking is
+   * how you find out whether a corridor is a corridor. The orbit controls are
+   * switched off while the walker has the camera, and the camera is handed back
+   * where the walker left it so leaving walk mode does not teleport the view.
+   */
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const canvas = canvasRef.current;
+    if (!runtime || !canvas) return;
+
+    if (!walking) {
+      walkRef.current?.dispose();
+      walkRef.current = null;
+      runtime.controls.enabled = true;
+      // Orbit around whatever is in front of the camera now, rather than
+      // snapping back to the model centre.
+      const forward = new THREE.Vector3();
+      runtime.camera.getWorldDirection(forward);
+      runtime.controls.target.copy(
+        runtime.camera.position.clone().addScaledVector(forward, runtime.radius * 0.35),
+      );
+      runtime.controls.update();
+      return;
+    }
+
+    runtime.controls.enabled = false;
+    const eye = runtime.floor + WALK_EYE_HEIGHT;
+    // Start where the camera already is, dropped to eye level, looking at the
+    // middle of the model — so entering walk mode keeps your bearings.
+    const start = runtime.camera.position.clone();
+    if (runtime.up === "y") start.y = eye;
+    else start.z = eye;
+    const lookAt = runtime.center.clone();
+    if (runtime.up === "y") lookAt.y = eye;
+    else lookAt.z = eye;
+
+    const walk = createWalkControls(runtime.camera, canvas, {
+      start,
+      lookAt,
+      floor: eye,
+      up: runtime.up,
+      onLockChange: (locked) => {
+        // Escape releases the pointer; treat that as leaving walk mode so the
+        // button and the camera never disagree.
+        if (!locked) onWalkingChange(false);
+      },
+    });
+    walk.enable();
+    walkRef.current = walk;
+
+    return () => {
+      walk.dispose();
+      if (walkRef.current === walk) walkRef.current = null;
+    };
+  }, [comparison, onWalkingChange, renderMode, result, source, walking]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

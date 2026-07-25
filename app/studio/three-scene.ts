@@ -105,6 +105,80 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
   return group;
 }
 
+/** The recovered model is drawn in feet; the paired export arrives in metres. */
+const FEET_PER_METRE = 3.280839895;
+
+/**
+ * Both models in one scene, in one coordinate system.
+ *
+ * Until now the three geometry sources were mutually exclusive, so the only way
+ * to compare recovery against the export was to switch between them and
+ * remember what you saw. They are both z-up and share the project's datum; all
+ * that separated them was units and the origin the recovered scene is drawn
+ * around, which is a scale and a translation rather than a registration
+ * problem. The export is therefore parented to a group carrying exactly that
+ * transform instead of having its vertices rewritten.
+ *
+ * The colouring is the point of the mode: the recovery reads as solid, an
+ * exported element the recovery also has is a quiet ghost, and an exported
+ * element that is **missing** from the recovery is picked out in red. What is
+ * wrong with the conversion becomes something you can look at.
+ */
+export function overlayMeshGroup(
+  result: ConvertResult,
+  meshes: ReferenceMeshData[],
+  renderMode: RenderMode,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "Recovery over export";
+  group.userData = { source: "overlay", fidelity: "comparison" };
+
+  const recovered = meshGroup(result, renderMode);
+  recovered.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    material.color = new THREE.Color(0xff8a3d);
+    material.vertexColors = false;
+    material.transparent = false;
+    material.opacity = 1;
+    material.depthWrite = true;
+    material.needsUpdate = true;
+  });
+  group.add(recovered);
+
+  // metres -> feet, then into the frame the recovered scene is drawn around.
+  const reference = new THREE.Group();
+  reference.name = "Paired export";
+  reference.scale.setScalar(FEET_PER_METRE);
+  reference.position.set(-result.origin.x, -result.origin.y, -result.origin.z);
+
+  for (const data of meshes) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(data.matched ? 0x4a6b86 : 0xff3b46),
+      emissive: data.matched ? new THREE.Color(0x000000) : new THREE.Color(0x3a0206),
+      roughness: 0.85,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      transparent: true,
+      // A matched element is context and stays out of the way; a missing one
+      // has to be visible through the recovery standing in front of it.
+      opacity: data.matched ? 0.22 : 0.95,
+      depthWrite: !data.matched,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `${data.name} (${data.matched ? "matched" : "missing from recovery"})`;
+    mesh.renderOrder = data.matched ? 0 : 3;
+    reference.add(mesh);
+  }
+  group.add(reference);
+  return group;
+}
+
 export function disposeGroup(group: THREE.Object3D) {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
