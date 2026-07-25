@@ -52,7 +52,13 @@ export {
   resolveElementCategories,
 } from "./native-categories";
 export { compareRvtToIfc } from "./regression";
-export { boundsDimensions, cameraPoseForPreset, solidElementBounds } from "./viewer";
+export {
+  boundsDimensions,
+  cameraPoseForPreset,
+  FEET_PER_METRE,
+  referenceRegistration,
+  solidElementBounds,
+} from "./viewer";
 export {
   downloadBlob,
   makeDxf,

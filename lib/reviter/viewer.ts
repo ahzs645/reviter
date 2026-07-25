@@ -56,3 +56,22 @@ export function boundsDimensions(bounds: Bounds3): Vec3 {
     z: bounds.max.z - bounds.min.z,
   };
 }
+
+/** The only unit conversion between the recovered model and a paired export. */
+export const FEET_PER_METRE = 3.280839895;
+
+/**
+ * How the paired export is placed into the recovered model's frame.
+ *
+ * The two are not in different worlds. Both are z-up and both are written
+ * around the project's datum; the export is in metres, and the recovered scene
+ * is drawn with its own origin subtracted so a building far from the datum
+ * still renders near zero. Scale then translate is the whole of it, which is
+ * why the two can be shown together at all.
+ */
+export function referenceRegistration(originFeet: Vec3): { scale: number; offset: Vec3 } {
+  return {
+    scale: FEET_PER_METRE,
+    offset: { x: -originFeet.x, y: -originFeet.y, z: -originFeet.z },
+  };
+}

@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
+  referenceRegistration,
   type ConvertResult,
   type NavigationMode,
   type ReferenceMeshData,
@@ -105,9 +106,6 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
   return group;
 }
 
-/** The recovered model is drawn in feet; the paired export arrives in metres. */
-const FEET_PER_METRE = 3.280839895;
-
 /**
  * Both models in one scene, in one coordinate system.
  *
@@ -150,8 +148,9 @@ export function overlayMeshGroup(
   // metres -> feet, then into the frame the recovered scene is drawn around.
   const reference = new THREE.Group();
   reference.name = "Paired export";
-  reference.scale.setScalar(FEET_PER_METRE);
-  reference.position.set(-result.origin.x, -result.origin.y, -result.origin.z);
+  const registration = referenceRegistration(result.origin);
+  reference.scale.setScalar(registration.scale);
+  reference.position.set(registration.offset.x, registration.offset.y, registration.offset.z);
 
   for (const data of meshes) {
     const geometry = new THREE.BufferGeometry();
