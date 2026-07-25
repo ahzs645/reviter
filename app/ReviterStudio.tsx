@@ -659,7 +659,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
                 <nav className="viewer-navigation" aria-label="Viewport navigation">
                   <button onClick={() => requestCamera("home")}><i>⌂</i><span>Home</span></button>
-                  <button onClick={() => requestCamera(cameraRequest.preset)}><i>⛶</i><span>Fit</span></button>
+                  {/* Re-applies the current preset without touching the view;
+                      going through requestCamera dropped you out of plan. */}
+                  <button onClick={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 }))}><i>⛶</i><span>Fit</span></button>
                   <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
                   <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
                   <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>

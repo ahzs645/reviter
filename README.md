@@ -200,6 +200,22 @@ Together these took drawn elements from 38,353 to 39,114, and coverings from 50.
 
 Neither is a display problem, so neither is fixed by the changes above. `IfcRamp` is unchanged at 5 drawn for that reason.
 
+## Overlay and walk, in the studio
+
+The overlay below started as an offline script. It is now a view mode: load an RVT, pair its IFC export in the **Regression fixture** panel, and the geometry-source switcher gains **Overlay**.
+
+The three geometry sources were mutually exclusive, so comparing recovery against the export meant switching between them and remembering what you saw. Both are z-up and share the project's datum — only units and the origin the recovered scene is drawn around separated them, which is a scale and a translation rather than a registration problem. The export is parented to a group carrying exactly that transform rather than having its vertices rewritten.
+
+The colouring is the point of the mode:
+
+- the **recovery** is solid
+- an exported element the recovery also has is a **quiet ghost**
+- an exported element the recovery is **missing** is picked out in **red**
+
+So the 6,939 elements the coverage table counts as absent become something you can look at and point at, in place. Picking still works in this mode; it searches recursively, because the recovered meshes sit a level deeper than before and the export's meshes carry no element ids.
+
+**Walk** joins Pan / Zoom / Orbit in the viewport navigation bar. Orbiting is how you look at a building from outside and the wrong way to understand it from inside — a corridor, a stair, a floor-to-ceiling height all read differently at eye level. Mouse look runs on pointer lock, `W A S D` moves, `Shift` runs, `Space` and `C` rise and fall, `Esc` leaves. The eye sits 5.6 ft above the model's floor and the scene is already drawn in feet, so nothing needs scaling. Yaw and pitch are tracked directly rather than accumulated onto the camera's quaternion, which drifts into roll and tips the horizon over; leaving walk mode hands the camera back where the walker left it instead of snapping to the last preset.
+
 ## Overlay against the paired export
 
 Counting elements answers whether something is present. It cannot answer whether it is in the right place, and an element can be drawn and drawn wrong. `scripts/overlay-diff.ts` puts both models in one frame and measures the disagreement:

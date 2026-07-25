@@ -326,7 +326,13 @@ export function ModelCanvas({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
-    const preset = view === "plan" ? "top" : cameraRequest.preset;
+    // Leaving plan view has to leave the top preset behind with it. The stored
+    // preset stays "top" after the view cube is used, so asking for 3D while it
+    // was still in force lit the button up and left the camera looking straight
+    // down.
+    const preset = view === "plan"
+      ? "top"
+      : cameraRequest.preset === "top" ? "home" : cameraRequest.preset;
     const pose = source === "autodesk"
       ? autodeskPoseForPreset(preset, runtime.radius)
       : { ...cameraPoseForPreset(runtime.center, runtime.radius, preset), target: runtime.center, fov: 45 };
