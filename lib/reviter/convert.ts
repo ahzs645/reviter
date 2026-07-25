@@ -166,7 +166,52 @@ function plausibleCoordinate(value: number): boolean {
   );
 }
 
-function scanSegments(data: Uint8Array, target: Segment[], limit: number): void {
+/**
+ * Coordinate windows for the diagnostic segment scanner, in feet.
+ *
+ * A project spans a building; a family (`.rfa`/`.rft`) spans a single component
+ * and its curves are one to two orders of magnitude shorter. Applying the
+ * project window to a family rejects every candidate, which is why family files
+ * used to open and then report that nothing was recovered.
+ */
+type SegmentScale = {
+  minLength: number;
+  maxLength: number;
+  minZ: number;
+  maxZ: number;
+  minMagnitude: number;
+};
+
+const PROJECT_SEGMENT_SCALE: SegmentScale = {
+  minLength: 2,
+  maxLength: 400,
+  minZ: -50,
+  maxZ: 400,
+  minMagnitude: 1,
+};
+
+const FAMILY_SEGMENT_SCALE: SegmentScale = {
+  minLength: 0.05,
+  maxLength: 60,
+  minZ: -60,
+  maxZ: 400,
+  minMagnitude: 0.02,
+};
+
+const MAX_SEGMENT_DELTA_Z = 0.5;
+
+export function segmentScaleFor(fileName: string, requested?: ConvertOptions["geometryScale"]): SegmentScale {
+  if (requested === "family") return FAMILY_SEGMENT_SCALE;
+  if (requested === "project") return PROJECT_SEGMENT_SCALE;
+  return /\.(rfa|rft)$/i.test(fileName) ? FAMILY_SEGMENT_SCALE : PROJECT_SEGMENT_SCALE;
+}
+
+function scanSegments(
+  data: Uint8Array,
+  target: Segment[],
+  limit: number,
+  scale: SegmentScale,
+): void {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 48 <= data.byteLength && target.length < limit; offset += 8) {
     const values = Array.from({ length: 6 }, (_, index) =>
@@ -183,9 +228,9 @@ function scanSegments(data: Uint8Array, target: Segment[], limit: number): void 
       number,
     ];
     const length = Math.hypot(x1 - x0, y1 - y0);
-    if (Math.abs(z1 - z0) > 0.5 || z0 < -50 || z0 > 400) continue;
-    if (length < 2 || length > 400) continue;
-    if (Math.abs(x0) + Math.abs(y0) + Math.abs(x1) + Math.abs(y1) < 1) continue;
+    if (Math.abs(z1 - z0) > MAX_SEGMENT_DELTA_Z || z0 < scale.minZ || z0 > scale.maxZ) continue;
+    if (length < scale.minLength || length > scale.maxLength) continue;
+    if (Math.abs(x0) + Math.abs(y0) + Math.abs(x1) + Math.abs(y1) < scale.minMagnitude) continue;
 
     target.push({ x0, y0, z0, x1, y1, z1 });
     offset += 40;
@@ -756,6 +801,8 @@ export function convertRvtBytes(
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const decoderPlan = decoderPlanForVersion(options.revitVersion);
+  const segmentScale = segmentScaleFor(fileName, options.geometryScale);
+  const familyScale = segmentScale === FAMILY_SEGMENT_SCALE;
 
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
@@ -851,7 +898,7 @@ export function convertRvtBytes(
           index % stride === 0 &&
           candidates.length < scanLimit
         ) {
-          scanSegments(inflated, candidates, scanLimit);
+          scanSegments(inflated, candidates, scanLimit, segmentScale);
         }
         if (gzipChunks % 36 === 0) {
           onProgress?.({
@@ -975,18 +1022,19 @@ export function convertRvtBytes(
       y: (bounds.min.y + bounds.max.y) / 2,
       z: bounds.min.z,
     };
-    const meshes = buildMeshes(
-      used,
-      origin,
-      options.wallThickness ?? 0.5,
-      options.wallHeight ?? 10,
-    );
+    // The diagnostic scan recovers curves, not solids, so each candidate is
+    // extruded only to make it visible. At family scale a 10 ft extrusion would
+    // bury the component, so the defaults follow the recovered extent instead.
+    const diagonal = Math.hypot(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y);
+    const extrusionHeight = options.wallHeight ?? (familyScale ? Math.max(0.05, diagonal * 0.04) : 10);
+    const extrusionThickness = options.wallThickness ?? (familyScale ? Math.max(0.01, diagonal * 0.004) : 0.5);
+    const meshes = buildMeshes(used, origin, extrusionThickness, extrusionHeight);
     const relativeBounds = {
       min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
       max: {
         x: bounds.max.x - origin.x,
         y: bounds.max.y - origin.y,
-        z: bounds.max.z - origin.z + (options.wallHeight ?? 10),
+        z: bounds.max.z - origin.z + extrusionHeight,
       },
     };
 
@@ -1031,7 +1079,9 @@ export function convertRvtBytes(
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
           : []),
-        "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
+        familyScale
+          ? "Family file: geometry is inferred from component-scale coordinate-like partition records and is not a native Revit element model."
+          : "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`
           : "No isolated spatial cluster was removed.",

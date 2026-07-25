@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords, gzipOffsets } from "../lib/reviter/convert.ts";
+import {
+  detectDuplicatedBoundsRecord,
+  detectDuplicatedBoundsRecords,
+  gzipOffsets,
+  segmentScaleFor,
+} from "../lib/reviter/convert.ts";
 import {
   categoryDisplayName,
   collectCategoryTokens,
@@ -333,4 +338,17 @@ test("skips gzip signatures whose reserved header flag bits are set", () => {
   // sets reserved bits, so it must not be treated as a chunk boundary.
   data.set([0x1f, 0x8b, 0x08, 0xb2], 32);
   assert.deepEqual(gzipOffsets(data), [0]);
+});
+
+test("reads a component-scale coordinate window for family files", () => {
+  const project = segmentScaleFor("model.rvt");
+  const family = segmentScaleFor("component.rfa");
+  assert.equal(segmentScaleFor("template.rft"), family);
+  // A family's curves are far shorter than a building's, so a project window
+  // discards them and admits long spurious runs the component cannot contain.
+  assert.ok(family.minLength < project.minLength);
+  assert.ok(family.maxLength < project.maxLength);
+  // An explicit request always wins over the extension.
+  assert.equal(segmentScaleFor("component.rfa", "project"), project);
+  assert.equal(segmentScaleFor("model.rvt", "family"), family);
 });

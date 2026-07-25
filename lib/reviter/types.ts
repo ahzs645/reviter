@@ -279,6 +279,12 @@ export type ConvertOptions = {
   wallHeight?: number;
   wallThickness?: number;
   revitVersion?: number;
+  /**
+   * Coordinate window for the diagnostic segment scanner. Defaults to `auto`,
+   * which reads a family window for `.rfa`/`.rft` and a project window
+   * otherwise — a family's curves are far shorter than a building's.
+   */
+  geometryScale?: "auto" | "project" | "family";
 };
 
 export type ProgressUpdate = {

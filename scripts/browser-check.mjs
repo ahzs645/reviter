@@ -73,7 +73,7 @@ let rendered = "";
 for (let attempt = 0; attempt < 400; attempt += 1) {
   await page.waitForTimeout(1_500);
   rendered = await page.evaluate(() => document.body.innerText.slice(0, 4_000));
-  if (/RVT element envelopes|could not|failed|error/i.test(rendered)) break;
+  if (/element envelopes|diagnostic centerlines|ArcWall profiles|could not|failed|error/i.test(rendered)) break;
 }
 
 console.log("conversion wall clock", `${((Date.now() - started) / 1000).toFixed(1)}s`);

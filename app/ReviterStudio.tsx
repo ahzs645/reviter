@@ -1123,7 +1123,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             />
             <FidelityRow
               label="BIM semantics"
-              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : "Categories only"}
+              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.readerDiagnostics?.productionElements ? `${result.readerDiagnostics.productionElements} decoded` : result?.decoderCoverage.nativeCategorisedElements ? "Categories only" : "Unavailable"}
               tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
