@@ -628,6 +628,29 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                 </div>
               </section>
 
+              {result.coverage && (
+                <section className="coverage-panel">
+                  <div className="section-heading">
+                    <span>Container streams</span>
+                    <span>{result.coverage.fullStreams} full · {result.coverage.partialStreams} partial · {result.coverage.undecodedStreams} undecoded</span>
+                  </div>
+                  <table className="coverage-table">
+                    <tbody>
+                      {result.coverage.streams.map((stream) => (
+                        <tr key={stream.path} className={`coverage-${stream.depth}`}>
+                          <td>{stream.path}</td>
+                          <td>{formatBytes(stream.storedBytes)}</td>
+                          <td>{stream.inflatedBytes == null ? "—" : formatBytes(stream.inflatedBytes)}</td>
+                          <td>{stream.depth}</td>
+                          <td title={stream.note}>{stream.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="export-disclaimer">Depth is graded per stream rather than weighted by bytes: the partition stream is most of the file, so counting it as covered because a decoder reads part of it would overstate the result.</p>
+                </section>
+              )}
+
               <section className="export-panel">
                 <div className="export-heading"><div><p className="eyebrow">Export recovered data</p><h3>Choose an open format</h3></div><span>client generated</span></div>
                 <div className="export-grid">
