@@ -181,7 +181,7 @@ button { color: inherit; }
 .viewport-legend { position: absolute; z-index: 2; left: 18px; bottom: 16px; display: flex; gap: 13px; color: #91a9ac; font-family: var(--font-plex-mono); font-size: 8px; text-transform: uppercase; }
 .viewport-legend span { display: flex; align-items: center; gap: 5px; }
 .viewport-legend i { width: 9px; height: 3px; border-radius: 2px; }
-.legend-cyan { background: var(--cyan); }.legend-context { background: #607d80; }.legend-amber { background: var(--amber); }.legend-grid { background: #386067; }
+.legend-cyan { background: var(--cyan); }.legend-context { background: #607d80; }.legend-amber { background: var(--amber); }.legend-grid { background: #386067; }.legend-missing { background: #ff3b46; }
 .viewport-stamp { position: absolute; z-index: 2; right: 18px; bottom: 16px; color: #678184; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; letter-spacing: .1em; }
 
 .workspace.model-open { grid-template-columns: 270px minmax(0, 1fr); }
@@ -277,6 +277,8 @@ button { color: inherit; }
 .model-tree span { display: flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 700; }
 .model-tree span i { width: 7px; height: 7px; border: 1px solid #51708c; background: #c4d5e4; }
 .model-tree small { display: block; margin: 4px 0 0 14px; color: #708292; font-family: var(--font-plex-mono); font-size: 7px; }
+/* The id is reference detail beside the category, not the headline. */
+.model-tree span em { margin-left: auto; color: #7c8b99; font-family: var(--font-plex-mono); font-style: normal; font-weight: 500; }
 .model-browser-panel > p { margin: 0; padding: 9px 12px; color: #70808e; border-top: 1px solid #dce4ea; font-size: 7px; line-height: 1.45; }
 .property-table { margin: 0; overflow: auto; }
 .property-table > div { min-height: 39px; padding: 8px 12px; display: grid; grid-template-columns: 1fr 1.1fr; gap: 10px; align-items: center; border-bottom: 1px solid #e1e7ec; }

@@ -13,7 +13,6 @@ import {
   makePlanSvg,
   makeReport,
   outputName,
-  solidElementBounds,
   type CameraPreset,
   type ConvertResult,
   type IfcWorkerRequest,
@@ -291,10 +290,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     if (!result) return new Set<number>();
     return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
   }, [result]);
+  // The list is the drawn set, and nothing else. It used to be filtered a second
+  // time through a three-axis "is this solid" test that the scene no longer
+  // applies — a sketch-bounded ceiling is drawn but has no thickness — so the
+  // browser and the toolbar reported two different counts of the same thing.
   const solidRecords = useMemo(
-    () => result
-      ? solidElementBounds(result.elementBounds).filter((record) => displayedElementIds.has(record.elementId))
-      : [],
+    () => result ? result.elementBounds.filter((record) => displayedElementIds.has(record.elementId)) : [],
     [displayedElementIds, result],
   );
   const selectedRecord = useMemo(
@@ -305,9 +306,14 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   );
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
   const visibleModelRecords = useMemo(() => {
-    const query = modelSearch.trim();
+    const query = modelSearch.trim().toLowerCase();
+    // Asking the user to search by an id they would have to already know is not
+    // much of a search; category and type names are on the record too.
     const records = query
-      ? solidRecords.filter((record) => String(record.elementId).includes(query))
+      ? solidRecords.filter((record) =>
+          String(record.elementId).includes(query)
+          || record.categoryName?.toLowerCase().includes(query)
+          || record.typeName?.toLowerCase().includes(query))
       : solidRecords;
     return records.slice(0, 180);
   }, [modelSearch, solidRecords]);
@@ -329,11 +335,15 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
       <section className={`workspace ${result ? "model-open" : ""}`}>
         <aside className="control-rail">
-          <div className="rail-intro">
-            <p className="eyebrow">RVT → open geometry</p>
-            <h1>Inspect first.<br />Convert honestly.</h1>
-            <p>Open a Revit file without uploading it. Verified metadata stays separate from experimental geometry recovery.</p>
-          </div>
+          {/* The pitch belongs on the empty page, not above a model you are
+              already working on. */}
+          {!result && (
+            <div className="rail-intro">
+              <p className="eyebrow">RVT → open geometry</p>
+              <h1>Inspect first.<br />Convert honestly.</h1>
+              <p>Verified metadata stays separate from experimental geometry recovery.</p>
+            </div>
+          )}
 
           <button
             className={`drop-card ${dragging ? "is-dragging" : ""}`}
@@ -392,6 +402,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             </section>
           )}
 
+          {(metadata || result) && (
           <section className="rail-section fidelity-section">
             <div className="section-heading"><span>Fidelity ledger</span></div>
             <FidelityRow label="File metadata" value={metadata ? "Verified" : "Awaiting file"} tone={metadata ? "good" : "off"} />
@@ -403,12 +414,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             />
             <FidelityRow
               label="Native meshes"
-              value={geometrySource === "autodesk" ? "8,698 derivative meshes" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
+              value={geometrySource === "autodesk" ? "From the derivative" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
             />
             <FidelityRow
               label="RVT materials"
-              value={geometrySource === "autodesk" ? "22 derivative materials" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
+              value={geometrySource === "autodesk" ? "From the derivative" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
@@ -487,11 +498,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
+          )}
 
           {result && (
             <section className="rail-section reference-section">
-              <div className="section-heading"><span>Regression fixture</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
-              <p>Pair the matching IFC export to join native Revit IDs and test geometry against typed ground truth.</p>
+              <div className="section-heading"><span>Paired IFC export</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
+              <p>Pair this model&apos;s IFC export to check the recovery against it, and to unlock the overlay view.</p>
               <button type="button" onClick={() => ifcInputRef.current?.click()} disabled={referencePhase === "reading"}>
                 {referencePhase === "reading" ? "Analyzing IFC…" : comparison ? "Choose another IFC" : "Pair IFC reference"}
               </button>
@@ -523,7 +535,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "autodesk" ? "51,420 Autodesk fragments · 1.22M source polygons" : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{!result ? "" : geometrySource === "autodesk" ? "Autodesk server-generated derivative" : geometrySource === "overlay" && comparison ? `${formatNumber(result.stats.candidatesUsed)} recovered · ${formatNumber(comparison.reference.elementCount)} in the export` : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines`}</span></div>
             </div>
             <div className="toolbar-controls">
               {autodeskReferenceAvailable || comparison?.referenceMeshes.length ? (
@@ -586,8 +598,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
                 {viewerPanel === "model" && (
                   <aside className="viewer-sidepanel model-browser-panel" aria-label="Model browser">
-                    <div className="viewer-panel-heading"><div><strong>Model browser</strong><span>{solidRecords.length.toLocaleString()} recovered elements</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close model browser">×</button></div>
-                    <label className="model-search"><span>Search native ID</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} inputMode="numeric" placeholder="e.g. 290618" /></label>
+                    <div className="viewer-panel-heading"><div><strong>Model browser</strong><span>{solidRecords.length.toLocaleString()} elements in the scene</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close model browser">×</button></div>
+                    <label className="model-search"><span>Search</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, category, or type" /></label>
                     <div className="model-tree" role="listbox" aria-label="Recovered Revit elements">
                       {visibleModelRecords.map((record) => {
                         const dimensions = boundsDimensions(record.boundsFeet);
@@ -599,13 +611,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                             role="option"
                             aria-selected={selectedElementId === record.elementId}
                           >
-                            <span><i />Revit element {record.elementId}</span>
+                            <span><i />{record.categoryName ?? "Uncategorised"} <em>{record.elementId}</em></span>
                             <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
                           </button>
                         );
                       })}
                     </div>
-                    {solidRecords.length > visibleModelRecords.length && <p>Showing {visibleModelRecords.length} of {solidRecords.length.toLocaleString()} elements. Search by native ID to narrow the list.</p>}
+                    {solidRecords.length > visibleModelRecords.length && <p>Showing {visibleModelRecords.length} of {solidRecords.length.toLocaleString()} elements. Search to narrow the list.</p>}
                   </aside>
                 )}
 
@@ -621,7 +633,20 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                         {selectedRecord.categoryId != null && (
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
                         )}
-                        <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {/* Not every element reaches the scene through a bounds
+                            record any more — some are rebuilt from surfaces, a
+                            placed instance, or a sketch — so the row says which. */}
+                        <div><dt>Evidence</dt><dd>{
+                          selectedRecord.recordOffset >= 0
+                            ? "Duplicated bounds record"
+                            : selectedRecord.loops?.length
+                              ? "Sketch boundary"
+                              : selectedRecord.orientedBox
+                                ? "Placed family instance"
+                                : selectedRecord.solids?.length || selectedRecord.solid
+                                  ? "Rebuilt from native surfaces"
+                                  : "Native faces"
+                        }</dd></div>
                         {selectedRecord.solid && (
                           <div><dt>Native geometry</dt><dd>{Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · {(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick</dd></div>
                         )}
@@ -638,15 +663,19 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                           </div>
                         ))}
                         <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
-                        <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
+                        {selectedRecord.chunkIndex >= 0 && (
+                          <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
+                        )}
                         <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>
                         <div><dt>Depth</dt><dd>{selectedDimensions.y.toFixed(3)} ft</dd></div>
                         <div><dt>Height</dt><dd>{selectedDimensions.z.toFixed(3)} ft</dd></div>
                         <div><dt>Minimum Z</dt><dd>{selectedRecord.boundsFeet.min.z.toFixed(3)} ft</dd></div>
-                        <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
+                        {selectedRecord.recordOffset >= 0 && (
+                          <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
+                        )}
                       </dl>
                     ) : (
-                      <div className="property-empty"><b>Pick an envelope in the viewport</b><p>Click a recovered solid or choose an element from Model browser. Native IDs and record evidence stay local.</p></div>
+                      <div className="property-empty"><b>Pick an element in the viewport</b><p>Click a recovered solid, or choose one from the model browser.</p></div>
                     )}
                   </aside>
                 )}
@@ -679,22 +708,23 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                 {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>Element {selectedRecord.elementId}<span>View properties</span></button>}
                 <div className="viewport-legend">
                   {geometrySource === "autodesk" ? (
-                    <><span><i className="legend-cyan" />Autodesk source meshes</span><span><i className="legend-context" />22 source materials</span></>
+                    <span><i className="legend-cyan" />Autodesk source meshes</span>
+                  ) : geometrySource === "overlay" && comparison ? (
+                    <><span><i className="legend-amber" />Recovered</span><span><i className="legend-context" />In the export, matched</span><span><i className="legend-missing" />Missing from the recovery</span></>
                   ) : geometrySource === "reference" && comparison ? (
                     <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
                   ) : (
                     <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
-                  <span><i className="legend-grid" />Model grid</span>
+                  {geometrySource !== "autodesk" && <span><i className="legend-grid" />Model grid</span>}
                 </div>
-                <div className="viewport-stamp">{geometrySource === "autodesk" ? "Autodesk SVF derivative · metres · y-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
+                <div className="viewport-stamp">{geometrySource === "autodesk" ? "Autodesk SVF derivative · metres · y-up" : geometrySource === "overlay" && comparison ? "recovery over paired IFC · feet · z-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">
                 <div className="empty-orbit" aria-hidden="true"><span /><span /><b>R</b></div>
-                <p className="eyebrow">Zero upload · no account · no telemetry</p>
                 <h2>Your model stays<br />on your machine.</h2>
-                <p>Use the file picker or drag a local Revit model onto the left panel. Conversion runs in a dedicated browser worker.</p>
+                <p>Drop a Revit file on the left, or open one here. It is converted in a browser worker and never uploaded.</p>
                 <button onClick={() => inputRef.current?.click()}>Open a local model</button>
               </div>
             )}
@@ -706,8 +736,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               <section className="result-summary">
                 <p className="eyebrow">Recovery summary</p>
                 <div className="metric-row">
-                  <div><strong>{formatNumber(result.stats.candidatesFound)}</strong><span>raw candidates</span></div>
-                  <div><strong>{formatNumber(result.stats.candidatesUsed)}</strong><span>in scene</span></div>
+                  <div><strong>{formatNumber(result.stats.candidatesFound)}</strong><span>records recovered</span></div>
+                  <div><strong>{formatNumber(result.stats.candidatesUsed)}</strong><span>drawn in the scene</span></div>
                   <div><strong>{formatNumber(result.stats.triangleCount)}</strong><span>triangles</span></div>
                   <div><strong>{(result.stats.durationMs / 1_000).toFixed(1)}s</strong><span>convert time</span></div>
                 </div>
