@@ -398,6 +398,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
+              label="Embedded schema"
+              value={result?.schema
+                ? `${result.schema.taggedClasses.length} tagged classes`
+                : result ? "Not found" : "Not evaluated"}
+              tone={result?.schema?.taggedClasses.length ? "good" : "off"}
+            />
+            <FidelityRow
               label="Revit categories"
               value={result?.decoderCoverage.nativeCategorisedElements
                 ? `${result.decoderCoverage.nativeCategorisedElements.toLocaleString()} native`

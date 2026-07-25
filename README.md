@@ -44,6 +44,22 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
 
+## Embedded schema
+
+`Formats/Latest` is Autodesk's own dictionary for the on-disk object graph — roughly half a megabyte of class names, inheritance, and field declarations shipped inside every Revit file. Reviter inventories the classes that are serializable at the top level, each of which carries a `u16` tag with the `0x8000` bit set immediately after its name:
+
+```text
+[u16 nameLen] [nameLen bytes ASCII class name] [u16 tag | 0x8000]
+```
+
+That tag is what identifies the class in `Partitions/NN` records, and it drifts between releases as Autodesk inserts classes into the ordering — in the local corpus `ArcWall` moves `0x14f` → `0x1b8` → `0x1c3` across 2020, 2026, and 2027, and `HostObjAttr` moves `0x5d` → `0x70` → `0x6f`.
+
+The inventory is verified against an independent source: across the Revit 2020, 2023, and 2026 family files it reproduces all 218 checkable class-to-tag pairs in the tag-drift dataset published by `rvt-rs`, with no disagreements. The supplied 2027 project yields 232 tagged classes.
+
+The rest of a class record is **not** decoded. Parent class, field list, and the class definitions nested inside fields are genuinely ambiguous to walk from the outside — several layouts fit the observed bytes and none close cleanly across the corpus, and `rvt-rs` reports the same gap as field-count mismatches. Reporting a field graph that is probably wrong would be worse than reporting none, so the parser stops at what the bytes prove.
+
+`Global/PartitionTable` is also read, for its UTF-16 partition names. In a project these are worksets; in a family the stream carries the family partition path instead, so the decoder reports the names without asserting which kind they are.
+
 ## Supplied-project synthesis
 
 | Supplied project | What Reviter uses |
@@ -53,6 +69,8 @@ The category decoder is not gated on the release, because it is self-validating:
 | `rvt-rs-main` | The clean-room format status, support boundary, diagnostic model, and optional WebAssembly reader integration |
 | `rvt2ifc-fe-master` | The openBIM viewer/export direction; current Reviter exports can be handed to IFC viewers |
 | `rvt-convert-main` | Export-format and configuration ideas only; its Autodesk/Azure upload flow is intentionally excluded because it conflicts with client-only processing |
+
+A second review of the supplied projects found little left to bring over from the browser ones: `rvt-app-main`'s Revit handling is a thin wrapper over `@phi-ag/rvt` that Reviter already calls directly, `rvt-ts-viewer`'s recovery is a subset of `lib/reviter/segment-scan.ts`, and `rvt2ifc-fe-master`'s IFC type-code table is redundant now that `web-ifc` reports type names directly. The remaining value was in `rvt-rs`: its `Formats/Latest` work is the basis for the schema inventory above, and its published tag-drift dataset is what that inventory is checked against.
 
 The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
 
@@ -108,6 +126,8 @@ Each stage of the pipeline is its own module, so a decoder change cannot reach i
 | `lib/reviter/export-*.ts` | one module per output format, re-exported by `exports.ts` |
 | `lib/reviter/worker.ts`, `ifc-worker.ts` | the Web Worker entry points |
 | `lib/reviter/ifc-reference.ts`, `regression.ts` | paired IFC analysis and the regression gates |
+| `lib/reviter/schema.ts` | the embedded `Formats/Latest` serializable-class inventory |
+| `lib/reviter/partition-names.ts` | workset / family partition names from `Global/PartitionTable` |
 | `lib/reviter/types.ts` | the shared public types |
 
 The interface is split the same way: `app/ReviterStudio.tsx` is the composition root, with the viewport in `app/studio/ModelCanvas.tsx`, Three.js group assembly in `three-scene.ts`, the Autodesk reference in `autodesk-reference.ts`, and the summary panels in `panels.tsx`.

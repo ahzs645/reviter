@@ -4,6 +4,8 @@ import test from "node:test";
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
 import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
 import { gzipOffsets } from "../lib/reviter/revit-container.ts";
+import { parseSchemaTags } from "../lib/reviter/schema.ts";
+import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   categoryDisplayName,
@@ -348,4 +350,46 @@ test("reads a component-scale coordinate window for family files", () => {
   // An explicit request always wins over the extension.
   assert.equal(segmentScaleFor("component.rfa", "project"), project);
   assert.equal(segmentScaleFor("model.rvt", "family"), family);
+});
+
+test("inventories tagged serializable classes from the embedded schema", () => {
+  const encoder = new TextEncoder();
+  const build = (entries: [string, number | null][]) => {
+    const parts: number[] = [];
+    for (const [name, tag] of entries) {
+      const bytes = encoder.encode(name);
+      parts.push(bytes.length & 0xff, bytes.length >> 8, ...bytes);
+      const word = tag == null ? 0 : tag | 0x8000;
+      parts.push(word & 0xff, word >> 8);
+    }
+    return new Uint8Array(parts);
+  };
+
+  const classes = parseSchemaTags(build([
+    ["ArcWall", 0x01c3],
+    ["HostObjAttr", 0x006f],
+    // An untagged class is a mixin or embedded type, not a top-level record.
+    ["GeomStep", null],
+    // A repeat is a reference back to the first declaration.
+    ["ArcWall", 0x01c3],
+  ]));
+
+  assert.deepEqual(classes.map(({ name, tag }) => ({ name, tag })), [
+    { name: "ArcWall", tag: 0x01c3 },
+    { name: "HostObjAttr", tag: 0x006f },
+  ]);
+});
+
+test("reads partition names as UTF-16 with a character count", () => {
+  const name = "Workset1";
+  const data = new Uint8Array(4 + name.length * 2);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, name.length, true);
+  for (let index = 0; index < name.length; index += 1) {
+    view.setUint16(4 + index * 2, name.charCodeAt(index), true);
+  }
+  assert.deepEqual(parsePartitionNames(data).map((entry) => entry.name), ["Workset1"]);
+  // A count that overruns the stream is not a name.
+  view.setUint32(0, 4_000, true);
+  assert.deepEqual(parsePartitionNames(data), []);
 });

@@ -16,6 +16,8 @@ export {
 } from "./scene";
 export type { DisplayRole, DisplaySelection } from "./scene";
 export { scanSegments, segmentScaleFor } from "./segment-scan";
+export { parseSchemaTags, summariseSchema } from "./schema";
+export { parsePartitionNames } from "./partition-names";
 export type { SegmentScale } from "./segment-scan";
 export {
   decodeArcWall2023Record,
@@ -68,6 +70,9 @@ export type {
   NativeCategorySource,
   NativeCategorySummary,
   NativeProfileLocator,
+  SchemaClass,
+  SchemaSummary,
+  PartitionName,
   ProgressUpdate,
   ReaderDiagnostics,
   ReferenceMeshData,

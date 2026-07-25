@@ -1,3 +1,9 @@
+import type { SchemaSummary } from "./schema.ts";
+import type { PartitionName } from "./partition-names.ts";
+
+export type { SchemaClass, SchemaSummary } from "./schema.ts";
+export type { PartitionName } from "./partition-names.ts";
+
 export type Vec3 = { x: number; y: number; z: number };
 
 export type Segment = {
@@ -255,6 +261,10 @@ export type ConvertResult = {
   elementBounds: ElementBoundsRecord[];
   nativeProfiles: NativeProfileLocator[];
   nativeCategories?: NativeCategorySummary;
+  /** Serializable class inventory decoded from the embedded `Formats/Latest`. */
+  schema?: SchemaSummary;
+  /** Workset or family partition names decoded from `Global/PartitionTable`. */
+  partitionNames?: PartitionName[];
   decoderCoverage: DecoderCoverage;
   origin: Vec3;
   bbox: { min: Vec3; max: Vec3 };

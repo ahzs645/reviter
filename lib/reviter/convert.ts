@@ -27,6 +27,8 @@ import {
 } from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
 import { asBytes, gzipOffsets, inflateRevitChunk, leadingU32 } from "./revit-container.ts";
+import { summariseSchema } from "./schema.ts";
+import { parsePartitionNames } from "./partition-names.ts";
 import {
   buildBoundsMeshes,
   buildMeshes,
@@ -65,6 +67,26 @@ const MAX_CATEGORY_TOKENS = 400_000;
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 
+/**
+ * Inflate the first chunk of a named stream and hand it to `decode`. Returns
+ * `undefined` when the stream is absent or does not decompress, so an optional
+ * stream never fails the conversion.
+ */
+function readStreamSummary<T>(
+  cfb: ReturnType<typeof CFB.read>,
+  pattern: RegExp,
+  decode: (data: Uint8Array) => T,
+): T | undefined {
+  const entry = cfb.FileIndex
+    .map((candidate, index) => ({ entry: candidate, path: cfb.FullPaths[index] ?? "" }))
+    .find(({ entry: candidate, path }) => candidate.size > 0 && pattern.test(path));
+  if (!entry) return undefined;
+  const bytes = asBytes(entry.entry.content);
+  const offset = gzipOffsets(bytes, 1)[0];
+  const inflated = offset == null ? null : inflateRevitChunk(bytes, offset);
+  return inflated ? decode(inflated) : undefined;
+}
+
 export function convertRvtBytes(
   input: ArrayBuffer | Uint8Array,
   fileName = "model.rvt",
@@ -91,6 +113,9 @@ export function convertRvtBytes(
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
       if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
     }
+    const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, summariseSchema);
+    const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
+
     const partitions = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .filter(({ entry, path }) => entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path));
@@ -225,6 +250,8 @@ export function convertRvtBytes(
         elementBounds,
         nativeProfiles,
         nativeCategories,
+        schema,
+        partitionNames,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
           activeDecoders: [
@@ -322,6 +349,8 @@ export function convertRvtBytes(
       elementBounds,
       nativeProfiles,
       nativeCategories,
+      schema,
+      partitionNames,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
         activeDecoders: nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : [],
