@@ -76,6 +76,45 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
 }
 
 /**
+ * The 2027 object marker, used to seed a page that yields no bounds record.
+ * Measured per file elsewhere; here it is only a starting guess that every
+ * candidate is then made to justify through the length echo.
+ */
+export const DEFAULT_OBJECT_MARKER = 0x08c6;
+
+/**
+ * Candidate object starts found from the marker alone.
+ *
+ * Chaining is normally seeded from bounds records, but a page that contains no
+ * bounds record then goes unwalked entirely — and with it every placement and
+ * shared shape it holds. The marker sits at a fixed `+16`, so a page can seed
+ * itself: each hit is proposed as an object start and kept only if `readObject`
+ * confirms it, which means its trailer echoes its own length. That is the same
+ * test the chain walk applies, so a false marker costs a rejected candidate
+ * rather than a bad object.
+ */
+export function markerObjectSeeds(
+  data: Uint8Array,
+  marker: number = DEFAULT_OBJECT_MARKER,
+): number[] {
+  const seeds: number[] = [];
+  if (data.byteLength < 64) return seeds;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const low = marker & 0xff;
+  const high = (marker >> 8) & 0xff;
+
+  for (
+    let offset = data.indexOf(low, 16);
+    offset >= 0 && offset + 1 < data.byteLength;
+    offset = data.indexOf(low, offset + 1)
+  ) {
+    if (data[offset + 1] !== high) continue;
+    if (readObject(view, offset - 16, data.byteLength)) seeds.push(offset - 16);
+  }
+  return seeds;
+}
+
+/**
  * Walk the object chain through an inflated page, seeded from offsets already
  * known to be objects. Walking both directions from a seed recovers neighbours
  * that carry no bounds record and would otherwise be invisible.

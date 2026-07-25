@@ -70,7 +70,13 @@ export type DisplayRole =
   | "covering"
   | "glazing"
   /** Category decoded natively, but with no dedicated shading role. */
-  | "native";
+  | "native"
+  /**
+   * Geometry recovered, category not. The evidence for an element's envelope is
+   * independent of the evidence for its label, so a record that carries a
+   * validated duplicated-bounds block is drawn even when nothing names it.
+   */
+  | "unclassified";
 
 /**
  * Display role per native Revit category. Curtain wall panels map to glazing
@@ -117,6 +123,7 @@ const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
  */
 const ROLE_TINT: Record<DisplayRole, [number, number, number]> = {
   native: [0.58, 0.68, 0.79],
+  unclassified: [0.55, 0.60, 0.66],
   wall: [0.72, 0.78, 0.85],
   door: [0.78, 0.56, 0.32],
   panel: [0.55, 0.74, 0.86],
@@ -130,6 +137,7 @@ const ROLE_TINT: Record<DisplayRole, [number, number, number]> = {
 
 const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
   native: 0,
+  unclassified: 0,
   wall: 1,
   door: 2,
   panel: 3,
@@ -168,24 +176,28 @@ export type DisplaySelection = {
   records: ElementBoundsRecord[];
   omittedContainerCount: number;
   omittedWrapperCount: number;
-  omittedUnknownCount: number;
+  /** Records drawn without a decoded category, under the unclassified role. */
+  unclassifiedCount: number;
 };
 
 /**
- * Choose the envelopes that belong in the default scene. Wrappers and
- * unclassified records stay in the audit and the exports, and a single
- * building-sized container is set aside so it cannot hide everything behind it.
+ * Choose the envelopes that belong in the default scene.
+ *
+ * Only two things are held back: curtain-wall and opening wrappers, whose child
+ * panels and mullions are drawn instead, and a single building-sized container
+ * that would otherwise hide everything behind it.
+ *
+ * A record whose category did not decode is **not** held back. Its envelope
+ * came from the same validated duplicated-bounds signature as every other
+ * record's, and dropping it trades a missing label for a missing building
+ * element — a hole in the model rather than an unnamed part of it.
  */
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
-  let classified = records.filter((record) => displayRole(record) !== "unknown" && displayRole(record) !== "wrapper");
-  const omittedWrapperCount = records.filter((record) => displayRole(record) === "wrapper").length;
-  let omittedUnknownCount = records.length - classified.length - omittedWrapperCount;
-  if (!classified.length) {
-    classified = records;
-    omittedUnknownCount = 0;
-  }
+  const classified = records.filter((record) => displayRole(record) !== "wrapper");
+  const omittedWrapperCount = records.length - classified.length;
+  const unclassifiedCount = classified.filter((record) => displayRole(record) === "unknown").length;
   if (classified.length < 2) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount };
   }
   const byFootprint = classified
     .map((record) => {
@@ -200,13 +212,13 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   const isDominantContainer =
     largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
   if (!isDominantContainer) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, omittedUnknownCount };
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount };
   }
   return {
     records: classified.filter((record) => record !== largest.record),
     omittedContainerCount: 1,
     omittedWrapperCount,
-    omittedUnknownCount,
+    unclassifiedCount,
   };
 }
 
@@ -407,9 +419,15 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
   // lists real categories; otherwise fall back to the record-code display role.
   const grouped = new Map<string, { role: DisplayRole; records: ElementBoundsRecord[] }>();
   for (const record of records) {
-    const role = displayRole(record);
-    if (role === "unknown" || role === "wrapper") continue;
-    const label = record.categoryName ?? `${role[0]!.toUpperCase()}${role.slice(1)} proxies`;
+    const resolved = displayRole(record);
+    if (resolved === "wrapper") continue;
+    // An unclassified record is drawn under its own neutral batch, so it is
+    // visible in the model without claiming a category the file did not give.
+    const role: DisplayRole = resolved === "unknown" ? "unclassified" : resolved;
+    const label = record.categoryName
+      ?? (role === "unclassified"
+        ? "Uncategorised elements"
+        : `${role[0]!.toUpperCase()}${role.slice(1)} proxies`);
     const group = grouped.get(label) ?? { role, records: [] };
     group.records.push(record);
     grouped.set(label, group);
@@ -429,13 +447,19 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         const prism = record.loops?.length
           ? prismGeometry(record.loops, record.boundsFeet, origin)
           : [];
+        // An element can be built from several solids — a wall run modelled in
+        // segments. Every one of them is drawn: they are all the element's own
+        // rebuilt geometry, and picking indexes by triangle rather than by box.
+        const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
         const items = prism.length
           ? prism
           : record.orientedBox
             ? [cornersGeometry(record.orientedBox, origin)]
             : record.quads?.length
               ? record.quads.map((quad) => quadGeometry(quad, origin))
-              : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
+              : solids.length
+                ? solids.map((solid) => solidGeometry(solid, origin))
+                : [boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));

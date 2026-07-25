@@ -101,6 +101,11 @@ export type ElementBoundsRecord = {
   typeName?: string;
   /** Oriented solid rebuilt from the element's own native surface patches. */
   solid?: WallSolid;
+  /**
+   * Every solid rebuilt for this element, for a run modelled in segments.
+   * `solid` remains the longest of them, and is what properties report.
+   */
+  solids?: WallSolid[];
   /** Native faces, for elements with surfaces that do not form a solid. */
   quads?: SurfaceQuad[];
   /** Eight world corners of a placed family instance, in box-index order. */
@@ -168,12 +173,18 @@ export type ConvertStats = {
   nativeSolids?: number;
   /** Elements reaching the scene from a solid alone, with no bounds record. */
   solidOnlyElements?: number;
+  /** Elements reaching the scene from a placed instance alone. */
+  instanceOnlyElements?: number;
+  /** Elements drawn without a decoded Revit category. */
+  unclassifiedElements?: number;
   /** Elements drawn from native faces because their surfaces form no solid. */
   faceOnlyElements?: number;
   /** Family instances placed from a transform and a shared shape. */
   placedInstances?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
+  /** Of those, elements with no decoded category whose ring matched the envelope. */
+  unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */
   sketchCurves?: number;
   /** Elements linked to their type element. */

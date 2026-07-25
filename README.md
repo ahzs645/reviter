@@ -145,6 +145,63 @@ Curtain wall panels are drawn as glazing rather than as opaque panels. They are 
 
 What remains is a real limit rather than a cosmetic one. Curtain panels and mullions dominate this model by count and are drawn as envelopes, because they are loadable-family instances whose geometry sits in family-document blobs — the same reason their type names do not resolve.
 
+## Coverage against the paired export
+
+The conversion can report what it recovered. It cannot report what it missed, because nothing inside an RVT says how many walls a building has. The paired IFC export does, and every product Revit exports carries its Revit element id in the `Tag` attribute — the same id the partition decoders recover. Membership is therefore a direct question rather than an estimate, and `scripts/audit-coverage.ts` asks it element by element:
+
+```sh
+node --experimental-strip-types scripts/audit-coverage.ts model.rvt model.ifc
+```
+
+It separates three things that were previously one number, because they have different fixes:
+
+- **seen** — the scan proved the element id is real, whether or not any geometry was built for it
+- **recovered** — the element reached `elementBounds` with an envelope
+- **drawn** — the element survived into the default scene
+
+On the supplied 67 MB Revit 2027 project:
+
+| IFC product type | in IFC | seen | recovered | drawn | drawn before |
+| --- | --- | --- | --- | --- | --- |
+| `IfcWallStandardCase` | 7,381 | 7,151 | 6,403 | 6,324 | 6,324 |
+| `IfcWall` | 140 | 139 | 124 | 110 | 110 |
+| `IfcCurtainWall` | 1,835 | 1,796 | 1,790 | 253 | 253 |
+| `IfcMember` | 19,707 | 16,340 | 15,918 | 15,916 | 15,916 |
+| `IfcPlate` | 6,235 | 5,085 | 4,973 | 4,973 | 4,973 |
+| `IfcDoor` | 1,912 | 1,398 | 1,339 | 1,294 | 1,294 |
+| `IfcWindow` | 20 | 5 | 5 | 3 | 3 |
+| `IfcColumn` | 311 | 248 | 99 | 95 | 95 |
+| `IfcRailing` | 229 | 157 | 147 | 147 | 144 |
+| `IfcSlab` | 161 | 155 | 151 | 150 | 135 |
+| `IfcRoof` | 20 | 18 | 16 | 16 | 14 |
+| `IfcCovering` | 46 | 42 | 42 | 38 | 23 |
+| `IfcStair` | 92 | 68 | 64 | 64 | 58 |
+| `IfcStairFlight` | 121 | 112 | 86 | 77 | 77 |
+| `IfcRamp` | 12 | 5 | 5 | 5 | 5 |
+| building elements | 38,222 | | | 29,465 | 29,424 |
+
+`IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
+
+**What the display gates were costing.** Four of them discarded geometry that had already been recovered:
+
+- an envelope whose *category* did not decode was dropped from the scene entirely, even though its envelope came from the same validated duplicated-bounds signature as every other record's. That trades a missing label for a hole in the building, so an unnamed element is now drawn under a neutral **Uncategorised elements** batch — 731 of them here.
+- sketch boundary recovery was attempted only for elements whose category had *already* decoded, which is backwards for exactly the elements that need it: ceilings and ramps are the smallest populations in the model and so the likeliest to fail category recovery, and a sketch loop is the only thing that gives them a shape rather than a box. Uncategorised elements with no other geometry are now tried too, and their ring is kept only when its plan extent reproduces the independently decoded envelope. Elements drawn from a real outline rise from **101 to 517**.
+- the scene admitted only elements with extent on all three axes, which made `prismGeometry`'s deliberate minimum-depth fallback unreachable and dropped flat ceilings and ramp landings that had a perfectly good outline.
+- an element rebuilt from several solids drew only its longest run, leaving a gap where the shorter segment should be.
+
+Two recovery gates were also leaking. Object chaining was seeded only from bounds records, so a page holding none went unwalked and took every placement and shared shape on it out of the model; such a page now seeds itself from its own object markers, and recovered objects rise from 47,265 to **48,488**. Placed family instances were resolved into oriented boxes and then discarded unless the element reached the scene some other way.
+
+Together these take drawn elements from 38,353 to **39,114**, and coverings from 50.0% to 82.6% of the export's count, slabs from 83.9% to 93.2%, stairs from 63.0% to 69.6%.
+
+**Where the remaining loss is.** After these changes `recovered` and `drawn` are within a few elements of each other for every category except the two that are held back deliberately. The gap that is left is in *recovery*, and the `seen` column locates it:
+
+- **never seen at all** — 3,367 mullions, 1,150 panels, 514 doors, 230 walls, 15 windows and 7 ramps. Ramps and windows are the starkest: only 5 of 12 ramps and 5 of 20 windows are proven to exist by any pass. Chaining runs per inflated page, so objects straddling a page boundary are lost, and no pass indexes elements the chain never reaches.
+- **seen but no geometry built** — 748 walls, 149 columns, 26 stair flights. These elements are known to be real and yield nothing to the surface, sketch, or instance decoders.
+
+Neither is a display problem, so neither is fixed by the changes above. `IfcRamp` is unchanged at 5 drawn for that reason.
+
+The record-code consensus floor was also widened, so that a cluster too small to reach the old flat support floor of 8 can qualify by being near-unanimous instead — a building holds a dozen ramps and their cluster could never reach 8 no matter how consistent the evidence was. On this model it changes almost nothing: the small categories are limited by not being seen, not by failing to reach consensus. It is kept because the bias it removes is real and the tail categories are the ones a widened floor exists for, but it is recorded here as having produced no measurable gain.
+
 ## Stream coverage
 
 Reviter reports what is inside a Revit file and how much of it is understood, stream by stream, so the remaining gap is measurable instead of invisible. Every CFB stream is listed whether or not anything is decoded from it, with its stored size, chunk count, inflated size, and the decoder that claims it.
@@ -224,8 +281,8 @@ The workspace sample is a 67 MB Revit 2027 model. Local validation found:
 - metadata: Revit `2027`, build `20260417_1515(x64)`, locale `ENU`
 - native Rust reader: file and schema open successfully, but the version is beyond its verified 2016–2026 range
 - nested duplicated-bounds recovery: 35,677 record occurrences, 35,633 unique native IDs, and 33,985 non-zero 3D envelopes
-- RVT-only default scene: 28,225 category-classified element proxies; 1,569 curtain-wall/opening wrapper envelopes and 4,191 unclassified envelopes remain auditable/exportable but are hidden from the default view
-- generated scene: 225,800 vertices, 338,700 triangles, and 21 category batches
+- RVT-only default scene: 39,114 element proxies across 25 decoded Revit categories, 731 of them drawn as uncategorised; 1,569 curtain-wall/opening wrapper envelopes remain auditable/exportable but are held back so their child panels and mullions stay visible
+- generated scene: 336,146 vertices, 509,824 triangles, and 44 batches
 - paired index evidence: 8,902 `ElemTable` IDs plus 37,324 partition-record IDs
 - Autodesk derivative cross-check: 59,582 stable Revit IDs and 51,420 fragments in the signed-in reference capture
 - Autodesk derivative presentation evidence: 22 materials and no bitmap textures; its screenshot look comes primarily from detailed meshes, technical shading, feature edges, and shadows

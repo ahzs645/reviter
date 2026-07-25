@@ -7,7 +7,7 @@ import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
-import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
+import { chainElementObjects, dominantMarker, markerObjectSeeds } from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
@@ -28,7 +28,8 @@ import {
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
-import type { ConvertResult, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
+import { buildBoundsMeshes, displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
+import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 
 test("parses Revit project ElemTable records with 40-byte framing", () => {
   const data = new Uint8Array(34 + 40 * 2);
@@ -725,4 +726,131 @@ test("keeps disjoint sketch regions apart instead of subtracting one from the ot
     }
   }
   assert.equal(covered, ringArea(wingA) + ringArea(wingB) - ringArea(opening));
+});
+
+test("admits a small unanimous category cluster and rejects a small divided one", () => {
+  // A building holds thousands of mullions but a dozen ramps, so a flat support
+  // floor tuned on the large clusters silently excludes every small category.
+  const ramps = Array.from({ length: 3 }, (_, index) => ({
+    elementId: 5_000 + index,
+    recordCode: 180,
+    recordCount: 1,
+  }));
+  const ceilings = Array.from({ length: 4 }, (_, index) => ({
+    elementId: 6_000 + index,
+    recordCode: 62,
+    recordCount: 1,
+  }));
+  const divided = Array.from({ length: 3 }, (_, index) => ({
+    elementId: 7_000 + index,
+    recordCode: 77,
+    recordCount: 1,
+  }));
+  const resolved = new Map<number, number>([
+    ...ramps.map((record) => [record.elementId, -2_000_180] as const),
+    ...ceilings.map((record, index) => [record.elementId, index === 3 ? -2_000_032 : -2_000_038] as const),
+    ...divided.map((record, index) => [record.elementId, index === 0 ? -2_000_011 : -2_000_038] as const),
+  ]);
+
+  const consensus = deriveRecordCodeCategories([...ramps, ...ceilings, ...divided], resolved);
+  // Three elements that agree completely are evidence.
+  assert.equal(consensus.get(recordCodeKey(180, 1))?.categoryId, -2_000_180);
+  // Four at 75% are not, but four at 85%+ would be — this cluster sits below it.
+  assert.equal(consensus.get(recordCodeKey(62, 1)), undefined);
+  // Three split two-to-one are not evidence at any size.
+  assert.equal(consensus.get(recordCodeKey(77, 1)), undefined);
+});
+
+test("draws an envelope whose category did not decode instead of dropping it", () => {
+  const envelope = (elementId: number, recordCode: number, recordCount: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode,
+    recordCount,
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } },
+  });
+  const wall = envelope(1, 30, 5);
+  // No decoded category and a record code outside the heuristic table.
+  const unnamed = envelope(2, 4_242, 7);
+  // A curtain-wall container, whose panels and mullions are drawn instead.
+  const wrapper = envelope(3, 30, 9);
+
+  assert.equal(displayRole(unnamed), "unknown");
+  const selection = selectDisplayBounds([wall, unnamed, wrapper]);
+  const drawn = selection.records.map((record) => record.elementId);
+  // The envelope came from the same validated signature as the wall's, so a
+  // missing label must not turn into a missing building element.
+  assert.deepEqual(drawn, [1, 2]);
+  assert.equal(selection.unclassifiedCount, 1);
+  assert.equal(selection.omittedWrapperCount, 1);
+});
+
+test("batches an uncategorised envelope under its own neutral role", () => {
+  const record: ElementBoundsRecord = {
+    elementId: 9,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 4_242,
+    recordCount: 7,
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 8 } },
+  };
+  const meshes = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.equal(meshes.length, 1);
+  assert.match(meshes[0]!.name, /Uncategorised/);
+  assert.equal(meshes[0]!.materialIndex, 0);
+  assert.equal(meshes[0]!.indices.length / 3, 12);
+});
+
+test("draws every solid a multi-segment element was rebuilt from", () => {
+  const solid = (startX: number, endX: number) => ({
+    elementId: 11,
+    start: { x: startX, y: 0 },
+    end: { x: endX, y: 0 },
+    baseElevation: 0,
+    topElevation: 10,
+    thickness: 0.5,
+  });
+  const record: ElementBoundsRecord = {
+    elementId: 11,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 30,
+    recordCount: 5,
+    boundsFeet: { min: { x: 0, y: -1, z: 0 }, max: { x: 30, y: 1, z: 10 } },
+    solid: solid(0, 20),
+    solids: [solid(0, 20), solid(20, 30)],
+  };
+  const meshes = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  // Both runs are the element's own rebuilt geometry; drawing only the longest
+  // leaves a gap in the wall where the shorter segment should be.
+  assert.equal(meshes[0]!.indices.length / 3, 24);
+  // Picking indexes by triangle, so every triangle still maps back to element 11.
+  assert.equal(meshes[0]!.elementIds?.length, 24);
+  assert.ok([...meshes[0]!.elementIds!].every((elementId) => elementId === 11));
+});
+
+test("seeds an object chain from markers when a page carries no bounds record", () => {
+  const data = new Uint8Array(256);
+  const view = new DataView(data.buffer);
+  const start = 100;
+  const objectLength = 64;
+  view.setUint32(start, 290_064, true);
+  view.setUint32(start + 12, objectLength, true);
+  view.setUint16(start + 16, 0x08c6, true);
+  view.setUint32(start + objectLength + 16, objectLength, true);
+  // A marker-shaped pair whose candidate object has no matching length echo.
+  view.setUint16(220, 0x08c6, true);
+
+  assert.deepEqual(markerObjectSeeds(data), [start]);
+  // A page with no bounds record used to go unwalked, taking every placement
+  // and shared shape on it out of the model.
+  const chained = chainElementObjects(data, markerObjectSeeds(data));
+  assert.deepEqual(chained.map((object) => object.elementId), [290_064]);
 });

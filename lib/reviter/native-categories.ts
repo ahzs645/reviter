@@ -39,11 +39,38 @@ const OWNER_CANDIDATE_LIMIT = 96;
 const MIN_ELEMENT_ID = 200;
 const MAX_ELEMENT_ID = 0x00ff_ffff;
 
-/** Minimum records behind a record-code consensus before it may be applied. */
-const CODE_CONSENSUS_MIN_SUPPORT = 8;
+/**
+ * How much agreement a record-code cluster needs before its category may be
+ * inherited by siblings.
+ *
+ * A single flat floor of 8 supporting elements was tuned against the clusters
+ * that dominate a model by count — mullions and curtain panels arrive in the
+ * thousands — and it silently excludes the tail. A building holds a dozen ramps
+ * and a couple of dozen ceilings, so their clusters can never reach 8 directly
+ * resolved members, and every one of those elements stays uncategorised no
+ * matter how unanimous the evidence is.
+ *
+ * Support and purity trade against each other instead: a large cluster may be
+ * merely dominant, a small one has to be near-unanimous. Three elements that
+ * agree completely are evidence; three that split two-to-one are not.
+ */
+const CODE_CONSENSUS_FLOORS: readonly { minSupport: number; minPurity: number }[] = [
+  { minSupport: 8, minPurity: 0.7 },
+  { minSupport: 4, minPurity: 0.85 },
+  { minSupport: 3, minPurity: 1 },
+];
 
-/** Minimum share of a code cluster that must agree on one category. */
-const CODE_CONSENSUS_MIN_PURITY = 0.7;
+/** Smallest cluster any floor will accept. */
+const CODE_CONSENSUS_MIN_SUPPORT = Math.min(
+  ...CODE_CONSENSUS_FLOORS.map((floor) => floor.minSupport),
+);
+
+/** True when a cluster clears any of the support/purity pairs above. */
+function clearsConsensusFloor(support: number, purity: number): boolean {
+  return CODE_CONSENSUS_FLOORS.some(
+    (floor) => support >= floor.minSupport && purity >= floor.minPurity,
+  );
+}
 
 export function categoryDisplayName(categoryId: number): string {
   const name = builtInCategoryName(categoryId);
@@ -181,7 +208,7 @@ export function deriveRecordCodeCategories(
       }
     }
     const purity = support ? bestCount / support : 0;
-    if (support < CODE_CONSENSUS_MIN_SUPPORT || purity < CODE_CONSENSUS_MIN_PURITY) continue;
+    if (support < CODE_CONSENSUS_MIN_SUPPORT || !clearsConsensusFloor(support, purity)) continue;
     consensus.set(key, { categoryId: bestCategory, support, purity });
   }
   return consensus;

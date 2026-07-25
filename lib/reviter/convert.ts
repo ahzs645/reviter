@@ -19,7 +19,12 @@ import {
   detectDuplicatedBoundsRecords,
   solidBounds,
 } from "./bounds-records.ts";
-import { chainElementObjects, dominantMarker, type ElementObject } from "./element-objects.ts";
+import {
+  chainElementObjects,
+  dominantMarker,
+  markerObjectSeeds,
+  type ElementObject,
+} from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
@@ -31,7 +36,12 @@ import {
   type LocalBounds,
 } from "./instanced-geometry.ts";
 import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
-import { boundaryLoopsFor, collectSketchCurves, type SketchCurve } from "./sketch-curves.ts";
+import {
+  boundaryLoopsFor,
+  collectSketchCurves,
+  type Point3,
+  type SketchCurve,
+} from "./sketch-curves.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -97,7 +107,61 @@ const SKETCH_BOUNDARY_CATEGORIES = new Set([
   -2001300, // StructuralFoundation
 ]);
 
+/**
+ * Curves an uncategorised element may own before boundary chaining is skipped.
+ * Ring assembly is quadratic in the edges an element holds, and an element with
+ * no category is a guess rather than a known slab, so it is not worth the cost.
+ */
+const MAX_UNNAMED_SKETCH_CURVES = 512;
+
+/** Plan agreement required before an unnamed element's ring is trusted, in feet. */
+const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
+
 type ProgressCallback = (update: ProgressUpdate) => void;
+
+/**
+ * Boundary loops for one element.
+ *
+ * With `verify` the element's category is unknown, so the ring has to earn its
+ * place: a floor, ceiling or ramp's sketch *is* its footprint, and must
+ * therefore reproduce the plan extent of the envelope that the duplicated-bounds
+ * record proved independently. An edge set that bounds something else — a wall's
+ * faces, a stray blob — does not, and is discarded.
+ */
+function sketchLoopsFor(
+  record: ElementBoundsRecord,
+  curvesByOwner: Map<number, SketchCurve[]>,
+  { verify }: { verify: boolean },
+): Point3[][] {
+  if (verify) {
+    const owned =
+      (curvesByOwner.get(record.elementId)?.length ?? 0) +
+      (curvesByOwner.get(record.elementId - 1)?.length ?? 0);
+    if (!owned || owned > MAX_UNNAMED_SKETCH_CURVES) return [];
+  }
+
+  const loops = boundaryLoopsFor(record.elementId, curvesByOwner);
+  if (!loops.length || !verify) return loops;
+
+  const outer = loops[0]!;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of outer) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  const { min, max } = record.boundsFeet;
+  const agrees =
+    Math.abs(minX - min.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
+    Math.abs(minY - min.y) <= SKETCH_PLAN_TOLERANCE_FEET &&
+    Math.abs(maxX - max.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
+    Math.abs(maxY - max.y) <= SKETCH_PLAN_TOLERANCE_FEET;
+  return agrees ? loops : [];
+}
 
 /**
  * Inflate the first chunk of a named stream and hand it to `decode`. Returns
@@ -254,11 +318,16 @@ export function convertRvtBytes(
           : [];
         // Seed the object chain from the records just found: objects that carry
         // no bounds record are still linked into the chain and recoverable.
-        if (detectedBoundsRecords.length) {
-          for (const object of chainElementObjects(
-            inflated,
-            detectedBoundsRecords.map((record) => record.recordOffset),
-          )) {
+        // A page holding no bounds record at all used to be skipped outright,
+        // taking every placement and shared shape on it out of the model, so
+        // such a page is seeded from its own object markers instead.
+        const chainSeeds = detectedBoundsRecords.length
+          ? detectedBoundsRecords.map((record) => record.recordOffset)
+          : decoderPlan.elementBoundsDecoder
+            ? markerObjectSeeds(inflated)
+            : [];
+        if (chainSeeds.length) {
+          for (const object of chainElementObjects(inflated, chainSeeds)) {
             elementObjects.push(object);
             partitionRecordIds.add(object.elementId);
             const placement = readInstancePlacement(inflated, object);
@@ -324,14 +393,18 @@ export function convertRvtBytes(
 
     const solidStream = partitions[0]!.path.replace(/^Root Entry\//, "");
     // An element can own more than one solid — a wall built from several
-    // segments. One record maps to one element for picking and properties, so
-    // the longest solid becomes the element's body and the others are not
-    // drawn. That loses 170 of 10,198 solids on the supplied project.
+    // segments. All of them are kept and all of them are drawn; the longest is
+    // singled out only as the body that properties and picking report, which is
+    // what one-record-per-element requires.
     const allSolids = wallSolids(planesByElement);
+    const solidGroups = new Map<number, ReturnType<typeof wallSolids>>();
     const solidsByElement = new Map<number, ReturnType<typeof wallSolids>[number]>();
     const solidLength = (candidate: (typeof allSolids)[number]) =>
       Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y);
     for (const solid of allSolids) {
+      const group = solidGroups.get(solid.elementId);
+      if (group) group.push(solid);
+      else solidGroups.set(solid.elementId, [solid]);
       const existing = solidsByElement.get(solid.elementId);
       if (!existing || solidLength(solid) > solidLength(existing)) {
         solidsByElement.set(solid.elementId, solid);
@@ -383,9 +456,44 @@ export function convertRvtBytes(
       boundedIds.add(elementId);
       solidOnlyElements += 1;
     }
-    for (const [elementId, solid] of solidsByElement) {
+    for (const [elementId, group] of solidGroups) {
       if (boundedIds.has(elementId)) continue;
-      const halfThickness = solid.thickness / 2;
+      // The envelope spans every segment the element was rebuilt from, not just
+      // the one that happens to be longest.
+      const min = { x: Infinity, y: Infinity, z: Infinity };
+      const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+      for (const solid of group) {
+        const halfThickness = solid.thickness / 2;
+        min.x = Math.min(min.x, solid.start.x - halfThickness, solid.end.x - halfThickness);
+        min.y = Math.min(min.y, solid.start.y - halfThickness, solid.end.y - halfThickness);
+        min.z = Math.min(min.z, solid.baseElevation);
+        max.x = Math.max(max.x, solid.start.x + halfThickness, solid.end.x + halfThickness);
+        max.y = Math.max(max.y, solid.start.y + halfThickness, solid.end.y + halfThickness);
+        max.z = Math.max(max.z, solid.topElevation);
+      }
+      elementBounds.push({
+        elementId,
+        stream: solidStream,
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        boundsFeet: { min, max },
+      });
+      boundedIds.add(elementId);
+      solidOnlyElements += 1;
+    }
+
+    // A placed family instance carries no bounds record of its own — its shape
+    // lives once in a shared geometry object and the instance only points at it
+    // with a transform. Those pairs were being resolved and then thrown away
+    // unless the element happened to reach the scene some other way, which took
+    // most of the model's doors, columns, panels and railings out of the view.
+    let instanceOnlyElements = 0;
+    for (const [elementId, corners] of orientedBoxes) {
+      if (boundedIds.has(elementId)) continue;
+      const xs = corners.map((corner) => corner[0]);
+      const ys = corners.map((corner) => corner[1]);
+      const zs = corners.map((corner) => corner[2]);
       elementBounds.push({
         elementId,
         stream: solidStream,
@@ -393,19 +501,12 @@ export function convertRvtBytes(
         rawOffset: -1,
         recordOffset: -1,
         boundsFeet: {
-          min: {
-            x: Math.min(solid.start.x, solid.end.x) - halfThickness,
-            y: Math.min(solid.start.y, solid.end.y) - halfThickness,
-            z: solid.baseElevation,
-          },
-          max: {
-            x: Math.max(solid.start.x, solid.end.x) + halfThickness,
-            y: Math.max(solid.start.y, solid.end.y) + halfThickness,
-            z: solid.topElevation,
-          },
+          min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
+          max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
         },
       });
-      solidOnlyElements += 1;
+      boundedIds.add(elementId);
+      instanceOnlyElements += 1;
     }
 
     onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
@@ -419,17 +520,34 @@ export function convertRvtBytes(
 
     let namedTypeElements = 0;
     let sketchBoundaryElements = 0;
+    let unnamedSketchElements = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
+      record.solids = solidGroups.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
       record.orientedBox = orientedBoxes.get(record.elementId);
-      if (record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId)) {
-        const loops = boundaryLoopsFor(record.elementId, curvesByOwner);
+      const knownSketchCategory =
+        record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId);
+      // Boundary recovery used to require the category to have decoded first,
+      // which is backwards for exactly the elements that need it: ceilings and
+      // ramps are the smallest populations in the model and so the likeliest to
+      // fail category recovery, and a sketch loop is the only thing that gives
+      // them a shape rather than a box. An element with no category and no
+      // other geometry is therefore also tried — and its ring is kept only if
+      // it agrees with the envelope decoded independently from the file.
+      const mayBeUnnamedSketch =
+        record.categoryId == null &&
+        !record.solid &&
+        !record.quads?.length &&
+        !record.orientedBox;
+      if (knownSketchCategory || mayBeUnnamedSketch) {
+        const loops = sketchLoopsFor(record, curvesByOwner, { verify: !knownSketchCategory });
         if (loops.length) {
           record.loops = loops;
           sketchBoundaryElements += 1;
+          if (!knownSketchCategory) unnamedSketchElements += 1;
         }
       }
       const typeId = typeReferences.get(record.elementId);
@@ -447,7 +565,15 @@ export function convertRvtBytes(
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
     const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
-    const boundedSolids = elementBounds.filter(solidBounds);
+    // An element needs a volume to be worth drawing, with one exception: a
+    // sketch-bounded element is a plan boundary plus a thickness, and Revit can
+    // record that thickness as zero. `prismGeometry` already substitutes a
+    // minimum depth for exactly that case, so gating on a three-axis extent
+    // beforehand only threw away flat ceilings and ramp landings that had a
+    // perfectly good recovered outline.
+    const boundedSolids = elementBounds.filter(
+      (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
+    );
     if (boundedSolids.length) {
       const displaySelection = selectDisplayBounds(boundedSolids);
       const displayBounds = displaySelection.records;
@@ -519,8 +645,8 @@ export function convertRvtBytes(
           ...(displaySelection.omittedWrapperCount
             ? [`${displaySelection.omittedWrapperCount.toLocaleString()} curtain-wall/opening wrapper envelopes are hidden by default so their detailed child elements remain visible.`]
             : []),
-          ...(displaySelection.omittedUnknownCount
-            ? [`${displaySelection.omittedUnknownCount.toLocaleString()} unclassified record envelopes remain in the audit/export but are hidden from the default category scene.`]
+          ...(displaySelection.unclassifiedCount
+            ? [`${displaySelection.unclassifiedCount.toLocaleString()} element envelopes are drawn without a decoded Revit category, grouped as uncategorised elements.`]
             : []),
           "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
         ],
@@ -546,8 +672,11 @@ export function convertRvtBytes(
           faceOnlyElements: quadsByElement.size,
           placedInstances: orientedBoxes.size,
           sketchBoundaryElements,
+          unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,
+          instanceOnlyElements,
+          unclassifiedElements: displaySelection.unclassifiedCount,
           typedElements: typeReferences.size,
           namedTypeElements,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
