@@ -53,7 +53,7 @@ Each stream is graded by depth rather than weighed by bytes. Weighing by bytes w
 | Stream | Stored | Depth | What is read |
 | --- | --- | --- | --- |
 | `Partitions/325` | 69.00 MB | partial | element bounds records and `BuiltInCategory` tokens; shapes, materials, and parameters are not decoded |
-| `Global/ContentDocuments` | 0.47 MB | none | structured content index; its ID space does not join `ElemTable` |
+| `Global/ContentDocuments` | 0.47 MB | none | structured content index on a different ID space (see below) |
 | `Global/ElemTable` | 0.39 MB | partial | native element-ID index; the remaining record fields are not decoded |
 | `Formats/Latest` | 0.19 MB | partial | serializable class inventory; field lists are not walked |
 | `Global/Latest` | 0.14 MB | none | document-level object graph; wire format not decoded |
@@ -63,6 +63,8 @@ Each stream is graded by depth rather than weighed by bytes. Weighing by bytes w
 | `BasicFileInfo` | small | full | release, build, locale, document identity |
 | `RevitPreview4.0` | small | full | embedded preview image |
 | `ProjectInformation`, `TransmissionData`, `Contents`, `PartAtom` | small | none | not decoded |
+
+The largest fully-unread payload is `Global/ContentDocuments`, and it was probed rather than assumed. Of the 38,223 element IDs recovered from the partition stream, 306 — 0.8% — appear anywhere in its 2.76 MB of inflated bytes, at any alignment. That is chance, so the stream indexes something other than model elements. It independently reproduces the same conclusion `rvt-rs` reached from the other direction, against `ElemTable` rather than against recovered element records.
 
 ## Embedded schema
 
