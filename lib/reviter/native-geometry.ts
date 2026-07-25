@@ -33,6 +33,9 @@ const MIN_THICKNESS_FEET = 1e-4;
 /** Solids shorter than this are degenerate rather than wall-like. */
 const MIN_LENGTH_FEET = 1e-3;
 
+/** A trim range wider than this is a construction plane, not a face. */
+const MAX_QUAD_SPAN_FEET = 2_000;
+
 export type WallSolid = {
   elementId: number;
   /** Location line in model feet, before join trimming. */
@@ -102,6 +105,46 @@ export function wallSolidsFor(elementId: number, planes: PlanePatch[]): WallSoli
     index += 2;
   }
   return solids;
+}
+
+/**
+ * A single trimmed plane, as the quad its parametric bounds describe.
+ *
+ * Elements that own surfaces but no wall triple — a stair stringer, a lone
+ * panel face — would otherwise fall back to a bounding box. Drawing the plane
+ * itself is closer to what the file says: it is the real face, at its real
+ * orientation, over its real trim range. It is a face and not a solid, so it is
+ * reported separately rather than being passed off as a rebuilt body.
+ */
+export type SurfaceQuad = {
+  elementId: number;
+  /** Corners in model feet, in trim order. */
+  corners: [number, number, number][];
+};
+
+export function surfaceQuadsFor(elementId: number, planes: PlanePatch[]): SurfaceQuad[] {
+  const quads: SurfaceQuad[] = [];
+  for (const plane of planes) {
+    const du = plane.uMax - plane.uMin;
+    const dv = plane.vMax - plane.vMin;
+    if (du < MIN_LENGTH_FEET || dv < MIN_LENGTH_FEET) continue;
+    if (du > MAX_QUAD_SPAN_FEET || dv > MAX_QUAD_SPAN_FEET) continue;
+    const at = (u: number, v: number): [number, number, number] => [
+      plane.origin.x + plane.uDir.x * u + plane.vDir.x * v,
+      plane.origin.y + plane.uDir.y * u + plane.vDir.y * v,
+      plane.origin.z + plane.uDir.z * u + plane.vDir.z * v,
+    ];
+    quads.push({
+      elementId,
+      corners: [
+        at(plane.uMin, plane.vMin),
+        at(plane.uMax, plane.vMin),
+        at(plane.uMax, plane.vMax),
+        at(plane.uMin, plane.vMax),
+      ],
+    });
+  }
+  return quads;
 }
 
 /** Build solids for every element that has an attributed plane triple. */

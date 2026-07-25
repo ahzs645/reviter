@@ -5,7 +5,7 @@
  * shown: which envelopes belong in the default scene, how they are grouped and
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
-import type { WallSolid } from "./native-geometry.ts";
+import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
 
 import type {
   Bounds3,
@@ -18,6 +18,9 @@ import type {
 } from "./types";
 
 const MESH_BATCH_SIZE = 2_000;
+
+/** Token thickness given to a face so it can be drawn as a pickable box. */
+const FACE_THICKNESS_FEET = 0.02;
 
 export function displayMaterials(): MaterialData[] {
   const fallback = (
@@ -236,6 +239,38 @@ function solidGeometry(solid: WallSolid, origin: Vec3) {
   };
 }
 
+/**
+ * A trimmed plane, drawn as a thin slab. Picking maps a hit triangle to an
+ * element by dividing the face index by 12, so every drawn item has to be a
+ * 12-triangle box; a face is therefore given a token thickness rather than
+ * being emitted as a bare quad.
+ */
+function quadGeometry(quad: SurfaceQuad, origin: Vec3) {
+  const [a, b, c] = quad.corners;
+  const ux = b![0] - a![0];
+  const uy = b![1] - a![1];
+  const uz = b![2] - a![2];
+  const vx = c![0] - b![0];
+  const vy = c![1] - b![1];
+  const vz = c![2] - b![2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const length = Math.hypot(nx, ny, nz) || 1;
+  const half = FACE_THICKNESS_FEET / 2;
+  nx = (nx / length) * half;
+  ny = (ny / length) * half;
+  nz = (nz / length) * half;
+  const points = [
+    ...quad.corners.map(([x, y, z]) => [x - nx, y - ny, z - nz]),
+    ...quad.corners.map(([x, y, z]) => [x + nx, y + ny, z + nz]),
+  ];
+  return {
+    positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
+    indices: BOX_INDICES,
+  };
+}
+
 function boxGeometry(bounds: Bounds3, origin: Vec3) {
   const { min, max } = bounds;
   const points = [
@@ -327,21 +362,26 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
       const colors: number[] = [];
       let vertexOffset = 0;
       const batch = roleRecords.slice(start, start + MESH_BATCH_SIZE);
+      const drawnIds: number[] = [];
       for (const record of batch) {
-        // Prefer the element's own reconstructed solid; fall back to its envelope.
-        const box = record.solid
-          ? solidGeometry(record.solid, origin)
-          : boxGeometry(record.boundsFeet, origin);
-        positions.push(...box.positions);
-        indices.push(...box.indices.map((index) => index + vertexOffset));
-        vertexOffset += 8;
+        // Prefer the element's own reconstructed geometry — its faces if it has
+        // them, else its rebuilt solid — and fall back to the envelope.
+        const items = record.quads?.length
+          ? record.quads.map((quad) => quadGeometry(quad, origin))
+          : [record.solid ? solidGeometry(record.solid, origin) : boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
         const shade = 0.88 + elevation * 0.22;
         const [tintR, tintG, tintB] = ROLE_TINT[role];
-        for (let vertex = 0; vertex < 8; vertex += 1) {
-          colors.push(tintR * shade, tintG * shade, tintB * shade);
+        for (const item of items) {
+          positions.push(...item.positions);
+          indices.push(...item.indices.map((index) => index + vertexOffset));
+          vertexOffset += 8;
+          drawnIds.push(record.elementId);
+          for (let vertex = 0; vertex < 8; vertex += 1) {
+            colors.push(tintR * shade, tintG * shade, tintB * shade);
+          }
         }
       }
       meshes.push({
@@ -350,7 +390,8 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         indices: new Uint32Array(indices),
         colors: new Float32Array(colors),
         materialIndex: DISPLAY_MATERIAL_INDEX[role],
-        elementIds: Uint32Array.from(batch.map((record) => record.elementId)),
+        // One entry per 12-triangle group, which is what picking indexes.
+        elementIds: Uint32Array.from(drawnIds),
       });
     }
   }

@@ -23,7 +23,7 @@ import { chainElementObjects, dominantMarker, type ElementObject } from "./eleme
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
-import { wallSolids } from "./native-geometry.ts";
+import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
@@ -295,6 +295,15 @@ export function convertRvtBytes(
       }
     }
 
+    // Elements with surfaces that do not form a wall triple still have real
+    // faces; drawing those beats falling back to a bounding box.
+    const quadsByElement = new Map<number, ReturnType<typeof surfaceQuadsFor>>();
+    for (const [elementId, planes] of planesByElement) {
+      if (solidsByElement.has(elementId)) continue;
+      const quads = surfaceQuadsFor(elementId, planes);
+      if (quads.length) quadsByElement.set(elementId, quads);
+    }
+
     // Most elements that own native geometry have no duplicated-bounds record —
     // 2,818 wall records exist against 7,401 wall objects — so building the
     // scene only from bounds records drops the majority of the walls. Elements
@@ -302,6 +311,25 @@ export function convertRvtBytes(
     // the solid itself, so they reach the scene as the geometry they are.
     const boundedIds = new Set(elementBounds.map((record) => record.elementId));
     let solidOnlyElements = 0;
+    for (const [elementId, quads] of quadsByElement) {
+      if (boundedIds.has(elementId)) continue;
+      const xs = quads.flatMap((quad) => quad.corners.map((corner) => corner[0]));
+      const ys = quads.flatMap((quad) => quad.corners.map((corner) => corner[1]));
+      const zs = quads.flatMap((quad) => quad.corners.map((corner) => corner[2]));
+      elementBounds.push({
+        elementId,
+        stream: solidStream,
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        boundsFeet: {
+          min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
+          max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+        },
+      });
+      boundedIds.add(elementId);
+      solidOnlyElements += 1;
+    }
     for (const [elementId, solid] of solidsByElement) {
       if (boundedIds.has(elementId)) continue;
       const halfThickness = solid.thickness / 2;
@@ -341,6 +369,7 @@ export function convertRvtBytes(
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
+      record.quads = quadsByElement.get(record.elementId);
       const typeId = typeReferences.get(record.elementId);
       if (typeId == null) continue;
       record.typeId = typeId;
@@ -450,6 +479,7 @@ export function convertRvtBytes(
           parameterElements: elementParameters.size,
           surfaces: surfaceCounts,
           nativeSolids: solidsByElement.size,
+          faceOnlyElements: quadsByElement.size,
           solidOnlyElements,
           typedElements: typeReferences.size,
           namedTypeElements,

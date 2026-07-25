@@ -21,7 +21,7 @@ export { builtInParameterName, parameterDisplayName } from "./built-in-parameter
 export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
 export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces";
-export { wallSolids, wallSolidsFor } from "./native-geometry";
+export { surfaceQuadsFor, wallSolids, wallSolidsFor } from "./native-geometry";
 export { collectTypeLinks } from "./element-types";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters";
 export type { ElementObject } from "./element-objects";

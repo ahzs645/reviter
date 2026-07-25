@@ -11,7 +11,7 @@ import { chainElementObjects, dominantMarker } from "../lib/reviter/element-obje
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
-import { wallSolidsFor } from "../lib/reviter/native-geometry.ts";
+import { surfaceQuadsFor, wallSolidsFor } from "../lib/reviter/native-geometry.ts";
 import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
@@ -582,4 +582,30 @@ test("rebuilds an oriented solid from a wall's plane triple", () => {
 
   // Planes that are not at the fixed stride are not one wall's triple.
   assert.deepEqual(wallSolidsFor(1, [plane(0, 0), plane(200, -0.5), plane(400, 0.5)]), []);
+});
+
+test("draws a trimmed plane as its four corners in trim order", () => {
+  const plane: PlanePatch = {
+    kind: "plane",
+    offset: 0,
+    origin: { x: 5, y: -2, z: 1 },
+    uDir: { x: 1, y: 0, z: 0 },
+    vDir: { x: 0, y: 0, z: 1 },
+    uMin: 0,
+    vMin: 0,
+    uMax: 4,
+    vMax: 3,
+  };
+  const [quad] = surfaceQuadsFor(290618, [plane]);
+  assert.ok(quad);
+  assert.equal(quad!.elementId, 290618);
+  assert.deepEqual(quad!.corners, [
+    [5, -2, 1],
+    [9, -2, 1],
+    [9, -2, 4],
+    [5, -2, 4],
+  ]);
+
+  // A plane with no extent in one direction is an edge, not a face.
+  assert.deepEqual(surfaceQuadsFor(1, [{ ...plane, uMax: 0 }]), []);
 });

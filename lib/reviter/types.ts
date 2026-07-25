@@ -1,7 +1,7 @@
 import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
-import type { WallSolid } from "./native-geometry.ts";
+import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 
@@ -10,7 +10,7 @@ export type { ElementParameter, ElementParameterTable } from "./element-paramete
 export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.ts";
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
-export type { WallSolid } from "./native-geometry.ts";
+export type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -95,6 +95,8 @@ export type ElementBoundsRecord = {
   typeName?: string;
   /** Oriented solid rebuilt from the element's own native surface patches. */
   solid?: WallSolid;
+  /** Native faces, for elements with surfaces that do not form a solid. */
+  quads?: SurfaceQuad[];
   boundsFeet: Bounds3;
 };
 
@@ -156,6 +158,8 @@ export type ConvertStats = {
   nativeSolids?: number;
   /** Elements reaching the scene from a solid alone, with no bounds record. */
   solidOnlyElements?: number;
+  /** Elements drawn from native faces because their surfaces form no solid. */
+  faceOnlyElements?: number;
   /** Elements linked to their type element. */
   typedElements?: number;
   /** Elements whose type element also yielded a name. */
