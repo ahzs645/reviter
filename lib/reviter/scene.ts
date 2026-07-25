@@ -33,17 +33,21 @@ export function displayMaterials(): MaterialData[] {
     source: "display-fallback",
     assignedElements: 0,
   });
+  // The shaded view draws these flat, so the palette is what tells one category
+  // from another on screen. The previous set sat inside a narrow pale band and
+  // rendered the whole building as one wash; these are separated in hue and
+  // value so walls, floors, glazing, and framing read apart at building scale.
   return [
-    fallback("Unclassified display proxy", [0.58, 0.68, 0.79, 1]),
-    fallback("Wall display proxy", [0.68, 0.75, 0.83, 1], 0.9),
-    fallback("Door display proxy", [0.72, 0.55, 0.34, 1], 0.74),
-    fallback("Panel display proxy", [0.62, 0.75, 0.84, 1], 0.68),
-    fallback("Frame display proxy", [0.24, 0.32, 0.41, 1], 0.58),
-    fallback("Structural display proxy", [0.52, 0.60, 0.69, 1], 0.86),
-    fallback("Railing display proxy", [0.32, 0.39, 0.47, 1], 0.6),
-    fallback("Slab and roof display proxy", [0.72, 0.77, 0.82, 1], 0.93),
-    fallback("Covering display proxy", [0.76, 0.78, 0.76, 1], 0.9),
-    fallback("Glazing display proxy", [0.55, 0.76, 0.85, 0.72], 0.42),
+    fallback("Unclassified display proxy", [0.55, 0.60, 0.66, 1]),
+    fallback("Wall display proxy", [0.80, 0.77, 0.71, 1], 0.9),
+    fallback("Door display proxy", [0.66, 0.42, 0.24, 1], 0.72),
+    fallback("Panel display proxy", [0.40, 0.60, 0.74, 0.85], 0.5),
+    fallback("Frame display proxy", [0.20, 0.26, 0.33, 1], 0.5),
+    fallback("Structural display proxy", [0.44, 0.48, 0.54, 1], 0.84),
+    fallback("Railing display proxy", [0.28, 0.34, 0.41, 1], 0.58),
+    fallback("Slab and roof display proxy", [0.86, 0.85, 0.82, 1], 0.95),
+    fallback("Covering display proxy", [0.70, 0.72, 0.68, 1], 0.9),
+    fallback("Glazing display proxy", [0.36, 0.66, 0.82, 0.55], 0.3),
   ];
 }
 
@@ -89,6 +93,27 @@ const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
   [-2000945]: "railing",
   [-2000946]: "railing",
   [-2000954]: "railing",
+};
+
+/**
+ * Per-role vertex tint, taken from each role's display material.
+ *
+ * Vertex colours multiply the material, so emitting one elevation ramp for every
+ * element — as this did — flattens all ten materials back to a single wash and
+ * throws away the category work. Tinting by role instead lets a facade read as
+ * glazing and mullions, a floor as a slab, a door as a door.
+ */
+const ROLE_TINT: Record<DisplayRole, [number, number, number]> = {
+  native: [0.58, 0.68, 0.79],
+  wall: [0.72, 0.78, 0.85],
+  door: [0.78, 0.56, 0.32],
+  panel: [0.55, 0.74, 0.86],
+  frame: [0.30, 0.38, 0.47],
+  structure: [0.55, 0.62, 0.70],
+  railing: [0.36, 0.43, 0.51],
+  slab: [0.80, 0.82, 0.85],
+  covering: [0.78, 0.79, 0.76],
+  glazing: [0.48, 0.74, 0.88],
 };
 
 const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
@@ -306,9 +331,13 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         positions.push(...box.positions);
         indices.push(...box.indices.map((index) => index + vertexOffset));
         vertexOffset += 8;
+        // Keep a little elevation shading so storeys stay legible, but let the
+        // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
+        const shade = 0.88 + elevation * 0.22;
+        const [tintR, tintG, tintB] = ROLE_TINT[role];
         for (let vertex = 0; vertex < 8; vertex += 1) {
-          colors.push(0.18 + elevation * 0.2, 0.72 + elevation * 0.1, 0.74 + elevation * 0.18);
+          colors.push(tintR * shade, tintG * shade, tintB * shade);
         }
       }
       meshes.push({

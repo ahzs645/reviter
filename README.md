@@ -133,6 +133,12 @@ The marker drifts by release exactly as schema tags do — `0x086d` in 2024, `0x
 
 Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 384 MB payload. And the marker is not resolvable through `Formats/Latest`: that stream defines roughly 200 classes and references the rest by tag, so `0x08c6` is a tag in Revit's internal class registry that this file never names.
 
+## What the rendered view can and cannot show
+
+The shaded view draws each element flat in its category colour, so the palette is what separates one category from another on screen. It was previously a narrow pale band that rendered the whole building as a single wash; it is now separated in hue and value, which is why glazing, doors, and framing read apart. The other render mode uses per-vertex colour, and that is tinted by category too rather than by elevation alone.
+
+The ceiling on the picture is geometric, not cosmetic. Of the 31,864 elements in the default scene, **10,028 are rebuilt as oriented solids** from their own surface patches; the rest are drawn as their axis-aligned envelopes because their geometry is not in this partition stream. Only 10,535 elements have any attributed surface here at all, and 10,028 of those already resolve to a solid — so the remaining envelopes are not a decoding gap that better plane handling would close, they are elements whose surfaces live elsewhere. Curtain panels and mullions, which dominate this model by count, are loadable-family instances whose geometry sits in family-document blobs, the same reason their type names do not resolve.
+
 ## Stream coverage
 
 Reviter reports what is inside a Revit file and how much of it is understood, stream by stream, so the remaining gap is measurable instead of invisible. Every CFB stream is listed whether or not anything is decoded from it, with its stored size, chunk count, inflated size, and the decoder that claims it.
