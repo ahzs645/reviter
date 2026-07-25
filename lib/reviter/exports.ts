@@ -314,8 +314,16 @@ export function makeIfcCenterlines(result: ConvertResult): string {
       const solid = add(`IFCEXTRUDEDAREASOLID(#${profile},#${worldAxis},#${extrusionDirection},${height})`);
       const representation = add(`IFCSHAPEREPRESENTATION(#${context},'Body','SweptSolid',(#${solid}))`);
       const shape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
+      // The category is decoded, but the geometry is still only an envelope, so
+      // the proxy keeps its honest type and carries the category as text.
+      const label = record.categoryName
+        ? `${record.categoryName} ${record.elementId}`
+        : `Revit element ${record.elementId}`;
+      const description = record.categoryName
+        ? `RVT partition duplicated-bounds record; exact axis-aligned envelope. Native Revit category ${record.categoryId} (${record.categoryName}), evidence: ${record.categorySource}.`
+        : "RVT partition duplicated-bounds record; exact axis-aligned envelope";
       proxies.push(
-        add(`IFCBUILDINGELEMENTPROXY('${ifcGuid(record.elementId, 17)}',#${ownerHistory},'Revit element ${record.elementId}','RVT partition duplicated-bounds record; exact axis-aligned envelope',$,#${objectPlacement},#${shape},'${record.elementId}',.ELEMENT.)`),
+        add(`IFCBUILDINGELEMENTPROXY('${ifcGuid(record.elementId, 17)}',#${ownerHistory},'${ifcText(label)}','${ifcText(description)}',$,#${objectPlacement},#${shape},'${record.elementId}',.ELEMENT.)`),
       );
     }
   } else {
@@ -364,7 +372,9 @@ export function makeReport(
         geometry: result.method === "partition-bounds-recovery"
           ? "validated-rvt-element-bounds"
           : "experimental-coordinate-recovery",
-        bimSemantics: "unavailable",
+        bimSemantics: result.decoderCoverage.nativeCategorisedElements
+          ? "native-revit-categories"
+          : "unavailable",
         nativeProfiles: result.decoderCoverage.nativeProfiles,
         nativeMeshes: result.decoderCoverage.nativeMeshes,
         materialDefinitions: result.decoderCoverage.nativeMaterialDefinitions,
@@ -376,6 +386,7 @@ export function makeReport(
       levels: result.levels,
       stats: result.stats,
       decoderCoverage: result.decoderCoverage,
+      nativeCategories: result.nativeCategories ?? null,
       nativeProfiles: result.nativeProfiles,
       materials: result.materials,
       standardsAwareReader: result.readerDiagnostics ?? null,

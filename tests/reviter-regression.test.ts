@@ -131,8 +131,8 @@ test("maps native Revit material fields to linear PBR without inventing assignme
   assert.equal(materials[1]!.baseColorLinear[3], 0);
 });
 
-test("emits rendered IFC solids from RVT element bounds", () => {
-  const result: ConvertResult = {
+function boundsResult(): ConvertResult {
+  return {
     ok: true,
     fileName: "sample.rvt",
     byteLength: 1,
@@ -169,7 +169,10 @@ test("emits rendered IFC solids from RVT element bounds", () => {
     warnings: [],
     method: "partition-bounds-recovery",
   };
-  const ifc = makeIfcCenterlines(result);
+}
+
+test("emits rendered IFC solids from RVT element bounds", () => {
+  const ifc = makeIfcCenterlines(boundsResult());
   assert.match(ifc, /IFCEXTRUDEDAREASOLID/);
   assert.match(ifc, /Revit element 290618/);
   assert.match(ifc, /duplicated-bounds record/);
@@ -215,6 +218,19 @@ test("emits a standalone GLB from recovered browser geometry", () => {
   assert.equal(view.getUint32(4, true), 2);
   assert.equal(view.getUint32(8, true), glb.byteLength);
   assert.equal(view.getUint32(16, true), 0x4e4f534a);
+});
+
+test("labels IFC proxies with the decoded Revit category without retyping them", () => {
+  const base = boundsResult();
+  const record = base.elementBounds[0]!;
+  record.categoryId = -2_000_011;
+  record.categoryName = "Walls";
+  record.categorySource = "native-token";
+  const ifc = makeIfcCenterlines(base);
+  assert.match(ifc, /IFCBUILDINGELEMENTPROXY\('[^']*',#\d+,'Walls 290618'/);
+  assert.match(ifc, /Native Revit category -2000011 \(Walls\), evidence: native-token/);
+  // The envelope is still an envelope, so it must not be promoted to IFCWALL.
+  assert.equal(/IFCWALL[^T]/.test(ifc), false);
 });
 
 test("rejects recovered geometry when identity, extents, topology, and semantics diverge", () => {
