@@ -77,6 +77,7 @@ test("decodes a duplicated Revit 2027 element bounding record", () => {
     boundsOffset: 72,
     recordCode: 30,
     recordCount: 5,
+    duplicated: true,
     boundsFeet: {
       min: { x: bounds[0], y: bounds[1], z: bounds[2] },
       max: { x: bounds[3], y: bounds[4], z: bounds[5] },
@@ -975,4 +976,31 @@ test("measures the object markers a file uses instead of assuming one", () => {
     [...markers.keys()].sort((a, b) => a - b),
     [0x07ef, 0x08c6],
   );
+});
+
+test("reads the second bounds copy when the two disagree", () => {
+  // Requiring the copies to match rejected the record outright, which cost 994
+  // walls. Against the paired export the second copy reproduces the exported
+  // wall for 757 of 757 such objects, and a mismatched target matches none.
+  const data = new Uint8Array(200);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 700_001, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(18, 30, true);
+  view.setUint32(26, 700_001, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, 5, true);
+  view.setUint32(42, 3, true);
+  const stale = [0, 0, 0, 1, 1, 1];
+  const real = [10.5, -20.25, 0, 11.5, -4.75, 13.5];
+  stale.forEach((value, index) => view.setFloat64(72 + index * 8, value, true));
+  real.forEach((value, index) => view.setFloat64(120 + index * 8, value, true));
+
+  const record = detectDuplicatedBoundsRecord(data);
+  assert.ok(record);
+  assert.equal(record.duplicated, false);
+  assert.deepEqual(record.boundsFeet, {
+    min: { x: real[0], y: real[1], z: real[2] },
+    max: { x: real[3], y: real[4], z: real[5] },
+  });
 });

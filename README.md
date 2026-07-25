@@ -163,22 +163,22 @@ On the supplied 67 MB Revit 2027 project:
 
 | IFC product type | in IFC | seen | recovered | drawn | drawn before |
 | --- | --- | --- | --- | --- | --- |
-| `IfcWallStandardCase` | 7,381 | 7,173 | 6,403 | 6,324 | 6,324 |
-| `IfcWall` | 140 | 139 | 124 | 110 | 110 |
-| `IfcCurtainWall` | 1,835 | 1,796 | 1,790 | 253 | 253 |
-| `IfcMember` | 19,707 | 19,213 | 15,918 | 15,916 | 15,916 |
+| `IfcWallStandardCase` | 7,381 | 7,195 | 7,181 | **7,145** | 6,324 |
+| `IfcWall` | 140 | 139 | 137 | **127** | 110 |
+| `IfcCurtainWall` | 1,835 | 1,796 | 1,794 | 241 | 253 |
+| `IfcMember` | 19,707 | 19,214 | 15,984 | 15,984 | 15,916 |
 | `IfcPlate` | 6,235 | 6,074 | 4,973 | 4,973 | 4,973 |
-| `IfcDoor` | 1,912 | 1,827 | 1,349 | 1,294 | 1,294 |
-| `IfcWindow` | 20 | 20 | 5 | 3 | 3 |
-| `IfcColumn` | 311 | 300 | 99 | 95 | 95 |
-| `IfcRailing` | 229 | 215 | 147 | 147 | 144 |
+| `IfcDoor` | 1,912 | 1,827 | 1,399 | **1,399** | 1,294 |
+| `IfcWindow` | 20 | 20 | 5 | 5 | 3 |
+| `IfcColumn` | 311 | 302 | 266 | **266** | 95 |
+| `IfcRailing` | 229 | 215 | 173 | **173** | 147 |
 | `IfcSlab` | 161 | 159 | 151 | 150 | 135 |
 | `IfcRoof` | 20 | 20 | 16 | 16 | 14 |
 | `IfcCovering` | 46 | 42 | 42 | 38 | 23 |
-| `IfcStair` | 92 | 88 | 52 | 52 | 58 |
-| `IfcStairFlight` | 121 | 115 | 85 | 76 | 77 |
+| `IfcStair` | 92 | 88 | 57 | **57** | 58 |
+| `IfcStairFlight` | 121 | 115 | 103 | **97** | 77 |
 | `IfcRamp` | 12 | 12 | 5 | 5 | 5 |
-| building elements | 38,222 | | | 29,452 | 29,424 |
+| building elements | 38,222 | | | **30,676** | 29,424 |
 
 `IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
 
@@ -252,6 +252,44 @@ Stair flights remain wrong at 5.4 ft and are not addressed here.
 - **round columns** account for most of the 149 columns that are seen but yield no geometry — 75% of `Round Column:24" Diameter`, 87% of `20"`, 89% of `16"`. Cylinder surface patches exist in the file but only 146 of them, so a round column is not stored as a cylinder patch; 47 of these columns are instances whose shared shape never resolved.
 - **5,260 of 24,616 instance placements reference a shared geometry object that is never read.** 1,637 of those objects are found in the chain and rejected, because `readLocalBounds` reads the local AABB at `+48` and these larger objects do not keep it there. An offset search against the export found no consistent alternative, so the layout is still open. This costs 540 elements outright and coarsens the rest.
 - **ramps and windows are simply absent** — 7 of 12 ramps and 15 of 20 windows appear nowhere in any pass, so there is nothing to place.
+
+## The bounds are written twice, and the second copy is the element's
+
+The record's two identical bounds blocks were treated as a single test: if the
+copies disagreed, the record was thrown away. That is what was missing the
+interior partitions. **994 walls** the export names had no geometry at all, and
+looking at their objects, every one of the 757 that could be found failed on
+that one check and no other — not the marker, not the id, not the family word,
+not the field count.
+
+Their bounds were there the whole time. Searching every offset of those 757 wall
+objects for six `f64` reproducing the exported wall, **the block at the second
+copy matches for 757 of 757**, and the same search against a deliberately
+mismatched wall matches **nothing at all**. Where the two copies disagree, the
+first holds something else and the second is the element's own extent.
+
+So the second copy is read always — for a record whose copies agree that is the
+same bytes — and disagreement is recorded as evidence rather than treated as
+disqualifying. The result, measured against the export:
+
+| | drawn before | drawn now | of the export's count |
+| --- | --- | --- | --- |
+| `IfcWallStandardCase` | 6,324 | **7,145** | 96.8% |
+| `IfcColumn` | 95 | **266** | 85.5% |
+| `IfcStairFlight` | 76 | **97** | 80.2% |
+| `IfcRailing` | 147 | **173** | 75.5% |
+| `IfcDoor` | 1,294 | **1,399** | 73.2% |
+| building elements | 29,452 | **30,676** | 80.3% |
+
+The new geometry is in the right place, which is the part that matters: columns
+go to **100.0% centre and 100.0% size agreement at 0.000 ft median error** — the
+round columns that three earlier investigations could not explain were simply
+these records, rejected. Walls hold 96.0% centre agreement across 821 more of
+them, members 98.5%, plates 99.9%, railings 94.5%.
+
+This also retires the earlier conclusion that these elements had "no geometry
+anywhere in the file". They did. The decoder was asking the bytes the wrong
+question.
 
 ## Cached shapes are not building elements
 

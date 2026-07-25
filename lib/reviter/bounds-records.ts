@@ -21,6 +21,8 @@ export type DetectedBoundsRecord = {
   boundsOffset: number;
   recordCode: number;
   recordCount: number;
+  /** Whether the two written copies of the bounds agreed byte for byte. */
+  duplicated: boolean;
   boundsFeet: Bounds3;
 };
 
@@ -59,10 +61,21 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
         break;
       }
     }
-    if (!duplicate) continue;
 
+    // The bounds are written twice, and where the two copies disagree the
+    // **second** is the element's own extent.
+    //
+    // Requiring the copies to match was rejecting the record outright, which
+    // cost 994 walls — most of the interior partitions missing from the model.
+    // Their bounds were there the whole time: searching every offset of the 757
+    // such wall objects that could be joined to the paired export, the block at
+    // the second copy reproduces the exported wall for **757 of 757**, while
+    // the same search against a deliberately mismatched wall matches nothing at
+    // all. So the second copy is read always — for a record whose copies agree
+    // that changes nothing — and disagreement is recorded rather than fatal.
+    const valuesStart = boundsStart + BOUNDS_DUPLICATE_BYTES;
     const values = Array.from({ length: 6 }, (_, index) =>
-      view.getFloat64(boundsStart + index * 8, true),
+      view.getFloat64(valuesStart + index * 8, true),
     );
     if (!values.every((value) => Number.isFinite(value) && Math.abs(value) <= 50_000)) {
       continue;
@@ -88,6 +101,7 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
       boundsOffset,
       recordCode: view.getUint32(recordOffset + 18, true),
       recordCount,
+      duplicated: duplicate,
       boundsFeet: {
         min: { x: minX, y: minY, z: minZ },
         max: { x: maxX, y: maxY, z: maxZ },
