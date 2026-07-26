@@ -259,7 +259,7 @@ export type IfcMatchedElement = {
   ifcType: string;
   name: string;
   hasGeometry: boolean;
-  evidence: "elem-table" | "partition-record" | "both";
+  evidence: "elem-table" | "partition-record" | "both" | "recovered-geometry";
   partitionRecord?: Omit<PartitionRecordLocator, "elementId">;
 };
 
@@ -320,6 +320,12 @@ export type PairedRegressionResult = {
 export type RvtRegressionInput = {
   elemTableIds: Uint32Array;
   partitionRecordIds: Uint32Array;
+  /**
+   * Ids the converter gave an envelope. Some of them are recovered from a solid
+   * or a sketch and appear in neither index above, so a join that skipped them
+   * reported ~200 fewer walls than the element actually has.
+   */
+  recoveredIds?: Uint32Array;
   partitionRecords: PartitionRecordLocator[];
   boundsFeet: Bounds3;
   triangleCount: number;

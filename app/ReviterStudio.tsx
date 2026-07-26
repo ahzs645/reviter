@@ -245,6 +245,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         rvt: {
           elemTableIds: result.elementIndex.uniqueElementIds,
           partitionRecordIds: result.elementIndex.partitionRecordIds,
+          recoveredIds: Uint32Array.from(result.elementBounds.map((record) => record.elementId)),
           partitionRecords: result.elementIndex.partitionRecords,
           boundsFeet: result.bbox,
           triangleCount: result.stats.triangleCount,

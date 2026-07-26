@@ -138,6 +138,7 @@ export async function analyzeIfcReference(
   try {
     const elemTableIds = new Set<number>(rvt.elemTableIds);
     const partitionRecordIds = new Set<number>(rvt.partitionRecordIds);
+    const recoveredIds = new Set<number>(rvt.recoveredIds ?? []);
     const partitionRecordById = new Map(
       rvt.partitionRecords.map((record) => [record.elementId, record] as const),
     );
@@ -173,7 +174,10 @@ export async function analyzeIfcReference(
         const revitElementId = Number(rawTag);
         const inElemTable = elemTableIds.has(revitElementId);
         const inPartitionRecords = partitionRecordIds.has(revitElementId);
-        if (!inElemTable && !inPartitionRecords) continue;
+        // An element rebuilt from a solid or a sketch alone is in neither index
+        // and is still, demonstrably, in the file.
+        const inRecovered = recoveredIds.has(revitElementId);
+        if (!inElemTable && !inPartitionRecords && !inRecovered) continue;
         matched += 1;
         matchedIds.push(revitElementId);
         if (inElemTable) matchedElemTable += 1;
@@ -192,7 +196,9 @@ export async function analyzeIfcReference(
               ? "both"
               : inElemTable
                 ? "elem-table"
-                : "partition-record",
+                : inPartitionRecords
+                  ? "partition-record"
+                  : "recovered-geometry",
             partitionRecord: partitionRecord
               ? {
                   stream: partitionRecord.stream,
