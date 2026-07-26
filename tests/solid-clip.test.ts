@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clipSolidToEnvelope } from "../lib/reviter/solid-clip.ts";
+import { clipSolidToEnvelope, solidBelongsToEnvelope } from "../lib/reviter/solid-clip.ts";
 import type { WallSolid } from "../lib/reviter/native-geometry.ts";
 import type { Bounds3 } from "../lib/reviter/types.ts";
 
@@ -47,6 +47,32 @@ test("clips a solid at an angle along its own direction", () => {
   // The clipped run stays on the original line, so orientation survives.
   assert.ok(Math.abs(run.end.x - run.end.y) < 1e-9);
   assert.ok(Math.abs(run.end.x - 5) < 1e-9);
+});
+
+test("disowns a solid that shares no point with the element's own envelope", () => {
+  // 1500873's bounds record reproduces its export box corner for corner and the
+  // solid attributed to it sits 243 ft away, which no amount of clipping can
+  // shorten into the wall. The record is the checked reading — it matches the
+  // export for 99.4% of the walls that carry one — so the solid is the
+  // attribution that went to the wrong element.
+  assert.equal(solidBelongsToEnvelope(solid(100, 100, 120, 100), envelope(-20, -1, 5, 1)), false);
+  // A run that crosses the envelope with neither end inside it is the element's:
+  // that is the ordinary as-modelled overrun the clip absorbs.
+  assert.equal(solidBelongsToEnvelope(solid(-30, 0, 30, 0), envelope(-20, -1, 5, 1)), true);
+  // Either end inside is enough.
+  assert.equal(solidBelongsToEnvelope(solid(0, 0, 40, 0), envelope(-20, -1, 5, 1)), true);
+  assert.equal(solidBelongsToEnvelope(solid(-40, 0, 0, 0), envelope(-20, -1, 5, 1)), true);
+  // An angled run that passes beside the envelope without meeting it is not.
+  assert.equal(solidBelongsToEnvelope(solid(-30, 10, 30, 10), envelope(-20, -1, 5, 1)), false);
+});
+
+test("keeps a solid whose miss is numeric rather than a disagreement", () => {
+  // Two solids in the supplied project miss their envelope by 1e-4 ft, which is
+  // a rounded corner. The slack is 0.05 ft — well above that and far below the
+  // 0.197 ft of the thinnest wall in the model.
+  assert.equal(solidBelongsToEnvelope(solid(5.0001, 0, 30, 0), envelope(-20, -1, 5, 1)), true);
+  assert.equal(solidBelongsToEnvelope(solid(5.04, 0, 30, 0), envelope(-20, -1, 5, 1)), true);
+  assert.equal(solidBelongsToEnvelope(solid(5.3, 0, 30, 0), envelope(-20, -1, 5, 1)), false);
 });
 
 test("leaves a solid alone rather than inventing a length for it", () => {

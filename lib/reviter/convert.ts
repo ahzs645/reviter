@@ -29,7 +29,7 @@ import {
 } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { doorLeafCorners, doorLeafFromShape, type WallRun } from "./door-leaf.ts";
-import { clipSolidToEnvelope } from "./solid-clip.ts";
+import { clipSolidToEnvelope, solidBelongsToEnvelope } from "./solid-clip.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type CylinderPatch, type PlanePatch } from "./surfaces.ts";
 import {
@@ -1144,10 +1144,24 @@ export function convertRvtBytes(
      * boxed.
      */
     let clippedSolids = 0;
+    let disownedSolids = 0;
     for (const record of elementBounds) {
       const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
       if (!solids.length || record.recordOffset < 0) continue;
-      for (const solid of solids) {
+      // A solid that shares no point with the element's own envelope is not the
+      // element's solid, and clipping cannot help: it only shortens a run that
+      // overlaps. 11 of the 5,360 solids on drawn records with a real bounds
+      // block are like this, and dropping them takes the elements drawn over
+      // 10 ft past their own export box from 35 to 29 and the worst single case
+      // from 260.3 ft to 19.8. See `solidBelongsToEnvelope` for the evidence
+      // that the solid rather than the record is the wrong reading.
+      const own = solids.filter((solid) => solidBelongsToEnvelope(solid, record.boundsFeet));
+      if (own.length !== solids.length) {
+        disownedSolids += solids.length - own.length;
+        record.solids = own.length ? own : undefined;
+        record.solid = own[0];
+      }
+      for (const solid of own) {
         if (clipSolidToEnvelope(solid, record.boundsFeet)) clippedSolids += 1;
       }
       if (record.solids?.length && record.solid) {
@@ -1382,7 +1396,7 @@ export function convertRvtBytes(
             ? [`${displaySelection.unclassifiedCount.toLocaleString()} element envelopes are drawn without a decoded Revit category, grouped as uncategorised elements.`]
             : []),
           ...(displaySelection.omittedSheetCount
-            ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, and storey-sized plates that no category claims.`]
+            ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]
             : []),
           "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
         ],
@@ -1417,6 +1431,7 @@ export function convertRvtBytes(
           doorLeavesFromShape,
           adoptedStairBoxes,
           clippedSolids,
+          disownedSolids,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,

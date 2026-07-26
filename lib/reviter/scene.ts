@@ -252,6 +252,8 @@ function planMatches(a: ElementBoundsRecord, b: ElementBoundsRecord): boolean {
  * **An unnamed storey-sized plate**, per `UNNAMED_SHEET_AREA_SQ_FEET`.
  *
  * **A sub-element lying along its parent**, per `SUB_ELEMENT_CATEGORIES`.
+ *
+ * **An unnamed record of no class**, per `NO_CLASS_RECORD_CODE`.
  */
 /**
  * True when all the element has is a hull over the faces attributed to it.
@@ -289,6 +291,57 @@ function isFaceHullOnly(record: ElementBoundsRecord): boolean {
  */
 const STAIR_COMPANION_CODE = 169_671;
 
+/**
+ * The record code that means "no class", and which no building element uses.
+ *
+ * `bounds-records.ts` accepts `0xffffffff` as a self-consistent no-code variant:
+ * every record carrying it also carries `0xffffffff` in the reserved word the
+ * detector otherwise requires to be zero — 1,206 of the 42,333 records in the
+ * stream, 861 of which reach `elementBounds` — so this is a deliberate encoding
+ * rather than a corrupt code. What it *means* was never established, and it
+ * turns out to be decisive.
+ *
+ * **The RVT says it on its own.** Of the 465 all-ones records whose category
+ * does decode, **450 — 96.8% — carry a drawing aid or an assembly container**:
+ * 231 `Railing Top Rail`, 67 `Railing Rail Path Extension Lines`, 67
+ * `Stairs Railing Baluster`, 28 `Stairs`, 21 `Stairs Paths`, 21 `Sketch Lines`,
+ * 15 `Stairs Sketch Boundary Lines`. Over the 31,359 categorised records with an
+ * ordinary record code the same categories account for **1.3%** — a 74-fold
+ * enrichment, measured without any reference file.
+ *
+ * **The paired export agrees, unanimously.** Of the 304 all-ones records that
+ * reach the scene the export gives mesh geometry to **0**, against a base rate
+ * of 97.8% over all 35,720 drawn records — 297 expected at chance. Rotating the
+ * truth 12,345 places against the drawn order names 304 of 304.
+ *
+ * Only the records that also have **no decoded category** are held back, which
+ * is 187 of the 304 and 53,866 sq ft of plan. Anonymity is required for the
+ * same reason it is required by `UNNAMED_SHEET_AREA_SQ_FEET`: `Stairs Paths`,
+ * `Sketch Lines` and `Stairs Sketch Boundary Lines` land on this code too, and
+ * the export names 18 of 20, 1 of 1 and 12 of 12 of them as stairs, stair
+ * flights and a covering — real elements that inherited a drawing aid's
+ * category, and dropping them by name would take the building with them.
+ *
+ * It also explains the rule above it rather than competing with it. Of the 24
+ * uncategorised drawable envelopes over `UNNAMED_SHEET_AREA_SQ_FEET`, **20 carry
+ * this code** — so "storey-sized and unnamed" was mostly reading this same
+ * encoding through its effect. The remaining 4 keep the size rule alive, and
+ * the one element the size rule is known to cost — `1522385`, an `IfcMember`
+ * with a 61,572 sq ft footprint, which is to say a misparse — is not one of the
+ * 20, so this rule does not cost it.
+ *
+ * The cost is stated rather than nil. All 187 stand inside volume that stays
+ * drawn — 144 of them survive a 10 ft displacement, 68 a 25 ft one, 0 a 100 ft
+ * one, so that is a fit to the building rather than to the whole model's
+ * extent — and 4 carry an export product: `Assembled Stair:Stair` assemblies
+ * with no mesh of their own, each standing over 4 to 24 stair parts that stay in
+ * the scene. `IFCSTAIR` drops from 57 to 51 in the coverage table's drawn
+ * column, 6 products for those 4 elements because one is a multistorey stair the
+ * exporter splits per storey — the same trade `IFCCURTAINWALL` already makes,
+ * a container held back because its parts are drawn instead.
+ */
+const NO_CLASS_RECORD_CODE = 0xffff_ffff;
+
 function isSheet(
   record: ElementBoundsRecord,
   byId: Map<number, ElementBoundsRecord>,
@@ -310,6 +363,7 @@ function isSheet(
     return all.some((other) => other.categoryId === parentCategory && planMatches(record, other));
   }
   if (record.categoryId != null || record.categoryName) return false;
+  if (record.recordCode === NO_CLASS_RECORD_CODE) return true;
   if (planArea(record) > UNNAMED_SHEET_AREA_SQ_FEET) return true;
   const { min, max } = record.boundsFeet;
   if (max.z - min.z > MIN_SOLID_SPAN_FEET) return false;

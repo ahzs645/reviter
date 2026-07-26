@@ -1027,13 +1027,66 @@ test("holds back a storey-sized plate that no category claims", () => {
   assert.equal(selection.omittedSheetCount, 1);
 
   // A room-sized envelope with no category is still drawn: the point is not to
-  // hide unnamed elements, only unnamed sheets.
+  // hide unnamed elements, only unnamed sheets. It needs an ordinary record code
+  // to make that point, because the all-ones code the helper defaults to is now
+  // its own discriminator — see `NO_CLASS_RECORD_CODE`, which holds back 20 of
+  // the 24 plates this size rule was written for.
   const small = plate(2474613, {
+    recordCode: 402_488,
+    recordCount: 1,
     boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 20, y: 20, z: 10.44 } },
   });
   const kept = selectDisplayBounds([small, namedSlab]);
   assert.equal(kept.records.length, 2);
   assert.equal(kept.omittedSheetCount, 0);
+});
+
+test("holds back an uncategorised record written under the no-class code", () => {
+  // `0xffffffff` is not a corrupt record code: every record carrying it also
+  // carries `0xffffffff` in the reserved word, so it is a deliberate "no class"
+  // encoding. Of the 465 such records whose category decodes, 450 — 96.8% —
+  // carry a drawing aid or an assembly container, against 1.3% of the 31,359
+  // categorised records with an ordinary code; and of the 304 that reached the
+  // scene the paired export gave mesh geometry to none.
+  const record = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 0xffff_ffff,
+    recordCount: 4,
+    boundsFeet: { min: { x: 0, y: 0, z: 8.6 }, max: { x: 82, y: 81, z: 9 } },
+    ...extra,
+  });
+  const noClass = record(1270487, {});
+  const wall = record(290064, {
+    recordCode: 30,
+    recordCount: 5,
+    categoryId: -2000011,
+    categoryName: "Walls",
+  });
+
+  const selection = selectDisplayBounds([noClass, wall]);
+  assert.deepEqual(selection.records.map((entry) => entry.elementId), [290064]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // Anonymity is load-bearing. `Stairs Paths`, `Sketch Lines` and
+  // `Stairs Sketch Boundary Lines` land on this code too, and the export names
+  // 18 of 20, 1 of 1 and 12 of 12 of them as stairs, stair flights and a
+  // covering — real elements that inherited a drawing aid's category. Dropping
+  // the code by name would take them with it.
+  const stairsPath = record(2130746, { categoryId: -2000133, categoryName: "Stairs Paths" });
+  const kept = selectDisplayBounds([stairsPath, wall]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
+
+  // And an ordinary record code with no category is still drawn, because an
+  // unnamed box in the right place beats a hole in the building.
+  const unnamed = record(2140033, { recordCode: 402_488, recordCount: 1 });
+  const drawn = selectDisplayBounds([unnamed, wall]);
+  assert.equal(drawn.records.length, 2);
+  assert.equal(drawn.omittedSheetCount, 0);
 });
 
 test("batches an uncategorised envelope under its own neutral role", () => {

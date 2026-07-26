@@ -40,7 +40,7 @@
  * resolve to about 1,600 geometry objects, reused 4.6 times on average.
  */
 import type { ElementObject } from "./element-objects.ts";
-import { collectSurfaces, type SurfacePatch } from "./surfaces.ts";
+import { collectSurfaces, type PlanePatch, type SurfacePatch } from "./surfaces.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
 const INSTANCE_OBJECT_LENGTH = 300;
@@ -262,6 +262,35 @@ function boundsOffsetWithin(data: Uint8Array, start: number): number | null {
   return at;
 }
 
+/**
+ * Smallest extent, on any axis, a shape may have and still be a shape.
+ *
+ * **A box with no extent at all is not a shape, and the `+48` fallback produces
+ * one.** `boundsOffsetWithin` derives the block's offset from the field count —
+ * `42 + 6 * count`, which *is* `+48` when the count is 1 — so the fallback only
+ * runs when the framing check has already failed, and on that path `+48` lands
+ * on the field table instead: six subnormal doubles that are finite, ordered
+ * correctly, and enclose nothing. 368 of the 3,699 objects that reach the
+ * fallback read as such a box, against 1,444 flat on one axis and 1,887 solid,
+ * and 12 of those zero boxes are the shape 26 placements point at — 6 doors, 2
+ * windows and 4 elements the export does not name, each drawn as eight identical
+ * corners. Two *framed* reads produce one too, so the refusal is not scoped to
+ * the fallback: a shape with no extent is undrawable whatever offset it came
+ * from.
+ *
+ * Flatness on a single axis is **not** refused, because it is not evidence of a
+ * bad read: 4,077 of the 14,876 framed reads — the ones whose duplicated block
+ * proves the offset — are flat on one axis. Only a box that is degenerate on
+ * every axis is rejected, which is exactly the failure and nothing else.
+ *
+ * `door-leaf.ts` already refused such a box downstream, for doors alone. This
+ * puts the refusal where every consumer benefits, and it also stops the zero box
+ * *displacing* a good one: `convert.ts` keys shared shapes by element id and the
+ * last read wins, and a window's B-rep object and this zero-box object carry the
+ * same id.
+ */
+const MIN_SHAPE_EXTENT_FEET = 1e-6;
+
 /** Read a shared geometry object's bounds, expressed in the local frame. */
 export function readLocalBounds(data: Uint8Array, object: ElementObject): LocalBounds | null {
   if (object.objectLength === INSTANCE_OBJECT_LENGTH) return null;
@@ -277,6 +306,11 @@ export function readLocalBounds(data: Uint8Array, object: ElementObject): LocalB
     number, number, number, number, number, number,
   ];
   if (maxX < minX || maxY < minY || maxZ < minZ) return null;
+  if (
+    maxX - minX <= MIN_SHAPE_EXTENT_FEET &&
+    maxY - minY <= MIN_SHAPE_EXTENT_FEET &&
+    maxZ - minZ <= MIN_SHAPE_EXTENT_FEET
+  ) return null;
   return {
     elementId: object.elementId,
     min: [minX, minY, minZ],
@@ -440,6 +474,202 @@ function doorShapeFromPlanes(patches: SurfacePatch[], elementId: number): LocalB
   };
 }
 
+/** Trimmed plane records are this long, and one B-rep's table is contiguous. */
+const PLANE_RECORD_BYTES = 105;
+
+/** A face's mid-plane must be its pair's exact mean to within this, in feet. */
+const MIDPLANE_TOLERANCE_FEET = 1e-6;
+
+/**
+ * How far above the local origin a shape's base must sit to be read as a sill.
+ *
+ * A door leaf stands on the floor and a window sits on a sill, and that is the
+ * whole discriminator: the base of the box is **0.0000 ft for every one of the
+ * 257 door shapes** in the supplied project, and 1.0007 or 3.0000 ft for all 8
+ * window shapes. Any threshold strictly inside that gap separates the two, so
+ * this is a plateau three orders of magnitude wide rather than a fitted value —
+ * 0.001 ft and 1.0 ft select the same 8 shapes. 0.1 ft is 30 mm, comfortably
+ * above authoring noise and far below the shallowest sill a building has.
+ */
+const SILL_ABOVE_ORIGIN_FEET = 0.1;
+
+/** Which model axis a unit vector lies along, or -1 for an oblique one. */
+function unitAxis(vector: { x: number; y: number; z: number }): number {
+  const components = [vector.x, vector.y, vector.z];
+  for (let axis = 0; axis < 3; axis += 1) {
+    if (Math.abs(Math.abs(components[axis]!) - 1) < 1e-9) return axis;
+  }
+  return -1;
+}
+
+/** A plane's normal, from its two in-plane directions. */
+function planeNormal(patch: PlanePatch): { x: number; y: number; z: number } {
+  const { uDir, vDir } = patch;
+  return {
+    x: uDir.y * vDir.z - uDir.z * vDir.y,
+    y: uDir.z * vDir.x - uDir.x * vDir.z,
+    z: uDir.x * vDir.y - uDir.y * vDir.x,
+  };
+}
+
+/**
+ * One B-rep's surface table: the maximal run of plane records at the 105-byte
+ * stride. A shape written as several solids gives several tables, and a patch
+ * found after a break in the stride is a byte pattern in some other structure
+ * rather than the next surface — in the 26,012-byte casement object the run after
+ * the break reads origins at x = 14.9 ft on a 6 ft window, each record's trim
+ * range centred on the *next* record's origin, which is what a misframed read of
+ * a neighbouring structure looks like.
+ */
+function planeTables(patches: SurfacePatch[]): PlanePatch[][] {
+  const tables: PlanePatch[][] = [];
+  let current: PlanePatch[] = [];
+  for (const patch of patches) {
+    if (patch.kind !== "plane") continue;
+    const previous = current[current.length - 1];
+    if (previous && patch.offset !== previous.offset + PLANE_RECORD_BYTES) {
+      tables.push(current);
+      current = [];
+    }
+    current.push(patch);
+  }
+  if (current.length) tables.push(current);
+  return tables;
+}
+
+/**
+ * The extent one surface table bounds, axis by axis, from its faces alone.
+ *
+ * An axis's extent is the span of the **origins of the planes whose normal is
+ * that axis**: the outermost face perpendicular to an axis is what bounds the
+ * solid along it. The trim ranges are not consulted at all, and that is
+ * deliberate — several patches carry a neighbour's range verbatim (a z-normal
+ * face whose `v` range is the model's *width*), which is why the hull over the
+ * trimmed patches is 27.3 x 12.6 x 10.4 ft on a 6.0 x 1.0 x 4.4 ft window.
+ *
+ * The gate is arithmetic on the same origins: every axis's extreme pair must have
+ * its own **mid-plane** present, the exact mean of the two to 1e-6. A window is
+ * written as three parallel triples — two faces and the plane between them — so
+ * the test is self-checking in the way the curved-wall cylinder triple is, and it
+ * is what separates a window from a door: a door family's x triple sits at
+ * `-w, 0.0001, +w`, its mid-plane 0.0001 ft off the mean, and its y triple runs
+ * `-t, 0, +R` where the swing radius has no partner at all.
+ */
+function faceExtent(table: PlanePatch[]): { min: number[]; max: number[] } | null {
+  const origins: number[][] = [[], [], []];
+  for (const patch of table) {
+    const axis = unitAxis(planeNormal(patch));
+    if (axis < 0) continue;
+    origins[axis]!.push([patch.origin.x, patch.origin.y, patch.origin.z][axis]!);
+  }
+  const min: number[] = [];
+  const max: number[] = [];
+  for (let axis = 0; axis < 3; axis += 1) {
+    const values = origins[axis]!;
+    if (values.length < 3) return null;
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    if (!(high > low)) return null;
+    const middle = (low + high) / 2;
+    if (!values.some((value) => Math.abs(value - middle) <= MIDPLANE_TOLERANCE_FEET)) return null;
+    min.push(low);
+    max.push(high);
+  }
+  return { min, max };
+}
+
+/**
+ * A window's box, read from the faces of its own B-rep.
+ *
+ * Windows were placed correctly and drawn wrong: every one of the 20 in the
+ * supplied project carries a complete placement, and `doorShapeFromPlanes` then
+ * read their shape as a door's, giving 21.4% centre and 14.3% size agreement with
+ * a median 2.208 ft centre and 1.583 ft size error. The two readings disagree
+ * because a door and a window are bounded by different evidence: a door's own
+ * thickness is the **nearest** y-normal plane, because the furthest is the swing,
+ * while a window's frame depth is the **outermost** pair, the nearest being the
+ * glass.
+ *
+ * So each axis is read from its outermost faces, and where the shape holds a
+ * second surface table the two are **intersected** per axis — two independent
+ * readings of one shape, so the tighter is not a guess, the same argument that
+ * picks the smaller of the two bounds copies and clips a wall solid to its own
+ * envelope. It is the intersection that cuts the casement's swung-open sash: the
+ * first table's depth runs `-t .. 1.3448 + t` for all five casement shapes, the
+ * second gives `-t .. +t`, and the export writes the second.
+ *
+ * | 20 windows | centre within 0.5 ft | size within 0.5 ft | median centre | median size |
+ * | --- | --- | --- | --- | --- |
+ * | read as a door's shape | 0.0% | 15.0% | 2.208 ft | 1.583 ft |
+ * | faces, one table only | 45.0% | 45.0% | 0.570 ft | 1.141 ft |
+ * | **faces, tables intersected** | **100.0%** | **100.0%** | **0.042 ft** | **0.141 ft** |
+ *
+ * **What it costs elsewhere is nothing, and that is measured rather than
+ * asserted.** Over all 2,157 `0x0810` shapes the gate fires on 8, and they are
+ * the 8 the 20 windows point at: **0 of 228 door shapes, 0 of 29 door-and-opening
+ * shapes, 0 of 17 column shapes, 0 of 1,662 shapes only unnamed elements use, 0
+ * of 4 opening shapes**, and 3 shapes no placement references at all. Doors sit
+ * at 99.2% / 99.1% and 1,824 of them outrank 20 windows, so this route is
+ * ordered ahead of the door reading only because it cannot reach a door shape.
+ *
+ * Each clause of the gate is load-bearing and was measured on its own. Dropping
+ * the mid-plane test admits 53 door shapes serving 195 doors and takes them from
+ * 99.5% to **0.0%** on both centre and size, because the outermost y-normal plane
+ * of a door is its swing. Dropping the sill test in favour of "exactly three
+ * faces per axis" reaches only the 5 casement shapes, leaving 9 windows on the
+ * door reading. Dropping the mid-plane test and keeping the sill breaks two
+ * columns, 100.0% to 0.0% on size.
+ *
+ * Null control: pairing each window with a **shuffled** window shape over 20
+ * trials gives 67.5% on centre and 28.0% on size, median size error 1.929 ft. The
+ * centre figure is high for a null and the reason is the population rather than
+ * the rule — there are 8 shapes across 3 families and the five casement shapes
+ * differ from one another only in frame depth, so a shuffle inside that family is
+ * nearly a no-op. 28.0% is the comparable figure to the door reading's 14.0%.
+ *
+ * The residual is 0.042 ft on centre and 0.141 ft on size, and it is the
+ * intersection being an inch tight: a casement's second table is the sash, inset
+ * exactly 1 inch into the frame in the plane of the window, so x and the top of z
+ * come back 0.0833 ft short. Reading those two axes from the first table alone
+ * would be exact, and is not done, because "take the tighter of two readings"
+ * needs no per-axis exception and an inch is not worth inventing one for.
+ */
+function windowShapeFromFaces(patches: SurfacePatch[], elementId: number): LocalBounds | null {
+  const tables = planeTables(patches);
+  const first = tables[0];
+  if (!first) return null;
+  const extent = faceExtent(first);
+  if (!extent) return null;
+  if (!(extent.min[2]! > SILL_ABOVE_ORIGIN_FEET)) return null;
+  const min = [...extent.min];
+  const max = [...extent.max];
+  for (const table of tables.slice(1)) {
+    const other = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+    for (const patch of table) {
+      const axis = unitAxis(planeNormal(patch));
+      if (axis < 0) continue;
+      const at = [patch.origin.x, patch.origin.y, patch.origin.z][axis]!;
+      other.min[axis] = Math.min(other.min[axis]!, at);
+      other.max[axis] = Math.max(other.max[axis]!, at);
+    }
+    for (let axis = 0; axis < 3; axis += 1) {
+      if (!Number.isFinite(other.min[axis]!)) continue;
+      min[axis] = Math.max(min[axis]!, other.min[axis]!);
+      max[axis] = Math.min(max[axis]!, other.max[axis]!);
+    }
+  }
+  for (let axis = 0; axis < 3; axis += 1) {
+    if (!(max[axis]! - min[axis]! > MIN_SHAPE_EXTENT_FEET)) return null;
+  }
+  return {
+    elementId,
+    min: min as [number, number, number],
+    max: max as [number, number, number],
+    // The window's own solid, so nothing may fold it into a leaf later.
+    leaf: true,
+  };
+}
+
 export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBounds | null {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const start = object.offset;
@@ -481,7 +711,12 @@ export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBo
   }
 
   if (object.marker === 0x0810) {
-    return doorShapeFromPlanes(collectSurfaces(data.subarray(start, end)), object.elementId);
+    const patches = collectSurfaces(data.subarray(start, end));
+    // The window route is tried first because it cannot reach a door shape: its
+    // gate fires on 0 of the 257 shapes a door points at, measured. The door
+    // route is the general one for this marker and stays the fallback.
+    return windowShapeFromFaces(patches, object.elementId)
+      ?? doorShapeFromPlanes(patches, object.elementId);
   }
   return null;
 }

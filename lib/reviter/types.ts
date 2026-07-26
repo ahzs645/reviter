@@ -221,6 +221,11 @@ export type ConvertStats = {
   doorLeavesFromShape?: number;
   /** Rebuilt solids shortened to the element's own envelope. */
   clippedSolids?: number;
+  /**
+   * Rebuilt solids dropped because they share no point with the element's own
+   * envelope, so the surface attribution filed another element's body here.
+   */
+  disownedSolids?: number;
   /** Stair runs and landings that adopted their companion record's own box. */
   adoptedStairBoxes?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
