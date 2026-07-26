@@ -1,6 +1,7 @@
 /**
  * Cutting a door leaf out of the opening its record describes.
  */
+import { instanceCorners, type InstancePlacement, type LocalBounds } from "./instanced-geometry.ts";
 import type { ElementBoundsRecord } from "./types";
 
 /** How far outside a wall's height band a door may sit and still be its door. */
@@ -90,4 +91,70 @@ export function doorLeafCorners(
     ...ring.map(([s, t]) => place(s, t, min.z)),
     ...ring.map(([s, t]) => place(s, t, max.z)),
   ];
+}
+
+/**
+ * The leaf, folded out of the swing the door's own shared shape describes.
+ *
+ * A door's shared geometry object is not the leaf and not the opening — it is
+ * the **swing**, written in the family's local frame as
+ *
+ * ```text
+ * [-w/2, -R, 0] .. [+w/2, +t, H]
+ * ```
+ *
+ * The width is symmetric about the local origin, the height starts at it, and
+ * the plan axis the arc sweeps through is *asymmetric*: the radius `R`, which is
+ * about a leaf width, on one side, and on the other side `t` — the door's own
+ * half thickness. Over 1,046 doors the median local box is 3.333 x 3.311 x 6.916
+ * ft, square in plan, which is why transforming it untouched scores worse than
+ * the record and why reading placements bought doors nothing at first.
+ *
+ * Folding that axis to `±min(|lo|, |hi|)` is the leaf, and it takes the
+ * thickness from the door rather than from the wall it happens to sit in. The
+ * swing axis is local y for 1,067 of 1,067 doors and local z starts at 0 for
+ * 1,067 of 1,067, but it is found rather than assumed, because a mirrored family
+ * inverts the sign.
+ *
+ * On the 1,067 doors this reaches, the wall-derived leaf's 75.0% centre and
+ * 51.6% size agreement become **100.0% and 99.9%**, median 0.000 ft on both,
+ * with 1,065 sizes better and none worse. The controls isolate every part:
+ * without the fold 0.0/0.0, folding the wrong plan axis 0.0/0.0, a shuffled
+ * origin 0.0 on centre, a shuffled basis 26.5 on size, a shape shuffled between
+ * doors 53.6, and folding to the *wall's* thickness instead of the door's own
+ * 71.0 — that last one being what taking the thickness from the door is worth.
+ *
+ * It stays scoped to doors: the same fold would change 4,153 of 6,480 shared
+ * shapes, so it is a fact about door families, not about the shape reader.
+ */
+/** Share of the swing axis's own span by which it must sit off centre. */
+const SWING_ASYMMETRY_FLOOR = 0.1;
+
+export function doorLeafFromShape(
+  placement: InstancePlacement,
+  shape: LocalBounds,
+): [number, number, number][] | null {
+  const [minX, minY, minZ] = shape.min;
+  const [maxX, maxY, maxZ] = shape.max;
+  const spans = [maxX - minX, maxY - minY];
+  if (spans.some((span) => !(span > 0))) return null;
+
+  // The swing axis is the plan axis whose extent is not centred on the local
+  // origin; the other is the leaf's width. A shape symmetric in both is not a
+  // swing and has nothing to fold — folding it would be a no-op that quietly
+  // replaced the record with the shape's own box, so such a door is declined
+  // and keeps the wall-derived leaf. On the doors this reaches, the swing axis
+  // is off centre by 84% of its own span, so the floor is not a close call.
+  const offCentre = [Math.abs(minX + maxX), Math.abs(minY + maxY)];
+  const swingAxis = offCentre[1]! > offCentre[0]! ? 1 : 0;
+  if (offCentre[swingAxis]! < spans[swingAxis]! * SWING_ASYMMETRY_FLOOR) return null;
+  const lo = swingAxis === 0 ? minX : minY;
+  const hi = swingAxis === 0 ? maxX : maxY;
+  const halfThickness = Math.min(Math.abs(lo), Math.abs(hi));
+  if (!(halfThickness > 0)) return null;
+
+  const folded: LocalBounds = swingAxis === 0
+    ? { elementId: shape.elementId, min: [-halfThickness, minY, minZ], max: [halfThickness, maxY, maxZ] }
+    : { elementId: shape.elementId, min: [minX, -halfThickness, minZ], max: [maxX, halfThickness, maxZ] };
+  return instanceCorners(placement, folded);
 }

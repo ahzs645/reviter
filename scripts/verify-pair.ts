@@ -44,6 +44,10 @@
  *   railing-guard-height                  3.609 ft median    2.5 - 4.5 ft
  *   railing-paths-believed                68 of 173 drawn    >= 1
  *   sheets-held-back-small                215 of 31,177      <= 3% of drawn
+ *   sheets-held-back-fires                215 held back      >= 1
+ *   stair-companions-adopted              111 adopted        >= 1
+ *   instance-placements-resolved          21,257 resolved    >= 1
+ *   tail-placements-read                  3,901 of 25,942    >= 1% of families
  *
  * **The per-class centre floors** are the classes the README reports at 96-100%
  * (members 98.6, plates 99.9, columns 100, railings 100, coverings 100, walls
@@ -53,6 +57,24 @@
  * walls-that-are-not-standard-case, slabs and stair flights sit at 78%, 68%,
  * 75% and 42% on this model and are deliberately excluded: a floor under them
  * would be measuring the known remaining decoder gaps, not a broken rule.
+ *
+ * **The last four assert that a rule fires at all**, which nothing here used to
+ * do. Every other threshold measures how well a rule does on the population it
+ * reaches, and a rule that reaches *nothing* passes all of them: the population
+ * is empty, so the share is vacuous or the assertion is skipped, and the loss
+ * turns up as coverage missing somewhere else with no assertion naming it. Two
+ * of these are sized to fire on a state this repository actually had rather than
+ * on zero — see `tail-placements-read` below — because a floor of "at least one"
+ * would not have caught either regression.
+ *
+ * `scripts/holdout.ts` runs the same idea one level down, per storey and per
+ * wing, and it found a live example the whole-model version cannot see: the
+ * railing sweep fires on 68 railings and on **none** of the 21 on Floor 1.
+ * Whole-model floors belong here; per-partition ones belong there.
+ *
+ * The one rule with no firing assertion here is the tighter-of-two-copies
+ * choice, because the copy it discarded is not in the conversion's output. That
+ * rule's firing is measured in `holdout.ts`, which re-reads the pages.
  *
  * **The hull budget is set below a regression this repository actually had.**
  * Before the sheets rule, 11 records on *this* model were drawn past the
@@ -178,6 +200,27 @@ const MIN_RAILINGS_FOR_PATH_CHECK = 20;
 
 /** Sheets held back, as a share of what is drawn. */
 const MAX_SHEET_SHARE = 0.03;
+
+/**
+ * Populations the export must hold before "the rule fired on nothing" is a
+ * failure rather than a building without stairs, floors or curtain wall.
+ */
+const MIN_STAIRS_FOR_COMPANION_CHECK = 20;
+const MIN_SHEET_HOSTS_FOR_CHECK = 20;
+const MIN_FAMILIES_FOR_PLACEMENT_CHECK = 500;
+
+/**
+ * Elements the tail-placement read must place, as a share of the loadable-family
+ * elements the export names.
+ *
+ * A floor of one would be decoration here. `readInstancePlacement` returned
+ * early on any object whose length was not exactly 300, so before that was
+ * fixed this model placed **3** elements from an instance alone against 25,942
+ * members and plates in the export — 0.01%. After it, 3,901, or 15%. 1% is
+ * therefore 15x under today's figure and 100x over the broken state, which is
+ * the same way the hull budget is sized.
+ */
+const MIN_TAIL_PLACEMENT_SHARE = 0.01;
 
 // --- assertion plumbing ------------------------------------------------------
 
@@ -321,7 +364,11 @@ function checkDoorSwing(coverage: CoverageResult, overlay: OverlayResult): void 
     `${percent(row.centreOkPercent)} of ${row.matched.toLocaleString()} doors within 0.5 ft`,
     `>= ${percent(MIN_DOOR_CENTRE_PERCENT)}`,
   );
-  const leaves = coverage.stats.doorLeaves ?? 0;
+  // Both routes count: the leaf is folded out of the door's own shared shape
+  // where that can be read, and cut from the host wall where it cannot. Counting
+  // only the wall route made this fail the moment the better one took over —
+  // which is the assertion working, but on the wrong question.
+  const leaves = (coverage.stats.doorLeaves ?? 0) + (coverage.stats.doorLeavesFromShape ?? 0);
   const share = doors.drawn ? leaves / doors.drawn : 0;
   check(
     "door-swing-leaves-cut",
@@ -408,6 +455,84 @@ function checkSheets(coverage: CoverageResult): void {
   );
 }
 
+/**
+ * The rules that have to fire at all.
+ *
+ * Nothing above notices a rule that reaches nothing, because a rule with an
+ * empty population has no share to fall below a threshold. That is the failure
+ * mode these four exist for: the stair companion adoption, the sheet
+ * suppression, the shared-shape resolution and the tail-placement read all lose
+ * geometry silently when they stop firing, and the loss surfaces as coverage
+ * missing from a class rather than as a named assertion.
+ *
+ * Each is gated on the export holding enough of the population for the absence
+ * to mean something, so a house with no stairs and no curtain wall reports skip
+ * rather than fail.
+ */
+function checkRulesFire(coverage: CoverageResult): void {
+  const stats = coverage.stats;
+  const rows = coverage.rows;
+
+  const stairs = (rows.IFCSTAIRFLIGHT?.inIfc ?? 0) + (rows.IFCSTAIR?.inIfc ?? 0);
+  if (stairs < MIN_STAIRS_FOR_COMPANION_CHECK) {
+    skip("stair-companions-adopted", `only ${stairs} stairs in the export`, ">= 1");
+  } else {
+    const adopted = stats.adoptedStairBoxes ?? 0;
+    check(
+      "stair-companions-adopted",
+      adopted,
+      adopted >= 1,
+      `${adopted.toLocaleString()} stair parts adopted a companion record's box, ` +
+        `against ${stairs.toLocaleString()} stairs in the export`,
+      ">= 1",
+    );
+  }
+
+  // A building with floors has floor sketches and a building with railings has
+  // top rails, so either population is enough for the sheet rule to have work.
+  const sheetHosts = (rows.IFCSLAB?.inIfc ?? 0) + (rows.IFCRAILING?.inIfc ?? 0);
+  if (sheetHosts < MIN_SHEET_HOSTS_FOR_CHECK) {
+    skip("sheets-held-back-fires", `only ${sheetHosts} slabs and railings in the export`, ">= 1");
+  } else {
+    check(
+      "sheets-held-back-fires",
+      coverage.omittedSheetCount,
+      coverage.omittedSheetCount >= 1,
+      `${coverage.omittedSheetCount.toLocaleString()} sheets held back, against ` +
+        `${sheetHosts.toLocaleString()} slabs and railings in the export`,
+      ">= 1",
+    );
+  }
+
+  const families = (rows.IFCMEMBER?.inIfc ?? 0) + (rows.IFCPLATE?.inIfc ?? 0);
+  if (families < MIN_FAMILIES_FOR_PLACEMENT_CHECK) {
+    skip("instance-placements-resolved", `only ${families} members and plates in the export`, ">= 1");
+    skip("tail-placements-read", `only ${families} members and plates in the export`, ">= 1");
+    return;
+  }
+  const placed = stats.placedInstances ?? 0;
+  check(
+    "instance-placements-resolved",
+    placed,
+    placed >= 1,
+    `${placed.toLocaleString()} placements resolved to a transform and a shared shape`,
+    ">= 1",
+  );
+  // `instanceOnlyElements` is the sharp proxy for the tail read specifically:
+  // it was 3 before an element's own object was read for its placement, and
+  // 3,901 after, so it moves by three orders of magnitude when that read breaks.
+  const tailPlaced = stats.instanceOnlyElements ?? 0;
+  const share = tailPlaced / families;
+  check(
+    "tail-placements-read",
+    share * 100,
+    share >= MIN_TAIL_PLACEMENT_SHARE,
+    `${tailPlaced.toLocaleString()} elements placed from an instance alone, ` +
+      `${percent(share * 100)} of the ${families.toLocaleString()} members and plates in the export`,
+    `>= ${percent(MIN_TAIL_PLACEMENT_SHARE * 100)}`,
+  );
+}
+
 // --- run ---------------------------------------------------------------------
 
 // `--json` takes a value, so the argument after it is consumed rather than
@@ -449,6 +574,7 @@ checkCentreAgreement(overlay);
 checkDoorSwing(coverage, overlay);
 checkRailingGuard(outcome, coverage);
 checkSheets(coverage);
+checkRulesFire(coverage);
 
 const failed = assertions.filter((assertion) => assertion.verdict === "fail");
 const skipped = assertions.filter((assertion) => assertion.verdict === "skip");

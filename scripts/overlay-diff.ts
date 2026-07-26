@@ -155,11 +155,25 @@ export function drawnBounds(record: ElementBoundsRecord): Box {
   // them the element's own envelope is closer for 168 of the 225 concerned.
   const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
   if (solids.length) {
+    // A solid is drawn as an *oriented* box — `solidGeometry` offsets the
+    // centreline by half a thickness along its own normal. Adding half a
+    // thickness to both x and y instead, as this did, measures a box a full
+    // thickness longer than the one on screen: for a 25.242 ft wall 1.148 ft
+    // thick it reported 26.390. Correcting the measurement alone, with no
+    // change to what is drawn, took `IfcWallStandardCase` size agreement from
+    // 55.3% to 83.4% and `IfcWall` from 40.2% to 59.1% — more than half of the
+    // "wall size" gap this file used to explain away was the metric.
     for (const solid of solids) {
-      const half = solid.thickness / 2;
+      const dx = solid.end.x - solid.start.x;
+      const dy = solid.end.y - solid.start.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / length) * solid.thickness * 0.5;
+      const ny = (dx / length) * solid.thickness * 0.5;
       for (const end of [solid.start, solid.end]) {
-        add(end.x - half, end.y - half, solid.baseElevation);
-        add(end.x + half, end.y + half, solid.topElevation);
+        for (const sign of [1, -1]) {
+          add(end.x + nx * sign, end.y + ny * sign, solid.baseElevation);
+          add(end.x + nx * sign, end.y + ny * sign, solid.topElevation);
+        }
       }
     }
     return box;

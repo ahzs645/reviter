@@ -278,6 +278,20 @@ So the leaf is what is left when the swing is cut away: the record's own extent 
 | before | 0.4% | 0.4% | 1.455 ft | 2.910 ft |
 | after | **78.1%** | **54.3%** | **0.000 ft** | **0.261 ft** |
 
+**The leaf is in the door, not in the wall.** The host-wall route above was the first half. A door's *shared geometry object* — the shape its placement points at — turns out to be the **swing**, written in the family's local frame as `[-w/2, -R, 0] .. [+w/2, +t, H]`: the width symmetric about the origin, the height starting at it, and the plan axis the arc sweeps through asymmetric, with the radius on one side and `t`, the door's **own half thickness**, on the other. Over 1,046 doors the median local box is 3.333 × 3.311 × 6.916 ft — square in plan, which is why transforming it untouched scored worse than the record and why reading placements appeared to buy doors nothing.
+
+Folding that axis to `±min(|lo|, |hi|)` is the leaf, and the thickness now comes from the door rather than from whatever wall it sits in. The axis is found rather than assumed, because a mirrored family inverts the sign, and a shape symmetric in both plan axes is declined — folding it would be a no-op that quietly replaced the record with the shape's own box.
+
+| `IfcDoor` | centre within 0.5 ft | size within 0.5 ft | median centre | median size |
+| --- | --- | --- | --- | --- |
+| the record itself | 0.3% | 0.3% | 1.460 ft | 2.921 ft |
+| leaf cut from the host wall | 76.7% | 53.2% | 0.000 ft | 0.277 ft |
+| **leaf folded from the door's own shape** | **94.4%** | **87.3%** | **0.000 ft** | **0.000 ft** |
+
+On the 1,067 doors the shape route reaches it is 100.0% and 99.9%, with 1,065 sizes better and none worse. The controls isolate every part: without the fold 0.0/0.0, folding the wrong plan axis 0.0/0.0, a shuffled origin 0.0 on centre, a shuffled basis 26.5 on size, a shape shuffled between doors 53.6, and folding to the *wall's* thickness instead of the door's own 71.0 — which is what taking the thickness from the door is worth. The wall route stays as the fallback for the 442 doors whose shape object cannot be read. Order matters: shape first gives 94.4/87.3, wall first only 83.8/53.3.
+
+The fold stays scoped to doors. The same operation would change 4,153 of 6,480 shared shapes, so it is a fact about door families, not a property of the shape reader.
+
 The route that does *not* work is the element's own parameters. A door type carries a width and a height, but only 305 of the 1,459 doors have a parameter table at all and the parameters in it are the **host wall's** — `Unconnected Height`, `Base Offset`, `Top Offset`, median unconnected height 13.12 ft. Nothing decoded so far gives a leaf's own dimensions; the geometry had to come from the wall instead.
 
 ### Native faces were outranking the element itself
@@ -399,6 +413,21 @@ node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
 | `IfcCovering` | 38 | 100.0% | 100.0% | 0.000 ft |
 
 "ok" means within half a foot on every axis.
+
+**The wall size column was two-thirds measurement error.** This file used to explain it away: "the record is the wall as modelled, before Revit's join trimming, and the difference is half a wall thickness". That is wrong about the record. For the 106 `IfcWall` and 6,045 `IfcWallStandardCase` elements that carry a real duplicated-bounds record, **the record reproduces the export's box corner for corner** — within 0.001 ft for 100.0% and 99.4% of them. The as-modelled reading is the **solid**, which the viewer draws over the record, and 33 of 110 `IfcWall` solids run longer than the wall's own location line by a median of 6.07 ft.
+
+On top of that, `overlay-diff.ts` was measuring solids wrong. A solid is drawn as an *oriented* box, offset from its centreline by half a thickness along its own normal; the script added half a thickness to **both** x and y, which reports a box a full thickness too long. For a 25.242 ft wall 1.148 ft thick it printed 26.390. Correcting the measurement alone, with no change to what is drawn, took `IfcWallStandardCase` size agreement from 55.3% to **83.4%** and `IfcWall` from 40.2% to **59.1%**.
+
+Then clipping each solid's centreline to the element's own envelope — two independent readings, so the shorter is not a guess — gives the rest:
+
+| | shipped | metric fixed | and clipped |
+| --- | --- | --- | --- |
+| `IfcWallStandardCase` centre / size | 96.8% / 55.3% | 96.8% / 83.4% | **98.6% / 92.4%** |
+| `IfcWall` centre / size | 68.5% / 40.2% | 68.5% / 59.1% | **90.6% / 76.4%** |
+
+`IfcWall` here is not a stacked wall or an in-place family: all 140 are `Basic Wall:Interior Wall`, and what distinguishes them is the *body* the exporter writes — 88 faceted `Brep`s and 43 multi-extrusion `SweptSolid`s against 7,336 single extrusions for `IfcWallStandardCase`. A profile-edited wall is exactly the case where a trim range off the centre plane stops describing the wall.
+
+Clipping to a **shuffled** envelope fixes 0 and breaks 7; clipping to the envelope of the element one id below — a genuinely nearby box — is +421 against −944. The gain needs the element's own envelope. Falling back to the envelope outright wherever a clipped solid still disagrees by over half a foot scores better again, `IfcWall` at 92.9% / 88.2%, but costs 269 of 6,527 solid-drawn records their orientation, and an angled wall drawn as its axis-aligned box is an error the metric cannot see because the export's box is axis-aligned too. Measured and not taken, for the same reason railings are swept rather than boxed.
 
 **Two artefacts were removed from the drawing, both found by asking what reaches past the building.** A bounds record whose reserved word at `+22` is non-zero without an all-ones record code is corrupt: across 42,333 records that word is zero in 41,124 and `0xffffffff` in 1,206 — every one of those paired with an all-ones code — and exactly **three** match neither. All three are broken, one of them the model's worst envelope, a stair stringer drawn **724.6 ft** long whose code word has had its high half overwritten. Rejecting them costs no correct element. Separately, an element whose only geometry is a hull over the faces attributed to it is no longer drawn: **37 of the 40** such elements that join a product are over a foot out, median 7.96 ft, one of them a 0.2 × 0.5 × 4.3 ft mullion drawn as a 168 × 366 ft hull over faces that are not its own. The record is still synthesised, because it is what lets a sketch ring attach later — removing the synthesis outright cost 15 coverings and 13 slabs that were being drawn correctly from rings they only had because the record existed. Together these take records reaching past the hull from 1 to **0**, and cost 51 elements their geometry out of 30,679.
 

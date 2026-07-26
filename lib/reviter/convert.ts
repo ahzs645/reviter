@@ -28,13 +28,15 @@ import {
   type ElementObject,
 } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
-import { doorLeafCorners, type WallRun } from "./door-leaf.ts";
+import { doorLeafCorners, doorLeafFromShape, type WallRun } from "./door-leaf.ts";
+import { clipSolidToEnvelope } from "./solid-clip.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
 import {
   instanceCorners,
   readInstancePlacement,
   readLocalBounds,
+  readLocalShape,
   type InstancePlacement,
   type LocalBounds,
 } from "./instanced-geometry.ts";
@@ -504,7 +506,9 @@ export function convertRvtBytes(
             const placement = readInstancePlacement(inflated, object);
             if (placement) instancePlacements.set(placement.elementId, placement);
             else {
-              const local = readLocalBounds(inflated, object);
+              // A shape object with no bounds sub-record at all still describes
+              // its shape, as parameters or as trimmed planes.
+              const local = readLocalBounds(inflated, object) ?? readLocalShape(inflated, object);
               if (local) localBounds.set(local.elementId, local);
             }
             if (!locatedPartitionIds.has(object.elementId)) {
@@ -804,6 +808,58 @@ export function convertRvtBytes(
     }
 
     /*
+     * A rebuilt solid, clipped to the element's own envelope.
+     *
+     * A wall's rebuilt solid comes from the trim range of its native centre
+     * plane, which is the wall **as modelled**, before Revit's join trimming.
+     * The duplicated-bounds record is the wall **as built**, and it is exact:
+     * for the 106 `IfcWall` and 6,045 `IfcWallStandardCase` records that carry a
+     * real one, the envelope reproduces the export's box corner for corner —
+     * within 0.001 ft for 100.0% and 99.4% of them. The solid is what the viewer
+     * draws over it, and 33 of 110 `IfcWall` solids run longer than the wall's
+     * own location line, by a median of 6.07 ft and a worst of 26.99.
+     *
+     * Two independent readings of one element, so the shorter is not a guess:
+     * the solid's centreline is clipped to the envelope's plan extent. It can
+     * only shrink, so no element gains geometry it did not have and nothing can
+     * be pushed outside the building.
+     *
+     * | | shipped | clipped |
+     * | --- | --- | --- |
+     * | `IfcWallStandardCase` centre / size | 96.8% / 83.4% | 98.5% / 92.2% |
+     * | `IfcWall` centre / size | 68.5% / 59.1% | 91.3% / 77.2% |
+     *
+     * Clipping to a **shuffled** envelope fixes 0 and breaks 7; clipping to the
+     * envelope of the element one id below — a genuinely nearby box — is +421
+     * against −944 on `IfcWallStandardCase`. The gain needs the element's own
+     * envelope, which is what makes it a second reading rather than a fudge.
+     *
+     * Falling back to the envelope outright wherever a clipped solid still
+     * disagrees by over half a foot scores better again — `IfcWall` 92.9% /
+     * 88.2% — but it costs 269 of 6,527 solid-drawn records their orientation,
+     * and an angled wall drawn as its axis-aligned box is a visible error the
+     * metric cannot see, because the export's box is axis-aligned too. Measured
+     * and not taken, for the same reason the railings are swept rather than
+     * boxed.
+     */
+    let clippedSolids = 0;
+    for (const record of elementBounds) {
+      const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+      if (!solids.length || record.recordOffset < 0) continue;
+      for (const solid of solids) {
+        if (clipSolidToEnvelope(solid, record.boundsFeet)) clippedSolids += 1;
+      }
+      if (record.solids?.length && record.solid) {
+        // `solid` is the longest of the group and properties report from it.
+        record.solid = record.solids.reduce((longest, candidate) =>
+          Math.hypot(candidate.end.x - candidate.start.x, candidate.end.y - candidate.start.y) >
+          Math.hypot(longest.end.x - longest.start.x, longest.end.y - longest.start.y)
+            ? candidate
+            : longest);
+      }
+    }
+
+    /*
      * A stair run's own box, from the companion record filed beside it.
      *
      * A run's duplicated-bounds record holds the run's plan — exact to 0.000 ft
@@ -864,14 +920,26 @@ export function convertRvtBytes(
       }
     }
     let doorLeaves = 0;
-    if (wallRuns.length) {
-      for (const record of elementBounds) {
-        if (record.categoryId !== DOOR_CATEGORY) continue;
-        const corners = doorLeafCorners(record, wallRuns);
-        if (!corners) continue;
-        record.orientedBox = corners;
-        doorLeaves += 1;
+    let doorLeavesFromShape = 0;
+    for (const record of elementBounds) {
+      if (record.categoryId !== DOOR_CATEGORY) continue;
+      // The door's own shared shape is the swing, and folding it gives the leaf
+      // with the door's own thickness. Where the shape cannot be read — 442
+      // doors whose shape object is absent or unreadable — the host wall's
+      // thickness is the fallback, which is what every door used before.
+      const placement = instancePlacements.get(record.elementId);
+      const shape = placement ? localBounds.get(placement.geometryId) : undefined;
+      const fromShape = placement && shape ? doorLeafFromShape(placement, shape) : null;
+      if (fromShape) {
+        record.orientedBox = fromShape;
+        doorLeavesFromShape += 1;
+        continue;
       }
+      if (!wallRuns.length) continue;
+      const corners = doorLeafCorners(record, wallRuns);
+      if (!corners) continue;
+      record.orientedBox = corners;
+      doorLeaves += 1;
     }
 
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
@@ -996,7 +1064,9 @@ export function convertRvtBytes(
           sketchBoundaryElements,
           sweptRailings,
           doorLeaves,
+          doorLeavesFromShape,
           adoptedStairBoxes,
+          clippedSolids,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,

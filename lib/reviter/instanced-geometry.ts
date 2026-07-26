@@ -40,6 +40,7 @@
  * resolve to about 1,600 geometry objects, reused 4.6 times on average.
  */
 import type { ElementObject } from "./element-objects.ts";
+import { collectSurfaces } from "./surfaces.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
 const INSTANCE_OBJECT_LENGTH = 300;
@@ -207,8 +208,19 @@ function boundsOffsetWithin(data: Uint8Array, start: number): number | null {
   if (view.getUint32(start + 42, true) !== 3) return null;
   const at = start + 42 + count * 6;
   if (at + 96 > data.byteLength) return null;
-  for (let byte = 0; byte < 48; byte += 1) {
-    if (data[at + byte] !== data[at + 48 + byte]) return null;
+  // The two copies are compared as six doubles, not as 48 bytes. Revit does not
+  // always write them byte for byte — they differ in the low mantissa byte,
+  // `0x68` against `0x65`, a relative 7e-16 — and on that failure the reader
+  // fell back to `+48`, which is the *field table*: six subnormal doubles that
+  // pass every finiteness and ordering test and yield a zero-size box. Shared
+  // shapes readable go from 4,793 to 4,940 and door shapes from 678 to 1,067,
+  // with no placement lost; placed columns go from 0.0% to 100.0% within half a
+  // foot of the export, a median error of 20.34 ft to 0.0001.
+  for (let index = 0; index < 6; index += 1) {
+    const first = view.getFloat64(at + index * 8, true);
+    const second = view.getFloat64(at + 48 + index * 8, true);
+    if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+    if (Math.abs(first - second) > Math.max(Math.abs(first), Math.abs(second), 1) * 1e-9) return null;
   }
   return at;
 }
@@ -258,4 +270,126 @@ export function instanceCorners(
     m[3]! * x + m[4]! * y + m[5]! * z + oy,
     m[6]! * x + m[7]! * y + m[8]! * z + oz,
   ]);
+}
+
+/**
+ * The local shape of an object that carries no bounds sub-record at all.
+ *
+ * `readLocalBounds` needs a `0x00088004` block, and **none** of the 6,864 objects
+ * under markers `0x10dc`, `0x10de` and `0x0810` has one — against 73.9% of the
+ * `0x08c6` objects — so the marker is a clean discriminator and this reader
+ * cannot shadow a box the library already reads. Those objects are the shared
+ * shape for 22,274 element ids, and until now every reference into one was read
+ * and thrown away.
+ *
+ * There is no local box in them to find. Enumerating *every* six-`f64` window
+ * that reads as a valid AABB — 178 to 1,025 windows per object — the best is
+ * 0.74 to 6.87 ft out and none of 57 objects is within 0.05 ft. What is in them
+ * is the shape as parameters:
+ *
+ * ```text
+ * 0x10dc  len 1379   mullion, a rectangle swept along -z
+ *   f64@565   half width, written twice          f64@618  profile depth
+ *   f64@(L-40) − f64@(L-48)  swept length, less the joint cut-back
+ *   byte@910 & 0x04          width flush to the origin rather than centred
+ *
+ * 0x10de  len 1639   panel, a rectangle swept along +y
+ *   f64@770  width   f64@778  height   f64@549  thickness
+ *   byte@786 & 0x01  which side of the origin the thickness sits on
+ *
+ * 0x0810  len 8289 / 8297   door, a genuine B-rep
+ *   f64@513  half width, negated      f64@553  height
+ *   ten trimmed analytic planes in the format `surfaces.ts` already decodes;
+ *   the leaf's face is the y-normal plane of smallest non-zero magnitude, and
+ *   the largest is the swing, which the export does not contain.
+ * ```
+ *
+ * **Verification.** Reading the shape and putting it through the element's own
+ * placement, against the union of every export product carrying the element id:
+ * **21,898 elements, 100.0% within 0.05 ft, median error 0.0001 ft.** 21,254 of
+ * those were already placed by another route, which makes them a cross-check 33×
+ * the size of the gap; the 644 that were not placed at all score the same. 256 of
+ * those 644 have a rotated basis, so they were invisible to the inversion that
+ * produced these offsets in the first place — a true holdout.
+ *
+ * Controls: the export box shuffled scores **0.0%** (median 348 ft), the geometry
+ * reference shuffled 3.0% (4.27 ft), the local shape replaced by a unit cube 0.0%
+ * (3.22 ft), the basis transposed 41.8%, and inverting the two flag bits 21.9% at
+ * 0.01 ft against 100% — a miss of exactly one flag's width. The only non-zero
+ * residual is the panel's 0.0016 ft, where the export's inner glass face sits at
+ * 0.0803 ft and the file says 25 mm; that is tessellation, not a decode error.
+ *
+ * The lengths are exact on purpose. 1,998 objects stream-wide sit at other
+ * lengths under the same markers, the offsets are length-specific, and applying
+ * the 1,379 offsets to them drops member accuracy from 100% to 97.4%.
+ */
+const MULLION_SHAPE_LENGTH = 1_379;
+const PANEL_SHAPE_LENGTH = 1_639;
+const DOOR_SHAPE_LENGTHS = [8_289, 8_297];
+
+/** A panel's glass sits this far off the local origin: 25 mm, in feet. */
+const PANEL_FACE_OFFSET_FEET = 0.0820209973753281;
+
+export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBounds | null {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const start = object.offset;
+  const end = start + object.objectLength;
+  if (end > data.byteLength) return null;
+  const at = (offset: number) => view.getFloat64(start + offset, true);
+  const box = (
+    minX: number, minY: number, minZ: number,
+    maxX: number, maxY: number, maxZ: number,
+  ): LocalBounds | null => {
+    const values = [minX, minY, minZ, maxX, maxY, maxZ];
+    if (!values.every(finite)) return null;
+    if (maxX <= minX || maxY <= minY || maxZ <= minZ) return null;
+    return { elementId: object.elementId, min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+  };
+
+  if (object.marker === 0x10dc && object.objectLength === MULLION_SHAPE_LENGTH) {
+    const halfWidth = at(565);
+    const depth = at(618);
+    const length = at(object.objectLength - 40) - at(object.objectLength - 48);
+    const flush = ((data[start + 910] ?? 0) & 0x04) !== 0;
+    return box(
+      flush ? -2 * halfWidth : -halfWidth, -depth / 2, -length,
+      flush ? 0 : halfWidth, depth / 2, 0,
+    );
+  }
+
+  if (object.marker === 0x10de && object.objectLength === PANEL_SHAPE_LENGTH) {
+    const width = at(770);
+    const height = at(778);
+    const thickness = at(549);
+    const near = ((data[start + 786] ?? 0) & 0x01) !== 0
+      ? -(PANEL_FACE_OFFSET_FEET + thickness)
+      : PANEL_FACE_OFFSET_FEET;
+    const far = ((data[start + 786] ?? 0) & 0x01) !== 0
+      ? -PANEL_FACE_OFFSET_FEET
+      : PANEL_FACE_OFFSET_FEET + thickness;
+    return box(-width / 2, near, 0, width / 2, far, height);
+  }
+
+  if (object.marker === 0x0810 && DOOR_SHAPE_LENGTHS.includes(object.objectLength)) {
+    const halfWidth = at(513);
+    const height = at(553);
+    // The leaf's own face, not the swing: among the y-normal planes take the
+    // smallest non-zero offset. The largest is the arc the leaf sweeps through,
+    // and drawing to it makes a door three feet deep.
+    let face = Infinity;
+    for (const patch of collectSurfaces(data.subarray(start, end))) {
+      if (patch.kind !== "plane") continue;
+      const { uDir, vDir } = patch;
+      const normalY = uDir.z * vDir.x - uDir.x * vDir.z;
+      if (Math.abs(Math.abs(normalY) - 1) > 1e-9) continue;
+      const offset = Math.abs(patch.origin.y);
+      if (offset > 1e-9 && offset < face) face = offset;
+    }
+    if (!Number.isFinite(face)) return null;
+    return box(
+      Math.min(halfWidth, -halfWidth), -face, 0,
+      Math.max(halfWidth, -halfWidth), face, height,
+    );
+  }
+  return null;
 }
