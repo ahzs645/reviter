@@ -200,6 +200,8 @@ export type ConvertStats = {
   sweptRailings?: number;
   /** Doors whose leaf was cut out of the opening using their host wall. */
   doorLeaves?: number;
+  /** Stair runs and landings that adopted their companion record's own box. */
+  adoptedStairBoxes?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
   unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */

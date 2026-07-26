@@ -278,12 +278,24 @@ function isFaceHullOnly(record: ElementBoundsRecord): boolean {
   );
 }
 
+/**
+ * Record code of the companion record holding a stair run's own elevations.
+ * `convert.ts` hands that box to the run one id below; what is left here is a
+ * record the export names in none of its 111 cases, sitting on top of a stair
+ * part that is now drawn correctly. It is held back only when that owner exists,
+ * so a companion whose stair part was never recovered stays as its only trace.
+ */
+const STAIR_COMPANION_CODE = 169_671;
+
 function isSheet(
   record: ElementBoundsRecord,
   byId: Map<number, ElementBoundsRecord>,
   all: ElementBoundsRecord[],
 ): boolean {
   if (isFaceHullOnly(record)) return true;
+  if (record.recordCode === STAIR_COMPANION_CODE && record.recordCount === 1) {
+    return byId.has(record.elementId - 1);
+  }
   const parentCategory = record.categoryId == null
     ? undefined
     : SUB_ELEMENT_CATEGORIES.get(record.categoryId);

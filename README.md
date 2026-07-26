@@ -306,7 +306,33 @@ A face set is usually a fragment of an element rather than a shape — half of t
 
 **This reverses a conclusion recorded earlier in this file.** A previous pass concluded that preferring the envelope over the faces made stair flights *worse* — 7.95 ft against 5.413. That was measured against a truth map keeping one box per Revit id, so an element the exporter split into several products was compared against whichever piece came last. With the boxes unioned the comparison runs the other way, decisively. The measurement was wrong, not the instinct.
 
-**What is left on stair flights is not a display choice.** They are still the worst class at 2.051 ft, and the residual is vertical: many carry an envelope of exactly 9.84 ft — a storey — where the export's flight is 3.28 to 6.40. The record a stair sub-component carries is the assembly's, and no reordering of what is already decoded reaches it.
+### A stair run's own box was in the file, beside it
+
+Stair flights were the worst class in the model, and the reason is mechanical. A run's duplicated-bounds record holds the run's **plan** — exact to 0.000 ft in centre and size — and the **whole stair's storey z-band**. A straight stair has one run per storey, so that band *is* the run's rise and the record looks right by coincidence. A switchback has two runs and a landing inside one band, so each run is drawn to the full storey while occupying half of it. That is the entire bimodal split: of the 49 flights over a foot out, 31 occupy under 70% of the record they are drawn to.
+
+| | n | export flight height | record height |
+| --- | --- | --- | --- |
+| within a foot | 35 | 9.68 ft | 9.84 ft |
+| over a foot | 49 | 5.97 ft | 9.84 ft |
+
+The run's own elevations were never missing. They sit in an ordinary duplicated-bounds record — same `0x08c6` tag, same family word — filed under the run's element id **+ 1**, which is its Sketch element, carrying record code `169671` with one field. **The decoder was already reading all 111 of them** and drawing each as an anonymous element standing beside its oversized parent. The export names none of the 111, and the id below each is a stair run, landing, stringer or stair sketch line in 95 of the 97 cases.
+
+So the owner adopts its companion's box and the companion is held back:
+
+| | before | after |
+| --- | --- | --- |
+| `IfcStairFlight` centre within 0.5 ft | 44.3% | **84.8%** |
+| `IfcStairFlight` median centre error | 1.895 ft | **0.000 ft** |
+| `IfcStairFlight` median size error | 3.707 ft | **0.000 ft** |
+| `IfcSlab` centre within 0.5 ft | 75.5% | **80.4%** |
+
+The slab gain is the stair landings, which the exporter writes as slabs. No other class adopts anything — for walls, doors, plates, members, columns, railings, windows, coverings, roofs and ramps the count is zero — so this is a stairs-only companion rather than a general rule with a stairs-shaped side effect.
+
+Stair flights are no longer the worst class; `IfcWall` at 68.5% and `IfcDoor` at 78.1% are now below them. What remains is 11 flights the exporter splits into one product per storey for a multistorey stair: the corrected box matches the **nearest single product to within 0.08 ft** and scores badly only against the union of all of them. Drawing one run per storey needs a replication rule, not a better box.
+
+A second route was measured and rejected in favour of this one. A run's own sketch curves — owner exactly equal to the element id, not the id−1 union the railing path uses — do carry the rise, and reach 76.2% within half a foot. But they need a plan-agreement test and a z-overlap test to stay safe (without the plan test they admit a 226 ft box), they land 0.16 ft high because the curves are the boundary edges, and they do nothing for the landings. The companion record needs no tolerances and is exact.
+
+**The converter is deterministic**, which had to be checked before any of this was believed: two runs of the same code on the same file produce identical counts. An apparent 84-against-79 discrepancy between two measurements was two different builds of the library, taken while it was being changed underneath.
 
 **The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets.
 

@@ -830,6 +830,41 @@ test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
   assert.equal(kept.omittedSheetCount, 0);
 });
 
+test("gives a stair run its own box from the companion record beside it", () => {
+  // A run's record holds the run's plan and the whole stair's storey z-band. On
+  // a switchback there are two runs and a landing inside one band, so each run
+  // is drawn to the full storey while occupying half of it. The run's own
+  // elevations are in an ordinary bounds record filed under its id + 1 — its
+  // Sketch element — under record code 169671, which the decoder was already
+  // reading and drawing as an anonymous element beside its oversized parent.
+  const record = (elementId: number, code: number, minZ: number, maxZ: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: code,
+    recordCount: 1,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    boundsFeet: { min: { x: 0, y: 0, z: minZ }, max: { x: 10, y: 4, z: maxZ } },
+  });
+  // The storey band, and the companion holding the flight's own rise.
+  const run = record(2474571, 81, 0, 9.84);
+  const companion = record(2474572, 169_671, 0, 4.92);
+
+  const selection = selectDisplayBounds([run, companion]);
+  // The companion is not an element: the export names none of the 111 in the
+  // supplied model, and its box now belongs to the run.
+  assert.deepEqual(selection.records.map((entry) => entry.elementId), [2474571]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A companion whose stair part was never recovered is its only trace.
+  const orphan = selectDisplayBounds([companion, record(9, 81, 0, 9.84)]);
+  assert.equal(orphan.records.length, 2);
+  assert.equal(orphan.omittedSheetCount, 0);
+});
+
 test("draws an element's envelope rather than a fragment of its faces", () => {
   // Native faces used to outrank the envelope. Measured against the paired
   // export across every class that owns them the envelope is closer for 168 of

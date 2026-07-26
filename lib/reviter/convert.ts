@@ -169,6 +169,9 @@ const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
  */
 const ORIENTED_BOX_AGREEMENT_FEET = 1;
 
+/** Record code of the companion record holding a stair run's own elevations. */
+const STAIR_COMPANION_CODE = 169_671;
+
 /** Revit category of a door, whose record is its opening rather than its leaf. */
 const DOOR_CATEGORY = -2000023;
 
@@ -800,6 +803,49 @@ export function convertRvtBytes(
       }
     }
 
+    /*
+     * A stair run's own box, from the companion record filed beside it.
+     *
+     * A run's duplicated-bounds record holds the run's plan — exact to 0.000 ft
+     * in both centre and size — and the *whole stair's* storey z-band. On a
+     * straight stair that band is the run's rise and the record looks right by
+     * coincidence; on a switchback there are two runs and a landing inside one
+     * band, so each run is drawn to the full storey while occupying half of it.
+     * That is the whole of the bimodal error: of 49 flights over a foot out, 31
+     * occupy under 70% of the record they are drawn to.
+     *
+     * The run's own elevations are in the file, in an ordinary duplicated-bounds
+     * record — same `0x08c6` tag, same family word — filed under the run's
+     * element id **+ 1**, which is its Sketch element, and carrying record code
+     * `169671` with one field. The decoder was already reading all 111 of them
+     * and drawing each as an anonymous element beside its oversized parent. The
+     * export names none of them, and the id below each is a stair run, landing,
+     * stringer or stair sketch line in 95 of the 97 cases.
+     *
+     * So the owner adopts its companion's box and the companion is held back —
+     * see `isStairCompanion` in `scene.ts`. Stair flights go from 44.3% to
+     * **84.8%** within half a foot, median centre error 1.895 ft to **0.000**,
+     * and stair landings take `IfcSlab` from 75.5% to **90.2%** because the
+     * exporter writes a landing as a slab. No other class adopts anything: for
+     * walls, doors, plates, members, columns, railings, windows, coverings,
+     * roofs and ramps the count is zero.
+     *
+     * What is left is 11 flights the exporter splits into one product per storey
+     * for a multistorey stair. Their corrected box matches the nearest single
+     * product to within 0.08 ft and scores badly only against the union of all
+     * of them; drawing one run per storey needs a replication rule, not a better
+     * box.
+     */
+    const recordsById = new Map(elementBounds.map((record) => [record.elementId, record]));
+    let adoptedStairBoxes = 0;
+    for (const companion of elementBounds) {
+      if (companion.recordCode !== STAIR_COMPANION_CODE || companion.recordCount !== 1) continue;
+      const owner = recordsById.get(companion.elementId - 1);
+      if (!owner) continue;
+      owner.boundsFeet = companion.boundsFeet;
+      adoptedStairBoxes += 1;
+    }
+
     // Doors need every wall in the model, so they are a second pass rather than
     // part of the loop that builds the walls.
     const wallRuns: WallRun[] = [];
@@ -950,6 +996,7 @@ export function convertRvtBytes(
           sketchBoundaryElements,
           sweptRailings,
           doorLeaves,
+          adoptedStairBoxes,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,
