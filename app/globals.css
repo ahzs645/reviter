@@ -267,6 +267,9 @@ button { color: inherit; }
 .viewer-panel-heading > button { width: 28px; height: 28px; border: 0; border-radius: 5px; color: #536778; background: transparent; cursor: pointer; font-size: 20px; }
 .viewer-panel-heading > button:hover { background: #e4ebf1; }
 .model-search { padding: 10px 12px; display: block; border-bottom: 1px solid #dbe3ea; }
+/* The same filter field where it sits inside a report panel rather than at the
+   top of a side panel: no rule across the panel, and not the panel's width. */
+.inline-search { max-width: 270px; margin-top: 8px; padding-left: 0; padding-right: 0; border-bottom: 0; }
 .model-search span { display: block; margin-bottom: 5px; color: #657787; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; }
 .model-search input { width: 100%; padding: 8px 9px; border: 1px solid #bdcbd7; border-radius: 5px; outline: none; color: #23384b; background: white; font-family: var(--font-plex-mono); font-size: 9px; }
 .model-search input:focus { border-color: #4d86ba; box-shadow: 0 0 0 3px rgba(77, 134, 186, .13); }
@@ -298,6 +301,25 @@ button { color: inherit; }
 .view-menu-list button { padding: 6px 9px; border: 0; border-radius: 4px; color: #3c556c; background: transparent; text-align: left; cursor: pointer; font-family: var(--font-plex-mono); font-size: 8px; }
 .view-menu-list button:hover { background: #eaf1f7; }
 .view-menu-list button.selected { color: #124f84; background: #dfeaf5; font-weight: 700; }
+
+/* The canvas right-click menu. Sized here and in ReviterStudio.tsx, which
+   clamps the menu inside the viewport against these two numbers. */
+.canvas-menu { position: absolute; z-index: 9; min-width: 186px; padding: 4px; display: flex; flex-direction: column; border: 1px solid #ccd6df; border-radius: 7px; background: white; box-shadow: 0 12px 30px rgba(36, 58, 77, .22); }
+.canvas-menu button { min-height: 27px; padding: 6px 9px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 4px; color: #3c556c; background: transparent; text-align: left; cursor: pointer; font-family: var(--font-plex-mono); font-size: 8px; }
+.canvas-menu button:hover { background: #eaf1f7; }
+.canvas-menu button em { max-width: 92px; margin-left: auto; overflow: hidden; color: #7c8b99; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A control that cannot be used is still drawn, and says why. The reason rides
+   on the button as `data-reason` rather than a `title`, because a `disabled`
+   button receives no mouse events and its tooltip never appears. */
+button[aria-disabled="true"] { opacity: .45; cursor: default; }
+.viewer-commandbar > button[aria-disabled="true"]:hover, .viewer-navigation button[aria-disabled="true"]:hover, .segmented-control button[aria-disabled="true"]:hover, .canvas-menu button[aria-disabled="true"]:hover { background: transparent; }
+button[data-reason] { position: relative; }
+button[data-reason]:hover::after, button[data-reason]:focus-visible::after { content: attr(data-reason); position: absolute; z-index: 12; top: calc(100% + 6px); left: 0; width: max-content; max-width: 210px; padding: 6px 8px; border: 1px solid #ccd6df; border-radius: 5px; color: #3c556c; background: white; box-shadow: 0 10px 26px rgba(36, 58, 77, .2); font-family: var(--font-plex-mono); font-size: 8px; font-weight: 500; letter-spacing: 0; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; pointer-events: none; }
+/* Two edges to stay inside: the switcher sits at the right of the toolbar, and
+   the reset button at the bottom of a side panel that clips its overflow. */
+.source-control button[data-reason]::after { left: auto; right: 0; }
+.category-reset[data-reason]::after { top: auto; bottom: calc(100% + 6px); }
 
 .hover-readout { position: absolute; z-index: 6; left: 18px; bottom: 124px; padding: 5px 9px; display: flex; align-items: center; gap: 7px; border: 1px solid #c3d0da; border-radius: 5px; color: #33485c; background: rgba(247, 250, 252, .93); font-size: 9px; font-weight: 700; pointer-events: none; }
 .hover-readout span { color: #7c8b99; font-family: var(--font-plex-mono); font-size: 7px; font-weight: 500; }

@@ -29,7 +29,7 @@ import {
   referenceMeshGroup,
 } from "./three-scene.ts";
 import { createWalkControls, WALK_EYE_HEIGHT, type WalkControls } from "./walk-controls.ts";
-import type { CameraRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
+import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
 
 /**
  * Shape of the bundled `autodesk-gltf-loader.js`, which is imported at runtime
@@ -53,6 +53,7 @@ export function ModelCanvas({
   onSelectElement,
   hiddenElementIds,
   onHoverElement,
+  onCanvasMenu,
   focusRequest,
 }: {
   result: ConvertResult;
@@ -68,6 +69,7 @@ export function ModelCanvas({
   onSelectElement: (elementId: number | null) => void;
   hiddenElementIds: ReadonlySet<number>;
   onHoverElement: (elementId: number | null) => void;
+  onCanvasMenu: (request: CanvasMenuRequest | null) => void;
   focusRequest: { elementId: number | null; sequence: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -217,19 +219,12 @@ export function ModelCanvas({
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    let pointerStart: { x: number; y: number } | null = null;
-    const handlePointerDown = (event: PointerEvent) => {
-      pointerStart = { x: event.clientX, y: event.clientY };
-    };
-    const handlePointerUp = (event: PointerEvent) => {
-      if (useReference || isAutodesk || !pointerStart) return;
-      const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
-      pointerStart = null;
-      if (movement > 5) return;
+    /** The hit test both a left-click and a right-click run, in canvas pixels. */
+    const pickAt = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
       pointer.set(
-        ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-        -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+        ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
       // In the overlay the recovered meshes sit a level deeper, under their own
@@ -240,15 +235,43 @@ export function ModelCanvas({
         && intersection.faceIndex != null
         && (!useOverlay || intersection.object.userData.elementIds != null),
       );
-      if (!hit || hit.faceIndex == null) {
-        onSelectElement(null);
-        return;
-      }
+      if (!hit || hit.faceIndex == null) return null;
       const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
       // One id per triangle: drawn items range from a 12-triangle box to an
       // extruded sketch boundary with as many triangles as its ring has edges.
-      const elementId = elementIds?.[hit.faceIndex];
-      onSelectElement(elementId ?? null);
+      return elementIds?.[hit.faceIndex] ?? null;
+    };
+    let pointerStart: { x: number; y: number } | null = null;
+    const handlePointerDown = (event: PointerEvent) => {
+      // Only the primary button picks. The right button used to run the same
+      // pick on release, which cleared the selection under the menu that was
+      // about to offer "Clear selection".
+      if (event.button !== 0) return;
+      pointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      if (useReference || isAutodesk || !pointerStart) return;
+      const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+      pointerStart = null;
+      if (movement > 5) return;
+      onSelectElement(pickAt(event.clientX, event.clientY));
+    };
+    // A right-click asks about whatever is under it, so it runs the same hit
+    // test as a left-click and picks the object too — the menu's "Zoom to
+    // object" and the properties panel both read the selection.
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      if (walkRef.current) return;
+      const elementId = useReference || isAutodesk ? null : pickAt(event.clientX, event.clientY);
+      if (elementId != null) onSelectElement(elementId);
+      const rect = canvas.getBoundingClientRect();
+      onCanvasMenu({
+        elementId,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
     };
     // What is under the cursor should name itself before you commit to
     // clicking it. The raycast is the same one picking uses; it is throttled to
@@ -295,6 +318,7 @@ export function ModelCanvas({
     canvas.addEventListener("pointerup", handlePointerUp);
     canvas.addEventListener("pointermove", handlePointerMove);
     canvas.addEventListener("pointerleave", handlePointerLeave);
+    canvas.addEventListener("contextmenu", handleContextMenu);
     runtimeRef.current = {
       scene,
       camera,
@@ -366,14 +390,16 @@ export function ModelCanvas({
       canvas.removeEventListener("pointerup", handlePointerUp);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerleave", handlePointerLeave);
+      canvas.removeEventListener("contextmenu", handleContextMenu);
       onHoverElement(null);
+      onCanvasMenu(null);
       controls.dispose();
       disposeGroup(root);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, hiddenElementIds, onHoverElement, onSelectElement, renderMode, result, source]);
+  }, [comparison, hiddenElementIds, onCanvasMenu, onHoverElement, onSelectElement, renderMode, result, source]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

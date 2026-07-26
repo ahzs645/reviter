@@ -1,8 +1,9 @@
 "use client";
 
 /** Read-only summary panels: the fidelity ledger row and the regression report. */
-import { useMemo } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { classCoverage, type PairedRegressionResult } from "../../lib/reviter";
+import { matchesFilter } from "./format.ts";
 
 export function FidelityRow({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "off" }) {
   return (
@@ -10,6 +11,48 @@ export function FidelityRow({ label, value, tone }: { label: string; value: stri
       <span>{label}</span>
       <span className={`fidelity-value fidelity-${tone}`}><i />{value}</span>
     </div>
+  );
+}
+
+/**
+ * A control that carries its own reason for being off.
+ *
+ * Removing an unavailable control teaches nobody that the feature exists — the
+ * geometry-source switcher hid `Autodesk` and `IFC reference` outright, so a
+ * model with no paired export looked like a model that could not have one. The
+ * button is only `aria-disabled`, never `disabled`, because a disabled element
+ * receives no mouse events and a `title` on one never appears; the click is
+ * dropped here instead, and `data-reason` is what the stylesheet shows on hover
+ * or keyboard focus.
+ */
+export function ToolButton({
+  className,
+  reason,
+  onClick,
+  pressed,
+  role,
+  title,
+  children,
+}: {
+  className?: string;
+  reason?: string | null;
+  onClick: () => void;
+  pressed?: boolean;
+  role?: string;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => { if (!reason) onClick(); }}
+      aria-disabled={reason ? true : undefined}
+      aria-pressed={pressed}
+      role={role}
+      title={reason ?? title}
+      data-reason={reason ?? undefined}
+    >{children}</button>
   );
 }
 
@@ -26,6 +69,13 @@ export function RegressionPanel({
   const coverage = useMemo(
     () => classCoverage(comparison, recoveredElementIds, drawnElementIds),
     [comparison, drawnElementIds, recoveredElementIds],
+  );
+  const [classFilter, setClassFilter] = useState("");
+  // The table scrolls inside 268px, so past a dozen classes the row you came to
+  // read is one you have to hunt for.
+  const visibleCoverage = useMemo(
+    () => coverage.filter((row) => matchesFilter(classFilter, row.ifcType)),
+    [classFilter, coverage],
   );
   return (
     <section className={`regression-panel regression-${comparison.status}`}>
@@ -55,13 +105,16 @@ export function RegressionPanel({
       </div>
 
       <div className="coverage-block">
-        <p className="eyebrow">Coverage by object class</p>
+        <p className="eyebrow">Coverage by object class · {visibleCoverage.length === coverage.length ? `${coverage.length} classes` : `${visibleCoverage.length} of ${coverage.length} classes`}</p>
         <p className="coverage-note">
           Every class the export carries, including the ones nothing was recovered for. <b>Seen</b> is an
           element id the scan proved is in the Revit file; <b>recovered</b> is one that yielded an envelope;
           <b> drawn</b> is one on screen. The distance between seen and recovered is decoder work; between
           recovered and drawn, display work.
         </p>
+        <label className="model-search inline-search"><span>Filter</span>
+          <input value={classFilter} onChange={(event) => setClassFilter(event.target.value)} placeholder="Class name, e.g. Door" />
+        </label>
         <div className="coverage-table" role="table" aria-label="Per-class coverage against the paired IFC export">
           <div role="row" className="coverage-head">
             <span role="columnheader">Class</span>
@@ -71,7 +124,7 @@ export function RegressionPanel({
             <span role="columnheader">Drawn</span>
             <span role="columnheader" />
           </div>
-          {coverage.map((row) => (
+          {visibleCoverage.map((row) => (
             <div role="row" key={row.ifcType} className={row.drawn === 0 ? "coverage-gap" : undefined}>
               <span role="cell">{row.ifcType}</span>
               <span role="cell">{row.inExport.toLocaleString()}</span>
