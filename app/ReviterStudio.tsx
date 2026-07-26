@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   boundsDimensions,
+  CAMERA_PRESETS,
+  DEFAULT_CAMERA_PRESET,
   downloadBlob,
   makeDxf,
   makeGlb,
@@ -27,13 +29,13 @@ import {
 import { AUTODESK_PREVIEW_RESULT, hasAutodeskReference, staticWorkerUrl } from "./studio/autodesk-reference.ts";
 import { formatBytes, formatNumber, savedFileName } from "./studio/format.ts";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { ObjectList } from "./studio/ObjectList.tsx";
 import { FidelityRow, RegressionPanel } from "./studio/panels.tsx";
 import type {
   CameraRequest,
   GeometrySource,
   Phase,
   ReferencePhase,
-  ViewMode,
   ViewerPanel,
 } from "./studio/types.ts";
 
@@ -49,11 +51,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [result, setResult] = useState<ConvertResult | null>(referencePreview ? AUTODESK_PREVIEW_RESULT : null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [view, setView] = useState<ViewMode>("perspective");
   const [geometrySource, setGeometrySource] = useState<GeometrySource>(referencePreview ? "autodesk" : "recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
   const [navigationMode, setNavigationMode] = useState<NavigationMode>("orbit");
-  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: "home", sequence: 0 });
+  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: DEFAULT_CAMERA_PRESET, sequence: 0 });
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
   const [sectionEnabled, setSectionEnabled] = useState(false);
   const [walking, setWalking] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
@@ -128,7 +132,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     setGeometrySource("recovered");
     setRenderMode("technical");
     setNavigationMode("orbit");
-    setCameraRequest({ preset: "home", sequence: requestId });
+    setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId });
     setSectionEnabled(false);
     setViewerPanel("none");
     setSelectedElementId(null);
@@ -314,19 +318,58 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
   const visibleModelRecords = useMemo(() => {
     const query = modelSearch.trim().toLowerCase();
-    // Asking the user to search by an id they would have to already know is not
-    // much of a search; category and type names are on the record too.
-    const records = query
-      ? solidRecords.filter((record) =>
-          String(record.elementId).includes(query)
-          || record.categoryName?.toLowerCase().includes(query)
-          || record.typeName?.toLowerCase().includes(query))
-      : solidRecords;
-    return records.slice(0, 180);
+    // Asking the user to filter by an id they would have to already know is not
+    // much of a filter; category and type names are on the record too.
+    if (!query) return solidRecords;
+    return solidRecords.filter((record) =>
+      String(record.elementId).includes(query)
+      || record.categoryName?.toLowerCase().includes(query)
+      || record.typeName?.toLowerCase().includes(query));
   }, [modelSearch, solidRecords]);
+  // One row per category, which is the layer list a CAD user reaches for, and
+  // the only visibility control that scales to tens of thousands of envelopes.
+  const categoryRows = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const record of solidRecords) {
+      const name = record.categoryName ?? "Uncategorised";
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  }, [solidRecords]);
+  const hiddenElementIds = useMemo(() => {
+    if (!result || !hiddenCategories.size) return new Set<number>();
+    const hidden = new Set<number>();
+    for (const record of result.elementBounds) {
+      if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
+    }
+    return hidden;
+  }, [hiddenCategories, result]);
+  // Framing one object keeps the current orientation and only moves in; a
+  // sequence number is what makes asking for the same object twice a new
+  // request rather than a no-op.
+  const [focusRequest, setFocusRequest] = useState<{ elementId: number | null; sequence: number }>({
+    elementId: null,
+    sequence: 0,
+  });
+  const requestZoomToSelection = useCallback(() => {
+    setFocusRequest((current) => ({ elementId: selectedElementId, sequence: current.sequence + 1 }));
+  }, [selectedElementId]);
+  const toggleCategory = useCallback((name: string) => {
+    setHiddenCategories((current) => {
+      const next = new Set(current);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  }, []);
+  const hoveredRecord = useMemo(
+    () => hoveredElementId == null
+      ? null
+      : result?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
+    [hoveredElementId, result],
+  );
   const requestCamera = useCallback((preset: CameraPreset) => {
-    setView(preset === "top" ? "plan" : "perspective");
     setCameraRequest((current) => ({ preset, sequence: current.sequence + 1 }));
+    setViewMenuOpen(false);
   }, []);
 
   return (
@@ -553,10 +596,6 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   <button className={geometrySource === "recovered" ? "active diagnostic-active" : ""} onClick={() => setGeometrySource("recovered")}>RVT diagnostic</button>
                 </div>
               ) : null}
-              <div className="segmented-control" aria-label="Camera view">
-                <button className={view === "perspective" ? "active" : ""} onClick={() => setView("perspective")} disabled={!result}>3D</button>
-                <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} disabled={!result}>Plan</button>
-              </div>
             </div>
           </div>
 
@@ -567,7 +606,6 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   result={result}
                   comparison={comparison}
                   source={geometrySource}
-                  view={view}
                   renderMode={renderMode}
                   navigationMode={navigationMode}
                   cameraRequest={cameraRequest}
@@ -576,6 +614,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   onWalkingChange={setWalking}
                   selectedElementId={selectedElementId}
                   onSelectElement={setSelectedElementId}
+                  hiddenElementIds={hiddenElementIds}
+                  onHoverElement={setHoveredElementId}
+                  focusRequest={focusRequest}
                 />
                 <nav className="viewer-commandbar" aria-label="Model tools">
                   <button
@@ -583,12 +624,21 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     onClick={() => setViewerPanel((current) => current === "model" ? "none" : "model")}
                     aria-pressed={viewerPanel === "model"}
                     disabled={geometrySource !== "recovered"}
-                  ><i>☷</i>Model browser</button>
+                    title={geometrySource === "recovered" ? undefined : "Available on the recovered model"}
+                  ><i>☷</i>Objects</button>
+                  <button
+                    className={viewerPanel === "categories" ? "active" : ""}
+                    onClick={() => setViewerPanel((current) => current === "categories" ? "none" : "categories")}
+                    aria-pressed={viewerPanel === "categories"}
+                    disabled={geometrySource !== "recovered"}
+                    title={geometrySource === "recovered" ? "Turn categories on and off" : "Available on the recovered model"}
+                  ><i>◑</i>Categories</button>
                   <button
                     className={viewerPanel === "properties" ? "active" : ""}
                     onClick={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
                     aria-pressed={viewerPanel === "properties"}
                     disabled={geometrySource !== "recovered"}
+                    title={geometrySource === "recovered" ? undefined : "Available on the recovered model"}
                   ><i>ⓘ</i>Properties</button>
                   <button
                     className={detailsOpen ? "active" : ""}
@@ -596,46 +646,58 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     aria-pressed={detailsOpen}
                   ><i>▤</i>Report & exports</button>
                   <span className="command-divider" />
-                  <div className="render-switch" aria-label="Render style">
-                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
-                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
-                  </div>
                   <span className="viewer-fidelity-chip">{geometrySource === "autodesk" ? "Autodesk derivative reference" : result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
                 </nav>
 
                 {viewerPanel === "model" && (
-                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Model browser">
-                    <div className="viewer-panel-heading"><div><strong>Model browser</strong><span>{solidRecords.length.toLocaleString()} elements in the scene</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close model browser">×</button></div>
-                    <label className="model-search"><span>Search</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, category, or type" /></label>
-                    <div className="model-tree" role="listbox" aria-label="Recovered Revit elements">
-                      {visibleModelRecords.map((record) => {
-                        const dimensions = boundsDimensions(record.boundsFeet);
+                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Objects">
+                    <div className="viewer-panel-heading"><div><strong>Objects</strong><span>{visibleModelRecords.length.toLocaleString()}{visibleModelRecords.length === solidRecords.length ? "" : ` of ${solidRecords.length.toLocaleString()}`} in the scene</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close objects">×</button></div>
+                    <label className="model-search"><span>Filter</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, category, or type" /></label>
+                    <ObjectList
+                      records={visibleModelRecords}
+                      selectedElementId={selectedElementId}
+                      onSelect={setSelectedElementId}
+                    />
+                  </aside>
+                )}
+
+                {viewerPanel === "categories" && (
+                  <aside className="viewer-sidepanel category-panel" aria-label="Categories">
+                    <div className="viewer-panel-heading"><div><strong>Categories</strong><span>{categoryRows.length} in the scene{hiddenCategories.size ? ` · ${hiddenCategories.size} off` : ""}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close categories">×</button></div>
+                    <div className="category-list" role="list">
+                      {categoryRows.map((row) => {
+                        const hidden = hiddenCategories.has(row.name);
                         return (
-                          <button
-                            key={record.elementId}
-                            className={selectedElementId === record.elementId ? "selected" : ""}
-                            onClick={() => setSelectedElementId(record.elementId)}
-                            role="option"
-                            aria-selected={selectedElementId === record.elementId}
-                          >
-                            <span><i />{record.categoryName ?? "Uncategorised"} <em>{record.elementId}</em></span>
-                            <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
-                          </button>
+                          <div className={`category-row${hidden ? " category-off" : ""}`} role="listitem" key={row.name}>
+                            <button
+                              className="category-bulb"
+                              onClick={() => toggleCategory(row.name)}
+                              aria-pressed={!hidden}
+                              title={hidden ? `Turn ${row.name} on` : `Turn ${row.name} off`}
+                            >{hidden ? "○" : "●"}</button>
+                            <span>{row.name}</span>
+                            <em>{row.count.toLocaleString()}</em>
+                          </div>
                         );
                       })}
                     </div>
-                    {solidRecords.length > visibleModelRecords.length && <p>Showing {visibleModelRecords.length} of {solidRecords.length.toLocaleString()} elements. Search to narrow the list.</p>}
+                    {hiddenCategories.size > 0 && (
+                      <p><button className="category-reset" onClick={() => setHiddenCategories(new Set())}>Turn every category back on</button></p>
+                    )}
                   </aside>
                 )}
 
                 {viewerPanel === "properties" && (
                   <aside className="viewer-sidepanel properties-panel" aria-label="Element properties">
-                    <div className="viewer-panel-heading"><div><strong>Properties</strong><span>{selectedRecord ? `Element ${selectedRecord.elementId}` : "No selection"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
+                    {/* The header is the object, the way every CAD properties
+                        palette names it — "Curtain Panel", not "Properties". The
+                        id is which one, which is the subtitle's job. */}
+                    <div className="viewer-panel-heading"><div><strong>{selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection"}</strong><span>{selectedRecord ? `Object ${selectedRecord.elementId}` : "Nothing picked"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
                     {selectedRecord && selectedDimensions ? (
                       <dl className="property-table">
                         <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
                         {selectedRecord.categoryName && (
-                          <div><dt>Revit category</dt><dd>{selectedRecord.categoryName}</dd></div>
+                          <div><dt>Category</dt><dd>{selectedRecord.categoryName}</dd></div>
                         )}
                         {selectedRecord.categoryId != null && (
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
@@ -682,22 +744,51 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                         )}
                       </dl>
                     ) : (
-                      <div className="property-empty"><b>Pick an element in the viewport</b><p>Click a recovered solid, or choose one from the model browser.</p></div>
+                      <div className="property-empty"><b>Pick an object in the viewport</b><p>Click a recovered solid, or choose one from the Objects list.</p></div>
                     )}
                   </aside>
                 )}
 
-                <div className="view-cube" aria-label="Camera orientation">
-                  <button className="cube-top" onClick={() => requestCamera("top")}>TOP</button>
-                  <button className="cube-front" onClick={() => requestCamera("front")}>FRONT</button>
-                  <button className="cube-right" onClick={() => requestCamera("right")}>RIGHT</button>
+                {/* One control for orientation, named the way a drawing package
+                    names it. A three-faced cube and a separate 3D/Plan switch
+                    held the same idea in two places and neither said "SE
+                    isometric", which is what people arrive knowing. */}
+                <div className="view-style-bar">
+                  <div className="view-menu">
+                    <button
+                      className={`view-control-button${viewMenuOpen ? " open" : ""}`}
+                      onClick={() => setViewMenuOpen((current) => !current)}
+                      aria-expanded={viewMenuOpen}
+                      aria-haspopup="listbox"
+                    >{CAMERA_PRESETS.find((entry) => entry.preset === cameraRequest.preset)?.label ?? "View"}</button>
+                    {viewMenuOpen && (
+                      <div className="view-menu-list" role="listbox" aria-label="Camera orientation">
+                        {CAMERA_PRESETS.map((entry) => (
+                          <button
+                            key={entry.preset}
+                            role="option"
+                            aria-selected={cameraRequest.preset === entry.preset}
+                            className={cameraRequest.preset === entry.preset ? "selected" : ""}
+                            onClick={() => requestCamera(entry.preset)}
+                          >{entry.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="render-switch" aria-label="Visual style">
+                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
+                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
+                  </div>
                 </div>
 
                 <nav className="viewer-navigation" aria-label="Viewport navigation">
-                  <button onClick={() => requestCamera("home")}><i>⌂</i><span>Home</span></button>
-                  {/* Re-applies the current preset without touching the view;
-                      going through requestCamera dropped you out of plan. */}
-                  <button onClick={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 }))}><i>⛶</i><span>Fit</span></button>
+                  {/* Re-applies the current orientation and re-frames the model. */}
+                  <button onClick={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 }))}><i>⛶</i><span>Zoom extents</span></button>
+                  <button
+                    onClick={() => selectedRecord && requestZoomToSelection()}
+                    disabled={!selectedRecord}
+                    title={selectedRecord ? "Frame the picked object" : "Pick an object first"}
+                  ><i>⊙</i><span>Zoom object</span></button>
                   <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
                   <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
                   <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>
@@ -709,10 +800,15 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   ><i>⇱</i><span>Walk</span></button>
                   <span />
                   <button className={sectionEnabled ? "active" : ""} onClick={() => setSectionEnabled((current) => !current)} aria-pressed={sectionEnabled}><i>◩</i><span>Section</span></button>
-                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); requestCamera("home"); }}><i>↺</i><span>Reset</span></button>
+                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); setHiddenCategories(new Set()); requestCamera(DEFAULT_CAMERA_PRESET); }}><i>↺</i><span>Reset</span></button>
                 </nav>
 
-                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>Element {selectedRecord.elementId}<span>View properties</span></button>}
+                {hoveredRecord && hoveredRecord.elementId !== selectedElementId && (
+                  <div className="hover-readout" aria-live="polite">
+                    {hoveredRecord.categoryName ?? "Uncategorised"}<span>{hoveredRecord.elementId}</span>
+                  </div>
+                )}
+                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>{selectedRecord.categoryName ?? "Uncategorised"} {selectedRecord.elementId}<span>View properties</span></button>}
                 <div className="viewport-legend">
                   {geometrySource === "autodesk" ? (
                     <span><i className="legend-cyan" />Autodesk source meshes</span>

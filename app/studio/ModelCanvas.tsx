@@ -8,6 +8,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   boundsDimensions,
   cameraPoseForPreset,
+  DEFAULT_CAMERA_PRESET,
   type ConvertResult,
   type NavigationMode,
   type PairedRegressionResult,
@@ -15,6 +16,7 @@ import {
 } from "../../lib/reviter";
 import {
   AUTODESK_REFERENCE_BOUNDS,
+  autodeskHomePose,
   autodeskPoseForPreset,
   publicAssetUrl,
   styleAutodeskReference,
@@ -27,7 +29,7 @@ import {
   referenceMeshGroup,
 } from "./three-scene.ts";
 import { createWalkControls, WALK_EYE_HEIGHT, type WalkControls } from "./walk-controls.ts";
-import type { CameraRequest, GeometrySource, ReferenceLoadState, ViewMode } from "./types.ts";
+import type { CameraRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
 
 /**
  * Shape of the bundled `autodesk-gltf-loader.js`, which is imported at runtime
@@ -41,7 +43,6 @@ export function ModelCanvas({
   result,
   comparison,
   source,
-  view,
   renderMode,
   navigationMode,
   cameraRequest,
@@ -50,11 +51,13 @@ export function ModelCanvas({
   onWalkingChange,
   selectedElementId,
   onSelectElement,
+  hiddenElementIds,
+  onHoverElement,
+  focusRequest,
 }: {
   result: ConvertResult;
   comparison: PairedRegressionResult | null;
   source: GeometrySource;
-  view: ViewMode;
   renderMode: RenderMode;
   navigationMode: NavigationMode;
   cameraRequest: CameraRequest;
@@ -63,6 +66,9 @@ export function ModelCanvas({
   onWalkingChange: (walking: boolean) => void;
   selectedElementId: number | null;
   onSelectElement: (elementId: number | null) => void;
+  hiddenElementIds: ReadonlySet<number>;
+  onHoverElement: (elementId: number | null) => void;
+  focusRequest: { elementId: number | null; sequence: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<{
@@ -119,7 +125,7 @@ export function ModelCanvas({
         ? overlayMeshGroup(result, comparison.referenceMeshes, renderMode)
         : useReference
           ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-          : meshGroup(result, renderMode);
+          : meshGroup(result, renderMode, hiddenElementIds);
     const bounds = isAutodesk
       ? AUTODESK_REFERENCE_BOUNDS
       : useReference
@@ -196,8 +202,8 @@ export function ModelCanvas({
     scene.add(grid);
 
     const pose = isAutodesk
-      ? autodeskPoseForPreset("home", radius)
-      : { ...cameraPoseForPreset(center, radius, "home"), target: center, fov: 45 };
+      ? autodeskHomePose()
+      : { ...cameraPoseForPreset(center, radius, DEFAULT_CAMERA_PRESET), target: center, fov: 45 };
     const poseTarget = pose.target;
     camera.fov = pose.fov;
     camera.up.set(pose.up.x, pose.up.y, pose.up.z);
@@ -244,8 +250,51 @@ export function ModelCanvas({
       const elementId = elementIds?.[hit.faceIndex];
       onSelectElement(elementId ?? null);
     };
+    // What is under the cursor should name itself before you commit to
+    // clicking it. The raycast is the same one picking uses; it is throttled to
+    // one per animation frame because a move event can fire far more often than
+    // the scene can answer.
+    let hoverPending = false;
+    let hoverEvent: PointerEvent | null = null;
+    let hoveredElementId: number | null = null;
+    const reportHover = (elementId: number | null) => {
+      if (elementId === hoveredElementId) return;
+      hoveredElementId = elementId;
+      onHoverElement(elementId);
+    };
+    const resolveHover = () => {
+      hoverPending = false;
+      const event = hoverEvent;
+      if (!event) return;
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(root.children, Boolean(useOverlay)).find((intersection) =>
+        intersection.object instanceof THREE.Mesh
+        && intersection.faceIndex != null
+        && intersection.object.userData.elementIds != null,
+      );
+      const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
+      reportHover(hit?.faceIndex == null ? null : elementIds?.[hit.faceIndex] ?? null);
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (useReference || isAutodesk || walkRef.current) return;
+      hoverEvent = event;
+      if (hoverPending) return;
+      hoverPending = true;
+      requestAnimationFrame(resolveHover);
+    };
+    const handlePointerLeave = () => {
+      hoverEvent = null;
+      reportHover(null);
+    };
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointerup", handlePointerUp);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerleave", handlePointerLeave);
     runtimeRef.current = {
       scene,
       camera,
@@ -315,24 +364,23 @@ export function ModelCanvas({
       observer.disconnect();
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerleave", handlePointerLeave);
+      onHoverElement(null);
       controls.dispose();
       disposeGroup(root);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, onSelectElement, renderMode, result, source]);
+  }, [comparison, hiddenElementIds, onHoverElement, onSelectElement, renderMode, result, source]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
-    // Leaving plan view has to leave the top preset behind with it. The stored
-    // preset stays "top" after the view cube is used, so asking for 3D while it
-    // was still in force lit the button up and left the camera looking straight
-    // down.
-    const preset = view === "plan"
-      ? "top"
-      : cameraRequest.preset === "top" ? "home" : cameraRequest.preset;
+    // One control decides the orientation now, so there is nothing to
+    // reconcile: the requested preset is the camera.
+    const preset = cameraRequest.preset;
     const pose = source === "autodesk"
       ? autodeskPoseForPreset(preset, runtime.radius)
       : { ...cameraPoseForPreset(runtime.center, runtime.radius, preset), target: runtime.center, fov: 45 };
@@ -344,7 +392,33 @@ export function ModelCanvas({
     runtime.camera.lookAt(target);
     runtime.camera.updateProjectionMatrix();
     runtime.controls.update();
-  }, [cameraRequest, comparison, renderMode, result, source, view]);
+  }, [cameraRequest, comparison, renderMode, result, source]);
+
+  // Frame one object without changing which way the camera faces: the eye
+  // keeps its direction and only the distance and the target move.
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !focusRequest.sequence || focusRequest.elementId == null) return;
+    if (source === "autodesk") return;
+    const record = result.elementBounds.find((entry) => entry.elementId === focusRequest.elementId);
+    if (!record) return;
+    const origin = result.origin;
+    const target = new THREE.Vector3(
+      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - origin.x,
+      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - origin.y,
+      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - origin.z,
+    );
+    const size = boundsDimensions(record.boundsFeet);
+    const extent = Math.max(size.x, size.y, size.z, 1);
+    const direction = runtime.camera.position.clone().sub(runtime.controls.target);
+    if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
+    direction.normalize().multiplyScalar(extent * 2.4);
+    runtime.controls.target.copy(target);
+    runtime.camera.position.copy(target).add(direction);
+    runtime.camera.lookAt(target);
+    runtime.camera.updateProjectionMatrix();
+    runtime.controls.update();
+  }, [focusRequest, result, source]);
 
   useEffect(() => {
     const controls = runtimeRef.current?.controls;

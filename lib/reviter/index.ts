@@ -56,8 +56,11 @@ export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
 export {
   boundsDimensions,
+  CAMERA_PRESETS,
   cameraPoseForPreset,
+  DEFAULT_CAMERA_PRESET,
   FEET_PER_METRE,
+  isPlanPreset,
   referenceRegistration,
   solidElementBounds,
 } from "./viewer";

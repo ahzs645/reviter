@@ -204,6 +204,26 @@ Neither is a display problem, so neither is fixed by the changes above. `IfcRamp
 
 The join is the audit script's: the IFC analysis carries out the matched Revit ids per class, and the app intersects them with the ids the converter gave an envelope and the ids the scene actually drew. The drawn set is slightly stricter than the script's — the script counts a record *selected* for display, the panel counts an element that reached a mesh with triangles in it, 92 stair flights against the script's 97. Classes nothing was recovered for keep their row, since that row is the useful one; classes the export writes without a Revit id at all — storeys, the site, the building — are left out instead, because nothing can be joined to them and an empty row would read as a gap that is not one.
 
+## What a CAD viewer already does, and what Reviter took from it
+
+A bundle of the AutoCAD web application was read for its interaction design — not its code, none of which is here — and the most useful thing in it was a single array: the command allowlist that application applies when a drawing is opened read-only. Twenty commands. Measure, zoom, pan, properties, layers, blocks, xrefs, find, undo, compare. Absent from the entire bundle: isolate, section planes, a view cube, a navigation bar, zoom-to-selection, select-similar. Visibility is one light bulb per layer; orientation is a text button reading `Top` that opens a list of ten. A shipped read-only CAD viewer is *less* graphical than the one Reviter had, not more, and six things followed from that.
+
+**The properties panel is headed by the object, not by the word "Properties".** Their header is the object type — `Line`, `Block Reference`. Reviter's is now the decoded category, with the element id demoted to the subtitle, which answers *what is this* before *which one is this*.
+
+**The object list is windowed rather than capped.** It rendered the first 180 rows and told you to search for the rest, which was the one place the interface admitted it could not show you the model. Rows are a fixed height, so only those inside the scroll viewport exist: 31,391 objects render **19 rows**. Picking in the viewport now scrolls the list to the selection, which it never did.
+
+**One control for orientation, with the ten names every drawing package uses.** A three-faced view cube and a separate 3D/Plan switch held the same idea in two places, and neither could say "SE isometric". Both are replaced by a text button showing the current view, opening `Top · Bottom · Front · Back · Left · Right · SW · SE · NE · NW isometric`. The derivative viewer shares the table rather than keeping a second copy: the SVF is y-up and metres, so its pose is the shared one rotated, `(x, y, z) → (x, z, −y)`.
+
+**Categories are a layer list with a bulb per row.** Turning a category off filters the triangle index by the per-triangle element id the meshes already carry, so the vertices stay exactly where the converter put them and the pick table is filtered in step. 24 categories on the supplied model, largest first. This is the honest version of "isolate" for tens of thousands of envelopes, and it is the one AutoCAD actually shipped.
+
+**Hovering names what is under the cursor** before you commit to clicking it, on the raycaster picking already used, throttled to one resolve per frame.
+
+**Zoom to object** joins zoom extents — their floating nav has both, and framing one element was impossible before.
+
+The vocabulary moved with it: *element* → **object**, *Model browser* → **Objects**, *Search* → **Filter**, *Fit* → **Zoom extents**, *Render style* → **Visual style**. Four words did **not** move. *Recovered*, *drawn*, *envelope* and *fidelity ledger* have no CAD equivalent because authored geometry never needs to express how much of itself is reconstructed guesswork, and renaming them into CAD vocabulary would be a claim about provenance that is not true.
+
+Deliberately not taken: a command line, whose whole value is thirty years of muscle memory for a language only that application speaks; a ribbon, around a twenty-command surface; object snap, because snapping to a recovered envelope implies a precision the data does not have; and `ByLayer`-style inheritance, which exists to control authoring. Measure is in their read-only allowlist and is legitimate here, but it is not in yet: measuring a recovered envelope gives envelope dimensions, and a readout that does not say so would be a lie.
+
 ## Overlay and walk, in the studio
 
 The overlay below started as an offline script. It is now a view mode: load an RVT, pair its IFC export in the **Regression fixture** panel, and the geometry-source switcher gains **Overlay**.

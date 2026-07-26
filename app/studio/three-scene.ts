@@ -10,7 +10,41 @@ import {
   type RenderMode,
 } from "../../lib/reviter";
 
-export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.Group {
+/**
+ * The triangles of one batch minus the ones belonging to a hidden element.
+ *
+ * Every batch carries one element id per triangle, which is what makes turning
+ * a whole category off a filter over the index rather than a rebuild of the
+ * geometry: the vertices stay exactly where the converter put them.
+ */
+function visibleTriangles(
+  indices: Uint32Array,
+  elementIds: Uint32Array | undefined,
+  hidden: ReadonlySet<number>,
+): { indices: Uint32Array; elementIds: Uint32Array | undefined } {
+  if (!hidden.size || !elementIds) return { indices, elementIds };
+  const keptIndices = new Uint32Array(indices.length);
+  const keptIds = new Uint32Array(elementIds.length);
+  let at = 0;
+  for (let triangle = 0; triangle < elementIds.length; triangle += 1) {
+    const elementId = elementIds[triangle]!;
+    if (hidden.has(elementId)) continue;
+    keptIndices[at] = indices[triangle * 3]!;
+    keptIndices[at + 1] = indices[triangle * 3 + 1]!;
+    keptIndices[at + 2] = indices[triangle * 3 + 2]!;
+    // Picking indexes by face, so the id table has to be filtered in step or
+    // every click after a hidden category would name the wrong element.
+    keptIds[at / 3] = elementId;
+    at += 3;
+  }
+  return { indices: keptIndices.subarray(0, at), elementIds: keptIds.subarray(0, at / 3) };
+}
+
+export function meshGroup(
+  result: ConvertResult,
+  renderMode: RenderMode,
+  hiddenElementIds: ReadonlySet<number> = new Set(),
+): THREE.Group {
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
   const technical = renderMode === "technical";
@@ -22,10 +56,12 @@ export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.
     fidelity: "experimental",
   };
   for (const data of result.meshes) {
+    const visible = visibleTriangles(data.indices, data.elementIds, hiddenElementIds);
+    if (!visible.indices.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
-    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geometry.setIndex(new THREE.BufferAttribute(visible.indices, 1));
     geometry.computeVertexNormals();
     const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
     const sourceColor = sourceMaterial
@@ -47,7 +83,7 @@ export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.
     mesh.name = data.name;
     mesh.castShadow = technical;
     mesh.receiveShadow = technical;
-    mesh.userData.elementIds = data.elementIds;
+    mesh.userData.elementIds = visible.elementIds;
     mesh.renderOrder = 1;
     group.add(mesh);
     if (isElementBounds) {
