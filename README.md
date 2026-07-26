@@ -379,7 +379,7 @@ node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc   # e
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc --json > run.json
 ```
 
-Eighteen assertions, each named after the rule it guards, so a rule that does not generalise fails loudly rather than quietly drifting: per-class centre agreement floors for the six classes the bounds work put at 96–100%, the door-swing geometry, the railing guard height, the share of sheets held back, a tripwire on records drawn past the export's own hull, and four **firing** assertions. Four of the thresholds are worth reading for their reasoning, which is in the file's header:
+Nineteen assertions, each named after the rule it guards, so a rule that does not generalise fails loudly rather than quietly drifting: per-class centre agreement floors for the six classes the bounds work put at 96–100%, the door-swing geometry, the railing guard height, the share of sheets held back, a tripwire on records drawn past the export's own hull, and four **firing** assertions. Four of the thresholds are worth reading for their reasoning, which is in the file's header:
 
 - **records outside the hull is budgeted at 6, not a percentage.** Before the sheets rule this model drew 11 records past the hull; a 0.1%-of-drawn budget would have been 31 and would not have caught it. The gate is sized to fire on the state the rule exists to fix. It now reports **0**.
 - **the guard-height band is 2.5–4.5 ft, narrower than the decoder's own 1.5–5 ft filter.** Asserting the filter back would be untestable — every survivor is inside it by construction.
@@ -538,6 +538,40 @@ keeps the same accuracy and drops the tail:
 That is what ships. It takes building elements from 30,676 to **30,679** — the
 point is not the three, it is that the worst case shrinks tenfold without costing
 anything, on classes the rule was not derived from.
+
+## Curved walls are written the way straight ones are
+
+A quarter-round wall was being drawn as the rectangle enclosing its whole bulge — which is what an axis-aligned envelope of an arc is, and it reads on screen as a curve squared off into a block.
+
+`wallSolidsFor` reads a straight wall as three plane records at a 105-byte stride: the centre plane, then the two faces half a thickness out. A curved wall is written **exactly the same way**, in cylinder records at their own 137-byte stride — the centre cylinder carries the centreline radius and the two faces carry that radius plus and minus half the thickness. Element 305688 owns three at 10.05, 9.72 and 10.38 ft.
+
+The converter had been counting those records and throwing them away.
+
+The test that three cylinders are one wall is arithmetic rather than positional: **the middle radius must be the mean of the outer two**, to 1e-6. That is not a threshold fitted to anything — a run of unrelated cylinders will not have a centre radius. Of the 42 stride-137 triples in the supplied project, **27 pass**, and all 27 are elements the export types `IfcWallStandardCase`.
+
+**Verification against the paired export.** For every one of the 27 the median distance from an export vertex to the annulus sector is **0.0000 ft**; 18 have every vertex within a foot. Against a shuffled pairing, **0 of 27** are within half a foot. The larger worst-vertex figures are elements the export writes as an arc *plus* straight runs, where the arc is exact over its own sweep and the residual is the part of the element it does not cover.
+
+What it buys is not mainly a tighter box. Five of the 27 had a bounds record covering only a fragment of the wall, and the arc gives them their true extent:
+
+| element | envelope plan | arc plan | export plan |
+| --- | --- | --- | --- |
+| 305688 | 10 sq ft | **224** | 223 |
+| 1783529 | 56 | **248** | 248 |
+| 1873366 | 16 | **88** | 87 |
+| 960687 | 2 | **13** | 13 |
+| 960631 | 2 | **13** | 12 |
+
+The arc is drawn as an annulus sector at no coarser than π/32 per segment, and it sits below the rebuilt solid in the drawing precedence: an element with a straight location line has one for a reason, and the arc is what a curved wall has instead.
+
+`curved-walls-rebuilt` is a **firing** assertion, not an accuracy one. The arithmetic is self-checking, so the failure mode is not a wrong arc but silence — a release that writes cylinders at a different stride, or an attribution that stops reaching them, and every curved wall quietly reverts to its bulge rectangle with nothing in the output saying so.
+
+### What the curve complaint turned out to mostly be
+
+The census that found this is worth stating, because the headline number is not curvature. Measuring every export product's plan footprint against its own plan bounding box — a rectangle fills 1.00, a quarter-round fills π/4 — **245 elements that we draw as an axis-aligned box have a footprint filling under 0.92**, and they add about **80,000 sq ft of plan area** that is not in the building. Only **6 of the 245 are genuinely curved**, worth 377 sq ft. The other 239 are straight walls at an angle, and an angled wall's axis-aligned box is a large rectangle where the wall is a thin sliver.
+
+So the visible defect has two causes and they are very different sizes. The curved one is now fixed. The diagonal one is not, and the reason is that those elements do not carry what would fix it: **165 of the 245 own no surface patch at all**, and of the 80 that do, every stride-105 plane triple among them fails the verticality test because the surfaces are raked rather than vertical — the rule is correctly declining to build a wall out of them.
+
+**One route was tried and rejected.** A wall's location line is recoverable from its sketch curves, and given a location line the thickness is not a guess: an axis-aligned envelope of a wall of length `L` at angle `t` with thickness `w` is `W = L·|cos t| + w·|sin t|` and `H = L·|sin t| + w·|cos t|`, so `w` falls out of the envelope the record already carries — twice, from two independent equations. 111 of the 245 own a curve and 63 solve a thickness, but only 22 land within half a foot of the export. The self-consistency check that should have separated them does not: at its tightest, requiring the two solutions to agree to 0.001 ft, it keeps 14 of which **4 are still over 5 ft wrong**. A rule that draws 4 in 14 elements badly wrong is worse than the box it replaces, so it is not shipped. Recorded here so it is not retried on the same evidence.
 
 ## Four remaining gaps, and which of them are reachable
 

@@ -6,7 +6,7 @@
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
-import type { WallSolid } from "./native-geometry.ts";
+import type { WallArc, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 import type { Point3 } from "./sketch-curves.ts";
 
@@ -398,6 +398,65 @@ function solidGeometry(solid: WallSolid, origin: Vec3) {
 }
 
 
+/** Arcs are tessellated no coarser than this, in radians. */
+const ARC_STEP_RADIANS = Math.PI / 32;
+
+/** Segments an arc is given regardless of how short its sweep is. */
+const MIN_ARC_SEGMENTS = 2;
+
+/**
+ * A curved wall as the annulus sector its cylinder triple describes.
+ *
+ * The axis-aligned envelope of an arc is the rectangle enclosing the whole
+ * bulge, so a quarter-round wall drawn from its envelope covers 4/pi times the
+ * plan area it should and squares off the curve. This walks the sweep instead,
+ * emitting the inner and outer faces, the two ends, and the top and bottom.
+ */
+function arcGeometry(arc: WallArc, origin: Vec3) {
+  const sweep = arc.endAngle - arc.startAngle;
+  const segments = Math.max(MIN_ARC_SEGMENTS, Math.ceil(Math.abs(sweep) / ARC_STEP_RADIANS));
+  const inner = arc.radius - arc.thickness / 2;
+  const outer = arc.radius + arc.thickness / 2;
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  // Four vertices per station: inner and outer, at the base and the top.
+  for (let step = 0; step <= segments; step += 1) {
+    const angle = arc.startAngle + (sweep * step) / segments;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const ux = cos * arc.xDir.x + sin * arc.yDir.x;
+    const uy = cos * arc.xDir.y + sin * arc.yDir.y;
+    for (const radius of [inner, outer]) {
+      for (const z of [arc.baseElevation, arc.topElevation]) {
+        positions.push(
+          arc.centre.x + radius * ux - origin.x,
+          arc.centre.y + radius * uy - origin.y,
+          z - origin.z,
+        );
+      }
+    }
+  }
+
+  // Station layout: 0 inner-base, 1 inner-top, 2 outer-base, 3 outer-top.
+  const quad = (a: number, b: number, c: number, d: number) => {
+    indices.push(a, b, c, a, c, d);
+  };
+  for (let step = 0; step < segments; step += 1) {
+    const here = step * 4;
+    const next = here + 4;
+    quad(here + 0, next + 0, next + 1, here + 1); // inner face
+    quad(here + 2, here + 3, next + 3, next + 2); // outer face
+    quad(here + 1, next + 1, next + 3, here + 3); // top
+    quad(here + 0, here + 2, next + 2, next + 0); // bottom
+  }
+  const last = segments * 4;
+  quad(0, 1, 3, 2);
+  quad(last + 0, last + 2, last + 3, last + 1);
+  return { positions, indices };
+}
+
+
 /** Eight already-placed world corners, in box-index order. */
 function cornersGeometry(corners: [number, number, number][], origin: Vec3) {
   return {
@@ -617,6 +676,10 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // said the opposite; it compared against a truth map that kept one box
         // per Revit id, so an element the exporter split was compared with a
         // piece of itself.
+        // A curved wall has no straight location line, so it reaches neither
+        // the solid route nor the sketch route and would otherwise be drawn as
+        // the rectangle enclosing its whole bulge.
+        const arcs = record.arcs?.length ? record.arcs.map((arc) => arcGeometry(arc, origin)) : [];
         const items = rail.length
           ? rail
           : prism.length
@@ -625,7 +688,9 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
             ? [cornersGeometry(record.orientedBox, origin)]
             : solids.length
               ? solids.map((solid) => solidGeometry(solid, origin))
-              : [boxGeometry(record.boundsFeet, origin)];
+              : arcs.length
+                ? arcs
+                : [boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));

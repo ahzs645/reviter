@@ -178,6 +178,27 @@ export function drawnBounds(record: ElementBoundsRecord): Box {
     }
     return box;
   }
+  // A curved wall is drawn as the annulus sector its cylinder triple describes,
+  // so measuring its envelope would measure the rectangle the arc replaced.
+  if (record.arcs?.length) {
+    for (const arc of record.arcs) {
+      const sweep = arc.endAngle - arc.startAngle;
+      const segments = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 32)));
+      for (let step = 0; step <= segments; step += 1) {
+        const angle = arc.startAngle + (sweep * step) / segments;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const ux = cos * arc.xDir.x + sin * arc.yDir.x;
+        const uy = cos * arc.xDir.y + sin * arc.yDir.y;
+        for (const radius of [arc.radius - arc.thickness / 2, arc.radius + arc.thickness / 2]) {
+          for (const z of [arc.baseElevation, arc.topElevation]) {
+            add(arc.centre.x + radius * ux, arc.centre.y + radius * uy, z);
+          }
+        }
+      }
+    }
+    return box;
+  }
   return [
     record.boundsFeet.min.x, record.boundsFeet.min.y, record.boundsFeet.min.z,
     record.boundsFeet.max.x, record.boundsFeet.max.y, record.boundsFeet.max.z,

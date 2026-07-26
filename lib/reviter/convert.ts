@@ -31,7 +31,7 @@ import { collectElementParameters } from "./element-parameters.ts";
 import { doorLeafCorners, doorLeafFromShape, type WallRun } from "./door-leaf.ts";
 import { clipSolidToEnvelope } from "./solid-clip.ts";
 import { collectTypeLinks } from "./element-types.ts";
-import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
+import { collectOwnedSurfaces, type CylinderPatch, type PlanePatch } from "./surfaces.ts";
 import {
   instanceCorners,
   readInstancePlacement,
@@ -40,7 +40,7 @@ import {
   type InstancePlacement,
   type LocalBounds,
 } from "./instanced-geometry.ts";
-import { surfaceQuadsFor, wallSolids } from "./native-geometry.ts";
+import { surfaceQuadsFor, wallArcs, wallSolids } from "./native-geometry.ts";
 import {
   boundaryLoopsFor,
   collectSketchCurves,
@@ -411,6 +411,7 @@ export function convertRvtBytes(
     const elementParameters = new Map<number, Map<number, ElementParameter>>();
     const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
     const planesByElement = new Map<number, PlanePatch[]>();
+    const cylindersByElement = new Map<number, CylinderPatch[]>();
     const curvesByOwner = new Map<number, SketchCurve[]>();
     let sketchCurves = 0;
     const typeReferences = new Map<number, number>();
@@ -465,6 +466,12 @@ export function convertRvtBytes(
         for (const { owner, surface } of collectOwnedSurfaces(inflated)) {
           if (surface.kind === "cylinder") {
             surfaceCounts.cylinders += 1;
+            // A curved wall is written as a cylinder triple exactly as a
+            // straight one is written as a plane triple, so these are kept
+            // rather than counted and dropped.
+            const owned = cylindersByElement.get(owner);
+            if (owned) owned.push(surface);
+            else cylindersByElement.set(owner, [surface]);
             continue;
           }
           surfaceCounts.planes += 1;
@@ -594,6 +601,15 @@ export function convertRvtBytes(
       if (!existing || solidLength(solid) > solidLength(existing)) {
         solidsByElement.set(solid.elementId, solid);
       }
+    }
+
+    // A curved wall has no straight location line, so `wallSolidsFor` cannot
+    // see it and it falls back to the rectangle enclosing the whole arc.
+    const arcsByElement = new Map<number, ReturnType<typeof wallArcs>>();
+    for (const arc of wallArcs(cylindersByElement)) {
+      const group = arcsByElement.get(arc.elementId);
+      if (group) group.push(arc);
+      else arcsByElement.set(arc.elementId, [arc]);
     }
 
     // Loadable families are placed rather than written out: each instance holds
@@ -764,12 +780,15 @@ export function convertRvtBytes(
     let unnamedSketchElements = 0;
     let rejectedOrientedBoxes = 0;
     let sweptRailings = 0;
+    let curvedWalls = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
       record.solid = solidsByElement.get(record.elementId);
       record.solids = solidGroups.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
+      record.arcs = arcsByElement.get(record.elementId);
+      if (record.arcs?.length) curvedWalls += 1;
       const orientedBox = orientedBoxes.get(record.elementId);
       // A record synthesised from the instance itself has nothing to check
       // against; one that also carries a bounds record does.
@@ -1073,6 +1092,7 @@ export function convertRvtBytes(
           unplacedRecords,
           sketchBoundaryElements,
           sweptRailings,
+          curvedWalls,
           doorLeaves,
           doorLeavesFromShape,
           adoptedStairBoxes,

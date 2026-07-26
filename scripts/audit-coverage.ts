@@ -223,6 +223,7 @@ sheets held back        ${result.omittedSheetCount.toLocaleString()}
 from a solid alone       ${(stats.solidOnlyElements ?? 0).toLocaleString()}
 from an instance alone   ${(stats.instanceOnlyElements ?? 0).toLocaleString()}
 railings swept          ${(stats.sweptRailings ?? 0).toLocaleString()}
+curved walls rebuilt    ${(stats.curvedWalls ?? 0).toLocaleString()}
 door leaves cut         ${(stats.doorLeaves ?? 0).toLocaleString()}
 from a sketch boundary   ${(stats.sketchBoundaryElements ?? 0).toLocaleString()} \
 (${(stats.unnamedSketchElements ?? 0).toLocaleString()} of them uncategorised)

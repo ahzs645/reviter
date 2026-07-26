@@ -27,7 +27,7 @@ export { builtInParameterName, parameterDisplayName } from "./built-in-parameter
 export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
 export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces";
-export { surfaceQuadsFor, wallSolids, wallSolidsFor } from "./native-geometry";
+export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry";
 export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
 export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
 export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";

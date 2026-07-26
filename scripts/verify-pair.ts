@@ -198,6 +198,14 @@ const GUARD_MAX_FEET = 4.5;
  */
 const MIN_RAILINGS_FOR_PATH_CHECK = 20;
 
+/**
+ * Walls the export must hold before an absence of curved ones is a failure.
+ * A small building can legitimately have none, and asserting on it would fire
+ * on a healthy second model — which is the one thing these thresholds must not
+ * do.
+ */
+const MIN_WALLS_FOR_CURVE_CHECK = 500;
+
 /** Sheets held back, as a share of what is drawn. */
 const MAX_SHEET_SHARE = 0.03;
 
@@ -431,6 +439,37 @@ function checkRailingGuard(outcome: ConvertResult, coverage: CoverageResult): vo
 }
 
 /**
+ * The curved-wall rule: a stride-137 cylinder triple whose middle radius is the
+ * mean of the outer two.
+ *
+ * This is a *firing* assertion in the same sense as the four below it. The
+ * arithmetic is self-checking — a run of unrelated cylinders will not have a
+ * centre radius — so the failure mode is not a wrong arc but silence: a release
+ * that writes cylinders at a different stride, or an attribution that stops
+ * reaching them, and every curved wall quietly reverts to the rectangle
+ * enclosing its bulge with nothing in the output saying so. 27 fired here.
+ *
+ * It is asserted against the walls the export holds rather than as a bare
+ * count, and skips when the export has too few walls to judge.
+ */
+function checkCurvedWalls(outcome: ConvertResult, coverage: CoverageResult): void {
+  const rebuilt = outcome.stats?.curvedWalls ?? 0;
+  const walls =
+    (coverage.rows.IFCWALLSTANDARDCASE?.inIfc ?? 0) + (coverage.rows.IFCWALL?.inIfc ?? 0);
+  if (walls < MIN_WALLS_FOR_CURVE_CHECK) {
+    skip("curved-walls-rebuilt", `only ${walls} walls in the export`, ">= 1");
+    return;
+  }
+  check(
+    "curved-walls-rebuilt",
+    rebuilt,
+    rebuilt >= 1,
+    `${rebuilt} walls rebuilt as an arc from their own cylinder triple, against ${walls.toLocaleString()} walls in the export`,
+    ">= 1",
+  );
+}
+
+/**
  * The sheets rule: a floor's own boundary sketch, an unnamed storey-sized
  * plate over 10,000 sq ft, and a railing's top rail lying along its parent.
  *
@@ -573,6 +612,7 @@ checkHull(overlay);
 checkCentreAgreement(overlay);
 checkDoorSwing(coverage, overlay);
 checkRailingGuard(outcome, coverage);
+checkCurvedWalls(outcome, coverage);
 checkSheets(coverage);
 checkRulesFire(coverage);
 

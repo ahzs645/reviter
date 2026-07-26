@@ -1,7 +1,7 @@
 import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
-import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+import type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
@@ -11,7 +11,7 @@ export type { ElementParameter, ElementParameterTable } from "./element-paramete
 export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.ts";
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
-export type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+export type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
@@ -108,6 +108,13 @@ export type ElementBoundsRecord = {
   solids?: WallSolid[];
   /** Native faces, for elements with surfaces that do not form a solid. */
   quads?: SurfaceQuad[];
+  /**
+   * Curved wall segments, rebuilt from the element's own cylinder triples. A
+   * curved wall has no straight location line, so without these it falls back
+   * to its axis-aligned envelope — a rectangle covering the whole bulge of the
+   * arc rather than the wall.
+   */
+  arcs?: WallArc[];
   /** Eight world corners of a placed family instance, in box-index order. */
   orientedBox?: [number, number, number][];
   /** Sketch boundary rings, outer first, for a floor, roof, ceiling or ramp. */
@@ -198,6 +205,8 @@ export type ConvertStats = {
   sketchBoundaryElements?: number;
   /** Railings swept along their own rail path rather than drawn as a box. */
   sweptRailings?: number;
+  /** Walls rebuilt as an arc from their own cylinder triple. */
+  curvedWalls?: number;
   /** Doors whose leaf was cut out of the opening using their host wall. */
   doorLeaves?: number;
   /** Doors whose leaf was folded out of their own shared shape's swing. */
