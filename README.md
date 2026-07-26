@@ -609,11 +609,30 @@ Of 33,719 export footprints, 1,171 are not boxes in plan. The recovery already f
 
 So the visible defect has two causes and they are very different sizes — **94% of the invented area is diagonal, not curved.** An angled wall's axis-aligned box is a large rectangle where the wall is a thin sliver, and the worst single element adds 18,599 sq ft on its own.
 
-The diagonal case is not fixed, and the reason is that those elements do not carry what would fix it: **165 of them own no surface patch at all**, and of the 80 that do, every stride-105 plane triple among them fails the verticality test because the surfaces are raked rather than vertical — the rule is correctly declining to build a wall out of them.
+The diagonal case is not fixed, and the reason is now settled rather than suspected: **the geometry is not in the readable stream**. That is worked through below.
 
 **The way curved and diagonal are told apart was wrong once, and the correction is worth recording.** The first version counted hull corners, collapsing turns under 12°: a rotated rectangle keeps four, a tessellated arc shows many. That reads plausibly and is not measurable — how far an arc's turns fall below any angular threshold depends entirely on how finely the *exporter* tessellated it, and a 64-segment quarter round at 1.4° per step collapses to three corners and reads as a triangle. It undercounted the curved elements by eightfold, at 6 against the true 49. The measure now used is the footprint's fill against its own *minimum-area* rectangle: a rectangle at any rotation fills it exactly, an arc fills π/4 of it at any tessellation, and no threshold on tessellation is involved.
 
 **One route was tried and rejected.** A wall's location line is recoverable from its sketch curves, and given a location line the thickness is not a guess: an axis-aligned envelope of a wall of length `L` at angle `t` with thickness `w` is `W = L·|cos t| + w·|sin t|` and `H = L·|sin t| + w·|cos t|`, so `w` falls out of the envelope the record already carries — twice, from two independent equations. 111 of the 245 own a curve and 63 solve a thickness, but only 22 land within half a foot of the export. The self-consistency check that should have separated them does not: at its tightest, requiring the two solutions to agree to 0.001 ft, it keeps 14 of which **4 are still over 5 ft wrong**. A rule that draws 4 in 14 elements badly wrong is worse than the box it replaces, so it is not shipped. Recorded here so it is not retried on the same evidence.
+
+### Why the angled walls cannot be fixed from what they own
+
+A wall's surfaces are not loose in the page. They live in an **object of their own, under marker `0x0f3b`**, sitting beside the element's ordinary `0x08c6` object, and the `ff ff ff ff 10 03 01 …` anchor is that object's head. 7,954 of them exist against 7,208 walls in the export, so the class is the wall body and nothing else. Of a 900-wall sample that the export names *and* that carries an anchor, **883 have a `0x0f3b` object; of the 893 walls with no anchor, 9 do.**
+
+So an element with no anchor has no surfaces because it has no geometry object, and **146 of the 165 angled walls that own nothing are named by no anchor anywhere**, against 12.2% of every element the export names. Four candidate explanations, separated:
+
+| | verdict | the numbers |
+| --- | --- | --- |
+| attribution does not reach them | **refuted** | Ignoring ownership entirely — is *any* vertical plane in the file collinear with the wall's own export axis? — hits **88.6%** for anchored walls and **10.1%** for unanchored. Controls: axis rotated 5° → 0.1%, shifted 1 ft → 2.3%. The z band must be in the query; without it the unanchored score 47.9%, which is the wall one storey up. |
+| page-boundary chunking | **real, but not theirs** | 19,987 of the file's 82,285 surfaces sit on one of the 2,368 anchorless pages of 3,613. Carrying the last anchor across the boundary attributes all 19,987 to **38** ids, and **0 of 19,987** land in the box of the element they would be given to. |
+| the chunks that still fail to inflate | **12 of 893 at most** | 1.29 MB stored, which at the 6.16× ratio the rest of the stream reads at is 7.9 MB of 417 MB — about 123 walls against 893 missing. Bracketing each failure by the anchor ids either side puts 12 of the 893 inside a band, against **0 of 900** anchored controls. |
+| the geometry is genuinely elsewhere | **supported, ~86–90%** | Nothing else in their own object holds it either: searching every offset for the element's own plan-axis endpoint finds it for 28 of 151, against **0** for a mismatched-target control. |
+
+**Being angled has nothing to do with it.** 11.8% of the export's 2,632 angled walls own no surface, against **13.1%** of its 4,576 orthogonal ones. The diagonals are simply the subset where the fallback box is visibly wrong — an orthogonal wall drawn as its envelope looks right.
+
+And the 67 that *do* own planes are not a missed opportunity either: 33 have a stride-105 triple, **314 triples between them, and not one has all three planes vertical**. They read `uDir.z = 0.3367`, `vDir.z = 0.9416` — facets of a sloped body — and 24 of those elements carry the category `Stairs Stringer Carriage`. `wallSolidsFor` is declining correctly.
+
+**One lead came out of this and it is not the diagonals.** A quarter of every analytic surface in the file sits on a page the owner scan cannot attribute, because the scan starts each page with no owner. The containing object header names its own element at `S+0` and is self-checking through its length echo; used as an owner it scores **81.25%** inside-the-owner's-box against **0.02%** shuffled — better than the shipped anchor rule's 76.80% — and is still a **net loss**, because it displaces anchors mid-blob: 189 elements gain a solid (11 named by the export) and 953 lose theirs (467 named). Restricted to a fallback that can never displace an anchor it adds 18,417 surfaces and 20 elements with a solid, at a median 10.1 ft worst-vertex error with none inside a foot — those surfaces are not wall bodies. Something narrower than "header wins" and wider than "header only before the first anchor" may exist there. It will not recover these 165.
 
 ## Four remaining gaps, and which of them are reachable
 
