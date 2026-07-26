@@ -1,58 +1,100 @@
 /**
- * A plan comparison of the recovery against its paired export, as one SVG.
+ * An isometric comparison of the recovery against its paired export, as one SVG.
  *
  *   node --experimental-strip-types scripts/compare-view.ts model.rvt model.ifc out.svg
  *
  * ## Why this exists
  *
- * The studio can already draw the overlay, and does it better — in 3D, shaded,
- * navigable. What it cannot do is be fast: parsing an 83 MB IFC through web-ifc
- * in a browser tab takes the better part of an hour, which is too slow to look
- * at after every change to a decoder rule.
+ * The studio draws this better — shaded, navigable, in a real renderer. What it
+ * cannot do is be fast: parsing an 83 MB IFC through web-ifc in a browser tab
+ * takes the better part of an hour, which is too slow to look at after every
+ * change to a decoder rule. This renders the same comparison from node in the
+ * time one conversion takes, so a change can be *seen* and not only scored.
  *
- * This renders the same comparison from node in the time one conversion takes,
- * so a change can be *seen* and not only scored. It is deliberately a plan view:
- * plan is where a footprint drawn as the wrong rectangle is obvious, which is
- * the class of defect the numbers are worst at conveying.
+ * Three panels sharing one frame and one scale, so they can be compared by eye
+ * without measuring: what the viewer draws, the export, and both together with
+ * the elements the export holds and the recovery does not picked out in red.
  *
- * Three panels, all in one frame and at one scale so they can be compared by
- * eye without measuring:
+ * ## Two things this got wrong, both worth stating
  *
- *   - **recovered** — what the viewer draws, following the same precedence
- *   - **export** — the paired IFC, the ground truth
- *   - **overlay** — both, with elements the export holds and the recovery does
- *     not picked out
+ * **It drew every record, not the scene.** `selectDisplayBounds` holds back
+ * 1,582 curtain-wall wrappers and 375 sheets *because the viewer does not draw
+ * them* — a wrapper's envelope spans a whole facade, a sheet spans a storey.
+ * Rendering all 38,951 records laid those envelopes over the building as solid
+ * blocks and hid everything underneath. It is now given the display selection,
+ * which is what the viewer itself draws.
  *
- * Each element is drawn as the convex hull of its plan points rather than its
- * full outline. That is a deliberate simplification: 35,000 exact outlines make
- * an SVG no browser will open, and the hull preserves the thing being judged —
- * whether the shape sits where the export's does and covers what it covers.
+ * **It was a plan view**, which is the right projection for judging a footprint
+ * and the wrong one for judging a building: a plan cannot show that a storey is
+ * missing, or that a railing sits a floor too high. The projection is isometric
+ * now, matching the studio's default `seIso` camera, so the two can be held side
+ * by side.
+ *
+ * Each element is the convex hull of its projected points — the silhouette,
+ * which is what an isometric view of a convex box shows anyway — and each layer
+ * is one merged path. 35,000 individually addressable elements make an SVG no
+ * browser will open, and nothing here needs them addressable.
  */
 import { writeFileSync } from "node:fs";
 
 import { convertModel } from "./audit-coverage.ts";
-import { drawnPlanPoints, hull, readTruthFootprints, type Point2 } from "./footprint-audit.ts";
+import { streamTruthVertices, type Point2 } from "./footprint-audit.ts";
+import { drawnBounds } from "./overlay-diff.ts";
 
+import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 /** Panel size in SVG units; three of these sit side by side. */
-const PANEL = 900;
+const PANEL = 1000;
 
 /** Margin inside each panel, so nothing touches the frame. */
-const PAD = 24;
+const PAD = 30;
 
-/** Elements smaller than this in plan are dropped: they are noise at this scale. */
-const MIN_PLAN_SQ_FEET = 0.5;
+/** Elements whose silhouette is smaller than this are noise at this scale. */
+const MIN_SILHOUETTE_SQ_UNITS = 0.4;
 
 const STYLE = {
-  recovered: { fill: "#e8a33d", stroke: "#b3762180", opacity: 0.55 },
-  export: { fill: "#8fa4bd", stroke: "#5c718c80", opacity: 0.55 },
-  missing: { fill: "#d8443c", stroke: "#a32f2880", opacity: 0.85 },
+  recovered: { fill: "#e2963a", stroke: "#9c6318", opacity: 0.5 },
+  exported: { fill: "#8ea3bb", stroke: "#4f6480", opacity: 0.5 },
+  missing: { fill: "#d33b30", stroke: "#8e211a", opacity: 0.92 },
 } as const;
 
-type Shape = { points: Point2[]; area: number };
+/**
+ * South-east isometric, the studio's default camera. Z is up and in feet, as
+ * everywhere else in this repo. `depth` orders the painter's algorithm: larger
+ * is nearer the viewer.
+ */
+const COS30 = Math.cos(Math.PI / 6);
+const SIN30 = Math.sin(Math.PI / 6);
+function project(x: number, y: number, z: number): [number, number] {
+  return [(x - y) * COS30, (x + y) * SIN30 - z];
+}
+function depthOf(x: number, y: number, z: number): number {
+  return x + y + z;
+}
 
-function planArea(ring: Point2[]): number {
+type Silhouette = { points: Point2[]; depth: number; area: number };
+
+function hull(points: Point2[]): Point2[] {
+  if (points.length < 3) return points;
+  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: Point2, a: Point2, b: Point2) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const build = (source: Point2[]) => {
+    const out: Point2[] = [];
+    for (const point of source) {
+      while (out.length >= 2 && cross(out[out.length - 2]!, out[out.length - 1]!, point) <= 0) {
+        out.pop();
+      }
+      out.push(point);
+    }
+    out.pop();
+    return out;
+  };
+  return [...build(sorted), ...build([...sorted].reverse())];
+}
+
+function ringArea(ring: Point2[]): number {
   let total = 0;
   for (let index = 0; index < ring.length; index += 1) {
     const here = ring[index]!;
@@ -62,123 +104,159 @@ function planArea(ring: Point2[]): number {
   return Math.abs(total) / 2;
 }
 
-function toShape(points: Point2[]): Shape | null {
-  if (points.length < 3) return null;
-  const ring = hull(points);
+function silhouetteOf(projected: Point2[], depth: number): Silhouette | null {
+  const ring = hull(projected);
   if (ring.length < 3) return null;
-  const area = planArea(ring);
-  return area >= MIN_PLAN_SQ_FEET ? { points: ring, area } : null;
-}
-
-/** World feet to panel units, y flipped so north is up. */
-function projector(box: [number, number, number, number]) {
-  const [minX, minY, maxX, maxY] = box;
-  const span = Math.max(maxX - minX, maxY - minY) || 1;
-  const scale = (PANEL - 2 * PAD) / span;
-  const offsetX = PAD + ((PANEL - 2 * PAD) - (maxX - minX) * scale) / 2;
-  const offsetY = PAD + ((PANEL - 2 * PAD) - (maxY - minY) * scale) / 2;
-  return (x: number, y: number): [number, number] => [
-    offsetX + (x - minX) * scale,
-    PANEL - (offsetY + (y - minY) * scale),
-  ];
-}
-
-function pathFor(
-  shape: Shape,
-  project: (x: number, y: number) => [number, number],
-  originX: number,
-): string {
-  const parts: string[] = [];
-  for (let index = 0; index < shape.points.length; index += 1) {
-    const [x, y] = project(shape.points[index]![0], shape.points[index]![1]);
-    parts.push(`${index === 0 ? "M" : "L"}${(x + originX).toFixed(1)} ${y.toFixed(1)}`);
-  }
-  return `${parts.join("")}Z`;
+  const area = ringArea(ring);
+  return area >= MIN_SILHOUETTE_SQ_UNITS ? { points: ring, depth, area } : null;
 }
 
 /**
- * One layer of shapes as a single `<path>`. Merging them matters: 35,000
- * separate elements is an SVG that takes seconds to parse and megabytes to
- * hold, and nothing here needs them individually addressable. Largest first, so
- * a slab does not cover the walls standing on it.
+ * The world points of what the viewer draws for a record, following the same
+ * precedence `buildBoundsMeshes` uses. `drawnBounds` already follows it and
+ * returns an axis-aligned box, which would draw every element as a box; the
+ * oriented routes are unpacked here so a wall at an angle is drawn at that
+ * angle and a swept railing is drawn as its ribbon.
+ */
+function drawnWorldPoints(record: ElementBoundsRecord): [number, number, number][] {
+  const points: [number, number, number][] = [];
+  if (record.railPath) {
+    for (const polyline of record.railPath.polylines) {
+      for (const [x, y, z] of polyline) {
+        points.push([x, y, z], [x, y, z + record.railPath.guardHeightFeet]);
+      }
+    }
+    return points;
+  }
+  if (record.loops?.length) {
+    const { min, max } = record.boundsFeet;
+    for (const ring of record.loops) {
+      for (const [x, y] of ring) points.push([x, y, min.z], [x, y, max.z]);
+    }
+    return points;
+  }
+  if (record.orientedBox) return record.orientedBox.map(([x, y, z]) => [x, y, z]);
+  const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+  if (solids.length) {
+    for (const solid of solids) {
+      const dx = solid.end.x - solid.start.x;
+      const dy = solid.end.y - solid.start.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / length) * solid.thickness * 0.5;
+      const ny = (dx / length) * solid.thickness * 0.5;
+      for (const end of [solid.start, solid.end]) {
+        for (const sign of [1, -1]) {
+          points.push(
+            [end.x + nx * sign, end.y + ny * sign, solid.baseElevation],
+            [end.x + nx * sign, end.y + ny * sign, solid.topElevation],
+          );
+        }
+      }
+    }
+    return points;
+  }
+  if (record.arcs?.length) {
+    for (const arc of record.arcs) {
+      const sweep = arc.endAngle - arc.startAngle;
+      const steps = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 24)));
+      for (let step = 0; step <= steps; step += 1) {
+        const angle = arc.startAngle + (sweep * step) / steps;
+        const ux = Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x;
+        const uy = Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y;
+        for (const radius of [arc.radius - arc.thickness / 2, arc.radius + arc.thickness / 2]) {
+          points.push(
+            [arc.centre.x + radius * ux, arc.centre.y + radius * uy, arc.baseElevation],
+            [arc.centre.x + radius * ux, arc.centre.y + radius * uy, arc.topElevation],
+          );
+        }
+      }
+    }
+    return points;
+  }
+  const box = drawnBounds(record);
+  for (const x of [box[0]!, box[3]!]) {
+    for (const y of [box[1]!, box[4]!]) {
+      for (const z of [box[2]!, box[5]!]) points.push([x, y, z]);
+    }
+  }
+  return points;
+}
+
+/**
+ * One layer as a single `<path>`, painted far-to-near so a near wall covers the
+ * one behind it rather than the other way round.
  */
 function layer(
-  shapes: Shape[],
-  project: (x: number, y: number) => [number, number],
+  shapes: Silhouette[],
+  place: (point: Point2) => [number, number],
   originX: number,
   style: { fill: string; stroke: string; opacity: number },
 ): string {
   if (!shapes.length) return "";
-  const d = [...shapes]
-    .sort((a, b) => b.area - a.area)
-    .map((shape) => pathFor(shape, project, originX))
-    .join("");
+  const parts: string[] = [];
+  for (const shape of [...shapes].sort((a, b) => a.depth - b.depth)) {
+    for (let index = 0; index < shape.points.length; index += 1) {
+      const [x, y] = place(shape.points[index]!);
+      parts.push(`${index === 0 ? "M" : "L"}${(x + originX).toFixed(1)} ${y.toFixed(1)}`);
+    }
+    parts.push("Z");
+  }
   return (
-    `<path d="${d}" fill="${style.fill}" fill-opacity="${style.opacity}" ` +
-    `stroke="${style.stroke}" stroke-width="0.4" fill-rule="evenodd"/>`
+    `<path d="${parts.join("")}" fill="${style.fill}" fill-opacity="${style.opacity}" ` +
+    `stroke="${style.stroke}" stroke-opacity="0.45" stroke-width="0.35"/>`
   );
 }
 
 export function renderComparison(
-  records: ElementBoundsRecord[],
-  truth: Map<number, { type: string; points: Point2[] }>,
+  recovered: Silhouette[],
+  exported: Silhouette[],
+  missing: Silhouette[],
+  counts: { recovered: number; exported: number; missing: number; heldBack: number },
 ): string {
-  const recovered: Shape[] = [];
-  const drawnIds = new Set<number>();
-  for (const record of records) {
-    const shape = toShape(drawnPlanPoints(record));
-    if (!shape) continue;
-    recovered.push(shape);
-    drawnIds.add(record.elementId);
-  }
-
-  const exported: Shape[] = [];
-  const missing: Shape[] = [];
-  for (const [elementId, product] of truth) {
-    const shape = toShape(product.points);
-    if (!shape) continue;
-    exported.push(shape);
-    if (!drawnIds.has(elementId)) missing.push(shape);
-  }
-
-  // One frame for all three panels, so they share a scale and can be compared
-  // by eye. Framing on the export alone would hide a recovered element that
-  // escapes the building.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  // One frame for all three panels. Framing on the export alone would hide a
+  // recovered element that escapes the building, which is the thing the hull
+  // assertion exists to catch.
+  let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity;
   for (const shapes of [recovered, exported]) {
     for (const shape of shapes) {
-      for (const [x, y] of shape.points) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
+      for (const [u, v] of shape.points) {
+        if (u < minU) minU = u;
+        if (u > maxU) maxU = u;
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
       }
     }
   }
-  const project = projector([minX, minY, maxX, maxY]);
+  const span = Math.max(maxU - minU, maxV - minV) || 1;
+  const scale = (PANEL - 2 * PAD) / span;
+  const offsetU = PAD + ((PANEL - 2 * PAD) - (maxU - minU) * scale) / 2;
+  const offsetV = PAD + ((PANEL - 2 * PAD) - (maxV - minV) * scale) / 2;
+  const place = ([u, v]: Point2): [number, number] => [
+    offsetU + (u - minU) * scale,
+    offsetV + (v - minV) * scale,
+  ];
 
   const label = (text: string, originX: number, sub: string) =>
-    `<text x="${originX + PAD}" y="${PAD + 6}" font-family="ui-sans-serif,system-ui,sans-serif" ` +
-    `font-size="17" font-weight="600" fill="#1f2933">${text}</text>` +
-    `<text x="${originX + PAD}" y="${PAD + 26}" font-family="ui-sans-serif,system-ui,sans-serif" ` +
-    `font-size="13" fill="#66707a">${sub}</text>`;
-
+    `<text x="${originX + PAD}" y="${PAD + 4}" font-family="ui-sans-serif,system-ui,sans-serif" ` +
+    `font-size="18" font-weight="600" fill="#1c2733">${text}</text>` +
+    `<text x="${originX + PAD}" y="${PAD + 25}" font-family="ui-sans-serif,system-ui,sans-serif" ` +
+    `font-size="13" fill="#6b7580">${sub}</text>`;
   const frame = (originX: number) =>
     `<rect x="${originX + 0.5}" y="0.5" width="${PANEL - 1}" height="${PANEL - 1}" ` +
-    `fill="#fbfaf7" stroke="#dfdcd4"/>`;
+    `fill="#fbfaf8" stroke="#e0ddd6"/>`;
+  const n = (value: number) => value.toLocaleString();
 
-  const count = (n: number) => n.toLocaleString();
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${PANEL * 3}" height="${PANEL}" viewBox="0 0 ${PANEL * 3} ${PANEL}">
-<rect width="${PANEL * 3}" height="${PANEL}" fill="#fbfaf7"/>
+<rect width="${PANEL * 3}" height="${PANEL}" fill="#fbfaf8"/>
 ${frame(0)}${frame(PANEL)}${frame(PANEL * 2)}
-${layer(recovered, project, 0, STYLE.recovered)}
-${layer(exported, project, PANEL, STYLE.export)}
-${layer(exported, project, PANEL * 2, STYLE.export)}
-${layer(recovered, project, PANEL * 2, STYLE.recovered)}
-${layer(missing, project, PANEL * 2, STYLE.missing)}
-${label("Recovered from the RVT", 0, `${count(recovered.length)} element footprints, no IFC involved`)}
-${label("The paired IFC export", PANEL, `${count(exported.length)} products, ground truth`)}
-${label("Overlay", PANEL * 2, `${count(missing.length)} in the export and not recovered, in red`)}
+${layer(recovered, place, 0, STYLE.recovered)}
+${layer(exported, place, PANEL, STYLE.exported)}
+${layer(exported, place, PANEL * 2, STYLE.exported)}
+${layer(recovered, place, PANEL * 2, STYLE.recovered)}
+${layer(missing, place, PANEL * 2, STYLE.missing)}
+${label("Recovered from the RVT", 0, `${n(counts.recovered)} elements as the viewer draws them, no IFC involved`)}
+${label("The paired IFC export", PANEL, `${n(counts.exported)} products, ground truth`)}
+${label("Overlay", PANEL * 2, `${n(counts.missing)} in the export and not recovered, in red`)}
 </svg>
 `;
 }
@@ -194,9 +272,56 @@ if (isEntryPoint()) {
     console.error("usage: compare-view.ts <model.rvt> <model.ifc> <out.svg>");
     process.exit(2);
   }
-  const truth = await readTruthFootprints(ifcPath);
+
   const outcome = convertModel(rvtPath);
-  const svg = renderComparison(outcome.elementBounds, truth);
+  // The scene, not every record: the wrappers and sheets the selection holds
+  // back are exactly the storey-sized envelopes that would cover everything.
+  const selection = selectDisplayBounds(outcome.elementBounds);
+  const drawnIds = new Set(selection.records.map((record) => record.elementId));
+
+  const recovered: Silhouette[] = [];
+  for (const record of selection.records) {
+    const world = drawnWorldPoints(record);
+    if (!world.length) continue;
+    let depth = 0;
+    const projected: Point2[] = [];
+    for (const [x, y, z] of world) {
+      projected.push(project(x, y, z));
+      depth = Math.max(depth, depthOf(x, y, z));
+    }
+    const shape = silhouetteOf(projected, depth);
+    if (shape) recovered.push(shape);
+  }
+
+  // The export's vertices, projected as they stream so the whole cloud never
+  // has to be held at once.
+  const byTag = new Map<number, { projected: Point2[]; depth: number }>();
+  await streamTruthVertices(ifcPath, (tag, _type, x, y, z) => {
+    const entry = byTag.get(tag) ?? { projected: [], depth: -Infinity };
+    entry.projected.push(project(x, y, z));
+    entry.depth = Math.max(entry.depth, depthOf(x, y, z));
+    byTag.set(tag, entry);
+  });
+
+  const exported: Silhouette[] = [];
+  const missing: Silhouette[] = [];
+  for (const [tag, entry] of byTag) {
+    const shape = silhouetteOf(entry.projected, entry.depth);
+    if (!shape) continue;
+    exported.push(shape);
+    if (!drawnIds.has(tag)) missing.push(shape);
+  }
+
+  const svg = renderComparison(recovered, exported, missing, {
+    recovered: recovered.length,
+    exported: exported.length,
+    missing: missing.length,
+    heldBack: selection.omittedWrapperCount + selection.omittedSheetCount,
+  });
   writeFileSync(outPath, svg);
-  console.log(`${outPath}  ${(svg.length / 1e6).toFixed(1)} MB`);
+  console.log(
+    `${outPath}  ${(svg.length / 1e6).toFixed(1)} MB  ` +
+      `${recovered.length} drawn, ${exported.length} exported, ${missing.length} missing, ` +
+      `${selection.omittedWrapperCount + selection.omittedSheetCount} held back`,
+  );
 }

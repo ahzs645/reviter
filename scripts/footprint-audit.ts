@@ -264,6 +264,47 @@ export function drawnPlanPoints(record: ElementBoundsRecord): Point2[] {
  * element can leave the exporter as several products sharing one `Tag`, and
  * keeping the last would measure a fragment of the element against the whole.
  */
+export async function streamTruthVertices(
+  ifcPath: string,
+  visit: (tag: number, type: string, x: number, y: number, z: number) => void,
+): Promise<void> {
+  const { IfcAPI } = await import("web-ifc");
+  const source = readFileSync(ifcPath, "latin1");
+  const products = new Map<number, { type: string; tag: number }>();
+  const pattern = /#(\d+)=(IFC[A-Z0-9]+)\(([^\n]*)/g;
+  for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
+    const fields = match[3]!.split(",");
+    const tag = Number(/'(\d+)'/.exec(fields[fields.length - 1] ?? "")?.[1] ?? NaN);
+    if (Number.isFinite(tag)) products.set(Number(match[1]), { type: match[2]!, tag });
+  }
+  const api = new IfcAPI();
+  await api.Init();
+  const modelID = api.OpenModel(new Uint8Array(readFileSync(ifcPath)));
+  api.StreamAllMeshes(modelID, (mesh) => {
+    const product = products.get(mesh.expressID);
+    if (!product) return;
+    const parts = mesh.geometries;
+    for (let part = 0; part < parts.size(); part += 1) {
+      const item = parts.get(part);
+      const geometry = api.GetGeometry(modelID, item.geometryExpressID);
+      const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
+      const m = item.flatTransformation;
+      for (let v = 0; v + 2 < vertices.length; v += 6) {
+        const x = vertices[v]!, y = vertices[v + 1]!, z = vertices[v + 2]!;
+        // Y-up metres -> Z-up feet, as everywhere else in this repo.
+        visit(
+          product.tag,
+          product.type,
+          (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) * FEET_PER_METRE,
+          -(m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) * FEET_PER_METRE,
+          (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) * FEET_PER_METRE,
+        );
+      }
+      geometry.delete();
+    }
+  });
+}
+
 export async function readTruthFootprints(
   ifcPath: string,
 ): Promise<Map<number, { type: string; points: Point2[] }>> {
