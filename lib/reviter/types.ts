@@ -228,6 +228,11 @@ export type ConvertStats = {
   disownedSolids?: number;
   /** Stair runs and landings that adopted their companion record's own box. */
   adoptedStairBoxes?: number;
+  /**
+   * Envelopes narrowed in z to the element's own faces, where those faces cap it
+   * above and below. A stair stringer's record carries the whole assembly's band.
+   */
+  narrowedFacetBands?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
   unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */

@@ -41,7 +41,7 @@ import {
   type InstancePlacement,
   type LocalBounds,
 } from "./instanced-geometry.ts";
-import { surfaceQuadsFor, wallArcs, wallSolids } from "./native-geometry.ts";
+import { facetElevationBand, surfaceQuadsFor, wallArcs, wallSolids } from "./native-geometry.ts";
 import {
   boundaryLoopsFor,
   collectSketchCurves,
@@ -319,6 +319,13 @@ const DATUM_PILE_MIN_MODEL_SPAN_FEET = 50;
 
 /** Records needed before a pile on the datum can be told apart from a few elements. */
 const MIN_RECORDS_FOR_DATUM_PILE = 500;
+
+/**
+ * A facet band shorter than this is not narrowed to. Nothing in the supplied
+ * project comes close — all 79 accepted bands are over half a foot tall and none
+ * is flat — so this only stops a degenerate face set replacing a real extent.
+ */
+const MIN_FACET_BAND_FEET = 0.05;
 
 /** Pages sampled to learn which object markers this file uses. */
 const MARKER_SAMPLE_PAGES = 12;
@@ -802,9 +809,15 @@ export function convertRvtBytes(
     // a rigid transform and points at a shared shape. Resolving the pair gives
     // the instance its true orientation instead of an axis-aligned envelope.
     const orientedBoxes = new Map<number, [number, number, number][]>();
+    // Elements whose box was read from the bounding faces of their own B-rep.
+    // The agreement check further down assumes the box and the element's own
+    // bounds record are readings of the same thing, and for a casement window
+    // they are not — see `LocalBounds.faceRead`.
+    const faceReadBoxes = new Set<number>();
     for (const [elementId, placement] of instancePlacements) {
       const shape = localBounds.get(placement.geometryId);
       if (!shape) continue;
+      if (shape.faceRead) faceReadBoxes.add(elementId);
       orientedBoxes.set(elementId, instanceCorners(placement, shape));
     }
 
@@ -1064,7 +1077,12 @@ export function convertRvtBytes(
       const orientedBox = orientedBoxes.get(record.elementId);
       // A record synthesised from the instance itself has nothing to check
       // against; one that also carries a bounds record does.
-      if (orientedBox && (record.recordOffset < 0 || agreesWithBounds(orientedBox, record.boundsFeet))) {
+      if (
+        orientedBox &&
+        (record.recordOffset < 0 ||
+          faceReadBoxes.has(record.elementId) ||
+          agreesWithBounds(orientedBox, record.boundsFeet))
+      ) {
         record.orientedBox = orientedBox;
       } else if (orientedBox) {
         rejectedOrientedBoxes += 1;
@@ -1221,12 +1239,56 @@ export function convertRvtBytes(
      */
     const recordsById = new Map(elementBounds.map((record) => [record.elementId, record]));
     let adoptedStairBoxes = 0;
+    const adoptedIds = new Set<number>();
     for (const companion of elementBounds) {
       if (companion.recordCode !== STAIR_COMPANION_CODE || companion.recordCount !== 1) continue;
       const owner = recordsById.get(companion.elementId - 1);
       if (!owner) continue;
       owner.boundsFeet = companion.boundsFeet;
+      adoptedIds.add(owner.elementId);
       adoptedStairBoxes += 1;
+    }
+
+    /*
+     * The other stair sub-component with the assembly's z band, and it has no
+     * companion record.
+     *
+     * The rule above gives a stair run and a landing their own box, from a record
+     * the file files beside them. A stringer carriage has no such record — of the
+     * 263 that join an export product, a nearby record reproduces the stringer's
+     * own z band for **33, of which 18 are records that are already right**,
+     * against 2 under a shuffled pairing, and the offsets that do hit are spread
+     * over -1, -2 and -3 across three record codes. There is no companion to
+     * adopt. Nor is the band in the parameter table: **0 of the 263 stringers
+     * carry a parameter table at all.**
+     *
+     * What a stringer does own, when it owns anything, is its own faces, and
+     * `facetElevationBand` narrows the envelope to them where they bound the
+     * element in z. The band can only shrink the box, so nothing gains extent.
+     *
+     * A record whose box came from the stair companion above is excluded: that is
+     * already a verified second reading, and narrowing the one stair run this
+     * would otherwise reach took it from 0.00 ft to 2.20 ft out. The narrowing is
+     * also confined to records the envelope is what gets *drawn* for — an element
+     * with a ring, a rail path, a placed box, a solid or an arc is drawn from that
+     * instead, and its record's z band is not what the viewer shows.
+     */
+    let narrowedFacetBands = 0;
+    for (const record of elementBounds) {
+      if (!record.quads?.length || adoptedIds.has(record.elementId)) continue;
+      if (record.railPath || record.loops?.length || record.orientedBox) continue;
+      if (record.solids?.length || record.solid || record.arcs?.length) continue;
+      const band = facetElevationBand(record.quads);
+      if (!band) continue;
+      const min = Math.max(band.min, record.boundsFeet.min.z);
+      const max = Math.min(band.max, record.boundsFeet.max.z);
+      if (max - min < MIN_FACET_BAND_FEET) continue;
+      if (min - record.boundsFeet.min.z < 0.01 && record.boundsFeet.max.z - max < 0.01) continue;
+      record.boundsFeet = {
+        min: { ...record.boundsFeet.min, z: min },
+        max: { ...record.boundsFeet.max, z: max },
+      };
+      narrowedFacetBands += 1;
     }
 
     // Doors need every wall in the model, so they are a second pass rather than
@@ -1432,6 +1494,7 @@ export function convertRvtBytes(
           adoptedStairBoxes,
           clippedSolids,
           disownedSolids,
+          narrowedFacetBands,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,

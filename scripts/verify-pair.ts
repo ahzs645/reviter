@@ -439,6 +439,36 @@ function checkRailingGuard(outcome: ConvertResult, coverage: CoverageResult): vo
 }
 
 /**
+ * Two rules whose failure mode is silence rather than error.
+ *
+ * `solidBelongsToEnvelope` drops a plane triple drawn on an element whose own
+ * bounds record disagrees with it — 11 of 5,360 on drawn records here, of which
+ * 6 improved by 4.8 to 252.2 ft and none worsened. `facetElevationBand` narrows
+ * a stair stringer's z to the facets it owns, where those facets cap it. Neither
+ * can be judged by a per-class percentage: the first is 0.2% specific and the
+ * variants that fire on 62% and 100% of solids *score better* on wall size,
+ * because the envelope is the export's own box. So both are asserted on reach.
+ */
+function checkGeometryRulesFire(outcome: ConvertResult): void {
+  const disowned = outcome.stats?.disownedSolids ?? 0;
+  const narrowed = outcome.stats?.narrowedFacetBands ?? 0;
+  check(
+    "stray-solids-disowned",
+    disowned,
+    disowned >= 1,
+    `${disowned} solids dropped from records whose own envelope disagrees with them`,
+    ">= 1",
+  );
+  check(
+    "facet-bands-narrowed",
+    narrowed,
+    narrowed >= 1,
+    `${narrowed} elevation bands narrowed to the element's own capping facets`,
+    ">= 1",
+  );
+}
+
+/**
  * How far an element may be drawn past *its own* export box, in feet.
  *
  * `no-records-outside-hull` measures against the whole building's hull, so an
@@ -447,15 +477,18 @@ function checkRailingGuard(outcome: ConvertResult, coverage: CoverageResult): vo
  * handful of monsters cannot move a figure over 7,000 walls. This is the gap
  * those two leave — measured per element, against that element's own truth.
  *
- * Sized to fire on the state it exists to catch. The worst here is a wall drawn
- * **260.3 ft** from its own export box, and about two dozen raked stair
- * stringers drawn as axis-aligned envelopes 11-17 ft across where the export
- * gives them 1.3-9.3 ft. A budget of 40 elements over 10 ft holds the current
- * 32 with room for a different building's spread, and still fires long before
- * the shape is unrecognisable.
+ * Sized to fire on the state it exists to catch. It was written when a wall was
+ * drawn **260.3 ft** from its own export box; dropping the misattributed solid
+ * that caused it and narrowing the stair stringers' z band to their own facets
+ * took the count 35 → 23 and the worst case to 19.8 ft. The budget is 26,
+ * because the 23 that remain are *characterised* — 21 stringers that own no
+ * facet at all, 401861 which has no second reading to check against, and
+ * 1622190 where the exporter tags only a ramp's landing and writes its two
+ * flights untagged — so a rise above them is a new defect rather than the
+ * known residue.
  */
 const MAX_ELEMENT_OVERHANG_FEET = 10;
-const MAX_ELEMENTS_OVER_OWN_BOX = 40;
+const MAX_ELEMENTS_OVER_OWN_BOX = 26;
 
 function checkElementOverhang(overlay: OverlayResult): void {
   const over = overlay.overhangingElements ?? [];
@@ -647,6 +680,7 @@ printOverlay(overlay);
 checkCoverage(coverage);
 checkHull(overlay);
 checkElementOverhang(overlay);
+checkGeometryRulesFire(outcome);
 checkCentreAgreement(overlay);
 checkDoorSwing(coverage, overlay);
 checkRailingGuard(outcome, coverage);

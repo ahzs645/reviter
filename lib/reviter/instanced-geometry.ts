@@ -74,6 +74,26 @@ export type LocalBounds = {
    * because a leaf and an unfoldable swing are both symmetric in plan.
    */
   leaf?: boolean;
+  /**
+   * True when the box was read from the **bounding faces of the shape's own
+   * B-rep**, rather than from a cached AABB or from the trim ranges.
+   *
+   * It exists for one decision in `convert.ts`. A placed instance's oriented box
+   * is otherwise disbelieved wherever it disagrees with the element's own
+   * duplicated-bounds record by more than a foot, and that check assumes the two
+   * are readings of the same thing. For a casement window they are not: the
+   * record is the family's box **including the sash swung open**, 1.35 ft deeper
+   * than the window the export writes, so the tighter reading was being rejected
+   * in favour of the swept one and 3 of the 20 windows were drawn 1.35 ft
+   * oversized.
+   *
+   * The flag is deliberately narrower than `leaf`. Exempting every `leaf` shape
+   * instead was measured and **rejected**: `doorShapeFromPlanes` flags its
+   * reading too, and 17 of the `0x0810` shapes it reads belong to columns whose
+   * oriented box that check is right to refuse — columns fell from 100.0% to
+   * **90.5%** centre agreement, 26 of 275, to gain 3 windows.
+   */
+  faceRead?: boolean;
 };
 
 function finite(value: number): boolean {
@@ -485,11 +505,13 @@ const MIDPLANE_TOLERANCE_FEET = 1e-6;
  *
  * A door leaf stands on the floor and a window sits on a sill, and that is the
  * whole discriminator: the base of the box is **0.0000 ft for every one of the
- * 257 door shapes** in the supplied project, and 1.0007 or 3.0000 ft for all 8
- * window shapes. Any threshold strictly inside that gap separates the two, so
- * this is a plateau three orders of magnitude wide rather than a fitted value —
- * 0.001 ft and 1.0 ft select the same 8 shapes. 0.1 ft is 30 mm, comfortably
- * above authoring noise and far below the shallowest sill a building has.
+ * 257 door shapes** in the supplied project — minimum −0.0000, maximum 0.0000,
+ * none above the origin — and 1.0007 to 3.0020 ft for all 8 window shapes. Any
+ * threshold strictly inside that gap separates the two, so this is a plateau six
+ * orders of magnitude wide rather than a fitted value: **1e-6, 0.001, 0.01, 0.1,
+ * 0.5 and 1.0 ft all select the same 8 window shapes and the same 0 door
+ * shapes**, and only at 1.5 ft does a real window start to be lost. 0.1 ft is 30
+ * mm, comfortably above authoring noise and far below the shallowest sill.
  */
 const SILL_ABOVE_ORIGIN_FEET = 0.1;
 
@@ -548,7 +570,8 @@ function planeTables(patches: SurfacePatch[]): PlanePatch[][] {
  * trimmed patches is 27.3 x 12.6 x 10.4 ft on a 6.0 x 1.0 x 4.4 ft window.
  *
  * The gate is arithmetic on the same origins: every axis's extreme pair must have
- * its own **mid-plane** present, the exact mean of the two to 1e-6. A window is
+ * its own **mid-plane** present, the exact mean of the two to 1e-6 — which needs
+ * three faces normal to each axis, so a table bounding fewer is refused. A window is
  * written as three parallel triples — two faces and the plane between them — so
  * the test is self-checking in the way the curved-wall cylinder triple is, and it
  * is what separates a window from a door: a door family's x triple sits at
@@ -604,6 +627,11 @@ function faceExtent(table: PlanePatch[]): { min: number[]; max: number[] } | nul
  * | faces, one table only | 45.0% | 45.0% | 0.570 ft | 1.141 ft |
  * | **faces, tables intersected** | **100.0%** | **100.0%** | **0.042 ft** | **0.141 ft** |
  *
+ * Measured on the box this returns, carried out through each window's own
+ * placement. Three of the 20 need `LocalBounds.faceRead` as well to reach the
+ * viewer, because the agreement check in `convert.ts` would otherwise draw them
+ * from their record instead; without it the conversion reads 85.0% / 85.0%.
+ *
  * **What it costs elsewhere is nothing, and that is measured rather than
  * asserted.** Over all 2,157 `0x0810` shapes the gate fires on 8, and they are
  * the 8 the 20 windows point at: **0 of 228 door shapes, 0 of 29 door-and-opening
@@ -620,12 +648,14 @@ function faceExtent(table: PlanePatch[]): { min: number[]; max: number[] } | nul
  * door reading. Dropping the mid-plane test and keeping the sill breaks two
  * columns, 100.0% to 0.0% on size.
  *
- * Null control: pairing each window with a **shuffled** window shape over 20
- * trials gives 67.5% on centre and 28.0% on size, median size error 1.929 ft. The
- * centre figure is high for a null and the reason is the population rather than
- * the rule — there are 8 shapes across 3 families and the five casement shapes
- * differ from one another only in frame depth, so a shuffle inside that family is
- * nearly a no-op. 28.0% is the comparable figure to the door reading's 14.0%.
+ * Null control, over 20 trials, each window given a shape that is not its own:
+ * drawn from the 8 window shapes it scores **63.8% on centre and 21.0% on size**,
+ * median size error 2.001 ft; drawn from all 2,157 `0x0810` shapes, **1.3% and
+ * 0.5%**, median 3.728 ft. The within-family centre figure is high for a null and
+ * the reason is the population rather than the rule — 8 shapes across 3 families,
+ * and the five casement shapes differ from one another only in frame depth, so a
+ * swap inside that family is nearly a no-op. 21.0% is the figure comparable to
+ * the door reading's 14.0%.
  *
  * The residual is 0.042 ft on centre and 0.141 ft on size, and it is the
  * intersection being an inch tight: a casement's second table is the sash, inset
@@ -667,6 +697,7 @@ function windowShapeFromFaces(patches: SurfacePatch[], elementId: number): Local
     max: max as [number, number, number],
     // The window's own solid, so nothing may fold it into a leaf later.
     leaf: true,
+    faceRead: true,
   };
 }
 

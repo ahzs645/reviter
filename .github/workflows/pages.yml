@@ -29,7 +29,7 @@ jobs:
         run: npm ci
 
       - name: Test converter
-        run: node --experimental-strip-types --test tests/reviter-regression.test.ts tests/studio-overlay.test.ts tests/coverage-split.test.ts tests/door-leaf.test.ts tests/tail-placement.test.ts tests/studio-controls.test.ts tests/solid-clip.test.ts tests/door-shape-leaf.test.ts tests/window-continuation.test.ts tests/holdout.test.ts tests/curved-wall.test.ts tests/footprint-audit.test.ts
+        run: node --experimental-strip-types --test tests/reviter-regression.test.ts tests/studio-overlay.test.ts tests/coverage-split.test.ts tests/door-leaf.test.ts tests/tail-placement.test.ts tests/studio-controls.test.ts tests/solid-clip.test.ts tests/door-shape-leaf.test.ts tests/window-continuation.test.ts tests/holdout.test.ts tests/curved-wall.test.ts tests/footprint-audit.test.ts tests/window-shape.test.ts tests/facet-band.test.ts
 
       - name: Build static application
         env:

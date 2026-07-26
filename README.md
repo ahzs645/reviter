@@ -381,7 +381,7 @@ node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc   # e
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc --json > run.json
 ```
 
-Twenty assertions, each named after the rule it guards, so a rule that does not generalise fails loudly rather than quietly drifting: per-class centre agreement floors for the six classes the bounds work put at 96–100%, the door-swing geometry, the railing guard height, the share of sheets held back, a tripwire on records drawn past the export's own hull, and four **firing** assertions. Four of the thresholds are worth reading for their reasoning, which is in the file's header:
+Twenty-two assertions, each named after the rule it guards, so a rule that does not generalise fails loudly rather than quietly drifting: per-class centre agreement floors for the six classes the bounds work put at 96–100%, the door-swing geometry, the railing guard height, the share of sheets held back, a tripwire on records drawn past the export's own hull, and four **firing** assertions. Four of the thresholds are worth reading for their reasoning, which is in the file's header:
 
 - **records outside the hull is budgeted at 6, not a percentage.** Before the sheets rule this model drew 11 records past the hull; a 0.1%-of-drawn budget would have been 31 and would not have caught it. The gate is sized to fire on the state the rule exists to fix. It now reports **0**.
 - **the guard-height band is 2.5–4.5 ft, narrower than the decoder's own 1.5–5 ft filter.** Asserting the filter back would be untestable — every survivor is inside it by construction.
@@ -604,6 +604,69 @@ The fix is one category id. `IfcSlab` centre agreement goes **80.4% → 95.1%** 
 Three negative results from the same work. **A general "envelope beats rebuilt solid" rule is rejected**: over 6,346 solid-route elements it fixes 68 walls and 11 landings and breaks a ceiling, and this file already records that a global envelope fallback costs 269 of 6,527 records their orientation — invisible to an axis-aligned metric because the export's box is axis-aligned too. Scoped to landings, where a flat slab has no orientation to lose, it costs nothing. **The `id − 1` union hypothesis is true and worthless**: a stair part's Sketch companion sits one *above* it, so the floor convention looked wrong here, but own-only and the union score identically at 17 of 19, so nothing was special-cased. And **the sketch route does nothing for stair flights** — the three that reach it are all per-storey splits.
 
 One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
+
+## Windows are bounded by the opposite evidence to doors
+
+A window and a door point at the same class of `0x0810` B-rep and are bounded by *opposite* faces of it. A door's own thickness is the **nearest** y-normal plane, because the furthest is the swing; a window's frame depth is the **outermost** pair, because the nearest is the glass. The door reading also forces `z ∈ [0, longest range]`, which for a window on a sill is a storey out — that was the whole of the 2.208 ft centre error.
+
+The placement was never the problem: all 20 windows carry a correct one, and their plan was already right to 0.32 ft.
+
+An axis's extent is the span of the origins of the planes whose normal is that axis. Trim ranges are never consulted, for the reason the door work established: several patches carry a neighbour's range verbatim, which is why a hull over them is 27.3 × 12.6 × 10.4 ft against a real 6.0 × 1.0 × 4.4 ft window. Where a shape holds a second plane table the two are **intersected** per axis, which is what cuts a casement's swung-open sash.
+
+The gate has two clauses, each measured on its own: every axis's extreme pair must have its own **mid-plane** (exact mean to 1e-6), **and** the box's base must sit above the local origin. That second clause is the discriminator, and it comes from the building rather than from a threshold — **a door leaf stands on the floor, z base 0.0000 for all 257 door shapes; a window sits on a sill, 1.0007–3.0020 ft.** The sill threshold is a plateau: anything from 1e-6 to 1.0 ft selects the same 8 window shapes and 0 door shapes.
+
+| `IfcWindow` | before | after |
+| --- | --- | --- |
+| drawn | 14 of 20 | **20 of 20** |
+| centre within 0.5 ft | 21.4% | **100.0%** |
+| size within 0.5 ft | 14.3% | **100.0%** |
+| median centre error | 2.208 ft | **0.042 ft** |
+
+The gate fires on 8 of 2,157 `0x0810` shapes and **0 of 228 door, 0 of 29 door-and-opening, 0 of 17 column, 0 of 1,662 unnamed, 0 of 4 opening**. Every other row of the report is byte-identical; doors stay at 99.2% / 99.1%. Null control over 20 trials, never a window's own shape: 63.8% centre / **21.0% size** from the 8 window shapes — high only because 5 of the 8 differ from each other by frame depth alone — and **1.3% / 0.5%** from all 2,157, median size error 3.728 ft.
+
+Four negatives, all measured. Dropping the mid-plane test admits 53 door shapes serving 195 doors and takes doors from 99.5% to **0.0%**. The sill test without the mid-plane test breaks 2 columns from 100% to 0%. A strict "exactly three faces per axis" reaches only the 5 casement shapes and leaves 9 windows wrong. Skipping the table intersection gives 45.0% / 45.0%. And exempting *every* flagged shape from `agreesWithBounds` rather than only face-read ones gains 3 windows and costs **26 columns** — the flag was narrowed instead.
+
+Separately, `readLocalBounds` now refuses a fallback box degenerate on **all three** axes: 368 of the 3,699 objects reaching the `+48` fallback read as six subnormal doubles, 12 of them shapes that placements point at, each drawn as eight identical corners. Flatness on *one* axis is deliberately not refused — 4,077 of 14,876 framed reads are flat on one axis, so it is not evidence of a bad read.
+
+## A raked solid is not recoverable, and the stringers' defect is not rake
+
+Two dozen stair stringers were drawn as axis-aligned envelopes 11–17 ft across where the export gives them 1.3–9.3 ft, which reads on screen as a flat wedge through the building. The obvious fix — the raked analogue of `wallSolidsFor` — does not exist in this file, and the census says so cleanly:
+
+| stride-105 windows on an owned plane run | 31,153 |
+| --- | --- |
+| three planes mutually parallel | 17,181 |
+| and the centre midway between the faces | 6,553 |
+| and all three trims equal | 6,495 |
+| of the 6,553 — already taken by `wallSolidsFor` | 6,352 |
+| — horizontal | 200 |
+| — vertical with a tilted in-plane frame | **1** |
+| — **raked** | **0** |
+
+Of 82,021 planes, 790 are raked in total, and no three of them anywhere form a centre-plus-two-faces triple, at 1e-6 or at 0.01 ft. What a stringer actually owns is 11–13 consecutive plane records written twice whose normals cycle through mutually perpendicular directions — a **facet list**, not a centre and two faces. A sliding window of three over that list is what an earlier count of "314 triples" was measuring.
+
+**One reading recorded here was wrong.** `uDir.z = 0.3367, vDir.z = 0.9416` was read as a sloped body's facet. Those square to 1.000, which in an orthonormal frame means the *normal is horizontal*: it is a **vertical plane with a rotated frame**. The verdict — `wallSolidsFor` declines — stands; the stated reason did not.
+
+**The stringers' real defect is the z band.** Their plan is right to 0.16 ft, and 208 of the 214 over a foot out are wrong in z alone, carrying the *stair assembly's* band: 1523108–1523114 all read −3.3 to 14.4 ft where their own boxes are 1.3–4.9 ft slices. That band is not recoverable from a companion record (33 of 263 within ±20 ids, 18 of which were already correct; shuffled control 2 of 263), not in the parameter table (0 of 263 stringers carry one), and not from the facet hull outright (12 better, 71 worse of 83).
+
+What works for 78 of them is narrowing the envelope's z to the element's own facets **only where those facets cap it** — the set must hold a face with a vertical normal component both up and down. Unconditionally this is a net loss: `IfcMember` 33.7% → 61.4% but `IfcWallStandardCase` **100.0% → 34.9% with 27 of 43 walls flattened to zero height**, because a wall's attributed facets are a fragment of one vertical face and a vertical face bounds nothing in z. With the cap test, `IfcMember` on the 83 concerned goes 33.7% → **63.9%** centre and its median error 1.811 → **0.082 ft**, while walls, slabs and coverings all decline the rule and stay at 100%. Nulls: giving each accepted element another accepted element's band scores 9.6% and flattens 32 of 83; against a shuffled truth the rule improves 0 elements where it improves 42 against the real one. The cap threshold is a plateau — 1e-9 to 0.5 selects the same 79 elements.
+
+Reach is the limit: **190 of 273 drawn stringers own no surface at all.** Stringers over a foot out go 214 → 187, over 5 ft 116 → 99, over 10 ft 27 → 21.
+
+**The honest alternative was measured and not taken.** Dropping all 273 stringer records costs 262 `IfcMember`, one `IfcStairFlight` and 10 unnamed elements — coverage 92.5% → 91.8%. And it cannot be aimed at "known raked surfaces", because only 83 own facets and those are now the ones drawn *right*: that key would delete precisely the 78 the narrowing fixed.
+
+## A solid drawn on the wrong element
+
+Six of the seven elements drawn more than 10 ft past their own export box were one bug, worst 260.3 ft: the bounds record reproduces the export box corner for corner, and a **misattributed plane triple** is drawn over it. `clipSolidToEnvelope` declines to help by design, because a solid wholly outside its envelope is "a disagreement to report rather than a length to invent".
+
+The evidence that the solid is the wrong reading is independent of any box metric: **4 of the 11 stray solids are carried by a second element** — a plane triple is one body — and for 3 of those the co-owner's envelope reproduces the solid's own length and thickness to 0.01 ft. 1501065's box is 0.39 × 29.89 ft against a 29.37 × 0.394 ft solid that was being drawn on 1501060 and 1501062 as well.
+
+`solidBelongsToEnvelope` drops them. 147 of 6,756 solids on records with a real bounds block fail, **11 on records the scene draws**; 6 improved — centre error 252.21, 38.21, 20.07, 14.83, 14.62 and 4.82 ft all to **0.00** — and **0 worsened**.
+
+**Per-class percentages cannot judge this rule and were not used to fit it.** The same containment test against the envelope of the element one id below rejects 3,342 of 5,360 solids, and against a *shuffled* envelope 5,356, and both score **higher** on wall size (95.7% and 97.0% against 92.4%) — because the envelope is the export's own box, so rejecting everything looks like an improvement. The discriminator is specificity: **11 of 5,360, 0.2%, against 62% and 100%.**
+
+Two of the seven are not this bug and are recorded as unreachable. 401861 has no duplicated-bounds record at all, so there is no second reading to check against; the export gives it 0.82 ft where its solid is 14.60, and the reason is visible in the export — a curtain wall fills 77.58 to 90.95 ft between it and its neighbour, so the trim range is the wall *before* the curtain-wall insertion. And 1622190, now the assertion's worst case at 19.8 ft, is a **truth-side artefact**: the exporter tags only the ramp's landing and writes its two flights as *untagged* `IfcRampFlight`s, so the element's record box is exactly the union of three products the join can only see one of.
+
+**A latent aliasing bug is recorded, not fixed.** 11 solid *objects* in this model sit in two elements' groups, and `clipSolidToEnvelope` mutates solids in place — so clipping one owner's copy mutates the other's. The disown rule removes every drawn instance of it here, but the aliasing remains.
 
 ## The openings row was double-counting, and openings must not be drawn
 
