@@ -178,7 +178,7 @@ On the supplied 67 MB Revit 2027 project:
 | `IfcStair` | 92 | 88 | 57 | **57** | 58 |
 | `IfcStairFlight` | 121 | 115 | 103 | **97** | 77 |
 | `IfcRamp` | 12 | 12 | 5 | 5 | 5 |
-| building elements | 38,222 | | | **30,679** | 29,424 |
+| building elements | 38,222 | | | **34,457** | 29,424 |
 
 `IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
 
@@ -195,7 +195,7 @@ Together these took drawn elements from 38,353 to 39,114, and coverings from 50.
 
 **Where the remaining loss is.** After these changes `recovered` and `drawn` are within a few elements of each other for every category except the two that are held back deliberately. The gap that is left is in *recovery*, and the `seen` column locates it:
 
-- **never seen at all** — 3,367 mullions, 1,150 panels, 514 doors, 230 walls, 15 windows and 7 ramps. Ramps and windows are the starkest: only 5 of 12 ramps and 5 of 20 windows are proven to exist by any pass. Chaining runs per inflated page, so objects straddling a page boundary are lost, and no pass indexes elements the chain never reaches.
+- **never seen at all** — 3,367 mullions, 1,150 panels, 514 doors, 230 walls, 15 windows and 7 ramps. (Most of the "seen but not recovered" population below has since been placed; see "The missing elements were never in a family document".) Ramps and windows are the starkest: only 5 of 12 ramps and 5 of 20 windows are proven to exist by any pass. Chaining runs per inflated page, so objects straddling a page boundary are lost, and no pass indexes elements the chain never reaches.
 - **seen but no geometry built** — 748 walls, 149 columns, 26 stair flights. These elements are known to be real and yield nothing to the surface, sketch, or instance decoders.
 
 Neither is a display problem, so neither is fixed by the changes above. `IfcRamp` is unchanged at 5 drawn for that reason.
@@ -582,17 +582,56 @@ These elements are therefore *known* rather than *drawn*, and the coverage table
 
 The record-code consensus floor was also widened, so that a cluster too small to reach the old flat support floor of 8 can qualify by being near-unanimous instead — a building holds a dozen ramps and their cluster could never reach 8 no matter how consistent the evidence was. On this model it changes almost nothing: the small categories are limited by not being seen, not by failing to reach consensus. It is kept because the bias it removes is real and the tail categories are the ones a widened floor exists for, but it is recorded here as having produced no measurable gain.
 
-## Scoping the family documents
+## The missing elements were never in a family document
 
-The elements that are seen but never recovered keep pointing at the same place — a family definition the decoders cannot reach — so before treating that as the next project, it is worth establishing what "the family documents" physically are in this file. Three things were checked directly.
+The largest remaining gap — 3,708 curtain-wall mullions, 1,262 panels, 513 doors, all *seen* and never recovered — was attributed in this file to family definitions the decoder could not reach. **That was wrong, and the section that said so is replaced by this one.**
 
-**There is no second container.** Scanning all 366.7 MB of inflated partition pages for the OLE signature returns **zero hits**, and the file has 14 non-empty container entries in total, of which `Partitions/325` is 65.8 MB and everything else together is under 1.2 MB. Whatever a loaded family is here, it is not a nested `.rfa` sitting in its own storage.
+**`revit.local.family:<40 hex>-1.0.0` is not a document reference. It is a parameter id.** Dumping a carrier object whole shows the string sitting in the middle of a three-part identifier triple:
 
-**`Global/ContentDocuments` is not it either.** It is a single gzip member inflating to 2.7 MB, and its strings are template and system settings — `Revit Default DB Server`, `RbsDuctCurve`, `Floor Plans`, a 2015 build stamp. It references no family document at all.
+```text
+autodesk.parameter.group:dimensions-1.0.0
+revit.local.family:bcd13b0166914fd3ba97077a6c6280ae00000665-1.0.0
+autodesk.spec.aec:length-1.0.0
+```
 
-**The families are named inside the partition stream, and only named.** 132 of 3,666 pages carry `revit.local.family:<40 hex>-1.0.0` identifiers, **193 distinct documents** across the model. The objects carrying those references are uniformly small — 531 of them, all under marker `0x0c86`, median **374 bytes** and a maximum of **504**. A definition with geometry in it cannot fit in 504 bytes. These are the manifest, not the content.
+Parameter group, identifier, data type. It is the ForgeTypeId namespace Revit gives a **family-local parameter**, and there are 546 occurrences of 502 distinct ones — not the 193 "documents" a sampled count suggested. The 20-byte binary form of those digests appears **0 times** in all 384.5 MB of inflated pages. Nothing points at a definition blob because nothing is being pointed at.
 
-So the work is not "open the other container and parse it". It is to decode a further object class inside the stream already being walked, and then bind an instance to it — the same two-part problem the shared-geometry objects posed, at a larger scale. What it would be worth, from the coverage table: 3,228 members, 1,101 plates, 428 doors, 36 columns and 12 stair flights are seen and not recovered, about 5,900 elements once the deliberately suppressed curtain-wall containers are set aside. That is the largest remaining lever, and it is a multi-day decode with a real chance of ending in a negative result — the honest framing is that the file has been shown to contain the references, not the geometry.
+**What a recovered mullion has that a missing one does not is a second object, and the placement is in the first one anyway.** Same page, same family, byte for byte:
+
+| | objects |
+| --- | --- |
+| recovered mullion 300149 | `0x07ef` len 567 **+** `0x08c6` len 300 |
+| missing mullion 303358 | `0x07ef` len 567 only |
+
+which holds for 3,140 of 3,223 missing members, 1,086 of 1,101 plates, 426 of 428 doors and 36 of 36 columns. But the two `0x07ef` objects differ in exactly one region, `+418` to `+517`, and that region is a rigid placement:
+
+```text
++418   9 x f64   orthonormal basis — identity for 300149, a 45° rotation for 303358
++490   3 x f64   world origin in feet
++514   u64       element id of the shared geometry object
+```
+
+The same three fields, in the same order, as the 300-byte instance object the library has read since the placed-instance work. `readInstancePlacement` returned early on `objectLength !== 300`, so it had never been read.
+
+**Reading it closes most of the gap:**
+
+| | before | after |
+| --- | --- | --- |
+| building elements drawn | 30,628 · 80.1% | **34,457 · 90.1%** |
+| `IfcMember` drawn | 15,912 | **18,658** |
+| `IfcPlate` drawn | 4,972 | **5,917** |
+| `IfcMember` centre within 0.5 ft | 98.8% | **99.0%** |
+| elements placed from an instance alone | 3 | **3,901** |
+
+Accuracy went *up* while 2,746 mullions and 948 panels were added: the newly placed elements land within **0.25 ft for 100.0% of members and plates, median error 0.0001 ft**, and the residual is truth-side — the export's box comes from tessellated triangles.
+
+**The controls are what make it safe to believe.** On the 19,584 elements that carry *both* objects the rule finds exactly one transform per object, and its origin agrees with the instance object's for 19,582 of them; the geometry reference agrees for 21,637 of 21,637. Shuffling the target scores 0.1% within 0.25 ft against 100%, shuffling the origin 0.1%, shuffling the geometry reference 6.3%, and transposing the basis 62.8% — that last failing only on the non-90° curtain walls, which is exactly where the columns-are-axes convention is the one that matters. The composite rule fires on 0.0% of seven other object classes, while an orthonormal basis *alone* fires on 99.7% of one of them: the live geometry reference behind the basis is what makes it specific, not the basis.
+
+The basis offset is not fixed — `+418` for 22,511 objects, `+412` for 2,323, `+414` for 1,442 — so it is found by orthonormality in a 25-byte window rather than indexed. A shared geometry object is excluded before the search runs, by the bounds sub-record it carries and a placement object does not; without that test a shape whose tail happened to hold an orthonormal basis would be taken for an instance and lose its own box.
+
+**What is still missing, and it is now a small list.** 716 references resolve to an object under marker `0x10dc`, `0x10de` or `0x0810` that carries no bounds sub-record at all — 383 members, 157 doors, 135 plates — a different shape class, probably a real solid rather than a box. A further 1,078 elements have no object in the stream at all. And **doors gain nothing in accuracy** from this: the 138 newly placed ones carry the same 2.9 ft leaf error as every other door, because the record is the opening.
+
+Two negative results, recorded so they are not retried. **No payload is lost to chunking**: all 328 inflation failures lie in the 40-byte per-chunk descriptors between streams, and an apparent 7.3 MB of unclaimed bytes is node `zlib` failing on Revit's trailer-less DEFLATE where `fflate` succeeds. **Object coverage of the stream is 67%, and the uncovered remainder is not geometry** — full-offset seeding raises objects from 140,812 to 154,431 and newly placed export elements only from 3,929 to 3,966, so the gain does not depend on changing the seeding.
 
 ## Stream coverage
 

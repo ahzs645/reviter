@@ -66,12 +66,100 @@ function finite(value: number): boolean {
   return Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
 }
 
+/**
+ * Widest window, measured back from an object's end, in which a placement's
+ * basis has been seen to start. The offset is not fixed — `+418` for 22,511
+ * objects, `+412` for 2,323, `+414` for 1,442 — so it is found, not indexed.
+ */
+const TAIL_PLACEMENT_FIRST = 149;
+const TAIL_PLACEMENT_LAST = 125;
+
+/** True when the columns of a row-major 3x3 are a right-handed orthonormal set. */
+function rightHandedOrthonormal(basis: number[]): boolean {
+  const column = (index: number) => [basis[index]!, basis[index + 3]!, basis[index + 6]!];
+  const dot = (a: number[], b: number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+  const columns = [column(0), column(1), column(2)];
+  for (const axis of columns) if (Math.abs(dot(axis, axis) - 1) > 1e-6) return false;
+  if (Math.abs(dot(columns[0]!, columns[1]!)) > 1e-6) return false;
+  if (Math.abs(dot(columns[0]!, columns[2]!)) > 1e-6) return false;
+  if (Math.abs(dot(columns[1]!, columns[2]!)) > 1e-6) return false;
+  const [a, b, c] = columns as [number[], number[], number[]];
+  const determinant =
+    a[0]! * (b[1]! * c[2]! - b[2]! * c[1]!) -
+    a[1]! * (b[0]! * c[2]! - b[2]! * c[0]!) +
+    a[2]! * (b[0]! * c[1]! - b[1]! * c[0]!);
+  return Math.abs(determinant - 1) < 1e-6;
+}
+
+/**
+ * The placement carried by an element's own object, rather than by a separate
+ * 300-byte instance object.
+ *
+ * Most elements that never reached the scene were **not** missing from the file.
+ * Their `0x07ef` object differs from a recovered sibling's in exactly one region
+ * — a rigid placement holding the same three fields, in the same order, as the
+ * instance object: a 3x3 basis, a world origin, and the element id of the shared
+ * geometry object. `readInstancePlacement` rejected anything whose length was
+ * not exactly 300, so it had never been read.
+ *
+ * Reading it places **3,929** elements the export names and the recovery did not
+ * have, among them 2,746 curtain-wall mullions and 948 panels, all of them
+ * within 0.25 ft of the export with a median error of **0.0001 ft**.
+ *
+ * The rule is not class-specific and the controls are what make it safe. On the
+ * 19,584 elements that carry both objects it finds exactly one transform per
+ * object, and its origin agrees with the instance object's for 19,582 of them;
+ * the geometry reference agrees for 21,637 of 21,637. Shuffling the target scores
+ * 0.1% within 0.25 ft, shuffling the origin 0.1%, shuffling the geometry
+ * reference 6.3%, and transposing the basis 62.8% — that last failing only on
+ * the non-90° curtain walls, exactly where the columns-are-axes convention is
+ * the one that matters. It fires on 0.0% of seven other object classes.
+ */
+function readTailPlacement(
+  data: Uint8Array,
+  object: ElementObject,
+): InstancePlacement | null {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const end = object.offset + object.objectLength;
+  for (let at = end - TAIL_PLACEMENT_FIRST; at <= end - TAIL_PLACEMENT_LAST; at += 1) {
+    if (at < object.offset || at + 104 > data.byteLength) continue;
+    const basis: number[] = [];
+    for (let index = 0; index < 9; index += 1) {
+      const value = view.getFloat64(at + index * 8, true);
+      if (!Number.isFinite(value) || Math.abs(value) > 1.0001) break;
+      basis.push(value);
+    }
+    if (basis.length !== 9 || !rightHandedOrthonormal(basis)) continue;
+    const origin: [number, number, number] = [
+      view.getFloat64(at + 72, true),
+      view.getFloat64(at + 80, true),
+      view.getFloat64(at + 88, true),
+    ];
+    if (!origin.every(finite)) continue;
+    // An orthonormal basis alone is not rare — it fires on 99.7% of one other
+    // object class. A live geometry reference immediately behind it is what
+    // makes the read specific.
+    if (view.getUint32(at + 100, true) !== 0) continue;
+    const geometryId = view.getUint32(at + 96, true);
+    if (!geometryId) continue;
+    return { elementId: object.elementId, basis, origin, geometryId };
+  }
+  return null;
+}
+
 /** Read an instance's placement and its shared-geometry reference. */
 export function readInstancePlacement(
   data: Uint8Array,
   object: ElementObject,
 ): InstancePlacement | null {
-  if (object.objectLength !== INSTANCE_OBJECT_LENGTH) return null;
+  if (object.objectLength !== INSTANCE_OBJECT_LENGTH) {
+    // A shared geometry object is not a placement, and it is told apart by
+    // carrying a bounds sub-record. Testing that first keeps every shape the
+    // library already reads: without it a shape whose tail happens to hold an
+    // orthonormal basis would be taken for an instance and lose its own box.
+    if (boundsOffsetWithin(data, object.offset) != null) return null;
+    return readTailPlacement(data, object);
+  }
   const end = object.offset + object.objectLength;
   if (end + 8 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
