@@ -35,6 +35,14 @@ export type WallRun = {
  * needs no reference file. On the supplied model 1,121 of 1,399 doors find a
  * host wall, and their median plan centre error goes from 1.455 ft to 0.000 and
  * their size error from 2.910 ft to 0.167.
+ *
+ * **This is the fallback, and it is a poor one.** The wall gives the door the
+ * *wall's* thickness, which is right on centre and wrong on size: measured
+ * against the export the doors drawn this way scored 97.1% on centre and only
+ * **68.3% on size**, median 0.164 ft, against 99.5% / 99.5% for the doors whose
+ * own shape could be read. It now runs for 31 elements rather than 395, and
+ * every door moved off it gained. It stays because for those 31 there is
+ * nothing else: no shape object anywhere in the stream.
  */
 export function doorLeafCorners(
   record: ElementBoundsRecord,
@@ -94,10 +102,15 @@ export function doorLeafCorners(
 }
 
 /**
- * The leaf, folded out of the swing the door's own shared shape describes.
+ * The leaf, taken from the door's own shared shape.
  *
- * A door's shared geometry object is not the leaf and not the opening — it is
- * the **swing**, written in the family's local frame as
+ * A door family caches its shape in one of two forms, and this reads both.
+ * Where the shape is the door's **B-rep**, `readLocalShape` has already turned
+ * its trimmed planes into the leaf and flags it, and there is nothing to fold.
+ * Where the shape is the cached **AABB**, that box is the *swing* and folding it
+ * is what makes it a door.
+ *
+ * The swing is written in the family's local frame as
  *
  * ```text
  * [-w/2, -R, 0] .. [+w/2, +t, H]
@@ -126,14 +139,58 @@ export function doorLeafCorners(
  *
  * It stays scoped to doors: the same fold would change 4,153 of 6,480 shared
  * shapes, so it is a fact about door families, not about the shape reader.
+ *
+ * **Between the two forms this route now reaches 1,801 elements against 1,220,
+ * and the host wall is down to 31 of them from 395.** That is where the door row
+ * of the overlay went: 89.0% / 82.2% on centre and size to **99.2% / 99.1%**,
+ * over 1,824 drawn doors rather than 1,641. The wall fallback was never the
+ * problem it looked like — it is accurate on centre and wrong on *size*, 97.1%
+ * against 68.3%, because it takes the thickness from whatever wall the door
+ * happens to sit in. Every door that stops needing it gains 30 points of size
+ * agreement.
  */
 /** Share of the swing axis's own span by which it must sit off centre. */
 const SWING_ASYMMETRY_FLOOR = 0.1;
+
+/**
+ * Smallest extent, on every axis, a leaf may have and still be a leaf.
+ *
+ * A shape can read as a valid box and have no size — the six subnormal doubles
+ * of a field table order correctly and are finite. Five doors were drawn to one
+ * of those: eight identical corners, a door rendered as a **point**, and the
+ * worst size disagreement in the class at 7.63 ft. Their own envelope
+ * reproduces the export to 0.00 ft, so the fallback is not a guess; it is the
+ * reading that was already there and was being replaced by nothing.
+ */
+const MIN_LEAF_EXTENT_FEET = 1e-3;
+
+/** True when eight world corners enclose something rather than a point. */
+function hasExtent(corners: [number, number, number][]): boolean {
+  for (let axis = 0; axis < 3; axis += 1) {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const corner of corners) {
+      low = Math.min(low, corner[axis]!);
+      high = Math.max(high, corner[axis]!);
+    }
+    if (!(high - low > MIN_LEAF_EXTENT_FEET)) return false;
+  }
+  return true;
+}
 
 export function doorLeafFromShape(
   placement: InstancePlacement,
   shape: LocalBounds,
 ): [number, number, number][] | null {
+  // A shape read out of the door's own B-rep is the leaf already; the fold
+  // below is for the cached AABB, which is the swing. Both are symmetric in
+  // plan once read, so the fold cannot tell them apart and used to decline the
+  // B-rep — which sent 154 doors to the host wall for a thickness they carry
+  // themselves, 68.3% size agreement where the door's own shape gives 99.5%.
+  if (shape.leaf) {
+    const corners = instanceCorners(placement, shape);
+    return hasExtent(corners) ? corners : null;
+  }
   const [minX, minY, minZ] = shape.min;
   const [maxX, maxY, maxZ] = shape.max;
   const spans = [maxX - minX, maxY - minY];
@@ -156,5 +213,6 @@ export function doorLeafFromShape(
   const folded: LocalBounds = swingAxis === 0
     ? { elementId: shape.elementId, min: [-halfThickness, minY, minZ], max: [halfThickness, maxY, maxZ] }
     : { elementId: shape.elementId, min: [minX, -halfThickness, minZ], max: [maxX, halfThickness, maxZ] };
-  return instanceCorners(placement, folded);
+  const corners = instanceCorners(placement, folded);
+  return hasExtent(corners) ? corners : null;
 }

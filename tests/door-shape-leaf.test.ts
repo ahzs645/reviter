@@ -68,3 +68,35 @@ test("declines a shape that is not a swing", () => {
   // Symmetric in both plan axes: nothing to fold, so no leaf can be inferred.
   assert.equal(doorLeafFromShape(placement(IDENTITY), { elementId: 4, min: [-1, -1, 0], max: [1, 1, 7] }), null);
 });
+
+test("uses a shape flagged as the leaf without folding it", () => {
+  // A door's B-rep read gives the leaf outright, and it is symmetric in plan —
+  // exactly what the fold declines. Without the flag those 154 doors fell
+  // through to the host wall and took the wall's thickness, 68.3% size
+  // agreement against 99.5% for their own shape.
+  const leaf: LocalBounds = {
+    elementId: 5,
+    min: [-1.75, -0.548, 0],
+    max: [1.75, 0.548, 6.916],
+    leaf: true,
+  };
+  const corners = doorLeafFromShape(placement(IDENTITY), leaf);
+  assert.ok(corners);
+  const ys = corners.map(([, y]) => y);
+  assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - 1.096) < 1e-9, "kept its own thickness");
+  const xs = corners.map(([x]) => x);
+  assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - 3.5) < 1e-9, "kept its own width");
+});
+
+test("declines a leaf with no extent", () => {
+  // Six subnormal doubles read as a valid, ordered, finite box of zero size,
+  // and five doors were being drawn to one: eight identical corners. The
+  // element's own envelope reproduces the export exactly, so declining here is
+  // what puts them back on it.
+  const point: LocalBounds = { elementId: 6, min: [0, 0, 0], max: [1e-300, 1e-300, 1e-300], leaf: true };
+  assert.equal(doorLeafFromShape(placement(IDENTITY), point), null);
+  // The same guard on the folded route: a swing whose width and height are
+  // subnormal folds to a point too.
+  const flat: LocalBounds = { elementId: 7, min: [-1e-300, -3.2, 0], max: [1e-300, 0.279, 1e-300] };
+  assert.equal(doorLeafFromShape(placement(IDENTITY), flat), null);
+});

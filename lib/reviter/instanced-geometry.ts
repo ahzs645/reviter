@@ -40,7 +40,7 @@
  * resolve to about 1,600 geometry objects, reused 4.6 times on average.
  */
 import type { ElementObject } from "./element-objects.ts";
-import { collectSurfaces } from "./surfaces.ts";
+import { collectSurfaces, type SurfacePatch } from "./surfaces.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
 const INSTANCE_OBJECT_LENGTH = 300;
@@ -61,6 +61,19 @@ export type LocalBounds = {
   elementId: number;
   min: [number, number, number];
   max: [number, number, number];
+  /**
+   * True when the box is the element's own solid rather than the whole region
+   * the family sweeps through.
+   *
+   * The distinction only matters for doors, and there it matters a lot. A
+   * door's cached AABB is its **swing** — the quarter circle the leaf turns
+   * through — so it has to be folded before it is the door. The same door's
+   * B-rep shape is the leaf outright, and folding that would be a no-op that
+   * quietly replaced it with the host wall's thickness instead of the door's
+   * own. Without this flag the two are indistinguishable to `door-leaf.ts`,
+   * because a leaf and an unfoldable swing are both symmetric in plan.
+   */
+  leaf?: boolean;
 };
 
 function finite(value: number): boolean {
@@ -68,12 +81,34 @@ function finite(value: number): boolean {
 }
 
 /**
- * Widest window, measured back from an object's end, in which a placement's
- * basis has been seen to start. The offset is not fixed — `+418` for 22,511
- * objects, `+412` for 2,323, `+414` for 1,442 — so it is found, not indexed.
+ * Window, measured from an object's **start**, in which a placement's basis has
+ * been seen to begin. The offset is not fixed — `+418` for 22,511 objects,
+ * `+412` for 2,323, `+414` for 1,442 — so it is found, not indexed.
+ *
+ * **It was measured from the end, and that is why the longer objects had no
+ * placement.** Searching every offset of the 63 doors that own a `0x07ef`
+ * object and yield nothing, all 63 carry a placement-shaped field — an
+ * orthonormal basis, a world origin, a live geometry reference — and every one
+ * of them sits at `+414`, `+418`, `+420`, `+422` or `+444` from the object's
+ * start. From the *end* the same fields are at −163 to −199, outside the
+ * −149..−125 window the reader used. The window worked at all only because most
+ * of these objects are 539 to 551 bytes long, where `end − 149` lands on `+390`
+ * and the field is swept up anyway; a 581-byte object puts `+414` at `end −
+ * 167` and it was missed.
+ *
+ * The control is in the same measurement: over 1,600 objects that *do* resolve,
+ * the offsets from the start cluster on five values and 1,297 of them are
+ * `+414`, while the offsets from the end spread across −125 to −199. A field at
+ * a fixed distance from the start of a record is what a fixed-layout header
+ * looks like; the end-anchored reading was a coincidence of one length.
+ *
+ * This is not the widening this project already measured and rejected — that
+ * one searched 80 to 240 bytes back from the *end*, found 1,331 extra
+ * candidates and reproduced only 24 export elements. Anchoring on the start
+ * narrows the search rather than widening it.
  */
-const TAIL_PLACEMENT_FIRST = 149;
-const TAIL_PLACEMENT_LAST = 125;
+const TAIL_PLACEMENT_FROM_START_FIRST = 408;
+const TAIL_PLACEMENT_FROM_START_LAST = 448;
 
 /** True when the columns of a row-major 3x3 are a right-handed orthonormal set. */
 function rightHandedOrthonormal(basis: number[]): boolean {
@@ -122,8 +157,10 @@ function readTailPlacement(
 ): InstancePlacement | null {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const end = object.offset + object.objectLength;
-  for (let at = end - TAIL_PLACEMENT_FIRST; at <= end - TAIL_PLACEMENT_LAST; at += 1) {
-    if (at < object.offset || at + 104 > data.byteLength) continue;
+  const first = object.offset + TAIL_PLACEMENT_FROM_START_FIRST;
+  const last = object.offset + TAIL_PLACEMENT_FROM_START_LAST;
+  for (let at = first; at <= last; at += 1) {
+    if (at < object.offset || at + 104 > Math.min(end, data.byteLength)) continue;
     const basis: number[] = [];
     for (let index = 0; index < 9; index += 1) {
       const value = view.getFloat64(at + index * 8, true);
@@ -297,11 +334,9 @@ export function instanceCorners(
  *   f64@770  width   f64@778  height   f64@549  thickness
  *   byte@786 & 0x01  which side of the origin the thickness sits on
  *
- * 0x0810  len 8289 / 8297   door, a genuine B-rep
- *   f64@513  half width, negated      f64@553  height
- *   ten trimmed analytic planes in the format `surfaces.ts` already decodes;
- *   the leaf's face is the y-normal plane of smallest non-zero magnitude, and
- *   the largest is the swing, which the export does not contain.
+ * 0x0810  len 5,786 .. 11,285   door, a genuine B-rep
+ *   ten to sixteen trimmed analytic planes in the format `surfaces.ts` already
+ *   decodes; see `doorShapeFromPlanes` for how the leaf is read out of them.
  * ```
  *
  * **Verification.** Reading the shape and putting it through the element's own
@@ -319,16 +354,91 @@ export function instanceCorners(
  * residual is the panel's 0.0016 ft, where the export's inner glass face sits at
  * 0.0803 ft and the file says 25 mm; that is tessellation, not a decode error.
  *
- * The lengths are exact on purpose. 1,998 objects stream-wide sit at other
- * lengths under the same markers, the offsets are length-specific, and applying
- * the 1,379 offsets to them drops member accuracy from 100% to 97.4%.
+ * The two parameterised lengths are exact on purpose. 1,998 objects stream-wide
+ * sit at other lengths under the same markers, the offsets are length-specific,
+ * and applying the 1,379 offsets to them drops member accuracy from 100% to
+ * 97.4%. The door read carries no offsets, so it is not gated on a length at
+ * all; see `doorShapeFromPlanes`.
  */
 const MULLION_SHAPE_LENGTH = 1_379;
 const PANEL_SHAPE_LENGTH = 1_639;
-const DOOR_SHAPE_LENGTHS = [8_289, 8_297];
+
+/** Markers heading a shared shape `readLocalShape` knows how to read. */
+export const SHAPE_OBJECT_MARKERS = [0x10dc, 0x10de, 0x0810];
 
 /** A panel's glass sits this far off the local origin: 25 mm, in feet. */
 const PANEL_FACE_OFFSET_FEET = 0.0820209973753281;
+
+/** A patch range counts as centred on the origin within this, in feet. */
+const SYMMETRY_TOLERANCE_FEET = 1e-6;
+
+/**
+ * A door's leaf, read out of the trimmed planes its B-rep is made of.
+ *
+ * The shape is a real solid rather than a box, and it is written as ten to
+ * sixteen trimmed analytic planes. Three readings of them were tried against
+ * the paired export, over the 335 doors whose shape object is one of these:
+ *
+ * | reading | size within 0.5 ft | median |
+ * | --- | --- | --- |
+ * | the union of the trimmed patches | 0.0% | 10.4 ft |
+ * | the span of the plane origins | 77.9% | 0.29 ft |
+ * | **this one** | **99.4%** | **0.00 ft** |
+ *
+ * The union of the patches is not the shape, because the ranges are not all
+ * tight: several patches carry a neighbour's range verbatim — a z-normal face
+ * whose `v` range is the model's *height* rather than its own depth — so the
+ * hull they span is three times the door. **The planes do not form a closed
+ * solid, and a B-rep leaf cannot be built from them.** The span of the plane
+ * origins is the leaf alone, which is a real shape but the wrong one: it is
+ * short by 0.2493 ft on each side, the 76 mm the frame reveals, and the export
+ * writes the frame with the door.
+ *
+ * What does work is reading each axis from the evidence that is sound for it:
+ *
+ * - **width** from the widest patch range that is *symmetric about the local
+ *   origin*. A door family is centred on its width and on nothing else, so a
+ *   range running `-w/2 .. +w/2` is that width — frame included, which the span
+ *   of the plane origins misses.
+ * - **height** from the longest range of any patch, which is the leaf's own
+ *   vertical extent; every patch that spans the opening carries it.
+ * - **thickness** from the y-normal plane nearest the origin without being on
+ *   it. The furthest is the swing — the arc the leaf turns through, which the
+ *   export does not contain — and drawing to it makes a door three feet deep.
+ *
+ * **This is not a new hypothesis about the file.** The two object lengths the
+ * old length-indexed read handled — `f64@513` for the half width and `f64@553`
+ * for the height — are reproduced by this read **exactly, for 58 of 58 shapes,
+ * worst disagreement 8.9e-16 ft**. What it adds is the other 91 shapes, whose
+ * lengths (5,786, 5,966, 7,185, 8,113, 11,105, 11,285) the whitelist rejected
+ * and which serve 185 more doors. Null control: against a shuffled door-to-shape
+ * pairing the same boxes score **14.0%**.
+ */
+function doorShapeFromPlanes(patches: SurfacePatch[], elementId: number): LocalBounds | null {
+  let face = Infinity;
+  let halfWidth = 0;
+  let height = 0;
+  for (const patch of patches) {
+    if (patch.kind !== "plane") continue;
+    const { uDir, vDir } = patch;
+    for (const [lo, hi] of [[patch.uMin, patch.uMax], [patch.vMin, patch.vMax]] as const) {
+      height = Math.max(height, hi - lo);
+      if (hi > 0 && Math.abs(lo + hi) <= SYMMETRY_TOLERANCE_FEET) halfWidth = Math.max(halfWidth, hi);
+    }
+    const normalY = uDir.z * vDir.x - uDir.x * vDir.z;
+    if (Math.abs(Math.abs(normalY) - 1) > 1e-9) continue;
+    const offset = Math.abs(patch.origin.y);
+    if (offset > 1e-9 && offset < face) face = offset;
+  }
+  if (!Number.isFinite(face) || !(halfWidth > 0) || !(height > 0)) return null;
+  return {
+    elementId,
+    min: [-halfWidth, -face, 0],
+    max: [halfWidth, face, height],
+    // Already the leaf, so `doorLeafFromShape` must not fold it again.
+    leaf: true,
+  };
+}
 
 export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBounds | null {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -370,26 +480,8 @@ export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBo
     return box(-width / 2, near, 0, width / 2, far, height);
   }
 
-  if (object.marker === 0x0810 && DOOR_SHAPE_LENGTHS.includes(object.objectLength)) {
-    const halfWidth = at(513);
-    const height = at(553);
-    // The leaf's own face, not the swing: among the y-normal planes take the
-    // smallest non-zero offset. The largest is the arc the leaf sweeps through,
-    // and drawing to it makes a door three feet deep.
-    let face = Infinity;
-    for (const patch of collectSurfaces(data.subarray(start, end))) {
-      if (patch.kind !== "plane") continue;
-      const { uDir, vDir } = patch;
-      const normalY = uDir.z * vDir.x - uDir.x * vDir.z;
-      if (Math.abs(Math.abs(normalY) - 1) > 1e-9) continue;
-      const offset = Math.abs(patch.origin.y);
-      if (offset > 1e-9 && offset < face) face = offset;
-    }
-    if (!Number.isFinite(face)) return null;
-    return box(
-      Math.min(halfWidth, -halfWidth), -face, 0,
-      Math.max(halfWidth, -halfWidth), face, height,
-    );
+  if (object.marker === 0x0810) {
+    return doorShapeFromPlanes(collectSurfaces(data.subarray(start, end)), object.elementId);
   }
   return null;
 }

@@ -37,6 +37,7 @@ import {
   readInstancePlacement,
   readLocalBounds,
   readLocalShape,
+  SHAPE_OBJECT_MARKERS,
   type InstancePlacement,
   type LocalBounds,
 } from "./instanced-geometry.ts";
@@ -51,6 +52,7 @@ import { parseElemTable } from "./elem-table.ts";
 import {
   applyNativeCategories,
   collectCategoryTokens,
+  resolveElementCategories,
   type CategoryToken,
 } from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
@@ -150,7 +152,7 @@ const RAIL_PATH_OFFSETS = [-1, 1] as const;
 const RAIL_PATH_PLAN_TOLERANCE_FEET = 0.5;
 
 /**
- * How far the path's own base may sit from the envelope's floor, in feet.
+ * How far a *sloped* path's base may sit from the envelope's floor, in feet.
  *
  * Without this test the arithmetic below cannot fail on a *level* railing: a
  * flat path has no rise, so "envelope height minus rise" returns the envelope's
@@ -168,8 +170,46 @@ const RAIL_PATH_PLAN_TOLERANCE_FEET = 0.5;
  * cut is a plateau rather than a knife edge: 0.75 ft through 3 ft all sweep
  * 78-81 railings with the same worst case, 5 ft admits 4 more errors and 10 ft
  * admits 8.
+ *
+ * It now applies only where the path's elevation says something. See
+ * `RAIL_PATH_LEVEL_RISE_FEET`.
  */
 const RAIL_PATH_BASE_TOLERANCE_FEET = 1;
+
+/**
+ * Below this rise a path is level, and its own elevation is discarded in favour
+ * of the record's.
+ *
+ * The base tolerance above refused 46 railings whose neighbouring curve set fits
+ * their plan but sits a storey or more away in z, on the reading that those are
+ * the identical railing stacked on the floor above. For the 21 of them whose
+ * path is **level** that reading is wrong, and the export says so: their own
+ * record's z-band reproduces the exported railing's exactly — 46 of 46, to two
+ * decimal places — while the neighbouring path's base lands within a foot of it
+ * **0 of 46** times. So the path is a plan and the record is the elevation, and
+ * the two are independent readings of one railing rather than two railings.
+ *
+ * Translating a level path onto the record's own base and taking the guard from
+ * what is left, those 21 give a guard of **3.609 ft — every one of them, to
+ * within 0.05 ft** — the same handrail height the other 80 give, on a population
+ * it was not fitted on. Against the export's own railing meshes the ribbon sits
+ * a median **0.76 ft** from the nearest exported vertex against the envelope's
+ * 1.78, covers **100%** of the exported vertices against the box's 72%, and is
+ * closer than the box for 19 of the 21. Scored against a *different* railing's
+ * mesh the same ribbons are off the end of the search: recall 0%, closer than
+ * the box 0 of 21.
+ *
+ * **A sloped path is not translated, and that is measured rather than assumed.**
+ * Lifting every path instead of only level ones reaches exactly the same 101
+ * railings and takes 19 of the guards off 3.609 — a stair path carries its rise,
+ * so its elevation is information, and a base that disagrees means a different
+ * run. 25 of the 46 are sloped and stay refused.
+ *
+ * The cut is a gap rather than a threshold: of the 129 plan-fitting neighbour
+ * paths, **72 have a rise of exactly 0.000 ft and the smallest non-zero rise is
+ * 2.734 ft**. Nothing lies between.
+ */
+const RAIL_PATH_LEVEL_RISE_FEET = 0.01;
 
 /**
  * The band a guard height has to fall in for the path to be believed.
@@ -360,11 +400,17 @@ function sketchLoopsFor(
  * Each curve becomes one polyline — arcs keep their interior points — so the
  * sweep follows a stair's rise instead of flattening it. The path is the curve
  * set filed one id either side of the railing that reproduces the railing's
- * envelope: its plan within `RAIL_PATH_PLAN_TOLERANCE_FEET`, its base within
- * `RAIL_PATH_BASE_TOLERANCE_FEET`, and a guard between the path's top and the
- * envelope's top that is a handrail height. Swept, that is the envelope's own
- * z-band reproduced from an independent reading — which is the point, since the
- * envelope is what the path has to replace.
+ * envelope in plan, within `RAIL_PATH_PLAN_TOLERANCE_FEET`, and yields a guard
+ * between the path's top and the envelope's top that is a handrail height.
+ * Swept, that is the envelope's own z-band reproduced from an independent
+ * reading — which is the point, since the envelope is what the path replaces.
+ *
+ * Where the elevation comes from depends on what the path is. A **sloped** path
+ * carries its own rise, so it is swept where it lies and its base has to agree
+ * with the record's within `RAIL_PATH_BASE_TOLERANCE_FEET`. A **level** path is
+ * a plan and nothing more, so it is translated onto the record's own base; see
+ * `RAIL_PATH_LEVEL_RISE_FEET` for the 21 railings that buys and the export
+ * measurement behind it.
  *
  * Each candidate is judged on its own rather than unioned with its neighbour.
  * The union was safe while only `id - 1` was read, but a stair railing has both
@@ -388,7 +434,7 @@ function railPathFor(
   curvesByOwner: Map<number, SketchCurve[]>,
 ): { polylines: Point3[][]; guardHeightFeet: number } | null {
   const { min, max } = record.boundsFeet;
-  let best: { polylines: Point3[][]; guardHeightFeet: number; rise: number } | null = null;
+  let best: { polylines: Point3[][]; guardHeightFeet: number; rise: number; shiftZ: number } | null = null;
 
   for (const offset of RAIL_PATH_OFFSETS) {
     const curves = curvesByOwner.get(record.elementId + offset);
@@ -407,24 +453,35 @@ function railPathFor(
       polylines.push(points);
     }
 
-    const fits =
+    const fitsPlan =
       Math.abs(minX - min.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
       Math.abs(minY - min.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
       Math.abs(maxX - max.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
-      Math.abs(maxY - max.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
-      Math.abs(minZ - min.z) <= RAIL_PATH_BASE_TOLERANCE_FEET;
-    if (!fits) continue;
+      Math.abs(maxY - max.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET;
+    if (!fitsPlan) continue;
 
-    const guardHeightFeet = max.z - maxZ;
+    // A level path is a plan and nothing else, so the record supplies the
+    // elevation; a sloped one carries its rise, so its base has to agree.
+    const rise = maxZ - minZ;
+    const baseGap = minZ - min.z;
+    const level = rise <= RAIL_PATH_LEVEL_RISE_FEET;
+    if (!level && Math.abs(baseGap) > RAIL_PATH_BASE_TOLERANCE_FEET) continue;
+    const shiftZ = level ? -baseGap : 0;
+
+    const guardHeightFeet = max.z - (maxZ + shiftZ);
     if (guardHeightFeet < RAIL_GUARD_MIN_FEET || guardHeightFeet > RAIL_GUARD_MAX_FEET) continue;
     // Both sides can pass on a railing that owns a flat projection as well as
     // its path; the one carrying the rise is the railing's own run, and the
     // projection is what the sweep exists to avoid drawing.
-    const rise = maxZ - minZ;
-    if (!best || rise > best.rise) best = { polylines, guardHeightFeet, rise };
+    if (!best || rise > best.rise) best = { polylines, guardHeightFeet, rise, shiftZ };
   }
 
-  return best ? { polylines: best.polylines, guardHeightFeet: best.guardHeightFeet } : null;
+  if (!best) return null;
+  const { shiftZ } = best;
+  const polylines = shiftZ === 0
+    ? best.polylines
+    : best.polylines.map((line) => line.map(([x, y, z]): Point3 => [x, y, z + shiftZ]));
+  return { polylines, guardHeightFeet: best.guardHeightFeet };
 }
 
 
@@ -632,6 +689,18 @@ export function convertRvtBytes(
         for (const marker of objectMarkers) {
           for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
         }
+        // A shared shape's marker is too rare to survive the calibration above.
+        // There are 250 door B-reps in this file against 51,455 objects under
+        // `0x08c6`, so `0x0810` never clears the support floor and the chain
+        // reaches one only when it happens to sit beside a seeded neighbour:
+        // 20 of the 27 door shapes the placements point at and no pass reads
+        // are isolated `0x0810` objects, and they are the shape for 500 doors.
+        // Seeding the shape markers directly is what finds them; every
+        // candidate still has to echo its own length to be kept.
+        for (const marker of SHAPE_OBJECT_MARKERS) {
+          if (objectMarkers.includes(marker)) continue;
+          for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
+        }
         for (const record of detectedBoundsRecords) chainSeeds.push(record.recordOffset);
         if (chainSeeds.length) {
           for (const object of chainElementObjects(inflated, chainSeeds)) {
@@ -832,6 +901,92 @@ export function convertRvtBytes(
       });
       boundedIds.add(elementId);
       instanceOnlyElements += 1;
+    }
+
+    /*
+     * A sketch-based element whose only geometry is its own boundary ring.
+     *
+     * The ring route runs over `elementBounds`, so an element that never reaches
+     * a record is invisible to it however good its curves are — and **7 of this
+     * building's 12 ramps are exactly that**. Every one of them owns 4 edges
+     * under its Sketch companion and 8 under the id above, and assembled those
+     * edges reproduce the export's own footprint to **0.000 ft at the worst
+     * corner, 7 of 7**. They were never drawn because no duplicated-bounds
+     * record exists for them: 5 ramps carry a second `0x08c6` object holding one
+     * and the other 7 simply do not.
+     *
+     * So a record is synthesised from the ring, exactly as one is above from a
+     * rebuilt solid, a face hull or a placement — the record is what lets the
+     * rest of the pipeline attach to the element.
+     *
+     * **The gate is the category, and it is the one the ring route already
+     * uses.** Over the whole model 2,891 elements the scan proves real have no
+     * record and do own a closed ring, and the export names only 14 of them —
+     * synthesising for all of them would be 2,877 records of sketch companions,
+     * cached shapes and stray edge sets. Requiring the element's own decoded
+     * category to be a `SKETCH_BOUNDARY_CATEGORIES` member cuts that to a
+     * population the export names **100%** of, with the ring's plan reproducing
+     * the export's box to a median 0.000 ft and a shuffled pairing scoring 0.
+     * On this model that is the 2 ramps whose category token survives; the other
+     * 25 elements it selects already have a record by another route.
+     *
+     * Categories are resolved here against the record ids *plus* the candidates,
+     * because a candidate has no record yet and so cannot own a token under the
+     * pass below. Only the candidates' answers are read; no existing record's
+     * category is touched.
+     *
+     * **Five ramps stay missing and the reason is recorded rather than papered
+     * over.** The file writes exactly **8** `Ramps` category tokens and those
+     * five are not among them, so their category is not in the file to be found:
+     * they carry no type reference either, and consensus on the object marker —
+     * the one key a record-less element does have — would reach them but is not
+     * a category decoder, giving 4,859 elements a category of which the export
+     * agrees with 456 and **disagrees with 265**. Their object marker `0x0d7b`
+     * heads 12 objects in the file and the export names all 12 `IfcRamp`, which
+     * is a clean discriminator and still a listed constant on a population of
+     * twelve, against this file's practice of measuring markers rather than
+     * naming them.
+     */
+    {
+      const ringCandidates = new Set<number>();
+      for (const owner of curvesByOwner.keys()) {
+        // A slab's edges are filed under its Sketch companion at `id - 1`, so a
+        // curve owner proposes itself and the element above it.
+        for (const elementId of [owner, owner + 1]) {
+          if (boundedIds.has(elementId)) continue;
+          if (partitionRecordIds.has(elementId)) ringCandidates.add(elementId);
+        }
+      }
+      if (ringCandidates.size) {
+        const known = new Set<number>(boundedIds);
+        for (const elementId of ringCandidates) known.add(elementId);
+        for (const elementId of elementIndex?.uniqueElementIds ?? []) known.add(elementId);
+        const candidateCategories = resolveElementCategories(categoryTokens, known);
+        for (const elementId of ringCandidates) {
+          const categoryId = candidateCategories.get(elementId);
+          if (categoryId == null || !SKETCH_BOUNDARY_CATEGORIES.has(categoryId)) continue;
+          const loops = boundaryLoopsFor(elementId, curvesByOwner);
+          if (!loops.length) continue;
+          const min = { x: Infinity, y: Infinity, z: Infinity };
+          const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+          for (const loop of loops) {
+            for (const [x, y, z] of loop) {
+              min.x = Math.min(min.x, x); max.x = Math.max(max.x, x);
+              min.y = Math.min(min.y, y); max.y = Math.max(max.y, y);
+              min.z = Math.min(min.z, z); max.z = Math.max(max.z, z);
+            }
+          }
+          elementBounds.push({
+            elementId,
+            stream: solidStream,
+            chunkIndex: -1,
+            rawOffset: -1,
+            recordOffset: -1,
+            boundsFeet: { min, max },
+          });
+          boundedIds.add(elementId);
+        }
+      }
     }
 
     // A cached family shape is not a building element. Its object carries the
@@ -1077,26 +1232,62 @@ export function convertRvtBytes(
         });
       }
     }
+    /*
+     * A door whose category did not decode is still a door, and the file says
+     * so: it points at a shared shape that doors point at.
+     *
+     * 96 of the 1,642 recovered doors carry no `-2000023` token — 85 carry no
+     * category at all, 10 come out as `Walls` and one as a baluster — and
+     * gating the leaf on the category alone left every one of them drawn as the
+     * raw swing, 2.1% within half a foot of the export against 99.5% for the
+     * doors the gate does admit. The shape is the evidence that is left: a
+     * cached family shape is shared, so a shape a *categorised* door uses is a
+     * door's shape whoever else points at it.
+     *
+     * **It opens the shape route only, never the wall route.** The shape route
+     * carries its own evidence — `doorLeafFromShape` declines anything that is
+     * not a swing or a leaf, so a mullion's symmetric shape falls straight
+     * through — while the wall route carries none: it takes any element within
+     * a wall's thickness of a centreline and rebuilds it as a leaf. Opening
+     * both put a door leaf on **862 curtain-wall mullions**, whose size
+     * agreement went to 78.4% from the 98.8% their placed box already had. The
+     * category decode is what let them in: it labels a cluster of mullions
+     * `Doors` by record-code consensus, and their shape id then poisons the
+     * set. Scoped to the shape route the widened gate admits **144 elements the
+     * category misses and the export names every one of them `IfcDoor`** — 134
+     * with no category at all, 9 read as `Walls`, one as a baluster — at 100.0%
+     * on both centre and size.
+     */
+    const doorShapeIds = new Set<number>();
+    for (const record of elementBounds) {
+      if (record.categoryId !== DOOR_CATEGORY) continue;
+      const placement = instancePlacements.get(record.elementId);
+      if (placement) doorShapeIds.add(placement.geometryId);
+    }
     let doorLeaves = 0;
     let doorLeavesFromShape = 0;
     for (const record of elementBounds) {
-      if (record.categoryId !== DOOR_CATEGORY) continue;
-      // The door's own shared shape is the swing, and folding it gives the leaf
-      // with the door's own thickness. Where the shape cannot be read — 442
-      // doors whose shape object is absent or unreadable — the host wall's
-      // thickness is the fallback, which is what every door used before.
       const placement = instancePlacements.get(record.elementId);
+      const categorySaysDoor = record.categoryId === DOOR_CATEGORY;
+      const shapeSaysDoor = placement != null && doorShapeIds.has(placement.geometryId);
+      if (!categorySaysDoor && !shapeSaysDoor) continue;
+      // The door's own shared shape is either the swing, which folds to the
+      // leaf, or the leaf outright where the B-rep could be read. Where neither
+      // is available the host wall's thickness is the fallback, which is what
+      // every door used before.
       const shape = placement ? localBounds.get(placement.geometryId) : undefined;
       const fromShape = placement && shape ? doorLeafFromShape(placement, shape) : null;
       if (fromShape) {
         record.orientedBox = fromShape;
+        record.doorLeafSource = "shape";
         doorLeavesFromShape += 1;
         continue;
       }
-      if (!wallRuns.length) continue;
+      if (!categorySaysDoor || !wallRuns.length) continue;
       const corners = doorLeafCorners(record, wallRuns);
       if (!corners) continue;
       record.orientedBox = corners;
+      record.doorLeafSource = "wall";
       doorLeaves += 1;
     }
 

@@ -117,6 +117,14 @@ export type ElementBoundsRecord = {
   arcs?: WallArc[];
   /** Eight world corners of a placed family instance, in box-index order. */
   orientedBox?: [number, number, number][];
+  /**
+   * Which route cut this door's leaf out of the opening its record describes.
+   * The two are worth telling apart when measuring, because they do not agree:
+   * the door's own shape carries the door's own thickness, while the host wall
+   * carries the wall's, and against the export that is 97% size agreement
+   * against 68%.
+   */
+  doorLeafSource?: "shape" | "wall";
   /** Sketch boundary rings, outer first, for a floor, roof, ceiling or ramp. */
   loops?: Point3[][];
   /**
