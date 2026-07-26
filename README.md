@@ -849,9 +849,17 @@ Each stream is graded by depth rather than weighed by bytes. Weighing by bytes w
 | `Global/PartitionTable` | small | partial | workset / family partition names |
 | `BasicFileInfo` | small | full | release, build, locale, document identity |
 | `RevitPreview4.0` | small | full | embedded preview image |
-| `ProjectInformation`, `TransmissionData`, `Contents`, `PartAtom` | small | none | not decoded |
+| `ProjectInformation`, `TransmissionData`, `Contents` | small | none | not decoded |
 
 The largest fully-unread payload is `Global/ContentDocuments`, and it was probed rather than assumed. Of the 38,223 element IDs recovered from the partition stream, 306 — 0.8% — appear anywhere in its 2.76 MB of inflated bytes, at any alignment. That is chance, so the stream indexes something other than model elements. It independently reproduces the same conclusion `rvt-rs` reached from the other direction, against `ElemTable` rather than against recovered element records.
+
+### What the public prior art does and does not have
+
+`CodeCavePro/revitless-toolkit` was reviewed in full, because a working third-party Revit reader would be worth more than any amount of scanning. **It does not decode the binary format.** It never opens `Partitions/*`, never inflates anything, and holds no record layouts, byte offsets, markers or class tags. Its entire `.rvt` surface is three streams read as text, XML and PNG: `BasicFileInfo` parsed as `Key: Value` lines, `PartAtom` parsed as XML, and `RevitPreview4.0` scanned for the PNG signature — the last of which is exactly what this project already does. Nothing in it contradicts anything here, because there is no overlap. It is a mature library for Revit's *companion text* formats — shared-parameter files, type catalogs, OmniClass — and "revitless" means not needing Revit installed, not decoding `.rvt`.
+
+Its one item of interest was `PartAtom`, an Atom `<entry>` in the `urn:schemas-autodesk-com:partatom` namespace carrying a family's category, its type names, and each type's parameters with `typeOfParameter` and `units` — the class of data this file says is out of reach for loadable families. **It is not in the supplied project**: that file has 14 streams and `PartAtom` is not among them, so the stream table above is corrected accordingly. `PartAtom` is a family-document stream, so the idea is worth revisiting when there is an `.rfa` to test it on, and it is plain XML in a public namespace, so there would be nothing to reverse-engineer.
+
+One caution for anyone else reading that repository: 76% of its source is `src/Decompiled/`, 12,683 lines carrying an unedited `// Decompiled with JetBrains decompiler … Assembly location: C:\Program Files\Autodesk\Revit 2021\RevitAPI.dll` header, redistributed under an MIT licence its authors have no standing to grant for that material. Nothing was taken from it. This project's practice of transcribing parameter names from the *published* API documentation, and treating them as corroborating evidence rather than as part of the decode, is deliberate and stays.
 
 ## Embedded schema
 
