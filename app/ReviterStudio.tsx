@@ -290,6 +290,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     if (!result) return new Set<number>();
     return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
   }, [result]);
+  // Everything the converter gave an envelope, drawn or not — the middle column
+  // of the coverage table, and the only one the IFC analysis cannot supply.
+  const recoveredElementIds = useMemo(
+    () => new Set(result ? result.elementBounds.map((record) => record.elementId) : []),
+    [result],
+  );
   // The list is the drawn set, and nothing else. It used to be filtered a second
   // time through a three-axis "is this solid" test that the scene no longer
   // applies — a sketch-bounded ceiling is drawn but has no thickness — so the
@@ -732,7 +738,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
           {result && detailsOpen && (
             <div className="results-dock">
-              {comparison && <RegressionPanel comparison={comparison} drawnElementIds={displayedElementIds} />}
+              {comparison && (
+                <RegressionPanel
+                  comparison={comparison}
+                  recoveredElementIds={recoveredElementIds}
+                  drawnElementIds={displayedElementIds}
+                />
+              )}
               <section className="result-summary">
                 <p className="eyebrow">Recovery summary</p>
                 <div className="metric-row">

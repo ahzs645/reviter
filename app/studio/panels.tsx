@@ -15,13 +15,18 @@ export function FidelityRow({ label, value, tone }: { label: string; value: stri
 
 export function RegressionPanel({
   comparison,
+  recoveredElementIds,
   drawnElementIds,
 }: {
   comparison: PairedRegressionResult;
+  recoveredElementIds: Set<number>;
   drawnElementIds: Set<number>;
 }) {
   const reference = comparison.reference;
-  const coverage = useMemo(() => classCoverage(comparison, drawnElementIds), [comparison, drawnElementIds]);
+  const coverage = useMemo(
+    () => classCoverage(comparison, recoveredElementIds, drawnElementIds),
+    [comparison, drawnElementIds, recoveredElementIds],
+  );
   return (
     <section className={`regression-panel regression-${comparison.status}`}>
       <div className="regression-heading">
@@ -52,13 +57,16 @@ export function RegressionPanel({
       <div className="coverage-block">
         <p className="eyebrow">Coverage by object class</p>
         <p className="coverage-note">
-          Every class the export carries, including the ones nothing was recovered for. Recovered means an
-          element id was found in the Revit file; drawn means it reached the scene with geometry.
+          Every class the export carries, including the ones nothing was recovered for. <b>Seen</b> is an
+          element id the scan proved is in the Revit file; <b>recovered</b> is one that yielded an envelope;
+          <b> drawn</b> is one on screen. The distance between seen and recovered is decoder work; between
+          recovered and drawn, display work.
         </p>
         <div className="coverage-table" role="table" aria-label="Per-class coverage against the paired IFC export">
           <div role="row" className="coverage-head">
             <span role="columnheader">Class</span>
             <span role="columnheader">In export</span>
+            <span role="columnheader">Seen</span>
             <span role="columnheader">Recovered</span>
             <span role="columnheader">Drawn</span>
             <span role="columnheader" />
@@ -67,11 +75,12 @@ export function RegressionPanel({
             <div role="row" key={row.ifcType} className={row.drawn === 0 ? "coverage-gap" : undefined}>
               <span role="cell">{row.ifcType}</span>
               <span role="cell">{row.inExport.toLocaleString()}</span>
-              <span role="cell">{row.recovered.toLocaleString()}</span>
+              <span role="cell">{row.seen.toLocaleString()}</span>
+              <span role="cell">{row.recovered == null ? "—" : row.recovered.toLocaleString()}</span>
               <span role="cell">{row.drawn == null ? "—" : row.drawn.toLocaleString()}</span>
               <span role="cell" className="coverage-bar" aria-hidden="true">
                 <i style={{ width: `${((row.drawn ?? 0) / row.inExport) * 100}%` }} />
-                <b style={{ width: `${(row.recovered / row.inExport) * 100}%` }} />
+                <b style={{ width: `${((row.recovered ?? 0) / row.inExport) * 100}%` }} />
               </span>
             </div>
           ))}

@@ -377,7 +377,7 @@ button { color: inherit; }
 .coverage-block { margin-top: 17px; }
 .coverage-note { margin: 4px 0 0; max-width: 78ch; color: #758184; font-size: 7px; line-height: 1.6; }
 .coverage-table { margin-top: 8px; max-height: 268px; overflow-y: auto; border-top: 1px solid #dde3de; }
-.coverage-table > div { min-height: 24px; display: grid; grid-template-columns: minmax(90px, 1.4fr) repeat(3, minmax(52px, .6fr)) minmax(60px, 2fr); align-items: center; gap: 10px; border-bottom: 1px solid #e4e8e4; font-family: var(--font-plex-mono); font-size: 7px; }
+.coverage-table > div { min-height: 24px; display: grid; grid-template-columns: minmax(90px, 1.4fr) repeat(4, minmax(52px, .6fr)) minmax(60px, 1.6fr); align-items: center; gap: 10px; border-bottom: 1px solid #e4e8e4; font-family: var(--font-plex-mono); font-size: 7px; }
 .coverage-table > div > span:not(:first-child):not(.coverage-bar) { text-align: right; font-variant-numeric: tabular-nums; }
 .coverage-head { position: sticky; top: 0; background: white; color: #7c898b; text-transform: uppercase; }
 .coverage-gap > span:first-child { color: #b4762f; }
