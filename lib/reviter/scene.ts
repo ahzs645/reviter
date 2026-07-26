@@ -152,6 +152,8 @@ export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper
   const count = record.recordCount;
   // A curtain-wall container stays a wrapper even once its category is known,
   // so its child panels and mullions are not swallowed by one large envelope.
+  // Whether a wrapper is actually held back is decided by `selectDisplayBounds`,
+  // which checks that a facade is there to stand in its place.
   const isWrapper = code === 30 && count != null && count >= 8 && count <= 10;
   if (!isWrapper && record.categoryId != null) {
     return CATEGORY_DISPLAY_ROLE[record.categoryId] ?? "native";
@@ -317,12 +319,110 @@ function isSheet(
 }
 
 /**
+ * Curtain panels and mullions — the two categories a facade is made of, and the
+ * geometry a held-back container is traded for.
+ */
+const FACADE_CATEGORY_IDS = new Set([-2_000_170, -2_000_171]);
+
+/** A record counts as standing inside a wrapper when its centre does, within this. */
+const WRAPPER_OCCUPANT_SLACK_FEET = 0.5;
+
+/**
+ * Records of any kind inside a wrapper, at or above which it is still treated as
+ * a container even though no curtain panel or mullion was categorised in it.
+ *
+ * Measured against the paired export rather than chosen: of the 1,607 records the
+ * wrapper rule held back, **27 are ordinary walls the export names** — 18
+ * `IfcWallStandardCase` and 9 `IfcWall` — and 6 are curtain walls not one of
+ * whose panels was recovered. All 33 were simply missing from the building, hidden
+ * by a rule that assumed a facade had taken their place.
+ *
+ * Category alone does not separate them: 26 of the 27 walls hold no panel or
+ * mullion, but so do 21 curtain walls whose panels are drawn with no category
+ * decoded, and releasing those would lay a sheet over them. A count alone does not
+ * either — a curtain wall holds a median of 14 other records and an ordinary wall
+ * 2, but the tails cross, and a count cut that recovers 21 walls also releases 15
+ * curtain walls, 11 of them over drawn panels. Requiring **both** — no facade
+ * element *and* an uncrowded envelope — recovers 21 walls for 1 curtain wall
+ * released over drawn children.
+ *
+ * The floor is a plateau, not a fit: 3, 4 and 5 all cost exactly that 1, while 6
+ * costs 5 and recovers no further wall. Two measures that looked promising are
+ * recorded as failures so they are not retried — the share of a wrapper's plan
+ * footprint filled by *any* drawn record separates the wrong way (walls read 1.00
+ * against curtain walls' 0.45, because a floor slab under a wall covers its whole
+ * plan footprint), and so does the share filled by the records inside it (0.79
+ * against 0.20).
+ */
+const WRAPPER_CROWD_FLOOR = 5;
+
+/** Bucket size for the wrapper occupancy index, in feet. */
+const OCCUPANCY_GRID_FEET = 25;
+
+/**
+ * The wrappers that are genuinely standing in for something.
+ *
+ * "Its panels and mullions are drawn instead" is a claim, and it is checkable
+ * from the RVT alone: the categories are decoded natively, and a container's
+ * children sit inside its envelope. Where the claim fails the record is drawn,
+ * because an unnamed box in the right place beats a hole in the building.
+ */
+function heldBackWrappers(records: ElementBoundsRecord[]): Set<ElementBoundsRecord> {
+  const held = new Set<ElementBoundsRecord>();
+  const wrappers = records.filter((record) => displayRole(record) === "wrapper");
+  if (!wrappers.length) return held;
+
+  const buckets = new Map<string, ElementBoundsRecord[]>();
+  const centreOf = (record: ElementBoundsRecord) => {
+    const { min, max } = record.boundsFeet;
+    return { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+  };
+  for (const record of records) {
+    const centre = centreOf(record);
+    const key = `${Math.floor(centre.x / OCCUPANCY_GRID_FEET)},${Math.floor(centre.y / OCCUPANCY_GRID_FEET)}`;
+    const list = buckets.get(key);
+    if (list) list.push(record);
+    else buckets.set(key, [record]);
+  }
+
+  for (const wrapper of wrappers) {
+    const { min, max } = wrapper.boundsFeet;
+    const slack = WRAPPER_OCCUPANT_SLACK_FEET;
+    let occupants = 0;
+    let facade = 0;
+    for (
+      let x = Math.floor((min.x - slack) / OCCUPANCY_GRID_FEET);
+      x <= Math.floor((max.x + slack) / OCCUPANCY_GRID_FEET);
+      x += 1
+    ) {
+      for (
+        let y = Math.floor((min.y - slack) / OCCUPANCY_GRID_FEET);
+        y <= Math.floor((max.y + slack) / OCCUPANCY_GRID_FEET);
+        y += 1
+      ) {
+        for (const other of buckets.get(`${x},${y}`) ?? []) {
+          if (other === wrapper) continue;
+          const centre = centreOf(other);
+          if (centre.x < min.x - slack || centre.x > max.x + slack) continue;
+          if (centre.y < min.y - slack || centre.y > max.y + slack) continue;
+          if (centre.z < min.z - slack || centre.z > max.z + slack) continue;
+          occupants += 1;
+          if (other.categoryId != null && FACADE_CATEGORY_IDS.has(other.categoryId)) facade += 1;
+        }
+      }
+    }
+    if (facade > 0 || occupants >= WRAPPER_CROWD_FLOOR) held.add(wrapper);
+  }
+  return held;
+}
+
+/**
  * Choose the envelopes that belong in the default scene.
  *
- * Held back: curtain-wall and opening wrappers, whose child panels and mullions
- * are drawn instead; a single building-sized container that would otherwise hide
- * everything behind it; and sheets — a floor's own boundary sketch redrawn as a
- * second slab, and storey-sized plates no category claims.
+ * Held back: curtain-wall and opening wrappers **whose facade is actually in the
+ * scene**, per `heldBackWrappers`; a single building-sized container that would
+ * otherwise hide everything behind it; and sheets — a floor's own boundary sketch
+ * redrawn as a second slab, and storey-sized plates no category claims.
  *
  * A record whose category did not decode is **not** held back. Its envelope
  * came from the same validated duplicated-bounds signature as every other
@@ -330,8 +430,9 @@ function isSheet(
  * element — a hole in the model rather than an unnamed part of it.
  */
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
-  const withoutWrappers = records.filter((record) => displayRole(record) !== "wrapper");
-  const omittedWrapperCount = records.length - withoutWrappers.length;
+  const held = heldBackWrappers(records);
+  const withoutWrappers = records.filter((record) => !held.has(record));
+  const omittedWrapperCount = held.size;
   const byId = new Map(records.map((record) => [record.elementId, record]));
   const classified = withoutWrappers.filter((record) => !isSheet(record, byId, withoutWrappers));
   const omittedSheetCount = withoutWrappers.length - classified.length;
@@ -633,10 +734,16 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
   const grouped = new Map<string, { role: DisplayRole; records: ElementBoundsRecord[] }>();
   for (const record of records) {
     const resolved = displayRole(record);
-    if (resolved === "wrapper") continue;
     // An unclassified record is drawn under its own neutral batch, so it is
     // visible in the model without claiming a category the file did not give.
-    const role: DisplayRole = resolved === "unknown" ? "unclassified" : resolved;
+    // `selectDisplayBounds` is the only gate on wrappers now: one that reaches
+    // here was released because nothing was found standing in its place, and
+    // skipping it a second time here would put the hole straight back.
+    const role: DisplayRole = resolved === "unknown"
+      ? "unclassified"
+      : resolved === "wrapper"
+        ? (record.categoryId != null ? CATEGORY_DISPLAY_ROLE[record.categoryId] ?? "native" : "wall")
+        : resolved;
     const label = record.categoryName
       ?? (role === "unclassified"
         ? "Uncategorised elements"

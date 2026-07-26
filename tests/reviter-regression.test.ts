@@ -788,16 +788,55 @@ test("draws an envelope whose category did not decode instead of dropping it", (
   const unnamed = envelope(2, 4_242, 7);
   // A curtain-wall container, whose panels and mullions are drawn instead.
   const wrapper = envelope(3, 30, 9);
+  // The facade that stands in the container's place. Without it the container
+  // is not a container, and holding it back would just be a hole; see the test
+  // below.
+  const panel = (elementId: number): ElementBoundsRecord => ({
+    ...envelope(elementId, 114, 1),
+    categoryId: -2_000_170,
+    boundsFeet: { min: { x: 1, y: 1, z: 1 }, max: { x: 3, y: 3, z: 9 } },
+  });
 
   assert.equal(displayRole(unnamed), "unknown");
-  const selection = selectDisplayBounds([wall, unnamed, wrapper]);
+  const selection = selectDisplayBounds([wall, unnamed, wrapper, panel(4), panel(5)]);
   const drawn = selection.records.map((record) => record.elementId);
   // The envelope came from the same validated signature as the wall's, so a
   // missing label must not turn into a missing building element.
-  assert.deepEqual(drawn, [1, 2]);
+  assert.deepEqual(drawn, [1, 2, 4, 5]);
   assert.equal(selection.unclassifiedCount, 1);
   assert.equal(selection.omittedWrapperCount, 1);
   assert.equal(selection.omittedSheetCount, 0);
+});
+
+test("draws a curtain-wall container that has no facade standing in its place", () => {
+  // The hold-back is a trade: one container hidden so its panels and mullions
+  // stay visible. Where no panel or mullion was recovered there is nothing to
+  // trade for, and the supplied model has 33 such records — 27 of them ordinary
+  // walls the export names, suppressed by a rule that only assumed a facade was
+  // there.
+  const envelope = (elementId: number, recordCount: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 30,
+    recordCount,
+    categoryId: -2_000_011,
+    categoryName: "Walls",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 1, z: 10 } },
+  });
+  const lonely = envelope(1, 9);
+  const neighbour = envelope(2, 5);
+
+  assert.equal(displayRole(lonely), "wrapper");
+  const selection = selectDisplayBounds([lonely, neighbour]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1, 2]);
+  assert.equal(selection.omittedWrapperCount, 0);
+  // And it reaches a mesh rather than being skipped a second time downstream.
+  const meshes = buildBoundsMeshes([lonely], { x: 0, y: 0, z: 0 });
+  assert.equal(meshes.length, 1);
+  assert.equal(meshes[0]!.indices.length / 3, 12);
 });
 
 test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
