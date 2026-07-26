@@ -243,6 +243,10 @@ Both are held back the way curtain-wall wrappers already are — omitted from th
 
 What remains outside the hull is two floors whose sketch ring is larger than the export's floor by 16 ft, one wall by 14 ft, and one door by 3 ft. The floors are sketch-only — no duplicated-bounds record — so there is no independent envelope to check the ring against, and that is the next thing to look at rather than something this rule can reach.
 
+**The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets, and 247 mullions — 12% of the 2,013 drawn from a bounds record rather than a box, 218 of them under the single record code `179015/3` — which run about 6 ft long. Doors are still 2.5 ft oversized because the record is the opening, and stair components still carry the assembly's envelope.
+
+**A rule that would have caught the extremes was tested and rejected.** Two of those mullions are 724 ft and 365 ft long, which is absurd on its face — but "absurd" has to be something the decoder can determine without an export to check against. A category with thousands of members carries its own scale, so the obvious test is to flag an envelope many times the longest side of its category's median. At every cut it costs more than it saves: at 6× it flags 89 envelopes of which **1** is genuinely oversized and **73** are correct; at 20× it flags 6 to catch the same 1. A 274 ft mullion and a 479 ft wall are both real in this building. The rule is not shipped.
+
 ## Overlay and walk, in the studio
 
 The overlay below started as an offline script. It is now a view mode: load an RVT, pair its IFC export in the **Regression fixture** panel, and the geometry-source switcher gains **Overlay**.
