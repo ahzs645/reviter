@@ -107,6 +107,10 @@ That check earned its place immediately: the railing sweep is 100% accurate on
 every partition it reaches and reaches **0 of the 41 railings at or below Floor
 1**, against 70 of the 124 above it.
 
+So on the supplied project `holdout.ts` **exits 1 today**, for that gap. That is
+the check working rather than the harness being broken, and it is worth deciding
+whether to wire it into CI before or after the gap is closed.
+
 ### It is not the second-model check
 
 Every partition shares the file's Revit release, its exporter, its family

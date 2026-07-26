@@ -23,10 +23,17 @@
  *   tighter-of-two-bounds-copies     derived from 757 walls
  *   railing guard height 3.61 ft     derived from the railings whose path fits
  *   unnamed sheet, 10,000 sq ft      derived from 72 large envelopes
- *   door swing geometry              derived from doors with a host wall
+ *   door leaf from a host wall       derived from the doors that find one
+ *   door leaf from the door's shape  derived from the 1,067 whose shape resolves
  *   stair companion 169671/1         derived from 111 companion records
  *   reserved word at +22             derived from 3 corrupt records
  *   tail placement, objLen-149..-125 derived from one sample of placements
+ *
+ * Four of those carry two separable claims, so ten reports come out of seven
+ * rules: a companion's premise (the export never names it) is not its consequence
+ * (the owner that adopts its box lands correctly), and the tail window's coverage
+ * (does it find the placements that are real) is not its accuracy (do the ones it
+ * finds land). Averaging either pair would hide the half that fails.
  *
  * If a rule is reading the format, it holds on parts of the building it never
  * saw. If it is fitted to an accident of where it was measured, holding out a
