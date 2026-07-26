@@ -198,6 +198,26 @@ const UNNAMED_SHEET_AREA_SQ_FEET = 10_000;
 /** Plan agreement between a boundary sketch and the element that owns it. */
 const OWNER_SKETCH_TOLERANCE_FEET = 0.5;
 
+/**
+ * Categories Revit models as part of another element rather than on their own.
+ *
+ * A railing's top rail is a real handrail, but Revit records its envelope as the
+ * whole railing's, and the IFC exporter folds it into the one `IfcRailing`: of
+ * the 178 top rails in the supplied model the export names **none**, while 158
+ * of them reproduce a drawn railing's plan extent to within half a foot. Drawn
+ * on its own it is a second thin plate lying along a railing already in the
+ * scene.
+ *
+ * The other line-like categories are deliberately *not* here. `Stairs Paths`,
+ * `Stairs Sketch Boundary Lines` and `Sketch Lines` look like drawing aids by
+ * their names, and the export names 18 of 20, 12 of 12 and 1 of 1 of them — as
+ * stairs, stair flights and a covering. Those are real elements whose category
+ * was inherited wrongly, and dropping them would take the building with them.
+ */
+const SUB_ELEMENT_CATEGORIES = new Map<number, number>([
+  [-2000946, -2000126], // a top rail belongs to a railing
+]);
+
 function planArea(record: ElementBoundsRecord): number {
   const { min, max } = record.boundsFeet;
   return (max.x - min.x) * (max.y - min.y);
@@ -231,8 +251,25 @@ function planMatches(a: ElementBoundsRecord, b: ElementBoundsRecord): boolean {
  * export names, and the same shape never occurs on a categorised element.
  *
  * **An unnamed storey-sized plate**, per `UNNAMED_SHEET_AREA_SQ_FEET`.
+ *
+ * **A sub-element lying along its parent**, per `SUB_ELEMENT_CATEGORIES`.
  */
-function isSheet(record: ElementBoundsRecord, byId: Map<number, ElementBoundsRecord>): boolean {
+function isSheet(
+  record: ElementBoundsRecord,
+  byId: Map<number, ElementBoundsRecord>,
+  all: ElementBoundsRecord[],
+): boolean {
+  const parentCategory = record.categoryId == null
+    ? undefined
+    : SUB_ELEMENT_CATEGORIES.get(record.categoryId);
+  if (parentCategory != null) {
+    // The evidence is the duplicate footprint, not the shape: a top rail on a
+    // stair carries the railing's whole rise, up to 24.9 ft here, so a
+    // thickness test would keep exactly the ones that hide the most. Requiring
+    // a parent keeps a top rail whose railing was never recovered, which is
+    // then the only trace of that railing in the scene.
+    return all.some((other) => other.categoryId === parentCategory && planMatches(record, other));
+  }
   if (record.categoryId != null || record.categoryName) return false;
   if (planArea(record) > UNNAMED_SHEET_AREA_SQ_FEET) return true;
   const { min, max } = record.boundsFeet;
@@ -259,7 +296,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   const withoutWrappers = records.filter((record) => displayRole(record) !== "wrapper");
   const omittedWrapperCount = records.length - withoutWrappers.length;
   const byId = new Map(records.map((record) => [record.elementId, record]));
-  const classified = withoutWrappers.filter((record) => !isSheet(record, byId));
+  const classified = withoutWrappers.filter((record) => !isSheet(record, byId, withoutWrappers));
   const omittedSheetCount = withoutWrappers.length - classified.length;
   const unclassifiedCount = classified.filter((record) => displayRole(record) === "unknown").length;
   if (classified.length < 2) {

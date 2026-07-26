@@ -830,6 +830,35 @@ test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
   assert.equal(kept.omittedSheetCount, 0);
 });
 
+test("holds back a railing's top rail when its railing is in the scene", () => {
+  // Revit records the top rail's envelope as the whole railing's and folds it
+  // into the one IfcRailing on export, so drawing it lays a second plate along
+  // a railing already there. The evidence is the duplicate footprint: a top
+  // rail on a stair carries the railing's whole rise, so a thickness test would
+  // keep exactly the ones that hide the most.
+  const rail = (elementId: number, categoryId: number, maxZ: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId,
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 175, y: 136, z: maxZ } },
+  });
+  const railing = rail(1856525, -2000126, 13.6);
+  const topRail = rail(1857537, -2000946, 34.9);
+
+  const selection = selectDisplayBounds([railing, topRail]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1856525]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A top rail whose railing was never recovered is the only trace of that
+  // railing, so it stays.
+  const orphan = selectDisplayBounds([topRail, rail(9, -2000032, 12)]);
+  assert.equal(orphan.records.length, 2);
+  assert.equal(orphan.omittedSheetCount, 0);
+});
+
 test("holds back a storey-sized plate that no category claims", () => {
   // Size alone proves nothing — real slabs are larger than these. Size with no
   // category is the discriminator, and it is what put 89 ft of sheet outside
