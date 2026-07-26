@@ -63,6 +63,16 @@ function normal(plane: PlanePatch): { x: number; y: number; z: number } {
 /**
  * Build wall solids from one element's attributed planes. Planes are grouped
  * into runs of three at the fixed stride; the first of a run is the centre.
+ *
+ * **The verticality test is declining raked triples correctly, and relaxing it
+ * would build a wall out of a stair's cheek.** Of the 232 elements whose export
+ * footprint is angled and that are still drawn as an axis-aligned box, 67 own
+ * surfaces and 33 have a stride-105 triple — 314 triples between them, and *not
+ * one* has all three planes vertical. They arrive as `uDir.z = 0.3367`,
+ * `vDir.z = 0.9416` and the like, which is one body's facets rather than a
+ * centre plane plus its two faces, and 24 of those elements carry the native
+ * category `Stairs Stringer Carriage`. The other 165 own no surface at all, for
+ * the reason recorded in `surfaces.ts`: they have no geometry object.
  */
 export function wallSolidsFor(elementId: number, planes: PlanePatch[]): WallSolid[] {
   const solids: WallSolid[] = [];

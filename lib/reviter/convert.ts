@@ -106,12 +106,6 @@ const MAX_CATEGORY_TOKENS = 400_000;
 const MAX_SKETCH_CURVES = 400_000;
 
 /**
- * Categories Revit models as a sketch extruded through a thickness. Boundary
- * recovery is limited to these because chaining is quadratic in the edges an
- * element owns, and because outside them a closed ring is not the element's
- * shape — a wall's edges bound its faces, not its footprint.
- */
-/**
  * Categories whose element is a rail run rather than a volume.
  *
  * A railing is a path with a guard above it, and its axis-aligned envelope is
@@ -144,11 +138,51 @@ const RAIL_PATH_PLAN_TOLERANCE_FEET = 0.5;
 const RAIL_GUARD_MIN_FEET = 1.5;
 const RAIL_GUARD_MAX_FEET = 5;
 
+/**
+ * Categories Revit models as a sketch extruded through a thickness. Boundary
+ * recovery is limited to these because chaining is quadratic in the edges an
+ * element owns, and because outside them a closed ring is not the element's
+ * shape — a wall's edges bound its faces, not its footprint.
+ *
+ * **A stair landing is one of these and was missing.** The exporter agrees: it
+ * writes every landing here as an `IfcSlab` with a single `SweptSolid` body,
+ * which is a profile extruded through a thickness and nothing else. Without the
+ * category the landing fell through to the rebuilt-solid route, and a plane
+ * triple on a landing is not a location line — the 17 landings that own one are
+ * drawn at **0.0% centre agreement, median 2.551 ft out**, four of them as
+ * 0.2 × 0.2 × 1.0 ft stubs where the export has a 3.8 × 8.0 ft slab. The ring
+ * is exact instead: over the 20 landings that own curves it reproduces the
+ * export's own footprint to **0.00 ft at the worst corner, 20 of 20**.
+ *
+ * | landings with a ring, n=19 | centre within 0.5 ft | median centre error |
+ * | --- | --- | --- |
+ * | drawn from the rebuilt solid | 2 | 2.551 ft |
+ * | drawn from the envelope | 13 | 0.000 ft |
+ * | **drawn from the ring** | **17** | **0.000 ft** |
+ * | control: another landing's ring | 0 | 243.612 ft |
+ *
+ * The two that stay wrong are the exporter's, not ours — both are multistorey
+ * stairs written as one product per storey, so the union they are scored
+ * against spans two floors. The gain over the envelope is in the five landings
+ * that have no duplicated-bounds record at all, whose envelope is therefore
+ * synthesised from that same bad solid — 1.00 ft thick where the export writes
+ * 0.16: the ring fixes the plan for four of them and leaves 0.42 ft of z error.
+ * The other 20 landings do carry a real record, and its 0.16 ft is the export's
+ * slab to the digit.
+ *
+ * The curves are filed under the landing's own id, not under an `id - 1` Sketch
+ * element — a stair part's companion sits one *above* it, which is the whole of
+ * the 169671 rule below. Taking the union `boundaryLoopsFor` takes anyway costs
+ * nothing measurable: it adds a second ring on 2 of the 26 landings and both
+ * score identically either way, so the floor convention is left alone rather
+ * than special-cased.
+ */
 const SKETCH_BOUNDARY_CATEGORIES = new Set([
   -2000032, // Floors
   -2000035, // Roofs
   -2000038, // Ceilings
   -2000180, // Ramps
+  -2000920, // StairsLandings
   -2001300, // StructuralFoundation
 ]);
 
@@ -920,6 +954,18 @@ export function convertRvtBytes(
      * product to within 0.08 ft and scores badly only against the union of all
      * of them; drawing one run per storey needs a replication rule, not a better
      * box.
+     *
+     * **The adoption was not the reason the landings were wrong.** Holding out
+     * by storey put this rule at 95.2% on Floor 1 against 55.2% and 65.0% on
+     * Floors 2 and 3, and 13 of the 24 owners over half a foot out were the
+     * landings the exporter writes as slabs. The adopted box was right for 11
+     * of those 13 — it was never drawn, because `record.solid` outranks the
+     * envelope and a landing's plane triple is not a location line. They are
+     * drawn from their own sketch ring now; see `SKETCH_BOUNDARY_CATEGORIES`.
+     * Adoption goes to **87.5% of 104**, and every one of the 12 owners still
+     * over half a foot matches the *nearest single* export product to within
+     * **0.02 ft** — so what is left of this rule's storey split is entirely the
+     * exporter splitting a stair per storey, which no box can answer.
      */
     const recordsById = new Map(elementBounds.map((record) => [record.elementId, record]));
     let adoptedStairBoxes = 0;

@@ -407,7 +407,7 @@ A spread only counts as a split if it also clears a pooled two-proportion `|z| >
 **Six of seven rules hold on parts of the building they were not fitted to. Two reports did not come out clean, and both are reach rather than accuracy — which is exactly why no threshold above saw either:**
 
 - **the railing sweep is silent below Floor 1.5.** Its guard height is 3.609 ft on all 70 railings it reaches, on every partition, so the arithmetic generalises perfectly. But it reaches **0 of the 41 railings at or below Floor 1** — 0/1, 0/10, 0/21, 0/9 — against 70 of the 124 above. The sketch curves it needs do not reach the lower storeys. This is the failure mode a pass-rate cannot express: a rule can be flawless on what it touches and still be wrong about the building, because it never touches half of it.
-- **stair companion adoption splits by storey**, 95.2% on Floor 1 against 55.2% on Floor 2 and 65.0% on Floor 3, z=3.1. Of the 24 owners still over half a foot out, 11 are the flights the exporter splits one product per storey — a truth-side artefact — and **13 are landings the export writes as slabs**, 20 of the 24 on Floors 2 and 3. The premise itself is spotless: the export names 0 of 117 companions, on every partition.
+- **stair companion adoption splits by storey**, 95.2% on Floor 1 against 55.2% on Floor 2 and 65.0% on Floor 3, z=3.1. Of the 24 owners still over half a foot out, 11 are the flights the exporter splits one product per storey — a truth-side artefact — and **13 are landings the export writes as slabs**, 20 of the 24 on Floors 2 and 3. The premise itself is spotless: the export names 0 of 117 companions, on every partition. Chasing the landings down is the section below; it took the rule to 87.5%, and what survives is the exporter's split alone.
 
 Two results worth reading past the verdicts. **The tail-placement window is right rather than fitted**: searching 80–240 bytes back instead of 125–149 finds 1,331 extra candidates, of which only 143 join an export element and **24** reproduce it. Scoring raw candidates made this look like a 98pp split, which was the probe's own false positives; framing the population as *placements that reproduce the export* gives 99.9% everywhere. And **the 10,000 sq ft sheet rule holds back exactly one element the export names** — 1522385, an `IfcMember` with a 61,572 sq ft footprint, which is to say a misparse.
 
@@ -538,6 +538,31 @@ keeps the same accuracy and drops the tail:
 That is what ships. It takes building elements from 30,676 to **30,679** — the
 point is not the three, it is that the worst case shrinks tenfold without costing
 anything, on classes the rule was not derived from.
+
+## A stair landing is a slab, and was being drawn as a location line
+
+`IfcSlab` sat at 80.4% centre agreement — the worst class in the model that is not a stair or a door — and the hold-out harness said why it was invisible to every other measure: the misses clustered on Floors 2 and 3, and the rule they were blamed on was innocent.
+
+The 13 landings are named `Assembled Stair:Stair:<parent> Landing 1`, carry the native category `Stairs Landings` (−2000920), and the export writes each as an `IfcSlab` with a single `Body/SweptSolid` shape — a profile extruded through a thickness, which is the definition of a sketch-based element. That category was not in `SKETCH_BOUNDARY_CATEGORIES`, so a landing fell through to the rebuilt-solid route instead.
+
+**A plane triple on a landing is not a location line.** Across all 6,346 solid-route elements that join an export product, `Stairs Landings` is the *only* category where the route fails outright: **0.0% centre agreement on 17 elements, median 2.551 ft out**, against walls at 98.0%, columns at 100% and panels at 100%. Four landings were drawn as 0.2 × 0.2 × 1.0 ft stubs where the export has a 3.8 × 8.0 ft slab.
+
+The landing's own sketch curves were in the file the whole time — 21 to 24 each, filed under its own id — and assembled they reproduce the export's own footprint to **0.00 ft at the worst corner, 20 of 20**:
+
+| landings owning a ring, n = 19 | centre within 0.5 ft | median centre error |
+| --- | --- | --- |
+| drawn from the rebuilt solid | 2 | 2.551 ft |
+| drawn from the envelope | 13 | 0.000 ft |
+| **drawn from the ring** | **17** | **0.000 ft** |
+| control: another landing's ring | **0** | 243.612 ft |
+
+The fix is one category id. `IfcSlab` centre agreement goes **80.4% → 95.1%** and size **71.6% → 82.4%**, landings drawn within half a foot go from 7 of 25 to **22**, and the hold-out rule goes from 76.9% to **87.5%** — Floor 1 to 100%, Floor 2 to 65.5%, Floor 3 to 85.0%. Every other row of the overlay table is byte-identical, and nine of the ten hold-out rules print identical n, accuracy, spread and z.
+
+**The companion-adoption rule was never the problem, and the earlier account of the 24 misses was slightly wrong.** The adopted envelope was already correct — 0.00 ft for 11 of the 12 — and simply never drawn, because `record.solid` outranks it. Scoring each owner against the *nearest single* export product rather than the union also corrects the split: 11 flights **and one landing** reproduce a single product to ≤0.02 ft, so the honest baseline was 12 truth-side artefacts and 12 our defect, not 11 and 13. All 12 residual misses now match a single product to ≤0.02 ft, so what remains is entirely the exporter writing a multistorey stair as one product per storey — which lives on Floors 2–3 by definition, and is the split.
+
+Three negative results from the same work. **A general "envelope beats rebuilt solid" rule is rejected**: over 6,346 solid-route elements it fixes 68 walls and 11 landings and breaks a ceiling, and this file already records that a global envelope fallback costs 269 of 6,527 records their orientation — invisible to an axis-aligned metric because the export's box is axis-aligned too. Scoped to landings, where a flat slab has no orientation to lose, it costs nothing. **The `id − 1` union hypothesis is true and worthless**: a stair part's Sketch companion sits one *above* it, so the floor convention looked wrong here, but own-only and the union score identically at 17 of 19, so nothing was special-cased. And **the sketch route does nothing for stair flights** — the three that reach it are all per-storey splits.
+
+One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
 
 ## Curved walls are written the way straight ones are
 
