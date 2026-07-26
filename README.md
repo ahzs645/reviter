@@ -166,10 +166,10 @@ On the supplied 67 MB Revit 2027 project:
 | `IfcWallStandardCase` | 7,381 | 7,195 | 7,181 | **7,145** | 6,324 |
 | `IfcWall` | 140 | 139 | 137 | **127** | 110 |
 | `IfcCurtainWall` | 1,835 | 1,796 | 1,794 | 241 | 253 |
-| `IfcMember` | 19,707 | 19,214 | 15,984 | 15,984 | 15,916 |
+| `IfcMember` | 19,707 | 19,214 | 15,986 | 15,986 | 15,916 |
 | `IfcPlate` | 6,235 | 6,074 | 4,973 | 4,973 | 4,973 |
 | `IfcDoor` | 1,912 | 1,827 | 1,399 | **1,399** | 1,294 |
-| `IfcWindow` | 20 | 20 | 5 | 5 | 3 |
+| `IfcWindow` | 20 | 20 | 6 | 6 | 3 |
 | `IfcColumn` | 311 | 302 | 266 | **266** | 95 |
 | `IfcRailing` | 229 | 215 | 173 | **173** | 147 |
 | `IfcSlab` | 161 | 159 | 151 | 150 | 135 |
@@ -178,7 +178,7 @@ On the supplied 67 MB Revit 2027 project:
 | `IfcStair` | 92 | 88 | 57 | **57** | 58 |
 | `IfcStairFlight` | 121 | 115 | 103 | **97** | 77 |
 | `IfcRamp` | 12 | 12 | 5 | 5 | 5 |
-| building elements | 38,222 | | | **30,676** | 29,424 |
+| building elements | 38,222 | | | **30,679** | 29,424 |
 
 `IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
 
@@ -199,6 +199,8 @@ Together these took drawn elements from 38,353 to 39,114, and coverings from 50.
 - **seen but no geometry built** — 748 walls, 149 columns, 26 stair flights. These elements are known to be real and yield nothing to the surface, sketch, or instance decoders.
 
 Neither is a display problem, so neither is fixed by the changes above. `IfcRamp` is unchanged at 5 drawn for that reason.
+
+**The same split, in the studio.** This table was only ever available offline, while the app reported a single headline match rate — and a single rate flatters the result, because a class can be matched by element id for every one of its elements and still contribute nothing to the scene. Pairing an export now renders **Coverage by object class** in the report dock: one row per class the export carries, with what the export holds, what was recovered, and what is drawn, the last two also drawn as a bar. The join is the same one the audit script uses — the matched Revit ids are carried out of the IFC analysis and intersected with the ids the scene actually drew — so the app and the script cannot drift apart. Classes nothing was recovered for keep their row rather than being filtered away, since that row is the useful one.
 
 ## Overlay and walk, in the studio
 
@@ -253,7 +255,7 @@ Stair flights remain wrong at 5.4 ft and are not addressed here.
 - **5,260 of 24,616 instance placements reference a shared geometry object that is never read.** 1,637 of those objects are found in the chain and rejected, because `readLocalBounds` reads the local AABB at `+48` and these larger objects do not keep it there. An offset search against the export found no consistent alternative, so the layout is still open. This costs 540 elements outright and coarsens the rest.
 - **ramps and windows are simply absent** — 7 of 12 ramps and 15 of 20 windows appear nowhere in any pass, so there is nothing to place.
 
-## The bounds are written twice, and the second copy is the element's
+## The bounds are written twice, and the tighter copy is the element's
 
 The record's two identical bounds blocks were treated as a single test: if the
 copies disagreed, the record was thrown away. That is what was missing the
@@ -268,9 +270,9 @@ copy matches for 757 of 757**, and the same search against a deliberately
 mismatched wall matches **nothing at all**. Where the two copies disagree, the
 first holds something else and the second is the element's own extent.
 
-So the second copy is read always — for a record whose copies agree that is the
-same bytes — and disagreement is recorded as evidence rather than treated as
-disqualifying. The result, measured against the export:
+So one of the two copies is read rather than the record being thrown away, and
+disagreement is recorded as evidence rather than treated as disqualifying. The
+result, measured against the export:
 
 | | drawn before | drawn now | of the export's count |
 | --- | --- | --- | --- |
@@ -290,6 +292,38 @@ them, members 98.5%, plates 99.9%, railings 94.5%.
 This also retires the earlier conclusion that these elements had "no geometry
 anywhere in the file". They did. The decoder was asking the bytes the wrong
 question.
+
+### Which copy, tested on the classes the rule was not fitted to
+
+"Read the second copy" was derived from 757 walls, and a rule fitted on walls and
+then applied to everything is the shape overfitting takes. A second building
+would be the proper control; there is only one here, so the substitute is to hold
+out the element classes the rule never saw. Over the **5,339 records whose two
+copies actually differ** and that join to an export element:
+
+| class | n | median error, first copy | second copy | second wins |
+| --- | --- | --- | --- | --- |
+| `IfcWallStandardCase` | 4,853 | 0.197 ft | **0.000 ft** | 94% |
+| `IfcDoor` | 104 | 3.529 ft | 3.529 ft | 7% |
+| `IfcColumn` | 103 | 0.003 ft | **0.000 ft** | 64% |
+| `IfcMember` | 81 | **6.187 ft** | 6.187 ft | 4% |
+
+The rule holds on columns, which it was not fitted to, and does nothing for doors
+or members — consistent with those classes' error coming from somewhere else
+entirely. But taking the second copy unconditionally also admits a handful of
+wild boxes, one of them **8,701 ft** across. Choosing whichever copy encloses
+less volume — a test the decoder can apply with no export to check against —
+keeps the same accuracy and drops the tail:
+
+| rule | mean error | worst case | within 0.05 ft |
+| --- | --- | --- | --- |
+| always the first copy | 0.538 ft | 23.5 ft | 10.8% |
+| always the second copy | 2.009 ft | 8,701.2 ft | 95.9% |
+| **whichever encloses less** | **0.380 ft** | **851.9 ft** | **95.9%** |
+
+That is what ships. It takes building elements from 30,676 to **30,679** — the
+point is not the three, it is that the worst case shrinks tenfold without costing
+anything, on classes the rule was not derived from.
 
 ## Four remaining gaps, and which of them are reachable
 
@@ -383,9 +417,21 @@ These elements are therefore *known* rather than *drawn*, and the coverage table
 
 **Stair flights are not drawn from the wrong source.** 50 of the 56 stair flights drawn from native faces have exactly one face, and one face is not a solid, so preferring the element's envelope looked like an obvious improvement. Measured, the envelope is *worse*: 7.95 ft median error against the 5.413 ft the faces already give. Both readings are wrong by several feet, so the fault is in how stair geometry is attributed rather than in which of the two the viewer picks, and no change was made.
 
-**And one that is simply not recoverable yet.** Of the 748 walls that are proven real and yield no geometry, 709 are found as objects in the chain — and **745 of the 748 own zero decoded surface patches**, against 6,242 of the 6,403 recovered walls that do own them. There is no bounds record, no plane, no sketch and no placement for these elements. Nothing in the currently decoded record types describes their shape, so this needs a new record decoded rather than a pipeline change.
+**This was where the wall gap was wrongly written off.** An earlier reading of this section concluded that the 748 walls proven real and yielding no geometry needed a new record type decoded, on the evidence that 745 of them owned zero decoded surface patches. Surface patches were the wrong place to look: those walls had a duplicated-bounds record the whole time, and the copy check above was rejecting it. After that fix, only **14 walls are seen without being recovered**, not 748. The paragraph is kept rather than deleted because the mistake is instructive — an absence measured through one decoder is not an absence in the file.
 
 The record-code consensus floor was also widened, so that a cluster too small to reach the old flat support floor of 8 can qualify by being near-unanimous instead — a building holds a dozen ramps and their cluster could never reach 8 no matter how consistent the evidence was. On this model it changes almost nothing: the small categories are limited by not being seen, not by failing to reach consensus. It is kept because the bias it removes is real and the tail categories are the ones a widened floor exists for, but it is recorded here as having produced no measurable gain.
+
+## Scoping the family documents
+
+The elements that are seen but never recovered keep pointing at the same place — a family definition the decoders cannot reach — so before treating that as the next project, it is worth establishing what "the family documents" physically are in this file. Three things were checked directly.
+
+**There is no second container.** Scanning all 366.7 MB of inflated partition pages for the OLE signature returns **zero hits**, and the file has 14 non-empty container entries in total, of which `Partitions/325` is 65.8 MB and everything else together is under 1.2 MB. Whatever a loaded family is here, it is not a nested `.rfa` sitting in its own storage.
+
+**`Global/ContentDocuments` is not it either.** It is a single gzip member inflating to 2.7 MB, and its strings are template and system settings — `Revit Default DB Server`, `RbsDuctCurve`, `Floor Plans`, a 2015 build stamp. It references no family document at all.
+
+**The families are named inside the partition stream, and only named.** 132 of 3,666 pages carry `revit.local.family:<40 hex>-1.0.0` identifiers, **193 distinct documents** across the model. The objects carrying those references are uniformly small — 531 of them, all under marker `0x0c86`, median **374 bytes** and a maximum of **504**. A definition with geometry in it cannot fit in 504 bytes. These are the manifest, not the content.
+
+So the work is not "open the other container and parse it". It is to decode a further object class inside the stream already being walked, and then bind an instance to it — the same two-part problem the shared-geometry objects posed, at a larger scale. What it would be worth, from the coverage table: 3,228 members, 1,101 plates, 428 doors, 36 columns and 12 stair flights are seen and not recovered, about 5,900 elements once the deliberately suppressed curtain-wall containers are set aside. That is the largest remaining lever, and it is a multi-day decode with a real chance of ending in a negative result — the honest framing is that the file has been shown to contain the references, not the geometry.
 
 ## Stream coverage
 

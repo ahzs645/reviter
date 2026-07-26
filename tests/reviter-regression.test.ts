@@ -978,7 +978,7 @@ test("measures the object markers a file uses instead of assuming one", () => {
   );
 });
 
-test("reads the second bounds copy when the two disagree", () => {
+test("reads the tighter bounds copy when the two disagree", () => {
   // Requiring the copies to match rejected the record outright, which cost 994
   // walls. Against the paired export the second copy reproduces the exported
   // wall for 757 of 757 such objects, and a mismatched target matches none.
@@ -991,7 +991,8 @@ test("reads the second bounds copy when the two disagree", () => {
   view.setUint32(34, 0x0008_8004, true);
   view.setUint32(38, 5, true);
   view.setUint32(42, 3, true);
-  const stale = [0, 0, 0, 1, 1, 1];
+  // The stale copy encloses far more than the element does.
+  const stale = [-400, -400, -400, 400, 400, 400];
   const real = [10.5, -20.25, 0, 11.5, -4.75, 13.5];
   stale.forEach((value, index) => view.setFloat64(72 + index * 8, value, true));
   real.forEach((value, index) => view.setFloat64(120 + index * 8, value, true));
@@ -999,6 +1000,33 @@ test("reads the second bounds copy when the two disagree", () => {
   const record = detectDuplicatedBoundsRecord(data);
   assert.ok(record);
   assert.equal(record.duplicated, false);
+  assert.deepEqual(record.boundsFeet, {
+    min: { x: real[0], y: real[1], z: real[2] },
+    max: { x: real[3], y: real[4], z: real[5] },
+  });
+});
+
+test("prefers the tighter copy even when it is written first", () => {
+  // Reading the second copy always was a wall rule. Held out against the
+  // classes it was never fitted to it still wins, but it also admits a few
+  // wild boxes — one 8,701 ft out. Taking whichever copy encloses less keeps
+  // the same 95.9% within 0.05 ft and cuts the worst case tenfold.
+  const data = new Uint8Array(200);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 700_002, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(18, 116, true);
+  view.setUint32(26, 700_002, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, 5, true);
+  view.setUint32(42, 3, true);
+  const real = [1, 2, 3, 2, 4, 9];
+  const wild = [-900, -900, -900, 900, 900, 900];
+  real.forEach((value, index) => view.setFloat64(72 + index * 8, value, true));
+  wild.forEach((value, index) => view.setFloat64(120 + index * 8, value, true));
+
+  const record = detectDuplicatedBoundsRecord(data);
+  assert.ok(record);
   assert.deepEqual(record.boundsFeet, {
     min: { x: real[0], y: real[1], z: real[2] },
     max: { x: real[3], y: real[4], z: real[5] },

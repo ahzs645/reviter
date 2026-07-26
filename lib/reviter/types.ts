@@ -246,6 +246,11 @@ export type IfcElementTypeMatch = {
   matchedRvtRecords: number;
   matchedElemTable: number;
   matchedPartitionRecords: number;
+  /**
+   * Revit ids of the matched elements, so the studio can report how many of
+   * this class actually reach the scene — the audit script's third column.
+   */
+  matchedIds?: Uint32Array;
 };
 
 export type IfcMatchedElement = {

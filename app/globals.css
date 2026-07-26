@@ -374,7 +374,18 @@ button { color: inherit; }
 .gate-pass > span i { background: #91bd50; }.gate-warn > span i { background: var(--amber); }.gate-fail > span i { background: #df6f65; }
 .gate-card > strong { display: block; margin-top: 6px; font-family: var(--font-plex-mono); font-size: 12px; }
 .gate-card > p { margin: 5px 0 0; color: #758184; font-size: 7px; line-height: 1.5; }
-.match-evidence-grid { margin-top: 17px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.coverage-block { margin-top: 17px; }
+.coverage-note { margin: 4px 0 0; max-width: 78ch; color: #758184; font-size: 7px; line-height: 1.6; }
+.coverage-table { margin-top: 8px; max-height: 268px; overflow-y: auto; border-top: 1px solid #dde3de; }
+.coverage-table > div { min-height: 24px; display: grid; grid-template-columns: minmax(90px, 1.4fr) repeat(3, minmax(52px, .6fr)) minmax(60px, 2fr); align-items: center; gap: 10px; border-bottom: 1px solid #e4e8e4; font-family: var(--font-plex-mono); font-size: 7px; }
+.coverage-table > div > span:not(:first-child):not(.coverage-bar) { text-align: right; font-variant-numeric: tabular-nums; }
+.coverage-head { position: sticky; top: 0; background: white; color: #7c898b; text-transform: uppercase; }
+.coverage-gap > span:first-child { color: #b4762f; }
+.coverage-bar { position: relative; height: 4px; border-radius: 2px; background: #e8ece8; }
+.coverage-bar i, .coverage-bar b { position: absolute; top: 0; left: 0; height: 4px; border-radius: 2px; }
+.coverage-bar b { background: #c9d7bd; }
+.coverage-bar i { z-index: 1; background: #91bd50; }
+.match-evidence-grid { margin-top: 17px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
 .match-table, .sample-list { margin-top: 8px; border-top: 1px solid #dde3de; }
 .match-table > div { min-height: 28px; display: grid; grid-template-columns: 1fr auto minmax(150px, auto); align-items: center; gap: 10px; border-bottom: 1px solid #e4e8e4; font-family: var(--font-plex-mono); font-size: 7px; }
 .match-table strong { font-size: 8px; }.match-table small { color: #7c898b; text-align: right; }

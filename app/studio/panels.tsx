@@ -1,7 +1,8 @@
 "use client";
 
 /** Read-only summary panels: the fidelity ledger row and the regression report. */
-import type { PairedRegressionResult } from "../../lib/reviter";
+import { useMemo } from "react";
+import { classCoverage, type PairedRegressionResult } from "../../lib/reviter";
 
 export function FidelityRow({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "off" }) {
   return (
@@ -12,8 +13,15 @@ export function FidelityRow({ label, value, tone }: { label: string; value: stri
   );
 }
 
-export function RegressionPanel({ comparison }: { comparison: PairedRegressionResult }) {
+export function RegressionPanel({
+  comparison,
+  drawnElementIds,
+}: {
+  comparison: PairedRegressionResult;
+  drawnElementIds: Set<number>;
+}) {
   const reference = comparison.reference;
+  const coverage = useMemo(() => classCoverage(comparison, drawnElementIds), [comparison, drawnElementIds]);
   return (
     <section className={`regression-panel regression-${comparison.status}`}>
       <div className="regression-heading">
@@ -41,19 +49,36 @@ export function RegressionPanel({ comparison }: { comparison: PairedRegressionRe
         ))}
       </div>
 
-      <div className="match-evidence-grid">
-        <div>
-          <p className="eyebrow">Object-class matches</p>
-          <div className="match-table" role="table" aria-label="IFC object class matches to RVT records">
-            {reference.elementTypes.filter((row) => row.matchedRvtRecords).slice(0, 8).map((row) => (
-              <div role="row" key={row.ifcType}>
-                <span role="cell">{row.ifcType.replace(/^IFC/, "")}</span>
-                <strong role="cell">{row.matchedRvtRecords.toLocaleString()} / {row.count.toLocaleString()}</strong>
-                <small role="cell">index {row.matchedElemTable.toLocaleString()} · partition {row.matchedPartitionRecords.toLocaleString()}</small>
-              </div>
-            ))}
+      <div className="coverage-block">
+        <p className="eyebrow">Coverage by object class</p>
+        <p className="coverage-note">
+          Every class the export carries, including the ones nothing was recovered for. Recovered means an
+          element id was found in the Revit file; drawn means it reached the scene with geometry.
+        </p>
+        <div className="coverage-table" role="table" aria-label="Per-class coverage against the paired IFC export">
+          <div role="row" className="coverage-head">
+            <span role="columnheader">Class</span>
+            <span role="columnheader">In export</span>
+            <span role="columnheader">Recovered</span>
+            <span role="columnheader">Drawn</span>
+            <span role="columnheader" />
           </div>
+          {coverage.map((row) => (
+            <div role="row" key={row.ifcType} className={row.drawn === 0 ? "coverage-gap" : undefined}>
+              <span role="cell">{row.ifcType}</span>
+              <span role="cell">{row.inExport.toLocaleString()}</span>
+              <span role="cell">{row.recovered.toLocaleString()}</span>
+              <span role="cell">{row.drawn == null ? "—" : row.drawn.toLocaleString()}</span>
+              <span role="cell" className="coverage-bar" aria-hidden="true">
+                <i style={{ width: `${((row.drawn ?? 0) / row.inExport) * 100}%` }} />
+                <b style={{ width: `${(row.recovered / row.inExport) * 100}%` }} />
+              </span>
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div className="match-evidence-grid">
         <div>
           <p className="eyebrow">Matched record samples</p>
           <div className="sample-list">

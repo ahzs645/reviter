@@ -161,6 +161,7 @@ export async function analyzeIfcReference(
       let matched = 0;
       let matchedElemTable = 0;
       let matchedPartitionRecords = 0;
+      const matchedIds: number[] = [];
       elementCount += ids.size();
       for (let index = 0; index < ids.size(); index += 1) {
         const expressId = ids.get(index);
@@ -174,6 +175,7 @@ export async function analyzeIfcReference(
         const inPartitionRecords = partitionRecordIds.has(revitElementId);
         if (!inElemTable && !inPartitionRecords) continue;
         matched += 1;
+        matchedIds.push(revitElementId);
         if (inElemTable) matchedElemTable += 1;
         if (inPartitionRecords) matchedPartitionRecords += 1;
         matchedElementCount += 1;
@@ -209,6 +211,7 @@ export async function analyzeIfcReference(
         matchedRvtRecords: matched,
         matchedElemTable,
         matchedPartitionRecords,
+        matchedIds: Uint32Array.from(matchedIds),
       });
       onProgress?.({
         ratio: 0.12 + ((typeIndex + 1) / Math.max(1, elementTypeRows.length)) * 0.24,

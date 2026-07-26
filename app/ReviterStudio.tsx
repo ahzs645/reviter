@@ -732,7 +732,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
           {result && detailsOpen && (
             <div className="results-dock">
-              {comparison && <RegressionPanel comparison={comparison} />}
+              {comparison && <RegressionPanel comparison={comparison} drawnElementIds={displayedElementIds} />}
               <section className="result-summary">
                 <p className="eyebrow">Recovery summary</p>
                 <div className="metric-row">

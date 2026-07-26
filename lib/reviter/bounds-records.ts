@@ -26,6 +26,30 @@ export type DetectedBoundsRecord = {
   boundsFeet: Bounds3;
 };
 
+type Bounds6 = [number, number, number, number, number, number];
+
+/** One six-`f64` bounds block, or null when it is not a usable envelope. */
+function readBounds(view: DataView, at: number): Bounds6 | null {
+  if (at + 48 > view.byteLength) return null;
+  const values: number[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const value = view.getFloat64(at + index * 8, true);
+    if (!Number.isFinite(value) || Math.abs(value) > 50_000) return null;
+    values.push(value);
+  }
+  const spans = [values[3]! - values[0]!, values[4]! - values[1]!, values[5]! - values[2]!];
+  if (spans.some((span) => span < -1e-8 || span > 5_000)) return null;
+  if (spans.filter((span) => span > MIN_SOLID_SPAN_FEET).length < 2) return null;
+  return values as Bounds6;
+}
+
+/** Volume the block encloses, with a degenerate axis counted as its tolerance. */
+function enclosedVolume(bounds: Bounds6): number {
+  return [0, 1, 2]
+    .map((axis) => Math.max(bounds[axis + 3]! - bounds[axis]!, MIN_SOLID_SPAN_FEET))
+    .reduce((product, span) => product * span, 1);
+}
+
 export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsRecord[] {
   const records: DetectedBoundsRecord[] = [];
   if (data.byteLength < 138) return records;
@@ -62,39 +86,27 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
       }
     }
 
-    // The bounds are written twice, and where the two copies disagree the
-    // **second** is the element's own extent.
+    // The bounds are written twice, and requiring the copies to match was
+    // rejecting the record outright — which cost 994 walls, most of the
+    // interior partitions missing from the model. Their bounds were there the
+    // whole time; the two copies simply disagree, and one of them is the
+    // element.
     //
-    // Requiring the copies to match was rejecting the record outright, which
-    // cost 994 walls — most of the interior partitions missing from the model.
-    // Their bounds were there the whole time: searching every offset of the 757
-    // such wall objects that could be joined to the paired export, the block at
-    // the second copy reproduces the exported wall for **757 of 757**, while
-    // the same search against a deliberately mismatched wall matches nothing at
-    // all. So the second copy is read always — for a record whose copies agree
-    // that changes nothing — and disagreement is recorded rather than fatal.
-    const valuesStart = boundsStart + BOUNDS_DUPLICATE_BYTES;
-    const values = Array.from({ length: 6 }, (_, index) =>
-      view.getFloat64(valuesStart + index * 8, true),
-    );
-    if (!values.every((value) => Number.isFinite(value) && Math.abs(value) <= 50_000)) {
-      continue;
-    }
-    const [minX, minY, minZ, maxX, maxY, maxZ] = values as [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-    ];
-    const spans = [maxX - minX, maxY - minY, maxZ - minZ];
-    if (
-      spans.some((span) => span < -1e-8 || span > 5_000) ||
-      spans.filter((span) => span > MIN_SOLID_SPAN_FEET).length < 2
-    ) {
-      continue;
-    }
+    // Which one is decided by which encloses less. Reading the second always
+    // was derived from walls and holds for the classes it was never fitted to
+    // — columns, railings, windows, stair flights — but on the records where
+    // the copies disagree it also admits a handful of wild boxes, one of them
+    // 8,701 ft out. Over all 5,339 such records with a joinable export element,
+    // taking the tighter copy keeps the same 95.9% within 0.05 ft while cutting
+    // the mean error from 2.009 ft to 0.380 and the worst case tenfold. For a
+    // record whose copies agree the choice is moot.
+    const first = readBounds(view, boundsStart);
+    const second = readBounds(view, boundsStart + BOUNDS_DUPLICATE_BYTES);
+    const chosen = first && second
+      ? (enclosedVolume(second) <= enclosedVolume(first) ? second : first)
+      : first ?? second;
+    if (!chosen) continue;
+    const [minX, minY, minZ, maxX, maxY, maxZ] = chosen;
     records.push({
       elementId,
       recordOffset,

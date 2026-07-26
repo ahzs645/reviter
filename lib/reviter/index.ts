@@ -51,6 +51,8 @@ export {
   recordCodeKey,
   resolveElementCategories,
 } from "./native-categories";
+export { classCoverage } from "./coverage";
+export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
 export {
   boundsDimensions,
