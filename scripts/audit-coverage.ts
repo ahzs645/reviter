@@ -168,6 +168,7 @@ sheets held back        ${selection.omittedSheetCount.toLocaleString()}
   held back as wrappers  ${wrappers.toLocaleString()}
 from a solid alone       ${(outcome.stats.solidOnlyElements ?? 0).toLocaleString()}
 from an instance alone   ${(outcome.stats.instanceOnlyElements ?? 0).toLocaleString()}
+railings swept          ${(outcome.stats.sweptRailings ?? 0).toLocaleString()}
 from a sketch boundary   ${(outcome.stats.sketchBoundaryElements ?? 0).toLocaleString()} \
 (${(outcome.stats.unnamedSketchElements ?? 0).toLocaleString()} of them uncategorised)
 conversion took          ${(outcome.stats.durationMs / 1000).toFixed(1)}s

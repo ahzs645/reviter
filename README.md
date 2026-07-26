@@ -251,7 +251,25 @@ The evidence for that rule is the duplicate footprint and nothing else. A first 
 
 The neighbouring categories look like drawing aids by their names and are **deliberately left alone**: the export names 18 of 20 `Stairs Paths`, 12 of 12 `Stairs Sketch Boundary Lines`, and the one `Sketch Lines` record — as stairs, stair flights, and a covering. Those are real elements whose category was inherited wrongly, and dropping them by name would take the building with them.
 
-What railings still get wrong is not a decoder problem: 16 of the 165 have an axis-aligned footprint over 500 sq ft, the largest **23,877 sq ft** — a railing that runs around an atrium has an enormous bounding box, and drawing it as a filled box lays a 3.6 ft slab over the floor. The export's bounding box is identical, so no measurement against it registers an error; only looking at it does. Railing boxes cover 57,962 sq ft of plan in total. Drawing a path element as a swept profile rather than a box is the fix, and it is not a small one.
+### Railings are swept along their path, not filled to their box
+
+What was left after the top rails is not something any comparison against the export could have found: 16 of the 165 railings have an axis-aligned footprint over 500 sq ft, the largest **23,877 sq ft**. A railing running around an atrium spans that rectangle, and drawing the rectangle lays a 3.6 ft slab over the floor. The export's bounding box is identical, so the diff reports perfect agreement — only looking at the model shows it.
+
+The path is in the file. 105 of the 165 railings own sketch curves, and the arithmetic that tells a railing's own path from a neighbour's also produces the missing dimension: **a railing's envelope is its path's own rise plus the guard above it**, so the guard is one minus the other. Across the railings whose path reproduces their envelope it comes out at a median of 3.609 ft, and every one of the 68 that pass lands on **3.61 ft** — a handrail height, derived from the file rather than assumed. The third of the paths that belong to a neighbour give guards from −14 to +23 ft and are rejected by that alone.
+
+Each curve is swept as a thin upright section from the path up by the guard, so a railing follows a stair's rise instead of flattening it:
+
+| | before | after |
+| --- | --- | --- |
+| railings swept | 0 | **68** of 165 |
+| of the 16 worst offenders | 0 | **15** |
+| plan area filled by railing boxes | 57,962 sq ft | **10,337 sq ft** |
+
+The largest railing is now 113 runs instead of one 23,877 sq ft plate. Coverage does not move — a swept railing is still one drawn railing.
+
+**Doors cannot be fixed the same way, and here is why not.** The obvious route is the element's own parameters, since a door type carries a width and a height. Only 305 of the 1,459 doors carry a parameter table at all, and the parameters in it are the *host wall's* — `Unconnected Height`, `Base Offset`, `Top Offset`, with a median unconnected height of 13.12 ft. Nothing in what is currently decoded gives a door leaf's own dimensions, so the 1.46 ft centre error stands until the family documents are read.
+
+**Stair flights are not one problem but two.** Their plan is already exact: measured against the export, the median plan error of a stair run's envelope is **0.00 ft**, and their own sketch rings would not improve on it. The error is vertical and it is bimodal — half the flights sit within a foot of the export and half are several feet out, which is why the median moved from 3.79 ft to 0.16 ft when the export boxes were unioned but the share over a foot only moved from 57% to 50%. Averages hide that shape; whatever is wrong applies to some flights and not others, and that is a separate investigation rather than a rule.
 
 **The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets, and 247 mullions — 12% of the 2,013 drawn from a bounds record rather than a box, 218 of them under the single record code `179015/3` — which run about 6 ft long. Doors are still 2.5 ft oversized because the record is the opening, and stair components still carry the assembly's envelope.
 

@@ -102,6 +102,39 @@ const MAX_SKETCH_CURVES = 400_000;
  * element owns, and because outside them a closed ring is not the element's
  * shape — a wall's edges bound its faces, not its footprint.
  */
+/**
+ * Categories whose element is a rail run rather than a volume.
+ *
+ * A railing is a path with a guard above it, and its axis-aligned envelope is
+ * whatever rectangle that path happens to span — 23,877 sq ft in plan for the
+ * largest here, drawn as a filled box lying over the floor. The path itself is
+ * in the file as the element's own sketch curves.
+ */
+const RAIL_PATH_CATEGORIES = new Set([
+  -2000126, // Stairs Railing
+]);
+
+/**
+ * Plan agreement between a rail path and the element's own envelope, in feet.
+ *
+ * 105 of 165 railings own curves, but only two thirds of those are the
+ * railing's own: the rest carry a neighbour's, and show it by spanning the
+ * wrong rectangle. The same check the sketch rings get keeps them out.
+ */
+const RAIL_PATH_PLAN_TOLERANCE_FEET = 0.5;
+
+/**
+ * The band a guard height has to fall in for the path to be believed.
+ *
+ * A railing's envelope is its path's own rise plus the guard above it, so the
+ * guard is the difference. Across the railings whose path fits their envelope
+ * it comes out at a median of **3.609 ft**, with 65% inside a tenth of a foot
+ * of that — a handrail height, arrived at from the file rather than assumed.
+ * A path that yields something outside this band is not this railing's.
+ */
+const RAIL_GUARD_MIN_FEET = 1.5;
+const RAIL_GUARD_MAX_FEET = 5;
+
 const SKETCH_BOUNDARY_CATEGORIES = new Set([
   -2000032, // Floors
   -2000035, // Roofs
@@ -216,6 +249,50 @@ function sketchLoopsFor(
     Math.abs(maxX - max.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
     Math.abs(maxY - max.y) <= SKETCH_PLAN_TOLERANCE_FEET;
   return agrees ? loops : [];
+}
+
+/**
+ * A railing's rail path, when the curves it owns really are its own.
+ *
+ * Each curve becomes one polyline — arcs keep their interior points — so the
+ * sweep follows a stair's rise instead of flattening it. The guard height comes
+ * out of the same arithmetic that validates the path: envelope height minus the
+ * path's own rise.
+ */
+function railPathFor(
+  record: ElementBoundsRecord,
+  curvesByOwner: Map<number, SketchCurve[]>,
+): { polylines: Point3[][]; guardHeightFeet: number } | null {
+  const curves = [
+    ...(curvesByOwner.get(record.elementId) ?? []),
+    ...(curvesByOwner.get(record.elementId - 1) ?? []),
+  ];
+  if (!curves.length) return null;
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  const polylines: Point3[][] = [];
+  for (const curve of curves) {
+    const points: Point3[] = [curve.start, ...curve.interior, curve.end];
+    for (const [x, y, z] of points) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+    }
+    polylines.push(points);
+  }
+
+  const { min, max } = record.boundsFeet;
+  const fits =
+    Math.abs(minX - min.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+    Math.abs(minY - min.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+    Math.abs(maxX - max.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+    Math.abs(maxY - max.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET;
+  if (!fits) return null;
+
+  const guardHeightFeet = (max.z - min.z) - (maxZ - minZ);
+  if (guardHeightFeet < RAIL_GUARD_MIN_FEET || guardHeightFeet > RAIL_GUARD_MAX_FEET) return null;
+  return { polylines, guardHeightFeet };
 }
 
 /**
@@ -657,6 +734,7 @@ export function convertRvtBytes(
     let sketchBoundaryElements = 0;
     let unnamedSketchElements = 0;
     let rejectedOrientedBoxes = 0;
+    let sweptRailings = 0;
     for (const record of elementBounds) {
       const parameters = elementParameters.get(record.elementId);
       if (parameters?.size) record.parameters = [...parameters.values()];
@@ -685,6 +763,13 @@ export function convertRvtBytes(
         !record.solid &&
         !record.quads?.length &&
         !record.orientedBox;
+      if (record.categoryId != null && RAIL_PATH_CATEGORIES.has(record.categoryId)) {
+        const railPath = railPathFor(record, curvesByOwner);
+        if (railPath) {
+          record.railPath = railPath;
+          sweptRailings += 1;
+        }
+      }
       if (knownSketchCategory || mayBeUnnamedSketch) {
         const loops = sketchLoopsFor(record, curvesByOwner, { verify: !knownSketchCategory });
         if (loops.length) {
@@ -823,6 +908,7 @@ export function convertRvtBytes(
           cachedShapeRecords,
           unplacedRecords,
           sketchBoundaryElements,
+          sweptRailings,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,

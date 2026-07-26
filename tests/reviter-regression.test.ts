@@ -830,6 +830,49 @@ test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
   assert.equal(kept.omittedSheetCount, 0);
 });
 
+test("sweeps a railing along its path instead of filling its bounding box", () => {
+  // A railing that runs around three sides of an atrium has an axis-aligned box
+  // the size of the atrium; drawing that box lays a slab across the floor. The
+  // export's box is identical, so no comparison against it registers the
+  // problem — only looking at the model does.
+  const record: ElementBoundsRecord = {
+    elementId: 1856525,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000126,
+    categoryName: "Stairs Railing",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 80, z: 3.6 } },
+    railPath: {
+      polylines: [[[0, 0, 0], [100, 0, 0]], [[100, 0, 0], [100, 80, 0]]],
+      guardHeightFeet: 3.6,
+    },
+  };
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  // Two segments, twelve triangles each, rather than one box of twelve.
+  assert.equal(mesh.indices.length / 3, 24);
+
+  // Nothing is drawn away from the path: every vertex sits within the rail's
+  // own width of one of the two runs, so the middle of the atrium stays empty.
+  const onPath = (x: number, y: number) =>
+    (Math.abs(y) <= 0.1 && x >= -0.1 && x <= 100.1) || (Math.abs(x - 100) <= 0.1 && y >= -0.1 && y <= 80.1);
+  for (let vertex = 0; vertex < mesh.positions.length; vertex += 3) {
+    assert.ok(
+      onPath(mesh.positions[vertex]!, mesh.positions[vertex + 1]!),
+      `vertex ${mesh.positions[vertex]}, ${mesh.positions[vertex + 1]} is off the rail path`,
+    );
+  }
+  // The guard rises from the path, so the drawn height is the guard height.
+  const heights = [];
+  for (let vertex = 2; vertex < mesh.positions.length; vertex += 3) heights.push(mesh.positions[vertex]!);
+  assert.equal(Math.min(...heights), 0);
+  // Float32 positions, so exact equality is not the test.
+  assert.ok(Math.abs(Math.max(...heights) - 3.6) < 1e-4);
+});
+
 test("holds back a railing's top rail when its railing is in the scene", () => {
   // Revit records the top rail's envelope as the whole railing's and folds it
   // into the one IfcRailing on export, so drawing it lays a second plate along

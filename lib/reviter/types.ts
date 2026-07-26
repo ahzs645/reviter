@@ -112,6 +112,13 @@ export type ElementBoundsRecord = {
   orientedBox?: [number, number, number][];
   /** Sketch boundary rings, outer first, for a floor, roof, ceiling or ramp. */
   loops?: Point3[][];
+  /**
+   * A railing's rail path, as world polylines, with the height of the guard
+   * above it. A railing that runs around an atrium has an enormous axis-aligned
+   * box — 23,877 sq ft in plan for the largest here — and drawing that box lays
+   * a slab across the floor, so a railing that can be swept is swept instead.
+   */
+  railPath?: { polylines: Point3[][]; guardHeightFeet: number };
   boundsFeet: Bounds3;
 };
 
@@ -189,6 +196,8 @@ export type ConvertStats = {
   unplacedRecords?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
+  /** Railings swept along their own rail path rather than drawn as a box. */
+  sweptRailings?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
   unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */

@@ -458,6 +458,50 @@ function boxGeometry(bounds: Bounds3, origin: Vec3) {
   };
 }
 
+/** Plan width given to a swept rail, so it reads as a rail rather than a line. */
+const RAIL_WIDTH_FEET = 0.16;
+
+/**
+ * A railing swept along its own path.
+ *
+ * Each segment becomes a thin upright box from the path up by the guard height,
+ * so a railing follows a stair's rise and an atrium's edge instead of filling
+ * the rectangle its path happens to span. The largest railing here spans
+ * 23,877 sq ft in plan; as a box that is a slab across the floor, and the
+ * export's bounding box is identical, so no comparison against it registers the
+ * problem — only looking at the model does.
+ */
+function railGeometry(
+  railPath: { polylines: Point3[][]; guardHeightFeet: number },
+  origin: Vec3,
+) {
+  const items: { positions: number[]; indices: number[] }[] = [];
+  const half = RAIL_WIDTH_FEET / 2;
+  for (const polyline of railPath.polylines) {
+    for (let index = 0; index + 1 < polyline.length; index += 1) {
+      const [x0, y0, z0] = polyline[index]!;
+      const [x1, y1, z1] = polyline[index + 1]!;
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const length = Math.hypot(dx, dy);
+      if (length < 1e-6) continue;
+      const nx = (-dy / length) * half;
+      const ny = (dx / length) * half;
+      const top0 = z0 + railPath.guardHeightFeet;
+      const top1 = z1 + railPath.guardHeightFeet;
+      const points = [
+        [x0 + nx, y0 + ny, z0], [x1 + nx, y1 + ny, z1], [x1 - nx, y1 - ny, z1], [x0 - nx, y0 - ny, z0],
+        [x0 + nx, y0 + ny, top0], [x1 + nx, y1 + ny, top1], [x1 - nx, y1 - ny, top1], [x0 - nx, y0 - ny, top0],
+      ];
+      items.push({
+        positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
+        indices: BOX_INDICES,
+      });
+    }
+  }
+  return items;
+}
+
 /** Extrude a recovered centerline into a visible prism. */
 function extrude(segment: Segment, origin: Vec3, thickness: number, height: number) {
   const dx = segment.x1 - segment.x0;
@@ -555,7 +599,12 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // segments. Every one of them is drawn: they are all the element's own
         // rebuilt geometry, and picking indexes by triangle rather than by box.
         const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
-        const items = prism.length
+        // A swept railing wins over its own envelope, which is the rectangle the
+        // path spans rather than anything the railing occupies.
+        const rail = record.railPath ? railGeometry(record.railPath, origin) : [];
+        const items = rail.length
+          ? rail
+          : prism.length
           ? prism
           : record.orientedBox
             ? [cornersGeometry(record.orientedBox, origin)]
