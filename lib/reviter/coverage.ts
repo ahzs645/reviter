@@ -22,7 +22,11 @@ export function classCoverage(
   drawnElementIds: ReadonlySet<number>,
 ): ClassCoverage[] {
   return comparison.reference.elementTypes
-    .filter((row) => row.count > 0)
+    // A class none of whose elements carries a Revit id — storeys, the site,
+    // the building itself, annotation — cannot be joined at all, so its
+    // coverage is unmeasurable rather than zero. Showing it as an empty row
+    // would read as a failure that is not one.
+    .filter((row) => row.count > 0 && row.tagged > 0)
     .map((row) => ({
       ifcType: row.ifcType.replace(/^IFC/, ""),
       inExport: row.count,

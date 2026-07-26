@@ -50,6 +50,17 @@ test("orders by how much of the class the export holds, and keeps empty classes"
   assert.deepEqual(rows[0], { ifcType: "CURTAINWALL", inExport: 9, recovered: 0, drawn: 0 });
 });
 
+test("leaves out classes that carry no Revit id to join on", () => {
+  // Storeys, the site and the building itself are exported without a Tag, so
+  // nothing can be matched to them; a 0-of-13 row would read as a decoder gap.
+  const comparison = comparisonWith([
+    { ...typeRow("IFCBUILDINGSTOREY", 13, []), tagged: 0 },
+    typeRow("IFCSLAB", 4, [40, 41]),
+  ]);
+  const rows = classCoverage(comparison, new Set([40]));
+  assert.deepEqual(rows.map((row) => row.ifcType), ["SLAB"]);
+});
+
 test("reports no drawn count rather than a wrong one when ids are absent", () => {
   // Older analyses carry no matched ids; showing 0 there would read as a gap
   // that does not exist.
