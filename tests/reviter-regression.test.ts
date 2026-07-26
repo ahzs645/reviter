@@ -797,6 +797,69 @@ test("draws an envelope whose category did not decode instead of dropping it", (
   assert.deepEqual(drawn, [1, 2]);
   assert.equal(selection.unclassifiedCount, 1);
   assert.equal(selection.omittedWrapperCount, 1);
+  assert.equal(selection.omittedSheetCount, 0);
+});
+
+test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
+  // Revit keeps the sketch as an element one id below the floor: same
+  // footprint, no thickness, no category. Extruding it put a sheet over every
+  // floor in the supplied model.
+  const sheet = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: 0, y: 0, z: 40 }, max: { x: 142, y: 156, z: 40.66 } },
+    ...extra,
+  });
+  const floor = sheet(1495202, { categoryId: -2000032, categoryName: "Floors" });
+  const sketch = sheet(1495201, {
+    boundsFeet: { min: { x: 0, y: 0, z: 40.66 }, max: { x: 142, y: 156, z: 40.66 } },
+    loops: [[[0, 0, 40.66], [142, 0, 40.66], [142, 156, 40.66], [0, 156, 40.66]]],
+  });
+
+  const selection = selectDisplayBounds([floor, sketch]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1495202]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // The same ring under a decoded category is a real flat ceiling, and stays.
+  const ceiling = { ...sketch, categoryId: -2000038, categoryName: "Ceilings" };
+  const kept = selectDisplayBounds([floor, ceiling]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
+});
+
+test("holds back a storey-sized plate that no category claims", () => {
+  // Size alone proves nothing — real slabs are larger than these. Size with no
+  // category is the discriminator, and it is what put 89 ft of sheet outside
+  // the building.
+  const plate = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 0xffff_ffff,
+    recordCount: 4,
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 304, y: 190, z: 10.44 } },
+    ...extra,
+  });
+  const unnamed = plate(2474612, {});
+  const namedSlab = plate(490040, { categoryId: -2000032, categoryName: "Floors", recordCode: 54, recordCount: 1 });
+
+  const selection = selectDisplayBounds([unnamed, namedSlab]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [490040]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A room-sized envelope with no category is still drawn: the point is not to
+  // hide unnamed elements, only unnamed sheets.
+  const small = plate(2474613, {
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 20, y: 20, z: 10.44 } },
+  });
+  const kept = selectDisplayBounds([small, namedSlab]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
 });
 
 test("batches an uncategorised envelope under its own neutral role", () => {

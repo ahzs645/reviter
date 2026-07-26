@@ -224,6 +224,25 @@ The vocabulary moved with it: *element* → **object**, *Model browser* → **Ob
 
 Deliberately not taken: a command line, whose whole value is thirty years of muscle memory for a language only that application speaks; a ribbon, around a twenty-command surface; object snap, because snapping to a recovered envelope implies a precision the data does not have; and `ByLayer`-style inheritance, which exists to control authoring. Measure is in their read-only allowlist and is legitimate here, but it is not in yet: measuring a recovered envelope gives envelope dimensions, and a readout that does not say so would be a lie.
 
+## Sheets: geometry that is drawn but is not an element
+
+Overlaying the recovery on the export and asking what sticks out past the building found thirteen records reaching more than a foot beyond the export's own hull, one of them by **89 ft**. Nine were the same thing twice over.
+
+**A floor's boundary sketch, extruded into a second slab.** Revit keeps a sketch-based element's boundary as an element in its own right, one id below its owner:
+
+```text
+1495202  142 × 156 × 0.66 ft  z 43.3  Floors    in the export
+1495201  142 × 156 × 0.00 ft  z 44.0  (none)    not in the export
+```
+
+Same footprint, no thickness, no category, sitting on top of the floor it belongs to — and the scene was drawing it as a second slab hovering over the first, on every floor in the building. The test is the pairing rather than the shape: no category, no thickness, a ring instead of a solid, and an element one id above with the same plan extent within half a foot. That is **39 records**, and the export names none of them. As a null control, the same shape never occurs on an element that *does* have a category.
+
+**Storey-sized plates that no category claims.** Size alone proves nothing — the largest real slab here is 371 × 686 ft, bigger than any of these. Size *with no decoded category* separates them completely: of the **50** envelopes over 10,000 sq ft that carry a category the export names **49**; of the **22** that carry none it names **none**. A 100 × 100 ft plate that nothing claims is not a building element, and drawing it lays a sheet across the model.
+
+Both are held back the way curtain-wall wrappers already are — omitted from the scene, kept in the record set, reported in the caveats — so nothing is deleted and the coverage table's `recovered` column is unaffected. Records drawn past the export's hull fall from **13 to 4**, and every per-class drawn count is unchanged: the total stays 30,679, with uncategorised drawn down from 472 to 415.
+
+What remains outside the hull is two floors whose sketch ring is larger than the export's floor by 16 ft, one wall by 14 ft, and one door by 3 ft. The floors are sketch-only — no duplicated-bounds record — so there is no independent envelope to check the ring against, and that is the next thing to look at rather than something this rule can reach.
+
 ## Overlay and walk, in the studio
 
 The overlay below started as an offline script. It is now a view mode: load an RVT, pair its IFC export in the **Regression fixture** panel, and the geometry-source switcher gains **Overlay**.

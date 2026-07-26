@@ -793,6 +793,9 @@ export function convertRvtBytes(
           ...(displaySelection.unclassifiedCount
             ? [`${displaySelection.unclassifiedCount.toLocaleString()} element envelopes are drawn without a decoded Revit category, grouped as uncategorised elements.`]
             : []),
+          ...(displaySelection.omittedSheetCount
+            ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, and storey-sized plates that no category claims.`]
+            : []),
           "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
         ],
         stats: {

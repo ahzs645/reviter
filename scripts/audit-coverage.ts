@@ -164,6 +164,7 @@ records recovered        ${outcome.elementBounds.length.toLocaleString()}
   with a drawable extent ${withVolume.length.toLocaleString()}
   drawn                  ${selection.records.length.toLocaleString()}
   of those, uncategorised ${selection.unclassifiedCount.toLocaleString()}
+sheets held back        ${selection.omittedSheetCount.toLocaleString()}
   held back as wrappers  ${wrappers.toLocaleString()}
 from a solid alone       ${(outcome.stats.solidOnlyElements ?? 0).toLocaleString()}
 from an instance alone   ${(outcome.stats.instanceOnlyElements ?? 0).toLocaleString()}

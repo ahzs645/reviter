@@ -5,6 +5,7 @@
  * shown: which envelopes belong in the default scene, how they are grouped and
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
+import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
 import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 import type { Point3 } from "./sketch-curves.ts";
@@ -178,14 +179,76 @@ export type DisplaySelection = {
   omittedWrapperCount: number;
   /** Records drawn without a decoded category, under the unclassified role. */
   unclassifiedCount: number;
+  /** Sheets held back: a sketch drawn twice, or an unnamed storey-sized plate. */
+  omittedSheetCount: number;
 };
+
+/**
+ * Plan area above which an envelope with no category at all is a sheet.
+ *
+ * Size alone proves nothing — the largest real slab in the supplied model is
+ * 371 × 686 ft, far bigger than any of these. Size *with no decoded category*
+ * is the discriminator: of the 50 envelopes over 10,000 sq ft that do carry a
+ * category, the paired export names **49**; of the 22 that carry none, it names
+ * **none**. A 100 × 100 ft plate that no category claims is not a building
+ * element, and drawing it puts a sheet across the model.
+ */
+const UNNAMED_SHEET_AREA_SQ_FEET = 10_000;
+
+/** Plan agreement between a boundary sketch and the element that owns it. */
+const OWNER_SKETCH_TOLERANCE_FEET = 0.5;
+
+function planArea(record: ElementBoundsRecord): number {
+  const { min, max } = record.boundsFeet;
+  return (max.x - min.x) * (max.y - min.y);
+}
+
+function planMatches(a: ElementBoundsRecord, b: ElementBoundsRecord): boolean {
+  return (
+    Math.abs(a.boundsFeet.min.x - b.boundsFeet.min.x) <= OWNER_SKETCH_TOLERANCE_FEET &&
+    Math.abs(a.boundsFeet.min.y - b.boundsFeet.min.y) <= OWNER_SKETCH_TOLERANCE_FEET &&
+    Math.abs(a.boundsFeet.max.x - b.boundsFeet.max.x) <= OWNER_SKETCH_TOLERANCE_FEET &&
+    Math.abs(a.boundsFeet.max.y - b.boundsFeet.max.y) <= OWNER_SKETCH_TOLERANCE_FEET
+  );
+}
+
+/**
+ * A sheet: geometry that is drawn but is not a building element.
+ *
+ * Two kinds, both found by overlaying the recovery on the paired export and
+ * looking at what stuck out past the building.
+ *
+ * **A floor's own boundary sketch.** Revit keeps it as an element in its own
+ * right, one id below the floor, with the same footprint and no thickness, and
+ * the decoder was extruding it into a second slab hovering over the first —
+ *
+ *     1495202  142 × 156 × 0.66 ft  z 43.3  Floors     (in the export)
+ *     1495201  142 × 156 × 0.00 ft  z 44.0  (none)     (not in the export)
+ *
+ * The check is the pairing itself, not the shape: no category, no thickness, a
+ * ring instead of a solid, and an element one id above with the same plan
+ * extent. On the supplied model that is 39 records, **none** of which the
+ * export names, and the same shape never occurs on a categorised element.
+ *
+ * **An unnamed storey-sized plate**, per `UNNAMED_SHEET_AREA_SQ_FEET`.
+ */
+function isSheet(record: ElementBoundsRecord, byId: Map<number, ElementBoundsRecord>): boolean {
+  if (record.categoryId != null || record.categoryName) return false;
+  if (planArea(record) > UNNAMED_SHEET_AREA_SQ_FEET) return true;
+  const { min, max } = record.boundsFeet;
+  if (max.z - min.z > MIN_SOLID_SPAN_FEET) return false;
+  if (!record.loops?.length) return false;
+  const owner = byId.get(record.elementId + 1);
+  return Boolean(owner && planMatches(record, owner));
+}
 
 /**
  * Choose the envelopes that belong in the default scene.
  *
- * Only two things are held back: curtain-wall and opening wrappers, whose child
- * panels and mullions are drawn instead, and a single building-sized container
- * that would otherwise hide everything behind it.
+ * Held back: curtain-wall and opening wrappers, whose child panels and mullions
+ * are drawn instead; a single building-sized container that would otherwise hide
+ * everything behind it; and sheets — a floor's own boundary sketch redrawn as a
+ * second slab, and storey-sized plates no category claims.
  *
  * A record whose category did not decode is **not** held back. Its envelope
  * came from the same validated duplicated-bounds signature as every other
@@ -193,11 +256,14 @@ export type DisplaySelection = {
  * element — a hole in the model rather than an unnamed part of it.
  */
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
-  const classified = records.filter((record) => displayRole(record) !== "wrapper");
-  const omittedWrapperCount = records.length - classified.length;
+  const withoutWrappers = records.filter((record) => displayRole(record) !== "wrapper");
+  const omittedWrapperCount = records.length - withoutWrappers.length;
+  const byId = new Map(records.map((record) => [record.elementId, record]));
+  const classified = withoutWrappers.filter((record) => !isSheet(record, byId));
+  const omittedSheetCount = withoutWrappers.length - classified.length;
   const unclassifiedCount = classified.filter((record) => displayRole(record) === "unknown").length;
   if (classified.length < 2) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount };
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount, omittedSheetCount };
   }
   const byFootprint = classified
     .map((record) => {
@@ -212,13 +278,14 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   const isDominantContainer =
     largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
   if (!isDominantContainer) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount };
+    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount, omittedSheetCount };
   }
   return {
     records: classified.filter((record) => record !== largest.record),
     omittedContainerCount: 1,
     omittedWrapperCount,
     unclassifiedCount,
+    omittedSheetCount,
   };
 }
 
