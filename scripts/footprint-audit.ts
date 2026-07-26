@@ -264,19 +264,43 @@ export function drawnPlanPoints(record: ElementBoundsRecord): Point2[] {
  * element can leave the exporter as several products sharing one `Tag`, and
  * keeping the last would measure a fragment of the element against the whole.
  */
+/**
+ * `#id=IFCTYPE(...)` products by express id, with the Revit element id.
+ *
+ * The tag is the **last all-digit quoted attribute anywhere in the entity**, the
+ * same reading `readIfcProducts` uses. Taking the last comma-separated field of
+ * the first line instead is wrong, and wrong in a way that looks like a decoder
+ * defect: `Tag` is the final attribute only for some types, so `IFCSLAB(...,
+ * '400238', .FLOOR.)` ends in `.FLOOR.` and `IFCDOOR` ends in two dimensions.
+ * Those products never entered the map and every mesh they own was skipped —
+ * 2,425 Revit ids the export does give geometry to, wholesale: 1,912 doors, 229
+ * railings, 161 slabs, 121 stair flights, 92 stairs, 46 coverings, 20 roofs, 20
+ * windows, 12 ramps, 20 roofs. Downstream that made `compare-view.ts` paint
+ * every slab, door, railing, stair and window as having no export product,
+ * which read on screen as a sheet lying over the building, and made this file
+ * report 63 phantom "orphan floors" that are in fact matched to 0.000 ft.
+ * No `verify-pair.ts` assertion used these functions, so nothing shipped was
+ * affected.
+ */
+function readProductsByExpressId(text: string): Map<number, { type: string; tag: number }> {
+  const products = new Map<number, { type: string; tag: number }>();
+  const entity = /^#(\d+) *= *(IFC[A-Z0-9]+)\(([\s\S]*?)\);\s*$/gm;
+  for (let match = entity.exec(text); match; match = entity.exec(text)) {
+    let tag = 0;
+    for (const quoted of match[3]!.matchAll(/'([^']*)'/g)) {
+      if (/^\d+$/.test(quoted[1]!)) tag = Number(quoted[1]!);
+    }
+    if (tag) products.set(Number(match[1]), { type: match[2]!, tag });
+  }
+  return products;
+}
+
 export async function streamTruthVertices(
   ifcPath: string,
   visit: (tag: number, type: string, x: number, y: number, z: number) => void,
 ): Promise<void> {
   const { IfcAPI } = await import("web-ifc");
-  const source = readFileSync(ifcPath, "latin1");
-  const products = new Map<number, { type: string; tag: number }>();
-  const pattern = /#(\d+)=(IFC[A-Z0-9]+)\(([^\n]*)/g;
-  for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
-    const fields = match[3]!.split(",");
-    const tag = Number(/'(\d+)'/.exec(fields[fields.length - 1] ?? "")?.[1] ?? NaN);
-    if (Number.isFinite(tag)) products.set(Number(match[1]), { type: match[2]!, tag });
-  }
+  const products = readProductsByExpressId(readFileSync(ifcPath, "latin1"));
   const api = new IfcAPI();
   await api.Init();
   const modelID = api.OpenModel(new Uint8Array(readFileSync(ifcPath)));
@@ -309,14 +333,7 @@ export async function readTruthFootprints(
   ifcPath: string,
 ): Promise<Map<number, { type: string; points: Point2[] }>> {
   const { IfcAPI } = await import("web-ifc");
-  const source = readFileSync(ifcPath, "latin1");
-  const products = new Map<number, { type: string; tag: number }>();
-  const pattern = /#(\d+)=(IFC[A-Z0-9]+)\(([^\n]*)/g;
-  for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
-    const fields = match[3]!.split(",");
-    const tag = Number(/'(\d+)'/.exec(fields[fields.length - 1] ?? "")?.[1] ?? NaN);
-    if (Number.isFinite(tag)) products.set(Number(match[1]), { type: match[2]!, tag });
-  }
+  const products = readProductsByExpressId(readFileSync(ifcPath, "latin1"));
 
   const api = new IfcAPI();
   await api.Init();
