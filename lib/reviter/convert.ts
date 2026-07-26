@@ -118,22 +118,76 @@ const RAIL_PATH_CATEGORIES = new Set([
 ]);
 
 /**
+ * Where a railing's path is filed, as an offset from the railing's own id.
+ *
+ * A railing does not own its path under its own id — **not one** of the 165
+ * drawn railings here does, and the curve scan finds zero edges filed under a
+ * railing id. It sits one either side, and which side is a fact about the kind
+ * of railing:
+ *
+ * | | n | path at | rise |
+ * | --- | --- | --- | --- |
+ * | record code `101/3`, a level railing | 92 | `id - 1` | 0.00 ft |
+ * | record code `101/2`, a stair railing | 71 | `id + 1` | the stair's |
+ *
+ * `id + 1` is the same convention the stair companion record uses — a stair
+ * part's companion sits one *above* it — and it is what the rule was missing:
+ * looking only at `id - 1` reached 58 of the 71 stair railings' paths not at
+ * all. The window is two ids wide because that is where the evidence is:
+ * widening it to ±2 adds 3 railings, ±3 adds none, ±7 none, ±1001 none.
+ */
+const RAIL_PATH_OFFSETS = [-1, 1] as const;
+
+/**
  * Plan agreement between a rail path and the element's own envelope, in feet.
  *
  * 105 of 165 railings own curves, but only two thirds of those are the
  * railing's own: the rest carry a neighbour's, and show it by spanning the
- * wrong rectangle. The same check the sketch rings get keeps them out.
+ * wrong rectangle. The same check the sketch rings get keeps them out. Shuffling
+ * the railing envelopes among the railings drops the rule from 80 firings to
+ * 0.3 over 20 trials, so plan agreement is not cheap to come by.
  */
 const RAIL_PATH_PLAN_TOLERANCE_FEET = 0.5;
 
 /**
+ * How far the path's own base may sit from the envelope's floor, in feet.
+ *
+ * Without this test the arithmetic below cannot fail on a *level* railing: a
+ * flat path has no rise, so "envelope height minus rise" returns the envelope's
+ * height whatever z the curves are at, and a railing stacked identically on the
+ * floor above matches in plan exactly. That admitted **21 of the 70 railings
+ * this rule used to sweep**, each drawn a storey — 9.84 ft — from where it
+ * belongs. Nothing caught it: `overlay-diff.ts` measures a railing by its
+ * envelope, which stayed right while the geometry drawn from it went wrong.
+ *
+ * Measured against the export's own railing meshes, those 21 sit a median of
+ * **8.04 ft from the nearest exported railing vertex, the best of them 3.78**.
+ * The path bases that survive are 0.00 ft for a level railing and −0.38 to
+ * −0.89 ft for a stair railing, whose path starts about a riser below the first
+ * baluster; the next value up is −2.49 and then −3.7, −5.7, −9.8, −34.5. The
+ * cut is a plateau rather than a knife edge: 0.75 ft through 3 ft all sweep
+ * 78-81 railings with the same worst case, 5 ft admits 4 more errors and 10 ft
+ * admits 8.
+ */
+const RAIL_PATH_BASE_TOLERANCE_FEET = 1;
+
+/**
  * The band a guard height has to fall in for the path to be believed.
  *
- * A railing's envelope is its path's own rise plus the guard above it, so the
- * guard is the difference. Across the railings whose path fits their envelope
- * it comes out at a median of **3.609 ft**, with 65% inside a tenth of a foot
- * of that — a handrail height, arrived at from the file rather than assumed.
- * A path that yields something outside this band is not this railing's.
+ * A railing's envelope is its path plus the guard above it, so the guard is the
+ * envelope's top minus the path's top. Across the railings whose path fits
+ * their envelope it comes out at a median of **3.609 ft**, and every one of the
+ * 80 lands within 0.05 ft of it — a handrail height, arrived at from the file
+ * rather than assumed. A path that yields something outside this band is not
+ * this railing's.
+ *
+ * The guard is taken from the *top* rather than as "envelope height minus the
+ * path's rise". The two are equal only when the path lies on the envelope's
+ * floor, which is true of a level railing and false of every stair railing in
+ * this model: base-anchored, the 57 stair paths give guards from −30.9 to
+ * +13.5 ft with 12 landing on 3.609, while top-anchored they give 52 of 57 on
+ * 3.609 — the same handrail height the level railings gave, from a population
+ * the figure was not fitted on.
  */
 const RAIL_GUARD_MIN_FEET = 1.5;
 const RAIL_GUARD_MAX_FEET = 5;
@@ -301,47 +355,76 @@ function sketchLoopsFor(
 }
 
 /**
- * A railing's rail path, when the curves it owns really are its own.
+ * A railing's rail path, when the curves really are this railing's.
  *
  * Each curve becomes one polyline — arcs keep their interior points — so the
- * sweep follows a stair's rise instead of flattening it. The guard height comes
- * out of the same arithmetic that validates the path: envelope height minus the
- * path's own rise.
+ * sweep follows a stair's rise instead of flattening it. The path is the curve
+ * set filed one id either side of the railing that reproduces the railing's
+ * envelope: its plan within `RAIL_PATH_PLAN_TOLERANCE_FEET`, its base within
+ * `RAIL_PATH_BASE_TOLERANCE_FEET`, and a guard between the path's top and the
+ * envelope's top that is a handrail height. Swept, that is the envelope's own
+ * z-band reproduced from an independent reading — which is the point, since the
+ * envelope is what the path has to replace.
+ *
+ * Each candidate is judged on its own rather than unioned with its neighbour.
+ * The union was safe while only `id - 1` was read, but a stair railing has both
+ * its real path at `id + 1` and a flat plan projection of that path three ids
+ * up; mixing two owners' curves gives a set that is neither.
+ *
+ * **Verified against the export's railing meshes, per element.** A railing is
+ * the one class a bounding box cannot settle — the export's box and the record
+ * agree to 0.00 ft whether the railing is a swept path or a filled plate — but
+ * `IfcRailing` is written as real swept geometry, so "is what we draw where the
+ * railing is" has a per-element answer. Over the 80 railings this sweeps, the
+ * median sample of the drawn ribbon lies **0.76 ft** from the nearest exported
+ * railing vertex against **1.65 ft** for the envelope it replaces, worst 3.86
+ * against that railing's own 4.90, and it is closer than the box for 75 of 80.
+ * The exported vertices it covers rise from a median 60% to **100%**, worst 88%
+ * against the box's 2%. Measured against a *different* railing's mesh the same
+ * ribbons are off the end of the search entirely.
  */
 function railPathFor(
   record: ElementBoundsRecord,
   curvesByOwner: Map<number, SketchCurve[]>,
 ): { polylines: Point3[][]; guardHeightFeet: number } | null {
-  const curves = [
-    ...(curvesByOwner.get(record.elementId) ?? []),
-    ...(curvesByOwner.get(record.elementId - 1) ?? []),
-  ];
-  if (!curves.length) return null;
+  const { min, max } = record.boundsFeet;
+  let best: { polylines: Point3[][]; guardHeightFeet: number; rise: number } | null = null;
 
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  const polylines: Point3[][] = [];
-  for (const curve of curves) {
-    const points: Point3[] = [curve.start, ...curve.interior, curve.end];
-    for (const [x, y, z] of points) {
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-      minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  for (const offset of RAIL_PATH_OFFSETS) {
+    const curves = curvesByOwner.get(record.elementId + offset);
+    if (!curves?.length) continue;
+
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    const polylines: Point3[][] = [];
+    for (const curve of curves) {
+      const points: Point3[] = [curve.start, ...curve.interior, curve.end];
+      for (const [x, y, z] of points) {
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+      }
+      polylines.push(points);
     }
-    polylines.push(points);
+
+    const fits =
+      Math.abs(minX - min.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+      Math.abs(minY - min.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+      Math.abs(maxX - max.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+      Math.abs(maxY - max.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
+      Math.abs(minZ - min.z) <= RAIL_PATH_BASE_TOLERANCE_FEET;
+    if (!fits) continue;
+
+    const guardHeightFeet = max.z - maxZ;
+    if (guardHeightFeet < RAIL_GUARD_MIN_FEET || guardHeightFeet > RAIL_GUARD_MAX_FEET) continue;
+    // Both sides can pass on a railing that owns a flat projection as well as
+    // its path; the one carrying the rise is the railing's own run, and the
+    // projection is what the sweep exists to avoid drawing.
+    const rise = maxZ - minZ;
+    if (!best || rise > best.rise) best = { polylines, guardHeightFeet, rise };
   }
 
-  const { min, max } = record.boundsFeet;
-  const fits =
-    Math.abs(minX - min.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
-    Math.abs(minY - min.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
-    Math.abs(maxX - max.x) <= RAIL_PATH_PLAN_TOLERANCE_FEET &&
-    Math.abs(maxY - max.y) <= RAIL_PATH_PLAN_TOLERANCE_FEET;
-  if (!fits) return null;
-
-  const guardHeightFeet = (max.z - min.z) - (maxZ - minZ);
-  if (guardHeightFeet < RAIL_GUARD_MIN_FEET || guardHeightFeet > RAIL_GUARD_MAX_FEET) return null;
-  return { polylines, guardHeightFeet };
+  return best ? { polylines: best.polylines, guardHeightFeet: best.guardHeightFeet } : null;
 }
 
 

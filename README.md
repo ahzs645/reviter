@@ -406,7 +406,7 @@ A spread only counts as a split if it also clears a pooled two-proportion `|z| >
 
 **Six of seven rules hold on parts of the building they were not fitted to. Two reports did not come out clean, and both are reach rather than accuracy — which is exactly why no threshold above saw either:**
 
-- **the railing sweep is silent below Floor 1.5.** Its guard height is 3.609 ft on all 70 railings it reaches, on every partition, so the arithmetic generalises perfectly. But it reaches **0 of the 41 railings at or below Floor 1** — 0/1, 0/10, 0/21, 0/9 — against 70 of the 124 above. The sketch curves it needs do not reach the lower storeys. This is the failure mode a pass-rate cannot express: a rule can be flawless on what it touches and still be wrong about the building, because it never touches half of it.
+- **the railing sweep is silent below Floor 1.5.** Its guard height is 3.609 ft on all 70 railings it reaches, on every partition, so the arithmetic generalises perfectly. But it reaches **0 of the 41 railings at or below Floor 1** — 0/1, 0/10, 0/21, 0/9 — against 70 of the 124 above. This is the failure mode a pass-rate cannot express: a rule can be flawless on what it touches and still be wrong about the building, because it never touches half of it. Chasing it down found something worse than silence, and is the section below.
 - **stair companion adoption splits by storey**, 95.2% on Floor 1 against 55.2% on Floor 2 and 65.0% on Floor 3, z=3.1. Of the 24 owners still over half a foot out, 11 are the flights the exporter splits one product per storey — a truth-side artefact — and **13 are landings the export writes as slabs**, 20 of the 24 on Floors 2 and 3. The premise itself is spotless: the export names 0 of 117 companions, on every partition. Chasing the landings down is the section below; it took the rule to 87.5%, and what survives is the exporter's split alone.
 
 Two results worth reading past the verdicts. **The tail-placement window is right rather than fitted**: searching 80–240 bytes back instead of 125–149 finds 1,331 extra candidates, of which only 143 join an export element and **24** reproduce it. Scoring raw candidates made this look like a 98pp split, which was the probe's own false positives; framing the population as *placements that reproduce the export* gives 99.9% everywhere. And **the 10,000 sq ft sheet rule holds back exactly one element the export names** — 1522385, an `IfcMember` with a 61,572 sq ft footprint, which is to say a misparse.
@@ -538,6 +538,44 @@ keeps the same accuracy and drops the tail:
 That is what ships. It takes building elements from 30,676 to **30,679** — the
 point is not the three, it is that the worst case shrinks tenfold without costing
 anything, on classes the rule was not derived from.
+
+## The railing sweep was silent on the stairs, and wrong where it spoke
+
+The hold-out harness said the sweep reached none of the 41 railings at or below Floor 1. The storey was a proxy: **the lower storeys are where this building's stairs are**, and there are two kinds of railing written two different ways.
+
+| | n | path filed under | path rise | swept before |
+| --- | --- | --- | --- | --- |
+| record code `101/3` — a level railing | 92 | `id − 1` | 0.00 ft | 70 |
+| record code `101/2` — a stair railing | 71 | `id + 1` | the stair's | **0** |
+
+`railPathFor` looked at `id` and `id − 1` only, so it never saw a stair railing's path. `id + 1` is the same convention the stair-companion rule already uses. Not one of the 165 railings owns a curve under its own id, so the `id` half of the union was always dead weight.
+
+**The worse finding is that the arithmetic could not fail.** The guard was `envelope height − path rise`, which for *any* flat curve set returns the envelope height regardless of where in z that curve set sits. Identical railings stack floor on floor, so a neighbour's path a storey away matched in plan and returned exactly 3.609 ft. Measured against the export's own railing meshes, **21 of the 70 swept railings sat a median 8.04 ft from the nearest exported railing vertex**, best case 3.78 ft, recall 0%.
+
+**Nothing caught it, and that is on this file's own harness.** `drawnBounds` in `overlay-diff.ts` had no `railPath` branch, so the agreement table measured the railing's *envelope* while the geometry drawn from it went a storey astray. `IFCRAILING 100.0%` was measuring something the viewer does not draw. That is now fixed, and the fix is its own control:
+
+| | railing centre agreement |
+| --- | --- |
+| old rule, old metric | 100.0% — blind |
+| **old rule, new metric** | **87.2% — the error is visible** |
+| new rule, new metric | **100.0%** |
+
+A metric that does not follow the drawing precedence is not measuring the drawing. Note that even at 87.2% the assertion would still have *passed* its 80% floor: the threshold was never the thing that would have caught this, the missing branch was.
+
+The rule now takes the curve set at `id − 1` **or** `id + 1`, judged per owner rather than unioned — a stair railing owns both its path and a flat projection of it — requiring the plan to fit the envelope within 0.5 ft and the base within a new `RAIL_PATH_BASE_TOLERANCE_FEET = 1`, with the guard taken **top-anchored** as `envelope top − path top`. Top-anchoring is not a restatement of the old arithmetic: on the 57 sloped paths, a population 3.609 ft was never fitted on, it gives 52 of 57 at 3.609, where base-anchoring gives guards from −30.9 to +13.5 ft.
+
+| | before | after |
+| --- | --- | --- |
+| railings swept | 70 | **80** — 49 kept with identical guards, **21 dropped**, 31 added |
+| at or below Floor 1 | 0 of 41 | **25 of 41** |
+| sweep vs the export's mesh, median | — | **0.76 ft**, against the envelope's 1.65 ft |
+| closer than the element's own box | — | **75 of 80** |
+| exported vertices covered, median | box 60%, worst 2% | **100%, worst 88%** |
+| guard height | 3.609 ft on all 70 | 3.609 ft on all 80, every one within 0.05 ft |
+
+Controls: railing envelopes shuffled among railings fire **0.3 times of 165** over 20 trials against the rule's 80; wrong offsets score ±2 → 3, ±3 → 0, ±7 → 0, ±1001 → 0; the same test on drawn non-railings fires **27 of 35,325**, 0.08%; and a railing's ribbon scored against a *different* railing's exported mesh has recall 0%. The base tolerance is a plateau rather than a fit — 0.75 to 3.0 ft all sweep 78–81 with the same worst case, 5 ft admits 4 more errors and 10 ft admits 8.
+
+Honest residuals. Railing **size** agreement reads 91.5% now, down from a 100.0% that was measuring the envelope; the median size error is 0.003 ft. And 85 railings are still not swept: **46 have a plan-fitting neighbour path whose base is wrong** — the stacked-storey twins, now correctly refused rather than silently drawn — 33 own no curves at `id ± 1` at all, 4 fail the plan test and 2 the guard band. A wider id search finds a plan-matching owner for 158 of 165, but those owners are top rails and balusters at offsets +8 to +40 with no consistent stride; adopting them would be fitting, and it was not done.
 
 ## A stair landing is a slab, and was being drawn as a location line
 

@@ -135,6 +135,20 @@ export function drawnBounds(record: ElementBoundsRecord): Box {
     box[1] = Math.min(box[1]!, y); box[4] = Math.max(box[4]!, y);
     box[2] = Math.min(box[2]!, z); box[5] = Math.max(box[5]!, z);
   };
+  // A swept railing is drawn as its rail path, not its envelope, and measuring
+  // the envelope made a real error invisible: the sweep used to pick up a
+  // neighbour's path a storey away, and 21 of 70 railings were drawn 8.04 ft
+  // from the railing they belong to while this table reported 100.0%. A metric
+  // that does not follow the drawing precedence is not measuring the drawing.
+  if (record.railPath) {
+    for (const polyline of record.railPath.polylines) {
+      for (const [x, y, z] of polyline) {
+        add(x, y, z);
+        add(x, y, z + record.railPath.guardHeightFeet);
+      }
+    }
+    return box;
+  }
   if (record.loops?.length) {
     // The ring gives the plan and the record gives the thickness; adding the
     // record's own corner to carry the top also widened the plan to the
