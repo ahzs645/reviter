@@ -567,9 +567,26 @@ The arc is drawn as an annulus sector at no coarser than π/32 per segment, and 
 
 ### What the curve complaint turned out to mostly be
 
-The census that found this is worth stating, because the headline number is not curvature. Measuring every export product's plan footprint against its own plan bounding box — a rectangle fills 1.00, a quarter-round fills π/4 — **245 elements that we draw as an axis-aligned box have a footprint filling under 0.92**, and they add about **80,000 sq ft of plan area** that is not in the building. Only **6 of the 245 are genuinely curved**, worth 377 sq ft. The other 239 are straight walls at an angle, and an angled wall's axis-aligned box is a large rectangle where the wall is a thin sliver.
+The census that found this is worth stating, because the headline number is not curvature. `scripts/footprint-audit.ts` measures it on any pair:
 
-So the visible defect has two causes and they are very different sizes. The curved one is now fixed. The diagonal one is not, and the reason is that those elements do not carry what would fix it: **165 of the 245 own no surface patch at all**, and of the 80 that do, every stride-105 plane triple among them fails the verticality test because the surfaces are raked rather than vertical — the rule is correctly declining to build a wall out of them.
+```sh
+node --experimental-strip-types scripts/footprint-audit.ts model.rvt model.ifc
+```
+
+It asks how much of its own plan bounding box an element's footprint fills — an axis-aligned rectangle fills 1.00, a quarter round fills π/4, a 1 ft wall 30 ft long at 45° fills 0.03 — for the export's footprint and for the geometry the viewer actually draws. The difference is plan area the recovery invents. This is deliberately not what `overlay-diff.ts` measures: a wall at 45° can have a perfect centre *and* a perfect size and still be drawn as a rectangle many times its own area.
+
+Of 33,719 export footprints, 1,171 are not boxes in plan. The recovery already follows 923 of them — 869 from a rebuilt solid, 42 from an oriented box, 12 from the new curved-wall arc. The remaining **248 are drawn as an axis-aligned box anyway, adding 77,415 sq ft of plan area** that is not in the building:
+
+| | count | plan sq ft added |
+| --- | --- | --- |
+| curved | 49 | 4,760 |
+| diagonal | 199 | **72,655** |
+
+So the visible defect has two causes and they are very different sizes — **94% of the invented area is diagonal, not curved.** An angled wall's axis-aligned box is a large rectangle where the wall is a thin sliver, and the worst single element adds 18,599 sq ft on its own.
+
+The diagonal case is not fixed, and the reason is that those elements do not carry what would fix it: **165 of them own no surface patch at all**, and of the 80 that do, every stride-105 plane triple among them fails the verticality test because the surfaces are raked rather than vertical — the rule is correctly declining to build a wall out of them.
+
+**The way curved and diagonal are told apart was wrong once, and the correction is worth recording.** The first version counted hull corners, collapsing turns under 12°: a rotated rectangle keeps four, a tessellated arc shows many. That reads plausibly and is not measurable — how far an arc's turns fall below any angular threshold depends entirely on how finely the *exporter* tessellated it, and a 64-segment quarter round at 1.4° per step collapses to three corners and reads as a triangle. It undercounted the curved elements by eightfold, at 6 against the true 49. The measure now used is the footprint's fill against its own *minimum-area* rectangle: a rectangle at any rotation fills it exactly, an arc fills π/4 of it at any tessellation, and no threshold on tessellation is involved.
 
 **One route was tried and rejected.** A wall's location line is recoverable from its sketch curves, and given a location line the thickness is not a guess: an axis-aligned envelope of a wall of length `L` at angle `t` with thickness `w` is `W = L·|cos t| + w·|sin t|` and `H = L·|sin t| + w·|cos t|`, so `w` falls out of the envelope the record already carries — twice, from two independent equations. 111 of the 245 own a curve and 63 solve a thickness, but only 22 land within half a foot of the export. The self-consistency check that should have separated them does not: at its tightest, requiring the two solutions to agree to 0.001 ft, it keeps 14 of which **4 are still over 5 ft wrong**. A rule that draws 4 in 14 elements badly wrong is worse than the box it replaces, so it is not shipped. Recorded here so it is not retried on the same evidence.
 
