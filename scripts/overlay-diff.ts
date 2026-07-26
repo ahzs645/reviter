@@ -85,9 +85,26 @@ api.StreamAllMeshes(modelID, (mesh) => {
     }
     geometry.delete();
   }
-  if (Number.isFinite(minX)) {
+  // One Revit element can leave the exporter as several products that all
+  // carry its id — a floor sketched in three regions becomes three `IfcSlab`s
+  // tagged the same. Keeping only the last made the recovery look oversized by
+  // the distance between the regions, and produced a "floors are drawn too
+  // big" result that was entirely an artefact of this line: 20% of slabs
+  // measured over a foot out, against 3% once the boxes are unioned. Stair
+  // flights moved further still, from a 3.79 ft median overhang to 0.16.
+  if (!Number.isFinite(minX)) return;
+  const existing = truth.get(product.tag);
+  if (!existing) {
     truth.set(product.tag, { type: product.type, box: [minX, minY, minZ, maxX, maxY, maxZ] });
+    return;
   }
+  const box = existing.box;
+  box[0] = Math.min(box[0]!, minX);
+  box[1] = Math.min(box[1]!, minY);
+  box[2] = Math.min(box[2]!, minZ);
+  box[3] = Math.max(box[3]!, maxX);
+  box[4] = Math.max(box[4]!, maxY);
+  box[5] = Math.max(box[5]!, maxZ);
 });
 console.log(`export products with geometry: ${truth.size}`);
 

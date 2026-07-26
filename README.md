@@ -285,18 +285,20 @@ node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
 
 | IFC product type | drawn | centre ok | size ok | median centre error |
 | --- | --- | --- | --- | --- |
-| `IfcMember` | 15,886 | 98.7% | 98.6% | 0.000 ft |
-| `IfcWallStandardCase` | 6,324 | 96.2% | 49.3% | 0.098 ft |
+| `IfcMember` | 15,944 | 98.4% | 98.3% | 0.000 ft |
+| `IfcWallStandardCase` | 7,145 | 96.0% | 54.5% | 0.090 ft |
 | `IfcPlate` | 4,973 | 99.9% | 99.7% | 0.000 ft |
-| `IfcDoor` | 1,294 | 0.0% | 0.0% | 1.426 ft |
-| `IfcRailing` | 137 | 93.4% | 93.4% | 0.000 ft |
-| `IfcWall` | 110 | 63.6% | 30.9% | 0.252 ft |
-| `IfcSlab` | 102 | 53.9% | 49.0% | 0.328 ft |
-| `IfcColumn` | 95 | 100.0% | 100.0% | 0.000 ft |
-| `IfcStairFlight` | 65 | 21.5% | 27.7% | 5.413 ft |
+| `IfcDoor` | 1,399 | 0.4% | 0.4% | 1.455 ft |
+| `IfcColumn` | 266 | 100.0% | 100.0% | 0.000 ft |
+| `IfcRailing` | 163 | 100.0% | 100.0% | 0.000 ft |
+| `IfcWall` | 127 | 65.4% | 37.0% | 0.246 ft |
+| `IfcSlab` | 102 | 65.7% | 59.8% | 0.000 ft |
+| `IfcStairFlight` | 84 | 31.0% | 29.8% | 4.757 ft |
 | `IfcCovering` | 38 | 97.4% | 89.5% | 0.000 ft |
 
-"ok" means within half a foot on every axis. The wall size column is expected rather than wrong: the record is the wall **as modelled**, before Revit's join trimming, and the difference is half a wall thickness.
+"ok" means within half a foot on every axis.
+
+**One element can leave the exporter as several products.** A floor sketched in three regions becomes three `IfcSlab`s, each carrying the same Revit id in its `Tag`. The script kept the last box it saw for an id, so an element that exported as three regions was compared against whichever region came last, and the recovery — which draws all three — looked oversized by the distance between them. That produced a floors-are-drawn-too-big result that was entirely an artefact of one line: **20% of slabs measured over a foot out; unioning the boxes for a shared id puts it at 3%**. Railings went from 6% to **0%**. It did not rescue stair flights, which are genuinely oversized, and it does not touch `audit-coverage.ts`, which asks only whether an id is present. The wall size column is expected rather than wrong: the record is the wall **as modelled**, before Revit's join trimming, and the difference is half a wall thickness.
 
 **The scene was framed to the wrong place.** The origin was the midpoint of the absolute extent of every drawn record, so the handful of misparsed envelopes that land thousands of feet from the building dragged it with them — the supplied model's centre came out at `177.4, 448.5, −56` where the export puts the building at `−5.4, 287.6, 24`. The camera opened on empty ground. Ignoring one part in a thousand at each end of each axis puts it at `−1.5, 287.3, 21.7`, within **4 ft**. Nothing is discarded; this decides only where the viewer looks.
 
