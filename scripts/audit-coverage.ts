@@ -26,7 +26,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
-import { displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
+import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 import { solidBounds } from "../lib/reviter/bounds-records.ts";
 
 import type { ConvertResult } from "../lib/reviter/types.ts";
@@ -178,7 +178,12 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
     drawnCount: selection.records.length,
     unclassifiedCount: selection.unclassifiedCount,
     omittedSheetCount: selection.omittedSheetCount,
-    omittedWrapperCount: withVolume.filter((record) => displayRole(record) === "wrapper").length,
+    // `selectDisplayBounds` already returns what it actually held back, and
+    // recomputing it from `displayRole` alone stopped being the same number
+    // when the wrapper rule started checking its own premise: a wrapper with
+    // no curtain panel behind it is now released, so the role says "wrapper"
+    // for 1,607 records while 1,582 are withheld.
+    omittedWrapperCount: selection.omittedWrapperCount,
     stats: outcome.stats,
     drawnIds: drawn,
   };

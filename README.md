@@ -127,7 +127,9 @@ The echo is what makes the chain safe to walk. It holds for **99.5%** of known r
 
 Chaining forward and backward from records the bounds scanner already found recovers **47,265 objects against 35,677 bounds records**, because an object with no bounds record is still linked into the chain. Element identity coverage against the paired IFC export rises from **65.9% to 77.1%**.
 
-The `u64` at `S+18` is an element class discriminator, and it is sharp: joined against the IFC export its modal purity is **94.58%**, with `116`→`IfcMember`, `114`→`IfcPlate`, `44`→`IfcOpeningElement`, `79`→`IfcColumn`, `101`→`IfcRailing`, `54`→`IfcSlab`, `62`→`IfcCovering` all at 1.000, and the one impure code (`30`) impure only in which *kind* of wall it is.
+The `u64` at `S+18` is an element class discriminator, and it is sharp: joined against the IFC export its modal purity is **94.58%**, with `116`→`IfcMember`, `114`→`IfcPlate`, `79`→`IfcColumn`, `101`→`IfcRailing`, `54`→`IfcSlab`, `62`→`IfcCovering` all at 1.000, and the one impure code (`30`) impure only in which *kind* of wall it is.
+
+One entry in that table was wrong and is corrected here: `44` was read as `IfcOpeningElement` at purity 1.000, and **`44` is the door class**. The 1.000 was an artefact of the tag aliasing described under openings below — of the 1,480 code-44 records, **1,345 join both an `IfcDoor` and an `IfcOpeningElement`, 88 join a door only, and 0 join an opening only**. A code that never once joins an opening without also joining a door is not the opening's code.
 
 The marker drifts by release exactly as schema tags do — `0x086d` in 2024, `0x08a4` in 2025, `0x08cc` in 2026, `0x08c6` in the 2027 project — so it is measured from the file rather than hard-coded. Releases 2020 and 2023 produce no chains; older releases frame objects differently.
 
@@ -601,6 +603,30 @@ The fix is one category id. `IfcSlab` centre agreement goes **80.4% → 95.1%** 
 Three negative results from the same work. **A general "envelope beats rebuilt solid" rule is rejected**: over 6,346 solid-route elements it fixes 68 walls and 11 landings and breaks a ceiling, and this file already records that a global envelope fallback costs 269 of 6,527 records their orientation — invisible to an axis-aligned metric because the export's box is axis-aligned too. Scoped to landings, where a flat slab has no orientation to lose, it costs nothing. **The `id − 1` union hypothesis is true and worthless**: a stair part's Sketch companion sits one *above* it, so the floor convention looked wrong here, but own-only and the union score identically at 17 of 19, so nothing was special-cased. And **the sketch route does nothing for stair flights** — the three that reach it are all per-storey splits.
 
 One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
+
+## The openings row was double-counting, and openings must not be drawn
+
+`IfcOpeningElement` looked like the largest absolute gap in the model — 3,071 in the export, 1,772 drawn, 57.7%, 1,299 missing. It is not a gap. **An opening's `Tag` is not the opening's Revit id; it is the id of the element occupying the opening.**
+
+| the Tag actually names | products | drawn |
+| --- | --- | --- |
+| an `IfcDoor` | 1,903 | **1,641** |
+| an `IfcCurtainWall` | 1,013 | 115 |
+| nothing else in the export | 124 | 0 |
+| an `IfcWindow` | 20 | 6 |
+| an `IfcWallStandardCase` | 11 | 10 |
+
+3,071 products carry only **2,965 distinct Tags**, and all 1,820 `IfcRelFillsElement` have filler Tag equal to opening Tag. The row's drawn figure decomposes exactly — 1,641 + 115 + 6 + 10 = 1,772, where 1,641 is the *entire* `IfcDoor` drawn count and 6 the entire `IfcWindow` one. **The row carries no information the other rows do not already carry**, and the "1,299 missing" are 262 doors, 898 curtain walls held back on purpose, 14 windows, one wall, and 124 floor openings.
+
+And they should not be drawn, on three separate measurements:
+
+- **doors** — the export's opening box and the leaf the viewer already draws agree to a median **0.125 ft** at the centre, 89.7% within half a foot, with boxes overlapping on all three axes for **1,640 of 1,641**. Null against another door's leaf: median 397.4 ft, 0.0%. Drawing the opening would put a second box exactly where the leaf is.
+- **curtain walls** — the opening is the slot the container sits in; 879 of 1,013 name a record the wrapper rule holds back, median worst corner 0.812 ft. Drawing them *is* the sheet over the panels the wrapper rule exists to prevent.
+- **the 124 with an id of their own** are floor and shaft openings, largest 11,620 sq ft. They are already in the model as holes: of the 96 whose host is drawn from a sketch ring, **96 of 96** have the host's ring vertices tracing the opening outline, against **15 of 96** for the same rectangles shifted 37/23 ft. `groupRings` already cuts them, and drawing them as solids would fill the holes they are.
+
+Openings were already excluded from the `building elements` total, and stay excluded — but for a better stated reason than "an opening is a void". The reason is that the Tag aliases another element, so the row double-counts, which is measurable rather than definitional.
+
+**Not done, and stated as such:** using openings to *cut* their host walls. The geometry exists — the code-44 record is the opening plus the swing — but it needs CSG in `buildBoundsMeshes`, and the overlay metric compares boxes, so it could not tell whether the cut was right. Left alone rather than half-done.
 
 ## Curved walls are written the way straight ones are
 
