@@ -95,9 +95,31 @@
  * came from and is refused for another.
  *
  * Exit status is 1 when a rule is flagged **silent**, because that is a
- * regression. A **split** is reported and does not fail the run: two of them are
- * properties of this model that are already written up, and a script that always
- * exits 1 teaches its reader to ignore it. `--strict` fails on splits too.
+ * regression. A **split** is reported and does not fail the run, because the
+ * splits this model shows are properties of it that are already written up, and a
+ * script that always exits 1 teaches its reader to ignore it. `--strict` fails on
+ * splits too.
+ *
+ * ## What it found on the supplied project
+ *
+ * Recorded here because the point of the exercise is the two rules that did not
+ * come out clean. Both are reach rather than accuracy, which is why nothing in
+ * `verify-pair.ts` saw either.
+ *
+ * - **the railing sweep is silent below Floor 1.5.** Its guard height is exactly
+ *   3.609 ft on all 70 railings it reaches and on every partition of them, but it
+ *   reaches **0 of the 41 railings at or below Floor 1** against 70 of the 124
+ *   above. The arithmetic generalises; the sketch curves it needs do not reach
+ *   the lower storeys.
+ * - **the stair companion adoption splits by storey**, 95.2% on Floor 1 against
+ *   55.2% on Floor 2 and 65.0% on Floor 3, z=3.1. Of the 24 owners still over
+ *   half a foot out, 11 are the stair flights the exporter splits one product per
+ *   storey — a truth-side artefact already known — and 13 are landings the export
+ *   writes as slabs, 20 of the 24 on Floors 2 and 3. The companion premise itself
+ *   is clean: the export names 0 of 117 companions, on every partition.
+ *
+ * Everything else holds across both partitions, including three rules whose
+ * populations are small enough that they could easily not have.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
