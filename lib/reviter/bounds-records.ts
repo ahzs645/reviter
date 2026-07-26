@@ -73,6 +73,19 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
     ) {
       continue;
     }
+    // The word after the record code is reserved, and it is a corruption check
+    // rather than part of the signature. Across 42,333 records in the supplied
+    // model it is zero in 41,124 and `0xffffffff` in 1,206 — and every one of
+    // those 1,206 also has an all-ones record code, which is a self-consistent
+    // "no code" variant. Exactly **three** records match neither pattern, and
+    // all three are broken: one is the model's worst envelope, a stair stringer
+    // drawn 724.6 ft long whose code word has had its high half overwritten
+    // (`0x5000bb47` for `0x0002bb47`) and whose field table holds
+    // `0xf5400000` where an ordinal belongs; the other two carry element ids of
+    // 1.73 billion against a real range of 1,049 to 2.5 million, and the export
+    // names neither. Rejecting them costs no correct element.
+    const recordCode = view.getUint32(recordOffset + 18, true);
+    if (view.getUint32(recordOffset + 22, true) !== 0 && recordCode !== 0xffff_ffff) continue;
     const recordCount = view.getUint32(recordOffset + 38, true);
     if (recordCount < 1 || recordCount > 10_000) continue;
     const boundsOffset = 42 + recordCount * 6;
@@ -111,7 +124,7 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
       elementId,
       recordOffset,
       boundsOffset,
-      recordCode: view.getUint32(recordOffset + 18, true),
+      recordCode,
       recordCount,
       duplicated: duplicate,
       boundsFeet: {

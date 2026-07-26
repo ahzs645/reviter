@@ -15,15 +15,24 @@
  *
  * Both files stay local. Writing `--json <path>` also dumps the per-type detail
  * so two runs can be differenced.
+ *
+ * The measurement is also exported — `convertModel`, `computeCoverage`,
+ * `printCoverage` — so `verify-pair.ts` can run it beside the overlay against a
+ * single conversion instead of paying for the decode twice and risking two
+ * subtly different answers to the same question.
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
 import { solidBounds } from "../lib/reviter/bounds-records.ts";
 
+import type { ConvertResult } from "../lib/reviter/types.ts";
+
 /** IFC product types worth reporting, in the order a reader cares about them. */
-const REPORTED_TYPES = [
+export const REPORTED_TYPES = [
   "IFCWALLSTANDARDCASE",
   "IFCWALL",
   "IFCCURTAINWALL",
@@ -43,7 +52,7 @@ const REPORTED_TYPES = [
   "IFCOPENINGELEMENT",
 ];
 
-type IfcProduct = { type: string; tag: number };
+export type IfcProduct = { type: string; tag: number };
 
 /**
  * Read `#id=IFCTYPE(...)` product lines and their Revit element id.
@@ -51,7 +60,7 @@ type IfcProduct = { type: string; tag: number };
  * The tag is the last all-digit quoted attribute: a product's name also holds
  * the id, but as `Family:Type:Id`, so it never reads as digits alone.
  */
-function readIfcProducts(text: string, types: Set<string>): IfcProduct[] {
+export function readIfcProducts(text: string, types: Set<string>): IfcProduct[] {
   const products: IfcProduct[] = [];
   const entity = /^#\d+ *= *([A-Z0-9]+)\(([\s\S]*?)\);\s*$/gm;
   for (let match = entity.exec(text); match; match = entity.exec(text)) {
@@ -75,119 +84,193 @@ function padStart(value: string, width: number): string {
   return value.length >= width ? value : " ".repeat(width - value.length) + value;
 }
 
-const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
-if (!rvtPath || !ifcPath) {
-  console.error("usage: audit-coverage.ts <model.rvt> <model.ifc> [--json <path>]");
-  process.exit(2);
-}
-const jsonFlag = process.argv.indexOf("--json");
-const jsonPath = jsonFlag >= 0 ? process.argv[jsonFlag + 1] : undefined;
-
-const rvt = readFileSync(rvtPath);
-const outcome = convertRvtBytes(
-  new Uint8Array(rvt.buffer, rvt.byteOffset, rvt.byteLength),
-  rvtPath.split("/").pop() ?? "model.rvt",
-  // The release drives decoder selection; the studio reads it from
-  // BasicFileInfo, and the supplied project is a 2027 file.
-  { revitVersion: 2027 },
-);
-if (!outcome.ok) {
-  console.error(`conversion failed: ${outcome.error}`);
-  process.exit(1);
+/**
+ * Decode an RVT the way the studio does, and fail loudly rather than returning
+ * a half-answer a caller might treat as a result.
+ */
+export function convertModel(rvtPath: string): ConvertResult {
+  const rvt = readFileSync(rvtPath);
+  const outcome = convertRvtBytes(
+    new Uint8Array(rvt.buffer, rvt.byteOffset, rvt.byteLength),
+    rvtPath.split("/").pop() ?? "model.rvt",
+    // The release drives decoder selection; the studio reads it from
+    // BasicFileInfo, and the supplied project is a 2027 file.
+    { revitVersion: 2027 },
+  );
+  if (!outcome.ok) throw new Error(`conversion failed: ${outcome.error}`);
+  return outcome;
 }
 
-// Re-run the scene's own selection so the audit reports the set the viewer
-// draws, rather than a set assembled a second, possibly different way.
-const withVolume = outcome.elementBounds.filter(
-  (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
-);
-const selection = selectDisplayBounds(withVolume);
-const drawn = new Set(selection.records.map((record) => record.elementId));
-const recovered = new Set(outcome.elementBounds.map((record) => record.elementId));
-// Everything the scan proved to be a real element, whether or not any geometry
-// was built for it. The distance between `seen` and `recovered` is a decoder
-// gap; the distance between `recovered` and `drawn` is a display gap. They have
-// different fixes, so the audit has to tell them apart.
-const seen = new Set<number>(recovered);
-for (const elementId of outcome.elementIndex?.partitionRecordIds ?? []) seen.add(elementId);
-for (const elementId of outcome.elementIndex?.uniqueElementIds ?? []) seen.add(elementId);
+export type CoverageRow = { inIfc: number; seen: number; recovered: number; drawn: number };
 
-const products = readIfcProducts(readFileSync(ifcPath, "latin1"), new Set(REPORTED_TYPES));
-const byType = new Map<string, IfcProduct[]>();
-for (const product of products) {
-  const group = byType.get(product.type) ?? [];
-  group.push(product);
-  byType.set(product.type, group);
-}
+export type CoverageResult = {
+  rows: Record<string, CoverageRow>;
+  totals: { inIfc: number; drawn: number };
+  /** Every record the decoders produced, drawable or not. */
+  recordCount: number;
+  /** Of those, the ones with an extent the scene could draw. */
+  withVolumeCount: number;
+  drawnCount: number;
+  unclassifiedCount: number;
+  /** Sheets held back: a floor's own sketch, an unnamed plate, a top rail. */
+  omittedSheetCount: number;
+  /** Curtain-wall and opening containers, drawn as their children instead. */
+  omittedWrapperCount: number;
+  stats: ConvertResult["stats"];
+  /** The element ids the scene draws, shared with the overlay pass. */
+  drawnIds: Set<number>;
+};
 
-console.log(`\n${rvtPath.split("/").pop()} against ${ifcPath.split("/").pop()}\n`);
-console.log(
-  `${pad("IFC product type", 22)}${padStart("in IFC", 8)}${padStart("seen", 8)}` +
-    `${padStart("recovered", 11)}${padStart("drawn", 8)}${padStart("drawn %", 9)}`,
-);
-console.log("-".repeat(66));
+/**
+ * Join a conversion to its paired export, element id by element id.
+ *
+ * Three sets are kept apart because they have different fixes: `seen` is a
+ * decoder proving an id real, `recovered` is an envelope existing for it, and
+ * `drawn` is that envelope surviving the scene's own selection.
+ */
+export function computeCoverage(outcome: ConvertResult, ifcPath: string): CoverageResult {
+  // Re-run the scene's own selection so the audit reports the set the viewer
+  // draws, rather than a set assembled a second, possibly different way.
+  const withVolume = outcome.elementBounds.filter(
+    (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
+  );
+  const selection = selectDisplayBounds(withVolume);
+  const drawn = new Set(selection.records.map((record) => record.elementId));
+  const recovered = new Set(outcome.elementBounds.map((record) => record.elementId));
+  const seen = new Set<number>(recovered);
+  for (const elementId of outcome.elementIndex?.partitionRecordIds ?? []) seen.add(elementId);
+  for (const elementId of outcome.elementIndex?.uniqueElementIds ?? []) seen.add(elementId);
 
-const rows: Record<string, { inIfc: number; seen: number; recovered: number; drawn: number }> = {};
-let totalIfc = 0;
-let totalDrawn = 0;
-for (const type of REPORTED_TYPES) {
-  const group = byType.get(type) ?? [];
-  if (!group.length) continue;
-  const seenCount = group.filter((product) => seen.has(product.tag)).length;
-  const recoveredCount = group.filter((product) => recovered.has(product.tag)).length;
-  const drawnCount = group.filter((product) => drawn.has(product.tag)).length;
-  rows[type] = { inIfc: group.length, seen: seenCount, recovered: recoveredCount, drawn: drawnCount };
-  // Openings are voids, not building elements; they are reported for context
-  // but would distort a total that is meant to read as "how much of the
-  // building is on screen".
-  if (type !== "IFCOPENINGELEMENT") {
-    totalIfc += group.length;
-    totalDrawn += drawnCount;
+  const products = readIfcProducts(readFileSync(ifcPath, "latin1"), new Set(REPORTED_TYPES));
+  const byType = new Map<string, IfcProduct[]>();
+  for (const product of products) {
+    const group = byType.get(product.type) ?? [];
+    group.push(product);
+    byType.set(product.type, group);
   }
-  const share = ((drawnCount / group.length) * 100).toFixed(1);
+
+  const rows: Record<string, CoverageRow> = {};
+  let totalIfc = 0;
+  let totalDrawn = 0;
+  for (const type of REPORTED_TYPES) {
+    const group = byType.get(type) ?? [];
+    if (!group.length) continue;
+    rows[type] = {
+      inIfc: group.length,
+      seen: group.filter((product) => seen.has(product.tag)).length,
+      recovered: group.filter((product) => recovered.has(product.tag)).length,
+      drawn: group.filter((product) => drawn.has(product.tag)).length,
+    };
+    // Openings are voids, not building elements; they are reported for context
+    // but would distort a total that is meant to read as "how much of the
+    // building is on screen".
+    if (type !== "IFCOPENINGELEMENT") {
+      totalIfc += group.length;
+      totalDrawn += rows[type]!.drawn;
+    }
+  }
+
+  return {
+    rows,
+    totals: { inIfc: totalIfc, drawn: totalDrawn },
+    recordCount: outcome.elementBounds.length,
+    withVolumeCount: withVolume.length,
+    drawnCount: selection.records.length,
+    unclassifiedCount: selection.unclassifiedCount,
+    omittedSheetCount: selection.omittedSheetCount,
+    omittedWrapperCount: withVolume.filter((record) => displayRole(record) === "wrapper").length,
+    stats: outcome.stats,
+    drawnIds: drawn,
+  };
+}
+
+/** The table this script exists to print. */
+export function printCoverage(result: CoverageResult): void {
   console.log(
-    `${pad(type, 22)}${padStart(String(group.length), 8)}${padStart(String(seenCount), 8)}` +
-      `${padStart(String(recoveredCount), 11)}${padStart(String(drawnCount), 8)}` +
-      `${padStart(`${share}%`, 9)}`,
+    `${pad("IFC product type", 22)}${padStart("in IFC", 8)}${padStart("seen", 8)}` +
+      `${padStart("recovered", 11)}${padStart("drawn", 8)}${padStart("drawn %", 9)}`,
+  );
+  console.log("-".repeat(66));
+  for (const type of REPORTED_TYPES) {
+    const row = result.rows[type];
+    if (!row) continue;
+    const share = ((row.drawn / row.inIfc) * 100).toFixed(1);
+    console.log(
+      `${pad(type, 22)}${padStart(String(row.inIfc), 8)}${padStart(String(row.seen), 8)}` +
+        `${padStart(String(row.recovered), 11)}${padStart(String(row.drawn), 8)}` +
+        `${padStart(`${share}%`, 9)}`,
+    );
+  }
+  console.log("-".repeat(66));
+  const { inIfc, drawn } = result.totals;
+  console.log(
+    `${pad("building elements", 22)}${padStart(String(inIfc), 8)}${padStart("", 8)}` +
+      `${padStart("", 11)}${padStart(String(drawn), 8)}` +
+      `${padStart(`${((drawn / inIfc) * 100).toFixed(1)}%`, 9)}`,
   );
 }
-console.log("-".repeat(66));
-console.log(
-  `${pad("building elements", 22)}${padStart(String(totalIfc), 8)}${padStart("", 8)}` +
-    `${padStart("", 11)}${padStart(String(totalDrawn), 8)}` +
-    `${padStart(`${((totalDrawn / totalIfc) * 100).toFixed(1)}%`, 9)}`,
-);
 
-const wrappers = withVolume.filter((record) => displayRole(record) === "wrapper").length;
-console.log(`
-records recovered        ${outcome.elementBounds.length.toLocaleString()}
-  with a drawable extent ${withVolume.length.toLocaleString()}
-  drawn                  ${selection.records.length.toLocaleString()}
-  of those, uncategorised ${selection.unclassifiedCount.toLocaleString()}
-sheets held back        ${selection.omittedSheetCount.toLocaleString()}
-  held back as wrappers  ${wrappers.toLocaleString()}
-from a solid alone       ${(outcome.stats.solidOnlyElements ?? 0).toLocaleString()}
-from an instance alone   ${(outcome.stats.instanceOnlyElements ?? 0).toLocaleString()}
-railings swept          ${(outcome.stats.sweptRailings ?? 0).toLocaleString()}
-door leaves cut         ${(outcome.stats.doorLeaves ?? 0).toLocaleString()}
-from a sketch boundary   ${(outcome.stats.sketchBoundaryElements ?? 0).toLocaleString()} \
-(${(outcome.stats.unnamedSketchElements ?? 0).toLocaleString()} of them uncategorised)
-conversion took          ${(outcome.stats.durationMs / 1000).toFixed(1)}s
+/** The recovery ledger that sits under the table. */
+export function printLedger(result: CoverageResult): void {
+  const stats = result.stats;
+  console.log(`
+records recovered        ${result.recordCount.toLocaleString()}
+  with a drawable extent ${result.withVolumeCount.toLocaleString()}
+  drawn                  ${result.drawnCount.toLocaleString()}
+  of those, uncategorised ${result.unclassifiedCount.toLocaleString()}
+sheets held back        ${result.omittedSheetCount.toLocaleString()}
+  held back as wrappers  ${result.omittedWrapperCount.toLocaleString()}
+from a solid alone       ${(stats.solidOnlyElements ?? 0).toLocaleString()}
+from an instance alone   ${(stats.instanceOnlyElements ?? 0).toLocaleString()}
+railings swept          ${(stats.sweptRailings ?? 0).toLocaleString()}
+door leaves cut         ${(stats.doorLeaves ?? 0).toLocaleString()}
+from a sketch boundary   ${(stats.sketchBoundaryElements ?? 0).toLocaleString()} \
+(${(stats.unnamedSketchElements ?? 0).toLocaleString()} of them uncategorised)
+conversion took          ${(stats.durationMs / 1000).toFixed(1)}s
 `);
+}
 
-if (jsonPath) {
-  writeFileSync(
-    jsonPath,
-    `${JSON.stringify(
-      {
-        rows,
-        totals: { inIfc: totalIfc, drawn: totalDrawn },
-        stats: outcome.stats,
-        categories: outcome.nativeCategories?.categories,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  console.log(`per-type detail written to ${jsonPath}`);
+/** True when this module is the process entry point rather than an import. */
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return fileURLToPath(import.meta.url) === resolve(entry);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
+  if (!rvtPath || !ifcPath) {
+    console.error("usage: audit-coverage.ts <model.rvt> <model.ifc> [--json <path>]");
+    process.exit(2);
+  }
+  const jsonFlag = process.argv.indexOf("--json");
+  const jsonPath = jsonFlag >= 0 ? process.argv[jsonFlag + 1] : undefined;
+
+  const outcome = convertModel(rvtPath);
+  const result = computeCoverage(outcome, ifcPath);
+
+  console.log(`\n${rvtPath.split("/").pop()} against ${ifcPath.split("/").pop()}\n`);
+  printCoverage(result);
+  printLedger(result);
+
+  if (jsonPath) {
+    writeFileSync(
+      jsonPath,
+      `${JSON.stringify(
+        {
+          rows: result.rows,
+          totals: result.totals,
+          stats: result.stats,
+          categories: outcome.nativeCategories?.categories,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    console.log(`per-type detail written to ${jsonPath}`);
+  }
 }

@@ -42,7 +42,7 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 | 2027 | supplied-project nested duplicated bounds + native element ID and record classification | filtered, category-styled axis-aligned envelope proxies | native `BuiltInCategory` tokens, IFC-corroborated | category display fallbacks; native assignment pending |
 | unknown | no release-specific decoder | diagnostic fallback only | attempted; reports zero when the token is absent | no claim |
 
-The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project. The only other real Revit files in the corpus are the `.rfa` family files from the `@phi-ag/rvt` examples (2016–2026); families carry no project category tokens, so they neither confirm nor refute cross-release behaviour.
+The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project, **and against nothing else**. A sweep of the whole machine — by extension, and independently by sniffing the OLE/CFB signature of 40,616 files — finds exactly one Revit file and one IFC. The `.rfa` family files this paragraph used to cite as a cross-release corpus are not present: the published `@phi-ag/rvt` package ships only `dist/`, so those examples were never here. Every threshold and every rule in this document is fitted on one building.
 
 ## Native surfaces
 
@@ -308,7 +308,9 @@ A face set is usually a fragment of an element rather than a shape — half of t
 
 **What is left on stair flights is not a display choice.** They are still the worst class at 2.051 ft, and the residual is vertical: many carry an envelope of exactly 9.84 ft — a storey — where the export's flight is 3.28 to 6.40. The record a stair sub-component carries is the assembly's, and no reordering of what is already decoded reaches it.
 
-**The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets, and 247 mullions — 12% of the 2,013 drawn from a bounds record rather than a box, 218 of them under the single record code `179015/3` — which run about 6 ft long. Doors are still 2.5 ft oversized because the record is the opening, and stair components still carry the assembly's envelope.
+**The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets.
+
+**And the "247 oversized mullions" recorded here were not mullions.** They were attributed to record code `179015/3`, which this file previously grouped with mullions because the export types both as `IfcMember`. The RVT says otherwise: 131 of the 267 such records carry their own native category token **`-2000123`, `OST_StairsStringerCarriage`**, and the export names all 258 that join a product `… Stringer 1`, `Stringer 3`, `Stringer 10` of `Assembled Stair:Stair`. The error has a stair's shape too — 200 of the 258 are wrong on **z alone** with their plan footprint exact to half a foot, by a median of 5.23 ft, and the inflated values are storey heights. So this is not a mullion problem at all; it is the same "a stair sub-component carries the assembly's vertical range" limit, and the count is **211 stringers about 5 ft too tall**. The mullion population is clean: of 1,723 mullions drawn from a bounds record rather than a placed box, **one** is over a foot out.
 
 **A rule that would have caught the extremes was tested and rejected.** Two of those mullions are 724 ft and 365 ft long, which is absurd on its face — but "absurd" has to be something the decoder can determine without an export to check against. A category with thousands of members carries its own scale, so the obvious test is to flag an envelope many times the longest side of its category's median. At every cut it costs more than it saves: at 6× it flags 89 envelopes of which **1** is genuinely oversized and **73** are correct; at 20× it flags 6 to catch the same 1. A 274 ft mullion and a 479 ft wall are both real in this building. The rule is not shipped.
 
@@ -327,6 +329,25 @@ The colouring is the point of the mode:
 So the 6,939 elements the coverage table counts as absent become something you can look at and point at, in place. Picking still works in this mode; it searches recursively, because the recovered meshes sit a level deeper than before and the export's meshes carry no element ids.
 
 **Walk** joins Pan / Zoom / Orbit in the viewport navigation bar. Orbiting is how you look at a building from outside and the wrong way to understand it from inside — a corridor, a stair, a floor-to-ceiling height all read differently at eye level. Mouse look runs on pointer lock, `W A S D` moves, `Shift` runs, `Space` and `C` rise and fall, `Esc` leaves. The eye sits 5.6 ft above the model's floor and the scene is already drawn in feet, so nothing needs scaling. Yaw and pitch are tracked directly rather than accumulated onto the camera's quaternion, which drifts into roll and tips the horizon over; leaving walk mode hands the camera back where the walker left it instead of snapping to the last preset.
+
+## One command to check a model
+
+Every rule in this file is fitted on one building, and there is no second one on this machine to check them against. What can be built now is the harness that makes the second one cheap, so `scripts/verify-pair.ts` runs the coverage audit and the geometric overlay in a single conversion and then **asserts** the things the rules were written to guarantee:
+
+```sh
+node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc   # exit 1 on any failure
+node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc --json > run.json
+```
+
+Fourteen assertions, each named after the rule it guards, so a rule that does not generalise fails loudly rather than quietly drifting: per-class centre agreement floors for the six classes the bounds work put at 96–100%, the door-swing geometry, the railing guard height, the share of sheets held back, and a tripwire on records drawn past the export's own hull. Three of the thresholds are worth reading for their reasoning, which is in the file's header:
+
+- **records outside the hull is budgeted at 6, not a percentage.** Before the sheets rule this model drew 11 records past the hull; a 0.1%-of-drawn budget would have been 31 and would not have caught it. The gate is sized to fire on the state the rule exists to fix. It now reports **0**.
+- **the guard-height band is 2.5–4.5 ft, narrower than the decoder's own 1.5–5 ft filter.** Asserting the filter back would be untestable — every survivor is inside it by construction.
+- **hull overhang is capped at 200 ft**, which guards the tighter-of-two-copies rule specifically: always taking the second copy admitted a box 8,701 ft across.
+
+Doors, `IfcWall`, slabs and stair flights sit at 78/68/75/44% and are **deliberately not** given floors: pinning them would assert known decoder gaps rather than detect a broken rule. A class the export does not contain reports `skip`, not `pass`.
+
+**The gate has its own control.** A gate that cannot fail is decoration, so every `Tag` in the export was shifted past any real Revit id and the harness re-run: coverage went to 0.0% and failed, the eight join-dependent assertions reported `skip` with their reason rather than passing vacuously, and the three RVT-only assertions still passed. That run also caught a nonsense message in the output, since fixed.
 
 ## Overlay against the paired export
 
@@ -352,6 +373,8 @@ node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
 | `IfcCovering` | 38 | 100.0% | 100.0% | 0.000 ft |
 
 "ok" means within half a foot on every axis.
+
+**Two artefacts were removed from the drawing, both found by asking what reaches past the building.** A bounds record whose reserved word at `+22` is non-zero without an all-ones record code is corrupt: across 42,333 records that word is zero in 41,124 and `0xffffffff` in 1,206 — every one of those paired with an all-ones code — and exactly **three** match neither. All three are broken, one of them the model's worst envelope, a stair stringer drawn **724.6 ft** long whose code word has had its high half overwritten. Rejecting them costs no correct element. Separately, an element whose only geometry is a hull over the faces attributed to it is no longer drawn: **37 of the 40** such elements that join a product are over a foot out, median 7.96 ft, one of them a 0.2 × 0.5 × 4.3 ft mullion drawn as a 168 × 366 ft hull over faces that are not its own. The record is still synthesised, because it is what lets a sketch ring attach later — removing the synthesis outright cost 15 coverings and 13 slabs that were being drawn correctly from rings they only had because the record existed. Together these take records reaching past the hull from 1 to **0**, and cost 51 elements their geometry out of 30,679.
 
 **One element can leave the exporter as several products.** A floor sketched in three regions becomes three `IfcSlab`s, each carrying the same Revit id in its `Tag`. The script kept the last box it saw for an id, so an element that exported as three regions was compared against whichever region came last, and the recovery — which draws all three — looked oversized by the distance between them. That produced a floors-are-drawn-too-big result that was entirely an artefact of one line: **20% of slabs measured over a foot out; unioning the boxes for a shared id puts it at 3%**. Railings went from 6% to **0%**. It did not rescue stair flights, which are genuinely oversized, and it does not touch `audit-coverage.ts`, which asks only whether an id is present. The wall size column is expected rather than wrong: the record is the wall **as modelled**, before Revit's join trimming, and the difference is half a wall thickness.
 

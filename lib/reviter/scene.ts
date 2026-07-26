@@ -251,11 +251,39 @@ function planMatches(a: ElementBoundsRecord, b: ElementBoundsRecord): boolean {
  *
  * **A sub-element lying along its parent**, per `SUB_ELEMENT_CATEGORIES`.
  */
+/**
+ * True when all the element has is a hull over the faces attributed to it.
+ *
+ * `convert.ts` synthesises a record from that hull so a ring or a placement can
+ * attach to the element later, and where one does the element is drawn from it.
+ * Where none does, the hull is what would be drawn, and measured against the
+ * paired export **37 of the 40** such elements are more than a foot out with a
+ * median error of 7.96 ft — one of them a 0.2 × 0.5 × 4.3 ft mullion drawn as a
+ * 168 × 366 ft hull over faces that are not its own. Of the three inside a
+ * foot, two are undersized fragments that merely fail to overhang.
+ *
+ * A synthesised record is recognisable by construction: it has no offset into
+ * the file, and one synthesised from a solid or a placement carries that solid
+ * or that box.
+ */
+function isFaceHullOnly(record: ElementBoundsRecord): boolean {
+  return (
+    record.recordOffset < 0 &&
+    (record.quads?.length ?? 0) > 0 &&
+    !record.loops?.length &&
+    !record.orientedBox &&
+    !record.railPath &&
+    !record.solid &&
+    !record.solids?.length
+  );
+}
+
 function isSheet(
   record: ElementBoundsRecord,
   byId: Map<number, ElementBoundsRecord>,
   all: ElementBoundsRecord[],
 ): boolean {
+  if (isFaceHullOnly(record)) return true;
   const parentCategory = record.categoryId == null
     ? undefined
     : SUB_ELEMENT_CATEGORIES.get(record.categoryId);

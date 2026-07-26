@@ -13,29 +13,36 @@
  * draws the reference geometry — `(x, y, z) -> (x, -z, y)` — with a metre to
  * foot scale. The script reports how well matched elements line up, so a wrong
  * frame shows up as a total mismatch rather than a silent offset.
+ *
+ * The measurement is also exported — `readTruthBoxes`, `computeOverlay`,
+ * `printOverlay` — so `verify-pair.ts` can run it beside the coverage audit
+ * against one conversion rather than decoding the model twice.
  */
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { IfcAPI } from "web-ifc";
 
-import { convertRvtBytes } from "../lib/reviter/convert.ts";
+import { convertModel } from "./audit-coverage.ts";
 import { framingBoundsOfRecords, solidBounds } from "../lib/reviter/bounds-records.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 
-import type { Bounds3, ElementBoundsRecord } from "../lib/reviter/types.ts";
+import type { Bounds3, ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 const FEET_PER_METRE = 3.280839895;
 
 /** Agreement bands, in feet. */
 const CLOSE = 0.5;
 
-const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
-if (!rvtPath || !ifcPath) {
-  console.error("usage: overlay-diff.ts <model.rvt> <model.ifc>");
-  process.exit(2);
-}
+/**
+ * How far past the export's own hull a drawn record may reach before it counts
+ * as escaping the building. A foot is under a wall thickness, so anything over
+ * it is a record placed rather than merely rounded.
+ */
+const HULL_SLACK_FEET = 1;
 
-type Box = [number, number, number, number, number, number];
+export type Box = [number, number, number, number, number, number];
 
 /** `#id=IFCTYPE(...)` products and their Revit element id, by express id. */
 function readProducts(text: string): Map<number, { type: string; tag: number }> {
@@ -51,144 +58,77 @@ function readProducts(text: string): Map<number, { type: string; tag: number }> 
   return products;
 }
 
-const products = readProducts(readFileSync(ifcPath, "latin1"));
+/**
+ * World AABB per Revit element id, read out of the export and mapped into the
+ * recovered model's frame.
+ *
+ * **One Revit element can leave the exporter as several products that all carry
+ * its id** — a floor sketched in three regions becomes three `IfcSlab`s tagged
+ * the same. Keeping only the last made the recovery look oversized by the
+ * distance between the regions, and produced a "floors are drawn too big"
+ * result that was entirely an artefact of one line: 20% of slabs measured over
+ * a foot out, against 3% once the boxes are unioned. Railings went from 6% to
+ * 0%. The union is therefore load-bearing, not an optimisation.
+ */
+export async function readTruthBoxes(
+  ifcPath: string,
+): Promise<Map<number, { type: string; box: Box }>> {
+  const products = readProducts(readFileSync(ifcPath, "latin1"));
+  const api = new IfcAPI();
+  await api.Init();
+  const modelID = api.OpenModel(new Uint8Array(readFileSync(ifcPath)));
 
-const api = new IfcAPI();
-await api.Init();
-const modelID = api.OpenModel(new Uint8Array(readFileSync(ifcPath)));
-
-/** World AABB per IFC product, already mapped into the recovered model's frame. */
-const truth = new Map<number, { type: string; box: Box }>();
-api.StreamAllMeshes(modelID, (mesh) => {
-  const product = products.get(mesh.expressID);
-  if (!product) return;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  const parts = mesh.geometries;
-  for (let part = 0; part < parts.size(); part += 1) {
-    const item = parts.get(part);
-    const geometry = api.GetGeometry(modelID, item.geometryExpressID);
-    const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
-    const m = item.flatTransformation;
-    for (let v = 0; v + 2 < vertices.length; v += 6) {
-      const x = vertices[v]!, y = vertices[v + 1]!, z = vertices[v + 2]!;
-      // Y-up metres -> Z-up feet.
-      const wx = (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) * FEET_PER_METRE;
-      const wy = -(m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) * FEET_PER_METRE;
-      const wz = (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) * FEET_PER_METRE;
-      if (wx < minX) minX = wx;
-      if (wy < minY) minY = wy;
-      if (wz < minZ) minZ = wz;
-      if (wx > maxX) maxX = wx;
-      if (wy > maxY) maxY = wy;
-      if (wz > maxZ) maxZ = wz;
+  const truth = new Map<number, { type: string; box: Box }>();
+  api.StreamAllMeshes(modelID, (mesh) => {
+    const product = products.get(mesh.expressID);
+    if (!product) return;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    const parts = mesh.geometries;
+    for (let part = 0; part < parts.size(); part += 1) {
+      const item = parts.get(part);
+      const geometry = api.GetGeometry(modelID, item.geometryExpressID);
+      const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
+      const m = item.flatTransformation;
+      for (let v = 0; v + 2 < vertices.length; v += 6) {
+        const x = vertices[v]!, y = vertices[v + 1]!, z = vertices[v + 2]!;
+        // Y-up metres -> Z-up feet.
+        const wx = (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) * FEET_PER_METRE;
+        const wy = -(m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) * FEET_PER_METRE;
+        const wz = (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) * FEET_PER_METRE;
+        if (wx < minX) minX = wx;
+        if (wy < minY) minY = wy;
+        if (wz < minZ) minZ = wz;
+        if (wx > maxX) maxX = wx;
+        if (wy > maxY) maxY = wy;
+        if (wz > maxZ) maxZ = wz;
+      }
+      geometry.delete();
     }
-    geometry.delete();
-  }
-  // One Revit element can leave the exporter as several products that all
-  // carry its id — a floor sketched in three regions becomes three `IfcSlab`s
-  // tagged the same. Keeping only the last made the recovery look oversized by
-  // the distance between the regions, and produced a "floors are drawn too
-  // big" result that was entirely an artefact of this line: 20% of slabs
-  // measured over a foot out, against 3% once the boxes are unioned. Stair
-  // flights moved further still, from a 3.79 ft median overhang to 0.16.
-  if (!Number.isFinite(minX)) return;
-  const existing = truth.get(product.tag);
-  if (!existing) {
-    truth.set(product.tag, { type: product.type, box: [minX, minY, minZ, maxX, maxY, maxZ] });
-    return;
-  }
-  const box = existing.box;
-  box[0] = Math.min(box[0]!, minX);
-  box[1] = Math.min(box[1]!, minY);
-  box[2] = Math.min(box[2]!, minZ);
-  box[3] = Math.max(box[3]!, maxX);
-  box[4] = Math.max(box[4]!, maxY);
-  box[5] = Math.max(box[5]!, maxZ);
-});
-console.log(`export products with geometry: ${truth.size}`);
-
-const rvt = readFileSync(rvtPath);
-const outcome = convertRvtBytes(
-  new Uint8Array(rvt.buffer, rvt.byteOffset, rvt.byteLength),
-  rvtPath.split("/").pop() ?? "model.rvt",
-  { revitVersion: 2027 },
-);
-if (!outcome.ok) {
-  console.error(`conversion failed: ${outcome.error}`);
-  process.exit(1);
-}
-const drawn = selectDisplayBounds(
-  outcome.elementBounds.filter((record) => solidBounds(record) || (record.loops?.length ?? 0) > 0),
-).records;
-const byId = new Map(drawn.map((record) => [record.elementId, record]));
-
-// --- does the recovered model sit where the export says the building is? -----
-const buildingBox: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-for (const { box } of truth.values()) {
-  for (let axis = 0; axis < 3; axis += 1) {
-    buildingBox[axis] = Math.min(buildingBox[axis]!, box[axis]!);
-    buildingBox[axis + 3] = Math.max(buildingBox[axis + 3]!, box[axis + 3]!);
-  }
-}
-const round = (values: number[]) => values.map((value) => Math.round(value * 10) / 10);
-const centre = (bounds: Bounds3) => [
-  (bounds.min.x + bounds.max.x) / 2,
-  (bounds.min.y + bounds.max.y) / 2,
-  (bounds.min.z + bounds.max.z) / 2,
-];
-const absolute: Bounds3 = {
-  min: { x: Infinity, y: Infinity, z: Infinity },
-  max: { x: -Infinity, y: -Infinity, z: -Infinity },
-};
-for (const record of drawn) {
-  const axes = ["x", "y", "z"] as const;
-  for (const axis of axes) {
-    absolute.min[axis] = Math.min(absolute.min[axis], record.boundsFeet.min[axis]);
-    absolute.max[axis] = Math.max(absolute.max[axis], record.boundsFeet.max[axis]);
-  }
-}
-const framing = framingBoundsOfRecords(drawn);
-const wanted = [
-  (buildingBox[0]! + buildingBox[3]!) / 2,
-  (buildingBox[1]! + buildingBox[4]!) / 2,
-  (buildingBox[2]! + buildingBox[5]!) / 2,
-];
-console.log(`\nbuilding centre, export      ${round(wanted).join(", ")}`);
-console.log(`  from the outermost record  ${round(centre(absolute)).join(", ")}`);
-console.log(`  as the scene is framed     ${round(centre(framing)).join(", ")}`);
-console.log(`  framing error              ${round(centre(framing).map((v, i) => v - wanted[i]!)).join(", ")} ft`);
-
-const pad = 50;
-const strays = drawn.filter((record) => {
-  const { min, max } = record.boundsFeet;
-  return (
-    max.x < buildingBox[0]! - pad || min.x > buildingBox[3]! + pad ||
-    max.y < buildingBox[1]! - pad || min.y > buildingBox[4]! + pad ||
-    max.z < buildingBox[2]! - pad || min.z > buildingBox[5]! + pad
-  );
-});
-console.log(`\nrecords drawn wholly outside the export's building volume: ${strays.length}`);
-for (const record of strays.slice(0, 10)) {
-  console.log(`   ${record.elementId} code ${record.recordCode}/${record.recordCount}` +
-    ` ${record.categoryName ?? "(uncategorised)"}`);
+    if (!Number.isFinite(minX)) return;
+    const existing = truth.get(product.tag);
+    if (!existing) {
+      truth.set(product.tag, { type: product.type, box: [minX, minY, minZ, maxX, maxY, maxZ] });
+      return;
+    }
+    const box = existing.box;
+    box[0] = Math.min(box[0]!, minX);
+    box[1] = Math.min(box[1]!, minY);
+    box[2] = Math.min(box[2]!, minZ);
+    box[3] = Math.max(box[3]!, maxX);
+    box[4] = Math.max(box[4]!, maxY);
+    box[5] = Math.max(box[5]!, maxZ);
+  });
+  return truth;
 }
 
-// --- envelope agreement, per product type ------------------------------------
-const pairs = new Map<string, { centre: number[]; size: number[] }>();
-const push = (type: string, dCentre: number, dSize: number) => {
-  const entry = pairs.get(type) ?? { centre: [], size: [] };
-  entry.centre.push(dCentre);
-  entry.size.push(dSize);
-  pairs.set(type, entry);
-};
 /**
  * The extent of what the viewer actually draws for a record, following the same
  * precedence `buildBoundsMeshes` uses. Comparing the record's envelope instead
  * would measure something the user never sees — for a placed family the drawn
  * shape is its oriented box, not its axis-aligned bounds.
  */
-function drawnBounds(record: ElementBoundsRecord): Box {
+export function drawnBounds(record: ElementBoundsRecord): Box {
   const box: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   const add = (x: number, y: number, z: number) => {
     box[0] = Math.min(box[0]!, x); box[3] = Math.max(box[3]!, x);
@@ -230,38 +170,207 @@ function drawnBounds(record: ElementBoundsRecord): Box {
   ];
 }
 
-for (const [tag, { type, box }] of truth) {
-  const record = byId.get(tag);
-  if (!record) continue;
-  const got = drawnBounds(record);
-  let dCentre = 0;
-  let dSize = 0;
-  for (let axis = 0; axis < 3; axis += 1) {
-    dCentre = Math.max(dCentre, Math.abs(
-      (got[axis]! + got[axis + 3]!) / 2 - (box[axis]! + box[axis + 3]!) / 2,
-    ));
-    dSize = Math.max(dSize, Math.abs(
-      (got[axis + 3]! - got[axis]!) - (box[axis + 3]! - box[axis]!),
-    ));
-  }
-  push(type, dCentre, dSize);
-}
+export type ClassAgreement = {
+  type: string;
+  matched: number;
+  centreOkPercent: number;
+  sizeOkPercent: number;
+  medianCentreError: number;
+  medianSizeError: number;
+};
+
+export type EscapedRecord = {
+  elementId: number;
+  overhangFeet: number;
+  categoryName?: string;
+  recordCode?: number;
+};
+
+export type OverlayResult = {
+  /** Export products that carry a Revit id and produced geometry. */
+  truthCount: number;
+  /** The export's own hull, in the recovered model's frame. */
+  buildingBox: Box;
+  exportCentre: number[];
+  outermostRecordCentre: number[];
+  framingCentre: number[];
+  framingErrorFeet: number[];
+  /**
+   * Records drawn reaching past the export's hull by more than
+   * `HULL_SLACK_FEET`, worst first. This is the measurement that catches a
+   * bounds rule that has stopped generalising: a misread envelope lands
+   * somewhere the building is not.
+   */
+  escaped: EscapedRecord[];
+  worstOverhangFeet: number;
+  drawnCount: number;
+  byClass: ClassAgreement[];
+};
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 };
-console.log(`\n${"IFC product type".padEnd(22)}${"drawn".padStart(8)}` +
-  `${"centre ok".padStart(11)}${"size ok".padStart(9)}${"median dc".padStart(11)}${"median ds".padStart(11)}`);
-console.log("-".repeat(72));
-for (const [type, entry] of [...pairs].sort((a, b) => b[1].centre.length - a[1].centre.length)) {
-  if (entry.centre.length < 10) continue;
-  const okCentre = (entry.centre.filter((value) => value < CLOSE).length / entry.centre.length) * 100;
-  const okSize = (entry.size.filter((value) => value < CLOSE).length / entry.size.length) * 100;
-  console.log(
-    type.padEnd(22) + String(entry.centre.length).padStart(8) +
-    `${okCentre.toFixed(1)}%`.padStart(11) + `${okSize.toFixed(1)}%`.padStart(9) +
-    median(entry.centre).toFixed(3).padStart(11) + median(entry.size).toFixed(3).padStart(11),
-  );
+
+/** Put the recovered model and the export in one frame and measure the gap. */
+export function computeOverlay(
+  outcome: ConvertResult,
+  truth: Map<number, { type: string; box: Box }>,
+): OverlayResult {
+  const drawn = selectDisplayBounds(
+    outcome.elementBounds.filter((record) => solidBounds(record) || (record.loops?.length ?? 0) > 0),
+  ).records;
+  const byId = new Map(drawn.map((record) => [record.elementId, record]));
+
+  const buildingBox: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const { box } of truth.values()) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      buildingBox[axis] = Math.min(buildingBox[axis]!, box[axis]!);
+      buildingBox[axis + 3] = Math.max(buildingBox[axis + 3]!, box[axis + 3]!);
+    }
+  }
+  const centre = (bounds: Bounds3) => [
+    (bounds.min.x + bounds.max.x) / 2,
+    (bounds.min.y + bounds.max.y) / 2,
+    (bounds.min.z + bounds.max.z) / 2,
+  ];
+  const absolute: Bounds3 = {
+    min: { x: Infinity, y: Infinity, z: Infinity },
+    max: { x: -Infinity, y: -Infinity, z: -Infinity },
+  };
+  for (const record of drawn) {
+    for (const axis of ["x", "y", "z"] as const) {
+      absolute.min[axis] = Math.min(absolute.min[axis], record.boundsFeet.min[axis]);
+      absolute.max[axis] = Math.max(absolute.max[axis], record.boundsFeet.max[axis]);
+    }
+  }
+  const framingCentre = centre(framingBoundsOfRecords(drawn));
+  const exportCentre = [
+    (buildingBox[0]! + buildingBox[3]!) / 2,
+    (buildingBox[1]! + buildingBox[4]!) / 2,
+    (buildingBox[2]! + buildingBox[5]!) / 2,
+  ];
+
+  // How far each drawn record reaches past the hull, measured on the geometry
+  // the viewer draws rather than on the record's envelope: a sketch-bounded
+  // element is drawn from its ring, which is a different and usually smaller
+  // thing, and reading the envelope instead put two floors on this list that
+  // are in fact inside the building.
+  const escaped: EscapedRecord[] = [];
+  let worstOverhangFeet = 0;
+  for (const record of drawn) {
+    const box = drawnBounds(record);
+    let overhang = 0;
+    for (let axis = 0; axis < 3; axis += 1) {
+      overhang = Math.max(
+        overhang,
+        buildingBox[axis]! - box[axis]!,
+        box[axis + 3]! - buildingBox[axis + 3]!,
+      );
+    }
+    worstOverhangFeet = Math.max(worstOverhangFeet, overhang);
+    if (overhang > HULL_SLACK_FEET) {
+      escaped.push({
+        elementId: record.elementId,
+        overhangFeet: overhang,
+        categoryName: record.categoryName,
+        recordCode: record.recordCode,
+      });
+    }
+  }
+  escaped.sort((a, b) => b.overhangFeet - a.overhangFeet);
+
+  const pairs = new Map<string, { centre: number[]; size: number[] }>();
+  for (const [tag, { type, box }] of truth) {
+    const record = byId.get(tag);
+    if (!record) continue;
+    const got = drawnBounds(record);
+    let dCentre = 0;
+    let dSize = 0;
+    for (let axis = 0; axis < 3; axis += 1) {
+      dCentre = Math.max(dCentre, Math.abs(
+        (got[axis]! + got[axis + 3]!) / 2 - (box[axis]! + box[axis + 3]!) / 2,
+      ));
+      dSize = Math.max(dSize, Math.abs(
+        (got[axis + 3]! - got[axis]!) - (box[axis + 3]! - box[axis]!),
+      ));
+    }
+    const entry = pairs.get(type) ?? { centre: [], size: [] };
+    entry.centre.push(dCentre);
+    entry.size.push(dSize);
+    pairs.set(type, entry);
+  }
+
+  const byClass: ClassAgreement[] = [...pairs]
+    .filter(([, entry]) => entry.centre.length >= 10)
+    .sort((a, b) => b[1].centre.length - a[1].centre.length)
+    .map(([type, entry]) => ({
+      type,
+      matched: entry.centre.length,
+      centreOkPercent: (entry.centre.filter((value) => value < CLOSE).length / entry.centre.length) * 100,
+      sizeOkPercent: (entry.size.filter((value) => value < CLOSE).length / entry.size.length) * 100,
+      medianCentreError: median(entry.centre),
+      medianSizeError: median(entry.size),
+    }));
+
+  return {
+    truthCount: truth.size,
+    buildingBox,
+    exportCentre,
+    outermostRecordCentre: centre(absolute),
+    framingCentre,
+    framingErrorFeet: framingCentre.map((value, axis) => value - exportCentre[axis]!),
+    escaped,
+    worstOverhangFeet,
+    drawnCount: drawn.length,
+    byClass,
+  };
 }
-console.log(`\n"ok" means within ${CLOSE} ft on every axis; dc is centre error, ds size error.`);
+
+export function printOverlay(result: OverlayResult): void {
+  const round = (values: number[]) => values.map((value) => Math.round(value * 10) / 10);
+  console.log(`export products with geometry: ${result.truthCount}`);
+  console.log(`\nbuilding centre, export      ${round(result.exportCentre).join(", ")}`);
+  console.log(`  from the outermost record  ${round(result.outermostRecordCentre).join(", ")}`);
+  console.log(`  as the scene is framed     ${round(result.framingCentre).join(", ")}`);
+  console.log(`  framing error              ${round(result.framingErrorFeet).join(", ")} ft`);
+
+  console.log(`\nrecords drawn past the export's hull by over ${HULL_SLACK_FEET} ft: ${result.escaped.length}`);
+  for (const record of result.escaped.slice(0, 10)) {
+    console.log(`   ${record.elementId} by ${record.overhangFeet.toFixed(1)} ft` +
+      `  ${record.categoryName ?? "(uncategorised)"}`);
+  }
+
+  console.log(`\n${"IFC product type".padEnd(22)}${"drawn".padStart(8)}` +
+    `${"centre ok".padStart(11)}${"size ok".padStart(9)}${"median dc".padStart(11)}${"median ds".padStart(11)}`);
+  console.log("-".repeat(72));
+  for (const row of result.byClass) {
+    console.log(
+      row.type.padEnd(22) + String(row.matched).padStart(8) +
+      `${row.centreOkPercent.toFixed(1)}%`.padStart(11) + `${row.sizeOkPercent.toFixed(1)}%`.padStart(9) +
+      row.medianCentreError.toFixed(3).padStart(11) + row.medianSizeError.toFixed(3).padStart(11),
+    );
+  }
+  console.log(`\n"ok" means within ${CLOSE} ft on every axis; dc is centre error, ds size error.`);
+}
+
+/** True when this module is the process entry point rather than an import. */
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return fileURLToPath(import.meta.url) === resolve(entry);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
+  if (!rvtPath || !ifcPath) {
+    console.error("usage: overlay-diff.ts <model.rvt> <model.ifc>");
+    process.exit(2);
+  }
+  const truth = await readTruthBoxes(ifcPath);
+  printOverlay(computeOverlay(convertModel(rvtPath), truth));
+}

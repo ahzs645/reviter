@@ -605,6 +605,13 @@ export function convertRvtBytes(
     // the solid itself, so they reach the scene as the geometry they are.
     const boundedIds = new Set(elementBounds.map((record) => record.elementId));
     let solidOnlyElements = 0;
+    // An element with faces and no record of its own still gets a record
+    // synthesised from the hull over those faces — not because the hull is its
+    // shape, but because the record is what lets a sketch ring or a placement
+    // attach to it later. Removing the synthesis outright cost 15 of the 38
+    // drawn coverings and 13 slabs, all of which were being drawn correctly
+    // from rings they only received because the record existed. The hull itself
+    // is held back at the display gate instead; see `isSheet` in `scene.ts`.
     for (const [elementId, quads] of quadsByElement) {
       if (boundedIds.has(elementId)) continue;
       const xs = quads.flatMap((quad) => quad.corners.map((corner) => corner[0]));
