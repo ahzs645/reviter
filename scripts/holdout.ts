@@ -109,6 +109,7 @@ import { computeCoverage, convertModel } from "./audit-coverage.ts";
 import { drawnBounds, readTruthBoxes, type Box } from "./overlay-diff.ts";
 
 import { solidBounds } from "../lib/reviter/bounds-records.ts";
+import { doorLeafCorners, type WallRun } from "../lib/reviter/door-leaf.ts";
 import {
   chainElementObjects,
   markerObjectSeeds,
@@ -121,7 +122,12 @@ import {
   readLocalBounds,
   type LocalBounds,
 } from "../lib/reviter/instanced-geometry.ts";
-import { asBytes, gzipOffsets, inflateRevitChunk } from "../lib/reviter/revit-container.ts";
+import {
+  asBytes,
+  gzipOffsets,
+  inflateRevitChunk,
+  revitWindowTail,
+} from "../lib/reviter/revit-container.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 
 import type { ConvertResult } from "../lib/reviter/types.ts";
@@ -535,9 +541,15 @@ export function rescanPartitions(rvtPath: string): RescanResult {
       .slice(0, 12)
       .map(([marker]) => marker);
 
+    // The window is carried exactly as `convert.ts` carries it: a minority of
+    // chunks reference bytes behind their own start and inflate only against the
+    // previous chunk's tail. Without it this pass would read fewer pages than the
+    // conversion did and its record population would not be the same population.
+    let window: Uint8Array | null = null;
     for (let index = 0; index < offsets.length; index += 1) {
-      const page = inflateRevitChunk(data, offsets[index]!, offsets[index + 1]);
+      const page = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
       if (!page) continue;
+      window = revitWindowTail(page);
       pagesRead += 1;
       scanRelaxedRecords(page, records);
       const seeds: number[] = [];
@@ -587,26 +599,75 @@ export type RecordView = {
   recordCount: number | null;
   /** The rail guard height, where the railing's own path was believed. */
   guardHeightFeet: number | null;
-  /** A door with this is a door whose leaf was cut from its host wall. */
-  hasOrientedBox: boolean;
+  /**
+   * Which route gave a door its leaf, since there are now two and they are
+   * separate rules fitted on separate populations.
+   *
+   * `wall` is the older one — the record's extent along its host wall, the wall's
+   * thickness across it. It is recomputed here from `doorLeafCorners` and the
+   * same wall runs `convert.ts` feeds it, and a door is credited to it when the
+   * box it is drawn with is that construction corner for corner.
+   *
+   * `shape` is the newer fold of the door's own swing shape, which takes
+   * precedence in `convert.ts`. It cannot be recomputed from `ConvertResult`
+   * alone — the placement and the shared shape do not survive into it — so it is
+   * identified by elimination: a drawn box that is not the wall construction.
+   * The count is cross-checked against the converter's own tally.
+   */
+  doorLeafRoute: "shape" | "wall" | "none";
   /** Whether the record survived the scene's own display selection. */
   drawn: boolean;
+  /**
+   * Whether the record has the extent the display gate requires, which is the
+   * population the sheet rule is applied to.
+   */
+  withVolume: boolean;
 };
 
 export type ModelView = {
   records: RecordView[];
-  /** Per-class context, and the converter's own count of cut door leaves. */
+  /** Per-class context, and the converter's own counts of cut door leaves. */
   inIfc: number;
   drawnElements: number;
   doorLeaves: number;
+  doorLeavesFromShape: number;
 };
 
 export function buildModelView(outcome: ConvertResult, ifcPath: string): ModelView {
   const withVolume = outcome.elementBounds.filter(
     (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
   );
+  const volumeIds = new Set(withVolume.map((record) => record.elementId));
   const drawn = new Set(selectDisplayBounds(withVolume).records.map((record) => record.elementId));
   const coverage = computeCoverage(outcome, ifcPath);
+
+  // The door-swing rule is `doorLeafCorners` plus every wall run in the model,
+  // so the wall runs are rebuilt here exactly as `convert.ts` builds them. That
+  // makes "this door found a host wall" a measurement of the rule rather than of
+  // a side effect of it.
+  const wallRuns: WallRun[] = [];
+  for (const record of outcome.elementBounds) {
+    const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+    for (const solid of solids) {
+      wallRuns.push({
+        x0: solid.start.x, y0: solid.start.y, x1: solid.end.x, y1: solid.end.y,
+        thickness: solid.thickness,
+        minZ: record.boundsFeet.min.z,
+        maxZ: record.boundsFeet.max.z,
+      });
+    }
+  }
+
+  /** Same corners, to 1e-9 ft — the wall construction is exact, not fitted. */
+  const sameCorners = (
+    a: [number, number, number][] | undefined,
+    b: [number, number, number][] | null,
+  ): boolean => {
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((corner, index) =>
+      corner.every((value, axis) => Math.abs(value - b[index]![axis]!) < 1e-9));
+  };
+
   return {
     records: outcome.elementBounds.map((record) => ({
       elementId: record.elementId,
@@ -620,12 +681,19 @@ export function buildModelView(outcome: ConvertResult, ifcPath: string): ModelVi
       recordCode: record.recordCode ?? null,
       recordCount: record.recordCount ?? null,
       guardHeightFeet: record.railPath?.guardHeightFeet ?? null,
-      hasOrientedBox: Boolean(record.orientedBox),
+      doorLeafRoute:
+        record.categoryId !== DOOR_CATEGORY || !record.orientedBox
+          ? "none"
+          : sameCorners(record.orientedBox, wallRuns.length ? doorLeafCorners(record, wallRuns) : null)
+            ? "wall"
+            : "shape",
       drawn: drawn.has(record.elementId),
+      withVolume: volumeIds.has(record.elementId),
     })),
     inIfc: coverage.totals.inIfc,
     drawnElements: coverage.totals.drawn,
     doorLeaves: coverage.stats.doorLeaves ?? 0,
+    doorLeavesFromShape: coverage.stats.doorLeavesFromShape ?? 0,
   };
 }
 
@@ -765,7 +833,9 @@ export function summarise(
   const groups = new Map<string, Sample[]>();
   for (const sample of samples) {
     const key = scheme === "storey" ? sample.partition.storey : sample.partition.wing;
-    groups.set(key, [...(groups.get(key) ?? []), sample]);
+    const group = groups.get(key);
+    if (group) group.push(sample);
+    else groups.set(key, [sample]);
   }
   const rank = new Map(order.map((name, index) => [name, index]));
   const rows: PartitionRow[] = [...groups]
@@ -843,6 +913,22 @@ export type RuleReport = {
   bandPercent: number;
   byStorey: SchemeReport;
   byWing: SchemeReport;
+  /**
+   * The rule's measured population against the population it could have fired
+   * on, per partition.
+   *
+   * Accuracy and reach are different questions and a rule can be perfect at one
+   * and absent at the other — the railing guard is 100% accurate on every
+   * partition it reaches and reaches **none** of the 41 railings at or below
+   * Floor 1. Only this table shows that.
+   *
+   * The numerator is what was measured, so where a rule's measurement needs an
+   * export join it is bounded by that too, and where the two populations are
+   * assigned differently — a companion record by elevation band against a stair
+   * product by containment — the numerator can exceed the denominator. Read it as
+   * reach, not as a percentage.
+   */
+  firing: { scheme: "storey" | "wing"; partition: string; fired: number; eligible: number }[];
   /** Partitions holding an eligible population the rule never fired on. */
   silentPartitions: string[];
   /** Extra numbers worth printing under the tables. */
@@ -886,15 +972,42 @@ export function ruleReport(options: {
   const byStorey = summarise(samples, "storey", partitioner.storeyNames);
   const byWing = summarise(samples, "wing", partitioner.wingNames);
   const silent: string[] = [];
+  const firing: RuleReport["firing"] = [];
   if (options.eligible) {
     for (const [scheme, counts, report] of [
       ["storey", options.eligible.storey, byStorey],
       ["wing", options.eligible.wing, byWing],
     ] as const) {
-      const fired = new Set(report.rows.filter((row) => row.n > 0).map((row) => row.partition));
-      for (const [partition, population] of counts) {
-        if (population >= MIN_FIRE_POPULATION && !fired.has(partition)) {
+      const firedIn = new Map(report.rows.map((row) => [row.partition, row.n]));
+      const order = scheme === "storey" ? partitioner.storeyNames : partitioner.wingNames;
+      const rank = new Map(order.map((name, index) => [name, index]));
+      for (const [partition, population] of [...counts].sort(
+        (a, b) => (rank.get(a[0]) ?? 99) - (rank.get(b[0]) ?? 99),
+      )) {
+        const fired = firedIn.get(partition) ?? 0;
+        firing.push({ scheme, partition, fired, eligible: population });
+        if (population >= MIN_FIRE_POPULATION && !fired) {
           silent.push(`${scheme} ${partition} (${population} eligible)`);
+        }
+      }
+      // A rule can also go quiet across a whole half of the building while no
+      // single storey holds enough of the population to say so on its own: 41
+      // railings sit at or below Floor 1 here and not one of them is swept, in
+      // partitions of 21, 10, 9 and 1. Pooling the halves is what catches that.
+      if (scheme === "storey" && order.length > 2) {
+        const half = Math.ceil(order.length / 2);
+        for (const [name, lower] of [["lower", true], ["upper", false]] as const) {
+          let eligible = 0;
+          let fired = 0;
+          for (const entry of firing.filter((item) => item.scheme === "storey")) {
+            const index = rank.get(entry.partition) ?? 99;
+            if (lower !== index < half) continue;
+            eligible += entry.eligible;
+            fired += entry.fired;
+          }
+          if (eligible >= MIN_FIRE_POPULATION && !fired) {
+            silent.push(`the ${name} half of the storeys (${eligible} eligible)`);
+          }
         }
       }
     }
@@ -912,6 +1025,7 @@ export function ruleReport(options: {
       : 0,
     byStorey,
     byWing,
+    firing,
     silentPartitions: silent,
     notes: options.notes ?? [],
   };
@@ -1065,6 +1179,11 @@ function unnamedSheetRule(
   let categorised = 0;
   let categorisedNamed = 0;
   for (const record of model.records) {
+    // The rule runs inside the display gate, so its population is the records
+    // that reach it: an envelope with no extent is dropped before the threshold
+    // is ever applied, and scoring those would grade the rule on records it
+    // never sees.
+    if (!record.withVolume) continue;
     const area = (record.envelope[3]! - record.envelope[0]!) * (record.envelope[4]! - record.envelope[1]!);
     if (area <= UNNAMED_SHEET_AREA_SQ_FEET) continue;
     const named = truth.has(record.elementId);
@@ -1098,64 +1217,89 @@ function unnamedSheetRule(
 }
 
 /**
- * **The door swing geometry**, fitted on the doors that find a host wall.
+ * **The door swing geometry**, which is now two rules with two populations.
  *
- * A door's record is its opening plus the quarter-circle swing; the leaf is what
- * is left after the swing is cut away, using the host wall's centreline and
- * thickness. Accuracy is the leaf landing within half a foot of the export's
- * door. The doors that find *no* host wall are the control, and their accuracy
- * is printed beside it: the rule is worth something only where the gap is large.
+ * A door's record is its opening plus the quarter-circle swing. The older rule
+ * cuts the leaf out of it with the *host wall's* centreline and thickness, fitted
+ * on the doors that find a wall. The newer one folds the door's *own* shared
+ * shape, which is the swing written in the family frame, fitted on the 1,067
+ * doors whose shape resolves — and it takes precedence, so the wall rule is now
+ * the fallback rather than the rule.
+ *
+ * They are reported separately because a partition can starve one and not the
+ * other, and averaging them would hide exactly that. Doors drawn with no leaf at
+ * all are the control, printed with both.
  */
-function doorSwingRule(
+function doorSwingRules(
   model: ModelView,
   truth: Truth,
   partitioner: Partitioner,
-): RuleReport {
-  const samples: Sample[] = [];
+): { fromWall: RuleReport; fromShape: RuleReport } {
+  const wall: Sample[] = [];
+  const shape: Sample[] = [];
   let withoutLeaf = 0;
   let withoutLeafOk = 0;
-  let withLeaf = 0;
+  const counts = { wall: 0, shape: 0, none: 0 };
   const doors = model.records.filter((record) => record.drawn && record.categoryId === DOOR_CATEGORY);
   for (const record of doors) {
-    // A leaf was cut exactly when the door carries an oriented box: a door is
-    // the only class `convert.ts` gives one to from a wall rather than from a
-    // placement, and it does so only when a host wall is found.
-    if (record.hasOrientedBox) withLeaf += 1;
+    counts[record.doorLeafRoute] += 1;
     const want = truth.get(record.elementId);
     if (!want) continue;
     const error = centreError(record.box, want.box);
-    const where = partitioner.assign(record.elementId, record.box);
-    if (!record.hasOrientedBox) {
+    const sample: Sample = {
+      partition: partitioner.assign(record.elementId, record.box),
+      ok: error < CLOSE_FEET,
+      value: error,
+    };
+    if (record.doorLeafRoute === "wall") wall.push(sample);
+    else if (record.doorLeafRoute === "shape") shape.push(sample);
+    else {
       withoutLeaf += 1;
       if (error < CLOSE_FEET) withoutLeafOk += 1;
-      continue;
     }
-    samples.push({ partition: where, ok: error < CLOSE_FEET, value: error });
   }
-  return ruleReport({
-    rule: "door-swing-geometry",
-    fittedOn: "the 1,211 doors that find a host wall",
-    accuracyIs: "the cut leaf is within 0.5 ft of the export's door",
-    samples,
-    partitioner,
-    eligible: eligibleCounts(doors, partitioner),
-    notes: [
-      `control: ${withoutLeaf.toLocaleString()} drawn doors found no host wall, ` +
-        `${withoutLeaf ? ((withoutLeafOk / withoutLeaf) * 100).toFixed(1) : "-"}% of them within ${CLOSE_FEET} ft`,
-      `${withLeaf.toLocaleString()} drawn doors carry a cut leaf; the converter reports ` +
-        `${model.doorLeaves.toLocaleString()}`,
-    ],
-  });
+  const control =
+    `control: ${withoutLeaf.toLocaleString()} drawn doors got no leaf from either route, ` +
+    `${withoutLeaf ? ((withoutLeafOk / withoutLeaf) * 100).toFixed(1) : "-"}% of them within ${CLOSE_FEET} ft`;
+  const tally =
+    `routes over ${doors.length.toLocaleString()} drawn doors: ${counts.shape.toLocaleString()} from the ` +
+    `door's own shape, ${counts.wall.toLocaleString()} from a host wall, ${counts.none.toLocaleString()} neither; ` +
+    `the converter reports ${model.doorLeavesFromShape.toLocaleString()} and ` +
+    `${model.doorLeaves.toLocaleString()} over every record, drawn or not`;
+  return {
+    fromShape: ruleReport({
+      rule: "door-leaf-from-own-shape",
+      fittedOn: "the 1,067 doors whose own swing shape resolves",
+      accuracyIs: "the folded leaf is within 0.5 ft of the export's door",
+      samples: shape,
+      partitioner,
+      eligible: eligibleCounts(doors, partitioner),
+      notes: [tally, control],
+    }),
+    fromWall: ruleReport({
+      rule: "door-leaf-from-host-wall",
+      fittedOn: "the doors that find a host wall, now the fallback route",
+      accuracyIs: "the cut leaf is within 0.5 ft of the export's door",
+      samples: wall,
+      partitioner,
+      notes: [tally, control],
+    }),
+  };
 }
 
 /**
  * **The stair companion record**, `169671` with one field.
  *
- * Two halves, both tested. The premise: a companion is an anonymous record the
- * export never names, filed one id above a stair part. The consequence: the
- * owner adopts its box and lands on the export. Accuracy of the premise is
- * "unnamed by the export and owning a record at `id - 1`"; the consequence is a
- * second report, because it needs the export's box.
+ * Two claims, measured apart. The premise: a companion is **not a building
+ * element** — the export names none of the 111, which is what licenses holding
+ * them back. The consequence: the stair part one id below adopts the companion's
+ * box and lands on the export.
+ *
+ * Whether an owner record exists at `id - 1` is deliberately *not* folded into
+ * the premise. A missing owner is a recovery gap belonging to whatever failed to
+ * read that stair part, and mixing it in produced a wing split that was about
+ * recovery rather than about this rule. It is reported as adoption coverage
+ * instead.
  */
 function stairCompanionRule(
   rescan: RescanResult,
@@ -1180,7 +1324,7 @@ function stairCompanionRule(
     if (!owner) ownerMissing += 1;
     premise.push({
       partition: partitioner.assign(record.elementId, asBox(own)),
-      ok: !named && Boolean(owner),
+      ok: !named,
     });
 
     // The consequence: the owner is drawn from the companion's box, so measure
@@ -1209,15 +1353,18 @@ function stairCompanionRule(
     .map(([elementId, product]) => ({ elementId, box: product.box }));
   return {
     premise: ruleReport({
-      rule: "stair-companion-premise",
+      rule: "stair-companion-not-an-element",
       fittedOn: "111 companion records with code 169671/1",
-      accuracyIs: "the companion is unnamed by the export and owns a record at id-1",
+      accuracyIs: "the export does not name the companion, so holding it back costs nothing",
       samples: premise,
       partitioner,
       eligible: eligibleCounts(stairs, partitioner),
       notes: [
         `${namedByExport} of ${premise.length} companions are named by the export (the rule expects none)`,
-        `${ownerMissing} have no record at id-1, so nothing adopts their box`,
+        `adoption coverage: ${ownerMissing} of ${premise.length} have no record at id-1, so nothing ` +
+          "adopts their box — a recovery gap in the stair part, not in this rule",
+        "the eligible column below is stair products, placed by the export's containment, against " +
+          "companions, which have no product and are placed by elevation band; the two do not divide",
       ],
     }),
     adoption: ruleReport({
@@ -1465,6 +1612,17 @@ function printRule(report: RuleReport): void {
   printScheme(report.byStorey);
   console.log("");
   printScheme(report.byWing);
+  if (report.firing.length) {
+    console.log("");
+    for (const scheme of ["storey", "wing"] as const) {
+      const rows = report.firing.filter((entry) => entry.scheme === scheme);
+      if (!rows.length) continue;
+      console.log(
+        `    measured against eligible, by ${scheme}: ` +
+          rows.map((row) => `${row.partition} ${row.fired}/${row.eligible}`).join("  "),
+      );
+    }
+  }
   for (const silent of report.silentPartitions) {
     console.log(`    SILENT: the rule fired on nothing in ${silent}`);
   }
@@ -1588,11 +1746,13 @@ if (isEntryPoint()) {
   const partitioner = buildPartitioner(storeyModel, hull);
   const stair = stairCompanionRule(rescan, model, truth, partitioner);
   const tail = tailWindowRule(rescan, truth, partitioner);
+  const doors = doorSwingRules(model, truth, partitioner);
   const reports: RuleReport[] = [
     tighterCopyRule(rescan, truth, partitioner),
     railingGuardRule(model, partitioner),
     unnamedSheetRule(model, truth, partitioner),
-    doorSwingRule(model, truth, partitioner),
+    doors.fromShape,
+    doors.fromWall,
     stair.premise,
     stair.adoption,
     reservedWordRule(rescan, model, truth, partitioner),
@@ -1624,7 +1784,9 @@ if (isEntryPoint()) {
   console.log(
     `\npartitions marked * hold under ${MIN_PARTITION_N} measured elements and are left out of the spread.` +
       `\nthe band column is the share of a partition's items whose storey came from an elevation band` +
-      `\nrather than from the export's containment.`,
+      `\nrather than from the export's containment.` +
+      `\nthe "measured against eligible" line is reach rather than a percentage: the numerator is what` +
+      `\nthe rule was measured on, which for some rules needs an export join as well.`,
   );
 
   for (const report of reports) printRule(report);
