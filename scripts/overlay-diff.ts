@@ -196,18 +196,23 @@ function drawnBounds(record: ElementBoundsRecord): Box {
     box[2] = Math.min(box[2]!, z); box[5] = Math.max(box[5]!, z);
   };
   if (record.loops?.length) {
-    for (const ring of record.loops) for (const [x, y] of ring) add(x, y, record.boundsFeet.min.z);
-    add(record.boundsFeet.min.x, record.boundsFeet.min.y, record.boundsFeet.max.z);
+    // The ring gives the plan and the record gives the thickness; adding the
+    // record's own corner to carry the top also widened the plan to the
+    // record's, which is the thing the ring is there to replace.
+    for (const ring of record.loops) {
+      for (const [x, y] of ring) {
+        add(x, y, record.boundsFeet.min.z);
+        add(x, y, record.boundsFeet.max.z);
+      }
+    }
     return box;
   }
   if (record.orientedBox) {
     for (const [x, y, z] of record.orientedBox) add(x, y, z);
     return box;
   }
-  if (record.quads?.length) {
-    for (const quad of record.quads) for (const [x, y, z] of quad.corners) add(x, y, z);
-    return box;
-  }
+  // Native faces are no longer drawn: measured across every class that owns
+  // them the element's own envelope is closer for 168 of the 225 concerned.
   const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
   if (solids.length) {
     for (const solid of solids) {

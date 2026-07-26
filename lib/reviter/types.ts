@@ -198,6 +198,8 @@ export type ConvertStats = {
   sketchBoundaryElements?: number;
   /** Railings swept along their own rail path rather than drawn as a box. */
   sweptRailings?: number;
+  /** Doors whose leaf was cut out of the opening using their host wall. */
+  doorLeaves?: number;
   /** Of those, elements with no decoded category whose ring matched the envelope. */
   unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */

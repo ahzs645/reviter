@@ -6,7 +6,7 @@
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
-import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+import type { WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 import type { Point3 } from "./sketch-curves.ts";
 
@@ -21,9 +21,6 @@ import type {
 } from "./types";
 
 const MESH_BATCH_SIZE = 2_000;
-
-/** Token thickness given to a face so it can be drawn as a pickable box. */
-const FACE_THICKNESS_FEET = 0.02;
 
 /** Fallback depth for a sketch whose element bounds have no vertical extent. */
 const MIN_PRISM_THICKNESS_FEET = 0.02;
@@ -360,37 +357,6 @@ function solidGeometry(solid: WallSolid, origin: Vec3) {
   };
 }
 
-/**
- * A trimmed plane, drawn as a thin slab. Picking maps a hit triangle to an
- * element by dividing the face index by 12, so every drawn item has to be a
- * 12-triangle box; a face is therefore given a token thickness rather than
- * being emitted as a bare quad.
- */
-function quadGeometry(quad: SurfaceQuad, origin: Vec3) {
-  const [a, b, c] = quad.corners;
-  const ux = b![0] - a![0];
-  const uy = b![1] - a![1];
-  const uz = b![2] - a![2];
-  const vx = c![0] - b![0];
-  const vy = c![1] - b![1];
-  const vz = c![2] - b![2];
-  let nx = uy * vz - uz * vy;
-  let ny = uz * vx - ux * vz;
-  let nz = ux * vy - uy * vx;
-  const length = Math.hypot(nx, ny, nz) || 1;
-  const half = FACE_THICKNESS_FEET / 2;
-  nx = (nx / length) * half;
-  ny = (ny / length) * half;
-  nz = (nz / length) * half;
-  const points = [
-    ...quad.corners.map(([x, y, z]) => [x - nx, y - ny, z - nz]),
-    ...quad.corners.map(([x, y, z]) => [x + nx, y + ny, z + nz]),
-  ];
-  return {
-    positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
-    indices: BOX_INDICES,
-  };
-}
 
 /** Eight already-placed world corners, in box-index order. */
 function cornersGeometry(corners: [number, number, number][], origin: Vec3) {
@@ -602,17 +568,24 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // A swept railing wins over its own envelope, which is the rectangle the
         // path spans rather than anything the railing occupies.
         const rail = record.railPath ? railGeometry(record.railPath, origin) : [];
+        // Native faces used to outrank both the rebuilt solid and the
+        // element's own envelope. Measured against the paired export across
+        // every class that owns them, they lose to the envelope for 168 of the
+        // 225 elements concerned — walls by 31.84 ft against 0.00, stair
+        // flights by 5.99 against 2.59 — because a face set is usually a
+        // fragment of the element rather than a shape. An earlier measurement
+        // said the opposite; it compared against a truth map that kept one box
+        // per Revit id, so an element the exporter split was compared with a
+        // piece of itself.
         const items = rail.length
           ? rail
           : prism.length
           ? prism
           : record.orientedBox
             ? [cornersGeometry(record.orientedBox, origin)]
-            : record.quads?.length
-              ? record.quads.map((quad) => quadGeometry(quad, origin))
-              : solids.length
-                ? solids.map((solid) => solidGeometry(solid, origin))
-                : [boxGeometry(record.boundsFeet, origin)];
+            : solids.length
+              ? solids.map((solid) => solidGeometry(solid, origin))
+              : [boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));

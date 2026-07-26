@@ -28,6 +28,7 @@ import {
   type ElementObject,
 } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import { doorLeafCorners, type WallRun } from "./door-leaf.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type PlanePatch } from "./surfaces.ts";
 import {
@@ -168,6 +169,9 @@ const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
  */
 const ORIENTED_BOX_AGREEMENT_FEET = 1;
 
+/** Revit category of a door, whose record is its opening rather than its leaf. */
+const DOOR_CATEGORY = -2000023;
+
 /** Plan distance from the project datum inside which an envelope is unplaced. */
 const DATUM_PILE_RADIUS_FEET = 1;
 
@@ -294,6 +298,7 @@ function railPathFor(
   if (guardHeightFeet < RAIL_GUARD_MIN_FEET || guardHeightFeet > RAIL_GUARD_MAX_FEET) return null;
   return { polylines, guardHeightFeet };
 }
+
 
 /**
  * Inflate the first chunk of a named stream and hand it to `decode`. Returns
@@ -788,6 +793,34 @@ export function convertRvtBytes(
       }
     }
 
+    // Doors need every wall in the model, so they are a second pass rather than
+    // part of the loop that builds the walls.
+    const wallRuns: WallRun[] = [];
+    for (const record of elementBounds) {
+      const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+      for (const solid of solids) {
+        wallRuns.push({
+          x0: solid.start.x,
+          y0: solid.start.y,
+          x1: solid.end.x,
+          y1: solid.end.y,
+          thickness: solid.thickness,
+          minZ: record.boundsFeet.min.z,
+          maxZ: record.boundsFeet.max.z,
+        });
+      }
+    }
+    let doorLeaves = 0;
+    if (wallRuns.length) {
+      for (const record of elementBounds) {
+        if (record.categoryId !== DOOR_CATEGORY) continue;
+        const corners = doorLeafCorners(record, wallRuns);
+        if (!corners) continue;
+        record.orientedBox = corners;
+        doorLeaves += 1;
+      }
+    }
+
     onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
@@ -909,6 +942,7 @@ export function convertRvtBytes(
           unplacedRecords,
           sketchBoundaryElements,
           sweptRailings,
+          doorLeaves,
           unnamedSketchElements,
           sketchCurves,
           solidOnlyElements,

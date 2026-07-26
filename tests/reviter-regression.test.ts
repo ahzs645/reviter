@@ -830,6 +830,34 @@ test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
   assert.equal(kept.omittedSheetCount, 0);
 });
 
+test("draws an element's envelope rather than a fragment of its faces", () => {
+  // Native faces used to outrank the envelope. Measured against the paired
+  // export across every class that owns them the envelope is closer for 168 of
+  // the 225 elements concerned — walls by 31.84 ft against 0.00 — because a
+  // face set is usually a fragment of the element rather than a shape.
+  const record: ElementBoundsRecord = {
+    elementId: 2474572,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 8 } },
+    quads: [{
+      elementId: 2474572,
+      corners: [[0, 0, 0], [10, 0, 0], [10, 4, 0], [0, 4, 0]],
+    }],
+  } as ElementBoundsRecord;
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const heights = [];
+  for (let vertex = 2; vertex < mesh.positions.length; vertex += 3) heights.push(mesh.positions[vertex]!);
+  // The single flat face would be drawn 0.02 ft thick; the envelope is 8 ft.
+  assert.ok(Math.abs(Math.max(...heights) - 8) < 1e-4, "drew the face instead of the envelope");
+});
+
 test("sweeps a railing along its path instead of filling its bounding box", () => {
   // A railing that runs around three sides of an atrium has an axis-aligned box
   // the size of the atrium; drawing that box lays a slab across the floor. The

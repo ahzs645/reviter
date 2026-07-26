@@ -52,6 +52,8 @@ export {
   resolveElementCategories,
 } from "./native-categories";
 export { classCoverage } from "./coverage";
+export { doorLeafCorners } from "./door-leaf";
+export type { WallRun } from "./door-leaf";
 export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
 export {

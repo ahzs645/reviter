@@ -267,9 +267,46 @@ Each curve is swept as a thin upright section from the path up by the guard, so 
 
 The largest railing is now 113 runs instead of one 23,877 sq ft plate. Coverage does not move — a swept railing is still one drawn railing.
 
-**Doors cannot be fixed the same way, and here is why not.** The obvious route is the element's own parameters, since a door type carries a width and a height. Only 305 of the 1,459 doors carry a parameter table at all, and the parameters in it are the *host wall's* — `Unconnected Height`, `Base Offset`, `Top Offset`, with a median unconnected height of 13.12 ft. Nothing in what is currently decoded gives a door leaf's own dimensions, so the 1.46 ft centre error stands until the family documents are read.
+### A door's record is its opening plus the swing
 
-**Stair flights are not one problem but two.** Their plan is already exact: measured against the export, the median plan error of a stair run's envelope is **0.00 ft**, and their own sketch rings would not improve on it. The error is vertical and it is bimodal — half the flights sit within a foot of the export and half are several feet out, which is why the median moved from 3.79 ft to 0.16 ft when the export boxes were unioned but the share over a foot only moved from 57% to 50%. Averages hide that shape; whatever is wrong applies to some flights and not others, and that is a separate investigation rather than a rule.
+A door is drawn 1.46 ft off centre and 2.91 ft oversized, and the obvious explanation — that the record is the opening in the wall — turns out to be only half of it. Against the export the **long** horizontal axis is already right: ratio 1.022, median difference 0.08 ft. The **short** axis is 5.1× too big, 3.50 ft where the export says 0.66. And 86% of the boxes are square in plan. That is not the shape of a door in a wall; it is the shape of a quarter-circle **swing**.
+
+So the leaf is what is left when the swing is cut away: the record's own extent along the wall, the wall's thickness across it, centred on the wall's centreline. Both come from the model — walls rebuilt from native surfaces carry a centreline and a thickness — so no reference file is involved. 1,211 of the 1,459 doors find a host wall, and the door row of the overlay changes completely:
+
+| `IfcDoor` | centre within 0.5 ft | size within 0.5 ft | median centre error | median size error |
+| --- | --- | --- | --- | --- |
+| before | 0.4% | 0.4% | 1.455 ft | 2.910 ft |
+| after | **78.1%** | **54.3%** | **0.000 ft** | **0.261 ft** |
+
+The route that does *not* work is the element's own parameters. A door type carries a width and a height, but only 305 of the 1,459 doors have a parameter table at all and the parameters in it are the **host wall's** — `Unconnected Height`, `Base Offset`, `Top Offset`, median unconnected height 13.12 ft. Nothing decoded so far gives a leaf's own dimensions; the geometry had to come from the wall instead.
+
+### Native faces were outranking the element itself
+
+Chasing the stair flights turned up something that was never about stairs. The drawing precedence put an element's decoded **faces** above its envelope, and measured against the export across every class that owns faces, the envelope is closer for **168 of the 225** elements concerned:
+
+| class · faces owned | n | faces, centre | envelope, centre | envelope better |
+| --- | --- | --- | --- | --- |
+| `IfcMember` · several | 112 | 4.62 ft | **2.14 ft** | 61% |
+| `IfcStairFlight` · one | 39 | 5.99 ft | **2.59 ft** | 77% |
+| `IfcWallStandardCase` · several | 36 | 31.84 ft | **0.00 ft** | 94% |
+| `IfcWallStandardCase` · one | 24 | 23.22 ft | **0.00 ft** | 96% |
+| `IfcStairFlight` · several | 6 | 78.92 ft | **0.08 ft** | 100% |
+| `IfcWall` · several | 4 | 96.31 ft | **0.00 ft** | 100% |
+
+A face set is usually a fragment of an element rather than a shape — half of these own exactly one face, and one face is not a solid. Faces are no longer drawn, and every class that had any improves:
+
+| | before | after |
+| --- | --- | --- |
+| `IfcStairFlight` centre ok | 31.0% | **41.7%** |
+| `IfcStairFlight` median centre error | 4.757 ft | **2.051 ft** |
+| `IfcSlab` centre ok | 65.7% | **75.5%** |
+| `IfcWall` centre ok | 65.4% | **68.5%** |
+| `IfcCovering` centre ok | 97.4% | **100%** |
+| `IfcWallStandardCase` centre ok | 96.0% | **96.8%** |
+
+**This reverses a conclusion recorded earlier in this file.** A previous pass concluded that preferring the envelope over the faces made stair flights *worse* — 7.95 ft against 5.413. That was measured against a truth map keeping one box per Revit id, so an element the exporter split into several products was compared against whichever piece came last. With the boxes unioned the comparison runs the other way, decisively. The measurement was wrong, not the instinct.
+
+**What is left on stair flights is not a display choice.** They are still the worst class at 2.051 ft, and the residual is vertical: many carry an envelope of exactly 9.84 ft — a storey — where the export's flight is 3.28 to 6.40. The record a stair sub-component carries is the assembly's, and no reordering of what is already decoded reaches it.
 
 **The panels themselves were never the problem.** The complaint that started this was that curtain-wall panels reached further out than they should. Measured against the export, the 13,931 mullions and 4,426 panels drawn from a placed instance's oriented box overhang it by **0.00 ft at the median, with none over a foot**. What was over-reaching was the sheets, and 247 mullions — 12% of the 2,013 drawn from a bounds record rather than a box, 218 of them under the single record code `179015/3` — which run about 6 ft long. Doors are still 2.5 ft oversized because the record is the opening, and stair components still carry the assembly's envelope.
 
@@ -303,16 +340,16 @@ node --experimental-strip-types scripts/overlay-diff.ts model.rvt model.ifc
 
 | IFC product type | drawn | centre ok | size ok | median centre error |
 | --- | --- | --- | --- | --- |
-| `IfcMember` | 15,944 | 98.4% | 98.3% | 0.000 ft |
-| `IfcWallStandardCase` | 7,145 | 96.0% | 54.5% | 0.090 ft |
+| `IfcMember` | 15,944 | 98.6% | 98.4% | 0.000 ft |
+| `IfcWallStandardCase` | 7,145 | 96.8% | 55.2% | 0.084 ft |
 | `IfcPlate` | 4,973 | 99.9% | 99.7% | 0.000 ft |
-| `IfcDoor` | 1,399 | 0.4% | 0.4% | 1.455 ft |
+| `IfcDoor` | 1,399 | 78.1% | 54.3% | 0.000 ft |
 | `IfcColumn` | 266 | 100.0% | 100.0% | 0.000 ft |
 | `IfcRailing` | 163 | 100.0% | 100.0% | 0.000 ft |
-| `IfcWall` | 127 | 65.4% | 37.0% | 0.246 ft |
-| `IfcSlab` | 102 | 65.7% | 59.8% | 0.000 ft |
-| `IfcStairFlight` | 84 | 31.0% | 29.8% | 4.757 ft |
-| `IfcCovering` | 38 | 97.4% | 89.5% | 0.000 ft |
+| `IfcWall` | 127 | 68.5% | 40.2% | 0.209 ft |
+| `IfcSlab` | 102 | 75.5% | 61.8% | 0.000 ft |
+| `IfcStairFlight` | 84 | 41.7% | 40.5% | 2.051 ft |
+| `IfcCovering` | 38 | 100.0% | 100.0% | 0.000 ft |
 
 "ok" means within half a foot on every axis.
 
@@ -490,7 +527,7 @@ Every ramp and every window in the building is now accounted for. The conversion
 
 These elements are therefore *known* rather than *drawn*, and the coverage table now says so honestly: the gap between `seen` and `recovered` is the real remaining decoder work, and it is no longer hidden inside a gap between `in IFC` and `seen`. Their geometry lives in the family-document blobs the type-name decoder already cannot reach.
 
-**Stair flights are not drawn from the wrong source.** 50 of the 56 stair flights drawn from native faces have exactly one face, and one face is not a solid, so preferring the element's envelope looked like an obvious improvement. Measured, the envelope is *worse*: 7.95 ft median error against the 5.413 ft the faces already give. Both readings are wrong by several feet, so the fault is in how stair geometry is attributed rather than in which of the two the viewer picks, and no change was made.
+**Stair flights are drawn from the wrong source after all — see the faces section below.** This paragraph originally recorded the opposite: that preferring the element's envelope over its single face measured *worse*, 7.95 ft against 5.413, so no change was made. That comparison used a truth map keeping one export box per Revit id, and an element the exporter splits into several products was therefore compared against a piece of itself. Re-measured with those boxes unioned, the envelope wins for 168 of the 225 elements that own faces, and faces are no longer drawn.
 
 **This was where the wall gap was wrongly written off.** An earlier reading of this section concluded that the 748 walls proven real and yielding no geometry needed a new record type decoded, on the evidence that 745 of them owned zero decoded surface patches. Surface patches were the wrong place to look: those walls had a duplicated-bounds record the whole time, and the copy check above was rejecting it. After that fix, only **14 walls are seen without being recovered**, not 748. The paragraph is kept rather than deleted because the mistake is instructive — an absence measured through one decoder is not an absence in the file.
 
