@@ -57,6 +57,8 @@ const STYLE = {
   recovered: { fill: "#e2963a", stroke: "#9c6318", opacity: 0.5 },
   exported: { fill: "#8ea3bb", stroke: "#4f6480", opacity: 0.5 },
   missing: { fill: "#d33b30", stroke: "#8e211a", opacity: 0.92 },
+  /** Drawn by the recovery, with no product in the export at all. */
+  unmatched: { fill: "#7d6bb0", stroke: "#4c3d78", opacity: 0.42 },
 } as const;
 
 /**
@@ -211,13 +213,14 @@ export function renderComparison(
   recovered: Silhouette[],
   exported: Silhouette[],
   missing: Silhouette[],
+  unmatched: Silhouette[],
   counts: { recovered: number; exported: number; missing: number; heldBack: number },
 ): string {
   // One frame for all three panels. Framing on the export alone would hide a
   // recovered element that escapes the building, which is the thing the hull
   // assertion exists to catch.
   let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity;
-  for (const shapes of [recovered, exported]) {
+  for (const shapes of [recovered, exported, unmatched]) {
     for (const shape of shapes) {
       for (const [u, v] of shape.points) {
         if (u < minU) minU = u;
@@ -249,12 +252,13 @@ export function renderComparison(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${PANEL * 3}" height="${PANEL}" viewBox="0 0 ${PANEL * 3} ${PANEL}">
 <rect width="${PANEL * 3}" height="${PANEL}" fill="#fbfaf8"/>
 ${frame(0)}${frame(PANEL)}${frame(PANEL * 2)}
+${layer(unmatched, place, 0, STYLE.unmatched)}
 ${layer(recovered, place, 0, STYLE.recovered)}
 ${layer(exported, place, PANEL, STYLE.exported)}
 ${layer(exported, place, PANEL * 2, STYLE.exported)}
 ${layer(recovered, place, PANEL * 2, STYLE.recovered)}
 ${layer(missing, place, PANEL * 2, STYLE.missing)}
-${label("Recovered from the RVT", 0, `${n(counts.recovered)} elements as the viewer draws them, no IFC involved`)}
+${label("Recovered from the RVT", 0, `${n(counts.recovered)} drawn as the viewer draws them` + (unmatched.length ? `, ${n(unmatched.length)} with no export product in violet` : ""))}
 ${label("The paired IFC export", PANEL, `${n(counts.exported)} products, ground truth`)}
 ${label("Overlay", PANEL * 2, `${n(counts.missing)} in the export and not recovered, in red`)}
 </svg>
@@ -267,9 +271,11 @@ function isEntryPoint(): boolean {
 }
 
 if (isEntryPoint()) {
-  const [rvtPath, ifcPath, outPath] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const matchedOnly = args.includes("--matched-only");
+  const [rvtPath, ifcPath, outPath] = args.filter((arg) => !arg.startsWith("--"));
   if (!rvtPath || !ifcPath || !outPath) {
-    console.error("usage: compare-view.ts <model.rvt> <model.ifc> <out.svg>");
+    console.error("usage: compare-view.ts <model.rvt> <model.ifc> <out.svg> [--matched-only]");
     process.exit(2);
   }
 
@@ -278,20 +284,6 @@ if (isEntryPoint()) {
   // back are exactly the storey-sized envelopes that would cover everything.
   const selection = selectDisplayBounds(outcome.elementBounds);
   const drawnIds = new Set(selection.records.map((record) => record.elementId));
-
-  const recovered: Silhouette[] = [];
-  for (const record of selection.records) {
-    const world = drawnWorldPoints(record);
-    if (!world.length) continue;
-    let depth = 0;
-    const projected: Point2[] = [];
-    for (const [x, y, z] of world) {
-      projected.push(project(x, y, z));
-      depth = Math.max(depth, depthOf(x, y, z));
-    }
-    const shape = silhouetteOf(projected, depth);
-    if (shape) recovered.push(shape);
-  }
 
   // The export's vertices, projected as they stream so the whole cloud never
   // has to be held at once.
@@ -303,6 +295,29 @@ if (isEntryPoint()) {
     byTag.set(tag, entry);
   });
 
+  // An element the recovery draws that the export has no product for at all is
+  // a different thing from one drawn in the wrong place, and mixing them makes
+  // the picture unreadable: on the supplied project 63 storey-sized floor
+  // records the export never names carry 1.74 million sq ft of plan, three
+  // quarters of the excess, and they cover the building they sit over. They are
+  // drawn apart, in violet, and `--matched-only` leaves them out entirely.
+  const recovered: Silhouette[] = [];
+  const unmatched: Silhouette[] = [];
+  for (const record of selection.records) {
+    const world = drawnWorldPoints(record);
+    if (!world.length) continue;
+    let depth = 0;
+    const projected: Point2[] = [];
+    for (const [x, y, z] of world) {
+      projected.push(project(x, y, z));
+      depth = Math.max(depth, depthOf(x, y, z));
+    }
+    const shape = silhouetteOf(projected, depth);
+    if (!shape) continue;
+    if (byTag.has(record.elementId)) recovered.push(shape);
+    else if (!matchedOnly) unmatched.push(shape);
+  }
+
   const exported: Silhouette[] = [];
   const missing: Silhouette[] = [];
   for (const [tag, entry] of byTag) {
@@ -312,7 +327,7 @@ if (isEntryPoint()) {
     if (!drawnIds.has(tag)) missing.push(shape);
   }
 
-  const svg = renderComparison(recovered, exported, missing, {
+  const svg = renderComparison(recovered, exported, missing, unmatched, {
     recovered: recovered.length,
     exported: exported.length,
     missing: missing.length,
@@ -321,7 +336,8 @@ if (isEntryPoint()) {
   writeFileSync(outPath, svg);
   console.log(
     `${outPath}  ${(svg.length / 1e6).toFixed(1)} MB  ` +
-      `${recovered.length} drawn, ${exported.length} exported, ${missing.length} missing, ` +
+      `${recovered.length} matched, ${unmatched.length} with no export product, ` +
+      `${exported.length} exported, ${missing.length} missing, ` +
       `${selection.omittedWrapperCount + selection.omittedSheetCount} held back`,
   );
 }
