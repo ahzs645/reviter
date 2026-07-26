@@ -876,12 +876,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); setHiddenCategories(new Set()); requestCamera(DEFAULT_CAMERA_PRESET); }}><i>↺</i><span>Reset</span></button>
                 </nav>
 
-                {/* The right-click menu. A read-only viewer has nothing to
-                    repeat and nothing to paste, so what is left of a CAD
-                    context menu is the two questions you ask of the thing under
-                    the cursor — where is it, what is it — and the two you ask
-                    of the view. Every entry calls a control that already
-                    exists elsewhere in this file. */}
+                {/* The right-click menu. A read-only viewer has no last command
+                    to repeat and nothing to paste, so what survives from a CAD
+                    context menu is four questions about the object under the
+                    cursor and two about the view. Every entry calls a control
+                    that already exists elsewhere in this file rather than a
+                    second copy of it. */}
                 {canvasMenu && (
                   <div
                     className="canvas-menu"

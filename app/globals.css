@@ -155,7 +155,9 @@ button { color: inherit; }
 .fixture-progress > i span { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
 
 .stage { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; background: #e5e6df; }
-.stage-toolbar { height: 58px; flex: 0 0 58px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #263a3d; background: #102126; color: white; }
+/* The toolbar is a layer above the viewport, so a disabled source button's
+   reason is not painted behind the model. */
+.stage-toolbar { position: relative; z-index: 2; height: 58px; flex: 0 0 58px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #263a3d; background: #102126; color: white; }
 .stage-title { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .stage-title div { min-width: 0; }
 .stage-title strong, .stage-title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -50,9 +50,9 @@ test("a menu opened at the far corner is pushed back inside the viewport", () =>
   const height = 700;
   const corner = canvasMenuPosition({ elementId: 1, x: width - 4, y: height - 4, width, height }, 4);
   assert.equal(corner.left, width - CANVAS_MENU_WIDTH);
-  assert.equal(corner.top, height - (4 * CANVAS_MENU_ITEM_HEIGHT + 8));
+  assert.equal(corner.top, height - (4 * CANVAS_MENU_ITEM_HEIGHT + 10));
   assert.ok(corner.left + CANVAS_MENU_WIDTH <= width);
-  assert.ok(corner.top + 4 * CANVAS_MENU_ITEM_HEIGHT + 8 <= height);
+  assert.ok(corner.top + 4 * CANVAS_MENU_ITEM_HEIGHT + 10 <= height);
 
   // The empty-canvas menu is two entries rather than four, so it can sit lower.
   const shorter = canvasMenuPosition({ elementId: null, x: 0, y: height - 4, width, height }, 2);

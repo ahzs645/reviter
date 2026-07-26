@@ -19,8 +19,12 @@ export function matchesFilter(query: string, ...fields: (string | number | null 
 /** Must match `.canvas-menu` in globals.css: its width, and one item's height. */
 export const CANVAS_MENU_WIDTH = 186;
 export const CANVAS_MENU_ITEM_HEIGHT = 27;
-/** `.canvas-menu` padding, top and bottom. */
-const CANVAS_MENU_PADDING = 8;
+/**
+ * Everything in `.canvas-menu`'s height that is not an item: 4px of padding and
+ * a 1px border, twice over. Leaving the border out put a two-item menu opened in
+ * the bottom right corner 2px past the viewport's edge.
+ */
+const CANVAS_MENU_CHROME = 10;
 
 /**
  * Where a right-click menu goes, in the canvas's own pixels.
@@ -31,7 +35,7 @@ const CANVAS_MENU_PADDING = 8;
  * instead, which is what every native context menu does.
  */
 export function canvasMenuPosition(request: CanvasMenuRequest, itemCount: number) {
-  const height = itemCount * CANVAS_MENU_ITEM_HEIGHT + CANVAS_MENU_PADDING;
+  const height = itemCount * CANVAS_MENU_ITEM_HEIGHT + CANVAS_MENU_CHROME;
   return {
     left: Math.max(0, Math.min(request.x, request.width - CANVAS_MENU_WIDTH)),
     top: Math.max(0, Math.min(request.y, request.height - height)),
