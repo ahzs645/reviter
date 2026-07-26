@@ -439,6 +439,43 @@ function checkRailingGuard(outcome: ConvertResult, coverage: CoverageResult): vo
 }
 
 /**
+ * How far an element may be drawn past *its own* export box, in feet.
+ *
+ * `no-records-outside-hull` measures against the whole building's hull, so an
+ * element drawn a hundred feet too long *inside* the envelope passes it. The
+ * per-class "size ok" percentages do not catch it either: they are counts, and a
+ * handful of monsters cannot move a figure over 7,000 walls. This is the gap
+ * those two leave — measured per element, against that element's own truth.
+ *
+ * Sized to fire on the state it exists to catch. The worst here is a wall drawn
+ * **260.3 ft** from its own export box, and about two dozen raked stair
+ * stringers drawn as axis-aligned envelopes 11-17 ft across where the export
+ * gives them 1.3-9.3 ft. A budget of 40 elements over 10 ft holds the current
+ * 32 with room for a different building's spread, and still fires long before
+ * the shape is unrecognisable.
+ */
+const MAX_ELEMENT_OVERHANG_FEET = 10;
+const MAX_ELEMENTS_OVER_OWN_BOX = 40;
+
+function checkElementOverhang(overlay: OverlayResult): void {
+  const over = overlay.overhangingElements ?? [];
+  if (!overlay.drawnCount) {
+    skip("no-element-past-its-own-box", "nothing drawn", `<= ${MAX_ELEMENTS_OVER_OWN_BOX}`);
+    return;
+  }
+  const worst = over[0];
+  check(
+    "no-element-past-its-own-box",
+    over.length,
+    over.length <= MAX_ELEMENTS_OVER_OWN_BOX,
+    `${over.length} of ${overlay.drawnCount.toLocaleString()} drawn reach over ` +
+      `${MAX_ELEMENT_OVERHANG_FEET} ft past their own export box` +
+      (worst ? `, worst ${worst.overhangFeet.toFixed(1)} ft (${worst.elementId})` : ""),
+    `<= ${MAX_ELEMENTS_OVER_OWN_BOX}`,
+  );
+}
+
+/**
  * The curved-wall rule: a stride-137 cylinder triple whose middle radius is the
  * mean of the outer two.
  *
@@ -609,6 +646,7 @@ printOverlay(overlay);
 
 checkCoverage(coverage);
 checkHull(overlay);
+checkElementOverhang(overlay);
 checkCentreAgreement(overlay);
 checkDoorSwing(coverage, overlay);
 checkRailingGuard(outcome, coverage);

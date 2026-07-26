@@ -128,6 +128,9 @@ export async function readTruthBoxes(
  * would measure something the user never sees — for a placed family the drawn
  * shape is its oriented box, not its axis-aligned bounds.
  */
+/** An element may sit this far past its own export box before it is reported. */
+const ELEMENT_OVERHANG_SLACK_FEET = 10;
+
 export function drawnBounds(record: ElementBoundsRecord): Box {
   const box: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   const add = (x: number, y: number, z: number) => {
@@ -251,6 +254,12 @@ export type OverlayResult = {
    * somewhere the building is not.
    */
   escaped: EscapedRecord[];
+  /**
+   * Elements drawn past *their own* export box, worst first. `escaped` measures
+   * against the building's hull and so cannot see an element drawn far too
+   * large inside the envelope; this can.
+   */
+  overhangingElements?: EscapedRecord[];
   worstOverhangFeet: number;
   drawnCount: number;
   byClass: ClassAgreement[];
@@ -329,6 +338,34 @@ export function computeOverlay(
   }
   escaped.sort((a, b) => b.overhangFeet - a.overhangFeet);
 
+  // The same measurement against each element's *own* box rather than the
+  // building's. The hull test cannot see a wall drawn 260 ft from where it
+  // belongs while staying inside the building, and neither can a per-class size
+  // percentage over 7,000 walls.
+  const overhangingElements: EscapedRecord[] = [];
+  for (const record of drawn) {
+    const own = truth.get(record.elementId);
+    if (!own) continue;
+    const box = drawnBounds(record);
+    let overhang = 0;
+    for (let axis = 0; axis < 3; axis += 1) {
+      overhang = Math.max(
+        overhang,
+        own.box[axis]! - box[axis]!,
+        box[axis + 3]! - own.box[axis + 3]!,
+      );
+    }
+    if (overhang > ELEMENT_OVERHANG_SLACK_FEET) {
+      overhangingElements.push({
+        elementId: record.elementId,
+        overhangFeet: overhang,
+        categoryName: record.categoryName,
+        recordCode: record.recordCode,
+      });
+    }
+  }
+  overhangingElements.sort((a, b) => b.overhangFeet - a.overhangFeet);
+
   const pairs = new Map<string, { centre: number[]; size: number[] }>();
   for (const [tag, { type, box }] of truth) {
     const record = byId.get(tag);
@@ -370,6 +407,7 @@ export function computeOverlay(
     framingCentre,
     framingErrorFeet: framingCentre.map((value, axis) => value - exportCentre[axis]!),
     escaped,
+    overhangingElements,
     worstOverhangFeet,
     drawnCount: drawn.length,
     byClass,
@@ -384,6 +422,16 @@ export function printOverlay(result: OverlayResult): void {
   console.log(`  as the scene is framed     ${round(result.framingCentre).join(", ")}`);
   console.log(`  framing error              ${round(result.framingErrorFeet).join(", ")} ft`);
 
+  const over = result.overhangingElements ?? [];
+  console.log(
+    `\nelements drawn past their own export box by over ${ELEMENT_OVERHANG_SLACK_FEET} ft: ${over.length}`,
+  );
+  for (const record of over.slice(0, 6)) {
+    console.log(
+      `   ${record.elementId} by ${record.overhangFeet.toFixed(1)} ft` +
+        (record.categoryName ? `  ${record.categoryName}` : ""),
+    );
+  }
   console.log(`\nrecords drawn past the export's hull by over ${HULL_SLACK_FEET} ft: ${result.escaped.length}`);
   for (const record of result.escaped.slice(0, 10)) {
     console.log(`   ${record.elementId} by ${record.overhangFeet.toFixed(1)} ft` +
