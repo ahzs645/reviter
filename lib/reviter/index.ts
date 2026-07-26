@@ -6,7 +6,13 @@ export {
   solidBounds,
 } from "./bounds-records";
 export type { DetectedBoundsRecord } from "./bounds-records";
-export { asBytes, gzipOffsets, inflateRevitChunk } from "./revit-container";
+export {
+  asBytes,
+  gzipOffsets,
+  inflateRevitChunk,
+  REVIT_WINDOW_BYTES,
+  revitWindowTail,
+} from "./revit-container";
 export {
   buildBoundsMeshes,
   boundsPlanSegments,

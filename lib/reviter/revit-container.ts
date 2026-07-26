@@ -15,6 +15,13 @@ const GZIP_OPTIONAL_FIELD_LIMIT = 1_024;
 /** Input cap when re-reading a chunk truncated by a false gzip signature. */
 const GZIP_RETRY_BYTES = 8 << 20;
 
+/**
+ * Bytes of a chunk's output kept as the preset dictionary for the next chunk.
+ * 32 KiB is the DEFLATE window, so this is everything a chunk can reference
+ * from behind its own start.
+ */
+export const REVIT_WINDOW_BYTES = 32 << 10;
+
 export function asBytes(value: number[] | Uint8Array): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
 }
@@ -79,16 +86,40 @@ export function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
   return result;
 }
 
+/** The trailing DEFLATE window of an inflated chunk. */
+export function revitWindowTail(page: Uint8Array): Uint8Array {
+  return page.length <= REVIT_WINDOW_BYTES
+    ? page
+    : page.subarray(page.length - REVIT_WINDOW_BYTES);
+}
+
+function tryInflate(body: Uint8Array, dictionary?: Uint8Array): Uint8Array | null {
+  try {
+    return inflateSync(body, dictionary ? { dictionary } : undefined);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Inflate one Revit chunk. `end` is the start of the next chunk, which bounds
  * both the DEFLATE input and fflate's output allocation. A false signature that
  * survives header validation would truncate a real chunk, so a failed bounded
  * read retries against a capped tail rather than the whole stream.
+ *
+ * `window` is the previous chunk's output tail, from `revitWindowTail`. Most
+ * chunks are self-contained, but a minority carry back-references past their own
+ * start and fail outright with `invalid distance too far back`; supplying the
+ * preceding window as a preset dictionary reads them. In the reference model 273
+ * of 332 otherwise unreadable chunks recover this way, 32.4 MB of payload that
+ * was being dropped. Passing no window keeps the old stateless behaviour, which
+ * is what a strided sample wants.
  */
 export function inflateRevitChunk(
   data: Uint8Array,
   offset: number,
   end?: number,
+  window?: Uint8Array | null,
 ): Uint8Array | null {
   const headerLength = gzipHeaderLength(data, offset);
   if (headerLength == null) return null;
@@ -96,16 +127,19 @@ export function inflateRevitChunk(
   if (start >= data.length) return null;
   const limit = Math.min(end ?? data.length, data.length);
   if (limit <= start) return null;
-  try {
-    return inflateSync(data.subarray(start, limit));
-  } catch {
-    if (limit >= data.length) return null;
-  }
-  try {
-    return inflateSync(data.subarray(start, Math.min(data.length, start + GZIP_RETRY_BYTES)));
-  } catch {
-    return null;
-  }
+
+  const bounded = data.subarray(start, limit);
+  const bounds = tryInflate(bounded);
+  if (bounds) return bounds;
+
+  const tail = limit >= data.length
+    ? null
+    : data.subarray(start, Math.min(data.length, start + GZIP_RETRY_BYTES));
+  const retried = tail ? tryInflate(tail) : null;
+  if (retried) return retried;
+
+  if (!window?.length) return null;
+  return tryInflate(bounded, window) ?? (tail ? tryInflate(tail, window) : null);
 }
 
 /** Leading little-endian `u32` of an inflated chunk, used as record evidence. */

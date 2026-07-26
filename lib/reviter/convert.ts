@@ -54,7 +54,13 @@ import {
   type CategoryToken,
 } from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
-import { asBytes, gzipOffsets, inflateRevitChunk, leadingU32 } from "./revit-container.ts";
+import {
+  asBytes,
+  gzipOffsets,
+  inflateRevitChunk,
+  leadingU32,
+  revitWindowTail,
+} from "./revit-container.ts";
 import { summariseSchema } from "./schema.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
@@ -424,9 +430,13 @@ export function convertRvtBytes(
       const offsets = gzipOffsets(data);
       const stride = offsets.length > 900 ? Math.ceil(offsets.length / 700) : 1;
 
+      // Carried so a chunk with back-references past its own start can be read
+      // against the window the writer left behind; see `inflateRevitChunk`.
+      let window: Uint8Array | null = null;
       for (let index = 0; index < offsets.length; index += 1) {
-        const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1]);
+        const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
         if (!inflated) continue;
+        window = revitWindowTail(inflated);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
         const elementId = leadingU32(inflated);

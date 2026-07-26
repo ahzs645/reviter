@@ -131,7 +131,7 @@ The `u64` at `S+18` is an element class discriminator, and it is sharp: joined a
 
 The marker drifts by release exactly as schema tags do — `0x086d` in 2024, `0x08a4` in 2025, `0x08cc` in 2026, `0x08c6` in the 2027 project — so it is measured from the file rather than hard-coded. Releases 2020 and 2023 produce no chains; older releases frame objects differently.
 
-Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 384 MB payload. And the marker is not resolvable through `Formats/Latest`: that stream defines roughly 200 classes and references the rest by tag, so `0x08c6` is a tag in Revit's internal class registry that this file never names.
+Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 417 MB payload. And the marker is not resolvable through `Formats/Latest`: that stream defines roughly 200 classes and references the rest by tag, so `0x08c6` is a tag in Revit's internal class registry that this file never names.
 
 ## What the rendered view can and cannot show
 
@@ -163,24 +163,24 @@ On the supplied 67 MB Revit 2027 project:
 
 | IFC product type | in IFC | seen | recovered | drawn | drawn before |
 | --- | --- | --- | --- | --- | --- |
-| `IfcWallStandardCase` | 7,381 | 7,195 | 7,181 | **7,145** | 6,324 |
+| `IfcWallStandardCase` | 7,381 | 7,223 | 7,208 | **7,170** | 6,324 |
 | `IfcWall` | 140 | 139 | 137 | **127** | 110 |
-| `IfcCurtainWall` | 1,835 | 1,796 | 1,794 | 241 | 253 |
-| `IfcMember` | 19,707 | 19,214 | 15,986 | 15,986 | 15,916 |
-| `IfcPlate` | 6,235 | 6,074 | 4,973 | 4,973 | 4,973 |
-| `IfcDoor` | 1,912 | 1,827 | 1,399 | **1,399** | 1,294 |
+| `IfcCurtainWall` | 1,835 | 1,804 | 1,802 | 222 | 253 |
+| `IfcMember` | 19,707 | 19,244 | 19,117 | **19,086** | 15,916 |
+| `IfcPlate` | 6,235 | 6,080 | 6,047 | **6,046** | 4,973 |
+| `IfcDoor` | 1,912 | 1,831 | 1,642 | **1,641** | 1,294 |
 | `IfcWindow` | 20 | 20 | 6 | 6 | 3 |
-| `IfcColumn` | 311 | 302 | 266 | **266** | 95 |
-| `IfcRailing` | 229 | 215 | 173 | **173** | 147 |
+| `IfcColumn` | 311 | 304 | 274 | **274** | 95 |
+| `IfcRailing` | 229 | 217 | 174 | **174** | 147 |
 | `IfcSlab` | 161 | 159 | 151 | 150 | 135 |
 | `IfcRoof` | 20 | 20 | 16 | 16 | 14 |
 | `IfcCovering` | 46 | 42 | 42 | 38 | 23 |
-| `IfcStair` | 92 | 88 | 57 | **57** | 58 |
-| `IfcStairFlight` | 121 | 115 | 103 | **97** | 77 |
+| `IfcStair` | 92 | 89 | 58 | **57** | 58 |
+| `IfcStairFlight` | 121 | 118 | 104 | **91** | 77 |
 | `IfcRamp` | 12 | 12 | 5 | 5 | 5 |
-| building elements | 38,222 | | | **34,457** | 29,424 |
+| building elements | 38,222 | | | **35,103 · 91.8%** | 29,424 |
 
-`IfcCurtainWall` is low by design: 1,488 of the containers held back are drawn as their own panels and mullions instead.
+`IfcCurtainWall` is low by design: 1,607 of the containers held back are drawn as their own panels and mullions instead.
 
 **What the display gates were costing.** Four of them discarded geometry that had already been recovered:
 
@@ -660,13 +660,25 @@ The basis offset is not fixed — `+418` for 22,511 objects, `+412` for 2,323, `
 
 **What is still missing, and it is now a small list.** 716 references resolve to an object under marker `0x10dc`, `0x10de` or `0x0810` that carries no bounds sub-record at all — 383 members, 157 doors, 135 plates — a different shape class, probably a real solid rather than a box. A further 1,078 elements have no object in the stream at all. And **doors gain nothing in accuracy** from this: the 138 newly placed ones carry the same 2.9 ft leaf error as every other door, because the record is the opening.
 
-Two negative results, recorded so they are not retried. **No payload is lost to chunking**: all 328 inflation failures lie in the 40-byte per-chunk descriptors between streams, and an apparent 7.3 MB of unclaimed bytes is node `zlib` failing on Revit's trailer-less DEFLATE where `fflate` succeeds. **Object coverage of the stream is 67%, and the uncovered remainder is not geometry** — full-offset seeding raises objects from 140,812 to 154,431 and newly placed export elements only from 3,929 to 3,966, so the gain does not depend on changing the seeding.
+One negative result, recorded so it is not retried. **Object coverage of the stream is 67%, and the uncovered remainder is not geometry** — full-offset seeding raises objects from 140,812 to 154,431 and newly placed export elements only from 3,929 to 3,966, so the gain does not depend on changing the seeding.
+
+An earlier version of this section claimed the opposite of what follows, and was wrong twice over: that all 328 inflation failures were 40-byte per-chunk descriptors, and that an apparent 7.3 MB of unclaimed bytes was node `zlib` failing where `fflate` succeeds. Both are corrected below — the bytes are real payload, and it is node `zlib` *with a dictionary* that reads them.
+
+### Chunks that reference the chunk before them
+
+7.24 MB of `Partitions/325` never inflated: 332 of its 3,666 chunks, none of them inside a successful chunk's span, so they were payload nothing read. They fail with `invalid distance too far back` — the body reaches for bytes behind its own start.
+
+That is a DEFLATE stream written against a window the previous chunk left behind. Supplying the preceding chunk's output tail as a **preset dictionary** reads them: 273 of the 332 failures inflate, 5.76 MB stored becoming 32.4 MB, and the partition's payload goes from 384.1 MB to 416.5 MB. `fflate` has supported `dictionary` since 0.8.0, so this needs no new dependency and works unchanged in the browser; the read is stateless when no window is passed, which is what the strided marker sample wants.
+
+The recovered bytes are real geometry, not noise that happens to decode. 29 of 35 newly found bounds blocks land within 0.5 ft of the same element in the export, against **0 of 35 for a null pairing**, and on the paired model the continuation read moves coverage from 91.6% to **91.8%** (35,009 → 35,103 elements) with every per-type agreement figure holding or improving: doors 88.3% → 89.0% centre, stair flights 84.8% → 86.1%, columns 266 → 274 at 100.0%. Elements with no object anywhere in the stream fall from 1,005 to 920.
+
+The remaining 59 chunks fail differently — `invalid block type`, `invalid length/literal`, `unexpected EOF` — with or without the window, so they are not the same phenomenon and are not explained yet.
 
 ## Stream coverage
 
 Reviter reports what is inside a Revit file and how much of it is understood, stream by stream, so the remaining gap is measurable instead of invisible. Every CFB stream is listed whether or not anything is decoded from it, with its stored size, chunk count, inflated size, and the decoder that claims it.
 
-Each stream is graded by depth rather than weighed by bytes. Weighing by bytes would be flattering and wrong: the partition stream is 69 MB of the 70 MB file, so "claiming" it would read as 99% coverage while the decoders recover element envelopes and category tokens from a payload that inflates to 384 MB. For the supplied 2027 project the honest figure is **2 streams read fully, 4 read partially, and 8 not decoded at all**:
+Each stream is graded by depth rather than weighed by bytes. Weighing by bytes would be flattering and wrong: the partition stream is 69 MB of the 70 MB file, so "claiming" it would read as 99% coverage while the decoders recover element envelopes and category tokens from a payload that inflates to 417 MB. For the supplied 2027 project the honest figure is **2 streams read fully, 4 read partially, and 8 not decoded at all**:
 
 | Stream | Stored | Depth | What is read |
 | --- | --- | --- | --- |
