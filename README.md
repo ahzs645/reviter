@@ -630,7 +630,43 @@ Relaxing the drawable-extent filter is the same shape of loss: 1,267 records hav
 
 **The two small classes resolve differently.** `IfcRoof`'s 4 missing are all *seen with no bounds record* — one cause, a recovery gap rather than a display one, exactly the single-rule shape small classes usually have. `IfcCovering`'s 8 are two causes and no clean rule: 4 never seen, and 4 single-facet flat face hulls whose plan reproduces the export to 0.01–1.6 ft — 2 of the only 3 accurate hulls in the entire 53 — but drawing them needs *both* the extent gate and the face-hull gate relaxed, and three of the four carry the category `Sketch Lines` rather than a covering, so there is nothing clean to scope a rule to.
 
-**So the remaining work is one bucket, not many.** 877 elements are not in the readable stream at all, which is the same wall the surfaces investigation hit and closes with more of the file rather than more rules. 231 are *seen and have no record*, and that is where a decoder change could still buy something.
+**So the remaining work is one bucket, not many.** 877 elements are not in the readable stream at all, which is the same wall the surfaces investigation hit and closes with more of the file rather than more rules. 231 are *seen and have no record*, and that bucket was then opened.
+
+### Inside the 231, and why the duplicated-bounds decoder was never the gate
+
+Probing every id at byte level, against a 1-in-40 control sample of 875 drawn elements measured the same way:
+
+| n | state |
+| --- | --- |
+| 90 | the id occurs in the stream but at **no offset that frames as an object** |
+| 88 | a **valid framed object exists that the chain never reaches** |
+| 53 | the object is chained into the model and still yields no record |
+
+**Only 6 of the 231 carry a `0x08c6` object at all** — 4 rejected on the family word at `+34`, 1 on the field lead at `+42`, 1 accepted. For the other 225 there is no duplicated-bounds record to reject. In the drawn control, `0x08c6` heads 720 of 875 and its gate accepts 719. The bounds decoder was never the problem here; the objects are under other markers — `0x07ef` heads 62 of them, `0x0256` **all 40 railings**, `0x1019` 29 members, `0x0d7b` 5 ramps.
+
+**Looking for an extent under those markers is a dead route, measured.** Searching every offset of all 148 framed objects for six `f64` reproducing that element's own export box at ±0.05 ft — the same search that found the second bounds copy for walls — returns **2 hits, both under `0x08c6`**, and **0 of the 146 objects under `0x07ef`, `0x0256`, `0x1019`, `0x0d7b`, `0x0d40` and `0x1006`**. Null control: 0.
+
+Counting the other routes: 11 have an instance placement whose shared shape never resolves, **1** owns any plane or cylinder patch, and 75 own sketch curves of which only **12 assemble a closed ring**. **207 of the 231 have no geometry source of any kind in the readable stream.**
+
+### A marker's members can speak for the ones with no category token
+
+Of those 12 ring owners, **11 reproduce the export box in plan within 0.5 ft, median 0.000 ft** (null, ring against another bucket element's box: 0 of 12). The shipped ring-synthesis gate is the element's own decoded `BuiltInCategory`, and it reaches none of them, because their token is not written.
+
+The key that *is* in the file is the object marker, and the members of a marker that do carry a token can speak for those that do not. Over 843 record-less ring owners, of which the export names 67:
+
+| gate | selected | named by the export |
+| --- | --- | --- |
+| own category token (shipped before) | 36 | 36 |
+| **marker consensus, support ≥ 3, purity 1.0** | **42** | **42, none unnamed** |
+| the same consensus permuted, 10 shifts | 23.1 per trial | 8.0 per trial |
+
+The threshold is a plateau — every floor from support ≥ 1 to support ≥ 7 at purity 1.0 selects the same 42, and loosening to purity 0.7 selects 35. Toggling only this gate: **6 elements gained, 0 lost**, 5 ramps and 1 stair flight. `IfcRamp` goes from 7 drawn to **12 of 12**.
+
+**This supersedes a claim made earlier in this file.** An earlier round rejected marker consensus as "not a category decoder … a listed constant on a population of twelve", on the strength of a model-wide measurement where it gave 4,859 elements a category and the export agreed with 456 while disagreeing with 265. That verdict stands *for that use*. It does not stand for this one: restricted to elements that already own a closed ring and to markers whose token-carrying members agree unanimously, the consensus is measured rather than listed, and it is 42 of 42 against a permuted null of 8.0.
+
+**Honest cost.** The 5 ramps are drawn with an exact plan — 0.000 ft — and the wrong rise, 3.778 ft out, because a ramp's ring is flat and its whole curve neighbourhood is flat, so `ringRecordRise` correctly declines to lend it one. They are drawn as 1 ft plates. `IfcRamp` therefore appears as a new agreement row at 36.4%: the class went from mostly absent to fully present and visibly wrong in z, which is the same trade the windows made before their shape decode was found.
+
+**What is still declined, with numbers.** Of the 67 named ring candidates, 25 remain: 13 under `0x0feb` whose consensus is `Stairs`, an assembly rather than a sketch category; 7 under `0x0f3b` whose 6,993 members are unanimously `Walls`; 4 under `0x0d40`, whose 20 members carry **no category token at all**, so there is nothing to reach consensus on; and 1 at purity 0.35. Reaching any of them means dropping the purity floor or the sketch-category restriction, which is what the 843-candidate baseline measures the cost of.
 
 **A caveat on the coverage denominator, since it cuts the other way.** 1,917 of the Tags counted in `building elements` are containers with no mesh of their own — `IfcCurtainWall` and `IfcStair` — so a figure of 92.6% is measured against a denominator that includes elements which can never be drawn because there is nothing to draw. Separating Tags-with-mesh from products in that table is owed.
 
