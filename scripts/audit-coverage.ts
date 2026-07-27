@@ -101,11 +101,28 @@ export function convertModel(rvtPath: string): ConvertResult {
   return outcome;
 }
 
-export type CoverageRow = { inIfc: number; seen: number; recovered: number; drawn: number };
+export type CoverageRow = {
+  inIfc: number;
+  seen: number;
+  recovered: number;
+  drawn: number;
+  /**
+   * Of `inIfc`, the elements the export gives mesh geometry to.
+   *
+   * `IfcCurtainWall` and `IfcStair` are pure `IfcRelAggregates` containers here
+   * — 1,917 Tags between them with **no mesh of their own at all** — so counting
+   * them in a denominator that reads as "how much of the building is on screen"
+   * measures the recovery against elements there is nothing to draw for. Both
+   * columns are reported: the wider one is what the export nominally holds, the
+   * narrower one is what could be drawn at all.
+   */
+  withMesh: number;
+  drawnOfWithMesh: number;
+};
 
 export type CoverageResult = {
   rows: Record<string, CoverageRow>;
-  totals: { inIfc: number; drawn: number };
+  totals: { inIfc: number; drawn: number; withMesh: number; drawnOfWithMesh: number };
   /** Every record the decoders produced, drawable or not. */
   recordCount: number;
   /** Of those, the ones with an extent the scene could draw. */
@@ -128,7 +145,12 @@ export type CoverageResult = {
  * decoder proving an id real, `recovered` is an envelope existing for it, and
  * `drawn` is that envelope surviving the scene's own selection.
  */
-export function computeCoverage(outcome: ConvertResult, ifcPath: string): CoverageResult {
+export function computeCoverage(
+  outcome: ConvertResult,
+  ifcPath: string,
+  /** Element ids the export gives mesh geometry to; omit to leave the column blank. */
+  withMesh?: ReadonlySet<number>,
+): CoverageResult {
   // Re-run the scene's own selection so the audit reports the set the viewer
   // draws, rather than a set assembled a second, possibly different way.
   const withVolume = outcome.elementBounds.filter(
@@ -152,6 +174,8 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
   const rows: Record<string, CoverageRow> = {};
   let totalIfc = 0;
   let totalDrawn = 0;
+  let totalWithMesh = 0;
+  let totalDrawnOfWithMesh = 0;
   for (const type of REPORTED_TYPES) {
     const group = byType.get(type) ?? [];
     if (!group.length) continue;
@@ -163,11 +187,14 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
     // products made `IfcStairFlight` read 121 in the export against 108 real
     // elements, and its coverage 82.6% against a true 92.6%.
     const ids = new Set(group.map((product) => product.tag));
+    const meshIds = withMesh ? [...ids].filter((tag) => withMesh.has(tag)) : [];
     rows[type] = {
       inIfc: ids.size,
       seen: [...ids].filter((tag) => seen.has(tag)).length,
       recovered: [...ids].filter((tag) => recovered.has(tag)).length,
       drawn: [...ids].filter((tag) => drawn.has(tag)).length,
+      withMesh: meshIds.length,
+      drawnOfWithMesh: meshIds.filter((tag) => drawn.has(tag)).length,
     };
     // Openings are voids, not building elements; they are reported for context
     // but would distort a total that is meant to read as "how much of the
@@ -175,12 +202,19 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
     if (type !== "IFCOPENINGELEMENT") {
       totalIfc += ids.size;
       totalDrawn += rows[type]!.drawn;
+      totalWithMesh += rows[type]!.withMesh;
+      totalDrawnOfWithMesh += rows[type]!.drawnOfWithMesh;
     }
   }
 
   return {
     rows,
-    totals: { inIfc: totalIfc, drawn: totalDrawn },
+    totals: {
+      inIfc: totalIfc,
+      drawn: totalDrawn,
+      withMesh: totalWithMesh,
+      drawnOfWithMesh: totalDrawnOfWithMesh,
+    },
     recordCount: outcome.elementBounds.length,
     withVolumeCount: withVolume.length,
     drawnCount: selection.records.length,
@@ -201,26 +235,41 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
 export function printCoverage(result: CoverageResult): void {
   console.log(
     `${pad("IFC product type", 22)}${padStart("in IFC", 8)}${padStart("seen", 8)}` +
-      `${padStart("recovered", 11)}${padStart("drawn", 8)}${padStart("drawn %", 9)}`,
+      `${padStart("recovered", 11)}${padStart("drawn", 8)}${padStart("drawn %", 9)}` +
+      `${padStart("w/ mesh", 9)}${padStart("of those", 10)}`,
   );
-  console.log("-".repeat(66));
+  console.log("-".repeat(85));
   for (const type of REPORTED_TYPES) {
     const row = result.rows[type];
     if (!row) continue;
     const share = ((row.drawn / row.inIfc) * 100).toFixed(1);
+    // A class with no mesh anywhere prints a dash rather than 0.0%, because
+    // "none of its elements are drawable" and "none are drawn" read the same
+    // in a percentage and mean opposite things.
+    const meshShare = row.withMesh
+      ? `${((row.drawnOfWithMesh / row.withMesh) * 100).toFixed(1)}%`
+      : "—";
     console.log(
       `${pad(type, 22)}${padStart(String(row.inIfc), 8)}${padStart(String(row.seen), 8)}` +
         `${padStart(String(row.recovered), 11)}${padStart(String(row.drawn), 8)}` +
-        `${padStart(`${share}%`, 9)}`,
+        `${padStart(`${share}%`, 9)}${padStart(String(row.withMesh), 9)}${padStart(meshShare, 10)}`,
     );
   }
-  console.log("-".repeat(66));
-  const { inIfc, drawn } = result.totals;
+  console.log("-".repeat(85));
+  const { inIfc, drawn, withMesh, drawnOfWithMesh } = result.totals;
+  const meshShare = withMesh ? `${((drawnOfWithMesh / withMesh) * 100).toFixed(1)}%` : "—";
   console.log(
     `${pad("building elements", 22)}${padStart(String(inIfc), 8)}${padStart("", 8)}` +
       `${padStart("", 11)}${padStart(String(drawn), 8)}` +
-      `${padStart(`${((drawn / inIfc) * 100).toFixed(1)}%`, 9)}`,
+      `${padStart(`${((drawn / inIfc) * 100).toFixed(1)}%`, 9)}` +
+      `${padStart(String(withMesh), 9)}${padStart(meshShare, 10)}`,
   );
+  if (withMesh && withMesh < inIfc) {
+    console.log(
+      `\n${inIfc - withMesh} of the ${inIfc} are containers the export gives no mesh of their own,` +
+      `\nso the last column is the share of what could be drawn at all.`,
+    );
+  }
 }
 
 /** The recovery ledger that sits under the table. */

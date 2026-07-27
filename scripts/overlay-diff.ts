@@ -72,13 +72,13 @@ function readProducts(text: string): Map<number, { type: string; tag: number }> 
  */
 export async function readTruthBoxes(
   ifcPath: string,
-): Promise<Map<number, { type: string; box: Box }>> {
+): Promise<Map<number, { type: string; box: Box; parts: Box[] }>> {
   const products = readProducts(readFileSync(ifcPath, "latin1"));
   const api = new IfcAPI();
   await api.Init();
   const modelID = api.OpenModel(new Uint8Array(readFileSync(ifcPath)));
 
-  const truth = new Map<number, { type: string; box: Box }>();
+  const truth = new Map<number, { type: string; box: Box; parts: Box[] }>();
   api.StreamAllMeshes(modelID, (mesh) => {
     const product = products.get(mesh.expressID);
     if (!product) return;
@@ -107,10 +107,12 @@ export async function readTruthBoxes(
     }
     if (!Number.isFinite(minX)) return;
     const existing = truth.get(product.tag);
+    const part: Box = [minX, minY, minZ, maxX, maxY, maxZ];
     if (!existing) {
-      truth.set(product.tag, { type: product.type, box: [minX, minY, minZ, maxX, maxY, maxZ] });
+      truth.set(product.tag, { type: product.type, box: [...part] as Box, parts: [part] });
       return;
     }
+    existing.parts.push(part);
     const box = existing.box;
     box[0] = Math.min(box[0]!, minX);
     box[1] = Math.min(box[1]!, minY);
@@ -229,6 +231,28 @@ export type ClassAgreement = {
   sizeOkPercent: number;
   medianCentreError: number;
   medianSizeError: number;
+  /**
+   * The same comparison against the single **nearest** product of the Tag
+   * rather than the union of all of them, and the count of elements the
+   * exporter wrote more than once.
+   *
+   * Neither reading is right on its own. The union is right wherever the
+   * recovery draws every product an element was split into — a floor sketched
+   * in three regions is one element and three `IfcSlab`s, and drawing one of
+   * them is a real miss. It is wrong wherever the exporter *replicated* one
+   * element per storey, because then the union spans floors the element does
+   * not. 74 of the 92 multi-product Tags here are replicas: congruent boxes,
+   * identical plan corner and size to 0.01 ft, offset in z by exactly one
+   * storey. So both are printed, and the gap between them is the size of the
+   * replication question on that class.
+   *
+   * That the nearest reading is not simply a softer ruler is what makes it
+   * evidence: where the recovery draws every product it scores *worse* —
+   * `IfcRailing` 100.0% to 95.1%, `IfcSlab` 95.1% to 88.2%.
+   */
+  nearestCentreOkPercent: number;
+  nearestSizeOkPercent: number;
+  replicatedCount: number;
 };
 
 export type EscapedRecord = {
@@ -273,7 +297,7 @@ const median = (values: number[]) => {
 /** Put the recovered model and the export in one frame and measure the gap. */
 export function computeOverlay(
   outcome: ConvertResult,
-  truth: Map<number, { type: string; box: Box }>,
+  truth: Map<number, { type: string; box: Box; parts?: Box[] }>,
 ): OverlayResult {
   const drawn = selectDisplayBounds(
     outcome.elementBounds.filter((record) => solidBounds(record) || (record.loops?.length ?? 0) > 0),
@@ -366,11 +390,8 @@ export function computeOverlay(
   }
   overhangingElements.sort((a, b) => b.overhangFeet - a.overhangFeet);
 
-  const pairs = new Map<string, { centre: number[]; size: number[] }>();
-  for (const [tag, { type, box }] of truth) {
-    const record = byId.get(tag);
-    if (!record) continue;
-    const got = drawnBounds(record);
+  /** Worst-axis centre and size error of a drawn box against one truth box. */
+  const errorsAgainst = (got: Box, box: Box): [number, number] => {
     let dCentre = 0;
     let dSize = 0;
     for (let axis = 0; axis < 3; axis += 1) {
@@ -381,9 +402,44 @@ export function computeOverlay(
         (got[axis + 3]! - got[axis]!) - (box[axis + 3]! - box[axis]!),
       ));
     }
-    const entry = pairs.get(type) ?? { centre: [], size: [] };
+    return [dCentre, dSize];
+  };
+
+  type Pair = {
+    centre: number[];
+    size: number[];
+    nearestCentre: number[];
+    nearestSize: number[];
+    replicated: number;
+  };
+  const pairs = new Map<string, Pair>();
+  for (const [tag, { type, box, parts }] of truth) {
+    const record = byId.get(tag);
+    if (!record) continue;
+    const got = drawnBounds(record);
+    const [dCentre, dSize] = errorsAgainst(got, box);
+
+    // The nearest single product, chosen on centre error: an element the
+    // exporter replicated per storey should be judged against the storey it
+    // was drawn on, not against the stack.
+    let bestCentre = dCentre;
+    let bestSize = dSize;
+    for (const part of parts ?? [box]) {
+      const [c, z] = errorsAgainst(got, part);
+      if (c < bestCentre) {
+        bestCentre = c;
+        bestSize = z;
+      }
+    }
+
+    const entry = pairs.get(type) ?? {
+      centre: [], size: [], nearestCentre: [], nearestSize: [], replicated: 0,
+    };
     entry.centre.push(dCentre);
     entry.size.push(dSize);
+    entry.nearestCentre.push(bestCentre);
+    entry.nearestSize.push(bestSize);
+    if ((parts?.length ?? 1) > 1) entry.replicated += 1;
     pairs.set(type, entry);
   }
 
@@ -397,6 +453,11 @@ export function computeOverlay(
       sizeOkPercent: (entry.size.filter((value) => value < CLOSE).length / entry.size.length) * 100,
       medianCentreError: median(entry.centre),
       medianSizeError: median(entry.size),
+      nearestCentreOkPercent:
+        (entry.nearestCentre.filter((value) => value < CLOSE).length / entry.nearestCentre.length) * 100,
+      nearestSizeOkPercent:
+        (entry.nearestSize.filter((value) => value < CLOSE).length / entry.nearestSize.length) * 100,
+      replicatedCount: entry.replicated,
     }));
 
   return {
@@ -445,10 +506,20 @@ export function printOverlay(result: OverlayResult): void {
     console.log(
       row.type.padEnd(22) + String(row.matched).padStart(8) +
       `${row.centreOkPercent.toFixed(1)}%`.padStart(11) + `${row.sizeOkPercent.toFixed(1)}%`.padStart(9) +
-      row.medianCentreError.toFixed(3).padStart(11) + row.medianSizeError.toFixed(3).padStart(11),
+      row.medianCentreError.toFixed(3).padStart(11) + row.medianSizeError.toFixed(3).padStart(11) +
+      `${row.nearestCentreOkPercent.toFixed(1)}%`.padStart(11) +
+      `${row.nearestSizeOkPercent.toFixed(1)}%`.padStart(11) +
+      String(row.replicatedCount).padStart(7),
     );
   }
-  console.log(`\n"ok" means within ${CLOSE} ft on every axis; dc is centre error, ds size error.`);
+  console.log(
+    `\n"ok" means within ${CLOSE} ft on every axis; dc is centre error, ds size error.` +
+    `\n"nearest" scores against the single closest product of a Tag rather than the union of all` +
+    `\nof them, and "split" counts the elements the exporter wrote more than once. Neither reading` +
+    `\nis right alone: the union is right where the recovery draws every product an element was` +
+    `\nsplit into, and wrong where the exporter replicated one element per storey. A class where` +
+    `\nthe two disagree and "split" is non-zero is asking a replication question, not a geometry one.`,
+  );
 }
 
 /** True when this module is the process entry point rather than an import. */

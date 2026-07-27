@@ -669,7 +669,7 @@ if (!rvtPath || !ifcPath) {
 // not cost a two-minute conversion before saying so.
 const truth = await readTruthBoxes(ifcPath);
 const outcome = convertModel(rvtPath);
-const coverage = computeCoverage(outcome, ifcPath);
+const coverage = computeCoverage(outcome, ifcPath, new Set(truth.keys()));
 const overlay = computeOverlay(outcome, truth);
 
 console.log(`\n${rvtPath.split("/").pop()} against ${ifcPath.split("/").pop()}\n`);
