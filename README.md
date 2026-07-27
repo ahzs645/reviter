@@ -1004,7 +1004,32 @@ That is a DEFLATE stream written against a window the previous chunk left behind
 
 The recovered bytes are real geometry, not noise that happens to decode. 29 of 35 newly found bounds blocks land within 0.5 ft of the same element in the export, against **0 of 35 for a null pairing**, and on the paired model the continuation read moves coverage from 91.6% to **91.8%** (35,009 → 35,103 elements) with every per-type agreement figure holding or improving: doors 88.3% → 89.0% centre, stair flights 84.8% → 86.1%, columns 266 → 274 at 100.0%. Elements with no object anywhere in the stream fall from 1,005 to 920.
 
-The remaining 59 chunks fail differently — `invalid block type`, `invalid length/literal`, `unexpected EOF` — with or without the window, so they are not the same phenomenon and are not explained yet.
+### The chunks that desync partway, and what they were hiding
+
+The remaining chunks fail differently — `invalid block type`, `invalid length/literal`, `unexpected EOF` — with or without the window. Four explanations were separated and three ruled out.
+
+**They are not false gzip signatures.** All 63 (node `zlib`'s count; the shipped `fflate` read tolerates four of them) carry a *byte-identical* canonical header, `1f 8b 08 00 00000000 00 0b`, and all 63 open with a well-formed dynamic-Huffman block — BFINAL=0, BTYPE=2, **63 of 63**, where random bytes would spread the block type over four values. The header validation is not letting them through by luck.
+
+**Not another codec, and not stored data.** They decode as ordinary DEFLATE for 16 KiB to 115 KiB of the ~128 KiB a chunk holds, and the decoded bytes are Revit payload: `c6 08` object markers, `ff ff ff ff` field terminators, and duplicated-bounds records the export corroborates.
+
+**Not a different dictionary.** Sweeping the previous 64 chunk tails, and a correct rolling 32 KiB window over the concatenated prior output, makes only **7 of 63** decode without erroring — exactly the 7 whose predecessor emitted under 32 KiB. Their content is *not* corroborated: 2 of 12 export-named records within 0.5 ft, median 0.930 ft, against 168 of 181 for the salvage read below. A preset dictionary makes any out-of-range distance legal, so a wrong one decodes cleanly while copying the wrong bytes — which is exactly why the check has to be against the export and not against whether it threw. Recorded and not shipped.
+
+**Not truncation or an inserted structure.** Each chunk is followed by a 40-byte descriptor (constant `0x0f630000`, whose field[1] is the chunk's inflated length, exact for 2,533 of 3,507), and that descriptor never appears inside a failing chunk's body — 0 of 63, against 0 of 400 for a control. The desync lands at input offsets 2,102–65,111 with no alignment and no marker.
+
+So it is a **genuine mid-stream discontinuity inside an otherwise valid DEFLATE stream, and its cause is still not identified.** The error sequence is consistent with a length or distance code this decoder reads differently — Deflate64's symbol 285 and distance codes 30 and 31 — but that is a candidate, not a proof, and testing it needs a Deflate64 decoder.
+
+**The prefix in front of the desync is ordinary payload, and throwing it away was costing elements.** `inflateSync` raises before returning anything, so a chunk that desyncs partway lost everything it had already decoded correctly; a streaming read keeps it. That recovers 2.69 MB of the ~8.3 MB those chunks hold, and it is verified rather than assumed: the prefixes carry **213 duplicated-bounds records no other read reaches, the export names 181, and 168 land within 0.5 ft of the export's own box against 0 for a null pairing**, median error 0.000 ft.
+
+| | before | after |
+| --- | --- | --- |
+| building elements drawn | 35,261 · 92.6% | **35,338 · 92.8%** |
+| records recovered | 38,960 | **39,042** |
+| `IfcMember` drawn | 19,063 · 97.0% | **19,120 · 97.3%** |
+| `IfcPlate` / `IfcColumn` | 6,058 / 275 | **6,068 / 277** |
+
+Accuracy is unmoved — members 99.1%, plates 99.9%, columns 100.0%, walls 98.9% — and neither tripwire shifts. A salvaged prefix is deliberately **not** allowed to seed the next chunk's window, because it is short of that chunk's true trailing 32 KiB.
+
+**And it settles a question the census left open.** The `seen` column is identical in every class before and after: 911 building elements are never seen either way. The salvaged payload gives geometry to elements that were *already known* and adds no new element. On the third of these chunks that can now be read, the never-seen population is not there — strong evidence rather than proof, since the ~5.6 MB past each desync point is still unreadable.
 
 ## Stream coverage
 

@@ -5,7 +5,7 @@
  * with a gzip header and is followed by a raw DEFLATE body with no trailer, so
  * the chunk boundaries have to be recovered by scanning for the signature.
  */
-import { inflateSync } from "fflate";
+import { Inflate, inflateSync } from "fflate";
 
 const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 
@@ -140,6 +140,88 @@ export function inflateRevitChunk(
 
   if (!window?.length) return null;
   return tryInflate(bounded, window) ?? (tail ? tryInflate(tail, window) : null);
+}
+
+/**
+ * Input slice pushed into the salvage reader at a time.
+ *
+ * `inflateSync` throws before handing back anything at all, so a chunk that
+ * desyncs partway through loses the megabytes it had already decoded correctly.
+ * A streaming read keeps whatever was emitted before the throw, and emission is
+ * driven by pushes, so the slice size is the resolution of the salvage. 4 KiB
+ * recovers 2.69 MB from the reference model's 56 desyncing chunks.
+ */
+const SALVAGE_PUSH_BYTES = 4 << 10;
+
+/**
+ * Everything a chunk decodes before it desyncs, or `null` when it decodes
+ * nothing.
+ *
+ * 56 chunks of the reference model's 3,666 are neither self-contained nor
+ * continuations: they carry the same byte-identical canonical gzip header as
+ * every other chunk (`1f 8b 08 00 00000000 00 0b`, so not a false signature),
+ * they begin with a well-formed dynamic-Huffman block, and they decode 16 KiB
+ * to 115 KiB of correct payload out of the ~128 KiB a chunk holds before the
+ * bit stream stops making sense — `invalid block type`, `invalid length/literal`
+ * and friends, at input offsets with no structure to them. Whatever that
+ * discontinuity is, it is not at the start, so the prefix in front of it is
+ * ordinary readable payload and throwing it away costs real elements.
+ *
+ * **It is verified as payload rather than assumed.** The prefixes hold 213
+ * duplicated-bounds records no other read reaches; the paired export names 181
+ * of them and **168 land within 0.5 ft of the export's own box, against 0 for a
+ * null pairing**, median error 0.000 ft.
+ *
+ * The prefix must not seed the next chunk's window: it is short of that chunk's
+ * true trailing 32 KiB, so a continuation read against it would decode against
+ * the wrong bytes. Callers keep the previous window instead.
+ */
+export function salvageRevitChunk(
+  data: Uint8Array,
+  offset: number,
+  end?: number,
+  window?: Uint8Array | null,
+): Uint8Array | null {
+  const headerLength = gzipHeaderLength(data, offset);
+  if (headerLength == null) return null;
+  const start = offset + headerLength;
+  const limit = Math.min(end ?? data.length, data.length);
+  if (limit <= start) return null;
+  const body = data.subarray(start, limit);
+
+  const best = [window?.length ? window : null, null].reduce<Uint8Array | null>(
+    (kept, dictionary) => {
+      const read = salvageBody(body, dictionary ?? undefined);
+      return read && read.length > (kept?.length ?? 0) ? read : kept;
+    },
+    null,
+  );
+  return best;
+}
+
+function salvageBody(body: Uint8Array, dictionary?: Uint8Array): Uint8Array | null {
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  try {
+    const stream = new Inflate({ dictionary }, (chunk) => {
+      parts.push(chunk);
+      total += chunk.length;
+    });
+    for (let at = 0; at < body.length; at += SALVAGE_PUSH_BYTES) {
+      const next = Math.min(body.length, at + SALVAGE_PUSH_BYTES);
+      stream.push(body.subarray(at, next), next >= body.length);
+    }
+  } catch {
+    // The desync is the expected outcome here; what came out before it stands.
+  }
+  if (!total) return null;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
 }
 
 /** Leading little-endian `u32` of an inflated chunk, used as record evidence. */

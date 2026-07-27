@@ -24,7 +24,9 @@ import {
 import {
   chainElementObjects,
   dominantMarker,
+  markerCategoryConsensus,
   markerObjectSeeds,
+  scanFramedObjectClasses,
   scanObjectMarkers,
   type ElementObject,
 } from "./element-objects.ts";
@@ -77,6 +79,7 @@ import {
   inflateRevitChunk,
   leadingU32,
   revitWindowTail,
+  salvageRevitChunk,
 } from "./revit-container.ts";
 import { summariseSchema } from "./schema.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
@@ -717,6 +720,10 @@ export function convertRvtBytes(
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
     const locatedPartitionIds = new Set<number>();
+    // `element id -> object marker`, read from every framed object rather than
+    // only the chained ones. Used solely as a class key for the ring-synthesis
+    // gate below; no object, placement or record is added from it.
+    const markerByElement = new Map<number, number>();
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
@@ -731,9 +738,13 @@ export function convertRvtBytes(
       // against the window the writer left behind; see `inflateRevitChunk`.
       let window: Uint8Array | null = null;
       for (let index = 0; index < offsets.length; index += 1) {
-        const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+        // A chunk that desyncs partway is still read up to that point, and the
+        // prefix is not allowed to seed the next chunk's window because it is
+        // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
+        const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+        const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
         if (!inflated) continue;
-        window = revitWindowTail(inflated);
+        if (read) window = revitWindowTail(read);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
         const elementId = leadingU32(inflated);
@@ -798,6 +809,11 @@ export function convertRvtBytes(
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
+        if (decoderPlan.elementBoundsDecoder) {
+          for (const [elementId, marker] of scanFramedObjectClasses(inflated)) {
+            if (!markerByElement.has(elementId)) markerByElement.set(elementId, marker);
+          }
+        }
         // Seed the object chain from every validated object marker on the page,
         // not only from the bounds records.
         //
@@ -1082,17 +1098,29 @@ export function convertRvtBytes(
      * pass below. Only the candidates' answers are read; no existing record's
      * category is touched.
      *
-     * **Five ramps stay missing and the reason is recorded rather than papered
-     * over.** The file writes exactly **8** `Ramps` category tokens and those
-     * five are not among them, so their category is not in the file to be found:
-     * they carry no type reference either, and consensus on the object marker —
-     * the one key a record-less element does have — would reach them but is not
-     * a category decoder, giving 4,859 elements a category of which the export
-     * agrees with 456 and **disagrees with 265**. Their object marker `0x0d7b`
-     * heads 12 objects in the file and the export names all 12 `IfcRamp`, which
-     * is a clean discriminator and still a listed constant on a population of
-     * twelve, against this file's practice of measuring markers rather than
-     * naming them.
+     * **The five ramps that used to stay missing are reached by the marker
+     * instead.** The file writes exactly **8** `Ramps` category tokens and those
+     * five are not among them, so their own category is not in the file to be
+     * found — but the object marker at `+16` is a class key they do have, and
+     * the members of their class that *do* carry a token can speak for them.
+     * That is `markerCategoryConsensus`, and this gate is its whole scope: used
+     * as a general category decoder it disagrees with the export 265 times,
+     * while used here it selects **42 record-less ring owners of which the
+     * export names 42**, out of 843 candidates of which it names 67. Null
+     * control, permuting which marker holds which consensus category over ten
+     * shifts: 23.1 selected per trial, 8.0 named.
+     *
+     * A candidate qualifies on having a marker rather than a partition-record
+     * id, because the chain is seeded from the markers a *sample* of pages says
+     * are common and a twelve-member class never clears that floor: all five
+     * ramps have a framed `0x0d7b` object that no chain reaches.
+     *
+     * **What this still does not reach, recorded rather than papered over.** Of
+     * the 67 named candidates, 25 are declined: 13 under `0x0feb`, whose
+     * consensus is `Stairs` — an assembly rather than a sketch category; 7 under
+     * `0x0f3b`, whose 6,993 members are unanimously `Walls`; 4 under `0x0d40`,
+     * whose 20 members carry **no category token at all**, so there is no
+     * consensus to read; and 1 under `0x07ef`, at purity 0.35.
      */
     {
       const ringCandidates = new Set<number>();
@@ -1101,16 +1129,22 @@ export function convertRvtBytes(
         // curve owner proposes itself and the element above it.
         for (const elementId of [owner, owner + 1]) {
           if (boundedIds.has(elementId)) continue;
-          if (partitionRecordIds.has(elementId)) ringCandidates.add(elementId);
+          if (partitionRecordIds.has(elementId) || markerByElement.has(elementId)) {
+            ringCandidates.add(elementId);
+          }
         }
       }
       if (ringCandidates.size) {
         const known = new Set<number>(boundedIds);
         for (const elementId of ringCandidates) known.add(elementId);
+        for (const elementId of markerByElement.keys()) known.add(elementId);
         for (const elementId of elementIndex?.uniqueElementIds ?? []) known.add(elementId);
         const candidateCategories = resolveElementCategories(categoryTokens, known);
+        const markerCategories = markerCategoryConsensus(markerByElement, candidateCategories);
         for (const elementId of ringCandidates) {
-          const categoryId = candidateCategories.get(elementId);
+          const categoryId =
+            candidateCategories.get(elementId) ??
+            markerCategories.get(markerByElement.get(elementId) ?? -1);
           if (categoryId == null || !SKETCH_BOUNDARY_CATEGORIES.has(categoryId)) continue;
           const loops = boundaryLoopsFor(elementId, curvesByOwner);
           if (!loops.length) continue;
