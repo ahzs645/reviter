@@ -45,3 +45,6 @@ next-env.d.ts
 /tmp/
 __pycache__/
 *.py[cod]
+
+# agent scratch: probe scripts and cached conversions, regenerable and large
+/.work

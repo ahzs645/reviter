@@ -14,7 +14,41 @@ import type {
   Vec3,
 } from "./types";
 
-const webIfcWasmUrl = new URL("./web-ifc.wasm", import.meta.url).href;
+/**
+ * Where `web-ifc.wasm` lives depends on how this module was bundled.
+ *
+ * The Pages build copies the binary next to the emitted worker, so a sibling
+ * URL resolves. Under Vite there is no such copy — `lib/reviter/web-ifc.wasm`
+ * does not exist in the source tree — and the sibling URL 404s at `Init`,
+ * taking IFC pairing down on that path entirely. The candidates are therefore
+ * tried in order and the first one that actually answers is used, so the
+ * bundled layout keeps working unchanged and the unbundled one starts working.
+ */
+const WEB_IFC_WASM_CANDIDATES = [
+  new URL("./web-ifc.wasm", import.meta.url).href,
+  new URL("../../node_modules/web-ifc/web-ifc.wasm", import.meta.url).href,
+];
+
+let resolvedWasmUrl: string | null = null;
+
+async function webIfcWasmUrl(): Promise<string> {
+  if (resolvedWasmUrl) return resolvedWasmUrl;
+  for (const candidate of WEB_IFC_WASM_CANDIDATES) {
+    try {
+      const response = await fetch(candidate, { method: "HEAD" });
+      if (response.ok) {
+        resolvedWasmUrl = candidate;
+        return candidate;
+      }
+    } catch {
+      // A candidate that cannot be reached is simply not the right one.
+    }
+  }
+  // Nothing answered; let `Init` fail against the first candidate so the error
+  // names a real URL rather than a guess.
+  resolvedWasmUrl = WEB_IFC_WASM_CANDIDATES[0]!;
+  return resolvedWasmUrl;
+}
 
 type ProgressCallback = (update: ProgressUpdate) => void;
 type ReferenceBatch = {
@@ -92,7 +126,8 @@ export async function analyzeIfcReference(
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const api = new IfcAPI();
   onProgress?.({ ratio: 0.03, message: "Starting local IFC parser" });
-  await api.Init((path) => (path.endsWith(".wasm") ? webIfcWasmUrl : path), true);
+  const wasmUrl = await webIfcWasmUrl();
+  await api.Init((path) => (path.endsWith(".wasm") ? wasmUrl : path), true);
   onProgress?.({ ratio: 0.1, message: "Opening IFC reference model" });
   const modelId = api.OpenModel(bytes, {
     COORDINATE_TO_ORIGIN: true,
@@ -103,6 +138,7 @@ export async function analyzeIfcReference(
   try {
     const elemTableIds = new Set<number>(rvt.elemTableIds);
     const partitionRecordIds = new Set<number>(rvt.partitionRecordIds);
+    const recoveredIds = new Set<number>(rvt.recoveredIds ?? []);
     const partitionRecordById = new Map(
       rvt.partitionRecords.map((record) => [record.elementId, record] as const),
     );
@@ -126,6 +162,7 @@ export async function analyzeIfcReference(
       let matched = 0;
       let matchedElemTable = 0;
       let matchedPartitionRecords = 0;
+      const matchedIds: number[] = [];
       elementCount += ids.size();
       for (let index = 0; index < ids.size(); index += 1) {
         const expressId = ids.get(index);
@@ -137,8 +174,12 @@ export async function analyzeIfcReference(
         const revitElementId = Number(rawTag);
         const inElemTable = elemTableIds.has(revitElementId);
         const inPartitionRecords = partitionRecordIds.has(revitElementId);
-        if (!inElemTable && !inPartitionRecords) continue;
+        // An element rebuilt from a solid or a sketch alone is in neither index
+        // and is still, demonstrably, in the file.
+        const inRecovered = recoveredIds.has(revitElementId);
+        if (!inElemTable && !inPartitionRecords && !inRecovered) continue;
         matched += 1;
+        matchedIds.push(revitElementId);
         if (inElemTable) matchedElemTable += 1;
         if (inPartitionRecords) matchedPartitionRecords += 1;
         matchedElementCount += 1;
@@ -155,7 +196,9 @@ export async function analyzeIfcReference(
               ? "both"
               : inElemTable
                 ? "elem-table"
-                : "partition-record",
+                : inPartitionRecords
+                  ? "partition-record"
+                  : "recovered-geometry",
             partitionRecord: partitionRecord
               ? {
                   stream: partitionRecord.stream,
@@ -174,6 +217,7 @@ export async function analyzeIfcReference(
         matchedRvtRecords: matched,
         matchedElemTable,
         matchedPartitionRecords,
+        matchedIds: Uint32Array.from(matchedIds),
       });
       onProgress?.({
         ratio: 0.12 + ((typeIndex + 1) / Math.max(1, elementTypeRows.length)) * 0.24,

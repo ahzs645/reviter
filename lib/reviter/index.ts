@@ -6,7 +6,13 @@ export {
   solidBounds,
 } from "./bounds-records";
 export type { DetectedBoundsRecord } from "./bounds-records";
-export { asBytes, gzipOffsets, inflateRevitChunk } from "./revit-container";
+export {
+  asBytes,
+  gzipOffsets,
+  inflateRevitChunk,
+  REVIT_WINDOW_BYTES,
+  revitWindowTail,
+} from "./revit-container";
 export {
   buildBoundsMeshes,
   boundsPlanSegments,
@@ -21,7 +27,7 @@ export { builtInParameterName, parameterDisplayName } from "./built-in-parameter
 export { chainElementObjects, dominantMarker } from "./element-objects";
 export { collectElementParameters } from "./element-parameters";
 export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces";
-export { surfaceQuadsFor, wallSolids, wallSolidsFor } from "./native-geometry";
+export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry";
 export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
 export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
 export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";
@@ -51,8 +57,21 @@ export {
   recordCodeKey,
   resolveElementCategories,
 } from "./native-categories";
+export { classCoverage } from "./coverage";
+export { doorLeafCorners } from "./door-leaf";
+export type { WallRun } from "./door-leaf";
+export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
-export { boundsDimensions, cameraPoseForPreset, solidElementBounds } from "./viewer";
+export {
+  boundsDimensions,
+  CAMERA_PRESETS,
+  cameraPoseForPreset,
+  DEFAULT_CAMERA_PRESET,
+  FEET_PER_METRE,
+  isPlanPreset,
+  referenceRegistration,
+  solidElementBounds,
+} from "./viewer";
 export {
   downloadBlob,
   makeDxf,

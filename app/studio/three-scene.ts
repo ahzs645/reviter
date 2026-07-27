@@ -3,13 +3,48 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
+  referenceRegistration,
   type ConvertResult,
   type NavigationMode,
   type ReferenceMeshData,
   type RenderMode,
 } from "../../lib/reviter";
 
-export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.Group {
+/**
+ * The triangles of one batch minus the ones belonging to a hidden element.
+ *
+ * Every batch carries one element id per triangle, which is what makes turning
+ * a whole category off a filter over the index rather than a rebuild of the
+ * geometry: the vertices stay exactly where the converter put them.
+ */
+function visibleTriangles(
+  indices: Uint32Array,
+  elementIds: Uint32Array | undefined,
+  hidden: ReadonlySet<number>,
+): { indices: Uint32Array; elementIds: Uint32Array | undefined } {
+  if (!hidden.size || !elementIds) return { indices, elementIds };
+  const keptIndices = new Uint32Array(indices.length);
+  const keptIds = new Uint32Array(elementIds.length);
+  let at = 0;
+  for (let triangle = 0; triangle < elementIds.length; triangle += 1) {
+    const elementId = elementIds[triangle]!;
+    if (hidden.has(elementId)) continue;
+    keptIndices[at] = indices[triangle * 3]!;
+    keptIndices[at + 1] = indices[triangle * 3 + 1]!;
+    keptIndices[at + 2] = indices[triangle * 3 + 2]!;
+    // Picking indexes by face, so the id table has to be filtered in step or
+    // every click after a hidden category would name the wrong element.
+    keptIds[at / 3] = elementId;
+    at += 3;
+  }
+  return { indices: keptIndices.subarray(0, at), elementIds: keptIds.subarray(0, at / 3) };
+}
+
+export function meshGroup(
+  result: ConvertResult,
+  renderMode: RenderMode,
+  hiddenElementIds: ReadonlySet<number> = new Set(),
+): THREE.Group {
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
   const technical = renderMode === "technical";
@@ -21,10 +56,12 @@ export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.
     fidelity: "experimental",
   };
   for (const data of result.meshes) {
+    const visible = visibleTriangles(data.indices, data.elementIds, hiddenElementIds);
+    if (!visible.indices.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
-    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geometry.setIndex(new THREE.BufferAttribute(visible.indices, 1));
     geometry.computeVertexNormals();
     const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
     const sourceColor = sourceMaterial
@@ -46,7 +83,7 @@ export function meshGroup(result: ConvertResult, renderMode: RenderMode): THREE.
     mesh.name = data.name;
     mesh.castShadow = technical;
     mesh.receiveShadow = technical;
-    mesh.userData.elementIds = data.elementIds;
+    mesh.userData.elementIds = visible.elementIds;
     mesh.renderOrder = 1;
     group.add(mesh);
     if (isElementBounds) {
@@ -102,6 +139,78 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
       group.add(edges);
     }
   }
+  return group;
+}
+
+/**
+ * Both models in one scene, in one coordinate system.
+ *
+ * Until now the three geometry sources were mutually exclusive, so the only way
+ * to compare recovery against the export was to switch between them and
+ * remember what you saw. They are both z-up and share the project's datum; all
+ * that separated them was units and the origin the recovered scene is drawn
+ * around, which is a scale and a translation rather than a registration
+ * problem. The export is therefore parented to a group carrying exactly that
+ * transform instead of having its vertices rewritten.
+ *
+ * The colouring is the point of the mode: the recovery reads as solid, an
+ * exported element the recovery also has is a quiet ghost, and an exported
+ * element that is **missing** from the recovery is picked out in red. What is
+ * wrong with the conversion becomes something you can look at.
+ */
+export function overlayMeshGroup(
+  result: ConvertResult,
+  meshes: ReferenceMeshData[],
+  renderMode: RenderMode,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "Recovery over export";
+  group.userData = { source: "overlay", fidelity: "comparison" };
+
+  const recovered = meshGroup(result, renderMode);
+  recovered.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    material.color = new THREE.Color(0xff8a3d);
+    material.vertexColors = false;
+    material.transparent = false;
+    material.opacity = 1;
+    material.depthWrite = true;
+    material.needsUpdate = true;
+  });
+  group.add(recovered);
+
+  // metres -> feet, then into the frame the recovered scene is drawn around.
+  const reference = new THREE.Group();
+  reference.name = "Paired export";
+  const registration = referenceRegistration(result.origin);
+  reference.scale.setScalar(registration.scale);
+  reference.position.set(registration.offset.x, registration.offset.y, registration.offset.z);
+
+  for (const data of meshes) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(data.matched ? 0x4a6b86 : 0xff3b46),
+      emissive: data.matched ? new THREE.Color(0x000000) : new THREE.Color(0x3a0206),
+      roughness: 0.85,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      transparent: true,
+      // A matched element is context and stays out of the way; a missing one
+      // has to be visible through the recovery standing in front of it.
+      opacity: data.matched ? 0.22 : 0.95,
+      depthWrite: !data.matched,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `${data.name} (${data.matched ? "matched" : "missing from recovery"})`;
+    mesh.renderOrder = data.matched ? 0 : 3;
+    reference.add(mesh);
+  }
+  group.add(reference);
   return group;
 }
 

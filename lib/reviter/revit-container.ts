@@ -5,7 +5,7 @@
  * with a gzip header and is followed by a raw DEFLATE body with no trailer, so
  * the chunk boundaries have to be recovered by scanning for the signature.
  */
-import { inflateSync } from "fflate";
+import { Inflate, inflateSync } from "fflate";
 
 const GZIP_MAGIC = [0x1f, 0x8b, 0x08] as const;
 
@@ -14,6 +14,13 @@ const GZIP_OPTIONAL_FIELD_LIMIT = 1_024;
 
 /** Input cap when re-reading a chunk truncated by a false gzip signature. */
 const GZIP_RETRY_BYTES = 8 << 20;
+
+/**
+ * Bytes of a chunk's output kept as the preset dictionary for the next chunk.
+ * 32 KiB is the DEFLATE window, so this is everything a chunk can reference
+ * from behind its own start.
+ */
+export const REVIT_WINDOW_BYTES = 32 << 10;
 
 export function asBytes(value: number[] | Uint8Array): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -79,16 +86,40 @@ export function gzipOffsets(data: Uint8Array, limit = 10_000): number[] {
   return result;
 }
 
+/** The trailing DEFLATE window of an inflated chunk. */
+export function revitWindowTail(page: Uint8Array): Uint8Array {
+  return page.length <= REVIT_WINDOW_BYTES
+    ? page
+    : page.subarray(page.length - REVIT_WINDOW_BYTES);
+}
+
+function tryInflate(body: Uint8Array, dictionary?: Uint8Array): Uint8Array | null {
+  try {
+    return inflateSync(body, dictionary ? { dictionary } : undefined);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Inflate one Revit chunk. `end` is the start of the next chunk, which bounds
  * both the DEFLATE input and fflate's output allocation. A false signature that
  * survives header validation would truncate a real chunk, so a failed bounded
  * read retries against a capped tail rather than the whole stream.
+ *
+ * `window` is the previous chunk's output tail, from `revitWindowTail`. Most
+ * chunks are self-contained, but a minority carry back-references past their own
+ * start and fail outright with `invalid distance too far back`; supplying the
+ * preceding window as a preset dictionary reads them. In the reference model 273
+ * of 332 otherwise unreadable chunks recover this way, 32.4 MB of payload that
+ * was being dropped. Passing no window keeps the old stateless behaviour, which
+ * is what a strided sample wants.
  */
 export function inflateRevitChunk(
   data: Uint8Array,
   offset: number,
   end?: number,
+  window?: Uint8Array | null,
 ): Uint8Array | null {
   const headerLength = gzipHeaderLength(data, offset);
   if (headerLength == null) return null;
@@ -96,16 +127,101 @@ export function inflateRevitChunk(
   if (start >= data.length) return null;
   const limit = Math.min(end ?? data.length, data.length);
   if (limit <= start) return null;
+
+  const bounded = data.subarray(start, limit);
+  const bounds = tryInflate(bounded);
+  if (bounds) return bounds;
+
+  const tail = limit >= data.length
+    ? null
+    : data.subarray(start, Math.min(data.length, start + GZIP_RETRY_BYTES));
+  const retried = tail ? tryInflate(tail) : null;
+  if (retried) return retried;
+
+  if (!window?.length) return null;
+  return tryInflate(bounded, window) ?? (tail ? tryInflate(tail, window) : null);
+}
+
+/**
+ * Input slice pushed into the salvage reader at a time.
+ *
+ * `inflateSync` throws before handing back anything at all, so a chunk that
+ * desyncs partway through loses the megabytes it had already decoded correctly.
+ * A streaming read keeps whatever was emitted before the throw, and emission is
+ * driven by pushes, so the slice size is the resolution of the salvage. 4 KiB
+ * recovers 2.69 MB from the reference model's 56 desyncing chunks.
+ */
+const SALVAGE_PUSH_BYTES = 4 << 10;
+
+/**
+ * Everything a chunk decodes before it desyncs, or `null` when it decodes
+ * nothing.
+ *
+ * 56 chunks of the reference model's 3,666 are neither self-contained nor
+ * continuations: they carry the same byte-identical canonical gzip header as
+ * every other chunk (`1f 8b 08 00 00000000 00 0b`, so not a false signature),
+ * they begin with a well-formed dynamic-Huffman block, and they decode 16 KiB
+ * to 115 KiB of correct payload out of the ~128 KiB a chunk holds before the
+ * bit stream stops making sense — `invalid block type`, `invalid length/literal`
+ * and friends, at input offsets with no structure to them. Whatever that
+ * discontinuity is, it is not at the start, so the prefix in front of it is
+ * ordinary readable payload and throwing it away costs real elements.
+ *
+ * **It is verified as payload rather than assumed.** The prefixes hold 213
+ * duplicated-bounds records no other read reaches; the paired export names 181
+ * of them and **168 land within 0.5 ft of the export's own box, against 0 for a
+ * null pairing**, median error 0.000 ft.
+ *
+ * The prefix must not seed the next chunk's window: it is short of that chunk's
+ * true trailing 32 KiB, so a continuation read against it would decode against
+ * the wrong bytes. Callers keep the previous window instead.
+ */
+export function salvageRevitChunk(
+  data: Uint8Array,
+  offset: number,
+  end?: number,
+  window?: Uint8Array | null,
+): Uint8Array | null {
+  const headerLength = gzipHeaderLength(data, offset);
+  if (headerLength == null) return null;
+  const start = offset + headerLength;
+  const limit = Math.min(end ?? data.length, data.length);
+  if (limit <= start) return null;
+  const body = data.subarray(start, limit);
+
+  const best = [window?.length ? window : null, null].reduce<Uint8Array | null>(
+    (kept, dictionary) => {
+      const read = salvageBody(body, dictionary ?? undefined);
+      return read && read.length > (kept?.length ?? 0) ? read : kept;
+    },
+    null,
+  );
+  return best;
+}
+
+function salvageBody(body: Uint8Array, dictionary?: Uint8Array): Uint8Array | null {
+  const parts: Uint8Array[] = [];
+  let total = 0;
   try {
-    return inflateSync(data.subarray(start, limit));
+    const stream = new Inflate({ dictionary }, (chunk) => {
+      parts.push(chunk);
+      total += chunk.length;
+    });
+    for (let at = 0; at < body.length; at += SALVAGE_PUSH_BYTES) {
+      const next = Math.min(body.length, at + SALVAGE_PUSH_BYTES);
+      stream.push(body.subarray(at, next), next >= body.length);
+    }
   } catch {
-    if (limit >= data.length) return null;
+    // The desync is the expected outcome here; what came out before it stands.
   }
-  try {
-    return inflateSync(data.subarray(start, Math.min(data.length, start + GZIP_RETRY_BYTES)));
-  } catch {
-    return null;
+  if (!total) return null;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
   }
+  return out;
 }
 
 /** Leading little-endian `u32` of an inflated chunk, used as record evidence. */

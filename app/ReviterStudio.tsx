@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   boundsDimensions,
+  CAMERA_PRESETS,
+  DEFAULT_CAMERA_PRESET,
   downloadBlob,
   makeDxf,
   makeGlb,
@@ -13,7 +15,6 @@ import {
   makePlanSvg,
   makeReport,
   outputName,
-  solidElementBounds,
   type CameraPreset,
   type ConvertResult,
   type IfcWorkerRequest,
@@ -26,15 +27,16 @@ import {
 } from "../lib/reviter";
 
 import { AUTODESK_PREVIEW_RESULT, hasAutodeskReference, staticWorkerUrl } from "./studio/autodesk-reference.ts";
-import { formatBytes, formatNumber, savedFileName } from "./studio/format.ts";
+import { canvasMenuPosition, formatBytes, formatNumber, matchesFilter, savedFileName } from "./studio/format.ts";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
-import { FidelityRow, RegressionPanel } from "./studio/panels.tsx";
+import { ObjectList } from "./studio/ObjectList.tsx";
+import { FidelityRow, RegressionPanel, ToolButton } from "./studio/panels.tsx";
 import type {
   CameraRequest,
+  CanvasMenuRequest,
   GeometrySource,
   Phase,
   ReferencePhase,
-  ViewMode,
   ViewerPanel,
 } from "./studio/types.ts";
 
@@ -50,16 +52,21 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [result, setResult] = useState<ConvertResult | null>(referencePreview ? AUTODESK_PREVIEW_RESULT : null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [view, setView] = useState<ViewMode>("perspective");
   const [geometrySource, setGeometrySource] = useState<GeometrySource>(referencePreview ? "autodesk" : "recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
   const [navigationMode, setNavigationMode] = useState<NavigationMode>("orbit");
-  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: "home", sequence: 0 });
+  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: DEFAULT_CAMERA_PRESET, sequence: 0 });
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
   const [sectionEnabled, setSectionEnabled] = useState(false);
+  const [walking, setWalking] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [schemaSearch, setSchemaSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
+  const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
@@ -73,10 +80,23 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
+  const canvasMenuRef = useRef<HTMLDivElement>(null);
 
+  // Tear the workers down when the studio unmounts, and only then. This was
+  // keyed on the thumbnail, so opening a second file — which sets a new
+  // thumbnail — terminated the worker that was about to convert it, left the
+  // dead worker in the ref for `getWorker` to hand back, and hung the progress
+  // bar at 8% with no error and no timeout.
   useEffect(() => () => {
     workerRef.current?.terminate();
+    workerRef.current = null;
     ifcWorkerRef.current?.terminate();
+    ifcWorkerRef.current = null;
+  }, []);
+
+  // The previous preview URL is revoked where the next one is created, so the
+  // object URL's lifetime no longer depends on an unmount cleanup.
+  useEffect(() => () => {
     if (thumbnail) URL.revokeObjectURL(thumbnail);
   }, [thumbnail]);
 
@@ -116,11 +136,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     setGeometrySource("recovered");
     setRenderMode("technical");
     setNavigationMode("orbit");
-    setCameraRequest({ preset: "home", sequence: requestId });
+    setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId });
     setSectionEnabled(false);
     setViewerPanel("none");
     setSelectedElementId(null);
     setModelSearch("");
+    setCategorySearch("");
+    setCanvasMenu(null);
     setDetailsOpen(false);
     setReferencePhase("idle");
     setReferenceError(null);
@@ -233,6 +255,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         rvt: {
           elemTableIds: result.elementIndex.uniqueElementIds,
           partitionRecordIds: result.elementIndex.partitionRecordIds,
+          recoveredIds: Uint32Array.from(result.elementBounds.map((record) => record.elementId)),
           partitionRecords: result.elementIndex.partitionRecords,
           boundsFeet: result.bbox,
           triangleCount: result.stats.triangleCount,
@@ -273,15 +296,27 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const versionNumber = Number(metadata?.version ?? 0);
   const isFutureVersion = versionNumber > 2026;
   const autodeskReferenceAvailable = Boolean(result && hasAutodeskReference(result.fileName));
+  // Objects, categories and properties all read the per-triangle element ids,
+  // and only the recovery carries them — the derivative and the export arrive
+  // as anonymous meshes.
+  const panelReason = geometrySource === "recovered" ? null : "Only the RVT diagnostic source carries object ids";
   const savedName = savedFileName(metadata?.path);
   const displayedElementIds = useMemo(() => {
     if (!result) return new Set<number>();
     return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
   }, [result]);
+  // Everything the converter gave an envelope, drawn or not — the middle column
+  // of the coverage table, and the only one the IFC analysis cannot supply.
+  const recoveredElementIds = useMemo(
+    () => new Set(result ? result.elementBounds.map((record) => record.elementId) : []),
+    [result],
+  );
+  // The list is the drawn set, and nothing else. It used to be filtered a second
+  // time through a three-axis "is this solid" test that the scene no longer
+  // applies — a sketch-bounded ceiling is drawn but has no thickness — so the
+  // browser and the toolbar reported two different counts of the same thing.
   const solidRecords = useMemo(
-    () => result
-      ? solidElementBounds(result.elementBounds).filter((record) => displayedElementIds.has(record.elementId))
-      : [],
+    () => result ? result.elementBounds.filter((record) => displayedElementIds.has(record.elementId)) : [],
     [displayedElementIds, result],
   );
   const selectedRecord = useMemo(
@@ -291,17 +326,90 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     [result, selectedElementId],
   );
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
-  const visibleModelRecords = useMemo(() => {
-    const query = modelSearch.trim();
-    const records = query
-      ? solidRecords.filter((record) => String(record.elementId).includes(query))
-      : solidRecords;
-    return records.slice(0, 180);
-  }, [modelSearch, solidRecords]);
-  const requestCamera = useCallback((preset: CameraPreset) => {
-    setView(preset === "top" ? "plan" : "perspective");
-    setCameraRequest((current) => ({ preset, sequence: current.sequence + 1 }));
+  // Asking the user to filter by an id they would have to already know is not
+  // much of a filter; category and type names are on the record too.
+  const visibleModelRecords = useMemo(
+    () => solidRecords.filter((record) =>
+      matchesFilter(modelSearch, record.elementId, record.categoryName, record.typeName)),
+    [modelSearch, solidRecords],
+  );
+  // One row per category, which is the layer list a CAD user reaches for, and
+  // the only visibility control that scales to tens of thousands of envelopes.
+  const categoryRows = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const record of solidRecords) {
+      const name = record.categoryName ?? "Uncategorised";
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  }, [solidRecords]);
+  // Sorted largest first, so the category you want by name is somewhere down a
+  // 24-row scroller on the supplied model. Filtering is how a layer list is
+  // used everywhere else.
+  const visibleCategoryRows = useMemo(
+    () => categoryRows.filter((row) => matchesFilter(categorySearch, row.name)),
+    [categoryRows, categorySearch],
+  );
+  const hiddenElementIds = useMemo(() => {
+    if (!result || !hiddenCategories.size) return new Set<number>();
+    const hidden = new Set<number>();
+    for (const record of result.elementBounds) {
+      if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
+    }
+    return hidden;
+  }, [hiddenCategories, result]);
+  // Framing one object keeps the current orientation and only moves in; a
+  // sequence number is what makes asking for the same object twice a new
+  // request rather than a no-op.
+  const [focusRequest, setFocusRequest] = useState<{ elementId: number | null; sequence: number }>({
+    elementId: null,
+    sequence: 0,
+  });
+  const requestZoomToSelection = useCallback(() => {
+    setFocusRequest((current) => ({ elementId: selectedElementId, sequence: current.sequence + 1 }));
+  }, [selectedElementId]);
+  const toggleCategory = useCallback((name: string) => {
+    setHiddenCategories((current) => {
+      const next = new Set(current);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
   }, []);
+  const canvasMenuCategory = useMemo(() => {
+    if (canvasMenu?.elementId == null) return null;
+    const record = result?.elementBounds.find((entry) => entry.elementId === canvasMenu.elementId);
+    return record ? record.categoryName ?? "Uncategorised" : null;
+  }, [canvasMenu, result]);
+  const hoveredRecord = useMemo(
+    () => hoveredElementId == null
+      ? null
+      : result?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
+    [hoveredElementId, result],
+  );
+  const requestCamera = useCallback((preset: CameraPreset) => {
+    setCameraRequest((current) => ({ preset, sequence: current.sequence + 1 }));
+    setViewMenuOpen(false);
+  }, []);
+
+  // The canvas menu closes on the next press anywhere outside it, or on Escape.
+  // Containment is tested rather than relying on the press not reaching the
+  // window, because a press on a menu item would otherwise unmount the button
+  // before its own click could fire.
+  useEffect(() => {
+    if (!canvasMenu) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!canvasMenuRef.current?.contains(event.target as Node)) setCanvasMenu(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCanvasMenu(null);
+    };
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [canvasMenu]);
 
   return (
     <main className="studio-shell">
@@ -316,11 +424,15 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
       <section className={`workspace ${result ? "model-open" : ""}`}>
         <aside className="control-rail">
-          <div className="rail-intro">
-            <p className="eyebrow">RVT → open geometry</p>
-            <h1>Inspect first.<br />Convert honestly.</h1>
-            <p>Open a Revit file without uploading it. Verified metadata stays separate from experimental geometry recovery.</p>
-          </div>
+          {/* The pitch belongs on the empty page, not above a model you are
+              already working on. */}
+          {!result && (
+            <div className="rail-intro">
+              <p className="eyebrow">RVT → open geometry</p>
+              <h1>Inspect first.<br />Convert honestly.</h1>
+              <p>Verified metadata stays separate from experimental geometry recovery.</p>
+            </div>
+          )}
 
           <button
             className={`drop-card ${dragging ? "is-dragging" : ""}`}
@@ -379,6 +491,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             </section>
           )}
 
+          {(metadata || result) && (
           <section className="rail-section fidelity-section">
             <div className="section-heading"><span>Fidelity ledger</span></div>
             <FidelityRow label="File metadata" value={metadata ? "Verified" : "Awaiting file"} tone={metadata ? "good" : "off"} />
@@ -390,12 +503,12 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             />
             <FidelityRow
               label="Native meshes"
-              value={geometrySource === "autodesk" ? "8,698 derivative meshes" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
+              value={geometrySource === "autodesk" ? "From the derivative" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
             />
             <FidelityRow
               label="RVT materials"
-              value={geometrySource === "autodesk" ? "22 derivative materials" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
+              value={geometrySource === "autodesk" ? "From the derivative" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
               tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
@@ -474,12 +587,18 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
             />
           </section>
+          )}
 
           {result && (
             <section className="rail-section reference-section">
-              <div className="section-heading"><span>Regression fixture</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
-              <p>Pair the matching IFC export to join native Revit IDs and test geometry against typed ground truth.</p>
-              <button type="button" onClick={() => ifcInputRef.current?.click()} disabled={referencePhase === "reading"}>
+              <div className="section-heading"><span>Paired IFC export</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
+              <p>Pair this model&apos;s IFC export to check the recovery against it, and to unlock the overlay view.</p>
+              <button
+                type="button"
+                onClick={() => ifcInputRef.current?.click()}
+                disabled={referencePhase === "reading"}
+                title={referencePhase === "reading" ? "Reading the IFC export in this tab" : undefined}
+              >
                 {referencePhase === "reading" ? "Analyzing IFC…" : comparison ? "Choose another IFC" : "Pair IFC reference"}
               </button>
               <input
@@ -510,20 +629,42 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{result ? geometrySource === "autodesk" ? "51,420 Autodesk fragments · 1.22M source polygons" : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements · paired locally` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines` : "Your file never leaves this browser tab"}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{!result ? "" : geometrySource === "autodesk" ? "Autodesk server-generated derivative" : geometrySource === "overlay" && comparison ? `${formatNumber(result.stats.candidatesUsed)} recovered · ${formatNumber(comparison.reference.elementCount)} in the export` : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines`}</span></div>
             </div>
             <div className="toolbar-controls">
-              {autodeskReferenceAvailable || comparison?.referenceMeshes.length ? (
+              {/* Every source this viewer has is on the switcher whether or not
+                  it can be reached. Hiding the two that need something first
+                  made a model with no paired export look like a model that
+                  could not have one, so each unavailable source says what would
+                  turn it on instead. */}
+              {result && (
                 <div className="segmented-control source-control" aria-label="Geometry source">
-                  {autodeskReferenceAvailable && <button className={geometrySource === "autodesk" ? "active" : ""} onClick={() => { setGeometrySource("autodesk"); setSelectedElementId(null); }}>Autodesk</button>}
-                  {comparison?.referenceMeshes.length ? <button className={geometrySource === "reference" ? "active" : ""} onClick={() => { setGeometrySource("reference"); setSelectedElementId(null); }}>IFC reference</button> : null}
-                  <button className={geometrySource === "recovered" ? "active diagnostic-active" : ""} onClick={() => setGeometrySource("recovered")}>RVT diagnostic</button>
+                  <ToolButton
+                    className={geometrySource === "autodesk" ? "active" : ""}
+                    reason={autodeskReferenceAvailable ? null : "No Autodesk derivative is bundled for this file"}
+                    onClick={() => { setGeometrySource("autodesk"); setSelectedElementId(null); }}
+                  >Autodesk</ToolButton>
+                  <ToolButton
+                    className={geometrySource === "reference" ? "active" : ""}
+                    reason={comparison?.referenceMeshes.length
+                      ? null
+                      : referencePhase === "reading" ? "Reading the IFC export now" : "Pair an IFC export to enable"}
+                    onClick={() => { setGeometrySource("reference"); setSelectedElementId(null); }}
+                  >IFC reference</ToolButton>
+                  <ToolButton
+                    className={geometrySource === "overlay" ? "active" : ""}
+                    reason={comparison?.referenceMeshes.length
+                      ? null
+                      : referencePhase === "reading" ? "Reading the IFC export now" : "Pair an IFC export to compare it with the recovery"}
+                    title="Recovered model over the paired export: matched elements ghosted, elements missing from the recovery in red"
+                    onClick={() => setGeometrySource("overlay")}
+                  >Overlay</ToolButton>
+                  <ToolButton
+                    className={geometrySource === "recovered" ? "active diagnostic-active" : ""}
+                    onClick={() => setGeometrySource("recovered")}
+                  >RVT diagnostic</ToolButton>
                 </div>
-              ) : null}
-              <div className="segmented-control" aria-label="Camera view">
-                <button className={view === "perspective" ? "active" : ""} onClick={() => setView("perspective")} disabled={!result}>3D</button>
-                <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} disabled={!result}>Plan</button>
-              </div>
+              )}
             </div>
           </div>
 
@@ -534,78 +675,120 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   result={result}
                   comparison={comparison}
                   source={geometrySource}
-                  view={view}
                   renderMode={renderMode}
                   navigationMode={navigationMode}
                   cameraRequest={cameraRequest}
                   sectionEnabled={sectionEnabled}
+                  walking={walking}
+                  onWalkingChange={setWalking}
                   selectedElementId={selectedElementId}
                   onSelectElement={setSelectedElementId}
+                  hiddenElementIds={hiddenElementIds}
+                  onHoverElement={setHoveredElementId}
+                  onCanvasMenu={setCanvasMenu}
+                  focusRequest={focusRequest}
                 />
                 <nav className="viewer-commandbar" aria-label="Model tools">
-                  <button
+                  <ToolButton
                     className={viewerPanel === "model" ? "active" : ""}
                     onClick={() => setViewerPanel((current) => current === "model" ? "none" : "model")}
-                    aria-pressed={viewerPanel === "model"}
-                    disabled={geometrySource !== "recovered"}
-                  ><i>☷</i>Model browser</button>
-                  <button
+                    pressed={viewerPanel === "model"}
+                    reason={panelReason}
+                  ><i>☷</i>Objects</ToolButton>
+                  <ToolButton
+                    className={viewerPanel === "categories" ? "active" : ""}
+                    onClick={() => setViewerPanel((current) => current === "categories" ? "none" : "categories")}
+                    pressed={viewerPanel === "categories"}
+                    reason={panelReason}
+                    title="Turn categories on and off"
+                  ><i>◑</i>Categories</ToolButton>
+                  <ToolButton
                     className={viewerPanel === "properties" ? "active" : ""}
                     onClick={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
-                    aria-pressed={viewerPanel === "properties"}
-                    disabled={geometrySource !== "recovered"}
-                  ><i>ⓘ</i>Properties</button>
-                  <button
+                    pressed={viewerPanel === "properties"}
+                    reason={panelReason}
+                  ><i>ⓘ</i>Properties</ToolButton>
+                  <ToolButton
                     className={detailsOpen ? "active" : ""}
                     onClick={() => setDetailsOpen((current) => !current)}
-                    aria-pressed={detailsOpen}
-                  ><i>▤</i>Report & exports</button>
+                    pressed={detailsOpen}
+                  ><i>▤</i>Report & exports</ToolButton>
                   <span className="command-divider" />
-                  <div className="render-switch" aria-label="Render style">
-                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
-                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
-                  </div>
                   <span className="viewer-fidelity-chip">{geometrySource === "autodesk" ? "Autodesk derivative reference" : result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
                 </nav>
 
                 {viewerPanel === "model" && (
-                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Model browser">
-                    <div className="viewer-panel-heading"><div><strong>Model browser</strong><span>{solidRecords.length.toLocaleString()} recovered elements</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close model browser">×</button></div>
-                    <label className="model-search"><span>Search native ID</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} inputMode="numeric" placeholder="e.g. 290618" /></label>
-                    <div className="model-tree" role="listbox" aria-label="Recovered Revit elements">
-                      {visibleModelRecords.map((record) => {
-                        const dimensions = boundsDimensions(record.boundsFeet);
+                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Objects">
+                    <div className="viewer-panel-heading"><div><strong>Objects</strong><span>{visibleModelRecords.length.toLocaleString()}{visibleModelRecords.length === solidRecords.length ? "" : ` of ${solidRecords.length.toLocaleString()}`} in the scene</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close objects">×</button></div>
+                    <label className="model-search"><span>Filter</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, category, or type" /></label>
+                    <ObjectList
+                      records={visibleModelRecords}
+                      selectedElementId={selectedElementId}
+                      onSelect={setSelectedElementId}
+                    />
+                  </aside>
+                )}
+
+                {viewerPanel === "categories" && (
+                  <aside className="viewer-sidepanel category-panel" aria-label="Categories">
+                    <div className="viewer-panel-heading"><div><strong>Categories</strong><span>{visibleCategoryRows.length}{visibleCategoryRows.length === categoryRows.length ? "" : ` of ${categoryRows.length}`} in the scene{hiddenCategories.size ? ` · ${hiddenCategories.size} off` : ""}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close categories">×</button></div>
+                    <label className="model-search"><span>Filter</span><input value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} placeholder="Category name" /></label>
+                    <div className="category-list" role="list">
+                      {visibleCategoryRows.map((row) => {
+                        const hidden = hiddenCategories.has(row.name);
                         return (
-                          <button
-                            key={record.elementId}
-                            className={selectedElementId === record.elementId ? "selected" : ""}
-                            onClick={() => setSelectedElementId(record.elementId)}
-                            role="option"
-                            aria-selected={selectedElementId === record.elementId}
-                          >
-                            <span><i />Revit element {record.elementId}</span>
-                            <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
-                          </button>
+                          <div className={`category-row${hidden ? " category-off" : ""}`} role="listitem" key={row.name}>
+                            <button
+                              className="category-bulb"
+                              onClick={() => toggleCategory(row.name)}
+                              aria-pressed={!hidden}
+                              title={hidden ? `Turn ${row.name} on` : `Turn ${row.name} off`}
+                            >{hidden ? "○" : "●"}</button>
+                            <span>{row.name}</span>
+                            <em>{row.count.toLocaleString()}</em>
+                          </div>
                         );
                       })}
                     </div>
-                    {solidRecords.length > visibleModelRecords.length && <p>Showing {visibleModelRecords.length} of {solidRecords.length.toLocaleString()} elements. Search by native ID to narrow the list.</p>}
+                    <p>
+                      <ToolButton
+                        className="category-reset"
+                        reason={hiddenCategories.size ? null : "Every category is already on"}
+                        onClick={() => setHiddenCategories(new Set())}
+                      >Turn every category back on</ToolButton>
+                    </p>
                   </aside>
                 )}
 
                 {viewerPanel === "properties" && (
                   <aside className="viewer-sidepanel properties-panel" aria-label="Element properties">
-                    <div className="viewer-panel-heading"><div><strong>Properties</strong><span>{selectedRecord ? `Element ${selectedRecord.elementId}` : "No selection"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
+                    {/* The header is the object, the way every CAD properties
+                        palette names it — "Curtain Panel", not "Properties". The
+                        id is which one, which is the subtitle's job. */}
+                    <div className="viewer-panel-heading"><div><strong>{selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection"}</strong><span>{selectedRecord ? `Object ${selectedRecord.elementId}` : "Nothing picked"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
                     {selectedRecord && selectedDimensions ? (
                       <dl className="property-table">
                         <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
                         {selectedRecord.categoryName && (
-                          <div><dt>Revit category</dt><dd>{selectedRecord.categoryName}</dd></div>
+                          <div><dt>Category</dt><dd>{selectedRecord.categoryName}</dd></div>
                         )}
                         {selectedRecord.categoryId != null && (
                           <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
                         )}
-                        <div><dt>Evidence</dt><dd>Duplicated bounds record</dd></div>
+                        {/* Not every element reaches the scene through a bounds
+                            record any more — some are rebuilt from surfaces, a
+                            placed instance, or a sketch — so the row says which. */}
+                        <div><dt>Evidence</dt><dd>{
+                          selectedRecord.recordOffset >= 0
+                            ? "Duplicated bounds record"
+                            : selectedRecord.loops?.length
+                              ? "Sketch boundary"
+                              : selectedRecord.orientedBox
+                                ? "Placed family instance"
+                                : selectedRecord.solids?.length || selectedRecord.solid
+                                  ? "Rebuilt from native surfaces"
+                                  : "Native faces"
+                        }</dd></div>
                         {selectedRecord.solid && (
                           <div><dt>Native geometry</dt><dd>{Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · {(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick</dd></div>
                         )}
@@ -622,55 +805,139 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                           </div>
                         ))}
                         <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
-                        <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
+                        {selectedRecord.chunkIndex >= 0 && (
+                          <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
+                        )}
                         <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>
                         <div><dt>Depth</dt><dd>{selectedDimensions.y.toFixed(3)} ft</dd></div>
                         <div><dt>Height</dt><dd>{selectedDimensions.z.toFixed(3)} ft</dd></div>
                         <div><dt>Minimum Z</dt><dd>{selectedRecord.boundsFeet.min.z.toFixed(3)} ft</dd></div>
-                        <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
+                        {selectedRecord.recordOffset >= 0 && (
+                          <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
+                        )}
                       </dl>
                     ) : (
-                      <div className="property-empty"><b>Pick an envelope in the viewport</b><p>Click a recovered solid or choose an element from Model browser. Native IDs and record evidence stay local.</p></div>
+                      <div className="property-empty"><b>Pick an object in the viewport</b><p>Click a recovered solid, or choose one from the Objects list.</p></div>
                     )}
                   </aside>
                 )}
 
-                <div className="view-cube" aria-label="Camera orientation">
-                  <button className="cube-top" onClick={() => requestCamera("top")}>TOP</button>
-                  <button className="cube-front" onClick={() => requestCamera("front")}>FRONT</button>
-                  <button className="cube-right" onClick={() => requestCamera("right")}>RIGHT</button>
+                {/* One control for orientation, named the way a drawing package
+                    names it. A three-faced cube and a separate 3D/Plan switch
+                    held the same idea in two places and neither said "SE
+                    isometric", which is what people arrive knowing. */}
+                <div className="view-style-bar">
+                  <div className="view-menu">
+                    <button
+                      className={`view-control-button${viewMenuOpen ? " open" : ""}`}
+                      onClick={() => setViewMenuOpen((current) => !current)}
+                      aria-expanded={viewMenuOpen}
+                      aria-haspopup="listbox"
+                    >{CAMERA_PRESETS.find((entry) => entry.preset === cameraRequest.preset)?.label ?? "View"}</button>
+                    {viewMenuOpen && (
+                      <div className="view-menu-list" role="listbox" aria-label="Camera orientation">
+                        {CAMERA_PRESETS.map((entry) => (
+                          <button
+                            key={entry.preset}
+                            role="option"
+                            aria-selected={cameraRequest.preset === entry.preset}
+                            className={cameraRequest.preset === entry.preset ? "selected" : ""}
+                            onClick={() => requestCamera(entry.preset)}
+                          >{entry.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="render-switch" aria-label="Visual style">
+                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
+                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
+                  </div>
                 </div>
 
                 <nav className="viewer-navigation" aria-label="Viewport navigation">
-                  <button onClick={() => requestCamera("home")}><i>⌂</i><span>Home</span></button>
-                  <button onClick={() => requestCamera(cameraRequest.preset)}><i>⛶</i><span>Fit</span></button>
+                  {/* Re-applies the current orientation and re-frames the model. */}
+                  <button onClick={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 }))}><i>⛶</i><span>Zoom extents</span></button>
+                  <ToolButton
+                    onClick={requestZoomToSelection}
+                    reason={selectedRecord ? null : "Pick an object first"}
+                    title="Frame the picked object"
+                  ><i>⊙</i><span>Zoom object</span></ToolButton>
                   <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
                   <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
                   <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>
+                  <button
+                    className={walking ? "active" : ""}
+                    onClick={() => setWalking((current) => !current)}
+                    aria-pressed={walking}
+                    title="Walk the model at eye level — W A S D to move, mouse to look, Shift to run, Esc to leave"
+                  ><i>⇱</i><span>Walk</span></button>
                   <span />
                   <button className={sectionEnabled ? "active" : ""} onClick={() => setSectionEnabled((current) => !current)} aria-pressed={sectionEnabled}><i>◩</i><span>Section</span></button>
-                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); requestCamera("home"); }}><i>↺</i><span>Reset</span></button>
+                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); setHiddenCategories(new Set()); requestCamera(DEFAULT_CAMERA_PRESET); }}><i>↺</i><span>Reset</span></button>
                 </nav>
 
-                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>Element {selectedRecord.elementId}<span>View properties</span></button>}
+                {/* The right-click menu. A read-only viewer has no last command
+                    to repeat and nothing to paste, so what survives from a CAD
+                    context menu is four questions about the object under the
+                    cursor and two about the view. Every entry calls a control
+                    that already exists elsewhere in this file rather than a
+                    second copy of it. */}
+                {canvasMenu && (
+                  <div
+                    className="canvas-menu"
+                    ref={canvasMenuRef}
+                    role="menu"
+                    aria-label="Canvas actions"
+                    style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 2 : 4)}
+                  >
+                    {canvasMenu.elementId == null ? (
+                      <>
+                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 })); }}>Zoom extents</button>
+                        <ToolButton
+                          role="menuitem"
+                          reason={selectedElementId == null ? "Nothing is picked" : null}
+                          onClick={() => { setCanvasMenu(null); setSelectedElementId(null); }}
+                        >Clear selection</ToolButton>
+                      </>
+                    ) : (
+                      <>
+                        <button role="menuitem" onClick={() => { setCanvasMenu(null); requestZoomToSelection(); }}>Zoom to object</button>
+                        <button role="menuitem" onClick={() => { setCanvasMenu(null); void navigator.clipboard?.writeText(String(canvasMenu.elementId)); }}>Copy object ID<em>{canvasMenu.elementId}</em></button>
+                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setViewerPanel("properties"); }}>Show properties</button>
+                        <ToolButton
+                          role="menuitem"
+                          reason={canvasMenuCategory ? null : "This object has no category row"}
+                          onClick={() => { setCanvasMenu(null); if (canvasMenuCategory) toggleCategory(canvasMenuCategory); }}
+                        >Hide this category<em>{canvasMenuCategory}</em></ToolButton>
+                      </>
+                    )}
+                  </div>
+                )}
+                {hoveredRecord && hoveredRecord.elementId !== selectedElementId && (
+                  <div className="hover-readout" aria-live="polite">
+                    {hoveredRecord.categoryName ?? "Uncategorised"}<span>{hoveredRecord.elementId}</span>
+                  </div>
+                )}
+                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>{selectedRecord.categoryName ?? "Uncategorised"} {selectedRecord.elementId}<span>View properties</span></button>}
                 <div className="viewport-legend">
                   {geometrySource === "autodesk" ? (
-                    <><span><i className="legend-cyan" />Autodesk source meshes</span><span><i className="legend-context" />22 source materials</span></>
+                    <span><i className="legend-cyan" />Autodesk source meshes</span>
+                  ) : geometrySource === "overlay" && comparison ? (
+                    <><span><i className="legend-amber" />Recovered</span><span><i className="legend-context" />In the export, matched</span><span><i className="legend-missing" />Missing from the recovery</span></>
                   ) : geometrySource === "reference" && comparison ? (
                     <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
                   ) : (
                     <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
-                  <span><i className="legend-grid" />Model grid</span>
+                  {geometrySource !== "autodesk" && <span><i className="legend-grid" />Model grid</span>}
                 </div>
-                <div className="viewport-stamp">{geometrySource === "autodesk" ? "Autodesk SVF derivative · metres · y-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
+                <div className="viewport-stamp">{geometrySource === "autodesk" ? "Autodesk SVF derivative · metres · y-up" : geometrySource === "overlay" && comparison ? "recovery over paired IFC · feet · z-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">
                 <div className="empty-orbit" aria-hidden="true"><span /><span /><b>R</b></div>
-                <p className="eyebrow">Zero upload · no account · no telemetry</p>
                 <h2>Your model stays<br />on your machine.</h2>
-                <p>Use the file picker or drag a local Revit model onto the left panel. Conversion runs in a dedicated browser worker.</p>
+                <p>Drop a Revit file on the left, or open one here. It is converted in a browser worker and never uploaded.</p>
                 <button onClick={() => inputRef.current?.click()}>Open a local model</button>
               </div>
             )}
@@ -678,12 +945,18 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
           {result && detailsOpen && (
             <div className="results-dock">
-              {comparison && <RegressionPanel comparison={comparison} />}
+              {comparison && (
+                <RegressionPanel
+                  comparison={comparison}
+                  recoveredElementIds={recoveredElementIds}
+                  drawnElementIds={displayedElementIds}
+                />
+              )}
               <section className="result-summary">
                 <p className="eyebrow">Recovery summary</p>
                 <div className="metric-row">
-                  <div><strong>{formatNumber(result.stats.candidatesFound)}</strong><span>raw candidates</span></div>
-                  <div><strong>{formatNumber(result.stats.candidatesUsed)}</strong><span>in scene</span></div>
+                  <div><strong>{formatNumber(result.stats.candidatesFound)}</strong><span>records recovered</span></div>
+                  <div><strong>{formatNumber(result.stats.candidatesUsed)}</strong><span>drawn in the scene</span></div>
                   <div><strong>{formatNumber(result.stats.triangleCount)}</strong><span>triangles</span></div>
                   <div><strong>{(result.stats.durationMs / 1_000).toFixed(1)}s</strong><span>convert time</span></div>
                 </div>
@@ -722,17 +995,13 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     <span>Embedded schema · Formats/Latest</span>
                     <span>{result.schema.taggedClasses.length} tagged classes{result.schema.rejectedCandidates ? ` · ${result.schema.rejectedCandidates} rejected` : ""}</span>
                   </div>
-                  <label className="model-search"><span>Search class or base class</span>
-                    <input value={schemaSearch} onChange={(event) => setSchemaSearch(event.target.value)} placeholder="e.g. Wall" />
+                  <label className="model-search inline-search"><span>Filter</span>
+                    <input value={schemaSearch} onChange={(event) => setSchemaSearch(event.target.value)} placeholder="Class or base class, e.g. Wall" />
                   </label>
                   <table className="coverage-table">
                     <tbody>
                       {result.schema.taggedClasses
-                        .filter((entry) => {
-                          const query = schemaSearch.trim().toLowerCase();
-                          if (!query) return true;
-                          return entry.name.toLowerCase().includes(query) || entry.parent.toLowerCase().includes(query);
-                        })
+                        .filter((entry) => matchesFilter(schemaSearch, entry.name, entry.parent))
                         .slice(0, 60)
                         .map((entry) => (
                           <tr key={`${entry.tag}-${entry.name}`}>

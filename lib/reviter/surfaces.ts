@@ -55,6 +55,54 @@
  * `[u64 elementId][u32 n][n x u32 itemIndex]` table nearby contains the true
  * owner only 0.4% of the time — its indices address a face/edge graph, not
  * surfaces.
+ *
+ * **An element with no anchor has no surfaces, because it has no geometry
+ * object.** The blob the anchor introduces is an object in its own right, under
+ * marker `0x0f3b`, sitting beside the element's ordinary `0x08c6` object. Of a
+ * 900-wall sample that the export names and that carries an anchor, 883 have a
+ * `0x0f3b` object; of the 893 walls with no anchor, 9 do. 7,954 of those objects
+ * exist in the stream against 7,208 walls in the export, so the class is the
+ * wall body and nothing else.
+ *
+ * That settles what looked like an attribution gap. 232 elements whose export
+ * footprint is angled are still drawn as an axis-aligned box, and 165 of them
+ * own no surface patch — but 146 of the 165 are named by no anchor anywhere,
+ * against 12.2% of every element the export names. Their geometry is not
+ * misfiled; it is not in the readable stream at all:
+ *
+ * - asking whether *any* vertical plane record in the file is collinear with a
+ *   wall's own export axis, ignoring ownership entirely, hits **88.6%** for
+ *   walls that have an anchor and **10.1%** for walls that do not — 7.8% for
+ *   the 232 — against 0.1% with the query axis rotated 5° and 2.3% with it
+ *   shifted 1 ft sideways. The z band has to be part of that query: without it
+ *   the unanchored walls score 47.9%, which is the wall one storey up.
+ * - being angled has nothing to do with it. 11.8% of the export's 2,632 angled
+ *   walls own no surface against 13.1% of its 4,576 orthogonal ones; the
+ *   diagonals are only the subset where the fallback box is visible.
+ * - the 53 chunks that still fail to inflate hold 1.29 MB stored, which at the
+ *   6.16x ratio the rest of the stream reads at is 7.9 MB of 417 MB — about
+ *   1,295 anchors of any class and ~123 walls, against 893 walls missing one.
+ *   Bracketing each failure by the anchor ids either side of it puts 12 of the
+ *   893 inside a band, against 0 of 900 anchored controls.
+ *
+ * **The per-page owner reset drops a quarter of the surfaces, and none of the
+ * three ways of not dropping them is an improvement.** The scan below starts
+ * each page with no owner, and 19,987 of the file's 82,285 surfaces sit on one
+ * of the 2,368 pages (of 3,613) that carry no anchor at all. Each was measured:
+ *
+ * - carrying the last anchor across the page boundary attributes all 19,987 to
+ *   one of **38** ids, and **0 of 19,987** land inside the box of the element
+ *   they would be given to;
+ * - letting a verified object header establish ownership — the header names its
+ *   own element at `S+0` and is self-checking through its length echo — scores
+ *   81.25% inside-the-owner's-box against 0.02% shuffled, which is better than
+ *   the anchor rule's 76.80%, and is still a net loss: it displaces anchors
+ *   mid-blob, gaining 189 elements a solid (11 named by the export) and costing
+ *   953 theirs (467 named);
+ * - restricting the header to a fallback that can never displace an anchor adds
+ *   18,417 surfaces and **20** elements with a solid, 9 of them joinable, at a
+ *   median 10.1 ft worst-vertex error with none inside a foot. Those surfaces
+ *   are not wall bodies.
  */
 
 /** `ff ff ff ff 10 03` — the owner record that introduces an element's blob. */

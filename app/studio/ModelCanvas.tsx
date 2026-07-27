@@ -8,6 +8,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   boundsDimensions,
   cameraPoseForPreset,
+  DEFAULT_CAMERA_PRESET,
   type ConvertResult,
   type NavigationMode,
   type PairedRegressionResult,
@@ -15,12 +16,20 @@ import {
 } from "../../lib/reviter";
 import {
   AUTODESK_REFERENCE_BOUNDS,
+  autodeskHomePose,
   autodeskPoseForPreset,
   publicAssetUrl,
   styleAutodeskReference,
 } from "./autodesk-reference.ts";
-import { applyNavigationMode, disposeGroup, meshGroup, referenceMeshGroup } from "./three-scene.ts";
-import type { CameraRequest, GeometrySource, ReferenceLoadState, ViewMode } from "./types.ts";
+import {
+  applyNavigationMode,
+  disposeGroup,
+  meshGroup,
+  overlayMeshGroup,
+  referenceMeshGroup,
+} from "./three-scene.ts";
+import { createWalkControls, WALK_EYE_HEIGHT, type WalkControls } from "./walk-controls.ts";
+import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
 
 /**
  * Shape of the bundled `autodesk-gltf-loader.js`, which is imported at runtime
@@ -34,24 +43,34 @@ export function ModelCanvas({
   result,
   comparison,
   source,
-  view,
   renderMode,
   navigationMode,
   cameraRequest,
   sectionEnabled,
+  walking,
+  onWalkingChange,
   selectedElementId,
   onSelectElement,
+  hiddenElementIds,
+  onHoverElement,
+  onCanvasMenu,
+  focusRequest,
 }: {
   result: ConvertResult;
   comparison: PairedRegressionResult | null;
   source: GeometrySource;
-  view: ViewMode;
   renderMode: RenderMode;
   navigationMode: NavigationMode;
   cameraRequest: CameraRequest;
   sectionEnabled: boolean;
+  walking: boolean;
+  onWalkingChange: (walking: boolean) => void;
   selectedElementId: number | null;
   onSelectElement: (elementId: number | null) => void;
+  hiddenElementIds: ReadonlySet<number>;
+  onHoverElement: (elementId: number | null) => void;
+  onCanvasMenu: (request: CanvasMenuRequest | null) => void;
+  focusRequest: { elementId: number | null; sequence: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<{
@@ -62,8 +81,11 @@ export function ModelCanvas({
     root: THREE.Group;
     center: THREE.Vector3;
     radius: number;
+    floor: number;
+    up: "y" | "z";
     selectionOverlay: THREE.Group | null;
   } | null>(null);
+  const walkRef = useRef<WalkControls | null>(null);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
 
   useEffect(() => {
@@ -96,11 +118,16 @@ export function ModelCanvas({
     applyNavigationMode(controls, "orbit");
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
+    // The overlay is drawn in the recovered model's own frame, so it keeps that
+    // model's bounds and stays pickable.
+    const useOverlay = source === "overlay" && comparison?.referenceMeshes.length;
     const root = isAutodesk
       ? new THREE.Group()
-      : useReference
-        ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-        : meshGroup(result, renderMode);
+      : useOverlay
+        ? overlayMeshGroup(result, comparison.referenceMeshes, renderMode)
+        : useReference
+          ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
+          : meshGroup(result, renderMode, hiddenElementIds);
     const bounds = isAutodesk
       ? AUTODESK_REFERENCE_BOUNDS
       : useReference
@@ -177,8 +204,8 @@ export function ModelCanvas({
     scene.add(grid);
 
     const pose = isAutodesk
-      ? autodeskPoseForPreset("home", radius)
-      : { ...cameraPoseForPreset(center, radius, "home"), target: center, fov: 45 };
+      ? autodeskHomePose()
+      : { ...cameraPoseForPreset(center, radius, DEFAULT_CAMERA_PRESET), target: center, fov: 45 };
     const poseTarget = pose.target;
     camera.fov = pose.fov;
     camera.up.set(pose.up.x, pose.up.y, pose.up.z);
@@ -192,8 +219,34 @@ export function ModelCanvas({
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    /** The hit test both a left-click and a right-click run, in canvas pixels. */
+    const pickAt = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(
+        ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      // In the overlay the recovered meshes sit a level deeper, under their own
+      // group, and the export's meshes carry no element ids — so the search goes
+      // recursive and takes the first hit that can actually name an element.
+      const hit = raycaster.intersectObjects(root.children, Boolean(useOverlay)).find((intersection) =>
+        intersection.object instanceof THREE.Mesh
+        && intersection.faceIndex != null
+        && (!useOverlay || intersection.object.userData.elementIds != null),
+      );
+      if (!hit || hit.faceIndex == null) return null;
+      const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
+      // One id per triangle: drawn items range from a 12-triangle box to an
+      // extruded sketch boundary with as many triangles as its ring has edges.
+      return elementIds?.[hit.faceIndex] ?? null;
+    };
     let pointerStart: { x: number; y: number } | null = null;
     const handlePointerDown = (event: PointerEvent) => {
+      // Only the primary button picks. The right button used to run the same
+      // pick on release, which cleared the selection under the menu that was
+      // about to offer "Clear selection".
+      if (event.button !== 0) return;
       pointerStart = { x: event.clientX, y: event.clientY };
     };
     const handlePointerUp = (event: PointerEvent) => {
@@ -201,27 +254,71 @@ export function ModelCanvas({
       const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
       pointerStart = null;
       if (movement > 5) return;
+      onSelectElement(pickAt(event.clientX, event.clientY));
+    };
+    // A right-click asks about whatever is under it, so it runs the same hit
+    // test as a left-click and picks the object too — the menu's "Zoom to
+    // object" and the properties panel both read the selection.
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      if (walkRef.current) return;
+      const elementId = useReference || isAutodesk ? null : pickAt(event.clientX, event.clientY);
+      if (elementId != null) onSelectElement(elementId);
+      const rect = canvas.getBoundingClientRect();
+      onCanvasMenu({
+        elementId,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+    // What is under the cursor should name itself before you commit to
+    // clicking it. The raycast is the same one picking uses; it is throttled to
+    // one per animation frame because a move event can fire far more often than
+    // the scene can answer.
+    let hoverPending = false;
+    let hoverEvent: PointerEvent | null = null;
+    let hoveredElementId: number | null = null;
+    const reportHover = (elementId: number | null) => {
+      if (elementId === hoveredElementId) return;
+      hoveredElementId = elementId;
+      onHoverElement(elementId);
+    };
+    const resolveHover = () => {
+      hoverPending = false;
+      const event = hoverEvent;
+      if (!event) return;
       const rect = canvas.getBoundingClientRect();
       pointer.set(
         ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
         -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(root.children, false).find((intersection) =>
-        intersection.object instanceof THREE.Mesh && intersection.faceIndex != null,
+      const hit = raycaster.intersectObjects(root.children, Boolean(useOverlay)).find((intersection) =>
+        intersection.object instanceof THREE.Mesh
+        && intersection.faceIndex != null
+        && intersection.object.userData.elementIds != null,
       );
-      if (!hit || hit.faceIndex == null) {
-        onSelectElement(null);
-        return;
-      }
-      const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-      // One id per triangle: drawn items range from a 12-triangle box to an
-      // extruded sketch boundary with as many triangles as its ring has edges.
-      const elementId = elementIds?.[hit.faceIndex];
-      onSelectElement(elementId ?? null);
+      const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
+      reportHover(hit?.faceIndex == null ? null : elementIds?.[hit.faceIndex] ?? null);
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (useReference || isAutodesk || walkRef.current) return;
+      hoverEvent = event;
+      if (hoverPending) return;
+      hoverPending = true;
+      requestAnimationFrame(resolveHover);
+    };
+    const handlePointerLeave = () => {
+      hoverEvent = null;
+      reportHover(null);
     };
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointerup", handlePointerUp);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerleave", handlePointerLeave);
+    canvas.addEventListener("contextmenu", handleContextMenu);
     runtimeRef.current = {
       scene,
       camera,
@@ -230,6 +327,10 @@ export function ModelCanvas({
       root,
       center,
       radius,
+      // Where the walker's feet go: the bottom of the model on whichever axis
+      // this source stands on.
+      floor: isAutodesk ? bounds.min.y : bounds.min.z,
+      up: (isAutodesk ? "y" : "z") as "y" | "z",
       selectionOverlay: null,
     };
 
@@ -266,10 +367,17 @@ export function ModelCanvas({
     resize();
 
     let frame = 0;
+    let previous = performance.now();
     const render = () => {
       if (!active) return;
       frame = requestAnimationFrame(render);
-      controls.update();
+      const now = performance.now();
+      const delta = (now - previous) / 1000;
+      previous = now;
+      // Exactly one of the two drives the camera; orbit damping would fight the
+      // walker for it otherwise.
+      if (walkRef.current) walkRef.current.update(delta);
+      else controls.update();
       renderer.render(scene, camera);
     };
     render();
@@ -280,18 +388,25 @@ export function ModelCanvas({
       observer.disconnect();
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerleave", handlePointerLeave);
+      canvas.removeEventListener("contextmenu", handleContextMenu);
+      onHoverElement(null);
+      onCanvasMenu(null);
       controls.dispose();
       disposeGroup(root);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, onSelectElement, renderMode, result, source]);
+  }, [comparison, hiddenElementIds, onCanvasMenu, onHoverElement, onSelectElement, renderMode, result, source]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
-    const preset = view === "plan" ? "top" : cameraRequest.preset;
+    // One control decides the orientation now, so there is nothing to
+    // reconcile: the requested preset is the camera.
+    const preset = cameraRequest.preset;
     const pose = source === "autodesk"
       ? autodeskPoseForPreset(preset, runtime.radius)
       : { ...cameraPoseForPreset(runtime.center, runtime.radius, preset), target: runtime.center, fov: 45 };
@@ -303,13 +418,96 @@ export function ModelCanvas({
     runtime.camera.lookAt(target);
     runtime.camera.updateProjectionMatrix();
     runtime.controls.update();
-  }, [cameraRequest, comparison, renderMode, result, source, view]);
+  }, [cameraRequest, comparison, renderMode, result, source]);
+
+  // Frame one object without changing which way the camera faces: the eye
+  // keeps its direction and only the distance and the target move.
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !focusRequest.sequence || focusRequest.elementId == null) return;
+    if (source === "autodesk") return;
+    const record = result.elementBounds.find((entry) => entry.elementId === focusRequest.elementId);
+    if (!record) return;
+    const origin = result.origin;
+    const target = new THREE.Vector3(
+      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - origin.x,
+      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - origin.y,
+      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - origin.z,
+    );
+    const size = boundsDimensions(record.boundsFeet);
+    const extent = Math.max(size.x, size.y, size.z, 1);
+    const direction = runtime.camera.position.clone().sub(runtime.controls.target);
+    if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
+    direction.normalize().multiplyScalar(extent * 2.4);
+    runtime.controls.target.copy(target);
+    runtime.camera.position.copy(target).add(direction);
+    runtime.camera.lookAt(target);
+    runtime.camera.updateProjectionMatrix();
+    runtime.controls.update();
+  }, [focusRequest, result, source]);
 
   useEffect(() => {
     const controls = runtimeRef.current?.controls;
     if (!controls) return;
     applyNavigationMode(controls, navigationMode);
   }, [comparison, navigationMode, renderMode, result, source]);
+
+  /**
+   * Walk mode. Orbiting is how you look at a building from outside; walking is
+   * how you find out whether a corridor is a corridor. The orbit controls are
+   * switched off while the walker has the camera, and the camera is handed back
+   * where the walker left it so leaving walk mode does not teleport the view.
+   */
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const canvas = canvasRef.current;
+    if (!runtime || !canvas) return;
+
+    if (!walking) {
+      walkRef.current?.dispose();
+      walkRef.current = null;
+      runtime.controls.enabled = true;
+      // Orbit around whatever is in front of the camera now, rather than
+      // snapping back to the model centre.
+      const forward = new THREE.Vector3();
+      runtime.camera.getWorldDirection(forward);
+      runtime.controls.target.copy(
+        runtime.camera.position.clone().addScaledVector(forward, runtime.radius * 0.35),
+      );
+      runtime.controls.update();
+      return;
+    }
+
+    runtime.controls.enabled = false;
+    const eye = runtime.floor + WALK_EYE_HEIGHT;
+    // Start where the camera already is, dropped to eye level, looking at the
+    // middle of the model — so entering walk mode keeps your bearings.
+    const start = runtime.camera.position.clone();
+    if (runtime.up === "y") start.y = eye;
+    else start.z = eye;
+    const lookAt = runtime.center.clone();
+    if (runtime.up === "y") lookAt.y = eye;
+    else lookAt.z = eye;
+
+    const walk = createWalkControls(runtime.camera, canvas, {
+      start,
+      lookAt,
+      floor: eye,
+      up: runtime.up,
+      onLockChange: (locked) => {
+        // Escape releases the pointer; treat that as leaving walk mode so the
+        // button and the camera never disagree.
+        if (!locked) onWalkingChange(false);
+      },
+    });
+    walk.enable();
+    walkRef.current = walk;
+
+    return () => {
+      walk.dispose();
+      if (walkRef.current === walk) walkRef.current = null;
+    };
+  }, [comparison, onWalkingChange, renderMode, result, source, walking]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

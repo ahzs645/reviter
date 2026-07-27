@@ -1,7 +1,7 @@
 import type { ElementParameter } from "./element-parameters.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
-import type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+import type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
@@ -11,7 +11,7 @@ export type { ElementParameter, ElementParameterTable } from "./element-paramete
 export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.ts";
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
-export type { SurfaceQuad, WallSolid } from "./native-geometry.ts";
+export type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
@@ -101,12 +101,39 @@ export type ElementBoundsRecord = {
   typeName?: string;
   /** Oriented solid rebuilt from the element's own native surface patches. */
   solid?: WallSolid;
+  /**
+   * Every solid rebuilt for this element, for a run modelled in segments.
+   * `solid` remains the longest of them, and is what properties report.
+   */
+  solids?: WallSolid[];
   /** Native faces, for elements with surfaces that do not form a solid. */
   quads?: SurfaceQuad[];
+  /**
+   * Curved wall segments, rebuilt from the element's own cylinder triples. A
+   * curved wall has no straight location line, so without these it falls back
+   * to its axis-aligned envelope — a rectangle covering the whole bulge of the
+   * arc rather than the wall.
+   */
+  arcs?: WallArc[];
   /** Eight world corners of a placed family instance, in box-index order. */
   orientedBox?: [number, number, number][];
+  /**
+   * Which route cut this door's leaf out of the opening its record describes.
+   * The two are worth telling apart when measuring, because they do not agree:
+   * the door's own shape carries the door's own thickness, while the host wall
+   * carries the wall's, and against the export that is 97% size agreement
+   * against 68%.
+   */
+  doorLeafSource?: "shape" | "wall";
   /** Sketch boundary rings, outer first, for a floor, roof, ceiling or ramp. */
   loops?: Point3[][];
+  /**
+   * A railing's rail path, as world polylines, with the height of the guard
+   * above it. A railing that runs around an atrium has an enormous axis-aligned
+   * box — 23,877 sq ft in plan for the largest here — and drawing that box lays
+   * a slab across the floor, so a railing that can be swept is swept instead.
+   */
+  railPath?: { polylines: Point3[][]; guardHeightFeet: number };
   boundsFeet: Bounds3;
 };
 
@@ -168,12 +195,80 @@ export type ConvertStats = {
   nativeSolids?: number;
   /** Elements reaching the scene from a solid alone, with no bounds record. */
   solidOnlyElements?: number;
+  /** Elements reaching the scene from a placed instance alone. */
+  instanceOnlyElements?: number;
+  /** Elements drawn without a decoded Revit category. */
+  unclassifiedElements?: number;
   /** Elements drawn from native faces because their surfaces form no solid. */
   faceOnlyElements?: number;
   /** Family instances placed from a transform and a shared shape. */
   placedInstances?: number;
+  /** Placed boxes discarded for disagreeing with the element's own envelope. */
+  rejectedOrientedBoxes?: number;
+  /** Cached family shapes removed from the model; they are not elements. */
+  cachedShapeRecords?: number;
+  /** Envelopes read in a family's local frame, so never placed in the model. */
+  unplacedRecords?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
+  /**
+   * Facet-hull records whose box was replaced by their own boundary sketch's.
+   *
+   * A hull over one attributed facet is not a reading of the element; where the
+   * element carries a sketch category and a closed ring, the curves that ring was
+   * assembled from give both the footprint and the elevations.
+   */
+  sketchBoundedFacetHulls?: number;
+  /**
+   * Flat sketch records given their own category's thickness.
+   *
+   * A record synthesised as a hull over one attributed face is a zero-thickness
+   * sheet, so a floor is drawn 0.656 ft short and a ceiling is dropped from the
+   * scene entirely. Every floor in a model shares one thickness, and that is
+   * measured from the records that carry a real one.
+   */
+  completedFlatSketches?: number;
+  /** Railings swept along their own rail path rather than drawn as a box. */
+  sweptRailings?: number;
+  /** Walls rebuilt as an arc from their own cylinder triple. */
+  curvedWalls?: number;
+  /** Doors whose leaf was cut out of the opening using their host wall. */
+  doorLeaves?: number;
+  /** Doors whose leaf was folded out of their own shared shape's swing. */
+  doorLeavesFromShape?: number;
+  /** Rebuilt solids shortened to the element's own envelope. */
+  clippedSolids?: number;
+  /**
+   * Rebuilt solids lengthened to the element's own envelope, recovering the join
+   * extension Revit applies to a wall's body without moving its location line.
+   */
+  extendedSolids?: number;
+  /**
+   * Rebuilt solids whose drawn box was shrunk into the element's own envelope,
+   * where that envelope solves as this slab's own oriented rectangle. The
+   * centreline clip cannot reach this: a box corner sits half a thickness off the
+   * centreline, so a wall at an angle stays outside its own envelope.
+   */
+  shrunkSolids?: number;
+  /**
+   * Rebuilt solids whose elevation band was intersected with the element's own
+   * envelope. Three in the supplied project, all wrong by 6.6-9.2 ft.
+   */
+  narrowedSolidBands?: number;
+  /**
+   * Rebuilt solids dropped because they share no point with the element's own
+   * envelope, so the surface attribution filed another element's body here.
+   */
+  disownedSolids?: number;
+  /** Stair runs and landings that adopted their companion record's own box. */
+  adoptedStairBoxes?: number;
+  /**
+   * Envelopes narrowed in z to the element's own faces, where those faces cap it
+   * above and below. A stair stringer's record carries the whole assembly's band.
+   */
+  narrowedFacetBands?: number;
+  /** Of those, elements with no decoded category whose ring matched the envelope. */
+  unnamedSketchElements?: number;
   /** Sketch edge records decoded from the partition stream. */
   sketchCurves?: number;
   /** Elements linked to their type element. */
@@ -229,6 +324,11 @@ export type IfcElementTypeMatch = {
   matchedRvtRecords: number;
   matchedElemTable: number;
   matchedPartitionRecords: number;
+  /**
+   * Revit ids of the matched elements, so the studio can report how many of
+   * this class actually reach the scene — the audit script's third column.
+   */
+  matchedIds?: Uint32Array;
 };
 
 export type IfcMatchedElement = {
@@ -237,7 +337,7 @@ export type IfcMatchedElement = {
   ifcType: string;
   name: string;
   hasGeometry: boolean;
-  evidence: "elem-table" | "partition-record" | "both";
+  evidence: "elem-table" | "partition-record" | "both" | "recovered-geometry";
   partitionRecord?: Omit<PartitionRecordLocator, "elementId">;
 };
 
@@ -298,6 +398,12 @@ export type PairedRegressionResult = {
 export type RvtRegressionInput = {
   elemTableIds: Uint32Array;
   partitionRecordIds: Uint32Array;
+  /**
+   * Ids the converter gave an envelope. Some of them are recovered from a solid
+   * or a sketch and appear in neither index above, so a join that skipped them
+   * reported ~200 fewer walls than the element actually has.
+   */
+  recoveredIds?: Uint32Array;
   partitionRecords: PartitionRecordLocator[];
   boundsFeet: Bounds3;
   triangleCount: number;

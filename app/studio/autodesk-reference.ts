@@ -6,7 +6,7 @@
  */
 import * as THREE from "three";
 
-import { type CameraPreset, type ConvertResult, type RenderMode } from "../../lib/reviter";
+import { cameraPoseForPreset, type CameraPreset, type ConvertResult, type RenderMode } from "../../lib/reviter";
 import type { ReviterGlobal } from "./types.ts";
 
 export const AUTODESK_REFERENCE_FILE = "UNBC Model - 2026-06-30 - FINAL (Fixed Library).rvt";
@@ -114,36 +114,29 @@ export function styleAutodeskReference(root: THREE.Object3D, renderMode: RenderM
   });
 }
 
-export function autodeskPoseForPreset(preset: CameraPreset, radius: number) {
-  const target = new THREE.Vector3();
-  if (preset === "home") {
-    return {
-      position: AUTODESK_HOME_CAMERA.position.clone(),
-      target: AUTODESK_HOME_CAMERA.target.clone(),
-      up: AUTODESK_HOME_CAMERA.up.clone(),
-      fov: AUTODESK_HOME_CAMERA.fov,
-    };
-  }
-  if (preset === "top") {
-    return {
-      position: new THREE.Vector3(0, radius * 2.25, 0),
-      target,
-      up: new THREE.Vector3(0, 0, -1),
-      fov: 45,
-    };
-  }
-  if (preset === "front") {
-    return {
-      position: new THREE.Vector3(0, radius * 0.22, radius * 2.25),
-      target,
-      up: new THREE.Vector3(0, 1, 0),
-      fov: 45,
-    };
-  }
+/** The curated opening camera for the Autodesk derivative, which is not a preset. */
+export function autodeskHomePose() {
   return {
-    position: new THREE.Vector3(radius * 2.25, radius * 0.22, 0),
-    target,
-    up: new THREE.Vector3(0, 1, 0),
+    position: AUTODESK_HOME_CAMERA.position.clone(),
+    target: AUTODESK_HOME_CAMERA.target.clone(),
+    up: AUTODESK_HOME_CAMERA.up.clone(),
+    fov: AUTODESK_HOME_CAMERA.fov,
+  };
+}
+
+/**
+ * The same ten orientations, in the derivative's frame.
+ *
+ * The SVF is y-up and metres where the recovery is z-up and feet, so rather
+ * than keep a second table that can drift out of step, the shared one is asked
+ * and its answer rotated: model `(x, y, z)` is derivative `(x, z, −y)`.
+ */
+export function autodeskPoseForPreset(preset: CameraPreset, radius: number) {
+  const pose = cameraPoseForPreset({ x: 0, y: 0, z: 0 }, radius, preset);
+  return {
+    position: new THREE.Vector3(pose.position.x, pose.position.z, -pose.position.y),
+    target: new THREE.Vector3(),
+    up: new THREE.Vector3(pose.up.x, pose.up.z, -pose.up.y),
     fov: 45,
   };
 }

@@ -2,17 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { detectElemTableLayout, parseElemTable } from "../lib/reviter/elem-table.ts";
-import { detectDuplicatedBoundsRecord, detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
+import {
+  boundsOfRecords,
+  detectDuplicatedBoundsRecord,
+  detectDuplicatedBoundsRecords,
+  framingBoundsOfRecords,
+} from "../lib/reviter/bounds-records.ts";
 import { gzipOffsets } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import { parsePartitionNames } from "../lib/reviter/partition-names.ts";
 import { measureStream, summariseCoverage } from "../lib/reviter/stream-coverage.ts";
-import { chainElementObjects, dominantMarker } from "../lib/reviter/element-objects.ts";
+import {
+  chainElementObjects,
+  dominantMarker,
+  markerObjectSeeds,
+  scanObjectMarkers,
+} from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectSurfaces, summariseSurfaces } from "../lib/reviter/surfaces.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { surfaceQuadsFor, wallSolidsFor } from "../lib/reviter/native-geometry.ts";
-import { instanceCorners } from "../lib/reviter/instanced-geometry.ts";
+import { instanceCorners, readLocalBounds } from "../lib/reviter/instanced-geometry.ts";
 import { boundaryLoopsFor, collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
 import { groupRings, ringArea, triangulate } from "../lib/reviter/polygon.ts";
 import type { Point2 } from "../lib/reviter/polygon.ts";
@@ -28,7 +38,8 @@ import {
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
-import type { ConvertResult, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
+import { buildBoundsMeshes, displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
+import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 
 test("parses Revit project ElemTable records with 40-byte framing", () => {
   const data = new Uint8Array(34 + 40 * 2);
@@ -66,6 +77,7 @@ test("decodes a duplicated Revit 2027 element bounding record", () => {
     boundsOffset: 72,
     recordCode: 30,
     recordCount: 5,
+    duplicated: true,
     boundsFeet: {
       min: { x: bounds[0], y: bounds[1], z: bounds[2] },
       max: { x: bounds[3], y: bounds[4], z: bounds[5] },
@@ -725,4 +737,588 @@ test("keeps disjoint sketch regions apart instead of subtracting one from the ot
     }
   }
   assert.equal(covered, ringArea(wingA) + ringArea(wingB) - ringArea(opening));
+});
+
+test("admits a small unanimous category cluster and rejects a small divided one", () => {
+  // A building holds thousands of mullions but a dozen ramps, so a flat support
+  // floor tuned on the large clusters silently excludes every small category.
+  const ramps = Array.from({ length: 3 }, (_, index) => ({
+    elementId: 5_000 + index,
+    recordCode: 180,
+    recordCount: 1,
+  }));
+  const ceilings = Array.from({ length: 4 }, (_, index) => ({
+    elementId: 6_000 + index,
+    recordCode: 62,
+    recordCount: 1,
+  }));
+  const divided = Array.from({ length: 3 }, (_, index) => ({
+    elementId: 7_000 + index,
+    recordCode: 77,
+    recordCount: 1,
+  }));
+  const resolved = new Map<number, number>([
+    ...ramps.map((record) => [record.elementId, -2_000_180] as const),
+    ...ceilings.map((record, index) => [record.elementId, index === 3 ? -2_000_032 : -2_000_038] as const),
+    ...divided.map((record, index) => [record.elementId, index === 0 ? -2_000_011 : -2_000_038] as const),
+  ]);
+
+  const consensus = deriveRecordCodeCategories([...ramps, ...ceilings, ...divided], resolved);
+  // Three elements that agree completely are evidence.
+  assert.equal(consensus.get(recordCodeKey(180, 1))?.categoryId, -2_000_180);
+  // Four at 75% are not, but four at 85%+ would be — this cluster sits below it.
+  assert.equal(consensus.get(recordCodeKey(62, 1)), undefined);
+  // Three split two-to-one are not evidence at any size.
+  assert.equal(consensus.get(recordCodeKey(77, 1)), undefined);
+});
+
+test("draws an envelope whose category did not decode instead of dropping it", () => {
+  const envelope = (elementId: number, recordCode: number, recordCount: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode,
+    recordCount,
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } },
+  });
+  const wall = envelope(1, 30, 5);
+  // No decoded category and a record code outside the heuristic table.
+  const unnamed = envelope(2, 4_242, 7);
+  // A curtain-wall container, whose panels and mullions are drawn instead.
+  const wrapper = envelope(3, 30, 9);
+  // The facade that stands in the container's place. Without it the container
+  // is not a container, and holding it back would just be a hole; see the test
+  // below.
+  const panel = (elementId: number): ElementBoundsRecord => ({
+    ...envelope(elementId, 114, 1),
+    categoryId: -2_000_170,
+    boundsFeet: { min: { x: 1, y: 1, z: 1 }, max: { x: 3, y: 3, z: 9 } },
+  });
+
+  assert.equal(displayRole(unnamed), "unknown");
+  const selection = selectDisplayBounds([wall, unnamed, wrapper, panel(4), panel(5)]);
+  const drawn = selection.records.map((record) => record.elementId);
+  // The envelope came from the same validated signature as the wall's, so a
+  // missing label must not turn into a missing building element.
+  assert.deepEqual(drawn, [1, 2, 4, 5]);
+  assert.equal(selection.unclassifiedCount, 1);
+  assert.equal(selection.omittedWrapperCount, 1);
+  assert.equal(selection.omittedSheetCount, 0);
+});
+
+test("draws a curtain-wall container that has no facade standing in its place", () => {
+  // The hold-back is a trade: one container hidden so its panels and mullions
+  // stay visible. Where no panel or mullion was recovered there is nothing to
+  // trade for, and the supplied model has 33 such records — 27 of them ordinary
+  // walls the export names, suppressed by a rule that only assumed a facade was
+  // there.
+  const envelope = (elementId: number, recordCount: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 30,
+    recordCount,
+    categoryId: -2_000_011,
+    categoryName: "Walls",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 1, z: 10 } },
+  });
+  const lonely = envelope(1, 9);
+  const neighbour = envelope(2, 5);
+
+  assert.equal(displayRole(lonely), "wrapper");
+  const selection = selectDisplayBounds([lonely, neighbour]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1, 2]);
+  assert.equal(selection.omittedWrapperCount, 0);
+  // And it reaches a mesh rather than being skipped a second time downstream.
+  const meshes = buildBoundsMeshes([lonely], { x: 0, y: 0, z: 0 });
+  assert.equal(meshes.length, 1);
+  assert.equal(meshes[0]!.indices.length / 3, 12);
+});
+
+test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
+  // Revit keeps the sketch as an element one id below the floor: same
+  // footprint, no thickness, no category. Extruding it put a sheet over every
+  // floor in the supplied model.
+  const sheet = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: 0, y: 0, z: 40 }, max: { x: 142, y: 156, z: 40.66 } },
+    ...extra,
+  });
+  const floor = sheet(1495202, { categoryId: -2000032, categoryName: "Floors" });
+  const sketch = sheet(1495201, {
+    boundsFeet: { min: { x: 0, y: 0, z: 40.66 }, max: { x: 142, y: 156, z: 40.66 } },
+    loops: [[[0, 0, 40.66], [142, 0, 40.66], [142, 156, 40.66], [0, 156, 40.66]]],
+  });
+
+  const selection = selectDisplayBounds([floor, sketch]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1495202]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // The same ring under a decoded category is a real flat ceiling, and stays.
+  const ceiling = { ...sketch, categoryId: -2000038, categoryName: "Ceilings" };
+  const kept = selectDisplayBounds([floor, ceiling]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
+});
+
+test("gives a stair run its own box from the companion record beside it", () => {
+  // A run's record holds the run's plan and the whole stair's storey z-band. On
+  // a switchback there are two runs and a landing inside one band, so each run
+  // is drawn to the full storey while occupying half of it. The run's own
+  // elevations are in an ordinary bounds record filed under its id + 1 — its
+  // Sketch element — under record code 169671, which the decoder was already
+  // reading and drawing as an anonymous element beside its oversized parent.
+  const record = (elementId: number, code: number, minZ: number, maxZ: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: code,
+    recordCount: 1,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    boundsFeet: { min: { x: 0, y: 0, z: minZ }, max: { x: 10, y: 4, z: maxZ } },
+  });
+  // The storey band, and the companion holding the flight's own rise.
+  const run = record(2474571, 81, 0, 9.84);
+  const companion = record(2474572, 169_671, 0, 4.92);
+
+  const selection = selectDisplayBounds([run, companion]);
+  // The companion is not an element: the export names none of the 111 in the
+  // supplied model, and its box now belongs to the run.
+  assert.deepEqual(selection.records.map((entry) => entry.elementId), [2474571]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A companion whose stair part was never recovered is its only trace.
+  const orphan = selectDisplayBounds([companion, record(9, 81, 0, 9.84)]);
+  assert.equal(orphan.records.length, 2);
+  assert.equal(orphan.omittedSheetCount, 0);
+});
+
+test("draws an element's envelope rather than a fragment of its faces", () => {
+  // Native faces used to outrank the envelope. Measured against the paired
+  // export across every class that owns them the envelope is closer for 168 of
+  // the 225 elements concerned — walls by 31.84 ft against 0.00 — because a
+  // face set is usually a fragment of the element rather than a shape.
+  const record: ElementBoundsRecord = {
+    elementId: 2474572,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 8 } },
+    quads: [{
+      elementId: 2474572,
+      corners: [[0, 0, 0], [10, 0, 0], [10, 4, 0], [0, 4, 0]],
+    }],
+  } as ElementBoundsRecord;
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const heights = [];
+  for (let vertex = 2; vertex < mesh.positions.length; vertex += 3) heights.push(mesh.positions[vertex]!);
+  // The single flat face would be drawn 0.02 ft thick; the envelope is 8 ft.
+  assert.ok(Math.abs(Math.max(...heights) - 8) < 1e-4, "drew the face instead of the envelope");
+});
+
+test("sweeps a railing along its path instead of filling its bounding box", () => {
+  // A railing that runs around three sides of an atrium has an axis-aligned box
+  // the size of the atrium; drawing that box lays a slab across the floor. The
+  // export's box is identical, so no comparison against it registers the
+  // problem — only looking at the model does.
+  const record: ElementBoundsRecord = {
+    elementId: 1856525,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000126,
+    categoryName: "Stairs Railing",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 80, z: 3.6 } },
+    railPath: {
+      polylines: [[[0, 0, 0], [100, 0, 0]], [[100, 0, 0], [100, 80, 0]]],
+      guardHeightFeet: 3.6,
+    },
+  };
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  // Two segments, twelve triangles each, rather than one box of twelve.
+  assert.equal(mesh.indices.length / 3, 24);
+
+  // Nothing is drawn away from the path: every vertex sits within the rail's
+  // own width of one of the two runs, so the middle of the atrium stays empty.
+  const onPath = (x: number, y: number) =>
+    (Math.abs(y) <= 0.1 && x >= -0.1 && x <= 100.1) || (Math.abs(x - 100) <= 0.1 && y >= -0.1 && y <= 80.1);
+  for (let vertex = 0; vertex < mesh.positions.length; vertex += 3) {
+    assert.ok(
+      onPath(mesh.positions[vertex]!, mesh.positions[vertex + 1]!),
+      `vertex ${mesh.positions[vertex]}, ${mesh.positions[vertex + 1]} is off the rail path`,
+    );
+  }
+  // The guard rises from the path, so the drawn height is the guard height.
+  const heights = [];
+  for (let vertex = 2; vertex < mesh.positions.length; vertex += 3) heights.push(mesh.positions[vertex]!);
+  assert.equal(Math.min(...heights), 0);
+  // Float32 positions, so exact equality is not the test.
+  assert.ok(Math.abs(Math.max(...heights) - 3.6) < 1e-4);
+});
+
+test("holds back a railing's top rail when its railing is in the scene", () => {
+  // Revit records the top rail's envelope as the whole railing's and folds it
+  // into the one IfcRailing on export, so drawing it lays a second plate along
+  // a railing already there. The evidence is the duplicate footprint: a top
+  // rail on a stair carries the railing's whole rise, so a thickness test would
+  // keep exactly the ones that hide the most.
+  const rail = (elementId: number, categoryId: number, maxZ: number): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId,
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 175, y: 136, z: maxZ } },
+  });
+  const railing = rail(1856525, -2000126, 13.6);
+  const topRail = rail(1857537, -2000946, 34.9);
+
+  const selection = selectDisplayBounds([railing, topRail]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [1856525]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A top rail whose railing was never recovered is the only trace of that
+  // railing, so it stays.
+  const orphan = selectDisplayBounds([topRail, rail(9, -2000032, 12)]);
+  assert.equal(orphan.records.length, 2);
+  assert.equal(orphan.omittedSheetCount, 0);
+});
+
+test("holds back a storey-sized plate that no category claims", () => {
+  // Size alone proves nothing — real slabs are larger than these. Size with no
+  // category is the discriminator, and it is what put 89 ft of sheet outside
+  // the building.
+  const plate = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 0xffff_ffff,
+    recordCount: 4,
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 304, y: 190, z: 10.44 } },
+    ...extra,
+  });
+  const unnamed = plate(2474612, {});
+  const namedSlab = plate(490040, { categoryId: -2000032, categoryName: "Floors", recordCode: 54, recordCount: 1 });
+
+  const selection = selectDisplayBounds([unnamed, namedSlab]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [490040]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // A room-sized envelope with no category is still drawn: the point is not to
+  // hide unnamed elements, only unnamed sheets. It needs an ordinary record code
+  // to make that point, because the all-ones code the helper defaults to is now
+  // its own discriminator — see `NO_CLASS_RECORD_CODE`, which holds back 20 of
+  // the 24 plates this size rule was written for.
+  const small = plate(2474613, {
+    recordCode: 402_488,
+    recordCount: 1,
+    boundsFeet: { min: { x: 0, y: 0, z: 10 }, max: { x: 20, y: 20, z: 10.44 } },
+  });
+  const kept = selectDisplayBounds([small, namedSlab]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
+});
+
+test("holds back an uncategorised record written under the no-class code", () => {
+  // `0xffffffff` is not a corrupt record code: every record carrying it also
+  // carries `0xffffffff` in the reserved word, so it is a deliberate "no class"
+  // encoding. Of the 465 such records whose category decodes, 450 — 96.8% —
+  // carry a drawing aid or an assembly container, against 1.3% of the 31,359
+  // categorised records with an ordinary code; and of the 304 that reached the
+  // scene the paired export gave mesh geometry to none.
+  const record = (elementId: number, extra: Partial<ElementBoundsRecord>): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 0xffff_ffff,
+    recordCount: 4,
+    boundsFeet: { min: { x: 0, y: 0, z: 8.6 }, max: { x: 82, y: 81, z: 9 } },
+    ...extra,
+  });
+  const noClass = record(1270487, {});
+  const wall = record(290064, {
+    recordCode: 30,
+    recordCount: 5,
+    categoryId: -2000011,
+    categoryName: "Walls",
+  });
+
+  const selection = selectDisplayBounds([noClass, wall]);
+  assert.deepEqual(selection.records.map((entry) => entry.elementId), [290064]);
+  assert.equal(selection.omittedSheetCount, 1);
+
+  // Anonymity is load-bearing. `Stairs Paths`, `Sketch Lines` and
+  // `Stairs Sketch Boundary Lines` land on this code too, and the export names
+  // 18 of 20, 1 of 1 and 12 of 12 of them as stairs, stair flights and a
+  // covering — real elements that inherited a drawing aid's category. Dropping
+  // the code by name would take them with it.
+  const stairsPath = record(2130746, { categoryId: -2000133, categoryName: "Stairs Paths" });
+  const kept = selectDisplayBounds([stairsPath, wall]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
+
+  // And an ordinary record code with no category is still drawn, because an
+  // unnamed box in the right place beats a hole in the building.
+  const unnamed = record(2140033, { recordCode: 402_488, recordCount: 1 });
+  const drawn = selectDisplayBounds([unnamed, wall]);
+  assert.equal(drawn.records.length, 2);
+  assert.equal(drawn.omittedSheetCount, 0);
+});
+
+test("batches an uncategorised envelope under its own neutral role", () => {
+  const record: ElementBoundsRecord = {
+    elementId: 9,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 4_242,
+    recordCount: 7,
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 8 } },
+  };
+  const meshes = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.equal(meshes.length, 1);
+  assert.match(meshes[0]!.name, /Uncategorised/);
+  assert.equal(meshes[0]!.materialIndex, 0);
+  assert.equal(meshes[0]!.indices.length / 3, 12);
+});
+
+test("draws every solid a multi-segment element was rebuilt from", () => {
+  const solid = (startX: number, endX: number) => ({
+    elementId: 11,
+    start: { x: startX, y: 0 },
+    end: { x: endX, y: 0 },
+    baseElevation: 0,
+    topElevation: 10,
+    thickness: 0.5,
+  });
+  const record: ElementBoundsRecord = {
+    elementId: 11,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 30,
+    recordCount: 5,
+    boundsFeet: { min: { x: 0, y: -1, z: 0 }, max: { x: 30, y: 1, z: 10 } },
+    solid: solid(0, 20),
+    solids: [solid(0, 20), solid(20, 30)],
+  };
+  const meshes = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  // Both runs are the element's own rebuilt geometry; drawing only the longest
+  // leaves a gap in the wall where the shorter segment should be.
+  assert.equal(meshes[0]!.indices.length / 3, 24);
+  // Picking indexes by triangle, so every triangle still maps back to element 11.
+  assert.equal(meshes[0]!.elementIds?.length, 24);
+  assert.ok([...meshes[0]!.elementIds!].every((elementId) => elementId === 11));
+});
+
+test("seeds an object chain from markers when a page carries no bounds record", () => {
+  const data = new Uint8Array(256);
+  const view = new DataView(data.buffer);
+  const start = 100;
+  const objectLength = 64;
+  view.setUint32(start, 290_064, true);
+  view.setUint32(start + 12, objectLength, true);
+  view.setUint16(start + 16, 0x08c6, true);
+  view.setUint32(start + objectLength + 16, objectLength, true);
+  // A marker-shaped pair whose candidate object has no matching length echo.
+  view.setUint16(220, 0x08c6, true);
+
+  assert.deepEqual(markerObjectSeeds(data), [start]);
+  // A page with no bounds record used to go unwalked, taking every placement
+  // and shared shape on it out of the model.
+  const chained = chainElementObjects(data, markerObjectSeeds(data));
+  assert.deepEqual(chained.map((object) => object.elementId), [290_064]);
+});
+
+test("frames the scene to the building rather than to a displaced outlier", () => {
+  const envelope = (x: number, y: number): ElementBoundsRecord => ({
+    elementId: 1,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x, y, z: 0 }, max: { x: x + 4, y: y + 4, z: 10 } },
+  });
+  const building = Array.from({ length: 3_000 }, (_, index) =>
+    envelope((index % 60) * 5, Math.floor(index / 60) * 5));
+  // Three misparsed records thousands of feet away. Taking the absolute extent
+  // puts the centre of the scene in empty ground, and the camera with it.
+  const strays = [envelope(0, -4_000), envelope(50, -3_900), envelope(90, -3_800)];
+
+  const absolute = boundsOfRecords([...building, ...strays]);
+  const framing = framingBoundsOfRecords([...building, ...strays]);
+  assert.equal(absolute.min.y, -4_000);
+  assert.equal(framing.min.y, 0);
+  assert.equal(framing.max.y, boundsOfRecords(building).max.y);
+  // Nothing is discarded — this decides where the viewer looks, not what exists.
+  assert.equal(framing.min.x, 0);
+});
+
+test("keeps the absolute extent when there are too few records to trim a tail", () => {
+  const records: ElementBoundsRecord[] = Array.from({ length: 20 }, (_, index) => ({
+    elementId: index,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: index, y: 0, z: 0 }, max: { x: index + 1, y: 1, z: 1 } },
+  }));
+  assert.deepEqual(framingBoundsOfRecords(records), boundsOfRecords(records));
+});
+
+test("reads a shared shape whose bounds sit behind a longer field table", () => {
+  // The AABB is framed as `42 + 6 * recordCount`, exactly as it is in the
+  // element bounds record. Reading a fixed +48 is only the count == 1 case, and
+  // every shape with a longer field table was rejected because of it.
+  const count = 3;
+  const at = 42 + count * 6;
+  const data = new Uint8Array(at + 96 + 20);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 290_064, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, count, true);
+  view.setUint32(42, 3, true);
+  const box = [-1, -2, -3, 4, 5, 6];
+  for (let copy = 0; copy < 2; copy += 1) {
+    for (let field = 0; field < 6; field += 1) {
+      view.setFloat64(at + copy * 48 + field * 8, box[field]!, true);
+    }
+  }
+
+  const local = readLocalBounds(data, {
+    offset: 0, elementId: 290_064, objectLength: 6_179, marker: 0x08c6, typeCode: 0,
+  });
+  assert.ok(local);
+  assert.deepEqual(local.min, [-1, -2, -3]);
+  assert.deepEqual(local.max, [4, 5, 6]);
+});
+
+test("ignores a shape whose two bounds copies disagree", () => {
+  const count = 2;
+  const at = 42 + count * 6;
+  const data = new Uint8Array(at + 96 + 20);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 1, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, count, true);
+  view.setUint32(42, 3, true);
+  for (let field = 0; field < 6; field += 1) {
+    view.setFloat64(at + field * 8, field, true);
+    view.setFloat64(at + 48 + field * 8, field + 1, true);
+  }
+  // The framed read is refused, so whatever the fixed +48 fallback returns, it
+  // is not the disagreeing block — a shape is never built from bytes that
+  // failed their own duplication check.
+  const local = readLocalBounds(data, {
+    offset: 0, elementId: 1, objectLength: 900, marker: 0x08c6, typeCode: 0,
+  });
+  assert.notDeepEqual(local?.min, [0, 1, 2]);
+  assert.notDeepEqual(local?.max, [3, 4, 5]);
+});
+
+test("measures the object markers a file uses instead of assuming one", () => {
+  // 0x08c6 is not the only object class in the stream. In the supplied project
+  // 0x07ef heads the objects of thousands of elements that no other pass sees,
+  // so the markers worth seeding from are read from the file.
+  const data = new Uint8Array(512);
+  const view = new DataView(data.buffer);
+  const write = (start: number, elementId: number, marker: number, objectLength: number) => {
+    view.setUint32(start, elementId, true);
+    view.setUint32(start + 12, objectLength, true);
+    view.setUint16(start + 16, marker, true);
+    view.setUint32(start + objectLength + 16, objectLength, true);
+  };
+  write(0, 290_064, 0x08c6, 64);
+  write(84, 290_210, 0x07ef, 64);
+  // A marker with no matching length echo behind it is not an object.
+  view.setUint16(300, 0x07ef, true);
+
+  const markers = scanObjectMarkers(data);
+  assert.equal(markers.get(0x08c6), 1);
+  assert.equal(markers.get(0x07ef), 1);
+  assert.deepEqual(
+    [...markers.keys()].sort((a, b) => a - b),
+    [0x07ef, 0x08c6],
+  );
+});
+
+test("reads the tighter bounds copy when the two disagree", () => {
+  // Requiring the copies to match rejected the record outright, which cost 994
+  // walls. Against the paired export the second copy reproduces the exported
+  // wall for 757 of 757 such objects, and a mismatched target matches none.
+  const data = new Uint8Array(200);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 700_001, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(18, 30, true);
+  view.setUint32(26, 700_001, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, 5, true);
+  view.setUint32(42, 3, true);
+  // The stale copy encloses far more than the element does.
+  const stale = [-400, -400, -400, 400, 400, 400];
+  const real = [10.5, -20.25, 0, 11.5, -4.75, 13.5];
+  stale.forEach((value, index) => view.setFloat64(72 + index * 8, value, true));
+  real.forEach((value, index) => view.setFloat64(120 + index * 8, value, true));
+
+  const record = detectDuplicatedBoundsRecord(data);
+  assert.ok(record);
+  assert.equal(record.duplicated, false);
+  assert.deepEqual(record.boundsFeet, {
+    min: { x: real[0], y: real[1], z: real[2] },
+    max: { x: real[3], y: real[4], z: real[5] },
+  });
+});
+
+test("prefers the tighter copy even when it is written first", () => {
+  // Reading the second copy always was a wall rule. Held out against the
+  // classes it was never fitted to it still wins, but it also admits a few
+  // wild boxes — one 8,701 ft out. Taking whichever copy encloses less keeps
+  // the same 95.9% within 0.05 ft and cuts the worst case tenfold.
+  const data = new Uint8Array(200);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 700_002, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(18, 116, true);
+  view.setUint32(26, 700_002, true);
+  view.setUint32(34, 0x0008_8004, true);
+  view.setUint32(38, 5, true);
+  view.setUint32(42, 3, true);
+  const real = [1, 2, 3, 2, 4, 9];
+  const wild = [-900, -900, -900, 900, 900, 900];
+  real.forEach((value, index) => view.setFloat64(72 + index * 8, value, true));
+  wild.forEach((value, index) => view.setFloat64(120 + index * 8, value, true));
+
+  const record = detectDuplicatedBoundsRecord(data);
+  assert.ok(record);
+  assert.deepEqual(record.boundsFeet, {
+    min: { x: real[0], y: real[1], z: real[2] },
+    max: { x: real[3], y: real[4], z: real[5] },
+  });
 });

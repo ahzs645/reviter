@@ -8,7 +8,7 @@
  * the point of the table is to make the remaining gap measurable instead of
  * invisible.
  */
-import { gzipOffsets, inflateRevitChunk } from "./revit-container.ts";
+import { gzipOffsets, inflateRevitChunk, revitWindowTail } from "./revit-container.ts";
 
 /**
  * How much of a stream is understood.
@@ -106,9 +106,12 @@ export function measureStream(
   let inflatedBytes: number | undefined;
   if (data.byteLength <= inflateLimit) {
     inflatedBytes = 0;
+    let window: Uint8Array | null = null;
     for (let index = 0; index < offsets.length; index += 1) {
-      const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1]);
-      if (inflated) inflatedBytes += inflated.byteLength;
+      const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (!inflated) continue;
+      window = revitWindowTail(inflated);
+      inflatedBytes += inflated.byteLength;
     }
     if (!offsets.length) inflatedBytes = data.byteLength;
   }
