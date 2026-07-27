@@ -605,6 +605,35 @@ Three negative results from the same work. **A general "envelope beats rebuilt s
 
 One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
 
+## What is actually still missing: the census
+
+Five rounds chased one class at a time. This is the whole undrawn population at once, grouped by **cause rather than class**, which is the grouping that says what is worth doing next.
+
+36,144 distinct Tags carry mesh geometry in the export. **1,171 of them are not drawn:**
+
+| n | share | cause | reachable |
+| --- | --- | --- | --- |
+| **877** | 74.9% | **never seen** — no pass proves the id exists | **no** |
+| **231** | 19.7% | **seen, but no bounds record built** | **the only real work left** |
+| 53 | 4.5% | face-hull-only records | **no — measured, below** |
+| 6 | 0.5% | wrapper — ordinary walls mistaken for containers | marginal |
+| 3 | 0.26% | no drawable extent and nothing else holds them | trivial |
+| 1 | 0.09% | the unnamed-plate rule, correctly | correctly held |
+
+Never-seen is 455 `IfcMember`, 158 `IfcWallStandardCase`, 155 `IfcPlate`, 81 `IfcDoor`, 11 railings, 7 columns, 4 coverings, 3 flights, 2 slabs, 1 wall. Seen-with-no-record is 106 members, 40 railings, 29 columns, 21 plates, 17 walls, 5 flights, 5 ramps, 5 doors, 2 slabs and 1 roof — proven by the partition scan alone for 144, by the ElemTable alone for 83, by both for 4. **Null control:** shifting every Tag past any real Revit id puts all 36,144 into "never seen" and 0 into every other bucket, so no bucket fills by set arithmetic.
+
+**Three display gates were suspected of costing geometry and cost none.** No `IfcCurtainWall` or `IfcStair` product carries a mesh in this export — they are pure `IfcRelAggregates` containers — so the wrapper trade this file describes is not merely justified, it is **free**. The sheets rule, the no-class rule, the sub-element rule, the stair-companion rule and the dominant-container rule each claim **0** of the 1,171: they hold back records, and none of those records joins an export mesh.
+
+**The face-hull bucket was the one candidate fix, and the numbers close it.** Of the 53 face-hull records that join an export mesh, **3 are within half a foot in plan and centre — 5.7%** — median plan error **8.81 ft**, worst **199.3 ft**. Splitting by facet count does not rescue it: single-facet hulls, the best case, are 2 of 13; multi-facet 1 of 40. Null control with the truth rotated 12,345 places: **0 of 53** against 3. Releasing the bucket would draw 50 elements wrongly to gain 3. That confirms and extends the 37-of-40 result recorded earlier, on a population it had not measured.
+
+Relaxing the drawable-extent filter is the same shape of loss: 1,267 records have no drawable extent, 232 are claimed by another gate, and of the remaining 1,035 the export names **4** and does not name **1,031**, carrying 131,493 sq ft of plan with six over 5,000 sq ft each. Four named elements for a thousand unnamed sheets.
+
+**The two small classes resolve differently.** `IfcRoof`'s 4 missing are all *seen with no bounds record* — one cause, a recovery gap rather than a display one, exactly the single-rule shape small classes usually have. `IfcCovering`'s 8 are two causes and no clean rule: 4 never seen, and 4 single-facet flat face hulls whose plan reproduces the export to 0.01–1.6 ft — 2 of the only 3 accurate hulls in the entire 53 — but drawing them needs *both* the extent gate and the face-hull gate relaxed, and three of the four carry the category `Sketch Lines` rather than a covering, so there is nothing clean to scope a rule to.
+
+**So the remaining work is one bucket, not many.** 877 elements are not in the readable stream at all, which is the same wall the surfaces investigation hit and closes with more of the file rather than more rules. 231 are *seen and have no record*, and that is where a decoder change could still buy something.
+
+**A caveat on the coverage denominator, since it cuts the other way.** 1,917 of the Tags counted in `building elements` are containers with no mesh of their own — `IfcCurtainWall` and `IfcStair` — so a figure of 92.6% is measured against a denominator that includes elements which can never be drawn because there is nothing to draw. Separating Tags-with-mesh from products in that table is owed.
+
 ## The exporter writes some elements several times, and the coverage table was counting them
 
 `IfcStairFlight` read 86.9% centre agreement and 82.6% drawn. Both figures were artefacts of counting export **products** where the join key is a Revit element **id**.
