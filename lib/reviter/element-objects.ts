@@ -113,6 +113,98 @@ export function scanObjectMarkers(data: Uint8Array): Map<number, number> {
 }
 
 /**
+ * Every framed object on a page, as `element id -> marker`.
+ *
+ * The chain is seeded from the markers a sample of pages says are common, and
+ * that is the right trade for *recovering objects* — but it means a class with a
+ * dozen members in the whole file is only ever reached by chaining off a
+ * neighbour, and the small classes are exactly the ones written on their own
+ * pages. Measured over the supplied project: **157,553 framed objects under 779
+ * distinct markers**, against the one marker (`0x08c6`) that clears the sample
+ * support floor. `0x0d7b` heads 12 objects in the entire file, `0x0d40` twenty,
+ * `0x0ff0` eighteen.
+ *
+ * This is deliberately *not* used to add objects to the model. Its output is a
+ * class key and nothing else: the marker is read, the object is not. Every
+ * candidate still has to echo its own length, which is the same test the chain
+ * applies, so a false marker costs a rejected candidate rather than a bad
+ * object.
+ *
+ * The zero high word on the id rejects almost every offset in four byte
+ * compares, which is what keeps a whole-stream walk affordable — 417 MB of
+ * inflated pages in about ten seconds.
+ */
+export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {
+  const classes = new Map<number, number>();
+  if (data.byteLength < 64) return classes;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
+    if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
+    if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
+    const object = readObject(view, offset, data.byteLength);
+    if (!object || classes.has(object.elementId)) continue;
+    classes.set(object.elementId, object.marker);
+  }
+  return classes;
+}
+
+/**
+ * What category a marker's elements are, where its members agree outright.
+ *
+ * An element's `BuiltInCategory` token is not always written — the supplied
+ * project holds exactly 8 `Ramps` tokens against 12 ramps — and an element with
+ * no token is invisible to every rule gated on the category. The object marker
+ * is a class discriminator the same element does have, so the members that *do*
+ * carry a token can speak for the ones that do not.
+ *
+ * This is not a general category decoder and must not be used as one: the
+ * README records that marker consensus applied to every element gives 4,859 of
+ * them a category the export agrees with 456 times and **disagrees with 265**.
+ * It is offered for the one question where an element's alternative is nothing
+ * at all — whether a record-less element's boundary ring is a building
+ * element's.
+ *
+ * Support and purity trade the way `deriveRecordCodeCategories` already trades
+ * them, and the threshold is a plateau rather than a fit: over the supplied
+ * project every floor from `support >= 1, purity 1` to `support >= 7, purity 1`
+ * selects the same 42 elements, of which the paired export names **42**, against
+ * 843 candidates of which it names 67. Loosening purity to 0.7 selects 35, so
+ * nothing is bought by it. Null control — permuting which marker holds which
+ * consensus category, over ten shifts — selects 23.1 elements per trial and the
+ * export names 8.0 of them.
+ */
+export function markerCategoryConsensus(
+  markerByElement: Map<number, number>,
+  categoryByElement: Map<number, number>,
+  { minSupport = 3, minPurity = 1 }: { minSupport?: number; minPurity?: number } = {},
+): Map<number, number> {
+  const tally = new Map<number, Map<number, number>>();
+  for (const [elementId, categoryId] of categoryByElement) {
+    const marker = markerByElement.get(elementId);
+    if (marker == null) continue;
+    const row = tally.get(marker) ?? new Map<number, number>();
+    row.set(categoryId, (row.get(categoryId) ?? 0) + 1);
+    tally.set(marker, row);
+  }
+
+  const consensus = new Map<number, number>();
+  for (const [marker, row] of tally) {
+    let best = 0;
+    let bestCount = 0;
+    let support = 0;
+    for (const [categoryId, count] of row) {
+      support += count;
+      if (count > bestCount) {
+        bestCount = count;
+        best = categoryId;
+      }
+    }
+    if (support >= minSupport && bestCount / support >= minPurity) consensus.set(marker, best);
+  }
+  return consensus;
+}
+
+/**
  * Candidate object starts found from the marker alone.
  *
  * Chaining is normally seeded from bounds records, but a page that contains no
