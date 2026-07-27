@@ -342,14 +342,22 @@ const STAIR_COMPANION_CODE = 169_671;
  */
 const NO_CLASS_RECORD_CODE = 0xffff_ffff;
 
-function isSheet(
+/**
+ * Which of the sheet rules claims a record, or `null` when none does.
+ *
+ * `isSheet` is this predicate's boolean face. The reason is kept separate so a
+ * census can group what is held back **by cause** rather than by class — every
+ * round of this work so far chased one class at a time, and the buckets a class
+ * splits into are what decide whether a gap is reachable.
+ */
+function sheetReason(
   record: ElementBoundsRecord,
   byId: Map<number, ElementBoundsRecord>,
   all: ElementBoundsRecord[],
-): boolean {
-  if (isFaceHullOnly(record)) return true;
+): HoldBackReason | null {
+  if (isFaceHullOnly(record)) return "face-hull-only";
   if (record.recordCode === STAIR_COMPANION_CODE && record.recordCount === 1) {
-    return byId.has(record.elementId - 1);
+    return byId.has(record.elementId - 1) ? "stair-companion" : null;
   }
   const parentCategory = record.categoryId == null
     ? undefined
@@ -360,16 +368,26 @@ function isSheet(
     // thickness test would keep exactly the ones that hide the most. Requiring
     // a parent keeps a top rail whose railing was never recovered, which is
     // then the only trace of that railing in the scene.
-    return all.some((other) => other.categoryId === parentCategory && planMatches(record, other));
+    return all.some((other) => other.categoryId === parentCategory && planMatches(record, other))
+      ? "sub-element"
+      : null;
   }
-  if (record.categoryId != null || record.categoryName) return false;
-  if (record.recordCode === NO_CLASS_RECORD_CODE) return true;
-  if (planArea(record) > UNNAMED_SHEET_AREA_SQ_FEET) return true;
+  if (record.categoryId != null || record.categoryName) return null;
+  if (record.recordCode === NO_CLASS_RECORD_CODE) return "no-class-code";
+  if (planArea(record) > UNNAMED_SHEET_AREA_SQ_FEET) return "unnamed-plate";
   const { min, max } = record.boundsFeet;
-  if (max.z - min.z > MIN_SOLID_SPAN_FEET) return false;
-  if (!record.loops?.length) return false;
+  if (max.z - min.z > MIN_SOLID_SPAN_FEET) return null;
+  if (!record.loops?.length) return null;
   const owner = byId.get(record.elementId + 1);
-  return Boolean(owner && planMatches(record, owner));
+  return owner && planMatches(record, owner) ? "floor-sketch" : null;
+}
+
+function isSheet(
+  record: ElementBoundsRecord,
+  byId: Map<number, ElementBoundsRecord>,
+  all: ElementBoundsRecord[],
+): boolean {
+  return sheetReason(record, byId, all) !== null;
 }
 
 /**
@@ -516,6 +534,60 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
     unclassifiedCount,
     omittedSheetCount,
   };
+}
+
+/** The gate that held a record out of the scene, as named in the sources above. */
+export type HoldBackReason =
+  | "wrapper"
+  | "face-hull-only"
+  | "stair-companion"
+  | "sub-element"
+  | "no-class-code"
+  | "unnamed-plate"
+  | "floor-sketch"
+  | "dominant-container";
+
+/**
+ * Why each record `selectDisplayBounds` drops was dropped — diagnosis only.
+ *
+ * Nothing in the conversion calls this; it exists so a census can ask which
+ * *gate* costs an element rather than which class the element belongs to. It
+ * walks the same rules in the same order as `selectDisplayBounds`, so its keys
+ * are exactly that function's complement over the records handed to it. Pass it
+ * the same list the audit passes — the drawable-extent filter runs first there,
+ * and running the wrapper rule over a different population changes the occupancy
+ * counts it decides on.
+ */
+export function explainHoldBack(records: ElementBoundsRecord[]): Map<number, HoldBackReason> {
+  const reasons = new Map<number, HoldBackReason>();
+  const held = heldBackWrappers(records);
+  const withoutWrappers: ElementBoundsRecord[] = [];
+  for (const record of records) {
+    if (held.has(record)) reasons.set(record.elementId, "wrapper");
+    else withoutWrappers.push(record);
+  }
+  const byId = new Map(records.map((record) => [record.elementId, record]));
+  const classified: ElementBoundsRecord[] = [];
+  for (const record of withoutWrappers) {
+    const reason = sheetReason(record, byId, withoutWrappers);
+    if (reason) reasons.set(record.elementId, reason);
+    else classified.push(record);
+  }
+  if (classified.length < 2) return reasons;
+  const byFootprint = classified
+    .map((record) => {
+      const { min, max } = record.boundsFeet;
+      const dx = max.x - min.x;
+      const dy = max.y - min.y;
+      return { record, footprint: dx * dy, longestSide: Math.max(dx, dy) };
+    })
+    .sort((a, b) => b.footprint - a.footprint);
+  const largest = byFootprint[0]!;
+  const runnerUp = byFootprint[1]!;
+  if (largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5) {
+    reasons.set(largest.record.elementId, "dominant-container");
+  }
+  return reasons;
 }
 
 const BOX_INDICES = [

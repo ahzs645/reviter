@@ -155,17 +155,25 @@ export function computeCoverage(outcome: ConvertResult, ifcPath: string): Covera
   for (const type of REPORTED_TYPES) {
     const group = byType.get(type) ?? [];
     if (!group.length) continue;
+    // Counted by Revit element id, not by export product. The join key is the
+    // id, "drawn" is a property of the element, and the exporter writes some
+    // elements several times: 74 of the 92 multi-product Tags in the reference
+    // model are *replicas* — congruent boxes offset in z by exactly one storey
+    // — where the recovery draws the one element the file holds. Counting
+    // products made `IfcStairFlight` read 121 in the export against 108 real
+    // elements, and its coverage 82.6% against a true 92.6%.
+    const ids = new Set(group.map((product) => product.tag));
     rows[type] = {
-      inIfc: group.length,
-      seen: group.filter((product) => seen.has(product.tag)).length,
-      recovered: group.filter((product) => recovered.has(product.tag)).length,
-      drawn: group.filter((product) => drawn.has(product.tag)).length,
+      inIfc: ids.size,
+      seen: [...ids].filter((tag) => seen.has(tag)).length,
+      recovered: [...ids].filter((tag) => recovered.has(tag)).length,
+      drawn: [...ids].filter((tag) => drawn.has(tag)).length,
     };
     // Openings are voids, not building elements; they are reported for context
     // but would distort a total that is meant to read as "how much of the
     // building is on screen".
     if (type !== "IFCOPENINGELEMENT") {
-      totalIfc += group.length;
+      totalIfc += ids.size;
       totalDrawn += rows[type]!.drawn;
     }
   }

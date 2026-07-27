@@ -54,6 +54,7 @@ import {
   boundaryLoopsFor,
   collectSketchCurves,
   sketchCurveBounds,
+  type CurveBounds,
   type Point3,
   type SketchCurve,
 } from "./sketch-curves.ts";
@@ -438,6 +439,50 @@ function sketchLoopsFor(
     Math.abs(maxX - max.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
     Math.abs(maxY - max.y) <= SKETCH_PLAN_TOLERANCE_FEET;
   return agrees ? loops : [];
+}
+
+/**
+ * The elevations for a record synthesised from a boundary ring alone.
+ *
+ * A ring is a *plan* boundary, and a stair run's ring is **flat** — the run's
+ * outline at its own base, z span 0.000 ft — so extruding it between its own
+ * elevations draws the run as a sheet lying on the floor. `sketchCurveBounds`
+ * already answers this from the tread and riser edges the ring did not consume,
+ * but only for a run whose record is a facet hull; a run with no record at all
+ * reaches the ring-synthesis block instead, and nothing there was asking.
+ *
+ * That is one element in the supplied model and it is measurable: **1842441,
+ * `Assembled Stair:Stair:1842431 Run 1`**, drawn 16.90 × 17.06 × **0.00** ft
+ * where the export writes 16.90 × 17.10 × **9.68**. Its plan is already exact to
+ * 0.02 ft; its curve set spans 0.00–9.84 ft, which is the export's rise plus the
+ * documented 0.16 ft by which boundary edges sit above the tread — centre error
+ * 4.84 → 0.08 ft, size error 9.68 → 0.16 ft.
+ *
+ * The guards are the ones the facet-hull use already carries, for the same
+ * reasons: the element's **own** curves only, so a neighbouring run's Sketch
+ * companion cannot lend a storey of rise, and the two bands must meet, so a
+ * stacked twin a floor away cannot lend any. The plan stays the **ring's** — the
+ * ring is the reading verified in plan, and a curve set's extremes are a hull
+ * rather than an outline.
+ *
+ * **Specificity, because a percentage cannot judge a rule that adds extent.**
+ * This fires on **1 of the 38,960 records** here. The other two flat ring records
+ * are ramps — 1586431 and 2081718 — whose whole curve neighbourhood is flat, so
+ * the rule declines them and they are drawn exactly as before. Dropping the
+ * flatness test and taking the curve band whenever it is thicker was measured
+ * and not taken: it reaches the same one element on this model, and the ring's
+ * own elevations are the element's own statement about itself wherever it has
+ * them.
+ */
+export function ringRecordRise(ring: CurveBounds, curves: CurveBounds | null): CurveBounds {
+  if (!curves) return ring;
+  if (ring.max.z - ring.min.z > MIN_SOLID_SPAN_FEET) return ring;
+  if (curves.max.z - curves.min.z <= MIN_SOLID_SPAN_FEET) return ring;
+  if (!bandsMeet(curves, ring)) return ring;
+  return {
+    min: { x: ring.min.x, y: ring.min.y, z: curves.min.z },
+    max: { x: ring.max.x, y: ring.max.y, z: curves.max.z },
+  };
 }
 
 /**
@@ -1084,7 +1129,7 @@ export function convertRvtBytes(
             chunkIndex: -1,
             rawOffset: -1,
             recordOffset: -1,
-            boundsFeet: { min, max },
+            boundsFeet: ringRecordRise({ min, max }, sketchCurveBounds(elementId, curvesByOwner)),
           });
           boundedIds.add(elementId);
         }

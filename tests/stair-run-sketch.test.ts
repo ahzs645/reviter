@@ -26,9 +26,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { ringRecordRise } from "../lib/reviter/convert.ts";
 import { bandsMeet, sketchCurveBounds } from "../lib/reviter/sketch-curves.ts";
 
-import type { SketchCurve } from "../lib/reviter/sketch-curves.ts";
+import type { CurveBounds, SketchCurve } from "../lib/reviter/sketch-curves.ts";
 
 /** One straight edge between two model points, as the decoder yields it. */
 const edge = (
@@ -130,4 +131,72 @@ test("an arc's interior points are in the box, so a curved run is not clipped", 
   const bounds = sketchCurveBounds(RUN, new Map([[RUN, [arc]]]));
   assert.ok(bounds);
   assert.equal(bounds.max.z, 9);
+});
+
+/*
+ * The same reading, for a run whose record *is* its ring.
+ *
+ * The route above rescues a run whose record is a facet hull. A run with no
+ * duplicated-bounds record at all takes a different path — a record synthesised
+ * from its boundary ring — and there the ring is the only elevation available,
+ * so the run was extruded from its base to its base. 1842441 was drawn
+ * 16.90 × 17.06 × **0.00** ft where the export writes 16.90 × 17.10 × **9.68**,
+ * with its plan already exact to 0.02 ft, and 1844215 was flat enough to fail
+ * the display gate outright and not be drawn at all.
+ *
+ * `ringRecordRise` asks the same curve set with the same two guards. Measured on
+ * the supplied model it fires on **2 of 38,960 records**, both stair runs the
+ * export names, taking them from 4.84 and 2.21 ft out to **0.08 ft**, and moves
+ * nothing else — the specificity matters more than the percentage here, because
+ * a rule that adds extent can only be judged by what it touches.
+ */
+const at = (
+  [minX, minY, minZ]: [number, number, number],
+  [maxX, maxY, maxZ]: [number, number, number],
+): CurveBounds => ({ min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
+
+// Stair run 1842441, at the coordinates the supplied model writes: a flat ring at
+// the run's base, and a curve set carrying the rise.
+const RUN_RING = at([-16.7717, 120.8238, 0], [0.1268, 137.8809, 0]);
+const RUN_CURVES = at([-16.7717, 120.8238, 0], [0.1268, 137.8809, 9.8425]);
+
+test("takes a flat ring's rise from the element's own curve set", () => {
+  const bounds = ringRecordRise(RUN_RING, RUN_CURVES);
+  assert.equal(bounds.min.z, 0);
+  assert.equal(bounds.max.z, 9.8425);
+});
+
+test("keeps the ring's plan, not the curve set's extremes", () => {
+  // A curve set's box is a hull over every edge the element owns, including the
+  // ones ring assembly rejected; the ring is the outline verified in plan
+  // against the export. Where they differ the ring wins.
+  const wider = at([-20, 118, 0], [4, 140, 9.8425]);
+  const bounds = ringRecordRise(RUN_RING, wider);
+  assert.equal(bounds.min.x, RUN_RING.min.x);
+  assert.equal(bounds.max.y, RUN_RING.max.y);
+  assert.equal(bounds.max.z, 9.8425);
+});
+
+test("leaves a ring that already carries elevations alone", () => {
+  // Only a ring with no rise at all asks the curves; a ring with two elevations
+  // is the element's own statement about itself.
+  const solid = at([0, 0, 10], [10, 10, 12]);
+  assert.equal(ringRecordRise(solid, RUN_CURVES), solid);
+});
+
+test("declines a curve set that is itself flat — the two ramps here", () => {
+  // 1586431 and 2081718: every curve in their neighbourhood sits at one
+  // elevation, so there is no rise to borrow and the record stays as it was.
+  // They are why this is 2 records rather than 3.
+  const ramp = at([-65.42, 334.73, 0], [-34.02, 356.97, 0]);
+  assert.equal(ringRecordRise(ramp, at([-65.42, 334.73, 0], [-34.02, 356.97, 0])), ramp);
+});
+
+test("declines a curve band a storey away — the stacked twin again", () => {
+  const twin = at([-16.7717, 120.8238, 9.8425], [0.1268, 137.8809, 19.685]);
+  assert.equal(ringRecordRise(RUN_RING, twin).max.z, 0);
+});
+
+test("declines an element with no curves of its own", () => {
+  assert.equal(ringRecordRise(RUN_RING, null), RUN_RING);
 });

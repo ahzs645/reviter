@@ -605,6 +605,41 @@ Three negative results from the same work. **A general "envelope beats rebuilt s
 
 One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
 
+## The exporter writes some elements several times, and the coverage table was counting them
+
+`IfcStairFlight` read 86.9% centre agreement and 82.6% drawn. Both figures were artefacts of counting export **products** where the join key is a Revit element **id**.
+
+Scoring every drawn flight against the union of its Tag's products and against the single **nearest** product separates the two cleanly:
+
+| products per flight | n | union centre | nearest centre |
+| --- | --- | --- | --- |
+| 1 | 88 | 100.0% | 100.0% |
+| 2 | 11 | **0.0%**, median 4.92 ft | 100.0%, median 0.017 ft |
+| 3 | 1 | **0.0%**, median 9.84 ft | 100.0%, median 0.010 ft |
+
+**The export proves this by itself, with no reference to the RVT.** All 12 multi-product Tags are *congruent* — identical plan corner, identical size to 0.01 ft — offset in z by exactly **9.84 ft per product, one storey**. The union error is exactly half that pitch or the whole pitch, and the size error is exactly the pitch. Every one is named `Assembled Stair:Stair:<parent> Run n` on 2–3 consecutive storeys.
+
+So the honest figure is **100.0% centre and 100.0% size on 100 drawn flights**, with a residual *replication* gap of 13 products on 12 elements, which is not a geometry error.
+
+**The nearest-product reading is not generically generous**, which is what makes it evidence rather than a softer ruler: across classes where the recovery draws every product it is *worse* — `IfcRailing` 100.0% → 95.1%, `IfcSlab` 95.1% → 88.2%. It is better only where the recovery draws one element and the export writes it once per storey.
+
+And this is not stairs-specific, only visible there: of the 92 Tags the exporter writes as several products, **74 are replicas** — 49 `IfcMember`, 13 `IfcRailing`, 12 `IfcStairFlight`, 3 `IfcSlab`. The 15 multi-product `IfcSlab`s are genuine multi-region floors. Stair flights are simply the only class small enough for 12 replicas to move a percentage.
+
+**The coverage table now counts elements.** It counted products, so an element the exporter wrote three times counted three. Correcting it changes the denominator from 38,222 to **38,076** and these rows:
+
+| | counted by product | counted by element |
+| --- | --- | --- |
+| `IfcStairFlight` | 121 in export, 82.6% drawn | **108, 92.6%** |
+| `IfcSlab` | 161, 93.2% | **107, 95.3%** |
+| `IfcRailing` | 229, 76.0% | **215, 76.3%** |
+| building elements | 92.5% | **92.6%** |
+
+**One real defect was hiding behind the artefact.** 1842441 was drawn 16.90 × 17.06 × **0.00 ft** where the export writes 16.90 × 17.10 × 9.68 — plan exact to 0.02 ft, rise zero. Its record is synthesised from its boundary ring, and a stair run's ring is flat, so it was extruded from its base to its base. `ringRecordRise` takes z from the element's *own* curve set when the ring is flat, the curve set is not, and the two bands meet — the same `bandsMeet` guard, so a stacked twin a storey away cannot lend a rise. **Specificity: 2 of 38,960 records move**, and a full before/after record diff shows nothing else in the model changes. The two other flat-ring records are ramps whose whole curve neighbourhood is flat, and the rule declines both.
+
+**Negative result.** Reconstructing the multistorey extent is not reachable: it does exist in the file — parent assembly 1988738's record spans three storeys, 1498360's two — but only **3 of the 12** parents have a record at all, and nothing decoded links a run to its parent. Not attempted.
+
+**Owed, not yet done.** `overlay-diff.ts` should report the nearest-product score *beside* the union rather than instead of it, with congruent-boxes-offset-in-z-only as the discriminator. The union is right wherever the recovery draws every product and wrong wherever it draws one of N replicas; reporting only one of them will mislead on some future model in whichever direction that model happens to differ.
+
 ## Second readings, and a note on how this round was recorded
 
 Four rules were added together, all following the pattern `clipSolidToEnvelope` established: **an element is described twice in the partition stream, the two readings are independent, and where they disagree the disagreement is itself the evidence.** None invents a dimension.
