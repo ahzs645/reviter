@@ -605,6 +605,27 @@ Three negative results from the same work. **A general "envelope beats rebuilt s
 
 One residual is recorded rather than papered over: five landings have no duplicated-bounds record at all, so their envelope is synthesised from that same bad solid, 1.00 ft thick where the export writes 0.16. The ring fixes four of their plans and leaves 0.42 ft of z error. That is a recovery gap, not a drawing one, and no thickness was invented for it.
 
+## Second readings, and a note on how this round was recorded
+
+Four rules were added together, all following the pattern `clipSolidToEnvelope` established: **an element is described twice in the partition stream, the two readings are independent, and where they disagree the disagreement is itself the evidence.** None invents a dimension.
+
+- **A railing's ribbon is trimmed to the railing's own envelope.** The sweep draws from the rail path up by the guard height, so the ribbon's *top* reproduces the envelope by construction; its base is the path, and a stair railing's path starts about one riser below the railing it carries. Measured against the export's own railing meshes, **14 of 101 swept railings had their base up to 0.886 ft low and not one had its top wrong** — median top error 0.000 ft. Clipping rather than clamping matters: clamping would lift the first tread onto the landing and flatten the bottom of the run.
+- **A solid's elevation band is intersected with the record's**, the same argument as the plan clipping applied to the axis nothing was checking. **This is the sharpest rule here precisely because it almost never applies**: of 5,312 solid-drawn records with a real bounds block it fires on **3** — 1192647, whose record *and* whose export box both read 0.66 ft tall against a solid drawn 9.84 — and all three go to 0.000 ft. Nulls: a shuffled band fires on 579 records and makes **572 worse**; the band of the element one id below fires on 79 and improves **none**. Specificity 3 of 5,312, **0.06%**, against 11% and 1.5%.
+- A sketch-based element whose record is a hull over a single planar face takes the thickness its own category is written with everywhere else in the model.
+
+| | before | after |
+| --- | --- | --- |
+| `IfcWallStandardCase` centre / size | 98.5% / 92.4% | **98.9% / 96.0%** |
+| — median size error | 0.073 ft | **0.000 ft** |
+| `IfcWall` centre / size | 90.3% / 73.9% | **91.8% / 89.6%** |
+| `IfcRailing` size | 91.5% | **100.0%** |
+| `IfcSlab` size | 82.4% | **91.2%** |
+| `IfcStairFlight` drawn | 91 | **99** |
+
+The 0.073 ft median wall-size error — 0.88 inches, systematic across 7,000 walls and so more likely one wrong constant than 7,000 wrong walls — is now 0.000.
+
+**How this round was recorded, stated plainly.** The three agents that produced it died before reporting. Their rules are verified — 22 assertions pass, 154 tests, and the controls quoted above are their own, written into the source as this project requires. What is *missing* is the surrounding record: the alternatives they tried and rejected, and the negative results they measured on the way. Every other section here can name what was ruled out; this one cannot. That is a gap in the evidence trail rather than in the code, and it is recorded rather than papered over.
+
 ## Windows are bounded by the opposite evidence to doors
 
 A window and a door point at the same class of `0x0810` B-rep and are bounded by *opposite* faces of it. A door's own thickness is the **nearest** y-normal plane, because the furthest is the swing; a window's frame depth is the **outermost** pair, because the nearest is the glass. The door reading also forces `z ∈ [0, longest range]`, which for a window on a sill is a storey out — that was the whole of the 2.208 ft centre error.

@@ -346,3 +346,75 @@ export function boundaryLoopsFor(
   if (!curves.length) return [];
   return assembleRings(curves, options);
 }
+
+/** An axis-aligned box in model feet. Structurally `Bounds3`, declared here so
+ * this module keeps no import from `types.ts`, which imports `Point3` from it. */
+export type CurveBounds = {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+};
+
+/**
+ * The box over the curves filed under an element's own id.
+ *
+ * `prismGeometry` extrudes a ring's plan between the record's own elevations, so
+ * a ring alone is not a shape — and a **stair run's ring is flat**: all 12 of the
+ * runs measured close into one four-corner ring with a z span of 0.000 ft, the
+ * run's plan boundary at its own base. The rise is in the same curve set, in the
+ * tread and riser edges the ring did not consume, and that set's z band reproduces
+ * the export's to a median 0.164 ft.
+ *
+ * This is only ever asked for an element whose alternative is a hull over its
+ * attributed facets, which is not a second reading of the element but one plane's
+ * trim rectangle. Over every drawn record that owns curves the same box is 2.9%
+ * accurate against the drawn geometry's 98%, so it is not a general route and is
+ * not offered as one.
+ *
+ * **Own id only, unlike `boundaryLoopsFor`.** Adding the `id - 1` Sketch
+ * companion's curves the way ring assembly does widens the band across a
+ * neighbouring run — 1500325 reads 14.4–19.8 ft from its own curves, which is the
+ * export's 14.4–19.7 to a tenth of a foot, and 0.0–24.3 ft with the union. Ring
+ * assembly is unharmed by the extra edges because it joins them geometrically; a
+ * hull is not, because it takes their extremes.
+ */
+export function sketchCurveBounds(
+  elementId: number,
+  curvesByOwner: Map<number, SketchCurve[]>,
+): CurveBounds | null {
+  const curves = curvesByOwner.get(elementId);
+  if (!curves?.length) return null;
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const curve of curves) {
+    for (const [x, y, z] of [curve.start, curve.end, ...curve.interior]) {
+      min.x = Math.min(min.x, x);
+      min.y = Math.min(min.y, y);
+      min.z = Math.min(min.z, z);
+      max.x = Math.max(max.x, x);
+      max.y = Math.max(max.y, y);
+      max.z = Math.max(max.z, z);
+    }
+  }
+  return { min, max };
+}
+
+/**
+ * Do two elevation bands describe the same element, or two floors of a building?
+ *
+ * A sketch's curves are attributed by the same anchor everything else is, and the
+ * failure mode is the one the railing sweep hit: **identical elements stack floor
+ * on floor**, so a neighbour's curve set matches in plan and is a storey out in z.
+ * Eleven ceilings and a floor in this model own a curve set 3.3–15.4 ft below
+ * their own record — all of them already drawn correctly from that record — and
+ * taking the curves' box moved them by exactly that much.
+ *
+ * A facet the element genuinely owns lies *in* the element, so its band and the
+ * curves' band cannot be disjoint. That separates the two populations outright:
+ * the 12 stair runs overlap by 0.00–8.95 ft and the 12 stacked twins by
+ * **−3.28, −5.91 and −15.42 ft**. Any permitted gap from 0 to 3.2 ft selects the
+ * same 12 and rejects the same 12, so the boundary is a plateau rather than a fit,
+ * and it is set at zero — two readings of one element touch at worst.
+ */
+export function bandsMeet(a: CurveBounds, b: CurveBounds): boolean {
+  return Math.min(a.max.z, b.max.z) >= Math.max(a.min.z, b.min.z);
+}

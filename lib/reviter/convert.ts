@@ -18,6 +18,7 @@ import {
   boundsOfRecords,
   detectDuplicatedBoundsRecords,
   framingBoundsOfRecords,
+  MIN_SOLID_SPAN_FEET,
   solidBounds,
 } from "./bounds-records.ts";
 import {
@@ -29,7 +30,13 @@ import {
 } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { doorLeafCorners, doorLeafFromShape, type WallRun } from "./door-leaf.ts";
-import { clipSolidToEnvelope, solidBelongsToEnvelope } from "./solid-clip.ts";
+import {
+  clipSolidBandToEnvelope,
+  clipSolidToEnvelope,
+  extendSolidToEnvelope,
+  shrinkSolidIntoEnvelope,
+  solidBelongsToEnvelope,
+} from "./solid-clip.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type CylinderPatch, type PlanePatch } from "./surfaces.ts";
 import {
@@ -43,8 +50,10 @@ import {
 } from "./instanced-geometry.ts";
 import { facetElevationBand, surfaceQuadsFor, wallArcs, wallSolids } from "./native-geometry.ts";
 import {
+  bandsMeet,
   boundaryLoopsFor,
   collectSketchCurves,
+  sketchCurveBounds,
   type Point3,
   type SketchCurve,
 } from "./sketch-curves.ts";
@@ -56,6 +65,11 @@ import {
   type CategoryToken,
 } from "./native-categories.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
+import {
+  clipPolylinesToBand,
+  completeFlatSketchRecord,
+  modalSketchThickness,
+} from "./recovered-extents.ts";
 import {
   asBytes,
   gzipOffsets,
@@ -270,12 +284,37 @@ const RAIL_GUARD_MAX_FEET = 5;
  * nothing measurable: it adds a second ring on 2 of the 26 landings and both
  * score identically either way, so the floor convention is left alone rather
  * than special-cased.
+ *
+ * **A stair run is one of these too, and the population that needed it is the
+ * one with nothing else.** 12 of the export's stair flights reach a record whose
+ * only geometry is a hull over the facets attributed to them, and every one of
+ * those 12 owns **exactly one facet** — a single plane's trim rectangle, which
+ * is right by luck for 6 of them and a fragment for the other 6, so all 12 are
+ * held back by `isFaceHullOnly` or fail `solidBounds` outright. Each of them also
+ * owns 39–119 sketch curves under its own id, and those curves close into
+ * **exactly one ring of exactly four corners, 12 of 12**, whose plan reproduces
+ * the export's own box:
+ *
+ * | the 12 stair runs the scene dropped | centre within 0.5 ft | median |
+ * | --- | --- | --- |
+ * | the facet hull, as shipped | 6 of 12 | 3.084 ft |
+ * | **the curve set's own box** | **11 of 12** | **0.164 ft** |
+ * | against the *nearest single* product | **12 of 12** | 0.164 ft |
+ *
+ * The one residual is 1500253, a run the exporter splits per storey; against the
+ * nearest of its products it is 0.08 ft. Nulls: the curve box of the element one,
+ * five or 12,345 places away lands within half a foot **0 of 6,877 times** where
+ * the element's own lands 202 times, and the curve hull is worthless as a general
+ * route — 2.9% of drawn records overall, ruining walls at 98.4% → 0.2% — so it is
+ * scoped to the sketch categories and to a record that has nothing better, and
+ * `sketchCurveBounds` states that scope.
  */
 const SKETCH_BOUNDARY_CATEGORIES = new Set([
   -2000032, // Floors
   -2000035, // Roofs
   -2000038, // Ceilings
   -2000180, // Ramps
+  -2000919, // StairsRuns
   -2000920, // StairsLandings
   -2001300, // StructuralFoundation
 ]);
@@ -402,6 +441,29 @@ function sketchLoopsFor(
 }
 
 /**
+ * True when all an element's record holds is a hull over its attributed facets.
+ *
+ * `scene.ts` holds such a record back from the display, because 37 of the 40 that
+ * join an export product are over a foot out. It is repeated here rather than
+ * shared because the two uses are different questions: there it decides what to
+ * draw, here it decides whether the record is worth keeping when a boundary
+ * sketch is available for the same element.
+ */
+function isFacetHullRecord(
+  record: ElementBoundsRecord,
+  quadsByElement: Map<number, unknown>,
+  solidGroups: Map<number, unknown>,
+  orientedBoxes: Map<number, unknown>,
+): boolean {
+  return (
+    record.recordOffset < 0 &&
+    quadsByElement.has(record.elementId) &&
+    !solidGroups.has(record.elementId) &&
+    !orientedBoxes.has(record.elementId)
+  );
+}
+
+/**
  * A railing's rail path, when the curves really are this railing's.
  *
  * Each curve becomes one polyline — arcs keep their interior points — so the
@@ -485,9 +547,17 @@ function railPathFor(
 
   if (!best) return null;
   const { shiftZ } = best;
-  const polylines = shiftZ === 0
+  const lifted = shiftZ === 0
     ? best.polylines
     : best.polylines.map((line) => line.map(([x, y, z]): Point3 => [x, y, z + shiftZ]));
+  // The ribbon's top is the envelope's top by construction — the guard is the
+  // difference — but its base is the path, and a stair railing's path runs about
+  // one riser below the railing it carries. Against the export's own railing
+  // meshes that cost 14 of 101 swept railings up to 0.886 ft of extra height at
+  // the bottom, with **not one** wrong at the top. The envelope base is a second
+  // reading of the same railing and is right for them to 0.000 ft, so the path
+  // is trimmed to it. See `clipPolylinesToBand`.
+  const { polylines } = clipPolylinesToBand(lifted, min.z, max.z);
   return { polylines, guardHeightFeet: best.guardHeightFeet };
 }
 
@@ -867,15 +937,34 @@ export function convertRvtBytes(
       if (boundedIds.has(elementId)) continue;
       // The envelope spans every segment the element was rebuilt from, not just
       // the one that happens to be longest.
+      //
+      // **Half a thickness goes along the run's own normal, not along both plan
+      // axes.** A solid is drawn as an *oriented* box, and padding x and y alike
+      // gives an axis-aligned wall a box a full thickness too long: over the 627
+      // axis-aligned walls with a synthesised envelope, the slack between the
+      // drawn box and this envelope was exactly 1.000 × the wall's own thickness
+      // for **627 of 627**. Nothing on screen changed — the solid outranks the
+      // envelope everywhere it is drawn — but the envelope is what the rest of
+      // the pipeline treats as a second, independent reading of the element, and
+      // a reading inflated by a thickness is not one. It is the same error
+      // `overlay-diff.ts` was measuring solids with before it was corrected.
       const min = { x: Infinity, y: Infinity, z: Infinity };
       const max = { x: -Infinity, y: -Infinity, z: -Infinity };
       for (const solid of group) {
-        const halfThickness = solid.thickness / 2;
-        min.x = Math.min(min.x, solid.start.x - halfThickness, solid.end.x - halfThickness);
-        min.y = Math.min(min.y, solid.start.y - halfThickness, solid.end.y - halfThickness);
+        const dx = solid.end.x - solid.start.x;
+        const dy = solid.end.y - solid.start.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const normalX = (-dy / length) * solid.thickness * 0.5;
+        const normalY = (dx / length) * solid.thickness * 0.5;
+        for (const end of [solid.start, solid.end]) {
+          for (const sign of [1, -1]) {
+            min.x = Math.min(min.x, end.x + normalX * sign);
+            min.y = Math.min(min.y, end.y + normalY * sign);
+            max.x = Math.max(max.x, end.x + normalX * sign);
+            max.y = Math.max(max.y, end.y + normalY * sign);
+          }
+        }
         min.z = Math.min(min.z, solid.baseElevation);
-        max.x = Math.max(max.x, solid.start.x + halfThickness, solid.end.x + halfThickness);
-        max.y = Math.max(max.y, solid.start.y + halfThickness, solid.end.y + halfThickness);
         max.z = Math.max(max.z, solid.topElevation);
       }
       elementBounds.push({
@@ -1062,6 +1151,7 @@ export function convertRvtBytes(
 
     let namedTypeElements = 0;
     let sketchBoundaryElements = 0;
+    let sketchBoundedFacetHulls = 0;
     let unnamedSketchElements = 0;
     let rejectedOrientedBoxes = 0;
     let sweptRailings = 0;
@@ -1114,6 +1204,20 @@ export function convertRvtBytes(
           record.loops = loops;
           sketchBoundaryElements += 1;
           if (!knownSketchCategory) unnamedSketchElements += 1;
+          // A boundary sketch outranks a facet hull, and where the record *is*
+          // that hull the ring has no elevations to be extruded between. Both
+          // then come from the curve set — but only when the two readings are
+          // talking about the same element: see `bandsMeet`.
+          if (
+            knownSketchCategory &&
+            isFacetHullRecord(record, quadsByElement, solidGroups, orientedBoxes)
+          ) {
+            const bounds = sketchCurveBounds(record.elementId, curvesByOwner);
+            if (bounds && bandsMeet(bounds, record.boundsFeet)) {
+              record.boundsFeet = bounds;
+              sketchBoundedFacetHulls += 1;
+            }
+          }
         }
       }
       const typeId = typeReferences.get(record.elementId);
@@ -1123,6 +1227,56 @@ export function convertRvtBytes(
       if (typeName) {
         record.typeName = typeName;
         namedTypeElements += 1;
+      }
+    }
+
+    /*
+     * A sketch-based element with no thickness at all takes its category's.
+     *
+     * A record synthesised as a hull over the native faces attributed to an
+     * element is flat in z whenever exactly one face is attributed, which for a
+     * floor or a ceiling is the usual case: **24 records in the supplied project
+     * read as zero-thickness sheets**, and the paired export names every one of
+     * them. A floor drawn that way is 0.656 ft short and a ceiling 0.171 ft, and
+     * a ceiling is dropped from the scene outright, because the display gate
+     * wants extent on all three axes and a sheet has none.
+     *
+     * The thickness is in the file, in the category itself: a sketch-based
+     * element is a profile extruded through a thickness, so every floor in a
+     * model shares one. **54 of this model's 55 floors measure 0.6562 ft and 21
+     * of its 26 ceilings measure 0.1706** — 200 mm and 52 mm, the round figures a
+     * real building has — and hanging that below the flat record reproduces the
+     * export's own slab exactly: thickness error 0.656/0.171 ft → **0.000 for 22
+     * of 22**, base error **0.000 for 22 of 22**, nothing made worse.
+     *
+     * Two clauses do the work, and both are measured rather than chosen. The
+     * support floor in `modalSketchThickness` keeps the rule off `Ramps`, whose
+     * five records have five different spans because a ramp's record height is
+     * its rise — and those are exactly the two the rule would have got wrong,
+     * since a ramp's flat record is its *bottom* rather than its top. And only a
+     * synthesised record is completed: a real duplicated-bounds record that reads
+     * flat is the element's own statement about itself.
+     *
+     * Null control: giving each record another sketch category's mode instead of
+     * its own reproduces the export's thickness for **13 of 72** pairings.
+     */
+    let completedFlatSketches = 0;
+    {
+      const thicknessByCategory = modalSketchThickness(
+        elementBounds,
+        SKETCH_BOUNDARY_CATEGORIES,
+        MIN_SOLID_SPAN_FEET,
+      );
+      if (thicknessByCategory.size) {
+        for (const record of elementBounds) {
+          const thickness = record.categoryId == null
+            ? undefined
+            : thicknessByCategory.get(record.categoryId);
+          if (thickness == null) continue;
+          if (completeFlatSketchRecord(record, thickness, MIN_SOLID_SPAN_FEET)) {
+            completedFlatSketches += 1;
+          }
+        }
       }
     }
 
@@ -1163,6 +1317,9 @@ export function convertRvtBytes(
      */
     let clippedSolids = 0;
     let disownedSolids = 0;
+    let extendedSolids = 0;
+    let shrunkSolids = 0;
+    let narrowedSolidBands = 0;
     for (const record of elementBounds) {
       const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
       if (!solids.length || record.recordOffset < 0) continue;
@@ -1181,6 +1338,35 @@ export function convertRvtBytes(
       }
       for (const solid of own) {
         if (clipSolidToEnvelope(solid, record.boundsFeet)) clippedSolids += 1;
+        // And the other direction, which is the larger of the two effects. The
+        // trim range is the wall as modelled and Revit extends a wall's body at a
+        // join without moving its location line, so the drawn wall stops *short*
+        // of the exported one — by half the thickness of the wall it meets, which
+        // over the 4,008 axis-aligned solid-drawn walls spikes at 45, 50, 60, 75,
+        // 100, 120, 150 and 200 mm: exactly half of this model's wall types. The
+        // envelope is the joined extent and already holds it. This loop skips
+        // records with no real bounds block, which is the premise the rule needs
+        // — see `extendSolidToEnvelope` for the null controls and for why feeding
+        // it a synthesised envelope scores *below* doing nothing.
+        if (extendSolidToEnvelope(solid, record.boundsFeet)) extendedSolids += 1;
+        // The same argument on the axis nothing was checking. Of the 5,312
+        // solid-drawn records with a real bounds block, exactly **3** have a
+        // solid reaching outside the record in z, and all three are wrong by
+        // 6.6–9.2 ft: 1192647's record and its export box both read 0.66 ft tall
+        // against a solid drawn 9.84. All three go to 0.000 ft and nothing else
+        // moves. Nulls in `clipSolidBandToEnvelope`.
+        if (clipSolidBandToEnvelope(solid, record.boundsFeet)) narrowedSolidBands += 1;
+      }
+      // And the shrink the centreline clip above cannot reach: it clips the
+      // *centreline* to the envelope, while what is drawn is a box half a
+      // thickness either side of it, so a wall at 32° or 45° — 1,888 of this
+      // model's runs — is left with two corners outside its own envelope. Only
+      // where the envelope solves as this one slab's own box, and only for a
+      // record carrying a single solid, because cutting one part of a multi-body
+      // wall down to the union of its parts is how the unguarded form loses
+      // ground. See `shrinkSolidIntoEnvelope`.
+      if (own.length === 1 && shrinkSolidIntoEnvelope(own[0]!, record.boundsFeet)) {
+        shrunkSolids += 1;
       }
       if (record.solids?.length && record.solid) {
         // `solid` is the longest of the group and properties report from it.
@@ -1487,12 +1673,17 @@ export function convertRvtBytes(
           cachedShapeRecords,
           unplacedRecords,
           sketchBoundaryElements,
+          sketchBoundedFacetHulls,
+          completedFlatSketches,
           sweptRailings,
           curvedWalls,
           doorLeaves,
           doorLeavesFromShape,
           adoptedStairBoxes,
           clippedSolids,
+          extendedSolids,
+          shrunkSolids,
+          narrowedSolidBands,
           disownedSolids,
           narrowedFacetBands,
           unnamedSketchElements,

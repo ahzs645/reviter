@@ -211,6 +211,23 @@ export type ConvertStats = {
   unplacedRecords?: number;
   /** Elements extruded from a recovered sketch boundary rather than boxed. */
   sketchBoundaryElements?: number;
+  /**
+   * Facet-hull records whose box was replaced by their own boundary sketch's.
+   *
+   * A hull over one attributed facet is not a reading of the element; where the
+   * element carries a sketch category and a closed ring, the curves that ring was
+   * assembled from give both the footprint and the elevations.
+   */
+  sketchBoundedFacetHulls?: number;
+  /**
+   * Flat sketch records given their own category's thickness.
+   *
+   * A record synthesised as a hull over one attributed face is a zero-thickness
+   * sheet, so a floor is drawn 0.656 ft short and a ceiling is dropped from the
+   * scene entirely. Every floor in a model shares one thickness, and that is
+   * measured from the records that carry a real one.
+   */
+  completedFlatSketches?: number;
   /** Railings swept along their own rail path rather than drawn as a box. */
   sweptRailings?: number;
   /** Walls rebuilt as an arc from their own cylinder triple. */
@@ -221,6 +238,23 @@ export type ConvertStats = {
   doorLeavesFromShape?: number;
   /** Rebuilt solids shortened to the element's own envelope. */
   clippedSolids?: number;
+  /**
+   * Rebuilt solids lengthened to the element's own envelope, recovering the join
+   * extension Revit applies to a wall's body without moving its location line.
+   */
+  extendedSolids?: number;
+  /**
+   * Rebuilt solids whose drawn box was shrunk into the element's own envelope,
+   * where that envelope solves as this slab's own oriented rectangle. The
+   * centreline clip cannot reach this: a box corner sits half a thickness off the
+   * centreline, so a wall at an angle stays outside its own envelope.
+   */
+  shrunkSolids?: number;
+  /**
+   * Rebuilt solids whose elevation band was intersected with the element's own
+   * envelope. Three in the supplied project, all wrong by 6.6-9.2 ft.
+   */
+  narrowedSolidBands?: number;
   /**
    * Rebuilt solids dropped because they share no point with the element's own
    * envelope, so the surface attribution filed another element's body here.
