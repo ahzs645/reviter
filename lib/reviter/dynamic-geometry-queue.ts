@@ -2,6 +2,11 @@ import {
   locateFacetedTopology8Body,
   type FacetedTopology8Body,
 } from "./faceted-topology.ts";
+import {
+  claimDynamicQueueReplaySpan,
+  isDynamicQueueReplayCertificate,
+  type DynamicQueueReplayCertificate,
+} from "./dynamic-object-registry.ts";
 
 const DEFAULT_MAX_QUEUE_ENTRIES = 10_000;
 const DEFAULT_MAX_QUEUE_SEARCH_BYTES = 64 * 1024;
@@ -62,21 +67,8 @@ export type ExactGPolyMeshBindingEvidence = {
   gPolyMeshSourceClassSlot: number;
   topologyPropertyToken: number;
   topologySourceClassSlot: number;
-  /**
-   * Exact state retained while `OdBmObjectPtrInitReader::read` traversed the
-   * complete outer object. Browser readers may use stable surrogate IDs for
-   * the native object/property pointers in the DynamicQueue DataKey.
-   */
-  dynamicQueueState: {
-    collectionEndOffset: number;
-    outerStaticEndOffset: number;
-    replayOffset: number;
-    objectIdentity: string;
-    classPropertyIdentity: string;
-    sequenceIndex: number;
-    retainedValueCount: number;
-    nextUnreadEntryIndex: number;
-  };
+  /** Certificate minted by a completed surrogate outer-object traversal. */
+  dynamicQueueState: DynamicQueueReplayCertificate;
   ownerElementId: bigint;
   styleElementId: bigint;
   materialElementId: bigint;
@@ -253,6 +245,12 @@ export function bindQueuedFacetedTopology8(
   evidence: ExactGPolyMeshBindingEvidence,
 ): QueuedFacetedTopology8BindingResult {
   const state = evidence.dynamicQueueState;
+  if (!isDynamicQueueReplayCertificate(state)) {
+    return {
+      ok: false,
+      error: "dynamic queue replay certificate was not issued by the registry",
+    };
+  }
   const queue = locateCondInt16QueueEndingAt(data, state.collectionEndOffset);
   if (!queue.ok) return queue;
   const collection = queue.collection;
@@ -269,9 +267,8 @@ export function bindQueuedFacetedTopology8(
     state.replayOffset < collection.endOffset ||
     state.nextUnreadEntryIndex !== 0 ||
     state.retainedValueCount !== 0 ||
-    state.objectIdentity.length === 0 ||
-    state.classPropertyIdentity.length === 0 ||
-    state.sequenceIndex !== -1
+    state.sequenceIndex !== -1 ||
+    state.queueLength !== 1
   ) {
     return {
       ok: false,
@@ -282,8 +279,12 @@ export function bindQueuedFacetedTopology8(
   }
   if (
     evidence.gPolyMeshSourceClassSlot !== REVIT_2026_GPOLYMESH_SOURCE_CLASS ||
+    state.objectSourceClassSlot !== evidence.gPolyMeshSourceClassSlot ||
+    state.declaringSourceClassSlot !== evidence.gPolyMeshSourceClassSlot ||
     evidence.topologySourceClassSlot !==
       REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS ||
+    state.propertySourceClassSlot !== evidence.topologySourceClassSlot ||
+    state.propertyToken !== evidence.topologyPropertyToken ||
     entry.sourceClassSlot !== evidence.topologySourceClassSlot ||
     entry.token !== evidence.topologyPropertyToken
   ) {
@@ -311,6 +312,14 @@ export function bindQueuedFacetedTopology8(
   const topology = locateFacetedTopology8Body(data, state.replayOffset);
   if (!topology.ok) {
     return { ok: false, error: topology.error, queue: collection };
+  }
+  const replaySpan = claimDynamicQueueReplaySpan(
+    state,
+    state.replayOffset,
+    topology.body.endOffset,
+  );
+  if (!replaySpan.ok) {
+    return { ok: false, error: replaySpan.error, queue: collection };
   }
   return {
     ok: true,

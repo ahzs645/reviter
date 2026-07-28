@@ -256,10 +256,12 @@ The retained state is also more specific than a serialized token.
 `OdBmDynamicQueue::addData` at `0x173d62` constructs a `DataKey` from the
 current `ValueDisposition`: object identity, `OdBmClassProperty` identity,
 and sequence index (initially -1). `dataLeft` at `0x173966` performs an
-RB-tree lookup by that key. `readProperties` at `0x17604a` can consume a
-retained `OdTfVariant` for the key without advancing the payload stream;
-`assignValue` at `0x173906` applies the value through the retained class
-property.
+RB-tree lookup by that key. `readProperties` at `0x17604a` branches on that
+lookup: depending on pair/sequence state it reads and merges another property
+part or stores newly read data for later resolution. `assignValue` at
+`0x173906` applies a resolved value through the retained class property.
+Therefore neither “one descriptor equals the next body” nor “a retained value
+always skips bytes” is a valid general shortcut.
 
 The smallest unresolved layer is therefore not another byte signature. It is
 a browser representation of the outer reader and its stateful queue:
@@ -275,8 +277,60 @@ a browser representation of the outer reader and its stateful queue:
 5. only then attach the owning `GRep` element, transforms, style, and
    material.
 
-The collection syntax, transform body, and exact outer call boundary are now
-implemented or documented, but the `ObjectPtrInitReader` object registry and
-`DataKey` replay state still have to be reproduced. Until then, the three
-spans are intentionally rejected rather than emitted as owned model
-geometry.
+## Browser surrogate checkpoint
+
+The corresponding loader in `BmJsonExportEx-isolated` has SHA-256:
+
+```text
+56c066e2f308dcff123adfe37edaeb6f51cfa67dad8772ee7f804dbc01f4ae56
+```
+
+Its symbols corroborate the boundary above and add three implementation
+constraints:
+
+- `OdBmObjectPtrInitReader::read` at `0x180cda` either uses an already scoped
+  class or reads an `int16` source-class slot, resolves the class, obtains its
+  reader factory, and invokes that reader;
+- `OdBmDynamicQueue::addProperty` at `0x17359a` copies the current object,
+  class-property, and sequence disposition into an ordered property list;
+- `addData`, `dataLeft`, `readProperties`, and `readDynamicProperties` retain
+  an RB-tree of values keyed by that three-part identity and include merge,
+  pair, sequence, and reference-resolution paths.
+
+`SurrogateObjectPropertyRegistry` now implements the smallest safe browser
+subset of this state. During a static traversal it records:
+
+1. stable surrogate object identities with their exact source-class slots;
+2. stable class-property identities with their declaring source class;
+3. ordered dynamic-property descriptors carrying the exact three-part
+   `DataKey`, token, source-class slot, and collection end;
+4. any observed retained-value presence.
+
+The registry can be sealed only at the complete outer static end, then moved
+through an explicit reference-initialization phase. It issues an in-process
+`DynamicQueueReplayCertificate` only if:
+
+- every object, parent, property, and queued `DataKey` identity resolves;
+- replay begins exactly at the sealed outer static end;
+- exactly one property exists in the entire queue;
+- its sequence index is -1; and
+- no retained values were observed.
+
+The certificate is checked by identity, not merely by object shape, before
+`bindQueuedFacetedTopology8` will inspect topology bytes. A plain object with
+the same fields is rejected. The binder also cross-checks the certified
+object slot 2,237, declaring property slot 2,237, queued property slot 5,255,
+and property token against the counted descriptor. After the complete
+topology body validates, the registry advances the certificate from the exact
+replay offset to the decoded body end. Certificates are single-use, so one
+owner/property proof cannot be attached to a second byte span.
+
+This checkpoint deliberately does not implement native pair joining,
+sequence reconstruction, reference tokens, retained-data merging, or
+multi-property replay. Those paths cannot mint a certificate and therefore
+cannot emit geometry.
+
+The exact UNBC audit still finds no certifiable slot-2,237/slot-5,255 owner.
+The three mesh-shaped spans remain rejected. The next parser step is to feed
+this registry from a real release-scoped `ObjectPtrInitReader` traversal
+rather than from explicit test records.
