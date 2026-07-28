@@ -5,7 +5,10 @@ import {
   meshRevit2027CertifiedOwnerReplay,
   type Revit2027CertifiedOwnerFaceMesh,
 } from "./revit-2027-certified-owner-mesh.ts";
-import { isRevit2027DirectGeometryRoot } from "./revit-2027-direct-geometry-root.ts";
+import {
+  isRevit2027BoundedTessellatorRoot,
+  isRevit2027DirectGeometryRoot,
+} from "./revit-2027-direct-geometry-root.ts";
 import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
   type Revit2027FaceStatic,
@@ -72,6 +75,12 @@ export type Revit2027NativeMeshCollection = {
   readonly owners: ReadonlyMap<number, Revit2027CompactOwnerMesh>;
   readonly scannedFrames: number;
   readonly eligibleRoots: number;
+  /** Exact non-legacy syntactic roots entering bounded tessellator replay. */
+  readonly boundedTessellatorCandidateRoots: number;
+  /** Candidate roots retained only after complete local/nested coverage. */
+  readonly completeBoundedTessellatorRoots: number;
+  /** Complete candidate owner ids used to prove actual scene admission. */
+  readonly boundedTessellatorOwnerIds: ReadonlySet<number>;
   readonly replayedOwners: number;
   readonly completeOwners: number;
   readonly incompleteOwners: number;
@@ -108,6 +117,7 @@ export type Revit2027NativeMeshCollection = {
 type CompactOwnerDefinition = {
   ownerElementId: number;
   directRoot: boolean;
+  boundedTessellatorRoot: boolean;
   geometry: Revit2027CompactOwnerMesh | null;
   localComplete: boolean;
   nestedInstances: readonly Revit2027NestedInstance[];
@@ -119,6 +129,7 @@ type MutableCollection = {
   conflictingOwnerIds: Set<number>;
   scannedFrames: number;
   eligibleRoots: number;
+  boundedTessellatorCandidateRoots: number;
   replayedOwners: number;
   completeOwners: number;
   incompleteOwners: number;
@@ -482,6 +493,15 @@ function finalizeRevit2027NativeMeshCollection(
   const completeRequestedOwners = [...requestedOwners].filter((ownerElementId) =>
     owners.has(ownerElementId)
   );
+  const boundedTessellatorOwnerIds = new Set(
+    [...state.definitions.values()]
+      .filter(
+        (definition) =>
+          definition.boundedTessellatorRoot &&
+          owners.has(definition.ownerElementId),
+      )
+      .map((definition) => definition.ownerElementId),
+  );
   const requestedOwnerTriangles = completeRequestedOwners.reduce(
     (total, ownerElementId) =>
       total + (owners.get(ownerElementId)?.triangles ?? 0),
@@ -493,6 +513,10 @@ function finalizeRevit2027NativeMeshCollection(
     owners,
     scannedFrames: state.scannedFrames,
     eligibleRoots: state.eligibleRoots,
+    boundedTessellatorCandidateRoots:
+      state.boundedTessellatorCandidateRoots,
+    completeBoundedTessellatorRoots: boundedTessellatorOwnerIds.size,
+    boundedTessellatorOwnerIds,
     replayedOwners: state.replayedOwners,
     completeOwners: state.completeOwners,
     incompleteOwners: state.incompleteOwners,
@@ -547,6 +571,7 @@ export function createRevit2027NativeMeshCollector(
     conflictingOwnerIds: new Set(),
     scannedFrames: 0,
     eligibleRoots: 0,
+    boundedTessellatorCandidateRoots: 0,
     replayedOwners: 0,
     completeOwners: 0,
     incompleteOwners: 0,
@@ -578,8 +603,13 @@ export function createRevit2027NativeMeshCollector(
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
         const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
         if (!root.ok) continue;
+        const boundedTessellatorRoot =
+          isRevit2027BoundedTessellatorRoot(root.value);
         const directRoot = isRevit2027DirectGeometryRoot(root.value);
         if (directRoot) state.eligibleRoots += 1;
+        if (boundedTessellatorRoot) {
+          state.boundedTessellatorCandidateRoots += 1;
+        }
 
         const ownerElementId = Number(root.value.ownerElementId);
         if (
@@ -701,6 +731,7 @@ export function createRevit2027NativeMeshCollector(
         state.definitions.set(ownerElementId, {
           ownerElementId,
           directRoot,
+          boundedTessellatorRoot,
           geometry,
           localComplete,
           nestedInstances: nested.value,
@@ -739,6 +770,8 @@ export type Revit2027NativeMeshScene = {
   coveredElementIds: ReadonlySet<number>;
   ownerElements: number;
   placedElements: number;
+  /** Admitted direct/placed elements sourced from the bounded root route. */
+  boundedTessellatorElements: number;
   faceMeshes: number;
   triangles: number;
   truncated: boolean;
@@ -868,6 +901,7 @@ export function buildRevit2027NativeMeshScene(
       coveredElementIds: new Set(),
       ownerElements: 0,
       placedElements: 0,
+      boundedTessellatorElements: 0,
       faceMeshes: 0,
       triangles: 0,
       truncated: collection.truncated,
@@ -907,6 +941,7 @@ export function buildRevit2027NativeMeshScene(
   let faceMeshes = 0;
   let ownerElements = 0;
   let placedElements = 0;
+  let boundedTessellatorElements = 0;
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
@@ -982,6 +1017,11 @@ export function buildRevit2027NativeMeshScene(
     triangles += item.owner.triangles;
     faceMeshes += item.owner.faces.length;
     coveredElementIds.add(item.elementId);
+    if (
+      collection.boundedTessellatorOwnerIds.has(item.owner.ownerElementId)
+    ) {
+      boundedTessellatorElements += 1;
+    }
     if (item.placement) placedElements += 1;
     else ownerElements += 1;
   }
@@ -1061,6 +1101,7 @@ export function buildRevit2027NativeMeshScene(
     coveredElementIds,
     ownerElements,
     placedElements,
+    boundedTessellatorElements,
     faceMeshes,
     triangles,
     truncated,

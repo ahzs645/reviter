@@ -18,8 +18,9 @@ gap:
 
 | Persisted route | Tags |
 | --- | ---: |
-| own framed GElement, full FIFO/mesh coverage currently incomplete | 709 |
-| own framed GElement, full FIFO/mesh coverage complete | 140 |
+| own framed GElement outside the bounded tessellator predicate | 698 |
+| own bounded-candidate GElement, full FIFO/mesh coverage complete | 141 |
+| own bounded-candidate GElement, full coverage incomplete | 10 |
 | semantic frame only | 41 |
 | no independently framed partition object | 18 |
 | InsertableInstance frame but no decoded placement | 15 |
@@ -29,9 +30,10 @@ The last 15 are columns and are a disjoint primary route. All 925 Tags resolve
 to a native Revit `UniqueId`; the tag corpus SHA-256 is
 `4b7264d4653717a4ff9abf8c01677392749be7d229fd36c2d4a83f67f4b13b6a`.
 
-Two targets have certified drawable children through
-`Global/ElemTable.OwningElementId`, but neither child aggregate matches the IFC
-triangle count or falls within the 0.5-foot IFC envelope. Two separate
+Four targets have certified drawable children through
+`Global/ElemTable.OwningElementId`; none of their child aggregates falls within
+the 0.5-foot IFC envelope, while one triangle-count match alone is insufficient
+to prove composition. Two separate
 wall-standard-case targets have certified hosted children, but membership alone
 does not establish product geometry composition. Ownership/host aggregation is
 therefore not a validated missing geometry route in this population.
@@ -43,23 +45,34 @@ therefore not a validated missing geometry route in this population.
 | `IfcMember` | 354 | 354 | 0 | 0 |
 | `IfcColumn` | 224 | 209 | 0 | 0 |
 | `IfcStairFlight` | 108 | 108 | 0 | 0 |
-| `IfcRailing` | 105 | 105 | 96 | 96 |
+| `IfcRailing` | 105 | 105 | 97 | 97 |
 | `IfcWallStandardCase` | 59 | 24 | 24 | 6 |
 | `IfcSlab` | 49 | 27 | 1 | 0 |
 | `IfcWall` | 14 | 10 | 10 | 7 |
 | `IfcRamp` | 11 | 11 | 9 | 9 |
 | `IfcRoof` | 1 | 1 | 0 | 0 |
-| **Total** | **925** | **849** | **140** | **118** |
+| **Total** | **925** | **849** | **141** | **119** |
 
-The 140 complete owners pass the existing browser-safe full FIFO, certified
+The 141 complete owners pass the existing browser-safe full FIFO, certified
 face tessellation, positive-loop coverage, nested composition, duplicate/conflict,
-and bounded-storage gates. They contain 44,822 certified triangles. The
-independent RVT element-envelope gate admits 118 within 0.5 ft; 103 are
-coincident with IFC to `1e-6` ft. Triangle equality is only diagnostic: 97
-owners—96 railings and one wall—also match IFC triangle count.
+and bounded-storage gates. They contain 44,994 certified triangles. The
+independent IFC AABB diagnostic places 119 within 0.5 ft; 104 are coincident
+with IFC to `1e-6` ft. Triangle equality is only diagnostic: 98
+owners—97 railings and one wall—also match IFC triangle count.
 
-The existing production converter remains unchanged in this checkpoint. The
-audit proves a candidate population but does not broaden the caller gate.
+Production now admits this route through the exact three-shape predicate and
+reports `revit-2027-bounded-tessellator-roots-v1` only when at least one
+bounded-root element survives complete coverage, envelope, and output gates.
+All 141 complete bounded roots survive the production RVT-envelope/output
+gates. Of those, 119 also agree with the independent IFC AABB within 0.5 ft;
+the other 22 remain certified native geometry but are not IFC spatial-parity
+matches.
+
+Across all 36,144 numeric IFC geometry Tags, complete certified native Tag
+presence rises from 34,865 to 35,006 (`96.851483%`). The stricter IFC spatial
+parity total is 34,984 / 36,144 (`96.790615%`): the 34,865 baseline plus the
+119 bounded roots within 0.5 ft. The fixed spatial-parity gap therefore falls
+by 119, from 925 to 806.
 
 ## Exact initial descriptor shapes
 
@@ -74,10 +87,10 @@ All 105 railing roots have:
 ```
 
 That is two persisted `GInstance` roots followed by terminal `Geometry`.
-Ninety-six complete their exact symbol closure and pass the 0.5-foot envelope
-gate; nine remain incomplete. A syntactic shape check alone therefore has
-`96/105` pre-coverage precision. The existing full coverage gates reject all
-nine negative controls.
+Ninety-seven complete their exact symbol closure and pass the 0.5-foot envelope
+gate; eight remain incomplete. A syntactic shape check alone therefore has
+`97/105` pre-coverage precision. The existing full coverage gates reject all
+eight negative controls.
 
 ### Walls
 
@@ -134,25 +147,24 @@ roots:
 
 | Stage | Roots | Result |
 | --- | ---: | --- |
-| exact descriptor predicate | 151 | 140 complete, 11 incomplete |
-| existing full FIFO/mesh coverage gates | 140 | all measured complete roots |
-| independent 0.5-foot RVT/IFC envelope gate | 118 | bounded output candidates |
+| exact descriptor predicate | 151 | 141 complete, 10 incomplete |
+| existing full FIFO/mesh coverage gates | 141 | all measured complete roots |
+| independent 0.5-foot IFC AABB comparison | 119 | spatial-parity matches |
 
-The predicate therefore has `140/151` (`92.72%`) pre-coverage precision and
-`140/140` (`100%`) recall for the complete roots in this population. Against
-the 709 incomplete own-GElement roots it excludes 698 and deliberately leaves
-11 exact-shape negative controls for the runtime coverage gates, a measured
-specificity of `698/709` (`98.45%`).
+The predicate therefore has `141/151` (`93.38%`) pre-coverage precision and
+`141/141` (`100%`) recall for the complete roots in this population. Against
+the 708 incomplete own-GElement roots it excludes 698 and deliberately leaves
+10 exact-shape negative controls for the runtime coverage gates, a measured
+specificity of `698/708` (`98.59%`).
 
-This bounds a future production experiment to 151 candidate roots rather than
-all display IDs. The existing collector would reject 11 during complete
-coverage, hold at most the measured 44,822 certified pre-envelope triangles,
-and reject another 22 at the independent envelope gate. No production caller
-change is made by this checkpoint.
+Production evaluates 151 candidate roots rather than all display IDs. The
+collector rejects 10 during complete coverage and holds the measured 44,994
+certified triangles. All 141 complete roots pass the production RVT envelope;
+22 do not match the separate IFC AABB oracle within 0.5 ft.
 
 ## Bounded admission contract
 
-A safe future caller predicate must be class-independent:
+The production caller predicate is class-independent:
 
 1. exact Revit 2027 length/echo-framed GElement and owner identity;
 2. append-only initial tokens and one of the measured source-slot sequences;
@@ -163,7 +175,7 @@ A safe future caller predicate must be class-independent:
 7. bounded storage/output;
 8. independent RVT element envelope containment within 0.5 ft.
 
-Sequence matching selects candidates; it does not certify output. The nine
+Sequence matching selects candidates; it does not certify output. The eight
 railing and two ramp/slab negative controls prove why the runtime coverage
 gates remain mandatory. Requesting every display element from the collector
 was measured as unbounded and is not retained.

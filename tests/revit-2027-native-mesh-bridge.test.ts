@@ -143,6 +143,9 @@ test("native scene places shared owners, recentres once, groups proven materials
     ]),
     scannedFrames: 2,
     eligibleRoots: 2,
+    boundedTessellatorCandidateRoots: 1,
+    completeBoundedTessellatorRoots: 1,
+    boundedTessellatorOwnerIds: new Set([10]),
     replayedOwners: 2,
     completeOwners: 2,
     incompleteOwners: 0,
@@ -189,6 +192,7 @@ test("native scene places shared owners, recentres once, groups proven materials
   assert.deepEqual([...scene.coveredElementIds].sort((a, b) => a - b), [10, 30]);
   assert.equal(scene.ownerElements, 1);
   assert.equal(scene.placedElements, 1);
+  assert.equal(scene.boundedTessellatorElements, 1);
   assert.equal(scene.triangles, 2);
   assert.equal(scene.meshes.length, 2);
   assert.deepEqual([...scene.meshes[0]!.positions.slice(0, 3)], [-1, -2, -3]);
@@ -214,6 +218,9 @@ test("output cap declines an element atomically and leaves its proxy eligible", 
     ]),
     scannedFrames: 2,
     eligibleRoots: 2,
+    boundedTessellatorCandidateRoots: 2,
+    completeBoundedTessellatorRoots: 2,
+    boundedTessellatorOwnerIds: new Set([10, 11]),
     replayedOwners: 2,
     completeOwners: 2,
     incompleteOwners: 0,
@@ -247,6 +254,7 @@ test("output cap declines an element atomically and leaves its proxy eligible", 
   assert.deepEqual([...scene.coveredElementIds], [10]);
   assert.equal(scene.triangles, 1);
   assert.equal(scene.truncated, true);
+  assert.equal(scene.boundedTessellatorElements, 1);
 });
 
 test("nested owner faces compose root-local transforms before scene placement and preserve materials", () => {
@@ -271,6 +279,9 @@ test("nested owner faces compose root-local transforms before scene placement an
     ]),
     scannedFrames: 2,
     eligibleRoots: 1,
+    boundedTessellatorCandidateRoots: 1,
+    completeBoundedTessellatorRoots: 1,
+    boundedTessellatorOwnerIds: new Set([40]),
     replayedOwners: 2,
     completeOwners: 2,
     incompleteOwners: 0,
@@ -311,6 +322,7 @@ test("nested owner faces compose root-local transforms before scene placement an
     },
   );
   assert.deepEqual([...scene.coveredElementIds], [40]);
+  assert.equal(scene.boundedTessellatorElements, 1);
   assert.deepEqual([...scene.meshes[0]!.positions.slice(0, 3)], [4, 4, 4]);
   assert.equal(scene.meshes[0]!.nativeMaterialElementId, 99);
 });
@@ -332,6 +344,9 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
     ]),
     scannedFrames: 2,
     eligibleRoots: 2,
+    boundedTessellatorCandidateRoots: 2,
+    completeBoundedTessellatorRoots: 2,
+    boundedTessellatorOwnerIds: new Set([10, 20]),
     replayedOwners: 2,
     completeOwners: 2,
     incompleteOwners: 0,
@@ -387,6 +402,7 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
   assert.equal(scene.missingBounds, 0);
   assert.deepEqual([...scene.coveredElementIds], []);
   assert.equal(scene.meshes.length, 0);
+  assert.equal(scene.boundedTessellatorElements, 0);
   assert.deepEqual(
     scene.boundsMismatchSamples.map((sample) => ({
       elementId: sample.elementId,

@@ -26,6 +26,7 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
+  isRevit2027BoundedTessellatorRoot,
   isRevit2027DirectGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
@@ -289,6 +290,65 @@ for (const row of rvtAudit.certifiedBrowserMesh?.nestedInstances?.elements ?? []
   });
 }
 
+// The public replay audit intentionally inventories syntactic direct-root
+// candidates before production coverage and envelope gates. Preserve the fixed
+// pre-tessellator 925-tag diagnostic corpus by removing only the three exact
+// measured candidate shapes from that public candidate set. The bounded
+// collector below then measures their actual production admission independently.
+const cfb = CFB.read(rvtBytes, { type: "buffer" });
+const tessellatorCandidateOwnerIds = new Set<number>();
+for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
+  const fullPath = cfb.FullPaths[entryIndex] ?? "";
+  const entry = cfb.FileIndex[entryIndex]!;
+  if (entry.size <= 0 || !/(^|\/)Partitions\/[^/]+$/i.test(fullPath)) continue;
+  const stored = stripRevitPageChecksums(asBytes(entry.content));
+  const offsets = gzipOffsets(stored);
+  let dictionary: Uint8Array | null = null;
+  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
+    const read = inflateRevitChunk(
+      stored,
+      offsets[chunkIndex]!,
+      offsets[chunkIndex + 1],
+      dictionary,
+    );
+    const inflated = read ??
+      salvageRevitChunk(
+        stored,
+        offsets[chunkIndex]!,
+        offsets[chunkIndex + 1],
+        dictionary,
+      );
+    if (!inflated) continue;
+    if (read) dictionary = revitWindowTail(read);
+    for (const frame of scanFramedElementObjects(inflated)) {
+      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+      const root = decodeRevit2027FramedGRepRoot(inflated, frame, 2027);
+      if (!root.ok || !isRevit2027BoundedTessellatorRoot(root.value)) {
+        continue;
+      }
+      const ownerElementId = Number(root.value.ownerElementId);
+      if (
+        Number.isSafeInteger(ownerElementId) &&
+        ownerElementId === frame.elementId
+      ) {
+        tessellatorCandidateOwnerIds.add(ownerElementId);
+      }
+    }
+  }
+}
+if (tessellatorCandidateOwnerIds.size !== 151) {
+  throw new Error(
+    `expected 151 bounded tessellator candidates, received ${
+      tessellatorCandidateOwnerIds.size
+    }`,
+  );
+}
+const baselineDirectOwnerIds = new Set(
+  [...directOwnerIds].filter(
+    (elementId) => !tessellatorCandidateOwnerIds.has(elementId),
+  ),
+);
+
 const api = new IfcAPI();
 await api.Init();
 const ifcModel = api.OpenModel(ifcBytes, { COORDINATE_TO_ORIGIN: false });
@@ -362,10 +422,24 @@ api.StreamAllMeshes(ifcModel, (mesh) => {
 api.CloseModel(ifcModel);
 api.Dispose();
 
+const ifcGeometryNumericTags = ifcGeometryByTag.size;
+const baselineCertifiedIfcTagPresence = [...ifcGeometryByTag.keys()].filter(
+  (elementId) =>
+    certifiedElements.has(elementId) &&
+    !tessellatorCandidateOwnerIds.has(elementId),
+).length;
+const boundedTessellatorCompleteIfcTags = [...ifcGeometryByTag.keys()].filter(
+  (elementId) =>
+    certifiedElements.has(elementId) &&
+    tessellatorCandidateOwnerIds.has(elementId),
+).length;
+const certifiedIfcTagPresence =
+  baselineCertifiedIfcTagPresence + boundedTessellatorCompleteIfcTags;
+
 const missingTags = new Set(
   [...ifcGeometryByTag.keys()].filter(
     (elementId) =>
-      !directOwnerIds.has(elementId) &&
+      !baselineDirectOwnerIds.has(elementId) &&
       !placementByElement.has(elementId),
   ),
 );
@@ -452,7 +526,6 @@ for (const elementId of missingTags) {
 
 const framesByElement = new Map<number, FrameSummary[]>();
 const neighborsByElement = new Map<number, NeighborSummary[]>();
-const cfb = CFB.read(rvtBytes, { type: "buffer" });
 const requestedOwnerCollector = createRevit2027NativeMeshCollector(2027);
 let chunks = 0;
 let failedChunks = 0;
@@ -870,7 +943,39 @@ const report = {
     tagSha256: sha256(`${rows.map((row) => row.elementId).join(",")}\n`),
     routeDigestSha256: sha256(`${JSON.stringify(digestRows)}\n`),
     allNativeIdentitiesResolved: rows.every((row) => Boolean(row.uniqueId)),
-    directOwnerIds: directOwnerIds.size,
+    publicSyntacticDirectOwnerIds: directOwnerIds.size,
+    baselineDirectOwnerIds: baselineDirectOwnerIds.size,
+    boundedTessellator: {
+      candidateOwners: tessellatorCandidateOwnerIds.size,
+      coverageCompleteOwners:
+        requestedOwnerCollection.completeRequestedOwners,
+      productionEmittedOwners:
+        conversion.decoderCoverage.nativeMeshBoundedTessellatorElements ?? 0,
+      remainingWithoutCompleteCertifiedGeometry:
+        rows.length - requestedOwnerCollection.completeRequestedOwners,
+      ifcBoundsWithinHalfFoot: requestedOwnerBoundsWithinHalfFoot,
+      remainingWithoutHalfFootIfcAgreement:
+        rows.length - requestedOwnerBoundsWithinHalfFoot,
+      exactIfcTriangleCount: requestedOwnerExactTriangleCount,
+    },
+    ifcCertifiedTagCoverage: {
+      denominator: ifcGeometryNumericTags,
+      baselineTagPresence: baselineCertifiedIfcTagPresence,
+      boundedTessellatorCompleteTags: boundedTessellatorCompleteIfcTags,
+      tagPresenceTotal: certifiedIfcTagPresence,
+      tagPresenceRatio: certifiedIfcTagPresence / ifcGeometryNumericTags,
+      boundedTessellatorIfcBoundsWithinHalfFoot:
+        requestedOwnerBoundsWithinHalfFoot,
+      ifcSpatialParityTotal:
+        baselineCertifiedIfcTagPresence + requestedOwnerBoundsWithinHalfFoot,
+      ifcSpatialParityRatio:
+        (baselineCertifiedIfcTagPresence + requestedOwnerBoundsWithinHalfFoot) /
+        ifcGeometryNumericTags,
+      note:
+        "Complete native Tag presence is distinct from IFC AABB agreement. " +
+        "The 22 complete bounded-root spatial mismatches remain certified " +
+        "native geometry but are not counted as IFC spatial-parity matches.",
+    },
     placementLinks: placementByElement.size,
     certifiedDrawableElements: certifiedElements.size,
   },
@@ -942,8 +1047,10 @@ const report = {
   },
   evidenceBoundary:
     "RVT identity, ownership, host, level, type/family fields, frames, and " +
-    "bounds are decoded without IFC. IFC is used only after decode to select " +
-    "numeric geometry Tags that lack a certified direct owner or placement.",
+    "bounds are decoded without IFC. The fixed 925-tag pre-tessellator corpus " +
+    "is preserved while exact RVT coverage and envelope gates measure the new " +
+    "production route. IFC is used only after decode as the geometry population, " +
+    "bounds, and triangle-count oracle.",
 };
 
 mkdirSync(dirname(paths.json), { recursive: true });

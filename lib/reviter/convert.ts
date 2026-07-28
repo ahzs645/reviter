@@ -2071,7 +2071,12 @@ export function convertRvtBytes(
               ? ["revit-2027-associated-level-id-v1"]
               : []),
             ...(nativeMeshScene.meshes.length
-              ? ["revit-2027-certified-grep-brep-mesh-v1"]
+              ? [
+                  "revit-2027-certified-grep-brep-mesh-v1",
+                  ...(nativeMeshScene.boundedTessellatorElements
+                    ? ["revit-2027-bounded-tessellator-roots-v1"]
+                    : []),
+                ]
               : []),
             ...(nativeMeshCollection.completeNestedRoots
               ? ["revit-2027-nested-symbol-composition-v1"]
@@ -2086,6 +2091,12 @@ export function convertRvtBytes(
           nativeMeshFaces: nativeMeshScene.faceMeshes,
           nativeMeshElements: nativeMeshScene.coveredElementIds.size,
           nativeMeshOwners: nativeMeshCollection.completeOwners,
+          nativeMeshBoundedTessellatorCandidates:
+            nativeMeshCollection.boundedTessellatorCandidateRoots,
+          nativeMeshCompleteBoundedTessellatorRoots:
+            nativeMeshCollection.completeBoundedTessellatorRoots,
+          nativeMeshBoundedTessellatorElements:
+            nativeMeshScene.boundedTessellatorElements,
           nativeMeshTriangles: nativeMeshScene.triangles,
           nativeMeshTruncated: nativeMeshScene.truncated,
           nativeMeshStoredBytes: nativeMeshCollection.storedBytes,

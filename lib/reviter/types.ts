@@ -103,6 +103,12 @@ export type DecoderCoverage = {
   nativeMeshElements?: number;
   /** Complete independently persisted GRep owners retained before placement. */
   nativeMeshOwners?: number;
+  /** Exact non-legacy root shapes entering bounded tessellator replay. */
+  nativeMeshBoundedTessellatorCandidates?: number;
+  /** Candidate roots retained only after complete local/nested coverage. */
+  nativeMeshCompleteBoundedTessellatorRoots?: number;
+  /** Bounded-root elements actually emitted after envelope/output gates. */
+  nativeMeshBoundedTessellatorElements?: number;
   /** Exact certified triangles emitted after owner placement expansion. */
   nativeMeshTriangles?: number;
   /** True when a native storage/output safety cap declined complete elements. */
