@@ -46,7 +46,8 @@ function queueTopology(
       },
       propertyToken: 91,
       propertySourceClassSlot: TOPOLOGY_SLOT,
-      collectionEndOffset: 40,
+      descriptorOffset: 34,
+      descriptorEndOffset: 40,
     }),
     { ok: true, value: undefined },
   );
@@ -71,7 +72,8 @@ test("certifies one exact property only after static sealing and reference initi
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(isDynamicQueueReplayCertificate(result.value), true);
-  assert.equal(result.value.collectionEndOffset, 40);
+  assert.equal(result.value.descriptorOffset, 34);
+  assert.equal(result.value.descriptorEndOffset, 40);
   assert.equal(result.value.outerStaticEndOffset, 96);
   assert.equal(result.value.replayOffset, 96);
   assert.equal(result.value.objectIdentity, OBJECT_ID);
@@ -104,7 +106,8 @@ test("rejects unknown object/property identities and duplicate identities", () =
     },
     propertyToken: 91,
     propertySourceClassSlot: TOPOLOGY_SLOT,
-    collectionEndOffset: 40,
+    descriptorOffset: 34,
+    descriptorEndOffset: 40,
   });
   assert.equal(missing.ok, false);
   if (!missing.ok) assert.match(missing.error, /unregistered object/);
@@ -205,7 +208,8 @@ test("rejects a replay offset different from the complete outer static end", () 
 test("issued-certificate check rejects structurally identical plain objects", () => {
   assert.equal(
     isDynamicQueueReplayCertificate({
-      collectionEndOffset: 40,
+      descriptorOffset: 34,
+      descriptorEndOffset: 40,
       outerStaticEndOffset: 96,
       replayOffset: 96,
       objectIdentity: OBJECT_ID,

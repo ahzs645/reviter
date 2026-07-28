@@ -27,12 +27,14 @@ export type SurrogateDynamicProperty = {
   dataKey: SurrogateDataKey;
   propertyToken: number;
   propertySourceClassSlot: number;
-  collectionEndOffset: number;
+  descriptorOffset: number;
+  descriptorEndOffset: number;
 };
 
 export type DynamicQueueReplayCertificate = {
   readonly [replayCertificateBrand]: true;
-  readonly collectionEndOffset: number;
+  readonly descriptorOffset: number;
+  readonly descriptorEndOffset: number;
   readonly outerStaticEndOffset: number;
   readonly replayOffset: number;
   readonly objectIdentity: string;
@@ -152,6 +154,23 @@ export class SurrogateObjectPropertyRegistry {
     return { ok: true, value: undefined };
   }
 
+  ensureClassProperty(
+    record: SurrogateClassPropertyRecord,
+  ): RegistryResult<void> {
+    const existing = this.#properties.get(record.identity);
+    if (!existing) return this.registerClassProperty(record);
+    if (
+      existing.declaringSourceClassSlot !== record.declaringSourceClassSlot ||
+      existing.name !== record.name
+    ) {
+      return {
+        ok: false,
+        error: "surrogate class-property identity conflicts with its registered definition",
+      };
+    }
+    return { ok: true, value: undefined };
+  }
+
   enqueueDynamicProperty(
     property: SurrogateDynamicProperty,
   ): RegistryResult<void> {
@@ -165,8 +184,10 @@ export class SurrogateObjectPropertyRegistry {
       property.dataKey.sequenceIndex < -1 ||
       !validInt32(property.propertyToken) ||
       !validSourceClassSlot(property.propertySourceClassSlot) ||
-      !Number.isSafeInteger(property.collectionEndOffset) ||
-      property.collectionEndOffset < 0
+      !Number.isSafeInteger(property.descriptorOffset) ||
+      !Number.isSafeInteger(property.descriptorEndOffset) ||
+      property.descriptorOffset < 0 ||
+      property.descriptorEndOffset <= property.descriptorOffset
     ) {
       return { ok: false, error: "dynamic property descriptor or DataKey is invalid" };
     }
@@ -220,12 +241,12 @@ export class SurrogateObjectPropertyRegistry {
     }
     if (
       this.#queue.some(
-        (property) => property.collectionEndOffset > outerStaticEndOffset,
+        (property) => property.descriptorEndOffset > outerStaticEndOffset,
       )
     ) {
       return {
         ok: false,
-        error: "a dynamic property collection ends after the outer static boundary",
+        error: "a dynamic property descriptor ends after the outer static boundary",
       };
     }
     this.#outerObjectIdentity = outerObjectIdentity;
@@ -303,7 +324,8 @@ export class SurrogateObjectPropertyRegistry {
     )!;
     const certificate = Object.freeze({
       [replayCertificateBrand]: true as const,
-      collectionEndOffset: queued.collectionEndOffset,
+      descriptorOffset: queued.descriptorOffset,
+      descriptorEndOffset: queued.descriptorEndOffset,
       outerStaticEndOffset: this.#outerStaticEndOffset,
       replayOffset,
       objectIdentity: object.identity,

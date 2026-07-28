@@ -139,21 +139,23 @@ that result is not itself proof that a span is a topology body.
 `bindQueuedFacetedTopology8` adds a fail-closed ownership gate. It only binds
 when:
 
-1. exactly one queued item exists in the identified collection;
-2. the caller has separately reproduced the complete outer static-object
+1. the registry has exactly one dynamic property in the complete outer queue;
+2. the caller has reproduced the complete outer static-object
    boundary and retained DynamicQueue `DataKey` state;
-3. the replay starts at that outer boundary, after the collection end;
-4. no retained value precedes the selected single entry;
-5. that item is common source slot 5,255 and its token matches the retained
-   `GPolyMesh` topology property;
-6. the owning record was entered as Revit 2026 source slot 2,237;
-7. owner, 64-bit style/material IDs, signed flags, and affine transform are
+3. the certified individual `CondInt16` descriptor bytes match its token,
+   source-class slot, and exact end;
+4. replay starts at the complete outer boundary after all inline fields;
+5. no retained value precedes the selected entry;
+6. that descriptor is common source slot 5,255 and its token matches the
+   retained `GPolyMesh` topology property;
+7. the owning record was entered as Revit 2026 source slot 2,237;
+8. owner, 64-bit style/material IDs, signed flags, and affine transform are
    all supplied and valid; and
-8. the complete topology body validates.
+9. the complete topology body validates.
 
-All three UNBC spans are rejected at condition 1 with
-`faceted topology ownership is ambiguous in a multi-entry DynamicQueue`.
-Reviter therefore does not emit them as owned geometry.
+None of the three UNBC spans has a proven outer slot-2,237 dispatch or a
+registry-issued replay certificate. Reviter therefore does not emit them as
+owned geometry.
 
 ## Exact-model target-slot audit
 
@@ -303,7 +305,7 @@ subset of this state. During a static traversal it records:
 1. stable surrogate object identities with their exact source-class slots;
 2. stable class-property identities with their declaring source class;
 3. ordered dynamic-property descriptors carrying the exact three-part
-   `DataKey`, token, source-class slot, and collection end;
+   `DataKey`, token, source-class slot, and descriptor byte range;
 4. any observed retained-value presence.
 
 The registry can be sealed only at the complete outer static end, then moved
@@ -331,6 +333,61 @@ multi-property replay. Those paths cannot mint a certificate and therefore
 cannot emit geometry.
 
 The exact UNBC audit still finds no certifiable slot-2,237/slot-5,255 owner.
-The three mesh-shaped spans remain rejected. The next parser step is to feed
-this registry from a real release-scoped `ObjectPtrInitReader` traversal
-rather than from explicit test records.
+The three mesh-shaped spans remain rejected. The release-scoped feed below
+adds one exact class reader but does not invent the missing outer-object
+position.
+
+## Release-scoped dispatch checkpoint
+
+`dispatchRevit2026ObjectPtrInit` now reproduces the smallest proven native
+class-selection branch. If a source class is already scoped in the reader
+context it consumes no selector bytes. Otherwise it reads one signed
+little-endian `int16`. It then resolves that value only through the explicit
+Revit 2026 browser reader table.
+
+Only source slot 2,237 is registered. There is no generic-reader fallback.
+Slots 2,177, 2,210, and every other class fail closed until their complete
+static reader contracts are implemented.
+
+The slot-2,237 reader follows the exact native delegation and field order:
+
+| Layer | Inline bytes |
+| --- | --- |
+| slot 1,400 `GInfo` through slot 1,399 `GNode` | `u64` style ID, `i32` tag, `i32` control command, `u32` flags |
+| `GPolyMesh.m_pFacetedTopology` | `i32` token, then `i16` source slot only when token is nonzero |
+| remaining `GPolyMesh` fields | `u64` interior-style ID, `u64` material ID, `i32` flags |
+
+The dispatcher decodes the complete static body before registering its
+surrogate object. A nonzero topology descriptor is queued with its exact
+object/property `DataKey` and byte range. A zero condition records no replay
+candidate. Static completion remains separate: the caller must still prove
+that the returned end is the end of the complete outer object graph, seal the
+registry there, and initialize references before a certificate can be issued.
+
+The exact UNBC bounded dispatch audit scans every raw slot-2,237 occurrence
+without promoting it to an object boundary:
+
+| Measure | Result |
+| --- | ---: |
+| Inflated chunks | 3,666 |
+| Failed chunks | 0 |
+| Raw slot-2,237 occurrences | 4,893 |
+| Complete following slot-2,237 static shapes | 3,463 |
+| Shapes whose topology descriptor is slot 5,255 | 0 |
+| Slot-5,255 shapes with token 1–100,000 | 0 |
+
+The 3,463 complete shapes demonstrate why static body length alone is not a
+boundary proof: arbitrary bytes often satisfy fixed-width fields. The
+independently significant result is that none reaches the required slot-5,255
+topology descriptor. This remains a negative audit; scoped-class dispatches
+need not serialize slot 2,237 and cannot be found by this raw scan.
+
+Reproduction:
+
+```sh
+node --experimental-strip-types scripts/audit-revit-2026-object-dispatch.ts model.rvt
+```
+
+The next unresolved boundary is the parent reader that supplies a genuine
+outer object position or scoped class context. Until that position is
+decoded, the new dispatcher does not certify any UNBC geometry.

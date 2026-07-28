@@ -35,6 +35,10 @@ export type CondInt16QueueDecodeResult =
   | { ok: true; collection: CondInt16QueueCollection }
   | { ok: false; error: string };
 
+export type CondInt16PropertyDecodeResult =
+  | { ok: true; descriptor: CondInt16QueueEntry }
+  | { ok: false; error: string };
+
 export type RevitTransform3d = {
   byteOffset: number;
   endOffset: number;
@@ -77,7 +81,7 @@ export type ExactGPolyMeshBindingEvidence = {
 };
 
 export type QueuedFacetedTopology8Binding = {
-  queue: CondInt16QueueCollection;
+  propertyDescriptor: CondInt16QueueEntry;
   topology: FacetedTopology8Body;
   ownerElementId: bigint;
   styleElementId: bigint;
@@ -91,7 +95,7 @@ export type QueuedFacetedTopology8BindingResult =
   | {
       ok: false;
       error: string;
-      queue?: CondInt16QueueCollection;
+      propertyDescriptor?: CondInt16QueueEntry;
     };
 
 function fits(data: Uint8Array, offset: number, byteLength: number): boolean {
@@ -163,6 +167,33 @@ export function decodeCondInt16QueueCollection(
       count,
       entries,
     },
+  };
+}
+
+export function decodeCondInt16PropertyDescriptor(
+  data: Uint8Array,
+  byteOffset: number,
+): CondInt16PropertyDecodeResult {
+  if (!fits(data, byteOffset, 4)) {
+    return { ok: false, error: "CondInt16 property token is truncated" };
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const token = view.getInt32(byteOffset, true);
+  let endOffset = byteOffset + 4;
+  let sourceClassSlot: number | null = null;
+  if (token !== 0) {
+    if (!fits(data, endOffset, 2)) {
+      return { ok: false, error: "CondInt16 property source-class slot is truncated" };
+    }
+    sourceClassSlot = view.getInt16(endOffset, true);
+    if (sourceClassSlot <= 0) {
+      return { ok: false, error: "CondInt16 property source-class slot is not positive" };
+    }
+    endOffset += 2;
+  }
+  return {
+    ok: true,
+    descriptor: { byteOffset, endOffset, token, sourceClassSlot },
   };
 }
 
@@ -251,20 +282,22 @@ export function bindQueuedFacetedTopology8(
       error: "dynamic queue replay certificate was not issued by the registry",
     };
   }
-  const queue = locateCondInt16QueueEndingAt(data, state.collectionEndOffset);
-  if (!queue.ok) return queue;
-  const collection = queue.collection;
-  if (collection.count !== 1) {
+  const decodedDescriptor = decodeCondInt16PropertyDescriptor(
+    data,
+    state.descriptorOffset,
+  );
+  if (!decodedDescriptor.ok) return decodedDescriptor;
+  const propertyDescriptor = decodedDescriptor.descriptor;
+  if (propertyDescriptor.endOffset !== state.descriptorEndOffset) {
     return {
       ok: false,
-      error: "faceted topology ownership is ambiguous in a multi-entry DynamicQueue",
-      queue: collection,
+      error: "certified CondInt16 descriptor boundary does not match the stream",
+      propertyDescriptor,
     };
   }
-  const entry = collection.entries[0]!;
   if (
     state.outerStaticEndOffset !== state.replayOffset ||
-    state.replayOffset < collection.endOffset ||
+    state.replayOffset < propertyDescriptor.endOffset ||
     state.nextUnreadEntryIndex !== 0 ||
     state.retainedValueCount !== 0 ||
     state.sequenceIndex !== -1 ||
@@ -274,7 +307,7 @@ export function bindQueuedFacetedTopology8(
       ok: false,
       error:
         "complete outer-object and DataKey replay state is required before binding topology",
-      queue: collection,
+      propertyDescriptor,
     };
   }
   if (
@@ -285,13 +318,13 @@ export function bindQueuedFacetedTopology8(
       REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS ||
     state.propertySourceClassSlot !== evidence.topologySourceClassSlot ||
     state.propertyToken !== evidence.topologyPropertyToken ||
-    entry.sourceClassSlot !== evidence.topologySourceClassSlot ||
-    entry.token !== evidence.topologyPropertyToken
+    propertyDescriptor.sourceClassSlot !== evidence.topologySourceClassSlot ||
+    propertyDescriptor.token !== evidence.topologyPropertyToken
   ) {
     return {
       ok: false,
       error: "queued property does not exactly identify the Revit 2026 GPolyMesh topology",
-      queue: collection,
+      propertyDescriptor,
     };
   }
   if (
@@ -306,12 +339,12 @@ export function bindQueuedFacetedTopology8(
     return {
       ok: false,
       error: "GPolyMesh owner, style, material, flags, or transform evidence is invalid",
-      queue: collection,
+      propertyDescriptor,
     };
   }
   const topology = locateFacetedTopology8Body(data, state.replayOffset);
   if (!topology.ok) {
-    return { ok: false, error: topology.error, queue: collection };
+    return { ok: false, error: topology.error, propertyDescriptor };
   }
   const replaySpan = claimDynamicQueueReplaySpan(
     state,
@@ -319,12 +352,12 @@ export function bindQueuedFacetedTopology8(
     topology.body.endOffset,
   );
   if (!replaySpan.ok) {
-    return { ok: false, error: replaySpan.error, queue: collection };
+    return { ok: false, error: replaySpan.error, propertyDescriptor };
   }
   return {
     ok: true,
     binding: {
-      queue: collection,
+      propertyDescriptor,
       topology: topology.body,
       ownerElementId: evidence.ownerElementId,
       styleElementId: evidence.styleElementId,

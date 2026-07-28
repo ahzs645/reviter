@@ -44,7 +44,8 @@ function identityTransform(): RevitTransform3d {
 }
 
 function exactQueueState(
-  collectionEndOffset: number,
+  descriptorOffset: number,
+  descriptorEndOffset: number,
   replayOffset: number,
   propertyToken = 91,
 ): DynamicQueueReplayCertificate {
@@ -75,7 +76,8 @@ function exactQueueState(
       propertyToken,
       propertySourceClassSlot:
         REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
-      collectionEndOffset,
+      descriptorOffset,
+      descriptorEndOffset,
     }).ok,
     true,
   );
@@ -135,7 +137,7 @@ test("locates only a unique collection ending at the supplied boundary", () => {
   assert.equal(result.collection.count, 2);
 });
 
-test("binding rejects a multi-entry GStyle/GFlipControl replay collision", () => {
+test("binding rejects a certified descriptor whose stream slot is GStyle", () => {
   const data = new Uint8Array(120);
   const view = new DataView(data.buffer);
   view.setInt32(0, 2, true);
@@ -149,7 +151,7 @@ test("binding rejects a multi-entry GStyle/GFlipControl replay collision", () =>
     gPolyMeshSourceClassSlot: REVIT_2026_GPOLYMESH_SOURCE_CLASS,
     topologyPropertyToken: 62,
     topologySourceClassSlot: REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
-    dynamicQueueState: exactQueueState(16, 16, 62),
+    dynamicQueueState: exactQueueState(4, 10, 16, 62),
     ownerElementId: 1n,
     styleElementId: 2n,
     materialElementId: 3n,
@@ -158,12 +160,12 @@ test("binding rejects a multi-entry GStyle/GFlipControl replay collision", () =>
   });
   assert.equal(result.ok, false);
   if (!result.ok) {
-    assert.match(result.error, /multi-entry DynamicQueue/);
-    assert.equal(result.queue?.entries[0]?.sourceClassSlot, 2248);
+    assert.match(result.error, /does not exactly identify/);
+    assert.equal(result.propertyDescriptor?.sourceClassSlot, 2248);
   }
 });
 
-test("binding accepts exact outer state even when static fields follow the collection", () => {
+test("binding accepts exact outer state when static fields follow the descriptor", () => {
   const data = new Uint8Array(104);
   const view = new DataView(data.buffer);
   view.setInt32(0, 1, true);
@@ -172,7 +174,7 @@ test("binding accepts exact outer state even when static fields follow the colle
   view.setInt32(10, 0x12345678, true);
   const endOffset = writeTopology8(data, 14);
 
-  const dynamicQueueState = exactQueueState(10, 14);
+  const dynamicQueueState = exactQueueState(4, 10, 14);
   const evidence = {
     gPolyMeshSourceClassSlot: REVIT_2026_GPOLYMESH_SOURCE_CLASS,
     topologyPropertyToken: 91,
@@ -209,7 +211,8 @@ test("binding rejects a replay certificate not issued by the registry", () => {
     topologyPropertyToken: 91,
     topologySourceClassSlot: REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
     dynamicQueueState: {
-      collectionEndOffset: 10,
+      descriptorOffset: 4,
+      descriptorEndOffset: 10,
       outerStaticEndOffset: 14,
       replayOffset: 14,
       objectIdentity: "outer-object:1/gpolymesh:1",
