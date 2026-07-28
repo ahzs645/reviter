@@ -9,8 +9,8 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 93870926,
-      "sha256": "74aefa0042206c842aebebef0927e04bd9c45d6e135c25e1c0b184431b8e848e",
+      "bytes": 93870927,
+      "sha256": "454f65adcd4b509bfd56974c0fe9f6c726862295d99438a8bc019fade689464e",
       "analyticalSha256": "9cf2e6daf75921062b3fd5a9bbfdd11e45e7fba72aacee1a1331f5c47972f748",
       "analyticalHashExcludes": [
         "stats.durationMs"
@@ -18,8 +18,8 @@
     },
     "glb": {
       "name": "unbc-parity.glb",
-      "bytes": 13104996,
-      "sha256": "8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a"
+      "bytes": 13105248,
+      "sha256": "e1d8af479ce2f7d1b223cef482a080d00ad56c3c8788dc0b187a4b95881d7847"
     }
   },
   "ifc": {
@@ -1024,9 +1024,12 @@
           "revit-2027-native-identity-v1",
           "revit-2027-material-element-name-v1",
           "revit-2027-family-symbol-family-v1",
+          "revit-2027-family-symbol-static-tail-v1",
           "revit-2027-family-name-path-v1",
           "revit-2027-geometry-material-id-v1",
           "revit-2027-instance-geometry-material-v1",
+          "revit-2027-family-symbol-geometry-tag-material-v1",
+          "revit-2027-basic-wall-compound-material-v1",
           "revit-2027-insertable-host-id-v1",
           "revit-2027-associated-level-id-v1"
         ],
@@ -1034,13 +1037,15 @@
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "nativeMaterialDefinitions": 69,
-        "nativeMaterialAssignments": 25607,
+        "nativeMaterialAssignments": 35084,
         "nativeGeometryMaterialAssignments": 5413,
+        "nativeCompoundStructureDefinitions": 45,
+        "nativeCompoundLayerMaterialAssignments": 7525,
         "nativeFamilySymbols": 7805,
-        "nativeFamilyRelations": 66,
+        "nativeFamilyRelations": 2151,
         "nativeHostRelations": 27568,
         "nativeAssociatedLevelRelations": 37503,
-        "nativeFamilyDefinitions": 3,
+        "nativeFamilyDefinitions": 41,
         "nativeUniqueIds": 74437,
         "nativeOwnershipRecords": 74437,
         "nativeOwnershipRelations": 50205,

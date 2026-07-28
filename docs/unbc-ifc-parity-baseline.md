@@ -302,10 +302,10 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `74aefa0042206c842aebebef0927e04bd9c45d6e135c25e1c0b184431b8e848e`
+- semantic JSON: `454f65adcd4b509bfd56974c0fe9f6c726862295d99438a8bc019fade689464e`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
   `9cf2e6daf75921062b3fd5a9bbfdd11e45e7fba72aacee1a1331f5c47972f748`
-- GLB: `8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a`
+- GLB: `e1d8af479ce2f7d1b223cef482a080d00ad56c3c8788dc0b187a4b95881d7847`
 
 The script exits nonzero on a missing or invalid input and writes the complete
 measurement as JSON for future diffs.
