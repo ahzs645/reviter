@@ -2,7 +2,7 @@
 
 /**
  * Exercise the reusable browser-safe GRep FIFO registry and certified owner
- * mesh paths against every direct single-Geometry owner in a Revit 2027 RVT.
+ * mesh paths against every certified direct-Geometry owner in a Revit 2027 RVT.
  * Exact persisted instance transforms are reported separately from owner-local
  * meshes so the output can feed the post-decode IFC parity oracle.
  */
@@ -25,6 +25,9 @@ import {
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import {
+  isRevit2027DirectGeometryRoot,
+} from "../lib/reviter/revit-2027-direct-geometry-root.ts";
+import {
   instanceCorners,
   readInstancePlacement,
   type InstancePlacement,
@@ -38,9 +41,6 @@ import {
 import {
   meshRevit2027CertifiedOwnerReplay,
 } from "../lib/reviter/revit-2027-certified-owner-mesh.ts";
-import {
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
 
 function increment<K>(map: Map<K, number>, key: K, count = 1): void {
   map.set(key, (map.get(key) ?? 0) + count);
@@ -174,12 +174,7 @@ for (const partition of partitions) {
       }
       if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
       const root = decodeRevit2027FramedGRepRoot(inflated, frame, release);
-      if (
-        !root.ok ||
-        root.value.children.length !== 1 ||
-        root.value.children[0]?.sourceClassSlot !==
-          REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
-      ) {
+      if (!root.ok || !isRevit2027DirectGeometryRoot(root.value)) {
         continue;
       }
       eligibleOwners += 1;
