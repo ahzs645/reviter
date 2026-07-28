@@ -51,8 +51,11 @@ The adapter rejects the whole BRep when it encounters:
 - a final edge that does not close to the first.
 
 The adapter itself does not infer a hole from winding. Its Revit 2027 owner
-caller supplies roles only when the native renderer's oriented UV winding rule
-and sampled UV containment agree on filled regions with direct holes. When one
+caller supplies roles only when native-corrected UV winding and sampled UV
+containment agree on filled regions with direct holes. The owner caller
+specifically corrects raw UV area with persisted Face bit `0x2` and
+`Surface.orientFlag`; this is a `TB_Geometry` rule, not a planar-renderer
+face-forward assumption. When one
 persisted Face contains disjoint shells or even-depth nested islands, its
 caller supplies one neutral face per connected filled region while preserving
 the same source Face identity, material, marker, and provenance. The
@@ -71,9 +74,9 @@ gap instead of hiding it in geometry output.
 
 The exact owner replay reaches 40,632 closed loops and proves zero
 next/previous reciprocity failures. The reusable browser path tessellates
-40,292 planar Faces into 87,496 triangles. That includes 104 multi-loop Faces,
-43 additional filled regions, 111 direct hole loops, and 2,685 triangles. Two
-multi-loop Faces remain fail-closed.
+40,294 planar Faces into 87,504 triangles. That includes 106 multi-loop Faces,
+45 additional filled regions, 111 direct hole loops, and 2,693 triangles. No
+uniquely directed multi-loop Face remains rejected.
 
 The combined certified owner and persisted-instance path matches 25,642
 numeric Revit Tags in the supplied IFC and emits 318,028 of the IFC's 318,304

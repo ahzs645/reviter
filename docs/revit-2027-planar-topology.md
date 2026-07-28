@@ -80,13 +80,21 @@ All 40,813 Plane bodies are reached. Face eligibility is:
 Resolved loop-chain sizes are 40,214 single-loop Faces, 72 two-loop, 20
 three-loop, 15 four-loop, and one six-loop Face. There are 162 extra linked
 loops. The owner mesher now classifies the unambiguous subset into one or more
-filled regions and their direct holes. For these non-periodic planes, it first
-applies the native renderer's oriented UV shoelace rule: after the persisted
-surface-orientation branch, positive raw loop type is a hole and negative raw
-loop type is filled/outer. Its planar tessellator then independently requires
-strict containment, pairwise nonintersection, simple rings, and
-outer-minus-holes area equality. All 104 accepted multi-loop Faces agree with
-both tests; containment never overrides contradictory native-oriented winding.
+filled regions and their direct holes. For these non-periodic planes,
+`TB_Geometry` computes the native loop area as:
+
+```text
+normalFlipped = (faceFlags & 0x2) != 0
+correctedArea =
+  normalFlipped == surface.orientFlag ? -rawUvArea : rawUvArea
+```
+
+Corrected-positive contours are filled/even-depth boundaries and
+corrected-negative contours are odd-depth holes. The planar tessellator then
+independently requires strict containment, pairwise nonintersection, simple
+rings, and outer-minus-holes area equality. All 106 accepted multi-loop Faces
+agree with both tests; containment never overrides contradictory native
+winding.
 The renderer's multiple-filled-profile behavior then permits disjoint shells
 and even-depth nested islands to become separate neutral face regions.
 
@@ -95,22 +103,23 @@ to the tessellator:
 
 | Stage | Faces |
 | --- | ---: |
-| Attempted | 40,296 |
-| Adapted to `NeutralBrep` | 40,296 |
-| Tessellated | 40,292 |
+| Attempted | 40,298 |
+| Adapted to `NeutralBrep` | 40,298 |
+| Tessellated | 40,294 |
 | Structured tessellator rejections | 4 |
 
-The result has 168,098 positions, 87,496 triangles, and 40,292 source Faces
-across 5,806 reusable geometry owners. It includes 104 multi-loop Faces with
-43 additional filled regions, 111 direct hole loops, and 2,685 triangles
-across 46 owners. Two multi-loop Faces on owner `229170` remain fail-closed
-because their contours do not prove the supported topology.
+The result has 168,114 positions, 87,504 triangles, and 40,294 source Faces
+across 5,806 reusable geometry owners. It includes 106 multi-loop Faces with
+45 additional filled regions, 111 direct hole loops, and 2,693 triangles
+across 47 owners. Face tokens 4 and 5 on owner `229170` are the final two:
+their persisted flags are `6`, so bit `0x2` reverses both raw-negative loops
+into corrected-positive disjoint regions.
 
 The broader certified-owner API now adds the independently proven sampled
 Cylinder, Cone apex-sector, and circular-profile rectangular `SurfRev`
 subsets: 129 more source faces, 5,018 positions, and 4,462 triangles. Its
-current combined direct-owner total is 40,421 source-face meshes, 173,116
-positions, and 91,958 triangles. Six non-certified Cone faces, thirteen
+current combined direct-owner total is 40,423 source-face meshes, 173,132
+positions, and 91,966 triangles. Six non-certified Cone faces, thirteen
 non-certified Cylinder faces, and arbitrary curved trims remain separate
 gates.
 
@@ -177,9 +186,9 @@ Sampled-surface and topological equivalence remain stronger future checks.
 ## Fail-closed boundaries
 
 - Multi-loop Faces enter only when the sampled UV contours prove filled
-  regions with direct holes, agree with native-oriented UV winding, and pass
-  strict geometric/area validation; the two unresolved Faces on owner
-  `229170` remain rejected.
+  regions with direct holes, agree with the native face-bit/surface-oriented
+  UV winding, and pass strict geometric/area validation. All 106 with unique
+  edge directions pass.
 - Cone, Cylinder, and SurfRev persistence is decoded. The combined owner
   endpoint separately adds 123 sampled Cylinder faces, four exact Cone apex
   sectors, and two Arc/SurfRev rectangles to this planar adapter's output.

@@ -401,7 +401,8 @@ type ClassifiedPlanarLoopRegions = {
 
 function classifyPlanarLoopRegions(
   edgeUsesByLoop: readonly (readonly Revit2027PlanarSampledEdgeUse[])[],
-  orientToSurface: boolean,
+  normalFlipped: boolean,
+  surfaceOrientFlag: boolean,
   tolerance: number,
 ): ClassifiedPlanarLoopRegions | null {
   // A lone closed boundary is the face's only filled region. The native
@@ -416,24 +417,20 @@ function classifyPlanarLoopRegions(
     rings.push(ring);
   }
 
-  // Native OdBrepBuilder::addLoop takes no outer/hole argument. For an ordinary
-  // non-periodic surface, libTD_BrepRenderer's stLoop::CalculateLoopType
-  // derives the role from the directed UV shoelace sum: positive is a hole,
-  // negative is filled/outer, with the face-to-surface orientation reversing
-  // the raw role when set. Preserve that rule first, then independently require
-  // the one-shell/direct-hole containment subset. Periodic surfaces use a
-  // separate native seam/full-border path and never enter this planar function.
+  // Native OdBrepBuilder::addLoop takes no outer/hole argument. TB_Geometry's
+  // OdBmEdgeLoopImpl::isCCW corrects the directed UV shoelace sign when the
+  // persisted Face normal-flip bit equals Surface.orientFlag. Its containment
+  // audit then requires corrected-positive loops at even (filled) depth and
+  // corrected-negative loops at odd (hole) depth. Preserve that exact rule
+  // before the independent strict geometric validation below.
   const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
   const roles: ("outer" | "hole")[] = [];
   for (const ring of rings) {
-    const area = signedUvRingArea(ring);
-    if (Math.abs(area) <= areaTolerance) return null;
-    const rawRole = area > 0 ? "hole" : "outer";
-    roles.push(
-      orientToSurface
-        ? rawRole === "outer" ? "hole" : "outer"
-        : rawRole,
-    );
+    const rawArea = signedUvRingArea(ring);
+    const correctedArea =
+      normalFlipped === surfaceOrientFlag ? -rawArea : rawArea;
+    if (Math.abs(correctedArea) <= areaTolerance) return null;
+    roles.push(correctedArea > 0 ? "outer" : "hole");
   }
   const outerIndexes = roles
     .map((role, index) => role === "outer" ? index : -1)
@@ -617,6 +614,7 @@ export function meshRevit2027PlanarSampledReplay(
     if (loopFailure) continue;
     const classified = classifyPlanarLoopRegions(
       edgeUsesByLoop,
+      (face.faceFlags & 0x2) !== 0,
       surface.surface.orientFlag,
       tolerance,
     );

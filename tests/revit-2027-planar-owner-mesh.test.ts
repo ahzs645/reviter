@@ -76,7 +76,7 @@ function edge(
   };
 }
 
-function face(): Revit2027FaceStatic {
+function face(faceFlags = 0): Revit2027FaceStatic {
   const firstLoop = descriptor(
     LOOP_TOKEN,
     REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
@@ -106,7 +106,7 @@ function face(): Revit2027FaceStatic {
     backgroundFilling: descriptor(0, null),
     renderStyleElementId: -1n,
     cutType: 0,
-    faceFlags: 0,
+    faceFlags,
     surface,
     queuedProperties: [firstLoop, surface],
   };
@@ -182,13 +182,23 @@ function span(
   };
 }
 
-function replay(nextLoopToken = 0): Revit2027GRepReplay {
-  const edges = [
-    edge(5, [0, 0], [1, 0], LOOP_TOKEN, 6),
-    edge(6, [1, 0], [1, 1], 5, 7),
-    edge(7, [1, 1], [0, 1], 6, 8),
-    edge(8, [0, 1], [0, 0], 7, LOOP_TOKEN),
-  ];
+function replay(
+  nextLoopToken = 0,
+  outerClockwise = false,
+  faceFlags = 0,
+): Revit2027GRepReplay {
+  const outerCorners = outerClockwise
+    ? [[0, 0], [0, 1], [1, 1], [1, 0]] as const
+    : [[0, 0], [1, 0], [1, 1], [0, 1]] as const;
+  const edges = outerCorners.map((point, index) =>
+    edge(
+      index + 5,
+      point,
+      outerCorners[(index + 1) % outerCorners.length]!,
+      index === 0 ? LOOP_TOKEN : index + 4,
+      index === outerCorners.length - 1 ? LOOP_TOKEN : index + 6,
+    )
+  );
   return {
     ownerElementId: 1234n,
     startOffset: 0,
@@ -197,7 +207,13 @@ function replay(nextLoopToken = 0): Revit2027GRepReplay {
     finalTokenCount: 11,
     descriptors: [],
     spans: [
-      span(0, FACE_TOKEN, REVIT_2027_FACE_SOURCE_CLASS_SLOT, null, face()),
+      span(
+        0,
+        FACE_TOKEN,
+        REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+        null,
+        face(faceFlags),
+      ),
       ...edges.map((value, index) =>
         span(
           index + 1,
@@ -228,8 +244,10 @@ function replayWithSecondLoop(
   minimum: readonly [number, number] = [0.25, 0.25],
   maximum: readonly [number, number] = [0.75, 0.75],
   nativeHoleOrientation = true,
+  outerClockwise = false,
+  faceFlags = 0,
 ): Revit2027GRepReplay {
-  const result = replay(11);
+  const result = replay(11, outerClockwise, faceFlags);
   const innerLoop: Revit2027EdgeLoopStatic = {
     ...loop(0),
     gInfo: { ...loop(0).gInfo, tag: 11 },
@@ -365,6 +383,19 @@ test("meshes two native-oriented disjoint filled regions from one Face", () => {
       "revit-2027-face-4-region-1",
     ],
   );
+  assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 4);
+});
+
+test("applies persisted Face normal-flip bit before classifying regions", () => {
+  const result = meshRevit2027PlanarSampledReplay(
+    replayWithSecondLoop([2, 2], [3, 3], true, true, 0x2),
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.issues, []);
+  assert.equal(result.value.faceMeshes.length, 1);
+  assert.equal(result.value.faceMeshes[0]!.regionCount, 2);
+  assert.equal(result.value.faceMeshes[0]!.holeLoopCount, 0);
   assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 4);
 });
 

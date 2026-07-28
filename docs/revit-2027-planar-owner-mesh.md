@@ -10,7 +10,8 @@ root and its bytes, it:
 4. follows every Face-local EdgeLoop link and proves each edge cycle;
 5. derives direction from unique persisted UV endpoint matches;
 6. classifies native-oriented filled regions and their direct holes from the
-   renderer's UV winding rule plus sampled UV containment; and
+   persisted Face normal-flip bit, Surface orientation, UV winding, and
+   sampled containment; and
 7. returns the TypeScript tessellator's `NeutralFaceMesh`.
 
 Both entry points are browser-safe:
@@ -45,7 +46,7 @@ separately proven relation.
 | `TB_Geometry` | exact Face/GEdge/EdgeLoop token graph |
 | `libTD_Ge` | decoded Plane parameter evaluation |
 | `libTD_BrepBuilder` / `libTD_Br` | directed face-local loops; derived outer/hole topology |
-| `libTD_BrepRenderer` | oriented UV loop roles, persisted trim samples, and constrained neutral tessellation |
+| `libTD_BrepRenderer` | persisted trim samples and constrained neutral tessellation |
 
 The native modules are evidence, not client dependencies. The implementation
 uses TypeScript, typed arrays, and the existing neutral BRep only.
@@ -59,22 +60,22 @@ direct Geometry owners:
 | --- | ---: |
 | Complete replay owners | 5,996 / 5,996 |
 | Body spans | 248,613 |
-| Planar Face meshes | 40,292 |
-| Positions | 168,098 |
-| Triangles | 87,496 |
-| Accepted multi-loop Faces | 104 |
-| Additional filled regions | 43 |
+| Planar Face meshes | 40,294 |
+| Positions | 168,114 |
+| Triangles | 87,504 |
+| Accepted multi-loop Faces | 106 |
+| Additional filled regions | 45 |
 | Accepted hole loops | 111 |
-| Triangles from accepted multi-loop Faces | 2,685 |
+| Triangles from accepted multi-loop Faces | 2,693 |
 
 Structured non-mesh results are 491 Faces without a first loop, 148
-non-planar surfaces, two multi-loop Faces whose contour roles are not
-unambiguous, 24 ambiguous UV links, and four tessellator rejections. The
-accepted multi-loop subset spans 46 reusable geometry owners.
+non-planar surfaces, 24 ambiguous UV links, and four tessellator rejections.
+All 106 multi-loop Faces with uniquely directed UV cycles are accepted across
+47 reusable geometry owners.
 
 The combined certified-owner entry point additionally promotes 123 sampled
 Cylinder faces, four exact Cone apex sectors, and the two circular-profile
-`SurfRev` faces, for 40,421 meshes, 173,116 positions, and 91,958 triangles.
+`SurfRev` faces, for 40,423 meshes, 173,132 positions, and 91,966 triangles.
 The remaining planar `unsupported-surface` count becomes 19: six Cone faces
 and thirteen Cylinder faces whose trims remain fail-closed. No planar result
 changes.
@@ -99,8 +100,8 @@ node --experimental-strip-types \
 
 - Multi-loop Faces enter only when native-oriented UV topology and containment
   agree on one or more filled regions with direct, strictly contained,
-  nonintersecting holes. Two unresolved Faces on owner `229170` remain
-  rejected.
+  nonintersecting holes. The persisted normal-flip correction closes all 106
+  multi-loop Faces whose edge directions are uniquely available.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
   owner path separately certifies 123 Cylinder, four Cone apex-sector, and two
   SurfRev faces.
