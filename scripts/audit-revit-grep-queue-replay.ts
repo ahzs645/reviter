@@ -24,7 +24,7 @@ import {
   REVIT_2026_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2026-grep-root.ts";
 
-const KNOWN_2026_LEAF_SLOTS = new Set([2215, 2248]);
+const NUMERIC_COINCIDENCE_SLOTS = new Set([2215, 2248]);
 const MAX_REPORTED_SEQUENCES = 20;
 
 function percentiles(values: number[]): Record<string, number> {
@@ -60,9 +60,9 @@ let failedChunks = 0;
 let decodedPlans = 0;
 let oneEntryPlans = 0;
 let multiEntryPlans = 0;
-let known2026LeafPlans = 0;
-let known2026LeafOneEntryPlans = 0;
-let known2026LeafMultiEntryPlans = 0;
+let numericCoincidencePlans = 0;
+let numericCoincidenceOneEntryPlans = 0;
+let numericCoincidenceMultiEntryPlans = 0;
 let nonSequentialTokenPlans = 0;
 let duplicateTokens = 0;
 let zeroOrOneTokens = 0;
@@ -140,13 +140,13 @@ for (const partition of partitions) {
         sourceSequence,
         (sourceSlotSequenceCounts.get(sourceSequence) ?? 0) + 1,
       );
-      const knownLeaf = plan.entries.every((entry) =>
-        KNOWN_2026_LEAF_SLOTS.has(entry.propertySourceClassSlot)
+      const numericCoincidence = plan.entries.every((entry) =>
+        NUMERIC_COINCIDENCE_SLOTS.has(entry.propertySourceClassSlot)
       );
-      if (knownLeaf) {
-        known2026LeafPlans += 1;
-        if (childCount === 1) known2026LeafOneEntryPlans += 1;
-        else known2026LeafMultiEntryPlans += 1;
+      if (numericCoincidence) {
+        numericCoincidencePlans += 1;
+        if (childCount === 1) numericCoincidenceOneEntryPlans += 1;
+        else numericCoincidenceMultiEntryPlans += 1;
       }
     }
   }
@@ -167,13 +167,13 @@ console.log(JSON.stringify({
     zeroOrOneTokens,
     negativeTokens,
   },
-  known2026LeafSlots: [...KNOWN_2026_LEAF_SLOTS],
-  known2026LeafPlans,
-  known2026LeafOneEntryPlans,
-  known2026LeafMultiEntryPlans,
+  numericCoincidenceSlots: [...NUMERIC_COINCIDENCE_SLOTS],
+  numericCoincidencePlans,
+  numericCoincidenceOneEntryPlans,
+  numericCoincidenceMultiEntryPlans,
   completeExactModelReplays: 0,
   completeReplayBoundary:
-    "The exact model is Revit 2027. No release-verified 2027 child readers are available, so 2026 leaf names do not authorize stream consumption.",
+    "The exact model is Revit 2027. Numeric source-slot coincidences with a Revit 2026 table do not authorize stream consumption.",
   dynamicPayloadBytes: {
     oneEntry: percentiles(oneEntryPayloadBytes),
     multiEntry: percentiles(multiEntryPayloadBytes),

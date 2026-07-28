@@ -176,9 +176,9 @@ function readCountedField(
  *
  * This deliberately requires normals mode `2` and one-normal/one-edge-byte
  * per face. Structural validity alone does not prove the bytes are topology:
- * real `GStyle`/`GFlipControl` replays in the UNBC model produce the same byte
- * shape. Callers must establish the queued-property and owner context before
- * emitting geometry.
+ * Revit 2027 `GArray`/`GGroup` routes in the UNBC model produce the same byte
+ * shape. Callers must establish the release-specific queued-property and owner
+ * context before emitting geometry.
  */
 export function locateFacetedTopology8Body(
   data: Uint8Array,

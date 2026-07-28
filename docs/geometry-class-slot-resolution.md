@@ -1,5 +1,14 @@
 # Geometry class-slot resolution
 
+> **Release correction:** This historical note combines exact UNBC Revit 2027
+> slot observations with a Revit 2026 source-class table. The same-number
+> class labels and the claim that class-slot resolution is complete for UNBC
+> are superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The
+> **Native loader boundary**, raw **Exact UNBC schema evidence**, and the pure
+> Revit 2026 source-representation map remain valid within their own release
+> scopes; the 2026 map must not name 2027 source slots.
+
 The browser parser must not map schema tag reference `1426` (`0x0592`) directly to
 `GPolyMesh`, `GBRep`, or `GFakeBRep`. The exact UNBC `Formats/Latest` stream
 contains one high-bit tagged definition and 26 structurally valid class

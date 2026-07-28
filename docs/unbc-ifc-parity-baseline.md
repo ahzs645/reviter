@@ -1,5 +1,14 @@
 # UNBC IFC parity baseline
 
+> **Release correction:** The IFC measurements and acceptance gates in this
+> document remain valid, but the **Smallest evidence-backed next
+> improvements** section historically named exact UNBC Revit 2027 slots using
+> a Revit 2026 reader table. Those class labels and geometry-route conclusions
+> are superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). No pure
+> Revit 2026 slot-to-class statement in this document applies to the UNBC
+> model.
+
 This is the acceptance baseline for the goal “the client-side RVT parser should
 at least match the supplied IFC.” It compares:
 

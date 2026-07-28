@@ -96,10 +96,10 @@ On the current workspace tree:
 | Multi-entry plans | 22,314 |
 | Sequential append-token plans | 63,820 |
 | Non-sequential, duplicate, zero/one, or negative tokens | 0 |
-| Plans containing only 2026 leaf slots 2,215/2,248 | 30,667 |
-| One-entry 2026-leaf-shaped plans | 30,572 |
-| Multi-entry 2026-leaf-shaped plans | 95 |
-| Complete exact-model leaf replays | 0 |
+| Plans containing only numeric source slots 2,215/2,248 | 30,667 |
+| One-entry numeric-coincidence plans | 30,572 |
+| Multi-entry numeric-coincidence plans | 95 |
+| Complete exact-model child replays | 0 |
 
 Dynamic payload sizes are:
 

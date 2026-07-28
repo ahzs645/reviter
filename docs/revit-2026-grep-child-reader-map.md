@@ -1,5 +1,14 @@
 # Revit 2026 GRep child reader map
 
+> **Release correction:** This historical note joined exact UNBC Revit 2027
+> source-slot counts to the Revit 2026 reader table. Those cross-release class
+> labels and the geometry-negative conclusions derived from them are
+> superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The pure
+> Revit 2026 reader-inheritance map, persisted `GBrep`/`GPolyMesh` routes, and
+> runtime tessellation-kernel analysis remain valid as Revit 2026 references.
+> Raw UNBC counts remain numeric measurements only.
+
 This note maps the source-class slots actually present in the certified UNBC
 `GElement -> GRep -> GGroup` roots to the local ODA reader and geometry
 modules. It is a clean-room interoperability map: it records symbols, call

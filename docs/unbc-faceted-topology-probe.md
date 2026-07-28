@@ -1,5 +1,13 @@
 # UNBC stored faceted-topology probe
 
+> **Release correction:** This historical probe labels exact UNBC Revit 2027
+> numeric slots with Revit 2026 class names. Those labels and the resulting
+> absence-of-geometry conclusions are superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The
+> browser-neutral topology decoder and the pure Revit 2026 common-reader body
+> grammar remain valid; exact-model counts and byte shapes remain raw
+> measurements until a Revit 2027 owner route certifies them.
+
 This note records a clean-room, executable probe of the exact local UNBC RVT:
 
 ```text

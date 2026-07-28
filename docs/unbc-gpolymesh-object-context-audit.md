@@ -1,5 +1,14 @@
 # UNBC GPolyMesh outer-object context audit
 
+> **Release correction:** This historical audit treats exact UNBC Revit 2027
+> numeric slot 2,237 as the Revit 2026 `GPolyMesh` slot. That class identity,
+> its decoded-field names, and its negative ownership conclusion are
+> superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The pure
+> Revit 2026 `GPolyMesh` field/body grammar remains valid for Revit 2026; the
+> exact UNBC occurrence counts, framed-containment counts, and bounded material
+> measurements remain raw numeric evidence only.
+
 This is a bounded audit of the 4,893 raw little-endian slot-2,237 occurrences
 and 3,463 following fixed-width shapes in the exact UNBC RVT. It asks only
 whether an independently framed parent establishes a genuine

@@ -1,5 +1,14 @@
 # Revit 2026 element-to-geometry carrier
 
+> **Release correction:** This historical note applies Revit 2026 carrier and
+> `GRep` slot identities to the exact UNBC Revit 2027 model. Those
+> cross-release identities and resulting exact-model conclusions are
+> superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The pure
+> Revit 2026 `ElementAndGRep`, `ContentElemRecPointers`, and `GeomTabEntry`
+> reader analysis remains valid for Revit 2026 only. Raw UNBC framing and
+> byte-count measurements remain numeric evidence only.
+
 This note records the smallest proven persisted ownership carrier between a
 Revit element and its geometry representation. It is based on clean-room
 static inspection of the locally supplied reader modules and bounded probes of

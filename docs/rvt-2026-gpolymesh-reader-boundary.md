@@ -1,5 +1,15 @@
 # Revit 2026 `GPolyMesh` reader boundary
 
+> **Release correction:** This historical note applies parts of a Revit 2026
+> dispatch/body grammar to exact UNBC Revit 2027 byte spans. Its cross-release
+> class labels, ownership claims, and geometry-negative conclusions are
+> superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The pure
+> Revit 2026 sections **Exact release class mapping** and
+> **`FacetedTopology8` body grammar**, plus the native 2026 queue/dispatch
+> mechanics, remain valid for Revit 2026. Exact-model offsets, counts, and byte
+> shapes remain raw measurements without those 2026 identities.
+
 This note records clean-room static analysis of the locally supplied Revit
 2026 reader module and three mesh-shaped byte spans in the UNBC model. No
 native ODA code was executed.

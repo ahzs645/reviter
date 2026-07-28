@@ -1,5 +1,13 @@
 # Revit 2026 source-representation targets
 
+> **Release correction:** This historical note applied Revit 2026
+> source-representation targets to exact UNBC Revit 2027 slot counts. That
+> cross-release join and its payload classifications are superseded by the
+> [Revit 2027 release boundary](revit-2027-grep-release-boundary.md). The pure
+> Revit 2026 registration records, target readers, and persisted
+> `GBrep`/`GFakeBRep`/`GPolyMesh` routes remain valid for Revit 2026 only. Raw
+> UNBC counts remain numeric measurements only.
+
 This note closes the four unresolved source slots in the certified UNBC
 `GElement -> GRep` child histogram. The result comes from static analysis of
 the release class and reader modules; no ODA native code was executed.
