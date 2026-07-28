@@ -188,3 +188,37 @@ faces. Supporting it requires a constrained parameter-domain triangulator
 with analytic interior refinement and an explicit native tessellation policy;
 using a generic polygon triangulation over boundary samples alone would not
 prove cone-surface deviation through the interior.
+
+## Adaptive sampled-profile experiment
+
+`tessellateRevit2027SampledConeFaces` now implements that missing browser
+mechanism as an explicitly experimental API:
+
+1. validate one non-apex, non-wrapping sampled UV profile;
+2. triangulate the constrained parameter-domain boundary;
+3. use the largest deviation already present between persisted boundary
+   samples as the geometric error budget;
+4. probe each triangle at the renderer's recovered fractions
+   `0.3102637180713`, `0.5`, and `0.6897362819287`; and
+5. split into four children until accepted or the native depth-12 boundary is
+   reached.
+
+The exact UNBC experiment accepts all six remaining cone profiles, but produces
+38,448 triangles and 115,344 triangle-soup vertices:
+
+| Owner | Faces | Experimental triangles |
+| --- | ---: | ---: |
+| `1420880` | 4 | 6,420 |
+| `1718794` | 2 | 32,028 |
+
+If those meshes are inserted into the certified owner result, matched-set RVT
+triangles rise from 318,028 to 356,476 against 318,304 IFC triangles, and the
+matched `IfcRoof` class rises to 18.72× its IFC count. This does not show that
+the evaluator is wrong; it shows that a boundary-derived deviation is not the
+missing global Revit view/export LOD.
+
+The experiment therefore remains out of
+`meshRevit2027CertifiedOwnerReplay`. It is a tested client-side implementation
+of the renderer architecture and a quantitative statement of the remaining
+policy gap, not certified geometry. Choosing a coarser value from the IFC
+would turn the oracle into decoder input and is deliberately prohibited.

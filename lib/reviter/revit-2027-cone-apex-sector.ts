@@ -2,9 +2,11 @@ import type {
   BrepMatrix4,
   BrepPoint3,
   BrepProvenance,
+  NeutralBrep,
   NeutralFaceMesh,
   NeutralMeshFaceGroup,
 } from "./brep-tessellator.ts";
+import { tessellatePlanarBrep } from "./brep-tessellator.ts";
 import type {
   Revit2027ConeSurface,
   RevitPoint2d,
@@ -77,6 +79,8 @@ export type Revit2027ConeApexSectorIssueCode =
   | "unsupported-trim"
   | "missing-apex"
   | "ambiguous-boundary"
+  | "surface-deviation"
+  | "subdivision-limit"
   | "vertex-limit";
 
 export type Revit2027ConeApexSectorIssue = {
@@ -498,6 +502,505 @@ function coneNormal(
     radialScale * radial[1] + axialScale * frame.axis[1],
     radialScale * radial[2] + axialScale * frame.axis[2],
   ];
+}
+
+type SampledConeProfile = {
+  canonicalRing: readonly RevitPoint2d[];
+  maximumBoundaryDeviation: number;
+};
+
+const NATIVE_ADAPTIVE_PROBE_FRACTIONS = [
+  0.3102637180713,
+  0.5,
+  0.6897362819287,
+] as const;
+const NATIVE_MAX_SUBDIVISION_DEPTH = 12;
+
+function lerp2(
+  first: RevitPoint2d,
+  second: RevitPoint2d,
+  fraction: number,
+): RevitPoint2d {
+  return [
+    first[0] + (second[0] - first[0]) * fraction,
+    first[1] + (second[1] - first[1]) * fraction,
+  ];
+}
+
+function lerp3(
+  first: BrepPoint3,
+  second: BrepPoint3,
+  fraction: number,
+): BrepPoint3 {
+  return [
+    first[0] + (second[0] - first[0]) * fraction,
+    first[1] + (second[1] - first[1]) * fraction,
+    first[2] + (second[2] - first[2]) * fraction,
+  ];
+}
+
+function pointDistance(first: BrepPoint3, second: BrepPoint3): number {
+  return Math.hypot(
+    first[0] - second[0],
+    first[1] - second[1],
+    first[2] - second[2],
+  );
+}
+
+function sampledConeProfile(
+  face: Revit2027ConeApexSectorFace,
+  frame: Frame,
+  tolerance: number,
+): { ok: true; profile: SampledConeProfile } | {
+  ok: false;
+  issue: Revit2027ConeApexSectorIssue;
+} {
+  if (face.loops.length !== 1 || face.loops[0]?.role !== "outer") {
+    return {
+      ok: false,
+      issue: {
+        code: "unsupported-trim",
+        faceToken: face.faceToken,
+        message: "sampled cone tessellation requires one outer loop and no holes",
+      },
+    };
+  }
+  const loop = face.loops[0];
+  if (
+    !Number.isSafeInteger(loop.loopToken) ||
+    loop.loopToken <= 0 ||
+    loop.edges.length < 3
+  ) {
+    return {
+      ok: false,
+      issue: {
+        code: "invalid-loop",
+        faceToken: face.faceToken,
+        loopToken: loop.loopToken,
+        message: "sampled cone loop must have at least three directed edges",
+      },
+    };
+  }
+
+  const persistedRing: RevitPoint2d[] = [];
+  const seenEdgeTokens = new Set<number>();
+  for (const edge of loop.edges) {
+    if (
+      !Number.isSafeInteger(edge.edgeToken) ||
+      edge.edgeToken <= 0 ||
+      seenEdgeTokens.has(edge.edgeToken) ||
+      edge.samples.length < 2 ||
+      edge.samples.some((sample) => !finitePoint2(sample))
+    ) {
+      return {
+        ok: false,
+        issue: {
+          code: "invalid-edge",
+          faceToken: face.faceToken,
+          loopToken: loop.loopToken,
+          edgeToken: edge.edgeToken,
+          message: "sampled cone edge is invalid or repeated",
+        },
+      };
+    }
+    seenEdgeTokens.add(edge.edgeToken);
+    if (
+      persistedRing.length > 0 &&
+      !sameParameterPoint(persistedRing.at(-1)!, edge.samples[0]!, tolerance)
+    ) {
+      return {
+        ok: false,
+        issue: {
+          code: "open-loop",
+          faceToken: face.faceToken,
+          loopToken: loop.loopToken,
+          edgeToken: edge.edgeToken,
+          message: "sampled cone edges do not share exact parameter endpoints",
+        },
+      };
+    }
+    persistedRing.push(
+      ...(persistedRing.length === 0 ? edge.samples : edge.samples.slice(1)),
+    );
+  }
+  if (
+    persistedRing.length < 4 ||
+    !sameParameterPoint(
+      persistedRing[0]!,
+      persistedRing.at(-1)!,
+      tolerance,
+    )
+  ) {
+    return {
+      ok: false,
+      issue: {
+        code: "open-loop",
+        faceToken: face.faceToken,
+        loopToken: loop.loopToken,
+        message: "sampled cone parameter loop is not closed",
+      },
+    };
+  }
+  persistedRing.pop();
+  if (
+    persistedRing.length < 3 ||
+    persistedRing.some((point, index) =>
+      point[1] <= tolerance ||
+      sameParameterPoint(
+        point,
+        persistedRing[(index + 1) % persistedRing.length]!,
+        tolerance,
+      )
+    )
+  ) {
+    return {
+      ok: false,
+      issue: {
+        code: "unsupported-trim",
+        faceToken: face.faceToken,
+        loopToken: loop.loopToken,
+        message: "sampled cone profile crosses the apex or is degenerate",
+      },
+    };
+  }
+
+  const canonicalRing = persistedRing.map(
+    ([angle, distance]) =>
+      [frame.handedness * angle, distance] as RevitPoint2d,
+  );
+  const angles = canonicalRing.map((point) => point[0]);
+  if (Math.max(...angles) - Math.min(...angles) >= TWO_PI - tolerance) {
+    return {
+      ok: false,
+      issue: {
+        code: "unsupported-trim",
+        faceToken: face.faceToken,
+        loopToken: loop.loopToken,
+        message: "sampled cone profile crosses or fills the angular seam",
+      },
+    };
+  }
+
+  let maximumBoundaryDeviation = 0;
+  for (let index = 0; index < canonicalRing.length; index += 1) {
+    const firstUv = canonicalRing[index]!;
+    const secondUv = canonicalRing[(index + 1) % canonicalRing.length]!;
+    const first = conePoint(
+      face.surface.center,
+      frame,
+      face.surface.halfAngle,
+      firstUv[0],
+      firstUv[1],
+    );
+    const second = conePoint(
+      face.surface.center,
+      frame,
+      face.surface.halfAngle,
+      secondUv[0],
+      secondUv[1],
+    );
+    for (const fraction of NATIVE_ADAPTIVE_PROBE_FRACTIONS) {
+      const uv = lerp2(firstUv, secondUv, fraction);
+      const surfacePoint = conePoint(
+        face.surface.center,
+        frame,
+        face.surface.halfAngle,
+        uv[0],
+        uv[1],
+      );
+      maximumBoundaryDeviation = Math.max(
+        maximumBoundaryDeviation,
+        pointDistance(surfacePoint, lerp3(first, second, fraction)),
+      );
+    }
+  }
+  if (!Number.isFinite(maximumBoundaryDeviation)) {
+    return {
+      ok: false,
+      issue: {
+        code: "surface-deviation",
+        faceToken: face.faceToken,
+        loopToken: loop.loopToken,
+        message: "sampled cone boundary deviation is not finite",
+      },
+    };
+  }
+  return {
+    ok: true,
+    profile: { canonicalRing, maximumBoundaryDeviation },
+  };
+}
+
+/**
+ * Tessellate a non-apex, single-chart sampled cone profile.
+ *
+ * The persisted trim samples set the geometric deviation budget. Interior
+ * triangles are recursively split using the native renderer's three probe
+ * fractions and depth-12 safety boundary. This intentionally does not select
+ * an undocumented global Revit LOD.
+ */
+export function tessellateRevit2027SampledConeFaces(
+  input: Revit2027ConeApexSectorInput,
+): Revit2027ConeApexSectorResult {
+  const tolerance = input.tolerance ?? DEFAULT_TOLERANCE;
+  const maxFaces = input.maxFaces ?? DEFAULT_MAX_FACES;
+  const maxVertices = input.maxVertices ?? DEFAULT_MAX_VERTICES;
+  if (
+    typeof input.id !== "string" ||
+    input.id.length === 0 ||
+    !Number.isFinite(tolerance) ||
+    tolerance <= 0 ||
+    !Number.isSafeInteger(maxFaces) ||
+    maxFaces < 0 ||
+    !Number.isSafeInteger(maxVertices) ||
+    maxVertices < 0 ||
+    input.faces.length > maxFaces
+  ) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-options",
+        message: "id, tolerances, face limit, or vertex limit is invalid",
+      }],
+    };
+  }
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const groups: NeutralMeshFaceGroup[] = [];
+  const issues: Revit2027ConeApexSectorIssue[] = [];
+  for (const face of input.faces) {
+    const frameResult = frameForSurface(face.surface, tolerance);
+    if (!Number.isSafeInteger(face.faceToken) || face.faceToken <= 0) {
+      issues.push({
+        code: "invalid-face",
+        faceToken: face.faceToken,
+        message: "face token must be a positive safe integer",
+      });
+      continue;
+    }
+    if (!frameResult.ok) {
+      issues.push({
+        code: "invalid-cone",
+        faceToken: face.faceToken,
+        message: frameResult.error,
+      });
+      continue;
+    }
+    const sampled = sampledConeProfile(face, frameResult.frame, tolerance);
+    if (!sampled.ok) {
+      issues.push(sampled.issue);
+      continue;
+    }
+    const ring = sampled.profile.canonicalRing;
+    const closed = [...ring, ring[0]!].map(
+      ([u, v]) => [u, v, 0] as BrepPoint3,
+    );
+    const parameterBrep: NeutralBrep = {
+      id: `${input.id}-parameter-profile`,
+      provenance: input.provenance,
+      faces: [{
+        id: `revit-2027-face-${face.faceToken}-parameter-profile`,
+        surface: {
+          kind: "plane",
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0],
+          normal: [0, 0, 1],
+        },
+        trims: [{
+          id: `revit-2027-loop-${face.loops[0]!.loopToken}`,
+          role: "outer",
+          curves: [{ kind: "polyline", points: closed }],
+        }],
+        provenance: face.provenance,
+      }],
+    };
+    const parameterMesh = tessellatePlanarBrep(parameterBrep, {
+      distanceTolerance: tolerance,
+      areaTolerance: Math.max(tolerance * tolerance, Number.EPSILON),
+      maxVertices,
+    });
+    if (!parameterMesh.ok) {
+      issues.push({
+        code: "ambiguous-boundary",
+        faceToken: face.faceToken,
+        loopToken: face.loops[0]!.loopToken,
+        message: parameterMesh.issues
+          .map((issue) => `${issue.code}: ${issue.message}`)
+          .join("; "),
+      });
+      continue;
+    }
+
+    const frame = frameResult.frame;
+    const geometricOrientation: 1 | -1 =
+      face.surface.surface.orientFlag === (frame.handedness === 1)
+        ? 1
+        : -1;
+    const orientation = face.orientation ?? geometricOrientation;
+    const allowedDeviation = Math.max(
+      tolerance,
+      sampled.profile.maximumBoundaryDeviation * (1 + 1e-9),
+    );
+    const facePositions: number[] = [];
+    const faceNormals: number[] = [];
+    const faceIndices: number[] = [];
+    let subdivisionFailed = false;
+
+    const uvAt = (index: number): RevitPoint2d => [
+      parameterMesh.mesh.positions[index * 3]!,
+      parameterMesh.mesh.positions[index * 3 + 1]!,
+    ];
+    const evaluate = (uv: RevitPoint2d): BrepPoint3 =>
+      conePoint(
+        face.surface.center,
+        frame,
+        face.surface.halfAngle,
+        uv[0],
+        uv[1],
+      );
+    const withinDeviation = (
+      aUv: RevitPoint2d,
+      bUv: RevitPoint2d,
+      cUv: RevitPoint2d,
+    ): boolean => {
+      const a = evaluate(aUv);
+      const b = evaluate(bUv);
+      const c = evaluate(cUv);
+      for (const [firstUv, secondUv, first, second] of [
+        [aUv, bUv, a, b],
+        [bUv, cUv, b, c],
+        [cUv, aUv, c, a],
+      ] as const) {
+        for (const fraction of NATIVE_ADAPTIVE_PROBE_FRACTIONS) {
+          if (
+            pointDistance(
+              evaluate(lerp2(firstUv, secondUv, fraction)),
+              lerp3(first, second, fraction),
+            ) > allowedDeviation
+          ) {
+            return false;
+          }
+        }
+      }
+      const centroidUv: RevitPoint2d = [
+        (aUv[0] + bUv[0] + cUv[0]) / 3,
+        (aUv[1] + bUv[1] + cUv[1]) / 3,
+      ];
+      const centroid: BrepPoint3 = [
+        (a[0] + b[0] + c[0]) / 3,
+        (a[1] + b[1] + c[1]) / 3,
+        (a[2] + b[2] + c[2]) / 3,
+      ];
+      return pointDistance(evaluate(centroidUv), centroid) <= allowedDeviation;
+    };
+    const emitTriangle = (
+      aUv: RevitPoint2d,
+      bUv: RevitPoint2d,
+      cUv: RevitPoint2d,
+    ): void => {
+      if (
+        positions.length / 3 +
+          facePositions.length / 3 +
+          3 >
+        maxVertices
+      ) {
+        subdivisionFailed = true;
+        return;
+      }
+      const ordered = orientation === 1
+        ? [aUv, bUv, cUv]
+        : [aUv, cUv, bUv];
+      const vertexOffset = facePositions.length / 3;
+      for (const uv of ordered) {
+        facePositions.push(...evaluate(uv));
+        faceNormals.push(
+          ...coneNormal(
+            frame,
+            face.surface.halfAngle,
+            uv[0],
+            orientation,
+          ),
+        );
+      }
+      faceIndices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2);
+    };
+    const refine = (
+      aUv: RevitPoint2d,
+      bUv: RevitPoint2d,
+      cUv: RevitPoint2d,
+      depth: number,
+    ): void => {
+      if (subdivisionFailed) return;
+      if (withinDeviation(aUv, bUv, cUv)) {
+        emitTriangle(aUv, bUv, cUv);
+        return;
+      }
+      if (depth >= NATIVE_MAX_SUBDIVISION_DEPTH) {
+        subdivisionFailed = true;
+        return;
+      }
+      const ab = lerp2(aUv, bUv, 0.5);
+      const bc = lerp2(bUv, cUv, 0.5);
+      const ca = lerp2(cUv, aUv, 0.5);
+      refine(aUv, ab, ca, depth + 1);
+      refine(ab, bUv, bc, depth + 1);
+      refine(ca, bc, cUv, depth + 1);
+      refine(ab, bc, ca, depth + 1);
+    };
+    for (let index = 0; index < parameterMesh.mesh.indices.length; index += 3) {
+      refine(
+        uvAt(parameterMesh.mesh.indices[index]!),
+        uvAt(parameterMesh.mesh.indices[index + 1]!),
+        uvAt(parameterMesh.mesh.indices[index + 2]!),
+        0,
+      );
+      if (subdivisionFailed) break;
+    }
+    if (subdivisionFailed) {
+      issues.push({
+        code: positions.length / 3 + facePositions.length / 3 + 3 > maxVertices
+          ? "vertex-limit"
+          : "subdivision-limit",
+        faceToken: face.faceToken,
+        loopToken: face.loops[0]!.loopToken,
+        message:
+          "sampled cone profile exceeded the adaptive depth or vertex bound",
+      });
+      continue;
+    }
+
+    const vertexOffset = positions.length / 3;
+    const indexOffset = indices.length;
+    for (const value of facePositions) positions.push(value);
+    for (const value of faceNormals) normals.push(value);
+    for (const index of faceIndices) indices.push(index + vertexOffset);
+    groups.push({
+      faceId: `revit-2027-face-${face.faceToken}`,
+      indexOffset,
+      indexCount: faceIndices.length,
+      vertexOffset,
+      vertexCount: facePositions.length / 3,
+      materialId: face.materialId ?? null,
+      objectMarker: face.objectMarker,
+      sourceTransform: IDENTITY,
+      brepProvenance: { ...input.provenance },
+      faceProvenance: { ...face.provenance },
+    });
+  }
+  if (issues.length > 0) return { ok: false, issues };
+  return {
+    ok: true,
+    mesh: {
+      brepId: input.id,
+      positions: new Float64Array(positions),
+      normals: new Float32Array(normals),
+      indices: new Uint32Array(indices),
+      groups,
+    },
+  };
 }
 
 /**

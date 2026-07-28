@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 
 import {
   tessellateRevit2027ConeApexSectors,
+  tessellateRevit2027SampledConeFaces,
   type Revit2027ConeApexSectorFace,
 } from "../lib/reviter/revit-2027-cone-apex-sector.ts";
 
@@ -81,6 +82,9 @@ const acceptedOwners = new Set<number>();
 let acceptedFaces = 0;
 let triangles = 0;
 let vertices = 0;
+let experimentalSampledFaces = 0;
+let experimentalSampledTriangles = 0;
+let experimentalSampledVertices = 0;
 for (const detail of audit.coneDetails) {
   const provenance = {
     decoderId: "revit-2027-cone-apex-sector-audit",
@@ -135,6 +139,30 @@ for (const detail of audit.coneDetails) {
     triangles += triangleCount!;
     vertices += vertexCount!;
   }
+  const experimental =
+    detail.graphStatus === "closed" && !result?.ok
+      ? tessellateRevit2027SampledConeFaces({
+          id:
+            `revit-2027-owner-${detail.elementId}-face-${detail.faceToken}-experimental-sampled`,
+          faces: [face],
+          provenance,
+        })
+      : null;
+  const experimentalClassification =
+    experimental == null
+      ? null
+      : experimental.ok
+        ? "adaptive-sampled-profile"
+        : experimental.issues[0]?.code ?? "unknown-rejection";
+  const experimentalTriangleCount =
+    experimental?.ok ? experimental.mesh.indices.length / 3 : null;
+  const experimentalVertexCount =
+    experimental?.ok ? experimental.mesh.positions.length / 3 : null;
+  if (experimental?.ok) {
+    experimentalSampledFaces += 1;
+    experimentalSampledTriangles += experimentalTriangleCount!;
+    experimentalSampledVertices += experimentalVertexCount!;
+  }
   rows.push({
     elementId: detail.elementId,
     faceToken: detail.faceToken,
@@ -147,6 +175,9 @@ for (const detail of audit.coneDetails) {
     classification,
     triangleCount,
     vertexCount,
+    experimentalClassification,
+    experimentalTriangleCount,
+    experimentalVertexCount,
   });
 }
 
@@ -170,6 +201,15 @@ console.log(JSON.stringify({
     policy:
       "one triangle per adjacent persisted outer-arc sample pair; " +
       "generator edges are exact straight cone rulings",
+  },
+  experimentalSampledProfile: {
+    faces: experimentalSampledFaces,
+    triangles: experimentalSampledTriangles,
+    vertices: experimentalSampledVertices,
+    certifiedOwnerIntegration: false,
+    policy:
+      "persisted boundary deviation, native three-fraction probes, " +
+      "depth 12; measured separately because global Revit LOD is unresolved",
   },
   rows,
 }, null, 2));

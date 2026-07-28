@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   tessellateRevit2027ConeApexSectors,
+  tessellateRevit2027SampledConeFaces,
   type Revit2027ConeApexSectorEdge,
   type Revit2027ConeApexSectorFace,
   type Revit2027ConeApexSectorSurface,
@@ -298,4 +299,55 @@ test("rejects wrapping arcs, invalid bases, and unsafe vertex limits", () => {
   if (!limitedResult.ok) {
     assert.equal(limitedResult.issues[0]?.code, "vertex-limit");
   }
+});
+
+test("adaptively tessellates a non-apex sampled cone profile", () => {
+  const sampledFace = face({
+    loops: [{
+      loopToken: 7,
+      role: "outer",
+      edges: [
+        {
+          edgeToken: 11,
+          samples: [[0, 1], [0, 2.5], [0, 4]],
+        },
+        {
+          edgeToken: 12,
+          samples: [
+            [0, 4],
+            [Math.PI / 4, 4],
+            [Math.PI / 2, 4],
+          ],
+        },
+        {
+          edgeToken: 13,
+          samples: [
+            [Math.PI / 2, 4],
+            [Math.PI / 2, 2.5],
+            [Math.PI / 2, 1],
+          ],
+        },
+        {
+          edgeToken: 14,
+          samples: [
+            [Math.PI / 2, 1],
+            [Math.PI / 4, 1],
+            [0, 1],
+          ],
+        },
+      ],
+    }],
+  });
+  const result = tessellateRevit2027SampledConeFaces({
+    id: "sampled-profile",
+    faces: [sampledFace],
+    provenance,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.mesh.groups.length, 1);
+  assert.ok(result.mesh.indices.length / 3 >= 6);
+  assert.equal(result.mesh.positions.length, result.mesh.normals.length);
+  assert.ok([...result.mesh.positions].every(Number.isFinite));
+  assert.ok([...result.mesh.normals].every(Number.isFinite));
 });
