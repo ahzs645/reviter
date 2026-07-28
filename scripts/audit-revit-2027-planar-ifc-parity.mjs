@@ -157,8 +157,34 @@ const rvtMeshScope =
   rvtMesh === rvtAudit.certifiedBrowserMesh
     ? "certified-browser"
     : "sampled-planar";
-const rvtOwnerElements = new Map(
+const allNestedOwnerElements =
+  rvtMeshScope === "certified-browser" &&
+  Array.isArray(rvtAudit.certifiedBrowserMesh?.nestedInstances?.elements)
+    ? rvtAudit.certifiedBrowserMesh.nestedInstances.elements
+    : [];
+const completeNestedOwnerElements = allNestedOwnerElements.filter(
+  (element) => element.complete === true,
+);
+const partialNestedOwnerElements = allNestedOwnerElements.filter(
+  (element) => element.complete !== true,
+);
+const nestedOwnerIds = new Set(
+  allNestedOwnerElements.map((element) => element.elementId),
+);
+const rawRvtOwnerElements = new Map(
   (rvtMesh?.elements ?? []).map((element) => [
+    element.elementId,
+    element,
+  ]),
+);
+// A nested owner is atomic: its direct fragment is not a valid product
+// candidate by itself. Remove every nested root from the direct map, then add
+// back only compositions whose complete flag certifies every source mesh.
+const rvtOwnerElements = new Map(
+  [...rawRvtOwnerElements].filter(([elementId]) => !nestedOwnerIds.has(elementId)),
+);
+const rvtNestedOwnerElements = new Map(
+  completeNestedOwnerElements.map((element) => [
     element.elementId,
     element,
   ]),
@@ -171,6 +197,9 @@ const rvtPlacedElements = new Map(
 );
 const rvtElements = new Map(rvtOwnerElements);
 for (const [elementId, element] of rvtPlacedElements) {
+  rvtElements.set(elementId, element);
+}
+for (const [elementId, element] of rvtNestedOwnerElements) {
   rvtElements.set(elementId, element);
 }
 
@@ -274,6 +303,9 @@ const decodedPlacementLinks = new Map(
   ]),
 );
 function ifcOnlyReason(tag) {
+  if (nestedOwnerIds.has(tag)) {
+    return "nested-owner-incomplete-proxy-only";
+  }
   if (directGeometryOwnerIds.has(tag)) {
     return "direct-geometry-owner-without-certified-mesh";
   }
@@ -341,6 +373,9 @@ const matchedPlacedTags = [...rvtPlacedElements.keys()]
 const matchedDirectOwnerTags = [...rvtOwnerElements.keys()]
   .filter((tag) => ifcGeometryByTag.has(tag))
   .sort((left, right) => left - right);
+const matchedNestedOwnerTags = [...rvtNestedOwnerElements.keys()]
+  .filter((tag) => ifcGeometryByTag.has(tag))
+  .sort((left, right) => left - right);
 const boundsRows = matchedPlacedTags.map((tag) => ({
   tag,
   type: ifcGeometryByTag.get(tag).type,
@@ -365,6 +400,20 @@ const directOwnerBoundsRows = matchedDirectOwnerTags.map((tag) => ({
     ifcGeometryByTag.get(tag).triangles,
   ...boundsError(
     rvtOwnerElements.get(tag),
+    ifcGeometryByTag.get(tag).bounds,
+  ),
+}));
+const nestedOwnerBoundsRows = matchedNestedOwnerTags.map((tag) => ({
+  tag,
+  type: ifcGeometryByTag.get(tag).type,
+  occurrences: rvtNestedOwnerElements.get(tag).occurrences,
+  rvtTriangles: rvtNestedOwnerElements.get(tag).triangles,
+  ifcTriangles: ifcGeometryByTag.get(tag).triangles,
+  exactTriangleCount:
+    rvtNestedOwnerElements.get(tag).triangles ===
+    ifcGeometryByTag.get(tag).triangles,
+  ...boundsError(
+    rvtNestedOwnerElements.get(tag),
     ifcGeometryByTag.get(tag).bounds,
   ),
 }));
@@ -442,8 +491,13 @@ const report = {
   scope: {
     comparisonKey: "numeric Revit Tag",
     rvtMeshScope,
+    rawRvtGeometryOwnerTags: rawRvtOwnerElements.size,
     rvtGeometryOwnerTags: rvtOwnerElements.size,
     rvtPlacedInstanceTags: rvtPlacedElements.size,
+    rvtNestedOwnerTags: allNestedOwnerElements.length,
+    rvtCompleteNestedOwnerTags: rvtNestedOwnerElements.size,
+    rvtPartialNestedOwnerTagsExcluded: partialNestedOwnerElements.length,
+    matchedCompleteNestedOwnerTags: matchedNestedOwnerTags.length,
     uniqueRvtProductCandidates: rvtElements.size,
     ifcGeometryProducts,
     ifcGeometryProductsWithNumericTag,
@@ -454,8 +508,18 @@ const report = {
     ifcOnlyTags: ifcOnlyTags.length,
   },
   triangles: {
-    rvtGeometryOwners: rvtMesh?.triangles ?? 0,
+    rvtGeometryOwners: sum(
+      [...rvtOwnerElements.values()].map((element) => element.triangles),
+    ),
     rvtPlacedInstances: rvtMesh?.placedInstanceTriangles ?? 0,
+    rvtCompleteNestedOwners: sum(
+      [...rvtNestedOwnerElements.values()].map(
+        (element) => element.triangles,
+      ),
+    ),
+    rvtPartialNestedOwnersExcluded: sum(
+      partialNestedOwnerElements.map((element) => element.triangles),
+    ),
     ifcAllGeometry: ifcTriangles,
     rvtOnMatchedTags: matchedRvtTriangles,
     ifcOnMatchedTags: matchedIfcTriangles,
@@ -575,6 +639,26 @@ const report = {
         "diagnostic only: equal triangle counts plus coincident AABBs do not prove identical topology, vertex positions, or a general owner coordinate-space rule",
     },
   },
+  nestedOwnerBoundsDiagnostic: {
+    scope:
+      "complete:true nested symbol compositions only; partial compositions are excluded atomically and remain proxy-only",
+    comparedTags: nestedOwnerBoundsRows.length,
+    frame:
+      "IFC Y-up metres mapped to RVT Z-up feet as (x, y, z) -> (x, -z, y)",
+    maximumCornerError: errorDistribution(
+      nestedOwnerBoundsRows,
+      "maximumCornerErrorFeet",
+    ),
+    maximumCentreError: errorDistribution(
+      nestedOwnerBoundsRows,
+      "maximumCentreErrorFeet",
+    ),
+    maximumSizeError: errorDistribution(
+      nestedOwnerBoundsRows,
+      "maximumSizeErrorFeet",
+    ),
+    withinMaximumCornerError: toleranceCounts(nestedOwnerBoundsRows),
+  },
   byIfcClass: Object.fromEntries(
     [...byIfcClass]
       .sort(
@@ -629,10 +713,10 @@ const report = {
   interpretation: {
     geometry:
       rvtMeshScope === "certified-browser"
-        ? "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements and the certified planar, Cylinder, Cone apex-sector, and Arc/SurfRev face subsets. IFC counts contain each matched product's complete exported geometry."
+        ? "RVT candidates combine direct geometry owners, exact persisted instance-to-shared-owner placements, and only complete:true nested symbol compositions with the certified planar, Cylinder, Cone apex-sector, and Arc/SurfRev face subsets. Partial nested compositions are excluded atomically. IFC counts contain each matched product's complete exported geometry."
         : "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements; they contain only certified single-loop planar sampled faces. IFC counts contain each matched product's complete exported geometry.",
     transforms:
-      "Placed-instance bounds use the persisted instance basis and origin and are compared directly to IFC world AABBs. Nested GArray/source-target transform chains remain outside this checkpoint.",
+      "Placed-instance bounds use the persisted instance basis and origin. Nested GInstance bounds use the exact symbolElementId graph and native outer*inner transform order; only complete compositions enter this checkpoint.",
     triangles:
       "Equal triangle counts are diagnostic only because valid tessellation policies can produce different triangle counts.",
     materials:

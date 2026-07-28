@@ -31,6 +31,33 @@ import {
   REVIT_2027_GARC_SOURCE_CLASS_SLOT,
 } from "./revit-2027-garc.ts";
 import {
+  decodeRevit2027GConditionCut,
+  REVIT_2027_GCONDITION_CUT_BODY_BYTES,
+  REVIT_2027_GCONDITION_CUT_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gcondition-cut.ts";
+import {
+  decodeRevit2027GConditionDir,
+  REVIT_2027_GCONDITION_DIR_BODY_BYTES,
+  REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gcondition-dir.ts";
+import {
+  decodeRevit2027GBiFlipControl,
+  REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES,
+  REVIT_2027_GBI_FLIP_CONTROL_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gbi-flip-control.ts";
+import {
+  decodeRevit2027GFilter,
+  REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gfilter.ts";
+import {
+  decodeRevit2027GHermiteSpline,
+  REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
+} from "./revit-2027-ghermite-spline.ts";
+import {
+  decodeRevit2027HermiteSurface,
+  REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT,
+} from "./revit-2027-hermite-surface.ts";
+import {
   decodeRevit2027GLine,
   REVIT_2027_GLINE_BODY_BYTES,
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
@@ -291,6 +318,105 @@ const BUILTIN_READERS: readonly [
         decodeRevit2027GLine,
         () => [],
       ),
+    },
+  ],
+  [
+    REVIT_2027_GBI_FLIP_CONTROL_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GBiFlipControl",
+      read: fixedBodyReader(
+        REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES,
+        decodeRevit2027GBiFlipControl,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GFilter",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GFilter(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GConditionDir",
+      read: fixedBodyReader(
+        REVIT_2027_GCONDITION_DIR_BODY_BYTES,
+        decodeRevit2027GConditionDir,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GCONDITION_CUT_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GConditionCut",
+      read: fixedBodyReader(
+        REVIT_2027_GCONDITION_CUT_BODY_BYTES,
+        decodeRevit2027GConditionCut,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GHermiteSpline",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GHermiteSpline(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: [],
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027HermiteSurface",
+      read: (data, context) => {
+        const decoded = decodeRevit2027HermiteSurface(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: [],
+          value: decoded.value,
+        };
+      },
     },
   ],
   [
