@@ -72,6 +72,10 @@ export type Revit2027PlanarOwnerFaceMesh = {
   faceToken: number;
   loopToken: number;
   loopTokens: readonly number[];
+  /** Connected filled regions emitted for this one persisted Face. */
+  regionCount: number;
+  /** Native-oriented hole loops across all emitted regions. */
+  holeLoopCount: number;
   mesh: NeutralFaceMesh;
 };
 
@@ -389,14 +393,22 @@ function sameUvRing(
   );
 }
 
-function classifyPlanarLoopRoles(
+type ClassifiedPlanarLoopRegions = {
+  roles: readonly ("outer" | "hole")[];
+  /** Each region starts with its outer loop followed by its direct holes. */
+  regions: readonly (readonly number[])[];
+};
+
+function classifyPlanarLoopRegions(
   edgeUsesByLoop: readonly (readonly Revit2027PlanarSampledEdgeUse[])[],
   orientToSurface: boolean,
   tolerance: number,
-): readonly ("outer" | "hole")[] | null {
+): ClassifiedPlanarLoopRegions | null {
   // A lone closed boundary is the face's only filled region. The native
   // winding classifier matters when multiple contours compete for roles.
-  if (edgeUsesByLoop.length === 1) return ["outer"];
+  if (edgeUsesByLoop.length === 1) {
+    return { roles: ["outer"], regions: [[0]] };
+  }
   const rings: Point2[][] = [];
   for (const edgeUses of edgeUsesByLoop) {
     const ring = sampledUvRing(edgeUses, tolerance);
@@ -426,14 +438,34 @@ function classifyPlanarLoopRoles(
   const outerIndexes = roles
     .map((role, index) => role === "outer" ? index : -1)
     .filter((index) => index >= 0);
-  if (outerIndexes.length !== 1) return null;
+  if (outerIndexes.length === 0) return null;
 
   const groups = groupRings(rings);
-  if (groups.length !== 1 || groups[0]!.holes.length !== rings.length - 1) {
-    return null;
+  if (groups.length !== outerIndexes.length) return null;
+  const used = new Set<number>();
+  const matchingRingIndex = (target: readonly Point2[]): number | null => {
+    const candidates = rings
+      .map((ring, index) => ({ ring, index }))
+      .filter(({ ring, index }) => !used.has(index) && sameUvRing(ring, target));
+    if (candidates.length !== 1) return null;
+    const index = candidates[0]!.index;
+    used.add(index);
+    return index;
+  };
+  const regions: number[][] = [];
+  for (const group of groups) {
+    const outerIndex = matchingRingIndex(group.outer);
+    if (outerIndex == null || roles[outerIndex] !== "outer") return null;
+    const region = [outerIndex];
+    for (const hole of group.holes) {
+      const holeIndex = matchingRingIndex(hole);
+      if (holeIndex == null || roles[holeIndex] !== "hole") return null;
+      region.push(holeIndex);
+    }
+    regions.push(region);
   }
-  if (!sameUvRing(rings[outerIndexes[0]!]!, groups[0]!.outer)) return null;
-  return roles;
+  if (used.size !== rings.length) return null;
+  return { roles, regions };
 }
 
 /**
@@ -583,38 +615,39 @@ export function meshRevit2027PlanarSampledReplay(
       edgeUsesByLoop.push(directed.edgeUses);
     }
     if (loopFailure) continue;
-    const roles = classifyPlanarLoopRoles(
+    const classified = classifyPlanarLoopRegions(
       edgeUsesByLoop,
       surface.surface.orientFlag,
       tolerance,
     );
-    if (!roles) {
+    if (!classified) {
       issues.push({
         code: "multi-loop",
         faceToken,
         loopToken: loopChain[0]?.token,
         detail:
-          `${loopChain.length} contours do not prove one shell with direct holes`,
+          `${loopChain.length} contours do not prove native-oriented filled regions with direct holes`,
       });
       continue;
     }
-    const outerLoopIndex = roles.indexOf("outer");
-    const outerLoop = loopChain[outerLoopIndex]!;
+    const outerLoop = loopChain[classified.regions[0]![0]!]!;
+    const materialId = faceMaterialId(faceToken, face, options, issues);
     const adapted = adaptRevit2027PlanarSampledBrep({
       id: `revit-2027-owner-${replay.ownerElementId}-face-${faceToken}`,
       provenance,
       continuityTolerance: tolerance,
-      faces: [{
+      faces: classified.regions.map((region, regionIndex) => ({
         faceToken,
+        regionIndex: classified.regions.length > 1 ? regionIndex : undefined,
         surface,
-        loops: loopChain.map((loop, index) => ({
-          loopToken: loop.token,
-          role: roles[index]!,
-          edgeUses: edgeUsesByLoop[index]!,
+        loops: region.map((loopIndex) => ({
+          loopToken: loopChain[loopIndex]!.token,
+          role: classified.roles[loopIndex]!,
+          edgeUses: edgeUsesByLoop[loopIndex]!,
         })),
-        materialId: faceMaterialId(faceToken, face, options, issues),
+        materialId,
         provenance,
-      }],
+      })),
     });
     if (!adapted.ok) {
       issues.push(...adapted.issues.map((issue) => ({
@@ -639,6 +672,8 @@ export function meshRevit2027PlanarSampledReplay(
       faceToken,
       loopToken: outerLoop.token,
       loopTokens: loopChain.map((loop) => loop.token),
+      regionCount: classified.regions.length,
+      holeLoopCount: classified.roles.filter((role) => role === "hole").length,
       mesh: tessellated.mesh,
     });
   }

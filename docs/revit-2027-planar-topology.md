@@ -79,37 +79,40 @@ All 40,813 Plane bodies are reached. Face eligibility is:
 
 Resolved loop-chain sizes are 40,214 single-loop Faces, 72 two-loop, 20
 three-loop, 15 four-loop, and one six-loop Face. There are 162 extra linked
-loops. The owner mesher now classifies only the unambiguous subset with one
-containing shell and direct holes. For these non-periodic planes, it first
+loops. The owner mesher now classifies the unambiguous subset into one or more
+filled regions and their direct holes. For these non-periodic planes, it first
 applies the native renderer's oriented UV shoelace rule: after the persisted
 surface-orientation branch, positive raw loop type is a hole and negative raw
 loop type is filled/outer. Its planar tessellator then independently requires
 strict containment, pairwise nonintersection, simple rings, and
-outer-minus-holes area equality. All 73 accepted multi-loop Faces agree with
+outer-minus-holes area equality. All 104 accepted multi-loop Faces agree with
 both tests; containment never overrides contradictory native-oriented winding.
+The renderer's multiple-filled-profile behavior then permits disjoint shells
+and even-depth nested islands to become separate neutral face regions.
 
 The independently safe single-loop and certified multi-loop subsets are sent
 to the tessellator:
 
 | Stage | Faces |
 | --- | ---: |
-| Attempted | 40,265 |
-| Adapted to `NeutralBrep` | 40,265 |
-| Tessellated | 40,261 |
+| Attempted | 40,296 |
+| Adapted to `NeutralBrep` | 40,296 |
+| Tessellated | 40,292 |
 | Structured tessellator rejections | 4 |
 
-The result has 167,472 positions, 87,010 triangles, and 40,261 source-face
-groups across 5,806 reusable geometry owners. It includes 73 multi-loop Faces
-with 105 direct hole loops and 2,199 triangles across 32 owners. Thirty-three
-multi-loop Faces remain fail-closed because their contours do not prove the
-supported topology.
+The result has 168,098 positions, 87,496 triangles, and 40,292 source Faces
+across 5,806 reusable geometry owners. It includes 104 multi-loop Faces with
+43 additional filled regions, 111 direct hole loops, and 2,685 triangles
+across 46 owners. Two multi-loop Faces on owner `229170` remain fail-closed
+because their contours do not prove the supported topology.
 
 The broader certified-owner API now adds the independently proven sampled
 Cylinder, Cone apex-sector, and circular-profile rectangular `SurfRev`
 subsets: 129 more source faces, 5,018 positions, and 4,462 triangles. Its
-current combined direct-owner total is 40,390 face meshes, 172,490 positions,
-and 91,472 triangles. Six non-certified Cone faces, thirteen non-certified
-Cylinder faces, and arbitrary curved trims remain separate gates.
+current combined direct-owner total is 40,421 source-face meshes, 173,116
+positions, and 91,958 triangles. Six non-certified Cone faces, thirteen
+non-certified Cylinder faces, and arbitrary curved trims remain separate
+gates.
 
 ## Persisted instance placement
 
@@ -138,10 +141,10 @@ assumed to be world coordinates.
 | RVT certified product candidates | 31,352 |
 | Tags with both RVT certified and IFC geometry | 25,642 |
 | IFC geometry-Tag coverage | 70.94% |
-| RVT triangles on matched Tags | 317,790 |
+| RVT triangles on matched Tags | 318,028 |
 | IFC triangles on the same Tags | 318,304 |
-| RVT / IFC triangles on matched Tags | 99.84% |
-| Tags with exactly equal triangle counts | 25,542 / 25,642 (99.61%) |
+| RVT / IFC triangles on matched Tags | 99.91% |
+| Tags with exactly equal triangle counts | 25,546 / 25,642 (99.63%) |
 | Persisted instances with matched IFC geometry | 25,533 |
 | World bounds within 0.000001 ft on every corner | 25,326 / 25,533 (99.19%) |
 | World bounds within 1 inch on every corner | 25,505 / 25,533 (99.89%) |
@@ -151,8 +154,9 @@ assumed to be world coordinates.
 Members account for 19,298 matched Tags and plates for 6,235. Their triangle
 ratios remain 99.96% and 99.98%, respectively. The certified curved paths add
 eight direct owner candidates and one matched IFC Tag relative to the planar
-baseline. After multi-loop promotion, coverings reach 97.49%; slabs are
-114.61% and roofs remain 37.60%. The slab overage demonstrates why aggregate
+baseline. After all certified planar regions are promoted, coverings reach
+100.75%; slabs are 117.49% and roofs remain 37.60%. The slab overage
+demonstrates why aggregate
 triangle parity is diagnostic rather than proof: the browser and IFC can
 legitimately triangulate the same trimmed boundary differently. The remaining
 ambiguous multi-loop and general curved-surface cases dominate the
@@ -172,10 +176,10 @@ Sampled-surface and topological equivalence remain stronger future checks.
 
 ## Fail-closed boundaries
 
-- Multi-loop Faces enter only when the sampled UV contours prove one shell
-  with direct holes, agree with native-oriented UV winding, and pass strict
-  geometric/area validation; 33 ambiguous, disjoint, nested, or invalid cases
-  remain rejected.
+- Multi-loop Faces enter only when the sampled UV contours prove filled
+  regions with direct holes, agree with native-oriented UV winding, and pass
+  strict geometric/area validation; the two unresolved Faces on owner
+  `229170` remain rejected.
 - Cone, Cylinder, and SurfRev persistence is decoded. The combined owner
   endpoint separately adds 123 sampled Cylinder faces, four exact Cone apex
   sectors, and two Arc/SurfRev rectangles to this planar adapter's output.

@@ -327,6 +327,8 @@ test("meshes one geometrically contained planar hole", () => {
   assert.deepEqual(result.value.issues, []);
   assert.equal(result.value.faceMeshes.length, 1);
   assert.deepEqual(result.value.faceMeshes[0]!.loopTokens, [9, 11]);
+  assert.equal(result.value.faceMeshes[0]!.regionCount, 1);
+  assert.equal(result.value.faceMeshes[0]!.holeLoopCount, 1);
   assert.equal(result.value.faceMeshes[0]!.mesh.positions.length / 3, 8);
   assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 8);
 });
@@ -342,6 +344,28 @@ test("keeps disjoint planar loops explicit instead of guessing a hole role", () 
     result.value.issues.map((issue) => issue.code),
     ["multi-loop"],
   );
+});
+
+test("meshes two native-oriented disjoint filled regions from one Face", () => {
+  const result = meshRevit2027PlanarSampledReplay(
+    replayWithSecondLoop([2, 2], [3, 3], false),
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.issues, []);
+  assert.equal(result.value.faceMeshes.length, 1);
+  assert.deepEqual(result.value.faceMeshes[0]!.loopTokens, [9, 11]);
+  assert.equal(result.value.faceMeshes[0]!.regionCount, 2);
+  assert.equal(result.value.faceMeshes[0]!.holeLoopCount, 0);
+  assert.equal(result.value.faceMeshes[0]!.mesh.groups.length, 2);
+  assert.deepEqual(
+    result.value.faceMeshes[0]!.mesh.groups.map((group) => group.faceId),
+    [
+      "revit-2027-face-4-region-0",
+      "revit-2027-face-4-region-1",
+    ],
+  );
+  assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 4);
 });
 
 test("rejects containment that contradicts native oriented UV loop type", () => {

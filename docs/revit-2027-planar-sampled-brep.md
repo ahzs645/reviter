@@ -52,8 +52,11 @@ The adapter rejects the whole BRep when it encounters:
 
 The adapter itself does not infer a hole from winding. Its Revit 2027 owner
 caller supplies roles only when the native renderer's oriented UV winding rule
-and sampled UV containment agree on one containing shell with direct holes.
-The tessellator then rechecks strict containment, self-intersection, hole
+and sampled UV containment agree on filled regions with direct holes. When one
+persisted Face contains disjoint shells or even-depth nested islands, its
+caller supplies one neutral face per connected filled region while preserving
+the same source Face identity, material, marker, and provenance. The
+tessellator then rechecks strict containment, self-intersection, hole
 intersection/nesting, and triangulated area. Callers with another exact
 topology source must likewise supply an independently justified role for every
 loop.
@@ -68,14 +71,14 @@ gap instead of hiding it in geometry output.
 
 The exact owner replay reaches 40,632 closed loops and proves zero
 next/previous reciprocity failures. The reusable browser path tessellates
-40,261 planar Faces into 87,010 triangles. That includes 73 multi-loop Faces,
-105 direct hole loops, and 2,199 triangles; 33 multi-loop Faces remain
-fail-closed.
+40,292 planar Faces into 87,496 triangles. That includes 104 multi-loop Faces,
+43 additional filled regions, 111 direct hole loops, and 2,685 triangles. Two
+multi-loop Faces remain fail-closed.
 
 The combined certified owner and persisted-instance path matches 25,642
-numeric Revit Tags in the supplied IFC and emits 317,790 of the IFC's 318,304
-triangles on that same matched set (99.84%). This is an oracle comparison after
-RVT decoding, not a source of geometry.
+numeric Revit Tags in the supplied IFC and emits 318,028 of the IFC's 318,304
+triangles on that same matched set (99.91%). This is an oracle comparison
+after RVT decoding, not a source of geometry.
 
 Focused verification:
 

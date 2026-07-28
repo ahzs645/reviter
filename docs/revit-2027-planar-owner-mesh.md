@@ -9,8 +9,8 @@ root and its bytes, it:
 3. resolves one Face side for every directed edge use;
 4. follows every Face-local EdgeLoop link and proves each edge cycle;
 5. derives direction from unique persisted UV endpoint matches;
-6. classifies an unambiguous outer contour and direct holes from the renderer's
-   oriented UV winding rule plus sampled UV containment; and
+6. classifies native-oriented filled regions and their direct holes from the
+   renderer's UV winding rule plus sampled UV containment; and
 7. returns the TypeScript tessellator's `NeutralFaceMesh`.
 
 Both entry points are browser-safe:
@@ -59,21 +59,22 @@ direct Geometry owners:
 | --- | ---: |
 | Complete replay owners | 5,996 / 5,996 |
 | Body spans | 248,613 |
-| Planar Face meshes | 40,261 |
-| Positions | 167,472 |
-| Triangles | 87,010 |
-| Accepted multi-loop Faces | 73 |
-| Accepted hole loops | 105 |
-| Triangles from accepted multi-loop Faces | 2,199 |
+| Planar Face meshes | 40,292 |
+| Positions | 168,098 |
+| Triangles | 87,496 |
+| Accepted multi-loop Faces | 104 |
+| Additional filled regions | 43 |
+| Accepted hole loops | 111 |
+| Triangles from accepted multi-loop Faces | 2,685 |
 
 Structured non-mesh results are 491 Faces without a first loop, 148
-non-planar surfaces, 33 multi-loop Faces whose contour roles are not
+non-planar surfaces, two multi-loop Faces whose contour roles are not
 unambiguous, 24 ambiguous UV links, and four tessellator rejections. The
-accepted multi-loop subset spans 32 reusable geometry owners.
+accepted multi-loop subset spans 46 reusable geometry owners.
 
 The combined certified-owner entry point additionally promotes 123 sampled
 Cylinder faces, four exact Cone apex sectors, and the two circular-profile
-`SurfRev` faces, for 40,390 meshes, 172,490 positions, and 91,472 triangles.
+`SurfRev` faces, for 40,421 meshes, 173,116 positions, and 91,958 triangles.
 The remaining planar `unsupported-surface` count becomes 19: six Cone faces
 and thirteen Cylinder faces whose trims remain fail-closed. No planar result
 changes.
@@ -82,9 +83,9 @@ Joining those owner meshes through the 30,608 decoded instance records still
 finds 25,538 placed instances and 308,107 placed triangles; the newly promoted
 curved owners in this model are direct owner candidates rather than additional
 shared placements. In the numeric-Tag IFC oracle, the combined owner plus
-placement set reaches 25,642 products and 317,790 of 318,304 IFC triangles
-(99.84%), with exactly equal triangle counts on 25,542 of 25,642 matched Tags
-(99.61%). Those ratios are diagnostic because RVT and IFC may use different
+placement set reaches 25,642 products and 318,028 of 318,304 IFC triangles
+(99.91%), with exactly equal triangle counts on 25,546 of 25,642 matched Tags
+(99.63%). Those ratios are diagnostic because RVT and IFC may use different
 valid boundary and curved-surface tessellation policies.
 
 Run:
@@ -96,9 +97,9 @@ node --experimental-strip-types \
 
 ## Boundaries
 
-- Multi-loop Faces enter only when sampled UV topology proves exactly one
-  native-oriented outer contour and direct, strictly contained,
-  nonintersecting holes. The 33 ambiguous/disjoint/nested cases remain
+- Multi-loop Faces enter only when native-oriented UV topology and containment
+  agree on one or more filled regions with direct, strictly contained,
+  nonintersecting holes. Two unresolved Faces on owner `229170` remain
   rejected.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
   owner path separately certifies 123 Cylinder, four Cone apex-sector, and two

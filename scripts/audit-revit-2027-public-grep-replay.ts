@@ -108,10 +108,18 @@ let planarFaceMeshes = 0;
 let planarPositions = 0;
 let planarTriangles = 0;
 const planarIssues = new Map<string, number>();
+const planarMultiLoopIssueSamples: Array<{
+  ownerElementId: number;
+  faceToken: number;
+  loopToken: number | null;
+  detail: string | null;
+}> = [];
 const certifiedFacesByKind = new Map<string, number>();
 let certifiedPositions = 0;
 let certifiedTriangles = 0;
 let certifiedPlanarMultiLoopFaces = 0;
+let certifiedPlanarFilledRegions = 0;
+let certifiedPlanarAdditionalFilledRegions = 0;
 let certifiedPlanarHoleLoops = 0;
 let certifiedPlanarMultiLoopTriangles = 0;
 const certifiedIssues = new Map<string, number>();
@@ -185,6 +193,17 @@ for (const partition of partitions) {
       }
       for (const issue of meshed.value.issues) {
         increment(planarIssues, issue.code);
+        if (
+          issue.code === "multi-loop" &&
+          planarMultiLoopIssueSamples.length < 100
+        ) {
+          planarMultiLoopIssueSamples.push({
+            ownerElementId: Number(replayed.value.ownerElementId),
+            faceToken: issue.faceToken ?? -1,
+            loopToken: issue.loopToken ?? null,
+            detail: issue.detail ?? null,
+          });
+        }
       }
       const certified = meshRevit2027CertifiedOwnerReplay(replayed.value);
       if (certified.ok === false) {
@@ -197,9 +216,13 @@ for (const partition of partitions) {
         certifiedTriangles += face.mesh.indices.length / 3;
         const planarMultiLoop =
           face.kind === "planar-sampled" && face.loopTokens.length > 1;
+        if (face.kind === "planar-sampled") {
+          certifiedPlanarFilledRegions += face.regionCount;
+          certifiedPlanarAdditionalFilledRegions += face.regionCount - 1;
+          certifiedPlanarHoleLoops += face.holeLoopCount;
+        }
         if (planarMultiLoop) {
           certifiedPlanarMultiLoopFaces += 1;
-          certifiedPlanarHoleLoops += face.loopTokens.length - 1;
           certifiedPlanarMultiLoopTriangles += face.mesh.indices.length / 3;
         }
         const elementId = Number(certified.value.ownerElementId);
@@ -319,12 +342,15 @@ console.log(JSON.stringify({
     positions: planarPositions,
     triangles: planarTriangles,
     issues: entries(planarIssues),
+    multiLoopIssueSamples: planarMultiLoopIssueSamples,
   },
   certifiedBrowserMesh: {
     faceMeshesByKind: entries(certifiedFacesByKind),
     positions: certifiedPositions,
     triangles: certifiedTriangles,
     planarMultiLoopFaces: certifiedPlanarMultiLoopFaces,
+    planarFilledRegions: certifiedPlanarFilledRegions,
+    planarAdditionalFilledRegions: certifiedPlanarAdditionalFilledRegions,
     planarHoleLoops: certifiedPlanarHoleLoops,
     planarMultiLoopTriangles: certifiedPlanarMultiLoopTriangles,
     issues: entries(certifiedIssues),

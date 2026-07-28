@@ -31,6 +31,11 @@ export type Revit2027PlanarSampledLoop = {
 
 export type Revit2027PlanarSampledFace = {
   faceToken: number;
+  /**
+   * Optional zero-based connected-region index when one persisted Face has
+   * more than one filled planar region.
+   */
+  regionIndex?: number;
   surface: Revit2027PlaneSurface;
   loops: readonly Revit2027PlanarSampledLoop[];
   /**
@@ -346,6 +351,17 @@ export function adaptRevit2027PlanarSampledBrep(
       });
       continue;
     }
+    if (
+      face.regionIndex != null &&
+      (!Number.isSafeInteger(face.regionIndex) || face.regionIndex < 0)
+    ) {
+      issues.push({
+        code: "invalid-face-token",
+        faceToken: face.faceToken,
+        message: "face region index must be a non-negative safe integer",
+      });
+      continue;
+    }
     const normal = normalized(cross(face.surface.xVector, face.surface.yVector));
     if (
       face.surface.kind !== "plane" ||
@@ -379,7 +395,9 @@ export function adaptRevit2027PlanarSampledBrep(
     if (trims.length !== face.loops.length) continue;
 
     faces.push({
-      id: `revit-2027-face-${face.faceToken}`,
+      id: `revit-2027-face-${face.faceToken}${
+        face.regionIndex == null ? "" : `-region-${face.regionIndex}`
+      }`,
       surface: {
         kind: "plane",
         origin: face.surface.origin,
