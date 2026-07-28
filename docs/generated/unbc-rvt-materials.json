@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedBy": "scripts/audit-rvt-materials.ts",
   "inputs": {
     "rvt": {
@@ -759,11 +759,13 @@
     ]
   },
   "assignments": {
-    "decodedElementAssignments": 5413,
+    "decodedElementAssignments": 25607,
+    "decodedPlacedElementRelations": 25607,
+    "decodedSharedGeometryAssignments": 5413,
     "decodedPrimitiveAssignments": 0,
     "decodedRelations": 5413,
     "assignedMaterialDefinitions": 3,
-    "status": "shared-geometry-decoded",
-    "reason": "Persisted MaterialElem ids are decoded for three release-gated shared-geometry layouts. They are exact geometry/type assignments, not yet per-BRep-face, per-triangle, category-style, or view-override assignments."
+    "status": "placed-element-shared-geometry-decoded",
+    "reason": "Persisted placement ids join placed elements to MaterialElem ids through three release-gated shared-geometry layouts. They are exact element/shared-geometry assignments, not yet per-BRep-face, per-triangle, category-style, or view-override assignments."
   }
 }

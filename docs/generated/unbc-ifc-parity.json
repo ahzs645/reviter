@@ -9,17 +9,17 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 69704180,
-      "sha256": "1cb15efe1c07fe577c708beb7e7b7ea8e79b6e1aa679715d644f186d9eda093d",
-      "analyticalSha256": "0c1458c6417b14fc755048e833cf9d3a44aec8ce34541eb505c52b5333aacbd8",
+      "bytes": 84035571,
+      "sha256": "95a6fbe8bf8cf134ad4a5d0e717851dc161707ef2b9114261a2f019dbf92e9d9",
+      "analyticalSha256": "aa07f41b2058261d3e81f8b5f798faa802f7d538900ef96ca83a503673e3e012",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
     },
     "glb": {
       "name": "unbc-parity.glb",
-      "bytes": 13104700,
-      "sha256": "fc9ca509daa13b750a2a9539d6118938c471ad4481e122b44e8558742fd3cd10"
+      "bytes": 13104996,
+      "sha256": "8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a"
     }
   },
   "ifc": {
@@ -163,7 +163,7 @@
     "aggregatedElements": 26403,
     "modelTreeElements": 38241,
     "modelTreeNumericTags": 38063,
-    "modelTreeTagsSeenByReviter": 29526,
+    "modelTreeTagsSeenByReviter": 37874,
     "byClass": {
       "IfcMember": {
         "elements": 19707,
@@ -707,7 +707,7 @@
       "uniqueIds": 74437,
       "nativeIdentityConflicts": 0,
       "modelTreeRecords": 74437,
-      "modelTreeMemberships": 53885,
+      "modelTreeMemberships": 62288,
       "nativeMaterialDefinitions": 69,
       "nativeFamilyDefinitions": 3,
       "nativeMaterialNames": [
@@ -781,7 +781,7 @@
         "Чугун, ковкий",
         "Этаж по умолчанию"
       ],
-      "nativeMaterialAssignments": 5413,
+      "nativeMaterialAssignments": 25607,
       "geometrySources": {
         "placed-shared-shape": 25871,
         "analytic-plane-solid": 9096,
@@ -843,13 +843,14 @@
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "materialDefinitions": 69,
-        "materialAssignments": 5413,
+        "materialAssignments": 25607,
         "nativeUniqueIds": 74437,
-        "modelTree": "native-revit-owning-element-and-host",
+        "modelTree": "native-revit-owning-element-and-host-and-associated-level",
         "modelTreeRecords": 74437,
-        "modelTreeMemberships": 77773,
-        "modelTreeUniqueMembers": 53885,
-        "modelTreeHostMemberships": 27568
+        "modelTreeMemberships": 115276,
+        "modelTreeUniqueMembers": 62288,
+        "modelTreeHostMemberships": 27568,
+        "modelTreeAssociatedLevelMemberships": 37503
       }
     },
     "glb": {
@@ -1003,16 +1004,20 @@
           "revit-2027-family-symbol-family-v1",
           "revit-2027-family-name-path-v1",
           "revit-2027-geometry-material-id-v1",
-          "revit-2027-insertable-host-id-v1"
+          "revit-2027-instance-geometry-material-v1",
+          "revit-2027-insertable-host-id-v1",
+          "revit-2027-associated-level-id-v1"
         ],
         "nativeCurves": 0,
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "nativeMaterialDefinitions": 69,
-        "nativeMaterialAssignments": 5413,
+        "nativeMaterialAssignments": 25607,
+        "nativeGeometryMaterialAssignments": 5413,
         "nativeFamilySymbols": 7805,
         "nativeFamilyRelations": 66,
         "nativeHostRelations": 27568,
+        "nativeAssociatedLevelRelations": 37503,
         "nativeFamilyDefinitions": 3,
         "nativeUniqueIds": 74437,
         "nativeOwnershipRecords": 74437,
@@ -1034,13 +1039,13 @@
     "triangleRatio": 0.5037559293583393,
     "vertexReferenceRatio": 0.12924861778301458,
     "uniqueIdRatio": 1,
-    "modelTreeRatio": 0.7757139479284344,
+    "modelTreeRatio": 0.9950345479862334,
     "typeNameRatio": 0.19743583007119775,
     "exactTypeNameRatio": 0.19743583007119775,
     "familyNameRatio": 0.003756929301421328,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.9655172413793104,
-    "materialAssignmentRatio": 0.14944369288534276,
+    "materialAssignmentRatio": 0.7069655724579663,
     "dimensionSpans": {
       "ifcWebIfcAxesMetres": [
         217.89892670153483,
