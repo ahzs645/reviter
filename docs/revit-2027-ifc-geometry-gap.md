@@ -22,7 +22,7 @@ node scripts/audit-revit-2027-planar-ifc-parity.mjs \
 The exact IFC SHA-256 is
 `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`.
 
-## Exact UNBC result
+## Earlier direct-owner checkpoint
 
 The certified browser mesh audit publishes 38,807 distinct RVT product
 candidates: 13,269 direct geometry owners plus 25,538 placed instances. It
@@ -130,12 +130,98 @@ already reconstructed, owned BRep. They do not deserialize
 `BigArrGeomTabEntryWrapper`, regenerate a family, or invent loop/coedge
 ownership.
 
-The remaining shared-owner gap is 327 owners and 2,019 placed IFC Tags:
+At that earlier checkpoint, the remaining shared-owner gap was 327 owners and
+2,019 placed IFC Tags:
 1,912 doors, 87 columns, and 20 windows. The three targets above account for
 464 of those Tags (222 + 218 + 24). Until the slot-643/644 table representation
 and any referenced family-regeneration state are exact, the browser converter
 must not infer boxes or solids from the GLine set, `m_refFaces`, or the IFC
 export.
+
+## Placement-seeded GRep closure
+
+The earlier diagnosis incorrectly assumed that every placement target absent
+from the direct-owner result required family regeneration. A placement can
+refer to an ordinary, non-direct GRep definition elsewhere in the same RVT.
+The audit now seeds its second bounded scan from both nested-symbol ids and
+placement `geometryId` values absent from the completed direct-owner set. It
+follows the exact `GInstance.symbolElementId` closure and composes only roots
+whose complete drawable-face coverage is certified.
+
+On the exact UNBC RVT:
+
+| Placement-target measure | Result |
+| --- | ---: |
+| Unique decoded placement geometry owners | 7,808 |
+| Initial non-direct placement target ids | 2,395 |
+| Placement provenance closure ids | 2,470 |
+| Framed / unframed closure ids | 2,467 / 3 |
+| Replayed definitions | 2,155 |
+| Nested links inside the closure | 150 |
+| Definitions with certified local mesh | 2,138 |
+| Complete composed roots | 2,136 |
+| Partial composed roots | 2 |
+| Complete composed-root triangles | 44,531 |
+| Partial triangles excluded atomically | 42 |
+
+The combined nested-symbol plus placement-target scan is two passes over 2,593
+unique ids: 2,590 are framed, 2,278 replay, and 2,151 contain certified mesh.
+Only complete placement roots enter instance resolution. Direct nested roots
+also require their complete composition; their direct fragment can never
+silently win.
+
+This raises certified placements from 25,538 to 30,093 and their triangle
+total from 308,107 to 467,944. Against the reference IFC, matched numeric
+geometry Tags rise from 33,198 / 36,144 (`91.8493%`) to
+34,867 / 36,144 (`96.4669%`). IFC-only Tags fall from 2,946 to 1,277.
+
+The 1,277 remaining IFC-only Tags are:
+
+| Missing RVT route | Tags | IFC triangles |
+| --- | ---: | ---: |
+| no direct owner or decoded placement | 925 | 220,357 |
+| placement to an unresolved owner | 350 | 56,712 |
+| one incomplete nested root | 1 | 516 |
+| direct owner without certified mesh | 1 | 824 |
+
+The remaining unresolved placement row is 330 doors and 20 windows across 171
+geometry owners. These roots are still fail-closed; the audit does not rebuild
+a family or substitute IFC geometry.
+
+### Transform validation
+
+The new route has a separate world-bounds diagnostic so unrelated historical
+placement outliers cannot hide a bad definition composition. Of the 4,555
+RVT placements resolved through complete non-direct definitions, 1,669 have a
+numeric IFC geometry Tag:
+
+- median maximum AABB corner error:
+  `1.891635292849969e-9 ft`;
+- 95th percentile: `3.441004992055241e-9 ft`;
+- 1,628 / 1,669 (`97.54%`) are within `1e-6 ft`;
+- all 1,669 are within `1/12 ft`;
+- maximum: `0.04725817384786524 ft`.
+
+The largest differences are columns for which the certified RVT graph contains
+more tessellated detail than the IFC export. This check proves the recovered
+owner-local bounds and persisted placement transform agree spatially; it does
+not claim vertex-for-vertex topology equality.
+
+### Production selection contract
+
+Production must not publish every scanned non-direct definition as a scene
+owner. The bounded collector handoff is:
+
+1. accept the exact set of placement-referenced geometry owner ids;
+2. compute only their recursive symbol-definition closure;
+3. compose each requested root using native `outer * inner` transform order;
+4. expose only complete roots for placement lookup;
+5. mark those roots shared so they cannot render as standalone products;
+6. keep any missing, conflicting, partial, cyclic, over-limit, or unsupported
+   root on its proxy.
+
+This contract keeps IFC out of conversion and uses the reference IFC only as
+the post-decode acceptance oracle.
 
 ## System-wall route correction
 

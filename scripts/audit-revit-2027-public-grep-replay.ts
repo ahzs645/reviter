@@ -53,6 +53,10 @@ import {
 import {
   certifyRevit2027DrawableFaceCoverage,
 } from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
+import {
+  collectRevit2027PlacementGeometryTargetIds,
+  selectRevit2027PlacementGeometry,
+} from "./revit-2027-placement-owner-selection.ts";
 
 function increment<K>(map: Map<K, number>, key: K, count = 1): void {
   map.set(key, (map.get(key) ?? 0) + count);
@@ -477,13 +481,22 @@ function includeTransformedBounds(
   }
 }
 
-const nestedSymbolTargetIds = new Set(
+const initialNestedSymbolTargetIds = new Set(
   [...nestedInstancesByOwner.values()]
     .flat()
     .map((instance) => Number(instance.symbolElementId))
     .filter(Number.isSafeInteger),
 );
-const nestedSymbolTargetFrames = new Map<number, Array<{
+const initialPlacementGeometryTargetIds =
+  collectRevit2027PlacementGeometryTargetIds(
+    instancePlacements.values(),
+    completedOwnerElementIds,
+  );
+const referencedGeometryTargetIds = new Set([
+  ...initialNestedSymbolTargetIds,
+  ...initialPlacementGeometryTargetIds,
+]);
+const referencedGeometryTargetFrames = new Map<number, Array<{
   marker: number;
   typeCode: number;
   objectLength: number;
@@ -515,13 +528,15 @@ const nestedTargetIssueRecords: Array<{
   edgeToken: number | null;
   detail: string | null;
 }> = [];
-const scannedNestedSymbolTargetIds = new Set<number>();
-let pendingNestedSymbolTargetIds = new Set(nestedSymbolTargetIds);
-let nestedSymbolTargetPasses = 0;
-while (pendingNestedSymbolTargetIds.size > 0) {
-  nestedSymbolTargetPasses += 1;
-  if (nestedSymbolTargetPasses > 32) {
-    throw new Error("nested symbol target closure exceeds 32 passes");
+const scannedReferencedGeometryTargetIds = new Set<number>();
+let pendingReferencedGeometryTargetIds = new Set(
+  referencedGeometryTargetIds,
+);
+let referencedGeometryTargetPasses = 0;
+while (pendingReferencedGeometryTargetIds.size > 0) {
+  referencedGeometryTargetPasses += 1;
+  if (referencedGeometryTargetPasses > 32) {
+    throw new Error("referenced geometry target closure exceeds 32 passes");
   }
   const discoveredNestedSymbolTargetIds = new Set<number>();
   for (const partition of partitions) {
@@ -546,7 +561,7 @@ while (pendingNestedSymbolTargetIds.size > 0) {
       if (!inflated) continue;
       if (read) dictionary = revitWindowTail(read);
       for (const frame of scanFramedElementObjects(inflated)) {
-        if (!pendingNestedSymbolTargetIds.has(frame.elementId)) continue;
+        if (!pendingReferencedGeometryTargetIds.has(frame.elementId)) continue;
         let gRepOwnerElementId: number | null = null;
         let gRepChildren: Array<{
           token: number;
@@ -595,10 +610,10 @@ while (pendingNestedSymbolTargetIds.size > 0) {
                   for (const instance of targetInstances.value) {
                     const symbolElementId = Number(instance.symbolElementId);
                     if (!Number.isSafeInteger(symbolElementId)) continue;
-                    nestedSymbolTargetIds.add(symbolElementId);
+                    referencedGeometryTargetIds.add(symbolElementId);
                     if (
-                      !scannedNestedSymbolTargetIds.has(symbolElementId) &&
-                      !pendingNestedSymbolTargetIds.has(symbolElementId)
+                      !scannedReferencedGeometryTargetIds.has(symbolElementId) &&
+                      !pendingReferencedGeometryTargetIds.has(symbolElementId)
                     ) {
                       discoveredNestedSymbolTargetIds.add(symbolElementId);
                     }
@@ -690,7 +705,8 @@ while (pendingNestedSymbolTargetIds.size > 0) {
             replayError = decoded.error;
           }
         }
-        const frames = nestedSymbolTargetFrames.get(frame.elementId) ?? [];
+        const frames =
+          referencedGeometryTargetFrames.get(frame.elementId) ?? [];
         frames.push({
           marker: frame.marker,
           typeCode: frame.typeCode,
@@ -700,14 +716,14 @@ while (pendingNestedSymbolTargetIds.size > 0) {
           directGeometryRoot,
           replayError,
         });
-        nestedSymbolTargetFrames.set(frame.elementId, frames);
+        referencedGeometryTargetFrames.set(frame.elementId, frames);
       }
     }
   }
-  for (const elementId of pendingNestedSymbolTargetIds) {
-    scannedNestedSymbolTargetIds.add(elementId);
+  for (const elementId of pendingReferencedGeometryTargetIds) {
+    scannedReferencedGeometryTargetIds.add(elementId);
   }
-  pendingNestedSymbolTargetIds = discoveredNestedSymbolTargetIds;
+  pendingReferencedGeometryTargetIds = discoveredNestedSymbolTargetIds;
 }
 
 const nestedOwnerDefinitionIds = new Set([
@@ -733,9 +749,11 @@ const nestedOwnerDefinitionById = new Map(
     definition,
   ]),
 );
-function reachableNestedOwnerIds(rootOwnerElementId: bigint): Set<bigint> {
+function reachableNestedOwnerIdsFrom(
+  rootOwnerElementIds: Iterable<bigint>,
+): Set<bigint> {
   const reachable = new Set<bigint>();
-  const pending = [rootOwnerElementId];
+  const pending = [...rootOwnerElementIds];
   while (pending.length > 0) {
     const ownerElementId = pending.pop()!;
     if (reachable.has(ownerElementId)) continue;
@@ -748,8 +766,22 @@ function reachableNestedOwnerIds(rootOwnerElementId: bigint): Set<bigint> {
   }
   return reachable;
 }
-const nestedCompositionFailures = new Map<string, number>();
-const composedNestedOwnerElements: Array<{
+function reachableNestedOwnerIds(rootOwnerElementId: bigint): Set<bigint> {
+  return reachableNestedOwnerIdsFrom([rootOwnerElementId]);
+}
+const nestedSymbolTargetIds = new Set(
+  [...reachableNestedOwnerIdsFrom(
+    [...initialNestedSymbolTargetIds].map((elementId) => BigInt(elementId)),
+  )].map(Number),
+);
+const placementGeometryTargetIds = new Set(
+  [...reachableNestedOwnerIdsFrom(
+    [...initialPlacementGeometryTargetIds].map(
+      (elementId) => BigInt(elementId),
+    ),
+  )].map(Number),
+);
+type ComposedOwnerElement = {
   elementId: number;
   occurrences: number;
   sourceOwnerElementIds: number[];
@@ -757,28 +789,29 @@ const composedNestedOwnerElements: Array<{
   sourceIssues: Record<string, number>;
   complete: boolean;
   faces: number;
+  facesByKind: Map<string, number>;
   positions: number;
   triangles: number;
   minimum: [number, number, number];
   maximum: [number, number, number];
-}> = [];
-for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
-  if (nestedInstances.length === 0) continue;
+};
+function composeOwnerElement(
+  rootOwnerElementId: bigint,
+): { ok: true; value: ComposedOwnerElement } | {
+  ok: false;
+  error: string;
+} {
   const composed = composeRevit2027NestedMesh(
     rootOwnerElementId,
     nestedOwnerDefinitions,
   );
-  if (!composed.ok) {
-    increment(nestedCompositionFailures, composed.error);
-    continue;
-  }
+  if (!composed.ok) return composed;
   const elementId = Number(rootOwnerElementId);
   if (!Number.isSafeInteger(elementId)) {
-    increment(
-      nestedCompositionFailures,
-      "nested root owner id is outside safe integer range",
-    );
-    continue;
+    return {
+      ok: false,
+      error: "nested root owner id is outside safe integer range",
+    };
   }
   const minimum: [number, number, number] = [
     Infinity,
@@ -791,6 +824,7 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
     -Infinity,
   ];
   let faces = 0;
+  const facesByKind = new Map<string, number>();
   let positions = 0;
   let triangles = 0;
   let sourceIssueCount = 0;
@@ -803,10 +837,6 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
   for (const definitionOwnerElementId of definitionOwnerElementIds) {
     const sourceOwnerElementId = Number(definitionOwnerElementId);
     if (!Number.isSafeInteger(sourceOwnerElementId)) {
-      increment(
-        nestedCompositionFailures,
-        "nested definition owner id is outside safe integer range",
-      );
       invalidDefinitionOwnerId = true;
       break;
     }
@@ -821,19 +851,24 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
       sourceIssues.set(issue, (sourceIssues.get(issue) ?? 0) + count);
     }
   }
-  if (invalidDefinitionOwnerId) continue;
+  if (invalidDefinitionOwnerId) {
+    return {
+      ok: false,
+      error: "nested definition owner id is outside safe integer range",
+    };
+  }
+  let invalidSourceOwnerId = false;
   for (const occurrence of composed.value.occurrences) {
     const sourceOwnerElementId = Number(occurrence.geometryOwnerElementId);
     if (!Number.isSafeInteger(sourceOwnerElementId)) {
-      increment(
-        nestedCompositionFailures,
-        "nested source owner id is outside safe integer range",
-      );
-      sourceOwnerElementIds.clear();
+      invalidSourceOwnerId = true;
       break;
     }
     sourceOwnerElementIds.add(sourceOwnerElementId);
     faces += occurrence.geometry.faces;
+    for (const [kind, count] of occurrence.geometry.facesByKind) {
+      increment(facesByKind, kind, count);
+    }
     positions += occurrence.geometry.positions;
     triangles += occurrence.geometry.triangles;
     includeTransformedBounds(
@@ -843,22 +878,49 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
       occurrence.transform,
     );
   }
-  if (sourceOwnerElementIds.size === 0) continue;
-  composedNestedOwnerElements.push({
-    elementId,
-    occurrences: composed.value.occurrences.length,
-    sourceOwnerElementIds: [...sourceOwnerElementIds].sort(
-      (left, right) => left - right,
-    ),
-    sourceIssueCount,
-    sourceIssues: entries(sourceIssues),
-    complete: sourceIssueCount === 0,
-    faces,
-    positions,
-    triangles,
-    minimum,
-    maximum,
-  });
+  if (invalidSourceOwnerId) {
+    return {
+      ok: false,
+      error: "nested source owner id is outside safe integer range",
+    };
+  }
+  if (sourceOwnerElementIds.size === 0) {
+    return {
+      ok: false,
+      error: "nested root resolves to no certified geometry",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      elementId,
+      occurrences: composed.value.occurrences.length,
+      sourceOwnerElementIds: [...sourceOwnerElementIds].sort(
+        (left, right) => left - right,
+      ),
+      sourceIssueCount,
+      sourceIssues: entries(sourceIssues),
+      complete: sourceIssueCount === 0,
+      faces,
+      facesByKind,
+      positions,
+      triangles,
+      minimum,
+      maximum,
+    },
+  };
+}
+
+const nestedCompositionFailures = new Map<string, number>();
+const composedNestedOwnerElements: ComposedOwnerElement[] = [];
+for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
+  if (nestedInstances.length === 0) continue;
+  const composed = composeOwnerElement(rootOwnerElementId);
+  if (!composed.ok) {
+    increment(nestedCompositionFailures, composed.error);
+    continue;
+  }
+  composedNestedOwnerElements.push(composed.value);
 }
 composedNestedOwnerElements.sort(
   (left, right) => left.elementId - right.elementId,
@@ -874,10 +936,47 @@ for (const element of composedNestedOwnerElements) {
   }
 }
 
+const completeNestedOwnerElementsById = new Map(
+  composedNestedOwnerElements
+    .filter((element) => element.complete)
+    .map((element) => [element.elementId, element]),
+);
+const placementGeometryCompositionFailures = new Map<string, number>();
+const composedPlacementGeometryOwners: ComposedOwnerElement[] = [];
+for (const ownerElementId of initialPlacementGeometryTargetIds) {
+  const composed = composeOwnerElement(BigInt(ownerElementId));
+  if (!composed.ok) {
+    increment(placementGeometryCompositionFailures, composed.error);
+    continue;
+  }
+  composedPlacementGeometryOwners.push(composed.value);
+}
+composedPlacementGeometryOwners.sort(
+  (left, right) => left.elementId - right.elementId,
+);
+const completePlacementGeometryOwnersById = new Map(
+  composedPlacementGeometryOwners
+    .filter((element) => element.complete)
+    .map((element) => [element.elementId, element]),
+);
+const directNestedOwnerIds = new Set(
+  [...nestedInstancesByOwner]
+    .filter(([, instances]) => instances.length > 0)
+    .map(([ownerElementId]) => Number(ownerElementId)),
+);
 const certifiedInstances = [...instancePlacements.values()]
   .map((placement) => {
-    const geometry = certifiedOwnerElements.get(placement.geometryId);
-    if (!geometry) return null;
+    const selected = selectRevit2027PlacementGeometry<
+      CertifiedOwnerElement | ComposedOwnerElement
+    >(
+      placement.geometryId,
+      directNestedOwnerIds,
+      certifiedOwnerElements,
+      completeNestedOwnerElementsById,
+      completePlacementGeometryOwnersById,
+    );
+    if (!selected) return null;
+    const { geometry } = selected;
     const corners = instanceCorners(placement, {
       elementId: placement.geometryId,
       min: geometry.minimum,
@@ -898,8 +997,12 @@ const certifiedInstances = [...instancePlacements.values()]
     return {
       elementId: placement.elementId,
       geometryOwnerId: placement.geometryId,
+      geometrySource: selected.source,
       faces: geometry.faces,
-      planarMultiLoopFaces: geometry.planarMultiLoopFaces,
+      planarMultiLoopFaces:
+        "planarMultiLoopFaces" in geometry
+          ? geometry.planarMultiLoopFaces
+          : 0,
       facesByKind: entries(geometry.facesByKind),
       positions: geometry.positions,
       triangles: geometry.triangles,
@@ -915,6 +1018,58 @@ const readerCorpusValid =
   eligibleOwners > 0 &&
   completedOwners === eligibleOwners &&
   failures.size === 0;
+function referencedTargetAudit(
+  targetIds: ReadonlySet<number>,
+  includeRecords = false,
+) {
+  const framedEntries = [...referencedGeometryTargetFrames]
+    .filter(([elementId]) => targetIds.has(elementId))
+    .sort((left, right) => left[0] - right[0]);
+  const replayedOwnerIds = [...targetIds].filter((elementId) =>
+    nestedTargetInstancesByOwner.has(BigInt(elementId))
+  );
+  const meshOwnerIds = [...targetIds].filter((elementId) =>
+    nestedTargetOwnerElements.has(elementId)
+  );
+  return {
+    uniqueIds: targetIds.size,
+    framedIds: framedEntries.length,
+    unframedIds: [...targetIds].filter(
+      (elementId) => !referencedGeometryTargetFrames.has(elementId),
+    ).length,
+    replayedOwners: replayedOwnerIds.length,
+    nestedLinks: replayedOwnerIds.reduce(
+      (total, elementId) =>
+        total +
+        (nestedTargetInstancesByOwner.get(BigInt(elementId))?.length ?? 0),
+      0,
+    ),
+    ownersWithCertifiedMesh: meshOwnerIds.length,
+    certifiedTriangles: meshOwnerIds.reduce(
+      (total, elementId) =>
+        total + (nestedTargetOwnerElements.get(elementId)?.triangles ?? 0),
+      0,
+    ),
+    ...(includeRecords
+      ? {
+          issueRecords: nestedTargetIssueRecords.filter((issue) =>
+            targetIds.has(issue.ownerElementId)
+          ),
+          frames: framedEntries.map(([elementId, frames]) => ({
+            elementId,
+            frames,
+          })),
+        }
+      : {}),
+  };
+}
+const placementPartialSourceIssues = new Map<string, number>();
+for (const element of composedPlacementGeometryOwners) {
+  if (element.complete) continue;
+  for (const [issue, count] of Object.entries(element.sourceIssues)) {
+    increment(placementPartialSourceIssues, issue, count);
+  }
+}
 console.log(JSON.stringify({
   modelPath,
   release,
@@ -993,29 +1148,13 @@ console.log(JSON.stringify({
       ),
       failures: entries(nestedCompositionFailures),
       symbolTargets: {
-        closurePasses: nestedSymbolTargetPasses,
-        uniqueIds: nestedSymbolTargetIds.size,
-        framedIds: nestedSymbolTargetFrames.size,
-        unframedIds: [...nestedSymbolTargetIds].filter(
-          (elementId) => !nestedSymbolTargetFrames.has(elementId),
-        ).length,
-        replayedOwners: nestedTargetInstancesByOwner.size,
-        nestedLinks: [...nestedTargetInstancesByOwner.values()].reduce(
-          (total, instances) => total + instances.length,
-          0,
-        ),
-        ownersWithCertifiedMesh: nestedTargetOwnerElements.size,
-        certifiedTriangles: [...nestedTargetOwnerElements.values()].reduce(
-          (total, element) => total + element.triangles,
-          0,
-        ),
-        meshFailures: entries(nestedTargetMeshFailures),
-        issueRecords: nestedTargetIssueRecords,
-        frames: [...nestedSymbolTargetFrames]
-          .sort((left, right) => left[0] - right[0])
-          .map(([elementId, frames]) => ({ elementId, frames })),
+        scanClosurePasses: referencedGeometryTargetPasses,
+        ...referencedTargetAudit(nestedSymbolTargetIds, true),
       },
-      elements: composedNestedOwnerElements,
+      elements: composedNestedOwnerElements.map((element) => ({
+        ...element,
+        facesByKind: entries(element.facesByKind),
+      })),
       links: [...nestedInstancesByOwner.values()]
         .flat()
         .map((instance) => ({
@@ -1032,6 +1171,45 @@ console.log(JSON.stringify({
             left.ownerElementId - right.ownerElementId ||
             left.instanceReplayIndex - right.instanceReplayIndex,
         ),
+    },
+    placementGeometryTargets: {
+      initialUniqueIds: initialPlacementGeometryTargetIds.size,
+      scanClosurePasses: referencedGeometryTargetPasses,
+      ...referencedTargetAudit(placementGeometryTargetIds),
+      composedOwners: composedPlacementGeometryOwners.length,
+      completeOwners: composedPlacementGeometryOwners.filter(
+        (element) => element.complete,
+      ).length,
+      partialOwners: composedPlacementGeometryOwners.filter(
+        (element) => !element.complete,
+      ).length,
+      partialSourceIssues: entries(placementPartialSourceIssues),
+      triangles: composedPlacementGeometryOwners.reduce(
+        (total, element) => total + element.triangles,
+        0,
+      ),
+      completeTriangles: composedPlacementGeometryOwners
+        .filter((element) => element.complete)
+        .reduce(
+          (total, element) => total + element.triangles,
+          0,
+        ),
+      partialTriangles: composedPlacementGeometryOwners
+        .filter((element) => !element.complete)
+        .reduce(
+          (total, element) => total + element.triangles,
+          0,
+        ),
+      failures: entries(placementGeometryCompositionFailures),
+      elements: composedPlacementGeometryOwners.map((element) => ({
+        ...element,
+        facesByKind: entries(element.facesByKind),
+      })),
+    },
+    referencedGeometryTargets: {
+      scanClosurePasses: referencedGeometryTargetPasses,
+      ...referencedTargetAudit(referencedGeometryTargetIds),
+      meshFailures: entries(nestedTargetMeshFailures),
     },
   },
   topologyInventory: {
