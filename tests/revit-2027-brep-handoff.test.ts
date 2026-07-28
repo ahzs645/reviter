@@ -24,10 +24,10 @@ test("records the exact Revit 2027 source slots feeding the BRep handoff", () =>
   });
 });
 
-test("current exact corpus coverage stops before the general persisted graph", () => {
+test("current exact corpus coverage reaches the persisted graph", () => {
   const assessment = CURRENT_REVIT_2027_BREP_HANDOFF_ASSESSMENT;
-  assert.equal(assessment.highestReadyStage, null);
-  assert.equal(assessment.ready["persisted-graph"], false);
+  assert.equal(assessment.highestReadyStage, "persisted-graph");
+  assert.equal(assessment.ready["persisted-graph"], true);
   assert.equal(assessment.ready["native-builder-equivalent"], false);
   assert.equal(assessment.ready["browser-renderer"], false);
   assert.equal(assessment.ifcParityEligible, false);
@@ -35,9 +35,11 @@ test("current exact corpus coverage stops before the general persisted graph", (
     assessment.issues
       .filter((issue) => issue.stage === "persisted-graph")
       .map((issue) => [issue.capability, issue.code]),
-    [
-      ["ordered-coedges", "inferred-only"],
-    ],
+    [],
+  );
+  assert.equal(
+    CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["ordered-coedges"],
+    "exact-rvt",
   );
   assert.equal(
     CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["coedge-direction"],

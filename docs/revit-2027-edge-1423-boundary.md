@@ -224,6 +224,26 @@ The directed sample order is forward exactly when the flip bit equals whether
 the current Face occupies `faceReferences[1]`. Consequently `0x6` and `0xe`
 have identical loop orientation; their only difference is the 3D-arc bit.
 
+Native traversal also resolves the two next/previous arrays without an
+endpoint-order inference:
+
+- `OdBmBrCoedge::GetNext()` at `TB_Database.tx:0x22210a8` obtains the
+  coedge's loop Face, compares it with `GEdge.faces[0]` and `[1]`, and passes
+  that exact side index to `GEdge.getNextItem()`;
+- `OdBmBrCoedge::GetPrev()` at `0x2221208` does the same with
+  `GEdge.getPrevItem()`;
+- `GEdge.getNextItem()` at `TB_Geometry.tx:0x413f0a` directly indexes the
+  internal two-pointer next array, while `getPrevItem()` at `0x413f3e`
+  directly indexes the previous array;
+- `OdBmGEdgeImpl::getNextInLoop()` at `0x3465a8` and
+  `getPrevInLoop()` at `0x3465c6` independently expose the same side-indexed
+  arrays.
+
+Therefore `nextReferences[faceSide]` and
+`previousReferences[faceSide]` are the exact native coedge neighbors. The
+browser owner paths share this rule and validate that the final previous
+reference closes back to the loop sentinel.
+
 These value domains, the paired next/previous population, the UV values, and
 the `113 + 32n` boundary agreement independently support the field grammar.
 The audit stops after the Geometry-owned GEdge run, before Geometry

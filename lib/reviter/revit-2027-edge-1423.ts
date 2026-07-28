@@ -61,6 +61,33 @@ export function revit2027GEdgeLoopDirection(
   return flipped === (faceSide === 1) ? 1 : -1;
 }
 
+/**
+ * Return the native next coedge token for one face-local edge use.
+ *
+ * OdBmBrCoedge::GetNext() finds the loop Face in GEdge.faces[0..1], then
+ * passes that exact side index to GEdge.getNextItem(). The latter directly
+ * indexes the persisted two-item `next` array decoded here.
+ */
+export function revit2027GEdgeLoopNextReference(
+  edge: Pick<Revit2027GEdgeStatic, "nextReferences">,
+  faceSide: 0 | 1,
+): number {
+  return edge.nextReferences[faceSide];
+}
+
+/**
+ * Return the native previous coedge token for one face-local edge use.
+ *
+ * This is the GetPrev/getPrevItem counterpart to
+ * revit2027GEdgeLoopNextReference().
+ */
+export function revit2027GEdgeLoopPreviousReference(
+  edge: Pick<Revit2027GEdgeStatic, "previousReferences">,
+  faceSide: 0 | 1,
+): number {
+  return edge.previousReferences[faceSide];
+}
+
 function bounded(
   data: Uint8Array,
   byteOffset: number,

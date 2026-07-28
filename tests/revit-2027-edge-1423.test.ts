@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   decodeRevit2027GEdgeStatic,
   revit2027GEdgeLoopDirection,
+  revit2027GEdgeLoopNextReference,
+  revit2027GEdgeLoopPreviousReference,
 } from "../lib/reviter/revit-2027-edge-1423.ts";
 
 const GINFO_BYTES = 20;
@@ -120,6 +122,17 @@ test("derives native coedge direction from face side and flip bit", () => {
   assert.equal(revit2027GEdgeLoopDirection({ flags: 0x6 }, 1), -1);
   assert.equal(revit2027GEdgeLoopDirection({ flags: 0x7 }, 0), -1);
   assert.equal(revit2027GEdgeLoopDirection({ flags: 0x7 }, 1), 1);
+});
+
+test("selects native coedge neighbors by the current face side", () => {
+  const edge = {
+    nextReferences: [101, 102] as const,
+    previousReferences: [201, 202] as const,
+  };
+  assert.equal(revit2027GEdgeLoopNextReference(edge, 0), 101);
+  assert.equal(revit2027GEdgeLoopNextReference(edge, 1), 102);
+  assert.equal(revit2027GEdgeLoopPreviousReference(edge, 0), 201);
+  assert.equal(revit2027GEdgeLoopPreviousReference(edge, 1), 202);
 });
 
 test("GEdge reader is release-gated, bounded, and count-limited", () => {

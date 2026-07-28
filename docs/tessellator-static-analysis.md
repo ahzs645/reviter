@@ -185,6 +185,15 @@ persisted coedge-direction rule. This removes endpoint-order inference,
 including 17 two-edge planar contours where both curves share both endpoint
 pairs.
 
+The same paths now share the native coedge-order rule. At
+`TB_Database.tx:0x22210a8`/`0x2221208`,
+`OdBmBrCoedge::GetNext/GetPrev` selects the current loop Face's index in the
+edge's two-face array and calls `GEdge.getNextItem/getPrevItem` with that
+index. The accessors at `TB_Geometry.tx:0x413f0a`/`0x413f3e` directly index
+the persisted next/previous arrays. This makes face-local ordered coedges,
+including the loop-sentinel transition, exact RVT evidence rather than an
+endpoint-derived ordering.
+
 The filler also proves why a raw UV epsilon is not a general repair policy.
 `getParamCurveFixed` at `0x8bb34` validates an existing p-curve, clears an
 invalid one, and conditionally projects a replacement through

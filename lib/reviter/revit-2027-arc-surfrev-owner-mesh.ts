@@ -12,6 +12,8 @@ import {
 import {
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
   revit2027GEdgeLoopDirection,
+  revit2027GEdgeLoopNextReference,
+  revit2027GEdgeLoopPreviousReference,
   type Revit2027EdgePoint,
   type Revit2027GEdgeStatic,
 } from "./revit-2027-edge-1423.ts";
@@ -235,7 +237,7 @@ function directedLoopEdges(
       side,
       direction: revit2027GEdgeLoopDirection(edge, side),
     });
-    edgeToken = edge.nextReferences[side];
+    edgeToken = revit2027GEdgeLoopNextReference(edge, side);
     if (ordered.length > edges.size) {
       return {
         ok: false,
@@ -250,7 +252,11 @@ function directedLoopEdges(
   if (
     ordered.length !== 4 ||
     ordered.at(-1)?.token !== loop.loop.previousEdgeReference ||
-    ordered[0]?.edge.previousReferences[ordered[0].side] !== loop.token
+    ordered[0] &&
+      revit2027GEdgeLoopPreviousReference(
+        ordered[0].edge,
+        ordered[0].side,
+      ) !== loop.token
   ) {
     return {
       ok: false,
