@@ -26,6 +26,9 @@ import {
   replayRevit2027GRepFifo,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
 import {
+  meshRevit2027PlanarSampledReplay,
+} from "../lib/reviter/revit-2027-planar-owner-mesh.ts";
+import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
 
@@ -91,6 +94,10 @@ const descriptorStates = new Map<string, number>();
 const spansBySlot = new Map<number, number>();
 const bodyBytesBySlot = new Map<string, number>();
 const failures = new Map<string, number>();
+let planarFaceMeshes = 0;
+let planarPositions = 0;
+let planarTriangles = 0;
+const planarIssues = new Map<string, number>();
 
 for (const partition of partitions) {
   const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
@@ -135,6 +142,19 @@ for (const partition of partitions) {
         continue;
       }
       completedOwners += 1;
+      const meshed = meshRevit2027PlanarSampledReplay(replayed.value);
+      if (!meshed.ok) {
+        increment(failures, `planar owner mesh: ${meshed.error}`);
+        continue;
+      }
+      planarFaceMeshes += meshed.value.faceMeshes.length;
+      for (const face of meshed.value.faceMeshes) {
+        planarPositions += face.mesh.positions.length / 3;
+        planarTriangles += face.mesh.indices.length / 3;
+      }
+      for (const issue of meshed.value.issues) {
+        increment(planarIssues, issue.code);
+      }
       descriptors += replayed.value.descriptors.length;
       spans += replayed.value.spans.length;
       for (const descriptor of replayed.value.descriptors) {
@@ -171,6 +191,12 @@ console.log(JSON.stringify({
   spans,
   spansBySlot: entries(spansBySlot),
   bodyBytesBySlot: entries(bodyBytesBySlot),
+  sampledPlanarMesh: {
+    faceMeshes: planarFaceMeshes,
+    positions: planarPositions,
+    triangles: planarTriangles,
+    issues: entries(planarIssues),
+  },
   failures: entries(failures),
   readerCorpusValid,
 }, null, 2));

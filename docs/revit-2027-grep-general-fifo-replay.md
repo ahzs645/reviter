@@ -132,6 +132,10 @@ reader or boundary failures. Its census includes 40,961 Faces, 84,499 GEdges,
 FillPatternData bodies, 99 FillGrids, 40,959 plane/cone/cylinder surfaces, two
 SurfRev surfaces, and two GArc profiles.
 
+The same run passes each completed replay to the reusable planar owner-mesh
+module and independently reproduces 40,188 Face meshes, 165,336 positions, and
+84,811 triangles.
+
 Run that corpus proof with:
 
 ```sh
