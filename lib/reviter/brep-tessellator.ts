@@ -4,13 +4,19 @@
  * The native TB_Geometry / TD_Ge / TD_Br stack presents geometry as oriented
  * faces, trimming loops, surfaces, transforms and per-face display attributes.
  * This IR keeps that boundary without depending on the native ABI. The
- * tessellator below deliberately supports only planar faces bounded by closed
- * line/polyline trims; curved surfaces and trims remain representable but are
- * rejected until their approximation tolerances are independently established.
+ * compatibility entry point supports planar faces bounded by closed 3D
+ * line/polyline trims. The general entry point additionally supports the
+ * independently bounded cylindrical-chart subset documented below.
  */
+import {
+  nativeCircularArcSegmentCount,
+  nativeCylinderMaximumParamSteps,
+  type NativeTessellationPolicy,
+} from "./native-tessellation-policy.ts";
 import { triangulate, type Point2 } from "./polygon.ts";
 
 export type BrepPoint3 = readonly [number, number, number];
+export type BrepParamPoint2 = readonly [number, number];
 export type BrepMatrix4 = readonly [
   number, number, number, number,
   number, number, number, number,
@@ -36,9 +42,25 @@ export type BrepPlaneSurface = {
   normal: BrepPoint3;
 };
 
+/**
+ * Analytic cylinder frame.
+ *
+ * Its native-style parameter convention is:
+ * `P(u,v) = origin + radius*u*axis + radius*(cos(v)*xAxis + sin(v)*yAxis)`.
+ * U is normalized axial distance; V is angle in radians.
+ */
+export type BrepCylinderSurface = {
+  kind: "cylinder";
+  origin: BrepPoint3;
+  axis: BrepPoint3;
+  xAxis: BrepPoint3;
+  yAxis: BrepPoint3;
+  radius: number;
+};
+
 export type BrepSurface =
   | BrepPlaneSurface
-  | { kind: "cylinder"; origin: BrepPoint3; axis: BrepPoint3; radius: number }
+  | BrepCylinderSurface
   | { kind: "cone"; origin: BrepPoint3; axis: BrepPoint3; halfAngle: number }
   | {
       kind: "nurbs";
@@ -53,6 +75,10 @@ export type BrepSurface =
 export type BrepTrimCurve =
   | { kind: "line"; start: BrepPoint3; end: BrepPoint3 }
   | { kind: "polyline"; points: readonly BrepPoint3[] }
+  /** A straight p-curve in the owning surface's declared parameter space. */
+  | { kind: "pcurve-line"; start: BrepParamPoint2; end: BrepParamPoint2 }
+  /** A polyline p-curve in the owning surface's declared parameter space. */
+  | { kind: "pcurve-polyline"; points: readonly BrepParamPoint2[] }
   | {
       kind: "arc";
       center: BrepPoint3;
@@ -116,8 +142,13 @@ export type NeutralFaceMesh = {
 };
 
 export type BrepTessellationIssueCode =
+  | "invalid-options"
   | "invalid-transform"
   | "invalid-plane"
+  | "invalid-cylinder"
+  | "invalid-cylinder-chart"
+  | "wrapping-cylinder-chart"
+  | "missing-tessellation-policy"
   | "unsupported-surface"
   | "unsupported-trim-curve"
   | "open-loop"
@@ -143,6 +174,14 @@ export type BrepTessellationOptions = {
   areaTolerance?: number;
   maxFaces?: number;
   maxVertices?: number;
+  /**
+   * Native analytic limits required by curved faces. Planar tessellation does
+   * not consult this policy.
+   */
+  nativePolicy?: Pick<
+    NativeTessellationPolicy,
+    "maximumEdgeLength" | "maximumAngleDegrees" | "surfaceDeviation"
+  >;
 };
 
 const IDENTITY: BrepMatrix4 = [
@@ -230,6 +269,30 @@ function transformPoint(matrix: BrepMatrix4, point: BrepPoint3): Vec3 {
   ];
 }
 
+function transformVector(matrix: BrepMatrix4, vector: BrepPoint3): Vec3 {
+  return [
+    matrix[0] * vector[0] + matrix[4] * vector[1] + matrix[8] * vector[2],
+    matrix[1] * vector[0] + matrix[5] * vector[1] + matrix[9] * vector[2],
+    matrix[2] * vector[0] + matrix[6] * vector[1] + matrix[10] * vector[2],
+  ];
+}
+
+function finiteParamPoint(point: BrepParamPoint2): boolean {
+  return point.length === 2 && point.every(Number.isFinite);
+}
+
+function sameParamPoint(
+  a: BrepParamPoint2,
+  b: BrepParamPoint2,
+  uTolerance: number,
+  vTolerance: number,
+): boolean {
+  return (
+    Math.abs(a[0] - b[0]) <= uTolerance &&
+    Math.abs(a[1] - b[1]) <= vTolerance
+  );
+}
+
 function loopPoints(
   faceId: string,
   loop: BrepTrimLoop,
@@ -306,6 +369,92 @@ function loopPoints(
           faceId,
           loopId: loop.id,
           message: "trim loop contains a zero-length edge",
+        },
+      };
+    }
+  }
+  return { ok: true, points };
+}
+
+function loopParamPoints(
+  faceId: string,
+  loop: BrepTrimLoop,
+  uTolerance: number,
+  vTolerance: number,
+): { ok: true; points: BrepParamPoint2[] } | { ok: false; issue: BrepTessellationIssue } {
+  const points: BrepParamPoint2[] = [];
+  for (const curve of loop.curves) {
+    if (curve.kind !== "pcurve-line" && curve.kind !== "pcurve-polyline") {
+      return {
+        ok: false,
+        issue: {
+          code: "unsupported-trim-curve",
+          faceId,
+          loopId: loop.id,
+          message: `${curve.kind} is not an explicit cylinder p-curve`,
+        },
+      };
+    }
+    const curvePoints =
+      curve.kind === "pcurve-line" ? [curve.start, curve.end] : [...curve.points];
+    if (curvePoints.length < 2 || curvePoints.some((point) => !finiteParamPoint(point))) {
+      return {
+        ok: false,
+        issue: {
+          code: "invalid-cylinder-chart",
+          faceId,
+          loopId: loop.id,
+          message: "cylinder p-curve has fewer than two finite parameter points",
+        },
+      };
+    }
+    if (
+      points.length &&
+      !sameParamPoint(points.at(-1)!, curvePoints[0]!, uTolerance, vTolerance)
+    ) {
+      return {
+        ok: false,
+        issue: {
+          code: "open-loop",
+          faceId,
+          loopId: loop.id,
+          message: "consecutive cylinder p-curves do not share an endpoint",
+        },
+      };
+    }
+    points.push(...(points.length ? curvePoints.slice(1) : curvePoints));
+  }
+  if (
+    points.length < 4 ||
+    !sameParamPoint(points[0]!, points.at(-1)!, uTolerance, vTolerance)
+  ) {
+    return {
+      ok: false,
+      issue: {
+        code: "open-loop",
+        faceId,
+        loopId: loop.id,
+        message: "cylinder p-curve loop is not closed",
+      },
+    };
+  }
+  points.pop();
+  for (let index = 0; index < points.length; index += 1) {
+    if (
+      sameParamPoint(
+        points[index]!,
+        points[(index + 1) % points.length]!,
+        uTolerance,
+        vTolerance,
+      )
+    ) {
+      return {
+        ok: false,
+        issue: {
+          code: "invalid-cylinder-chart",
+          faceId,
+          loopId: loop.id,
+          message: "cylinder p-curve loop contains a zero-length edge",
         },
       };
     }
@@ -729,6 +878,504 @@ export function tessellatePlanarBrep(
       brepProvenance: { ...brep.provenance },
       faceProvenance: { ...face.provenance },
     });
+  }
+
+  if (issues.length) return { ok: false, issues };
+  return {
+    ok: true,
+    mesh: {
+      brepId: brep.id,
+      positions: Float64Array.from(positions),
+      normals: Float32Array.from(normals),
+      indices: Uint32Array.from(indices),
+      groups,
+    },
+  };
+}
+
+function tessellateCylinderFace(
+  brep: NeutralBrep,
+  face: NeutralBrepFace,
+  options: BrepTessellationOptions,
+): BrepTessellationResult {
+  if (face.surface.kind !== "cylinder") {
+    return {
+      ok: false,
+      issues: [{
+        code: "unsupported-surface",
+        faceId: face.id,
+        message: `${face.surface.kind} is not a cylinder`,
+      }],
+    };
+  }
+  const distanceTolerance = options.distanceTolerance ?? DEFAULT_DISTANCE_TOLERANCE;
+  const angularTolerance = options.angularTolerance ?? DEFAULT_ANGULAR_TOLERANCE;
+  const maxVertices = options.maxVertices ?? DEFAULT_MAX_VERTICES;
+  const cylinder = face.surface;
+
+  if (
+    !finitePoint(cylinder.origin) ||
+    !finitePoint(cylinder.axis) ||
+    !finitePoint(cylinder.xAxis) ||
+    !finitePoint(cylinder.yAxis) ||
+    !Number.isFinite(cylinder.radius) ||
+    cylinder.radius <= Math.max(distanceTolerance, 1e-10)
+  ) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder",
+        faceId: face.id,
+        message: "cylinder frame or radius is not finite and positive",
+      }],
+    };
+  }
+
+  const axis = normalized(cylinder.axis);
+  const xAxis = normalized(cylinder.xAxis);
+  const yAxis = normalized(cylinder.yAxis);
+  const computedYAxis = axis && xAxis ? normalized(cross(axis, xAxis)) : null;
+  if (
+    !axis ||
+    !xAxis ||
+    !yAxis ||
+    !computedYAxis ||
+    Math.abs(dot(axis, xAxis)) > angularTolerance ||
+    Math.abs(dot(axis, yAxis)) > angularTolerance ||
+    Math.abs(dot(xAxis, yAxis)) > angularTolerance ||
+    1 - dot(computedYAxis, yAxis) > angularTolerance
+  ) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder",
+        faceId: face.id,
+        message: "cylinder axes are degenerate, non-orthogonal, or not right-handed",
+      }],
+    };
+  }
+
+  const modelTransform = brep.transform ?? IDENTITY;
+  const faceTransform = face.transform ?? IDENTITY;
+  if (!validTransform(modelTransform, distanceTolerance)) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-transform",
+        faceId: "",
+        message: "BRep transform is not a finite affine column-major matrix",
+      }],
+    };
+  }
+  if (!validTransform(faceTransform, distanceTolerance)) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-transform",
+        faceId: face.id,
+        message: "face transform is not a finite affine column-major matrix",
+      }],
+    };
+  }
+
+  const outerLoops = face.trims.filter((loop) => loop.role === "outer");
+  const holeLoops = face.trims.filter((loop) => loop.role === "hole");
+  if (outerLoops.length !== 1) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        message: "a cylindrical face must contain exactly one outer p-curve loop",
+      }],
+    };
+  }
+  if (holeLoops.length) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-hole",
+        faceId: face.id,
+        loopId: holeLoops[0]!.id,
+        message: "cylindrical holes require constrained curved-surface remeshing",
+      }],
+    };
+  }
+
+  const uTolerance = distanceTolerance / cylinder.radius;
+  const decoded = loopParamPoints(
+    face.id,
+    outerLoops[0]!,
+    uTolerance,
+    angularTolerance,
+  );
+  if (!decoded.ok) return { ok: false, issues: [decoded.issue] };
+  const chart = decoded.points;
+  if (chart.length !== 4) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        loopId: outerLoops[0]!.id,
+        message: "only four-corner rectangular cylinder charts are verified",
+      }],
+    };
+  }
+
+  const uMin = Math.min(...chart.map((point) => point[0]));
+  const uMax = Math.max(...chart.map((point) => point[0]));
+  const vMin = Math.min(...chart.map((point) => point[1]));
+  const vMax = Math.max(...chart.map((point) => point[1]));
+  const uSpan = uMax - uMin;
+  const vSpan = vMax - vMin;
+  if (uSpan <= uTolerance || vSpan <= angularTolerance) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        loopId: outerLoops[0]!.id,
+        message: "cylinder chart has zero axial or angular extent",
+      }],
+    };
+  }
+  if (vSpan >= Math.PI * 2 - angularTolerance) {
+    return {
+      ok: false,
+      issues: [{
+        code: "wrapping-cylinder-chart",
+        faceId: face.id,
+        loopId: outerLoops[0]!.id,
+        message: "cylinder chart reaches or crosses a full-period seam",
+      }],
+    };
+  }
+
+  const cornerKeys = new Set<string>();
+  for (let index = 0; index < chart.length; index += 1) {
+    const point = chart[index]!;
+    const next = chart[(index + 1) % chart.length]!;
+    const constantU = Math.abs(point[0] - next[0]) <= uTolerance;
+    const constantV = Math.abs(point[1] - next[1]) <= angularTolerance;
+    if (constantU === constantV) {
+      return {
+        ok: false,
+        issues: [{
+          code: "invalid-cylinder-chart",
+          faceId: face.id,
+          loopId: outerLoops[0]!.id,
+          message: "cylinder chart edges must alternate along one parameter axis",
+        }],
+      };
+    }
+    if (Math.abs(point[1] - next[1]) > Math.PI + angularTolerance) {
+      return {
+        ok: false,
+        issues: [{
+          code: "wrapping-cylinder-chart",
+          faceId: face.id,
+          loopId: outerLoops[0]!.id,
+          message: "cylinder p-curve edge has an ambiguous angular wrap",
+        }],
+      };
+    }
+
+    const uSide = Math.abs(point[0] - uMin) <= uTolerance
+      ? "min"
+      : Math.abs(point[0] - uMax) <= uTolerance
+        ? "max"
+        : null;
+    const vSide = Math.abs(point[1] - vMin) <= angularTolerance
+      ? "min"
+      : Math.abs(point[1] - vMax) <= angularTolerance
+        ? "max"
+        : null;
+    if (!uSide || !vSide) {
+      return {
+        ok: false,
+        issues: [{
+          code: "invalid-cylinder-chart",
+          faceId: face.id,
+          loopId: outerLoops[0]!.id,
+          message: "cylinder p-curve vertex is not a rectangle corner",
+        }],
+      };
+    }
+    cornerKeys.add(`${uSide}-${vSide}`);
+  }
+  if (cornerKeys.size !== 4) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        loopId: outerLoops[0]!.id,
+        message: "cylinder chart does not contain four distinct rectangle corners",
+      }],
+    };
+  }
+
+  const policy = options.nativePolicy;
+  if (!policy) {
+    return {
+      ok: false,
+      issues: [{
+        code: "missing-tessellation-policy",
+        faceId: face.id,
+        message: "cylindrical faces require an explicit native tessellation policy",
+      }],
+    };
+  }
+  const nativeSteps = nativeCylinderMaximumParamSteps(
+    cylinder.radius,
+    policy.maximumEdgeLength,
+    policy.maximumAngleDegrees,
+  );
+  if (!nativeSteps.ok) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-options",
+        faceId: face.id,
+        message: nativeSteps.error,
+      }],
+    };
+  }
+  const vSegmentsResult = nativeCircularArcSegmentCount(
+    cylinder.radius,
+    vSpan,
+    policy,
+    { minimumSegments: 1, maximumSegments: Math.max(1, maxVertices) },
+  );
+  if (!vSegmentsResult.ok) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-options",
+        faceId: face.id,
+        message: vSegmentsResult.error,
+      }],
+    };
+  }
+
+  const uSegments = nativeSteps.value.maximumUStep > 0
+    ? Math.max(1, Math.ceil(uSpan / nativeSteps.value.maximumUStep))
+    : 1;
+  const vSegments = vSegmentsResult.value;
+  const vertexCount = (uSegments + 1) * (vSegments + 1);
+  if (!Number.isSafeInteger(vertexCount) || vertexCount > maxVertices) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        message: "cylindrical mesh vertex count exceeds the safety bound",
+      }],
+    };
+  }
+
+  const composedTransform = multiplyMatrix(modelTransform, faceTransform);
+  const oriented = face.orientation ?? 1;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  for (let uIndex = 0; uIndex <= uSegments; uIndex += 1) {
+    const u = uMin + (uSpan * uIndex) / uSegments;
+    for (let vIndex = 0; vIndex <= vSegments; vIndex += 1) {
+      const v = vMin + (vSpan * vIndex) / vSegments;
+      const cosine = Math.cos(v);
+      const sine = Math.sin(v);
+      const radial: Vec3 = [
+        cosine * xAxis[0] + sine * yAxis[0],
+        cosine * xAxis[1] + sine * yAxis[1],
+        cosine * xAxis[2] + sine * yAxis[2],
+      ];
+      const point: Vec3 = [
+        cylinder.origin[0] + cylinder.radius * (u * axis[0] + radial[0]),
+        cylinder.origin[1] + cylinder.radius * (u * axis[1] + radial[1]),
+        cylinder.origin[2] + cylinder.radius * (u * axis[2] + radial[2]),
+      ];
+      positions.push(...transformPoint(composedTransform, point));
+
+      const dV: Vec3 = [
+        cylinder.radius * (-sine * xAxis[0] + cosine * yAxis[0]),
+        cylinder.radius * (-sine * xAxis[1] + cosine * yAxis[1]),
+        cylinder.radius * (-sine * xAxis[2] + cosine * yAxis[2]),
+      ];
+      const dU: Vec3 = [
+        cylinder.radius * axis[0],
+        cylinder.radius * axis[1],
+        cylinder.radius * axis[2],
+      ];
+      const worldNormal = normalized(
+        cross(
+          transformVector(composedTransform, dV),
+          transformVector(composedTransform, dU),
+        ),
+      );
+      if (!worldNormal) {
+        return {
+          ok: false,
+          issues: [{
+            code: "triangulation-failed",
+            faceId: face.id,
+            message: "transformed cylindrical face collapses to zero area",
+          }],
+        };
+      }
+      const orientedNormal = worldNormal.map((component) => {
+        const value = component * oriented;
+        return Object.is(value, -0) ? 0 : value;
+      });
+      normals.push(...orientedNormal);
+    }
+  }
+
+  const indices: number[] = [];
+  const rowLength = vSegments + 1;
+  for (let uIndex = 0; uIndex < uSegments; uIndex += 1) {
+    for (let vIndex = 0; vIndex < vSegments; vIndex += 1) {
+      const a = uIndex * rowLength + vIndex;
+      const b = (uIndex + 1) * rowLength + vIndex;
+      const c = b + 1;
+      const d = a + 1;
+      if (oriented === 1) indices.push(a, c, b, a, d, c);
+      else indices.push(a, b, c, a, c, d);
+    }
+  }
+
+  return {
+    ok: true,
+    mesh: {
+      brepId: brep.id,
+      positions: Float64Array.from(positions),
+      normals: Float32Array.from(normals),
+      indices: Uint32Array.from(indices),
+      groups: [{
+        faceId: face.id,
+        indexOffset: 0,
+        indexCount: indices.length,
+        vertexOffset: 0,
+        vertexCount,
+        materialId: face.materialId ?? null,
+        objectMarker: face.objectMarker,
+        sourceTransform: composedTransform,
+        brepProvenance: { ...brep.provenance },
+        faceProvenance: { ...face.provenance },
+      }],
+    },
+  };
+}
+
+/**
+ * Tessellate a complete neutral BRep using only verified surface subsets.
+ *
+ * Planes use the compatibility path. Cylinders require an explicit native
+ * policy and a single non-wrapping rectangular p-curve chart. Any unsupported
+ * or invalid face rejects the complete BRep; no partial mesh is returned.
+ */
+export function tessellateNeutralBrep(
+  brep: NeutralBrep,
+  options: BrepTessellationOptions = {},
+): BrepTessellationResult {
+  if (brep.faces.every((face) => face.surface.kind === "plane")) {
+    return tessellatePlanarBrep(brep, options);
+  }
+
+  const distanceTolerance = options.distanceTolerance ?? DEFAULT_DISTANCE_TOLERANCE;
+  const angularTolerance = options.angularTolerance ?? DEFAULT_ANGULAR_TOLERANCE;
+  const areaTolerance = options.areaTolerance ?? DEFAULT_AREA_TOLERANCE;
+  const maxFaces = options.maxFaces ?? DEFAULT_MAX_FACES;
+  const maxVertices = options.maxVertices ?? DEFAULT_MAX_VERTICES;
+  if (
+    !Number.isFinite(distanceTolerance) ||
+    distanceTolerance <= 0 ||
+    !Number.isFinite(angularTolerance) ||
+    angularTolerance <= 0 ||
+    !Number.isFinite(areaTolerance) ||
+    areaTolerance <= 0 ||
+    !Number.isSafeInteger(maxFaces) ||
+    maxFaces < 0 ||
+    !Number.isSafeInteger(maxVertices) ||
+    maxVertices < 0
+  ) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-options",
+        faceId: "",
+        message: "tessellation tolerances or safety bounds are invalid",
+      }],
+    };
+  }
+  if (brep.faces.length > maxFaces) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-loop",
+        faceId: "",
+        message: "face count exceeds the safety bound",
+      }],
+    };
+  }
+  const modelTransform = brep.transform ?? IDENTITY;
+  if (!validTransform(modelTransform, distanceTolerance)) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-transform",
+        faceId: "",
+        message: "BRep transform is not a finite affine column-major matrix",
+      }],
+    };
+  }
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const groups: NeutralMeshFaceGroup[] = [];
+  const issues: BrepTessellationIssue[] = [];
+
+  for (const face of brep.faces) {
+    const remainingVertices = maxVertices - positions.length / 3;
+    const oneFace = { ...brep, faces: [face] };
+    const result = face.surface.kind === "plane"
+      ? tessellatePlanarBrep(oneFace, {
+          ...options,
+          maxFaces: 1,
+          maxVertices: remainingVertices,
+        })
+      : face.surface.kind === "cylinder"
+        ? tessellateCylinderFace(oneFace, face, {
+            ...options,
+            maxFaces: 1,
+            maxVertices: remainingVertices,
+          })
+        : {
+            ok: false as const,
+            issues: [{
+              code: "unsupported-surface" as const,
+              faceId: face.id,
+              message: `${face.surface.kind} surfaces do not have a verified browser tessellator`,
+            }],
+          };
+    if (!result.ok) {
+      issues.push(...result.issues);
+      continue;
+    }
+
+    const vertexOffset = positions.length / 3;
+    const indexOffset = indices.length;
+    for (const coordinate of result.mesh.positions) positions.push(coordinate);
+    for (const component of result.mesh.normals) normals.push(component);
+    for (const index of result.mesh.indices) indices.push(index + vertexOffset);
+    for (const group of result.mesh.groups) {
+      groups.push({
+        ...group,
+        indexOffset: group.indexOffset + indexOffset,
+        vertexOffset: group.vertexOffset + vertexOffset,
+      });
+    }
   }
 
   if (issues.length) return { ok: false, issues };

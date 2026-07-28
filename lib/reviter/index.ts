@@ -93,9 +93,11 @@ export type {
 } from "./family-material-relations";
 export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";
 export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves";
-export { tessellatePlanarBrep } from "./brep-tessellator";
+export { tessellateNeutralBrep, tessellatePlanarBrep } from "./brep-tessellator";
 export type {
+  BrepCylinderSurface,
   BrepMatrix4,
+  BrepParamPoint2,
   BrepPlaneSurface,
   BrepPoint3,
   BrepProvenance,
