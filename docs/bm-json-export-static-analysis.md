@@ -4,6 +4,13 @@ This note records a clean-room interface analysis of the isolated
 `BmJsonExportEx` binaries. It does not reproduce ODA source code, bypass the
 trial activation library, or make the native runtime redistributable.
 
+The reproducible binary inventory covers every one of the 47 top-level files
+in the isolated runtime (46 ELF objects plus `.DS_Store`). A fresh inventory on
+28 July 2026 matched every committed name, byte count, and SHA-256 hash. The
+[recursive ledger](generated/isolated-tree-inventory.md) separately accounts
+for all 823 regular-file and symbolic-link entries, including the parser
+prototype, decoded samples, and vendored dependencies.
+
 ## What the files are
 
 The `.tx` extension is not a separate data format. Every `.tx` in the isolated
@@ -154,7 +161,7 @@ The portable ideas are:
 4. Group built-in and user parameters by a display group.
 5. Carry explicit geometry provenance and missing-field declarations.
 
-Reviter already implements a clean TypeScript version of that boundary:
+Reviter now implements a clean TypeScript version of that boundary:
 
 - `convertRvtBytes` accepts local bytes and builds a `ConvertResult`.
 - `elementManifest` emits one evidence-ranked semantic record per recovered
@@ -163,9 +170,17 @@ Reviter already implements a clean TypeScript version of that boundary:
   geometry provenance, bounds, and decoder coverage.
 - GLB, OBJ, DXF, SVG, IFC proxy, and JSON generation stay client-side.
 
-It deliberately does not claim ODA fields that Reviter has not decoded:
-Revit `UniqueId`, native model-tree membership, loadable-family name, and
-element-to-material assignment.
+The ODA contract also guided four persisted browser decoders that are no
+longer hypothetical:
+
+- native Revit `UniqueId` for all 74,437 `Global/ElemTable` records;
+- 50,205 exact `OwningElementId` model-tree edges;
+- three referenced loadable-family definitions naming 143 placed instances;
+- 54 native material definitions and 5,413 geometry-level assignments.
+
+Those are partial semantic populations except for identity. Reviter reports
+their evidence and coverage explicitly; it does not promote them to complete
+family regeneration, spatial containment, or per-face material assignment.
 
 ## What is still missing for a general browser RVT converter
 
@@ -174,12 +189,12 @@ element-to-material assignment.
 | OLE/container and compressed streams | ODA loader | Implemented client-side |
 | Release and document metadata | ODA database | Implemented client-side |
 | Complete typed RVT object database | ODA database/runtime schema | Partial, release-specific |
-| Full element hierarchy and `UniqueId` | ODA model tree/element API | Not decoded |
+| Full element hierarchy and `UniqueId` | ODA model tree/element API | UniqueId complete; persisted owning-element tree partial |
 | All built-in and user parameter storage types | ODA parameter system | Partial numeric instance tables |
-| Native family instance geometry | ODA regeneration and geometry graph | Partial inferred/shared shapes |
+| Native family instance geometry | ODA regeneration and geometry graph | Partial placed/shared shapes; 3 family names, no full regeneration |
 | General BRep evaluation | ODA BRep/modeler kernel | Not implemented |
-| General tessellation | ODA modeler geometry | Only recovered analytic/profile paths |
-| Exact material assignment | ODA element/face material APIs | Definitions partial; assignment missing |
+| General tessellation | ODA modeler geometry | Browser planar/convex and analytic paths; no proven general stored-mesh replay |
+| Exact material assignment | ODA element/face material APIs | 54 definitions and 5,413 geometry assignments; no per-face map |
 
 There are therefore two viable routes:
 
