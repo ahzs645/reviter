@@ -90,22 +90,25 @@ The audit used:
 - IFC SHA-256:
   `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
 
-All 5,996 Geometry owners and 40,961 Faces decoded without a reader failure.
-The file contains 31 distinct face render-style IDs:
+The audit now uses the same certified FIFO replay as the browser mesher. It
+accepts both `[Geometry]` roots and the system-wall
+`[GGroup..., Geometry]` form, while rejecting every other initial descriptor
+shape. All 13,568 eligible owners and 139,106 Faces decode without a reader
+failure. The file contains 38 distinct face render-style IDs:
 
 | Binding status | Faces | Distinct IDs |
 | --- | ---: | ---: |
-| Positive ID exactly matching framed `MaterialElem` | 35,365 | 29 |
-| Explicitly unassigned (`-1`) | 5,561 | 1 |
+| Positive ID exactly matching framed `MaterialElem` | 133,482 | 36 |
+| Explicitly unassigned (`-1`) | 5,589 | 1 |
 | Negative system ID (`-4000010`) | 35 | 1 |
 | Unmatched positive ID | 0 | 0 |
 
 Thus every positive face ID in this RVT binds directly to a decoded
 `MaterialElem`; no positive face ID requires a `GStyle` indirection. Those
-35,365 faces can now carry exact native material element IDs through
-tessellation.
+133,482 faces—95.96% of the decoded Face population—can carry exact native
+material element IDs through tessellation.
 
-This does not make all 40,961 faces appearance-complete. Among the 5,596 faces
+This does not make all 139,106 faces appearance-complete. Among the 5,624 faces
 without an explicit positive material:
 
 - 140 carry a positive face `GInfo.gStyleElemId`;
@@ -124,8 +127,8 @@ After completing the RVT identity join, the reference IFC reports:
 - 14,768 `IfcStyledItem` entities;
 - 7,554 `IfcRelAssociatesMaterial` relations.
 
-The 29 directly face-bound RVT material definitions have 21 exact name matches
-in the IFC. The eight absent names are not treated as failed RVT bindings:
+The 36 directly face-bound RVT material definitions have 25 exact name matches
+in the IFC. The eleven absent names are not treated as failed RVT bindings:
 exporters may omit unused definitions, consolidate styles, or choose a
 different association path. Name equality is only a cross-format audit signal;
 it is not used to assign a Revit face.

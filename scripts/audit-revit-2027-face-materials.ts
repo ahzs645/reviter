@@ -15,7 +15,6 @@ import { readFileSync } from "node:fs";
 import CFB from "cfb";
 
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
-import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
 import {
@@ -31,45 +30,27 @@ import {
   type Revit2027FaceMaterialBinding,
 } from "../lib/reviter/revit-2027-face-material.ts";
 import {
-  decodeRevit2027FaceStatic,
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+  type Revit2027FaceStatic,
 } from "../lib/reviter/revit-2027-face-static.ts";
+import {
+  isRevit2027DirectGeometryRoot,
+} from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import {
-  decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  type Revit2027GeometryStatic,
 } from "../lib/reviter/revit-2027-geometry.ts";
+import {
+  replayRevit2027GRepFifo,
+  type Revit2027GRepReplaySpan,
+} from "../lib/reviter/revit-2027-grep-replay.ts";
 
 function increment<K>(map: Map<K, number>, key: K, amount = 1): void {
   map.set(key, (map.get(key) ?? 0) + amount);
-}
-
-function requireTokens(
-  entries: readonly CondInt16QueueEntry[],
-  firstToken: number,
-): string | null {
-  let expected = firstToken;
-  for (const entry of entries) {
-    if (entry.sourceClassSlot == null || entry.token === 0) {
-      return "FIFO append list contains a null property";
-    }
-    if (entry.token === -1) continue;
-    if (entry.token !== expected) {
-      return `expected token ${expected}, received ${entry.token}`;
-    }
-    expected += 1;
-  }
-  return null;
-}
-
-function numbered(entries: readonly CondInt16QueueEntry[]): number {
-  return entries.reduce(
-    (count, entry) => count + (entry.token > 0 ? 1 : 0),
-    0,
-  );
 }
 
 function decodeIfcString(source: string): string {
@@ -137,6 +118,26 @@ let chunks = 0;
 let failedChunks = 0;
 let geometryOwners = 0;
 let decodedFaces = 0;
+let facesWithoutGeometryParent = 0;
+
+function owningGeometry(
+  span: Revit2027GRepReplaySpan,
+  spansByReplayIndex: ReadonlyMap<number, Revit2027GRepReplaySpan>,
+): Revit2027GeometryStatic | null {
+  let parentReplayIndex = span.parentReplayIndex;
+  while (parentReplayIndex != null) {
+    const parent = spansByReplayIndex.get(parentReplayIndex);
+    if (!parent) return null;
+    if (
+      parent.propertySourceClassSlot ===
+      REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+    ) {
+      return parent.value as Revit2027GeometryStatic;
+    }
+    parentReplayIndex = parent.parentReplayIndex;
+  }
+  return null;
+}
 
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
   const path = cfb.FullPaths[entryIndex] ?? "";
@@ -176,83 +177,36 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
       const rootResult = decodeRevit2027FramedGRepRoot(inflated, frame, release);
       if (!rootResult.ok) continue;
       const root = rootResult.value;
-      if (
-        root.children.length !== 1 ||
-        root.children[0]?.sourceClassSlot !==
-          REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT ||
-        requireTokens(root.children, 3)
-      ) {
-        continue;
-      }
-      const geometry = decodeRevit2027GeometryStatic(
-        inflated,
-        root.dynamicPayloadOffset,
-        root.dynamicPayloadEndOffset,
-        release,
-      );
-      if (!geometry.ok) {
-        increment(failures, geometry.error);
-        continue;
-      }
-      const geometryTokenError = requireTokens(geometry.value.queuedProperties, 4);
-      if (geometryTokenError) {
-        increment(failures, geometryTokenError);
-        continue;
-      }
-      if (
-        geometry.value.faces.entries.some(
-          (descriptor) =>
-            descriptor.sourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-        )
-      ) {
-        increment(failures, "unexpected Geometry face source slot");
-        continue;
-      }
-
-      let cursor = geometry.value.endOffset;
-      let nextToken = 4 + numbered(geometry.value.queuedProperties);
-      const ownerFaces: Array<{
-        renderStyleElementId: bigint;
-        faceGStyleElementId: bigint;
-      }> = [];
-      let ownerFailure: string | null = null;
-      for (let index = 0; index < geometry.value.faces.count; index += 1) {
-        const face = decodeRevit2027FaceStatic(
-          inflated,
-          cursor,
-          root.dynamicPayloadEndOffset,
-          release,
-        );
-        if (!face.ok) {
-          ownerFailure = face.error;
-          break;
-        }
-        const tokenError = requireTokens(face.value.queuedProperties, nextToken);
-        if (tokenError) {
-          ownerFailure = tokenError;
-          break;
-        }
-        nextToken += numbered(face.value.queuedProperties);
-        cursor = face.value.endOffset;
-        ownerFaces.push({
-          renderStyleElementId: face.value.renderStyleElementId,
-          faceGStyleElementId: face.value.gInfo.gStyleElementId,
-        });
-      }
-      if (ownerFailure) {
-        increment(failures, ownerFailure);
+      if (!isRevit2027DirectGeometryRoot(root)) continue;
+      const replayed = replayRevit2027GRepFifo(inflated, root);
+      if (!replayed.ok) {
+        increment(failures, replayed.error);
         continue;
       }
       geometryOwners += 1;
-      decodedFaces += ownerFaces.length;
-      for (const face of ownerFaces) {
+      const spansByReplayIndex = new Map(
+        replayed.value.spans.map((span) => [span.replayIndex, span]),
+      );
+      for (const span of replayed.value.spans) {
+        if (
+          span.propertySourceClassSlot !==
+          REVIT_2027_FACE_SOURCE_CLASS_SLOT
+        ) {
+          continue;
+        }
+        const face = span.value as Revit2027FaceStatic;
+        decodedFaces += 1;
         increment(faceIds, face.renderStyleElementId);
-        if (face.renderStyleElementId <= 0n) {
-          increment(nonExplicitFaceGStyleIds, face.faceGStyleElementId);
+        if (face.renderStyleElementId > 0n) continue;
+        increment(nonExplicitFaceGStyleIds, face.gInfo.gStyleElementId);
+        const geometry = owningGeometry(span, spansByReplayIndex);
+        if (geometry) {
           increment(
             nonExplicitGeometryGStyleIds,
-            geometry.value.gInfo.gStyleElementId,
+            geometry.gInfo.gStyleElementId,
           );
+        } else {
+          facesWithoutGeometryParent += 1;
         }
       }
     }
@@ -291,6 +245,7 @@ console.log(JSON.stringify({
   failedChunks,
   geometryOwners,
   decodedFaces,
+  facesWithoutGeometryParent,
   failures: sortedRecord(failures),
   materialDefinitions: materialDefinitions.size,
   faceRenderStyleIds: {
