@@ -338,6 +338,9 @@ const exactTriangleCountTags = matchedTags.filter(
 const matchedPlacedTags = [...rvtPlacedElements.keys()]
   .filter((tag) => ifcGeometryByTag.has(tag))
   .sort((left, right) => left - right);
+const matchedDirectOwnerTags = [...rvtOwnerElements.keys()]
+  .filter((tag) => ifcGeometryByTag.has(tag))
+  .sort((left, right) => left - right);
 const boundsRows = matchedPlacedTags.map((tag) => ({
   tag,
   type: ifcGeometryByTag.get(tag).type,
@@ -352,12 +355,34 @@ const boundsRows = matchedPlacedTags.map((tag) => ({
     ifcGeometryByTag.get(tag).bounds,
   ),
 }));
+const directOwnerBoundsRows = matchedDirectOwnerTags.map((tag) => ({
+  tag,
+  type: ifcGeometryByTag.get(tag).type,
+  rvtTriangles: rvtOwnerElements.get(tag).triangles,
+  ifcTriangles: ifcGeometryByTag.get(tag).triangles,
+  exactTriangleCount:
+    rvtOwnerElements.get(tag).triangles ===
+    ifcGeometryByTag.get(tag).triangles,
+  ...boundsError(
+    rvtOwnerElements.get(tag),
+    ifcGeometryByTag.get(tag).bounds,
+  ),
+}));
 const boundsRowByTag = new Map(boundsRows.map((row) => [row.tag, row]));
+const directOwnerBoundsRowByTag = new Map(
+  directOwnerBoundsRows.map((row) => [row.tag, row]),
+);
 const coincidentBoundsAndTriangleCount = boundsRows.filter(
   (row) =>
     row.exactTriangleCount &&
     row.maximumCornerErrorFeet <= BOUNDS_TOLERANCES_FEET[0],
 );
+const coincidentDirectOwnerBoundsAndTriangleCount =
+  directOwnerBoundsRows.filter(
+    (row) =>
+      row.exactTriangleCount &&
+      row.maximumCornerErrorFeet <= BOUNDS_TOLERANCES_FEET[0],
+  );
 
 const byIfcClass = new Map();
 for (const tag of matchedTags) {
@@ -369,7 +394,10 @@ for (const tag of matchedTags) {
     ifcTriangles: 0,
     placedBoundsTags: 0,
     placedBoundsWithinHalfFoot: 0,
+    directOwnerBoundsTags: 0,
+    directOwnerBoundsWithinHalfFoot: 0,
     coincidentBoundsAndTriangleCount: 0,
+    coincidentDirectOwnerBoundsAndTriangleCount: 0,
   };
   row.matchedTags += 1;
   row.rvtTriangles += rvt.triangles;
@@ -385,6 +413,20 @@ for (const tag of matchedTags) {
       boundsRow.maximumCornerErrorFeet <= BOUNDS_TOLERANCES_FEET[0]
     ) {
       row.coincidentBoundsAndTriangleCount += 1;
+    }
+  }
+  const directOwnerBoundsRow = directOwnerBoundsRowByTag.get(tag);
+  if (directOwnerBoundsRow) {
+    row.directOwnerBoundsTags += 1;
+    if (directOwnerBoundsRow.maximumCornerErrorFeet <= 0.5) {
+      row.directOwnerBoundsWithinHalfFoot += 1;
+    }
+    if (
+      directOwnerBoundsRow.exactTriangleCount &&
+      directOwnerBoundsRow.maximumCornerErrorFeet <=
+        BOUNDS_TOLERANCES_FEET[0]
+    ) {
+      row.coincidentDirectOwnerBoundsAndTriangleCount += 1;
     }
   }
   byIfcClass.set(ifc.type, row);
@@ -503,6 +545,36 @@ const report = {
         "diagnostic only: equal triangle counts plus coincident world AABBs do not prove identical topology or vertex positions",
     },
   },
+  directOwnerBoundsDiagnostic: {
+    scope:
+      "matched direct GRep owner coordinates compared to IFC world AABBs without applying a placement; agreement is measured but does not by itself prove that every direct-owner coordinate frame is world space",
+    comparedTags: directOwnerBoundsRows.length,
+    frame:
+      "IFC Y-up metres mapped to RVT Z-up feet as (x, y, z) -> (x, -z, y)",
+    maximumCornerError: errorDistribution(
+      directOwnerBoundsRows,
+      "maximumCornerErrorFeet",
+    ),
+    maximumCentreError: errorDistribution(
+      directOwnerBoundsRows,
+      "maximumCentreErrorFeet",
+    ),
+    maximumSizeError: errorDistribution(
+      directOwnerBoundsRows,
+      "maximumSizeErrorFeet",
+    ),
+    withinMaximumCornerError: toleranceCounts(directOwnerBoundsRows),
+    coincidentBoundsAndTriangleCount: {
+      toleranceFeet: BOUNDS_TOLERANCES_FEET[0],
+      count: coincidentDirectOwnerBoundsAndTriangleCount.length,
+      ratio: ratio(
+        coincidentDirectOwnerBoundsAndTriangleCount.length,
+        directOwnerBoundsRows.length,
+      ),
+      interpretation:
+        "diagnostic only: equal triangle counts plus coincident AABBs do not prove identical topology, vertex positions, or a general owner coordinate-space rule",
+    },
+  },
   byIfcClass: Object.fromEntries(
     [...byIfcClass]
       .sort(
@@ -522,9 +594,17 @@ const report = {
             value.placedBoundsWithinHalfFoot,
             value.placedBoundsTags,
           ),
+          directOwnerBoundsWithinHalfFootRatio: ratio(
+            value.directOwnerBoundsWithinHalfFoot,
+            value.directOwnerBoundsTags,
+          ),
           coincidentBoundsAndTriangleCountRatio: ratio(
             value.coincidentBoundsAndTriangleCount,
             value.placedBoundsTags,
+          ),
+          coincidentDirectOwnerBoundsAndTriangleCountRatio: ratio(
+            value.coincidentDirectOwnerBoundsAndTriangleCount,
+            value.directOwnerBoundsTags,
           ),
         },
       ]),
@@ -534,6 +614,12 @@ const report = {
     ifcOnlyTags: ifcOnlyTags.slice(0, 100),
     exactTriangleCountTags: exactTriangleCountTags.slice(0, 100),
     worstPlacedBoundsTags: [...boundsRows]
+      .sort(
+        (left, right) =>
+          right.maximumCornerErrorFeet - left.maximumCornerErrorFeet,
+      )
+      .slice(0, 100),
+    worstDirectOwnerBoundsTags: [...directOwnerBoundsRows]
       .sort(
         (left, right) =>
           right.maximumCornerErrorFeet - left.maximumCornerErrorFeet,
