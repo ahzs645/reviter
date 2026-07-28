@@ -55,6 +55,11 @@ export type MeshData = {
    * as many triangles as its ring has edges — so picking indexes per triangle.
    */
   elementIds?: Uint32Array;
+  /**
+   * Exact persisted MaterialElem id shared by every triangle in this batch.
+   * Absent when the face style is null, unresolved, or mixed.
+   */
+  nativeMaterialElementId?: number;
 };
 
 export type MaterialData = {
@@ -90,7 +95,22 @@ export type DecoderCoverage = {
   activeDecoders: string[];
   nativeCurves: number;
   nativeProfiles: number;
+  /** Native MeshData render batches actually present in ConvertResult.meshes. */
   nativeMeshes: number;
+  /** Independently certified drawable Face meshes before render batching. */
+  nativeMeshFaces?: number;
+  /** Placed/direct elements whose complete drawable Face set is emitted. */
+  nativeMeshElements?: number;
+  /** Complete independently persisted GRep owners retained before placement. */
+  nativeMeshOwners?: number;
+  /** Exact certified triangles emitted after owner placement expansion. */
+  nativeMeshTriangles?: number;
+  /** True when a native storage/output safety cap declined complete elements. */
+  nativeMeshTruncated?: boolean;
+  /** Complete native items rejected because their AABB escaped the RVT envelope. */
+  nativeMeshBoundsMismatches?: number;
+  /** Complete native items lacking an independent display-envelope cross-check. */
+  nativeMeshMissingBounds?: number;
   nativeMaterialDefinitions: number;
   /** Placed elements inheriting at least one exact shared-geometry material. */
   nativeMaterialAssignments: number;
@@ -119,7 +139,11 @@ export type DecoderCoverage = {
   approximateSolids: number;
   /** Elements carrying a natively decoded Revit `BuiltInCategory`. */
   nativeCategorisedElements: number;
-  geometryFidelity: "native-profile-approximate-solid" | "native-bounds-envelope" | "diagnostic-only";
+  geometryFidelity:
+    | "certified-native-brep-with-proxy-fallback"
+    | "native-profile-approximate-solid"
+    | "native-bounds-envelope"
+    | "diagnostic-only";
   materialFidelity: "native-definitions-unassigned" | "native-assigned" | "display-fallback";
   semanticFidelity:
     | "native-categories-and-ownership"

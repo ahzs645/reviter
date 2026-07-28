@@ -154,6 +154,10 @@ import {
   segmentScaleFor,
   trimVerticalOutliers,
 } from "./segment-scan.ts";
+import {
+  buildRevit2027NativeMeshScene,
+  createRevit2027NativeMeshCollector,
+} from "./revit-2027-native-mesh-bridge.ts";
 
 import type {
   Bounds3,
@@ -724,6 +728,9 @@ export function convertRvtBytes(
         );
       }
     }
+    const nativeMeshCollector = createRevit2027NativeMeshCollector(
+      decoderPlan.revitVersion,
+    );
     const elemTableEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -887,6 +894,7 @@ export function convertRvtBytes(
         if (read) window = revitWindowTail(read);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
+        nativeMeshCollector.scanPage(inflated);
         if (decoderPlan.revitVersion != null) {
           const materialScan = scanMaterialElementRecords(
             inflated,
@@ -1969,7 +1977,32 @@ export function convertRvtBytes(
         y: (bounds.min.y + bounds.max.y) / 2,
         z: bounds.min.z,
       };
-      const meshes = buildBoundsMeshes(displayBounds, origin);
+      const nativeMeshCollection = nativeMeshCollector.snapshot();
+      const nativeMeshScene = buildRevit2027NativeMeshScene(
+        nativeMeshCollection,
+        instancePlacements.values(),
+        origin,
+        {
+          materialElementIds: new Set(nativeMaterialDefinitionMap.keys()),
+          sharedOwnerIds: sharedGeometryIds,
+          expectedBoundsByElement: new Map(
+            displayBounds.map((record) => [
+              record.elementId,
+              record.boundsFeet,
+            ]),
+          ),
+        },
+      );
+      // A proxy is removed only after the complete native element was admitted
+      // under the output cap. Incomplete and truncated owners keep their
+      // independently recovered envelope/solid.
+      const proxyDisplayBounds = displayBounds.filter(
+        (record) => !nativeMeshScene.coveredElementIds.has(record.elementId),
+      );
+      const meshes = [
+        ...buildBoundsMeshes(proxyDisplayBounds, origin),
+        ...nativeMeshScene.meshes,
+      ];
       const segments = boundsPlanSegments(displayBounds);
       const relativeBounds = {
         min: { x: bounds.min.x - origin.x, y: bounds.min.y - origin.y, z: 0 },
@@ -2032,10 +2065,20 @@ export function convertRvtBytes(
             ...(nativeAssociatedLevelRelations.length
               ? ["revit-2027-associated-level-id-v1"]
               : []),
+            ...(nativeMeshScene.meshes.length
+              ? ["revit-2027-certified-grep-brep-mesh-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
-          nativeMeshes: 0,
+          nativeMeshes: nativeMeshScene.meshes.length,
+          nativeMeshFaces: nativeMeshScene.faceMeshes,
+          nativeMeshElements: nativeMeshScene.coveredElementIds.size,
+          nativeMeshOwners: nativeMeshCollection.completeOwners,
+          nativeMeshTriangles: nativeMeshScene.triangles,
+          nativeMeshTruncated: nativeMeshScene.truncated,
+          nativeMeshBoundsMismatches: nativeMeshScene.boundsMismatches,
+          nativeMeshMissingBounds: nativeMeshScene.missingBounds,
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
           nativeMaterialAssignments: nativeMaterialAssignedElements,
           nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
@@ -2052,9 +2095,11 @@ export function convertRvtBytes(
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
           nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
-          approximateSolids: displayBounds.length,
+          approximateSolids: proxyDisplayBounds.length,
           nativeCategorisedElements: categorisedElements,
-          geometryFidelity: "native-bounds-envelope",
+          geometryFidelity: nativeMeshScene.meshes.length
+            ? "certified-native-brep-with-proxy-fallback"
+            : "native-bounds-envelope",
           materialFidelity: nativeElementMaterialAssignments.length
             ? "native-assigned"
             : nativeMaterialDefinitions.length
@@ -2112,6 +2157,31 @@ export function convertRvtBytes(
           ...(nativeAssociatedLevelRelations.length
             ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]
             : []),
+          ...(nativeMeshScene.meshes.length
+            ? [
+                `${nativeMeshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit 2027 GRep/BRep face meshes (${nativeMeshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
+              ]
+            : []),
+          ...(nativeMeshCollection.incompleteOwners
+            ? [
+                `${nativeMeshCollection.incompleteOwners.toLocaleString()} GRep owners did not have a complete drawable Face mesh and remain on the proxy path.`,
+              ]
+            : []),
+          ...(nativeMeshScene.boundsMismatches
+            ? [
+                `${nativeMeshScene.boundsMismatches.toLocaleString()} complete native items were declined because their transformed AABB escaped the element's independent RVT envelope; their proxies remain.`,
+              ]
+            : []),
+          ...(nativeMeshScene.missingBounds
+            ? [
+                `${nativeMeshScene.missingBounds.toLocaleString()} complete native items lacked an independent display-envelope cross-check and were not added to the production scene.`,
+              ]
+            : []),
+          ...(nativeMeshScene.truncated
+            ? [
+                "The certified native mesh safety cap was reached; declined elements retain their display proxies.",
+              ]
+            : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
             : []),
@@ -2124,7 +2194,9 @@ export function convertRvtBytes(
           ...(displaySelection.omittedSheetCount
             ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]
             : []),
-          "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
+          nativeMeshScene.meshes.length
+            ? "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements."
+            : "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
         ],
         stats: {
           streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
@@ -2133,7 +2205,8 @@ export function convertRvtBytes(
           inflatedBytes,
           candidatesFound: elementBounds.length,
           candidatesFocused: displayBounds.length,
-          candidatesUsed: displayBounds.length,
+          candidatesUsed:
+            proxyDisplayBounds.length + nativeMeshScene.coveredElementIds.size,
           // Counted from the batches themselves: a drawn item is no longer
           // always an eight-vertex box.
           vertexCount: meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0),
