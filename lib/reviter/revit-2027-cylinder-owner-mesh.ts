@@ -10,6 +10,7 @@ import {
 } from "./revit-2027-edge-loop-static.ts";
 import {
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  revit2027GEdgeLoopDirection,
   type Revit2027EdgePoint,
   type Revit2027GEdgeStatic,
 } from "./revit-2027-edge-1423.ts";
@@ -163,33 +164,6 @@ function edgeSide(
   return first === second ? null : first ? 0 : 1;
 }
 
-function endpointMatches(
-  current: DirectedEdge,
-  next: DirectedEdge,
-  tolerance: number,
-): Array<readonly [0 | 1, 0 | 1]> {
-  const matches: Array<readonly [0 | 1, 0 | 1]> = [];
-  for (const currentEndpoint of [0, 1] as const) {
-    for (const nextEndpoint of [0, 1] as const) {
-      if (
-        distance(
-          faceUv(
-            current.edge.firstAndLastEdgePoints[currentEndpoint],
-            current.side,
-          ),
-          faceUv(
-            next.edge.firstAndLastEdgePoints[nextEndpoint],
-            next.side,
-          ),
-        ) <= tolerance
-      ) {
-        matches.push([currentEndpoint, nextEndpoint]);
-      }
-    }
-  }
-  return matches;
-}
-
 function directedLoopEdges(
   faceToken: number,
   loop: LoopRecord,
@@ -238,7 +212,12 @@ function directedLoopEdges(
       };
     }
     visited.add(edgeToken);
-    ordered.push({ token: edgeToken, edge, side, direction: 1 });
+    ordered.push({
+      token: edgeToken,
+      edge,
+      side,
+      direction: revit2027GEdgeLoopDirection(edge, side),
+    });
     edgeToken = edge.nextReferences[side];
     if (ordered.length > edges.size) {
       return {
@@ -266,44 +245,27 @@ function directedLoopEdges(
     };
   }
 
-  const links: Array<readonly [0 | 1, 0 | 1]> = [];
   for (let index = 0; index < ordered.length; index += 1) {
-    const matches = endpointMatches(
-      ordered[index]!,
-      ordered[(index + 1) % ordered.length]!,
-      tolerance,
+    const current = ordered[index]!;
+    const next = ordered[(index + 1) % ordered.length]!;
+    const currentEnd: 0 | 1 = current.direction === 1 ? 1 : 0;
+    const nextStart: 0 | 1 = next.direction === 1 ? 0 : 1;
+    const joinDistance = distance(
+      faceUv(current.edge.firstAndLastEdgePoints[currentEnd], current.side),
+      faceUv(next.edge.firstAndLastEdgePoints[nextStart], next.side),
     );
-    if (matches.length !== 1) {
+    if (joinDistance > tolerance) {
       return {
         ok: false,
         issue: {
           code: "uv-link-unresolved",
           faceToken,
           loopToken: loop.token,
-          edgeToken: ordered[index]!.token,
-          detail: `candidate endpoint matches: ${matches.length}`,
+          edgeToken: current.token,
+          detail: `native directed join distance: ${joinDistance}`,
         },
       };
     }
-    links.push(matches[0]!);
-  }
-  for (let index = 0; index < ordered.length; index += 1) {
-    const incoming = links[(index + links.length - 1) % links.length]!;
-    const outgoing = links[index]!;
-    if (incoming[1] === outgoing[0]) {
-      return {
-        ok: false,
-        issue: {
-          code: "uv-link-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: ordered[index]!.token,
-          detail: "one endpoint is both incoming and outgoing",
-        },
-      };
-    }
-    ordered[index]!.direction =
-      incoming[1] === 0 && outgoing[0] === 1 ? 1 : -1;
   }
   return { ok: true, edges: ordered };
 }

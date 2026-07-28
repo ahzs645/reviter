@@ -154,6 +154,55 @@ serializers (`OdMdBinFile::load`, entity/geometry loaders,
 `OdMdSerializer::writeBody`, and `OdMdDeserializer::readBody`), but the
 serialized body format and implementation remain proprietary.
 
+## Builder-filler topology contract
+
+The adjacent `libTD_BrepBuilderFiller.so` supplies a useful clean-room handoff
+contract even though it is not a browser dependency:
+
+- `performFace` at `0x93a2c` maps `OdBrFace::getOrientToSurface()` directly to
+  builder `Forward`, otherwise `Reversed`; `OdBrepBuilder::addFace` at
+  `0x53794` converts the reversed enum to the backend boolean.
+- `performLoop` at `0x93f3e` emits a forward coedge exactly when
+  `getEdgeOrientToLoop() == OdBrEdge::getOrientToCurve()`;
+  `OdBrepBuilder::addCoedge` at `0x535c0` carries only loop ID, edge ID,
+  reversed boolean, and the optional p-curve.
+- In this Revit bridge, `OdBmBrEdge::getOrientToCurve()` at
+  `TB_Database.tx:0x22230dc` is always true.
+  `OdBmBrEdge::isOrientToLoop()` at `0x2225478` combines the face-reference
+  side with `OdBmGEdgeImpl::isFlipped()`. `isFlipped()` at
+  `TB_Geometry.tx:0x346502` is flags bit zero. The exact browser rule is
+  therefore forward when `(flags & 1) !== 0` equals `faceSide === 1`, and
+  reversed otherwise.
+- The other observed GEdge flag bits are independent of direction: bits 1 and
+  2 mark the first and last endpoints, and bit 3 marks a 3D arc. Thus `0x6`
+  and `0xe` have the same orientation.
+- `splitOuterLoops` at `0x8df26` classifies UV inclusion, reverses selected
+  coedge arrays, toggles every affected coedge direction, and duplicates face
+  metadata when one persisted Face produces multiple filled regions.
+
+The browser Plane, Cylinder, Cone, and SurfRev owner paths now share that
+persisted coedge-direction rule. This removes endpoint-order inference,
+including 17 two-edge planar contours where both curves share both endpoint
+pairs.
+
+The filler also proves why a raw UV epsilon is not a general repair policy.
+`getParamCurveFixed` at `0x8bb34` validates an existing p-curve, clears an
+invalid one, and conditionally projects a replacement through
+`createParamCurve` at `0x8b288`. Its adaptive tolerance is local to
+`restoreUvCurveAsNurb`: it samples ten points, combines surface distance,
+`min(curve-extent diagonal * 1e-4, 0.01)`, and a `1e-6` floor, then makes at
+most three attempts. That tolerance never enters `addCoedge`, `finishLoop`, or
+the modeler validator.
+
+Separately, `checkCoedgeLoop` at `0x8f124` evaluates p-curve endpoints through
+the face surface into 3D and uses the filler-wide `0.01` distance tolerance;
+it may intersect and retime p-curves. Final modeler validation instead checks
+directed 3D edge-curve endpoints with its default `1e-6` resource tolerance.
+UV coordinates can be angles or other surface parameters, so neither number
+may be copied into a raw-UV continuity gate. A portable repair must evaluate
+the analytic surface or decode the 3D edge curve; otherwise it remains
+explicitly unsupported.
+
 ## Mesh, materials, and transforms
 
 `libTD_Ge.so` exposes `GeMesh::OdGeTrMesh` operations such as `clear`,
@@ -229,7 +278,8 @@ before tessellation and must not be conflated with triangle density.
 | Stored faceted-topology decoding | Undocumented modeler binary-body decoding |
 | Analytic tessellation written from public mathematics | ODA `wrRenderBrep` implementation |
 | A separately licensed/open-source WASM tessellator behind the IR | ODA family regeneration and database semantics |
-| Per-element mesh validation against the supplied IFC | Native Revit `UniqueId` and genuine model-tree membership |
+| Native Revit `UniqueId` reconstruction and the currently decoded genuine ownership/host/level/stairs graph | Complete model-tree membership and full family regeneration |
+| Per-element mesh validation against the supplied IFC | Treating IFC geometry or semantics as RVT decoder input |
 
 The useful artifact to reproduce is the **contract**, not the binary code:
 geometry graph in, face-aware indexed mesh out, with explicit tolerances,

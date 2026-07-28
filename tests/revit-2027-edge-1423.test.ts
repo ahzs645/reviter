@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   decodeRevit2027GEdgeStatic,
+  revit2027GEdgeLoopDirection,
 } from "../lib/reviter/revit-2027-edge-1423.ts";
 
 const GINFO_BYTES = 20;
@@ -111,6 +112,14 @@ test("accepts the schema-minimum GEdge with no interior points", () => {
   assert.deepEqual(decoded.value.interiorEdgePoints, []);
   assert.equal(decoded.value.endOffset, bodyEndOffset);
   assert.equal(bodyEndOffset, 113);
+});
+
+test("derives native coedge direction from face side and flip bit", () => {
+  assert.equal(revit2027GEdgeLoopDirection({ flags: 0x6 }, 0), 1);
+  assert.equal(revit2027GEdgeLoopDirection({ flags: 0xe }, 0), 1);
+  assert.equal(revit2027GEdgeLoopDirection({ flags: 0x6 }, 1), -1);
+  assert.equal(revit2027GEdgeLoopDirection({ flags: 0x7 }, 0), -1);
+  assert.equal(revit2027GEdgeLoopDirection({ flags: 0x7 }, 1), 1);
 });
 
 test("GEdge reader is release-gated, bounded, and count-limited", () => {

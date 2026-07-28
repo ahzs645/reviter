@@ -8,6 +8,7 @@ import {
 } from "./revit-2027-edge-loop-static.ts";
 import {
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  revit2027GEdgeLoopDirection,
   type Revit2027GEdgeStatic,
 } from "./revit-2027-edge-1423.ts";
 import {
@@ -198,21 +199,6 @@ function matches(
   return result;
 }
 
-/**
- * TB_Database's OdBmBrEdge reports its curve orientation as always forward.
- * Its loop orientation is forward exactly when GEdge.isFlipped() equals
- * whether this Face occupies faceReferences[1]. GEdge.isFlipped() is flags
- * bit zero. The resulting direction is therefore entirely persisted and does
- * not need endpoint-order inference.
- */
-function nativeEdgeDirection(
-  side: 0 | 1,
-  flags: number,
-): 1 | -1 {
-  const flipped = (flags & 0x1) !== 0;
-  return flipped === (side === 1) ? 1 : -1;
-}
-
 function directedEdgeUses(
   faceToken: number,
   loop: LoopRecord,
@@ -296,7 +282,7 @@ function directedEdgeUses(
     edgeToken: record.token,
     edge: record.edge,
     faceSide: record.side,
-    direction: nativeEdgeDirection(record.side, record.edge.flags),
+    direction: revit2027GEdgeLoopDirection(record.edge, record.side),
   }));
   for (let index = 0; index < ordered.length; index += 1) {
     const current = ordered[index]!;

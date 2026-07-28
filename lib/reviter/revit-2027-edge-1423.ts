@@ -45,6 +45,22 @@ export type Revit2027GEdgeStaticDecodeResult =
   | { ok: true; value: Revit2027GEdgeStatic }
   | { ok: false; error: string };
 
+/**
+ * Return the native curve-sample direction for one face-local coedge.
+ *
+ * TB_Database reports OdBmBrEdge::getOrientToCurve() as forward. Its
+ * isOrientToLoop() result is forward exactly when GEdge.isFlipped() equals
+ * whether the face occupies faceReferences[1]. GEdge.isFlipped() is persisted
+ * flags bit zero.
+ */
+export function revit2027GEdgeLoopDirection(
+  edge: Pick<Revit2027GEdgeStatic, "flags">,
+  faceSide: 0 | 1,
+): 1 | -1 {
+  const flipped = (edge.flags & 0x1) !== 0;
+  return flipped === (faceSide === 1) ? 1 : -1;
+}
+
 function bounded(
   data: Uint8Array,
   byteOffset: number,

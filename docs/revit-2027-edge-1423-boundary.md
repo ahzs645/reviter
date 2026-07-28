@@ -211,6 +211,19 @@ tokens for each reference pair. The exact one-byte flags distribution is:
 | 14 | 326 |
 | 15 | 46 |
 
+Native accessors give those bits exact meaning for this hashed build:
+
+- bit 0: `OdBmGEdgeImpl::isFlipped()`;
+- bit 1: first endpoint is set;
+- bit 2: last endpoint is set;
+- bit 3: the edge is a 3D arc.
+
+`OdBmBrEdge::getOrientToCurve()` is always forward, while
+`OdBmBrEdge::isOrientToLoop()` combines bit 0 with the face-reference side.
+The directed sample order is forward exactly when the flip bit equals whether
+the current Face occupies `faceReferences[1]`. Consequently `0x6` and `0xe`
+have identical loop orientation; their only difference is the 3D-arc bit.
+
 These value domains, the paired next/previous population, the UV values, and
 the `113 + 32n` boundary agreement independently support the field grammar.
 The audit stops after the Geometry-owned GEdge run, before Geometry
