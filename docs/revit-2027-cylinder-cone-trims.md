@@ -174,8 +174,10 @@ node scripts/audit-revit-2027-cylinder-ifc-parity.mjs \
   --rvt-audit cylinder-cone-trims.json
 ```
 
-The combined browser-owner audit meshes all 123 certified Cylinder faces
-directly from the completed FIFO replay. Together with the planar and SurfRev
-paths, it returns 40,313 face meshes, 169,862 positions, and 89,109 triangles
-across 5,996/5,996 direct owners. The thirteen remaining Cylinder faces are
-reported as eleven non-rectangular trims and two guarded wrapping charts.
+The combined browser-owner audit meshes all 123 certified Cylinder faces and
+four exact Cone apex sectors directly from the completed FIFO replay.
+Together with the planar and SurfRev paths, it returns 40,317 face meshes,
+170,354 positions, and 89,273 triangles across 5,996/5,996 direct owners. The
+thirteen remaining Cylinder faces are reported as eleven non-rectangular
+trims and two guarded wrapping charts; six non-apex-sector Cone faces remain
+fail-closed.

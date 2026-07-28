@@ -74,6 +74,7 @@ All reusable browser mesh paths accept these exact definitions directly:
 - `meshRevit2027PlanarSampledReplay(..., { materialDefinitions })`
 - `meshRevit2027ArcSurfRevReplay(..., { materialDefinitions })`
 - `meshRevit2027CylinderSampledReplay(..., { materialDefinitions })`
+- `meshRevit2027ConeApexSectorReplay(..., { materialDefinitions })`
 - `meshRevit2027CertifiedOwnerReplay(..., { materialDefinitions })`
 
 An exact positive binding becomes the neutral mesh group's `materialId`.

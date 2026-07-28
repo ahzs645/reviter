@@ -23,7 +23,7 @@ Both entry points are browser-safe:
 `revit-2027-certified-owner-mesh.ts` is the broader client entry point. It
 replays once and combines this planar path with every other independently
 certified face subset, currently rectangular sampled Cylinder and
-circular-profile rectangular `SurfRev`.
+exact Cone apex sector, and circular-profile rectangular `SurfRev`.
 
 The result contains independent per-Face meshes and structured issues for
 unsupported or ambiguous Faces. One bad Face never produces a partial mesh
@@ -67,10 +67,11 @@ non-planar surfaces, 108 multi-loop Faces, 22 ambiguous UV links, and four
 tessellator rejections. These totals reproduce the independent topology audit.
 
 The combined certified-owner entry point additionally promotes 123 sampled
-Cylinder faces and the two exact circular-profile `SurfRev` faces, for 40,313
-meshes, 169,862 positions, and 89,109 triangles. The remaining planar
-`unsupported-surface` count becomes 23: ten Cone faces and thirteen Cylinder
-faces whose trims remain fail-closed. No planar result changes.
+Cylinder faces, four exact Cone apex sectors, and the two circular-profile
+`SurfRev` faces, for 40,317 meshes, 170,354 positions, and 89,273 triangles.
+The remaining planar `unsupported-surface` count becomes 19: six Cone faces
+and thirteen Cylinder faces whose trims remain fail-closed. No planar result
+changes.
 
 Run:
 
@@ -84,7 +85,8 @@ node --experimental-strip-types \
 - Multi-loop Faces remain rejected until exact hole roles and containment are
   certified.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
-  owner path separately certifies 123 Cylinder and two SurfRev faces.
+  owner path separately certifies 123 Cylinder, four Cone apex-sector, and two
+  SurfRev faces.
 - Positive per-face `MaterialElem` IDs are exact when
   `materialDefinitions` contains the independently decoded framed target.
   GStyle/category/view fallback remains unresolved and therefore null.

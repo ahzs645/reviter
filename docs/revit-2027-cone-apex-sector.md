@@ -134,18 +134,24 @@ const result = tessellateRevit2027ConeApexSectors({
 
 The returned `NeutralFaceMesh` preserves face groups, material IDs, object
 markers, and provenance. The current integration boundary expects directed
-face-local samples; the existing queue/topology replay already supplies them.
+face-local samples. `meshRevit2027ConeApexSectorReplay` now obtains those
+samples from the existing queue/topology replay, and the combined certified
+owner API emits the four accepted faces from the same single replay used by
+the planar, Cylinder, and SurfRev paths.
 
 ## Files and commands
 
 - `lib/reviter/revit-2027-cone-apex-sector.ts`
+- `lib/reviter/revit-2027-cone-owner-mesh.ts`
 - `tests/revit-2027-cone-apex-sector.test.ts`
+- `tests/revit-2027-cone-owner-mesh.test.ts`
 - `scripts/audit-revit-2027-cone-apex-sector.ts`
 - `scripts/audit-revit-2027-cone-apex-ifc-parity.mjs`
 
 ```sh
 node --experimental-strip-types --test \
-  tests/revit-2027-cone-apex-sector.test.ts
+  tests/revit-2027-cone-apex-sector.test.ts \
+  tests/revit-2027-cone-owner-mesh.test.ts
 
 node --experimental-strip-types \
   scripts/audit-revit-2027-cylinder-cone-trims.ts model.rvt \
@@ -167,6 +173,15 @@ vectors and the general tessellator does not yet dispatch cone faces. This
 module proves the exact evaluator, handedness, apex equivalence, normals, and
 fan topology needed for that integration without widening the shared contract
 during this checkpoint.
+
+`libTD_BrepRenderer` supplies the next clean-room boundary: its `wrCone`
+implementation explicitly has degenerate-point detection, UV-parameter
+calculation, and maximum-step calculation. The maximum-step path consumes the
+same edge-length and angular limits used for cylinders, including base-radius
+chord subdivision and a full-turn clamp. Its `SrfTess` layer separately
+triangulates profiles, tessellates surfaces, and chooses break directions.
+Those routines establish where general sampled-cone support belongs, but this
+checkpoint does not imitate their unproven interior policy.
 
 General sampled cone p-curve triangulation remains unproven for the other six
 faces. Supporting it requires a constrained parameter-domain triangulator

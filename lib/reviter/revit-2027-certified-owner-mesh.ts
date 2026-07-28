@@ -20,6 +20,10 @@ import {
   meshRevit2027CylinderSampledReplay,
   type Revit2027CylinderOwnerMeshIssue,
 } from "./revit-2027-cylinder-owner-mesh.ts";
+import {
+  meshRevit2027ConeApexSectorReplay,
+  type Revit2027ConeOwnerMeshIssue,
+} from "./revit-2027-cone-owner-mesh.ts";
 
 export type Revit2027CertifiedOwnerFaceMesh =
   | {
@@ -44,6 +48,12 @@ export type Revit2027CertifiedOwnerFaceMesh =
       angularSegments: number;
       axialSegments: number;
       mesh: NeutralFaceMesh;
+    }
+  | {
+      kind: "cone-apex-sector";
+      faceToken: number;
+      loopToken: number;
+      mesh: NeutralFaceMesh;
     };
 
 export type Revit2027CertifiedOwnerMeshIssue =
@@ -58,6 +68,10 @@ export type Revit2027CertifiedOwnerMeshIssue =
   | {
       path: "cylinder-sampled";
       issue: Revit2027CylinderOwnerMeshIssue;
+    }
+  | {
+      path: "cone-apex-sector";
+      issue: Revit2027ConeOwnerMeshIssue;
     };
 
 export type Revit2027CertifiedOwnerMesh = {
@@ -102,10 +116,14 @@ export function meshRevit2027CertifiedOwnerReplay(
   if (surfRev.ok === false) return surfRev;
   const cylinder = meshRevit2027CylinderSampledReplay(replay, shared);
   if (cylinder.ok === false) return cylinder;
+  const cone = meshRevit2027ConeApexSectorReplay(replay, shared);
+  if (cone.ok === false) return cone;
   const certifiedCurvedFaceTokens = new Set(
-    [...surfRev.value.faceMeshes, ...cylinder.value.faceMeshes].map(
-      (face) => face.faceToken,
-    ),
+    [
+      ...surfRev.value.faceMeshes,
+      ...cylinder.value.faceMeshes,
+      ...cone.value.faceMeshes,
+    ].map((face) => face.faceToken),
   );
   const planarIssues = planar.value.issues.filter(
     (issue) =>
@@ -133,6 +151,10 @@ export function meshRevit2027CertifiedOwnerReplay(
           kind: "cylinder-sampled" as const,
           ...face,
         })),
+        ...cone.value.faceMeshes.map((face) => ({
+          kind: "cone-apex-sector" as const,
+          ...face,
+        })),
       ],
       issues: [
         ...planarIssues.map((issue) => ({
@@ -145,6 +167,10 @@ export function meshRevit2027CertifiedOwnerReplay(
         })),
         ...cylinder.value.issues.map((issue) => ({
           path: "cylinder-sampled" as const,
+          issue,
+        })),
+        ...cone.value.issues.map((issue) => ({
+          path: "cone-apex-sector" as const,
           issue,
         })),
       ],

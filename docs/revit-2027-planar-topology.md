@@ -95,11 +95,11 @@ The result has 165,336 positions, 84,811 triangles, and 40,188 source-face
 groups across 5,806 reusable geometry owners.
 
 The broader certified-owner API now adds the independently proven sampled
-Cylinder and circular-profile rectangular `SurfRev` subsets: 125 more source
-faces, 4,526 positions, and 4,298 triangles. Its current combined direct-owner
-total is 40,313 face meshes, 169,862 positions, and 89,109 triangles. Ten Cone
-faces, thirteen non-certified Cylinder faces, and arbitrary curved trims
-remain separate gates.
+Cylinder, Cone apex-sector, and circular-profile rectangular `SurfRev`
+subsets: 129 more source faces, 5,018 positions, and 4,462 triangles. Its
+current combined direct-owner total is 40,317 face meshes, 170,354 positions,
+and 89,273 triangles. Six non-certified Cone faces, thirteen non-certified
+Cylinder faces, and arbitrary curved trims remain separate gates.
 
 ## Persisted instance placement
 
@@ -159,8 +159,8 @@ Sampled-surface and topological equivalence remain stronger future checks.
 
 - Multi-loop Faces are not tessellated until outer/hole containment is exact.
 - Cone, Cylinder, and SurfRev persistence is decoded. The combined owner
-  endpoint separately adds 123 sampled Cylinder faces and two Arc/SurfRev
-  rectangles to this planar adapter's output.
+  endpoint separately adds 123 sampled Cylinder faces, four exact Cone apex
+  sectors, and two Arc/SurfRev rectangles to this planar adapter's output.
 - Four self-intersecting or otherwise invalid sampled loops return structured
   `invalid-loop` failures and no partial mesh.
 - A positive persisted face material ID is emitted only when it exactly joins

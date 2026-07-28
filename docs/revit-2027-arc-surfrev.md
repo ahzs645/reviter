@@ -134,8 +134,8 @@ parity can be claimed.
   topology/trim certificate, neutral face mesh, and exact positive face
   material propagation.
 - `lib/reviter/revit-2027-certified-owner-mesh.ts` — one replay and one
-  combined client result for planar, sampled Cylinder, and certified SurfRev
-  faces.
+  combined client result for planar, sampled Cylinder, exact Cone apex-sector,
+  and certified SurfRev faces.
 - `tests/revit-2027-arc-surfrev.test.ts` — formula, mesh, and rejection tests.
 - `tests/revit-2027-arc-surfrev-owner-mesh.test.ts` — owner replay,
   opposite-side sampling, and material tests.
