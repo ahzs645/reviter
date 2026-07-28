@@ -32,7 +32,6 @@ import {
 } from "./revit-2027-planar-sampled-brep.ts";
 import {
   groupRings,
-  ringArea,
   type Point2,
 } from "./polygon.ts";
 import {
@@ -366,10 +365,37 @@ function sampledUvRing(
     : null;
 }
 
+function signedUvRingArea(ring: readonly Point2[]): number {
+  let twiceArea = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const point = ring[index]!;
+    const next = ring[(index + 1) % ring.length]!;
+    twiceArea += point[0] * next[1] - next[0] * point[1];
+  }
+  return twiceArea / 2;
+}
+
+function sameUvRing(
+  left: readonly Point2[],
+  right: readonly Point2[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (point, index) =>
+        point[0] === right[index]![0] &&
+        point[1] === right[index]![1],
+    )
+  );
+}
+
 function classifyPlanarLoopRoles(
   edgeUsesByLoop: readonly (readonly Revit2027PlanarSampledEdgeUse[])[],
+  orientToSurface: boolean,
   tolerance: number,
 ): readonly ("outer" | "hole")[] | null {
+  // A lone closed boundary is the face's only filled region. The native
+  // winding classifier matters when multiple contours compete for roles.
   if (edgeUsesByLoop.length === 1) return ["outer"];
   const rings: Point2[][] = [];
   for (const edgeUses of edgeUsesByLoop) {
@@ -378,28 +404,36 @@ function classifyPlanarLoopRoles(
     rings.push(ring);
   }
 
-  // Native OdBrepBuilder::addLoop takes no outer/hole argument; loop type is
-  // derived after the face-local contours are supplied and exposed later by
-  // OdBrLoop::getType. Reproduce only the unambiguous browser subset: one
-  // containing shell and every other contour a direct hole. Disjoint shells,
-  // nested islands, touching contours, and degenerate rings remain rejected.
+  // Native OdBrepBuilder::addLoop takes no outer/hole argument. For an ordinary
+  // non-periodic surface, libTD_BrepRenderer's stLoop::CalculateLoopType
+  // derives the role from the directed UV shoelace sum: positive is a hole,
+  // negative is filled/outer, with the face-to-surface orientation reversing
+  // the raw role when set. Preserve that rule first, then independently require
+  // the one-shell/direct-hole containment subset. Periodic surfaces use a
+  // separate native seam/full-border path and never enter this planar function.
+  const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
+  const roles: ("outer" | "hole")[] = [];
+  for (const ring of rings) {
+    const area = signedUvRingArea(ring);
+    if (Math.abs(area) <= areaTolerance) return null;
+    const rawRole = area > 0 ? "hole" : "outer";
+    roles.push(
+      orientToSurface
+        ? rawRole === "outer" ? "hole" : "outer"
+        : rawRole,
+    );
+  }
+  const outerIndexes = roles
+    .map((role, index) => role === "outer" ? index : -1)
+    .filter((index) => index >= 0);
+  if (outerIndexes.length !== 1) return null;
+
   const groups = groupRings(rings);
   if (groups.length !== 1 || groups[0]!.holes.length !== rings.length - 1) {
     return null;
   }
-  const outerArea = ringArea(groups[0]!.outer);
-  const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
-  const candidates = rings
-    .map((ring, index) => ({ index, area: ringArea(ring) }))
-    .filter(
-      ({ area }) =>
-        Math.abs(area - outerArea) <=
-        Math.max(areaTolerance, outerArea * Number.EPSILON * 16),
-    );
-  if (candidates.length !== 1) return null;
-  return rings.map((_, index) =>
-    index === candidates[0]!.index ? "outer" : "hole"
-  );
+  if (!sameUvRing(rings[outerIndexes[0]!]!, groups[0]!.outer)) return null;
+  return roles;
 }
 
 /**
@@ -549,7 +583,11 @@ export function meshRevit2027PlanarSampledReplay(
       edgeUsesByLoop.push(directed.edgeUses);
     }
     if (loopFailure) continue;
-    const roles = classifyPlanarLoopRoles(edgeUsesByLoop, tolerance);
+    const roles = classifyPlanarLoopRoles(
+      edgeUsesByLoop,
+      surface.surface.orientFlag,
+      tolerance,
+    );
     if (!roles) {
       issues.push({
         code: "multi-loop",

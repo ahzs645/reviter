@@ -227,6 +227,7 @@ function replay(nextLoopToken = 0): Revit2027GRepReplay {
 function replayWithSecondLoop(
   minimum: readonly [number, number] = [0.25, 0.25],
   maximum: readonly [number, number] = [0.75, 0.75],
+  nativeHoleOrientation = true,
 ): Revit2027GRepReplay {
   const result = replay(11);
   const innerLoop: Revit2027EdgeLoopStatic = {
@@ -238,30 +239,28 @@ function replayWithSecondLoop(
     staticReferences: [FACE_TOKEN, 12, 15],
     envelope: { minimum, maximum },
   };
-  const innerEdges = [
-    edge(12, minimum, [minimum[0], maximum[1]], 11, 13),
+  const innerCorners = nativeHoleOrientation
+    ? [
+        minimum,
+        [minimum[0], maximum[1]],
+        maximum,
+        [maximum[0], minimum[1]],
+      ] as const
+    : [
+        minimum,
+        [maximum[0], minimum[1]],
+        maximum,
+        [minimum[0], maximum[1]],
+      ] as const;
+  const innerEdges = innerCorners.map((point, index) =>
     edge(
-      13,
-      [minimum[0], maximum[1]],
-      maximum,
-      12,
-      14,
-    ),
-    edge(
-      14,
-      maximum,
-      [maximum[0], minimum[1]],
-      13,
-      15,
-    ),
-    edge(
-      15,
-      [maximum[0], minimum[1]],
-      minimum,
-      14,
-      11,
-    ),
-  ];
+      index + 12,
+      point,
+      innerCorners[(index + 1) % innerCorners.length]!,
+      index === 0 ? 11 : index + 11,
+      index === innerCorners.length - 1 ? 11 : index + 13,
+    )
+  );
   result.spans = [
     ...result.spans,
     span(
@@ -335,6 +334,19 @@ test("meshes one geometrically contained planar hole", () => {
 test("keeps disjoint planar loops explicit instead of guessing a hole role", () => {
   const result = meshRevit2027PlanarSampledReplay(
     replayWithSecondLoop([2, 2], [3, 3]),
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.faceMeshes.length, 0);
+  assert.deepEqual(
+    result.value.issues.map((issue) => issue.code),
+    ["multi-loop"],
+  );
+});
+
+test("rejects containment that contradicts native oriented UV loop type", () => {
+  const result = meshRevit2027PlanarSampledReplay(
+    replayWithSecondLoop([0.25, 0.25], [0.75, 0.75], false),
   );
   assert.equal(result.ok, true);
   if (!result.ok) return;

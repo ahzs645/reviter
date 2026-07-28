@@ -50,10 +50,11 @@ The adapter rejects the whole BRep when it encounters:
 - adjacent edge uses whose directed endpoints do not agree;
 - a final edge that does not close to the first.
 
-It does not infer a hole from winding. The Revit 2027 owner mesher supplies
-roles only after the sampled UV contours prove one containing shell and direct
-holes. The tessellator then rechecks strict containment, self-intersection,
-hole intersection/nesting, and triangulated area. Callers with another exact
+The adapter itself does not infer a hole from winding. Its Revit 2027 owner
+caller supplies roles only when the native renderer's oriented UV winding rule
+and sampled UV containment agree on one containing shell with direct holes.
+The tessellator then rechecks strict containment, self-intersection, hole
+intersection/nesting, and triangulated area. Callers with another exact
 topology source must likewise supply an independently justified role for every
 loop.
 

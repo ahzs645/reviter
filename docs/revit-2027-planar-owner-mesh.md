@@ -9,8 +9,8 @@ root and its bytes, it:
 3. resolves one Face side for every directed edge use;
 4. follows every Face-local EdgeLoop link and proves each edge cycle;
 5. derives direction from unique persisted UV endpoint matches;
-6. classifies an unambiguous outer contour and direct holes from sampled UV
-   containment; and
+6. classifies an unambiguous outer contour and direct holes from the renderer's
+   oriented UV winding rule plus sampled UV containment; and
 7. returns the TypeScript tessellator's `NeutralFaceMesh`.
 
 Both entry points are browser-safe:
@@ -45,7 +45,7 @@ separately proven relation.
 | `TB_Geometry` | exact Face/GEdge/EdgeLoop token graph |
 | `libTD_Ge` | decoded Plane parameter evaluation |
 | `libTD_BrepBuilder` / `libTD_Br` | directed face-local loops; derived outer/hole topology |
-| `libTD_BrepRenderer` | persisted trim samples and constrained neutral tessellation |
+| `libTD_BrepRenderer` | oriented UV loop roles, persisted trim samples, and constrained neutral tessellation |
 
 The native modules are evidence, not client dependencies. The implementation
 uses TypeScript, typed arrays, and the existing neutral BRep only.
@@ -97,8 +97,9 @@ node --experimental-strip-types \
 ## Boundaries
 
 - Multi-loop Faces enter only when sampled UV topology proves exactly one
-  outer contour and direct, strictly contained, nonintersecting holes. The 33
-  ambiguous/disjoint/nested cases remain rejected.
+  native-oriented outer contour and direct, strictly contained,
+  nonintersecting holes. The 33 ambiguous/disjoint/nested cases remain
+  rejected.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
   owner path separately certifies 123 Cylinder, four Cone apex-sector, and two
   SurfRev faces.

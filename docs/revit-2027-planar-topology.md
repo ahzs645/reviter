@@ -80,9 +80,13 @@ All 40,813 Plane bodies are reached. Face eligibility is:
 Resolved loop-chain sizes are 40,214 single-loop Faces, 72 two-loop, 20
 three-loop, 15 four-loop, and one six-loop Face. There are 162 extra linked
 loops. The owner mesher now classifies only the unambiguous subset with one
-containing shell and direct holes. Its planar tessellator then independently
-requires strict containment, pairwise nonintersection, simple rings, and
-outer-minus-holes area equality.
+containing shell and direct holes. For these non-periodic planes, it first
+applies the native renderer's oriented UV shoelace rule: after the persisted
+surface-orientation branch, positive raw loop type is a hole and negative raw
+loop type is filled/outer. Its planar tessellator then independently requires
+strict containment, pairwise nonintersection, simple rings, and
+outer-minus-holes area equality. All 73 accepted multi-loop Faces agree with
+both tests; containment never overrides contradictory native-oriented winding.
 
 The independently safe single-loop and certified multi-loop subsets are sent
 to the tessellator:
@@ -169,8 +173,9 @@ Sampled-surface and topological equivalence remain stronger future checks.
 ## Fail-closed boundaries
 
 - Multi-loop Faces enter only when the sampled UV contours prove one shell
-  with direct holes and pass strict geometric/area validation; 33 ambiguous,
-  disjoint, nested, or invalid cases remain rejected.
+  with direct holes, agree with native-oriented UV winding, and pass strict
+  geometric/area validation; 33 ambiguous, disjoint, nested, or invalid cases
+  remain rejected.
 - Cone, Cylinder, and SurfRev persistence is decoded. The combined owner
   endpoint separately adds 123 sampled Cylinder faces, four exact Cone apex
   sectors, and two Arc/SurfRev rectangles to this planar adapter's output.
