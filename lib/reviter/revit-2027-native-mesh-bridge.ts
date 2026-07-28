@@ -149,6 +149,10 @@ function safeLimit(value: number | undefined, fallback: number): number {
   return Number.isSafeInteger(value) && value! >= 0 ? value! : fallback;
 }
 
+function isNonNullCondInt16Token(token: number | undefined): boolean {
+  return token === -1 || (token != null && token > 0);
+}
+
 function drawableFaceTokens(
   spans: readonly {
     propertyToken: number;
@@ -167,9 +171,11 @@ function drawableFaceTokens(
     const face = span.value as Partial<Revit2027FaceStatic> | undefined;
     if (!face || typeof face !== "object") continue;
     const hasLoop =
-      (face.firstLoop?.token ?? 0) > 0 ||
-      (face.faceRegions?.entries ?? []).some((entry) => entry.token > 0);
-    if ((face.surface?.token ?? 0) > 0 && hasLoop) {
+      isNonNullCondInt16Token(face.firstLoop?.token) ||
+      (face.faceRegions?.entries ?? []).some((entry) =>
+        isNonNullCondInt16Token(entry.token)
+      );
+    if (isNonNullCondInt16Token(face.surface?.token) && hasLoop) {
       tokens.add(span.propertyToken);
     }
   }
@@ -200,10 +206,12 @@ function countExcludedNonTopologicalFaces(
       continue;
     }
     const face = span.value as Partial<Revit2027FaceStatic> | undefined;
-    if (!face || (face.surface?.token ?? 0) <= 0) continue;
+    if (!face || !isNonNullCondInt16Token(face.surface?.token)) continue;
     const hasLoop =
-      (face.firstLoop?.token ?? 0) > 0 ||
-      (face.faceRegions?.entries ?? []).some((entry) => entry.token > 0);
+      isNonNullCondInt16Token(face.firstLoop?.token) ||
+      (face.faceRegions?.entries ?? []).some((entry) =>
+        isNonNullCondInt16Token(entry.token)
+      );
     if (!hasLoop) count += 1;
   }
   return count;

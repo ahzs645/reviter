@@ -164,10 +164,10 @@ On the exact UNBC RVT:
 | Replayed definitions | 2,155 |
 | Nested links inside the closure | 150 |
 | Definitions with certified local mesh | 2,138 |
-| Complete composed roots | 2,136 |
-| Partial composed roots | 2 |
-| Complete composed-root triangles | 44,531 |
-| Partial triangles excluded atomically | 42 |
+| Complete composed roots | 2,131 |
+| Partial composed roots | 7 |
+| Complete composed-root triangles | 46,800 |
+| Partial triangles excluded atomically | 359 |
 
 The combined nested-symbol plus placement-target scan is two passes over 2,593
 unique ids: 2,590 are framed, 2,278 replay, and 2,151 contain certified mesh.
@@ -175,23 +175,29 @@ Only complete placement roots enter instance resolution. Direct nested roots
 also require their complete composition; their direct fragment can never
 silently win.
 
-This raises certified placements from 25,538 to 30,093 and their triangle
-total from 308,107 to 467,944. Against the reference IFC, matched numeric
+This raises certified placements from 25,538 to 30,088 and their triangle
+total from 308,107 to 474,815. Against the reference IFC, matched numeric
 geometry Tags rise from 33,198 / 36,144 (`91.8493%`) to
-34,867 / 36,144 (`96.4669%`). IFC-only Tags fall from 2,946 to 1,277.
+34,864 / 36,144 (`96.4586%`). IFC-only Tags fall from 2,946 to 1,280.
 
-The 1,277 remaining IFC-only Tags are:
+The 1,280 remaining IFC-only Tags are:
 
 | Missing RVT route | Tags | IFC triangles |
 | --- | ---: | ---: |
 | no direct owner or decoded placement | 925 | 220,357 |
 | placement to an unresolved owner | 350 | 56,712 |
-| one incomplete nested root | 1 | 516 |
-| direct owner without certified mesh | 1 | 824 |
+| five incomplete nested roots | 5 | 4,832 |
 
 The remaining unresolved placement row is 330 doors and 20 windows across 171
 geometry owners. These roots are still fail-closed; the audit does not rebuild
 a family or substitute IFC geometry.
+
+These counts use the corrected CondInt16 property domain: token `0` is null,
+token `-1` is a real queued property, and positive tokens are numbered
+properties. The stricter coverage gate recovers direct roof `1960533` but
+withholds four railing compositions and five placements whose formerly hidden
+`-1`-backed faces are not yet completely tessellated. See
+[`revit-2027-condint16-drawable-coverage.md`](revit-2027-condint16-drawable-coverage.md).
 
 ### Transform validation
 

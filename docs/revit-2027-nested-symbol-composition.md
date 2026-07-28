@@ -72,19 +72,23 @@ Results:
 - Symbol owners with certified face meshes: 1,880.
 - Certified symbol-target triangles: 29,850.
 - Composed roots: 110 / 110, with zero graph-composition failures.
-- Complete roots: 109, containing 83,492 triangles.
-- Partial roots: one, containing 554 currently recovered triangles.
+- Complete roots: 105, containing 80,396 triangles.
+- Partial roots: five, containing 3,650 currently recovered triangles.
 
-The one partial root remains proxy-only. Its source issue occurrences are:
+The five partial roots remain proxy-only. Their source issue occurrences are:
 
 | Issue | Occurrences |
 | --- | ---: |
+| `planar-sampled:unsupported-surface` | 20 |
+| `cylinder-sampled:non-rectangular-trim` | 4 |
 | `planar-sampled:uv-link-unresolved` | 3 |
 
 This corrected result uses the same drawable-face certification as production.
-In particular, a surface-bearing Face with no positive loop/region token is a
-non-topological reference face and is not a missing drawable face. The earlier
-30/80 split incorrectly treated 930 such `loop-unresolved` records as fatal.
+In particular, CondInt16 token `0` is null, while token `-1` is a real queued
+property and positive tokens are numbered properties. A surface-bearing Face
+with no `-1`/positive loop or region descriptor is a non-topological reference
+face. The earlier 109/1 split incorrectly treated `surface.token=-1` as null,
+which hid unsupported drawable faces in four roots.
 
 ## IFC parity
 
@@ -95,16 +99,16 @@ their recovered fragments.
 
 Against the reference IFC:
 
-- Complete nested tags matched: 109 / 109.
-- Bounds within `1e-6 ft`: 105 / 109.
-- Bounds within `1/12 ft`: 109 / 109.
-- Median maximum corner error: `1.572994960952201e-7 ft`.
-- 95th-percentile maximum corner error: `3.861750897726779e-7 ft`.
-- Maximum corner error: `0.045515674198242095 ft`.
-- Partial root `1844902` excluded: 554 triangles with three positive-loop UV
-  discontinuities.
+- Complete nested tags matched: 105 / 105.
+- Bounds within `1e-6 ft`: 105 / 105.
+- Median maximum corner error: `1.5585433033038498e-7 ft`.
+- 95th-percentile maximum corner error: `3.4617265214365035e-7 ft`.
+- Maximum corner error: `4.018183972220868e-7 ft`.
+- Five partial roots are excluded: `1272408`, `1272412`, `1717827`,
+  `1717831`, and `1844902`.
 - Overall matched numeric IFC geometry tags after atomic admission:
-  33,198 / 36,144 (`91.84926958831341%`).
+  34,864 / 36,144 (`96.45861000442674%`) after placement-referenced owner
+  closure.
 
 This comparison is measured separately from the converter; IFC bytes are never
 read by the production path. Triangle counts remain diagnostic only because

@@ -55,6 +55,49 @@ test("nested completeness ignores zero-loop reference-face issues", () => {
   );
 });
 
+test("negative-one queued sentinels are non-null drawable properties", () => {
+  const spans = [
+    face(1, -1, 201),
+    face(2, 102, -1),
+    face(3, 103, 0, [-1]),
+  ];
+  assert.deepEqual(
+    certifyRevit2027DrawableFaceCoverage(
+      spans,
+      [
+        { faceToken: 1 },
+        { faceToken: 2 },
+        { faceToken: 3 },
+      ],
+    ),
+    {
+      complete: true,
+      drawableFaces: 3,
+      meshedDrawableFaces: 3,
+      missingFaceTokens: [],
+      code: "complete",
+    },
+  );
+});
+
+test("unproven negative CondInt16 tokens are not drawable properties", () => {
+  const spans = [
+    face(1, -2, 201),
+    face(2, 102, -2),
+    face(3, 103, 0, [-2]),
+  ];
+  assert.deepEqual(
+    certifyRevit2027DrawableFaceCoverage(spans, []),
+    {
+      complete: false,
+      drawableFaces: 0,
+      meshedDrawableFaces: 0,
+      missingFaceTokens: [],
+      code: "no-drawable-faces",
+    },
+  );
+});
+
 test("nested completeness remains fail-closed for every positive drawable face", () => {
   const spans = [
     face(1, 101, 201),
