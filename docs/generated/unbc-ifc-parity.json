@@ -9,9 +9,9 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 84216930,
-      "sha256": "41c6aeb4cf428e74e436288a424b60177ed9be0f40723ac276b5a10655006233",
-      "analyticalSha256": "aedd78c9cca28466f05ace250cf9ac3e999219d6b01ca5b5a305e45b81efbc5d",
+      "bytes": 84217106,
+      "sha256": "68f350f1faf43bb2169c68582f3efda7ae35a3d370bf33ed15f78459153351c0",
+      "analyticalSha256": "9892d0be4ba9df1d7f6fc239fc494f2941cbebf7e16d3799f00ebd9d2edb5b60",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
@@ -782,7 +782,7 @@
         "Чугун, ковкий",
         "Этаж по умолчанию"
       ],
-      "nativeMaterialAssignments": 25607,
+      "nativeMaterialAssignments": 33132,
       "geometrySources": {
         "placed-shared-shape": 25871,
         "analytic-plane-solid": 9096,
@@ -844,7 +844,7 @@
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "materialDefinitions": 69,
-        "materialAssignments": 25607,
+        "materialAssignments": 33132,
         "nativeUniqueIds": 74437,
         "modelTree": "native-revit-owning-element-and-host-and-associated-level",
         "modelTreeRecords": 74437,
@@ -1046,7 +1046,7 @@
     "familyNameRatio": 0.053017365945931746,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.9655172413793104,
-    "materialAssignmentRatio": 0.7069655724579663,
+    "materialAssignmentRatio": 0.914717981281577,
     "dimensionSpans": {
       "ifcWebIfcAxesMetres": [
         217.89892670153483,

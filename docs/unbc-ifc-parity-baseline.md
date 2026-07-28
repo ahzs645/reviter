@@ -21,7 +21,8 @@ population. Native Revit identity is complete for every numeric IFC Tag,
 persisted ownership, host, and associated-level relations reach 99.5% of
 comparable IFC tree members, and 28 of 29 IFC material names are decoded as
 native definitions. The parser now expands 5,413 exact shared-geometry material
-relations through persisted instance placements to 25,607 placed elements and
+relations through persisted instance placements, and adds 45 decoded
+BasicWallType compound structures, to assign 33,132 placed elements. It also
 recovers 2,114 unambiguous placed `FamilySymbol` → `Family` relations. Nineteen
 referenced family definitions now name 2,025 placed instances; all 2,018 names
 with a comparable IFC family string match exactly. It
@@ -40,7 +41,7 @@ assignment population, or complete family semantics**.
 | Numeric-tagged elements with IFC family name | 38,063 | 2,018 exact native family names | 5.3% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Unique IFC material names | 29 | 28 exact native definitions | 96.6% |
-| Elements assigned materials, including through type | 36,221 | 25,607 persisted placed-element assignments | 70.7% |
+| Elements assigned materials, including through type | 36,221 | 33,132 persisted placed-element assignments | 91.5% |
 | Numeric-tagged containment/aggregation members | 38,063 | 37,874 persisted ownership/host/associated-level members | 99.5% |
 
 The triangle and vertex ratios are diagnostic, not a demand for byte-identical
@@ -172,8 +173,12 @@ names, 28 match exactly; only the IFC placeholder `<Unnamed>` is absent, and it
 occurs zero times in the inflated RVT partitions. Three proven persisted
 geometry layouts add 5,413 native
 geometry-to-material assignments. Joining each placed instance's persisted
-shared-geometry id expands those sources to 25,607 placed elements, a count
-equal to 70.7% of the IFC's 36,221 directly or indirectly assigned elements.
+shared-geometry id expands those sources to 25,607 placed elements. The
+type-owned `BasicWallType → CompoundStructure → layer material` path adds
+7,525 non-overlapping placed elements, producing 33,132 assignments in the
+converter. In the common numeric-Tag domain, 33,048 of those match 36,142
+unique IFC-assigned Tags (91.44%); the broader 33,132 / 36,221 express-ID
+population ratio shown above is 91.5%.
 Among the 5,393 decoded source assignments that can be correlated with an IFC
 material association, all 5,393 material names match exactly. That establishes
 precision for the decoded subset; compound-layer, face-level, appearance-asset,
@@ -215,13 +220,12 @@ and compare typed values and units.
    members and 36,045 comparable family names remain absent. Preserve shared
    family geometry plus transforms rather than
    expanding its 27,776 IFC mapped-item occurrences.
-3. **Extend material records in bounded layers.** Definition-name parity is now
-   28/29, with only a non-persisted `<Unnamed>` IFC placeholder absent. Extend
-   the 25,607 exact placed-element assignments through compound layer, BRep
-   face, appearance asset, category, and view override paths. The decoded
-   source subset has 5,393/5,393 IFC-correlated name precision, but it cannot
-   substitute for the IFC's full 36,221-element assignment population or
-   per-face material maps.
+3. **Extend material records to faces and remaining carriers.** Definition-name
+   parity is now 28/29, with only a non-persisted `<Unnamed>` IFC placeholder
+   absent. Shared geometry plus compound wall layers assign 33,132 elements;
+   3,094 unique IFC-assigned numeric Tags remain. Decode other type/style
+   carriers, appearance assets, category and view overrides, then use genuine
+   BRep face classification before assigning material groups to triangles.
 4. **Resolve the residual typed tree relations.** Ownership, host, and 37,503
    persisted associated-level relations are preserved as genuine, distinct
    edge kinds and together cover 37,874/38,063 comparable IFC tree members.
@@ -279,9 +283,9 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `41c6aeb4cf428e74e436288a424b60177ed9be0f40723ac276b5a10655006233`
+- semantic JSON: `68f350f1faf43bb2169c68582f3efda7ae35a3d370bf33ed15f78459153351c0`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
-  `aedd78c9cca28466f05ace250cf9ac3e999219d6b01ca5b5a305e45b81efbc5d`
+  `9892d0be4ba9df1d7f6fc239fc494f2941cbebf7e16d3799f00ebd9d2edb5b60`
 - GLB: `8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a`
 
 The script exits nonzero on a missing or invalid input and writes the complete
