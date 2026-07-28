@@ -83,6 +83,12 @@ export {
 } from "./native-decoder";
 export { detectElemTableLayout, parseElemTable } from "./elem-table";
 export {
+  decodeRevitDocumentHistory,
+  decodeRevitNativeIdentities,
+  formatNativeRevitUniqueId,
+  formatRevitGuid,
+} from "./native-identity";
+export {
   applyNativeCategories,
   categoryDisplayName,
   collectCategoryTokens,

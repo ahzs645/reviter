@@ -10,12 +10,22 @@ export type ModelTreeReport = {
   rootRecordCount: number;
   selfOwnedRecordCount: number;
   danglingOwnerCount: number;
-  elements: NonNullable<ConvertResult["elementOwnership"]>["records"];
+  elements: Array<
+    NonNullable<ConvertResult["elementOwnership"]>["records"][number] & {
+      uniqueId?: string;
+    }
+  >;
 };
 
 export function modelTreeReport(result: ConvertResult): ModelTreeReport | null {
   const ownership = result.elementOwnership;
   if (!ownership) return null;
+  const uniqueIdByElement = new Map(
+    result.nativeIdentity?.identities.map((identity) => [
+      identity.elementId,
+      identity.uniqueId,
+    ]) ?? [],
+  );
   return {
     evidence: "persisted",
     source: "Global/ElemTable.OwningElementId",
@@ -26,7 +36,10 @@ export function modelTreeReport(result: ConvertResult): ModelTreeReport | null {
     rootRecordCount: ownership.rootRecordCount,
     selfOwnedRecordCount: ownership.selfOwnedRecordCount,
     danglingOwnerCount: ownership.danglingOwnerCount,
-    elements: ownership.records,
+    elements: ownership.records.map((record) => {
+      const uniqueId = uniqueIdByElement.get(record.elementId);
+      return uniqueId ? { ...record, uniqueId } : record;
+    }),
   };
 }
 

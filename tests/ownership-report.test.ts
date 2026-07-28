@@ -44,6 +44,24 @@ function resultWithOwnership(): ConvertResult {
         },
       ],
     },
+    nativeIdentity: {
+      format: "revit-2027-native-identity",
+      declaredRecordCount: 4,
+      decodedIdentityCount: 3,
+      skippedLeadingRecordCount: 1,
+      identities: [100, 101, 102].map((elementId, index) => ({
+        elementId,
+        originalElementId: elementId,
+        creationEpisodeId: 0,
+        lastModificationEpisodeId: 1,
+        lastUserModificationEpisodeId: null,
+        episodeGuid: "11223344-5566-7788-99aa-bbccddeeff00",
+        uniqueId:
+          `11223344-5566-7788-99aa-bbccddeeff00-${elementId.toString(16).padStart(8, "0")}`,
+        byteOffset: 34 + index * 40,
+        provenance: "Global/ElemTable.ElementHistory+Global/History.Episode" as const,
+      })),
+    },
     decoderCoverage: {
       revitVersion: 2027,
       activeDecoders: ["revit-2024-2027-elem-table-ownership-v1"],
@@ -52,6 +70,7 @@ function resultWithOwnership(): ConvertResult {
       nativeMeshes: 0,
       nativeMaterialDefinitions: 0,
       nativeMaterialAssignments: 0,
+      nativeUniqueIds: 3,
       nativeOwnershipRecords: 3,
       nativeOwnershipRelations: 2,
       approximateSolids: 0,
@@ -102,13 +121,33 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     selfOwnedRecordCount: 0,
     danglingOwnerCount: 0,
     elements: [
-      { elementId: 100, owningElementId: null, byteOffset: 34 },
-      { elementId: 101, owningElementId: 100, byteOffset: 74 },
-      { elementId: 102, owningElementId: 100, byteOffset: 114 },
+      {
+        elementId: 100,
+        owningElementId: null,
+        byteOffset: 34,
+        uniqueId: "11223344-5566-7788-99aa-bbccddeeff00-00000064",
+      },
+      {
+        elementId: 101,
+        owningElementId: 100,
+        byteOffset: 74,
+        uniqueId: "11223344-5566-7788-99aa-bbccddeeff00-00000065",
+      },
+      {
+        elementId: 102,
+        owningElementId: 100,
+        byteOffset: 114,
+        uniqueId: "11223344-5566-7788-99aa-bbccddeeff00-00000066",
+      },
     ],
   });
   assert.equal(
     report.elementManifest.unavailableFields.includes("model-tree hierarchy"),
     false,
   );
+  assert.equal(
+    report.elementManifest.unavailableFields.includes("Revit UniqueId"),
+    false,
+  );
+  assert.equal(report.fidelity.nativeUniqueIds, 3);
 });

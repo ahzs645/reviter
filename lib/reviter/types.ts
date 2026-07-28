@@ -7,6 +7,7 @@ import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
+import type { NativeIdentityDecode } from "./native-identity.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -72,6 +73,8 @@ export type DecoderCoverage = {
   nativeMeshes: number;
   nativeMaterialDefinitions: number;
   nativeMaterialAssignments: number;
+  /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
+  nativeUniqueIds?: number;
   /** Complete ordinary records decoded from `Global/ElemTable`. */
   nativeOwnershipRecords?: number;
   /** Persisted, non-self `OwningElementId` relations. */
@@ -452,6 +455,8 @@ export type ConvertResult = {
   elementIndex?: RvtElementIndex;
   /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
   elementOwnership?: ElementOwnershipDecode;
+  /** Native Revit element identities decoded from document and element history. */
+  nativeIdentity?: NativeIdentityDecode;
 };
 
 export type ConvertFailure = {

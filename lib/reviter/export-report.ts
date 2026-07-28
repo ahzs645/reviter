@@ -52,11 +52,16 @@ function evidenceRank(record: ElementBoundsRecord): number {
  *
  * The ODA sample prompted this shape of export, but none of its code or schema
  * is used here. Every field below already exists in Reviter's own decoded
- * evidence. Family name and Revit UniqueId remain absent until their native RVT
- * records are decoded. Persisted model ownership is exported separately because
+ * evidence. Persisted model ownership is exported separately because
  * `Global/ElemTable` covers many valid non-geometric records too.
  */
 export function elementManifest(result: ConvertResult) {
+  const identityByElement = new Map(
+    result.nativeIdentity?.identities.map((identity) => [
+      identity.elementId,
+      identity,
+    ]) ?? [],
+  );
   const bestByElement = new Map<number, ElementBoundsRecord>();
   for (const record of result.elementBounds) {
     const previous = bestByElement.get(record.elementId);
@@ -73,6 +78,7 @@ export function elementManifest(result: ConvertResult) {
     .sort((a, b) => a.elementId - b.elementId)
     .map((record) => ({
       elementId: record.elementId,
+      uniqueId: identityByElement.get(record.elementId)?.uniqueId ?? null,
       displayed: drawnIds.has(record.elementId),
       category: record.categoryId == null && !record.categoryName
         ? null
@@ -120,6 +126,7 @@ export function makeReport(
         nativeMeshes: result.decoderCoverage.nativeMeshes,
         materialDefinitions: result.decoderCoverage.nativeMaterialDefinitions,
         materialAssignments: result.decoderCoverage.nativeMaterialAssignments,
+        nativeUniqueIds: result.decoderCoverage.nativeUniqueIds ?? 0,
         ...modelTreeFidelity(result),
       },
       file: { name: result.fileName, byteLength: result.byteLength, metadata: safeMetadata },
@@ -139,7 +146,7 @@ export function makeReport(
         count: new Set(result.elementBounds.map((record) => record.elementId)).size,
         parameterValueEncoding: "f64 in Revit internal units; decoded lengths are feet",
         unavailableFields: [
-          "Revit UniqueId",
+          ...(!result.nativeIdentity ? ["Revit UniqueId"] : []),
           "loadable-family name",
           ...(!result.elementOwnership ? ["model-tree hierarchy"] : []),
           "element-to-material assignment",

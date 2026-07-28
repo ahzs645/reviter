@@ -67,6 +67,11 @@ import {
   type ElementOwnershipDecode,
 } from "./element-relations.ts";
 import {
+  decodeRevitDocumentHistory,
+  decodeRevitNativeIdentities,
+  type NativeIdentityDecode,
+} from "./native-identity.ts";
+import {
   applyNativeCategories,
   collectCategoryTokens,
   resolveElementCategories,
@@ -686,14 +691,29 @@ export function convertRvtBytes(
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
     let elementIndex;
     let elementOwnership: ElementOwnershipDecode | undefined;
+    let elementTableData: Uint8Array | undefined;
     if (elemTableEntry) {
       const elemTableBytes = stripRevitPageChecksums(asBytes(elemTableEntry.entry.content));
       const offset = gzipOffsets(elemTableBytes, 1)[0];
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
       if (inflated) {
+        elementTableData = inflated;
         elementIndex = parseElemTable(inflated) ?? undefined;
         const ownership = decodeElementOwnership(inflated);
         if (ownership.format !== "unsupported") elementOwnership = ownership;
+      }
+    }
+    let nativeIdentity: NativeIdentityDecode | undefined;
+    if (elementTableData && decoderPlan.revitVersion != null) {
+      const history = readStreamSummary(cfb, /\/Global\/History$/i, (data) =>
+        decodeRevitDocumentHistory(data, decoderPlan.revitVersion!));
+      if (history && history.format !== "unsupported") {
+        const identity = decodeRevitNativeIdentities(
+          elementTableData,
+          history,
+          decoderPlan.revitVersion,
+        );
+        if (identity.format !== "unsupported") nativeIdentity = identity;
       }
     }
     const coverage = summariseCoverage(
@@ -1728,12 +1748,14 @@ export function convertRvtBytes(
             "revit-2027-duplicated-bounds-v1",
             ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
             ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
+            ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: 0,
           nativeMaterialAssignments: 0,
+          nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
           nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
           approximateSolids: displayBounds.length,
@@ -1756,6 +1778,7 @@ export function convertRvtBytes(
             }
           : undefined,
         elementOwnership,
+        nativeIdentity,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
@@ -1763,6 +1786,9 @@ export function convertRvtBytes(
             : ["No native Revit category tokens were decoded, so element display falls back to record-code clusters."]),
           ...(elementOwnership
             ? [`${elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
+            : []),
+          ...(nativeIdentity
+            ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
             : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
@@ -1873,12 +1899,14 @@ export function convertRvtBytes(
         activeDecoders: [
           ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
           ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
+          ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
         ],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: 0,
         nativeMaterialAssignments: 0,
+        nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
         nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
         approximateSolids: used.length,
@@ -1903,6 +1931,7 @@ export function convertRvtBytes(
           }
         : undefined,
       elementOwnership,
+      nativeIdentity,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -1912,6 +1941,9 @@ export function convertRvtBytes(
           : "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         ...(elementOwnership
           ? [`${elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
+          : []),
+        ...(nativeIdentity
+          ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`
