@@ -76,8 +76,23 @@ types, but not sufficient to locate their length-prefixed nested arrays in a
 partition object.
 
 An important negative result is that the schema entry for `GPolyMesh` is a
-reference with value 1426; tag 1426 is actually defined by `GEdgeBase`.
-Treating 1426 as a GPolyMesh record marker would therefore be false.
+reference with value 1426. The same value is used by `GBRep`, `GFakeBRep`, and
+is actually defined by `GEdgeBase`. These are scoped aliases rather than
+globally unique record markers. Treating 1426 as a GPolyMesh record marker
+would therefore be false.
+
+Static analysis of the native readers closes the primitive framing question:
+
+- `OdBmObjectPtrInitReader::read` reads a signed little-endian `int16` when it
+  must select a class;
+- `OdBmCollectionReader<OdArray<T>>::read` reads one signed little-endian
+  `int32` only for a dynamic (`-1`) collection count;
+- `ItemModeProcessorReader<int>::read` dispatches primitive modes 0/6 directly,
+  uses the schema `getSize` value for fixed tuples, and uses the dynamic
+  collection reader for mode 5.
+
+There is therefore no evidence for an extra per-item token between a PArray
+count and its fixed-width tuple values.
 
 ## Full UNBC partition measurement
 
@@ -91,6 +106,7 @@ The probe scanned the only partition stream, `Partitions/325`:
 | Chunks inflated in this run | 3,666 |
 | Inflated partition bytes | 421,867,755 |
 | Adjacent byte pairs scanned | 421,864,089 |
+| Rolling body window | 3 inflated chunks |
 | Validated topology record boundaries | 0 |
 | Meshes emitted from stored topology | 0 |
 
@@ -123,14 +139,25 @@ different topology values in the same chunk. The counts therefore do not
 establish a record marker or field boundary. Promoting them directly into
 meshes would produce false positives.
 
+`scripts/probe-schema-fields.ts` additionally tested both signed reference and
+high-bit definition forms for the simplest float/u16 topology, plus the
+offset-topology selectors. It performs a bounded 0–16 byte prefix robustness
+scan and validates candidate counts, finite coordinates, and index ranges. Its
+rolling three-chunk window also rules out the earlier diagnostic weakness where
+a valid body might merely cross one inflated-chunk boundary. It found zero
+structurally valid bodies at raw selector-like byte hits. This does not mean
+the model has no stored meshes; it shows that raw two-byte values are not a
+safe substitute for the outer reader's scoped class context.
+
 ## Precisely bounded missing work
 
 The remaining blocker is narrower than “implement tessellation,” but still
 real:
 
-1. Determine how an embedded polymorphic object selects one of the topology
-   variants.
-2. Determine the nested-array count and byte-length framing for
+1. Locate the outer geometry object and reproduce its scoped class-resolution
+   context, including how aliases such as 1426 resolve to `GPolyMesh`, `GBRep`,
+   or another geometry class at that field.
+2. Use the now-corroborated dynamic-count and fixed-tuple framing to slice
    `m_pointsArr`, `m_facetsArr`, normals, UV storage, and edge flags.
 3. Determine whether a facet row is always a triangle in this release or can
    contain a polygon that must be triangulated.
@@ -146,6 +173,9 @@ result is zero native stored meshes—not a guessed vertex cloud.
 
 ```sh
 node --experimental-strip-types scripts/probe-faceted-topology.ts \
+  "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
+
+node --experimental-strip-types scripts/probe-schema-fields.ts \
   "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
 
 node --experimental-strip-types --test tests/faceted-topology.test.ts
