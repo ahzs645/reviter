@@ -44,6 +44,17 @@ test("current exact corpus coverage stops before the general persisted graph", (
     CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["surface-pcurves-2d"],
     "sampled-rvt",
   );
+  assert.equal(
+    CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["face-materials"],
+    "partial-exact-rvt",
+  );
+  assert.ok(
+    assessment.issues.some(
+      (issue) =>
+        issue.capability === "face-materials" &&
+        issue.code === "partial-only",
+    ),
+  );
 });
 
 test("stages are cumulative and exact RVT evidence unlocks IFC parity only after rendering", () => {
@@ -90,4 +101,3 @@ test("IFC can validate output but never satisfies an RVT reader requirement", ()
     ),
   );
 });
-

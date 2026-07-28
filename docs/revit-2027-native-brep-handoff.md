@@ -78,8 +78,10 @@ does not yet establish the general native-equivalent graph:
   have not been independently decoded.
 - No exact general 3D edge-curve relation is currently available.
 - The body transform feeding the general BRep boundary is unresolved.
-- The face material relation is unresolved. A geometry style, category, or IFC
-  material must not be substituted.
+- Positive face material IDs now bind directly to exact framed `MaterialElem`
+  identities for 35,365 UNBC faces. The remaining unassigned/system-style
+  fallback path is unresolved, so complete face appearance remains partial. A
+  category or IFC material must not be substituted.
 - General analytic/NURBS surface evaluation and trimmed-surface tessellation
   remain browser implementation work after the graph is complete.
 

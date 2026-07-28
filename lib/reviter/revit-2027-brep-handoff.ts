@@ -28,6 +28,7 @@ export const REVIT_2027_BREP_HANDOFF_SOURCE_SLOTS = {
 
 export type Revit2027BrepEvidenceLevel =
   | "exact-rvt"
+  | "partial-exact-rvt"
   | "sampled-rvt"
   | "inferred"
   | "ifc-oracle"
@@ -62,6 +63,7 @@ export type Revit2027BrepHandoffStage =
 
 export type Revit2027BrepHandoffIssueCode =
   | "missing"
+  | "partial-only"
   | "sampled-only"
   | "inferred-only"
   | "ifc-is-not-rvt-evidence";
@@ -135,6 +137,8 @@ function issueCode(
   evidence: Revit2027BrepEvidenceLevel,
 ): Revit2027BrepHandoffIssueCode {
   switch (evidence) {
+    case "partial-exact-rvt":
+      return "partial-only";
     case "sampled-rvt":
       return "sampled-only";
     case "inferred":
@@ -218,11 +222,10 @@ export const CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE:
     "surface-pcurves-2d": "sampled-rvt",
     "body-transform": "missing",
     "face-markers": "exact-rvt",
-    "face-materials": "missing",
+    "face-materials": "partial-exact-rvt",
     "surface-evaluators": "missing",
     "trimmed-surface-tessellator": "missing",
   };
 
 export const CURRENT_REVIT_2027_BREP_HANDOFF_ASSESSMENT =
   assessRevit2027BrepHandoff(CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE);
-
