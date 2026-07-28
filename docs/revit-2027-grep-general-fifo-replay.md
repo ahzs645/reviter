@@ -15,6 +15,7 @@ the existing release-certified readers:
 
 | Source slot | Reader | Nested descriptors exposed |
 | ---: | --- | --- |
+| 1,423 | `GEdge` | none |
 | 1,825 | `Face` | first loop, regions, fillings, then analytic surface |
 | 1,973 | `GLine` | none |
 | 2,215 | `GArray` | `instanceInfo` plus its retained null embedded-symbol descriptor |
@@ -112,5 +113,5 @@ node --experimental-strip-types --test \
 These tests certify scheduling and boundaries, not complete UNBC coverage.
 Exact-model coverage must be measured separately after more queued source slots
 have certified body readers. In particular, the default registry will
-deliberately stop at unresolved `GArray.instanceInfo`, Geometry Edge bodies,
-Face loop/filling/surface children, and other unknown nested classes.
+deliberately stop at unresolved `GArray.instanceInfo`, Face
+loop/filling/surface children, and other unknown nested classes.

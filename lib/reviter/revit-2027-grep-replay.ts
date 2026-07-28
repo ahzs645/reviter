@@ -1,4 +1,8 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
+import {
+  decodeRevit2027GEdgeStatic,
+  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+} from "./revit-2027-edge-1423.ts";
 import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
   decodeRevit2027FaceStatic,
@@ -298,6 +302,28 @@ const BUILTIN_READERS: readonly [
           startOffset: context.byteOffset,
           endOffset: decoded.value.endOffset,
           appendedProperties: decoded.value.queuedProperties,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GEdge",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GEdgeStatic(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: [],
           value: decoded.value,
         };
       },

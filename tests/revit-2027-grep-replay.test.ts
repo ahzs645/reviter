@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
+import { REVIT_2027_GEDGE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-edge-1423.ts";
 import type { Revit2027FramedGRepRoot } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import { REVIT_2027_FACE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-face-static.ts";
 import {
@@ -21,7 +22,7 @@ import {
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-geometry.ts";
 
 const FACE_SLOT = REVIT_2027_FACE_SOURCE_CLASS_SLOT;
-const EDGE_SLOT = 1423;
+const EDGE_SLOT = REVIT_2027_GEDGE_SOURCE_CLASS_SLOT;
 const INSTANCE_INFO_SLOT = 2513;
 
 function descriptor(
@@ -172,11 +173,10 @@ function oneByteReader(id: string): Revit2027GRepReplayReaderRegistration {
   };
 }
 
-test("default registry includes the certified Face reader", () => {
-  assert.equal(
-    createRevit2027GRepReplayRegistry().get(FACE_SLOT)?.id,
-    "Revit2027Face",
-  );
+test("default registry includes the certified Face and GEdge readers", () => {
+  const registry = createRevit2027GRepReplayRegistry();
+  assert.equal(registry.get(FACE_SLOT)?.id, "Revit2027Face");
+  assert.equal(registry.get(EDGE_SLOT)?.id, "Revit2027GEdge");
 });
 
 test("older root siblings replay before children appended by a GGroup", () => {
