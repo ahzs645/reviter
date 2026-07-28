@@ -8,6 +8,10 @@ import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
 
 import {
+  decodeRevit2027BaseRailingStairsRelation,
+  REVIT_2027_BASE_RAILING_MARKER,
+} from "../lib/reviter/revit-2027-base-railing-stairs.ts";
+import {
   decodeRevit2027StairsElementAggregate,
   decodeRevit2027StairsRunAndLandingAggregate,
   REVIT_2027_STAIRS_ELEMENT_MARKER,
@@ -46,56 +50,133 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function concatenate(parts: readonly Uint8Array[]): Uint8Array {
-  const byteLength = parts.reduce((sum, part) => sum + part.byteLength, 0);
-  const result = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.byteLength;
-  }
-  return result;
-}
-
 type Frame = {
   objectOffset: number;
   objectLength: number;
   elementId: number;
   marker: number;
+  streamOffset: number;
 };
 
 const targetMarkers = new Set([
   REVIT_2027_STAIRS_ELEMENT_MARKER,
   REVIT_2027_STAIRS_LANDING_MARKER,
   REVIT_2027_STAIRS_RUN_MARKER,
+  REVIT_2027_BASE_RAILING_MARKER,
 ]);
 
-function targetFrames(data: Uint8Array): Frame[] {
-  const frames: Frame[] = [];
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let objectOffset = 0; objectOffset + 40 <= data.byteLength; objectOffset += 1) {
-    const marker = view.getUint16(objectOffset + 16, true);
-    if (!targetMarkers.has(marker)) continue;
-    if (
-      view.getUint32(objectOffset + 4, true) !== 0 ||
-      view.getUint32(objectOffset + 22, true) !== 0
+const MAX_REASSEMBLED_FRAME_BYTES = 1024 * 1024;
+
+type ReassembledFrame = {
+  data: Uint8Array;
+  frame: Frame;
+};
+
+/**
+ * Retain only incomplete target frames plus the 17-byte split-header tail.
+ * A completed frame is copied into its own bounded byte array for the exact
+ * release reader. The whole inflated partition is never held contiguously.
+ */
+class BoundedFrameReassembler {
+  #buffer = new Uint8Array();
+  #bufferStreamOffset = 0;
+  #nextScanOffset = 0;
+  #pending = new Map<
+    number,
+    { elementId: number; marker: number; objectLength: number }
+  >();
+  maxBufferedBytes = 0;
+  oversizedTargetFrames = 0;
+
+  push(chunk: Uint8Array): ReassembledFrame[] {
+    const combined = new Uint8Array(this.#buffer.byteLength + chunk.byteLength);
+    combined.set(this.#buffer);
+    combined.set(chunk, this.#buffer.byteLength);
+    const combinedStart = this.#bufferStreamOffset;
+    const combinedEnd = combinedStart + combined.byteLength;
+    this.maxBufferedBytes = Math.max(
+      this.maxBufferedBytes,
+      combined.byteLength,
+    );
+    const view = new DataView(
+      combined.buffer,
+      combined.byteOffset,
+      combined.byteLength,
+    );
+    const scanStart = Math.max(this.#nextScanOffset, combinedStart);
+    const scanEnd = combinedEnd - 18;
+    for (
+      let streamOffset = scanStart;
+      streamOffset <= scanEnd;
+      streamOffset += 1
     ) {
-      continue;
+      const offset = streamOffset - combinedStart;
+      const marker = view.getUint16(offset + 16, true);
+      if (!targetMarkers.has(marker)) continue;
+      if (view.getUint32(offset + 4, true) !== 0) continue;
+      const typeCode = view.getUint32(offset + 18, true);
+      if (
+        (marker === REVIT_2027_BASE_RAILING_MARKER &&
+          typeCode !== 0xffff_ffff) ||
+        (marker !== REVIT_2027_BASE_RAILING_MARKER && typeCode !== 0)
+      ) {
+        continue;
+      }
+      const elementId = view.getUint32(offset, true);
+      const objectLength = view.getUint32(offset + 12, true);
+      if (elementId === 0 || objectLength < 127) continue;
+      if (objectLength + 20 > MAX_REASSEMBLED_FRAME_BYTES) {
+        this.oversizedTargetFrames += 1;
+        continue;
+      }
+      this.#pending.set(streamOffset, {
+        elementId,
+        marker,
+        objectLength,
+      });
     }
-    const elementId = view.getUint32(objectOffset, true);
-    const objectLength = view.getUint32(objectOffset + 12, true);
-    const echoOffset = objectOffset + objectLength + 16;
-    if (
-      elementId === 0 ||
-      objectLength < 127 ||
-      echoOffset + 4 > data.byteLength ||
-      view.getUint32(echoOffset, true) !== objectLength
-    ) {
-      continue;
+    this.#nextScanOffset = Math.max(this.#nextScanOffset, scanEnd + 1);
+
+    const frames: ReassembledFrame[] = [];
+    for (const [streamOffset, pending] of this.#pending) {
+      const frameEnd = streamOffset + pending.objectLength + 20;
+      if (frameEnd > combinedEnd) continue;
+      const offset = streamOffset - combinedStart;
+      if (
+        offset < 0 ||
+        view.getUint32(offset + pending.objectLength + 16, true) !==
+          pending.objectLength
+      ) {
+        this.#pending.delete(streamOffset);
+        continue;
+      }
+      const data = combined.slice(offset, offset + pending.objectLength + 20);
+      frames.push({
+        data,
+        frame: {
+          objectOffset: 0,
+          objectLength: pending.objectLength,
+          elementId: pending.elementId,
+          marker: pending.marker,
+          streamOffset,
+        },
+      });
+      this.#pending.delete(streamOffset);
     }
-    frames.push({ objectOffset, objectLength, elementId, marker });
+
+    let retainFrom = this.#nextScanOffset;
+    for (const streamOffset of this.#pending.keys()) {
+      retainFrom = Math.min(retainFrom, streamOffset);
+    }
+    retainFrom = Math.max(combinedStart, retainFrom);
+    this.#buffer = combined.slice(retainFrom - combinedStart);
+    this.#bufferStreamOffset = retainFrom;
+    return frames;
   }
-  return frames;
+
+  finish(): { incompleteTargetFrames: number } {
+    return { incompleteTargetFrames: this.#pending.size };
+  }
 }
 
 function splitStepArguments(source: string): string[] {
@@ -255,19 +336,84 @@ const reciprocalPairs = new Map<
   string,
   { parentTag: number; childTag: number; source: string }
 >();
+const baseRailingPairs = new Map<
+  string,
+  { parentTag: number; childTag: number; source: string }
+>();
 const runById = new Map<number, Revit2027StairsRunAndLandingAggregate>();
 const knownStairsElementIds = new Set<number>();
 const pendingRunAndLandingFrames: { data: Uint8Array; frame: Frame }[] = [];
+const pendingBaseRailingFrames: { data: Uint8Array; frame: Frame }[] = [];
 let partitions = 0;
 let inflatedChunks = 0;
 let stairsFrames = 0;
 let runFrames = 0;
 let landingFrames = 0;
+let baseRailingFrames = 0;
+let baseRailingsWithStairsId = 0;
+let baseRailingsWithoutStairsId = 0;
+let baseRailingTargetsOutsideDecodedStairsFrames = 0;
 let registeredRailingIds = 0;
 let declaredRunAndLandingIds = 0;
 let declaredSupportIds = 0;
 let maximumObjectLength = 0;
+let maximumReassemblyBufferBytes = 0;
+let oversizedTargetFrames = 0;
+let incompleteTargetFrames = 0;
 const failures: { elementId: number; marker: number; error: string }[] = [];
+
+function collectFrame({ data, frame }: ReassembledFrame): void {
+  maximumObjectLength = Math.max(maximumObjectLength, frame.objectLength);
+  if (frame.marker === REVIT_2027_STAIRS_ELEMENT_MARKER) {
+    stairsFrames += 1;
+    const decoded = decodeRevit2027StairsElementAggregate(
+      data,
+      frame.objectOffset,
+      frame.objectLength,
+      2027,
+    );
+    if (!decoded.ok) {
+      failures.push({ ...frame, error: decoded.error });
+      return;
+    }
+    knownStairsElementIds.add(decoded.value.elementId);
+    registeredRailingIds += decoded.value.registeredRailingIds.length;
+    declaredRunAndLandingIds += decoded.value.runAndLandingIds.length;
+    declaredSupportIds += decoded.value.supportIds.length;
+    for (const childTag of decoded.value.registeredRailingIds) {
+      stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
+        parentTag: decoded.value.elementId,
+        childTag,
+        source: "StairsElement.m_registeredRailings",
+      });
+    }
+    for (const childTag of decoded.value.runAndLandingIds) {
+      stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
+        parentTag: decoded.value.elementId,
+        childTag,
+        source: "StairsElement.m_runsAndLandings",
+      });
+    }
+    for (const childTag of decoded.value.supportIds) {
+      stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
+        parentTag: decoded.value.elementId,
+        childTag,
+        source: "StairsElement.m_supports",
+      });
+    }
+    return;
+  }
+
+  if (frame.marker === REVIT_2027_BASE_RAILING_MARKER) {
+    baseRailingFrames += 1;
+    pendingBaseRailingFrames.push({ data, frame });
+    return;
+  }
+
+  if (frame.marker === REVIT_2027_STAIRS_RUN_MARKER) runFrames += 1;
+  else landingFrames += 1;
+  pendingRunAndLandingFrames.push({ data, frame });
+}
 
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
   const stream = cfb.FullPaths[entryIndex] ?? "";
@@ -277,7 +423,7 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
     asBytes(cfb.FileIndex[entryIndex].content),
   );
   const offsets = gzipOffsets(stored);
-  const chunks: Uint8Array[] = [];
+  const reassembler = new BoundedFrameReassembler();
   let window: Uint8Array | null = null;
   for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
     const read = inflateRevitChunk(
@@ -296,56 +442,15 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
       );
     if (!inflated) continue;
     if (read) window = revitWindowTail(read);
-    chunks.push(inflated);
     inflatedChunks += 1;
+    for (const frame of reassembler.push(inflated)) collectFrame(frame);
   }
-  const inflated = concatenate(chunks);
-  for (const frame of targetFrames(inflated)) {
-    maximumObjectLength = Math.max(maximumObjectLength, frame.objectLength);
-    if (frame.marker === REVIT_2027_STAIRS_ELEMENT_MARKER) {
-      stairsFrames += 1;
-      const decoded = decodeRevit2027StairsElementAggregate(
-        inflated,
-        frame.objectOffset,
-        frame.objectLength,
-        2027,
-      );
-      if (!decoded.ok) {
-        failures.push({ ...frame, error: decoded.error });
-        continue;
-      }
-      knownStairsElementIds.add(decoded.value.elementId);
-      registeredRailingIds += decoded.value.registeredRailingIds.length;
-      declaredRunAndLandingIds += decoded.value.runAndLandingIds.length;
-      declaredSupportIds += decoded.value.supportIds.length;
-      for (const childTag of decoded.value.registeredRailingIds) {
-        stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
-          parentTag: decoded.value.elementId,
-          childTag,
-          source: "StairsElement.m_registeredRailings",
-        });
-      }
-      for (const childTag of decoded.value.runAndLandingIds) {
-        stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
-          parentTag: decoded.value.elementId,
-          childTag,
-          source: "StairsElement.m_runsAndLandings",
-        });
-      }
-      for (const childTag of decoded.value.supportIds) {
-        stairsDirectPairs.set(`${decoded.value.elementId}:${childTag}`, {
-          parentTag: decoded.value.elementId,
-          childTag,
-          source: "StairsElement.m_supports",
-        });
-      }
-      continue;
-    }
-
-    if (frame.marker === REVIT_2027_STAIRS_RUN_MARKER) runFrames += 1;
-    else landingFrames += 1;
-    pendingRunAndLandingFrames.push({ data: inflated, frame });
-  }
+  maximumReassemblyBufferBytes = Math.max(
+    maximumReassemblyBufferBytes,
+    reassembler.maxBufferedBytes,
+  );
+  oversizedTargetFrames += reassembler.oversizedTargetFrames;
+  incompleteTargetFrames += reassembler.finish().incompleteTargetFrames;
 }
 
 for (const { data, frame } of pendingRunAndLandingFrames) {
@@ -378,10 +483,43 @@ for (const { data, frame } of pendingRunAndLandingFrames) {
     }
 }
 
+for (const { data, frame } of pendingBaseRailingFrames) {
+  const decoded = decodeRevit2027BaseRailingStairsRelation(
+    data,
+    frame.objectOffset,
+    frame.objectLength,
+    2027,
+  );
+  if (!decoded.ok) {
+    failures.push({ ...frame, error: decoded.error });
+    continue;
+  }
+  if (!decoded.value.relation) {
+    baseRailingsWithoutStairsId += 1;
+    continue;
+  }
+  baseRailingsWithStairsId += 1;
+  if (!knownStairsElementIds.has(decoded.value.relation.parentId)) {
+    baseRailingTargetsOutsideDecodedStairsFrames += 1;
+  }
+  baseRailingPairs.set(
+    `${decoded.value.relation.parentId}:${decoded.value.relation.childId}`,
+    {
+      parentTag: decoded.value.relation.parentId,
+      childTag: decoded.value.relation.childId,
+      source: decoded.value.relation.source,
+    },
+  );
+}
+
 api.CloseModel(model);
 api.Dispose();
 
-const decodedPairs = new Map([...stairsDirectPairs, ...reciprocalPairs]);
+const decodedPairs = new Map([
+  ...stairsDirectPairs,
+  ...reciprocalPairs,
+  ...baseRailingPairs,
+]);
 const exactIfcPairs = [...decodedPairs]
   .filter(([key]) => expectedStairsPairs.has(key))
   .map(([, pair]) => ({
@@ -435,11 +573,19 @@ const report = {
     stairsElementFrames: stairsFrames,
     stairsRunFrames: runFrames,
     stairsLandingFrames: landingFrames,
+    baseRailingFrames,
     maximumObjectLength,
+    maximumReassemblyBufferBytes,
+    reassemblyFrameByteLimit: MAX_REASSEMBLED_FRAME_BYTES,
+    oversizedTargetFrames,
+    incompleteTargetFrames,
     registeredRailingIds,
     declaredRunAndLandingIds,
     declaredSupportIds,
     reciprocalRunAndLandingIds: runById.size,
+    baseRailingsWithStairsId,
+    baseRailingsWithoutStairsId,
+    baseRailingTargetsOutsideDecodedStairsFrames,
     failures,
   },
   ifcOracle: {
@@ -476,6 +622,7 @@ const report = {
       "OdBmStairsElement::getSupports",
       "OdBmStairsElement::getRegisteredRailings",
       "OdBmStairsRunAndLanding::getStairsId",
+      "OdBmBaseRailing::getStairsId",
     ],
     rule:
       "Only typed collection members and the uniquely decoded reciprocal suffix create relations; raw nearby ObjectId values do not.",

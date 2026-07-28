@@ -63,10 +63,11 @@ Readers additionally require:
 - bounded collection counts and complete `ObjectId` values.
 
 Some run records are much larger than the generic 64 KiB element scanner's
-historical bound. The exact UNBC maximum is `440,372` bytes. The audit
-reconstructs each partition's inflated chunks before validating the native
-length echo, which recovers all cross-chunk records without weakening the
-envelope.
+historical bound. The exact UNBC maximum is `440,372` bytes. The audit uses a
+bounded cross-chunk frame reassembler and validates the native length echo,
+which recovers all cross-chunk records without concatenating the roughly
+422 MiB inflated partition. The maximum observed reassembly buffer is
+`440,392` bytes under a 1 MiB safety limit.
 
 ## Exact UNBC result
 
@@ -78,25 +79,31 @@ Against the supplied RVT, IFC, and `outputs/unbc-parity.json`:
 - `m_runsAndLandings` and `m_supports` are both empty in these persisted parent
   bodies, so no child is invented from later bytes;
 - 134 run/landing records carry one unique reciprocal `m_stairsId`;
-- 589 of 598 IFC stair-aggregation pairs are independently present in the
-  decoded RVT relationships;
-- 123 previously missing numeric IFC tags become exact model-tree matches:
-  78 `IfcStairFlight`, 39 `IfcRailing`, 4 `IfcSlab`, and 2 `IfcMember`.
+- 215 `BaseRailing` frames decode their boundary-anchored typed suffix with
+  zero failures: 114 have a non-null `m_stairsId` and 101 are null;
+- all 598 IFC stair-aggregation pairs are independently present in the decoded
+  RVT relationships;
+- 128 previously missing numeric IFC tags become exact model-tree matches:
+  78 `IfcStairFlight`, 44 `IfcRailing`, 4 `IfcSlab`, and 2 `IfcMember`.
 
 The model-tree parity impact is:
 
 ```text
 before  37,874 / 38,063 = 99.5035%
-after   37,997 / 38,063 = 99.8266%
-delta      +123 exact tags
+after   38,002 / 38,063 = 99.8397%
+delta      +128 exact tags
 ```
 
 The two members are `m_stringerArr` children of a run whose reciprocal
 `m_stairsId` identifies the parent stair. This is a typed two-edge path, not a
 raw parent-frame id search.
 
-Nine IFC railing aggregation pairs remain absent from these persisted
-collections. They stay unresolved.
+Nine railing pairs that are absent from the parent collection are recovered
+from the child's typed `BaseRailing.m_stairsId` field. Four of those tags
+already had another native model-tree membership, so the nine relations add
+five net baseline matches. The exact field proof and model-tree-ready relation
+record are documented in
+[`revit-2027-base-railing-stairs.md`](./revit-2027-base-railing-stairs.md).
 
 ## Reproduction
 
@@ -112,5 +119,7 @@ node --experimental-strip-types \
 Implementation:
 
 - `lib/reviter/revit-2027-stairs-aggregate.ts`
+- `lib/reviter/revit-2027-base-railing-stairs.ts`
 - `tests/revit-2027-stairs-aggregate.test.ts`
+- `tests/revit-2027-base-railing-stairs.test.ts`
 - `scripts/audit-revit-2027-stairs-aggregate.ts`
