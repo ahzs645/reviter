@@ -9,9 +9,9 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 84224370,
-      "sha256": "4648fa179ef56df1b14b4c489d6712cb3faf8732ee520ffb800534e6a99b5b45",
-      "analyticalSha256": "7b7e719dd5736661ae23588c0b23cb1f198a7fbb420d9f944bdb1ecdae692592",
+      "bytes": 93870926,
+      "sha256": "74aefa0042206c842aebebef0927e04bd9c45d6e135c25e1c0b184431b8e848e",
+      "analyticalSha256": "9cf2e6daf75921062b3fd5a9bbfdd11e45e7fba72aacee1a1331f5c47972f748",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
@@ -160,6 +160,26 @@
     "materialAssociationRelations": 7554,
     "directMaterialAssignedElements": 36081,
     "materialAssignedElementsIncludingTypes": 36221,
+    "materialAssignedNumericTags": 36142,
+    "materialTagsWithReviterAssignment": 34979,
+    "materialTagsWithOnlyValidReviterNames": 34979,
+    "materialTagsWithExactReviterNames": 34979,
+    "reviterMaterialTagsWithoutIfcAssignment": [
+      1069361,
+      1069365,
+      1069369,
+      1070536,
+      1257252,
+      1257277,
+      1476804,
+      1478176,
+      1642433,
+      1920413,
+      1993540,
+      2218933,
+      2218991
+    ],
+    "materialNameMismatchSamples": [],
     "spatiallyContainedElements": 11838,
     "aggregatedElements": 26403,
     "modelTreeElements": 38241,
@@ -782,7 +802,8 @@
         "Чугун, ковкий",
         "Этаж по умолчанию"
       ],
-      "nativeMaterialAssignments": 33132,
+      "nativeMaterialAssignments": 34992,
+      "nativeMaterialAssignmentRecords": 36927,
       "geometrySources": {
         "placed-shared-shape": 25871,
         "analytic-plane-solid": 9096,
@@ -844,7 +865,7 @@
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "materialDefinitions": 69,
-        "materialAssignments": 33132,
+        "materialAssignments": 35084,
         "nativeUniqueIds": 74437,
         "modelTree": "native-revit-owning-element-and-host-and-associated-level",
         "modelTreeRecords": 74437,
@@ -1046,7 +1067,7 @@
     "familyNameRatio": 0.053017365945931746,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.9655172413793104,
-    "materialAssignmentRatio": 0.914717981281577,
+    "materialAssignmentRatio": 0.9678213712578164,
     "dimensionSpans": {
       "ifcWebIfcAxesMetres": [
         217.89892670153483,

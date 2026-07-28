@@ -196,6 +196,8 @@ function parseSemantic(bytes) {
   const uniqueIdByElement = new Map();
   const typeNameByElement = new Map();
   const familyNameByElement = new Map();
+  const nativeMaterialAssignedIds = new Set();
+  const nativeMaterialNamesByElement = new Map();
   const nativeMaterialNames = new Set(
     nativeMaterialDefinitions
       .map((definition) => definition.name)
@@ -230,6 +232,14 @@ function parseSemantic(bytes) {
     if (element.type?.familyName) {
       familyNamed += 1;
       familyNameByElement.set(element.elementId, element.type.familyName);
+    }
+    for (const assignment of element.materialAssignments ?? []) {
+      if (!Number.isSafeInteger(assignment.materialId)) continue;
+      nativeMaterialAssignedIds.add(element.elementId);
+      if (typeof assignment.name !== "string" || !assignment.name) continue;
+      const names = nativeMaterialNamesByElement.get(element.elementId) ?? new Set();
+      names.add(assignment.name);
+      nativeMaterialNamesByElement.set(element.elementId, names);
     }
     if (element.geometry?.source) increment(geometrySources, element.geometry.source);
     if ((element.geometry?.nativeFaces ?? 0) > 0) {
@@ -299,7 +309,11 @@ function parseSemantic(bytes) {
       nativeMaterialDefinitions: nativeMaterialDefinitions.length,
       nativeFamilyDefinitions: nativeFamilyDefinitions.length,
       nativeMaterialNames: [...nativeMaterialNames].sort(),
-      nativeMaterialAssignments: semantic.fidelity?.materialAssignments ?? 0,
+      nativeMaterialAssignments: nativeMaterialAssignedIds.size ||
+        semantic.fidelity?.materialAssignments ||
+        0,
+      nativeMaterialAssignmentRecords: [...nativeMaterialNamesByElement.values()]
+        .reduce((sum, names) => sum + names.size, 0),
       geometrySources: sortedRecord(geometrySources),
       elementsWithNativeFaces,
       nativeFaces,
@@ -312,6 +326,8 @@ function parseSemantic(bytes) {
     typeNameByElement,
     familyNameByElement,
     nativeMaterialNames,
+    nativeMaterialAssignedIds,
+    nativeMaterialNamesByElement,
   };
 }
 
@@ -600,13 +616,24 @@ async function analyzeIfc(ifcBytes, semantic) {
   }
   const materialElements = new Set();
   const directMaterialElements = new Set();
+  const materialNamesByNumericTag = new Map();
   for (const elementId of elementIds) {
+    const assignedNames = new Set(directMaterialObjects.get(elementId) ?? []);
     if (directMaterialObjects.has(elementId)) {
       directMaterialElements.add(elementId);
       materialElements.add(elementId);
     }
     const typeObject = typeByElement.get(elementId);
-    if (typeObject && directMaterialObjects.has(typeObject)) materialElements.add(elementId);
+    if (typeObject && directMaterialObjects.has(typeObject)) {
+      materialElements.add(elementId);
+      for (const name of directMaterialObjects.get(typeObject) ?? []) {
+        assignedNames.add(name);
+      }
+    }
+    const numericTag = elements.get(elementId)?.numericTag;
+    if (numericTag != null && assignedNames.size) {
+      materialNamesByNumericTag.set(numericTag, assignedNames);
+    }
   }
 
   const propertyElements = new Set();
@@ -744,6 +771,40 @@ async function analyzeIfc(ifcBytes, semantic) {
   const additionalRvtMaterialNames = [...semantic.nativeMaterialNames]
     .filter((name) => !materials.has(name))
     .sort();
+  const materialAssignedNumericTags = new Set(materialNamesByNumericTag.keys());
+  const materialTagsWithReviterAssignment = new Set(
+    [...materialAssignedNumericTags].filter((tag) =>
+      semantic.nativeMaterialAssignedIds.has(tag)
+    ),
+  );
+  const reviterMaterialTagsWithoutIfcAssignment = [
+    ...semantic.nativeMaterialAssignedIds,
+  ]
+    .filter((tag) => !materialAssignedNumericTags.has(tag))
+    .sort((a, b) => a - b);
+  const materialTagsWithExactReviterNames = new Set();
+  const materialTagsWithOnlyValidReviterNames = new Set();
+  const materialNameMismatchSamples = [];
+  for (const tag of materialTagsWithReviterAssignment) {
+    const ifcNames = materialNamesByNumericTag.get(tag) ?? new Set();
+    const reviterNames = semantic.nativeMaterialNamesByElement.get(tag) ?? new Set();
+    const onlyValidNames =
+      reviterNames.size > 0 &&
+      [...reviterNames].every((name) => ifcNames.has(name));
+    const exactNames =
+      onlyValidNames &&
+      reviterNames.size === ifcNames.size &&
+      [...ifcNames].every((name) => reviterNames.has(name));
+    if (onlyValidNames) materialTagsWithOnlyValidReviterNames.add(tag);
+    if (exactNames) materialTagsWithExactReviterNames.add(tag);
+    if (!onlyValidNames && materialNameMismatchSamples.length < 24) {
+      materialNameMismatchSamples.push({
+        tag,
+        ifcNames: [...ifcNames].sort(),
+        reviterNames: [...reviterNames].sort(),
+      });
+    }
+  }
 
   const result = {
     schema: api.GetModelSchema(model),
@@ -795,6 +856,13 @@ async function analyzeIfc(ifcBytes, semantic) {
     materialAssociationRelations: step.materialRelations.length,
     directMaterialAssignedElements: directMaterialElements.size,
     materialAssignedElementsIncludingTypes: materialElements.size,
+    materialAssignedNumericTags: materialAssignedNumericTags.size,
+    materialTagsWithReviterAssignment: materialTagsWithReviterAssignment.size,
+    materialTagsWithOnlyValidReviterNames:
+      materialTagsWithOnlyValidReviterNames.size,
+    materialTagsWithExactReviterNames: materialTagsWithExactReviterNames.size,
+    reviterMaterialTagsWithoutIfcAssignment,
+    materialNameMismatchSamples,
     spatiallyContainedElements: containedElements.size,
     aggregatedElements: aggregatedElements.size,
     modelTreeElements: treeElements.size,
@@ -869,8 +937,8 @@ const report = {
       ifc.uniqueMaterialNames,
     ),
     materialAssignmentRatio: ratio(
-      semantic.summary.nativeMaterialAssignments,
-      ifc.materialAssignedElementsIncludingTypes,
+      ifc.materialTagsWithReviterAssignment,
+      ifc.materialAssignedNumericTags,
     ),
     dimensionSpans: {
       ifcWebIfcAxesMetres: ifc.spansWebIfcAxesMetres,
@@ -889,6 +957,7 @@ console.log(`Reviter: ${semantic.summary.displayed.toLocaleString()} displayed r
 console.log(`Triangle parity: ${(report.parity.triangleRatio * 100).toFixed(1)}%`);
 console.log(`Native UniqueIds: ${ifc.numericTagsWithNativeUniqueId.toLocaleString()} / ${ifc.numericRevitTags.toLocaleString()} numeric IFC tags`);
 console.log(`Native material names: ${ifc.materialDefinitionNameMatches.toLocaleString()} / ${ifc.uniqueMaterialNames.toLocaleString()} IFC names`);
-console.log(`Native materials: ${semantic.summary.nativeMaterialAssignments.toLocaleString()} / ${ifc.materialAssignedElementsIncludingTypes.toLocaleString()} assigned elements`);
+console.log(`Native materials: ${ifc.materialTagsWithReviterAssignment.toLocaleString()} / ${ifc.materialAssignedNumericTags.toLocaleString()} assigned numeric IFC tags`);
+console.log(`Native material-name precision: ${ifc.materialTagsWithOnlyValidReviterNames.toLocaleString()} / ${ifc.materialTagsWithReviterAssignment.toLocaleString()} comparable assigned tags`);
 console.log(`Native family names: ${ifc.familyTagsWithExactReviterFamilyName.toLocaleString()} / ${ifc.familyNamedNumericTags.toLocaleString()} IFC-tagged elements (${semantic.summary.nativeFamilyDefinitions.toLocaleString()} decoded definitions)`);
 console.log(`Wrote ${paths.json}`);

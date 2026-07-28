@@ -97,6 +97,7 @@ function scalar(value: unknown): unknown {
 
 type IfcMaterialCoverage = {
   assignedRevitElementIds: Set<number>;
+  classNamesByAssignedRevitElementId: Map<number, Set<string>>;
   materialAssignedIfcElements: number;
   materialAssignedTaggedIfcElements: number;
   numericRevitTags: number;
@@ -139,12 +140,15 @@ async function readIfcMaterialCoverage(
   const model = api.OpenModel(bytes, { COORDINATE_TO_ORIGIN: false });
   if (model < 0) throw new Error("web-ifc could not open the reference IFC.");
   const assignedRevitElementIds = new Set<number>();
+  const classNamesByAssignedRevitElementId =
+    new Map<number, Set<string>>();
   const numericRevitTags = new Set<number>();
   let materialAssignedIfcElements = 0;
   let materialAssignedTaggedIfcElements = 0;
   let taggedObjects = 0;
   for (const typeCode of api.GetIfcEntityList(model)) {
     if (!api.IsIfcElement(typeCode)) continue;
+    const className = api.GetNameFromTypeCode(typeCode);
     const ids = api.GetLineIDsWithType(model, typeCode, false);
     for (let index = 0; index < ids.size(); index += 1) {
       const elementId = ids.get(index);
@@ -161,12 +165,17 @@ async function readIfcMaterialCoverage(
       if (!materialAssigned) continue;
       materialAssignedTaggedIfcElements += 1;
       assignedRevitElementIds.add(numericTag);
+      const classNames =
+        classNamesByAssignedRevitElementId.get(numericTag) ?? new Set<string>();
+      classNames.add(className);
+      classNamesByAssignedRevitElementId.set(numericTag, classNames);
     }
   }
   api.CloseModel(model);
   api.Dispose();
   return {
     assignedRevitElementIds,
+    classNamesByAssignedRevitElementId,
     materialAssignedIfcElements,
     materialAssignedTaggedIfcElements,
     numericRevitTags: numericRevitTags.size,
@@ -273,6 +282,15 @@ const ifc = await readIfcMaterialCoverage(
   new Uint8Array(ifcBytes.buffer, ifcBytes.byteOffset, ifcBytes.byteLength),
 );
 const ifcAssignedElements = ifc.assignedRevitElementIds;
+const remainingIfcOnlyByClass = new Map<string, Set<number>>();
+for (const elementId of ifcAssignedElements) {
+  if (projectedAssignedElements.has(elementId)) continue;
+  for (const className of ifc.classNamesByAssignedRevitElementId.get(elementId) ?? []) {
+    const ids = remainingIfcOnlyByClass.get(className) ?? new Set<number>();
+    ids.add(elementId);
+    remainingIfcOnlyByClass.set(className, ids);
+  }
+}
 const typeRows = compoundDefinitions.map((definition) => {
   const assigned = compoundAssignments.filter(
     (assignment) => assignment.typeId === definition.typeId,
@@ -363,6 +381,11 @@ const result = {
       differenceSize(projectedAssignedElements, ifcAssignedElements),
     remainingIfcOnly:
       differenceSize(ifcAssignedElements, projectedAssignedElements),
+    remainingIfcOnlyByClass: Object.fromEntries(
+      [...remainingIfcOnlyByClass]
+        .map(([className, ids]) => [className, ids.size] as const)
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])),
+    ),
   },
   ifcAudit: {
     materialRelations: ifc.materialRelations,

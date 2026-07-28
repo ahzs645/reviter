@@ -74,11 +74,82 @@ export function elementManifest(result: ConvertResult) {
   for (const mesh of result.meshes) {
     for (const elementId of mesh.elementIds ?? []) drawnIds.add(elementId);
   }
+  const materialNameById = new Map(
+    (result.nativeMaterialDefinitions ?? []).map((definition) => [
+      definition.elementId,
+      definition.name,
+    ]),
+  );
+  const materialsByElement = new Map<
+    number,
+    Map<
+      number,
+      {
+        evidence: Set<string>;
+        geometryTags: Set<number>;
+        layerIndices: Set<number>;
+      }
+    >
+  >();
+  const materialEvidence = (elementId: number, materialId: number) => {
+    let byMaterial = materialsByElement.get(elementId);
+    if (!byMaterial) {
+      byMaterial = new Map();
+      materialsByElement.set(elementId, byMaterial);
+    }
+    let evidence = byMaterial.get(materialId);
+    if (!evidence) {
+      evidence = {
+        evidence: new Set(),
+        geometryTags: new Set(),
+        layerIndices: new Set(),
+      };
+      byMaterial.set(materialId, evidence);
+    }
+    return evidence;
+  };
+  for (const assignment of result.nativeElementMaterialAssignments ?? []) {
+    const evidence = materialEvidence(
+      assignment.elementId,
+      assignment.materialId,
+    );
+    evidence.evidence.add(assignment.evidence);
+    if ("geometryTags" in assignment) {
+      for (const geometryTag of assignment.geometryTags) {
+        evidence.geometryTags.add(geometryTag);
+      }
+    }
+  }
+  for (
+    const assignment of result.nativeCompoundLayerMaterialAssignments ?? []
+  ) {
+    const evidence = materialEvidence(
+      assignment.elementId,
+      assignment.materialId,
+    );
+    evidence.evidence.add(assignment.evidence);
+    evidence.layerIndices.add(assignment.layerIndex);
+  }
 
   return [...bestByElement.values()]
     .sort((a, b) => a.elementId - b.elementId)
     .map((record) => {
       const identity = identityByElement.get(record.elementId);
+      const materialAssignments = [
+        ...(materialsByElement.get(record.elementId) ?? []),
+      ]
+        .sort((left, right) => left[0] - right[0])
+        .map(([materialId, evidence]) => ({
+          materialId,
+          name: materialNameById.get(materialId) ?? null,
+          evidence: [...evidence.evidence].sort(),
+          ...(evidence.geometryTags.size
+            ? { geometryTags: [...evidence.geometryTags].sort((a, b) => a - b) }
+            : {}),
+          ...(evidence.layerIndices.size
+            ? { layerIndices: [...evidence.layerIndices].sort((a, b) => a - b) }
+            : {}),
+        }));
       return {
         elementId: record.elementId,
         ...(identity ? { uniqueId: identity.uniqueId } : {}),
@@ -112,6 +183,9 @@ export function elementManifest(result: ConvertResult) {
           bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
           nativeFaces: record.quads?.length ?? 0,
         },
+        ...(materialAssignments.length
+          ? { materialAssignments }
+          : {}),
         parameters: (record.parameters ?? []).map(({ parameterId, name, value }) => ({
           id: parameterId,
           name,

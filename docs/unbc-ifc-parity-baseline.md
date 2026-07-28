@@ -20,9 +20,11 @@ At this checkpoint, Reviter matches the IFC's complete tagged drawable product
 population. Native Revit identity is complete for every numeric IFC Tag,
 persisted ownership, host, and associated-level relations reach 99.5% of
 comparable IFC tree members, and 28 of 29 IFC material names are decoded as
-native definitions. The parser now expands 5,413 exact shared-geometry material
-relations through persisted instance placements, and adds 45 decoded
-BasicWallType compound structures, to assign 33,132 placed elements. It also
+native definitions. Shared geometry, 45 decoded BasicWallType compound
+structures, and 361 reader-certified FamilySymbol geometry-tag maps now assign
+35,084 placed elements. In the common numeric-Tag domain, 34,979 of 36,142 IFC
+material-assigned Tags match, and every emitted material name on those Tags
+occurs in the IFC association. It also
 recovers 2,151 reader-certified placed `FamilySymbol` → `Family` relations.
 Forty-one referenced family definitions now name 2,035 placed instances; all
 2,018 names
@@ -42,7 +44,7 @@ assignment population, or complete family semantics**.
 | Numeric-tagged elements with IFC family name | 38,063 | 2,018 exact native family names | 5.3% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Unique IFC material names | 29 | 28 exact native definitions | 96.6% |
-| Elements assigned materials, including through type | 36,221 | 33,132 persisted placed-element assignments | 91.5% |
+| Unique numeric IFC Tags assigned materials | 36,142 | 34,979 exact persisted assignments | **96.8%** |
 | Numeric-tagged containment/aggregation members | 38,063 | 37,874 persisted ownership/host/associated-level members | 99.5% |
 
 The triangle and vertex ratios are diagnostic, not a demand for byte-identical
@@ -177,14 +179,18 @@ geometry layouts add 5,413 native
 geometry-to-material assignments. Joining each placed instance's persisted
 shared-geometry id expands those sources to 25,607 placed elements. The
 type-owned `BasicWallType → CompoundStructure → layer material` path adds
-7,525 non-overlapping placed elements, producing 33,132 assignments in the
-converter. In the common numeric-Tag domain, 33,048 of those match 36,142
-unique IFC-assigned Tags (91.44%); the broader 33,132 / 36,221 express-ID
-population ratio shown above is 91.5%.
-Among the 5,393 decoded source assignments that can be correlated with an IFC
-material association, all 5,393 material names match exactly. That establishes
-precision for the decoded subset; compound-layer, face-level, appearance-asset,
-category, and view-override material paths remain open.
+7,525 non-overlapping placed elements, producing 33,132 assignments before the
+family map.
+
+The persisted `FamilySymbol.m_geomTag2MaterialId` carrier adds 361 unambiguous
+maps, 1,336 geometry-tag/material entries, and 3,911 element-material relations
+across 1,952 additional placed elements. The common numeric-Tag domain now has
+34,979 matches among 36,142 unique IFC-assigned Tags (96.78%), leaving 1,163
+IFC-only Tags and 105 native assignments outside the IFC material set. Every
+decoded name on all 34,979 comparable assigned Tags occurs in that Tag's IFC
+material association; the isolated family-map audit is also exact for all
+3,862/3,862 comparable element-material relations. Face-level,
+appearance-asset, category, and view-override material paths remain open.
 
 The current 81,806 recovered parameter entries cannot be compared one-for-one
 with 12,375 IFC property value entities because the IFC reuses property
@@ -224,10 +230,12 @@ and compare typed values and units.
    expanding its 27,776 IFC mapped-item occurrences.
 3. **Extend material records to faces and remaining carriers.** Definition-name
    parity is now 28/29, with only a non-persisted `<Unnamed>` IFC placeholder
-   absent. Shared geometry plus compound wall layers assign 33,132 elements;
-   3,094 unique IFC-assigned numeric Tags remain. Decode other type/style
-   carriers, appearance assets, category and view overrides, then use genuine
-   BRep face classification before assigning material groups to triangles.
+   absent. Shared geometry, compound wall layers, and FamilySymbol geometry-tag
+   maps now match 34,979/36,142 assigned numeric Tags. The remaining 1,163 are
+   led by members (352), columns (311), railings (215), stair flights (108),
+   slabs (107), and coverings (46). Decode those typed carriers, appearance
+   assets, category and view overrides, then preserve genuine BRep face tags
+   before assigning material groups to triangles.
 4. **Resolve the residual typed tree relations.** Ownership, host, and 37,503
    persisted associated-level relations are preserved as genuine, distinct
    edge kinds and together cover 37,874/38,063 comparable IFC tree members.
@@ -285,9 +293,9 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `4648fa179ef56df1b14b4c489d6712cb3faf8732ee520ffb800534e6a99b5b45`
+- semantic JSON: `74aefa0042206c842aebebef0927e04bd9c45d6e135c25e1c0b184431b8e848e`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
-  `7b7e719dd5736661ae23588c0b23cb1f198a7fbb420d9f944bdb1ecdae692592`
+  `9cf2e6daf75921062b3fd5a9bbfdd11e45e7fba72aacee1a1331f5c47972f748`
 - GLB: `8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a`
 
 The script exits nonzero on a missing or invalid input and writes the complete

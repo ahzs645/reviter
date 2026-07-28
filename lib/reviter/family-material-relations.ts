@@ -105,12 +105,24 @@ export type NativeGeometryMaterialAssignment = GeometryMaterialCandidate & {
   evidence: "framed-geometry-material-id";
 };
 
-export type NativeElementMaterialAssignment = {
+export type NativeSharedGeometryMaterialAssignment = {
   elementId: number;
   geometryId: number;
   materialId: number;
   evidence: "persisted-instance-shared-geometry-material";
 };
+
+export type NativeFamilySymbolGeometryMaterialAssignment = {
+  elementId: number;
+  symbolId: number;
+  materialId: number;
+  geometryTags: number[];
+  evidence: "persisted-instance-family-symbol-geometry-tag-material";
+};
+
+export type NativeElementMaterialAssignment =
+  | NativeSharedGeometryMaterialAssignment
+  | NativeFamilySymbolGeometryMaterialAssignment;
 
 function readId(view: DataView, offset: number, limit: number): number | null {
   if (offset < 0 || offset + 8 > limit || view.getUint32(offset + 4, true) !== 0) return null;
@@ -441,7 +453,7 @@ export function resolveElementMaterialAssignments(
   placements: Iterable<{ elementId: number; geometryId: number }>,
   geometryAssignments: readonly NativeGeometryMaterialAssignment[],
   referencedGeometryIds: ReadonlySet<number>,
-): NativeElementMaterialAssignment[] {
+): NativeSharedGeometryMaterialAssignment[] {
   const geometryByElement = new Map<number, number | null>();
   for (const placement of placements) {
     if (
@@ -467,7 +479,7 @@ export function resolveElementMaterialAssignments(
     else materialsByGeometry.set(assignment.geometryId, new Set([assignment.materialId]));
   }
 
-  const result: NativeElementMaterialAssignment[] = [];
+  const result: NativeSharedGeometryMaterialAssignment[] = [];
   for (const [elementId, geometryId] of geometryByElement) {
     if (geometryId == null) continue;
     for (const materialId of materialsByGeometry.get(geometryId) ?? []) {
