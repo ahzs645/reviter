@@ -9,9 +9,9 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 84035571,
-      "sha256": "95a6fbe8bf8cf134ad4a5d0e717851dc161707ef2b9114261a2f019dbf92e9d9",
-      "analyticalSha256": "aa07f41b2058261d3e81f8b5f798faa802f7d538900ef96ca83a503673e3e012",
+      "bytes": 84216930,
+      "sha256": "41c6aeb4cf428e74e436288a424b60177ed9be0f40723ac276b5a10655006233",
+      "analyticalSha256": "aedd78c9cca28466f05ace250cf9ac3e999219d6b01ca5b5a305e45b81efbc5d",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
@@ -71,8 +71,9 @@
     "typeTagsWithExactReviterTypeName": 7515,
     "typeNameMismatchSamples": [],
     "familyNamedNumericTags": 38063,
-    "familyTagsWithReviterFamilyName": 143,
-    "familyTagsWithExactReviterFamilyName": 143,
+    "familyTagsWithReviterFamilyName": 2018,
+    "familyTagsWithExactReviterFamilyName": 2018,
+    "familyNameMismatchSamples": [],
     "propertySets": 89470,
     "propertySetNames": 24,
     "propertyValues": 12375,
@@ -699,7 +700,7 @@
       "displayed": 36548,
       "categorized": 39159,
       "typed": 7523,
-      "familyNamed": 143,
+      "familyNamed": 2025,
       "withParameters": 11541,
       "parameterValues": 81806,
       "manifestUniqueIds": 40571,
@@ -709,7 +710,7 @@
       "modelTreeRecords": 74437,
       "modelTreeMemberships": 62288,
       "nativeMaterialDefinitions": 69,
-      "nativeFamilyDefinitions": 3,
+      "nativeFamilyDefinitions": 19,
       "nativeMaterialNames": [
         "Acier inoxydable, brossé",
         "Brick, ordinary",
@@ -1042,7 +1043,7 @@
     "modelTreeRatio": 0.9950345479862334,
     "typeNameRatio": 0.19743583007119775,
     "exactTypeNameRatio": 0.19743583007119775,
-    "familyNameRatio": 0.003756929301421328,
+    "familyNameRatio": 0.053017365945931746,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.9655172413793104,
     "materialAssignmentRatio": 0.7069655724579663,

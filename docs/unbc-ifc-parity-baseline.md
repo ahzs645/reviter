@@ -22,8 +22,9 @@ persisted ownership, host, and associated-level relations reach 99.5% of
 comparable IFC tree members, and 28 of 29 IFC material names are decoded as
 native definitions. The parser now expands 5,413 exact shared-geometry material
 relations through persisted instance placements to 25,607 placed elements and
-recovers 66 `FamilySymbol` → `Family` relations. Three referenced family
-definitions now name 143 placed instances, all matching the IFC exactly. It
+recovers 2,114 unambiguous placed `FamilySymbol` → `Family` relations. Nineteen
+referenced family definitions now name 2,025 placed instances; all 2,018 names
+with a comparable IFC family string match exactly. It
 still does not match the IFC's **shape detail, per-face/full material
 assignment population, or complete family semantics**.
 
@@ -36,7 +37,7 @@ assignment population, or complete family semantics**.
 | Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.400 / 217.899 / 374.766 m | matches at displayed precision |
 | Numeric IFC Tags with native Revit UniqueId | 38,187 | 38,187 | **100%** |
 | Numeric-tagged elements assigned an IFC type | 38,063 | 7,515 exact type names | 19.7% |
-| Numeric-tagged elements with IFC family name | 38,063 | 143 exact native family names | 0.4% |
+| Numeric-tagged elements with IFC family name | 38,063 | 2,018 exact native family names | 5.3% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Unique IFC material names | 29 | 28 exact native definitions | 96.6% |
 | Elements assigned materials, including through type | 36,221 | 25,607 persisted placed-element assignments | 70.7% |
@@ -158,12 +159,13 @@ coverage rather than comparing unlike `GlobalId` and `UniqueId` strings.
 Type recovery is smaller but exact: all 7,515 IFC-tagged elements for which
 Reviter emits a type name match the corresponding IFC type-object name after
 splitting its `Family:Type` representation. The remaining 30,548 typed Tags
-have no decoded type name. The native relationship decoder recovers 66
-`FamilySymbol.m_familyId` links. The adjacent, reader-proven
-`FamilyBase` name/path pair decodes three referenced family definitions and
-attaches exact family names to 143 of the 38,063 numeric-tagged IFC type
-members. All 143 names match the IFC; the remaining 37,920 family names and
-full loadable-family/type regeneration remain open.
+have no decoded type name. The native relationship decoder now recovers 2,114
+placed `FamilySymbol` links by combining the fixed `m_familyId` layout with a
+fail-closed unique-framed-Family target rule for variable-width layouts. The
+adjacent, reader-proven `FamilyBase` name/path pair decodes 19 referenced
+family definitions and attaches names to 2,025 elements. All 2,018 names with a
+comparable IFC family string match; the remaining 36,045 comparable family
+names and full loadable-family/type regeneration remain open.
 
 Native material-definition framing yields 69 RVT names. Of the IFC's 29 unique
 names, 28 match exactly; only the IFC placeholder `<Unnamed>` is absent, and it
@@ -196,18 +198,22 @@ and compare typed values and units.
    Revit 2026 `ObjectPtrInitReader` dispatch for slot 2,237. Across all 3,666
    exact UNBC chunks it sees 4,893 raw slot-2,237 occurrences and 3,463
    complete fixed-width static shapes, but none carries the required
-   slot-5,255 topology descriptor. The remaining boundary is the genuine
-   parent outer-object position or already scoped source-class context; raw
-   selector scans cannot establish that ownership. Once recovered, replay the
-   retained topology into the neutral browser BRep/mesh layer modeled from the
-   public concepts exposed by `TB_Geometry`, `libTD_Ge`,
+   slot-5,255 topology descriptor. The framed `GElement/GRep` owner and exact
+   dynamic replay start are now decoded for 63,820 roots, but their 148,223
+   direct child descriptors contain no `GBrep`, `GFakeBRep`, `GPolyMesh`, or
+   `FacetedTopology8`. The remaining boundary is the intermediate
+   representation/target-class mapping plus multi-property DynamicQueue token
+   and retained-data semantics. Once recovered, replay the retained topology
+   into the neutral browser BRep/mesh layer modeled from the public concepts
+   exposed by `TB_Geometry`, `libTD_Ge`,
    `libOdBrepModeler`, `libTD_BrepBuilder`, and `libTD_Br`.
 2. **Resolve the remaining family carrier and regenerate shared family
    geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
-   match the IFC exactly—and 66 persisted `FamilySymbol` → `Family` relations
-   are now proven. Three referenced family definitions supply 143/143 exact
-   emitted names, but 30,548 tagged type members and 37,920 family names remain
-   absent. Preserve shared family geometry plus transforms rather than
+   match the IFC exactly—and 2,114 unambiguous placed `FamilySymbol` →
+   `Family` relations are now retained. Nineteen referenced family definitions
+   supply 2,018/2,018 exact comparable emitted names, but 30,548 tagged type
+   members and 36,045 comparable family names remain absent. Preserve shared
+   family geometry plus transforms rather than
    expanding its 27,776 IFC mapped-item occurrences.
 3. **Extend material records in bounded layers.** Definition-name parity is now
    28/29, with only a non-persisted `<Unnamed>` IFC placeholder absent. Extend
@@ -273,9 +279,9 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `95a6fbe8bf8cf134ad4a5d0e717851dc161707ef2b9114261a2f019dbf92e9d9`
+- semantic JSON: `41c6aeb4cf428e74e436288a424b60177ed9be0f40723ac276b5a10655006233`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
-  `aa07f41b2058261d3e81f8b5f798faa802f7d538900ef96ca83a503673e3e012`
+  `aedd78c9cca28466f05ace250cf9ac3e999219d6b01ca5b5a305e45b81efbc5d`
 - GLB: `8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a`
 
 The script exits nonzero on a missing or invalid input and writes the complete
