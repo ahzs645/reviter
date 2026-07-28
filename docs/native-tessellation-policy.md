@@ -9,7 +9,9 @@ numeric policy that a future analytic or neutral-BRep tessellator can consume.
 The implementation is
 [`native-tessellation-policy.ts`](../lib/reviter/native-tessellation-policy.ts);
 its boundary tests are
-[`native-tessellation-policy.test.ts`](../tests/native-tessellation-policy.test.ts).
+[`native-tessellation-policy.test.ts`](../tests/native-tessellation-policy.test.ts)
+and
+[`native-cone-tessellation-policy.test.ts`](../tests/native-cone-tessellation-policy.test.ts).
 
 ## Proven native sources
 
@@ -21,7 +23,9 @@ The exact-build evidence is:
 | `libTD_BrepRenderer.so`, `wrTriangulationParams::wrTriangulationParams(bool)` | `0x117434` | 51-byte parameter defaults and offsets consumed below |
 | `libTD_BrepRenderer.so`, `wrPlane::calculateMaxStepUV` | `0x126b40` | plane U/V maximum step |
 | `libTD_BrepRenderer.so`, `wrCylinder::calculateMaxStepUV` | `0x1645c6` | normalized axial and angular cylinder maximum steps |
+| `libTD_BrepRenderer.so`, `wrCone::calculateMaxStepUV` | `0x11fb68` | base-radius and angular cone maximum steps |
 | `libTD_BrepRenderer.so`, `SrfTess::findBreakDirection` | `0x1a3c9e` | adaptive use of edge, angle, and surface-deviation limits |
+| `libTD_Ge.so`, `OdGeConeImpl::halfAngle` / `getHalfAngle` | `0x6b4bc2` / `0x6b4c4a` | absolute sine/cosine convention used by the cone renderer |
 
 The relevant parameter offsets in this build are:
 
@@ -64,6 +68,22 @@ native V is angle in radians:
 
 ```text
 maximumUStep = abs(maximumEdgeLength / r) / sqrt(2)
+
+edgeVStep = 2 asin(maximumEdgeLength / (2 r)) / sqrt(2)
+            when abs(maximumEdgeLength / (2 r)) <= 1
+
+angleVStep = clamp(2 pi maximumAngleDegrees / 360, 0, 2 pi)
+
+maximumVStep = minimum active edge/angle step
+```
+
+For an acute cone with the converted `OdGeCone` base radius `r` and half-angle
+`a`, the angular candidates are the same as for a cylinder, while the first
+parameter step additionally accounts for the cone slope:
+
+```text
+maximumUStep =
+  abs(maximumEdgeLength / r / cos(a)) / sqrt(2)
 
 edgeVStep = 2 asin(maximumEdgeLength / (2 r)) / sqrt(2)
             when abs(maximumEdgeLength / (2 r)) <= 1
@@ -119,19 +139,26 @@ general analytic/BRep path once that selection is independently established.
 
 This increment provides:
 
-- deterministic LOD, plane, cylinder, and circular-deviation calculations;
+- deterministic LOD, plane, cylinder, cone, and circular-deviation
+  calculations;
 - finite-domain checks and bounded segment counts suitable for untrusted files;
 - a policy module independent of RVT record decoding and rendering;
-- an evidenced analytic-cylinder path already exercised by the UNBC model.
+- evidenced analytic-cylinder and cone inputs exercised by the UNBC model.
+
+All ten decoded UNBC cone charts across three direct owners evaluate to the
+independently recorded native U/V step results within `1e-12`. This verifies
+the policy formula and parameter convention; the already integrated
+four-Face Cone apex-sector mesh remains the narrower geometry subset.
 
 It does not yet provide:
 
 - decoding of arbitrary persisted modeler bodies into the neutral BRep graph;
-- trimmed cylinders, cones, tori, or NURBS faces in the general BRep
+- arbitrary trimmed cylinders/cones, tori, or NURBS faces in the general BRep
   tessellator;
 - native recursive surface split parity or triangle ordering;
 - full family regeneration;
-- per-face material recovery for bodies whose face markers remain undecoded.
+- GStyle/category/view material fallback for faces without an exact positive
+  `MaterialElem` assignment.
 
 Those are data-decoding and topology tasks. The policy now exists for them, but
 it does not make unsupported geometry silently appear.

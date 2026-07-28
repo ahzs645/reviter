@@ -11,8 +11,12 @@
  * - libTD_BrepRenderer.so:
  *   wrTriangulationParams::wrTriangulationParams(bool), RVA 0x117434
  *   wrCylinder::calculateMaxStepUV(...), RVA 0x1645c6
+ *   wrCone::calculateMaxStepUV(...), RVA 0x11fb68
  *   wrPlane::calculateMaxStepUV(...), RVA 0x126b40
  *   SrfTess::findBreakDirection(...), RVA 0x1a3c9e
+ * - libTD_Ge.so:
+ *   OdGeConeImpl::halfAngle(), RVA 0x6b4bc2
+ *   OdGeConeImpl::getHalfAngle(double&, double&), RVA 0x6b4c4a
  */
 
 export type NativeTessellationPolicy = {
@@ -34,9 +38,9 @@ export type NativeTessellationPolicy = {
 };
 
 export type NativeSurfaceParamSteps = {
-  /** Maximum normalized axial-cylinder parameter step. */
+  /** Maximum first native surface-parameter step. */
   maximumUStep: number;
-  /** Maximum angular-cylinder parameter step, in radians. Zero means inactive. */
+  /** Maximum angular surface-parameter step, in radians. Zero means inactive. */
   maximumVStep: number;
 };
 
@@ -144,6 +148,88 @@ export function nativeCylinderMaximumParamSteps(
   const angularCandidates: number[] = [];
   if (maximumEdgeLength > NATIVE_ZERO_TOLERANCE) {
     const chordRatio = Math.abs(maximumEdgeLength / (2 * radius));
+    if (chordRatio <= 1) {
+      angularCandidates.push((2 * Math.asin(chordRatio)) / SQRT_TWO);
+    }
+  }
+  if (maximumAngleDegrees > NATIVE_ZERO_TOLERANCE) {
+    angularCandidates.push(
+      Math.min(
+        FULL_TURN_RADIANS,
+        Math.max(0, FULL_TURN_RADIANS * (maximumAngleDegrees / 360)),
+      ),
+    );
+  }
+
+  const activeCandidates = angularCandidates.filter(
+    (candidate) => Number.isFinite(candidate) && candidate > NATIVE_ZERO_TOLERANCE,
+  );
+  const maximumVStep = activeCandidates.length
+    ? Math.min(...activeCandidates)
+    : 0;
+
+  return {
+    ok: true,
+    value: { maximumUStep, maximumVStep },
+  };
+}
+
+/**
+ * Exact analytic cone step limits from `wrCone::calculateMaxStepUV`.
+ *
+ * These are the ODA cone chart's native U/V limits after Revit's cone has been
+ * converted to an `OdGeCone`: U is its first, base-radius-scaled parameter and
+ * V is angle in radians. `baseRadius` is therefore the radius of that converted
+ * cone's centred base, not an arbitrary radius sampled elsewhere on the cone.
+ *
+ * `OdGeConeImpl::getHalfAngle` proves that the value used by the renderer's U
+ * formula is `abs(cos(halfAngle))`; `halfAngle()` independently proves the
+ * companion stored value is `abs(sin(halfAngle))`. A returned zero retains the
+ * native inactive/no-limit sentinel.
+ */
+export function nativeConeMaximumParamSteps(
+  baseRadius: number,
+  halfAngleRadians: number,
+  maximumEdgeLength: number,
+  maximumAngleDegrees: number,
+): NativeTessellationResult<NativeSurfaceParamSteps> {
+  if (!Number.isFinite(baseRadius) || baseRadius <= NATIVE_ZERO_TOLERANCE) {
+    return {
+      ok: false,
+      error: "baseRadius must be finite and greater than 1e-10",
+    };
+  }
+  if (
+    !Number.isFinite(halfAngleRadians) ||
+    halfAngleRadians <= NATIVE_ZERO_TOLERANCE ||
+    halfAngleRadians >= Math.PI / 2 - NATIVE_ZERO_TOLERANCE
+  ) {
+    return {
+      ok: false,
+      error: "halfAngleRadians must be a finite acute cone angle",
+    };
+  }
+  if (!Number.isFinite(maximumEdgeLength) || maximumEdgeLength < 0) {
+    return {
+      ok: false,
+      error: "maximumEdgeLength must be finite and non-negative",
+    };
+  }
+  if (!Number.isFinite(maximumAngleDegrees) || maximumAngleDegrees < 0) {
+    return {
+      ok: false,
+      error: "maximumAngleDegrees must be finite and non-negative",
+    };
+  }
+
+  const cosineHalfAngle = Math.abs(Math.cos(halfAngleRadians));
+  const maximumUStep = maximumEdgeLength > NATIVE_ZERO_TOLERANCE
+    ? Math.abs(maximumEdgeLength / baseRadius / cosineHalfAngle) / SQRT_TWO
+    : 0;
+
+  const angularCandidates: number[] = [];
+  if (maximumEdgeLength > NATIVE_ZERO_TOLERANCE) {
+    const chordRatio = Math.abs(maximumEdgeLength / (2 * baseRadius));
     if (chordRatio <= 1) {
       angularCandidates.push((2 * Math.asin(chordRatio)) / SQRT_TWO);
     }
