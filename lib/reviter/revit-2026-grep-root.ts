@@ -3,11 +3,12 @@ import type { ElementObject } from "./element-objects.ts";
 import type { Revit2026GInfoStatic } from "./revit-2026-object-dispatch.ts";
 
 /**
- * The persisted selector is zero-based. `Formats/Latest` identifies the
- * corresponding `GElement` class as release slot 2247.
+ * `Formats/Latest` gives the framed GElement schema tag 2247, whose persisted
+ * object marker is `tag - 1`. This marker is not an ObjectPtrInit source slot.
  */
-export const REVIT_2026_GELEMENT_WIRE_SELECTOR = 2246;
-export const REVIT_2026_GELEMENT_SOURCE_CLASS_SLOT = 2247;
+export const REVIT_2026_GELEMENT_OBJECT_MARKER = 2246;
+/** Independently resolved by the release-scoped native direct reader. */
+export const REVIT_2026_GELEMENT_SOURCE_CLASS_SLOT = 2206;
 export const REVIT_2026_GREP_SOURCE_CLASS_SLOT = 2207;
 
 const FRAME_MARKER_OFFSET = 16;
@@ -120,9 +121,9 @@ export function decodeRevit2026GRepRoot(
     return { ok: false, error: "GElement frame length echo does not match" };
   }
   if (
-    frame.marker !== REVIT_2026_GELEMENT_WIRE_SELECTOR ||
+    frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER ||
     view.getUint16(frame.offset + FRAME_MARKER_OFFSET, true) !==
-      REVIT_2026_GELEMENT_WIRE_SELECTOR
+      REVIT_2026_GELEMENT_OBJECT_MARKER
   ) {
     return { ok: false, error: "frame is not a Revit 2026 GElement" };
   }

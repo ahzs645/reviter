@@ -13,7 +13,7 @@ import CFB from "cfb";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
   decodeRevit2026GRepRoot,
-  REVIT_2026_GELEMENT_WIRE_SELECTOR,
+  REVIT_2026_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2026-grep-root.ts";
 import {
   asBytes,
@@ -84,7 +84,7 @@ for (const partition of partitions) {
 
     let priorFrameEnd = -1;
     for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2026_GELEMENT_WIRE_SELECTOR) continue;
+      if (frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER) continue;
       gElementFrames += 1;
       framedOwnerIds.add(frame.elementId);
       if (frame.offset < priorFrameEnd) overlappingFrames += 1;
@@ -125,8 +125,8 @@ console.log(JSON.stringify({
   chunks,
   failedChunks,
   inflatedBytes,
-  gElementWireSelector:
-    `0x${REVIT_2026_GELEMENT_WIRE_SELECTOR.toString(16).padStart(4, "0")}`,
+  gElementObjectMarker:
+    `0x${REVIT_2026_GELEMENT_OBJECT_MARKER.toString(16).padStart(4, "0")}`,
   gElementFrames,
   distinctFramedOwnerIds: framedOwnerIds.size,
   overlappingFrames,

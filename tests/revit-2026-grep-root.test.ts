@@ -4,7 +4,7 @@ import test from "node:test";
 import type { ElementObject } from "../lib/reviter/element-objects.ts";
 import {
   decodeRevit2026GRepRoot,
-  REVIT_2026_GELEMENT_WIRE_SELECTOR,
+  REVIT_2026_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2026-grep-root.ts";
 
 function writeExtents(
@@ -34,7 +34,7 @@ function fixture(options: {
   const view = new DataView(data.buffer);
   view.setBigUint64(0, BigInt(elementId), true);
   view.setUint32(12, objectLength, true);
-  view.setUint16(16, REVIT_2026_GELEMENT_WIRE_SELECTOR, true);
+  view.setUint16(16, REVIT_2026_GELEMENT_OBJECT_MARKER, true);
 
   let offset = 18;
   view.setBigUint64(offset, 91n, true);
@@ -67,7 +67,7 @@ function fixture(options: {
       offset: 0,
       elementId,
       objectLength,
-      marker: REVIT_2026_GELEMENT_WIRE_SELECTOR,
+      marker: REVIT_2026_GELEMENT_OBJECT_MARKER,
       typeCode: 91,
     },
   };

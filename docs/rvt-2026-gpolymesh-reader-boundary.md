@@ -257,10 +257,12 @@ ID, type, and flags after returning from `GGroup`.
 ### Persisted `GElement` / `GRep` root
 
 The exact project now supplies that outer boundary directly. In the
-release-scoped `Formats/Latest` table, `GElement` is tag 2,247 with parent
-`GRep`; its zero-based wire selector is therefore 2,246 (`0x08c6`). A
-length/echo-framed object under that selector has this inherited static order
-starting at frame `+18`:
+release-scoped `Formats/Latest` table, `GElement` is schema tag 2,247 with
+parent `GRep`; its framed object marker is `tag - 1`, or 2,246 (`0x08c6`). The
+marker is not an `ObjectPtrInitReader` source-class selector: the native direct
+readers independently identify source slots 2,206 for `GElement` and 2,207 for
+`GRep`. A length/echo-framed object under the schema marker has this inherited
+static order starting at frame `+18`:
 
 ```text
 GNode/GInfo                         20 bytes
