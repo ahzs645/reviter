@@ -17,6 +17,8 @@ import { dirname, resolve } from "node:path";
 import { IfcAPI } from "web-ifc";
 
 const argv = process.argv.slice(2);
+const FEET_PER_METRE = 3.280839895;
+const BOUNDS_TOLERANCES_FEET = [1e-6, 1 / 64, 1 / 12, 0.5];
 
 function option(name) {
   const index = argv.indexOf(name);
@@ -45,6 +47,101 @@ function ratio(numerator, denominator) {
 
 function sum(values) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function quantile(values, fraction) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * fraction;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  const weight = position - lower;
+  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+}
+
+function emptyBounds() {
+  return {
+    minimum: [Infinity, Infinity, Infinity],
+    maximum: [-Infinity, -Infinity, -Infinity],
+  };
+}
+
+function includePoint(bounds, x, y, z) {
+  bounds.minimum[0] = Math.min(bounds.minimum[0], x);
+  bounds.minimum[1] = Math.min(bounds.minimum[1], y);
+  bounds.minimum[2] = Math.min(bounds.minimum[2], z);
+  bounds.maximum[0] = Math.max(bounds.maximum[0], x);
+  bounds.maximum[1] = Math.max(bounds.maximum[1], y);
+  bounds.maximum[2] = Math.max(bounds.maximum[2], z);
+}
+
+function includeBounds(target, source) {
+  for (let axis = 0; axis < 3; axis += 1) {
+    target.minimum[axis] = Math.min(
+      target.minimum[axis],
+      source.minimum[axis],
+    );
+    target.maximum[axis] = Math.max(
+      target.maximum[axis],
+      source.maximum[axis],
+    );
+  }
+}
+
+function boundsError(rvt, ifc) {
+  const centre = [];
+  const size = [];
+  const corners = [];
+  for (let axis = 0; axis < 3; axis += 1) {
+    centre.push(
+      Math.abs(
+        (rvt.minimum[axis] + rvt.maximum[axis]) / 2 -
+          (ifc.minimum[axis] + ifc.maximum[axis]) / 2,
+      ),
+    );
+    size.push(
+      Math.abs(
+        (rvt.maximum[axis] - rvt.minimum[axis]) -
+          (ifc.maximum[axis] - ifc.minimum[axis]),
+      ),
+    );
+    corners.push(
+      Math.abs(rvt.minimum[axis] - ifc.minimum[axis]),
+      Math.abs(rvt.maximum[axis] - ifc.maximum[axis]),
+    );
+  }
+  return {
+    maximumCentreErrorFeet: Math.max(...centre),
+    maximumSizeErrorFeet: Math.max(...size),
+    maximumCornerErrorFeet: Math.max(...corners),
+  };
+}
+
+function errorDistribution(rows, field) {
+  const values = rows.map((row) => row[field]);
+  return {
+    medianFeet: quantile(values, 0.5),
+    p95Feet: quantile(values, 0.95),
+    maximumFeet: values.length === 0 ? null : Math.max(...values),
+  };
+}
+
+function toleranceCounts(rows) {
+  return Object.fromEntries(
+    BOUNDS_TOLERANCES_FEET.map((tolerance) => {
+      const count = rows.filter(
+        (row) => row.maximumCornerErrorFeet <= tolerance,
+      ).length;
+      return [
+        `${tolerance}ft`,
+        {
+          count,
+          ratio: ratio(count, rows.length),
+        },
+      ];
+    }),
+  );
 }
 
 const ifcBytes = readFileSync(paths.ifc);
@@ -95,6 +192,7 @@ api.StreamAllMeshes(model, (mesh) => {
   ifcGeometryProducts += 1;
   const element = elementByExpressId.get(mesh.expressID);
   let triangleCount = 0;
+  const bounds = emptyBounds();
   for (let index = 0; index < mesh.geometries.size(); index += 1) {
     const placed = mesh.geometries.get(index);
     const geometry = api.GetGeometry(model, placed.geometryExpressID);
@@ -103,15 +201,46 @@ api.StreamAllMeshes(model, (mesh) => {
       geometry.GetIndexDataSize(),
     );
     triangleCount += indices.length / 3;
+    const vertices = api.GetVertexArray(
+      geometry.GetVertexData(),
+      geometry.GetVertexDataSize(),
+    );
+    const matrix = placed.flatTransformation;
+    for (let vertex = 0; vertex + 2 < vertices.length; vertex += 6) {
+      const x = vertices[vertex];
+      const y = vertices[vertex + 1];
+      const z = vertices[vertex + 2];
+      // web-ifc is Y-up metres; the browser RVT path is Z-up feet.
+      includePoint(
+        bounds,
+        (matrix[0] * x +
+          matrix[4] * y +
+          matrix[8] * z +
+          matrix[12]) *
+          FEET_PER_METRE,
+        -(matrix[2] * x +
+          matrix[6] * y +
+          matrix[10] * z +
+          matrix[14]) *
+          FEET_PER_METRE,
+        (matrix[1] * x +
+          matrix[5] * y +
+          matrix[9] * z +
+          matrix[13]) *
+          FEET_PER_METRE,
+      );
+    }
     geometry.delete();
   }
   ifcTriangles += triangleCount;
   if (element?.numericTag == null) return;
   ifcGeometryProductsWithNumericTag += 1;
   const previous = ifcGeometryByTag.get(element.numericTag);
+  if (previous) includeBounds(bounds, previous.bounds);
   ifcGeometryByTag.set(element.numericTag, {
     type: element.type,
     triangles: (previous?.triangles ?? 0) + triangleCount,
+    bounds,
   });
 });
 api.CloseModel(model);
@@ -135,6 +264,18 @@ const exactTriangleCountTags = matchedTags.filter(
   (tag) =>
     rvtElements.get(tag)?.triangles === ifcGeometryByTag.get(tag)?.triangles,
 );
+const matchedPlacedTags = [...rvtPlacedElements.keys()]
+  .filter((tag) => ifcGeometryByTag.has(tag))
+  .sort((left, right) => left - right);
+const boundsRows = matchedPlacedTags.map((tag) => ({
+  tag,
+  type: ifcGeometryByTag.get(tag).type,
+  ...boundsError(
+    rvtPlacedElements.get(tag),
+    ifcGeometryByTag.get(tag).bounds,
+  ),
+}));
+const boundsRowByTag = new Map(boundsRows.map((row) => [row.tag, row]));
 
 const byIfcClass = new Map();
 for (const tag of matchedTags) {
@@ -144,10 +285,19 @@ for (const tag of matchedTags) {
     matchedTags: 0,
     rvtTriangles: 0,
     ifcTriangles: 0,
+    placedBoundsTags: 0,
+    placedBoundsWithinHalfFoot: 0,
   };
   row.matchedTags += 1;
   row.rvtTriangles += rvt.triangles;
   row.ifcTriangles += ifc.triangles;
+  const boundsRow = boundsRowByTag.get(tag);
+  if (boundsRow) {
+    row.placedBoundsTags += 1;
+    if (boundsRow.maximumCornerErrorFeet <= 0.5) {
+      row.placedBoundsWithinHalfFoot += 1;
+    }
+  }
   byIfcClass.set(ifc.type, row);
 }
 
@@ -167,6 +317,7 @@ const report = {
     ifcGeometryProductsWithNumericTag,
     uniqueIfcGeometryNumericTags: ifcGeometryByTag.size,
     matchedTags: matchedTags.length,
+    matchedPlacedInstanceTags: matchedPlacedTags.length,
     rvtOnlyTags: rvtOnlyTags.length,
     ifcOnlyTags: ifcOnlyTags.length,
   },
@@ -191,6 +342,26 @@ const report = {
     matchedRvtTagRatio: ratio(matchedTags.length, rvtElements.size),
     ifcGeometryTagCoverage: ratio(matchedTags.length, ifcGeometryByTag.size),
   },
+  worldBounds: {
+    scope:
+      "persisted RVT instances with a matched numeric IFC Tag; direct geometry-owner coordinates are not assumed to be world coordinates",
+    comparedTags: boundsRows.length,
+    frame:
+      "IFC Y-up metres mapped to RVT Z-up feet as (x, y, z) -> (x, -z, y)",
+    maximumCornerError: errorDistribution(
+      boundsRows,
+      "maximumCornerErrorFeet",
+    ),
+    maximumCentreError: errorDistribution(
+      boundsRows,
+      "maximumCentreErrorFeet",
+    ),
+    maximumSizeError: errorDistribution(
+      boundsRows,
+      "maximumSizeErrorFeet",
+    ),
+    withinMaximumCornerError: toleranceCounts(boundsRows),
+  },
   byIfcClass: Object.fromEntries(
     [...byIfcClass]
       .sort(
@@ -206,6 +377,10 @@ const report = {
             value.rvtTriangles,
             value.ifcTriangles,
           ),
+          placedBoundsWithinHalfFootRatio: ratio(
+            value.placedBoundsWithinHalfFoot,
+            value.placedBoundsTags,
+          ),
         },
       ]),
   ),
@@ -213,12 +388,18 @@ const report = {
     rvtOnlyTags: rvtOnlyTags.slice(0, 100),
     ifcOnlyTags: ifcOnlyTags.slice(0, 100),
     exactTriangleCountTags: exactTriangleCountTags.slice(0, 100),
+    worstPlacedBoundsTags: [...boundsRows]
+      .sort(
+        (left, right) =>
+          right.maximumCornerErrorFeet - left.maximumCornerErrorFeet,
+      )
+      .slice(0, 100),
   },
   interpretation: {
     geometry:
       "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements; they still contain only certified single-loop planar sampled faces. IFC counts contain each matched product's complete exported geometry.",
     transforms:
-      "Placed-instance bounds use the persisted instance basis and origin. Nested GArray/source-target transform chains remain outside this checkpoint, so world-bounds equality is not yet claimed.",
+      "Placed-instance bounds use the persisted instance basis and origin and are compared directly to IFC world AABBs. Nested GArray/source-target transform chains remain outside this checkpoint.",
     triangles:
       "Equal triangle counts are diagnostic only because valid tessellation policies can produce different triangle counts.",
     materials:

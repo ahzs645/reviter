@@ -110,7 +110,10 @@ worse. Those transforms stay a separately quantified regeneration boundary.
 
 The parity script opens the reference IFC locally with `web-ifc`, takes only
 numeric Revit Tags as the join key, and compares triangle counts after all RVT
-work is complete.
+work is complete. For persisted instances it also transforms the IFC mesh from
+Y-up metres into the RVT/browser Z-up feet frame and compares world AABBs.
+Direct geometry-owner bounds are excluded because their coordinates are not
+assumed to be world coordinates.
 
 | Metric | Result |
 | --- | ---: |
@@ -122,6 +125,10 @@ work is complete.
 | IFC triangles on the same Tags | 317,480 |
 | RVT / IFC triangles on matched Tags | 98.76% |
 | Tags with exactly equal triangle counts | 25,535 / 25,641 (99.59%) |
+| Persisted instances with matched IFC geometry | 25,533 |
+| World bounds within 0.000001 ft on every corner | 25,326 / 25,533 (99.19%) |
+| World bounds within 1 inch on every corner | 25,505 / 25,533 (99.89%) |
+| World bounds within 0.5 ft on every corner | 25,522 / 25,533 (99.96%) |
 
 Members account for 19,298 matched Tags and plates for 6,235. Their triangle
 ratios are 99.96% and 99.98%, respectively. Slabs, coverings, and roofs form
@@ -129,9 +136,12 @@ most of the remaining matched-set shortfall because the current path rejects
 multi-loop/hole and non-planar surface cases.
 
 Equal triangle counts are diagnostic, not geometric identity: different valid
-tessellation tolerances can emit different triangle counts. The audit retains
-per-element counts and bounds so later checkpoints can add world-bounds and
-sampled-surface comparisons.
+tessellation tolerances can emit different triangle counts. World bounds now
+give an independent placement and extent check: median worst-corner error is
+2.91e-9 ft and the 95th percentile is 8.02e-8 ft. Eleven `IfcPlate` Tags exceed
+0.5 ft; their contiguous Revit IDs and large extent differences are retained
+in the report rather than treated as successful instances. Sampled-surface and
+topological equivalence remain stronger future checks.
 
 ## Fail-closed boundaries
 
