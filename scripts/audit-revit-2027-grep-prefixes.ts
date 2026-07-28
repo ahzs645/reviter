@@ -24,6 +24,7 @@ import {
 import {
   decodeRevit2027GArray,
   decodeRevit2027GGroupPrefix,
+  REVIT_2027_GARRAY_BODY_BYTES,
   REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-grep-prefixes.ts";
@@ -109,7 +110,7 @@ for (const partition of partitions) {
         const decoded = decodeRevit2027GArray(
           inflated,
           root.dynamicPayloadOffset,
-          root.dynamicPayloadEndOffset,
+          root.dynamicPayloadOffset + REVIT_2027_GARRAY_BODY_BYTES,
           release,
         );
         if (decoded.ok) decodedOneEntryGArrays += 1;
@@ -166,7 +167,7 @@ console.log(JSON.stringify({
   gArray: {
     sourceClassSlot: REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
     oneEntryCandidates: oneEntryGArrays,
-    decodedExact140ByteBodies: decodedOneEntryGArrays,
+    decodedExact144ByteBodies: decodedOneEntryGArrays,
     failures: Object.fromEntries(
       [...gArrayFailures].sort((left, right) => right[1] - left[1]),
     ),

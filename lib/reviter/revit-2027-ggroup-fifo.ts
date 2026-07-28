@@ -1,6 +1,11 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
 import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
+  decodeRevit2027GLine,
+  REVIT_2027_GLINE_BODY_BYTES,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gline.ts";
+import {
   decodeRevit2027GArray,
   decodeRevit2027GGroupPrefix,
   REVIT_2027_GARRAY_BODY_BYTES,
@@ -97,7 +102,7 @@ function requireAppendTokens(
  * Native queue inspection establishes tail insertion and front removal.
  * Consequently children enqueued while the first root child is read remain
  * behind every root sibling already in the queue. This locator consumes only
- * independently certified 2027 sibling bodies (GArray and GGroup), validates
+ * independently certified 2027 sibling bodies (GArray, GGroup, and GLine), validates
  * the shared append-token sequence, and returns the next byte without reading
  * or naming the nested child's class body.
  */
@@ -154,7 +159,23 @@ export function locateRevit2027FirstGGroupNestedFifo(
     const startOffset = offset;
     let queuedProperties: readonly CondInt16QueueEntry[] = [];
 
-    if (sourceClassSlot === REVIT_2027_GARRAY_SOURCE_CLASS_SLOT) {
+    if (sourceClassSlot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT) {
+      const endOffset = startOffset + REVIT_2027_GLINE_BODY_BYTES;
+      if (endOffset > root.dynamicPayloadEndOffset) {
+        return {
+          ok: false,
+          error: "Revit 2027 GLine sibling exceeds the GRep replay boundary",
+        };
+      }
+      const decoded = decodeRevit2027GLine(
+        data,
+        startOffset,
+        endOffset,
+        revitVersion,
+      );
+      if (!decoded.ok) return decoded;
+      offset = decoded.value.endOffset;
+    } else if (sourceClassSlot === REVIT_2027_GARRAY_SOURCE_CLASS_SLOT) {
       const endOffset = startOffset + REVIT_2027_GARRAY_BODY_BYTES;
       if (endOffset > root.dynamicPayloadEndOffset) {
         return {

@@ -29,6 +29,7 @@ function gArrayFixture(): Uint8Array {
   transform.forEach((value, index) => {
     view.setFloat64(44 + index * 8, value, true);
   });
+  view.setInt32(140, 1_031_707, true);
   return data;
 }
 
@@ -45,6 +46,7 @@ test("decodes the exact release-gated Revit 2027 GArray body", () => {
   assert.equal(result.value.resolveSymbolInView, true);
   assert.equal(result.value.hasScale, false);
   assert.deepEqual(result.value.stepTransform.origin, [10, 20, 30]);
+  assert.equal(result.value.numInstances, 1_031_707);
   assert.equal(result.value.endOffset, REVIT_2027_GARRAY_BODY_BYTES);
 });
 

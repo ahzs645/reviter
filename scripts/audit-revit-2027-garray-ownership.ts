@@ -36,6 +36,7 @@ import {
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import {
   decodeRevit2027GArray,
+  REVIT_2027_GARRAY_BODY_BYTES,
   REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
   type Revit2027GArray,
 } from "../lib/reviter/revit-2027-grep-prefixes.ts";
@@ -293,7 +294,7 @@ for (let entryIndex = 0; entryIndex < container.FileIndex.length; entryIndex += 
       const decodedArray = decodeRevit2027GArray(
         inflated,
         root.dynamicPayloadOffset,
-        root.dynamicPayloadEndOffset,
+        root.dynamicPayloadOffset + REVIT_2027_GARRAY_BODY_BYTES,
         release,
       );
       if (!decodedArray.ok) {
@@ -332,6 +333,9 @@ const uniqueTags = new Set(
   records
     .map((record) => Number(record.gArray.tagElementId))
     .filter((value) => Number.isSafeInteger(value) && value > 0),
+);
+const numInstancesValues = records.map(
+  (record) => record.gArray.numInstances,
 );
 const ownerMultiplicity = new Map<number, number>();
 for (const record of records) {
@@ -567,6 +571,11 @@ console.log(JSON.stringify({
     exactGArrayBodies: records.length,
     uniqueOwners: uniqueOwners.size,
     uniquePositiveTagElementIds: uniqueTags.size,
+    uniqueNumInstancesValues: new Set(numInstancesValues).size,
+    nonPositiveNumInstancesValues:
+      numInstancesValues.filter((value) => value <= 0).length,
+    minimumNumInstancesValue: Math.min(...numInstancesValues),
+    maximumNumInstancesValue: Math.max(...numInstancesValues),
     ownersWithMultipleBodies:
       [...ownerMultiplicity.values()].filter((count) => count > 1).length,
     maximumBodiesPerOwner: Math.max(...ownerMultiplicity.values()),

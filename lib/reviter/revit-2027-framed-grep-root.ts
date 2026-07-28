@@ -47,5 +47,16 @@ export function decodeRevit2027FramedGRepRoot(
   ) {
     return { ok: false, error: "frame is not a Revit 2027 GElement" };
   }
-  return decodeRevit2026GRepRoot(data, frame);
+  const decoded = decodeRevit2026GRepRoot(data, frame);
+  if (!decoded.ok) return decoded;
+  return {
+    ok: true,
+    value: {
+      ...decoded.value,
+      // The Revit 2027 length echo is at frameEnd + 16. Exact one-child
+      // GLine bodies use all 16 preceding bytes for their final vector
+      // components, so the 2027 FIFO replay envelope extends to the echo.
+      dynamicPayloadEndOffset: decoded.value.frameEndOffset + 16,
+    },
+  };
 }

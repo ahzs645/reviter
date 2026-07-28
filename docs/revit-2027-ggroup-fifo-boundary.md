@@ -48,11 +48,12 @@ Nested properties discovered while reading the first GGroup are therefore
 appended behind every initial GRep sibling already in the queue. Their bodies
 do not begin at the GGroup static end unless no older sibling remains.
 
-`locateRevit2027FirstGGroupNestedFifo` consumes only the two independently
+`locateRevit2027FirstGGroupNestedFifo` consumes only the three independently
 certified 2027 body readers available at this checkpoint:
 
 - source slot 2,248: schema-complete GGroup;
-- source slot 2,215: exact 140-byte GArray.
+- source slot 2,215: exact 144-byte GArray;
+- source slot 1,973: exact 84-byte GLine.
 
 It validates the global append-token sequence and returns the first nested
 body offset without consuming or naming that body.
@@ -74,9 +75,9 @@ The exact UNBC model reports:
 | Complete GGroup static bodies | 17,038 |
 | Complete GGroups with no nested child | 3,422 |
 | Complete-body coverage | 100% |
-| FIFO positions covered using only 2,215/2,248 sibling readers | 10 |
-| Covered non-empty first groups | 9 |
-| Covered first-nested source slot | 2,215 in all 9 |
+| FIFO positions covered using only 1,973/2,215/2,248 sibling readers | 7,730 |
+| Covered non-empty first groups | 4,494 |
+| Covered first-nested source slots | 2,248: 4,466; 2,343: 19; 2,215: 9 |
 | Failed chunks | 0 of 3,666 |
 
 The remaining FIFO positions stop before consuming an uncertified initial
@@ -84,7 +85,6 @@ sibling:
 
 | Blocking initial sibling slot | Roots |
 | ---: | ---: |
-| 1,973 | 7,720 |
 | 2,343 | 7,572 |
 | 2,254 | 1,441 |
 | 2,213 | 291 |
@@ -99,14 +99,15 @@ entries.
 The native tessellator layer (`TB_Geometry`, `libTD_Ge`,
 `libOdBrepModeler`, `libTD_BrepBuilder`, `libTD_Br`, and
 `libTD_BrepRenderer`) becomes relevant only after replay reaches an owned,
-release-certified solid or stored-mesh body. This checkpoint reaches none:
-the nine newly positioned non-empty bodies are all GArray slot 2,215, and the
-broader first-nested census contains no candidate 2027 GBRep, GFakeBRep, or
-GPolyMesh slot.
+release-certified solid or stored-mesh body. The dedicated source-slot 2,343
+reader now decodes all 19 first-nested `Geometry` static bodies and exposes
+their owned face and edge queues. The queued face, edge, loop, curve, and
+surface bodies remain the boundary before a browser tessellator can emit
+triangles.
 
 The reference IFC contains 9,371 `IFCFACETEDBREP`/`IFCCLOSEDSHELL` bodies,
 93,749 `IFCFACE` records, and 93,874 `IFCPOLYLOOP` records. This GGroup route
-currently binds zero RVT solids or meshes to those IFC bodies, so geometry
+still binds zero tessellated RVT solids or meshes to those IFC bodies, so geometry
 parity remains 0 of 9,371 rather than an inferred match.
 
 The kernel-facing blocker is precise: first add release-certified readers for

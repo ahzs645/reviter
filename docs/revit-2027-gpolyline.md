@@ -49,7 +49,7 @@ The audit finds:
 - every polyline is closed, yielding 928 explicit line segments;
 - every `filled` flag is false;
 - every style id is 145 and every geometry tag is `-1`;
-- the count-derived endpoint leaves exactly 212 bytes for the three following
+- the count-derived endpoint leaves exactly 228 bytes for the three following
   queued children in every frame.
 
 The body grammar is therefore:

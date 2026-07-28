@@ -47,6 +47,10 @@ test("Revit 2027 framed GRep root adapter accepts only its release and marker", 
     assert.equal(decoded.value.ownerElementId, BigInt(frame.elementId));
     assert.deepEqual(decoded.value.children, []);
     assert.equal(decoded.value.dynamicPayloadOffset, frame.objectLength);
+    assert.equal(
+      decoded.value.dynamicPayloadEndOffset,
+      frame.objectLength + 16,
+    );
   }
 
   assert.deepEqual(decodeRevit2027FramedGRepRoot(data, frame, 2026), {

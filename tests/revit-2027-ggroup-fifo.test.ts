@@ -4,6 +4,10 @@ import test from "node:test";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import type { Revit2027FramedGRepRoot } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import {
+  REVIT_2027_GLINE_BODY_BYTES,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-gline.ts";
+import {
   decodeRevit2027GGroupStatic,
   locateRevit2027FirstGGroupNestedFifo,
 } from "../lib/reviter/revit-2027-ggroup-fifo.ts";
@@ -88,6 +92,15 @@ function writeGArray(data: Uint8Array, offset: number): number {
   return offset + REVIT_2027_GARRAY_BODY_BYTES;
 }
 
+function writeGLine(data: Uint8Array, offset: number): number {
+  const view = new DataView(data.buffer);
+  writeGInfo(view, offset);
+  [0, 4.5, -27, 56, 0, -1, 0, 0].forEach((value, index) => {
+    view.setFloat64(offset + 20 + index * 8, value, true);
+  });
+  return offset + REVIT_2027_GLINE_BODY_BYTES;
+}
+
 test("GGroup schema-complete static body ends with m_subNodes", () => {
   const data = new Uint8Array(40);
   const endOffset = writeGGroup(data, 4, [
@@ -161,6 +174,33 @@ test("keeps later GGroup appends behind the first group's nested FIFO", () => {
   assert.equal(decoded.value.nestedFifoOffset, data.byteLength);
   assert.equal(decoded.value.firstNestedEntry?.token, 5);
   assert.equal(decoded.value.initialSiblingSpans[0]?.queuedProperties[0]?.token, 6);
+});
+
+test("locates first GGroup nested FIFO after an older GLine sibling", () => {
+  const groupBytes = 30;
+  const data = new Uint8Array(groupBytes + REVIT_2027_GLINE_BODY_BYTES);
+  assert.equal(
+    writeGGroup(data, 0, [{ token: 5, sourceClassSlot: 2343 }]),
+    groupBytes,
+  );
+  assert.equal(writeGLine(data, groupBytes), data.byteLength);
+  const decoded = locateRevit2027FirstGGroupNestedFifo(
+    data,
+    root(
+      [
+        descriptor(3, REVIT_2027_GGROUP_SOURCE_CLASS_SLOT),
+        descriptor(4, REVIT_2027_GLINE_SOURCE_CLASS_SLOT),
+      ],
+      data.byteLength,
+    ),
+    2027,
+  );
+
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok) return;
+  assert.equal(decoded.value.initialSiblingSpans.length, 1);
+  assert.equal(decoded.value.nestedFifoOffset, data.byteLength);
+  assert.equal(decoded.value.firstNestedEntry?.sourceClassSlot, 2343);
 });
 
 test("GGroup FIFO locator rejects another release and unknown siblings", () => {

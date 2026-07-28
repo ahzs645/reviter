@@ -12,6 +12,7 @@
  * S+18           u64 type code     // element class discriminator
  * S+26           u64 element id, repeated
  * ...            payload, including the duplicated-bounds sub-record
+ * S+objLen       16 bytes          // release-specific late payload / padding
  * S+objLen+16    u32 objLen        // echoed
  * S+objLen+20    next object
  * ```
@@ -35,7 +36,11 @@ const MAX_OBJECT_BYTES = 0xffff;
 /** Below this an "object" cannot hold even its own header and trailer. */
 const MIN_OBJECT_BYTES = 40;
 
-/** Bytes of trailer after the object body, the last four being the echo. */
+/**
+ * Bytes after the stored object-length boundary through the echo. Exact
+ * Revit 2027 GLine records prove the first 16 can still be serialized payload
+ * in that release.
+ */
 const TRAILER_BYTES = 20;
 
 /** Offset within the trailer at which the length is echoed. */
@@ -45,7 +50,11 @@ export type ElementObject = {
   /** Offset of the object start within the inflated page. */
   offset: number;
   elementId: number;
-  /** Object length in bytes, excluding the 20-byte trailer. */
+  /**
+   * Stored object-length boundary. Release-specific decoding may continue for
+   * 16 bytes before the echoed length; the next independently framed object
+   * begins at +20.
+   */
   objectLength: number;
   /** Release-specific object marker at `offset + 16`. */
   marker: number;

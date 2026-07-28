@@ -8,7 +8,7 @@ import {
 
 export const REVIT_2027_GARRAY_SOURCE_CLASS_SLOT = 2215;
 export const REVIT_2027_GGROUP_SOURCE_CLASS_SLOT = 2248;
-export const REVIT_2027_GARRAY_BODY_BYTES = 140;
+export const REVIT_2027_GARRAY_BODY_BYTES = 144;
 
 const GINFO_BYTES = 20;
 const GARRAY_INSTANCE_INFO_OFFSET = GINFO_BYTES;
@@ -18,6 +18,7 @@ const GARRAY_TARGET_OFFSET = 38;
 const GARRAY_RESOLVE_SYMBOL_OFFSET = 42;
 const GARRAY_HAS_SCALE_OFFSET = 43;
 const GARRAY_TRANSFORM_OFFSET = 44;
+const GARRAY_NUM_INSTANCES_OFFSET = 140;
 
 export type Revit2027GInfo = {
   gStyleElementId: bigint;
@@ -37,6 +38,8 @@ export type Revit2027GArray = {
   resolveSymbolInView: boolean;
   hasScale: boolean;
   stepTransform: RevitTransform3d;
+  /** Exact persisted `m_numInstances` int32; its model values are ID-like. */
+  numInstances: number;
 };
 
 export type Revit2027GArrayDecodeResult =
@@ -93,14 +96,13 @@ function readBoolean(data: Uint8Array, byteOffset: number): boolean | null {
 }
 
 /**
- * Decode the exact selector-free 140-byte Revit 2027 `GArray` body measured
+ * Decode the exact selector-free 144-byte Revit 2027 `GArray` body measured
  * in the supplied UNBC model.
  *
  * The file's schema identifies source slot 2215 as `GArray`. The body contains
- * `GInfo`, the bounded `GInstance` prefix, and a 96-byte transform. It does not
- * contain the trailing `m_numInstances` int32 read by the available 2026
- * module, so this reader is deliberately gated to release 2027 and this exact
- * body boundary.
+ * `GInfo`, the bounded `GInstance` prefix, a 96-byte transform, and the
+ * schema-declared trailing `m_numInstances` int32. This reader is deliberately
+ * gated to release 2027 and this exact body boundary.
  */
 export function decodeRevit2027GArray(
   data: Uint8Array,
@@ -120,7 +122,7 @@ export function decodeRevit2027GArray(
     ) ||
     bodyEndOffset - byteOffset !== REVIT_2027_GARRAY_BODY_BYTES
   ) {
-    return { ok: false, error: "Revit 2027 GArray body is not exactly 140 bytes" };
+    return { ok: false, error: "Revit 2027 GArray body is not exactly 144 bytes" };
   }
 
   const instanceInfo = decodeCondInt16PropertyDescriptor(
@@ -171,10 +173,14 @@ export function decodeRevit2027GArray(
     byteOffset + GARRAY_TRANSFORM_OFFSET,
   );
   if (!transform.ok) return transform;
-  if (transform.transform.endOffset !== bodyEndOffset) {
+  if (
+    transform.transform.endOffset !==
+    byteOffset + GARRAY_NUM_INSTANCES_OFFSET
+  ) {
     return {
       ok: false,
-      error: "Revit 2027 GArray transform does not end at the body boundary",
+      error:
+        "Revit 2027 GArray transform does not end at the numInstances field",
     };
   }
 
@@ -192,6 +198,10 @@ export function decodeRevit2027GArray(
       resolveSymbolInView,
       hasScale,
       stepTransform: transform.transform,
+      numInstances: view.getInt32(
+        byteOffset + GARRAY_NUM_INSTANCES_OFFSET,
+        true,
+      ),
     },
   };
 }

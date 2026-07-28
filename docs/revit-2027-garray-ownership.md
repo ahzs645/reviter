@@ -12,7 +12,8 @@ The RVT supplies all identity and ownership used to select records:
 - a length/echo-framed Revit 2027 `GElement`;
 - a `GRep` owner id equal to the independently framed element id;
 - exactly one root child at source slot 2,215;
-- the exact 140-byte release-gated `GArray` body.
+- the exact 144-byte release-gated `GArray` body, including the
+  schema-declared trailing `m_numInstances` int32.
 
 The current semantic JSON and reference IFC are audit oracles only. They are
 used after RVT decoding to compare bounding boxes and are never used to locate
@@ -34,6 +35,9 @@ node --experimental-strip-types \
 - zero failed bodies and zero failed chunks across 3,666 chunks;
 - 30,572 unique framed owners with no duplicate owner;
 - zero positive `tagElementId` values;
+- 7,784 distinct positive `m_numInstances` values spanning 290,626 to
+  2,497,107, so the exact field is retained raw and is not interpreted as a
+  literal instance count;
 - all 30,572 owners already have a current persisted placement;
 - 12,647 `GArray` transforms exactly equal that placement;
 - 2,941 equal its rigid inverse;

@@ -33,7 +33,7 @@ high-volume source classes that were previously called 2026 “leaves”:
 
 | UNBC source slot | Root descriptors | 2027 identity | Independent evidence |
 | ---: | ---: | --- | --- |
-| 2,215 | 40,652 | `GArray` | `Formats/Latest` defines `GArray` with tag 2,215 and parent `GInstance`; the payload ends in the schema-declared 96-byte transform |
+| 2,215 | 40,652 | `GArray` | `Formats/Latest` defines `GArray` with tag 2,215 and parent `GInstance`; its derived fields are the 96-byte transform and trailing `m_numInstances` int32 |
 | 2,248 | 42,832 | `GGroup` | the 2027 source order is `GElement` 2,246, `GRep` 2,247, `GGroup` 2,248; every tested payload begins with the exact `GNode/GInfo + AllSubNodes` prefix |
 
 They are **not** the classes at the same numeric indexes in the 2026 module:
@@ -48,8 +48,8 @@ be used to authorize body consumption.
 
 ### Slot 2,215 payload
 
-There are 30,572 roots whose only initial child is slot 2,215. Every dynamic
-payload is exactly 140 bytes. All 30,572 have:
+There are 30,572 roots whose only initial child is slot 2,215. The
+schema-complete `GArray` body is exactly 144 bytes. All 30,572 have:
 
 ```text
 GInfo                                      20 bytes
@@ -59,17 +59,22 @@ GInstance tag ElementId                     8 bytes
 GTarget target value                        4 bytes
 resolveSymInView + hasScale                  2 bytes
 stepTrf                                    96 bytes (12 float64)
+m_numInstances                              4 bytes
                                            --------
-                                            140 bytes
+                                            144 bytes
 ```
 
 All 30,572 transforms are finite and have three mutually orthogonal unit
 basis vectors. The available 2026 `GArray` reader also calls `GInstance` and
 then the 96-byte `Trf201120260Reader`, which corroborates the shared portion
-of the call order. The exact 2027 body does not contain the trailing
-`m_numInstances` `int32` that the 2026 reader would consume. Consequently this
-is positive class/layout evidence and a negative compatibility result: the
-2026 direct reader is not a byte-for-byte 2027 reader.
+of the call order.
+
+An earlier audit stopped at `frame + objectLength` and therefore reported 140
+bytes. The object-length echo actually sits 16 bytes later, and exact
+single-child `GLine` bodies prove those pre-echo bytes are live FIFO payload.
+Extending the replay envelope exposes the schema-declared `m_numInstances`
+field at byte 140. Twelve later bytes remain for queued data and are not
+assigned to `GArray`.
 
 ### Slot 2,248 nested group prefix
 
@@ -181,9 +186,12 @@ The following release-gated, browser-safe subset is now implemented:
 - `decodeRevit2027FramedGRepRoot` adapts only the independently measured
   length/echo frame, `GInfo`, `AllSubNodes`, extents, owner, object-type, and
   flags grammar;
-- `decodeRevit2027GArray` consumes only an exact 140-byte slot-2,215 body;
+- `decodeRevit2027GArray` consumes only an exact 144-byte slot-2,215 body;
+- `decodeRevit2027GLine` consumes only an exact 84-byte slot-1,973 body;
 - `decodeRevit2027GGroupPrefix` consumes `GInfo + AllSubNodes` only and
-  returns the first unknown suffix byte without reading it.
+  returns the first suffix byte without guessing its derived fields;
+- `decodeRevit2027GeometryStatic` consumes slot 2,343 through the complete
+  face/edge/shared-surface queue descriptors and stops before queued bodies.
 
 The exact audit in
 [`audit-revit-2027-grep-prefixes.ts`](../scripts/audit-revit-2027-grep-prefixes.ts)
