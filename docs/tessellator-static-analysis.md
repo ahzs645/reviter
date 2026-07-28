@@ -37,6 +37,27 @@ WebAssembly.
 and geometry libraries. `libTD_BrepBuilder.so` and `libTD_Br.so` depend on
 `libTD_Ge.so`.
 
+The focused audit is reproducible without loading any target binary:
+
+```sh
+node scripts/audit-native-tessellator-stack.mjs \
+  "/Users/ahmadjalil/Desktop/BmJsonExportEx-isolated" \
+  > /tmp/reviter-native-tessellator-stack.json
+```
+
+For the exact hashes above, the audit verifies all nine files, all required
+role-defining symbols, and the local dependency edges. The six main targets
+are Linux x86-64 ELF shared objects with an Itanium C++ ABI. `TB_Geometry.tx`
+and `libOdBrepModeler.so` also depend on `libOdTrial.so`; all main modules
+depend on native runtime libraries such as `libstdc++`, `libc`, and/or
+`libpthread`.
+
+The isolated tree contains zero `.wasm` or `.wat` artifacts. The target bytes
+contain none of the audited WebAssembly/Emscripten/Node binding markers. This
+is an absence-of-evidence result for this supplied build, not a claim about
+every ODA product: no browser-callable ABI or supplied WASM build exists here.
+The browser implementation therefore cannot wrap these particular files.
+
 ## Native call chain
 
 The exported symbol and call-site evidence gives this pipeline:
@@ -301,6 +322,35 @@ before tessellation and must not be conflated with triangle density.
 The useful artifact to reproduce is the **contract**, not the binary code:
 geometry graph in, face-aware indexed mesh out, with explicit tolerances,
 transforms, provenance, and material groups.
+
+## Reconciliation with the exact UNBC converter
+
+The named layer clarifies ownership of BRep work, but several project gaps sit
+before or beside tessellation:
+
+| Project capability | Exact current checkpoint | Relationship to the named layer |
+| --- | --- | --- |
+| Native Revit `UniqueId` | 74,437 persisted identities decoded; all 38,187 numeric IFC Tags with an element-table join have a native identity | Already solved upstream; no tessellator dependency |
+| Genuine model tree | 50,205 owning-element, 27,568 host, and 37,503 associated-level relations decoded | Core persisted relations are solved; full view/family/nested hierarchy remains upstream of geometry |
+| Certified browser geometry | 13,236 complete owners retained; 32,411 scene elements and 503,217 native triangles emitted; 4,137 elements retain proxies | Current TypeScript replay supplies a bounded subset of the graph the native builder/renderer would consume |
+| Family regeneration | 327 unreplayed shared owners account for 2,019 IFC Tags at the recorded 91.55% parity checkpoint | `FamilySymbol.GeomTable` ownership/regeneration must be decoded first; none of the named BRep entry points accepts a `FamilySymbol` record |
+| General BRep/tessellation | Planes plus bounded cylinder/cone/surface-of-revolution paths are certified; general p-curves, regions, transforms, NURBS, and trimmed surfaces remain incomplete | Builder/traversal/renderer exports define the needed neutral contract, but supply no browser ABI or documented body decoder |
+| Exact materials | 133,482 of 139,106 decoded Faces carry positive IDs bound to 36 framed `MaterialElem` records; 5,624 faces remain unassigned/system-style cases | Face/material grouping must be retained around `OdGeTrMesh`; the mesh carrier itself has no material array |
+
+The `GStyle` fallback audit found that every selected positive style in the
+remaining direct-owner set stores material `-1`, so it adds no exact material
+assignments. Category, type/family geometry-tag, view, and system override
+precedence remain separate semantic work.
+
+Most importantly, the observed triangle handoff is
+`OdBrepRendererImpl::getFaceMesh(GeMesh::OdGeTrMesh&, ...)`: an in-memory C++
+object containing points and integer triangle indices. It is not a serialized
+triangle stream. `OdMdSerializer::writeBody` and
+`OdMdDeserializer::readBody` concern the proprietary native modeler body, not
+a portable mesh format. The separately persisted
+`OdBmGPolyMesh`/faceted-topology variants are the only observed already-
+tessellated RVT route, and they still require release-specific record and
+ownership decoding before browser use.
 
 ## Concrete TypeScript/WASM implementation order
 
