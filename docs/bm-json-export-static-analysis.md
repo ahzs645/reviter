@@ -13,6 +13,9 @@ prototype, decoded samples, and vendored dependencies.
 
 The 14 parser prototype sources and their exact-model behavior are reviewed
 separately in [`rvt-parser-prototype-review.md`](rvt-parser-prototype-review.md).
+The decoded-sample audit also exposed the exact, browser-safe
+[`TransmissionData` manifest](revit-transmission-data.md); it is now integrated
+with native element identities and redacted by construction.
 
 ## What the files are
 

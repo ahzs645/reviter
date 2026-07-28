@@ -34,6 +34,7 @@ export type StreamDecoder =
   | "thumbnail"
   | "schema"
   | "element-index"
+  | "external-references"
   | "partition-names"
   | "element-records"
   | "none";
@@ -79,7 +80,7 @@ const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)Global\/History$/i, decoder: "element-index", depth: "partial", note: "Episode GUIDs and history indexes used with Global/ElemTable to reconstruct native Revit UniqueIds; remaining edit history is not decoded" },
   { pattern: /(^|\/)Global\/DocumentIncrementTable$/i, decoder: "none", depth: "none", note: "Incremental save table; not decoded" },
   { pattern: /(^|\/)ProjectInformation$/i, decoder: "metadata", depth: "full", note: "PKZip Atom metadata: project identity, design file, and property groups" },
-  { pattern: /(^|\/)TransmissionData$/i, decoder: "none", depth: "none", note: "eTransmit link data; not decoded" },
+  { pattern: /(^|\/)TransmissionData$/i, decoder: "external-references", depth: "full", note: "Length-framed external-reference types, element identities, redacted filenames, path types, and saved/desired load states" },
   { pattern: /(^|\/)PartAtom$/i, decoder: "metadata", depth: "full", note: "Family/type title, category, parameters, and taxonomies from PartAtom XML" },
   { pattern: /(^|\/)Contents$/i, decoder: "none", depth: "none", note: "Container contents record; not decoded" },
 ];

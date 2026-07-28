@@ -33,6 +33,24 @@ length framing. The prototype's `0x0604` anchor is therefore useful as an
 exploratory locator only; it cannot be a production ownership or geometry
 boundary.
 
+The 13 dumped streams match the supplied RVT byte-for-byte. There are 13
+primary decoded counterparts plus derived `preview.png`; all 28 dump, decoded,
+preview, and index artifacts match the committed size/SHA-256 ledger. The
+decoded files are not uniformly safe fixtures:
+
+| Artifact | Prototype bytes | Correct browser-reader bytes | Result |
+| --- | ---: | ---: | --- |
+| `ContentDocuments.13.dec` | 2,763,708 | 2,748,266 | outer checksum bytes retained |
+| `ElemTable.14.dec` | 2,994,799 | 2,977,550 | outer checksum bytes retained |
+| `Latest.15.dec` (`Global/Latest`) | 1,737,239 | 1,723,072 | outer checksum bytes retained |
+| `Latest.16.dec` (`Formats/Latest`) | 516,043 | 513,948 | outer checksum bytes retained |
+| `325.9.dec` | 383,905,134 | 421,867,755 | 334 continuation chunks missing |
+
+The contaminated `Formats/Latest` artifact yields only 184 definitions, 500
+references, and 54 rejections. The checksum-clean stream yields 416
+definitions, 2,382 references, and zero rejections. These decoded artifacts
+remain forensic evidence and are not runtime fixtures.
+
 ## Per-file disposition
 
 | Prototype file | Useful concept | Reviter disposition |
@@ -67,3 +85,9 @@ That workflow now exists in client-side TypeScript and Web Platform primitives.
 The prototype supplied useful hypotheses for CFB, ZIP, preview, UTF-16, and
 record exploration. It did not supply the missing Revit object graph, family
 regenerator, BRep kernel, or tessellator.
+
+One independently framed sample did unlock a new client feature:
+`TransmissionData` is an exact uint32-counted UTF-16LE XML document. Reviter
+now exports its external resource types, native element/UniqueId joins,
+filenames, path types, and saved/desired load states while omitting absolute
+paths. See [`revit-transmission-data.md`](revit-transmission-data.md).

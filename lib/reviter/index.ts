@@ -3,6 +3,12 @@ export { revitVersionFromBasicFileInfo } from "./basic-file-info";
 export { partAtomMetadataFromSummary } from "./part-atom";
 export { parsePartAtomXml } from "./part-atom";
 export { parseProjectInformationArchive } from "./project-information";
+export { parseRevitTransmissionData } from "./transmission-data";
+export type {
+  RevitExternalFileReference,
+  RevitTransmissionData,
+  RevitTransmissionDataOptions,
+} from "./transmission-data";
 export type {
   PartAtomDesignFile,
   PartAtomFeature,

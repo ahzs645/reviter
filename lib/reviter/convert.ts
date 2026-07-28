@@ -134,6 +134,7 @@ import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
 import { parsePartAtomXml } from "./part-atom.ts";
 import { parseProjectInformationArchive } from "./project-information.ts";
+import { parseRevitTransmissionData } from "./transmission-data.ts";
 import {
   buildBoundsMeshes,
   buildMeshes,
@@ -753,6 +754,35 @@ export function convertRvtBytes(
         if (identity.format !== "unsupported") nativeIdentity = identity;
       }
     }
+    const transmissionEntry = cfb.FileIndex
+      .map((entry, index) => ({
+        entry,
+        path: cfb.FullPaths[index] ?? "",
+      }))
+      .find(
+        ({ entry, path }) =>
+          entry.size > 0 && /\/TransmissionData$/i.test(path),
+      );
+    const decodedTransmissionData = transmissionEntry
+      ? parseRevitTransmissionData(asBytes(transmissionEntry.entry.content))
+      : undefined;
+    const uniqueIdByElement = new Map(
+      nativeIdentity?.identities.map((identity) => [
+        identity.elementId,
+        identity.uniqueId,
+      ]) ?? [],
+    );
+    const transmissionData = decodedTransmissionData
+      ? {
+          ...decodedTransmissionData,
+          references: decodedTransmissionData.references.map((reference) => ({
+            ...reference,
+            ...(uniqueIdByElement.get(reference.elementId)
+              ? { uniqueId: uniqueIdByElement.get(reference.elementId) }
+              : {}),
+          })),
+        }
+      : undefined;
     const coverage = summariseCoverage(
       cfb.FileIndex
         .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
@@ -1962,6 +1992,7 @@ export function convertRvtBytes(
         schema,
         partitionNames,
         partAtom,
+        transmissionData,
         coverage,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
@@ -1970,6 +2001,7 @@ export function convertRvtBytes(
             ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
             ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
             ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
+            ...(transmissionData ? ["revit-transmission-data-v1"] : []),
             ...(nativeMaterialDefinitions.length
               ? ["revit-2027-material-element-name-v1"]
               : []),
@@ -2064,6 +2096,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeIdentity
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
+            : []),
+          ...(transmissionData?.missingReferenceCount
+            ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
             : []),
           ...(nativeMaterialDefinitions.length
             ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry, ${nativeFamilySymbolMaterialMaps.length.toLocaleString()} FamilySymbol geometry-tag maps, and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
@@ -2180,6 +2215,7 @@ export function convertRvtBytes(
       schema,
       partitionNames,
       partAtom,
+      transmissionData,
       coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
@@ -2187,6 +2223,7 @@ export function convertRvtBytes(
           ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
           ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
           ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
+          ...(transmissionData ? ["revit-transmission-data-v1"] : []),
           ...(nativeMaterialDefinitions.length
             ? ["revit-2027-material-element-name-v1"]
             : []),
@@ -2285,6 +2322,9 @@ export function convertRvtBytes(
           : []),
         ...(nativeIdentity
           ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
+          : []),
+        ...(transmissionData?.missingReferenceCount
+          ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
           : []),
         ...(nativeMaterialDefinitions.length
           ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]

@@ -230,6 +230,7 @@ export function makeReport(
       schema: result.schema ?? null,
       partitionNames: result.partitionNames ?? null,
       partAtom: result.partAtom ?? null,
+      transmissionData: result.transmissionData ?? null,
       modelTree: modelTreeReport(result),
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],

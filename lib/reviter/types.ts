@@ -6,6 +6,7 @@ import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
+import type { RevitTransmissionData } from "./transmission-data.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
@@ -484,6 +485,8 @@ export type ConvertResult = {
   partitionNames?: PartitionName[];
   /** Family/type metadata decoded from the optional PartAtom XML stream. */
   partAtom?: PartAtomMetadata;
+  /** Redacted external-reference state decoded from `TransmissionData`. */
+  transmissionData?: RevitTransmissionData;
   /** Every container stream, and which decoder claims it. */
   coverage?: CoverageSummary;
   decoderCoverage: DecoderCoverage;
