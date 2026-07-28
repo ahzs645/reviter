@@ -27,6 +27,7 @@ const report = JSON.parse(
     fullFifoBoundsWithinHalfFoot: number;
     gRepShapes: Record<string, number>;
     completeGRepShapes: Record<string, number>;
+    halfFootGRepShapes: Record<string, number>;
   }>;
   ownedCertifiedChildrenDiagnostic: {
     targetsWithCertifiedChildren: number;
@@ -114,4 +115,32 @@ test("full FIFO coverage preserves negative controls before bounds admission", (
       (report.byIfcClass.IfcSlab?.completeGRepShapes[rampShape] ?? 0),
     10,
   );
+});
+
+test("class-independent descriptor predicate bounds candidate work", () => {
+  const candidateShapes = new Set([
+    "3:2215,4:2215,5:2343",
+    "3:2254,4:2254,5:2254,6:2254,7:2248,8:2248,9:2248,10:2248,11:2343",
+    "3:2215,4:2215,5:2343,6:2343",
+  ]);
+  let candidates = 0;
+  let completeCandidates = 0;
+  let halfFootCandidates = 0;
+  let allCompleteRoots = 0;
+
+  for (const summary of Object.values(report.byIfcClass)) {
+    allCompleteRoots += summary.fullFifoCertifiedOwners;
+    for (const shape of candidateShapes) {
+      candidates += summary.gRepShapes[shape] ?? 0;
+      completeCandidates += summary.completeGRepShapes[shape] ?? 0;
+      halfFootCandidates += summary.halfFootGRepShapes[shape] ?? 0;
+    }
+  }
+
+  assert.equal(candidates, 151);
+  assert.equal(completeCandidates, 140);
+  assert.equal(allCompleteRoots, 140);
+  assert.equal(halfFootCandidates, 118);
+  assert.equal(candidates - completeCandidates, 11);
+  assert.equal(709 - (candidates - completeCandidates), 698);
 });

@@ -117,12 +117,45 @@ gate.
 Their GRep ownership is proven, but none currently completes certified
 drawable-face coverage. They remain proxy-only.
 
+## Class-independent candidate predicate
+
+The measured predicate does not inspect IFC class, category, family, or element
+ID. It requires the initial descriptors to use append-only tokens `3..n` and
+the source-slot vector to equal one of:
+
+```text
+[2215, 2215, 2343]
+[2254, 2254, 2254, 2254, 2248, 2248, 2248, 2248, 2343]
+[2215, 2215, 2343, 2343]
+```
+
+Across the 849 targets with their own framed GElement, that syntax selects 151
+roots:
+
+| Stage | Roots | Result |
+| --- | ---: | --- |
+| exact descriptor predicate | 151 | 140 complete, 11 incomplete |
+| existing full FIFO/mesh coverage gates | 140 | all measured complete roots |
+| independent 0.5-foot RVT/IFC envelope gate | 118 | bounded output candidates |
+
+The predicate therefore has `140/151` (`92.72%`) pre-coverage precision and
+`140/140` (`100%`) recall for the complete roots in this population. Against
+the 709 incomplete own-GElement roots it excludes 698 and deliberately leaves
+11 exact-shape negative controls for the runtime coverage gates, a measured
+specificity of `698/709` (`98.45%`).
+
+This bounds a future production experiment to 151 candidate roots rather than
+all display IDs. The existing collector would reject 11 during complete
+coverage, hold at most the measured 44,822 certified pre-envelope triangles,
+and reject another 22 at the independent envelope gate. No production caller
+change is made by this checkpoint.
+
 ## Bounded admission contract
 
 A safe future caller predicate must be class-independent:
 
 1. exact Revit 2027 length/echo-framed GElement and owner identity;
-2. one of the measured initial descriptor sequences;
+2. append-only initial tokens and one of the measured source-slot sequences;
 3. successful complete FIFO replay;
 4. complete positive-loop Face mesh coverage;
 5. complete recursive `GInstance` closure when present;
