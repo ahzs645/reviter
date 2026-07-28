@@ -37,7 +37,6 @@ test("decodes persisted owning-element ids and builds a bidirectional graph", ()
     { elementId: 200, owningElementId: 200 },
   ]));
   assert.equal(result.format, "revit-2024-2026-elem-table");
-  if (result.format === "unsupported") return;
 
   assert.equal(result.declaredRecordCount, 5);
   assert.equal(result.decodedRecordCount, 4);
@@ -74,7 +73,6 @@ test("does not turn row adjacency into an ownership relation", () => {
     { elementId: 1_272_041, owningElementId: 1_271_877 },
   ]));
   assert.equal(result.format, "revit-2024-2026-elem-table");
-  if (result.format === "unsupported") return;
 
   assert.equal(
     result.relations.some(
