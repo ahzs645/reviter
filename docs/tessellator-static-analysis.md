@@ -194,6 +194,14 @@ the persisted next/previous arrays. This makes face-local ordered coedges,
 including the loop-sentinel transition, exact RVT evidence rather than an
 endpoint-derived ordering.
 
+`OdBmGEdgeImpl::getCurveType()` at `TB_Geometry.tx:0x347812` provides a
+separate bounded curve classifier: two total points are a 3D line segment;
+otherwise flags bit 3 selects a 3D circular arc; all remaining cases enter
+surface-dependent logic. Applied to the exact owner replay, this yields 84,097
+line segments, 372 circular arcs, and 30 surface-derived edges. The browser
+exposes only those proven kinds. It does not promote sampled arc points into
+exact center/radius/parameter data.
+
 The filler also proves why a raw UV epsilon is not a general repair policy.
 `getParamCurveFixed` at `0x8bb34` validates an existing p-curve, clears an
 invalid one, and conditionally projects a replacement through

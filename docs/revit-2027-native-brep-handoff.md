@@ -62,21 +62,26 @@ The current exact Revit 2027 source ladder is:
 | --- | ---: | --- |
 | Geometry owner | 2343 | Exact static/FIFO reader |
 | Face | 1825 | Exact static reader |
-| GEdge | 1423 | Exact face/next/previous references and exact UV samples |
+| GEdge | 1423 | Exact face-local ordering/direction, exact UV samples, and exact line/arc/surface-derived early curve kind |
 | EdgeLoop | 1434 / 1437 | Exact loop references and envelope bodies |
 | Plane / cone / cylinder | 634 / 900 / 1144 | Exact analytic bodies |
 | Surface of revolution | 4283 | Exact body and queued profile descriptor |
 | Revolution profile GArc | 2213 | Exact analytic arc body |
 
-That is sufficient for the existing narrow planar sampled-face path, but it
-does not yet establish the general native-equivalent graph:
+That reaches the persisted-graph readiness stage and is sufficient for the
+existing narrow sampled-face paths, but it does not yet establish the general
+native-builder-equivalent graph:
 
 - GEdge UV points are exact persisted samples, not a decoded analytic 2D
   p-curve.
-- Next/previous references can currently be walked for the planar subset, but
-  the general coedge object, direction semantics, and face-region membership
-  have not been independently decoded.
-- No exact general 3D edge-curve relation is currently available.
+- Next/previous references and coedge direction are exact native semantics:
+  `OdBmBrCoedge::GetNext/GetPrev` index the persisted arrays by the current
+  loop Face, and direction combines that face side with the GEdge flip bit.
+- Native `getCurveType()` proves 84,097 line segments, 372 circular arcs, and
+  30 surface-derived edges in the exact replay. Supported-surface adapters map
+  persisted samples into 3D, but exact general arc/surface-derived parameters
+  and shared 3D edge curves remain incomplete.
+- Exact face-region membership remains unavailable for the general handoff.
 - The body transform feeding the general BRep boundary is unresolved.
 - Positive face material IDs now bind directly to exact framed `MaterialElem`
   identities for 35,365 UNBC faces. The remaining unassigned/system-style
@@ -119,9 +124,8 @@ the general handoff. Inferred and IFC-derived values fail closed.
 
 The shortest route to general geometry is:
 
-1. Decode exact face-region membership and the general ordered coedge/direction
-   relation.
-2. Decode the general edge-to-3D-curve and coedge-to-2D-pcurve relations,
+1. Decode exact face-region membership.
+2. Complete the general edge-to-3D-curve and coedge-to-2D-pcurve relations,
    retaining shared edge identity.
 3. Resolve the owning BRep transform and face markers.
 4. Convert those records into a neutral graph and add mathematically

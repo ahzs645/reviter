@@ -244,6 +244,22 @@ Therefore `nextReferences[faceSide]` and
 browser owner paths share this rule and validate that the final previous
 reference closes back to the loop sentinel.
 
+`OdBmGEdgeImpl::getCurveType()` at `TB_Geometry.tx:0x347812` also exposes two
+safe early exits:
+
+- exactly two total edge points returns `OdGeLineSeg3d` (`0x17`);
+- with additional points, flags bit 3 returns `OdGeCircArc3d` (`0x0b`);
+- every other result depends on adjacent surface type, isoparametric tests,
+  and 3D point evaluation, so the browser classifier reports
+  `surface-derived` instead of guessing.
+
+The exact UNBC replay classifies 84,097 line segments, 372 circular arcs, and
+30 surface-derived edges. Thus 99.9645% of decoded edges have an exact native
+curve kind. This does not claim exact arc centers, radii, parameter ranges, or
+general 3D curve geometry: the current browser adapter still maps persisted UV
+samples through supported surfaces and retains sampled polylines where the
+analytic curve has not been reconstructed.
+
 These value domains, the paired next/previous population, the UV values, and
 the `113 + 32n` boundary agreement independently support the field grammar.
 The audit stops after the Geometry-owned GEdge run, before Geometry

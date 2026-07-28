@@ -6,6 +6,7 @@ import {
   revit2027GEdgeLoopDirection,
   revit2027GEdgeLoopNextReference,
   revit2027GEdgeLoopPreviousReference,
+  revit2027GEdgeNativeCurveKind,
 } from "../lib/reviter/revit-2027-edge-1423.ts";
 
 const GINFO_BYTES = 20;
@@ -133,6 +134,30 @@ test("selects native coedge neighbors by the current face side", () => {
   assert.equal(revit2027GEdgeLoopNextReference(edge, 1), 102);
   assert.equal(revit2027GEdgeLoopPreviousReference(edge, 0), 201);
   assert.equal(revit2027GEdgeLoopPreviousReference(edge, 1), 202);
+});
+
+test("classifies only native-proven GEdge curve kinds", () => {
+  assert.equal(
+    revit2027GEdgeNativeCurveKind({
+      flags: 0xe,
+      interiorEdgePoints: [],
+    }),
+    "line-segment",
+  );
+  assert.equal(
+    revit2027GEdgeNativeCurveKind({
+      flags: 0xe,
+      interiorEdgePoints: [{} as never],
+    }),
+    "circular-arc",
+  );
+  assert.equal(
+    revit2027GEdgeNativeCurveKind({
+      flags: 0x6,
+      interiorEdgePoints: [{} as never],
+    }),
+    "surface-derived",
+  );
 });
 
 test("GEdge reader is release-gated, bounded, and count-limited", () => {

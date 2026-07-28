@@ -50,6 +50,10 @@ test("current exact corpus coverage reaches the persisted graph", () => {
     "sampled-rvt",
   );
   assert.equal(
+    CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["edge-curves-3d"],
+    "sampled-rvt",
+  );
+  assert.equal(
     CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["face-materials"],
     "partial-exact-rvt",
   );

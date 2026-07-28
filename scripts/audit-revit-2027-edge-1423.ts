@@ -27,6 +27,7 @@ import {
 import {
   decodeRevit2027GEdgeStatic,
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  revit2027GEdgeNativeCurveKind,
   type Revit2027EdgePoint,
 } from "../lib/reviter/revit-2027-edge-1423.ts";
 import {
@@ -297,6 +298,7 @@ type ExactReplay = {
   edgeBodyBytes: Map<number, number>;
   edgeInteriorPointCounts: Map<number, number>;
   edgeFlags: Map<number, number>;
+  edgeNativeCurveKinds: Map<string, number>;
   edgeUvScalars: ScalarStats;
   edgeFaceReferences: ReferenceStats;
   edgeNextReferences: ReferenceStats;
@@ -585,6 +587,10 @@ function replaySingleGeometryRoot(
       edge.value.interiorEdgePoints.length,
     );
     increment(replay.edgeFlags, edge.value.flags);
+    increment(
+      replay.edgeNativeCurveKinds,
+      revit2027GEdgeNativeCurveKind(edge.value),
+    );
     for (const point of edge.value.interiorEdgePoints) {
       recordEdgePoint(replay.edgeUvScalars, point);
     }
@@ -687,6 +693,7 @@ const exactReplay: ExactReplay = {
   edgeBodyBytes: new Map(),
   edgeInteriorPointCounts: new Map(),
   edgeFlags: new Map(),
+  edgeNativeCurveKinds: new Map(),
   edgeUvScalars: createScalarStats(),
   edgeFaceReferences: createReferenceStats(),
   edgeNextReferences: createReferenceStats(),
@@ -1078,6 +1085,7 @@ console.log(JSON.stringify({
       bodyBytes: entries(exactReplay.edgeBodyBytes),
       interiorPointCounts: entries(exactReplay.edgeInteriorPointCounts),
       flags: entries(exactReplay.edgeFlags),
+      nativeCurveKinds: entries(exactReplay.edgeNativeCurveKinds),
       uvScalars: scalarSummary(exactReplay.edgeUvScalars),
       references: {
         face: referenceSummary(exactReplay.edgeFaceReferences),

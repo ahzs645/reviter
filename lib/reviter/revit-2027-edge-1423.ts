@@ -41,6 +41,11 @@ export type Revit2027GEdgeStatic = {
   queuedPropertyCount: 0;
 };
 
+export type Revit2027GEdgeNativeCurveKind =
+  | "line-segment"
+  | "circular-arc"
+  | "surface-derived";
+
 export type Revit2027GEdgeStaticDecodeResult =
   | { ok: true; value: Revit2027GEdgeStatic }
   | { ok: false; error: string };
@@ -86,6 +91,23 @@ export function revit2027GEdgeLoopPreviousReference(
   faceSide: 0 | 1,
 ): number {
   return edge.previousReferences[faceSide];
+}
+
+/**
+ * Classify the exact native early-exit curve kind exposed by
+ * OdBmGEdgeImpl::getCurveType().
+ *
+ * The native function returns a 3D line segment whenever the edge has only
+ * its two endpoints. With additional points it returns a circular arc when
+ * flags bit 3 is set. All remaining cases require the native surface-specific
+ * derivation and stay explicit rather than being guessed from samples.
+ */
+export function revit2027GEdgeNativeCurveKind(
+  edge: Pick<Revit2027GEdgeStatic, "flags" | "interiorEdgePoints">,
+): Revit2027GEdgeNativeCurveKind {
+  if (edge.interiorEdgePoints.length === 0) return "line-segment";
+  if ((edge.flags & 0x8) !== 0) return "circular-arc";
+  return "surface-derived";
 }
 
 function bounded(

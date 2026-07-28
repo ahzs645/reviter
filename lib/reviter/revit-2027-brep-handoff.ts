@@ -205,8 +205,9 @@ export function assessRevit2027BrepHandoff(
  *
  * GEdge UV samples are exact persisted values, but they are samples rather
  * than decoded analytic p-curves. Existing planar meshing can lawfully consume
- * that narrower sampled path; it does not make the general native-equivalent
- * handoff complete.
+ * that narrower sampled path and maps supported-surface samples into 3D edge
+ * polylines. Neither sampled representation makes the general
+ * native-equivalent handoff complete.
  */
 export const CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE:
   Revit2027BrepHandoffEvidence = {
@@ -218,7 +219,7 @@ export const CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE:
     "ordered-loops": "exact-rvt",
     "ordered-coedges": "exact-rvt",
     "coedge-direction": "exact-rvt",
-    "edge-curves-3d": "missing",
+    "edge-curves-3d": "sampled-rvt",
     "surface-pcurves-2d": "sampled-rvt",
     "body-transform": "missing",
     "face-markers": "exact-rvt",
