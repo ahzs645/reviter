@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-native-identity.ts",
+  "inputs": {
+    "rvt": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+      "bytes": 70336512,
+      "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178"
+    },
+    "ifc": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc",
+      "bytes": 83798926,
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0"
+    }
+  },
+  "documentHistory": {
+    "stream": "Global/History",
+    "storedBytes": 15804,
+    "inflatedBytes": 16946,
+    "format": "revit-2027-history-v0x10552",
+    "nextLocalSequenceNumber": 948,
+    "subsequenceNumberDeficit": 0,
+    "documentGuidSlots": [
+      "88801bbe-804f-486f-82c6-7f7afc659fde",
+      "88801bbe-804f-486f-82c6-7f7afc659fde",
+      "88801bbe-804f-486f-82c6-7f7afc659fde",
+      "00000000-0000-0000-0000-000000000000",
+      "88801bbe-804f-486f-82c6-7f7afc659fde"
+    ],
+    "historyIndexValueCount": 179,
+    "historyIndexValueRange": [
+      472,
+      2663
+    ],
+    "historyIndexValuesSha256": "688d94189d81fc966613f89ad2c152b7e24145bb1c202abda60fc55fd7330b47",
+    "episodes": 948,
+    "uniqueEpisodeGuids": 948,
+    "strengthHistogram": {
+      "0x28": 948
+    },
+    "episodeSamples": [
+      {
+        "episodeId": 0,
+        "guid": "e3e052f9-0156-11d5-9301-0000863f27ad",
+        "strength": 40,
+        "byteOffset": 16925
+      },
+      {
+        "episodeId": 1,
+        "guid": "e3e052fb-0156-11d5-9301-0000863f27ad",
+        "strength": 40,
+        "byteOffset": 16908
+      },
+      {
+        "episodeId": 2,
+        "guid": "e3e052fe-0156-11d5-9301-0000863f27ad",
+        "strength": 40,
+        "byteOffset": 16891
+      },
+      {
+        "episodeId": 945,
+        "guid": "13406cb0-9bc8-431f-af66-905a8fc4c1a5",
+        "strength": 40,
+        "byteOffset": 860
+      },
+      {
+        "episodeId": 946,
+        "guid": "b8a538d4-c266-4282-8cc0-3d231e22ce21",
+        "strength": 40,
+        "byteOffset": 843
+      },
+      {
+        "episodeId": 947,
+        "guid": "7e867cd2-c870-46d7-a0d9-01f826e0fc24",
+        "strength": 40,
+        "byteOffset": 826
+      }
+    ]
+  },
+  "nativeIdentity": {
+    "stream": "Global/ElemTable",
+    "storedBytes": 391925,
+    "inflatedBytes": 2977550,
+    "format": "revit-2027-native-identity",
+    "declaredRecordCount": 74438,
+    "decodedIdentityCount": 74437,
+    "uniqueIdentityCount": 74437,
+    "originalIdDifferenceCount": 0,
+    "missingLastUserModification": 25609,
+    "creationEpisodeRange": [
+      0,
+      946
+    ],
+    "lastModificationEpisodeRange": [
+      277,
+      947
+    ],
+    "uniqueIdsSha256": "8f8c66c172dbf61b573468aef28d4a6ea48415b8a6e0fad4b88e665197156784",
+    "samples": [
+      {
+        "elementId": 2,
+        "originalElementId": 2,
+        "creationEpisodeId": 0,
+        "lastModificationEpisodeId": 591,
+        "lastUserModificationEpisodeId": 591,
+        "episodeGuid": "e3e052f9-0156-11d5-9301-0000863f27ad",
+        "uniqueId": "e3e052f9-0156-11d5-9301-0000863f27ad-00000002",
+        "byteOffset": 34,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      },
+      {
+        "elementId": 23,
+        "originalElementId": 23,
+        "creationEpisodeId": 0,
+        "lastModificationEpisodeId": 644,
+        "lastUserModificationEpisodeId": 644,
+        "episodeGuid": "e3e052f9-0156-11d5-9301-0000863f27ad",
+        "uniqueId": "e3e052f9-0156-11d5-9301-0000863f27ad-00000017",
+        "byteOffset": 874,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      },
+      {
+        "elementId": 414,
+        "originalElementId": 414,
+        "creationEpisodeId": 0,
+        "lastModificationEpisodeId": 800,
+        "lastUserModificationEpisodeId": 800,
+        "episodeGuid": "e3e052f9-0156-11d5-9301-0000863f27ad",
+        "uniqueId": "e3e052f9-0156-11d5-9301-0000863f27ad-0000019e",
+        "byteOffset": 11714,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      },
+      {
+        "elementId": 1272040,
+        "originalElementId": 1272040,
+        "creationEpisodeId": 776,
+        "lastModificationEpisodeId": 856,
+        "lastUserModificationEpisodeId": null,
+        "episodeGuid": "339ca8c6-010a-4ce4-b3ce-2ebd3bffcb58",
+        "uniqueId": "339ca8c6-010a-4ce4-b3ce-2ebd3bffcb58-001368e8",
+        "byteOffset": 699674,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      },
+      {
+        "elementId": 1280585,
+        "originalElementId": 1280585,
+        "creationEpisodeId": 776,
+        "lastModificationEpisodeId": 933,
+        "lastUserModificationEpisodeId": 933,
+        "episodeGuid": "339ca8c6-010a-4ce4-b3ce-2ebd3bffcb58",
+        "uniqueId": "339ca8c6-010a-4ce4-b3ce-2ebd3bffcb58-00138a49",
+        "byteOffset": 723994,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      },
+      {
+        "elementId": 2497107,
+        "originalElementId": 2497107,
+        "creationEpisodeId": 946,
+        "lastModificationEpisodeId": 946,
+        "lastUserModificationEpisodeId": null,
+        "episodeGuid": "b8a538d4-c266-4282-8cc0-3d231e22ce21",
+        "uniqueId": "b8a538d4-c266-4282-8cc0-3d231e22ce21-00261a53",
+        "byteOffset": 2977474,
+        "provenance": "Global/ElemTable.ElementHistory+Global/History.Episode"
+      }
+    ]
+  },
+  "ifcReference": {
+    "contentGuid": "88801bbe-804f-486f-82c6-7f7afc659fde",
+    "versionGuid": "01f1ca18-7062-4860-a436-36cd594757ba",
+    "numberOfSaves": 326,
+    "contentGuidMatchingDocumentSlots": [
+      0,
+      1,
+      2,
+      4
+    ],
+    "elements": 41312,
+    "elementsWithGlobalId": 41312,
+    "uniqueNumericRevitTags": 38187,
+    "numericTagsLinkedToNativeIdentity": 38187,
+    "directGlobalIdToNativeUniqueIdMatches": 0,
+    "note": "IFC GlobalId and native Revit UniqueId are different identifier domains. The numeric IFC Tag is the exact element-table join key."
+  }
+}
