@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-rvt-identity-tree-material-gaps.ts",
+  "inputs": {
+    "rvt": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+      "bytes": 70336512,
+      "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178"
+    },
+    "ifc": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc",
+      "bytes": 83798926,
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+      "role": "post-decode-audit-oracle-only"
+    }
+  },
+  "nativeIdentity": {
+    "format": "revit-2027-native-identity",
+    "decoded": 74437,
+    "uniqueElementIds": 74437,
+    "uniqueUniqueIds": 74437,
+    "ifcElements": 41312,
+    "uniqueNumericIfcTags": 38187,
+    "numericIfcTagsLinked": 38187
+  },
+  "modelGraph": {
+    "elementTableRecords": 74437,
+    "owningElement": {
+      "persistedPairs": 50205,
+      "roots": 23484,
+      "selfOwned": 748,
+      "danglingTargets": 0,
+      "comparableIfcAggregateOrNestPairs": 26256,
+      "exactIfcPairs": 23741
+    },
+    "host": {
+      "persistedPairs": 27568,
+      "comparableIfcFillVoidPairs": 1820,
+      "exactIfcPairs": 1820
+    },
+    "associatedLevel": {
+      "persistedPairs": 37503,
+      "comparableIfcContainedTags": 11820,
+      "exactIfcStoreyGroups": 11703,
+      "mismatchedIfcStoreyGroups": 0,
+      "missingIfcAssociatedLevels": 117,
+      "distinctNativeLevelTargetsMappedToIfcStoreys": 13
+    },
+    "type": {
+      "persistedPairsOnRecoveredElements": 9369,
+      "distinctTypeTargets": 47,
+      "comparableIfcTypePairs": 38063,
+      "exactIfcPairs": 9350
+    },
+    "family": {
+      "symbolToFamilyPairs": 2151,
+      "independentlyNamedFamilies": 41,
+      "exactInstancesWithPersistedFamilySymbolId": 7805,
+      "recoveredInstancesWithSymbolOrSharedGeometryTarget": 27813,
+      "recoveredInstancesBoundThroughSymbolToFamily": 2036
+    },
+    "nestedGeometry": {
+      "ownersWithPersistedGInstance": 110,
+      "gInstanceLinks": 248,
+      "pairedInstanceInfoBodies": 248,
+      "semanticSubcomponentMembershipsPublished": 0,
+      "note": "GInstance/InstanceInfo is an exact geometry-composition carrier, not yet a published FamilyInstance subcomponent/model-tree edge."
+    },
+    "ownerView": {
+      "persistedPairsPublished": 0,
+      "note": "OwnerDBView/owner-view serialization has not been proven for this release."
+    },
+    "uniqueMembersAcrossPublishedOwnershipHostLevelTypeAndFamilyInstance": 62297
+  },
+  "materials": {
+    "persistedNamedMaterialElements": 69,
+    "elementAssignments": {
+      "rows": 37043,
+      "uniqueElements": 35084,
+      "evidence": {
+        "persisted-element-type-compound-layer-material": 7525,
+        "persisted-instance-family-symbol-geometry-tag-material": 3911,
+        "persisted-instance-shared-geometry-material": 25607
+      },
+      "ifcMaterialBearingTags": 36142,
+      "assignedElementsAlsoMaterialBearingInIfc": 34979,
+      "comparableRows": 36910,
+      "exactNameRows": 36910
+    },
+    "faceAssignments": {
+      "geometryOwners": 13568,
+      "decodedFaces": 139106,
+      "directPositiveFaces": 133482,
+      "directPositiveOwners": 13044,
+      "distinctDirectMaterialIds": 36,
+      "directFacesResolvedToNamedMaterial": 133482,
+      "directFacesOnIfcMaterialBearingOwner": 99935,
+      "directFacesWithNamePresentOnIfcOwner": 53542,
+      "fallbackFaces": 5624,
+      "facesWithoutGeometryParent": 0,
+      "fallbackStatuses": {
+        "gstyle-has-no-material": 387,
+        "not-applicable": 5237
+      },
+      "fallbackReasons": {
+        "no-positive-face-or-geometry-gstyle": 5237
+      },
+      "fallbackSources": {
+        "face-gstyle": 140,
+        "geometry-gstyle": 247
+      },
+      "newlyExactFallbackFaces": 0
+    },
+    "nextExactCarriers": [
+      "element/type/family geometry-tag assignment projected onto certified face ownership",
+      "category/object-style material lookup",
+      "view/system material override"
+    ]
+  },
+  "scan": {
+    "partitionChunks": 3666,
+    "failedPartitionChunks": 0,
+    "replayFailures": {}
+  },
+  "evidenceBoundary": "RVT identity and relationships are persisted browser-safe decodes. Positive Face material IDs and Face->Geometry->GStyle precedence are exact. IFC is opened only afterward and never supplies an RVT value."
+}
