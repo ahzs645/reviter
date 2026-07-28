@@ -1809,7 +1809,7 @@ export function convertRvtBytes(
       familyElementIds,
       sharedGeometryIds,
     );
-    const uniqueFamilyTargetRelations = resolveUniqueFamilySymbolTargets(
+    const staticTailFamilyTargetRelations = resolveUniqueFamilySymbolTargets(
       familySymbolReferenceSets,
       familyElementIds,
       sharedGeometryIds,
@@ -1819,9 +1819,10 @@ export function convertRvtBytes(
       NativeFamilySymbolRelation
     >();
     // The release-specific fixed field is stronger evidence where both paths
-    // identify the same symbol. The unique-target path fills variable-width
-    // layouts and fails closed on more than one framed Family target.
-    for (const relation of uniqueFamilyTargetRelations) {
+    // identify the same symbol. The native static-tail path fills
+    // variable-width layouts and fails closed on more than one certified
+    // Family target.
+    for (const relation of staticTailFamilyTargetRelations) {
       familyRelationBySymbol.set(relation.symbolId, relation);
     }
     for (const relation of fixedFamilySymbolRelations) {
@@ -1942,8 +1943,8 @@ export function convertRvtBytes(
             ...(fixedFamilySymbolRelations.length
               ? ["revit-2027-family-symbol-family-v1"]
               : []),
-            ...(uniqueFamilyTargetRelations.length
-              ? ["revit-2027-family-symbol-unique-target-v1"]
+            ...(staticTailFamilyTargetRelations.length
+              ? ["revit-2027-family-symbol-static-tail-v1"]
               : []),
             ...(nativeFamilyDefinitions.length
               ? ["revit-2027-family-name-path-v1"]
@@ -2156,8 +2157,8 @@ export function convertRvtBytes(
           ...(fixedFamilySymbolRelations.length
             ? ["revit-2027-family-symbol-family-v1"]
             : []),
-          ...(uniqueFamilyTargetRelations.length
-            ? ["revit-2027-family-symbol-unique-target-v1"]
+          ...(staticTailFamilyTargetRelations.length
+            ? ["revit-2027-family-symbol-static-tail-v1"]
             : []),
           ...(nativeFamilyDefinitions.length
             ? ["revit-2027-family-name-path-v1"]

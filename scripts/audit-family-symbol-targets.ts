@@ -35,6 +35,7 @@ type SymbolReference = {
   symbolId: number;
   objectLength: number;
   references: Map<number, number[]>;
+  staticTailReferences: Map<number, number[]>;
 };
 
 const input = readFileSync(modelPath);
@@ -80,6 +81,40 @@ function readUtf16(
     value += String.fromCharCode(code);
   }
   return value;
+}
+
+/**
+ * Immediately before `FamilySymbol.m_familyId`, the native reader consumes an
+ * Outline (two Point3d values), origin, rotation center, and exactly two cut
+ * plane heights: fourteen consecutive float64 values, or 112 bytes.
+ */
+function hasFamilyIdStaticTail(
+  view: DataView,
+  objectStart: number,
+  familyIdOffset: number,
+): boolean {
+  const start = familyIdOffset - 112;
+  if (start < objectStart + 18) return false;
+  const values = Array.from(
+    { length: 14 },
+    (_, index) => view.getFloat64(start + index * 8, true),
+  );
+  if (!values.every(Number.isFinite)) return false;
+  const orderedOutline =
+    values[0]! <= values[3]! &&
+    values[1]! <= values[4]! &&
+    values[2]! <= values[5]!;
+  const emptyOutline =
+    values[0] === 1e30 &&
+    values[1] === 1e30 &&
+    values[2] === 1e30 &&
+    values[3] === -1e30 &&
+    values[4] === -1e30 &&
+    values[5] === -1e30;
+  return (
+    orderedOutline ||
+    emptyOutline
+  );
 }
 
 for (const partition of partitions) {
@@ -139,6 +174,7 @@ for (const partition of partitions) {
       }
       if (frame.marker !== REVIT_2027_FAMILY_SYMBOL_MARKER) continue;
       const references = new Map<number, number[]>();
+      const staticTailReferences = new Map<number, number[]>();
       const bodyStart = frame.offset + 18;
       const bodyEnd = frame.offset + frame.objectLength;
       // Object IDs are serialized as little-endian 64-bit values with a zero
@@ -151,11 +187,17 @@ for (const partition of partitions) {
         const relativeOffsets = references.get(id);
         if (relativeOffsets) relativeOffsets.push(offset - frame.offset);
         else references.set(id, [offset - frame.offset]);
+        if (hasFamilyIdStaticTail(view, frame.offset, offset)) {
+          const tailOffsets = staticTailReferences.get(id);
+          if (tailOffsets) tailOffsets.push(offset - frame.offset);
+          else staticTailReferences.set(id, [offset - frame.offset]);
+        }
       }
       symbols.push({
         symbolId: frame.elementId,
         objectLength: frame.objectLength,
         references,
+        staticTailReferences,
       });
     }
   }
@@ -179,6 +221,22 @@ const afterInheritedPrefix = resolved.map((symbol) => ({
     }))
     .filter((target) => target.offsets.length > 0),
 }));
+const staticTailResolved = symbols.map((symbol) => ({
+  symbolId: symbol.symbolId,
+  objectLength: symbol.objectLength,
+  familyTargets: [...symbol.staticTailReferences]
+    .filter(([id]) => familyIds.has(id))
+    .map(([familyId, offsets]) => ({ familyId, offsets })),
+}));
+const uniqueStaticTail = staticTailResolved.filter(
+  (symbol) => symbol.familyTargets.length === 1,
+);
+const ambiguousStaticTail = staticTailResolved.filter(
+  (symbol) => symbol.familyTargets.length > 1,
+);
+const missingStaticTail = staticTailResolved.filter(
+  (symbol) => symbol.familyTargets.length === 0,
+);
 const uniqueAfterInheritedPrefix = afterInheritedPrefix.filter(
   (symbol) => symbol.familyTargets.length === 1,
 );
@@ -235,12 +293,28 @@ console.log(JSON.stringify({
       uniqueAfterInheritedPrefix.length -
       ambiguousAfterInheritedPrefix.length,
   },
+  requiringExactFamilyIdStaticTail: {
+    symbolsWithOneFamilyTarget: uniqueStaticTail.length,
+    symbolsWithMultipleFamilyTargets: ambiguousStaticTail.length,
+    symbolsWithNoFamilyTarget:
+      symbols.length - uniqueStaticTail.length - ambiguousStaticTail.length,
+  },
   uniqueTargetOffsets: Object.fromEntries(
     [...offsetCounts].sort((a, b) => b[1] - a[1]),
   ),
   ambiguousSamples: ambiguous.slice(0, 20),
   ambiguousAfterInheritedPrefixSamples:
     ambiguousAfterInheritedPrefix.slice(0, 20),
+  ambiguousStaticTailSamples: ambiguousStaticTail.slice(0, 20),
+  missingStaticTailSamples: missingStaticTail.slice(0, 20).map((missing) => {
+    const broad = resolved.find(
+      (symbol) => symbol.symbolId === missing.symbolId,
+    );
+    return {
+      ...missing,
+      broadFamilyTargets: broad?.familyTargets ?? [],
+    };
+  }),
   familyStringSamples: [...familyStrings]
     .filter(([, family]) => family.strings.length > 0)
     .slice(0, 30)

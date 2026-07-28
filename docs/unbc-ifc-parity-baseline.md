@@ -23,8 +23,9 @@ comparable IFC tree members, and 28 of 29 IFC material names are decoded as
 native definitions. The parser now expands 5,413 exact shared-geometry material
 relations through persisted instance placements, and adds 45 decoded
 BasicWallType compound structures, to assign 33,132 placed elements. It also
-recovers 2,114 unambiguous placed `FamilySymbol` → `Family` relations. Nineteen
-referenced family definitions now name 2,025 placed instances; all 2,018 names
+recovers 2,151 reader-certified placed `FamilySymbol` → `Family` relations.
+Forty-one referenced family definitions now name 2,035 placed instances; all
+2,018 names
 with a comparable IFC family string match exactly. It
 still does not match the IFC's **shape detail, per-face/full material
 assignment population, or complete family semantics**.
@@ -160,11 +161,12 @@ coverage rather than comparing unlike `GlobalId` and `UniqueId` strings.
 Type recovery is smaller but exact: all 7,515 IFC-tagged elements for which
 Reviter emits a type name match the corresponding IFC type-object name after
 splitting its `Family:Type` representation. The remaining 30,548 typed Tags
-have no decoded type name. The native relationship decoder now recovers 2,114
-placed `FamilySymbol` links by combining the fixed `m_familyId` layout with a
-fail-closed unique-framed-Family target rule for variable-width layouts. The
-adjacent, reader-proven `FamilyBase` name/path pair decodes 19 referenced
-family definitions and attaches names to 2,025 elements. All 2,018 names with a
+have no decoded type name. The native relationship decoder now recovers 2,151
+placed `FamilySymbol` links by combining the fixed `m_familyId` layout with the
+reader-proven 112-byte Outline/origin/rotation/cut-plane tail for
+variable-width layouts. The adjacent, reader-proven `FamilyBase` name/path pair
+decodes 41 referenced family definitions and attaches names to 2,035 elements.
+All 2,018 names with a
 comparable IFC family string match; the remaining 36,045 comparable family
 names and full loadable-family/type regeneration remain open.
 
@@ -214,8 +216,8 @@ and compare typed values and units.
    `libOdBrepModeler`, `libTD_BrepBuilder`, and `libTD_Br`.
 2. **Resolve the remaining family carrier and regenerate shared family
    geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
-   match the IFC exactly—and 2,114 unambiguous placed `FamilySymbol` →
-   `Family` relations are now retained. Nineteen referenced family definitions
+   match the IFC exactly—and 2,151 reader-certified placed `FamilySymbol` →
+   `Family` relations are now retained. Forty-one referenced family definitions
    supply 2,018/2,018 exact comparable emitted names, but 30,548 tagged type
    members and 36,045 comparable family names remain absent. Preserve shared
    family geometry plus transforms rather than
@@ -283,9 +285,9 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `68f350f1faf43bb2169c68582f3efda7ae35a3d370bf33ed15f78459153351c0`
+- semantic JSON: `4648fa179ef56df1b14b4c489d6712cb3faf8732ee520ffb800534e6a99b5b45`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
-  `9892d0be4ba9df1d7f6fc239fc494f2941cbebf7e16d3799f00ebd9d2edb5b60`
+  `7b7e719dd5736661ae23588c0b23cb1f198a7fbb420d9f944bdb1ecdae692592`
 - GLB: `8f5321f9c572ecb8f947625a4ae3bf2a9695dc1b6bce23b2fd97e23f53bea97a`
 
 The script exits nonzero on a missing or invalid input and writes the complete

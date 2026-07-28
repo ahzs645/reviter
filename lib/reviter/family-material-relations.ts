@@ -44,7 +44,13 @@ export type FamilySymbolReferenceSet = {
   recordOffset: number;
   objectLength: number;
   objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
+  /** All bounded zero-high-word ids, retained for audit visibility. */
   referencePairs: Uint32Array;
+  /**
+   * References immediately following the exact native FamilySymbol static
+   * tail: Outline, origin, rotation center, and two cut-plane heights.
+   */
+  staticTailReferencePairs: Uint32Array;
 };
 
 export type NativeFamilyDefinition = {
@@ -88,7 +94,7 @@ export type NativeUniqueFamilyTargetRelation = {
   fieldOffset: number;
   objectLength: number;
   objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
-  evidence: "unique-framed-family-target";
+  evidence: "framed-family-symbol-static-tail";
 };
 
 export type NativeFamilySymbolRelation =
@@ -110,6 +116,40 @@ function readId(view: DataView, offset: number, limit: number): number | null {
   if (offset < 0 || offset + 8 > limit || view.getUint32(offset + 4, true) !== 0) return null;
   const id = view.getUint32(offset, true);
   return id || null;
+}
+
+/**
+ * The native FamilySymbol reader consumes these fourteen float64 values
+ * immediately before `m_familyId`:
+ *
+ *   Outline (two Point3d), origin, rotation center, cutPlaneHeights[2]
+ *
+ * Revit persists an empty Outline with the exact ±1e30 sentinel below.
+ */
+function hasFamilyIdStaticTail(
+  view: DataView,
+  objectStart: number,
+  familyIdOffset: number,
+): boolean {
+  const start = familyIdOffset - 14 * 8;
+  if (start < objectStart + 18) return false;
+  const values = Array.from(
+    { length: 14 },
+    (_, index) => view.getFloat64(start + index * 8, true),
+  );
+  if (!values.every(Number.isFinite)) return false;
+  const orderedOutline =
+    values[0]! <= values[3]! &&
+    values[1]! <= values[4]! &&
+    values[2]! <= values[5]!;
+  const emptyOutline =
+    values[0] === 1e30 &&
+    values[1] === 1e30 &&
+    values[2] === 1e30 &&
+    values[3] === -1e30 &&
+    values[4] === -1e30 &&
+    values[5] === -1e30;
+  return orderedOutline || emptyOutline;
 }
 
 function readUtf16String(
@@ -218,6 +258,7 @@ export function scanPersistedRelationshipCandidates(
 
     if (marker === REVIT_2027_FAMILY_SYMBOL_MARKER) {
       const referencePairs: number[] = [];
+      const staticTailReferencePairs: number[] = [];
       const limit = offset + objectLength;
       for (
         let referenceOffset = offset + 18;
@@ -228,6 +269,12 @@ export function scanPersistedRelationshipCandidates(
         const referencedId = view.getUint32(referenceOffset, true);
         if (!referencedId) continue;
         referencePairs.push(referencedId, referenceOffset - offset);
+        if (hasFamilyIdStaticTail(view, offset, referenceOffset)) {
+          staticTailReferencePairs.push(
+            referencedId,
+            referenceOffset - offset,
+          );
+        }
       }
       familySymbolReferenceSets.push({
         symbolId: elementId,
@@ -235,6 +282,9 @@ export function scanPersistedRelationshipCandidates(
         objectLength,
         objectMarker: REVIT_2027_FAMILY_SYMBOL_MARKER,
         referencePairs: Uint32Array.from(referencePairs),
+        staticTailReferencePairs: Uint32Array.from(
+          staticTailReferencePairs,
+        ),
       });
 
       const familyId = readId(view, offset + FAMILY_ID_OFFSET, offset + objectLength);
@@ -300,16 +350,16 @@ export function resolveFamilySymbolRelations(
 }
 
 /**
- * Resolve the variable-width FamilySymbol layouts without guessing an offset.
+ * Resolve variable-width FamilySymbol layouts from their exact static tail.
  *
- * The native direct reader proves that FamilySymbol contains an element-id
- * `m_familyId`. A relation is published only when the independently framed
- * source references exactly one independently framed Family target anywhere
- * in its bounded body. Symbols that contain two Family ids fail closed.
+ * A relation is published only when exactly one independently framed Family
+ * target follows the native Outline/origin/rotation/cut-plane sequence inside
+ * the independently framed source object. Symbols with multiple certified
+ * targets fail closed.
  *
  * The fixed-offset decoder remains the stronger path where available. This
- * resolver covers layouts whose preceding conditional collections move the
- * field, while preserving the exact source/target class gates.
+ * resolver covers layouts whose earlier conditional collections move the
+ * field, while preserving exact source/target class and field-boundary gates.
  */
 export function resolveUniqueFamilySymbolTargets(
   referenceSets: readonly FamilySymbolReferenceSet[],
@@ -320,7 +370,7 @@ export function resolveUniqueFamilySymbolTargets(
   for (const referenceSet of referenceSets) {
     if (
       !referencedSymbolIds.has(referenceSet.symbolId) ||
-      referenceSet.referencePairs.length % 2 !== 0 ||
+      referenceSet.staticTailReferencePairs.length % 2 !== 0 ||
       result.has(referenceSet.symbolId)
     ) {
       continue;
@@ -328,11 +378,11 @@ export function resolveUniqueFamilySymbolTargets(
     const targetOffsets = new Map<number, number>();
     for (
       let index = 0;
-      index < referenceSet.referencePairs.length;
+      index < referenceSet.staticTailReferencePairs.length;
       index += 2
     ) {
-      const familyId = referenceSet.referencePairs[index]!;
-      const fieldOffset = referenceSet.referencePairs[index + 1]!;
+      const familyId = referenceSet.staticTailReferencePairs[index]!;
+      const fieldOffset = referenceSet.staticTailReferencePairs[index + 1]!;
       if (!familyElementIds.has(familyId) || targetOffsets.has(familyId)) {
         continue;
       }
@@ -347,7 +397,7 @@ export function resolveUniqueFamilySymbolTargets(
       fieldOffset,
       objectLength: referenceSet.objectLength,
       objectMarker: referenceSet.objectMarker,
-      evidence: "unique-framed-family-target",
+      evidence: "framed-family-symbol-static-tail",
     });
   }
   return [...result.values()].sort((a, b) => a.symbolId - b.symbolId);

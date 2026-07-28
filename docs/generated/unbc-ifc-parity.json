@@ -9,9 +9,9 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 84217106,
-      "sha256": "68f350f1faf43bb2169c68582f3efda7ae35a3d370bf33ed15f78459153351c0",
-      "analyticalSha256": "9892d0be4ba9df1d7f6fc239fc494f2941cbebf7e16d3799f00ebd9d2edb5b60",
+      "bytes": 84224370,
+      "sha256": "4648fa179ef56df1b14b4c489d6712cb3faf8732ee520ffb800534e6a99b5b45",
+      "analyticalSha256": "7b7e719dd5736661ae23588c0b23cb1f198a7fbb420d9f944bdb1ecdae692592",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
@@ -700,7 +700,7 @@
       "displayed": 36548,
       "categorized": 39159,
       "typed": 7523,
-      "familyNamed": 2025,
+      "familyNamed": 2035,
       "withParameters": 11541,
       "parameterValues": 81806,
       "manifestUniqueIds": 40571,
@@ -710,7 +710,7 @@
       "modelTreeRecords": 74437,
       "modelTreeMemberships": 62288,
       "nativeMaterialDefinitions": 69,
-      "nativeFamilyDefinitions": 19,
+      "nativeFamilyDefinitions": 41,
       "nativeMaterialNames": [
         "Acier inoxydable, brossé",
         "Brick, ordinary",

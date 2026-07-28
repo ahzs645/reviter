@@ -106,21 +106,37 @@ test("decodes and resolves the persisted FamilySymbol to Family relation", () =>
       symbolId: 2_447_093,
       familyId: 105_786,
       fieldOffset: 449,
-      evidence: "unique-framed-family-target",
+      evidence: "framed-family-symbol-static-tail",
     }],
   );
 });
 
-test("resolves a variable-width FamilySymbol only when its Family target is unique", () => {
+test("resolves only one Family target following the exact static tail", () => {
   const familyA = object(101, 0x07d9, 180, []);
   const familyB = object(102, 0x07d9, 180, []);
   const variable = object(201, 0x0810, 1_100, [[919, 101]]);
-  const ambiguous = object(202, 0x0810, 1_100, [[76, 101], [625, 102]]);
+  const ambiguous = object(202, 0x0810, 1_100, [[449, 101], [625, 102]]);
+  const emptyOutline = object(203, 0x0810, 760, [[74, 101], [371, 102]]);
+  const emptyOutlineView = new DataView(emptyOutline.buffer);
+  for (let index = 0; index < 3; index += 1) {
+    emptyOutlineView.setFloat64(371 - 112 + index * 8, 1e30, true);
+    emptyOutlineView.setFloat64(371 - 112 + (index + 3) * 8, -1e30, true);
+  }
   const page = new Uint8Array(
-    familyA.length + familyB.length + variable.length + ambiguous.length,
+    familyA.length +
+      familyB.length +
+      variable.length +
+      ambiguous.length +
+      emptyOutline.length,
   );
   let offset = 0;
-  for (const bytes of [familyA, familyB, variable, ambiguous]) {
+  for (const bytes of [
+    familyA,
+    familyB,
+    variable,
+    ambiguous,
+    emptyOutline,
+  ]) {
     page.set(bytes, offset);
     offset += bytes.length;
   }
@@ -130,17 +146,32 @@ test("resolves a variable-width FamilySymbol only when its Family target is uniq
     resolveUniqueFamilySymbolTargets(
       scan.familySymbolReferenceSets,
       new Set(scan.familyElementIds),
-      new Set([201, 202]),
+      new Set([201, 202, 203]),
     ),
-    [{
-      symbolId: 201,
-      familyId: 101,
-      recordOffset: familyA.length + familyB.length,
-      fieldOffset: 919,
-      objectLength: 1_100,
-      objectMarker: 0x0810,
-      evidence: "unique-framed-family-target",
-    }],
+    [
+      {
+        symbolId: 201,
+        familyId: 101,
+        recordOffset: familyA.length + familyB.length,
+        fieldOffset: 919,
+        objectLength: 1_100,
+        objectMarker: 0x0810,
+        evidence: "framed-family-symbol-static-tail",
+      },
+      {
+        symbolId: 203,
+        familyId: 102,
+        recordOffset:
+          familyA.length +
+          familyB.length +
+          variable.length +
+          ambiguous.length,
+        fieldOffset: 371,
+        objectLength: 760,
+        objectMarker: 0x0810,
+        evidence: "framed-family-symbol-static-tail",
+      },
+    ],
   );
 });
 

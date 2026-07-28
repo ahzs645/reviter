@@ -30,22 +30,27 @@ inspection of the release source-slot 2,022 `FamilySymbol` reader explains why
 that cannot cover the class: it reads several conditional/dynamic collections
 before `setFamilyId`, so the field moves with their serialized sizes.
 
-The browser now has a second, offset-independent resolver. It scans only inside
-an independently length/echo-framed `FamilySymbol` and publishes a relation
-only when that bounded source refers to exactly one independently framed
-`Family` target. It does not choose between two targets. On the exact model:
+The browser now has a second, offset-independent resolver. Static inspection of
+the same reader proves the field boundary immediately before `m_familyId`:
+an Outline, origin Point3d, rotation-center Point3d, and exactly two cut-plane
+heights—14 consecutive float64 values, or 112 bytes. It scans only inside an
+independently length/echo-framed `FamilySymbol` and publishes a relation only
+when exactly one independently framed `Family` target follows that native
+static tail. It accepts both ordered Outline extents and Revit's exact empty
+Outline sentinel `(1e30, 1e30, 1e30) → (-1e30, -1e30, -1e30)`. On the exact
+model:
 
 - 2,365 framed FamilySymbol records contain at least one framed Family target;
-- 2,206 contain exactly one such target;
-- 159 ambiguous records remain unresolved;
-- 2,114 of the unique relations are actually referenced by placed/shared
+- all 2,365 have exactly one static-tail-certified Family target;
+- zero records have multiple certified targets and zero remain missing;
+- 2,151 certified relations are actually referenced by placed/shared
   geometry and are retained by conversion.
 
-This raises the regenerated semantic output from 143 to 2,025 family-named
-elements across 19 native Family definitions. Of the 2,018 names that the IFC
-oracle can compare, all 2,018 match exactly; the other seven have no comparable
-IFC family string and are not counted as matches or mismatches. IFC is not read
-by the resolver at runtime.
+The regenerated semantic output contains 2,035 family-named elements across 41
+native Family definitions. Of the 2,018 names that the IFC oracle can compare,
+all 2,018 match exactly; the other 17 have no comparable IFC family string and
+are not counted as matches or mismatches. IFC is not read by the resolver at
+runtime.
 
 ## Persisted family names
 
@@ -61,11 +66,11 @@ name offset is not fixed. The browser decoder instead requires:
 
 The path is validation evidence only and is not exported. On the exact UNBC
 model, 258 of the 259 framed Family records contain a validated name/path pair.
-Nineteen are reached by the currently unambiguous placed-symbol relations
-described above. This is 100% precision for the IFC-comparable emitted subset,
-not full family-name coverage. System families, the 159 ambiguous symbols,
-symbols represented by other framed classes, nested family selection, formulas,
-and regeneration remain separate work.
+Forty-one are reached by the currently placed-symbol relations described above.
+This is 100% precision for the IFC-comparable emitted subset, not full
+family-name coverage. System families, symbols represented by other framed
+classes, nested family selection, formulas, and regeneration remain separate
+work.
 
 ## Persisted material assignments
 
@@ -112,8 +117,9 @@ The implementation in `lib/reviter/family-material-relations.ts` is:
 - resolved in a second pass so cross-chunk object ids must point to a proven
   target class/definition before publication;
 - able to use a variable-width FamilySymbol only when exactly one framed Family
-  target occurs inside its bounded body;
-- fail-closed when a FamilySymbol references multiple framed Family targets;
+  target follows the reader-proven 112-byte static tail;
+- fail-closed when a FamilySymbol has zero or multiple static-tail-certified
+  Family targets;
 - joined to an instance only when its geometry id passed
   `sharedGeometryIdsForPlacements`;
 - fail-closed when multiple placement records give one element conflicting
