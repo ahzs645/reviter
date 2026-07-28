@@ -59,7 +59,25 @@ const server = createServer(async (request, response) => {
 });
 await new Promise((ready) => server.listen(4173, ready));
 
-const browser = await chromium.launch({ args: ["--no-sandbox"] });
+let browser;
+try {
+  browser = await chromium.launch({ args: ["--no-sandbox"] });
+} catch (error) {
+  // Local verification should still work when the Playwright package is
+  // installed but its separately downloaded browser cache is absent. Reuse
+  // the system Chrome channel; the page remains local and the model is still
+  // handed directly to the in-tab file input.
+  if (
+    !(error instanceof Error) ||
+    !/Executable doesn't exist/u.test(error.message)
+  ) {
+    throw error;
+  }
+  browser = await chromium.launch({
+    channel: "chrome",
+    args: ["--no-sandbox"],
+  });
+}
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const logs = [];
 page.on("console", (message) => logs.push(`[${message.type()}] ${message.text()}`));
