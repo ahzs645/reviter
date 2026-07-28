@@ -15,6 +15,10 @@ import type {
   NativeElementMaterialAssignment,
   NativeGeometryMaterialAssignment,
 } from "./family-material-relations.ts";
+import type {
+  NativeCompoundLayerMaterialAssignment,
+  NativeCompoundStructureDefinition,
+} from "./compound-structure-materials.ts";
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 
@@ -91,6 +95,10 @@ export type DecoderCoverage = {
   nativeMaterialAssignments: number;
   /** Exact shared-geometry to MaterialElem relations before instance expansion. */
   nativeGeometryMaterialAssignments?: number;
+  /** Framed BasicWallType compound structures whose layer materials resolved. */
+  nativeCompoundStructureDefinitions?: number;
+  /** Layer assignments expanded through persisted element-to-type references. */
+  nativeCompoundLayerMaterialAssignments?: number;
   /** Persisted instance-to-symbol links read from InstInfoBase. */
   nativeFamilySymbols?: number;
   /** Persisted FamilySymbol-to-Family links whose target class resolved. */
@@ -501,6 +509,10 @@ export type ConvertResult = {
   nativeGeometryMaterialAssignments?: NativeGeometryMaterialAssignment[];
   /** Placed elements joined through exact persisted shared-geometry material ids. */
   nativeElementMaterialAssignments?: NativeElementMaterialAssignment[];
+  /** Persisted BasicWallType compound-layer definitions. */
+  nativeCompoundStructureDefinitions?: NativeCompoundStructureDefinition[];
+  /** Placed elements joined through type-owned compound-layer material ids. */
+  nativeCompoundLayerMaterialAssignments?: NativeCompoundLayerMaterialAssignment[];
   /** Persisted hosted-element relationships from InsertableInst.m_hostId. */
   nativeHostRelations?: NativeHostRelation[];
   /** Persisted spatial relationships from Element.m_assocLevelId. */

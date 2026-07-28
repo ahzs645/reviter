@@ -86,6 +86,12 @@ import {
   type NativeFamilyDefinition,
 } from "./family-material-relations.ts";
 import {
+  resolveCompoundLayerMaterialAssignments,
+  resolveCompoundStructureDefinitions,
+  scanCompoundStructureCandidates,
+  type CompoundStructureCandidate,
+} from "./compound-structure-materials.ts";
+import {
   resolveHostRelations,
   scanHostRelationCandidates,
   type HostRelationCandidate,
@@ -808,6 +814,7 @@ export function convertRvtBytes(
     const familySymbolCandidates: FamilySymbolCandidate[] = [];
     const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
     const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
+    const compoundStructureCandidates: CompoundStructureCandidate[] = [];
     const hostRelationCandidates: HostRelationCandidate[] = [];
     const associatedLevelRelationCandidates: AssociatedLevelRelationCandidate[] = [];
     const boundedElementIds = new Set<number>();
@@ -870,6 +877,12 @@ export function convertRvtBytes(
             ...relationships.familySymbolReferenceSets,
           );
           geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
+          compoundStructureCandidates.push(
+            ...scanCompoundStructureCandidates(
+              inflated,
+              decoderPlan.revitVersion,
+            ),
+          );
           hostRelationCandidates.push(
             ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
           );
@@ -1845,8 +1858,24 @@ export function convertRvtBytes(
       nativeGeometryMaterialAssignments,
       sharedGeometryIds,
     );
+    const nativeCompoundStructureDefinitions =
+      resolveCompoundStructureDefinitions(
+        compoundStructureCandidates,
+        new Set(nativeMaterialDefinitionMap.keys()),
+      );
+    const nativeCompoundLayerMaterialAssignments =
+      resolveCompoundLayerMaterialAssignments(
+        [...typeReferences].map(([elementId, typeId]) => ({
+          elementId,
+          typeId,
+        })),
+        nativeCompoundStructureDefinitions,
+      );
     const nativeMaterialAssignedElements = new Set(
-      nativeElementMaterialAssignments.map((assignment) => assignment.elementId),
+      [
+        ...nativeElementMaterialAssignments,
+        ...nativeCompoundLayerMaterialAssignments,
+      ].map((assignment) => assignment.elementId),
     ).size;
     const nativeHostRelations = resolveHostRelations(
       hostRelationCandidates,
@@ -1925,6 +1954,9 @@ export function convertRvtBytes(
             ...(nativeElementMaterialAssignments.length
               ? ["revit-2027-instance-geometry-material-v1"]
               : []),
+            ...(nativeCompoundStructureDefinitions.length
+              ? ["revit-2027-basic-wall-compound-material-v1"]
+              : []),
             ...(nativeHostRelations.length
               ? ["revit-2027-insertable-host-id-v1"]
               : []),
@@ -1938,6 +1970,10 @@ export function convertRvtBytes(
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
           nativeMaterialAssignments: nativeMaterialAssignedElements,
           nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
+          nativeCompoundStructureDefinitions:
+            nativeCompoundStructureDefinitions.length,
+          nativeCompoundLayerMaterialAssignments:
+            nativeCompoundLayerMaterialAssignments.length,
           nativeFamilySymbols: sharedGeometryIds.size,
           nativeFamilyRelations: nativeFamilySymbolRelations.length,
           nativeHostRelations: nativeHostRelations.length,
@@ -1977,6 +2013,8 @@ export function convertRvtBytes(
         nativeFamilyDefinitions,
         nativeGeometryMaterialAssignments,
         nativeElementMaterialAssignments,
+        nativeCompoundStructureDefinitions,
+        nativeCompoundLayerMaterialAssignments,
         nativeHostRelations,
         nativeAssociatedLevelRelations,
         warnings: [
@@ -1991,7 +2029,7 @@ export function convertRvtBytes(
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
             : []),
           ...(nativeMaterialDefinitions.length
-            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions and persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
             : []),
           ...(nativeFamilySymbolRelations.length
             ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
@@ -2130,6 +2168,9 @@ export function convertRvtBytes(
           ...(nativeElementMaterialAssignments.length
             ? ["revit-2027-instance-geometry-material-v1"]
             : []),
+          ...(nativeCompoundStructureDefinitions.length
+            ? ["revit-2027-basic-wall-compound-material-v1"]
+            : []),
           ...(nativeHostRelations.length
             ? ["revit-2027-insertable-host-id-v1"]
             : []),
@@ -2143,6 +2184,10 @@ export function convertRvtBytes(
         nativeMaterialDefinitions: nativeMaterialDefinitions.length,
         nativeMaterialAssignments: nativeMaterialAssignedElements,
         nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
+        nativeCompoundStructureDefinitions:
+          nativeCompoundStructureDefinitions.length,
+        nativeCompoundLayerMaterialAssignments:
+          nativeCompoundLayerMaterialAssignments.length,
         nativeFamilySymbols: sharedGeometryIds.size,
         nativeFamilyRelations: nativeFamilySymbolRelations.length,
         nativeHostRelations: nativeHostRelations.length,
@@ -2184,6 +2229,8 @@ export function convertRvtBytes(
       nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
       nativeElementMaterialAssignments,
+      nativeCompoundStructureDefinitions,
+      nativeCompoundLayerMaterialAssignments,
       nativeHostRelations,
       nativeAssociatedLevelRelations,
       warnings: [
@@ -2200,7 +2247,7 @@ export function convertRvtBytes(
           ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
           : []),
         ...(nativeMaterialDefinitions.length
-          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions and persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
           : []),
         ...(nativeFamilySymbolRelations.length
           ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
