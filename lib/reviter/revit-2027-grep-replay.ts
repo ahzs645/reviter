@@ -41,6 +41,11 @@ import {
   REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gcondition-dir.ts";
 import {
+  decodeRevit2027GConditionInt,
+  REVIT_2027_GCONDITION_INT_BODY_BYTES,
+  REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gcondition-int.ts";
+import {
   decodeRevit2027GBiFlipControl,
   REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES,
   REVIT_2027_GBI_FLIP_CONTROL_SOURCE_CLASS_SLOT,
@@ -80,6 +85,11 @@ import {
   decodeRevit2027GPolyLine,
   REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gpolyline.ts";
+import {
+  decodeRevit2027GPoint,
+  REVIT_2027_GPOINT_BODY_BYTES,
+  REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gpoint.ts";
 import {
   decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
@@ -376,6 +386,17 @@ const BUILTIN_READERS: readonly [
     },
   ],
   [
+    REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GConditionInt",
+      read: fixedBodyReader(
+        REVIT_2027_GCONDITION_INT_BODY_BYTES,
+        decodeRevit2027GConditionInt,
+        () => [],
+      ),
+    },
+  ],
+  [
     REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
     {
       id: "Revit2027GHermiteSpline",
@@ -439,6 +460,17 @@ const BUILTIN_READERS: readonly [
           value: decoded.value,
         };
       },
+    },
+  ],
+  [
+    REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GPoint",
+      read: fixedBodyReader(
+        REVIT_2027_GPOINT_BODY_BYTES,
+        decodeRevit2027GPoint,
+        () => [],
+      ),
     },
   ],
   [

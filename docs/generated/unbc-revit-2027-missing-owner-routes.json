@@ -14,41 +14,51 @@
       "role": "post-decode-geometry-population-oracle-only"
     },
     "rvtAudit": {
-      "name": "reviter-public-after-tessellator-predicate.json",
-      "bytes": 34762413,
-      "sha256": "4124c6440401bee6974acbf75b63cd9544687084bfb14e89864bf76679848b93"
+      "name": "reviter-public-conditioned-geometry-v2.json",
+      "bytes": 35376498,
+      "sha256": "d1f25c787c7f0b1256941fcf7f3b2bdfb1c334f49876e1336b6e0cdf1fa2c8bd"
     }
   },
   "scope": {
     "missingNoDirectOwnerOrPlacementTags": 925,
     "ifcTriangles": 220357,
     "tagSha256": "4b7264d4653717a4ff9abf8c01677392749be7d229fd36c2d4a83f67f4b13b6a",
-    "routeDigestSha256": "a3812b67ddf3ff46e16e79a5dd6d5d843af532c1c015e1e0999b560751587dba",
+    "routeDigestSha256": "cff6df2656502e45ae3d0a499224a27a2b37b8d45f060aafbec7519b840fcab3",
     "allNativeIdentitiesResolved": true,
-    "publicSyntacticDirectOwnerIds": 13719,
+    "publicSyntacticDirectOwnerIds": 16768,
     "baselineDirectOwnerIds": 13568,
+    "conditionedGeometry": {
+      "candidateIfcTags": 474,
+      "completeIfcTags": 418,
+      "ifcBoundsWithinHalfFoot": 347,
+      "exactIfcTriangleCount": 332,
+      "fixedCorpusCandidateOwners": 508,
+      "fixedCorpusCompleteOwners": 446,
+      "fixedCorpusIfcBoundsWithinHalfFoot": 354,
+      "fixedCorpusExactIfcTriangleCount": 333
+    },
     "boundedTessellator": {
       "candidateOwners": 151,
       "coverageCompleteOwners": 141,
       "productionEmittedOwners": 141,
-      "remainingWithoutCompleteCertifiedGeometry": 784,
+      "remainingWithoutCompleteCertifiedGeometry": 372,
       "ifcBoundsWithinHalfFoot": 119,
-      "remainingWithoutHalfFootIfcAgreement": 806,
       "exactIfcTriangleCount": 98
     },
     "ifcCertifiedTagCoverage": {
       "denominator": 36144,
-      "baselineTagPresence": 34865,
+      "baselineTagPresence": 35203,
       "boundedTessellatorCompleteTags": 141,
-      "tagPresenceTotal": 35006,
-      "tagPresenceRatio": 0.9685148295706064,
+      "tagPresenceTotal": 35762,
+      "tagPresenceRatio": 0.9894311642319611,
       "boundedTessellatorIfcBoundsWithinHalfFoot": 119,
-      "ifcSpatialParityTotal": 34984,
-      "ifcSpatialParityRatio": 0.9679061531651173,
-      "note": "Complete native Tag presence is distinct from IFC AABB agreement. The 22 complete bounded-root spatial mismatches remain certified native geometry but are not counted as IFC spatial-parity matches."
+      "conditionedGeometryIfcBoundsWithinHalfFoot": 347,
+      "ifcSpatialParityTotal": 35669,
+      "ifcSpatialParityRatio": 0.9868581230633023,
+      "note": "Complete native Tag presence is distinct from IFC AABB agreement. Complete conditioned/tessellator roots outside half-foot IFC AABB agreement remain certified native geometry but are not counted as IFC spatial-parity matches."
     },
     "placementLinks": 30608,
-    "certifiedDrawableElements": 43606
+    "certifiedDrawableElements": 46905
   },
   "byIfcClass": {
     "IfcMember": {
@@ -62,11 +72,13 @@
       "withLevel": 0,
       "withType": 0,
       "withFamily": 0,
-      "fullFifoCertifiedOwners": 0,
-      "fullFifoBoundsWithinHalfFoot": 0,
-      "fullFifoExactTriangleCount": 0,
+      "fullFifoCertifiedOwners": 336,
+      "fullFifoBoundsWithinHalfFoot": 291,
+      "fullFifoExactTriangleCount": 285,
       "carriers": {
-        "own-uncertified-gelement": 354
+        "own-full-fifo-certified-mesh": 336,
+        "own-uncertified-gelement": 10,
+        "own-certified-direct-grep-shape": 8
       },
       "markers": {
         "0x1019": 354,
@@ -77,12 +89,15 @@
         "179015": 354
       },
       "gRepShapes": {
-        "3:2254,4:1973,5:2343": 342,
-        "3:2254,4:2244,5:2343": 10,
-        "3:2254,4:2213,5:2343": 2
+        "certified-direct-root-shape": 344,
+        "3:2254,4:2244,5:2343": 10
       },
-      "completeGRepShapes": {},
-      "halfFootGRepShapes": {}
+      "completeGRepShapes": {
+        "certified-direct-root-shape": 336
+      },
+      "halfFootGRepShapes": {
+        "certified-direct-root-shape": 291
+      }
     },
     "IfcColumn": {
       "tags": 224,
@@ -128,11 +143,13 @@
       "withLevel": 0,
       "withType": 0,
       "withFamily": 0,
-      "fullFifoCertifiedOwners": 0,
-      "fullFifoBoundsWithinHalfFoot": 0,
-      "fullFifoExactTriangleCount": 0,
+      "fullFifoCertifiedOwners": 50,
+      "fullFifoBoundsWithinHalfFoot": 46,
+      "fullFifoExactTriangleCount": 44,
       "carriers": {
-        "own-uncertified-gelement": 108
+        "own-certified-direct-grep-shape": 54,
+        "own-full-fifo-certified-mesh": 50,
+        "own-uncertified-gelement": 4
       },
       "markers": {
         "GElement": 108,
@@ -143,23 +160,17 @@
         "81": 108
       },
       "gRepShapes": {
-        "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343": 52,
-        "3:2254,4:1973,5:1973,6:2248,7:2215,8:2343": 20,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:2248,11:2215,12:2343": 12,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:1973,12:2248,13:2215,14:2343": 6,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:2248,9:2215,10:2343": 6,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:2248,12:2215,13:2343": 2,
-        "3:2254,4:1973,5:1973,6:1973,7:2248,8:2215,9:2343": 2,
+        "certified-direct-root-shape": 104,
         "3:2254,4:2244,5:2244,6:2248,7:2215,8:2343": 2,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:1973,12:1973,13:1973,14:2248,15:2215,16:2343": 1,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:1973,12:1973,13:2248,14:2215,15:2343": 1,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:2248,10:2215,11:2343": 1,
-        "3:2254,4:1973,5:1973,6:2213,7:1973,8:1973,9:1973,10:1973,11:1973,12:1973,13:2213,14:1973,15:1973,16:1973,17:1973,18:2248,19:2215,20:2343": 1,
         "3:2254,4:2244,5:2244,6:2244,7:2244,8:2248,9:2215,10:2343": 1,
         "3:2254,4:2244,5:2244,6:2271,7:2271,8:2248,9:2215,10:2343": 1
       },
-      "completeGRepShapes": {},
-      "halfFootGRepShapes": {}
+      "completeGRepShapes": {
+        "certified-direct-root-shape": 50
+      },
+      "halfFootGRepShapes": {
+        "certified-direct-root-shape": 46
+      }
     },
     "IfcRailing": {
       "tags": 105,
@@ -212,9 +223,9 @@
       "fullFifoBoundsWithinHalfFoot": 6,
       "fullFifoExactTriangleCount": 0,
       "carriers": {
-        "framed-semantic-record-only": 32,
+        "framed-semantic-record-only": 29,
         "own-full-fifo-certified-mesh": 24,
-        "host-to-certified-hosted-children": 2,
+        "host-to-certified-hosted-children": 5,
         "no-framed-partition-record": 1
       },
       "markers": {
@@ -246,14 +257,13 @@
       "withLevel": 5,
       "withType": 0,
       "withFamily": 0,
-      "fullFifoCertifiedOwners": 1,
-      "fullFifoBoundsWithinHalfFoot": 0,
-      "fullFifoExactTriangleCount": 0,
+      "fullFifoCertifiedOwners": 27,
+      "fullFifoBoundsWithinHalfFoot": 4,
+      "fullFifoExactTriangleCount": 3,
       "carriers": {
-        "own-uncertified-gelement": 26,
+        "own-full-fifo-certified-mesh": 27,
         "no-framed-partition-record": 17,
-        "framed-semantic-record-only": 5,
-        "own-full-fifo-certified-mesh": 1
+        "framed-semantic-record-only": 5
       },
       "markers": {
         "GElement": 27,
@@ -268,16 +278,14 @@
         "4294967295": 6
       },
       "gRepShapes": {
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:2248,10:2248,11:2248,12:2248,13:2248,14:2215,15:2343": 12,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:2248,9:2248,10:2248,11:2248,12:2215,13:2343": 10,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:1973,12:2215,13:2343": 3,
-        "3:2254,4:1973,5:1973,6:1973,7:1973,8:2215,9:2343": 1,
-        "certified-direct-root-shape": 1
+        "certified-direct-root-shape": 27
       },
       "completeGRepShapes": {
-        "certified-direct-root-shape": 1
+        "certified-direct-root-shape": 27
       },
-      "halfFootGRepShapes": {}
+      "halfFootGRepShapes": {
+        "certified-direct-root-shape": 4
+      }
     },
     "IfcWall": {
       "tags": 14,
@@ -384,13 +392,13 @@
     }
   },
   "carriers": {
-    "own-uncertified-gelement": 698,
-    "own-full-fifo-certified-mesh": 141,
-    "framed-semantic-record-only": 41,
+    "own-full-fifo-certified-mesh": 553,
+    "own-uncertified-gelement": 224,
+    "own-certified-direct-grep-shape": 72,
+    "framed-semantic-record-only": 38,
     "no-framed-partition-record": 18,
     "own-insertable-instance-without-placement": 15,
-    "own-certified-direct-grep-shape": 10,
-    "host-to-certified-hosted-children": 2
+    "host-to-certified-hosted-children": 5
   },
   "framedRecords": {
     "markers": {
@@ -439,14 +447,94 @@
   },
   "requestedOwnerFullFifoDiagnostic": {
     "requestedOwners": 925,
-    "completeOwners": 141,
-    "partialOwners": 784,
-    "certifiedTriangles": 44994,
-    "failures": 784,
+    "completeOwners": 553,
+    "partialOwners": 372,
+    "certifiedTriangles": 62642,
+    "failures": 372,
+    "failureCategories": {
+      "grep-replay-other": 209,
+      "no-framed-grep-definition": 76,
+      "nested-symbol-target-missing": 64,
+      "grep-replay-missing-reader-slot-2244": 14,
+      "local-incomplete-mesh:loop-unresolved+tessellator-rejected": 4,
+      "local-incomplete-mesh:non-rectangular-trim+unsupported-surface": 2,
+      "local-no-drawable-faces": 2,
+      "grep-replay-missing-reader-slot-2256": 1
+    },
+    "failureCategoriesByIfcClass": {
+      "IfcColumn": {
+        "grep-replay-other": 209,
+        "no-framed-grep-definition": 15
+      },
+      "IfcMember": {
+        "grep-replay-missing-reader-slot-2244": 10,
+        "local-incomplete-mesh:loop-unresolved+tessellator-rejected": 4,
+        "local-incomplete-mesh:non-rectangular-trim+unsupported-surface": 2,
+        "local-no-drawable-faces": 2
+      },
+      "IfcRailing": {
+        "nested-symbol-target-missing": 8
+      },
+      "IfcRamp": {
+        "nested-symbol-target-missing": 2
+      },
+      "IfcRoof": {
+        "grep-replay-missing-reader-slot-2256": 1
+      },
+      "IfcSlab": {
+        "no-framed-grep-definition": 22
+      },
+      "IfcStairFlight": {
+        "nested-symbol-target-missing": 54,
+        "grep-replay-missing-reader-slot-2244": 4
+      },
+      "IfcWall": {
+        "no-framed-grep-definition": 4
+      },
+      "IfcWallStandardCase": {
+        "no-framed-grep-definition": 35
+      }
+    },
     "failureSamples": [
+      {
+        "ownerElementId": 2156103,
+        "detail": "nested instance symbol target 2156104 is missing"
+      },
       {
         "ownerElementId": 1833657,
         "detail": "nested instance symbol target 1834274 is missing"
+      },
+      {
+        "ownerElementId": 1779476,
+        "detail": "nested instance symbol target 1779477 is missing"
+      },
+      {
+        "ownerElementId": 2072666,
+        "detail": "nested instance symbol target 2072667 is missing"
+      },
+      {
+        "ownerElementId": 2075102,
+        "detail": "nested instance symbol target 2075103 is missing"
+      },
+      {
+        "ownerElementId": 2474569,
+        "detail": "nested instance symbol target 2474570 is missing"
+      },
+      {
+        "ownerElementId": 2439788,
+        "detail": "nested instance symbol target 2439789 is missing"
+      },
+      {
+        "ownerElementId": 1470909,
+        "detail": "nested instance symbol target 1470910 is missing"
+      },
+      {
+        "ownerElementId": 1779623,
+        "detail": "nested instance symbol target 1779624 is missing"
+      },
+      {
+        "ownerElementId": 1801503,
+        "detail": "nested instance symbol target 1801504 is missing"
       },
       {
         "ownerElementId": 1587605,
@@ -455,6 +543,42 @@
       {
         "ownerElementId": 2375155,
         "detail": "nested instance symbol target 2375156 is missing"
+      },
+      {
+        "ownerElementId": 2349454,
+        "detail": "nested instance symbol target 2349455 is missing"
+      },
+      {
+        "ownerElementId": 2354663,
+        "detail": "nested instance symbol target 2354664 is missing"
+      },
+      {
+        "ownerElementId": 1496323,
+        "detail": "nested instance symbol target 1496324 is missing"
+      },
+      {
+        "ownerElementId": 1498361,
+        "detail": "nested instance symbol target 1498362 is missing"
+      },
+      {
+        "ownerElementId": 1500192,
+        "detail": "nested instance symbol target 1500193 is missing"
+      },
+      {
+        "ownerElementId": 2190872,
+        "detail": "nested instance symbol target 2190873 is missing"
+      },
+      {
+        "ownerElementId": 2160668,
+        "detail": "nested instance symbol target 2160669 is missing"
+      },
+      {
+        "ownerElementId": 2161353,
+        "detail": "nested instance symbol target 2161354 is missing"
+      },
+      {
+        "ownerElementId": 2162734,
+        "detail": "nested instance symbol target 2162735 is missing"
       },
       {
         "ownerElementId": 2132449,
@@ -469,8 +593,116 @@
         "detail": "nested instance symbol target 2099895 is missing"
       },
       {
+        "ownerElementId": 1294068,
+        "detail": "nested instance symbol target 1294069 is missing"
+      },
+      {
+        "ownerElementId": 1296000,
+        "detail": "nested instance symbol target 1296001 is missing"
+      },
+      {
+        "ownerElementId": 1506329,
+        "detail": "nested instance symbol target 1506330 is missing"
+      },
+      {
+        "ownerElementId": 1514127,
+        "detail": "nested instance symbol target 1514128 is missing"
+      },
+      {
+        "ownerElementId": 1515632,
+        "detail": "nested instance symbol target 1515633 is missing"
+      },
+      {
+        "ownerElementId": 2045367,
+        "detail": "nested instance symbol target 2045368 is missing"
+      },
+      {
+        "ownerElementId": 2046770,
+        "detail": "nested instance symbol target 2046771 is missing"
+      },
+      {
+        "ownerElementId": 2047593,
+        "detail": "nested instance symbol target 2047594 is missing"
+      },
+      {
+        "ownerElementId": 2024037,
+        "detail": "nested instance symbol target 2024038 is missing"
+      },
+      {
+        "ownerElementId": 1988746,
+        "detail": "nested instance symbol target 1988747 is missing"
+      },
+      {
+        "ownerElementId": 1976652,
+        "detail": "nested instance symbol target 1976653 is missing"
+      },
+      {
+        "ownerElementId": 1984014,
+        "detail": "nested instance symbol target 1984015 is missing"
+      },
+      {
+        "ownerElementId": 1972518,
+        "detail": "nested instance symbol target 1972519 is missing"
+      },
+      {
+        "ownerElementId": 1523100,
+        "detail": "nested instance symbol target 1523101 is missing"
+      },
+      {
+        "ownerElementId": 1305306,
+        "detail": "nested instance symbol target 1305307 is missing"
+      },
+      {
+        "ownerElementId": 1903837,
+        "detail": "nested instance symbol target 1903838 is missing"
+      },
+      {
+        "ownerElementId": 1864610,
+        "detail": "nested instance symbol target 1864611 is missing"
+      },
+      {
         "ownerElementId": 1856525,
         "detail": "nested instance symbol target 1857538 is missing"
+      },
+      {
+        "ownerElementId": 1858190,
+        "detail": "nested instance symbol target 1858191 is missing"
+      },
+      {
+        "ownerElementId": 1861790,
+        "detail": "nested instance symbol target 1861791 is missing"
+      },
+      {
+        "ownerElementId": 1842441,
+        "detail": "nested instance symbol target 1842442 is missing"
+      },
+      {
+        "ownerElementId": 1821222,
+        "detail": "nested instance symbol target 1821223 is missing"
+      },
+      {
+        "ownerElementId": 1808234,
+        "detail": "nested instance symbol target 1808235 is missing"
+      },
+      {
+        "ownerElementId": 1279966,
+        "detail": "nested instance symbol target 1279967 is missing"
+      },
+      {
+        "ownerElementId": 1280331,
+        "detail": "nested instance symbol target 1280332 is missing"
+      },
+      {
+        "ownerElementId": 1779406,
+        "detail": "nested instance symbol target 1779407 is missing"
+      },
+      {
+        "ownerElementId": 1779498,
+        "detail": "nested instance symbol target 1779499 is missing"
+      },
+      {
+        "ownerElementId": 1373131,
+        "detail": "nested instance symbol target 1373132 is missing"
       },
       {
         "ownerElementId": 1725607,
@@ -483,6 +715,42 @@
       {
         "ownerElementId": 1712442,
         "detail": "nested instance symbol target 1712553 is missing"
+      },
+      {
+        "ownerElementId": 1689940,
+        "detail": "nested instance symbol target 1689941 is missing"
+      },
+      {
+        "ownerElementId": 1693335,
+        "detail": "nested instance symbol target 1693336 is missing"
+      },
+      {
+        "ownerElementId": 1696012,
+        "detail": "nested instance symbol target 1696013 is missing"
+      },
+      {
+        "ownerElementId": 1638854,
+        "detail": "nested instance symbol target 1638855 is missing"
+      },
+      {
+        "ownerElementId": 1307579,
+        "detail": "nested instance symbol target 1307580 is missing"
+      },
+      {
+        "ownerElementId": 1270303,
+        "detail": "nested instance symbol target 1270304 is missing"
+      },
+      {
+        "ownerElementId": 1277987,
+        "detail": "nested instance symbol target 1277988 is missing"
+      },
+      {
+        "ownerElementId": 1307178,
+        "detail": "nested instance symbol target 1307179 is missing"
+      },
+      {
+        "ownerElementId": 1460781,
+        "detail": "nested instance symbol target 1460782 is missing"
       },
       {
         "ownerElementId": 400238,
@@ -533,62 +801,6 @@
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
-        "ownerElementId": 1294440,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1296191,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1305763,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1307186,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1307587,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1496328,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1496389,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1498366,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1498463,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1498499,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1500197,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1500258,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1500294,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1500330,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
         "ownerElementId": 1502995,
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
@@ -601,23 +813,11 @@
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
-        "ownerElementId": 1506334,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
         "ownerElementId": 1513098,
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
-        "ownerElementId": 1514132,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
         "ownerElementId": 1514723,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1515637,
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
@@ -629,19 +829,7 @@
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
-        "ownerElementId": 1523106,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1523152,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
         "ownerElementId": 1593239,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 1779332,
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
@@ -650,30 +838,6 @@
       },
       {
         "ownerElementId": 1785600,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2046775,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2193331,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2193445,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2193535,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2296431,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
-      },
-      {
-        "ownerElementId": 2474574,
         "detail": "persisted placement geometry owner has no framed GRep definition"
       },
       {
@@ -818,36 +982,1012 @@
       },
       {
         "ownerElementId": 665080,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 692182,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 692369,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 692682,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 692959,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 693764,
-        "detail": "persisted placement geometry owner has no framed GRep definition"
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
       },
       {
         "ownerElementId": 693855,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694072,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694201,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694317,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694650,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694735,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 694924,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 695332,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 695615,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 695916,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 696450,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 696749,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 696792,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 708222,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 711999,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 725496,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 726595,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 738319,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 738656,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 738670,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 767427,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 998554,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 998913,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 999849,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499543,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499544,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499545,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499546,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499547,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499548,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499549,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499550,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499603,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1499604,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501222,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501223,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501224,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501225,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501226,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501227,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501228,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501229,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501230,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501231,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501232,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501233,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501234,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501235,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501236,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501237,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501238,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501239,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501240,
         "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 1501241,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501242,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501243,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501244,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501281,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1501583,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1504133,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1504134,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1504135,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1504136,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1504137,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521242,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521244,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521245,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521246,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521703,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521705,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521706,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1521707,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1563345,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1563711,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1563845,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1563992,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1564177,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1564466,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1564940,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1565209,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1565417,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1565919,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1566473,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1566834,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1567195,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1567497,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1567583,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1567755,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1567988,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1568049,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1568180,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1568349,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1568649,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1568714,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1569102,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1569173,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1569344,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1569674,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1569984,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1570555,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1570685,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1570902,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1570977,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1571116,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1571219,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1571549,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1571998,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1572665,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1572806,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573036,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573233,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573354,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573451,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573726,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1573971,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 1574064,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1574574,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1574633,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1574746,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1574897,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1574962,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575045,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575245,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575384,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575513,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575806,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1575849,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1576205,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1576356,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1576971,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1577080,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1577569,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1577638,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1577755,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1577856,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1578180,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1578277,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1578392,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1578485,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1578851,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1579011,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1579092,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1579175,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1591111,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1715066,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732234,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732657,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732700,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732752,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732841,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732909,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1732948,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1733053,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1733330,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1733451,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1735216,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1735300,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1751623,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1751828,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1752269,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1752379,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1752691,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1752983,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1753033,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1763047,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1773736,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1773786,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1773885,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1776022,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1785447,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1785495,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1785529,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1807269,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1807501,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1807579,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1811144,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1811212,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1811329,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1816536,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1927729,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 1928324,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2079318,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2079451,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235301,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235469,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235481,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235503,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235515,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235527,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235563,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235583,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235595,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235615,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2235706,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2235890,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2235942,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236026,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236110,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236168,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236220,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236272,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236332,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236390,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2236466,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2263723,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2297888,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 2301966,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2378962,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2379022,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2379084,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2382756,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2384180,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2384208,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2384228,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2384304,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2428669,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2437626,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 2486466,
+        "detail": "GRep FIFO replay failed: Revit 2027 GInstance embedded-symbol descriptor is not null"
+      },
+      {
+        "ownerElementId": 404533,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 496562,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 500537,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 1521392,
+        "detail": "persisted placement geometry owner has no framed GRep definition"
+      },
+      {
+        "ownerElementId": 1272038,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1298203,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1717004,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 2140042,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1848155,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2256"
+      },
+      {
+        "ownerElementId": 1272040,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1272041,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1298205,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1298206,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 2135006,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 2135007,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1483370,
+        "detail": "1 drawable Face token(s) have no certified mesh; planar-sampled:unsupported-surface(face 8), cylinder-sampled:non-rectangular-trim(face 8)"
+      },
+      {
+        "ownerElementId": 1483371,
+        "detail": "1 drawable Face token(s) have no certified mesh; planar-sampled:unsupported-surface(face 8), cylinder-sampled:non-rectangular-trim(face 8)"
+      },
+      {
+        "ownerElementId": 1498369,
+        "detail": "persisted geometry replay contains no drawable topological faces"
+      },
+      {
+        "ownerElementId": 1500261,
+        "detail": "persisted geometry replay contains no drawable topological faces"
+      },
+      {
+        "ownerElementId": 1506338,
+        "detail": "2 drawable Face token(s) have no certified mesh; planar-sampled:loop-unresolved(face 8), planar-sampled:loop-unresolved(face 9), planar-sampled:tessellator-rejected(face 12), planar-sampled:tessellator-rejected(face 13)"
+      },
+      {
+        "ownerElementId": 1514136,
+        "detail": "2 drawable Face token(s) have no certified mesh; planar-sampled:loop-unresolved(face 8), planar-sampled:loop-unresolved(face 9), planar-sampled:tessellator-rejected(face 12), planar-sampled:tessellator-rejected(face 13)"
+      },
+      {
+        "ownerElementId": 1515641,
+        "detail": "2 drawable Face token(s) have no certified mesh; planar-sampled:loop-unresolved(face 8), planar-sampled:loop-unresolved(face 9), planar-sampled:tessellator-rejected(face 11), planar-sampled:tessellator-rejected(face 13)"
+      },
+      {
+        "ownerElementId": 1717821,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 1717822,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 2046779,
+        "detail": "2 drawable Face token(s) have no certified mesh; planar-sampled:loop-unresolved(face 8), planar-sampled:loop-unresolved(face 9), planar-sampled:tessellator-rejected(face 12), planar-sampled:tessellator-rejected(face 13)"
+      },
+      {
+        "ownerElementId": 2141087,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
+      },
+      {
+        "ownerElementId": 2141088,
+        "detail": "GRep FIFO replay failed: no certified Revit 2027 GRep reader for source slot 2244"
       }
     ],
-    "boundsWithin1e6Feet": 104,
-    "boundsWithinHalfFoot": 119,
-    "exactTriangleCount": 98,
+    "boundsWithin1e6Feet": 441,
+    "boundsWithinHalfFoot": 460,
+    "exactTriangleCount": 430,
     "note": "Every complete owner passed the existing full FIFO, certified face mesh, drawable-face coverage, nested-composition, conflict, and bounded storage gates. IFC bounds and triangle counts remain diagnostics."
   },
   "samplesByIfcClass": {
@@ -1610,7 +2750,7 @@
             "markerName": "FamilySymbol",
             "typeCode": 0,
             "objectLength": 6123,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -1630,7 +2770,7 @@
             "markerName": "GElement",
             "typeCode": 103,
             "objectLength": 6179,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -1966,7 +3106,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3027,
             "recordOffset": 125358,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -1988,7 +3128,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "previous",
@@ -2020,13 +3160,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 1.8060349304960255e-7,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1270306,
@@ -2052,7 +3193,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3028,
             "recordOffset": 0,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2064,7 +3205,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2106,13 +3247,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 2.1562467367175486e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1272040,
@@ -2320,7 +3462,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3029,
             "recordOffset": 100592,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2342,7 +3484,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2352,7 +3494,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000123,
@@ -2374,13 +3516,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 3.0311913690184156e-7,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1277990,
@@ -2406,7 +3549,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3029,
             "recordOffset": 104554,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2418,7 +3561,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2438,7 +3581,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2470,13 +3613,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 3.0311913690184156e-7,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1279968,
@@ -2502,7 +3646,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2814,
             "recordOffset": 100592,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2524,7 +3668,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2534,7 +3678,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000123,
@@ -2556,13 +3700,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.723418149210515e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1279969,
@@ -2588,7 +3733,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2814,
             "recordOffset": 104554,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2600,7 +3745,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "previous",
@@ -2610,7 +3755,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2642,13 +3787,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.723418972757053e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1280333,
@@ -2674,7 +3820,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2815,
             "recordOffset": 100592,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2696,7 +3842,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2706,7 +3852,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000123,
@@ -2728,13 +3874,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.723418149210515e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1280334,
@@ -2760,7 +3907,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2815,
             "recordOffset": 104554,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2772,7 +3919,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 6965,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2792,7 +3939,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -2824,13 +3971,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.723418972757053e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1293983,
@@ -2856,7 +4004,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2518,
             "recordOffset": 103204,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2878,7 +4026,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 9813,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "previous",
@@ -2898,7 +4046,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 4539,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000123,
@@ -2920,13 +4068,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 7,
+        "requestedOwnerCertifiedTriangles": 16,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 5.4305104413288063e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1293984,
@@ -2952,7 +4101,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2518,
             "recordOffset": 107166,
-            "gRepShape": "3:2254,4:1973,5:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -2964,7 +4113,7 @@
             "markerName": "0x1019",
             "typeCode": 0,
             "objectLength": 7943,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "previous",
@@ -2974,7 +4123,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           },
           {
             "direction": "next",
@@ -3006,13 +4155,14 @@
         "certifiedExactBoundsPeers": [],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 8,
+        "requestedOwnerCertifiedTriangles": 20,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.993418194018886e-8,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       }
     ],
     "IfcRailing": [
@@ -5765,7 +6915,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3027,
             "recordOffset": 26371,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -5787,7 +6937,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000919,
@@ -5810,9 +6960,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1272038,
@@ -5881,7 +7031,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 3028,
             "recordOffset": 81938,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -5916,9 +7066,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1279966,
@@ -5934,7 +7084,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2813,
             "recordOffset": 73894,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -5969,9 +7119,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1280331,
@@ -5987,7 +7137,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2814,
             "recordOffset": 108516,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -5999,7 +7149,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000919,
@@ -6025,9 +7175,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1280585,
@@ -6053,7 +7203,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2012,
             "recordOffset": 0,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2248,7:2215,8:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6096,14 +7246,15 @@
         ],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 78,
+        "requestedOwnerCertifiedTriangles": 156,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 2.1454990197609894e-8,
         "carriers": [
-          "own-uncertified-gelement",
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape",
           "exact-shared-bounds-with-certified-element"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1293981,
@@ -6129,7 +7280,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2518,
             "recordOffset": 70181,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6192,14 +7343,15 @@
         ],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 66,
+        "requestedOwnerCertifiedTriangles": 132,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 7.317169092857512e-10,
         "carriers": [
-          "own-uncertified-gelement",
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape",
           "exact-shared-bounds-with-certified-element"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1294068,
@@ -6215,7 +7367,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2518,
             "recordOffset": 111725,
-            "gRepShape": "3:2254,4:1973,5:1973,6:1973,7:1973,8:1973,9:1973,10:1973,11:1973,12:2248,13:2215,14:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6227,7 +7379,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 4539,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000067,
@@ -6253,9 +7405,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1296000,
@@ -6271,7 +7423,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2522,
             "recordOffset": 34699,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6293,7 +7445,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000919,
@@ -6319,9 +7471,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       },
       {
         "elementId": 1296189,
@@ -6347,7 +7499,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2522,
             "recordOffset": 121534,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2248,7:2215,8:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6369,7 +7521,7 @@
             "markerName": "GElement",
             "typeCode": 179015,
             "objectLength": 3942,
-            "certifiedRole": null
+            "certifiedRole": "direct-owner"
           }
         ],
         "categoryId": -2000919,
@@ -6393,14 +7545,15 @@
         ],
         "ownedChildBoundsMaximumCornerErrorFeet": null,
         "ownedChildTriangleCount": 0,
-        "requestedOwnerCertifiedFaces": 0,
-        "requestedOwnerCertifiedTriangles": 0,
-        "requestedOwnerBoundsMaximumCornerErrorFeet": null,
+        "requestedOwnerCertifiedFaces": 114,
+        "requestedOwnerCertifiedTriangles": 228,
+        "requestedOwnerBoundsMaximumCornerErrorFeet": 9.84251968511942,
         "carriers": [
-          "own-uncertified-gelement",
+          "own-full-fifo-certified-mesh",
+          "own-certified-direct-grep-shape",
           "exact-shared-bounds-with-certified-element"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-full-fifo-certified-mesh"
       },
       {
         "elementId": 1298203,
@@ -6472,7 +7625,7 @@
             "stream": "Partitions/325",
             "chunkIndex": 2693,
             "recordOffset": 94302,
-            "gRepShape": "3:2254,4:1973,5:1973,6:2271,7:2271,8:2248,9:2215,10:2343"
+            "gRepShape": "certified-direct-root-shape"
           }
         ],
         "neighbors": [
@@ -6507,9 +7660,9 @@
         "requestedOwnerCertifiedTriangles": 0,
         "requestedOwnerBoundsMaximumCornerErrorFeet": null,
         "carriers": [
-          "own-uncertified-gelement"
+          "own-certified-direct-grep-shape"
         ],
-        "primaryCarrier": "own-uncertified-gelement"
+        "primaryCarrier": "own-certified-direct-grep-shape"
       }
     ],
     "IfcWall": [
@@ -7044,7 +8197,9 @@
         "ownedChildren": 1,
         "certifiedOwnedChildren": [],
         "hostId": null,
-        "certifiedHostedChildren": [],
+        "certifiedHostedChildren": [
+          1772157
+        ],
         "associatedLevelId": 311,
         "familySymbolId": null,
         "familyId": null,
@@ -7057,6 +8212,7 @@
         "requestedOwnerBoundsMaximumCornerErrorFeet": 0.41010490576047687,
         "carriers": [
           "own-full-fifo-certified-mesh",
+          "host-to-certified-hosted-children",
           "own-certified-direct-grep-shape"
         ],
         "primaryCarrier": "own-full-fifo-certified-mesh"

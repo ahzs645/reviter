@@ -21,13 +21,22 @@ const report = JSON.parse(
     allNativeIdentitiesResolved: boolean;
     publicSyntacticDirectOwnerIds: number;
     baselineDirectOwnerIds: number;
+    conditionedGeometry: {
+      candidateIfcTags: number;
+      completeIfcTags: number;
+      ifcBoundsWithinHalfFoot: number;
+      exactIfcTriangleCount: number;
+      fixedCorpusCandidateOwners: number;
+      fixedCorpusCompleteOwners: number;
+      fixedCorpusIfcBoundsWithinHalfFoot: number;
+      fixedCorpusExactIfcTriangleCount: number;
+    };
     boundedTessellator: {
       candidateOwners: number;
       coverageCompleteOwners: number;
       productionEmittedOwners: number;
       remainingWithoutCompleteCertifiedGeometry: number;
       ifcBoundsWithinHalfFoot: number;
-      remainingWithoutHalfFootIfcAgreement: number;
       exactIfcTriangleCount: number;
     };
     ifcCertifiedTagCoverage: {
@@ -85,23 +94,32 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
     "4b7264d4653717a4ff9abf8c01677392749be7d229fd36c2d4a83f67f4b13b6a",
   );
   assert.deepEqual(report.carriers, {
-    "own-uncertified-gelement": 698,
-    "own-full-fifo-certified-mesh": 141,
-    "framed-semantic-record-only": 41,
+    "own-full-fifo-certified-mesh": 553,
+    "own-uncertified-gelement": 224,
+    "own-certified-direct-grep-shape": 72,
+    "framed-semantic-record-only": 38,
     "no-framed-partition-record": 18,
     "own-insertable-instance-without-placement": 15,
-    "own-certified-direct-grep-shape": 10,
-    "host-to-certified-hosted-children": 2,
+    "host-to-certified-hosted-children": 5,
   });
-  assert.equal(report.scope.publicSyntacticDirectOwnerIds, 13_719);
+  assert.equal(report.scope.publicSyntacticDirectOwnerIds, 16_768);
   assert.equal(report.scope.baselineDirectOwnerIds, 13_568);
+  assert.deepEqual(report.scope.conditionedGeometry, {
+    candidateIfcTags: 474,
+    completeIfcTags: 418,
+    ifcBoundsWithinHalfFoot: 347,
+    exactIfcTriangleCount: 332,
+    fixedCorpusCandidateOwners: 508,
+    fixedCorpusCompleteOwners: 446,
+    fixedCorpusIfcBoundsWithinHalfFoot: 354,
+    fixedCorpusExactIfcTriangleCount: 333,
+  });
   assert.deepEqual(report.scope.boundedTessellator, {
     candidateOwners: 151,
     coverageCompleteOwners: 141,
     productionEmittedOwners: 141,
-    remainingWithoutCompleteCertifiedGeometry: 784,
+    remainingWithoutCompleteCertifiedGeometry: 372,
     ifcBoundsWithinHalfFoot: 119,
-    remainingWithoutHalfFootIfcAgreement: 806,
     exactIfcTriangleCount: 98,
   });
   assert.deepEqual(
@@ -115,19 +133,19 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
     },
     {
       denominator: 36_144,
-      baseline: 34_865,
+      baseline: 35_203,
       boundedComplete: 141,
-      presence: 35_006,
-      spatial: 34_984,
+      presence: 35_762,
+      spatial: 35_669,
     },
   );
   assert.equal(
     report.scope.ifcCertifiedTagCoverage.tagPresenceRatio,
-    35_006 / 36_144,
+    35_762 / 36_144,
   );
   assert.equal(
     report.scope.ifcCertifiedTagCoverage.ifcSpatialParityRatio,
-    34_984 / 36_144,
+    35_669 / 36_144,
   );
   assert.equal(report.ownedCertifiedChildrenDiagnostic.targetsWithCertifiedChildren, 4);
   assert.equal(report.scan.partitionChunks, 3_666);
@@ -137,12 +155,12 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
 test("full FIFO coverage preserves negative controls before bounds admission", () => {
   const diagnostic = report.requestedOwnerFullFifoDiagnostic;
   assert.equal(diagnostic.requestedOwners, 925);
-  assert.equal(diagnostic.completeOwners, 141);
-  assert.equal(diagnostic.partialOwners, 784);
-  assert.equal(diagnostic.certifiedTriangles, 44_994);
-  assert.equal(diagnostic.boundsWithin1e6Feet, 104);
-  assert.equal(diagnostic.boundsWithinHalfFoot, 119);
-  assert.equal(diagnostic.exactTriangleCount, 98);
+  assert.equal(diagnostic.completeOwners, 553);
+  assert.equal(diagnostic.partialOwners, 372);
+  assert.equal(diagnostic.certifiedTriangles, 62_642);
+  assert.equal(diagnostic.boundsWithin1e6Feet, 441);
+  assert.equal(diagnostic.boundsWithinHalfFoot, 460);
+  assert.equal(diagnostic.exactTriangleCount, 430);
 
   const railingShape = "certified-direct-root-shape";
   assert.equal(report.byIfcClass.IfcRailing?.gRepShapes[railingShape], 105);
@@ -165,12 +183,12 @@ test("full FIFO coverage preserves negative controls before bounds admission", (
   assert.equal(
     (report.byIfcClass.IfcRamp?.gRepShapes[rampShape] ?? 0) +
       (report.byIfcClass.IfcSlab?.gRepShapes[rampShape] ?? 0),
-    12,
+    38,
   );
   assert.equal(
     (report.byIfcClass.IfcRamp?.completeGRepShapes[rampShape] ?? 0) +
       (report.byIfcClass.IfcSlab?.completeGRepShapes[rampShape] ?? 0),
-    10,
+    36,
   );
 });
 
@@ -179,5 +197,13 @@ test("class-independent descriptor predicate bounds candidate work", () => {
   assert.equal(report.scope.boundedTessellator.coverageCompleteOwners, 141);
   assert.equal(report.scope.boundedTessellator.ifcBoundsWithinHalfFoot, 119);
   assert.equal(151 - 141, 10);
-  assert.equal(708 - (151 - 141), 698);
+  assert.equal(
+    report.scope.conditionedGeometry.fixedCorpusCompleteOwners,
+    446,
+  );
+  assert.equal(
+    report.scope.conditionedGeometry.fixedCorpusCandidateOwners -
+      report.scope.conditionedGeometry.fixedCorpusCompleteOwners,
+    62,
+  );
 });

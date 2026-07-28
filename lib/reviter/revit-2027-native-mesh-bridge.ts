@@ -7,6 +7,7 @@ import {
 } from "./revit-2027-certified-owner-mesh.ts";
 import {
   isRevit2027BoundedTessellatorRoot,
+  isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
 } from "./revit-2027-direct-geometry-root.ts";
 import {
@@ -35,7 +36,10 @@ const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
 // enforced from mesh/link/byte limits.
 const DEFAULT_MAX_OWNERS = 100_000;
 const DEFAULT_MAX_NESTED_LINKS = 100_000;
-const DEFAULT_MAX_STORED_BYTES = 256 * 1024 * 1024;
+// The exact UNBC corpus with schema-complete conditioned-geometry readers uses
+// 270,036,692 estimated bytes. Keep finite headroom without making the browser
+// collector unbounded.
+const DEFAULT_MAX_STORED_BYTES = 320 * 1024 * 1024;
 const OUTPUT_BATCH_TRIANGLES = 100_000;
 const MAX_INCOMPLETE_SAMPLES = 100;
 
@@ -45,6 +49,8 @@ export type Revit2027NativeMeshLimits = {
   maxOwners?: number;
   maxNestedLinks?: number;
   maxStoredBytes?: number;
+  /** Diagnostic sample cap; production defaults to a bounded 100 records. */
+  maxFailureSamples?: number;
 };
 
 export type Revit2027IncompleteOwnerReason = {
@@ -81,6 +87,12 @@ export type Revit2027NativeMeshCollection = {
   readonly completeBoundedTessellatorRoots: number;
   /** Complete candidate owner ids used to prove actual scene admission. */
   readonly boundedTessellatorOwnerIds: ReadonlySet<number>;
+  /** GFilter-led conditioned roots entering exact FIFO replay. */
+  readonly conditionedGeometryCandidateRoots: number;
+  /** Conditioned roots retained only after complete local/nested coverage. */
+  readonly completeConditionedGeometryRoots: number;
+  /** Complete conditioned owner ids used to prove actual scene admission. */
+  readonly conditionedGeometryOwnerIds: ReadonlySet<number>;
   readonly replayedOwners: number;
   readonly completeOwners: number;
   readonly incompleteOwners: number;
@@ -118,18 +130,23 @@ type CompactOwnerDefinition = {
   ownerElementId: number;
   directRoot: boolean;
   boundedTessellatorRoot: boolean;
+  conditionedGeometryRoot: boolean;
   geometry: Revit2027CompactOwnerMesh | null;
   localComplete: boolean;
+  localFailureDetail: string | null;
   nestedInstances: readonly Revit2027NestedInstance[];
 };
 
 type MutableCollection = {
   enabled: boolean;
   definitions: Map<number, CompactOwnerDefinition>;
+  /** Exact pre-definition decode/replay failures keyed by framed owner id. */
+  definitionFailures: Map<number, string>;
   conflictingOwnerIds: Set<number>;
   scannedFrames: number;
   eligibleRoots: number;
   boundedTessellatorCandidateRoots: number;
+  conditionedGeometryCandidateRoots: number;
   replayedOwners: number;
   completeOwners: number;
   incompleteOwners: number;
@@ -144,6 +161,7 @@ type MutableCollection = {
     ownerElementId: number | null;
     detail: string;
   }[];
+  maxFailureSamples: number;
 };
 
 export type Revit2027NativeMeshCollector = {
@@ -367,7 +385,7 @@ function finalizeRevit2027NativeMeshCollection(
     detail: string,
   ): void => {
     nestedFailures += 1;
-    if (nestedFailureSamples.length < MAX_INCOMPLETE_SAMPLES) {
+    if (nestedFailureSamples.length < state.maxFailureSamples) {
       nestedFailureSamples.push({ ownerElementId, detail });
     }
   };
@@ -376,7 +394,7 @@ function finalizeRevit2027NativeMeshCollection(
     detail: string,
   ): void => {
     requestedOwnerFailures += 1;
-    if (requestedOwnerFailureSamples.length < MAX_INCOMPLETE_SAMPLES) {
+    if (requestedOwnerFailureSamples.length < state.maxFailureSamples) {
       requestedOwnerFailureSamples.push({ ownerElementId, detail });
     }
   };
@@ -469,7 +487,8 @@ function finalizeRevit2027NativeMeshCollection(
     if (!definition) {
       rememberRequestedOwnerFailure(
         ownerElementId,
-        "persisted placement geometry owner has no framed GRep definition",
+        state.definitionFailures.get(ownerElementId) ??
+          "persisted placement geometry owner has no framed GRep definition",
       );
       continue;
     }
@@ -486,7 +505,8 @@ function finalizeRevit2027NativeMeshCollection(
     }
     rememberRequestedOwnerFailure(
       ownerElementId,
-      "persisted placement geometry owner lacks complete local drawable-face coverage",
+      definition.localFailureDetail ??
+        "persisted placement geometry owner lacks complete local drawable-face coverage",
     );
   }
 
@@ -498,6 +518,15 @@ function finalizeRevit2027NativeMeshCollection(
       .filter(
         (definition) =>
           definition.boundedTessellatorRoot &&
+          owners.has(definition.ownerElementId),
+      )
+      .map((definition) => definition.ownerElementId),
+  );
+  const conditionedGeometryOwnerIds = new Set(
+    [...state.definitions.values()]
+      .filter(
+        (definition) =>
+          definition.conditionedGeometryRoot &&
           owners.has(definition.ownerElementId),
       )
       .map((definition) => definition.ownerElementId),
@@ -517,6 +546,10 @@ function finalizeRevit2027NativeMeshCollection(
       state.boundedTessellatorCandidateRoots,
     completeBoundedTessellatorRoots: boundedTessellatorOwnerIds.size,
     boundedTessellatorOwnerIds,
+    conditionedGeometryCandidateRoots:
+      state.conditionedGeometryCandidateRoots,
+    completeConditionedGeometryRoots: conditionedGeometryOwnerIds.size,
+    conditionedGeometryOwnerIds,
     replayedOwners: state.replayedOwners,
     completeOwners: state.completeOwners,
     incompleteOwners: state.incompleteOwners,
@@ -565,13 +598,19 @@ export function createRevit2027NativeMeshCollector(
     limits.maxStoredBytes,
     DEFAULT_MAX_STORED_BYTES,
   );
+  const maxFailureSamples = safeLimit(
+    limits.maxFailureSamples,
+    MAX_INCOMPLETE_SAMPLES,
+  );
   const state: MutableCollection = {
     enabled: release === 2027,
     definitions: new Map(),
+    definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
     scannedFrames: 0,
     eligibleRoots: 0,
     boundedTessellatorCandidateRoots: 0,
+    conditionedGeometryCandidateRoots: 0,
     replayedOwners: 0,
     completeOwners: 0,
     incompleteOwners: 0,
@@ -583,13 +622,14 @@ export function createRevit2027NativeMeshCollector(
     truncated: false,
     incompleteSamples: [],
     nestedFailureSamples: [],
+    maxFailureSamples,
   };
 
   const rememberIncomplete = (
     reason: Revit2027IncompleteOwnerReason,
   ): void => {
     state.incompleteOwners += 1;
-    if (state.incompleteSamples.length < MAX_INCOMPLETE_SAMPLES) {
+    if (state.incompleteSamples.length < state.maxFailureSamples) {
       state.incompleteSamples.push(reason);
     }
   };
@@ -602,13 +642,24 @@ export function createRevit2027NativeMeshCollector(
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
         const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
-        if (!root.ok) continue;
+        if (!root.ok) {
+          state.definitionFailures.set(
+            frame.elementId,
+            `framed GRep root decode failed: ${root.error}`,
+          );
+          continue;
+        }
         const boundedTessellatorRoot =
           isRevit2027BoundedTessellatorRoot(root.value);
+        const conditionedGeometryRoot =
+          isRevit2027ConditionedGeometryRoot(root.value);
         const directRoot = isRevit2027DirectGeometryRoot(root.value);
         if (directRoot) state.eligibleRoots += 1;
         if (boundedTessellatorRoot) {
           state.boundedTessellatorCandidateRoots += 1;
+        }
+        if (conditionedGeometryRoot) {
+          state.conditionedGeometryCandidateRoots += 1;
         }
 
         const ownerElementId = Number(root.value.ownerElementId);
@@ -636,12 +687,20 @@ export function createRevit2027NativeMeshCollector(
 
         const replayed = replayRevit2027GRepFifo(data, root.value);
         if (!replayed.ok) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `GRep FIFO replay failed: ${replayed.error}`,
+          );
           if (directRoot) state.failedOwners += 1;
           continue;
         }
         if (directRoot) state.replayedOwners += 1;
         const nested = collectRevit2027NestedInstances(replayed.value);
         if (!nested.ok) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `nested-instance replay failed: ${nested.error}`,
+          );
           if (directRoot) state.failedOwners += 1;
           continue;
         }
@@ -649,6 +708,10 @@ export function createRevit2027NativeMeshCollector(
           materialForFace: rawFaceStyleId,
         });
         if (!meshed.ok) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `certified face meshing failed: ${meshed.error}`,
+          );
           if (directRoot) state.failedOwners += 1;
           continue;
         }
@@ -685,6 +748,27 @@ export function createRevit2027NativeMeshCollector(
           coverage.complete ||
           (coverage.code === "no-drawable-faces" &&
             nested.value.length > 0);
+        const meshIssueDetails = [
+          ...new Set(
+            meshed.value.issues
+              .filter(({ issue }) => issue.code !== "material-unresolved")
+              .map(
+                ({ path, issue }) =>
+                  `${path}:${issue.code}` +
+                  (issue.faceToken == null
+                    ? ""
+                    : `(face ${issue.faceToken})`),
+              ),
+          ),
+        ];
+        const localFailureDetail = localComplete
+          ? null
+          : coverage.code === "no-drawable-faces"
+          ? "persisted geometry replay contains no drawable topological faces"
+          : `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh` +
+            (meshIssueDetails.length
+              ? `; ${meshIssueDetails.join(", ")}`
+              : "");
         if (directRoot && !localComplete) {
           rememberIncomplete(
             coverage.code === "no-drawable-faces"
@@ -732,10 +816,13 @@ export function createRevit2027NativeMeshCollector(
           ownerElementId,
           directRoot,
           boundedTessellatorRoot,
+          conditionedGeometryRoot,
           geometry,
           localComplete,
+          localFailureDetail,
           nestedInstances: nested.value,
         });
+        state.definitionFailures.delete(ownerElementId);
         if (directRoot && coverage.complete) state.completeOwners += 1;
         state.storedTriangles += triangles;
         state.storedBytes += definitionBytes;
@@ -772,6 +859,8 @@ export type Revit2027NativeMeshScene = {
   placedElements: number;
   /** Admitted direct/placed elements sourced from the bounded root route. */
   boundedTessellatorElements: number;
+  /** Admitted direct/placed elements sourced from conditioned roots. */
+  conditionedGeometryElements: number;
   faceMeshes: number;
   triangles: number;
   truncated: boolean;
@@ -902,6 +991,7 @@ export function buildRevit2027NativeMeshScene(
       ownerElements: 0,
       placedElements: 0,
       boundedTessellatorElements: 0,
+      conditionedGeometryElements: 0,
       faceMeshes: 0,
       triangles: 0,
       truncated: collection.truncated,
@@ -942,6 +1032,7 @@ export function buildRevit2027NativeMeshScene(
   let ownerElements = 0;
   let placedElements = 0;
   let boundedTessellatorElements = 0;
+  let conditionedGeometryElements = 0;
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
@@ -1021,6 +1112,11 @@ export function buildRevit2027NativeMeshScene(
       collection.boundedTessellatorOwnerIds.has(item.owner.ownerElementId)
     ) {
       boundedTessellatorElements += 1;
+    }
+    if (
+      collection.conditionedGeometryOwnerIds.has(item.owner.ownerElementId)
+    ) {
+      conditionedGeometryElements += 1;
     }
     if (item.placement) placedElements += 1;
     else ownerElements += 1;
@@ -1102,6 +1198,7 @@ export function buildRevit2027NativeMeshScene(
     ownerElements,
     placedElements,
     boundedTessellatorElements,
+    conditionedGeometryElements,
     faceMeshes,
     triangles,
     truncated,

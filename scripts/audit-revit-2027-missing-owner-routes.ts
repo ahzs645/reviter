@@ -27,6 +27,7 @@ import {
 } from "../lib/reviter/revit-container.ts";
 import {
   isRevit2027BoundedTessellatorRoot,
+  isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
@@ -297,6 +298,7 @@ for (const row of rvtAudit.certifiedBrowserMesh?.nestedInstances?.elements ?? []
 // collector below then measures their actual production admission independently.
 const cfb = CFB.read(rvtBytes, { type: "buffer" });
 const tessellatorCandidateOwnerIds = new Set<number>();
+const conditionedGeometryCandidateOwnerIds = new Set<number>();
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
   const fullPath = cfb.FullPaths[entryIndex] ?? "";
   const entry = cfb.FileIndex[entryIndex]!;
@@ -323,15 +325,18 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
     for (const frame of scanFramedElementObjects(inflated)) {
       if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
       const root = decodeRevit2027FramedGRepRoot(inflated, frame, 2027);
-      if (!root.ok || !isRevit2027BoundedTessellatorRoot(root.value)) {
-        continue;
-      }
+      if (!root.ok) continue;
       const ownerElementId = Number(root.value.ownerElementId);
       if (
         Number.isSafeInteger(ownerElementId) &&
         ownerElementId === frame.elementId
       ) {
-        tessellatorCandidateOwnerIds.add(ownerElementId);
+        if (isRevit2027BoundedTessellatorRoot(root.value)) {
+          tessellatorCandidateOwnerIds.add(ownerElementId);
+        }
+        if (isRevit2027ConditionedGeometryRoot(root.value)) {
+          conditionedGeometryCandidateOwnerIds.add(ownerElementId);
+        }
       }
     }
   }
@@ -345,7 +350,9 @@ if (tessellatorCandidateOwnerIds.size !== 151) {
 }
 const baselineDirectOwnerIds = new Set(
   [...directOwnerIds].filter(
-    (elementId) => !tessellatorCandidateOwnerIds.has(elementId),
+    (elementId) =>
+      !tessellatorCandidateOwnerIds.has(elementId) &&
+      !conditionedGeometryCandidateOwnerIds.has(elementId),
   ),
 );
 
@@ -426,15 +433,56 @@ const ifcGeometryNumericTags = ifcGeometryByTag.size;
 const baselineCertifiedIfcTagPresence = [...ifcGeometryByTag.keys()].filter(
   (elementId) =>
     certifiedElements.has(elementId) &&
-    !tessellatorCandidateOwnerIds.has(elementId),
+    !tessellatorCandidateOwnerIds.has(elementId) &&
+    !conditionedGeometryCandidateOwnerIds.has(elementId),
 ).length;
 const boundedTessellatorCompleteIfcTags = [...ifcGeometryByTag.keys()].filter(
   (elementId) =>
     certifiedElements.has(elementId) &&
     tessellatorCandidateOwnerIds.has(elementId),
 ).length;
+const boundedTessellatorIfcBoundsWithinHalfFoot = [
+  ...ifcGeometryByTag,
+].filter(
+  ([elementId, ifc]) =>
+    tessellatorCandidateOwnerIds.has(elementId) &&
+    certifiedElements.has(elementId) &&
+    maximumCornerError(certifiedElements.get(elementId)!, ifc) <= 0.5,
+).length;
+const boundedTessellatorExactIfcTriangleCount = [
+  ...ifcGeometryByTag,
+].filter(
+  ([elementId, ifc]) =>
+    tessellatorCandidateOwnerIds.has(elementId) &&
+    certifiedElements.get(elementId)?.triangles === ifc.triangles,
+).length;
+const conditionedGeometryCompleteIfcTags = [...ifcGeometryByTag.keys()].filter(
+  (elementId) =>
+    certifiedElements.has(elementId) &&
+    conditionedGeometryCandidateOwnerIds.has(elementId) &&
+    !tessellatorCandidateOwnerIds.has(elementId),
+).length;
+const conditionedGeometryIfcBoundsWithinHalfFoot = [
+  ...ifcGeometryByTag,
+].filter(
+  ([elementId, ifc]) =>
+    conditionedGeometryCandidateOwnerIds.has(elementId) &&
+    !tessellatorCandidateOwnerIds.has(elementId) &&
+    certifiedElements.has(elementId) &&
+    maximumCornerError(certifiedElements.get(elementId)!, ifc) <= 0.5,
+).length;
+const conditionedGeometryExactIfcTriangleCount = [
+  ...ifcGeometryByTag,
+].filter(
+  ([elementId, ifc]) =>
+    conditionedGeometryCandidateOwnerIds.has(elementId) &&
+    !tessellatorCandidateOwnerIds.has(elementId) &&
+    certifiedElements.get(elementId)?.triangles === ifc.triangles,
+).length;
 const certifiedIfcTagPresence =
-  baselineCertifiedIfcTagPresence + boundedTessellatorCompleteIfcTags;
+  baselineCertifiedIfcTagPresence +
+  conditionedGeometryCompleteIfcTags +
+  boundedTessellatorCompleteIfcTags;
 
 const missingTags = new Set(
   [...ifcGeometryByTag.keys()].filter(
@@ -526,7 +574,15 @@ for (const elementId of missingTags) {
 
 const framesByElement = new Map<number, FrameSummary[]>();
 const neighborsByElement = new Map<number, NeighborSummary[]>();
-const requestedOwnerCollector = createRevit2027NativeMeshCollector(2027);
+const requestedOwnerCollector = createRevit2027NativeMeshCollector(2027, {
+  // This offline, fixed-corpus audit needs one diagnostic for every requested
+  // owner. The browser conversion path retains the production default of 100.
+  maxFailureSamples: missingTags.size,
+  // Preserve every definition long enough to distinguish format support from
+  // the production collector's independent browser-memory admission limits.
+  maxStoredTriangles: 3_000_000,
+  maxStoredBytes: 512 * 1024 * 1024,
+});
 let chunks = 0;
 let failedChunks = 0;
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
@@ -807,6 +863,9 @@ let ownedChildExactTriangleCount = 0;
 let requestedOwnerBoundsWithinMicron = 0;
 let requestedOwnerBoundsWithinHalfFoot = 0;
 let requestedOwnerExactTriangleCount = 0;
+let conditionedGeometryCompleteOwners = 0;
+let conditionedGeometryBoundsWithinHalfFoot = 0;
+let conditionedGeometryExactTriangleCount = 0;
 for (const row of rows) {
   const summary = byClass.get(row.className) ?? {
     tags: 0,
@@ -899,6 +958,21 @@ for (const row of rows) {
       requestedOwnerExactTriangleCount += 1;
     }
   }
+  if (
+    conditionedGeometryCandidateOwnerIds.has(row.elementId) &&
+    row.requestedOwnerCertifiedFaces > 0
+  ) {
+    conditionedGeometryCompleteOwners += 1;
+    if (
+      row.requestedOwnerBoundsMaximumCornerErrorFeet != null &&
+      row.requestedOwnerBoundsMaximumCornerErrorFeet <= 0.5
+    ) {
+      conditionedGeometryBoundsWithinHalfFoot += 1;
+    }
+    if (row.requestedOwnerCertifiedTriangles === row.ifcTriangles) {
+      conditionedGeometryExactTriangleCount += 1;
+    }
+  }
   byClass.set(row.className, summary);
 }
 
@@ -916,6 +990,83 @@ const digestRows = rows.map((row) => ({
   familySymbolId: row.familySymbolId,
   familyId: row.familyId,
 }));
+function requestedOwnerFailureCategory(detail: string): string {
+  const missingReader = detail.match(/no certified Revit 2027 GRep reader for source slot (\d+)/u);
+  if (missingReader) return `grep-replay-missing-reader-slot-${missingReader[1]}`;
+  if (detail.startsWith("GRep FIFO replay failed:")) {
+    if (detail.includes("boundary gap")) return "grep-replay-boundary-gap";
+    if (detail.includes("token gap")) return "grep-replay-token-gap";
+    if (detail.includes("below index")) return "grep-replay-unreserved-token";
+    return "grep-replay-other";
+  }
+  if (detail.startsWith("framed GRep root decode failed:")) {
+    return "framed-grep-root-decode";
+  }
+  if (detail.startsWith("nested-instance replay failed:")) {
+    return "nested-instance-replay";
+  }
+  if (detail.startsWith("certified face meshing failed:")) {
+    return "certified-face-meshing";
+  }
+  if (detail.startsWith("nested instance symbol target")) {
+    return "nested-symbol-target-missing";
+  }
+  if (detail.includes("lacks complete local drawable-face coverage")) {
+    return "nested-local-drawable-coverage";
+  }
+  if (detail.includes("no drawable topological faces")) {
+    return "local-no-drawable-faces";
+  }
+  if (detail.includes("drawable Face token(s) have no certified mesh")) {
+    const issueCodes = [
+      ...detail.matchAll(/(?:^|, |; )[^:,;]+:([a-z][a-z-]+)/gu),
+    ].map((match) => match[1]!);
+    return issueCodes.length
+      ? `local-incomplete-mesh:${[...new Set(issueCodes)].sort().join("+")}`
+      : "local-incomplete-mesh:unclassified";
+  }
+  if (detail.includes("no framed GRep definition")) {
+    return "no-framed-grep-definition";
+  }
+  if (detail.includes("duplicate or conflicting")) {
+    return "duplicate-or-conflicting-definition";
+  }
+  if (detail.includes("storage") && detail.includes("truncat")) {
+    return "storage-truncated";
+  }
+  if (detail.includes("resolves to no complete drawable faces")) {
+    return "nested-empty";
+  }
+  return "unclassified";
+}
+
+if (
+  requestedOwnerCollection.requestedOwnerFailureSamples.length !==
+    requestedOwnerCollection.requestedOwnerFailures
+) {
+  throw new Error(
+    "offline requested-owner audit did not retain every failure diagnostic",
+  );
+}
+const requestedOwnerFailureCategories = new Map<string, number>();
+const requestedOwnerFailureCategoriesByIfcClass =
+  new Map<string, Map<string, number>>();
+for (const failure of requestedOwnerCollection.requestedOwnerFailureSamples) {
+  const category = requestedOwnerFailureCategory(failure.detail);
+  requestedOwnerFailureCategories.set(
+    category,
+    (requestedOwnerFailureCategories.get(category) ?? 0) + 1,
+  );
+  const className = failure.ownerElementId == null
+    ? "UnresolvedOwner"
+    : ifcGeometryByTag.get(failure.ownerElementId)?.className ??
+      "OutsideIfcOracle";
+  const classCounts =
+    requestedOwnerFailureCategoriesByIfcClass.get(className) ??
+      new Map<string, number>();
+  classCounts.set(category, (classCounts.get(category) ?? 0) + 1);
+  requestedOwnerFailureCategoriesByIfcClass.set(className, classCounts);
+}
 const report = {
   schemaVersion: 1,
   generatedBy: "scripts/audit-revit-2027-missing-owner-routes.ts",
@@ -945,18 +1096,33 @@ const report = {
     allNativeIdentitiesResolved: rows.every((row) => Boolean(row.uniqueId)),
     publicSyntacticDirectOwnerIds: directOwnerIds.size,
     baselineDirectOwnerIds: baselineDirectOwnerIds.size,
+    conditionedGeometry: {
+      candidateIfcTags: [...conditionedGeometryCandidateOwnerIds].filter(
+        (elementId) =>
+          ifcGeometryByTag.has(elementId) &&
+          !tessellatorCandidateOwnerIds.has(elementId),
+      ).length,
+      completeIfcTags: conditionedGeometryCompleteIfcTags,
+      ifcBoundsWithinHalfFoot: conditionedGeometryIfcBoundsWithinHalfFoot,
+      exactIfcTriangleCount: conditionedGeometryExactIfcTriangleCount,
+      fixedCorpusCandidateOwners: [...conditionedGeometryCandidateOwnerIds].filter(
+        (elementId) => missingTags.has(elementId),
+      ).length,
+      fixedCorpusCompleteOwners: conditionedGeometryCompleteOwners,
+      fixedCorpusIfcBoundsWithinHalfFoot:
+        conditionedGeometryBoundsWithinHalfFoot,
+      fixedCorpusExactIfcTriangleCount:
+        conditionedGeometryExactTriangleCount,
+    },
     boundedTessellator: {
       candidateOwners: tessellatorCandidateOwnerIds.size,
-      coverageCompleteOwners:
-        requestedOwnerCollection.completeRequestedOwners,
+      coverageCompleteOwners: boundedTessellatorCompleteIfcTags,
       productionEmittedOwners:
         conversion.decoderCoverage.nativeMeshBoundedTessellatorElements ?? 0,
       remainingWithoutCompleteCertifiedGeometry:
         rows.length - requestedOwnerCollection.completeRequestedOwners,
-      ifcBoundsWithinHalfFoot: requestedOwnerBoundsWithinHalfFoot,
-      remainingWithoutHalfFootIfcAgreement:
-        rows.length - requestedOwnerBoundsWithinHalfFoot,
-      exactIfcTriangleCount: requestedOwnerExactTriangleCount,
+      ifcBoundsWithinHalfFoot: boundedTessellatorIfcBoundsWithinHalfFoot,
+      exactIfcTriangleCount: boundedTessellatorExactIfcTriangleCount,
     },
     ifcCertifiedTagCoverage: {
       denominator: ifcGeometryNumericTags,
@@ -965,16 +1131,22 @@ const report = {
       tagPresenceTotal: certifiedIfcTagPresence,
       tagPresenceRatio: certifiedIfcTagPresence / ifcGeometryNumericTags,
       boundedTessellatorIfcBoundsWithinHalfFoot:
-        requestedOwnerBoundsWithinHalfFoot,
+        boundedTessellatorIfcBoundsWithinHalfFoot,
+      conditionedGeometryIfcBoundsWithinHalfFoot,
       ifcSpatialParityTotal:
-        baselineCertifiedIfcTagPresence + requestedOwnerBoundsWithinHalfFoot,
+        baselineCertifiedIfcTagPresence +
+        conditionedGeometryIfcBoundsWithinHalfFoot +
+        boundedTessellatorIfcBoundsWithinHalfFoot,
       ifcSpatialParityRatio:
-        (baselineCertifiedIfcTagPresence + requestedOwnerBoundsWithinHalfFoot) /
+        (baselineCertifiedIfcTagPresence +
+          conditionedGeometryIfcBoundsWithinHalfFoot +
+          boundedTessellatorIfcBoundsWithinHalfFoot) /
         ifcGeometryNumericTags,
       note:
         "Complete native Tag presence is distinct from IFC AABB agreement. " +
-        "The 22 complete bounded-root spatial mismatches remain certified " +
-        "native geometry but are not counted as IFC spatial-parity matches.",
+        "Complete conditioned/tessellator roots outside half-foot IFC AABB " +
+        "agreement remain certified native geometry but are not counted as " +
+        "IFC spatial-parity matches.",
     },
     placementLinks: placementByElement.size,
     certifiedDrawableElements: certifiedElements.size,
@@ -1022,6 +1194,15 @@ const report = {
     partialOwners: requestedOwnerCollection.partialRequestedOwners,
     certifiedTriangles: requestedOwnerCollection.requestedOwnerTriangles,
     failures: requestedOwnerCollection.requestedOwnerFailures,
+    failureCategories: counts(requestedOwnerFailureCategories),
+    failureCategoriesByIfcClass: Object.fromEntries(
+      [...requestedOwnerFailureCategoriesByIfcClass]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([className, categoryCounts]) => [
+          className,
+          counts(categoryCounts),
+        ]),
+    ),
     failureSamples: requestedOwnerCollection.requestedOwnerFailureSamples,
     boundsWithin1e6Feet: requestedOwnerBoundsWithinMicron,
     boundsWithinHalfFoot: requestedOwnerBoundsWithinHalfFoot,

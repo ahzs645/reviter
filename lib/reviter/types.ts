@@ -109,6 +109,12 @@ export type DecoderCoverage = {
   nativeMeshCompleteBoundedTessellatorRoots?: number;
   /** Bounded-root elements actually emitted after envelope/output gates. */
   nativeMeshBoundedTessellatorElements?: number;
+  /** GFilter-led conditioned roots entering exact FIFO replay. */
+  nativeMeshConditionedGeometryCandidates?: number;
+  /** Conditioned roots retained after complete local/nested coverage. */
+  nativeMeshCompleteConditionedGeometryRoots?: number;
+  /** Conditioned-root elements actually emitted after envelope/output gates. */
+  nativeMeshConditionedGeometryElements?: number;
   /** Exact certified triangles emitted after owner placement expansion. */
   nativeMeshTriangles?: number;
   /** True when a native storage/output safety cap declined complete elements. */

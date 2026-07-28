@@ -277,17 +277,17 @@ On the exact UNBC RVT:
 
 | Production measure | Result |
 | --- | ---: |
-| Complete persisted owners retained | 13,216 |
+| Complete persisted owners retained | 16,085 |
 | Exact bounded-root candidates / complete / emitted | 151 / 141 / 141 |
-| Exact placement owners complete / requested | 7,529 / 7,805 |
-| Nested roots complete / considered | 213 / 227 |
-| Elements emitted with certified native geometry | 34,286 |
-| Certified Face meshes after placement expansion | 334,113 |
-| Certified native triangles | 751,026 |
-| Elements retaining proxy/other geometry | 2,262 |
-| Native items rejected by independent RVT-envelope check | 654 |
-| Native items without an independent display envelope | 3,178 |
-| Final scene triangles, native plus fallback | 799,298 |
+| Exact placement owners complete / requested | 7,714 / 7,805 |
+| Nested roots complete / considered | 289 / 357 |
+| Elements emitted with certified native geometry | 35,029 |
+| Certified Face meshes after placement expansion | 354,000 |
+| Certified native triangles | 810,748 |
+| Elements retaining proxy/other geometry | 1,519 |
+| Native items rejected by independent RVT-envelope check | 676 |
+| Native items without an independent display envelope | 3,736 |
+| Final scene triangles, native plus fallback | 849,818 |
 
 Every positive-loop/topological Face must have a certified mesh; zero-loop
 reference faces are recorded separately. Native output is also atomic per
@@ -296,12 +296,13 @@ the independently decoded RVT element envelope with a 0.5-foot containment
 tolerance. A failed completeness, bounds, or capacity check leaves the proxy
 in place.
 
-The exact stable-checkpoint extraction took 39.09 seconds with 1.60 GB peak
-resident memory and reached no cap. Native triangles are `93.9607%` of final
-output. Across the 36,144 numeric IFC geometry Tags, certified native Tag
-presence is 35,006 (`96.8515%`); 34,984 (`96.7906%`) also agree with the IFC
-AABB within 0.5 ft. Runtime and memory figures are environment-sensitive and
-are reported as one local measurement, not a browser guarantee.
+The exact conditioned-root checkpoint reaches no cap at 270,036,692 estimated
+stored bytes under the finite 320 MiB collector limit. Native triangles are
+`95.4025%` of final output. Across the 36,144 numeric IFC geometry Tags,
+certified native Tag presence is 35,762 (`98.9431%`); 35,669 (`98.6858%`)
+also agree with the IFC AABB within 0.5 ft. One local extraction peaked at
+2.38 GB resident memory; runtime and memory are environment-sensitive and are
+not a browser guarantee.
 
 ## Consequence
 
@@ -322,10 +323,11 @@ topology.
 
 The remaining tracks are now narrower:
 
-- 276 production-eligible placement owners are still missing, conflicting, or
+- 91 production-eligible placement owners are still missing, conflicting, or
   incomplete after exact placement-seeded GRep closure;
-- 784 of the fixed 925-tag missing-route corpus still lack complete certified
-  geometry; the largest populations are members, columns, and stair flights;
+- 372 of the fixed 925-tag missing-route corpus still lack complete certified
+  geometry; 209 are the proven embedded-GElement column route, followed by 76
+  absent definitions and 64 missing nested symbol targets;
 - FamilySymbol slot 644 stores only a 4-byte generator id. Full family
   regeneration still needs the live `GeomStepList`/parameter/constraint path
   or a separately persisted drawable `m_geometry`; it cannot be reconstructed

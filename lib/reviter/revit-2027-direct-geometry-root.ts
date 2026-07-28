@@ -1,6 +1,9 @@
 import {
   REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gfilter.ts";
+import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "./revit-2027-garc.ts";
+import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "./revit-2027-gline.ts";
+import { REVIT_2027_GPOINT_SOURCE_CLASS_SLOT } from "./revit-2027-gpoint.ts";
 import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "./revit-2027-grep-prefixes.ts";
 import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
@@ -38,6 +41,15 @@ const EXACT_TESSELLATOR_CANDIDATE_SHAPES = [
   ],
 ] as const;
 
+const CONDITIONED_GEOMETRY_PREFIX_SLOTS = new Set<number>([
+  REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+  REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+  REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
+  REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+]);
+
 function hasExactSourceClassShape(
   root: Revit2027DirectGeometryRootLike,
   expected: readonly number[],
@@ -63,6 +75,39 @@ export function isRevit2027BoundedTessellatorRoot(
 ): boolean {
   return EXACT_TESSELLATOR_CANDIDATE_SHAPES.some((shape) =>
     hasExactSourceClassShape(root, shape));
+}
+
+/**
+ * Whether a root is the persisted conditioned-Geometry route used by members,
+ * stair flights, and slabs in the exact Revit 2027 corpus.
+ *
+ * At least one GFilter is required. Every prefix object has a complete,
+ * selector-free browser reader and is either a condition/control, curve,
+ * grouping, or instance carrier; the terminal Geometry owns the BRep faces.
+ * GCylindricalHelix and every unknown slot remain excluded. This is only a
+ * syntactic admission candidate: FIFO, face coverage, recursive composition,
+ * storage, and the independent element-envelope gate still fail closed.
+ */
+export function isRevit2027ConditionedGeometryRoot(
+  root: Revit2027DirectGeometryRootLike,
+): boolean {
+  const { children } = root;
+  if (
+    children.length < 2 ||
+    children[children.length - 1]?.sourceClassSlot !==
+      REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+  ) {
+    return false;
+  }
+  const prefix = children.slice(0, -1);
+  return (
+    prefix[0]?.sourceClassSlot === REVIT_2027_GFILTER_SOURCE_CLASS_SLOT &&
+    prefix.every(
+      (child) =>
+        child.sourceClassSlot != null &&
+        CONDITIONED_GEOMETRY_PREFIX_SLOTS.has(child.sourceClassSlot),
+    )
+  );
 }
 
 /**
@@ -100,6 +145,7 @@ export function isRevit2027DirectGeometryRoot(
   );
   return (
     directGroupShape ||
-    isRevit2027BoundedTessellatorRoot(root)
+    isRevit2027BoundedTessellatorRoot(root) ||
+    isRevit2027ConditionedGeometryRoot(root)
   );
 }

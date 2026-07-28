@@ -13,18 +13,18 @@ oracle.
 
 ## The route is usually the element's own GRep
 
-The earlier result was primarily a caller-admission gap, not an absent-owner
-gap:
+The schema-complete `GPoint` and `GConditionInt` readers prove that the earlier
+result was primarily FIFO/caller admission, not an absent-owner gap:
 
 | Persisted route | Tags |
 | --- | ---: |
-| own framed GElement outside the bounded tessellator predicate | 698 |
-| own bounded-candidate GElement, full FIFO/mesh coverage complete | 141 |
-| own bounded-candidate GElement, full coverage incomplete | 10 |
-| semantic frame only | 41 |
+| own full-FIFO, complete certified mesh | 553 |
+| own framed GElement, replay/mesh still incomplete | 224 |
+| syntactically admitted direct GRep, coverage/composition incomplete | 72 |
+| semantic frame only | 38 |
 | no independently framed partition object | 18 |
 | InsertableInstance frame but no decoded placement | 15 |
-| hosted-child membership, without a drawable owner route | 2 |
+| hosted-child membership, without a drawable owner route | 5 |
 
 The last 15 are columns and are a disjoint primary route. All 925 Tags resolve
 to a native Revit `UniqueId`; the tag corpus SHA-256 is
@@ -42,37 +42,37 @@ therefore not a validated missing geometry route in this population.
 
 | IFC class | Tags | Own GElement | Full FIFO/mesh complete | Within 0.5 ft RVT envelope |
 | --- | ---: | ---: | ---: | ---: |
-| `IfcMember` | 354 | 354 | 0 | 0 |
+| `IfcMember` | 354 | 354 | 336 | 291 |
 | `IfcColumn` | 224 | 209 | 0 | 0 |
-| `IfcStairFlight` | 108 | 108 | 0 | 0 |
+| `IfcStairFlight` | 108 | 108 | 50 | 46 |
 | `IfcRailing` | 105 | 105 | 97 | 97 |
 | `IfcWallStandardCase` | 59 | 24 | 24 | 6 |
-| `IfcSlab` | 49 | 27 | 1 | 0 |
+| `IfcSlab` | 49 | 27 | 27 | 4 |
 | `IfcWall` | 14 | 10 | 10 | 7 |
 | `IfcRamp` | 11 | 11 | 9 | 9 |
 | `IfcRoof` | 1 | 1 | 0 | 0 |
-| **Total** | **925** | **849** | **141** | **119** |
+| **Total** | **925** | **849** | **553** | **460** |
 
-The 141 complete owners pass the existing browser-safe full FIFO, certified
+The 553 complete owners pass the existing browser-safe full FIFO, certified
 face tessellation, positive-loop coverage, nested composition, duplicate/conflict,
-and bounded-storage gates. They contain 44,994 certified triangles. The
-independent IFC AABB diagnostic places 119 within 0.5 ft; 104 are coincident
-with IFC to `1e-6` ft. Triangle equality is only diagnostic: 98
-owners—97 railings and one wall—also match IFC triangle count.
+and bounded-storage gates. They contain 62,642 certified triangles. The
+independent IFC AABB diagnostic places 460 within 0.5 ft; 441 are coincident
+with IFC to `1e-6` ft. Triangle equality is only diagnostic: 430 owners match
+the IFC triangle count.
 
-Production now admits this route through the exact three-shape predicate and
-reports `revit-2027-bounded-tessellator-roots-v1` only when at least one
-bounded-root element survives complete coverage, envelope, and output gates.
-All 141 complete bounded roots survive the production RVT-envelope/output
-gates. Of those, 119 also agree with the independent IFC AABB within 0.5 ft;
-the other 22 remain certified native geometry but are not IFC spatial-parity
-matches.
+Production now admits both the original three exact shapes and a second
+format-derived route: a root beginning with `GFilter`, ending in `Geometry`,
+and containing only schema-complete condition, curve, group, point, and
+instance prefix slots. Complete coverage and the independent RVT envelope
+remain mandatory. `GCylindricalHelix` and every unknown slot fail closed.
 
 Across all 36,144 numeric IFC geometry Tags, complete certified native Tag
-presence rises from 34,865 to 35,006 (`96.851483%`). The stricter IFC spatial
-parity total is 34,984 / 36,144 (`96.790615%`): the 34,865 baseline plus the
-119 bounded roots within 0.5 ft. The fixed spatial-parity gap therefore falls
-by 119, from 925 to 806.
+presence is now 35,762 (`98.943117%`). The stricter IFC spatial parity total is
+35,669 / 36,144 (`98.685812%`). The original exact bounded route still
+contributes 141 complete / 119 half-foot matches; the new conditioned route
+contributes 418 complete / 347 half-foot matches among non-overlapping IFC
+Tags, while its readers also unlock nested geometry in previously admitted
+root shapes.
 
 ## Exact initial descriptor shapes
 
@@ -118,19 +118,32 @@ Ten pass full coverage, of which nine ramps pass the envelope gate. Two roots
 are exact negative controls, and the one complete slab fails the envelope
 gate.
 
-### Still-incomplete high-count shapes
+### Conditioned roots and remaining blockers
 
-- 354 stair supports/members begin with `GFilter`, then curve state, then
-  terminal `Geometry`.
-- 203 columns begin `GInstance -> GFilter -> Geometry`; six write Geometry
-  before the final GFilter and are not terminal-Geometry candidates.
-- 108 stair flights begin with `GFilter`, followed by exact curve/control/
-  instance state, then terminal `Geometry`.
+The conditioned route recovers 336 members, 50 stair flights, and 27 slabs.
+Its exact reader chain is:
 
-Their GRep ownership is proven, but none currently completes certified
-drawable-face coverage. They remain proxy-only.
+```text
+GFilter/GPoint/GConditionInt + curve/control/group/instance state -> Geometry
+```
 
-## Class-independent candidate predicate
+The remaining 372 fixed-corpus failures now stop at concrete boundaries:
+
+| First blocking boundary | Owners |
+| --- | ---: |
+| `GInstance` embedded-GElement variant | 209 |
+| no framed GRep definition | 76 |
+| missing nested symbol target | 64 |
+| unsupported `GCylindricalHelix` slot 2244 | 14 |
+| local loop/surface tessellation incomplete | 8 |
+| unsupported `GGTag` slot 2256 | 1 |
+
+The 209 columns are not a reason to loosen the 44-byte `GInstance` reader:
+their non-null embedded descriptor is a distinct 46-byte variant whose source
+2246 `GElement` must be associated with the instance transform and native
+embedded-geometry precedence.
+
+## Original exact candidate predicate
 
 The measured predicate does not inspect IFC class, category, family, or element
 ID. It requires the initial descriptors to use append-only tokens `3..n` and
@@ -151,11 +164,9 @@ roots:
 | existing full FIFO/mesh coverage gates | 141 | all measured complete roots |
 | independent 0.5-foot IFC AABB comparison | 119 | spatial-parity matches |
 
-The predicate therefore has `141/151` (`93.38%`) pre-coverage precision and
-`141/141` (`100%`) recall for the complete roots in this population. Against
-the 708 incomplete own-GElement roots it excludes 698 and deliberately leaves
-10 exact-shape negative controls for the runtime coverage gates, a measured
-specificity of `698/708` (`98.59%`).
+The predicate has `141/151` (`93.38%`) pre-coverage precision and preserves ten
+exact-shape negative controls for the runtime coverage gates. It remains a
+separate, reproducible checkpoint beside the conditioned route.
 
 Production evaluates 151 candidate roots rather than all display IDs. The
 collector rejects 10 during complete coverage and holds the measured 44,994
@@ -167,7 +178,8 @@ certified triangles. All 141 complete roots pass the production RVT envelope;
 The production caller predicate is class-independent:
 
 1. exact Revit 2027 length/echo-framed GElement and owner identity;
-2. append-only initial tokens and one of the measured source-slot sequences;
+2. append-only initial tokens and either one measured exact sequence or a
+   `GFilter`-first, terminal-`Geometry` prefix containing only certified slots;
 3. successful complete FIFO replay;
 4. complete positive-loop Face mesh coverage;
 5. complete recursive `GInstance` closure when present;
