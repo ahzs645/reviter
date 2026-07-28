@@ -98,6 +98,7 @@ let chunks = 0;
 let failedChunks = 0;
 let eligibleOwners = 0;
 let completedOwners = 0;
+const eligibleOwnerElementIds = new Set<number>();
 let descriptors = 0;
 let spans = 0;
 const descriptorStates = new Map<string, number>();
@@ -182,6 +183,10 @@ for (const partition of partitions) {
         continue;
       }
       eligibleOwners += 1;
+      const eligibleOwnerElementId = Number(root.value.ownerElementId);
+      if (Number.isSafeInteger(eligibleOwnerElementId)) {
+        eligibleOwnerElementIds.add(eligibleOwnerElementId);
+      }
       const replayed = replayRevit2027GRepFifo(inflated, root.value);
       if (!replayed.ok) {
         increment(failures, replayed.error);
@@ -394,6 +399,17 @@ console.log(JSON.stringify({
         maximum: value.maximum,
       })),
     instances: certifiedInstances,
+  },
+  topologyInventory: {
+    directGeometryOwnerElementIds: [...eligibleOwnerElementIds].sort(
+      (left, right) => left - right,
+    ),
+    placementLinks: [...instancePlacements.values()]
+      .map((placement) => ({
+        elementId: placement.elementId,
+        geometryOwnerId: placement.geometryId,
+      }))
+      .sort((left, right) => left.elementId - right.elementId),
   },
   failures: entries(failures),
   readerCorpusValid,

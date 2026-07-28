@@ -264,6 +264,67 @@ const rvtOnlyTags = [...rvtElements.keys()]
 const ifcOnlyTags = [...ifcGeometryByTag.keys()]
   .filter((tag) => !rvtElements.has(tag))
   .sort((left, right) => left - right);
+const directGeometryOwnerIds = new Set(
+  rvtAudit.topologyInventory?.directGeometryOwnerElementIds ?? [],
+);
+const decodedPlacementLinks = new Map(
+  (rvtAudit.topologyInventory?.placementLinks ?? []).map((placement) => [
+    placement.elementId,
+    placement.geometryOwnerId,
+  ]),
+);
+function ifcOnlyReason(tag) {
+  if (directGeometryOwnerIds.has(tag)) {
+    return "direct-geometry-owner-without-certified-mesh";
+  }
+  const geometryOwnerId = decodedPlacementLinks.get(tag);
+  if (geometryOwnerId == null) return "no-direct-owner-or-placement";
+  return directGeometryOwnerIds.has(geometryOwnerId)
+    ? "placement-to-owner-without-certified-mesh"
+    : "placement-to-unreplayed-owner";
+}
+const ifcOnlyByReason = new Map();
+const ifcOnlyByClass = new Map();
+const unreplayedPlacementOwners = new Map();
+for (const tag of ifcOnlyTags) {
+  const ifc = ifcGeometryByTag.get(tag);
+  const reason = ifcOnlyReason(tag);
+  const reasonRow = ifcOnlyByReason.get(reason) ?? {
+    tags: 0,
+    ifcTriangles: 0,
+  };
+  reasonRow.tags += 1;
+  reasonRow.ifcTriangles += ifc.triangles;
+  ifcOnlyByReason.set(reason, reasonRow);
+
+  const classRow = ifcOnlyByClass.get(ifc.type) ?? {
+    tags: 0,
+    ifcTriangles: 0,
+    reasons: new Map(),
+  };
+  classRow.tags += 1;
+  classRow.ifcTriangles += ifc.triangles;
+  classRow.reasons.set(reason, (classRow.reasons.get(reason) ?? 0) + 1);
+  ifcOnlyByClass.set(ifc.type, classRow);
+
+  if (reason === "placement-to-unreplayed-owner") {
+    const geometryOwnerId = decodedPlacementLinks.get(tag);
+    const ownerRow = unreplayedPlacementOwners.get(geometryOwnerId) ?? {
+      placedTags: 0,
+      ifcTriangles: 0,
+      classes: new Map(),
+      sampleTags: [],
+    };
+    ownerRow.placedTags += 1;
+    ownerRow.ifcTriangles += ifc.triangles;
+    ownerRow.classes.set(
+      ifc.type,
+      (ownerRow.classes.get(ifc.type) ?? 0) + 1,
+    );
+    if (ownerRow.sampleTags.length < 10) ownerRow.sampleTags.push(tag);
+    unreplayedPlacementOwners.set(geometryOwnerId, ownerRow);
+  }
+}
 const matchedRvtTriangles = sum(
   matchedTags.map((tag) => rvtElements.get(tag)?.triangles ?? 0),
 );
@@ -369,6 +430,48 @@ const report = {
   coverage: {
     matchedRvtTagRatio: ratio(matchedTags.length, rvtElements.size),
     ifcGeometryTagCoverage: ratio(matchedTags.length, ifcGeometryByTag.size),
+  },
+  ifcOnlyDiagnosis: {
+    scope:
+      "numeric IFC geometry Tags absent from the certified RVT owner+placement candidate set",
+    unreplayedPlacementOwnerCount: unreplayedPlacementOwners.size,
+    byReason: Object.fromEntries(
+      [...ifcOnlyByReason].sort(
+        (left, right) => right[1].tags - left[1].tags,
+      ),
+    ),
+    byIfcClass: Object.fromEntries(
+      [...ifcOnlyByClass]
+        .sort((left, right) => right[1].tags - left[1].tags)
+        .map(([type, row]) => [
+          type,
+          {
+            tags: row.tags,
+            ifcTriangles: row.ifcTriangles,
+            reasons: Object.fromEntries(
+              [...row.reasons].sort(
+                (left, right) => right[1] - left[1],
+              ),
+            ),
+          },
+        ]),
+    ),
+    unreplayedPlacementOwners: [...unreplayedPlacementOwners]
+      .sort(
+        (left, right) =>
+          right[1].placedTags - left[1].placedTags ||
+          left[0] - right[0],
+      )
+      .slice(0, 100)
+      .map(([geometryOwnerId, row]) => ({
+        geometryOwnerId,
+        placedTags: row.placedTags,
+        ifcTriangles: row.ifcTriangles,
+        classes: Object.fromEntries(
+          [...row.classes].sort((left, right) => right[1] - left[1]),
+        ),
+        sampleTags: row.sampleTags,
+      })),
   },
   worldBounds: {
     scope:
