@@ -270,12 +270,23 @@ const matchedPlacedTags = [...rvtPlacedElements.keys()]
 const boundsRows = matchedPlacedTags.map((tag) => ({
   tag,
   type: ifcGeometryByTag.get(tag).type,
+  geometryOwnerId: rvtPlacedElements.get(tag).geometryOwnerId,
+  rvtTriangles: rvtPlacedElements.get(tag).triangles,
+  ifcTriangles: ifcGeometryByTag.get(tag).triangles,
+  exactTriangleCount:
+    rvtPlacedElements.get(tag).triangles ===
+    ifcGeometryByTag.get(tag).triangles,
   ...boundsError(
     rvtPlacedElements.get(tag),
     ifcGeometryByTag.get(tag).bounds,
   ),
 }));
 const boundsRowByTag = new Map(boundsRows.map((row) => [row.tag, row]));
+const coincidentBoundsAndTriangleCount = boundsRows.filter(
+  (row) =>
+    row.exactTriangleCount &&
+    row.maximumCornerErrorFeet <= BOUNDS_TOLERANCES_FEET[0],
+);
 
 const byIfcClass = new Map();
 for (const tag of matchedTags) {
@@ -287,6 +298,7 @@ for (const tag of matchedTags) {
     ifcTriangles: 0,
     placedBoundsTags: 0,
     placedBoundsWithinHalfFoot: 0,
+    coincidentBoundsAndTriangleCount: 0,
   };
   row.matchedTags += 1;
   row.rvtTriangles += rvt.triangles;
@@ -296,6 +308,12 @@ for (const tag of matchedTags) {
     row.placedBoundsTags += 1;
     if (boundsRow.maximumCornerErrorFeet <= 0.5) {
       row.placedBoundsWithinHalfFoot += 1;
+    }
+    if (
+      boundsRow.exactTriangleCount &&
+      boundsRow.maximumCornerErrorFeet <= BOUNDS_TOLERANCES_FEET[0]
+    ) {
+      row.coincidentBoundsAndTriangleCount += 1;
     }
   }
   byIfcClass.set(ifc.type, row);
@@ -361,6 +379,16 @@ const report = {
       "maximumSizeErrorFeet",
     ),
     withinMaximumCornerError: toleranceCounts(boundsRows),
+    coincidentBoundsAndTriangleCount: {
+      toleranceFeet: BOUNDS_TOLERANCES_FEET[0],
+      count: coincidentBoundsAndTriangleCount.length,
+      ratio: ratio(
+        coincidentBoundsAndTriangleCount.length,
+        boundsRows.length,
+      ),
+      interpretation:
+        "diagnostic only: equal triangle counts plus coincident world AABBs do not prove identical topology or vertex positions",
+    },
   },
   byIfcClass: Object.fromEntries(
     [...byIfcClass]
@@ -379,6 +407,10 @@ const report = {
           ),
           placedBoundsWithinHalfFootRatio: ratio(
             value.placedBoundsWithinHalfFoot,
+            value.placedBoundsTags,
+          ),
+          coincidentBoundsAndTriangleCountRatio: ratio(
+            value.coincidentBoundsAndTriangleCount,
             value.placedBoundsTags,
           ),
         },

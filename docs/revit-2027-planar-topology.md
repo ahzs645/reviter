@@ -129,6 +129,7 @@ assumed to be world coordinates.
 | World bounds within 0.000001 ft on every corner | 25,326 / 25,533 (99.19%) |
 | World bounds within 1 inch on every corner | 25,505 / 25,533 (99.89%) |
 | World bounds within 0.5 ft on every corner | 25,522 / 25,533 (99.96%) |
+| Equal triangle count and bounds within 0.000001 ft | 25,320 / 25,533 (99.17%) |
 
 Members account for 19,298 matched Tags and plates for 6,235. Their triangle
 ratios are 99.96% and 99.98%, respectively. Slabs, coverings, and roofs form
@@ -139,9 +140,13 @@ Equal triangle counts are diagnostic, not geometric identity: different valid
 tessellation tolerances can emit different triangle counts. World bounds now
 give an independent placement and extent check: median worst-corner error is
 2.91e-9 ft and the 95th percentile is 8.02e-8 ft. Eleven `IfcPlate` Tags exceed
-0.5 ft; their contiguous Revit IDs and large extent differences are retained
-in the report rather than treated as successful instances. Sampled-surface and
-topological equivalence remain stronger future checks.
+0.5 ft. They are the contiguous Revit IDs `1954494..1954504`, all native
+`Curtain Wall Panels` exported as system panels with glazing. Their triangle
+counts are already exact, while their selected shared-owner extents are not;
+that isolates a nested geometry/family regeneration binding problem rather
+than tessellation density. The owner IDs and per-axis errors are retained in
+the report instead of treating those panels as successful instances.
+Sampled-surface and topological equivalence remain stronger future checks.
 
 ## Fail-closed boundaries
 
