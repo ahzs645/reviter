@@ -277,17 +277,19 @@ On the exact UNBC RVT:
 
 | Production measure | Result |
 | --- | ---: |
-| Complete persisted owners retained | 16,085 |
+| Complete persisted owners retained | 16,254 |
 | Exact bounded-root candidates / complete / emitted | 151 / 141 / 141 |
+| Conditioned-root candidates / complete / emitted | 3,083 / 2,957 / 2,123 |
+| Embedded-root candidates / complete / emitted | 209 / 169 / 169 |
 | Exact placement owners complete / requested | 7,714 / 7,805 |
 | Nested roots complete / considered | 289 / 357 |
-| Elements emitted with certified native geometry | 35,029 |
-| Certified Face meshes after placement expansion | 354,000 |
-| Certified native triangles | 810,748 |
-| Elements retaining proxy/other geometry | 1,519 |
+| Elements emitted with certified native geometry | 35,198 |
+| Certified Face meshes after placement expansion | 355,918 |
+| Certified native triangles | 823,452 |
+| Elements retaining proxy/other geometry | 1,350 |
 | Native items rejected by independent RVT-envelope check | 676 |
 | Native items without an independent display envelope | 3,736 |
-| Final scene triangles, native plus fallback | 849,818 |
+| Final scene triangles, native plus fallback | 860,494 |
 
 Every positive-loop/topological Face must have a certified mesh; zero-loop
 reference faces are recorded separately. Native output is also atomic per
@@ -296,10 +298,10 @@ the independently decoded RVT element envelope with a 0.5-foot containment
 tolerance. A failed completeness, bounds, or capacity check leaves the proxy
 in place.
 
-The exact conditioned-root checkpoint reaches no cap at 270,036,692 estimated
+The exact embedded-root checkpoint reaches no cap at 272,807,084 estimated
 stored bytes under the finite 320 MiB collector limit. Native triangles are
-`95.4025%` of final output. Across the 36,144 numeric IFC geometry Tags,
-certified native Tag presence is 35,762 (`98.9431%`); 35,669 (`98.6858%`)
+`95.6953%` of final output. Across the 36,144 numeric IFC geometry Tags,
+certified native Tag presence is 35,931 (`99.4107%`); 35,838 (`99.1534%`)
 also agree with the IFC AABB within 0.5 ft. One local extraction peaked at
 2.38 GB resident memory; runtime and memory are environment-sensitive and are
 not a browser guarantee.
@@ -325,9 +327,11 @@ The remaining tracks are now narrower:
 
 - 91 production-eligible placement owners are still missing, conflicting, or
   incomplete after exact placement-seeded GRep closure;
-- 372 of the fixed 925-tag missing-route corpus still lack complete certified
-  geometry; 209 are the proven embedded-GElement column route, followed by 76
-  absent definitions and 64 missing nested symbol targets;
+- 203 of the fixed 925-tag missing-route corpus still lack complete certified
+  geometry: 76 absent definitions, 64 missing nested symbol targets, 40
+  embedded-column trim/loop coverage failures, 14 unsupported
+  `GCylindricalHelix` bodies, eight other local tessellation failures, and one
+  unsupported `GGTag`;
 - FamilySymbol slot 644 stores only a 4-byte generator id. Full family
   regeneration still needs the live `GeomStepList`/parameter/constraint path
   or a separately persisted drawable `m_geometry`; it cannot be reconstructed

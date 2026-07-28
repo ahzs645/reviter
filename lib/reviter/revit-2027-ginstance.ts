@@ -4,19 +4,22 @@ import {
   type CondInt16QueueEntry,
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
+import {
+  REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gelement.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 
 export const REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT = 2215;
 export const REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT = 2513;
+/** Static length when `m_oEmbeddedSymbolGRep` is null. */
 export const REVIT_2027_GINSTANCE_BODY_BYTES = 44;
+/** Static length when `m_oEmbeddedSymbolGRep` queues a GElement. */
+export const REVIT_2027_GINSTANCE_EMBEDDED_BODY_BYTES = 46;
 export const REVIT_2027_INSTANCE_INFO_BODY_BYTES = 112;
 
 const GINSTANCE_INSTANCE_INFO_OFFSET = 20;
 const GINSTANCE_EMBEDDED_SYMBOL_OFFSET = 26;
-const GINSTANCE_TAG_ID_OFFSET = 30;
-const GINSTANCE_TARGET_OFFSET = 38;
-const GINSTANCE_RESOLVE_SYMBOL_OFFSET = 42;
-const GINSTANCE_HAS_SCALE_OFFSET = 43;
+const GINSTANCE_SCALAR_SUFFIX_BYTES = 14;
 
 const INSTANCE_INFO_TRANSFORM_OFFSET = 0;
 const INSTANCE_INFO_SYMBOL_ID_OFFSET = 96;
@@ -82,7 +85,7 @@ function readBoolean(data: Uint8Array, byteOffset: number): boolean | null {
 }
 
 /**
- * Decode the exact 44-byte static body of release-2027 `GInstance`.
+ * Decode the exact 44- or 46-byte static body of release-2027 `GInstance`.
  *
  * The two CondInt16 descriptors append `InstanceInfo` and an optional embedded
  * symbol to the enclosing dynamic-property FIFO. Their bodies are not inline:
@@ -106,11 +109,17 @@ export function decodeRevit2027GInstanceStatic(
       byteOffset,
       bodyEndOffset,
       REVIT_2027_GINSTANCE_BODY_BYTES,
+    ) &&
+    !hasExactBody(
+      data,
+      byteOffset,
+      bodyEndOffset,
+      REVIT_2027_GINSTANCE_EMBEDDED_BODY_BYTES,
     )
   ) {
     return {
       ok: false,
-      error: "Revit 2027 GInstance body is not exactly 44 bytes",
+      error: "Revit 2027 GInstance body is not exactly 44 or 46 bytes",
     };
   }
 
@@ -138,25 +147,38 @@ export function decodeRevit2027GInstanceStatic(
     byteOffset + GINSTANCE_EMBEDDED_SYMBOL_OFFSET,
   );
   if (!embeddedSymbolGRep.ok) return embeddedSymbolGRep;
-  if (
-    embeddedSymbolGRep.descriptor.endOffset !==
-      byteOffset + GINSTANCE_TAG_ID_OFFSET ||
-    embeddedSymbolGRep.descriptor.token !== 0 ||
-    embeddedSymbolGRep.descriptor.sourceClassSlot !== null
-  ) {
+  const embeddedIsNull =
+    embeddedSymbolGRep.descriptor.token === 0 &&
+    embeddedSymbolGRep.descriptor.sourceClassSlot === null;
+  const embeddedIsGElement =
+    embeddedSymbolGRep.descriptor.token > 0 &&
+    embeddedSymbolGRep.descriptor.sourceClassSlot ===
+      REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT;
+  if (!embeddedIsNull && !embeddedIsGElement) {
     return {
       ok: false,
-      error: "Revit 2027 GInstance embedded-symbol descriptor is not null",
+      error:
+        "Revit 2027 GInstance embedded-symbol descriptor is neither null nor a positive source-slot 2246 GElement",
     };
   }
 
+  const scalarSuffixOffset = embeddedSymbolGRep.descriptor.endOffset;
+  if (
+    scalarSuffixOffset + GINSTANCE_SCALAR_SUFFIX_BYTES !== bodyEndOffset
+  ) {
+    return {
+      ok: false,
+      error:
+        "Revit 2027 GInstance body length does not match its embedded-symbol descriptor",
+    };
+  }
   const resolveSymbolInView = readBoolean(
     data,
-    byteOffset + GINSTANCE_RESOLVE_SYMBOL_OFFSET,
+    scalarSuffixOffset + 12,
   );
   const hasScale = readBoolean(
     data,
-    byteOffset + GINSTANCE_HAS_SCALE_OFFSET,
+    scalarSuffixOffset + 13,
   );
   if (resolveSymbolInView == null || hasScale == null) {
     return {
@@ -174,14 +196,8 @@ export function decodeRevit2027GInstanceStatic(
       gInfo: decodeGInfo(view, byteOffset),
       instanceInfo: instanceInfo.descriptor,
       embeddedSymbolGRep: embeddedSymbolGRep.descriptor,
-      tagElementId: view.getBigInt64(
-        byteOffset + GINSTANCE_TAG_ID_OFFSET,
-        true,
-      ),
-      forbiddenTarget: view.getInt32(
-        byteOffset + GINSTANCE_TARGET_OFFSET,
-        true,
-      ),
+      tagElementId: view.getBigInt64(scalarSuffixOffset, true),
+      forbiddenTarget: view.getInt32(scalarSuffixOffset + 8, true),
       resolveSymbolInView,
       hasScale,
     },

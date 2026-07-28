@@ -11,7 +11,9 @@ import type {
   Revit2027GRepReplaySpan,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
 import {
+  collectRevit2027GInstanceBindings,
   collectRevit2027NestedInstances,
+  composeRevit2027EmbeddedPathTransform,
   composeRevit2027NestedMesh,
   type Revit2027NestedInstance,
   type Revit2027NestedMeshOwner,
@@ -204,6 +206,105 @@ test("rejects missing, duplicate, or descriptor-mismatched InstanceInfo", () => 
   );
   assert.equal(mismatched.ok, false);
   if (!mismatched.ok) assert.match(mismatched.error, /descriptor and path/);
+});
+
+function embeddedReplay(): Revit2027GRepReplay {
+  const base = exactReplay();
+  const embeddedInstance: Revit2027GInstance = {
+    ...gInstance(),
+    endOffset: 110,
+    embeddedSymbolGRep: {
+      byteOffset: 90,
+      endOffset: 96,
+      token: 4,
+      sourceClassSlot: 2_246,
+    },
+    forbiddenTarget: 0,
+  };
+  const embeddedInfo: Revit2027InstanceInfo = {
+    ...instanceInfo(),
+    transform: transform([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      5, 6, 7, 1,
+    ]),
+  };
+  return replay([
+    {
+      ...base.spans[0]!,
+      value: embeddedInstance,
+    },
+    {
+      ...base.spans[1]!,
+    },
+    {
+      ...base.spans[2]!,
+      value: embeddedInfo,
+    },
+    span({
+      replayIndex: 3,
+      readerId: "Revit2027GElement",
+      propertySourceClassSlot: 2_246,
+      path: [0, 1],
+      parentPath: [0],
+      parentReplayIndex: 0,
+      propertyToken: 4,
+      descriptorOffset: 90,
+      descriptorEndOffset: 96,
+      value: {
+        byteOffset: 264,
+        endOffset: 412,
+        elementId: 20n,
+        objectType: 3,
+        flags: 2,
+      },
+    }),
+  ]);
+}
+
+test("embedded GElement takes precedence over external symbol traversal", () => {
+  const replayed = embeddedReplay();
+  const bindings = collectRevit2027GInstanceBindings(replayed);
+  assert.equal(bindings.ok, true);
+  if (!bindings.ok) return;
+  assert.equal(bindings.value.length, 1);
+  assert.equal(bindings.value[0]!.kind, "embedded");
+
+  const external = collectRevit2027NestedInstances(replayed);
+  assert.deepEqual(external, { ok: true, value: [] });
+
+  const direct = composeRevit2027EmbeddedPathTransform(
+    bindings.value,
+    [0, 1, 0, 2],
+  );
+  assert.equal(direct.ok, true);
+  if (direct.ok) assert.deepEqual(direct.value?.slice(12, 15), [5, 6, 7]);
+  const outside = composeRevit2027EmbeddedPathTransform(
+    bindings.value,
+    [1, 0],
+  );
+  assert.deepEqual(outside, { ok: true, value: null });
+});
+
+test("embedded GElement pairing fails closed on identity mismatch", () => {
+  const replayed = embeddedReplay();
+  const spans = replayed.spans.map((entry) =>
+    entry.readerId === "Revit2027GElement"
+      ? {
+          ...entry,
+          value: {
+            ...(entry.value as Record<string, unknown>),
+            elementId: 21n,
+          },
+        }
+      : entry);
+  const bindings = collectRevit2027GInstanceBindings({
+    ...replayed,
+    spans,
+  });
+  assert.equal(bindings.ok, false);
+  if (!bindings.ok) assert.match(bindings.error, /does not match InstanceInfo/);
 });
 
 function nested(

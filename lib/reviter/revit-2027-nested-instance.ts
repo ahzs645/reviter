@@ -1,5 +1,9 @@
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 import {
+  REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
+  type Revit2027GElementStatic,
+} from "./revit-2027-gelement.ts";
+import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
   REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
   type Revit2027GInstance,
@@ -13,6 +17,7 @@ import type {
 
 const GINSTANCE_READER_ID = "Revit2027GInstance";
 const INSTANCE_INFO_READER_ID = "Revit2027InstanceInfo";
+const GELEMENT_READER_ID = "Revit2027GElement";
 const DEFAULT_MAX_DEPTH = 64;
 const DEFAULT_MAX_OCCURRENCES = 1_000_000;
 const DEFAULT_MAX_TRAVERSALS = 1_000_000;
@@ -34,6 +39,27 @@ export type Revit2027NestedInstance = {
 
 export type Revit2027NestedInstanceCollectionResult =
   | { ok: true; value: readonly Revit2027NestedInstance[] }
+  | { ok: false; error: string };
+
+export type Revit2027GInstanceBinding =
+  | {
+      kind: "external";
+      instance: Revit2027NestedInstance;
+    }
+  | {
+      kind: "embedded";
+      instance: Revit2027NestedInstance;
+      embeddedGElementReplayIndex: number;
+      embeddedGElementPath: Revit2027GRepReplayPath;
+      embeddedElementId: bigint;
+    };
+
+export type Revit2027GInstanceBindingCollectionResult =
+  | { ok: true; value: readonly Revit2027GInstanceBinding[] }
+  | { ok: false; error: string };
+
+export type Revit2027EmbeddedPathTransformResult =
+  | { ok: true; value: RevitTransform3d["matrix"] | null }
   | { ok: false; error: string };
 
 export type Revit2027NestedMeshOwner<TGeometry> = {
@@ -145,25 +171,37 @@ function asInstanceInfo(value: unknown): Revit2027InstanceInfo | null {
   return value as Revit2027InstanceInfo;
 }
 
-function pathIsFirstChild(
+function asGElement(value: unknown): Revit2027GElementStatic | null {
+  const candidate = record(value);
+  return candidate != null &&
+      typeof candidate.byteOffset === "number" &&
+      typeof candidate.endOffset === "number" &&
+      typeof candidate.elementId === "bigint" &&
+      validInt32(candidate.objectType) &&
+      validInt32(candidate.flags)
+    ? value as Revit2027GElementStatic
+    : null;
+}
+
+function pathIsChild(
   parent: Revit2027GRepReplayPath,
   child: Revit2027GRepReplayPath,
+  childIndex: number,
 ): boolean {
   return (
     child.length === parent.length + 1 &&
     parent.every((entry, index) => child[index] === entry) &&
-    child[child.length - 1] === 0
+    child[child.length - 1] === childIndex
   );
 }
 
 /**
- * Pair every exact GInstance replay span with the InstanceInfo body appended by
- * its token--1 descriptor. Pairing uses the replay parent index and descriptor
- * offsets, never adjacency: older siblings can occur between the two bodies.
+ * Pair every exact GInstance with its queued InstanceInfo and discriminate
+ * native external-symbol resolution from an embedded GElement representation.
  */
-export function collectRevit2027NestedInstances(
+export function collectRevit2027GInstanceBindings(
   replay: Revit2027GRepReplay,
-): Revit2027NestedInstanceCollectionResult {
+): Revit2027GInstanceBindingCollectionResult {
   const instanceSpans = replay.spans.filter(
     (span) =>
       span.readerId === GINSTANCE_READER_ID &&
@@ -171,6 +209,7 @@ export function collectRevit2027NestedInstances(
         REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
   );
   const infoByParent = new Map<number, Revit2027GRepReplaySpan[]>();
+  const embeddedByParent = new Map<number, Revit2027GRepReplaySpan[]>();
   for (const span of replay.spans) {
     if (
       span.readerId !== INSTANCE_INFO_READER_ID ||
@@ -178,6 +217,17 @@ export function collectRevit2027NestedInstances(
         REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT ||
       span.parentReplayIndex == null
     ) {
+      if (
+        span.readerId === GELEMENT_READER_ID &&
+        span.propertySourceClassSlot ===
+          REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT &&
+        span.parentReplayIndex != null
+      ) {
+        const siblings =
+          embeddedByParent.get(span.parentReplayIndex) ?? [];
+        siblings.push(span);
+        embeddedByParent.set(span.parentReplayIndex, siblings);
+      }
       continue;
     }
     const siblings = infoByParent.get(span.parentReplayIndex) ?? [];
@@ -185,7 +235,7 @@ export function collectRevit2027NestedInstances(
     infoByParent.set(span.parentReplayIndex, siblings);
   }
 
-  const result: Revit2027NestedInstance[] = [];
+  const result: Revit2027GInstanceBinding[] = [];
   for (const instanceSpan of instanceSpans) {
     const instance = asGInstance(instanceSpan.value);
     if (!instance) {
@@ -217,7 +267,7 @@ export function collectRevit2027NestedInstances(
       infoSpan.propertyToken !== -1 ||
       infoSpan.descriptorOffset !== instance.instanceInfo.byteOffset ||
       infoSpan.descriptorEndOffset !== instance.instanceInfo.endOffset ||
-      !pathIsFirstChild(instanceSpan.path, infoSpan.path)
+      !pathIsChild(instanceSpan.path, infoSpan.path, 0)
     ) {
       return {
         ok: false,
@@ -233,7 +283,7 @@ export function collectRevit2027NestedInstances(
           `InstanceInfo replay ${infoSpan.replayIndex} has a null or negative symbol id`,
       };
     }
-    result.push({
+    const paired: Revit2027NestedInstance = {
       ownerElementId: replay.ownerElementId,
       instanceReplayIndex: instanceSpan.replayIndex,
       instanceInfoReplayIndex: infoSpan.replayIndex,
@@ -246,9 +296,96 @@ export function collectRevit2027NestedInstances(
       forbiddenTarget: instance.forbiddenTarget,
       resolveSymbolInView: instance.resolveSymbolInView,
       hasScale: instance.hasScale,
+    };
+
+    if (instance.embeddedSymbolGRep.token === 0) {
+      if (instance.embeddedSymbolGRep.sourceClassSlot !== null) {
+        return {
+          ok: false,
+          error:
+            `GInstance replay ${instanceSpan.replayIndex} has an inconsistent null embedded descriptor`,
+        };
+      }
+      result.push({ kind: "external", instance: paired });
+      continue;
+    }
+    if (
+      instance.embeddedSymbolGRep.token <= 0 ||
+      instance.embeddedSymbolGRep.sourceClassSlot !==
+        REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT
+    ) {
+      return {
+        ok: false,
+        error:
+          `GInstance replay ${instanceSpan.replayIndex} has an unsupported embedded representation`,
+      };
+    }
+    const embeddedSpans =
+      embeddedByParent.get(instanceSpan.replayIndex) ?? [];
+    if (embeddedSpans.length !== 1) {
+      return {
+        ok: false,
+        error:
+          `GInstance replay ${instanceSpan.replayIndex} has ${embeddedSpans.length} ` +
+          "embedded GElement children instead of exactly one",
+      };
+    }
+    const embeddedSpan = embeddedSpans[0]!;
+    const embedded = asGElement(embeddedSpan.value);
+    if (!embedded) {
+      return {
+        ok: false,
+        error:
+          `embedded GElement replay ${embeddedSpan.replayIndex} has an invalid exact-reader value`,
+      };
+    }
+    if (
+      embeddedSpan.propertyToken !== instance.embeddedSymbolGRep.token ||
+      embeddedSpan.descriptorOffset !==
+        instance.embeddedSymbolGRep.byteOffset ||
+      embeddedSpan.descriptorEndOffset !==
+        instance.embeddedSymbolGRep.endOffset ||
+      !pathIsChild(instanceSpan.path, embeddedSpan.path, 1)
+    ) {
+      return {
+        ok: false,
+        error:
+          `embedded GElement replay ${embeddedSpan.replayIndex} does not match its ` +
+          `GInstance ${instanceSpan.replayIndex} descriptor and path`,
+      };
+    }
+    if (embedded.elementId !== info.symbolElementId) {
+      return {
+        ok: false,
+        error:
+          `embedded GElement ${embedded.elementId} does not match InstanceInfo symbol ${info.symbolElementId}`,
+      };
+    }
+    result.push({
+      kind: "embedded",
+      instance: paired,
+      embeddedGElementReplayIndex: embeddedSpan.replayIndex,
+      embeddedGElementPath: embeddedSpan.path,
+      embeddedElementId: embedded.elementId,
     });
   }
   return { ok: true, value: result };
+}
+
+/**
+ * Return only native external-symbol links. A non-null embedded GRep takes
+ * precedence in TB_Geometry and is deliberately suppressed from this graph.
+ */
+export function collectRevit2027NestedInstances(
+  replay: Revit2027GRepReplay,
+): Revit2027NestedInstanceCollectionResult {
+  const bindings = collectRevit2027GInstanceBindings(replay);
+  if (!bindings.ok) return bindings;
+  return {
+    ok: true,
+    value: bindings.value.flatMap((binding) =>
+      binding.kind === "external" ? [binding.instance] : []),
+  };
 }
 
 function validLimit(value: number): boolean {
@@ -271,6 +408,70 @@ function multiply(
     }
   }
   return result as unknown as RevitTransform3d["matrix"];
+}
+
+function isStrictDescendantPath(
+  parent: Revit2027GRepReplayPath,
+  child: Revit2027GRepReplayPath,
+): boolean {
+  return (
+    child.length > parent.length &&
+    parent.every((entry, index) => child[index] === entry)
+  );
+}
+
+/**
+ * Compose every embedded-instance matrix governing one replay descendant.
+ * Native traversal applies matrices outer-to-inner.
+ */
+export function composeRevit2027EmbeddedPathTransform(
+  bindings: readonly Revit2027GInstanceBinding[],
+  descendantPath: Revit2027GRepReplayPath,
+): Revit2027EmbeddedPathTransformResult {
+  const embedded = bindings
+    .filter(
+      (binding): binding is Extract<
+        Revit2027GInstanceBinding,
+        { kind: "embedded" }
+      > =>
+        binding.kind === "embedded" &&
+        isStrictDescendantPath(
+          binding.embeddedGElementPath,
+          descendantPath,
+        ),
+    )
+    .sort(
+      (left, right) =>
+        left.embeddedGElementPath.length -
+        right.embeddedGElementPath.length,
+    );
+  if (embedded.length === 0) return { ok: true, value: null };
+
+  let matrix = IDENTITY;
+  for (let index = 0; index < embedded.length; index += 1) {
+    const binding = embedded[index]!;
+    if (
+      index > 0 &&
+      !isStrictDescendantPath(
+        embedded[index - 1]!.embeddedGElementPath,
+        binding.embeddedGElementPath,
+      )
+    ) {
+      return {
+        ok: false,
+        error: "embedded GElement paths overlap without nesting",
+      };
+    }
+    const composed = multiply(matrix, binding.instance.transform.matrix);
+    if (!composed) {
+      return {
+        ok: false,
+        error: "embedded GInstance transform composition is non-finite",
+      };
+    }
+    matrix = composed;
+  }
+  return { ok: true, value: matrix };
 }
 
 /**

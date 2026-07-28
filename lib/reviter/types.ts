@@ -115,6 +115,12 @@ export type DecoderCoverage = {
   nativeMeshCompleteConditionedGeometryRoots?: number;
   /** Conditioned-root elements actually emitted after envelope/output gates. */
   nativeMeshConditionedGeometryElements?: number;
+  /** Exact embedded-column roots entering FIFO replay. */
+  nativeMeshEmbeddedGeometryCandidates?: number;
+  /** Embedded roots retained after complete transformed face coverage. */
+  nativeMeshCompleteEmbeddedGeometryRoots?: number;
+  /** Embedded-root elements actually emitted after envelope/output gates. */
+  nativeMeshEmbeddedGeometryElements?: number;
   /** Exact certified triangles emitted after owner placement expansion. */
   nativeMeshTriangles?: number;
   /** True when a native storage/output safety cap declined complete elements. */

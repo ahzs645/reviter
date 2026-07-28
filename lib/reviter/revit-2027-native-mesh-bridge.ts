@@ -9,6 +9,7 @@ import {
   isRevit2027BoundedTessellatorRoot,
   isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
+  isRevit2027EmbeddedGeometryRoot,
 } from "./revit-2027-direct-geometry-root.ts";
 import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
@@ -18,10 +19,16 @@ import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "./revit-2027-framed-grep-root.ts";
-import { replayRevit2027GRepFifo } from "./revit-2027-grep-replay.ts";
 import {
+  replayRevit2027GRepFifo,
+  type Revit2027GRepReplay,
+} from "./revit-2027-grep-replay.ts";
+import {
+  collectRevit2027GInstanceBindings,
   collectRevit2027NestedInstances,
+  composeRevit2027EmbeddedPathTransform,
   composeRevit2027NestedMesh,
+  type Revit2027GInstanceBinding,
   type Revit2027NestedInstance,
 } from "./revit-2027-nested-instance.ts";
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
@@ -93,6 +100,12 @@ export type Revit2027NativeMeshCollection = {
   readonly completeConditionedGeometryRoots: number;
   /** Complete conditioned owner ids used to prove actual scene admission. */
   readonly conditionedGeometryOwnerIds: ReadonlySet<number>;
+  /** Exact embedded-column roots entering FIFO replay. */
+  readonly embeddedGeometryCandidateRoots: number;
+  /** Embedded roots retained only after complete transformed face coverage. */
+  readonly completeEmbeddedGeometryRoots: number;
+  /** Complete embedded owner ids used to prove actual scene admission. */
+  readonly embeddedGeometryOwnerIds: ReadonlySet<number>;
   readonly replayedOwners: number;
   readonly completeOwners: number;
   readonly incompleteOwners: number;
@@ -131,6 +144,7 @@ type CompactOwnerDefinition = {
   directRoot: boolean;
   boundedTessellatorRoot: boolean;
   conditionedGeometryRoot: boolean;
+  embeddedGeometryRoot: boolean;
   geometry: Revit2027CompactOwnerMesh | null;
   localComplete: boolean;
   localFailureDetail: string | null;
@@ -147,6 +161,7 @@ type MutableCollection = {
   eligibleRoots: number;
   boundedTessellatorCandidateRoots: number;
   conditionedGeometryCandidateRoots: number;
+  embeddedGeometryCandidateRoots: number;
   replayedOwners: number;
   completeOwners: number;
   incompleteOwners: number;
@@ -297,10 +312,185 @@ export function certifyRevit2027DrawableFaceCoverage(
   };
 }
 
+type CompactFacesResult =
+  | { ok: true; value: Revit2027CompactOwnerMesh["faces"] }
+  | { ok: false; error: string };
+
 function compactFaces(
   faces: readonly Revit2027CertifiedOwnerFaceMesh[],
-): Revit2027CompactOwnerMesh["faces"] {
-  return faces.map(({ faceToken, mesh }) => ({ faceToken, mesh }));
+  replay: Revit2027GRepReplay,
+  bindings: readonly Revit2027GInstanceBinding[],
+): CompactFacesResult {
+  const faceSpans = new Map<number, Revit2027GRepReplay["spans"][number]>();
+  for (const span of replay.spans) {
+    if (
+      span.propertyToken <= 0 ||
+      span.propertySourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT
+    ) {
+      continue;
+    }
+    if (faceSpans.has(span.propertyToken)) {
+      return {
+        ok: false,
+        error: `duplicate replay Face token ${span.propertyToken}`,
+      };
+    }
+    faceSpans.set(span.propertyToken, span);
+  }
+
+  const compact: Revit2027CompactOwnerMesh["faces"][number][] = [];
+  for (const { faceToken, mesh } of faces) {
+    const span = faceSpans.get(faceToken);
+    if (!span) {
+      return {
+        ok: false,
+        error: `certified mesh Face token ${faceToken} has no replay span`,
+      };
+    }
+    const embedded = composeRevit2027EmbeddedPathTransform(
+      bindings,
+      span.path,
+    );
+    if (!embedded.ok) return embedded;
+    compact.push({
+      faceToken,
+      mesh,
+      ...(embedded.value == null
+        ? {}
+        : { nestedTransform: embedded.value }),
+    });
+  }
+  return { ok: true, value: compact };
+}
+
+function transformedExtents(
+  bounds: {
+    minimum: readonly [number, number, number];
+    maximum: readonly [number, number, number];
+  },
+  matrix: RevitTransform3d["matrix"],
+): Bounds3 | null {
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const x of [bounds.minimum[0], bounds.maximum[0]]) {
+    for (const y of [bounds.minimum[1], bounds.maximum[1]]) {
+      for (const z of [bounds.minimum[2], bounds.maximum[2]]) {
+        const point = [
+          matrix[0]! * x + matrix[4]! * y + matrix[8]! * z + matrix[12]!,
+          matrix[1]! * x + matrix[5]! * y + matrix[9]! * z + matrix[13]!,
+          matrix[2]! * x + matrix[6]! * y + matrix[10]! * z + matrix[14]!,
+        ];
+        if (!point.every(Number.isFinite)) return null;
+        min.x = Math.min(min.x, point[0]!);
+        min.y = Math.min(min.y, point[1]!);
+        min.z = Math.min(min.z, point[2]!);
+        max.x = Math.max(max.x, point[0]!);
+        max.y = Math.max(max.y, point[1]!);
+        max.z = Math.max(max.z, point[2]!);
+      }
+    }
+  }
+  return { min, max };
+}
+
+function sameReplayPath(
+  left: readonly number[],
+  right: readonly number[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function validateEmbeddedBindings(
+  replay: Revit2027GRepReplay,
+  rootBounds: {
+    minimum: readonly [number, number, number];
+    maximum: readonly [number, number, number];
+    valid: boolean;
+  },
+  bindings: readonly Revit2027GInstanceBinding[],
+): string | null {
+  const embedded = bindings.filter(
+    (binding): binding is Extract<
+      Revit2027GInstanceBinding,
+      { kind: "embedded" }
+    > => binding.kind === "embedded",
+  );
+  if (embedded.length === 0) return null;
+  if (!rootBounds.valid) {
+    return "embedded GInstance root has invalid persisted local extents";
+  }
+  const tolerance = 1e-6;
+  for (const binding of embedded) {
+    const { instance } = binding;
+    if (
+      instance.gRepId !== 0 ||
+      instance.cda !== 1 ||
+      instance.resolveSymbolInView ||
+      instance.hasScale ||
+      instance.tagElementId !== -1n ||
+      instance.forbiddenTarget !== 0
+    ) {
+      return (
+        `embedded GInstance replay ${instance.instanceReplayIndex} uses ` +
+        "an unsupported selector, scale, view, tag, or target state"
+      );
+    }
+    const span = replay.spans[binding.embeddedGElementReplayIndex];
+    const value = span?.value as {
+      localExtents?: {
+        minimum?: readonly [number, number, number];
+        maximum?: readonly [number, number, number];
+        valid?: boolean;
+      };
+      objectType?: number;
+      flags?: number;
+    } | undefined;
+    if (
+      !span ||
+      !sameReplayPath(span.path, binding.embeddedGElementPath) ||
+      value?.localExtents?.valid !== true ||
+      value.objectType !== 3 ||
+      value.flags !== 2
+    ) {
+      return (
+        `embedded GElement replay ${binding.embeddedGElementReplayIndex} ` +
+        "does not match the certified column representation"
+      );
+    }
+    const matrix = composeRevit2027EmbeddedPathTransform(
+      bindings,
+      [...binding.embeddedGElementPath, 0],
+    );
+    if (!matrix.ok) return matrix.error;
+    if (matrix.value == null) {
+      return "embedded GElement has no governing instance transform";
+    }
+    const actual = transformedExtents(
+      {
+        minimum: value.localExtents.minimum!,
+        maximum: value.localExtents.maximum!,
+      },
+      matrix.value,
+    );
+    if (
+      actual == null ||
+      actual.min.x < rootBounds.minimum[0] - tolerance ||
+      actual.min.y < rootBounds.minimum[1] - tolerance ||
+      actual.min.z < rootBounds.minimum[2] - tolerance ||
+      actual.max.x > rootBounds.maximum[0] + tolerance ||
+      actual.max.y > rootBounds.maximum[1] + tolerance ||
+      actual.max.z > rootBounds.maximum[2] + tolerance
+    ) {
+      return (
+        `embedded GElement replay ${binding.embeddedGElementReplayIndex} ` +
+        "falls outside its framed root local extents"
+      );
+    }
+  }
+  return null;
 }
 
 function rawFaceStyleId(
@@ -531,6 +721,15 @@ function finalizeRevit2027NativeMeshCollection(
       )
       .map((definition) => definition.ownerElementId),
   );
+  const embeddedGeometryOwnerIds = new Set(
+    [...state.definitions.values()]
+      .filter(
+        (definition) =>
+          definition.embeddedGeometryRoot &&
+          owners.has(definition.ownerElementId),
+      )
+      .map((definition) => definition.ownerElementId),
+  );
   const requestedOwnerTriangles = completeRequestedOwners.reduce(
     (total, ownerElementId) =>
       total + (owners.get(ownerElementId)?.triangles ?? 0),
@@ -550,6 +749,9 @@ function finalizeRevit2027NativeMeshCollection(
       state.conditionedGeometryCandidateRoots,
     completeConditionedGeometryRoots: conditionedGeometryOwnerIds.size,
     conditionedGeometryOwnerIds,
+    embeddedGeometryCandidateRoots: state.embeddedGeometryCandidateRoots,
+    completeEmbeddedGeometryRoots: embeddedGeometryOwnerIds.size,
+    embeddedGeometryOwnerIds,
     replayedOwners: state.replayedOwners,
     completeOwners: state.completeOwners,
     incompleteOwners: state.incompleteOwners,
@@ -611,6 +813,7 @@ export function createRevit2027NativeMeshCollector(
     eligibleRoots: 0,
     boundedTessellatorCandidateRoots: 0,
     conditionedGeometryCandidateRoots: 0,
+    embeddedGeometryCandidateRoots: 0,
     replayedOwners: 0,
     completeOwners: 0,
     incompleteOwners: 0,
@@ -653,6 +856,8 @@ export function createRevit2027NativeMeshCollector(
           isRevit2027BoundedTessellatorRoot(root.value);
         const conditionedGeometryRoot =
           isRevit2027ConditionedGeometryRoot(root.value);
+        const embeddedGeometryRoot =
+          isRevit2027EmbeddedGeometryRoot(root.value);
         const directRoot = isRevit2027DirectGeometryRoot(root.value);
         if (directRoot) state.eligibleRoots += 1;
         if (boundedTessellatorRoot) {
@@ -660,6 +865,9 @@ export function createRevit2027NativeMeshCollector(
         }
         if (conditionedGeometryRoot) {
           state.conditionedGeometryCandidateRoots += 1;
+        }
+        if (embeddedGeometryRoot) {
+          state.embeddedGeometryCandidateRoots += 1;
         }
 
         const ownerElementId = Number(root.value.ownerElementId);
@@ -695,6 +903,28 @@ export function createRevit2027NativeMeshCollector(
           continue;
         }
         if (directRoot) state.replayedOwners += 1;
+        const bindings = collectRevit2027GInstanceBindings(replayed.value);
+        if (!bindings.ok) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `instance binding replay failed: ${bindings.error}`,
+          );
+          if (directRoot) state.failedOwners += 1;
+          continue;
+        }
+        const embeddedError = validateEmbeddedBindings(
+          replayed.value,
+          root.value.localExtents,
+          bindings.value,
+        );
+        if (embeddedError) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `embedded-instance validation failed: ${embeddedError}`,
+          );
+          if (directRoot) state.failedOwners += 1;
+          continue;
+        }
         const nested = collectRevit2027NestedInstances(replayed.value);
         if (!nested.ok) {
           state.definitionFailures.set(
@@ -727,13 +957,24 @@ export function createRevit2027NativeMeshCollector(
         }
 
         const expected = drawableFaceTokens(replayed.value.spans);
-        const faces = coverage.complete
+        const compacted = coverage.complete
           ? compactFaces(
               meshed.value.faceMeshes.filter((face) =>
                 expected.has(face.faceToken),
               ),
+              replayed.value,
+              bindings.value,
             )
-          : [];
+          : { ok: true as const, value: [] };
+        if (!compacted.ok) {
+          state.definitionFailures.set(
+            ownerElementId,
+            `embedded face association failed: ${compacted.error}`,
+          );
+          if (directRoot) state.failedOwners += 1;
+          continue;
+        }
+        const faces = compacted.value;
         const triangles = coverage.complete
           ? faces.reduce(
               (total, face) => total + face.mesh.indices.length / 3,
@@ -817,6 +1058,7 @@ export function createRevit2027NativeMeshCollector(
           directRoot,
           boundedTessellatorRoot,
           conditionedGeometryRoot,
+          embeddedGeometryRoot,
           geometry,
           localComplete,
           localFailureDetail,
@@ -861,6 +1103,8 @@ export type Revit2027NativeMeshScene = {
   boundedTessellatorElements: number;
   /** Admitted direct/placed elements sourced from conditioned roots. */
   conditionedGeometryElements: number;
+  /** Admitted direct/placed elements sourced from embedded roots. */
+  embeddedGeometryElements: number;
   faceMeshes: number;
   triangles: number;
   truncated: boolean;
@@ -992,6 +1236,7 @@ export function buildRevit2027NativeMeshScene(
       placedElements: 0,
       boundedTessellatorElements: 0,
       conditionedGeometryElements: 0,
+      embeddedGeometryElements: 0,
       faceMeshes: 0,
       triangles: 0,
       truncated: collection.truncated,
@@ -1033,6 +1278,7 @@ export function buildRevit2027NativeMeshScene(
   let placedElements = 0;
   let boundedTessellatorElements = 0;
   let conditionedGeometryElements = 0;
+  let embeddedGeometryElements = 0;
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
@@ -1118,6 +1364,9 @@ export function buildRevit2027NativeMeshScene(
     ) {
       conditionedGeometryElements += 1;
     }
+    if (collection.embeddedGeometryOwnerIds.has(item.owner.ownerElementId)) {
+      embeddedGeometryElements += 1;
+    }
     if (item.placement) placedElements += 1;
     else ownerElements += 1;
   }
@@ -1199,6 +1448,7 @@ export function buildRevit2027NativeMeshScene(
     placedElements,
     boundedTessellatorElements,
     conditionedGeometryElements,
+    embeddedGeometryElements,
     faceMeshes,
     triangles,
     truncated,

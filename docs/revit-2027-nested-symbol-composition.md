@@ -156,22 +156,24 @@ On the same exact RVT:
 - the conditioned-Geometry checkpoint adds schema-complete `GPoint` and
   `GConditionInt` bodies and admits only `GFilter`-first, terminal-Geometry
   roots using certified prefix slots;
-- 35,029 elements pass complete native-mesh admission;
-- 810,748 native triangles replace their proxies;
+- the embedded-GElement checkpoint admits 169 of 209 measured column roots
+  under exact instance pairing and transformed-face coverage;
+- 35,198 elements pass complete native-mesh admission;
+- 823,452 native triangles replace their proxies;
 - 676 otherwise complete transformed meshes escape the independent RVT
   envelope and are rejected;
 - 3,736 otherwise complete meshes lack an independent display envelope and are
   rejected;
 - no definition-storage or output-triangle cap is reached.
 
-The final production scene contains 36,548 displayed elements, 849,818 total
-triangles (810,748 native plus 39,070 retained proxy/other triangles), 51 mesh
-batches, and 10 display materials. Native triangles are `95.4025%` of the
-output and the total-output/reference-IFC triangle ratio is `90.9750%`.
+The final production scene contains 36,548 displayed elements, 860,494 total
+triangles (823,452 native plus 37,042 retained proxy/other triangles), 52 mesh
+batches, and 10 display materials. Native triangles are `95.6953%` of the
+output and the total-output/reference-IFC triangle ratio is `92.1178%`.
 
-Against the IFC, complete certified native Tag presence is 35,762 / 36,144
-(`98.9431%`). A stricter spatial diagnostic counts 35,669 / 36,144
-(`98.6858%`) within 0.5 ft of the IFC AABB. Complete roots outside that IFC
+After the embedded-GElement checkpoint, complete certified native Tag presence
+is 35,931 / 36,144 (`99.4107%`). A stricter spatial diagnostic counts
+35,838 / 36,144 (`99.1534%`) within 0.5 ft of the IFC AABB. Complete roots outside that IFC
 tolerance remain certified RVT geometry; they are not counted as IFC
 spatial-parity matches.
 

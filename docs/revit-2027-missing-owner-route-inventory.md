@@ -18,12 +18,12 @@ result was primarily FIFO/caller admission, not an absent-owner gap:
 
 | Persisted route | Tags |
 | --- | ---: |
-| own full-FIFO, complete certified mesh | 553 |
-| own framed GElement, replay/mesh still incomplete | 224 |
-| syntactically admitted direct GRep, coverage/composition incomplete | 72 |
+| own full-FIFO, complete certified mesh | 722 |
+| syntactically admitted direct GRep, coverage/composition incomplete | 112 |
 | semantic frame only | 38 |
 | no independently framed partition object | 18 |
 | InsertableInstance frame but no decoded placement | 15 |
+| own framed GElement, replay/mesh still incomplete | 15 |
 | hosted-child membership, without a drawable owner route | 5 |
 
 The last 15 are columns and are a disjoint primary route. All 925 Tags resolve
@@ -43,7 +43,7 @@ therefore not a validated missing geometry route in this population.
 | IFC class | Tags | Own GElement | Full FIFO/mesh complete | Within 0.5 ft RVT envelope |
 | --- | ---: | ---: | ---: | ---: |
 | `IfcMember` | 354 | 354 | 336 | 291 |
-| `IfcColumn` | 224 | 209 | 0 | 0 |
+| `IfcColumn` | 224 | 209 | 169 | 169 |
 | `IfcStairFlight` | 108 | 108 | 50 | 46 |
 | `IfcRailing` | 105 | 105 | 97 | 97 |
 | `IfcWallStandardCase` | 59 | 24 | 24 | 6 |
@@ -51,13 +51,13 @@ therefore not a validated missing geometry route in this population.
 | `IfcWall` | 14 | 10 | 10 | 7 |
 | `IfcRamp` | 11 | 11 | 9 | 9 |
 | `IfcRoof` | 1 | 1 | 0 | 0 |
-| **Total** | **925** | **849** | **553** | **460** |
+| **Total** | **925** | **849** | **722** | **629** |
 
-The 553 complete owners pass the existing browser-safe full FIFO, certified
+The 722 complete owners pass the existing browser-safe full FIFO, certified
 face tessellation, positive-loop coverage, nested composition, duplicate/conflict,
-and bounded-storage gates. They contain 62,642 certified triangles. The
-independent IFC AABB diagnostic places 460 within 0.5 ft; 441 are coincident
-with IFC to `1e-6` ft. Triangle equality is only diagnostic: 430 owners match
+and bounded-storage gates. They contain 75,346 certified triangles. The
+independent IFC AABB diagnostic places 629 within 0.5 ft; 554 are coincident
+with IFC to `1e-6` ft. Triangle equality is only diagnostic: 486 owners match
 the IFC triangle count.
 
 Production now admits both the original three exact shapes and a second
@@ -65,14 +65,17 @@ format-derived route: a root beginning with `GFilter`, ending in `Geometry`,
 and containing only schema-complete condition, curve, group, point, and
 instance prefix slots. Complete coverage and the independent RVT envelope
 remain mandatory. `GCylindricalHelix` and every unknown slot fail closed.
+The embedded-column route separately admits a non-null source-2246 `GElement`
+only after exact `GInstance`/`InstanceInfo` pairing, transform association, and
+complete transformed face coverage.
 
 Across all 36,144 numeric IFC geometry Tags, complete certified native Tag
-presence is now 35,762 (`98.943117%`). The stricter IFC spatial parity total is
-35,669 / 36,144 (`98.685812%`). The original exact bounded route still
+presence is now 35,931 (`99.410691%`). The stricter IFC spatial parity total is
+35,838 / 36,144 (`99.153386%`). The original exact bounded route still
 contributes 141 complete / 119 half-foot matches; the new conditioned route
 contributes 418 complete / 347 half-foot matches among non-overlapping IFC
-Tags, while its readers also unlock nested geometry in previously admitted
-root shapes.
+Tags, and the embedded route contributes 169 complete / 169 half-foot
+matches.
 
 ## Exact initial descriptor shapes
 
@@ -127,21 +130,20 @@ Its exact reader chain is:
 GFilter/GPoint/GConditionInt + curve/control/group/instance state -> Geometry
 ```
 
-The remaining 372 fixed-corpus failures now stop at concrete boundaries:
+The remaining 203 fixed-corpus failures now stop at concrete boundaries:
 
 | First blocking boundary | Owners |
 | --- | ---: |
-| `GInstance` embedded-GElement variant | 209 |
 | no framed GRep definition | 76 |
 | missing nested symbol target | 64 |
+| embedded-column cylinder trim/loop coverage incomplete | 40 |
 | unsupported `GCylindricalHelix` slot 2244 | 14 |
 | local loop/surface tessellation incomplete | 8 |
 | unsupported `GGTag` slot 2256 | 1 |
 
-The 209 columns are not a reason to loosen the 44-byte `GInstance` reader:
-their non-null embedded descriptor is a distinct 46-byte variant whose source
-2246 `GElement` must be associated with the instance transform and native
-embedded-geometry precedence.
+The 40 framed columns parse and associate exactly but remain fail-closed until
+their non-rectangular or multi-loop cylinder trims and two UV-link cases can
+be tessellated with a proven native policy.
 
 ## Original exact candidate predicate
 
@@ -178,8 +180,9 @@ certified triangles. All 141 complete roots pass the production RVT envelope;
 The production caller predicate is class-independent:
 
 1. exact Revit 2027 length/echo-framed GElement and owner identity;
-2. append-only initial tokens and either one measured exact sequence or a
-   `GFilter`-first, terminal-`Geometry` prefix containing only certified slots;
+2. append-only initial tokens and either one measured exact sequence, one
+   measured embedded-column sequence, or a `GFilter`-first terminal-`Geometry`
+   prefix containing only certified slots;
 3. successful complete FIFO replay;
 4. complete positive-loop Face mesh coverage;
 5. complete recursive `GInstance` closure when present;

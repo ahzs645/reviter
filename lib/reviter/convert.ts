@@ -2079,6 +2079,9 @@ export function convertRvtBytes(
                   ...(nativeMeshScene.conditionedGeometryElements
                     ? ["revit-2027-conditioned-geometry-roots-v1"]
                     : []),
+                  ...(nativeMeshScene.embeddedGeometryElements
+                    ? ["revit-2027-embedded-gelement-v1"]
+                    : []),
                 ]
               : []),
             ...(nativeMeshCollection.completeNestedRoots
@@ -2106,6 +2109,12 @@ export function convertRvtBytes(
             nativeMeshCollection.completeConditionedGeometryRoots,
           nativeMeshConditionedGeometryElements:
             nativeMeshScene.conditionedGeometryElements,
+          nativeMeshEmbeddedGeometryCandidates:
+            nativeMeshCollection.embeddedGeometryCandidateRoots,
+          nativeMeshCompleteEmbeddedGeometryRoots:
+            nativeMeshCollection.completeEmbeddedGeometryRoots,
+          nativeMeshEmbeddedGeometryElements:
+            nativeMeshScene.embeddedGeometryElements,
           nativeMeshTriangles: nativeMeshScene.triangles,
           nativeMeshTruncated: nativeMeshScene.truncated,
           nativeMeshStoredBytes: nativeMeshCollection.storedBytes,

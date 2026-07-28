@@ -41,6 +41,19 @@ const EXACT_TESSELLATOR_CANDIDATE_SHAPES = [
   ],
 ] as const;
 
+const EMBEDDED_GEOMETRY_CANDIDATE_SHAPES = [
+  [
+    REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+    REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+    REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  ],
+  [
+    REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+    REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+    REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+  ],
+] as const;
+
 const CONDITIONED_GEOMETRY_PREFIX_SLOTS = new Set<number>([
   REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
@@ -74,6 +87,14 @@ export function isRevit2027BoundedTessellatorRoot(
   root: Revit2027DirectGeometryRootLike,
 ): boolean {
   return EXACT_TESSELLATOR_CANDIDATE_SHAPES.some((shape) =>
+    hasExactSourceClassShape(root, shape));
+}
+
+/** Whether the root has one of the two measured embedded-column shapes. */
+export function isRevit2027EmbeddedGeometryRoot(
+  root: Revit2027DirectGeometryRootLike,
+): boolean {
+  return EMBEDDED_GEOMETRY_CANDIDATE_SHAPES.some((shape) =>
     hasExactSourceClassShape(root, shape));
 }
 
@@ -132,6 +153,12 @@ export function isRevit2027DirectGeometryRoot(
   const { children } = root;
   if (children.length === 0) return false;
   if (
+    isRevit2027BoundedTessellatorRoot(root) ||
+    isRevit2027EmbeddedGeometryRoot(root)
+  ) {
+    return true;
+  }
+  if (
     children[children.length - 1]?.sourceClassSlot !==
     REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
   ) {
@@ -145,7 +172,6 @@ export function isRevit2027DirectGeometryRoot(
   );
   return (
     directGroupShape ||
-    isRevit2027BoundedTessellatorRoot(root) ||
     isRevit2027ConditionedGeometryRoot(root)
   );
 }

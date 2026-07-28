@@ -14,6 +14,9 @@ import { REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT } from "../lib/reviter/r
 import { REVIT_2027_GFILLING_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gfilling.ts";
 import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-garc.ts";
 import {
+  REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-gelement.ts";
+import {
   createRevit2027GRepReplayRegistry,
   replayRevit2027GRepFifo,
   type Revit2027GRepReplayReaderRegistration,
@@ -208,6 +211,10 @@ test("default registry includes the certified Face-child replay readers", () => 
   assert.equal(
     registry.get(REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT)?.id,
     "Revit2027InstanceInfo",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GElement",
   );
   assert.equal(registry.get(FACE_SLOT)?.id, "Revit2027Face");
   assert.equal(registry.get(EDGE_SLOT)?.id, "Revit2027GEdge");

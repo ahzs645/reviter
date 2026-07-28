@@ -29,6 +29,7 @@ import {
   isRevit2027BoundedTessellatorRoot,
   isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
+  isRevit2027EmbeddedGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
   decodeRevit2027FramedGRepRoot,
@@ -293,12 +294,13 @@ for (const row of rvtAudit.certifiedBrowserMesh?.nestedInstances?.elements ?? []
 
 // The public replay audit intentionally inventories syntactic direct-root
 // candidates before production coverage and envelope gates. Preserve the fixed
-// pre-tessellator 925-tag diagnostic corpus by removing only the three exact
-// measured candidate shapes from that public candidate set. The bounded
-// collector below then measures their actual production admission independently.
+// pre-tessellator 925-tag diagnostic corpus by removing the original three
+// bounded shapes, the two embedded-column shapes, and conditioned candidates.
+// The collector below measures their production admission independently.
 const cfb = CFB.read(rvtBytes, { type: "buffer" });
 const tessellatorCandidateOwnerIds = new Set<number>();
 const conditionedGeometryCandidateOwnerIds = new Set<number>();
+const embeddedGeometryCandidateOwnerIds = new Set<number>();
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
   const fullPath = cfb.FullPaths[entryIndex] ?? "";
   const entry = cfb.FileIndex[entryIndex]!;
@@ -337,6 +339,9 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
         if (isRevit2027ConditionedGeometryRoot(root.value)) {
           conditionedGeometryCandidateOwnerIds.add(ownerElementId);
         }
+        if (isRevit2027EmbeddedGeometryRoot(root.value)) {
+          embeddedGeometryCandidateOwnerIds.add(ownerElementId);
+        }
       }
     }
   }
@@ -348,11 +353,19 @@ if (tessellatorCandidateOwnerIds.size !== 151) {
     }`,
   );
 }
+if (embeddedGeometryCandidateOwnerIds.size !== 209) {
+  throw new Error(
+    `expected 209 embedded Geometry candidates, received ${
+      embeddedGeometryCandidateOwnerIds.size
+    }`,
+  );
+}
 const baselineDirectOwnerIds = new Set(
   [...directOwnerIds].filter(
     (elementId) =>
       !tessellatorCandidateOwnerIds.has(elementId) &&
-      !conditionedGeometryCandidateOwnerIds.has(elementId),
+      !conditionedGeometryCandidateOwnerIds.has(elementId) &&
+      !embeddedGeometryCandidateOwnerIds.has(elementId),
   ),
 );
 
@@ -434,7 +447,8 @@ const baselineCertifiedIfcTagPresence = [...ifcGeometryByTag.keys()].filter(
   (elementId) =>
     certifiedElements.has(elementId) &&
     !tessellatorCandidateOwnerIds.has(elementId) &&
-    !conditionedGeometryCandidateOwnerIds.has(elementId),
+    !conditionedGeometryCandidateOwnerIds.has(elementId) &&
+    !embeddedGeometryCandidateOwnerIds.has(elementId),
 ).length;
 const boundedTessellatorCompleteIfcTags = [...ifcGeometryByTag.keys()].filter(
   (elementId) =>
@@ -479,11 +493,6 @@ const conditionedGeometryExactIfcTriangleCount = [
     !tessellatorCandidateOwnerIds.has(elementId) &&
     certifiedElements.get(elementId)?.triangles === ifc.triangles,
 ).length;
-const certifiedIfcTagPresence =
-  baselineCertifiedIfcTagPresence +
-  conditionedGeometryCompleteIfcTags +
-  boundedTessellatorCompleteIfcTags;
-
 const missingTags = new Set(
   [...ifcGeometryByTag.keys()].filter(
     (elementId) =>
@@ -866,6 +875,9 @@ let requestedOwnerExactTriangleCount = 0;
 let conditionedGeometryCompleteOwners = 0;
 let conditionedGeometryBoundsWithinHalfFoot = 0;
 let conditionedGeometryExactTriangleCount = 0;
+let embeddedGeometryCompleteOwners = 0;
+let embeddedGeometryBoundsWithinHalfFoot = 0;
+let embeddedGeometryExactTriangleCount = 0;
 for (const row of rows) {
   const summary = byClass.get(row.className) ?? {
     tags: 0,
@@ -973,6 +985,21 @@ for (const row of rows) {
       conditionedGeometryExactTriangleCount += 1;
     }
   }
+  if (
+    embeddedGeometryCandidateOwnerIds.has(row.elementId) &&
+    row.requestedOwnerCertifiedFaces > 0
+  ) {
+    embeddedGeometryCompleteOwners += 1;
+    if (
+      row.requestedOwnerBoundsMaximumCornerErrorFeet != null &&
+      row.requestedOwnerBoundsMaximumCornerErrorFeet <= 0.5
+    ) {
+      embeddedGeometryBoundsWithinHalfFoot += 1;
+    }
+    if (row.requestedOwnerCertifiedTriangles === row.ifcTriangles) {
+      embeddedGeometryExactTriangleCount += 1;
+    }
+  }
   byClass.set(row.className, summary);
 }
 
@@ -1067,6 +1094,16 @@ for (const failure of requestedOwnerCollection.requestedOwnerFailureSamples) {
   classCounts.set(category, (classCounts.get(category) ?? 0) + 1);
   requestedOwnerFailureCategoriesByIfcClass.set(className, classCounts);
 }
+const certifiedIfcTagPresence =
+  baselineCertifiedIfcTagPresence +
+  conditionedGeometryCompleteIfcTags +
+  boundedTessellatorCompleteIfcTags +
+  embeddedGeometryCompleteOwners;
+const certifiedIfcSpatialParity =
+  baselineCertifiedIfcTagPresence +
+  conditionedGeometryIfcBoundsWithinHalfFoot +
+  boundedTessellatorIfcBoundsWithinHalfFoot +
+  embeddedGeometryBoundsWithinHalfFoot;
 const report = {
   schemaVersion: 1,
   generatedBy: "scripts/audit-revit-2027-missing-owner-routes.ts",
@@ -1114,6 +1151,14 @@ const report = {
       fixedCorpusExactIfcTriangleCount:
         conditionedGeometryExactTriangleCount,
     },
+    embeddedGeometry: {
+      candidateOwners: embeddedGeometryCandidateOwnerIds.size,
+      completeOwners: embeddedGeometryCompleteOwners,
+      productionEmittedOwners:
+        conversion.decoderCoverage.nativeMeshEmbeddedGeometryElements ?? 0,
+      ifcBoundsWithinHalfFoot: embeddedGeometryBoundsWithinHalfFoot,
+      exactIfcTriangleCount: embeddedGeometryExactTriangleCount,
+    },
     boundedTessellator: {
       candidateOwners: tessellatorCandidateOwnerIds.size,
       coverageCompleteOwners: boundedTessellatorCompleteIfcTags,
@@ -1133,18 +1178,14 @@ const report = {
       boundedTessellatorIfcBoundsWithinHalfFoot:
         boundedTessellatorIfcBoundsWithinHalfFoot,
       conditionedGeometryIfcBoundsWithinHalfFoot,
-      ifcSpatialParityTotal:
-        baselineCertifiedIfcTagPresence +
-        conditionedGeometryIfcBoundsWithinHalfFoot +
-        boundedTessellatorIfcBoundsWithinHalfFoot,
+      embeddedGeometryIfcBoundsWithinHalfFoot:
+        embeddedGeometryBoundsWithinHalfFoot,
+      ifcSpatialParityTotal: certifiedIfcSpatialParity,
       ifcSpatialParityRatio:
-        (baselineCertifiedIfcTagPresence +
-          conditionedGeometryIfcBoundsWithinHalfFoot +
-          boundedTessellatorIfcBoundsWithinHalfFoot) /
-        ifcGeometryNumericTags,
+        certifiedIfcSpatialParity / ifcGeometryNumericTags,
       note:
         "Complete native Tag presence is distinct from IFC AABB agreement. " +
-        "Complete conditioned/tessellator roots outside half-foot IFC AABB " +
+        "Complete conditioned, embedded, or tessellator roots outside half-foot IFC AABB " +
         "agreement remain certified native geometry but are not counted as " +
         "IFC spatial-parity matches.",
     },

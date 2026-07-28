@@ -5,6 +5,7 @@ import {
   isRevit2027BoundedTessellatorRoot,
   isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
+  isRevit2027EmbeddedGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gline.ts";
 import { REVIT_2027_GPOINT_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gpoint.ts";
@@ -69,6 +70,18 @@ test("accepts only the three measured tessellator candidate shapes", () => {
   for (const candidate of candidates) {
     assert.equal(isRevit2027BoundedTessellatorRoot(candidate), true);
     assert.equal(isRevit2027DirectGeometryRoot(candidate), true);
+  }
+});
+
+test("accepts both measured embedded Geometry candidate shapes", () => {
+  const candidates = [
+    root(GINSTANCE, GFILTER, GEOMETRY),
+    root(GINSTANCE, GEOMETRY, GFILTER),
+  ];
+  for (const candidate of candidates) {
+    assert.equal(isRevit2027EmbeddedGeometryRoot(candidate), true);
+    assert.equal(isRevit2027DirectGeometryRoot(candidate), true);
+    assert.equal(isRevit2027BoundedTessellatorRoot(candidate), false);
   }
 });
 

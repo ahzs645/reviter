@@ -31,6 +31,13 @@ const report = JSON.parse(
       fixedCorpusIfcBoundsWithinHalfFoot: number;
       fixedCorpusExactIfcTriangleCount: number;
     };
+    embeddedGeometry: {
+      candidateOwners: number;
+      completeOwners: number;
+      productionEmittedOwners: number;
+      ifcBoundsWithinHalfFoot: number;
+      exactIfcTriangleCount: number;
+    };
     boundedTessellator: {
       candidateOwners: number;
       coverageCompleteOwners: number;
@@ -94,15 +101,15 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
     "4b7264d4653717a4ff9abf8c01677392749be7d229fd36c2d4a83f67f4b13b6a",
   );
   assert.deepEqual(report.carriers, {
-    "own-full-fifo-certified-mesh": 553,
-    "own-uncertified-gelement": 224,
-    "own-certified-direct-grep-shape": 72,
+    "own-full-fifo-certified-mesh": 722,
+    "own-certified-direct-grep-shape": 112,
     "framed-semantic-record-only": 38,
     "no-framed-partition-record": 18,
     "own-insertable-instance-without-placement": 15,
+    "own-uncertified-gelement": 15,
     "host-to-certified-hosted-children": 5,
   });
-  assert.equal(report.scope.publicSyntacticDirectOwnerIds, 16_768);
+  assert.equal(report.scope.publicSyntacticDirectOwnerIds, 16_977);
   assert.equal(report.scope.baselineDirectOwnerIds, 13_568);
   assert.deepEqual(report.scope.conditionedGeometry, {
     candidateIfcTags: 474,
@@ -118,9 +125,16 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
     candidateOwners: 151,
     coverageCompleteOwners: 141,
     productionEmittedOwners: 141,
-    remainingWithoutCompleteCertifiedGeometry: 372,
+    remainingWithoutCompleteCertifiedGeometry: 203,
     ifcBoundsWithinHalfFoot: 119,
     exactIfcTriangleCount: 98,
+  });
+  assert.deepEqual(report.scope.embeddedGeometry, {
+    candidateOwners: 209,
+    completeOwners: 169,
+    productionEmittedOwners: 169,
+    ifcBoundsWithinHalfFoot: 169,
+    exactIfcTriangleCount: 56,
   });
   assert.deepEqual(
     {
@@ -135,17 +149,17 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
       denominator: 36_144,
       baseline: 35_203,
       boundedComplete: 141,
-      presence: 35_762,
-      spatial: 35_669,
+      presence: 35_931,
+      spatial: 35_838,
     },
   );
   assert.equal(
     report.scope.ifcCertifiedTagCoverage.tagPresenceRatio,
-    35_762 / 36_144,
+    35_931 / 36_144,
   );
   assert.equal(
     report.scope.ifcCertifiedTagCoverage.ifcSpatialParityRatio,
-    35_669 / 36_144,
+    35_838 / 36_144,
   );
   assert.equal(report.ownedCertifiedChildrenDiagnostic.targetsWithCertifiedChildren, 4);
   assert.equal(report.scan.partitionChunks, 3_666);
@@ -155,12 +169,12 @@ test("exact missing-owner corpus resolves to native identities and disjoint rout
 test("full FIFO coverage preserves negative controls before bounds admission", () => {
   const diagnostic = report.requestedOwnerFullFifoDiagnostic;
   assert.equal(diagnostic.requestedOwners, 925);
-  assert.equal(diagnostic.completeOwners, 553);
-  assert.equal(diagnostic.partialOwners, 372);
-  assert.equal(diagnostic.certifiedTriangles, 62_642);
-  assert.equal(diagnostic.boundsWithin1e6Feet, 441);
-  assert.equal(diagnostic.boundsWithinHalfFoot, 460);
-  assert.equal(diagnostic.exactTriangleCount, 430);
+  assert.equal(diagnostic.completeOwners, 722);
+  assert.equal(diagnostic.partialOwners, 203);
+  assert.equal(diagnostic.certifiedTriangles, 75_346);
+  assert.equal(diagnostic.boundsWithin1e6Feet, 554);
+  assert.equal(diagnostic.boundsWithinHalfFoot, 629);
+  assert.equal(diagnostic.exactTriangleCount, 486);
 
   const railingShape = "certified-direct-root-shape";
   assert.equal(report.byIfcClass.IfcRailing?.gRepShapes[railingShape], 105);
@@ -206,4 +220,7 @@ test("class-independent descriptor predicate bounds candidate work", () => {
       report.scope.conditionedGeometry.fixedCorpusCompleteOwners,
     62,
   );
+  assert.equal(report.scope.embeddedGeometry.candidateOwners, 209);
+  assert.equal(report.scope.embeddedGeometry.completeOwners, 169);
+  assert.equal(209 - 169, 40);
 });

@@ -5,9 +5,13 @@ import {
   decodeRevit2027GInstanceStatic,
   decodeRevit2027InstanceInfo,
   REVIT_2027_GINSTANCE_BODY_BYTES,
+  REVIT_2027_GINSTANCE_EMBEDDED_BODY_BYTES,
   REVIT_2027_INSTANCE_INFO_BODY_BYTES,
   REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-ginstance.ts";
+import {
+  REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-gelement.ts";
 
 function writeGInstance(data: Uint8Array): void {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -76,6 +80,63 @@ test("GInstance rejects a non-certified InstanceInfo descriptor", () => {
   assert.equal(decoded.ok, false);
   if (decoded.ok) return;
   assert.match(decoded.error, /token -1\/source-slot 2513/);
+});
+
+test("decodes the exact 46-byte embedded-GElement GInstance form", () => {
+  const data = new Uint8Array(REVIT_2027_GINSTANCE_EMBEDDED_BODY_BYTES);
+  const view = new DataView(data.buffer);
+  view.setBigInt64(0, -1n, true);
+  view.setInt32(8, 2, true);
+  view.setUint32(16, 0x0008_8004, true);
+  view.setInt32(20, -1, true);
+  view.setInt16(24, REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT, true);
+  view.setInt32(26, 6, true);
+  view.setInt16(30, REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT, true);
+  view.setBigInt64(32, -1n, true);
+  view.setInt32(40, 0, true);
+  data[44] = 0;
+  data[45] = 0;
+
+  const decoded = decodeRevit2027GInstanceStatic(
+    data,
+    0,
+    data.byteLength,
+    2027,
+  );
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok) return;
+  assert.equal(decoded.value.endOffset, 46);
+  assert.equal(decoded.value.embeddedSymbolGRep.token, 6);
+  assert.equal(
+    decoded.value.embeddedSymbolGRep.sourceClassSlot,
+    REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
+  );
+  assert.equal(decoded.value.tagElementId, -1n);
+  assert.equal(decoded.value.forbiddenTarget, 0);
+});
+
+test("GInstance rejects an unproven embedded source slot and descriptor-length mismatch", () => {
+  const data = new Uint8Array(REVIT_2027_GINSTANCE_EMBEDDED_BODY_BYTES);
+  const view = new DataView(data.buffer);
+  view.setInt32(20, -1, true);
+  view.setInt16(24, REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT, true);
+  view.setInt32(26, 6, true);
+  view.setInt16(30, REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT + 1, true);
+
+  const wrongSlot = decodeRevit2027GInstanceStatic(
+    data,
+    0,
+    data.byteLength,
+    2027,
+  );
+  assert.equal(wrongSlot.ok, false);
+  if (!wrongSlot.ok) assert.match(wrongSlot.error, /source-slot 2246/);
+
+  view.setInt16(30, REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT, true);
+  assert.equal(
+    decodeRevit2027GInstanceStatic(data, 0, data.byteLength - 2, 2027).ok,
+    false,
+  );
 });
 
 test("decodes the exact 112-byte Revit 2027 InstanceInfo body", () => {
