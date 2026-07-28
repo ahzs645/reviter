@@ -103,20 +103,25 @@ These are exact byte facts:
   are curve evidence, not face-loop ownership.
 
 The following is the current queue interpretation and is deliberately not a
-published reader contract:
+published reader contract. The exact slot-643/644 and native-layout evidence is
+recorded in [revit-2027-family-geom-table.md](revit-2027-family-geom-table.md).
 
 - The candidate replay boundary is `+1678` for owners 845,328 and 788,064,
-  and `+1011` for owner 2,179,544.
-- A zero `u32` at each candidate boundary is consistent with the compact
-  empty-`GeomStepList` representation. The next bytes are consistent with
-  `GeomTable`: count 4 plus the four GLine descriptors at `+1682` for the two
-  door symbols, and count 5 at `+1015` for the column symbol.
-- The column's five table records do not decode as CondInt16 properties. The
-  first unsupported schema carrier is `GeomTable.m_table`, whose inline slot
-  643 `BigArrGeomTabEntryWrapper` owns slot 644 `GeomTabEntry` records.
-  `GeomTabEntry` in turn contains `m_pGNode` and
-  `m_geomGeneratorId`. Its retained/reference representation must be decoded
-  before the replay boundary or table ownership can be certified.
+  788,064, 899,478, 863,572, and 1,119,482. A zero `u32` occurs there, but
+  the exact division of the FIFO prefix between `GeomStepList` and
+  `GeomTable` remains uncertified.
+- At `+1682`, all five door symbols have count 4, four GLine selectors at
+  `+1686..+1709`, and four signed generator IDs at `+1710..+1725`:
+  `16, 0, 0, 0`.
+- Owner 2,179,544 cannot share that boundary. Its queue places
+  `ParamValueSetInt` and `ParamValueSetElementId` ahead of `GeomStepList` and
+  `GeomTable`; `+1011` begins those parameter-map bodies, and `+1015` is the
+  five-entry ElementId parameter map rather than a geometry table.
+- Source slot 644 declares `m_pGNode` and `m_geomGeneratorId`, but the native
+  `OdBmGeomTabEntry` implementation is exactly four bytes and retains only the
+  generator ID. `GeomTable` is generated from active `GeomStepList`
+  Face/Edge/Curve history maps. The serialized node selectors are replay
+  evidence, not a stable drawable ownership bridge.
 - No slot-4,019 descriptor exists in any target, so the four declared
   `GeomStepList` snapshots—form, adjust, cut-out, and post-cut-out—do not
   provide a persisted fallback geometry graph in these records.
@@ -134,9 +139,9 @@ At that earlier checkpoint, the remaining shared-owner gap was 327 owners and
 2,019 placed IFC Tags:
 1,912 doors, 87 columns, and 20 windows. The three targets above account for
 464 of those Tags (222 + 218 + 24). Until the slot-643/644 table representation
-and any referenced family-regeneration state are exact, the browser converter
-must not infer boxes or solids from the GLine set, `m_refFaces`, or the IFC
-export.
+and the referenced family-regeneration state are exact, the browser converter
+must not infer boxes or solids from the GLine set, `m_refFaces`, generator IDs,
+or the IFC export.
 
 ## Placement-seeded GRep closure
 
