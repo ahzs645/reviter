@@ -7,9 +7,10 @@ root and its bytes, it:
 1. runs the exact Revit 2027 dynamic-property FIFO;
 2. indexes decoded Face, GEdge, EdgeLoop, and Plane values by native token;
 3. resolves one Face side for every directed edge use;
-4. proves loop closure through the EdgeLoop sentinel;
+4. follows every Face-local EdgeLoop link and proves each edge cycle;
 5. derives direction from unique persisted UV endpoint matches;
-6. adapts the safe single-loop Face to `NeutralBrep`; and
+6. classifies an unambiguous outer contour and direct holes from sampled UV
+   containment; and
 7. returns the TypeScript tessellator's `NeutralFaceMesh`.
 
 Both entry points are browser-safe:
@@ -43,8 +44,8 @@ separately proven relation.
 | --- | --- |
 | `TB_Geometry` | exact Face/GEdge/EdgeLoop token graph |
 | `libTD_Ge` | decoded Plane parameter evaluation |
-| `libTD_BrepBuilder` / `libTD_Br` | directed face-local loop |
-| `libTD_BrepRenderer` | persisted trim samples and neutral tessellation |
+| `libTD_BrepBuilder` / `libTD_Br` | directed face-local loops; derived outer/hole topology |
+| `libTD_BrepRenderer` | persisted trim samples and constrained neutral tessellation |
 
 The native modules are evidence, not client dependencies. The implementation
 uses TypeScript, typed arrays, and the existing neutral BRep only.
@@ -58,17 +59,21 @@ direct Geometry owners:
 | --- | ---: |
 | Complete replay owners | 5,996 / 5,996 |
 | Body spans | 248,613 |
-| Planar Face meshes | 40,188 |
-| Positions | 165,336 |
-| Triangles | 84,811 |
+| Planar Face meshes | 40,261 |
+| Positions | 167,472 |
+| Triangles | 87,010 |
+| Accepted multi-loop Faces | 73 |
+| Accepted hole loops | 105 |
+| Triangles from accepted multi-loop Faces | 2,199 |
 
 Structured non-mesh results are 491 Faces without a first loop, 148
-non-planar surfaces, 108 multi-loop Faces, 22 ambiguous UV links, and four
-tessellator rejections. These totals reproduce the independent topology audit.
+non-planar surfaces, 33 multi-loop Faces whose contour roles are not
+unambiguous, 24 ambiguous UV links, and four tessellator rejections. The
+accepted multi-loop subset spans 32 reusable geometry owners.
 
 The combined certified-owner entry point additionally promotes 123 sampled
 Cylinder faces, four exact Cone apex sectors, and the two circular-profile
-`SurfRev` faces, for 40,317 meshes, 170,354 positions, and 89,273 triangles.
+`SurfRev` faces, for 40,390 meshes, 172,490 positions, and 91,472 triangles.
 The remaining planar `unsupported-surface` count becomes 19: six Cone faces
 and thirteen Cylinder faces whose trims remain fail-closed. No planar result
 changes.
@@ -77,9 +82,10 @@ Joining those owner meshes through the 30,608 decoded instance records still
 finds 25,538 placed instances and 308,107 placed triangles; the newly promoted
 curved owners in this model are direct owner candidates rather than additional
 shared placements. In the numeric-Tag IFC oracle, the combined owner plus
-placement set reaches 25,642 products and 315,907 of 318,304 IFC triangles
-(99.25%). That ratio is diagnostic because RVT and IFC may use different valid
-curved-surface tessellation policies.
+placement set reaches 25,642 products and 317,790 of 318,304 IFC triangles
+(99.84%), with exactly equal triangle counts on 25,542 of 25,642 matched Tags
+(99.61%). Those ratios are diagnostic because RVT and IFC may use different
+valid boundary and curved-surface tessellation policies.
 
 Run:
 
@@ -90,8 +96,9 @@ node --experimental-strip-types \
 
 ## Boundaries
 
-- Multi-loop Faces remain rejected until exact hole roles and containment are
-  certified.
+- Multi-loop Faces enter only when sampled UV topology proves exactly one
+  outer contour and direct, strictly contained, nonintersecting holes. The 33
+  ambiguous/disjoint/nested cases remain rejected.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
   owner path separately certifies 123 Cylinder, four Cone apex-sector, and two
   SurfRev faces.

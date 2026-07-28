@@ -111,9 +111,13 @@ const planarIssues = new Map<string, number>();
 const certifiedFacesByKind = new Map<string, number>();
 let certifiedPositions = 0;
 let certifiedTriangles = 0;
+let certifiedPlanarMultiLoopFaces = 0;
+let certifiedPlanarHoleLoops = 0;
+let certifiedPlanarMultiLoopTriangles = 0;
 const certifiedIssues = new Map<string, number>();
 const certifiedOwnerElements = new Map<number, {
   faces: number;
+  planarMultiLoopFaces: number;
   facesByKind: Map<string, number>;
   positions: number;
   triangles: number;
@@ -191,6 +195,13 @@ for (const partition of partitions) {
         increment(certifiedFacesByKind, face.kind);
         certifiedPositions += face.mesh.positions.length / 3;
         certifiedTriangles += face.mesh.indices.length / 3;
+        const planarMultiLoop =
+          face.kind === "planar-sampled" && face.loopTokens.length > 1;
+        if (planarMultiLoop) {
+          certifiedPlanarMultiLoopFaces += 1;
+          certifiedPlanarHoleLoops += face.loopTokens.length - 1;
+          certifiedPlanarMultiLoopTriangles += face.mesh.indices.length / 3;
+        }
         const elementId = Number(certified.value.ownerElementId);
         if (!Number.isSafeInteger(elementId)) {
           increment(failures, "certified owner id is outside safe integer range");
@@ -200,6 +211,7 @@ for (const partition of partitions) {
         if (!element) {
           element = {
             faces: 0,
+            planarMultiLoopFaces: 0,
             facesByKind: new Map(),
             positions: 0,
             triangles: 0,
@@ -209,6 +221,7 @@ for (const partition of partitions) {
           certifiedOwnerElements.set(elementId, element);
         }
         element.faces += 1;
+        if (planarMultiLoop) element.planarMultiLoopFaces += 1;
         increment(element.facesByKind, face.kind);
         element.positions += face.mesh.positions.length / 3;
         element.triangles += face.mesh.indices.length / 3;
@@ -272,6 +285,7 @@ const certifiedInstances = [...instancePlacements.values()]
       elementId: placement.elementId,
       geometryOwnerId: placement.geometryId,
       faces: geometry.faces,
+      planarMultiLoopFaces: geometry.planarMultiLoopFaces,
       facesByKind: entries(geometry.facesByKind),
       positions: geometry.positions,
       triangles: geometry.triangles,
@@ -310,6 +324,9 @@ console.log(JSON.stringify({
     faceMeshesByKind: entries(certifiedFacesByKind),
     positions: certifiedPositions,
     triangles: certifiedTriangles,
+    planarMultiLoopFaces: certifiedPlanarMultiLoopFaces,
+    planarHoleLoops: certifiedPlanarHoleLoops,
+    planarMultiLoopTriangles: certifiedPlanarMultiLoopTriangles,
     issues: entries(certifiedIssues),
     ownerElements: certifiedOwnerElements.size,
     decodedInstancePlacements: instancePlacements.size,
@@ -323,6 +340,7 @@ console.log(JSON.stringify({
       .map(([elementId, value]) => ({
         elementId,
         faces: value.faces,
+        planarMultiLoopFaces: value.planarMultiLoopFaces,
         facesByKind: entries(value.facesByKind),
         positions: value.positions,
         triangles: value.triangles,

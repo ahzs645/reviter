@@ -224,6 +224,67 @@ function replay(nextLoopToken = 0): Revit2027GRepReplay {
   };
 }
 
+function replayWithSecondLoop(
+  minimum: readonly [number, number] = [0.25, 0.25],
+  maximum: readonly [number, number] = [0.75, 0.75],
+): Revit2027GRepReplay {
+  const result = replay(11);
+  const innerLoop: Revit2027EdgeLoopStatic = {
+    ...loop(0),
+    gInfo: { ...loop(0).gInfo, tag: 11 },
+    faceReference: FACE_TOKEN,
+    nextEdgeReference: 12,
+    previousEdgeReference: 15,
+    staticReferences: [FACE_TOKEN, 12, 15],
+    envelope: { minimum, maximum },
+  };
+  const innerEdges = [
+    edge(12, minimum, [minimum[0], maximum[1]], 11, 13),
+    edge(
+      13,
+      [minimum[0], maximum[1]],
+      maximum,
+      12,
+      14,
+    ),
+    edge(
+      14,
+      maximum,
+      [maximum[0], minimum[1]],
+      13,
+      15,
+    ),
+    edge(
+      15,
+      [maximum[0], minimum[1]],
+      minimum,
+      14,
+      11,
+    ),
+  ];
+  result.spans = [
+    ...result.spans,
+    span(
+      7,
+      11,
+      REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+      5,
+      innerLoop,
+    ),
+    ...innerEdges.map((value, index) =>
+      span(
+        index + 8,
+        index + 12,
+        REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+        null,
+        value,
+      )),
+  ];
+  result.endOffset = 12;
+  result.finalTokenCount = 16;
+  return result;
+}
+
 test("meshes a completed replay's single-loop planar Face", () => {
   const result = meshRevit2027PlanarSampledReplay(replay(), {
     materialForFace: () => 77,
@@ -260,14 +321,38 @@ test("binds an exact persisted face MaterialElem through owner mesh options", ()
   assert.deepEqual(result.value.issues, []);
 });
 
-test("keeps multi-loop topology explicit instead of guessing a hole role", () => {
-  const result = meshRevit2027PlanarSampledReplay(replay(11));
+test("meshes one geometrically contained planar hole", () => {
+  const result = meshRevit2027PlanarSampledReplay(replayWithSecondLoop());
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.issues, []);
+  assert.equal(result.value.faceMeshes.length, 1);
+  assert.deepEqual(result.value.faceMeshes[0]!.loopTokens, [9, 11]);
+  assert.equal(result.value.faceMeshes[0]!.mesh.positions.length / 3, 8);
+  assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 8);
+});
+
+test("keeps disjoint planar loops explicit instead of guessing a hole role", () => {
+  const result = meshRevit2027PlanarSampledReplay(
+    replayWithSecondLoop([2, 2], [3, 3]),
+  );
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.faceMeshes.length, 0);
   assert.deepEqual(
     result.value.issues.map((issue) => issue.code),
     ["multi-loop"],
+  );
+});
+
+test("keeps unresolved loop chains explicit", () => {
+  const result = meshRevit2027PlanarSampledReplay(replay(11));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.faceMeshes.length, 0);
+  assert.deepEqual(
+    result.value.issues.map((issue) => issue.code),
+    ["loop-unresolved"],
   );
 });
 

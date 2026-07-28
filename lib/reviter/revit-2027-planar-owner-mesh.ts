@@ -31,6 +31,11 @@ import {
   type Revit2027PlanarSampledEdgeUse,
 } from "./revit-2027-planar-sampled-brep.ts";
 import {
+  groupRings,
+  ringArea,
+  type Point2,
+} from "./polygon.ts";
+import {
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   type Revit2027PlaneSurface,
 } from "./revit-2027-surfaces.ts";
@@ -44,6 +49,7 @@ export type Revit2027PlanarOwnerMeshIssueCode =
   | "surface-unresolved"
   | "unsupported-surface"
   | "loop-unresolved"
+  | "loop-cycle"
   | "multi-loop"
   | "loop-face-mismatch"
   | "edge-unresolved"
@@ -66,6 +72,7 @@ export type Revit2027PlanarOwnerMeshIssue = {
 export type Revit2027PlanarOwnerFaceMesh = {
   faceToken: number;
   loopToken: number;
+  loopTokens: readonly number[];
   mesh: NeutralFaceMesh;
 };
 
@@ -317,9 +324,88 @@ function directedEdgeUses(
   return { ok: true, edgeUses };
 }
 
+function edgeUseUvs(
+  edgeUse: Revit2027PlanarSampledEdgeUse,
+): Point2[] {
+  const points = [
+    edgeUse.edge.firstAndLastEdgePoints[0],
+    ...edgeUse.edge.interiorEdgePoints,
+    edgeUse.edge.firstAndLastEdgePoints[1],
+  ].map((point) => {
+    const uv = edgeUse.faceSide === 0
+      ? point.firstFaceUv
+      : point.secondFaceUv;
+    return [uv[0], uv[1]] as Point2;
+  });
+  return edgeUse.direction === 1 ? points : points.reverse();
+}
+
+function sampledUvRing(
+  edgeUses: readonly Revit2027PlanarSampledEdgeUse[],
+  tolerance: number,
+): Point2[] | null {
+  const ring: Point2[] = [];
+  for (const edgeUse of edgeUses) {
+    const points = edgeUseUvs(edgeUse);
+    for (let index = 0; index < points.length; index += 1) {
+      if (ring.length > 0 && index === 0) continue;
+      ring.push(points[index]!);
+    }
+  }
+  if (
+    ring.length > 1 &&
+    distance(ring[0]!, ring.at(-1)!) <= tolerance
+  ) {
+    ring.pop();
+  }
+  return (
+      ring.length >= 3 &&
+      ring.every((point) => point.every(Number.isFinite))
+    )
+    ? ring
+    : null;
+}
+
+function classifyPlanarLoopRoles(
+  edgeUsesByLoop: readonly (readonly Revit2027PlanarSampledEdgeUse[])[],
+  tolerance: number,
+): readonly ("outer" | "hole")[] | null {
+  if (edgeUsesByLoop.length === 1) return ["outer"];
+  const rings: Point2[][] = [];
+  for (const edgeUses of edgeUsesByLoop) {
+    const ring = sampledUvRing(edgeUses, tolerance);
+    if (!ring) return null;
+    rings.push(ring);
+  }
+
+  // Native OdBrepBuilder::addLoop takes no outer/hole argument; loop type is
+  // derived after the face-local contours are supplied and exposed later by
+  // OdBrLoop::getType. Reproduce only the unambiguous browser subset: one
+  // containing shell and every other contour a direct hole. Disjoint shells,
+  // nested islands, touching contours, and degenerate rings remain rejected.
+  const groups = groupRings(rings);
+  if (groups.length !== 1 || groups[0]!.holes.length !== rings.length - 1) {
+    return null;
+  }
+  const outerArea = ringArea(groups[0]!.outer);
+  const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
+  const candidates = rings
+    .map((ring, index) => ({ index, area: ringArea(ring) }))
+    .filter(
+      ({ area }) =>
+        Math.abs(area - outerArea) <=
+        Math.max(areaTolerance, outerArea * Number.EPSILON * 16),
+    );
+  if (candidates.length !== 1) return null;
+  return rings.map((_, index) =>
+    index === candidates[0]!.index ? "outer" : "hole"
+  );
+}
+
 /**
- * Convert all independently safe single-loop planar Faces in one completed
- * Revit 2027 replay into browser mesh objects.
+ * Convert independently safe planar Faces in one completed Revit 2027 replay
+ * into browser mesh objects. Multi-loop faces enter only when face-local
+ * containment proves one outer contour and direct, disjoint holes.
  */
 export function meshRevit2027PlanarSampledReplay(
   replay: Revit2027GRepReplay,
@@ -399,41 +485,83 @@ export function meshRevit2027PlanarSampledReplay(
       issues.push({ code: "loop-unresolved", faceToken });
       continue;
     }
-    const loop = loops.get(face.firstLoop.token);
-    if (!loop) {
-      issues.push({
-        code: "loop-unresolved",
-        faceToken,
-        loopToken: face.firstLoop.token,
-      });
-      continue;
+    const loopChain: LoopRecord[] = [];
+    const seenLoopTokens = new Set<number>();
+    let loopToken = face.firstLoop.token;
+    let loopFailure = false;
+    while (loopToken !== 0) {
+      if (loopToken < 0 || seenLoopTokens.has(loopToken)) {
+        issues.push({
+          code: "loop-cycle",
+          faceToken,
+          loopToken,
+        });
+        loopFailure = true;
+        break;
+      }
+      const loop = loops.get(loopToken);
+      if (!loop) {
+        issues.push({
+          code: "loop-unresolved",
+          faceToken,
+          loopToken,
+        });
+        loopFailure = true;
+        break;
+      }
+      if (loop.loop.faceReference !== faceToken) {
+        issues.push({
+          code: "loop-face-mismatch",
+          faceToken,
+          loopToken,
+        });
+        loopFailure = true;
+        break;
+      }
+      seenLoopTokens.add(loopToken);
+      loopChain.push(loop);
+      loopToken = loop.loop.nextLoop.token;
+      if (loopChain.length > loops.size) {
+        issues.push({
+          code: "loop-cycle",
+          faceToken,
+          loopToken,
+        });
+        loopFailure = true;
+        break;
+      }
     }
-    if (loop.loop.nextLoop.token !== 0) {
+    if (loopFailure) continue;
+
+    const edgeUsesByLoop: Revit2027PlanarSampledEdgeUse[][] = [];
+    for (const loop of loopChain) {
+      const directed = directedEdgeUses(
+        faceToken,
+        loop,
+        edges,
+        tolerance,
+      );
+      if (directed.ok === false) {
+        issues.push(directed.issue);
+        loopFailure = true;
+        break;
+      }
+      edgeUsesByLoop.push(directed.edgeUses);
+    }
+    if (loopFailure) continue;
+    const roles = classifyPlanarLoopRoles(edgeUsesByLoop, tolerance);
+    if (!roles) {
       issues.push({
         code: "multi-loop",
         faceToken,
-        loopToken: loop.token,
+        loopToken: loopChain[0]?.token,
+        detail:
+          `${loopChain.length} contours do not prove one shell with direct holes`,
       });
       continue;
     }
-    if (loop.loop.faceReference !== faceToken) {
-      issues.push({
-        code: "loop-face-mismatch",
-        faceToken,
-        loopToken: loop.token,
-      });
-      continue;
-    }
-    const directed = directedEdgeUses(
-      faceToken,
-      loop,
-      edges,
-      tolerance,
-    );
-    if (!directed.ok) {
-      issues.push(directed.issue);
-      continue;
-    }
+    const outerLoopIndex = roles.indexOf("outer");
+    const outerLoop = loopChain[outerLoopIndex]!;
     const adapted = adaptRevit2027PlanarSampledBrep({
       id: `revit-2027-owner-${replay.ownerElementId}-face-${faceToken}`,
       provenance,
@@ -441,11 +569,11 @@ export function meshRevit2027PlanarSampledReplay(
       faces: [{
         faceToken,
         surface,
-        loops: [{
+        loops: loopChain.map((loop, index) => ({
           loopToken: loop.token,
-          role: "outer",
-          edgeUses: directed.edgeUses,
-        }],
+          role: roles[index]!,
+          edgeUses: edgeUsesByLoop[index]!,
+        })),
         materialId: faceMaterialId(faceToken, face, options, issues),
         provenance,
       }],
@@ -471,7 +599,8 @@ export function meshRevit2027PlanarSampledReplay(
     }
     faceMeshes.push({
       faceToken,
-      loopToken: loop.token,
+      loopToken: outerLoop.token,
+      loopTokens: loopChain.map((loop) => loop.token),
       mesh: tessellated.mesh,
     });
   }

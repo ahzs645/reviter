@@ -40,7 +40,8 @@ not choose a tessellation density or use the IFC to create points.
 The adapter rejects the whole BRep when it encounters:
 
 - invalid Face, loop, or edge tokens;
-- anything other than one explicit outer loop per neutral face;
+- anything other than exactly one explicit outer loop per neutral face (zero
+  or more explicitly classified hole loops are supported);
 - a repeated edge use in one loop;
 - a face-side selection that does not reference the owning Face;
 - a direction other than `+1` or `-1`;
@@ -49,11 +50,12 @@ The adapter rejects the whole BRep when it encounters:
 - adjacent edge uses whose directed endpoints do not agree;
 - a final edge that does not close to the first.
 
-It does not infer a hole from winding. In the UNBC audit, 138 loops occur after
-their Face's first loop, but they remain candidates until exact containment and
-nonintersection are proved. Callers may immediately use the structurally safe
-single-loop subset; multi-loop Faces require an independently justified role
-for each loop.
+It does not infer a hole from winding. The Revit 2027 owner mesher supplies
+roles only after the sampled UV contours prove one containing shell and direct
+holes. The tessellator then rechecks strict containment, self-intersection,
+hole intersection/nesting, and triangulated area. Callers with another exact
+topology source must likewise supply an independently justified role for every
+loop.
 
 The adapter also does not treat `GInfo.gStyleElementId`,
 `Face.renderStyleElementId`, an IFC material, or a category material as a
@@ -63,16 +65,16 @@ gap instead of hiding it in geometry output.
 
 ## Current corpus boundary
 
-The exact topology audit reaches 40,559 closed loops and proves zero
-next/previous reciprocity failures. It identifies 40,246 planar Faces with a
-complete loop chain and unique sampled-UV orientation. Of those, 40,171 have a
-single loop and are the immediate candidate population for this adapter.
+The exact owner replay reaches 40,632 closed loops and proves zero
+next/previous reciprocity failures. The reusable browser path tessellates
+40,261 planar Faces into 87,010 triangles. That includes 73 multi-loop Faces,
+105 direct hole loops, and 2,199 triangles; 33 multi-loop Faces remain
+fail-closed.
 
-That is an input-capability count, not a tessellation or IFC parity result. The
-next integration step is to expose the audit's resolved per-owner topology as
-library data, adapt every eligible single-loop Face, and compare the resulting
-element-level meshes with the supplied IFC by numeric Revit Tag. Until that
-pipeline runs, no new RVT-to-IFC triangle coverage is claimed.
+The combined certified owner and persisted-instance path matches 25,642
+numeric Revit Tags in the supplied IFC and emits 317,790 of the IFC's 318,304
+triangles on that same matched set (99.84%). This is an oracle comparison after
+RVT decoding, not a source of geometry.
 
 Focused verification:
 
