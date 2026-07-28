@@ -74,6 +74,7 @@ import {
 } from "./native-identity.ts";
 import { scanMaterialElementRecords } from "./material-records.ts";
 import {
+  resolveElementMaterialAssignments,
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
   scanPersistedRelationshipCandidates,
@@ -86,6 +87,11 @@ import {
   scanHostRelationCandidates,
   type HostRelationCandidate,
 } from "./host-relations.ts";
+import {
+  resolveAssociatedLevelRelations,
+  scanAssociatedLevelRelationCandidates,
+  type AssociatedLevelRelationCandidate,
+} from "./level-relations.ts";
 import {
   applyNativeCategories,
   collectCategoryTokens,
@@ -799,6 +805,7 @@ export function convertRvtBytes(
     const familySymbolCandidates: FamilySymbolCandidate[] = [];
     const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
     const hostRelationCandidates: HostRelationCandidate[] = [];
+    const associatedLevelRelationCandidates: AssociatedLevelRelationCandidate[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
@@ -858,6 +865,12 @@ export function convertRvtBytes(
           geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
           hostRelationCandidates.push(
             ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
+          );
+          associatedLevelRelationCandidates.push(
+            ...scanAssociatedLevelRelationCandidates(
+              inflated,
+              decoderPlan.revitVersion,
+            ),
           );
         }
         const elementId = leadingU32(inflated);
@@ -1803,9 +1816,21 @@ export function convertRvtBytes(
       new Set(nativeMaterialDefinitionMap.keys()),
       sharedGeometryIds,
     );
+    const nativeElementMaterialAssignments = resolveElementMaterialAssignments(
+      instancePlacements.values(),
+      nativeGeometryMaterialAssignments,
+      sharedGeometryIds,
+    );
+    const nativeMaterialAssignedElements = new Set(
+      nativeElementMaterialAssignments.map((assignment) => assignment.elementId),
+    ).size;
     const nativeHostRelations = resolveHostRelations(
       hostRelationCandidates,
       new Set(markerByElement.keys()),
+    );
+    const nativeAssociatedLevelRelations = resolveAssociatedLevelRelations(
+      associatedLevelRelationCandidates,
+      markerByElement,
     );
     // An element needs a volume to be worth drawing, with one exception: a
     // sketch-bounded element is a plan boundary plus a thickness, and Revit can
@@ -1870,6 +1895,9 @@ export function convertRvtBytes(
             ...(nativeGeometryMaterialAssignments.length
               ? ["revit-2027-geometry-material-id-v1"]
               : []),
+            ...(nativeElementMaterialAssignments.length
+              ? ["revit-2027-instance-geometry-material-v1"]
+              : []),
             ...(nativeHostRelations.length
               ? ["revit-2027-insertable-host-id-v1"]
               : []),
@@ -1878,7 +1906,8 @@ export function convertRvtBytes(
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
-          nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
+          nativeMaterialAssignments: nativeMaterialAssignedElements,
+          nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
           nativeFamilySymbols: sharedGeometryIds.size,
           nativeFamilyRelations: nativeFamilySymbolRelations.length,
           nativeHostRelations: nativeHostRelations.length,
@@ -1915,6 +1944,7 @@ export function convertRvtBytes(
         nativeFamilySymbolRelations,
         nativeFamilyDefinitions,
         nativeGeometryMaterialAssignments,
+        nativeElementMaterialAssignments,
         nativeHostRelations,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
@@ -1928,7 +1958,7 @@ export function convertRvtBytes(
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
             : []),
           ...(nativeMaterialDefinitions.length
-            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions, while exact appearance properties remain unresolved.`]
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions and persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
             : []),
           ...(nativeFamilySymbolRelations.length
             ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
@@ -2058,6 +2088,9 @@ export function convertRvtBytes(
           ...(nativeGeometryMaterialAssignments.length
             ? ["revit-2027-geometry-material-id-v1"]
             : []),
+          ...(nativeElementMaterialAssignments.length
+            ? ["revit-2027-instance-geometry-material-v1"]
+            : []),
           ...(nativeHostRelations.length
             ? ["revit-2027-insertable-host-id-v1"]
             : []),
@@ -2066,7 +2099,8 @@ export function convertRvtBytes(
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: nativeMaterialDefinitions.length,
-        nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
+        nativeMaterialAssignments: nativeMaterialAssignedElements,
+        nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
         nativeFamilySymbols: sharedGeometryIds.size,
         nativeFamilyRelations: nativeFamilySymbolRelations.length,
         nativeHostRelations: nativeHostRelations.length,
@@ -2105,6 +2139,7 @@ export function convertRvtBytes(
       nativeFamilySymbolRelations,
       nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
+      nativeElementMaterialAssignments,
       nativeHostRelations,
       warnings: [
         ...(decoderPlan.revitVersion == null
@@ -2120,7 +2155,7 @@ export function convertRvtBytes(
           ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
           : []),
         ...(nativeMaterialDefinitions.length
-          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions, while exact appearance properties remain unresolved.`]
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions and persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
           : []),
         ...(nativeFamilySymbolRelations.length
           ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]

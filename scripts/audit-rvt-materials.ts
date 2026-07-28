@@ -13,6 +13,7 @@ import { basename, dirname, resolve } from "node:path";
 
 import CFB from "cfb";
 
+import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
 import {
   resolveGeometryMaterialAssignments,
@@ -167,9 +168,19 @@ const assignments = resolveGeometryMaterialAssignments(
   new Set(definitions.keys()),
   referencedGeometryIds,
 );
+const conversion = convertRvtBytes(
+  new Uint8Array(rvtBytes.buffer, rvtBytes.byteOffset, rvtBytes.byteLength),
+  basename(paths.rvt),
+  { revitVersion: 2027, maxSegments: 1 },
+);
+if (!conversion.ok) throw new Error(`Material assignment conversion failed: ${conversion.error}`);
+const elementAssignments = conversion.nativeElementMaterialAssignments ?? [];
+const assignedElements = new Set(
+  elementAssignments.map((assignment) => assignment.elementId),
+);
 
 const result = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedBy: "scripts/audit-rvt-materials.ts",
   inputs: {
     rvt: { name: basename(paths.rvt), bytes: rvtBytes.length, sha256: sha256(rvtBytes) },
@@ -202,16 +213,24 @@ const result = {
     missingIfcNames,
   },
   assignments: {
-    decodedElementAssignments: new Set(assignments.map((assignment) => assignment.geometryId)).size,
+    decodedElementAssignments: assignedElements.size,
+    decodedPlacedElementRelations: elementAssignments.length,
+    decodedSharedGeometryAssignments:
+      new Set(assignments.map((assignment) => assignment.geometryId)).size,
     decodedPrimitiveAssignments: 0,
     decodedRelations: assignments.length,
     assignedMaterialDefinitions: new Set(
       assignments.map((assignment) => assignment.materialId),
     ).size,
-    status: assignments.length ? "shared-geometry-decoded" : "not-decoded",
+    status: elementAssignments.length
+      ? "placed-element-shared-geometry-decoded"
+      : assignments.length
+      ? "shared-geometry-decoded"
+      : "not-decoded",
     reason:
-      "Persisted MaterialElem ids are decoded for three release-gated shared-geometry layouts. " +
-      "They are exact geometry/type assignments, not yet per-BRep-face, per-triangle, " +
+      "Persisted placement ids join placed elements to MaterialElem ids through three " +
+      "release-gated shared-geometry layouts. They are exact element/shared-geometry " +
+      "assignments, not yet per-BRep-face, per-triangle, " +
       "category-style, or view-override assignments.",
   },
 };
@@ -228,6 +247,7 @@ console.log(
 );
 console.log(
   `Assignments: ${assignments.length} shared-geometry relations across ` +
-  `${new Set(assignments.map((assignment) => assignment.geometryId)).size} sources`,
+  `${new Set(assignments.map((assignment) => assignment.geometryId)).size} sources; ` +
+  `${assignedElements.size} placed elements`,
 );
 console.log(`Wrote ${paths.json}`);

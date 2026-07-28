@@ -72,6 +72,13 @@ export type NativeGeometryMaterialAssignment = GeometryMaterialCandidate & {
   evidence: "framed-geometry-material-id";
 };
 
+export type NativeElementMaterialAssignment = {
+  elementId: number;
+  geometryId: number;
+  materialId: number;
+  evidence: "persisted-instance-shared-geometry-material";
+};
+
 function readId(view: DataView, offset: number, limit: number): number | null {
   if (offset < 0 || offset + 8 > limit || view.getUint32(offset + 4, true) !== 0) return null;
   const id = view.getUint32(offset, true);
@@ -264,4 +271,62 @@ export function resolveGeometryMaterialAssignments(
   }
   return [...result.values()].sort((a, b) =>
     a.geometryId - b.geometryId || a.materialId - b.materialId);
+}
+
+/**
+ * Joins two independently framed, persisted relationships:
+ *
+ *   instance element -> shared geometry -> MaterialElem
+ *
+ * A geometry id is accepted only when `sharedGeometryIdsForPlacements` has
+ * already classified it as shared geometry. That guard matters because the
+ * same InstInfoBase field means "subelement" for stair assemblies. Conflicting
+ * geometry ids for one element fail closed instead of choosing a winner.
+ */
+export function resolveElementMaterialAssignments(
+  placements: Iterable<{ elementId: number; geometryId: number }>,
+  geometryAssignments: readonly NativeGeometryMaterialAssignment[],
+  referencedGeometryIds: ReadonlySet<number>,
+): NativeElementMaterialAssignment[] {
+  const geometryByElement = new Map<number, number | null>();
+  for (const placement of placements) {
+    if (
+      !Number.isSafeInteger(placement.elementId) ||
+      placement.elementId <= 0 ||
+      !referencedGeometryIds.has(placement.geometryId)
+    ) {
+      continue;
+    }
+    const previous = geometryByElement.get(placement.elementId);
+    if (previous === undefined) {
+      geometryByElement.set(placement.elementId, placement.geometryId);
+    } else if (previous !== placement.geometryId) {
+      geometryByElement.set(placement.elementId, null);
+    }
+  }
+
+  const materialsByGeometry = new Map<number, Set<number>>();
+  for (const assignment of geometryAssignments) {
+    if (!referencedGeometryIds.has(assignment.geometryId)) continue;
+    const materials = materialsByGeometry.get(assignment.geometryId);
+    if (materials) materials.add(assignment.materialId);
+    else materialsByGeometry.set(assignment.geometryId, new Set([assignment.materialId]));
+  }
+
+  const result: NativeElementMaterialAssignment[] = [];
+  for (const [elementId, geometryId] of geometryByElement) {
+    if (geometryId == null) continue;
+    for (const materialId of materialsByGeometry.get(geometryId) ?? []) {
+      result.push({
+        elementId,
+        geometryId,
+        materialId,
+        evidence: "persisted-instance-shared-geometry-material",
+      });
+    }
+  }
+  return result.sort((a, b) =>
+    a.elementId - b.elementId ||
+    a.geometryId - b.geometryId ||
+    a.materialId - b.materialId);
 }

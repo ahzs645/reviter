@@ -71,9 +71,20 @@ shared geometry sources and three MaterialElem ids. Of the 5,393 relations whose
 source has an IFC material association, all 5,393 decoded RVT material names
 occur in the IFC association (100% exact-name precision).
 
-This is an exact assignment at the shared-geometry/type level. It is not yet an
-exact BRep-face or triangle material map, and material colors/appearance assets,
-category styles, and view overrides remain separate work.
+`InstInfoBase` independently persists each placed element's shared-geometry id.
+Joining those two framed relations assigns at least one exact MaterialElem id to
+25,607 placed UNBC elements while retaining the 5,413 source relation count.
+That is 70.70% of the reference IFC's 36,221 material-assigned elements. The
+runtime join does not read the IFC, use spatial proximity, or infer a material
+from category or object order. Stair assemblies remain excluded by the existing
+persisted-category gate because their same field denotes a subelement rather
+than reusable geometry.
+
+This is an exact assignment at the placed-element/shared-geometry level. It is
+not yet an exact BRep-face or triangle material map, and material
+colors/appearance assets, category styles, compound-layer materials, and view
+overrides remain separate work. One shared geometry object may legitimately
+publish more than one MaterialElem id; the resolver preserves all such ids.
 
 ## Runtime safety
 
@@ -83,7 +94,11 @@ The implementation in `lib/reviter/family-material-relations.ts` is:
 - gated by the established object length/trailer echo;
 - gated by exact release-specific class markers and field offsets;
 - resolved in a second pass so cross-chunk object ids must point to a proven
-  target class/definition before publication.
+  target class/definition before publication;
+- joined to an instance only when its geometry id passed
+  `sharedGeometryIdsForPlacements`;
+- fail-closed when multiple placement records give one element conflicting
+  geometry ids.
 
 Use `scripts/probe-rvt-relationships.ts` for RVT/IFC corroboration and
 `scripts/audit-rvt-materials.ts` for the standalone material-definition and

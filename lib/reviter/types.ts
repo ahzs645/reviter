@@ -12,9 +12,11 @@ import type { NativeMaterialDefinition } from "./material-records.ts";
 import type {
   NativeFamilyDefinition,
   NativeFamilySymbolRelation,
+  NativeElementMaterialAssignment,
   NativeGeometryMaterialAssignment,
 } from "./family-material-relations.ts";
 import type { NativeHostRelation } from "./host-relations.ts";
+import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -85,13 +87,18 @@ export type DecoderCoverage = {
   nativeProfiles: number;
   nativeMeshes: number;
   nativeMaterialDefinitions: number;
+  /** Placed elements inheriting at least one exact shared-geometry material. */
   nativeMaterialAssignments: number;
+  /** Exact shared-geometry to MaterialElem relations before instance expansion. */
+  nativeGeometryMaterialAssignments?: number;
   /** Persisted instance-to-symbol links read from InstInfoBase. */
   nativeFamilySymbols?: number;
   /** Persisted FamilySymbol-to-Family links whose target class resolved. */
   nativeFamilyRelations?: number;
   /** Persisted InsertableInst host relationships. */
   nativeHostRelations?: number;
+  /** Persisted Element associated-level relationships. */
+  nativeAssociatedLevelRelations?: number;
   /** Native loadable-family records whose FamilyBase name/path pair decoded. */
   nativeFamilyDefinitions?: number;
   /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
@@ -492,8 +499,12 @@ export type ConvertResult = {
   nativeFamilyDefinitions?: NativeFamilyDefinition[];
   /** Exact MaterialElem ids attached to referenced shared geometry objects. */
   nativeGeometryMaterialAssignments?: NativeGeometryMaterialAssignment[];
+  /** Placed elements joined through exact persisted shared-geometry material ids. */
+  nativeElementMaterialAssignments?: NativeElementMaterialAssignment[];
   /** Persisted hosted-element relationships from InsertableInst.m_hostId. */
   nativeHostRelations?: NativeHostRelation[];
+  /** Persisted spatial relationships from Element.m_assocLevelId. */
+  nativeAssociatedLevelRelations?: NativeAssociatedLevelRelation[];
 };
 
 export type ConvertFailure = {

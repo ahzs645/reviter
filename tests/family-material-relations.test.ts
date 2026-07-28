@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  resolveElementMaterialAssignments,
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
   scanPersistedRelationshipCandidates,
@@ -117,6 +118,100 @@ test("only promotes geometry material ids that resolve to MaterialElem definitio
       scan.geometryMaterialCandidates,
       new Set(),
       new Set([290_626]),
+    ),
+    [],
+  );
+});
+
+test("joins persisted instance geometry to exact geometry materials", () => {
+  const geometryAssignments = [
+    {
+      geometryId: 100,
+      materialId: 5,
+      recordOffset: 0,
+      fieldOffset: 135,
+      objectLength: 200,
+      objectMarker: 0x10dc,
+      evidence: "framed-geometry-material-id" as const,
+    },
+    {
+      geometryId: 100,
+      materialId: 6,
+      recordOffset: 0,
+      fieldOffset: 197,
+      objectLength: 200,
+      objectMarker: 0x10dc,
+      evidence: "framed-geometry-material-id" as const,
+    },
+  ];
+  assert.deepEqual(
+    resolveElementMaterialAssignments(
+      [
+        { elementId: 10, geometryId: 100 },
+        { elementId: 11, geometryId: 100 },
+        { elementId: 12, geometryId: 101 },
+      ],
+      geometryAssignments,
+      new Set([100]),
+    ),
+    [
+      {
+        elementId: 10,
+        geometryId: 100,
+        materialId: 5,
+        evidence: "persisted-instance-shared-geometry-material",
+      },
+      {
+        elementId: 10,
+        geometryId: 100,
+        materialId: 6,
+        evidence: "persisted-instance-shared-geometry-material",
+      },
+      {
+        elementId: 11,
+        geometryId: 100,
+        materialId: 5,
+        evidence: "persisted-instance-shared-geometry-material",
+      },
+      {
+        elementId: 11,
+        geometryId: 100,
+        materialId: 6,
+        evidence: "persisted-instance-shared-geometry-material",
+      },
+    ],
+  );
+});
+
+test("fails closed when one element has conflicting shared geometry ids", () => {
+  const geometryAssignments = [
+    {
+      geometryId: 100,
+      materialId: 5,
+      recordOffset: 0,
+      fieldOffset: 135,
+      objectLength: 200,
+      objectMarker: 0x10dc,
+      evidence: "framed-geometry-material-id" as const,
+    },
+    {
+      geometryId: 101,
+      materialId: 6,
+      recordOffset: 0,
+      fieldOffset: 135,
+      objectLength: 200,
+      objectMarker: 0x10dc,
+      evidence: "framed-geometry-material-id" as const,
+    },
+  ];
+  assert.deepEqual(
+    resolveElementMaterialAssignments(
+      [
+        { elementId: 10, geometryId: 100 },
+        { elementId: 10, geometryId: 101 },
+      ],
+      geometryAssignments,
+      new Set([100, 101]),
     ),
     [],
   );
