@@ -93,6 +93,14 @@ export function makeGlb(result: ConvertResult): ArrayBuffer {
         attributes: { POSITION: positionAccessor, NORMAL: normalAccessor },
         indices: indexAccessor,
         material: Math.min(mesh.materialIndex, Math.max(0, result.materials.length - 1)),
+        ...(mesh.nativeMaterialElementId == null
+          ? {}
+          : {
+              extras: {
+                revitMaterialElementId: mesh.nativeMaterialElementId,
+                evidence: "persisted-face-material",
+              },
+            }),
       }],
     }) - 1;
     nodes.push({ name: mesh.name, mesh: meshIndex });
