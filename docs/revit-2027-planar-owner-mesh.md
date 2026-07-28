@@ -19,9 +19,23 @@ Both entry points are browser-safe:
 - `meshRevit2027PlanarSampledReplay(replay)` consumes an already completed
   replay.
 
+`replayAndMeshRevit2027CertifiedOwner` in
+`revit-2027-certified-owner-mesh.ts` is the broader client entry point. It
+replays once and combines this planar path with every other independently
+certified face subset, currently rectangular sampled Cylinder and
+circular-profile rectangular `SurfRev`.
+
 The result contains independent per-Face meshes and structured issues for
 unsupported or ambiguous Faces. One bad Face never produces a partial mesh
 for that Face and does not hide other safe Faces in the same owner.
+
+Passing exact framed `MaterialElem` definitions through
+`materialDefinitions` binds a positive persisted
+`Face.renderStyleElementId` directly to each mesh group. Explicitly unassigned
+and negative system IDs remain `null`; an unmatched positive ID emits a
+`material-unresolved` issue instead of falling back to a name, category, or
+IFC material. A caller-supplied `materialForFace` remains available for a
+separately proven relation.
 
 ## Native-kernel correspondence
 
@@ -52,6 +66,12 @@ Structured non-mesh results are 491 Faces without a first loop, 148
 non-planar surfaces, 108 multi-loop Faces, 22 ambiguous UV links, and four
 tessellator rejections. These totals reproduce the independent topology audit.
 
+The combined certified-owner entry point additionally promotes 123 sampled
+Cylinder faces and the two exact circular-profile `SurfRev` faces, for 40,313
+meshes, 169,862 positions, and 89,109 triangles. The remaining planar
+`unsupported-surface` count becomes 23: ten Cone faces and thirteen Cylinder
+faces whose trims remain fail-closed. No planar result changes.
+
 Run:
 
 ```sh
@@ -63,9 +83,11 @@ node --experimental-strip-types \
 
 - Multi-loop Faces remain rejected until exact hole roles and containment are
   certified.
-- Cone, cylinder, and SurfRev are decoded but do not enter this planar path.
-- The material callback defaults to `null`; callers may supply a value only
-  from an independently exact face-material relation.
+- Cone, Cylinder, and SurfRev do not enter this planar path. The combined
+  owner path separately certifies 123 Cylinder and two SurfRev faces.
+- Positive per-face `MaterialElem` IDs are exact when
+  `materialDefinitions` contains the independently decoded framed target.
+  GStyle/category/view fallback remains unresolved and therefore null.
 - Instance placement is deliberately separate. The caller may reuse an owner
   mesh with the already decoded shared-geometry placement instead of
   duplicating vertex buffers.

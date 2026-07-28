@@ -130,9 +130,19 @@ parity can be claimed.
 ## Files and validation
 
 - `lib/reviter/revit-2027-arc-surfrev.ts` — fail-closed evaluator/tessellator.
+- `lib/reviter/revit-2027-arc-surfrev-owner-mesh.ts` — reusable replay,
+  topology/trim certificate, neutral face mesh, and exact positive face
+  material propagation.
+- `lib/reviter/revit-2027-certified-owner-mesh.ts` — one replay and one
+  combined client result for planar, sampled Cylinder, and certified SurfRev
+  faces.
 - `tests/revit-2027-arc-surfrev.test.ts` — formula, mesh, and rejection tests.
+- `tests/revit-2027-arc-surfrev-owner-mesh.test.ts` — owner replay,
+  opposite-side sampling, and material tests.
 - `scripts/audit-revit-2027-surfrev-feasibility.ts` — exact RVT replay and
   rectangular-trim certificate.
+- `scripts/audit-revit-2027-arc-surfrev-owner-mesh.ts` — all-owner proof for
+  the reusable browser adapter.
 - `scripts/audit-ifc-element-geometry.mjs` — post-decode IFC Tag/shape oracle.
 
 Run:
@@ -144,6 +154,14 @@ node --experimental-strip-types --test \
 node --experimental-strip-types \
   scripts/audit-revit-2027-surfrev-feasibility.ts model.rvt
 
+node --experimental-strip-types \
+  scripts/audit-revit-2027-arc-surfrev-owner-mesh.ts model.rvt
+
 node scripts/audit-ifc-element-geometry.mjs reference.ifc 245109
 ```
 
+The reusable corpus audit completes all 5,996 direct Geometry-owner replays
+and emits the same two certified faces: 78 positions and 96 triangles, with no
+replay or adapter issues. Both mesh groups retain exact face material element
+`182549` (`Алюминий`) by joining the persisted face ID to its independently
+framed `MaterialElem`.

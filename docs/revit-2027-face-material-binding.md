@@ -69,6 +69,17 @@ face/triangle group in the browser IR.
 It does not resolve by name, category, IFC material, byte proximity, or a
 guessed graphics-style layout.
 
+All reusable browser mesh paths accept these exact definitions directly:
+
+- `meshRevit2027PlanarSampledReplay(..., { materialDefinitions })`
+- `meshRevit2027ArcSurfRevReplay(..., { materialDefinitions })`
+- `meshRevit2027CylinderSampledReplay(..., { materialDefinitions })`
+- `meshRevit2027CertifiedOwnerReplay(..., { materialDefinitions })`
+
+An exact positive binding becomes the neutral mesh group's `materialId`.
+Explicitly unassigned and negative system values remain `null`, and an
+unmatched positive value is surfaced as `material-unresolved`.
+
 ## Exact UNBC result
 
 The audit used:
@@ -124,4 +135,3 @@ Run the corpus audit with:
 node --experimental-strip-types \
   scripts/audit-revit-2027-face-materials.ts model.rvt reference.ifc
 ```
-

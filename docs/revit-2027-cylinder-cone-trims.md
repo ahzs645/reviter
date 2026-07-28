@@ -114,14 +114,15 @@ No cone face matches the current rectangular neutral-surface subset:
 
 | Rejected trim shape | Faces | Owners |
 | --- | ---: | --- |
-| Three-edge/non-four-edge chart | 4 | `1420880` |
+| Three-edge apex-sector chart | 8 | `1420880`, `1960533` |
 | Four-edge chart with non-axis-aligned p-curve | 2 | `1718794` |
-| Apex UV endpoint discontinuity | 4 | `1960533` |
 
-The apex cases are important: distinct angular UV values can represent the
-same 3D apex. Treating them as ordinary UV endpoint equality would incorrectly
-declare an open loop. Supporting them requires an explicit degenerate-apex
-topology rule and a neutral cone surface carrying the full X/Y/Z basis.
+The native evaluator proves that every finite `(u, 0)` parameter pair is the
+same 3D apex. Applying that exact equivalence closes all eight three-edge
+apex-sector loops; they are not UV gaps. All ten Cone faces now have complete
+directed p-curve samples. Tessellation still requires an explicit
+degenerate-apex topology rule and a Cone evaluator carrying the full X/Y/Z
+basis.
 
 The existing neutral cone placeholder stores only origin, axis, and half
 angle, so it cannot evaluate the proven native angular reference frame.
@@ -150,7 +151,9 @@ evidence for parameterization or topology.
 ## Files
 
 - `lib/reviter/revit-2027-cylinder-sampled-brep.ts`
+- `lib/reviter/revit-2027-cylinder-owner-mesh.ts`
 - `tests/revit-2027-cylinder-sampled-brep.test.ts`
+- `tests/revit-2027-cylinder-owner-mesh.test.ts`
 - `scripts/audit-revit-2027-cylinder-cone-trims.ts`
 - `scripts/audit-revit-2027-cylinder-ifc-parity.mjs`
 
@@ -159,6 +162,7 @@ Run:
 ```sh
 node --experimental-strip-types --test \
   tests/revit-2027-cylinder-sampled-brep.test.ts \
+  tests/revit-2027-cylinder-owner-mesh.test.ts \
   tests/brep-tessellator.test.ts
 
 node --experimental-strip-types \
@@ -169,3 +173,9 @@ node scripts/audit-revit-2027-cylinder-ifc-parity.mjs \
   --ifc reference.ifc \
   --rvt-audit cylinder-cone-trims.json
 ```
+
+The combined browser-owner audit meshes all 123 certified Cylinder faces
+directly from the completed FIFO replay. Together with the planar and SurfRev
+paths, it returns 40,313 face meshes, 169,862 positions, and 89,109 triangles
+across 5,996/5,996 direct owners. The thirteen remaining Cylinder faces are
+reported as eleven non-rectangular trims and two guarded wrapping charts.

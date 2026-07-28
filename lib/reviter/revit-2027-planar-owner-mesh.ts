@@ -14,6 +14,10 @@ import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
   type Revit2027FaceStatic,
 } from "./revit-2027-face-static.ts";
+import {
+  bindRevit2027FaceMaterial,
+  type Revit2027MaterialDefinitions,
+} from "./revit-2027-face-material.ts";
 import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
   replayRevit2027GRepFifo,
@@ -47,6 +51,7 @@ export type Revit2027PlanarOwnerMeshIssueCode =
   | "edge-cycle"
   | "edge-link-mismatch"
   | "uv-link-unresolved"
+  | "material-unresolved"
   | "adapter-rejected"
   | "tessellator-rejected";
 
@@ -79,6 +84,11 @@ export type Revit2027PlanarOwnerMeshOptions = {
   uvTolerance?: number;
   replayRegistry?: Revit2027GRepReplayRegistry;
   replayOptions?: Revit2027GRepReplayOptions;
+  /**
+   * Exact framed MaterialElem identities used to bind a positive persisted
+   * Face.renderStyleElementId. Negative and unassigned values remain null.
+   */
+  materialDefinitions?: Revit2027MaterialDefinitions;
   materialForFace?: (
     faceToken: number,
     face: Revit2027FaceStatic,
@@ -97,6 +107,33 @@ type UvMatch = {
 
 function value<T>(span: Revit2027GRepReplaySpan): T {
   return span.value as T;
+}
+
+function faceMaterialId(
+  faceToken: number,
+  face: Revit2027FaceStatic,
+  options: Revit2027PlanarOwnerMeshOptions,
+  issues: Revit2027PlanarOwnerMeshIssue[],
+): string | number | null {
+  const supplied = options.materialForFace?.(faceToken, face);
+  if (supplied !== undefined) return supplied;
+  if (!options.materialDefinitions) return null;
+  const binding = bindRevit2027FaceMaterial(
+    face.renderStyleElementId,
+    options.materialDefinitions,
+  );
+  if (binding.status === "exact-material") {
+    return binding.materialElementId;
+  }
+  if (binding.status === "unresolved-positive-id") {
+    issues.push({
+      code: "material-unresolved",
+      faceToken,
+      detail:
+        `${binding.renderStyleElementId}: ${binding.reason}`,
+    });
+  }
+  return null;
 }
 
 function edgeSide(edge: Revit2027GEdgeStatic, faceToken: number): 0 | 1 | null {
@@ -409,7 +446,7 @@ export function meshRevit2027PlanarSampledReplay(
           role: "outer",
           edgeUses: directed.edgeUses,
         }],
-        materialId: options.materialForFace?.(faceToken, face) ?? null,
+        materialId: faceMaterialId(faceToken, face, options, issues),
         provenance,
       }],
     });

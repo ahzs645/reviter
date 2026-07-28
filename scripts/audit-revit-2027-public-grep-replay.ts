@@ -29,6 +29,9 @@ import {
   meshRevit2027PlanarSampledReplay,
 } from "../lib/reviter/revit-2027-planar-owner-mesh.ts";
 import {
+  meshRevit2027CertifiedOwnerReplay,
+} from "../lib/reviter/revit-2027-certified-owner-mesh.ts";
+import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
 
@@ -98,6 +101,10 @@ let planarFaceMeshes = 0;
 let planarPositions = 0;
 let planarTriangles = 0;
 const planarIssues = new Map<string, number>();
+const certifiedFacesByKind = new Map<string, number>();
+let certifiedPositions = 0;
+let certifiedTriangles = 0;
+const certifiedIssues = new Map<string, number>();
 
 for (const partition of partitions) {
   const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
@@ -155,6 +162,19 @@ for (const partition of partitions) {
       for (const issue of meshed.value.issues) {
         increment(planarIssues, issue.code);
       }
+      const certified = meshRevit2027CertifiedOwnerReplay(replayed.value);
+      if (certified.ok === false) {
+        increment(failures, `certified owner mesh: ${certified.error}`);
+        continue;
+      }
+      for (const face of certified.value.faceMeshes) {
+        increment(certifiedFacesByKind, face.kind);
+        certifiedPositions += face.mesh.positions.length / 3;
+        certifiedTriangles += face.mesh.indices.length / 3;
+      }
+      for (const issue of certified.value.issues) {
+        increment(certifiedIssues, `${issue.path}:${issue.issue.code}`);
+      }
       descriptors += replayed.value.descriptors.length;
       spans += replayed.value.spans.length;
       for (const descriptor of replayed.value.descriptors) {
@@ -196,6 +216,12 @@ console.log(JSON.stringify({
     positions: planarPositions,
     triangles: planarTriangles,
     issues: entries(planarIssues),
+  },
+  certifiedBrowserMesh: {
+    faceMeshesByKind: entries(certifiedFacesByKind),
+    positions: certifiedPositions,
+    triangles: certifiedTriangles,
+    issues: entries(certifiedIssues),
   },
   failures: entries(failures),
   readerCorpusValid,

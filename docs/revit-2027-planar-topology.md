@@ -94,6 +94,13 @@ Only the independently safe single-loop subset is sent to the tessellator:
 The result has 165,336 positions, 84,811 triangles, and 40,188 source-face
 groups across 5,806 reusable geometry owners.
 
+The broader certified-owner API now adds the independently proven sampled
+Cylinder and circular-profile rectangular `SurfRev` subsets: 125 more source
+faces, 4,526 positions, and 4,298 triangles. Its current combined direct-owner
+total is 40,313 face meshes, 169,862 positions, and 89,109 triangles. Ten Cone
+faces, thirteen non-certified Cylinder faces, and arbitrary curved trims
+remain separate gates.
+
 ## Persisted instance placement
 
 The same local scan decodes 30,608 existing instance placements. Joining their
@@ -151,14 +158,16 @@ Sampled-surface and topological equivalence remain stronger future checks.
 ## Fail-closed boundaries
 
 - Multi-loop Faces are not tessellated until outer/hole containment is exact.
-- Cone, cylinder, and SurfRev persistence is decoded, but only the separately
-  certified planar sampled subset enters this adapter.
+- Cone, Cylinder, and SurfRev persistence is decoded. The combined owner
+  endpoint separately adds 123 sampled Cylinder faces and two Arc/SurfRev
+  rectangles to this planar adapter's output.
 - Four self-intersecting or otherwise invalid sampled loops return structured
   `invalid-loop` failures and no partial mesh.
-- `materialId` stays `null`; render style, IFC material, or category material
-  is not substituted for an exact native face-material relation.
+- A positive persisted face material ID is emitted only when it exactly joins
+  an independently framed `MaterialElem`; negative, unassigned, and unresolved
+  IDs remain `null` rather than using IFC/category fallback.
 - `FillPatternData`, all 99 reached `FillGrid` bodies, and both 117-byte GArc
   profiles are decoded. All 5,996 direct Geometry replay boundaries complete.
 - Full family regeneration, nested source/target transforms, general curved
-  BRep tessellation, and exact per-face material propagation remain explicit
+  BRep tessellation, and GStyle/category/view material fallback remain explicit
   work, not hidden assumptions.

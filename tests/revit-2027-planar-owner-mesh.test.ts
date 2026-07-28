@@ -22,6 +22,7 @@ import type {
 import {
   meshRevit2027PlanarSampledReplay,
 } from "../lib/reviter/revit-2027-planar-owner-mesh.ts";
+import type { NativeMaterialDefinition } from "../lib/reviter/material-records.ts";
 import {
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   type Revit2027PlaneSurface,
@@ -236,6 +237,27 @@ test("meshes a completed replay's single-loop planar Face", () => {
   assert.equal(mesh.positions.length / 3, 4);
   assert.equal(mesh.groups[0]!.materialId, 77);
   assert.deepEqual([...mesh.positions.slice(0, 3)], [10, 20, 30]);
+});
+
+test("binds an exact persisted face MaterialElem through owner mesh options", () => {
+  const input = replay();
+  const inputFace = input.spans[0]!.value as Revit2027FaceStatic;
+  inputFace.renderStyleElementId = 26n;
+  const definition: NativeMaterialDefinition = {
+    elementId: 26,
+    name: "Стекло",
+    recordOffset: 100,
+    objectLength: 200,
+    objectMarker: 0x0ad3,
+    evidence: "framed-material-element-name",
+  };
+  const result = meshRevit2027PlanarSampledReplay(input, {
+    materialDefinitions: [definition],
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.faceMeshes[0]!.mesh.groups[0]!.materialId, 26);
+  assert.deepEqual(result.value.issues, []);
 });
 
 test("keeps multi-loop topology explicit instead of guessing a hole role", () => {
