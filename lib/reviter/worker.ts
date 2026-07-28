@@ -2,13 +2,18 @@
 
 import { convertRvtBytes } from "./convert";
 import { decodeRvtMaterialDefinitions } from "./native-decoder";
+import { partAtomMetadataFromSummary } from "./part-atom";
 import type { MaterialData, ReaderDiagnostics, WorkerRequest, WorkerResponse } from "./types";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 
 type RvtWasmModule = {
   default: () => Promise<unknown>;
-  quickSummary: (bytes: Uint8Array) => { version?: number; class_name_count?: number };
+  quickSummary: (bytes: Uint8Array) => {
+    version?: number;
+    class_name_count?: number;
+    partatom?: unknown;
+  };
   openRvtBytesWithDiagnostics: (bytes: Uint8Array) => {
     diagnostics?: Record<string, unknown>;
     model?: {
@@ -28,6 +33,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
     const wasm = (await import("../rvt-wasm/rvt.js")) as RvtWasmModule;
     await wasm.default();
     const summary = wasm.quickSummary(bytes);
+    const partAtom = partAtomMetadataFromSummary(summary);
     const summaryVersion = summary.version ?? 0;
     if (summaryVersion < 2016 || summaryVersion > 2026) {
       return { diagnostics: {
@@ -38,6 +44,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
           exportLevel: "unsupported-version",
           summary: `The Rust/WASM reader opened the container and inventoried ${summary.class_name_count?.toLocaleString() ?? "unknown"} schema classes, but Revit ${summaryVersion || "unknown"} is outside its verified 2016–2026 range.`,
           warnings: ["Standards-aware element and material decoding was skipped for this unverified Revit version."],
+          partAtom,
         }, materials: [] };
     }
     const result = wasm.openRvtBytesWithDiagnostics(bytes);
@@ -62,6 +69,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
           ? `${productionElements} standards-aware building elements and ${materials.length} material definitions were decoded.`
           : `${materials.length} native material definitions were decoded; element geometry remains scaffold-only.`,
         warnings: (diagnostics.warnings ?? []).slice(0, 4),
+        partAtom,
       }, materials };
   } catch (error) {
     return { diagnostics: {
@@ -106,6 +114,9 @@ context.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       } satisfies WorkerResponse);
       const evidence = await readStandardsEvidence(bytes);
       result.readerDiagnostics = evidence.diagnostics;
+      if (!result.partAtom && evidence.diagnostics.partAtom) {
+        result.partAtom = evidence.diagnostics.partAtom;
+      }
       if (evidence.materials.length) {
         result.materials.push(...evidence.materials);
         result.decoderCoverage.nativeMaterialDefinitions = evidence.materials.length;

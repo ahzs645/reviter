@@ -14,6 +14,7 @@
  */
 import CFB from "cfb";
 
+import { revitVersionFromBasicFileInfo } from "./basic-file-info.ts";
 import {
   boundsOfRecords,
   detectDuplicatedBoundsRecords,
@@ -84,6 +85,7 @@ import {
 import { summariseSchema } from "./schema.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
+import { parsePartAtomXml } from "./part-atom.ts";
 import {
   buildBoundsMeshes,
   buildMeshes,
@@ -639,13 +641,29 @@ export function convertRvtBytes(
   const started = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
-  const decoderPlan = decoderPlanForVersion(options.revitVersion);
+  let decoderPlan = decoderPlanForVersion(options.revitVersion);
   const segmentScale = segmentScaleFor(fileName, options.geometryScale);
   const familyScale = segmentScale === FAMILY_SEGMENT_SCALE;
 
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
     const cfb = CFB.read(bytes, { type: "buffer" });
+    const partAtomEntry = cfb.FileIndex
+      .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+      .find(({ entry, path }) => entry.size > 0 && /\/PartAtom$/i.test(path));
+    const partAtom = partAtomEntry
+      ? parsePartAtomXml(new TextDecoder().decode(asBytes(partAtomEntry.entry.content)))
+      : undefined;
+    if (!Number.isInteger(options.revitVersion)) {
+      const basicFileInfo = cfb.FileIndex
+        .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+        .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
+      if (basicFileInfo) {
+        decoderPlan = decoderPlanForVersion(
+          revitVersionFromBasicFileInfo(asBytes(basicFileInfo.entry.content)) ?? undefined,
+        );
+      }
+    }
     const elemTableEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -1679,6 +1697,7 @@ export function convertRvtBytes(
         nativeCategories,
         schema,
         partitionNames,
+        partAtom,
         coverage,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
@@ -1815,6 +1834,7 @@ export function convertRvtBytes(
       nativeCategories,
       schema,
       partitionNames,
+      partAtom,
       coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,

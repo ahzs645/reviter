@@ -15,6 +15,7 @@ import {
   makePlanSvg,
   makeReport,
   outputName,
+  revitVersionFromBasicFileInfo,
   type CameraPreset,
   type ConvertResult,
   type IfcWorkerRequest,
@@ -40,6 +41,8 @@ import type {
   ViewerPanel,
 } from "./studio/types.ts";
 
+type StudioFileInfo = Omit<FileInfo, "fileVersion"> & { fileVersion: number };
+
 export default function ReviterStudio({ referencePreview = false }: { referencePreview?: boolean }) {
   const [phase, setPhase] = useState<Phase>(referencePreview ? "ready" : "idle");
   const [progress, setProgress] = useState(referencePreview ? 1 : 0);
@@ -47,7 +50,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     referencePreview ? "Autodesk derivative reference loaded for visual review" : "Waiting for a local file",
   );
   const [file, setFile] = useState<File | null>(null);
-  const [metadata, setMetadata] = useState<FileInfo | null>(null);
+  const [metadata, setMetadata] = useState<StudioFileInfo | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [result, setResult] = useState<ConvertResult | null>(referencePreview ? AUTODESK_PREVIEW_RESULT : null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +157,35 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
     try {
       const cfb = await openFile(nextFile);
-      const [info, preview] = await Promise.all([basicFileInfo(cfb), tryThumbnail(cfb)]);
+      const infoPromise = (async (): Promise<StudioFileInfo> => {
+        try {
+          return await basicFileInfo(cfb);
+        } catch (metadataError) {
+          // @phi-ag/rvt currently recognizes BasicFileInfo versions 10, 13,
+          // and 14. Older families commonly use version 6, but the release is
+          // still available in the same legacy length-prefixed application
+          // string. Keep those files moving into the client-side worker.
+          const entry = cfb.findEntry("BasicFileInfo");
+          if (!entry) throw metadataError;
+          const data = await cfb.entryData(entry);
+          const version = revitVersionFromBasicFileInfo(data);
+          if (version == null) throw metadataError;
+          const content = new TextDecoder("utf-16le").decode(data.subarray(18));
+          const build = content.match(/\bBuild:\s*([^)]+)/i)?.[1]?.trim() ?? "Unknown";
+          return {
+            fileVersion: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0, true),
+            version: String(version),
+            build,
+            path: "",
+            locale: "Unknown",
+            identityId: "",
+            documentId: "",
+            appName: "Autodesk Revit",
+            content,
+          };
+        }
+      })();
+      const [info, preview] = await Promise.all([infoPromise, tryThumbnail(cfb)]);
       if (requestId !== requestIdRef.current) return;
       setMetadata(info);
       if (thumbnail) URL.revokeObjectURL(thumbnail);
@@ -486,6 +517,22 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                 <div><dt>Build</dt><dd>{metadata.build}</dd></div>
                 <div><dt>Locale</dt><dd>{metadata.locale}</dd></div>
                 <div><dt>Document</dt><dd title={metadata.documentId}>{metadata.documentId.slice(0, 8)}…</dd></div>
+                {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.title && (
+                  <div>
+                    <dt>Family type</dt>
+                    <dd>{(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.title}</dd>
+                  </div>
+                )}
+                {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.categories.length ? (
+                  <div>
+                    <dt>Category</dt>
+                    <dd>
+                      {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.categories
+                        .map((item) => item.term)
+                        .join(", ")}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
               {savedName && <p className="privacy-note">Original folder path withheld · saved as {savedName}</p>}
             </section>

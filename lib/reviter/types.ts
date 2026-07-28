@@ -5,6 +5,7 @@ import type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
+import type { PartAtomMetadata } from "./part-atom.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -288,6 +289,8 @@ export type ReaderDiagnostics = {
   exportLevel: string;
   summary: string;
   warnings: string[];
+  /** Family/type metadata decoded from the optional PartAtom XML stream. */
+  partAtom?: PartAtomMetadata;
 };
 
 export type ElemTableLayout = {
@@ -424,6 +427,8 @@ export type ConvertResult = {
   schema?: SchemaSummary;
   /** Workset or family partition names decoded from `Global/PartitionTable`. */
   partitionNames?: PartitionName[];
+  /** Family/type metadata decoded from the optional PartAtom XML stream. */
+  partAtom?: PartAtomMetadata;
   /** Every container stream, and which decoder claims it. */
   coverage?: CoverageSummary;
   decoderCoverage: DecoderCoverage;

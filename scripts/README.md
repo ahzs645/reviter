@@ -3,6 +3,28 @@
 Offline measurement for the decoder. Everything here runs under Node with
 `--experimental-strip-types`; nothing here is shipped to the browser.
 
+## Extracting recovered geometry
+
+The core converter detects the Revit release from `BasicFileInfo`, so a caller
+does not need to parse metadata before asking for geometry:
+
+```sh
+npm run extract -- model.rvt --out model.glb
+npm run extract -- model.rvt --out model.obj
+npm run extract -- model.rvt --out model.ifc
+npm run extract -- model.rvt --out audit.json
+```
+
+GLB, OBJ, DXF, SVG, IFC proxy, and JSON audit outputs use the same recovered
+scene as the browser. `--revit-version 2027` remains available as an explicit
+override for malformed fixtures, but normal RVT files should not need it.
+
+The same browser-safe library also exposes `parsePartAtomXml`,
+`parseSharedParameterFile` / `writeSharedParameterFile`, `parseTypeCatalog` /
+`writeTypeCatalog`, and `parseOmniClassTaxonomy` /
+`writeOmniClassTaxonomy`. These are the portable pieces brought over from the
+Revitless toolkit; they do not require Revit, .NET, or a server.
+
 ## Checking a model against its own IFC export
 
 Every rule in this decoder was fitted on one building. `verify-pair.ts` is the

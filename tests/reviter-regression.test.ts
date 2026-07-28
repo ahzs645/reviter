@@ -36,7 +36,7 @@ import {
   resolveElementCategories,
 } from "../lib/reviter/native-categories.ts";
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
-import { makeGlb, makeIfcCenterlines } from "../lib/reviter/exports.ts";
+import { elementManifest, makeGlb, makeIfcCenterlines, makeReport } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import { buildBoundsMeshes, displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
@@ -245,6 +245,48 @@ test("emits a standalone GLB from recovered browser geometry", () => {
   assert.equal(view.getUint32(4, true), 2);
   assert.equal(view.getUint32(8, true), glb.byteLength);
   assert.equal(view.getUint32(16, true), 0x4e4f534a);
+});
+
+test("exports one semantic manifest record per recovered element", () => {
+  const result = boundsResult();
+  const record = result.elementBounds[0]!;
+  record.categoryId = -2_000_011;
+  record.categoryName = "Walls";
+  record.categorySource = "native-token";
+  record.typeId = 609157;
+  record.typeName = "Interior Wall - 120mm";
+  record.parameters = [{ parameterId: -1_001_105, name: "Unconnected Height", value: 14 }];
+  result.meshes[0] = {
+    name: "Walls",
+    positions: new Float32Array(),
+    colors: new Float32Array(),
+    indices: new Uint32Array(),
+    elementIds: new Uint32Array([290618]),
+    materialIndex: 1,
+  };
+
+  assert.deepEqual(elementManifest(result), [{
+    elementId: 290618,
+    displayed: true,
+    category: { id: -2_000_011, name: "Walls", evidence: "native-token" },
+    type: { elementId: 609157, name: "Interior Wall - 120mm" },
+    geometry: {
+      source: "validated-bounds-envelope",
+      boundsFeet: record.boundsFeet,
+      bodies: 1,
+      nativeFaces: 0,
+    },
+    parameters: [{ id: -1_001_105, name: "Unconnected Height", value: 14 }],
+  }]);
+
+  const report = JSON.parse(makeReport(result, null)) as {
+    schemaVersion: number;
+    elementManifest: { count: number; unavailableFields: string[]; elements: unknown[] };
+  };
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.elementManifest.count, 1);
+  assert.equal(report.elementManifest.elements.length, 1);
+  assert.ok(report.elementManifest.unavailableFields.includes("model-tree hierarchy"));
 });
 
 test("labels IFC proxies with the decoded Revit category without retyping them", () => {

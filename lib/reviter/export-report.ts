@@ -1,5 +1,96 @@
 /** JSON audit report: what was decoded, from what evidence, and what was not. */
-import type { ConvertResult } from "./types";
+import type { ConvertResult, ElementBoundsRecord } from "./types";
+
+export type ElementManifestGeometrySource =
+  | "analytic-plane-solid"
+  | "analytic-cylinder-arc"
+  | "placed-shared-shape"
+  | "door-leaf-from-shape"
+  | "door-leaf-from-host-wall"
+  | "sketch-prism"
+  | "sketch-rail-sweep"
+  | "validated-bounds-envelope";
+
+function geometrySource(record: ElementBoundsRecord): ElementManifestGeometrySource {
+  if (record.railPath) return "sketch-rail-sweep";
+  if (record.loops?.length) return "sketch-prism";
+  if (record.doorLeafSource === "shape") return "door-leaf-from-shape";
+  if (record.doorLeafSource === "wall") return "door-leaf-from-host-wall";
+  if (record.orientedBox) return "placed-shared-shape";
+  if (record.solids?.length || record.solid) return "analytic-plane-solid";
+  if (record.arcs?.length) return "analytic-cylinder-arc";
+  return "validated-bounds-envelope";
+}
+
+function evidenceRank(record: ElementBoundsRecord): number {
+  const source = geometrySource(record);
+  const geometryRank: Record<ElementManifestGeometrySource, number> = {
+    "sketch-rail-sweep": 8,
+    "sketch-prism": 7,
+    "door-leaf-from-shape": 6,
+    "door-leaf-from-host-wall": 6,
+    "placed-shared-shape": 5,
+    "analytic-plane-solid": 4,
+    "analytic-cylinder-arc": 4,
+    "validated-bounds-envelope": 1,
+  };
+  return (
+    geometryRank[source] * 1_000 +
+    (record.categoryId != null ? 100 : 0) +
+    (record.typeName ? 10 : 0) +
+    (record.parameters?.length ?? 0)
+  );
+}
+
+/**
+ * One client-side semantic record per recovered Revit element.
+ *
+ * The ODA sample prompted this shape of export, but none of its code or schema
+ * is used here. Every field below already exists in Reviter's own decoded
+ * evidence. Family name, Revit UniqueId, and model hierarchy are intentionally
+ * absent until their native RVT records are decoded.
+ */
+export function elementManifest(result: ConvertResult) {
+  const bestByElement = new Map<number, ElementBoundsRecord>();
+  for (const record of result.elementBounds) {
+    const previous = bestByElement.get(record.elementId);
+    if (!previous || evidenceRank(record) > evidenceRank(previous)) {
+      bestByElement.set(record.elementId, record);
+    }
+  }
+  const drawnIds = new Set<number>();
+  for (const mesh of result.meshes) {
+    for (const elementId of mesh.elementIds ?? []) drawnIds.add(elementId);
+  }
+
+  return [...bestByElement.values()]
+    .sort((a, b) => a.elementId - b.elementId)
+    .map((record) => ({
+      elementId: record.elementId,
+      displayed: drawnIds.has(record.elementId),
+      category: record.categoryId == null && !record.categoryName
+        ? null
+        : {
+            id: record.categoryId ?? null,
+            name: record.categoryName ?? null,
+            evidence: record.categorySource ?? null,
+          },
+      type: record.typeId == null && !record.typeName
+        ? null
+        : { elementId: record.typeId ?? null, name: record.typeName ?? null },
+      geometry: {
+        source: geometrySource(record),
+        boundsFeet: record.boundsFeet,
+        bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
+        nativeFaces: record.quads?.length ?? 0,
+      },
+      parameters: (record.parameters ?? []).map(({ parameterId, name, value }) => ({
+        id: parameterId,
+        name,
+        value,
+      })),
+    }));
+}
 
 export function makeReport(
   result: ConvertResult,
@@ -10,7 +101,7 @@ export function makeReport(
     : null;
   return JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedBy: "Reviter",
       fidelity: {
         metadata: "verified",
@@ -35,8 +126,20 @@ export function makeReport(
       nativeCategories: result.nativeCategories ?? null,
       schema: result.schema ?? null,
       partitionNames: result.partitionNames ?? null,
+      partAtom: result.partAtom ?? null,
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
+      elementManifest: {
+        count: new Set(result.elementBounds.map((record) => record.elementId)).size,
+        parameterValueEncoding: "f64 in Revit internal units; decoded lengths are feet",
+        unavailableFields: [
+          "Revit UniqueId",
+          "loadable-family name",
+          "model-tree hierarchy",
+          "element-to-material assignment",
+        ],
+        elements: elementManifest(result),
+      },
       materials: result.materials,
       standardsAwareReader: result.readerDiagnostics ?? null,
       warnings: result.warnings,

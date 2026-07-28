@@ -1,4 +1,29 @@
 export { convertRvtBytes } from "./convert";
+export { revitVersionFromBasicFileInfo } from "./basic-file-info";
+export { partAtomMetadataFromSummary } from "./part-atom";
+export { parsePartAtomXml } from "./part-atom";
+export type {
+  PartAtomDesignFile,
+  PartAtomFamilyType,
+  PartAtomLink,
+  PartAtomMetadata,
+  PartAtomParameter,
+  PartAtomTerm,
+} from "./part-atom";
+export { parseSharedParameterFile, writeSharedParameterFile } from "./shared-parameters";
+export type {
+  SharedParameterDefinition,
+  SharedParameterDocument,
+  SharedParameterGroup,
+} from "./shared-parameters";
+export { parseTypeCatalog, writeTypeCatalog } from "./type-catalog";
+export type { TypeCatalog, TypeCatalogParameter, TypeCatalogType } from "./type-catalog";
+export {
+  mergeOmniClassTaxonomies,
+  parseOmniClassTaxonomy,
+  writeOmniClassTaxonomy,
+} from "./omniclass";
+export type { OmniClassItem } from "./omniclass";
 export {
   boundsOfRecords,
   detectDuplicatedBoundsRecord,
@@ -74,6 +99,7 @@ export {
 } from "./viewer";
 export {
   downloadBlob,
+  elementManifest,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,

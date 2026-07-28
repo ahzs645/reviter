@@ -74,7 +74,7 @@ const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)Global\/DocumentIncrementTable$/i, decoder: "none", depth: "none", note: "Incremental save table; not decoded" },
   { pattern: /(^|\/)ProjectInformation$/i, decoder: "none", depth: "none", note: "Project information record; not decoded" },
   { pattern: /(^|\/)TransmissionData$/i, decoder: "none", depth: "none", note: "eTransmit link data; not decoded" },
-  { pattern: /(^|\/)PartAtom$/i, decoder: "none", depth: "none", note: "Family PartAtom XML; not decoded" },
+  { pattern: /(^|\/)PartAtom$/i, decoder: "metadata", depth: "full", note: "Family/type title, category, parameters, and taxonomies from PartAtom XML" },
   { pattern: /(^|\/)Contents$/i, decoder: "none", depth: "none", note: "Container contents record; not decoded" },
 ];
 

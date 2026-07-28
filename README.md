@@ -1,16 +1,38 @@
 # Reviter
 
-Reviter is a browser-only Revit inspection and experimental geometry conversion library. A local `.rvt`, `.rfa`, `.rte`, or `.rft` file is opened from the browser file picker, parsed in the tab, and converted in a dedicated Web Worker. The application has no file upload route, account system, telemetry, or remote conversion service.
+Reviter is a local-only Revit inspection and experimental geometry conversion library with a browser studio and a Node extraction command. A local `.rvt`, `.rfa`, `.rte`, or `.rft` file can be opened from the browser file picker and converted in a dedicated Web Worker, or processed directly into an open format from the command line. The application has no file upload route, account system, telemetry, or remote conversion service.
 
 Live client-only application: **https://projects.ahmadjalil.com/reviter/**
 
 Every push to `main` is tested, built as a static Vite application, and deployed to GitHub Pages by [`.github/workflows/pages.yml`](.github/workflows/pages.yml). The Pages build is separate from the existing Vinext/Cloudflare build but reuses the same React interface, converter library, Web Workers, and WebAssembly decoders.
+
+## Extract geometry from an RVT
+
+The converter reads the Revit release from the file's own `BasicFileInfo`
+stream, so the direct API and Node command do not require a separate metadata
+pass or a hard-coded release:
+
+```sh
+npm ci
+npm run extract -- model.rvt --out model.glb
+```
+
+The output extension selects GLB, OBJ, DXF, SVG, IFC proxy, or JSON audit
+output. All formats use the same locally recovered scene as the browser; no
+model data is uploaded. Use a paired export to verify a model element by
+element when one is available:
+
+```sh
+node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc
+```
 
 ## What is reliable
 
 - OLE/CFB container validation and stream inventory
 - `BasicFileInfo` metadata, including Revit version, build, locale, and document identity
 - embedded Revit thumbnail extraction
+- `PartAtom` family metadata, including category, taxonomy, design-file links, family types, and parameter values
+- dependency-free parsing and writing of Revit shared-parameter files, family type catalogs, and OmniClass taxonomy files
 - truncated-gzip partition decompression
 - `Global/ElemTable` framing and native Revit element-ID inventory
 - optional IFC reference parsing and geometry measurement with `web-ifc`
@@ -20,6 +42,7 @@ Every push to `main` is tested, built as a static Vite application, and deployed
 - evidence-backed display classification for walls, doors, panels, frames, columns, railings, slabs/roofs, coverings, windows, stairs, and ramps in the supplied 2027 model
 - a standards-aware Revit `Material` schema adapter for reader-supported releases (real-file extraction and element assignment are not wired yet)
 - open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC solid proxies, and JSON audit data, with the decoded Revit category carried through the proxy name, description, and audit report
+- browser-generated per-element JSON manifests with recovered IDs, categories, type links, parameters, bounds, display state, and geometry provenance
 
 ## What is experimental
 
@@ -42,7 +65,7 @@ A 2027 envelope is not an element's native shape. Native family meshes, curved f
 | 2027 | supplied-project nested duplicated bounds + native element ID and record classification | filtered, category-styled axis-aligned envelope proxies | native `BuiltInCategory` tokens, IFC-corroborated | category display fallbacks; native assignment pending |
 | unknown | no release-specific decoder | diagnostic fallback only | attempted; reports zero when the token is absent | no claim |
 
-The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. It is verified against the supplied Revit 2027 project, **and against nothing else**. A sweep of the whole machine — by extension, and independently by sniffing the OLE/CFB signature of 40,616 files — finds exactly one Revit file and one IFC. The `.rfa` family files this paragraph used to cite as a cross-release corpus are not present: the published `@phi-ag/rvt` package ships only `dist/`, so those examples were never here. Every threshold and every rule in this document is fitted on one building.
+The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. Its building-scale rules are verified against the supplied Revit 2027 project, **and against no second building**. The Revitless toolkit contributes one real Revit 2014 `.rfa` fixture, which now verifies legacy release detection, PartAtom metadata, and the component-scale diagnostic path; it does not validate project geometry rules. Every building threshold and classification rule in this document is therefore still fitted on one building.
 
 ## Native surfaces
 
@@ -1139,8 +1162,11 @@ The field *list* is deliberately not walked. The declared count and schema versi
 | `rvt-rs-main` | The clean-room format status, support boundary, diagnostic model, and optional WebAssembly reader integration |
 | `rvt2ifc-fe-master` | The openBIM viewer/export direction; current Reviter exports can be handed to IFC viewers |
 | `rvt-convert-main` | Export-format and configuration ideas only; its Autodesk/Azure upload flow is intentionally excluded because it conflicts with client-only processing |
+| `revitless-toolkit-master` | Clean TypeScript equivalents for PartAtom, shared parameters, type catalogs, OmniClass text, and legacy `BasicFileInfo`; its OLE/thumbnail layer is redundant with the existing browser reader |
 
 A second review of the supplied projects found little left to bring over from the browser ones: `rvt-app-main`'s Revit handling is a thin wrapper over `@phi-ag/rvt` that Reviter already calls directly, `rvt-ts-viewer`'s recovery is a subset of `lib/reviter/segment-scan.ts`, and `rvt2ifc-fe-master`'s IFC type-code table is redundant now that `web-ifc` reports type names directly. The remaining value was in `rvt-rs`: its `Formats/Latest` work is the basis for the schema inventory above, and its published tag-drift dataset is what that inventory is checked against.
+
+The Revitless review did not uncover another RVT geometry decoder. Its useful portable surface has been reimplemented as worker-safe TypeScript in `lib/reviter`, without .NET, filesystem APIs, or Autodesk runtime assemblies. The repository's `Decompiled/*` API enums were deliberately not copied: they identify themselves as decompiled from `RevitAPI.dll`, are unnecessary for reading raw parameter identifiers, and are not clean input for this client-side implementation. The bundled OmniClass text editions are also not redistributed; callers can parse, merge, edit, and write taxonomy text supplied by the user. A separate [static analysis of the isolated ODA BmJsonExport example](docs/bm-json-export-static-analysis.md) documents its semantic JSON contract, the native geometry API boundary, and the pieces that cannot be carried into a browser from the supplied ELF binaries.
 
 The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
 

@@ -10,4 +10,4 @@ export { makeGlb } from "./export-glb.ts";
 export { makeDxf, makeObj } from "./export-mesh-text.ts";
 export { makePlanSvg } from "./export-svg.ts";
 export { makeIfcCenterlines } from "./export-ifc.ts";
-export { makeReport } from "./export-report.ts";
+export { elementManifest, makeReport } from "./export-report.ts";
