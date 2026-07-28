@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   markerCategoryConsensus,
+  scanFramedElementObjects,
   scanFramedObjectClasses,
 } from "../lib/reviter/element-objects.ts";
 
@@ -37,6 +38,30 @@ test("reads a class key from every framed object, not only the common markers", 
   assert.equal(classes.get(5_000), 0x08c6);
   assert.equal(classes.get(5_001), 0x0d7b);
   assert.equal(classes.get(5_002), 0x0d40);
+});
+
+test("returns exact framed-object offsets for byte ownership audits", () => {
+  const data = new Uint8Array(512);
+  const view = new DataView(data.buffer);
+  const second = writeObject(view, 0, 5_000, 0x08c6, 64);
+  writeObject(view, second, 5_001, 0x0d7b, 48);
+
+  assert.deepEqual(scanFramedElementObjects(data), [
+    {
+      offset: 0,
+      elementId: 5_000,
+      objectLength: 64,
+      marker: 0x08c6,
+      typeCode: 0,
+    },
+    {
+      offset: second,
+      elementId: 5_001,
+      objectLength: 48,
+      marker: 0x0d7b,
+      typeCode: 0,
+    },
+  ]);
 });
 
 test("an object whose trailer does not echo its length is not a class key", () => {

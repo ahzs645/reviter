@@ -150,6 +150,28 @@ export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {
 }
 
 /**
+ * Every independently length/echo-framed object on one inflated page.
+ *
+ * Unlike `chainElementObjects`, this is an audit-oriented full-page scan: it
+ * does not infer neighbours from a seed. Callers that need byte ownership can
+ * therefore ask whether an opaque candidate is contained by a proven outer
+ * element object without treating proximity as framing.
+ */
+export function scanFramedElementObjects(data: Uint8Array): ElementObject[] {
+  const objects: ElementObject[] = [];
+  if (data.byteLength < 64) return objects;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
+    if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
+    if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
+    const object = readObject(view, offset, data.byteLength);
+    if (!object) continue;
+    objects.push(object);
+  }
+  return objects;
+}
+
+/**
  * What category a marker's elements are, where its members agree outright.
  *
  * An element's `BuiltInCategory` token is not always written — the supplied
