@@ -77,9 +77,12 @@ import {
   resolveElementMaterialAssignments,
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
+  resolveUniqueFamilySymbolTargets,
   scanPersistedRelationshipCandidates,
   type FamilySymbolCandidate,
+  type FamilySymbolReferenceSet,
   type GeometryMaterialCandidate,
+  type NativeFamilySymbolRelation,
   type NativeFamilyDefinition,
 } from "./family-material-relations.ts";
 import {
@@ -803,6 +806,7 @@ export function convertRvtBytes(
     const familyElementIds = new Set<number>();
     const nativeFamilyDefinitionMap = new Map<number, NativeFamilyDefinition>();
     const familySymbolCandidates: FamilySymbolCandidate[] = [];
+    const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
     const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
     const hostRelationCandidates: HostRelationCandidate[] = [];
     const associatedLevelRelationCandidates: AssociatedLevelRelationCandidate[] = [];
@@ -862,6 +866,9 @@ export function convertRvtBytes(
             }
           }
           familySymbolCandidates.push(...relationships.familySymbolCandidates);
+          familySymbolReferenceSets.push(
+            ...relationships.familySymbolReferenceSets,
+          );
           geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
           hostRelationCandidates.push(
             ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
@@ -1784,20 +1791,37 @@ export function convertRvtBytes(
     const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
     const nativeMaterialDefinitions = [...nativeMaterialDefinitionMap.values()]
       .sort((left, right) => left.elementId - right.elementId);
-    const nativeFamilySymbolRelations = resolveFamilySymbolRelations(
+    const fixedFamilySymbolRelations = resolveFamilySymbolRelations(
       familySymbolCandidates,
       familyElementIds,
       sharedGeometryIds,
     );
+    const uniqueFamilyTargetRelations = resolveUniqueFamilySymbolTargets(
+      familySymbolReferenceSets,
+      familyElementIds,
+      sharedGeometryIds,
+    );
+    const familyRelationBySymbol = new Map<
+      number,
+      NativeFamilySymbolRelation
+    >();
+    // The release-specific fixed field is stronger evidence where both paths
+    // identify the same symbol. The unique-target path fills variable-width
+    // layouts and fails closed on more than one framed Family target.
+    for (const relation of uniqueFamilyTargetRelations) {
+      familyRelationBySymbol.set(relation.symbolId, relation);
+    }
+    for (const relation of fixedFamilySymbolRelations) {
+      familyRelationBySymbol.set(relation.symbolId, relation);
+    }
+    const nativeFamilySymbolRelations = [...familyRelationBySymbol.values()]
+      .sort((left, right) => left.symbolId - right.symbolId);
     const referencedFamilyIds = new Set(
       nativeFamilySymbolRelations.map((relation) => relation.familyId),
     );
     const nativeFamilyDefinitions = [...nativeFamilyDefinitionMap.values()]
       .filter((definition) => referencedFamilyIds.has(definition.familyId))
       .sort((left, right) => left.familyId - right.familyId);
-    const familyRelationBySymbol = new Map(
-      nativeFamilySymbolRelations.map((relation) => [relation.symbolId, relation]),
-    );
     const familyDefinitionById = new Map(
       nativeFamilyDefinitions.map((definition) => [definition.familyId, definition]),
     );
@@ -1886,8 +1910,11 @@ export function convertRvtBytes(
             ...(nativeMaterialDefinitions.length
               ? ["revit-2027-material-element-name-v1"]
               : []),
-            ...(nativeFamilySymbolRelations.length
+            ...(fixedFamilySymbolRelations.length
               ? ["revit-2027-family-symbol-family-v1"]
+              : []),
+            ...(uniqueFamilyTargetRelations.length
+              ? ["revit-2027-family-symbol-unique-target-v1"]
               : []),
             ...(nativeFamilyDefinitions.length
               ? ["revit-2027-family-name-path-v1"]
@@ -2088,8 +2115,11 @@ export function convertRvtBytes(
           ...(nativeMaterialDefinitions.length
             ? ["revit-2027-material-element-name-v1"]
             : []),
-          ...(nativeFamilySymbolRelations.length
+          ...(fixedFamilySymbolRelations.length
             ? ["revit-2027-family-symbol-family-v1"]
+            : []),
+          ...(uniqueFamilyTargetRelations.length
+            ? ["revit-2027-family-symbol-unique-target-v1"]
             : []),
           ...(nativeFamilyDefinitions.length
             ? ["revit-2027-family-name-path-v1"]

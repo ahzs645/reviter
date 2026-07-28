@@ -5,6 +5,7 @@ import {
   resolveElementMaterialAssignments,
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
+  resolveUniqueFamilySymbolTargets,
   scanPersistedRelationshipCandidates,
 } from "../lib/reviter/family-material-relations.ts";
 
@@ -77,6 +78,7 @@ test("decodes and resolves the persisted FamilySymbol to Family relation", () =>
     }],
   );
   assert.equal(scan.familySymbolCandidates.length, 1);
+  assert.equal(scan.familySymbolReferenceSets.length, 1);
   assert.deepEqual(
     resolveFamilySymbolRelations(
       scan.familySymbolCandidates,
@@ -87,6 +89,57 @@ test("decodes and resolves the persisted FamilySymbol to Family relation", () =>
       symbolId: 2_447_093,
       familyId: 105_786,
       evidence: "framed-family-symbol-family-id",
+    }],
+  );
+  assert.deepEqual(
+    resolveUniqueFamilySymbolTargets(
+      scan.familySymbolReferenceSets,
+      new Set(scan.familyElementIds),
+      new Set([2_447_093]),
+    ).map(({ symbolId, familyId, fieldOffset, evidence }) => ({
+      symbolId,
+      familyId,
+      fieldOffset,
+      evidence,
+    })),
+    [{
+      symbolId: 2_447_093,
+      familyId: 105_786,
+      fieldOffset: 449,
+      evidence: "unique-framed-family-target",
+    }],
+  );
+});
+
+test("resolves a variable-width FamilySymbol only when its Family target is unique", () => {
+  const familyA = object(101, 0x07d9, 180, []);
+  const familyB = object(102, 0x07d9, 180, []);
+  const variable = object(201, 0x0810, 1_100, [[919, 101]]);
+  const ambiguous = object(202, 0x0810, 1_100, [[76, 101], [625, 102]]);
+  const page = new Uint8Array(
+    familyA.length + familyB.length + variable.length + ambiguous.length,
+  );
+  let offset = 0;
+  for (const bytes of [familyA, familyB, variable, ambiguous]) {
+    page.set(bytes, offset);
+    offset += bytes.length;
+  }
+
+  const scan = scanPersistedRelationshipCandidates(page, 2027);
+  assert.deepEqual(
+    resolveUniqueFamilySymbolTargets(
+      scan.familySymbolReferenceSets,
+      new Set(scan.familyElementIds),
+      new Set([201, 202]),
+    ),
+    [{
+      symbolId: 201,
+      familyId: 101,
+      recordOffset: familyA.length + familyB.length,
+      fieldOffset: 919,
+      objectLength: 1_100,
+      objectMarker: 0x0810,
+      evidence: "unique-framed-family-target",
     }],
   );
 });

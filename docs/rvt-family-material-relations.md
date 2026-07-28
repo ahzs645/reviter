@@ -25,6 +25,28 @@ Against the UNBC pair:
 This supplies native `instance → symbol → family` membership. It does not claim
 family regeneration, parameter formula evaluation, or nested-family expansion.
 
+The original 66-relation subset used one fixed `m_familyId` offset. Static
+inspection of the release source-slot 2,022 `FamilySymbol` reader explains why
+that cannot cover the class: it reads several conditional/dynamic collections
+before `setFamilyId`, so the field moves with their serialized sizes.
+
+The browser now has a second, offset-independent resolver. It scans only inside
+an independently length/echo-framed `FamilySymbol` and publishes a relation
+only when that bounded source refers to exactly one independently framed
+`Family` target. It does not choose between two targets. On the exact model:
+
+- 2,365 framed FamilySymbol records contain at least one framed Family target;
+- 2,206 contain exactly one such target;
+- 159 ambiguous records remain unresolved;
+- 2,114 of the unique relations are actually referenced by placed/shared
+  geometry and are retained by conversion.
+
+This raises the regenerated semantic output from 143 to 2,025 family-named
+elements across 19 native Family definitions. Of the 2,018 names that the IFC
+oracle can compare, all 2,018 match exactly; the other seven have no comparable
+IFC family string and are not counted as matches or mismatches. IFC is not read
+by the resolver at runtime.
+
 ## Persisted family names
 
 The unstripped 2026 reader shows `FamilyBase` calling `OdStringReader` and then
@@ -38,18 +60,12 @@ name offset is not fixed. The browser decoder instead requires:
 - an adjacent non-empty directory path ending in a separator.
 
 The path is validation evidence only and is not exported. On the exact UNBC
-model, three referenced family records decode and attach native names to 143
-placed elements. All 143 correlate with IFC family names and all 143 match
-exactly. The decoded families are:
-
-- `Колонна прямоугольного сечения`;
-- `Дверь-Витраж-Двойная-Витрина`;
-- `Round Column`.
-
-This is 100% precision for the emitted subset, not full family-name coverage.
-The other referenced symbols either do not resolve through the currently proven
-`FamilySymbol` layout or point at a family layout whose name/path pair is not
-yet proven.
+model, 258 of the 259 framed Family records contain a validated name/path pair.
+Nineteen are reached by the currently unambiguous placed-symbol relations
+described above. This is 100% precision for the IFC-comparable emitted subset,
+not full family-name coverage. System families, the 159 ambiguous symbols,
+symbols represented by other framed classes, nested family selection, formulas,
+and regeneration remain separate work.
 
 ## Persisted material assignments
 
@@ -95,6 +111,9 @@ The implementation in `lib/reviter/family-material-relations.ts` is:
 - gated by exact release-specific class markers and field offsets;
 - resolved in a second pass so cross-chunk object ids must point to a proven
   target class/definition before publication;
+- able to use a variable-width FamilySymbol only when exactly one framed Family
+  target occurs inside its bounded body;
+- fail-closed when a FamilySymbol references multiple framed Family targets;
 - joined to an instance only when its geometry id passed
   `sharedGeometryIdsForPlacements`;
 - fail-closed when multiple placement records give one element conflicting

@@ -35,6 +35,18 @@ export type FamilySymbolCandidate = {
   objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
 };
 
+/**
+ * Compact `[elementId, relativeOffset, ...]` references from one independently
+ * framed FamilySymbol. Resolution happens after every Family frame is known.
+ */
+export type FamilySymbolReferenceSet = {
+  symbolId: number;
+  recordOffset: number;
+  objectLength: number;
+  objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
+  referencePairs: Uint32Array;
+};
+
 export type NativeFamilyDefinition = {
   familyId: number;
   name: string;
@@ -61,12 +73,27 @@ export type PersistedRelationshipScan = {
   familyElementIds: number[];
   familyDefinitions: NativeFamilyDefinition[];
   familySymbolCandidates: FamilySymbolCandidate[];
+  familySymbolReferenceSets: FamilySymbolReferenceSet[];
   geometryMaterialCandidates: GeometryMaterialCandidate[];
 };
 
-export type NativeFamilySymbolRelation = FamilySymbolCandidate & {
+export type NativeFixedFamilySymbolRelation = FamilySymbolCandidate & {
   evidence: "framed-family-symbol-family-id";
 };
+
+export type NativeUniqueFamilyTargetRelation = {
+  symbolId: number;
+  familyId: number;
+  recordOffset: number;
+  fieldOffset: number;
+  objectLength: number;
+  objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
+  evidence: "unique-framed-family-target";
+};
+
+export type NativeFamilySymbolRelation =
+  | NativeFixedFamilySymbolRelation
+  | NativeUniqueFamilyTargetRelation;
 
 export type NativeGeometryMaterialAssignment = GeometryMaterialCandidate & {
   evidence: "framed-geometry-material-id";
@@ -156,12 +183,14 @@ export function scanPersistedRelationshipCandidates(
   const familyElementIds: number[] = [];
   const familyDefinitions: NativeFamilyDefinition[] = [];
   const familySymbolCandidates: FamilySymbolCandidate[] = [];
+  const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
   const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
   if (revitVersion !== 2027 || data.byteLength < 64) {
     return {
       familyElementIds,
       familyDefinitions,
       familySymbolCandidates,
+      familySymbolReferenceSets,
       geometryMaterialCandidates,
     };
   }
@@ -188,6 +217,26 @@ export function scanPersistedRelationshipCandidates(
     }
 
     if (marker === REVIT_2027_FAMILY_SYMBOL_MARKER) {
+      const referencePairs: number[] = [];
+      const limit = offset + objectLength;
+      for (
+        let referenceOffset = offset + 18;
+        referenceOffset + 8 <= limit;
+        referenceOffset += 1
+      ) {
+        if (view.getUint32(referenceOffset + 4, true) !== 0) continue;
+        const referencedId = view.getUint32(referenceOffset, true);
+        if (!referencedId) continue;
+        referencePairs.push(referencedId, referenceOffset - offset);
+      }
+      familySymbolReferenceSets.push({
+        symbolId: elementId,
+        recordOffset: offset,
+        objectLength,
+        objectMarker: REVIT_2027_FAMILY_SYMBOL_MARKER,
+        referencePairs: Uint32Array.from(referencePairs),
+      });
+
       const familyId = readId(view, offset + FAMILY_ID_OFFSET, offset + objectLength);
       if (familyId != null) {
         familySymbolCandidates.push({
@@ -223,6 +272,7 @@ export function scanPersistedRelationshipCandidates(
     familyElementIds,
     familyDefinitions,
     familySymbolCandidates,
+    familySymbolReferenceSets,
     geometryMaterialCandidates,
   };
 }
@@ -231,8 +281,8 @@ export function resolveFamilySymbolRelations(
   candidates: readonly FamilySymbolCandidate[],
   familyElementIds: ReadonlySet<number>,
   referencedSymbolIds: ReadonlySet<number>,
-): NativeFamilySymbolRelation[] {
-  const result = new Map<number, NativeFamilySymbolRelation>();
+): NativeFixedFamilySymbolRelation[] {
+  const result = new Map<number, NativeFixedFamilySymbolRelation>();
   for (const candidate of candidates) {
     if (
       !familyElementIds.has(candidate.familyId) ||
@@ -244,6 +294,60 @@ export function resolveFamilySymbolRelations(
     result.set(candidate.symbolId, {
       ...candidate,
       evidence: "framed-family-symbol-family-id",
+    });
+  }
+  return [...result.values()].sort((a, b) => a.symbolId - b.symbolId);
+}
+
+/**
+ * Resolve the variable-width FamilySymbol layouts without guessing an offset.
+ *
+ * The native direct reader proves that FamilySymbol contains an element-id
+ * `m_familyId`. A relation is published only when the independently framed
+ * source references exactly one independently framed Family target anywhere
+ * in its bounded body. Symbols that contain two Family ids fail closed.
+ *
+ * The fixed-offset decoder remains the stronger path where available. This
+ * resolver covers layouts whose preceding conditional collections move the
+ * field, while preserving the exact source/target class gates.
+ */
+export function resolveUniqueFamilySymbolTargets(
+  referenceSets: readonly FamilySymbolReferenceSet[],
+  familyElementIds: ReadonlySet<number>,
+  referencedSymbolIds: ReadonlySet<number>,
+): NativeUniqueFamilyTargetRelation[] {
+  const result = new Map<number, NativeUniqueFamilyTargetRelation>();
+  for (const referenceSet of referenceSets) {
+    if (
+      !referencedSymbolIds.has(referenceSet.symbolId) ||
+      referenceSet.referencePairs.length % 2 !== 0 ||
+      result.has(referenceSet.symbolId)
+    ) {
+      continue;
+    }
+    const targetOffsets = new Map<number, number>();
+    for (
+      let index = 0;
+      index < referenceSet.referencePairs.length;
+      index += 2
+    ) {
+      const familyId = referenceSet.referencePairs[index]!;
+      const fieldOffset = referenceSet.referencePairs[index + 1]!;
+      if (!familyElementIds.has(familyId) || targetOffsets.has(familyId)) {
+        continue;
+      }
+      targetOffsets.set(familyId, fieldOffset);
+    }
+    if (targetOffsets.size !== 1) continue;
+    const [familyId, fieldOffset] = targetOffsets.entries().next().value!;
+    result.set(referenceSet.symbolId, {
+      symbolId: referenceSet.symbolId,
+      familyId,
+      recordOffset: referenceSet.recordOffset,
+      fieldOffset,
+      objectLength: referenceSet.objectLength,
+      objectMarker: referenceSet.objectMarker,
+      evidence: "unique-framed-family-target",
     });
   }
   return [...result.values()].sort((a, b) => a.symbolId - b.symbolId);

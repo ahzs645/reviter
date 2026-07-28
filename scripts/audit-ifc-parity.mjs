@@ -643,6 +643,7 @@ async function analyzeIfc(ifcBytes, semantic) {
   const familyNamedNumericTags = new Set();
   const familyTagsWithReviterFamilyName = new Set();
   const familyTagsWithExactReviterFamilyName = new Set();
+  const familyNameMismatchSamples = [];
   const typeNameMismatchSamples = [];
   for (const [elementId, typeObject] of typeByElement) {
     const detail = elements.get(elementId);
@@ -672,6 +673,16 @@ async function analyzeIfc(ifcBytes, semantic) {
     if (reviterFamilyName) familyTagsWithReviterFamilyName.add(tag);
     if (ifcFamilyName && reviterFamilyName === ifcFamilyName) {
       familyTagsWithExactReviterFamilyName.add(tag);
+    } else if (
+      ifcFamilyName &&
+      reviterFamilyName &&
+      familyNameMismatchSamples.length < 24
+    ) {
+      familyNameMismatchSamples.push({
+        elementId: tag,
+        ifcFamilyName,
+        reviterFamilyName,
+      });
     }
   }
 
@@ -770,6 +781,7 @@ async function analyzeIfc(ifcBytes, semantic) {
     familyNamedNumericTags: familyNamedNumericTags.size,
     familyTagsWithReviterFamilyName: familyTagsWithReviterFamilyName.size,
     familyTagsWithExactReviterFamilyName: familyTagsWithExactReviterFamilyName.size,
+    familyNameMismatchSamples,
     propertySets: step.propertySetNodes.size,
     propertySetNames: propertySetNames.size,
     propertyValues: step.propertyValueCount,
