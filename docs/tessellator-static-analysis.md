@@ -332,9 +332,9 @@ before or beside tessellation:
 | --- | --- | --- |
 | Native Revit `UniqueId` | 74,437 persisted identities decoded; all 38,187 numeric IFC Tags with an element-table join have a native identity | Already solved upstream; no tessellator dependency |
 | Genuine model tree | 50,205 owning-element, 27,568 host, and 37,503 associated-level relations decoded | Core persisted relations are solved; full view/family/nested hierarchy remains upstream of geometry |
-| Certified browser geometry | 13,236 complete owners retained; 32,411 scene elements and 503,217 native triangles emitted; 4,137 elements retain proxies | Current TypeScript replay supplies a bounded subset of the graph the native builder/renderer would consume |
-| Family regeneration | 327 unreplayed shared owners account for 2,019 IFC Tags at the recorded parity checkpoint | `GeomTable` retains generator-ID indirection, not a drawable graph; the dynamic `GeomStepList`/history state or an actual `m_geometry` BRep must be reconstructed first, and none of the named BRep entry points accepts a `FamilySymbol` record |
-| General BRep/tessellation | Planes plus bounded cylinder/cone/surface-of-revolution paths are certified; general p-curves, regions, transforms, NURBS, and trimmed surfaces remain incomplete | Builder/traversal/renderer exports define the needed neutral contract, but supply no browser ABI or documented body decoder |
+| Certified browser geometry | 13,216 complete owners retained; 34,286 scene elements and 751,026 native triangles emitted; 2,262 elements retain proxy/other geometry | Current TypeScript replay supplies a bounded subset of the graph the native builder/renderer would consume |
+| Family regeneration | 7,529 / 7,805 production placement owners resolve without regeneration; 276 remain absent, conflicting, or incomplete | `GeomTable` retains generator-ID indirection, not a drawable graph; the dynamic `GeomStepList`/history state or an actual `m_geometry` BRep must be reconstructed first, and none of the named BRep entry points accepts a `FamilySymbol` record |
+| General BRep/tessellation | Planes plus bounded cylinder/cone/surface-of-revolution paths and three exact non-legacy root shapes are certified; 151 bounded candidates yield 141 complete emitted roots | Builder/traversal/renderer exports define the needed neutral contract, but general NURBS/Hermite refinement still depends on runtime view/triangulation inputs not proven from the RVT |
 | Exact materials | 133,482 of 139,106 decoded Faces carry positive IDs bound to 36 framed `MaterialElem` records; 5,624 faces remain unassigned/system-style cases | Face/material grouping must be retained around `OdGeTrMesh`; the mesh carrier itself has no material array |
 
 The `GStyle` fallback audit found that every selected positive style in the
@@ -351,6 +351,43 @@ a portable mesh format. The separately persisted
 `OdBmGPolyMesh`/faceted-topology variants are the only observed already-
 tessellated RVT route, and they still require release-specific record and
 ownership decoding before browser use.
+
+## General surface break/LOD boundary
+
+Read-only analysis of the exact hashed `libTD_BrepRenderer.so` located the
+adaptive surface subdivision contract:
+
+- `SrfTess::findBreakDirection` at RVA `0x1a3c9e`, called by
+  `SrfTess::tesselateSrf` at `0x1aac0b`;
+- parameters at `+8` (maximum edge), `+16` (normal angle in degrees), and
+  `+24` (surface deviation), with a lazy renderer deviation override;
+- exact probe fractions `0.3102637180713`, `0.5`, and
+  `0.6897362819287`;
+- squared surface-versus-bilinear deviation checks, then a
+  `100 * deviation²` center/diagonal check, maximum-edge checks, and active
+  normal-angle checks;
+- return `0` for a U split, `1` for a V split, and `-1` to terminate;
+- an explicit DFS node stack, `1e-10` split equality tolerance, closed-U/V
+  pre-splits at `0.5` and `0.25/0.75`, and a depth-12 cap before `sewCells`.
+
+For `wrNurbSurface`, closed-direction break steps are `0.75` times the
+parameter-envelope length (otherwise positive infinity). Maximum U/V steps are
+either the complete knot span or the filtered minimum distinct-knot gap divided
+by `(uint16 triangulationParameter + 1)`; the stock non-direct-renderer
+parameters divide by three.
+
+This still does not define one universal browser policy. The host may replace
+the complete triangulation-parameter structure, while lazy surface deviation
+comes from `OdGiCommonDraw` deviation types 3/4 at a renderer base point and is
+modified by renderer transform/extents state. Those runtime values are not
+proven to be persisted in the supplied RVT.
+
+An isolated Hermite implementation therefore remained out of production even
+though it meshed all 16 target faces. The two newly complete roots produced
+1,450 versus 852 IFC triangles and 2,426 versus 1,592, with maximum IFC AABB
+corner errors of `0.0085693212 ft` and `0.0045058495 ft`. Choosing a coarser
+subset from the IFC would be oracle-fitting; production remains fail-closed
+until the native view/deviation inputs are recovered.
 
 ## Concrete TypeScript/WASM implementation order
 
