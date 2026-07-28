@@ -11,6 +11,9 @@ in the isolated runtime (46 ELF objects plus `.DS_Store`). A fresh inventory on
 for all 823 regular-file and symbolic-link entries, including the parser
 prototype, decoded samples, and vendored dependencies.
 
+The 14 parser prototype sources and their exact-model behavior are reviewed
+separately in [`rvt-parser-prototype-review.md`](rvt-parser-prototype-review.md).
+
 ## What the files are
 
 The `.tx` extension is not a separate data format. Every `.tx` in the isolated
