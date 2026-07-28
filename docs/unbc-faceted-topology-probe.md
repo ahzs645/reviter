@@ -185,6 +185,21 @@ geometry-shaped tables, while the first continues into additional fields.
 That is consistent with geometry being stored below an outer `GRep`/`GNode`
 reader rather than inline in the element envelope.
 
+The probe also joins the byte immediately after the edge array to all 74,437
+native identities decoded from `Global/History` and `Global/ElemTable`:
+
+| Mesh body | Following native element | Persisted owner | Native UniqueId |
+| --- | ---: | ---: | --- |
+| chunk 3002 | 547662 | 547642 | `1cb7d656-deba-4aa9-a012-c4fc2a5e1ce6-00085b4e` |
+| chunk 3169 | 532606 | 532591 | `5b8edb5d-cddb-4798-98b3-c0f16eb4adb7-0008207e` |
+
+This proves that the tail offsets are structural rather than random. It does
+**not** prove mesh ownership: the element word could terminate the current
+record, start the next one, or be a referenced key. Neither element is an IFC
+numeric Tag, and both are persisted internal children, which is consistent
+with these being sketch/view/display geometry rather than exported products.
+The first body has no native element word immediately after its edge array.
+
 The reference IFC does not provide a shortcut around that boundary. A
 diagnostic comparison of sorted per-triangle edge-length triples found no
 matches at the native scale, Revit's feet-to-metres scale, or the common

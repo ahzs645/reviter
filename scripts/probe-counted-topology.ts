@@ -14,6 +14,11 @@
 import { readFileSync } from "node:fs";
 import CFB from "cfb";
 
+import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
+import {
+  decodeRevitDocumentHistory,
+  decodeRevitNativeIdentities,
+} from "../lib/reviter/native-identity.ts";
 import {
   asBytes,
   gzipOffsets,
@@ -56,8 +61,22 @@ type Candidate = {
     matchesFacetCount: boolean;
     sampleHex: string;
   } | null;
+  followingNativeElement: {
+    byteOffset: number;
+    elementId: number;
+    owningElementId: number | null;
+    uniqueId: string;
+  } | null;
   prefixHex: string;
 };
+
+type NativeElementContext = Map<
+  number,
+  {
+    owningElementId: number | null;
+    uniqueId: string;
+  }
+>;
 
 const LAYOUTS: readonly Layout[] = [
   { name: "float32-u16", pointScalarBytes: 4, indexScalarBytes: 2 },
@@ -214,6 +233,7 @@ function validateAt(
   data: Uint8Array,
   countOffset: number,
   layout: Layout,
+  nativeElements: NativeElementContext,
 ): {
   vertices: number;
   facets: number;
@@ -226,6 +246,7 @@ function validateAt(
   nonDegenerateTriangles: number;
   degenerateTriangles: number;
   edgeVisibility: Candidate["edgeVisibility"];
+  followingNativeElement: Candidate["followingNativeElement"];
 } | null {
   const points = locateCountedTupleArray(
     data,
@@ -267,6 +288,7 @@ function validateAt(
     return null;
   }
   let edgeVisibility: Candidate["edgeVisibility"] = null;
+  let followingNativeElement: Candidate["followingNativeElement"] = null;
   if (facets.array.endOffset + 4 <= data.byteLength) {
     const count = view.getInt32(facets.array.endOffset, true);
     const itemsOffset = facets.array.endOffset + 4;
@@ -278,6 +300,22 @@ function validateAt(
           data.subarray(itemsOffset, Math.min(itemsOffset + count, itemsOffset + 24)),
         ).toString("hex"),
       };
+      const nextOffset = itemsOffset + count;
+      if (nextOffset + 8 <= data.byteLength) {
+        const rawElementId = view.getBigUint64(nextOffset, true);
+        if (rawElementId <= BigInt(Number.MAX_SAFE_INTEGER)) {
+          const elementId = Number(rawElementId);
+          const native = nativeElements.get(elementId);
+          if (native) {
+            followingNativeElement = {
+              byteOffset: nextOffset - countOffset,
+              elementId,
+              owningElementId: native.owningElementId,
+              uniqueId: native.uniqueId,
+            };
+          }
+        }
+      }
     }
   }
   return {
@@ -292,6 +330,7 @@ function validateAt(
     nonDegenerateTriangles: triangleEvidence.nonDegenerateTriangles,
     degenerateTriangles: triangleEvidence.degenerateTriangles,
     edgeVisibility,
+    followingNativeElement,
   };
 }
 
@@ -301,11 +340,54 @@ function prefixHex(data: Uint8Array, offset: number): string {
   );
 }
 
+function inflateNamedStream(
+  cfb: ReturnType<typeof CFB.read>,
+  pattern: RegExp,
+): Uint8Array | null {
+  const match = cfb.FileIndex
+    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+    .find(({ entry, path }) => entry.size > 0 && pattern.test(path));
+  if (!match) return null;
+  const stored = stripRevitPageChecksums(asBytes(match.entry.content));
+  const offset = gzipOffsets(stored, 1)[0];
+  return offset == null ? null : inflateRevitChunk(stored, offset);
+}
+
+function nativeElementContext(
+  cfb: ReturnType<typeof CFB.read>,
+): NativeElementContext {
+  const context: NativeElementContext = new Map();
+  const historyBytes = inflateNamedStream(cfb, /\/Global\/History$/i);
+  const elementBytes = inflateNamedStream(cfb, /\/Global\/ElemTable$/i);
+  if (!historyBytes || !elementBytes) return context;
+  const history = decodeRevitDocumentHistory(historyBytes, 2027);
+  const ownership = decodeElementOwnership(elementBytes);
+  if (history.format === "unsupported" || ownership.format === "unsupported") {
+    return context;
+  }
+  const identities = decodeRevitNativeIdentities(elementBytes, history, 2027);
+  if (identities.format === "unsupported") return context;
+  const ownerByElement = new Map(
+    ownership.records.map((record) => [
+      record.elementId,
+      record.owningElementId,
+    ]),
+  );
+  for (const identity of identities.identities) {
+    context.set(identity.elementId, {
+      owningElementId: ownerByElement.get(identity.elementId) ?? null,
+      uniqueId: identity.uniqueId,
+    });
+  }
+  return context;
+}
+
 function main(arguments_: string[]): void {
   const inputPath = arguments_[0];
   if (!inputPath) throw new Error("Pass the path to an RVT file.");
   const input = readFileSync(inputPath);
   const cfb = CFB.read(input, { type: "buffer" });
+  const nativeElements = nativeElementContext(cfb);
   const partitions = cfb.FileIndex
     .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
     .filter(
@@ -346,7 +428,12 @@ function main(arguments_: string[]): void {
         for (const layout of LAYOUTS) {
           const kept = candidates.get(layout.name)!;
           if (kept.length >= MAX_CANDIDATES_PER_LAYOUT) continue;
-          const candidate = validateAt(combined, countOffset, layout);
+          const candidate = validateAt(
+            combined,
+            countOffset,
+            layout,
+            nativeElements,
+          );
           if (!candidate) continue;
           kept.push({
             stream: partition.path.replace(/^Root Entry\//, ""),
@@ -362,6 +449,7 @@ function main(arguments_: string[]): void {
             nonDegenerateTriangles: candidate.nonDegenerateTriangles,
             degenerateTriangles: candidate.degenerateTriangles,
             edgeVisibility: candidate.edgeVisibility,
+            followingNativeElement: candidate.followingNativeElement,
             prefixHex: prefixHex(combined, countOffset),
           });
         }
@@ -409,6 +497,13 @@ function main(arguments_: string[]): void {
           maxAbsCoordinate: MAX_ABS_COORDINATE,
         },
         countOffsetsTested,
+        nativeElementContext: {
+          identities: nativeElements.size,
+          evidence:
+            nativeElements.size > 0
+              ? "Global/History+Global/ElemTable"
+              : "unavailable",
+        },
         layouts: LAYOUTS.map((layout) => ({
           ...layout,
           candidates: candidates.get(layout.name),
