@@ -82,6 +82,11 @@ import {
   type NativeFamilyDefinition,
 } from "./family-material-relations.ts";
 import {
+  resolveHostRelations,
+  scanHostRelationCandidates,
+  type HostRelationCandidate,
+} from "./host-relations.ts";
+import {
   applyNativeCategories,
   collectCategoryTokens,
   resolveElementCategories,
@@ -793,6 +798,7 @@ export function convertRvtBytes(
     const nativeFamilyDefinitionMap = new Map<number, NativeFamilyDefinition>();
     const familySymbolCandidates: FamilySymbolCandidate[] = [];
     const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
+    const hostRelationCandidates: HostRelationCandidate[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
@@ -850,6 +856,9 @@ export function convertRvtBytes(
           }
           familySymbolCandidates.push(...relationships.familySymbolCandidates);
           geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
+          hostRelationCandidates.push(
+            ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
+          );
         }
         const elementId = leadingU32(inflated);
         if (elementId && elementId !== 0xffffffff) {
@@ -1794,6 +1803,10 @@ export function convertRvtBytes(
       new Set(nativeMaterialDefinitionMap.keys()),
       sharedGeometryIds,
     );
+    const nativeHostRelations = resolveHostRelations(
+      hostRelationCandidates,
+      new Set(markerByElement.keys()),
+    );
     // An element needs a volume to be worth drawing, with one exception: a
     // sketch-bounded element is a plan boundary plus a thickness, and Revit can
     // record that thickness as zero. `prismGeometry` already substitutes a
@@ -1857,6 +1870,9 @@ export function convertRvtBytes(
             ...(nativeGeometryMaterialAssignments.length
               ? ["revit-2027-geometry-material-id-v1"]
               : []),
+            ...(nativeHostRelations.length
+              ? ["revit-2027-insertable-host-id-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
@@ -1865,6 +1881,7 @@ export function convertRvtBytes(
           nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
           nativeFamilySymbols: sharedGeometryIds.size,
           nativeFamilyRelations: nativeFamilySymbolRelations.length,
+          nativeHostRelations: nativeHostRelations.length,
           nativeFamilyDefinitions: nativeFamilyDefinitions.length,
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -1898,6 +1915,7 @@ export function convertRvtBytes(
         nativeFamilySymbolRelations,
         nativeFamilyDefinitions,
         nativeGeometryMaterialAssignments,
+        nativeHostRelations,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
@@ -1914,6 +1932,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeFamilySymbolRelations.length
             ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
+            : []),
+          ...(nativeHostRelations.length
+            ? [`${nativeHostRelations.length.toLocaleString()} persisted hosted-element relationships were decoded from InsertableInst.m_hostId.`]
             : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
@@ -2037,6 +2058,9 @@ export function convertRvtBytes(
           ...(nativeGeometryMaterialAssignments.length
             ? ["revit-2027-geometry-material-id-v1"]
             : []),
+          ...(nativeHostRelations.length
+            ? ["revit-2027-insertable-host-id-v1"]
+            : []),
         ],
         nativeCurves: 0,
         nativeProfiles: 0,
@@ -2045,6 +2069,7 @@ export function convertRvtBytes(
         nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
         nativeFamilySymbols: sharedGeometryIds.size,
         nativeFamilyRelations: nativeFamilySymbolRelations.length,
+        nativeHostRelations: nativeHostRelations.length,
         nativeFamilyDefinitions: nativeFamilyDefinitions.length,
         nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -2080,6 +2105,7 @@ export function convertRvtBytes(
       nativeFamilySymbolRelations,
       nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
+      nativeHostRelations,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -2098,6 +2124,9 @@ export function convertRvtBytes(
           : []),
         ...(nativeFamilySymbolRelations.length
           ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
+          : []),
+        ...(nativeHostRelations.length
+          ? [`${nativeHostRelations.length.toLocaleString()} persisted hosted-element relationships were decoded from InsertableInst.m_hostId.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

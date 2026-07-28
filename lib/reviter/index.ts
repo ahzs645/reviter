@@ -69,6 +69,11 @@ export {
   resolveGeometryMaterialAssignments,
   scanPersistedRelationshipCandidates,
 } from "./family-material-relations";
+export { resolveHostRelations, scanHostRelationCandidates } from "./host-relations";
+export type {
+  HostRelationCandidate,
+  NativeHostRelation,
+} from "./host-relations";
 export type {
   FamilySymbolCandidate,
   GeometryMaterialCandidate,

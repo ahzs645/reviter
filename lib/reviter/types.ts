@@ -14,6 +14,7 @@ import type {
   NativeFamilySymbolRelation,
   NativeGeometryMaterialAssignment,
 } from "./family-material-relations.ts";
+import type { NativeHostRelation } from "./host-relations.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -89,6 +90,8 @@ export type DecoderCoverage = {
   nativeFamilySymbols?: number;
   /** Persisted FamilySymbol-to-Family links whose target class resolved. */
   nativeFamilyRelations?: number;
+  /** Persisted InsertableInst host relationships. */
+  nativeHostRelations?: number;
   /** Native loadable-family records whose FamilyBase name/path pair decoded. */
   nativeFamilyDefinitions?: number;
   /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
@@ -489,6 +492,8 @@ export type ConvertResult = {
   nativeFamilyDefinitions?: NativeFamilyDefinition[];
   /** Exact MaterialElem ids attached to referenced shared geometry objects. */
   nativeGeometryMaterialAssignments?: NativeGeometryMaterialAssignment[];
+  /** Persisted hosted-element relationships from InsertableInst.m_hostId. */
+  nativeHostRelations?: NativeHostRelation[];
 };
 
 export type ConvertFailure = {

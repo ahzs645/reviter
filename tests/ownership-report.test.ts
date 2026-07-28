@@ -128,6 +128,9 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     declaredRecordCount: 4,
     recordCount: 3,
     membershipCount: 2,
+    ownershipMembershipCount: 2,
+    hostMembershipCount: 0,
+    uniqueMemberCount: 2,
     rootRecordCount: 1,
     selfOwnedRecordCount: 0,
     danglingOwnerCount: 0,
@@ -151,6 +154,7 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
         uniqueId: "11223344-5566-7788-99aa-bbccddeeff00-00000066",
       },
     ],
+    hostRelations: [],
   });
   assert.equal(
     report.elementManifest.unavailableFields.includes("model-tree hierarchy"),
@@ -184,6 +188,30 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     chunkIndex: 2,
     storedOffset: 65_249,
   }]);
+});
+
+test("semantic report keeps host membership distinct from owning-element membership", () => {
+  const result = resultWithOwnership();
+  result.nativeHostRelations = [{
+    elementId: 103,
+    hostId: 100,
+    fieldOffset: 151,
+    recordOffset: 200,
+    objectLength: 537,
+    objectMarker: 0x07ef,
+    kind: "host",
+    source: "Partitions/InsertableInst.m_hostId",
+    evidence: "persisted",
+  }];
+  const report = JSON.parse(makeReport(result, null));
+  assert.equal(report.fidelity.modelTree, "native-revit-owning-element-and-host");
+  assert.equal(report.fidelity.modelTreeMemberships, 3);
+  assert.equal(report.fidelity.modelTreeUniqueMembers, 3);
+  assert.equal(report.fidelity.modelTreeHostMemberships, 1);
+  assert.equal(report.modelTree.ownershipMembershipCount, 2);
+  assert.equal(report.modelTree.hostMembershipCount, 1);
+  assert.equal(report.modelTree.hostRelations[0].elementId, 103);
+  assert.equal(report.modelTree.hostRelations[0].hostId, 100);
 });
 
 test("semantic report does not label recovered material assignments unavailable", () => {
