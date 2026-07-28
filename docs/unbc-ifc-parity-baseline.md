@@ -21,8 +21,9 @@ population. Native Revit identity is complete for every numeric IFC Tag,
 persisted ownership reaches 68.0% of comparable IFC tree members, and 21 of 29
 IFC material names are decoded as native definitions. The parser now recovers
 5,413 geometry-level material assignments and 66 `FamilySymbol` → `Family`
-relations. It still does not match the IFC's **shape detail, full material
-assignment population, or emitted family semantics**.
+relations. Three referenced family definitions now name 143 placed instances,
+all matching the IFC exactly. It still does not match the IFC's **shape detail,
+full material assignment population, or complete family semantics**.
 
 | Measure | IFC reference | Current Reviter | Parity |
 | --- | ---: | ---: | ---: |
@@ -33,7 +34,7 @@ assignment population, or emitted family semantics**.
 | Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.400 / 217.899 / 374.766 m | matches at displayed precision |
 | Numeric IFC Tags with native Revit UniqueId | 38,187 | 38,187 | **100%** |
 | Numeric-tagged elements assigned an IFC type | 38,063 | 7,515 exact type names | 19.7% |
-| Numeric-tagged elements with IFC family name | 38,063 | 0 | 0% |
+| Numeric-tagged elements with IFC family name | 38,063 | 143 exact native family names | 0.4% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Unique IFC material names | 29 | 21 exact native definitions | 72.4% |
 | Elements assigned materials, including through type | 36,221 | 5,413 native geometry assignments | 14.9% |
@@ -149,11 +150,12 @@ coverage rather than comparing unlike `GlobalId` and `UniqueId` strings.
 Type recovery is smaller but exact: all 7,515 IFC-tagged elements for which
 Reviter emits a type name match the corresponding IFC type-object name after
 splitting its `Family:Type` representation. The remaining 30,548 typed Tags
-have no decoded type name. No family name is emitted for any of the 38,063
-numeric-tagged IFC type members. The native relationship decoder does recover
-66 `FamilySymbol.m_familyId` links, including 17 IFC-family-named symbols
-resolving to two family records with no mixed target, but the family records'
-names and full loadable-family/type regeneration remain open.
+have no decoded type name. The native relationship decoder recovers 66
+`FamilySymbol.m_familyId` links. The adjacent, reader-proven
+`FamilyBase` name/path pair decodes three referenced family definitions and
+attaches exact family names to 143 of the 38,063 numeric-tagged IFC type
+members. All 143 names match the IFC; the remaining 37,920 family names and
+full loadable-family/type regeneration remain open.
 
 Native material-definition framing yields 54 RVT names. Of the IFC's 29 unique
 names, 21 match exactly. The eight unresolved IFC names are recorded in the
@@ -178,19 +180,21 @@ and compare typed values and units.
    Recover the own geometry or a proven typed geometry relation for member
    `1272040` and stair flight `1280585`. Persisted ownership proves that their
    adjacent element rows are not substitutes.
-2. **Replay the dynamic geometry queue and connect decoded topology to an
-   owner.** The browser-safe `FacetedTopology8` reader now validates all three
-   strict UNBC bodies, including per-face normals, points, facets, and edge
-   flags. The remaining grammar is the `CondInt16Reader` deferred queue used by
-   `GGroup`/`GPolyMesh`, followed by the `GInstance`/`GArray` transform branches.
-   Until that queue is replayed, bytes after a topology body cannot safely be
-   labelled as owner, style, material, or transform fields.
+2. **Enter a proven `GPolyMesh` context and replay its retained topology
+   property.** The three UNBC spans that fit the `FacetedTopology8` byte grammar
+   are now proven to begin at multi-entry `GStyle`/`GFlipControl` replay
+   boundaries, so they are rejected as mesh-shaped collisions rather than
+   emitted as geometry. The browser decoder now understands the counted
+   `CondInt16` collection, enforces an unambiguous slot-5,255 topology binding,
+   and decodes the 96-byte `GInstance`/`GArray` transform. The remaining grammar
+   is exact outer-object entry plus retained `DynamicQueue` state.
 3. **Resolve the remaining family carrier and regenerate shared family
    geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
    match the IFC exactly—and 66 persisted `FamilySymbol` → `Family` relations
-   are now proven. However, 30,548 tagged type members and all 38,063 emitted
-   family names remain absent. Preserve shared family geometry plus transforms
-   rather than expanding its 27,776 IFC mapped-item occurrences.
+   are now proven. Three referenced family definitions supply 143/143 exact
+   emitted names, but 30,548 tagged type members and 37,920 family names remain
+   absent. Preserve shared family geometry plus transforms rather than
+   expanding its 27,776 IFC mapped-item occurrences.
 4. **Extend material records in bounded layers.** First, close the remaining
    material-name layouts (the IFC has eight names not yet matched). Then extend
    the 5,413 exact geometry-level assignments through type, compound layer,

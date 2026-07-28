@@ -1,8 +1,8 @@
 # Revit 2026 `GPolyMesh` reader boundary
 
 This note records clean-room static analysis of the locally supplied Revit
-2026 reader module and its agreement with the three strict mesh payloads in
-the UNBC model. No native ODA code was executed.
+2026 reader module and three mesh-shaped byte spans in the UNBC model. No
+native ODA code was executed.
 
 The inspected module is `TB_Format2026Readers.tx`, SHA-256:
 

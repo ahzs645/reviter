@@ -35,6 +35,19 @@ export type FamilySymbolCandidate = {
   objectMarker: typeof REVIT_2027_FAMILY_SYMBOL_MARKER;
 };
 
+export type NativeFamilyDefinition = {
+  familyId: number;
+  name: string;
+  /** The adjacent FamilyBase path field validated the name; its value is not exported. */
+  pathKind: "directory";
+  recordOffset: number;
+  nameOffset: number;
+  pathOffset: number;
+  objectLength: number;
+  objectMarker: typeof REVIT_2027_FAMILY_MARKER;
+  evidence: "framed-family-name-path";
+};
+
 export type GeometryMaterialCandidate = {
   geometryId: number;
   materialId: number;
@@ -46,6 +59,7 @@ export type GeometryMaterialCandidate = {
 
 export type PersistedRelationshipScan = {
   familyElementIds: number[];
+  familyDefinitions: NativeFamilyDefinition[];
   familySymbolCandidates: FamilySymbolCandidate[];
   geometryMaterialCandidates: GeometryMaterialCandidate[];
 };
@@ -64,15 +78,85 @@ function readId(view: DataView, offset: number, limit: number): number | null {
   return id || null;
 }
 
+function readUtf16String(
+  view: DataView,
+  offset: number,
+  limit: number,
+): { value: string; endOffset: number } | null {
+  if (offset < 0 || offset + 4 > limit) return null;
+  const length = view.getUint32(offset, true);
+  if (length < 1 || length > 512 || offset + 4 + length * 2 > limit) return null;
+  let value = "";
+  for (let index = 0; index < length; index += 1) {
+    const code = view.getUint16(offset + 4 + index * 2, true);
+    if (
+      code === 0 ||
+      code < 0x20 ||
+      (code >= 0xd800 && code <= 0xdfff) ||
+      code === 0xffff
+    ) {
+      return null;
+    }
+    value += String.fromCharCode(code);
+  }
+  return { value, endOffset: offset + 4 + length * 2 };
+}
+
+/**
+ * `FamilyBase` reads `m_name` and `m_path` as two consecutive `OdString`
+ * fields. Earlier fields have variable-length collections, so their absolute
+ * offset changes; the consecutive pair and the path shape are the stable
+ * boundary. Fail closed for empty/in-memory paths instead of guessing a name.
+ */
+function readFamilyDefinition(
+  view: DataView,
+  objectOffset: number,
+  objectLength: number,
+  familyId: number,
+): NativeFamilyDefinition | null {
+  const limit = objectOffset + objectLength;
+  const scanEnd = Math.min(limit, objectOffset + 1_024);
+  for (let nameOffset = objectOffset + 18; nameOffset + 8 <= scanEnd; nameOffset += 1) {
+    const name = readUtf16String(view, nameOffset, scanEnd);
+    if (!name || name.value.length > 256 || /[\\/]/u.test(name.value)) continue;
+    const path = readUtf16String(view, name.endOffset, scanEnd);
+    if (
+      !path ||
+      !/[\\/]/u.test(path.value) ||
+      !/[\\/]$/u.test(path.value)
+    ) {
+      continue;
+    }
+    return {
+      familyId,
+      name: name.value,
+      pathKind: "directory",
+      recordOffset: objectOffset,
+      nameOffset: nameOffset - objectOffset,
+      pathOffset: name.endOffset - objectOffset,
+      objectLength,
+      objectMarker: REVIT_2027_FAMILY_MARKER,
+      evidence: "framed-family-name-path",
+    };
+  }
+  return null;
+}
+
 export function scanPersistedRelationshipCandidates(
   data: Uint8Array,
   revitVersion: number,
 ): PersistedRelationshipScan {
   const familyElementIds: number[] = [];
+  const familyDefinitions: NativeFamilyDefinition[] = [];
   const familySymbolCandidates: FamilySymbolCandidate[] = [];
   const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
   if (revitVersion !== 2027 || data.byteLength < 64) {
-    return { familyElementIds, familySymbolCandidates, geometryMaterialCandidates };
+    return {
+      familyElementIds,
+      familyDefinitions,
+      familySymbolCandidates,
+      geometryMaterialCandidates,
+    };
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -85,7 +169,16 @@ export function scanPersistedRelationshipCandidates(
     const echo = offset + objectLength + 16;
     if (echo + 4 > data.byteLength || view.getUint32(echo, true) !== objectLength) continue;
     const marker = view.getUint16(offset + 16, true);
-    if (marker === REVIT_2027_FAMILY_MARKER) familyElementIds.push(elementId);
+    if (marker === REVIT_2027_FAMILY_MARKER) {
+      familyElementIds.push(elementId);
+      const definition = readFamilyDefinition(
+        view,
+        offset,
+        objectLength,
+        elementId,
+      );
+      if (definition) familyDefinitions.push(definition);
+    }
 
     if (marker === REVIT_2027_FAMILY_SYMBOL_MARKER) {
       const familyId = readId(view, offset + FAMILY_ID_OFFSET, offset + objectLength);
@@ -119,7 +212,12 @@ export function scanPersistedRelationshipCandidates(
     }
     offset += objectLength + 19;
   }
-  return { familyElementIds, familySymbolCandidates, geometryMaterialCandidates };
+  return {
+    familyElementIds,
+    familyDefinitions,
+    familySymbolCandidates,
+    geometryMaterialCandidates,
+  };
 }
 
 export function resolveFamilySymbolRelations(

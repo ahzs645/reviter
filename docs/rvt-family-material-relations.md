@@ -25,6 +25,32 @@ Against the UNBC pair:
 This supplies native `instance → symbol → family` membership. It does not claim
 family regeneration, parameter formula evaluation, or nested-family expansion.
 
+## Persisted family names
+
+The unstripped 2026 reader shows `FamilyBase` calling `OdStringReader` and then
+`setName`, immediately followed by a second `OdStringReader` and `setPath`.
+Fields before that pair include variable-length collections, so the absolute
+name offset is not fixed. The browser decoder instead requires:
+
+- a length/echo-framed `Family` object with marker `0x07d9`;
+- two consecutive bounded UTF-16 strings inside its first 1,024 bytes;
+- a family name without path separators;
+- an adjacent non-empty directory path ending in a separator.
+
+The path is validation evidence only and is not exported. On the exact UNBC
+model, three referenced family records decode and attach native names to 143
+placed elements. All 143 correlate with IFC family names and all 143 match
+exactly. The decoded families are:
+
+- `Колонна прямоугольного сечения`;
+- `Дверь-Витраж-Двойная-Витрина`;
+- `Round Column`.
+
+This is 100% precision for the emitted subset, not full family-name coverage.
+The other referenced symbols either do not resolve through the currently proven
+`FamilySymbol` layout or point at a family layout whose name/path pair is not
+yet proven.
+
 ## Persisted material assignments
 
 Three framed shared-geometry layouts carry 64-bit `MaterialElem` ids:

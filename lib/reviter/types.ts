@@ -10,6 +10,7 @@ import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import type {
+  NativeFamilyDefinition,
   NativeFamilySymbolRelation,
   NativeGeometryMaterialAssignment,
 } from "./family-material-relations.ts";
@@ -88,6 +89,8 @@ export type DecoderCoverage = {
   nativeFamilySymbols?: number;
   /** Persisted FamilySymbol-to-Family links whose target class resolved. */
   nativeFamilyRelations?: number;
+  /** Native loadable-family records whose FamilyBase name/path pair decoded. */
+  nativeFamilyDefinitions?: number;
   /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
   nativeUniqueIds?: number;
   /** Complete ordinary records decoded from `Global/ElemTable`. */
@@ -128,6 +131,12 @@ export type ElementBoundsRecord = {
   typeId?: number;
   /** Type name read from that type element, for system families. */
   typeName?: string;
+  /** Shared FamilySymbol referenced by this placed instance. */
+  familySymbolId?: number;
+  /** Persisted Family target referenced by the shared FamilySymbol. */
+  familyId?: number;
+  /** Native loadable-family name read from the FamilyBase name/path pair. */
+  familyName?: string;
   /** Oriented solid rebuilt from the element's own native surface patches. */
   solid?: WallSolid;
   /**
@@ -476,6 +485,8 @@ export type ConvertResult = {
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
   /** Loadable-family symbol to family relationships persisted in partition objects. */
   nativeFamilySymbolRelations?: NativeFamilySymbolRelation[];
+  /** Native loadable-family identities/names decoded from FamilyBase. */
+  nativeFamilyDefinitions?: NativeFamilyDefinition[];
   /** Exact MaterialElem ids attached to referenced shared geometry objects. */
   nativeGeometryMaterialAssignments?: NativeGeometryMaterialAssignment[];
 };

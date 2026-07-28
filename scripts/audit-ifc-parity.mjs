@@ -179,6 +179,7 @@ function parseSemantic(bytes) {
     ? semantic.modelTree?.elements ?? []
     : [];
   const nativeMaterialDefinitions = semantic.nativeMaterialDefinitions ?? [];
+  const nativeFamilyDefinitions = semantic.nativeFamilyDefinitions ?? [];
   const byCategory = new Map();
   const geometrySources = new Map();
   const ids = new Set();
@@ -272,6 +273,7 @@ function parseSemantic(bytes) {
       modelTreeRecords: modelTreeElements.length,
       modelTreeMemberships: modelTreeMemberIds.size,
       nativeMaterialDefinitions: nativeMaterialDefinitions.length,
+      nativeFamilyDefinitions: nativeFamilyDefinitions.length,
       nativeMaterialNames: [...nativeMaterialNames].sort(),
       nativeMaterialAssignments: semantic.fidelity?.materialAssignments ?? 0,
       geometrySources: sortedRecord(geometrySources),
@@ -852,4 +854,5 @@ console.log(`Triangle parity: ${(report.parity.triangleRatio * 100).toFixed(1)}%
 console.log(`Native UniqueIds: ${ifc.numericTagsWithNativeUniqueId.toLocaleString()} / ${ifc.numericRevitTags.toLocaleString()} numeric IFC tags`);
 console.log(`Native material names: ${ifc.materialDefinitionNameMatches.toLocaleString()} / ${ifc.uniqueMaterialNames.toLocaleString()} IFC names`);
 console.log(`Native materials: ${semantic.summary.nativeMaterialAssignments.toLocaleString()} / ${ifc.materialAssignedElementsIncludingTypes.toLocaleString()} assigned elements`);
+console.log(`Native family names: ${ifc.familyTagsWithExactReviterFamilyName.toLocaleString()} / ${ifc.familyNamedNumericTags.toLocaleString()} IFC-tagged elements (${semantic.summary.nativeFamilyDefinitions.toLocaleString()} decoded definitions)`);
 console.log(`Wrote ${paths.json}`);

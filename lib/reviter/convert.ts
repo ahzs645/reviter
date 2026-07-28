@@ -78,6 +78,7 @@ import {
   scanPersistedRelationshipCandidates,
   type FamilySymbolCandidate,
   type GeometryMaterialCandidate,
+  type NativeFamilyDefinition,
 } from "./family-material-relations.ts";
 import {
   applyNativeCategories,
@@ -788,6 +789,7 @@ export function convertRvtBytes(
     const nativeMaterialDefinitionMap =
       new Map<number, LocatedNativeMaterialDefinition>();
     const familyElementIds = new Set<number>();
+    const nativeFamilyDefinitionMap = new Map<number, NativeFamilyDefinition>();
     const familySymbolCandidates: FamilySymbolCandidate[] = [];
     const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
     const boundedElementIds = new Set<number>();
@@ -840,6 +842,11 @@ export function convertRvtBytes(
             decoderPlan.revitVersion,
           );
           for (const familyId of relationships.familyElementIds) familyElementIds.add(familyId);
+          for (const definition of relationships.familyDefinitions) {
+            if (!nativeFamilyDefinitionMap.has(definition.familyId)) {
+              nativeFamilyDefinitionMap.set(definition.familyId, definition);
+            }
+          }
           familySymbolCandidates.push(...relationships.familySymbolCandidates);
           geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
         }
@@ -1741,6 +1748,28 @@ export function convertRvtBytes(
       familyElementIds,
       sharedGeometryIds,
     );
+    const referencedFamilyIds = new Set(
+      nativeFamilySymbolRelations.map((relation) => relation.familyId),
+    );
+    const nativeFamilyDefinitions = [...nativeFamilyDefinitionMap.values()]
+      .filter((definition) => referencedFamilyIds.has(definition.familyId))
+      .sort((left, right) => left.familyId - right.familyId);
+    const familyRelationBySymbol = new Map(
+      nativeFamilySymbolRelations.map((relation) => [relation.symbolId, relation]),
+    );
+    const familyDefinitionById = new Map(
+      nativeFamilyDefinitions.map((definition) => [definition.familyId, definition]),
+    );
+    for (const record of elementBounds) {
+      const placement = instancePlacements.get(record.elementId);
+      if (!placement) continue;
+      const symbolId = placement.symbolId ?? placement.geometryId;
+      record.familySymbolId = symbolId;
+      const relation = familyRelationBySymbol.get(symbolId);
+      if (!relation) continue;
+      record.familyId = relation.familyId;
+      record.familyName = familyDefinitionById.get(relation.familyId)?.name;
+    }
     const nativeGeometryMaterialAssignments = resolveGeometryMaterialAssignments(
       geometryMaterialCandidates,
       new Set(nativeMaterialDefinitionMap.keys()),
@@ -1803,6 +1832,9 @@ export function convertRvtBytes(
             ...(nativeFamilySymbolRelations.length
               ? ["revit-2027-family-symbol-family-v1"]
               : []),
+            ...(nativeFamilyDefinitions.length
+              ? ["revit-2027-family-name-path-v1"]
+              : []),
             ...(nativeGeometryMaterialAssignments.length
               ? ["revit-2027-geometry-material-id-v1"]
               : []),
@@ -1814,6 +1846,7 @@ export function convertRvtBytes(
           nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
           nativeFamilySymbols: sharedGeometryIds.size,
           nativeFamilyRelations: nativeFamilySymbolRelations.length,
+          nativeFamilyDefinitions: nativeFamilyDefinitions.length,
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
           nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
@@ -1844,6 +1877,7 @@ export function convertRvtBytes(
         nativeIdentity,
         nativeMaterialDefinitions,
         nativeFamilySymbolRelations,
+        nativeFamilyDefinitions,
         nativeGeometryMaterialAssignments,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
@@ -1978,6 +2012,9 @@ export function convertRvtBytes(
           ...(nativeFamilySymbolRelations.length
             ? ["revit-2027-family-symbol-family-v1"]
             : []),
+          ...(nativeFamilyDefinitions.length
+            ? ["revit-2027-family-name-path-v1"]
+            : []),
           ...(nativeGeometryMaterialAssignments.length
             ? ["revit-2027-geometry-material-id-v1"]
             : []),
@@ -1989,6 +2026,7 @@ export function convertRvtBytes(
         nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
         nativeFamilySymbols: sharedGeometryIds.size,
         nativeFamilyRelations: nativeFamilySymbolRelations.length,
+        nativeFamilyDefinitions: nativeFamilyDefinitions.length,
         nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
         nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
@@ -2021,6 +2059,7 @@ export function convertRvtBytes(
       nativeIdentity,
       nativeMaterialDefinitions,
       nativeFamilySymbolRelations,
+      nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
       warnings: [
         ...(decoderPlan.revitVersion == null

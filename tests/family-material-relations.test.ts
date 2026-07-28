@@ -23,8 +23,31 @@ function object(
   return data;
 }
 
+function writeUtf16String(
+  data: Uint8Array,
+  offset: number,
+  value: string,
+): number {
+  const view = new DataView(data.buffer);
+  view.setUint32(offset, value.length, true);
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint16(offset + 4 + index * 2, value.charCodeAt(index), true);
+  }
+  return offset + 4 + value.length * 2;
+}
+
 test("decodes and resolves the persisted FamilySymbol to Family relation", () => {
-  const family = object(105_786, 0x07d9, 80, []);
+  const family = object(105_786, 0x07d9, 360, []);
+  const pathOffset = writeUtf16String(
+    family,
+    133,
+    "Колонна прямоугольного сечения",
+  );
+  writeUtf16String(
+    family,
+    pathOffset,
+    "D:\\Library\\Columns\\",
+  );
   const symbol = object(2_447_093, 0x0810, 520, [[449, 105_786]]);
   const page = new Uint8Array(family.length + symbol.length);
   page.set(family);
@@ -32,6 +55,26 @@ test("decodes and resolves the persisted FamilySymbol to Family relation", () =>
 
   const scan = scanPersistedRelationshipCandidates(page, 2027);
   assert.deepEqual(scan.familyElementIds, [105_786]);
+  assert.deepEqual(
+    scan.familyDefinitions.map(
+      ({ familyId, name, pathKind, nameOffset, pathOffset: decodedPathOffset, evidence }) => ({
+        familyId,
+        name,
+        pathKind,
+        nameOffset,
+        pathOffset: decodedPathOffset,
+        evidence,
+      }),
+    ),
+    [{
+      familyId: 105_786,
+      name: "Колонна прямоугольного сечения",
+      pathKind: "directory",
+      nameOffset: 133,
+      pathOffset,
+      evidence: "framed-family-name-path",
+    }],
+  );
   assert.equal(scan.familySymbolCandidates.length, 1);
   assert.deepEqual(
     resolveFamilySymbolRelations(

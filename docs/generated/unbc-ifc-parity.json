@@ -9,9 +9,9 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 56907349,
-      "sha256": "b52e0e0c7cdf658f57bfabfda736054b54418a6df6ff83525da6bf886fec2d1b",
-      "analyticalSha256": "761b4d6713c016691be4dcd5037f9d912e32f0a4851a6f6f42019575d95abba3",
+      "bytes": 59417462,
+      "sha256": "796f7004f804b39c248be0a59e3071a829b011f33cb72ff28fbb08deebeccaee",
+      "analyticalSha256": "bc1df8a04fa15f77107bf8239059d1baf3de0f08c9b885b35c2612251cc3a97e",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
@@ -81,8 +81,8 @@
     "typeTagsWithExactReviterTypeName": 7515,
     "typeNameMismatchSamples": [],
     "familyNamedNumericTags": 38063,
-    "familyTagsWithReviterFamilyName": 0,
-    "familyTagsWithExactReviterFamilyName": 0,
+    "familyTagsWithReviterFamilyName": 143,
+    "familyTagsWithExactReviterFamilyName": 143,
     "propertySets": 89470,
     "propertySetNames": 24,
     "propertyValues": 12375,
@@ -701,7 +701,7 @@
       "displayed": 36547,
       "categorized": 39157,
       "typed": 7523,
-      "familyNamed": 0,
+      "familyNamed": 143,
       "withParameters": 11541,
       "parameterValues": 81806,
       "manifestUniqueIds": 40569,
@@ -711,6 +711,7 @@
       "modelTreeRecords": 74437,
       "modelTreeMemberships": 50205,
       "nativeMaterialDefinitions": 54,
+      "nativeFamilyDefinitions": 3,
       "nativeMaterialNames": [
         "Brick, ordinary",
         "Coupe",
@@ -818,7 +819,7 @@
         "Parts": 1
       },
       "unavailableFields": [
-        "loadable-family name",
+        "full family regeneration",
         "per-face material assignment"
       ],
       "declaredFidelity": {
@@ -1017,7 +1018,7 @@
     "modelTreeRatio": 0.6800304757901374,
     "typeNameRatio": 0.19743583007119775,
     "exactTypeNameRatio": 0.19743583007119775,
-    "familyNameRatio": 0,
+    "familyNameRatio": 0.003756929301421328,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.7241379310344828,
     "materialAssignmentRatio": 0.14944369288534276,

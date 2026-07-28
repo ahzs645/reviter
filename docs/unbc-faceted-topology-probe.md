@@ -160,8 +160,9 @@ safe substitute for the outer reader's scoped class context.
 ### Selector-free counted-array result
 
 The selector-free probe tested 64,956,699 plausible count offsets. It found
-exactly three strict adjacent float32/u16 point-and-triangle bodies and no
-float32/int32, float64/u16, or float64/int32 bodies:
+exactly three adjacent byte spans that satisfy the float32/u16
+point-and-triangle validator and no float32/int32, float64/u16, or
+float64/int32 spans:
 
 | Chunk / offset | Vertices | Triangles | Used vertices | Degenerate | Point bounds | Following edge bytes |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
@@ -169,7 +170,7 @@ float32/int32, float64/u16, or float64/int32 bodies:
 | 3002 / 3,258 | 20 | 26 | 20 | 0 | `(294.075, 145.946, 0.167)`–`(294.736, 146.134, 0.398)` | count 26, matches triangles |
 | 3169 / 10,944 | 104 | 104 | 104 | 0 | `(277.741, 87.273, 0)`–`(352.227, 136.434, 0)` | count 104, matches triangles |
 
-These bodies are substantially stronger evidence than raw tag hits:
+These spans are substantially stronger byte-shape matches than raw tag hits:
 
 - every vertex is referenced;
 - every triangle is in range and geometrically nondegenerate;
@@ -178,12 +179,19 @@ These bodies are substantially stronger evidence than raw tag hits:
 - all three are immediately followed by a signed 32-bit count equal to the
   triangle count and exactly that many plausible edge-visibility bytes.
 
-They are therefore described as **corroborated counted mesh bodies**, but not
-as topology records. A three-chunk neighbourhood check found none inside the
-length-echoed element envelope. The bytes after two bodies begin separate
-geometry-shaped tables, while the first continues into additional fields.
-That is consistent with geometry being stored below an outer `GRep`/`GNode`
-reader rather than inline in the element envelope.
+That evidence originally justified calling them counted mesh bodies without
+claiming ownership. Exact queue decoding now supplies the stronger negative
+test: each apparent body starts exactly at the replay boundary of a complete
+multi-entry `OdBmCondInt16` collection containing only Revit 2026 `GStyle`
+(slot 2,248) and `GFlipControl` (slot 2,215) entries. None contains
+`GPolyMesh` (2,237) or `FacetedTopology8` (5,255). Because retained queue values
+can be satisfied before stream bytes are consumed, the replay boundary does not
+identify which queued item produced the following bytes.
+
+The spans are therefore **mesh-shaped collisions in an ambiguous dynamic queue
+replay**, not corroborated topology bodies. `bindQueuedFacetedTopology8`
+requires one exact slot-5,255 queue item plus an explicit slot-2,237 owner and
+rejects all three.
 
 The probe also joins the byte immediately after the edge array to all 74,437
 native identities decoded from `Global/History` and `Global/ElemTable`:
@@ -195,10 +203,10 @@ native identities decoded from `Global/History` and `Global/ElemTable`:
 
 This proves that the tail offsets are structural rather than random. It does
 **not** prove mesh ownership: the element word could terminate the current
-record, start the next one, or be a referenced key. Neither element is an IFC
-numeric Tag, and both are persisted internal children, which is consistent
-with these being sketch/view/display geometry rather than exported products.
-The first body has no native element word immediately after its edge array.
+record, start the next one, be a referenced key, or belong to a later queued
+payload. Neither element is an IFC numeric Tag, and both are persisted internal
+children. The first span has no native element word immediately after its
+apparent edge array.
 
 The reference IFC does not provide a shortcut around that boundary. A
 diagnostic comparison of sorted per-triangle edge-length triples found no
@@ -206,29 +214,30 @@ matches at the native scale, Revit's feet-to-metres scale, or the common
 decimal scales tested. These may be view/display meshes, may require an outer
 transform, or may be tessellated differently from the IFC. Without the outer
 reader there is no defensible owner, transform, material/style ID, or proof
-that any body belongs in the exported 3D model, so Reviter still emits none.
+that any span belongs in the exported 3D model, so Reviter still emits none.
 
 ## Precisely bounded missing work
 
 The remaining blocker is narrower than “implement tessellation,” but still
 real:
 
-1. Locate the outer geometry object and reproduce its scoped class-resolution
-   context, including how aliases such as 1426 resolve to `GPolyMesh`, `GBRep`,
-   or another geometry class at that field.
-2. Use the now-corroborated dynamic-count and fixed-tuple framing to slice
-   `m_pointsArr`, `m_facetsArr`, normals, UV storage, and edge flags.
+1. Enter an outer geometry object through a proven source-class slot rather
+   than a shared `Formats/Latest` alias, and retain the exact properties it
+   queues.
+2. Reproduce `OdBmDynamicQueue` retained-value ordering until a single
+   slot-5,255 topology property can be associated with its replay bytes.
 3. Determine whether a facet row is always a triangle in this release or can
    contain a polygon that must be triangulated.
 4. Associate the containing `GPolyMesh` with its element/geometry marker,
-   transform, material ID, and style ID.
+   decoded 96-byte transform, material ID, and style ID.
 5. Feed only those validated field slices to
    `decodeFacetedTopologyFields`.
 
-The primitive body problem is now partly solved: three counted mesh bodies are
-located and validated. Until steps 1–4 have independent structural checks, the
-measured correct conversion result remains zero native stored meshes—not an
-ownerless vertex cloud.
+The body grammar, conditional collection syntax, fail-closed binding contract,
+and transform body are implemented. The three measured spans fail the binding
+contract because their queue replay is ambiguous. Until steps 1–4 have
+independent structural checks, the measured correct conversion result remains
+zero native stored meshes—not an ownerless vertex cloud.
 
 ## Reproduce
 
@@ -243,6 +252,7 @@ node --experimental-strip-types scripts/probe-counted-topology.ts \
   "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
 
 node --experimental-strip-types --test tests/faceted-topology.test.ts
+node --experimental-strip-types --test tests/dynamic-geometry-queue.test.ts
 npx tsc --noEmit --pretty false
 ```
 

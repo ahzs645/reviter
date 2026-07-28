@@ -43,6 +43,7 @@ function evidenceRank(record: ElementBoundsRecord): number {
     geometryRank[source] * 1_000 +
     (record.categoryId != null ? 100 : 0) +
     (record.typeName ? 10 : 0) +
+    (record.familyName ? 10 : 0) +
     (record.parameters?.length ?? 0)
   );
 }
@@ -89,9 +90,22 @@ export function elementManifest(result: ConvertResult) {
               name: record.categoryName ?? null,
               evidence: record.categorySource ?? null,
             },
-        type: record.typeId == null && !record.typeName
+        type:
+          record.typeId == null &&
+            !record.typeName &&
+            record.familyId == null &&
+            !record.familyName &&
+            record.familySymbolId == null
           ? null
-          : { elementId: record.typeId ?? null, name: record.typeName ?? null },
+          : {
+              elementId: record.typeId ?? null,
+              name: record.typeName ?? null,
+              ...(record.familySymbolId == null
+                ? {}
+                : { symbolId: record.familySymbolId }),
+              ...(record.familyId == null ? {} : { familyId: record.familyId }),
+              ...(record.familyName ? { familyName: record.familyName } : {}),
+            },
         geometry: {
           source: geometrySource(record),
           boundsFeet: record.boundsFeet,
@@ -144,6 +158,7 @@ export function makeReport(
       partAtom: result.partAtom ?? null,
       modelTree: modelTreeReport(result),
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
+      nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       elementManifest: {
@@ -151,7 +166,10 @@ export function makeReport(
         parameterValueEncoding: "f64 in Revit internal units; decoded lengths are feet",
         unavailableFields: [
           ...(!result.nativeIdentity ? ["Revit UniqueId"] : []),
-          "loadable-family name",
+          ...((result.nativeFamilyDefinitions?.length ?? 0) === 0
+            ? ["loadable-family name"]
+            : []),
+          "full family regeneration",
           ...(!result.elementOwnership ? ["model-tree hierarchy"] : []),
           ...(result.decoderCoverage.nativeMaterialAssignments === 0
             ? ["element-to-material assignment"]
