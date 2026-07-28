@@ -71,6 +71,7 @@ import {
   decodeRevitNativeIdentities,
   type NativeIdentityDecode,
 } from "./native-identity.ts";
+import { scanMaterialElementRecords } from "./material-records.ts";
 import {
   applyNativeCategories,
   collectCategoryTokens,
@@ -123,6 +124,7 @@ import type {
   ConvertOptions,
   ConvertOutcome,
   ConvertResult,
+  LocatedNativeMaterialDefinition,
   ElementBoundsRecord,
   NativeProfileLocator,
   PartitionRecordLocator,
@@ -776,6 +778,8 @@ export function convertRvtBytes(
     const typeReferences = new Map<number, number>();
     const typeNames = new Map<number, string>();
     const nativeProfiles: NativeProfileLocator[] = [];
+    const nativeMaterialDefinitionMap =
+      new Map<number, LocatedNativeMaterialDefinition>();
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
@@ -807,6 +811,21 @@ export function convertRvtBytes(
         if (read) window = revitWindowTail(read);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
+        if (decoderPlan.revitVersion != null) {
+          const materialScan = scanMaterialElementRecords(
+            inflated,
+            decoderPlan.revitVersion,
+          );
+          for (const definition of materialScan.definitions) {
+            if (nativeMaterialDefinitionMap.has(definition.elementId)) continue;
+            nativeMaterialDefinitionMap.set(definition.elementId, {
+              ...definition,
+              stream: partition.path.replace(/^Root Entry\//, ""),
+              chunkIndex: index,
+              storedOffset: revitStoredPageOffset(offsets[index]!),
+            });
+          }
+        }
         const elementId = leadingU32(inflated);
         if (elementId && elementId !== 0xffffffff) {
           partitionRecordIds.add(elementId);
@@ -1698,6 +1717,8 @@ export function convertRvtBytes(
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
     const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
+    const nativeMaterialDefinitions = [...nativeMaterialDefinitionMap.values()]
+      .sort((left, right) => left.elementId - right.elementId);
     // An element needs a volume to be worth drawing, with one exception: a
     // sketch-bounded element is a plan boundary plus a thickness, and Revit can
     // record that thickness as zero. `prismGeometry` already substitutes a
@@ -1749,11 +1770,14 @@ export function convertRvtBytes(
             ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
             ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
             ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
+            ...(nativeMaterialDefinitions.length
+              ? ["revit-2027-material-element-name-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
-          nativeMaterialDefinitions: 0,
+          nativeMaterialDefinitions: nativeMaterialDefinitions.length,
           nativeMaterialAssignments: 0,
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -1761,7 +1785,9 @@ export function convertRvtBytes(
           approximateSolids: displayBounds.length,
           nativeCategorisedElements: categorisedElements,
           geometryFidelity: "native-bounds-envelope",
-          materialFidelity: "display-fallback",
+          materialFidelity: nativeMaterialDefinitions.length
+            ? "native-definitions-unassigned"
+            : "display-fallback",
           semanticFidelity: categorisedElements
             ? (elementOwnership ? "native-categories-and-ownership" : "native-categories")
             : (elementOwnership ? "native-ownership" : "record-code-heuristic"),
@@ -1779,6 +1805,7 @@ export function convertRvtBytes(
           : undefined,
         elementOwnership,
         nativeIdentity,
+        nativeMaterialDefinitions,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
@@ -1789,6 +1816,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeIdentity
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
+            : []),
+          ...(nativeMaterialDefinitions.length
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; appearances and assignments remain unresolved.`]
             : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
@@ -1900,11 +1930,14 @@ export function convertRvtBytes(
           ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
           ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
           ...(nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
+          ...(nativeMaterialDefinitions.length
+            ? ["revit-2027-material-element-name-v1"]
+            : []),
         ],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
-        nativeMaterialDefinitions: 0,
+        nativeMaterialDefinitions: nativeMaterialDefinitions.length,
         nativeMaterialAssignments: 0,
         nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -1912,7 +1945,9 @@ export function convertRvtBytes(
         approximateSolids: used.length,
         nativeCategorisedElements: categorisedElements,
         geometryFidelity: "diagnostic-only",
-        materialFidelity: "display-fallback",
+        materialFidelity: nativeMaterialDefinitions.length
+          ? "native-definitions-unassigned"
+          : "display-fallback",
         semanticFidelity: categorisedElements
           ? (elementOwnership ? "native-categories-and-ownership" : "native-categories")
           : (elementOwnership ? "native-ownership" : "none"),
@@ -1932,6 +1967,7 @@ export function convertRvtBytes(
         : undefined,
       elementOwnership,
       nativeIdentity,
+      nativeMaterialDefinitions,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -1944,6 +1980,9 @@ export function convertRvtBytes(
           : []),
         ...(nativeIdentity
           ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
+          : []),
+        ...(nativeMaterialDefinitions.length
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; appearances and assignments remain unresolved.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

@@ -8,6 +8,7 @@ import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
+import type { NativeMaterialDefinition } from "./material-records.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -51,6 +52,12 @@ export type MaterialData = {
   doubleSided: boolean;
   source: "rvt-material" | "display-fallback";
   assignedElements: number;
+};
+
+export type LocatedNativeMaterialDefinition = NativeMaterialDefinition & {
+  stream: string;
+  chunkIndex: number;
+  storedOffset: number;
 };
 
 export type NativeProfileLocator = {
@@ -457,6 +464,8 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
+  /** Persisted material identities/names; assignment and appearance remain separate. */
+  nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
 };
 
 export type ConvertFailure = {

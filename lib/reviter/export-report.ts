@@ -140,6 +140,7 @@ export function makeReport(
       partitionNames: result.partitionNames ?? null,
       partAtom: result.partAtom ?? null,
       modelTree: modelTreeReport(result),
+      nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       elementManifest: {

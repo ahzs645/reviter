@@ -62,13 +62,24 @@ function resultWithOwnership(): ConvertResult {
         provenance: "Global/ElemTable.ElementHistory+Global/History.Episode" as const,
       })),
     },
+    nativeMaterialDefinitions: [{
+      elementId: 100,
+      name: "Concrete",
+      recordOffset: 12,
+      objectLength: 96,
+      objectMarker: 0x0ad3,
+      evidence: "framed-material-element-name",
+      stream: "Partitions/1",
+      chunkIndex: 2,
+      storedOffset: 65_249,
+    }],
     decoderCoverage: {
       revitVersion: 2027,
       activeDecoders: ["revit-2024-2027-elem-table-ownership-v1"],
       nativeCurves: 0,
       nativeProfiles: 0,
       nativeMeshes: 0,
-      nativeMaterialDefinitions: 0,
+      nativeMaterialDefinitions: 1,
       nativeMaterialAssignments: 0,
       nativeUniqueIds: 3,
       nativeOwnershipRecords: 3,
@@ -76,7 +87,7 @@ function resultWithOwnership(): ConvertResult {
       approximateSolids: 0,
       nativeCategorisedElements: 0,
       geometryFidelity: "diagnostic-only",
-      materialFidelity: "display-fallback",
+      materialFidelity: "native-definitions-unassigned",
       semanticFidelity: "native-ownership",
     },
     origin: { x: 0, y: 0, z: 0 },
@@ -150,4 +161,15 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     false,
   );
   assert.equal(report.fidelity.nativeUniqueIds, 3);
+  assert.deepEqual(report.nativeMaterialDefinitions, [{
+    elementId: 100,
+    name: "Concrete",
+    recordOffset: 12,
+    objectLength: 96,
+    objectMarker: 0x0ad3,
+    evidence: "framed-material-element-name",
+    stream: "Partitions/1",
+    chunkIndex: 2,
+    storedOffset: 65_249,
+  }]);
 });
