@@ -59,19 +59,34 @@ the `GPolyMesh` style ID, material ID, and flags. The earlier observation that
 two tails happen to begin with valid native element handles (`547662` and
 `532606`) cannot establish ownership.
 
-The bytes immediately before the three bodies also fit this queued layout.
-They contain repeated six-byte values of the form:
+The bytes immediately before the three candidate spans are a complete counted
+`OdBmCondInt16` collection. The exact item order is:
 
 ```text
-a7 08 | sequential uint32
+int32 token | int16 source-class slot
 ```
 
-The 2026 module maps source slot `0x08a7` (`2215`) to `GFlipControl`. The runs
-end at values `972`, `129`, and `87` respectively. They belong to preceding
-queued geometry data and are not a faceted-topology selector. The coincidental
-schema tag value `0x08a7` associated with `GArray` is a different namespace.
+The apparent `a7 08 | uint32` pattern was the same six-byte item viewed from
+the wrong boundary. Reading from the counted collection start produces:
 
-## Proven `FacetedTopology8` body
+| Chunk | Count offset | Count | First run | Second run | Replay offset |
+| ---: | ---: | ---: | --- | --- | ---: |
+| 2,953 | 32,787 | 694 | 5 × slot 2,248, tokens 279–283 | 689 × slot 2,215, tokens 284–972 | 36,955 |
+| 3,002 | 2,262 | 110 | 4 × slot 2,248, tokens 20–23 | 106 × slot 2,215, tokens 24–129 | 2,926 |
+| 3,169 | 9,516 | 26 | 4 × slot 2,248, tokens 62–65 | 22 × slot 2,215, tokens 66–87 | 9,676 |
+
+The exact 2026 module maps slot 2,248 to `GStyle` and slot 2,215 to
+`GFlipControl`. Neither is `GPolyMesh` (2,237) or common
+`FacetedTopology8` (5,255). The replay starts at the same offsets previously
+treated as topology starts.
+
+This is stronger than a missing selector: `OdBmDynamicQueue::readProperties`
+can satisfy retained values before consuming the stream, so a multi-entry
+queue does not make the first replay bytes adjacent to one determinable
+descriptor. The queue state must be reproduced. Adjacency alone cannot bind a
+body.
+
+## `FacetedTopology8` body grammar
 
 The runtime inheritance chain is:
 
@@ -105,8 +120,9 @@ selector-free body:
 | `m_facetsArr` | signed `int32` count + `uint16[count][3]` |
 | `m_edgeVisFlagsArr` | signed `int32` count + `uint8[count]` |
 
-All three UNBC payloads start at normals mode `2`, contain one normal per
-triangle, and contain one edge-visibility byte per triangle:
+Three UNBC spans validate against that grammar: they start at normals mode `2`,
+contain one apparent normal per apparent triangle, and contain one apparent
+edge-visibility byte per apparent triangle:
 
 | Chunk / body start | Normals | Vertices | Triangles | Body end |
 | --- | ---: | ---: | ---: | ---: |
@@ -114,10 +130,25 @@ triangle, and contain one edge-visibility byte per triangle:
 | 3,002 / 2,926 | 26 | 20 | 26 | 3,692 |
 | 3,169 / 9,676 | 104 | 104 | 104 | 12,932 |
 
-`locateFacetedTopology8Body` implements exactly this bounded body reader. It
-requires the corroborated mode and cardinalities, validates the complete mesh,
-and returns the exact end offset. It neither scans arbitrary bytes nor assigns
-an owner.
+`locateFacetedTopology8Body` implements exactly this bounded shape validator.
+It requires the mode and cardinalities, validates the complete mesh, and
+returns the exact end offset. The counted queue proof above demonstrates why
+that result is not itself proof that a span is a topology body.
+
+`bindQueuedFacetedTopology8` adds the fail-closed ownership gate. It only binds
+when:
+
+1. exactly one queued item ends at the replay boundary;
+2. that item is common source slot 5,255 and its token matches the retained
+   `GPolyMesh` topology property;
+3. the owning record was entered as Revit 2026 source slot 2,237;
+4. owner, 64-bit style/material IDs, signed flags, and affine transform are
+   all supplied and valid; and
+5. the complete topology body validates.
+
+All three UNBC spans are rejected at condition 1 with
+`faceted topology ownership is ambiguous in a multi-entry DynamicQueue`.
+Reviter therefore does not emit them as owned geometry.
 
 ## Remaining ownership bridge
 
@@ -138,7 +169,22 @@ that can alter a descendant mesh's placement. A mesh cannot be compared with
 IFC coordinates until both the child path to its `GRep` and every intervening
 instance/array transform have been replayed.
 
-The smallest unresolved layer is now the `OdBmDynamicQueue` replay:
+`Trf201120260Reader::read` at `TB_LoaderBase.tx:0xe70c4` establishes a
+96-byte transform body:
+
+```text
+float64 xAxis[3]
+float64 yAxis[3]
+float64 zAxis[3]
+float64 origin[3]
+```
+
+The native reader constructs a coordinate system, transposes its basis, and
+places the origin in the translation terms. `decodeTrf201120260` returns the
+equivalent browser column-major affine matrix. It rejects truncation,
+non-finite values, and a singular basis.
+
+The smallest unresolved layer remains the stateful `OdBmDynamicQueue` replay:
 
 1. enter a `GPolyMesh` through source-class slot `2237`;
 2. retain the condition/source-slot tuple queued for `m_pFacetedTopology`;
@@ -146,5 +192,7 @@ The smallest unresolved layer is now the `OdBmDynamicQueue` replay:
 4. associate the selector-free body with that retained `GPolyMesh` context;
 5. only then attach the owner's transform, style, material, and element.
 
-Until that queue association is implemented, the three bodies are valid
-meshes but are intentionally not emitted as owned model geometry.
+The collection syntax and transform body are now implemented, but retained
+queue data and exact outer-object entry still have to be reproduced. Until
+then, the three spans are intentionally rejected rather than emitted as owned
+model geometry.

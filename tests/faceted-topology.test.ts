@@ -85,7 +85,7 @@ test("supports per-vertex normals and reports repeated-index triangles", () => {
   if (result.ok) assert.equal(result.mesh.degenerateTriangles, 1);
 });
 
-test("locates the corroborated selector-free FacetedTopology8 body", () => {
+test("validates a selector-free FacetedTopology8-shaped body", () => {
   const data = new Uint8Array(91);
   const view = new DataView(data.buffer);
   const start = 4;

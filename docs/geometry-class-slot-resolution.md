@@ -113,5 +113,5 @@ reproducing that queued-property association so a selector-free topology body
 can be joined back to its owning `GPolyMesh`.
 
 See `docs/rvt-2026-gpolymesh-reader-boundary.md` for the reader call order and
-the exact `FacetedTopology8` body boundary established against all three UNBC
+the `FacetedTopology8`-shaped span boundary measured against all three UNBC
 payloads.

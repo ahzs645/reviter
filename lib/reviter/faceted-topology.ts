@@ -166,18 +166,19 @@ function readCountedField(
 }
 
 /**
- * Locate the complete selector-free body of the Revit 2026
- * `FacetedTopology8` form measured in the UNBC model.
+ * Validate bytes against the complete selector-free body shape of the Revit
+ * 2026 `FacetedTopology8` form.
  *
  * The release schema and native inheritance establish this exact order:
  *
  * `normalsFlag:i32`, `commonNormal:f32[3]`, counted face normals,
  * counted float points, counted u16 triangle facets, counted edge bytes.
  *
- * This deliberately requires the corroborated normals mode (`2`) and the
- * observed one-normal/one-edge-byte-per-face cardinalities. It starts only at
- * an offset supplied by a higher-level queued-property reader; it does not
- * scan arbitrary partition bytes or claim an owning `GPolyMesh`.
+ * This deliberately requires normals mode `2` and one-normal/one-edge-byte
+ * per face. Structural validity alone does not prove the bytes are topology:
+ * real `GStyle`/`GFlipControl` replays in the UNBC model produce the same byte
+ * shape. Callers must establish the queued-property and owner context before
+ * emitting geometry.
  */
 export function locateFacetedTopology8Body(
   data: Uint8Array,
