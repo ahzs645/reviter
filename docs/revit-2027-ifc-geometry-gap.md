@@ -24,34 +24,35 @@ The exact IFC SHA-256 is
 
 ## Exact UNBC result
 
-The certified browser mesh audit publishes 31,353 distinct RVT product
-candidates: 5,815 direct geometry owners plus 25,538 placed instances. It
-matches 25,642 of the IFC's 36,144 distinct numeric geometry Tags.
+The certified browser mesh audit publishes 38,807 distinct RVT product
+candidates: 13,269 direct geometry owners plus 25,538 placed instances. It
+matches 33,090 of the IFC's 36,144 distinct numeric geometry Tags, or 91.55%.
 
-The remaining 10,502 IFC Tags split into two disjoint persisted-route gaps:
+The remaining 3,054 IFC Tags split into three disjoint persisted-route gaps:
 
 | Missing RVT route | Tags | IFC triangles |
 | --- | ---: | ---: |
-| no certified direct owner or placement | 8,483 | 449,323 |
 | exact placement to an unreplayed owner | 2,019 | 166,472 |
+| no certified direct owner or placement | 925 | 220,357 |
+| direct geometry owner without a certified mesh | 110 | 80,404 |
 
-There are 327 distinct unreplayed shared owners behind the second row.
+There are 327 distinct unreplayed shared owners behind the placement row.
 
 The class distribution is:
 
-| IFC class | Missing tags | No owner/placement | Unreplayed shared owner |
-| --- | ---: | ---: | ---: |
-| `IfcWallStandardCase` | 7,381 | 7,381 | 0 |
+| IFC class | Missing tags | No owner/placement | Unreplayed shared owner | Direct owner, no mesh |
+| --- | ---: | ---: | ---: | ---: |
 | `IfcDoor` | 1,912 | 0 | 1,912 |
-| `IfcMember` | 354 | 354 | 0 |
-| `IfcColumn` | 311 | 224 | 87 |
-| `IfcRailing` | 215 | 215 | 0 |
-| `IfcWall` | 140 | 140 | 0 |
-| `IfcStairFlight` | 108 | 108 | 0 |
-| `IfcSlab` | 49 | 49 | 0 |
-| `IfcWindow` | 20 | 0 | 20 |
-| `IfcRamp` | 11 | 11 | 0 |
-| `IfcRoof` | 1 | 1 | 0 |
+| `IfcMember` | 354 | 354 | 0 | 0 |
+| `IfcColumn` | 311 | 224 | 87 | 0 |
+| `IfcRailing` | 215 | 105 | 0 | 110 |
+| `IfcStairFlight` | 108 | 108 | 0 | 0 |
+| `IfcWallStandardCase` | 59 | 59 | 0 | 0 |
+| `IfcSlab` | 49 | 49 | 0 | 0 |
+| `IfcWindow` | 20 | 0 | 20 | 0 |
+| `IfcWall` | 14 | 14 | 0 | 0 |
+| `IfcRamp` | 11 | 11 | 0 | 0 |
+| `IfcRoof` | 1 | 1 | 0 | 0 |
 
 The largest unreplayed owner groups are FamilySymbol-shaped objects:
 
@@ -65,10 +66,38 @@ The largest unreplayed owner groups are FamilySymbol-shaped objects:
 | 2,179,544 | 24 | `IfcColumn` | 288 |
 
 These owners have the exact Revit 2027 `FamilySymbol` wire marker `0x0810`,
-not the currently replayed `GElement` marker. Owner 845,328 contains ten
+not the currently replayed `GElement` marker. Owner 845,328 contains eleven
 contiguous persisted 105-byte Plane bodies near the end of its 8,297-byte
-frame. Those surfaces are positive geometry evidence, but surfaces alone do
-not establish the native face-loop-edge ownership required to publish a solid.
+frame. Exact field-order and queue inspection identifies them as
+`FamilySymbol.m_refFaces` surfaces. Every owning Face has no first loop or
+face region, so these are unbounded reference faces rather than drawable BRep
+topology.
+
+## System-wall route correction
+
+The original inventory admitted only a GRep root with one initial `Geometry`
+descriptor. This excluded 7,322 `IfcWallStandardCase` products even though the
+existing FIFO readers could already replay their full topology. Their exact
+root shape is:
+
+```text
+[GGroup, GGroup, GGroup, GGroup, Geometry]
+```
+
+The release-gated classifier now accepts exactly `[Geometry]` or one-or-more
+leading `GGroup` descriptors followed by one terminal `Geometry`. It rejects
+`GFilter`, null/unknown descriptors, non-terminal Geometry, and repeated
+Geometry. With that caller gate corrected:
+
+- all 7,322 group-prefixed standard-wall roots replay and mesh;
+- 7,322 of 7,381 `IfcWallStandardCase` Tags and 126 of 140 `IfcWall` Tags
+  enter the certified candidate set;
+- certified owner meshes rise to 13,269 owners and 302,235 local triangles;
+- overall IFC Tag coverage rises from 70.94% to 91.55%.
+
+The 110 direct-owner/no-mesh cases are railings whose nested persisted
+`Trf201120260` currently contains a non-finite scalar. They remain fail-closed
+pending an exact transform-semantic decode.
 
 ## Consequence
 
@@ -87,12 +116,14 @@ and BRep tessellator can consume a certified graph, but must not infer topology
 from a collection of plane equations or use the IFC mesh as replacement
 topology.
 
-This inventory therefore sets two separate implementation tracks:
+This inventory therefore sets three separate implementation tracks:
 
 - replay the Revit 2027 FamilySymbol geometry graph to unlock the 2,019 already
   placed doors, windows, and columns;
-- locate and replay the system-family geometry route for the 8,483 products
-  that have no current direct-owner or shared-placement candidate, especially
-  walls.
+- recover the exact nested-transform semantics for the 110 already located
+  railing owners;
+- locate the persisted owner routes for the remaining 925 products, led by
+  members, columns, stair flights, and railings.
 
-Adding another surface tessellator cannot by itself fix either ownership gap.
+Adding another surface tessellator cannot by itself fix these ownership and
+regeneration gaps.
