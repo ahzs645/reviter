@@ -160,6 +160,18 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     report.elementManifest.unavailableFields.includes("Revit UniqueId"),
     false,
   );
+  assert.equal(
+    report.elementManifest.unavailableFields.includes(
+      "element-to-material assignment",
+    ),
+    true,
+  );
+  assert.equal(
+    report.elementManifest.unavailableFields.includes(
+      "per-face material assignment",
+    ),
+    true,
+  );
   assert.equal(report.fidelity.nativeUniqueIds, 3);
   assert.deepEqual(report.nativeMaterialDefinitions, [{
     elementId: 100,
@@ -172,4 +184,25 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     chunkIndex: 2,
     storedOffset: 65_249,
   }]);
+});
+
+test("semantic report does not label recovered material assignments unavailable", () => {
+  const result = resultWithOwnership();
+  result.decoderCoverage.nativeMaterialAssignments = 1;
+  result.decoderCoverage.materialFidelity = "native-assigned";
+
+  const report = JSON.parse(makeReport(result, null));
+  assert.equal(report.fidelity.materialAssignments, 1);
+  assert.equal(
+    report.elementManifest.unavailableFields.includes(
+      "element-to-material assignment",
+    ),
+    false,
+  );
+  assert.equal(
+    report.elementManifest.unavailableFields.includes(
+      "per-face material assignment",
+    ),
+    true,
+  );
 });

@@ -120,10 +120,16 @@ context.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       if (evidence.materials.length) {
         result.materials.push(...evidence.materials);
         result.decoderCoverage.nativeMaterialDefinitions = evidence.materials.length;
-        result.decoderCoverage.materialFidelity = "native-definitions-unassigned";
+        const hasNativeAssignments =
+          result.decoderCoverage.nativeMaterialAssignments > 0;
+        result.decoderCoverage.materialFidelity = hasNativeAssignments
+          ? "native-assigned"
+          : "native-definitions-unassigned";
         result.decoderCoverage.activeDecoders.push("rvt-rs-material-fields-v1");
         result.warnings.push(
-          `${evidence.materials.length} native RVT material definitions were decoded, but element-to-material assignments and texture assets are not decoded yet.`,
+          hasNativeAssignments
+            ? `${evidence.materials.length} native RVT material definitions were decoded; geometry-level assignments are available, but per-face assignments and texture assets are not decoded yet.`
+            : `${evidence.materials.length} native RVT material definitions were decoded, but element-to-material assignments and texture assets are not decoded yet.`,
         );
       }
       context.postMessage({

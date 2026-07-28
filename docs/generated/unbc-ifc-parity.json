@@ -9,17 +9,17 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 56907064,
-      "sha256": "b72e2abd02d7d83acc0fee41901f407ff320251a50e281aecd3ffba6a51024b2",
-      "analyticalSha256": "1dfb873b5d51f1b3c21f7bb417d4e1f995d0655ce3cea4e121a24a91a92b979c",
+      "bytes": 56907349,
+      "sha256": "b52e0e0c7cdf658f57bfabfda736054b54418a6df6ff83525da6bf886fec2d1b",
+      "analyticalSha256": "761b4d6713c016691be4dcd5037f9d912e32f0a4851a6f6f42019575d95abba3",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
     },
     "glb": {
       "name": "unbc-parity.glb",
-      "bytes": 13103892,
-      "sha256": "77818ed3b4245f165017349fd695e7c49cfd4eced6bdd33828602d470cf4a38e"
+      "bytes": 13104148,
+      "sha256": "58b36e71f8bb3f540402049f2ecd32db72aed8d09af021d0bb18b980e34174bb"
     }
   },
   "ifc": {
@@ -767,7 +767,7 @@
         "Формообразующий элемент-перекрытие по умолчанию",
         "Этаж по умолчанию"
       ],
-      "nativeMaterialAssignments": 0,
+      "nativeMaterialAssignments": 5413,
       "geometrySources": {
         "placed-shared-shape": 25871,
         "analytic-plane-solid": 9096,
@@ -819,7 +819,7 @@
       },
       "unavailableFields": [
         "loadable-family name",
-        "element-to-material assignment"
+        "per-face material assignment"
       ],
       "declaredFidelity": {
         "metadata": "verified",
@@ -829,7 +829,7 @@
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "materialDefinitions": 54,
-        "materialAssignments": 0,
+        "materialAssignments": 5413,
         "nativeUniqueIds": 74437,
         "modelTree": "native-revit-owning-element",
         "modelTreeRecords": 74437,
@@ -983,20 +983,24 @@
           "revit-builtin-category-token-v1",
           "revit-2024-2027-elem-table-ownership-v1",
           "revit-2027-native-identity-v1",
-          "revit-2027-material-element-name-v1"
+          "revit-2027-material-element-name-v1",
+          "revit-2027-family-symbol-family-v1",
+          "revit-2027-geometry-material-id-v1"
         ],
         "nativeCurves": 0,
         "nativeProfiles": 0,
         "nativeMeshes": 0,
         "nativeMaterialDefinitions": 54,
-        "nativeMaterialAssignments": 0,
+        "nativeMaterialAssignments": 5413,
+        "nativeFamilySymbols": 7807,
+        "nativeFamilyRelations": 66,
         "nativeUniqueIds": 74437,
         "nativeOwnershipRecords": 74437,
         "nativeOwnershipRelations": 50205,
         "approximateSolids": 36547,
         "nativeCategorisedElements": 39157,
         "geometryFidelity": "native-bounds-envelope",
-        "materialFidelity": "native-definitions-unassigned",
+        "materialFidelity": "native-assigned",
         "semanticFidelity": "native-categories-and-ownership"
       }
     }
@@ -1016,7 +1020,7 @@
     "familyNameRatio": 0,
     "propertyElementRatio": 0.2922734064375617,
     "materialDefinitionRatio": 0.7241379310344828,
-    "materialAssignmentRatio": 0,
+    "materialAssignmentRatio": 0.14944369288534276,
     "dimensionSpans": {
       "ifcWebIfcAxesMetres": [
         217.89892670153483,

@@ -16,11 +16,13 @@ so it does not depend on Revit or the proprietary ODA binaries.
 
 ## Executive result
 
-At checkpoint `67e32d4`, Reviter is two elements short of the IFC's tagged
-drawable population. Native Revit identity is complete for every numeric IFC
-Tag, persisted ownership reaches 68.0% of comparable IFC tree members, and 21
-of 29 IFC material names are decoded as native definitions. It still does not
-match the IFC's **shape detail, material assignment, or family semantics**.
+At this checkpoint, Reviter is two elements short of the IFC's tagged drawable
+population. Native Revit identity is complete for every numeric IFC Tag,
+persisted ownership reaches 68.0% of comparable IFC tree members, and 21 of 29
+IFC material names are decoded as native definitions. The parser now recovers
+5,413 geometry-level material assignments and 66 `FamilySymbol` → `Family`
+relations. It still does not match the IFC's **shape detail, full material
+assignment population, or emitted family semantics**.
 
 | Measure | IFC reference | Current Reviter | Parity |
 | --- | ---: | ---: | ---: |
@@ -34,7 +36,7 @@ match the IFC's **shape detail, material assignment, or family semantics**.
 | Numeric-tagged elements with IFC family name | 38,063 | 0 | 0% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Unique IFC material names | 29 | 21 exact native definitions | 72.4% |
-| Elements assigned materials, including through type | 36,221 | 0 native assignments | 0% |
+| Elements assigned materials, including through type | 36,221 | 5,413 native geometry assignments | 14.9% |
 | Numeric-tagged containment/aggregation members | 38,063 | 25,884 persisted ownership members | 68.0% |
 
 The triangle and vertex ratios are diagnostic, not a demand for byte-identical
@@ -148,13 +150,20 @@ Type recovery is smaller but exact: all 7,515 IFC-tagged elements for which
 Reviter emits a type name match the corresponding IFC type-object name after
 splitting its `Family:Type` representation. The remaining 30,548 typed Tags
 have no decoded type name. No family name is emitted for any of the 38,063
-numeric-tagged IFC type members, so full loadable-family/type regeneration
-remains open.
+numeric-tagged IFC type members. The native relationship decoder does recover
+66 `FamilySymbol.m_familyId` links, including 17 IFC-family-named symbols
+resolving to two family records with no mixed target, but the family records'
+names and full loadable-family/type regeneration remain open.
 
 Native material-definition framing yields 54 RVT names. Of the IFC's 29 unique
 names, 21 match exactly. The eight unresolved IFC names are recorded in the
-machine report. This is definition coverage only: native element, type, layer,
-geometry, and face assignments remain 0 of the IFC's 36,221 assigned elements.
+machine report. Three proven persisted geometry layouts add 5,413 native
+geometry-to-material assignments, or 14.9% of the IFC's 36,221 directly or
+indirectly assigned elements. Among the 5,393 decoded assignments that can be
+correlated with an IFC material association, all 5,393 material names match
+exactly. That establishes precision for the decoded subset; type, compound
+layer, face-level, appearance-asset, category, and view-override material paths
+remain open.
 
 The current 81,806 recovered parameter entries cannot be compared one-for-one
 with 12,375 IFC property value entities because the IFC reuses property
@@ -169,25 +178,25 @@ and compare typed values and units.
    Recover the own geometry or a proven typed geometry relation for member
    `1272040` and stair flight `1280585`. Persisted ownership proves that their
    adjacent element rows are not substitutes.
-2. **Finish the topology collection boundary, then use the tessellator already
-   exposed.** Current field-schema work resolves `FacetedTopology0` point and
-   facet descriptors, but the UNBC probe finds no direct counted-array body
-   after the selector. The next missing grammar is the property/inheritance or
-   PArray item/group token immediately before its dynamic count. Decoding that
-   token is smaller and more general than adding another category-specific box
-   rule; it is the path to the missing door, railing, stair, wall, and column
-   surface detail.
-3. **Decode the family/type carrier that follows the proven instance type ID.**
-   Existing system-family type names are trustworthy—7,515 of 7,515 match the
-   IFC exactly—but 30,548 tagged type members and all 38,063 family names remain
-   absent. Preserve shared family geometry plus transforms rather than
-   expanding its 27,776 IFC mapped-item occurrences.
-4. **Extend material records in two bounded steps.** First, close the remaining
-   material-name layouts (40 framed material elements currently have an
-   unsupported or empty name layout; the IFC has eight names not yet matched).
-   Second, decode persisted element/type/layer/face material references and
-   resolve them to the 54 definition IDs. Definition counts or display colors
-   cannot substitute for the 36,221 IFC-assigned elements.
+2. **Replay the dynamic geometry queue and connect decoded topology to an
+   owner.** The browser-safe `FacetedTopology8` reader now validates all three
+   strict UNBC bodies, including per-face normals, points, facets, and edge
+   flags. The remaining grammar is the `CondInt16Reader` deferred queue used by
+   `GGroup`/`GPolyMesh`, followed by the `GInstance`/`GArray` transform branches.
+   Until that queue is replayed, bytes after a topology body cannot safely be
+   labelled as owner, style, material, or transform fields.
+3. **Resolve the remaining family carrier and regenerate shared family
+   geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
+   match the IFC exactly—and 66 persisted `FamilySymbol` → `Family` relations
+   are now proven. However, 30,548 tagged type members and all 38,063 emitted
+   family names remain absent. Preserve shared family geometry plus transforms
+   rather than expanding its 27,776 IFC mapped-item occurrences.
+4. **Extend material records in bounded layers.** First, close the remaining
+   material-name layouts (the IFC has eight names not yet matched). Then extend
+   the 5,413 exact geometry-level assignments through type, compound layer,
+   BRep face, appearance asset, category, and view override paths. The decoded
+   subset has 5,393/5,393 IFC-correlated name precision, but it cannot
+   substitute for the IFC's full 36,221-element assignment population.
 5. **Add spatial containment separately from ownership.** `OwningElementId`
    gives 25,884 comparable IFC tree memberships and must remain the genuine
    ownership edge. The residual 12,179 tagged IFC tree members require level,

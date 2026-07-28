@@ -153,7 +153,10 @@ export function makeReport(
           ...(!result.nativeIdentity ? ["Revit UniqueId"] : []),
           "loadable-family name",
           ...(!result.elementOwnership ? ["model-tree hierarchy"] : []),
-          "element-to-material assignment",
+          ...(result.decoderCoverage.nativeMaterialAssignments === 0
+            ? ["element-to-material assignment"]
+            : []),
+          "per-face material assignment",
         ],
         elements: elementManifest(result),
       },
