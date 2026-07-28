@@ -130,6 +130,7 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
     membershipCount: 2,
     ownershipMembershipCount: 2,
     hostMembershipCount: 0,
+    associatedLevelMembershipCount: 0,
     uniqueMemberCount: 2,
     rootRecordCount: 1,
     selfOwnedRecordCount: 0,
@@ -155,6 +156,7 @@ test("semantic report carries persisted model-tree nodes and fidelity counts", (
       },
     ],
     hostRelations: [],
+    associatedLevelRelations: [],
   });
   assert.equal(
     report.elementManifest.unavailableFields.includes("model-tree hierarchy"),
@@ -212,6 +214,35 @@ test("semantic report keeps host membership distinct from owning-element members
   assert.equal(report.modelTree.hostMembershipCount, 1);
   assert.equal(report.modelTree.hostRelations[0].elementId, 103);
   assert.equal(report.modelTree.hostRelations[0].hostId, 100);
+  assert.equal(report.modelTree.associatedLevelMembershipCount, 0);
+});
+
+test("semantic report keeps associated-level membership distinct from ownership and host", () => {
+  const result = resultWithOwnership();
+  result.nativeAssociatedLevelRelations = [{
+    elementId: 103,
+    levelId: 900,
+    fieldOffset: 70,
+    recordOffset: 200,
+    objectLength: 537,
+    objectMarker: 0x0f3b,
+    kind: "associated-level",
+    source: "Partitions/Element.m_assocLevelId",
+    evidence: "persisted",
+  }];
+  const report = JSON.parse(makeReport(result, null));
+  assert.equal(
+    report.fidelity.modelTree,
+    "native-revit-owning-element-and-associated-level",
+  );
+  assert.equal(report.fidelity.modelTreeMemberships, 3);
+  assert.equal(report.fidelity.modelTreeUniqueMembers, 3);
+  assert.equal(report.fidelity.modelTreeAssociatedLevelMemberships, 1);
+  assert.equal(report.modelTree.ownershipMembershipCount, 2);
+  assert.equal(report.modelTree.hostMembershipCount, 0);
+  assert.equal(report.modelTree.associatedLevelMembershipCount, 1);
+  assert.equal(report.modelTree.associatedLevelRelations[0].elementId, 103);
+  assert.equal(report.modelTree.associatedLevelRelations[0].levelId, 900);
 });
 
 test("semantic report does not label recovered material assignments unavailable", () => {

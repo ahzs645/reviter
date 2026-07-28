@@ -74,6 +74,16 @@ export type {
   HostRelationCandidate,
   NativeHostRelation,
 } from "./host-relations";
+export {
+  resolveAssociatedLevelRelations,
+  REVIT_2027_LEVEL_MARKER,
+  scanAssociatedLevelRelationCandidates,
+} from "./level-relations";
+export type {
+  AssociatedLevelFieldOffset,
+  AssociatedLevelRelationCandidate,
+  NativeAssociatedLevelRelation,
+} from "./level-relations";
 export type {
   FamilySymbolCandidate,
   GeometryMaterialCandidate,

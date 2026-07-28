@@ -1901,6 +1901,9 @@ export function convertRvtBytes(
             ...(nativeHostRelations.length
               ? ["revit-2027-insertable-host-id-v1"]
               : []),
+            ...(nativeAssociatedLevelRelations.length
+              ? ["revit-2027-associated-level-id-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
@@ -1911,6 +1914,8 @@ export function convertRvtBytes(
           nativeFamilySymbols: sharedGeometryIds.size,
           nativeFamilyRelations: nativeFamilySymbolRelations.length,
           nativeHostRelations: nativeHostRelations.length,
+          nativeAssociatedLevelRelations:
+            nativeAssociatedLevelRelations.length,
           nativeFamilyDefinitions: nativeFamilyDefinitions.length,
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -1946,6 +1951,7 @@ export function convertRvtBytes(
         nativeGeometryMaterialAssignments,
         nativeElementMaterialAssignments,
         nativeHostRelations,
+        nativeAssociatedLevelRelations,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
@@ -1965,6 +1971,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeHostRelations.length
             ? [`${nativeHostRelations.length.toLocaleString()} persisted hosted-element relationships were decoded from InsertableInst.m_hostId.`]
+            : []),
+          ...(nativeAssociatedLevelRelations.length
+            ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]
             : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
@@ -2094,6 +2103,9 @@ export function convertRvtBytes(
           ...(nativeHostRelations.length
             ? ["revit-2027-insertable-host-id-v1"]
             : []),
+          ...(nativeAssociatedLevelRelations.length
+            ? ["revit-2027-associated-level-id-v1"]
+            : []),
         ],
         nativeCurves: 0,
         nativeProfiles: 0,
@@ -2104,6 +2116,8 @@ export function convertRvtBytes(
         nativeFamilySymbols: sharedGeometryIds.size,
         nativeFamilyRelations: nativeFamilySymbolRelations.length,
         nativeHostRelations: nativeHostRelations.length,
+        nativeAssociatedLevelRelations:
+          nativeAssociatedLevelRelations.length,
         nativeFamilyDefinitions: nativeFamilyDefinitions.length,
         nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
@@ -2141,6 +2155,7 @@ export function convertRvtBytes(
       nativeGeometryMaterialAssignments,
       nativeElementMaterialAssignments,
       nativeHostRelations,
+      nativeAssociatedLevelRelations,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -2162,6 +2177,9 @@ export function convertRvtBytes(
           : []),
         ...(nativeHostRelations.length
           ? [`${nativeHostRelations.length.toLocaleString()} persisted hosted-element relationships were decoded from InsertableInst.m_hostId.`]
+          : []),
+        ...(nativeAssociatedLevelRelations.length
+          ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

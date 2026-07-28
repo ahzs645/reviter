@@ -181,6 +181,9 @@ function parseSemantic(bytes) {
   const modelTreeHostRelations = semantic.modelTree?.evidence === "persisted"
     ? semantic.modelTree?.hostRelations ?? []
     : [];
+  const modelTreeAssociatedLevelRelations = semantic.modelTree?.evidence === "persisted"
+    ? semantic.modelTree?.associatedLevelRelations ?? []
+    : [];
   const nativeMaterialDefinitions = semantic.nativeMaterialDefinitions ?? [];
   const nativeFamilyDefinitions = semantic.nativeFamilyDefinitions ?? [];
   const byCategory = new Map();
@@ -261,6 +264,15 @@ function parseSemantic(bytes) {
       Number.isSafeInteger(relation.elementId) &&
       Number.isSafeInteger(relation.hostId) &&
       relation.elementId !== relation.hostId
+    ) {
+      modelTreeMemberIds.add(relation.elementId);
+    }
+  }
+  for (const relation of modelTreeAssociatedLevelRelations) {
+    if (
+      Number.isSafeInteger(relation.elementId) &&
+      Number.isSafeInteger(relation.levelId) &&
+      relation.elementId !== relation.levelId
     ) {
       modelTreeMemberIds.add(relation.elementId);
     }
