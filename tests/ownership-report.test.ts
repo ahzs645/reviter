@@ -265,3 +265,66 @@ test("semantic report does not label recovered material assignments unavailable"
     true,
   );
 });
+
+test("element manifest merges native material carriers without losing face evidence", () => {
+  const result = resultWithOwnership();
+  result.elementBounds = [{
+    elementId: 101,
+    stream: "Partitions/1",
+    chunkIndex: 2,
+    rawOffset: 400,
+    recordOffset: 12,
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 1, y: 2, z: 3 },
+    },
+  }];
+  result.nativeElementMaterialAssignments = [
+    {
+      elementId: 101,
+      geometryId: 700,
+      materialId: 100,
+      evidence: "persisted-instance-shared-geometry-material",
+    },
+    {
+      elementId: 101,
+      symbolId: 800,
+      materialId: 100,
+      geometryTags: [65, 46, 65],
+      evidence: "persisted-instance-family-symbol-geometry-tag-material",
+    },
+  ];
+  result.nativeCompoundLayerMaterialAssignments = [
+    {
+      elementId: 101,
+      typeId: 900,
+      layerIndex: 2,
+      materialId: 100,
+      widthFeet: 0.5,
+      function: 1,
+      evidence: "persisted-element-type-compound-layer-material",
+    },
+    {
+      elementId: 101,
+      typeId: 900,
+      layerIndex: 0,
+      materialId: 100,
+      widthFeet: 0.25,
+      function: 2,
+      evidence: "persisted-element-type-compound-layer-material",
+    },
+  ];
+
+  const report = JSON.parse(makeReport(result, null));
+  assert.deepEqual(report.elementManifest.elements[0].materialAssignments, [{
+    materialId: 100,
+    name: "Concrete",
+    evidence: [
+      "persisted-element-type-compound-layer-material",
+      "persisted-instance-family-symbol-geometry-tag-material",
+      "persisted-instance-shared-geometry-material",
+    ],
+    geometryTags: [46, 65],
+    layerIndices: [0, 2],
+  }]);
+});
