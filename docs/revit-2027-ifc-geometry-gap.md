@@ -159,9 +159,48 @@ Geometry. With that caller gate corrected:
 - certified owner meshes rise to 13,269 owners and 302,235 local triangles;
 - overall IFC Tag coverage rises from 70.94% to 91.55%.
 
-The 110 direct-owner/no-mesh cases are railings whose nested persisted
-`Trf201120260` currently contains a non-finite scalar. They remain fail-closed
-pending an exact transform-semantic decode.
+The 110 direct-owner/no-mesh cases are railings with nested persisted
+`GInstance` nodes. An earlier 144-byte observational window crossed the
+44-byte `GInstance` body into its queued 112-byte `InstanceInfo` body and
+misreported the boundary as a non-finite transform. The corrected FIFO readers
+now replay all 13,568 eligible roots without failure, including these 110.
+They still emit no certified mesh because their drawable geometry must be
+resolved through the nested symbol reference and composed transform; that
+transition remains fail-closed.
+
+## Production browser handoff
+
+The certified replay is no longer audit-only. `convertRvtBytes` now retains
+complete Revit 2027 owner meshes, expands reusable owners through exact
+persisted instance transforms after the final scene origin is known, and
+replaces a display proxy only after the whole native element is admitted.
+IFC is never read by this path.
+
+On the exact UNBC RVT:
+
+| Production measure | Result |
+| --- | ---: |
+| Complete persisted owners retained | 13,236 |
+| Elements emitted with certified native geometry | 32,411 |
+| Certified Face meshes after placement expansion | 228,996 |
+| Certified native triangles | 503,217 |
+| Elements retaining proxy geometry | 4,137 |
+| Incomplete owners retaining proxies | 332 |
+| Native items rejected by independent RVT-envelope check | 657 |
+| Native items without an independent display envelope | 306 |
+| Final scene triangles, native plus fallback | 575,269 |
+
+Every positive-loop/topological Face must have a certified mesh; zero-loop
+reference faces are recorded separately. Native output is also atomic per
+element, capped at 1.25 million stored/output triangles, and checked against
+the independently decoded RVT element envelope with a 0.5-foot containment
+tolerance. A failed completeness, bounds, or capacity check leaves the proxy
+in place.
+
+The exact-model benchmark took 41.25 seconds versus 36.95 seconds for the
+prior proxy-only conversion. Peak resident memory measured 2.10 GB versus
+2.51 GB in that run; runtime/memory figures are environment-sensitive and are
+reported as one local comparison, not a browser guarantee.
 
 ## Consequence
 
@@ -184,8 +223,8 @@ This inventory therefore sets three separate implementation tracks:
 
 - replay the Revit 2027 FamilySymbol geometry graph to unlock the 2,019 already
   placed doors, windows, and columns;
-- recover the exact nested-transform semantics for the 110 already located
-  railing owners;
+- resolve and compose the exact nested `GInstance`/`InstanceInfo` symbol
+  geometry for the 110 already located railing owners;
 - locate the persisted owner routes for the remaining 925 products, led by
   members, columns, stair flights, and railings.
 
