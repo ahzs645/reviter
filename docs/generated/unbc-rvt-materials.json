@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-rvt-materials.ts",
+  "inputs": {
+    "rvt": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+      "bytes": 70336512,
+      "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178"
+    },
+    "ifc": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc",
+      "bytes": 83798926,
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0"
+    }
+  },
+  "scan": {
+    "revitVersion": 2027,
+    "partitionStreams": 1,
+    "gzipChunks": 3666,
+    "inflatedBytes": 421867755,
+    "materialElementMarker": "0x0ad3",
+    "framedMaterialElements": 94,
+    "namedMaterialDefinitions": 54,
+    "unnamedOrUnsupportedNameLayout": 40,
+    "uniqueDecodedNames": 54,
+    "definitions": [
+      {
+        "elementId": 23,
+        "name": "По умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 34239,
+        "objectLength": 6239,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 24,
+        "name": "Стена по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 40498,
+        "objectLength": 6251,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 25,
+        "name": "Крыша по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 46769,
+        "objectLength": 6251,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 26,
+        "name": "Стекло",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 53040,
+        "objectLength": 4212,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 29,
+        "name": "Стадия - Временные",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 57272,
+        "objectLength": 6263,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 414,
+        "name": "Brick, ordinary",
+        "stream": "Partitions/325",
+        "chunkIndex": 1234,
+        "storedOffset": 21682371,
+        "recordOffset": 63614,
+        "objectLength": 12946,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 416,
+        "name": "Metal layer of lathing",
+        "stream": "Partitions/325",
+        "chunkIndex": 1232,
+        "storedOffset": 21583407,
+        "recordOffset": 55679,
+        "objectLength": 14119,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 417,
+        "name": "Фанера, обшивка",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 63555,
+        "objectLength": 9683,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 418,
+        "name": "Воздух",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 73258,
+        "objectLength": 5679,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 419,
+        "name": "Барьер проникновению воздуха",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 78957,
+        "objectLength": 6309,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 421,
+        "name": "Замедлитель испарения 2",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 85286,
+        "objectLength": 6327,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 422,
+        "name": "Гидроизоляция",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 91633,
+        "objectLength": 4718,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 423,
+        "name": "Gypsum Wallboard",
+        "stream": "Partitions/325",
+        "chunkIndex": 1233,
+        "storedOffset": 21596410,
+        "recordOffset": 95706,
+        "objectLength": 14593,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 519,
+        "name": "Земля",
+        "stream": "Partitions/325",
+        "chunkIndex": 1342,
+        "storedOffset": 25175101,
+        "recordOffset": 21930,
+        "objectLength": 13893,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 523,
+        "name": "Бетон, монолитный",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 96371,
+        "objectLength": 13348,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 758,
+        "name": "Этаж по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 109739,
+        "objectLength": 6249,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 792,
+        "name": "Кровля, пленка ЭПДМ",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "storedOffset": 25200483,
+        "recordOffset": 116008,
+        "objectLength": 13794,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 863,
+        "name": "Roofing Tiles",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "storedOffset": 21559084,
+        "recordOffset": 46703,
+        "objectLength": 14049,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 865,
+        "name": "Асфальт, битум",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 0,
+        "objectLength": 13280,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 7247,
+        "name": "Потолочная плитка 600 x 600",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 13300,
+        "objectLength": 10197,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 8798,
+        "name": "Стадия - Новые",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 23517,
+        "objectLength": 6255,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 10429,
+        "name": "Дверь - Панель",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 29792,
+        "objectLength": 13523,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 10988,
+        "name": "Переплет",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 43335,
+        "objectLength": 13513,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 21116,
+        "name": "Дверь - Каркас/импост",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 56868,
+        "objectLength": 13543,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 21208,
+        "name": "Дверь - Ручка",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 70431,
+        "objectLength": 5264,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 30200,
+        "name": "Дверь - Каркас",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 75715,
+        "objectLength": 5288,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 51455,
+        "name": "Условный материал-отделка",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 81023,
+        "objectLength": 6287,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 52139,
+        "name": "Формообразующий элемент-перекрытие по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 87330,
+        "objectLength": 6319,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 102856,
+        "name": "Пластмасса",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 93669,
+        "objectLength": 13198,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 103647,
+        "name": "Источник света по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 106887,
+        "objectLength": 6281,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 105006,
+        "name": "Стадия - Снос",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 113188,
+        "objectLength": 6253,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 105007,
+        "name": "Стадия - Существующие",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "storedOffset": 25213996,
+        "recordOffset": 119461,
+        "objectLength": 6269,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 111600,
+        "name": "Форма по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 0,
+        "objectLength": 6290,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 138312,
+        "name": "Кладка - плиты из керамогранита",
+        "stream": "Partitions/325",
+        "chunkIndex": 1074,
+        "storedOffset": 18793518,
+        "recordOffset": 64096,
+        "objectLength": 18405,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 138363,
+        "name": "Бетон - Пенобетоные блоки",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 6310,
+        "objectLength": 13580,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 155283,
+        "name": "Формообразующий экран по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 19910,
+        "objectLength": 6297,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 155289,
+        "name": "Формообразующий проем по умолчанию",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 26227,
+        "objectLength": 6297,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 155292,
+        "name": "Мягкая древесина, пиломатериалы",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 32544,
+        "objectLength": 12794,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 155293,
+        "name": "Стекло, прозрачное остекление",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 45358,
+        "objectLength": 4271,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 182549,
+        "name": "Алюминий",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 92312,
+        "objectLength": 13622,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 617540,
+        "name": "Краска - Охра",
+        "stream": "Partitions/325",
+        "chunkIndex": 1271,
+        "storedOffset": 22168836,
+        "recordOffset": 49425,
+        "objectLength": 5174,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 617544,
+        "name": "Древесина - Береза - массив, светлое морение, со слабым глянцем",
+        "stream": "Partitions/325",
+        "chunkIndex": 1271,
+        "storedOffset": 22168836,
+        "recordOffset": 54619,
+        "objectLength": 13445,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1242007,
+        "name": "Mur par défaut",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "storedOffset": 21866411,
+        "recordOffset": 38266,
+        "objectLength": 1925,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1242009,
+        "name": "Verre",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "storedOffset": 21866411,
+        "recordOffset": 40211,
+        "objectLength": 4081,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1242031,
+        "name": "Coupe",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "storedOffset": 21866411,
+        "recordOffset": 49153,
+        "objectLength": 6106,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1378520,
+        "name": "Glass",
+        "stream": "Partitions/325",
+        "chunkIndex": 1237,
+        "storedOffset": 21728639,
+        "recordOffset": 120169,
+        "objectLength": 3970,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1378542,
+        "name": "Default Wall",
+        "stream": "Partitions/325",
+        "chunkIndex": 1234,
+        "storedOffset": 21682371,
+        "recordOffset": 61174,
+        "objectLength": 2097,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1378543,
+        "name": "Poche",
+        "stream": "Partitions/325",
+        "chunkIndex": 1238,
+        "storedOffset": 21738783,
+        "recordOffset": 0,
+        "objectLength": 5871,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1401447,
+        "name": "Wall Material (1)",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "storedOffset": 21559084,
+        "recordOffset": 75259,
+        "objectLength": 1971,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1401451,
+        "name": "Metal - Aluminum",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "storedOffset": 21559084,
+        "recordOffset": 77875,
+        "objectLength": 1313,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1416371,
+        "name": "Softwood, Lumber",
+        "stream": "Partitions/325",
+        "chunkIndex": 1232,
+        "storedOffset": 21583407,
+        "recordOffset": 26032,
+        "objectLength": 12598,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1650844,
+        "name": "Paint - Sienna",
+        "stream": "Partitions/325",
+        "chunkIndex": 1176,
+        "storedOffset": 20556557,
+        "recordOffset": 124279,
+        "objectLength": 5138,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1650845,
+        "name": "Wood - Birch - Solid Stained Light Low Gloss",
+        "stream": "Partitions/325",
+        "chunkIndex": 1177,
+        "storedOffset": 20573561,
+        "recordOffset": 0,
+        "objectLength": 13321,
+        "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1763182,
+        "name": "Default",
+        "stream": "Partitions/325",
+        "chunkIndex": 1116,
+        "storedOffset": 19575186,
+        "recordOffset": 56121,
+        "objectLength": 1945,
+        "evidence": "framed-material-element-name"
+      }
+    ]
+  },
+  "ifcReference": {
+    "materialEntities": 30,
+    "uniqueMaterialNames": 29,
+    "materialAssociationRelations": 7554,
+    "exactDecodedNameMatches": 21,
+    "exactDecodedNameCoverage": 0.7241379310344828,
+    "exactNameMatches": [
+      "Default Wall",
+      "Glass",
+      "Gypsum Wallboard",
+      "Metal - Aluminum",
+      "Metal layer of lathing",
+      "Paint - Sienna",
+      "Roofing Tiles",
+      "Verre",
+      "Wood - Birch - Solid Stained Light Low Gloss",
+      "Алюминий",
+      "Бетон - Пенобетоные блоки",
+      "Бетон, монолитный",
+      "Дверь - Каркас",
+      "Дверь - Панель",
+      "Древесина - Береза - массив, светлое морение, со слабым глянцем",
+      "Кладка - плиты из керамогранита",
+      "Краска - Охра",
+      "Переплет",
+      "По умолчанию",
+      "Потолочная плитка 600 x 600",
+      "Стекло"
+    ],
+    "missingIfcNames": [
+      "<Unnamed>",
+      "Acier inoxydable, brossé",
+      "K.Line Accessoire Blanc - KQ",
+      "K.Line Accessoires Noir - FQ",
+      "K.Line Intemporel Blanc satiné (9016 S) - KQ",
+      "K.Line Intemporel Taupe (7022 S) - JK",
+      "K.Line Vintage Anodisé Argent - AC",
+      "Деревянные доски"
+    ]
+  },
+  "assignments": {
+    "decodedElementAssignments": 0,
+    "decodedPrimitiveAssignments": 0,
+    "status": "not-decoded",
+    "reason": "The proven outer MaterialElem record contains definition identity and name only. Element/type, geometry-tag, stored-mesh, BRep-face, category-style, and view-override assignment layers remain schema-generic or geometry-dependent and are not inferred."
+  }
+}
