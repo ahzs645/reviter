@@ -115,6 +115,12 @@ type UvMatch = {
   nextEndpoint: 0 | 1;
 };
 
+type OrderedEdge = {
+  token: number;
+  edge: Revit2027GEdgeStatic;
+  side: 0 | 1;
+};
+
 function value<T>(span: Revit2027GRepReplaySpan): T {
   return span.value as T;
 }
@@ -192,6 +198,21 @@ function matches(
   return result;
 }
 
+/**
+ * TB_Database's OdBmBrEdge reports its curve orientation as always forward.
+ * Its loop orientation is forward exactly when GEdge.isFlipped() equals
+ * whether this Face occupies faceReferences[1]. GEdge.isFlipped() is flags
+ * bit zero. The resulting direction is therefore entirely persisted and does
+ * not need endpoint-order inference.
+ */
+function nativeEdgeDirection(
+  side: 0 | 1,
+  flags: number,
+): 1 | -1 {
+  const flipped = (flags & 0x1) !== 0;
+  return flipped === (side === 1) ? 1 : -1;
+}
+
 function directedEdgeUses(
   faceToken: number,
   loop: LoopRecord,
@@ -203,11 +224,7 @@ function directedEdgeUses(
       ok: false;
       issue: Revit2027PlanarOwnerMeshIssue;
     } {
-  const ordered: Array<{
-    token: number;
-    edge: Revit2027GEdgeStatic;
-    side: 0 | 1;
-  }> = [];
+  const ordered: OrderedEdge[] = [];
   const visited = new Set<number>();
   let token = loop.loop.nextEdgeReference;
   while (token !== loop.token) {
@@ -275,10 +292,24 @@ function directedEdgeUses(
     };
   }
 
-  const links: UvMatch[] = [];
+  const edgeUses: Revit2027PlanarSampledEdgeUse[] = ordered.map((record) => ({
+    edgeToken: record.token,
+    edge: record.edge,
+    faceSide: record.side,
+    direction: nativeEdgeDirection(record.side, record.edge.flags),
+  }));
   for (let index = 0; index < ordered.length; index += 1) {
     const current = ordered[index]!;
     const next = ordered[(index + 1) % ordered.length]!;
+    const currentDirection = edgeUses[index]!.direction;
+    const nextDirection = edgeUses[(index + 1) % edgeUses.length]!.direction;
+    const currentEnd: 0 | 1 = currentDirection === 1 ? 1 : 0;
+    const nextStart: 0 | 1 = nextDirection === 1 ? 0 : 1;
+    const nativeJoinDistance = distance(
+      uv(current.edge, currentEnd, current.side),
+      uv(next.edge, nextStart, next.side),
+    );
+    if (nativeJoinDistance <= tolerance) continue;
     const candidates = matches(
       current.edge,
       current.side,
@@ -286,43 +317,36 @@ function directedEdgeUses(
       next.side,
       tolerance,
     );
-    if (candidates.length !== 1) {
-      return {
-        ok: false,
-        issue: {
-          code: "uv-link-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: current.token,
-          detail: `candidate endpoint matches: ${candidates.length}`,
-        },
-      };
-    }
-    links.push(candidates[0]!);
-  }
-
-  const edgeUses: Revit2027PlanarSampledEdgeUse[] = [];
-  for (let index = 0; index < ordered.length; index += 1) {
-    const incoming = links[(index + links.length - 1) % links.length]!;
-    const outgoing = links[index]!;
-    if (incoming.nextEndpoint === outgoing.currentEndpoint) {
-      return {
-        ok: false,
-        issue: {
-          code: "uv-link-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: ordered[index]!.token,
-          detail: "one persisted endpoint would be both incoming and outgoing",
-        },
-      };
-    }
-    edgeUses.push({
-      edgeToken: ordered[index]!.token,
-      edge: ordered[index]!.edge,
-      faceSide: ordered[index]!.side,
-      direction: incoming.nextEndpoint === 0 ? 1 : -1,
-    });
+    const endpointDistances = ([0, 1] as const).flatMap(
+      (currentEndpoint) =>
+        ([0, 1] as const).map((nextEndpoint) =>
+          distance(
+            uv(current.edge, currentEndpoint, current.side),
+            uv(next.edge, nextEndpoint, next.side),
+          )
+        ),
+    );
+    return {
+      ok: false,
+      issue: {
+        code: "uv-link-unresolved",
+        faceToken,
+        loopToken: loop.token,
+        edgeToken: current.token,
+        detail:
+          `native directed join distance: ${
+            nativeJoinDistance.toPrecision(8)
+          }; candidate endpoint matches: ${candidates.length}; ` +
+          `loop edges: ${ordered.length}; ` +
+          `next edge: ${next.token}; distances: ${
+            endpointDistances.map((value) => value.toPrecision(8)).join(",")
+          }; interior points: ${
+            current.edge.interiorEdgePoints.length
+          },${next.edge.interiorEdgePoints.length}; flags: ${
+            current.edge.flags
+          },${next.edge.flags}`,
+      },
+    };
   }
   return { ok: true, edgeUses };
 }

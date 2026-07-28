@@ -114,6 +114,13 @@ const planarMultiLoopIssueSamples: Array<{
   loopToken: number | null;
   detail: string | null;
 }> = [];
+const planarUvLinkIssueSamples: Array<{
+  ownerElementId: number;
+  faceToken: number;
+  loopToken: number | null;
+  edgeToken: number | null;
+  detail: string | null;
+}> = [];
 const certifiedFacesByKind = new Map<string, number>();
 let certifiedPositions = 0;
 let certifiedTriangles = 0;
@@ -201,6 +208,18 @@ for (const partition of partitions) {
             ownerElementId: Number(replayed.value.ownerElementId),
             faceToken: issue.faceToken ?? -1,
             loopToken: issue.loopToken ?? null,
+            detail: issue.detail ?? null,
+          });
+        }
+        if (
+          issue.code === "uv-link-unresolved" &&
+          planarUvLinkIssueSamples.length < 100
+        ) {
+          planarUvLinkIssueSamples.push({
+            ownerElementId: Number(replayed.value.ownerElementId),
+            faceToken: issue.faceToken ?? -1,
+            loopToken: issue.loopToken ?? null,
+            edgeToken: issue.edgeToken ?? null,
             detail: issue.detail ?? null,
           });
         }
@@ -343,6 +362,7 @@ console.log(JSON.stringify({
     triangles: planarTriangles,
     issues: entries(planarIssues),
     multiLoopIssueSamples: planarMultiLoopIssueSamples,
+    uvLinkIssueSamples: planarUvLinkIssueSamples,
   },
   certifiedBrowserMesh: {
     faceMeshesByKind: entries(certifiedFacesByKind),

@@ -32,6 +32,10 @@ export type Revit2027GEdgeStatic = {
     Revit2027EdgePoint,
     Revit2027EdgePoint,
   ];
+  /**
+   * Persisted GEdge flags: bit 0 flips curve-to-loop orientation; bits 1 and 2
+   * mark the first and last endpoints; bit 3 marks a 3D arc.
+   */
   flags: number;
   /** GEdge declares no queued property body of its own. */
   queuedPropertyCount: 0;

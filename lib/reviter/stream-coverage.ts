@@ -76,7 +76,7 @@ const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)Partitions\/[^/]+$/i, decoder: "element-records", depth: "partial", note: "Element bounds records and BuiltInCategory tokens; element shapes, materials, and parameters are not decoded" },
   { pattern: /(^|\/)Global\/Latest$/i, decoder: "none", depth: "none", note: "Document-level object graph; wire format not decoded" },
   { pattern: /(^|\/)Global\/ContentDocuments$/i, decoder: "none", depth: "none", note: "Structured content index on a different ID space; 0.8% of recovered element IDs appear in it, at chance level" },
-  { pattern: /(^|\/)Global\/History$/i, decoder: "none", depth: "none", note: "Document edit history; not decoded" },
+  { pattern: /(^|\/)Global\/History$/i, decoder: "element-index", depth: "partial", note: "Episode GUIDs and history indexes used with Global/ElemTable to reconstruct native Revit UniqueIds; remaining edit history is not decoded" },
   { pattern: /(^|\/)Global\/DocumentIncrementTable$/i, decoder: "none", depth: "none", note: "Incremental save table; not decoded" },
   { pattern: /(^|\/)ProjectInformation$/i, decoder: "metadata", depth: "full", note: "PKZip Atom metadata: project identity, design file, and property groups" },
   { pattern: /(^|\/)TransmissionData$/i, decoder: "none", depth: "none", note: "eTransmit link data; not decoded" },

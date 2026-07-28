@@ -74,8 +74,9 @@ gap instead of hiding it in geometry output.
 
 The exact owner replay reaches 40,632 closed loops and proves zero
 next/previous reciprocity failures. The reusable browser path tessellates
-40,294 planar Faces into 87,504 triangles. That includes 106 multi-loop Faces,
-45 additional filled regions, 111 direct hole loops, and 2,693 triangles. No
+40,311 planar Faces into 87,878 triangles. That includes 17 two-edge contours
+resolved by persisted coedge direction, 106 multi-loop Faces, 45 additional
+filled regions, 111 direct hole loops, and 2,693 multi-loop triangles. No
 uniquely directed multi-loop Face remains rejected.
 
 The combined certified owner and persisted-instance path matches 25,642

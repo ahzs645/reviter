@@ -60,22 +60,26 @@ direct Geometry owners:
 | --- | ---: |
 | Complete replay owners | 5,996 / 5,996 |
 | Body spans | 248,613 |
-| Planar Face meshes | 40,294 |
-| Positions | 168,114 |
-| Triangles | 87,504 |
+| Planar Face meshes | 40,311 |
+| Positions | 168,522 |
+| Triangles | 87,878 |
 | Accepted multi-loop Faces | 106 |
 | Additional filled regions | 45 |
 | Accepted hole loops | 111 |
 | Triangles from accepted multi-loop Faces | 2,693 |
 
 Structured non-mesh results are 491 Faces without a first loop, 148
-non-planar surfaces, 24 ambiguous UV links, and four tessellator rejections.
+non-planar surfaces, seven non-coincident UV links, and four tessellator
+rejections. Seventeen two-edge contours that share both endpoint pairs are
+resolved by the persisted coedge rule instead of endpoint inference:
+`GEdge.flags & 1` is the curve-flip bit, and the face-reference side selects
+the loop direction. Bit `0x8` marks a 3D arc and does not affect direction.
 All 106 multi-loop Faces with uniquely directed UV cycles are accepted across
 47 reusable geometry owners.
 
 The combined certified-owner entry point additionally promotes 123 sampled
 Cylinder faces, four exact Cone apex sectors, and the two circular-profile
-`SurfRev` faces, for 40,423 meshes, 173,132 positions, and 91,966 triangles.
+`SurfRev` faces, for 40,440 meshes, 173,540 positions, and 92,340 triangles.
 The remaining planar `unsupported-surface` count becomes 19: six Cone faces
 and thirteen Cylinder faces whose trims remain fail-closed. No planar result
 changes.
@@ -102,6 +106,10 @@ node --experimental-strip-types \
   agree on one or more filled regions with direct, strictly contained,
   nonintersecting holes. The persisted normal-flip correction closes all 106
   multi-loop Faces whose edge directions are uniquely available.
+- A single two-edge Face loop can have two exact endpoint matches at every
+  join. The browser path uses the native face-side/flip-bit coedge direction
+  and verifies the resulting directed joins. This closes 17 exact-model Faces
+  without increasing UV tolerance.
 - Cone, Cylinder, and SurfRev do not enter this planar path. The combined
   owner path separately certifies 123 Cylinder, four Cone apex-sector, and two
   SurfRev faces.

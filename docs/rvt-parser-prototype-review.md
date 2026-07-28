@@ -13,7 +13,7 @@ The prototype was run read-only against:
 
 `UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt`
 
-Its CFB reader correctly enumerated the 14 non-directory streams, including
+Its CFB reader correctly enumerated the 13 non-directory streams, including
 `Partitions/325`, both `Formats/Latest` streams, `Global/ElemTable`,
 `Global/History`, `BasicFileInfo`, and the zipped `ProjectInformation`.
 
@@ -21,9 +21,10 @@ Its gzip scanner decoded 3,332 partition chunks and 383,905,134 bytes. Reviter's
 window-aware reader decodes 3,666 chunks and 421,867,755 bytes from the same
 stream: the prototype drops 334 chunks and 37,962,621 bytes, about 9.0% of the
 inflated partition. The cause is structural: `gz.ts` inflates every gzip-looking
-offset independently, while Revit chunks can reference the preceding 32 KiB
-deflate window. Reviter carries that window, validates headers, and salvages a
-strict prefix when a chunk desynchronizes.
+offset independently after leaving outer checksum pages in several decoded
+artifacts, while Revit chunks can also reference the preceding 32 KiB deflate
+window. Reviter removes those checksum pages, carries that window, validates
+headers, and salvages a strict prefix when a chunk desynchronizes.
 
 The prototype's `index.ts` then proposed 99,335 records, including an element id
 of 16,677,358,010,367. The exact file's persisted element range is below

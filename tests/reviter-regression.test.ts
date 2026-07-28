@@ -482,16 +482,16 @@ test("accounts for every container stream and grades how deeply it is read", () 
   assert.deepEqual(streams.map((stream) => [stream.decoder, stream.depth]), [
     ["metadata", "full"],
     ["element-index", "partial"],
-    ["none", "none"],
+    ["element-index", "partial"],
     ["none", "none"],
   ]);
 
   const summary = summariseCoverage(streams);
   assert.deepEqual(
     { full: summary.fullStreams, partial: summary.partialStreams, undecoded: summary.undecodedStreams },
-    { full: 1, partial: 1, undecoded: 2 },
+    { full: 1, partial: 2, undecoded: 1 },
   );
-  // Largest stream first, so the biggest unread payload is never buried.
+  // Largest stream first, so the most significant coverage row is never buried.
   assert.equal(summary.streams[0]!.path, "Global/History");
 });
 

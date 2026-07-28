@@ -302,6 +302,73 @@ function replayWithSecondLoop(
   return result;
 }
 
+function replayWithTwoEdgeLoop(): Revit2027GRepReplay {
+  const result = replay();
+  const first = edge(5, [0, 0], [1, 0], LOOP_TOKEN, 6);
+  first.interiorEdgePoints = [
+    edgePoint([0.25, 0.5]),
+    edgePoint([0.75, 0.5]),
+  ];
+  const second = edge(6, [1, 0], [0, 0], 5, LOOP_TOKEN);
+  second.interiorEdgePoints = [
+    edgePoint([0.75, -0.5]),
+    edgePoint([0.25, -0.5]),
+  ];
+  const loopSpan = result.spans.find(
+    (candidate) => candidate.propertyToken === LOOP_TOKEN,
+  )!;
+  loopSpan.value = {
+    ...(loopSpan.value as Revit2027EdgeLoopStatic),
+    nextEdgeReference: 5,
+    previousEdgeReference: 6,
+    staticReferences: [FACE_TOKEN, 5, 6],
+  };
+  result.spans = [
+    ...result.spans.filter(
+      (candidate) =>
+        candidate.propertySourceClassSlot !==
+          REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+    ),
+    span(7, 5, REVIT_2027_GEDGE_SOURCE_CLASS_SLOT, null, first),
+    span(8, 6, REVIT_2027_GEDGE_SOURCE_CLASS_SLOT, null, second),
+  ];
+  return result;
+}
+
+function replayUsingSecondFaceSide(flipped: boolean): Revit2027GRepReplay {
+  const result = replay();
+  for (const candidate of result.spans) {
+    if (
+      candidate.propertySourceClassSlot !==
+      REVIT_2027_GEDGE_SOURCE_CLASS_SLOT
+    ) {
+      continue;
+    }
+    const value = candidate.value as Revit2027GEdgeStatic;
+    value.faceReferences = [0, value.faceReferences[0]];
+    value.nextReferences = [0, value.nextReferences[0]];
+    value.previousReferences = [0, value.previousReferences[0]];
+    value.flags = flipped ? value.flags | 0x1 : value.flags & ~0x1;
+    value.firstAndLastEdgePoints = value.firstAndLastEdgePoints.map(
+      (point) => ({ ...point, secondFaceUv: point.firstFaceUv }),
+    ) as [
+      Revit2027EdgePoint,
+      Revit2027EdgePoint,
+    ];
+    value.interiorEdgePoints = value.interiorEdgePoints.map(
+      (point) => ({ ...point, secondFaceUv: point.firstFaceUv }),
+    );
+    if (!flipped) {
+      value.firstAndLastEdgePoints = [
+        value.firstAndLastEdgePoints[1],
+        value.firstAndLastEdgePoints[0],
+      ];
+      value.interiorEdgePoints = [...value.interiorEdgePoints].reverse();
+    }
+  }
+  return result;
+}
+
 test("meshes a completed replay's single-loop planar Face", () => {
   const result = meshRevit2027PlanarSampledReplay(replay(), {
     materialForFace: () => 77,
@@ -315,6 +382,29 @@ test("meshes a completed replay's single-loop planar Face", () => {
   assert.equal(mesh.positions.length / 3, 4);
   assert.equal(mesh.groups[0]!.materialId, 77);
   assert.deepEqual([...mesh.positions.slice(0, 3)], [10, 20, 30]);
+});
+
+test("uses native edge orientation to resolve a two-edge closed contour", () => {
+  const result = meshRevit2027PlanarSampledReplay(replayWithTwoEdgeLoop());
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.issues, []);
+  assert.equal(result.value.faceMeshes.length, 1);
+  assert.equal(result.value.faceMeshes[0]!.mesh.positions.length / 3, 6);
+  assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 4);
+});
+
+test("combines persisted face side and GEdge flip bit for loop direction", () => {
+  for (const flipped of [false, true]) {
+    const result = meshRevit2027PlanarSampledReplay(
+      replayUsingSecondFaceSide(flipped),
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) continue;
+    assert.deepEqual(result.value.issues, []);
+    assert.equal(result.value.faceMeshes.length, 1);
+    assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 2);
+  }
 });
 
 test("binds an exact persisted face MaterialElem through owner mesh options", () => {

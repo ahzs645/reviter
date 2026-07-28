@@ -148,10 +148,12 @@ at its owner boundary. The combined `readerCorpusValid` result is true.
 This work establishes exact Face child ownership, static reference retention,
 nested loop replay, chain-envelope data, filling placement, and four analytic
 surface types. The separately documented planar owner path now classifies a
-fail-closed filled-region/direct-hole subset and carries 40,294 planar Faces
-with 45 additional filled regions into Reviter's browser-neutral BRep,
-producing 87,504 owner triangles. The combined certified planar, Cylinder,
-Cone, and SurfRev path produces 91,966
+fail-closed filled-region/direct-hole subset and carries 40,311 planar Faces
+with 45 additional filled regions into Reviter's browser-neutral BRep. That
+count includes 17 two-edge contours whose individual joins share both endpoint
+pairs and are resolved by the native GEdge face-side/flip-bit direction,
+producing 87,878 owner triangles.
+The combined certified planar, Cylinder, Cone, and SurfRev path produces 92,340
 direct-owner triangles; persisted instance placement contributes 308,107
 reused triangles. Numeric-Tag comparison reaches 25,642 IFC products and
 318,028 of 318,304 IFC triangles on that matched set.
@@ -164,7 +166,9 @@ client dependencies. Remaining blockers include:
 - extending the browser tessellator beyond the certified planar,
   rectangular-Cylinder, Cone-apex-sector, and circular-profile SurfRev
   subsets;
-- resolving the 24 Faces whose directed UV edge links remain ambiguous; and
+- resolving seven Faces whose persisted UV endpoints remain non-coincident;
+  17 exact two-edge endpoint ambiguities are now closed by persisted coedge
+  direction; and
 - completing GStyle/category/view fallback after the already exact positive
   per-Face `MaterialElem` binding.
 
