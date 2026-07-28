@@ -391,3 +391,81 @@ node --experimental-strip-types scripts/audit-revit-2026-object-dispatch.ts mode
 The next unresolved boundary is the parent reader that supplies a genuine
 outer object position or scoped class context. Until that position is
 decoded, the new dispatcher does not certify any UNBC geometry.
+
+## Dynamic-property scoped replay
+
+The parent-to-child call graph is now exact for the smallest supported queue
+shape. The relevant `TB_LoaderBase.tx` instructions are:
+
+| Address | Proven state transition |
+| ---: | --- |
+| `0x173702` | `OdBmCondInt16Reader::read` reads the signed `int32` property token |
+| `0x17375b`, `0x1737b1`, `0x1737ed` | a nonzero condition reads the signed `int16` source-class slot |
+| `0x1736d1` | `OdBmDynamicQueue::addProperty(..., unsigned)` resolves that slot through `ClassesContainer::find` |
+| `0x173615`, `0x17361d` | the queue node retains the resolved class pointer at `+0x38` and token at `+0x40` |
+| `0x173630` | the node is appended to the queue list |
+| `0x17541b` | `readPropertyToken` selects the queue-front property |
+| `0x175688`, `0x175745` | its retained class pointer is copied to `ObjectPtrInitReader` context offset `+0x48` |
+| `0x175740` | the same context retains the dynamic queue at offset `+0x40` |
+| `0x175a54` | `readPropertyToken` invokes `OdBmObjectPtrInitReader::read` |
+
+This closes an important ambiguity in the earlier raw-slot audit. When a
+parent `CondInt16` property names slot 2,237, the slot is consumed during the
+parent's static traversal. At dynamic replay the queue supplies the resolved
+`GPolyMesh` class through context offset `+0x48`; the replay stream therefore
+starts directly at the inherited `GInfo` bytes. It does **not** contain a
+second serialized slot-2,237 selector.
+
+The other scoped path is generated `readerByName` at `0xfdaeb`. It resolves
+the requested class name at `0xfdb83` and stores that class in reader context
+offset `+0x48` at `0xfdc20`. It also retains the explicitly supplied object at
+offset `+0x38` and the caller's queue at `+0x40`. This proves how a statically
+typed nested property can enter the same selector-free branch, but it does not
+identify a `GPolyMesh` field in the UNBC bytes by itself.
+
+`OdBmObjectPtrReader::read` provides the outer separation:
+
+1. it constructs one queue at `0x1813b5`;
+2. its child context carries current object, queue, and optional scoped class
+   at offsets `+0x38`, `+0x40`, and `+0x48`;
+3. it completes `OdBmObjectPtrInitReader::read` at `0x1817ef`;
+4. it calls `initReferences` at `0x181994`;
+5. it starts `readDynamicProperties` at `0x1819c5`.
+
+The callbacks between these calls receive no stream pointer, so they do not
+move the replay position. The first byte consumed by a one-property,
+no-retained-value queue is exactly the byte at the complete outer static end.
+
+`replayCertifiedRevit2026QueuedGPolyMesh` implements only that proven special
+case. Its input certificate already requires one globally queued property,
+sequence `-1`, no retained values, and replay at the complete outer static
+end. It verifies the parent descriptor against the stream, passes slot 2,237
+as scoped state without consuming selector bytes, decodes the complete
+`GPolyMesh` static body, consumes the parent replay certificate once, and
+mints a new certificate for the nested topology property when present.
+
+This nested certificate is not yet model geometry. A real parent object
+boundary, `GRep` element ownership, and intervening transforms remain required
+before the topology binder may emit a mesh.
+
+The exact UNBC selector-free audit anchors a possible `GPolyMesh` static body
+on a slot-5,255 word at `bodyOffset + 24`, where the native reader places the
+nested topology source class:
+
+| Measure | Result |
+| --- | ---: |
+| Raw slot-5,255 occurrences | 1,347 |
+| Complete selector-free static shapes | 1,307 |
+| Shapes with topology token 1–100,000 | 34 |
+| Shapes followed immediately by a complete `FacetedTopology8` body | 0 |
+
+These are deliberately shape counts, not objects. The 34 plausible static
+shapes still lack a certified parent queue and none forms the simplest
+one-property nested chain. The genuine remaining boundary is therefore the
+outer static reader that enqueued slot 2,237, not another local byte
+signature.
+
+The supplied trial directory contains format-reader modules only through
+Revit 2026. `TB_LoaderBase.tx` establishes the common queue mechanism, but no
+Revit 2027 slot table or `GPolyMesh` field grammar was available to verify.
+The browser code consequently remains release-scoped to 2026.
