@@ -148,24 +148,36 @@ definitions. Production now passes the exact placement-owned geometry id set
 into collector finalization; it does not publish every scanned definition.
 On the same exact RVT:
 
-- 7,532 / 7,805 production-eligible shared owners resolve to complete meshes;
-- 273 missing, conflicting, or incomplete requested owners remain proxies;
-- 109,938 owner-local triangles are available for exact placement reuse;
-- 34,196 elements pass complete native-mesh admission;
-- 702,145 native triangles replace their proxies;
-- 657 otherwise complete transformed meshes escape the independent RVT
+- 7,529 / 7,805 production-eligible shared owners resolve to complete meshes;
+- 276 missing, conflicting, or incomplete requested owners remain proxies;
+- 112,259 owner-local triangles are available for exact placement reuse;
+- the later bounded-root checkpoint selects 151 exact non-legacy descriptor
+  shapes, retains 141 after complete coverage, and emits all 141;
+- 34,286 elements pass complete native-mesh admission;
+- 751,026 native triangles replace their proxies;
+- 654 otherwise complete transformed meshes escape the independent RVT
   envelope and are rejected;
-- 3,184 otherwise complete meshes lack an independent display envelope and are
+- 3,178 otherwise complete meshes lack an independent display envelope and are
   rejected;
 - no definition-storage or output-triangle cap is reached.
 
-The resulting GLB contains 36,548 displayed elements, 750,521 total triangles
-(native plus retained proxies), 46 mesh batches, and 10 display materials.
-Against the IFC, the placement-seeded audit certifies 34,867 / 36,144 numeric
-geometry Tags (`96.4669%`) before the production display-envelope gate.
-The generic final-scene parity audit reports a triangle ratio of `80.34499%`
-because it includes the intentional proxy fallback in both the displayed
-element set and the triangle total.
+The final production scene contains 36,548 displayed elements, 799,298 total
+triangles (751,026 native plus 48,272 retained proxy/other triangles), 47 mesh
+batches, and 10 display materials. Native triangles are `93.9607%` of the
+output and the total-output/reference-IFC triangle ratio is `85.5667%`.
+
+Against the IFC, complete certified native Tag presence is 35,006 / 36,144
+(`96.8515%`). A stricter spatial diagnostic counts 34,984 / 36,144
+(`96.7906%`) within 0.5 ft of the IFC AABB. The 22 complete bounded roots
+outside that IFC tolerance remain certified RVT geometry; they are not counted
+as IFC spatial-parity matches.
+
+An isolated non-periodic Hermite evaluator and sampled-grid tessellator meshed
+all 16 target Hermite faces, but was deliberately not retained. Two enclosing
+roots became complete while producing substantially more triangles than the
+IFC (`1,450` vs `852`, and `2,426` vs `1,592`). Persisted edge samples did not
+prove Revit's general-surface LOD/break policy, so selecting a coarser subset
+would have fitted the oracle rather than decoded the RVT.
 
 ## Tessellator/kernel boundary
 
