@@ -540,6 +540,18 @@ async function analyzeIfc(ifcBytes, semantic) {
   const geometryTagsDrawnByReviter = new Set(
     [...geometryNumericTags].filter((tag) => semantic.displayedIds.has(tag)),
   );
+  const missingGeometryTags = [...geometryNumericTags]
+    .filter((tag) => !semantic.displayedIds.has(tag))
+    .sort((a, b) => a - b);
+  const missingGeometryTagsByClass = Object.fromEntries(
+    [...geometryTagsByClass.entries()]
+      .map(([type, tags]) => [
+        type,
+        [...tags].filter((tag) => !semantic.displayedIds.has(tag)).sort((a, b) => a - b),
+      ])
+      .filter(([, tags]) => tags.length > 0)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
 
   const result = {
     schema: api.GetModelSchema(model),
@@ -562,6 +574,8 @@ async function analyzeIfc(ifcBytes, semantic) {
     geometryNumericTags: geometryNumericTags.size,
     geometryTagsSeenByReviter: geometryTagsSeenByReviter.size,
     geometryTagsDrawnByReviter: geometryTagsDrawnByReviter.size,
+    missingGeometryTags,
+    missingGeometryTagsByClass,
     namedElements: [...elements.values()].filter((element) => element.name).length,
     objectTypedElements: [...elements.values()].filter((element) => element.objectType).length,
     placedElements: [...elements.values()].filter((element) => element.placement != null).length,

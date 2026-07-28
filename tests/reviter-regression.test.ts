@@ -881,6 +881,45 @@ test("draws a curtain-wall container that has no facade standing in its place", 
   assert.equal(meshes[0]!.indices.length / 3, 12);
 });
 
+test("draws a named wall whose own analytic planes rebuilt a solid", () => {
+  const wall: ElementBoundsRecord = {
+    elementId: 308_954,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    recordCode: 30,
+    recordCount: 9,
+    categoryId: -2_000_011,
+    categoryName: "Walls",
+    typeName: "Interior Wall - 400mm",
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 1, z: 10 } },
+    solid: {
+      elementId: 308_954,
+      start: { x: 0, y: 0.5 },
+      end: { x: 10, y: 0.5 },
+      baseElevation: 0,
+      topElevation: 10,
+      thickness: 1,
+    },
+  };
+  const panel: ElementBoundsRecord = {
+    ...wall,
+    elementId: 4,
+    recordCode: 114,
+    recordCount: 1,
+    categoryId: -2_000_170,
+    categoryName: "Curtain Wall Panels",
+    typeName: undefined,
+    solid: undefined,
+  };
+
+  assert.equal(displayRole(wall), "wall");
+  const selection = selectDisplayBounds([wall, panel]);
+  assert.deepEqual(selection.records.map((record) => record.elementId), [308_954, 4]);
+  assert.equal(selection.omittedWrapperCount, 0);
+});
+
 test("holds back a floor's own boundary sketch, drawn as a second slab", () => {
   // Revit keeps the sketch as an element one id below the floor: same
   // footprint, no thickness, no category. Extruding it put a sheet over every

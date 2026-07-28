@@ -150,16 +150,23 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
 export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "unknown" {
   const code = record.recordCode;
   const count = record.recordCount;
+  const hasNamedAnalyticSolid =
+    !!record.typeName && (!!record.solid || (record.solids?.length ?? 0) > 0);
   // A curtain-wall container stays a wrapper even once its category is known,
   // so its child panels and mullions are not swallowed by one large envelope.
   // Whether a wrapper is actually held back is decided by `selectDisplayBounds`,
   // which checks that a facade is there to stand in its place.
-  const isWrapper = code === 30 && count != null && count >= 8 && count <= 10;
+  // A named wall whose own planes rebuilt a solid is not merely a container.
+  // The UNBC IFC corroborates all 11 such records as drawable wall products;
+  // treating them as wrappers hid valid solids whenever nearby facade elements
+  // happened to stand inside their envelopes.
+  const isWrapper =
+    !hasNamedAnalyticSolid && code === 30 && count != null && count >= 8 && count <= 10;
   if (!isWrapper && record.categoryId != null) {
     return CATEGORY_DISPLAY_ROLE[record.categoryId] ?? "native";
   }
   if (code === 30 && count === 5) return "wall";
-  if (code === 30 && count != null && count >= 8 && count <= 10) return "wrapper";
+  if (isWrapper) return "wrapper";
   if (code === 44 && count === 1) return "door";
   if (code === 114 && count === 1) return "panel";
   if ((code === 116 && count === 1) || (code === 179015 && count === 3)) return "frame";

@@ -4,8 +4,8 @@ This is the acceptance baseline for the goal “the client-side RVT parser shoul
 at least match the supplied IFC.” It compares:
 
 - `UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt`, as represented by
-  Reviter's current `outputs/unbc-semantic.json` and
-  `outputs/unbc-recovered.glb`;
+  Reviter's current `outputs/unbc-parity.json` and
+  `outputs/unbc-parity.glb`;
 - `UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc`, the 30 June 2026
   Revit 2027 IFC2X3 export.
 
@@ -16,19 +16,21 @@ so it does not depend on Revit or the proprietary ODA binaries.
 
 ## Executive result
 
-Reviter is already close on **which products appear and where the whole model
-sits**, but it does not yet match the IFC's **shape detail or BIM semantics**.
+After decoding the RVT checksum-page layer and releasing named analytic wall
+solids from the curtain-wall wrapper rule, Reviter is two elements short of the
+IFC's tagged drawable population. It still does not match the IFC's **shape
+detail or BIM semantics**.
 
 | Measure | IFC reference | Current Reviter | Parity |
 | --- | ---: | ---: | ---: |
-| IFC elements | 41,312 | 36,974 IFC numeric tags recovered | 96.8% of the 38,187 tagged elements |
-| Unique tagged products with drawable geometry | 36,157 | 35,052 drawn | **97.0%** |
-| Tessellated triangles | 934,123 | 453,492 | **48.5%** |
-| Vertex references | 2,394,161 | 298,826 | 12.5% |
-| Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.200 / 217.899 / 375.091 m | within 1.03% per axis |
+| IFC elements | 41,312 | 38,051 IFC numeric tags recovered | 99.6% of the 38,187 tagged elements |
+| Unique tagged products with drawable geometry | 36,144 | 36,142 drawn | **99.994%** |
+| Tessellated triangles | 934,123 | 470,558 | **50.4%** |
+| Vertex references | 2,394,161 | 309,434 | 12.9% |
+| Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.400 / 217.899 / 374.766 m | matches at displayed precision |
 | IFC GlobalIds | 41,312 | 0 | 0% |
-| Elements assigned an IFC type | 38,171 | 5,716 with recovered type name | 15.0% |
-| Elements assigned IFC property sets | 39,487 | 10,056 with recovered parameters | 25.5% population coverage |
+| Elements assigned an IFC type | 38,171 | 7,523 with recovered type name | 19.7% |
+| Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
 | Elements assigned materials, including through type | 36,221 | 0 native assignments | 0% |
 | Elements in containment/aggregation tree | 38,241 | 0 genuine memberships | 0% |
 
@@ -42,28 +44,29 @@ materials, and hierarchy—not merely emitting exactly 934,123 triangles.
 
 Counts below are deduplicated by the Revit element ID stored in IFC `Tag`.
 `IfcRampFlight` has two drawn products but no numeric tag, so it cannot be
-joined to the current RVT records and is excluded from the 36,157 denominator.
+joined to the current RVT records and is excluded from the 36,144 denominator.
 
 | IFC class | Tagged products with geometry | Drawn by Reviter | Coverage | IFC triangles |
 | --- | ---: | ---: | ---: | ---: |
-| IfcMember | 19,652 | 19,120 | 97.3% | 244,628 |
-| IfcWallStandardCase | 7,381 | 7,186 | 97.4% | 147,772 |
-| IfcPlate | 6,235 | 6,068 | 97.3% | 74,934 |
-| IfcDoor | 1,912 | 1,826 | 95.5% | 160,104 |
-| IfcColumn | 311 | 277 | 89.1% | 48,826 |
-| IfcRailing | 215 | 164 | **76.3%** | 142,212 |
-| IfcWall | 140 | 134 | 95.7% | 6,889 |
-| IfcStairFlight | 108 | 101 | 93.5% | 78,136 |
-| IfcSlab | 107 | 102 | 95.3% | 21,504 |
-| IfcCovering | 46 | 38 | 82.6% | 1,592 |
+| IfcMember | 19,652 | 19,651 | 99.995% | 244,628 |
+| IfcWallStandardCase | 7,381 | 7,381 | 100% | 147,772 |
+| IfcPlate | 6,235 | 6,235 | 100% | 74,934 |
+| IfcDoor | 1,912 | 1,912 | 100% | 160,104 |
+| IfcColumn | 311 | 311 | 100% | 48,826 |
+| IfcRailing | 215 | 215 | 100% | 142,212 |
+| IfcWall | 140 | 140 | 100% | 6,889 |
+| IfcStairFlight | 108 | 107 | 99.1% | 78,136 |
+| IfcSlab | 107 | 107 | 100% | 21,504 |
+| IfcCovering | 46 | 46 | 100% | 1,592 |
 | IfcWindow | 20 | 20 | 100.0% | 4,184 |
 | IfcRamp | 11 | 11 | 100.0% | 1,182 |
-| IfcRoof | 6 | 5 | 83.3% | 2,136 |
+| IfcRoof | 6 | 6 | 100% | 2,136 |
 
-This confirms the existing coverage audit and makes the largest population
-defect explicit: **railings are missing 51 of 215 drawable tagged products**.
-Columns miss 34 of 311, members 532 of 19,652, standard walls 195 of 7,381,
-plates 167 of 6,235, and doors 86 of 1,912.
+The only missing tagged drawable products are member `1272040` and stair flight
+`1280585`. The RVT parser currently recovers adjacent geometry records
+`1272041` and `1280586`; a persisted ownership/subcomponent relation is still
+needed before those shapes can be assigned to the IFC-tagged elements without
+hard-coding adjacency.
 
 The IFC also contains 1,835 `IfcCurtainWall`, 92 `IfcStair`, and 3,071
 `IfcOpeningElement` objects with no standalone streamed mesh. They are semantic
@@ -79,18 +82,18 @@ solid-modeling work:
 
 | Target shape family | IFC triangles | Related Reviter proxy triangles | Approx. shortfall |
 | --- | ---: | ---: | ---: |
-| Doors | 160,104 | 20,124 | **139,980** |
-| Railings and railing parts | 142,212 | 8,808 | **133,404** |
-| Stair flights | 78,136 | 1,650 `Stairs Runs` | **76,486** |
-| Walls, both IFC wall classes | 154,661 | 91,568 | **63,093** |
-| Members / mullions / stringers | 244,628 | 195,636 | **48,992** |
-| Columns | 48,826 | 3,480 | **45,346** |
-| Curtain panels / plates | 74,934 | 64,404 | 10,530 |
-| Slabs / floor proxies | 21,504 | 16,878 | 4,626 |
-| Windows | 4,184 | 204 | 3,980 |
-| Coverings / ceilings | 1,592 | 896 | 696 |
+| Doors | 160,104 | 23,196 | **136,908** |
+| Railings and railing parts | 142,212 | 9,636 | **132,576** |
+| Stair flights | 78,136 | 1,710 `Stairs Runs` | **76,426** |
+| Walls, both IFC wall classes | 154,661 | 94,924 | **59,737** |
+| Columns | 48,826 | 3,744 | **45,082** |
+| Members / mullions / stringers | 244,628 | 231,624 | **13,004** |
+| Windows | 4,184 | 264 | 3,920 |
+| Slabs / floor proxies | 21,504 | 19,048 | 2,456 |
+| Coverings / ceilings | 1,592 | 1,092 | 500 |
+| Curtain panels / plates | 74,934 | 74,904 | 30 |
 
-Doors and railings alone account for about 273,000 triangles of missing shape
+Doors and railings alone account for about 269,000 triangles of missing shape
 complexity. Stair flights and columns are present by ID but still look mostly
 like low-face-count bounds. That is why a general BRep/tessellation path through
 the concepts exposed by `TB_Geometry`, `libTD_Ge`, `libOdBrepModeler`,
@@ -123,10 +126,10 @@ IFC parity. For the minimum IFC parity gate, Reviter needs a stable identifier
 on every IFC-equivalent element and must retain the numeric Revit element ID;
 native `UniqueId` should be added when its RVT record is decoded.
 
-The current 71,271 recovered parameter entries cannot be compared one-for-one
+The current 81,806 recovered parameter entries cannot be compared one-for-one
 with 12,375 IFC property value entities because the IFC reuses property
 entities across many property sets. The defensible first population measure is
-elements with any properties: 10,056 of the IFC's 39,487, or 25.5%. A later
+elements with any properties: 11,541 of the IFC's 39,487, or 29.2%. A later
 value-level test should join by Revit element ID plus normalized property name
 and compare typed values and units.
 
@@ -134,7 +137,7 @@ and compare typed values and units.
 
 The reference suggests staged gates that are strict enough to guide work:
 
-1. **Product population:** 100% of the 36,157 uniquely tagged IFC products with
+1. **Product population:** 100% of the 36,144 uniquely tagged IFC products with
    geometry are represented, with every IFC class at 99% or better. Untagged IFC
    replicas are reported separately.
 2. **Placement and extent:** each joined product has a world-space bounds
@@ -168,16 +171,16 @@ From the repository root:
 ```sh
 node scripts/audit-ifc-parity.mjs \
   --ifc '/Users/ahmadjalil/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Projects/UNBC BIM/UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc' \
-  --semantic outputs/unbc-semantic.json \
-  --glb outputs/unbc-recovered.glb \
+  --semantic outputs/unbc-parity.json \
+  --glb outputs/unbc-parity.glb \
   --json docs/generated/unbc-ifc-parity.json
 ```
 
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `38b889607ed444653b288d63a3c43ff6a001fea484d6e5baf6e216739091fc35`
-- GLB: `81fb66a7a949efbc19cbdf17f335cb46ffe5ba0fe554fa2dd6058d233e1600cf`
+- semantic JSON: `db41ac0a0a31cb49f52bce8e7822f6a5a5c5a5d9eb8e5a12ed9e707022d7c0d8`
+- GLB: `91f2f4def44c0a7cfbea1a9ab730ce0be6d89802bc032f97b218de2e8caba47d`
 
 The script exits nonzero on a missing or invalid input and writes the complete
 measurement as JSON for future diffs.
