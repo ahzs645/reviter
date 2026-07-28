@@ -24,6 +24,7 @@ import {
   decodeRevit2026GPolyMeshStatic,
   REVIT_2026_GPOLYMESH_SOURCE_CLASS,
 } from "../lib/reviter/revit-2026-object-dispatch.ts";
+import { locateFacetedTopology8Body } from "../lib/reviter/faceted-topology.ts";
 
 const FACETED_TOPOLOGY8_SLOT = 5255;
 const MAX_REPORTED_CANDIDATES = 100;
@@ -62,6 +63,10 @@ let rawSlotOccurrences = 0;
 let completeStaticShapes = 0;
 let facetedTopology8Descriptors = 0;
 let plausibleFacetedTopology8Descriptors = 0;
+let rawFacetedTopology8SlotOccurrences = 0;
+let scopedGPolyMeshStaticShapes = 0;
+let plausibleScopedGPolyMeshStaticShapes = 0;
+let immediateScopedTopology8Bodies = 0;
 let candidatesTruncated = false;
 
 for (const partition of partitions) {
@@ -104,6 +109,36 @@ for (const partition of partitions) {
         view.getInt16(selectorOffset, true) !==
         REVIT_2026_GPOLYMESH_SOURCE_CLASS
       ) {
+        if (view.getInt16(selectorOffset, true) !== FACETED_TOPOLOGY8_SLOT) {
+          continue;
+        }
+        rawFacetedTopology8SlotOccurrences += 1;
+        const scopedBodyOffset = selectorOffset - 24;
+        if (scopedBodyOffset < 0) continue;
+        const scoped = decodeRevit2026GPolyMeshStatic(
+          inflated,
+          scopedBodyOffset,
+        );
+        if (
+          !scoped.ok ||
+          scoped.value.value.topologySourceClassSlot !==
+            FACETED_TOPOLOGY8_SLOT
+        ) {
+          continue;
+        }
+        scopedGPolyMeshStaticShapes += 1;
+        if (
+          scoped.value.value.topologyPropertyToken <= 0 ||
+          scoped.value.value.topologyPropertyToken > 100_000
+        ) {
+          continue;
+        }
+        plausibleScopedGPolyMeshStaticShapes += 1;
+        const immediateTopology = locateFacetedTopology8Body(
+          inflated,
+          scoped.value.endOffset,
+        );
+        if (immediateTopology.ok) immediateScopedTopology8Bodies += 1;
         continue;
       }
       rawSlotOccurrences += 1;
@@ -160,6 +195,14 @@ console.log(
       completeStaticShapes,
       facetedTopology8Descriptors,
       plausibleFacetedTopology8Descriptors,
+      scopedReplayAudit: {
+        rawFacetedTopology8SlotOccurrences,
+        scopedGPolyMeshStaticShapes,
+        plausibleScopedGPolyMeshStaticShapes,
+        immediateScopedTopology8Bodies,
+        interpretation:
+          "DynamicQueue replay supplies slot 2237 as scoped state, so a GPolyMesh body has no serialized 2237 selector. Slot 5255 anchors the nested descriptor at bodyOffset + 24, but only a certified parent queue can establish the body start.",
+      },
       candidatesTruncated,
       candidates,
       interpretation:
