@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
+import {
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-edge-loop-static.ts";
 import { REVIT_2027_GEDGE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-edge-1423.ts";
 import type { Revit2027FramedGRepRoot } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import { REVIT_2027_FACE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-face-static.ts";
+import { REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-fill-grid.ts";
+import { REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-fill-pattern-data.ts";
+import { REVIT_2027_GFILLING_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gfilling.ts";
+import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-garc.ts";
 import {
   createRevit2027GRepReplayRegistry,
   replayRevit2027GRepFifo,
@@ -20,6 +28,10 @@ import {
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-grep-prefixes.ts";
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-geometry.ts";
+import {
+  REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-surfaces.ts";
 
 const FACE_SLOT = REVIT_2027_FACE_SOURCE_CLASS_SLOT;
 const EDGE_SLOT = REVIT_2027_GEDGE_SOURCE_CLASS_SLOT;
@@ -173,10 +185,46 @@ function oneByteReader(id: string): Revit2027GRepReplayReaderRegistration {
   };
 }
 
-test("default registry includes the certified Face and GEdge readers", () => {
+test("default registry includes the certified Face-child replay readers", () => {
   const registry = createRevit2027GRepReplayRegistry();
   assert.equal(registry.get(FACE_SLOT)?.id, "Revit2027Face");
   assert.equal(registry.get(EDGE_SLOT)?.id, "Revit2027GEdge");
+  assert.equal(
+    registry.get(REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027EdgeLoop",
+  );
+  assert.equal(
+    registry.get(
+      REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
+    )?.id,
+    "Revit2027EdgeLoopWithChainEnvelopes",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_GFILLING_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GFilling",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027FillPatternData",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027FillGrid",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_GARC_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GArc",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT)?.id,
+    `Revit2027AnalyticSurface:${REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT}`,
+  );
+  assert.equal(
+    registry.get(REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT)?.id,
+    `Revit2027AnalyticSurface:${
+      REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT
+    }`,
+  );
 });
 
 test("older root siblings replay before children appended by a GGroup", () => {
@@ -349,6 +397,49 @@ test("Geometry appends all faces before edges to the shared FIFO", () => {
   );
 });
 
+test("StaticInteger reservations permit exact sparse and later token materialization", () => {
+  const payloadOffset = 6;
+  const data = new Uint8Array(21);
+  const registry = createRevit2027GRepReplayRegistry();
+  registry.set(9000, {
+    id: "ReserveBeforeProperty",
+    read: (_data, context) => ({
+      ok: true,
+      startOffset: context.byteOffset,
+      endOffset: 13,
+      staticReferencesBeforeProperties: [4],
+      appendedProperties: [descriptor(5, 9001, 6)],
+    }),
+  });
+  registry.set(9001, {
+    id: "MaterializeEarlierReservation",
+    read: (_data, context) => ({
+      ok: true,
+      startOffset: context.byteOffset,
+      endOffset: 20,
+      appendedProperties: [descriptor(4, 9002, 13)],
+    }),
+  });
+  registry.set(9002, oneByteReader("ReservedBody"));
+
+  const replayed = replayRevit2027GRepFifo(
+    data,
+    root([descriptor(3, 9000, 0)], payloadOffset, data.byteLength),
+    registry,
+  );
+
+  assert.equal(replayed.ok, true);
+  if (!replayed.ok) return;
+  assert.deepEqual(
+    replayed.value.spans.map((span) => [
+      span.propertyToken,
+      span.propertySourceClassSlot,
+    ]),
+    [[3, 9000], [5, 9001], [4, 9002]],
+  );
+  assert.equal(replayed.value.finalTokenCount, 6);
+});
+
 test("unknown slots and invalid negative or sparse tokens fail closed", () => {
   const unknownData = new Uint8Array(7);
   const unknown = replayRevit2027GRepFifo(
@@ -376,7 +467,7 @@ test("unknown slots and invalid negative or sparse tokens fail closed", () => {
     if (!replayed.ok) {
       assert.match(
         replayed.error,
-        token < 0 ? /unsupported negative.*-2/ : /not append-only index 4/,
+        token < 0 ? /unsupported negative.*-2/ : /not reserved at index 4/,
       );
     }
   }

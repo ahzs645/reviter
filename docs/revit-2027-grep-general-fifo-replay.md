@@ -16,12 +16,19 @@ the existing release-certified readers:
 | Source slot | Reader | Nested descriptors exposed |
 | ---: | --- | --- |
 | 1,423 | `GEdge` | none |
+| 1,434 | `EdgeLoop` | next loop |
+| 1,437 | `EdgeLoopWithChainEnvelopes` | next loop |
 | 1,825 | `Face` | first loop, regions, fillings, then analytic surface |
 | 1,973 | `GLine` | none |
+| 2,085 | `FillGrid` | none |
+| 2,087 | `FillPatternData` | ordered fill grids |
 | 2,215 | `GArray` | `instanceInfo` plus its retained null embedded-symbol descriptor |
+| 2,213 | `GArc` | none |
 | 2,248 | `GGroup` | `m_subNodes` in collection order |
+| 2,253 | `GFilling` | optional fill-pattern data |
 | 2,276 | `GPolyLine` | none |
 | 2,343 | `Geometry` | faces, then edges, then shared-surface info |
+| 634 / 900 / 1,144 / 4,283 | Plane / ConeSurf / CylSurf / SurfRev | SurfRev profile curve only |
 
 The registry is intentionally pluggable. A later independently certified Face,
 Edge, loop, curve, or surface reader can be registered by its release-specific
@@ -41,9 +48,14 @@ The token namespace is independent of FIFO insertion order:
   not enter the queue;
 - token `-1` is a real queued property; it enters and is consumed in FIFO order
   but does not modify the positive token namespace;
-- a positive token must equal the exact next append index, beginning at `3`;
-- every other negative token, sparse positive token, reuse, or overwrite is
-  rejected.
+- positive property tokens and positive `StaticInteger` references share the
+  native pointer-index namespace;
+- a static reference can reserve an index before its property body appears;
+- a property can advance the namespace or materialize one earlier reservation
+  exactly once;
+- every skipped index in a forward property jump must already be reserved;
+- an unexplained gap, unreserved lower token, source-slot change, or other
+  negative token is rejected.
 
 The `-1` behavior is material for the exact model. `GArray.instanceInfo` uses
 it, and the independently decoded Face population contains 148 such children.
@@ -59,7 +71,7 @@ Every conditional descriptor is retained with:
 - parent path and parent replay index;
 - original token and scoped source-class slot;
 - descriptor byte span;
-- null or queued state;
+- null, queued, or reused-reference state;
 - global FIFO insertion sequence.
 
 Every decoded body span additionally retains:
@@ -100,8 +112,11 @@ existing certified readers and proves:
 2. a `GArray` token `-1` child waits behind an older sibling without advancing
    the positive token count;
 3. `Geometry` appends all faces before all edges;
-4. unknown slots, token `-2`, and sparse positive tokens fail closed; and
-5. boundary gaps, overruns, and non-contiguous plugin spans fail closed.
+4. an exact static reservation permits a forward property jump and later
+   materialization of the reserved lower token;
+5. unknown slots, token `-2`, and unreserved sparse positive tokens fail
+   closed; and
+6. boundary gaps, overruns, and non-contiguous plugin spans fail closed.
 
 Run it with:
 
@@ -110,8 +125,19 @@ node --experimental-strip-types --test \
   tests/revit-2027-grep-replay.test.ts
 ```
 
-These tests certify scheduling and boundaries, not complete UNBC coverage.
-Exact-model coverage must be measured separately after more queued source slots
-have certified body readers. In particular, the default registry will
-deliberately stop at unresolved `GArray.instanceInfo`, Face
-loop/filling/surface children, and other unknown nested classes.
+The exact-model public-registry audit now completes all 5,996 direct Geometry
+owners: 248,613 descriptors and the same number of bounded body spans, with no
+reader or boundary failures. Its census includes 40,961 Faces, 84,499 GEdges,
+40,604 EdgeLoops, 28 EdgeLoops with chain envelopes, 35,413 fillings, 50
+FillPatternData bodies, 99 FillGrids, 40,959 plane/cone/cylinder surfaces, two
+SurfRev surfaces, and two GArc profiles.
+
+Run that corpus proof with:
+
+```sh
+node --experimental-strip-types \
+  scripts/audit-revit-2027-public-grep-replay.ts model.rvt
+```
+
+The registry still deliberately stops at unresolved `GArray.instanceInfo` and
+any other unregistered route; no partial success is returned.

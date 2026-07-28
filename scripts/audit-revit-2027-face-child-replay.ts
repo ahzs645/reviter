@@ -55,6 +55,10 @@ import {
   type Revit2027GFilling,
 } from "../lib/reviter/revit-2027-gfilling.ts";
 import {
+  decodeRevit2027GArc,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-garc.ts";
+import {
   decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
@@ -811,6 +815,19 @@ function replaySingleGeometryRoot(
         break;
       }
       endOffset = grid.value.endOffset;
+    } else if (sourceClassSlot === REVIT_2027_GARC_SOURCE_CLASS_SLOT) {
+      const arc = decodeRevit2027GArc(
+        data,
+        cursor,
+        root.dynamicPayloadEndOffset,
+        release,
+      );
+      if (!arc.ok) {
+        readerFailure = `${sourceClassSlot}: ${arc.error}`;
+        failedItem = item;
+        break;
+      }
+      endOffset = arc.value.endOffset;
     } else if (SURFACE_SLOTS.has(sourceClassSlot)) {
       const surface = decodeRevit2027AnalyticSurface(
         data,

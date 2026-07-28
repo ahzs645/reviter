@@ -1,5 +1,11 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
 import {
+  decodeRevit2027EdgeLoopStatic,
+  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
+} from "./revit-2027-edge-loop-static.ts";
+import {
   decodeRevit2027GEdgeStatic,
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-edge-1423.ts";
@@ -8,6 +14,22 @@ import {
   decodeRevit2027FaceStatic,
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-face-static.ts";
+import {
+  decodeRevit2027FillGrid,
+  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+} from "./revit-2027-fill-grid.ts";
+import {
+  decodeRevit2027FillPatternData,
+  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+} from "./revit-2027-fill-pattern-data.ts";
+import {
+  decodeRevit2027GFilling,
+  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gfilling.ts";
+import {
+  decodeRevit2027GArc,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+} from "./revit-2027-garc.ts";
 import {
   decodeRevit2027GLine,
   REVIT_2027_GLINE_BODY_BYTES,
@@ -30,6 +52,13 @@ import {
   decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "./revit-2027-geometry.ts";
+import {
+  decodeRevit2027AnalyticSurface,
+  REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
+} from "./revit-2027-surfaces.ts";
 
 export const REVIT_2027_GREP_INITIAL_TOKEN_COUNT = 3;
 
@@ -65,6 +94,13 @@ export type Revit2027GRepReplayReaderResult =
        * do not enter the FIFO.
        */
       appendedProperties: readonly CondInt16QueueEntry[];
+      /**
+       * StaticInteger reads share the native property-token namespace. These
+       * two lists preserve whether the reference is read before or after the
+       * conditional properties returned above.
+       */
+      staticReferencesBeforeProperties?: readonly number[];
+      staticReferencesAfterProperties?: readonly number[];
       value?: unknown;
     }
   | { ok: false; error: string };
@@ -94,7 +130,7 @@ export type Revit2027GRepReplayDescriptor = {
   sourceClassSlot: number | null;
   descriptorOffset: number;
   descriptorEndOffset: number;
-  state: "queued" | "null";
+  state: "queued" | "null" | "reused";
   /** Monotonic insertion order for a real FIFO entry; null for token zero. */
   queueSequence: number | null;
 };
@@ -324,11 +360,186 @@ const BUILTIN_READERS: readonly [
           startOffset: context.byteOffset,
           endOffset: decoded.value.endOffset,
           appendedProperties: [],
+          staticReferencesAfterProperties: [
+            ...decoded.value.faceReferences,
+            ...decoded.value.nextReferences,
+            ...decoded.value.previousReferences,
+          ],
           value: decoded.value,
         };
       },
     },
   ],
+  [
+    REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027EdgeLoop",
+      read: (data, context) => {
+        const decoded = decodeRevit2027EdgeLoopStatic(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          staticReferencesAfterProperties: decoded.value.staticReferences,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027EdgeLoopWithChainEnvelopes",
+      read: (data, context) => {
+        const decoded = decodeRevit2027EdgeLoopWithChainEnvelopesStatic(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          staticReferencesAfterProperties: decoded.value.staticReferences,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GFilling",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GFilling(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          staticReferencesBeforeProperties: [
+            decoded.value.faceIdReference,
+          ],
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027FillPatternData",
+      read: (data, context) => {
+        const decoded = decodeRevit2027FillPatternData(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027FillGrid",
+      read: (data, context) => {
+        const decoded = decodeRevit2027FillGrid(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: [],
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
+    REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GArc",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GArc(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: [],
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  ...[
+    REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
+    REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
+    REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+    REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
+  ].map(
+    (sourceClassSlot): [
+      number,
+      Revit2027GRepReplayReaderRegistration,
+    ] => [
+      sourceClassSlot,
+      {
+        id: `Revit2027AnalyticSurface:${sourceClassSlot}`,
+        read: (data, context) => {
+          const decoded = decodeRevit2027AnalyticSurface(
+            data,
+            context.byteOffset,
+            context.replayEndOffset,
+            context.revitVersion,
+            sourceClassSlot,
+          );
+          if (!decoded.ok) return decoded;
+          return {
+            ok: true,
+            startOffset: context.byteOffset,
+            endOffset: decoded.value.endOffset,
+            appendedProperties: decoded.value.queuedProperties,
+            value: decoded.value,
+          };
+        },
+      },
+    ],
+  ),
 ];
 
 /**
@@ -352,11 +563,12 @@ function validLimit(value: number): boolean {
  * Replay one independently framed Revit 2027 GRep dynamic-property queue.
  *
  * The queue is a true FIFO: properties appended by the active reader are
- * placed behind every pending older sibling. Positive tokens must append at
- * the exact next token-vector index. Token -1 is a real queued property but
- * does not advance that namespace. Token zero is a retained null descriptor;
- * every other negative token, overwrite, reuse, or sparse positive token is
- * rejected.
+ * placed behind every pending older sibling. Positive property tokens and
+ * StaticInteger references share the native pointer-index namespace. A
+ * property may advance the namespace or materialize an earlier static
+ * reservation exactly once; every forward gap must already be reserved.
+ * Token -1 is a real queued property but does not advance that namespace.
+ * Token zero is a retained null descriptor and other negative tokens fail.
  */
 export function replayRevit2027GRepFifo(
   data: Uint8Array,
@@ -390,6 +602,24 @@ export function replayRevit2027GRepFifo(
   let queueHead = 0;
   let nextPositiveToken = REVIT_2027_GREP_INITIAL_TOKEN_COUNT;
   let nextQueueSequence = 0;
+  const reservedStaticTokens = new Set<number>();
+  const propertySourceSlots = new Map<number, number>();
+
+  const reserveStaticReferences = (
+    references: readonly number[] | undefined,
+  ): string | null => {
+    if (references == null) return null;
+    if (!Array.isArray(references)) {
+      return "Revit 2027 GRep reader returned an invalid static-reference list";
+    }
+    for (const reference of references) {
+      if (!Number.isSafeInteger(reference)) {
+        return "Revit 2027 GRep static reference is not a safe integer";
+      }
+      if (reference > 0) reservedStaticTokens.add(reference);
+    }
+    return null;
+  };
 
   const appendDescriptors = (
     entries: readonly CondInt16QueueEntry[],
@@ -468,13 +698,53 @@ export function replayRevit2027GRepFifo(
         // A proven real queued property which does not touch object tokens.
       } else if (entry.token < 0) {
         return `unsupported negative Revit 2027 GRep token ${entry.token}`;
-      } else if (entry.token !== nextPositiveToken) {
-        return (
-          `Revit 2027 GRep token ${entry.token} is not append-only index ` +
-          `${nextPositiveToken}`
-        );
       } else {
-        nextPositiveToken += 1;
+        const existingSlot = propertySourceSlots.get(entry.token);
+        if (existingSlot != null) {
+          if (existingSlot !== entry.sourceClassSlot) {
+            return (
+              `Revit 2027 GRep token ${entry.token} changed source slot from ` +
+              `${existingSlot} to ${entry.sourceClassSlot}`
+            );
+          }
+          descriptors.push({
+            descriptorIndex: descriptors.length,
+            ownerElementId: root.ownerElementId,
+            path,
+            parentPath,
+            parentReplayIndex,
+            token: entry.token,
+            sourceClassSlot: entry.sourceClassSlot,
+            descriptorOffset: entry.byteOffset,
+            descriptorEndOffset: entry.endOffset,
+            state: "reused",
+            queueSequence: null,
+          });
+          continue;
+        }
+        if (entry.token < nextPositiveToken) {
+          if (!reservedStaticTokens.has(entry.token)) {
+            return (
+              `Revit 2027 GRep token ${entry.token} is below index ` +
+              `${nextPositiveToken} without an earlier StaticInteger reservation`
+            );
+          }
+        } else {
+          for (
+            let skipped = nextPositiveToken;
+            skipped < entry.token;
+            skipped += 1
+          ) {
+            if (!reservedStaticTokens.has(skipped)) {
+              return (
+                `Revit 2027 GRep token gap before ${entry.token} is not ` +
+                `reserved at index ${skipped}`
+              );
+            }
+          }
+          nextPositiveToken = entry.token + 1;
+        }
+        propertySourceSlots.set(entry.token, entry.sourceClassSlot);
       }
 
       if (nextQueueSequence >= maxReplayEntries) {
@@ -606,6 +876,12 @@ export function replayRevit2027GRepFifo(
     };
     spans.push(span);
 
+    const beforeReferencesError = reserveStaticReferences(
+      read.staticReferencesBeforeProperties,
+    );
+    if (beforeReferencesError) {
+      return { ok: false, error: beforeReferencesError };
+    }
     const nestedError = appendDescriptors(
       read.appendedProperties,
       pending.path,
@@ -614,6 +890,12 @@ export function replayRevit2027GRepFifo(
       read.endOffset,
     );
     if (nestedError) return { ok: false, error: nestedError };
+    const afterReferencesError = reserveStaticReferences(
+      read.staticReferencesAfterProperties,
+    );
+    if (afterReferencesError) {
+      return { ok: false, error: afterReferencesError };
+    }
     offset = read.endOffset;
   }
 

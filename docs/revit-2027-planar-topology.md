@@ -142,8 +142,8 @@ sampled-surface comparisons.
   `invalid-loop` failures and no partial mesh.
 - `materialId` stays `null`; render style, IFC material, or category material
   is not substituted for an exact native face-material relation.
-- `FillPatternData` and all 99 reached `FillGrid` bodies are decoded. The
-  remaining shared replay frontier is one source-2,213 `GArc`.
+- `FillPatternData`, all 99 reached `FillGrid` bodies, and both 117-byte GArc
+  profiles are decoded. All 5,996 direct Geometry replay boundaries complete.
 - Full family regeneration, nested source/target transforms, general curved
   BRep tessellation, and exact per-face material propagation remain explicit
   work, not hidden assumptions.

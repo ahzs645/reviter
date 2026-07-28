@@ -64,6 +64,10 @@ import {
   REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-gfilling.ts";
 import {
+  decodeRevit2027GArc,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-garc.ts";
+import {
   decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
@@ -1245,6 +1249,18 @@ function replayOwner(
       }));
     } else if (slot === REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT) {
       const decoded = decodeRevit2027FillGrid(
+        data,
+        cursor,
+        root.dynamicPayloadEndOffset,
+        release,
+      );
+      if (!decoded.ok) {
+        owner.readerFailure = `${slot}: ${decoded.error}`;
+        break;
+      }
+      endOffset = decoded.value.endOffset;
+    } else if (slot === REVIT_2027_GARC_SOURCE_CLASS_SLOT) {
+      const decoded = decodeRevit2027GArc(
         data,
         cursor,
         root.dynamicPayloadEndOffset,

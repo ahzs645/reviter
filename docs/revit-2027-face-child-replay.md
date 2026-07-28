@@ -5,9 +5,9 @@ single-`Geometry` root through `Face`, `GEdge`, and every reached Face child.
 It is a browser-safe TypeScript audit: no Revit process, ODA binary, native
 solid kernel, payload scanning, or inferred body width is used.
 
-The audit is green for every initial Face child and every reached
-`FillPatternData`/`FillGrid` descendant. It stops only when one owner reaches
-the remaining source-2,213 `GArc` profile body.
+The audit is green for every initial Face child and every reached descendant,
+including `FillPatternData`, `FillGrid`, and both `GArc` profile bodies. All
+5,996 direct single-Geometry owners consume their exact replay boundary.
 
 ## Replay and ownership rule
 
@@ -75,13 +75,13 @@ The exact supplied model produces:
 | --- | ---: |
 | partitions / inflated chunks / failed chunks | 1 / 3,666 / 0 |
 | safe direct single-Geometry owners | 5,996 |
-| completed owners | 5,995 |
+| completed owners | 5,996 |
 | owners stopped at source-2,087 descendants | 0 |
-| owners stopped at a source-2,213 descendant | 1 |
+| owners stopped at a source-2,213 descendant | 0 |
 | Faces / GEdges decoded | 40,961 / 84,499 |
 | initial Face-child descriptors | 116,844 |
 | initial Face-child bodies decoded | 116,844 |
-| certified descendants decoded | 311 |
+| certified descendants decoded | 313 |
 
 The initial descriptor census is:
 
@@ -140,7 +140,8 @@ and `m_pProfileCurve`. The native common source-5,926 reader consumes the
 same fields in that order after common `Surface`. The two profile descriptors
 are tokens 56 and 57, both source slot 2,213, which the same top-level ladder
 identifies as `GArc`. Each 135-byte extent aligns exactly to the next primary
-FIFO body. The combined `readerCorpusValid` result is true.
+FIFO body. Both queued 117-byte GArc bodies decode and the second ends exactly
+at its owner boundary. The combined `readerCorpusValid` result is true.
 
 ## What this unlocks—and what it does not
 
@@ -155,7 +156,6 @@ The native `TB_Geometry`, `libTD_Ge`, `libOdBrepModeler`, and
 `libTD_BrepBuilder`/`libTD_Br` modules remain behavioral evidence rather than
 client dependencies. Remaining blockers include:
 
-- reading the source-2,213 `GArc` profile-curve grammar;
 - completing curve, shared-surface, multi-loop, shell, and solid topology;
 - extending the browser tessellator beyond the certified planar/cylinder
   subsets; and
