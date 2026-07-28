@@ -180,18 +180,20 @@ These spans are substantially stronger byte-shape matches than raw tag hits:
   triangle count and exactly that many plausible edge-visibility bytes.
 
 That evidence originally justified calling them counted mesh bodies without
-claiming ownership. Exact queue decoding now supplies the stronger negative
-test: each apparent body starts exactly at the replay boundary of a complete
+claiming ownership. Exact collection decoding now supplies the stronger
+negative test: each apparent body starts exactly at the end of a complete
 multi-entry `OdBmCondInt16` collection containing only Revit 2026 `GStyle`
 (slot 2,248) and `GFlipControl` (slot 2,215) entries. None contains
 `GPolyMesh` (2,237) or `FacetedTopology8` (5,255). Because retained queue values
-can be satisfied before stream bytes are consumed, the replay boundary does not
-identify which queued item produced the following bytes.
+can be satisfied before stream bytes are consumed—and a derived reader can
+continue static parsing after a base collection ends—the collection boundary
+does not identify which queued item produced the following bytes.
 
-The spans are therefore **mesh-shaped collisions in an ambiguous dynamic queue
-replay**, not corroborated topology bodies. `bindQueuedFacetedTopology8`
-requires one exact slot-5,255 queue item plus an explicit slot-2,237 owner and
-rejects all three.
+The spans are therefore **mesh-shaped collisions after ambiguous conditional
+collections**, not corroborated topology bodies. `bindQueuedFacetedTopology8`
+requires one exact slot-5,255 queue item, an explicit slot-2,237 owner, the
+complete outer static boundary, and retained `DataKey` state. It rejects all
+three.
 
 The probe also joins the byte immediately after the edge array to all 74,437
 native identities decoded from `Global/History` and `Global/ElemTable`:

@@ -20,7 +20,8 @@ export type CondInt16QueueEntry = {
 export type CondInt16QueueCollection = {
   countOffset: number;
   entriesOffset: number;
-  replayOffset: number;
+  /** End of this counted collection, not necessarily dynamic replay start. */
+  endOffset: number;
   count: number;
   entries: readonly CondInt16QueueEntry[];
 };
@@ -61,6 +62,21 @@ export type ExactGPolyMeshBindingEvidence = {
   gPolyMeshSourceClassSlot: number;
   topologyPropertyToken: number;
   topologySourceClassSlot: number;
+  /**
+   * Exact state retained while `OdBmObjectPtrInitReader::read` traversed the
+   * complete outer object. Browser readers may use stable surrogate IDs for
+   * the native object/property pointers in the DynamicQueue DataKey.
+   */
+  dynamicQueueState: {
+    collectionEndOffset: number;
+    outerStaticEndOffset: number;
+    replayOffset: number;
+    objectIdentity: string;
+    classPropertyIdentity: string;
+    sequenceIndex: number;
+    retainedValueCount: number;
+    nextUnreadEntryIndex: number;
+  };
   ownerElementId: bigint;
   styleElementId: bigint;
   materialElementId: bigint;
@@ -101,8 +117,8 @@ function fits(data: Uint8Array, offset: number, byteLength: number): boolean {
  *
  * Each item is an `int32` token followed, only when the token is nonzero, by
  * an `int16` source-class slot. The nested property bodies begin at the
- * returned `replayOffset`; this function deliberately does not assume that
- * the first bytes there belong to any particular queued item.
+ * returned `endOffset`. Derived readers can continue reading static fields
+ * after this collection, so its end must not be treated as dynamic replay.
  */
 export function decodeCondInt16QueueCollection(
   data: Uint8Array,
@@ -151,7 +167,7 @@ export function decodeCondInt16QueueCollection(
     collection: {
       countOffset,
       entriesOffset: countOffset + 4,
-      replayOffset: offset,
+      endOffset: offset,
       count,
       entries,
     },
@@ -160,43 +176,43 @@ export function decodeCondInt16QueueCollection(
 
 /**
  * Find a uniquely decodable CondInt16 collection whose end is exactly the
- * supplied replay offset. Ambiguous matches are rejected.
+ * supplied offset. Ambiguous matches are rejected.
  */
-export function locateCondInt16QueueBeforeReplay(
+export function locateCondInt16QueueEndingAt(
   data: Uint8Array,
-  replayOffset: number,
+  endOffset: number,
   options: { maxEntries?: number; maxSearchBytes?: number } = {},
 ): CondInt16QueueDecodeResult {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_QUEUE_ENTRIES;
   const maxSearchBytes =
     options.maxSearchBytes ?? DEFAULT_MAX_QUEUE_SEARCH_BYTES;
   if (
-    !Number.isSafeInteger(replayOffset) ||
-    replayOffset < 4 ||
-    replayOffset > data.byteLength
+    !Number.isSafeInteger(endOffset) ||
+    endOffset < 4 ||
+    endOffset > data.byteLength
   ) {
-    return { ok: false, error: "replayOffset is outside the supplied bytes" };
+    return { ok: false, error: "endOffset is outside the supplied bytes" };
   }
   if (!Number.isSafeInteger(maxSearchBytes) || maxSearchBytes < 4) {
     return { ok: false, error: "maxSearchBytes must be a safe integer of at least four" };
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const firstOffset = Math.max(0, replayOffset - maxSearchBytes);
+  const firstOffset = Math.max(0, endOffset - maxSearchBytes);
   let match: CondInt16QueueCollection | null = null;
-  for (let countOffset = firstOffset; countOffset <= replayOffset - 4; countOffset += 1) {
+  for (let countOffset = firstOffset; countOffset <= endOffset - 4; countOffset += 1) {
     const count = view.getInt32(countOffset, true);
     if (count <= 0 || count > maxEntries) continue;
-    const available = replayOffset - countOffset - 4;
+    const available = endOffset - countOffset - 4;
     if (available < count * 4 || available > count * 6) continue;
     const decoded = decodeCondInt16QueueCollection(data, countOffset, {
       maxEntries,
     });
-    if (!decoded.ok || decoded.collection.replayOffset !== replayOffset) continue;
+    if (!decoded.ok || decoded.collection.endOffset !== endOffset) continue;
     if (match) {
       return {
         ok: false,
-        error: "multiple CondInt16 collections end at the supplied replayOffset",
+        error: "multiple CondInt16 collections end at the supplied endOffset",
       };
     }
     match = decoded.collection;
@@ -205,7 +221,7 @@ export function locateCondInt16QueueBeforeReplay(
     ? { ok: true, collection: match }
     : {
         ok: false,
-        error: "no bounded CondInt16 collection ends at the supplied replayOffset",
+        error: "no bounded CondInt16 collection ends at the supplied endOffset",
       };
 }
 
@@ -234,10 +250,10 @@ function validTransform(transform: RevitTransform3d): boolean {
  */
 export function bindQueuedFacetedTopology8(
   data: Uint8Array,
-  replayOffset: number,
   evidence: ExactGPolyMeshBindingEvidence,
 ): QueuedFacetedTopology8BindingResult {
-  const queue = locateCondInt16QueueBeforeReplay(data, replayOffset);
+  const state = evidence.dynamicQueueState;
+  const queue = locateCondInt16QueueEndingAt(data, state.collectionEndOffset);
   if (!queue.ok) return queue;
   const collection = queue.collection;
   if (collection.count !== 1) {
@@ -248,6 +264,22 @@ export function bindQueuedFacetedTopology8(
     };
   }
   const entry = collection.entries[0]!;
+  if (
+    state.outerStaticEndOffset !== state.replayOffset ||
+    state.replayOffset < collection.endOffset ||
+    state.nextUnreadEntryIndex !== 0 ||
+    state.retainedValueCount !== 0 ||
+    state.objectIdentity.length === 0 ||
+    state.classPropertyIdentity.length === 0 ||
+    state.sequenceIndex !== -1
+  ) {
+    return {
+      ok: false,
+      error:
+        "complete outer-object and DataKey replay state is required before binding topology",
+      queue: collection,
+    };
+  }
   if (
     evidence.gPolyMeshSourceClassSlot !== REVIT_2026_GPOLYMESH_SOURCE_CLASS ||
     evidence.topologySourceClassSlot !==
@@ -276,7 +308,7 @@ export function bindQueuedFacetedTopology8(
       queue: collection,
     };
   }
-  const topology = locateFacetedTopology8Body(data, replayOffset);
+  const topology = locateFacetedTopology8Body(data, state.replayOffset);
   if (!topology.ok) {
     return { ok: false, error: topology.error, queue: collection };
   }

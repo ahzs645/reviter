@@ -69,7 +69,7 @@ int32 token | int16 source-class slot
 The apparent `a7 08 | uint32` pattern was the same six-byte item viewed from
 the wrong boundary. Reading from the counted collection start produces:
 
-| Chunk | Count offset | Count | First run | Second run | Replay offset |
+| Chunk | Count offset | Count | First run | Second run | Collection end |
 | ---: | ---: | ---: | --- | --- | ---: |
 | 2,953 | 32,787 | 694 | 5 × slot 2,248, tokens 279–283 | 689 × slot 2,215, tokens 284–972 | 36,955 |
 | 3,002 | 2,262 | 110 | 4 × slot 2,248, tokens 20–23 | 106 × slot 2,215, tokens 24–129 | 2,926 |
@@ -77,14 +77,15 @@ the wrong boundary. Reading from the counted collection start produces:
 
 The exact 2026 module maps slot 2,248 to `GStyle` and slot 2,215 to
 `GFlipControl`. Neither is `GPolyMesh` (2,237) or common
-`FacetedTopology8` (5,255). The replay starts at the same offsets previously
-treated as topology starts.
+`FacetedTopology8` (5,255). Those offsets are only the ends of nested counted
+collections. They are not proven dynamic-replay boundaries.
 
 This is stronger than a missing selector: `OdBmDynamicQueue::readProperties`
 can satisfy retained values before consuming the stream, so a multi-entry
-queue does not make the first replay bytes adjacent to one determinable
-descriptor. The queue state must be reproduced. Adjacency alone cannot bind a
-body.
+queue does not make later payload bytes adjacent to one determinable
+descriptor. Derived readers can also continue reading static fields after a
+base reader's collection. Both the complete outer static parse and the queue
+state must be reproduced. Adjacency alone cannot bind a body.
 
 ## `FacetedTopology8` body grammar
 
@@ -135,20 +136,71 @@ It requires the mode and cardinalities, validates the complete mesh, and
 returns the exact end offset. The counted queue proof above demonstrates why
 that result is not itself proof that a span is a topology body.
 
-`bindQueuedFacetedTopology8` adds the fail-closed ownership gate. It only binds
+`bindQueuedFacetedTopology8` adds a fail-closed ownership gate. It only binds
 when:
 
-1. exactly one queued item ends at the replay boundary;
-2. that item is common source slot 5,255 and its token matches the retained
+1. exactly one queued item exists in the identified collection;
+2. the caller has separately reproduced the complete outer static-object
+   boundary and retained DynamicQueue `DataKey` state;
+3. the replay starts at that outer boundary, after the collection end;
+4. no retained value precedes the selected single entry;
+5. that item is common source slot 5,255 and its token matches the retained
    `GPolyMesh` topology property;
-3. the owning record was entered as Revit 2026 source slot 2,237;
-4. owner, 64-bit style/material IDs, signed flags, and affine transform are
+6. the owning record was entered as Revit 2026 source slot 2,237;
+7. owner, 64-bit style/material IDs, signed flags, and affine transform are
    all supplied and valid; and
-5. the complete topology body validates.
+8. the complete topology body validates.
 
 All three UNBC spans are rejected at condition 1 with
 `faceted topology ownership is ambiguous in a multi-entry DynamicQueue`.
 Reviter therefore does not emit them as owned geometry.
+
+## Exact-model target-slot audit
+
+A bounded scan was run over every one of the 3,666 inflated partition chunks
+in the exact UNBC RVT. It considered signed collection counts from 1 through
+10,000 and required every nonzero item to have a positive source-class slot
+no greater than 6,000.
+
+Raw 16-bit byte matches were common and not useful: slot 2,237 occurred 4,893
+times and slot 5,255 occurred 1,347 times. Only 40 complete
+counted-`CondInt16` shapes contained either target:
+
+| Target slot | Complete collection-shaped matches | Contains both target slots |
+| ---: | ---: | ---: |
+| 2,237 `GPolyMesh` | 39 | 0 |
+| 5,255 `FacetedTopology8` | 1 | 0 |
+
+Thirty-seven of the slot-2,237 shapes are incompatible with a plausible
+positive property token. The two remaining count-one shapes are:
+
+| Chunk | Count offset | Token | Source slot | Collection end |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,389 | 82,716 | 300 | 2,237 | 82,726 |
+| 2,053 | 111,269 | 300 | 2,237 | 111,279 |
+
+Interpreting the following bytes with the exact `GPolyMesh` static grammar
+does not yield a topology reference: in both cases the inherited `GNode`
+prefix is followed by a zero conditional token. Treating either collection
+end as a `FacetedTopology8` body also fails the normals-mode validation.
+
+The sole complete slot-5,255 shape is chunk 223 at count offset 47,659. It has
+count 1, token -1, collection end 47,669, and the following bytes fail the
+same topology validator. Its surrounding bytes are consistent with a
+schema/layout table rather than a model object.
+
+A second scan requiring at least two positive property tokens, each no greater
+than 100,000 and increasing by one, found 161,333 collection-shaped sequences
+and none containing slot 2,237 or 5,255. This is a bounded negative result, not
+proof that the classes are absent: the native queue is keyed by retained
+object/property state, and the relevant source slots need not appear as an
+isolated counted collection that a byte scan can recognize.
+
+The audit is reproducible without native execution:
+
+```sh
+node --experimental-strip-types scripts/audit-dynamic-geometry-queue.ts model.rvt
+```
 
 ## Remaining ownership bridge
 
@@ -184,15 +236,47 @@ places the origin in the translation terms. `decodeTrf201120260` returns the
 equivalent browser column-major affine matrix. It rejects truncation,
 non-finite values, and a singular basis.
 
-The smallest unresolved layer remains the stateful `OdBmDynamicQueue` replay:
+## Proven outer replay boundary
 
-1. enter a `GPolyMesh` through source-class slot `2237`;
-2. retain the condition/source-slot tuple queued for `m_pFacetedTopology`;
-3. reproduce queue ordering until that property body is replayed;
-4. associate the selector-free body with that retained `GPolyMesh` context;
-5. only then attach the owner's transform, style, material, and element.
+The call site that separates static initialization from dynamic replay is
+`OdBmObjectPtrReader::read` in `TB_LoaderBase.tx` at `0x181320`. Its relevant
+order is:
 
-The collection syntax and transform body are now implemented, but retained
-queue data and exact outer-object entry still have to be reproduced. Until
-then, the three spans are intentionally rejected rather than emitted as owned
-model geometry.
+1. construct `OdBmDynamicQueue` (`0x1813b5`);
+2. call `OdBmObjectPtrInitReader::read` (`0x1817ef`), which traverses the
+   complete outer static object graph;
+3. call `OdBmDynamicQueue::initReferences` (`0x181994`);
+4. call `OdBmDynamicQueue::readDynamicProperties` (`0x1819c5`).
+
+This proves why the end of a `GGroup` child collection cannot be used as the
+replay offset. The derived `GRep` reader still reads both bounds, its element
+ID, type, and flags after returning from `GGroup`.
+
+The retained state is also more specific than a serialized token.
+`OdBmDynamicQueue::addData` at `0x173d62` constructs a `DataKey` from the
+current `ValueDisposition`: object identity, `OdBmClassProperty` identity,
+and sequence index (initially -1). `dataLeft` at `0x173966` performs an
+RB-tree lookup by that key. `readProperties` at `0x17604a` can consume a
+retained `OdTfVariant` for the key without advancing the payload stream;
+`assignValue` at `0x173906` applies the value through the retained class
+property.
+
+The smallest unresolved layer is therefore not another byte signature. It is
+a browser representation of the outer reader and its stateful queue:
+
+1. reproduce `OdBmObjectPtrInitReader::read` far enough to enter a
+   `GPolyMesh` through source-class slot 2,237;
+2. preserve stable surrogate object/property identities and sequence indexes
+   for every `ValueDisposition`;
+3. reproduce `initReferences`, retained-value lookup, queue ordering, and
+   stream advancement until the topology property's `DataKey` is selected;
+4. associate the selector-free slot-5,255 body with that retained
+   `GPolyMesh`;
+5. only then attach the owning `GRep` element, transforms, style, and
+   material.
+
+The collection syntax, transform body, and exact outer call boundary are now
+implemented or documented, but the `ObjectPtrInitReader` object registry and
+`DataKey` replay state still have to be reproduced. Until then, the three
+spans are intentionally rejected rather than emitted as owned model
+geometry.

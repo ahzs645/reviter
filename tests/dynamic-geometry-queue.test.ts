@@ -5,7 +5,7 @@ import {
   bindQueuedFacetedTopology8,
   decodeCondInt16QueueCollection,
   decodeTrf201120260,
-  locateCondInt16QueueBeforeReplay,
+  locateCondInt16QueueEndingAt,
   REVIT_2026_GPOLYMESH_SOURCE_CLASS,
   REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
   type RevitTransform3d,
@@ -39,6 +39,19 @@ function identityTransform(): RevitTransform3d {
   };
 }
 
+function exactQueueState(collectionEndOffset: number, replayOffset: number) {
+  return {
+    collectionEndOffset,
+    outerStaticEndOffset: replayOffset,
+    replayOffset,
+    objectIdentity: "outer-object:1/gpolymesh:1",
+    classPropertyIdentity: "OdBmGPolyMesh.m_pFacetedTopology",
+    sequenceIndex: -1,
+    retainedValueCount: 0,
+    nextUnreadEntryIndex: 0,
+  };
+}
+
 test("decodes CondInt16 collection tokens and conditional class slots", () => {
   const data = new Uint8Array(22);
   const view = new DataView(data.buffer);
@@ -52,7 +65,7 @@ test("decodes CondInt16 collection tokens and conditional class slots", () => {
   const result = decodeCondInt16QueueCollection(data, 2);
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.collection.replayOffset, 22);
+  assert.equal(result.collection.endOffset, 22);
   assert.deepEqual(
     result.collection.entries.map(({ token, sourceClassSlot }) => ({
       token,
@@ -66,7 +79,7 @@ test("decodes CondInt16 collection tokens and conditional class slots", () => {
   );
 });
 
-test("locates only a unique collection ending at the replay boundary", () => {
+test("locates only a unique collection ending at the supplied boundary", () => {
   const data = new Uint8Array(24);
   const view = new DataView(data.buffer);
   view.setInt32(4, 2, true);
@@ -75,7 +88,7 @@ test("locates only a unique collection ending at the replay boundary", () => {
   view.setInt32(14, 63, true);
   view.setInt16(18, 2215, true);
 
-  const result = locateCondInt16QueueBeforeReplay(data, 20);
+  const result = locateCondInt16QueueEndingAt(data, 20);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.collection.countOffset, 4);
@@ -92,10 +105,11 @@ test("binding rejects a multi-entry GStyle/GFlipControl replay collision", () =>
   view.setInt16(14, 2215, true);
   writeTopology8(data, 16);
 
-  const result = bindQueuedFacetedTopology8(data, 16, {
+  const result = bindQueuedFacetedTopology8(data, {
     gPolyMeshSourceClassSlot: REVIT_2026_GPOLYMESH_SOURCE_CLASS,
     topologyPropertyToken: 62,
     topologySourceClassSlot: REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
+    dynamicQueueState: exactQueueState(16, 16),
     ownerElementId: 1n,
     styleElementId: 2n,
     materialElementId: 3n,
@@ -109,18 +123,20 @@ test("binding rejects a multi-entry GStyle/GFlipControl replay collision", () =>
   }
 });
 
-test("binding accepts a single exact GPolyMesh topology queue entry", () => {
-  const data = new Uint8Array(100);
+test("binding accepts exact outer state even when static fields follow the collection", () => {
+  const data = new Uint8Array(104);
   const view = new DataView(data.buffer);
   view.setInt32(0, 1, true);
   view.setInt32(4, 91, true);
   view.setInt16(8, REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS, true);
-  const endOffset = writeTopology8(data, 10);
+  view.setInt32(10, 0x12345678, true);
+  const endOffset = writeTopology8(data, 14);
 
-  const result = bindQueuedFacetedTopology8(data, 10, {
+  const result = bindQueuedFacetedTopology8(data, {
     gPolyMeshSourceClassSlot: REVIT_2026_GPOLYMESH_SOURCE_CLASS,
     topologyPropertyToken: 91,
     topologySourceClassSlot: REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
+    dynamicQueueState: exactQueueState(10, 14),
     ownerElementId: 101n,
     styleElementId: 102n,
     materialElementId: 103n,
@@ -133,6 +149,32 @@ test("binding accepts a single exact GPolyMesh topology queue entry", () => {
   assert.equal(result.binding.ownerElementId, 101n);
   assert.equal(result.binding.styleElementId, 102n);
   assert.equal(result.binding.materialElementId, 103n);
+});
+
+test("binding rejects a collection end presented as replay without outer static state", () => {
+  const data = new Uint8Array(104);
+  const view = new DataView(data.buffer);
+  view.setInt32(0, 1, true);
+  view.setInt32(4, 91, true);
+  view.setInt16(8, REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS, true);
+  writeTopology8(data, 14);
+
+  const result = bindQueuedFacetedTopology8(data, {
+    gPolyMeshSourceClassSlot: REVIT_2026_GPOLYMESH_SOURCE_CLASS,
+    topologyPropertyToken: 91,
+    topologySourceClassSlot: REVIT_COMMON_FACETED_TOPOLOGY8_SOURCE_CLASS,
+    dynamicQueueState: {
+      ...exactQueueState(10, 14),
+      outerStaticEndOffset: 10,
+    },
+    ownerElementId: 101n,
+    styleElementId: 102n,
+    materialElementId: 103n,
+    polyMeshFlags: 4,
+    transform: identityTransform(),
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /outer-object and DataKey/);
 });
 
 test("decodes Trf201120260 axes and origin to a column-major matrix", () => {
