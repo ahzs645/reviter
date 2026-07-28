@@ -72,19 +72,19 @@ Results:
 - Symbol owners with certified face meshes: 1,880.
 - Certified symbol-target triangles: 29,850.
 - Composed roots: 110 / 110, with zero graph-composition failures.
-- Complete roots: 30, containing 11,596 triangles.
-- Partial roots: 80, containing 72,450 currently recovered triangles.
+- Complete roots: 109, containing 83,492 triangles.
+- Partial roots: one, containing 554 currently recovered triangles.
 
-The 80 partial roots remain proxy-only. Their source issue occurrences are:
+The one partial root remains proxy-only. Its source issue occurrences are:
 
 | Issue | Occurrences |
 | --- | ---: |
-| `planar-sampled:loop-unresolved` | 1,082 |
-| `planar-sampled:unsupported-surface` | 20 |
-| `cylinder-sampled:non-rectangular-trim` | 4 |
 | `planar-sampled:uv-link-unresolved` | 3 |
 
-Counts above can repeat a reused source issue in several composed roots.
+This corrected result uses the same drawable-face certification as production.
+In particular, a surface-bearing Face with no positive loop/region token is a
+non-topological reference face and is not a missing drawable face. The earlier
+30/80 split incorrectly treated 930 such `loop-unresolved` records as fatal.
 
 ## IFC parity
 
@@ -95,54 +95,48 @@ their recovered fragments.
 
 Against the reference IFC:
 
-- Complete nested tags matched: 30 / 30.
-- Bounds within `1e-6 ft`: 30 / 30.
-- Maximum corner error: `3.421106669065921e-7 ft`.
-- Median corner error: `9.18422857765222e-8 ft`.
-- Maximum size error: `6.836172730118051e-7 ft`.
-- Partial nested roots excluded: 80.
-- Overall matched numeric IFC geometry tags after this admission rule:
-  33,120 / 36,144 (`91.63346613545816%`).
+- Complete nested tags matched: 109 / 109.
+- Bounds within `1e-6 ft`: 105 / 109.
+- Bounds within `1/12 ft`: 109 / 109.
+- Median maximum corner error: `1.572994960952201e-7 ft`.
+- 95th-percentile maximum corner error: `3.861750897726779e-7 ft`.
+- Maximum corner error: `0.045515674198242095 ft`.
+- Partial root `1844902` excluded: 554 triangles with three positive-loop UV
+  discontinuities.
+- Overall matched numeric IFC geometry tags after atomic admission:
+  33,198 / 36,144 (`91.84926958831341%`).
 
-Triangle counts are diagnostic only because Revit and IFC tessellation do not
-need identical triangulations.
+This comparison is measured separately from the converter; IFC bytes are never
+read by the production path. Triangle counts remain diagnostic only because
+Revit and IFC tessellation do not need identical triangulations.
 
 ## Production collector handoff
 
-`createRevit2027NativeMeshCollector` currently scans one inflated page at a
-time and immediately discards a replayed owner unless it is a complete direct
-geometry root. That is insufficient for nested symbols: a root and any of its
-recursive symbol definitions can live on different pages, and a definition
-may contain only grouping/instance nodes.
+`createRevit2027NativeMeshCollector` now implements the bounded two-phase
+handoff while scanning each inflated page only once:
 
-The production integration should keep the current independent AABB gate and
-proxy fallback, with this bounded two-phase design:
+1. `scanPage` retains compact owner-local certified meshes, local drawable-face
+   completeness, and exact `GInstance` links in an owner-id map. Inflated page
+   bytes are not retained.
+2. Owner count, link count, conservative retained-byte estimate, and source
+   triangle count have independent finite caps. Duplicate/conflicting owner
+   definitions are rejected.
+3. `snapshot` resolves recursive closures with
+   `composeRevit2027NestedMesh`. Missing targets, cycles, unsupported GRep/CDA
+   selectors, scale-bearing or view-dependent resolution, local coverage
+   failure, conflicts, and truncation fail the complete root closed.
+4. Complete occurrences retain their source mesh/material provenance and an
+   exact column-major root-local transform. Rendering applies nested
+   `outer * inner` composition before any scene placement.
+5. A nested root replaces its proxy only after the existing independent
+   `expectedBoundsByElement` and output-triangle gates admit the whole root.
 
-1. During `scanPage`, retain every valid framed GRep owner needed for the graph,
-   not only direct roots. Store compact owner state keyed by exact bigint
-   owner id: certified local face meshes, mesh issues, and collected nested
-   links. Reject conflicting duplicate definitions.
-2. Add every `symbolElementId` to a bounded pending-id set. Because pages are
-   streamed once, retain definitions encountered before they are referenced as
-   well as referenced definitions found later. Enforce owner, link, byte, and
-   triangle limits independently.
-3. At `snapshot`/finalize, resolve the recursive closure with
-   `composeRevit2027NestedMesh`. A missing target, cycle, selector conflict,
-   replay failure, local mesh issue, or storage truncation makes the entire
-   nested root incomplete.
-4. Convert each complete composition into shared transformed occurrences (or
-   compact composed owner faces), preserving `outer * inner` order. Do not
-   count a nested root's direct fragment separately.
-5. Feed complete nested roots through the existing
-   `expectedBoundsByElement` containment test. Only after all occurrences pass
-   bounds and output limits may the element id enter `coveredElementIds`.
-6. Leave every incomplete, bounds-rejected, or truncated root on the existing
-   proxy path.
-
-The cross-page state should expose separate diagnostics for symbol definitions,
-links, complete/partial nested roots, closure failures, and nested triangles.
-The direct-owner behavior should remain unchanged for owners with no nested
-links.
+Exact production conversion retained 57,570 compact definitions and 40,700
+links, with a conservative retained-size estimate of 206,619,648 bytes. It
+composed 109 complete roots (83,492 triangles), kept the one partial root on
+its proxy, and reached no cap. All 109 complete roots passed the independent
+RVT-envelope gate. The final scene therefore contains 32,520 native elements,
+586,709 native triangles, and 4,028 proxy elements.
 
 ## Tessellator/kernel boundary
 

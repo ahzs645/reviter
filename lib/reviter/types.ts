@@ -107,10 +107,26 @@ export type DecoderCoverage = {
   nativeMeshTriangles?: number;
   /** True when a native storage/output safety cap declined complete elements. */
   nativeMeshTruncated?: boolean;
+  /** Conservative byte estimate for compact cross-page GRep definitions. */
+  nativeMeshStoredBytes?: number;
   /** Complete native items rejected because their AABB escaped the RVT envelope. */
   nativeMeshBoundsMismatches?: number;
   /** Complete native items lacking an independent display-envelope cross-check. */
   nativeMeshMissingBounds?: number;
+  /** Framed GRep owner definitions retained for recursive symbol resolution. */
+  nativeMeshNestedDefinitions?: number;
+  /** Exact persisted GInstance/InstanceInfo links retained across pages. */
+  nativeMeshNestedLinks?: number;
+  /** Direct scene roots containing at least one nested symbol instance. */
+  nativeMeshNestedRoots?: number;
+  /** Nested roots admitted only after complete recursive face coverage. */
+  nativeMeshCompleteNestedRoots?: number;
+  /** Nested roots kept on proxies because any recursive source failed closed. */
+  nativeMeshPartialNestedRoots?: number;
+  /** Exact triangles contributed by complete composed nested roots. */
+  nativeMeshNestedTriangles?: number;
+  /** Nested roots rejected by graph, selector, coverage, conflict, or cap checks. */
+  nativeMeshNestedFailures?: number;
   nativeMaterialDefinitions: number;
   /** Placed elements inheriting at least one exact shared-geometry material. */
   nativeMaterialAssignments: number;

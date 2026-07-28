@@ -15,12 +15,24 @@ import {
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "./revit-2027-framed-grep-root.ts";
 import { replayRevit2027GRepFifo } from "./revit-2027-grep-replay.ts";
+import {
+  collectRevit2027NestedInstances,
+  composeRevit2027NestedMesh,
+  type Revit2027NestedInstance,
+} from "./revit-2027-nested-instance.ts";
+import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 
 import type { Bounds3, MeshData, Vec3 } from "./types.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
 const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
-const DEFAULT_MAX_OWNERS = 25_000;
+// The exact UNBC corpus has one framed GRep owner for most persisted elements,
+// including non-scene definitions encountered before a later symbol reference.
+// Keep the cap above that corpus while remaining finite and independently
+// enforced from mesh/link/byte limits.
+const DEFAULT_MAX_OWNERS = 100_000;
+const DEFAULT_MAX_NESTED_LINKS = 100_000;
+const DEFAULT_MAX_STORED_BYTES = 256 * 1024 * 1024;
 const OUTPUT_BATCH_TRIANGLES = 100_000;
 const MAX_INCOMPLETE_SAMPLES = 100;
 
@@ -28,6 +40,8 @@ export type Revit2027NativeMeshLimits = {
   maxStoredTriangles?: number;
   maxOutputTriangles?: number;
   maxOwners?: number;
+  maxNestedLinks?: number;
+  maxStoredBytes?: number;
 };
 
 export type Revit2027IncompleteOwnerReason = {
@@ -47,6 +61,8 @@ export type Revit2027CompactOwnerMesh = {
   faces: readonly {
     faceToken: number;
     mesh: NeutralFaceMesh;
+    /** Exact column-major root-local transform for a nested occurrence. */
+    nestedTransform?: RevitTransform3d["matrix"];
   }[];
   triangles: number;
 };
@@ -63,13 +79,34 @@ export type Revit2027NativeMeshCollection = {
   readonly excludedNonTopologicalFaces: number;
   readonly failedOwners: number;
   readonly storedTriangles: number;
+  readonly storedBytes: number;
   readonly truncated: boolean;
   readonly incompleteSamples: readonly Revit2027IncompleteOwnerReason[];
+  readonly nestedDefinitions: number;
+  readonly nestedLinks: number;
+  readonly nestedRootOwners: number;
+  readonly completeNestedRoots: number;
+  readonly partialNestedRoots: number;
+  readonly nestedTriangles: number;
+  readonly nestedFailures: number;
+  readonly nestedFailureSamples: readonly {
+    ownerElementId: number | null;
+    detail: string;
+  }[];
+};
+
+type CompactOwnerDefinition = {
+  ownerElementId: number;
+  directRoot: boolean;
+  geometry: Revit2027CompactOwnerMesh | null;
+  localComplete: boolean;
+  nestedInstances: readonly Revit2027NestedInstance[];
 };
 
 type MutableCollection = {
   enabled: boolean;
-  owners: Map<number, Revit2027CompactOwnerMesh>;
+  definitions: Map<number, CompactOwnerDefinition>;
+  conflictingOwnerIds: Set<number>;
   scannedFrames: number;
   eligibleRoots: number;
   replayedOwners: number;
@@ -78,8 +115,14 @@ type MutableCollection = {
   excludedNonTopologicalFaces: number;
   failedOwners: number;
   storedTriangles: number;
+  storedBytes: number;
+  nestedLinks: number;
   truncated: boolean;
   incompleteSamples: Revit2027IncompleteOwnerReason[];
+  nestedFailureSamples: {
+    ownerElementId: number | null;
+    detail: string;
+  }[];
 };
 
 export type Revit2027NativeMeshCollector = {
@@ -217,6 +260,169 @@ function rawFaceStyleId(
   return id > 0 && Number.isSafeInteger(id) ? id : null;
 }
 
+function estimatedDefinitionBytes(
+  geometry: Revit2027CompactOwnerMesh | null,
+  nestedInstances: readonly Revit2027NestedInstance[],
+): number {
+  let bytes = 256 + nestedInstances.length * 384;
+  for (const face of geometry?.faces ?? []) {
+    bytes +=
+      512 +
+      face.mesh.positions.byteLength +
+      face.mesh.normals.byteLength +
+      face.mesh.indices.byteLength +
+      face.mesh.groups.length * 512;
+  }
+  return bytes;
+}
+
+type NestedGeometryMarker = {
+  mesh: Revit2027CompactOwnerMesh | null;
+  localComplete: boolean;
+};
+
+function finalizeRevit2027NativeMeshCollection(
+  state: MutableCollection,
+): Revit2027NativeMeshCollection {
+  const owners = new Map<number, Revit2027CompactOwnerMesh>();
+  for (const definition of state.definitions.values()) {
+    if (
+      definition.directRoot &&
+      definition.nestedInstances.length === 0 &&
+      definition.localComplete &&
+      definition.geometry &&
+      !state.conflictingOwnerIds.has(definition.ownerElementId)
+    ) {
+      owners.set(definition.ownerElementId, definition.geometry);
+    }
+  }
+
+  const nestedRoots = [...state.definitions.values()].filter(
+    (definition) =>
+      definition.directRoot && definition.nestedInstances.length > 0,
+  );
+  let completeNestedRoots = 0;
+  let partialNestedRoots = 0;
+  let nestedTriangles = 0;
+  let nestedFailures = 0;
+  const nestedFailureSamples = [...state.nestedFailureSamples];
+  const rememberNestedFailure = (
+    ownerElementId: number | null,
+    detail: string,
+  ): void => {
+    nestedFailures += 1;
+    if (nestedFailureSamples.length < MAX_INCOMPLETE_SAMPLES) {
+      nestedFailureSamples.push({ ownerElementId, detail });
+    }
+  };
+
+  const definitions = [...state.definitions.values()]
+    .filter(
+      (definition) =>
+        !state.conflictingOwnerIds.has(definition.ownerElementId),
+    )
+    .map((definition) => ({
+      ownerElementId: BigInt(definition.ownerElementId),
+      // Every traversed definition contributes a marker, even when it only
+      // contains grouping/instance nodes. This lets finalization enforce local
+      // coverage for the entire recursive closure, not only mesh-bearing nodes.
+      geometry: {
+        mesh: definition.geometry,
+        localComplete: definition.localComplete,
+      } satisfies NestedGeometryMarker,
+      nestedInstances: definition.nestedInstances,
+    }));
+
+  for (const root of nestedRoots) {
+    if (state.truncated) {
+      partialNestedRoots += 1;
+      rememberNestedFailure(
+        root.ownerElementId,
+        "nested definition storage was truncated",
+      );
+      continue;
+    }
+    if (state.conflictingOwnerIds.has(root.ownerElementId)) {
+      partialNestedRoots += 1;
+      rememberNestedFailure(
+        root.ownerElementId,
+        "nested root has a duplicate or conflicting owner definition",
+      );
+      continue;
+    }
+    const composed = composeRevit2027NestedMesh<NestedGeometryMarker>(
+      BigInt(root.ownerElementId),
+      definitions,
+    );
+    if (!composed.ok) {
+      partialNestedRoots += 1;
+      rememberNestedFailure(root.ownerElementId, composed.error);
+      continue;
+    }
+    const incomplete = composed.value.occurrences.find(
+      (occurrence) => !occurrence.geometry.localComplete,
+    );
+    if (incomplete) {
+      partialNestedRoots += 1;
+      rememberNestedFailure(
+        root.ownerElementId,
+        `nested source owner ${incomplete.geometryOwnerElementId} lacks complete local drawable-face coverage`,
+      );
+      continue;
+    }
+    const faces: Revit2027CompactOwnerMesh["faces"][number][] = [];
+    let triangles = 0;
+    for (const occurrence of composed.value.occurrences) {
+      for (const face of occurrence.geometry.mesh?.faces ?? []) {
+        faces.push({
+          ...face,
+          nestedTransform: occurrence.transform,
+        });
+        triangles += face.mesh.indices.length / 3;
+      }
+    }
+    if (faces.length === 0) {
+      partialNestedRoots += 1;
+      rememberNestedFailure(
+        root.ownerElementId,
+        "nested root resolves to no complete drawable faces",
+      );
+      continue;
+    }
+    owners.set(root.ownerElementId, {
+      ownerElementId: root.ownerElementId,
+      faces,
+      triangles,
+    });
+    completeNestedRoots += 1;
+    nestedTriangles += triangles;
+  }
+
+  return {
+    enabled: state.enabled,
+    owners,
+    scannedFrames: state.scannedFrames,
+    eligibleRoots: state.eligibleRoots,
+    replayedOwners: state.replayedOwners,
+    completeOwners: state.completeOwners,
+    incompleteOwners: state.incompleteOwners,
+    excludedNonTopologicalFaces: state.excludedNonTopologicalFaces,
+    failedOwners: state.failedOwners,
+    storedTriangles: state.storedTriangles,
+    storedBytes: state.storedBytes,
+    truncated: state.truncated,
+    incompleteSamples: state.incompleteSamples,
+    nestedDefinitions: state.definitions.size,
+    nestedLinks: state.nestedLinks,
+    nestedRootOwners: nestedRoots.length,
+    completeNestedRoots,
+    partialNestedRoots,
+    nestedTriangles,
+    nestedFailures,
+    nestedFailureSamples,
+  };
+}
+
 /**
  * Create a bounded, browser-safe collector for the exact Revit 2027
  * GRep/BRep subset. Other releases are inert by construction.
@@ -230,9 +436,18 @@ export function createRevit2027NativeMeshCollector(
     DEFAULT_MAX_STORED_TRIANGLES,
   );
   const maxOwners = safeLimit(limits.maxOwners, DEFAULT_MAX_OWNERS);
+  const maxNestedLinks = safeLimit(
+    limits.maxNestedLinks,
+    DEFAULT_MAX_NESTED_LINKS,
+  );
+  const maxStoredBytes = safeLimit(
+    limits.maxStoredBytes,
+    DEFAULT_MAX_STORED_BYTES,
+  );
   const state: MutableCollection = {
     enabled: release === 2027,
-    owners: new Map(),
+    definitions: new Map(),
+    conflictingOwnerIds: new Set(),
     scannedFrames: 0,
     eligibleRoots: 0,
     replayedOwners: 0,
@@ -241,9 +456,13 @@ export function createRevit2027NativeMeshCollector(
     excludedNonTopologicalFaces: 0,
     failedOwners: 0,
     storedTriangles: 0,
+    storedBytes: 0,
+    nestedLinks: 0,
     truncated: false,
     incompleteSamples: [],
+    nestedFailureSamples: [],
   };
+  let cachedSnapshot: Revit2027NativeMeshCollection | null = null;
 
   const rememberIncomplete = (
     reason: Revit2027IncompleteOwnerReason,
@@ -258,38 +477,54 @@ export function createRevit2027NativeMeshCollector(
     release: release ?? null,
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
+      cachedSnapshot = null;
       for (const frame of scanFramedElementObjects(data)) {
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
         const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
-        if (!root.ok || !isRevit2027DirectGeometryRoot(root.value)) continue;
-        state.eligibleRoots += 1;
+        if (!root.ok) continue;
+        const directRoot = isRevit2027DirectGeometryRoot(root.value);
+        if (directRoot) state.eligibleRoots += 1;
 
         const ownerElementId = Number(root.value.ownerElementId);
         if (
           !Number.isSafeInteger(ownerElementId) ||
           ownerElementId <= 0 ||
-          ownerElementId > 0xffff_ffff
+          ownerElementId > 0xffff_ffff ||
+          ownerElementId !== frame.elementId
         ) {
-          rememberIncomplete({
-            ownerElementId: null,
-            code: "unsafe-owner-id",
-          });
+          if (directRoot) {
+            rememberIncomplete({
+              ownerElementId: null,
+              code: "unsafe-owner-id",
+            });
+          }
           continue;
         }
-        if (state.owners.has(ownerElementId)) continue;
+        if (
+          state.definitions.has(ownerElementId) ||
+          state.conflictingOwnerIds.has(ownerElementId)
+        ) {
+          state.conflictingOwnerIds.add(ownerElementId);
+          continue;
+        }
 
         const replayed = replayRevit2027GRepFifo(data, root.value);
         if (!replayed.ok) {
-          state.failedOwners += 1;
+          if (directRoot) state.failedOwners += 1;
           continue;
         }
-        state.replayedOwners += 1;
+        if (directRoot) state.replayedOwners += 1;
+        const nested = collectRevit2027NestedInstances(replayed.value);
+        if (!nested.ok) {
+          if (directRoot) state.failedOwners += 1;
+          continue;
+        }
         const meshed = meshRevit2027CertifiedOwnerReplay(replayed.value, {
           materialForFace: rawFaceStyleId,
         });
         if (!meshed.ok) {
-          state.failedOwners += 1;
+          if (directRoot) state.failedOwners += 1;
           continue;
         }
 
@@ -298,68 +533,92 @@ export function createRevit2027NativeMeshCollector(
           meshed.value.faceMeshes,
           meshed.value.issues,
         );
-        state.excludedNonTopologicalFaces +=
-          countExcludedNonTopologicalFaces(replayed.value.spans);
-        if (coverage.code === "no-drawable-faces") {
-          rememberIncomplete({
-            ownerElementId,
-            code: "no-drawable-faces",
-            drawableFaces: 0,
-            meshedDrawableFaces: 0,
-          });
-          continue;
-        }
-        if (!coverage.complete) {
-          rememberIncomplete({
-            ownerElementId,
-            code: "incomplete-drawable-faces",
-            drawableFaces: coverage.drawableFaces,
-            meshedDrawableFaces: coverage.meshedDrawableFaces,
-            detail: `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
-          });
-          continue;
+        if (directRoot) {
+          state.excludedNonTopologicalFaces +=
+            countExcludedNonTopologicalFaces(replayed.value.spans);
         }
 
         const expected = drawableFaceTokens(replayed.value.spans);
-        const faces = compactFaces(
-          meshed.value.faceMeshes.filter((face) =>
-            expected.has(face.faceToken),
-          ),
-        );
-        const triangles = faces.reduce(
-          (total, face) => total + face.mesh.indices.length / 3,
-          0,
+        const faces = coverage.complete
+          ? compactFaces(
+              meshed.value.faceMeshes.filter((face) =>
+                expected.has(face.faceToken),
+              ),
+            )
+          : [];
+        const triangles = coverage.complete
+          ? faces.reduce(
+              (total, face) => total + face.mesh.indices.length / 3,
+              0,
+            )
+          : 0;
+        const geometry =
+          coverage.complete && faces.length > 0
+            ? { ownerElementId, faces, triangles }
+            : null;
+        const localComplete =
+          coverage.complete ||
+          (coverage.code === "no-drawable-faces" &&
+            nested.value.length > 0);
+        if (directRoot && !localComplete) {
+          rememberIncomplete(
+            coverage.code === "no-drawable-faces"
+              ? {
+                  ownerElementId,
+                  code: "no-drawable-faces",
+                  drawableFaces: 0,
+                  meshedDrawableFaces: 0,
+                }
+              : {
+                  ownerElementId,
+                  code: "incomplete-drawable-faces",
+                  drawableFaces: coverage.drawableFaces,
+                  meshedDrawableFaces: coverage.meshedDrawableFaces,
+                  detail:
+                    `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
+                },
+          );
+        }
+        const definitionBytes = estimatedDefinitionBytes(
+          geometry,
+          nested.value,
         );
         if (
-          state.owners.size >= maxOwners ||
-          state.storedTriangles + triangles > maxStoredTriangles
+          state.definitions.size >= maxOwners ||
+          state.storedTriangles + triangles > maxStoredTriangles ||
+          state.nestedLinks + nested.value.length > maxNestedLinks ||
+          state.storedBytes + definitionBytes > maxStoredBytes
         ) {
           state.truncated = true;
-          rememberIncomplete({
-            ownerElementId,
-            code: "storage-limit",
-            drawableFaces: coverage.drawableFaces,
-            meshedDrawableFaces: coverage.meshedDrawableFaces,
-            detail:
-              `native mesh storage cap reached at ${state.storedTriangles} triangles`,
-          });
+          if (directRoot) {
+            rememberIncomplete({
+              ownerElementId,
+              code: "storage-limit",
+              drawableFaces: coverage.drawableFaces,
+              meshedDrawableFaces: coverage.meshedDrawableFaces,
+              detail:
+                `native definition storage cap reached at ${state.storedTriangles} triangles, ` +
+                `${state.nestedLinks} links, and ${state.storedBytes} estimated bytes`,
+            });
+          }
           break;
         }
-        state.owners.set(ownerElementId, {
+        state.definitions.set(ownerElementId, {
           ownerElementId,
-          faces,
-          triangles,
+          directRoot,
+          geometry,
+          localComplete,
+          nestedInstances: nested.value,
         });
-        state.completeOwners += 1;
+        if (directRoot && coverage.complete) state.completeOwners += 1;
         state.storedTriangles += triangles;
+        state.storedBytes += definitionBytes;
+        state.nestedLinks += nested.value.length;
       }
     },
     snapshot(): Revit2027NativeMeshCollection {
-      return {
-        ...state,
-        owners: state.owners,
-        incompleteSamples: state.incompleteSamples,
-      };
+      cachedSnapshot ??= finalizeRevit2027NativeMeshCollection(state);
+      return cachedSnapshot;
     },
   };
 }
@@ -433,12 +692,34 @@ function transformPoint(
   ];
 }
 
+function transformFacePoint(
+  face: Revit2027CompactOwnerMesh["faces"][number],
+  x: number,
+  y: number,
+  z: number,
+  origin: Vec3,
+  placement?: InstancePlacement,
+): [number, number, number] {
+  const nested = face.nestedTransform;
+  if (nested) {
+    const nestedX =
+      nested[0]! * x + nested[4]! * y + nested[8]! * z + nested[12]!;
+    const nestedY =
+      nested[1]! * x + nested[5]! * y + nested[9]! * z + nested[13]!;
+    const nestedZ =
+      nested[2]! * x + nested[6]! * y + nested[10]! * z + nested[14]!;
+    return transformPoint(nestedX, nestedY, nestedZ, origin, placement);
+  }
+  return transformPoint(x, y, z, origin, placement);
+}
+
 function itemBounds(item: RenderItem): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
   for (const face of item.owner.faces) {
     for (let index = 0; index < face.mesh.positions.length; index += 3) {
-      const [x, y, z] = transformPoint(
+      const [x, y, z] = transformFacePoint(
+        face,
         face.mesh.positions[index]!,
         face.mesh.positions[index + 1]!,
         face.mesh.positions[index + 2]!,
@@ -654,7 +935,8 @@ export function buildRevit2027NativeMeshScene(
       const vertexOffset = batch.positions.length / 3;
       for (let index = 0; index < face.mesh.positions.length; index += 3) {
         batch.positions.push(
-          ...transformPoint(
+          ...transformFacePoint(
+            face,
             face.mesh.positions[index]!,
             face.mesh.positions[index + 1]!,
             face.mesh.positions[index + 2]!,

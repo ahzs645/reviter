@@ -324,6 +324,36 @@ test("composition rejects missing targets, cycles, conflicts, and selectors", ()
   assert.equal(selector.ok, false);
   if (!selector.ok) assert.match(selector.error, /unsupported GRep selector 7/);
 
+  const cdaSelector = composeRevit2027NestedMesh(10n, [
+    {
+      ownerElementId: 10n,
+      geometry: null,
+      nestedInstances: [
+        nested(10n, 20n, identity, { cda: 2 }),
+      ],
+    },
+    { ownerElementId: 20n, geometry: "mesh", nestedInstances: [] },
+  ]);
+  assert.equal(cdaSelector.ok, false);
+  if (!cdaSelector.ok) {
+    assert.match(cdaSelector.error, /unsupported CDA selector 2/);
+  }
+
+  const scaled = composeRevit2027NestedMesh(10n, [
+    {
+      ownerElementId: 10n,
+      geometry: null,
+      nestedInstances: [
+        nested(10n, 20n, identity, { hasScale: true }),
+      ],
+    },
+    { ownerElementId: 20n, geometry: "mesh", nestedInstances: [] },
+  ]);
+  assert.equal(scaled.ok, false);
+  if (!scaled.ok) {
+    assert.match(scaled.error, /scale-bearing symbol resolution/);
+  }
+
   const viewDependent = composeRevit2027NestedMesh(10n, [
     {
       ownerElementId: 10n,

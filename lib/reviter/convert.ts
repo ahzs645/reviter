@@ -2068,6 +2068,9 @@ export function convertRvtBytes(
             ...(nativeMeshScene.meshes.length
               ? ["revit-2027-certified-grep-brep-mesh-v1"]
               : []),
+            ...(nativeMeshCollection.completeNestedRoots
+              ? ["revit-2027-nested-symbol-composition-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
@@ -2077,8 +2080,19 @@ export function convertRvtBytes(
           nativeMeshOwners: nativeMeshCollection.completeOwners,
           nativeMeshTriangles: nativeMeshScene.triangles,
           nativeMeshTruncated: nativeMeshScene.truncated,
+          nativeMeshStoredBytes: nativeMeshCollection.storedBytes,
           nativeMeshBoundsMismatches: nativeMeshScene.boundsMismatches,
           nativeMeshMissingBounds: nativeMeshScene.missingBounds,
+          nativeMeshNestedDefinitions:
+            nativeMeshCollection.nestedDefinitions,
+          nativeMeshNestedLinks: nativeMeshCollection.nestedLinks,
+          nativeMeshNestedRoots: nativeMeshCollection.nestedRootOwners,
+          nativeMeshCompleteNestedRoots:
+            nativeMeshCollection.completeNestedRoots,
+          nativeMeshPartialNestedRoots:
+            nativeMeshCollection.partialNestedRoots,
+          nativeMeshNestedTriangles: nativeMeshCollection.nestedTriangles,
+          nativeMeshNestedFailures: nativeMeshCollection.nestedFailures,
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
           nativeMaterialAssignments: nativeMaterialAssignedElements,
           nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
@@ -2165,6 +2179,11 @@ export function convertRvtBytes(
           ...(nativeMeshCollection.incompleteOwners
             ? [
                 `${nativeMeshCollection.incompleteOwners.toLocaleString()} GRep owners did not have a complete drawable Face mesh and remain on the proxy path.`,
+              ]
+            : []),
+          ...(nativeMeshCollection.nestedRootOwners
+            ? [
+                `${nativeMeshCollection.completeNestedRoots.toLocaleString()} of ${nativeMeshCollection.nestedRootOwners.toLocaleString()} nested-symbol GRep roots resolved atomically through ${nativeMeshCollection.nestedLinks.toLocaleString()} exact GInstance links (${nativeMeshCollection.nestedTriangles.toLocaleString()} triangles); incomplete recursive roots remain on the proxy path.`,
               ]
             : []),
           ...(nativeMeshScene.boundsMismatches

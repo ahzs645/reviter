@@ -130,8 +130,17 @@ test("native scene places shared owners, recentres once, groups proven materials
     excludedNonTopologicalFaces: 0,
     failedOwners: 0,
     storedTriangles: 2,
+    storedBytes: 0,
     truncated: false,
     incompleteSamples: [],
+    nestedDefinitions: 0,
+    nestedLinks: 0,
+    nestedRootOwners: 0,
+    completeNestedRoots: 0,
+    partialNestedRoots: 0,
+    nestedTriangles: 0,
+    nestedFailures: 0,
+    nestedFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,
@@ -186,8 +195,17 @@ test("output cap declines an element atomically and leaves its proxy eligible", 
     excludedNonTopologicalFaces: 0,
     failedOwners: 0,
     storedTriangles: 2,
+    storedBytes: 0,
     truncated: false,
     incompleteSamples: [],
+    nestedDefinitions: 0,
+    nestedLinks: 0,
+    nestedRootOwners: 0,
+    completeNestedRoots: 0,
+    partialNestedRoots: 0,
+    nestedTriangles: 0,
+    nestedFailures: 0,
+    nestedFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,
@@ -198,6 +216,66 @@ test("output cap declines an element atomically and leaves its proxy eligible", 
   assert.deepEqual([...scene.coveredElementIds], [10]);
   assert.equal(scene.triangles, 1);
   assert.equal(scene.truncated, true);
+});
+
+test("nested owner faces compose root-local transforms before scene placement and preserve materials", () => {
+  const nestedTransform = [
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    5, 6, 7, 1,
+  ] as const;
+  const collection: Revit2027NativeMeshCollection = {
+    enabled: true,
+    owners: new Map([
+      [40, {
+        ownerElementId: 40,
+        faces: [{
+          faceToken: 3,
+          mesh: triangle(99),
+          nestedTransform,
+        }],
+        triangles: 1,
+      }],
+    ]),
+    scannedFrames: 2,
+    eligibleRoots: 1,
+    replayedOwners: 2,
+    completeOwners: 2,
+    incompleteOwners: 0,
+    excludedNonTopologicalFaces: 0,
+    failedOwners: 0,
+    storedTriangles: 1,
+    storedBytes: 0,
+    truncated: false,
+    incompleteSamples: [],
+    nestedDefinitions: 2,
+    nestedLinks: 1,
+    nestedRootOwners: 1,
+    completeNestedRoots: 1,
+    partialNestedRoots: 0,
+    nestedTriangles: 1,
+    nestedFailures: 0,
+    nestedFailureSamples: [],
+  };
+  const scene = buildRevit2027NativeMeshScene(
+    collection,
+    [],
+    { x: 1, y: 2, z: 3 },
+    {
+      materialElementIds: new Set([99]),
+      expectedBoundsByElement: new Map([
+        [40, {
+          min: { x: 5, y: 6, z: 7 },
+          max: { x: 6, y: 7, z: 7 },
+        }],
+      ]),
+      boundsToleranceFeet: 0,
+    },
+  );
+  assert.deepEqual([...scene.coveredElementIds], [40]);
+  assert.deepEqual([...scene.meshes[0]!.positions.slice(0, 3)], [4, 4, 4]);
+  assert.equal(scene.meshes[0]!.nativeMaterialElementId, 99);
 });
 
 test("independent RVT bounds reject mismatched direct and placed coordinates without suppressing proxies", () => {
@@ -223,8 +301,17 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
     excludedNonTopologicalFaces: 0,
     failedOwners: 0,
     storedTriangles: 2,
+    storedBytes: 0,
     truncated: false,
     incompleteSamples: [],
+    nestedDefinitions: 0,
+    nestedLinks: 0,
+    nestedRootOwners: 0,
+    completeNestedRoots: 0,
+    partialNestedRoots: 0,
+    nestedTriangles: 0,
+    nestedFailures: 0,
+    nestedFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,

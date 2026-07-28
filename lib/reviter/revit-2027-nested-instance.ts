@@ -382,6 +382,18 @@ export function composeRevit2027NestedMesh<TGeometry>(
           `GRep selector ${instance.gRepId}`
         );
       }
+      if (instance.cda !== 1) {
+        return (
+          `nested instance ${instance.instanceReplayIndex} uses unsupported ` +
+          `CDA selector ${instance.cda}`
+        );
+      }
+      if (instance.hasScale) {
+        return (
+          `nested instance ${instance.instanceReplayIndex} requires ` +
+          "unsupported scale-bearing symbol resolution"
+        );
+      }
       if (instance.resolveSymbolInView) {
         return (
           `nested instance ${instance.instanceReplayIndex} requires ` +
