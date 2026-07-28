@@ -29,45 +29,51 @@ UTF-16LE text followed by the measured field trailer
 appearance-library paths, schema labels, and other length-prefixed text. A
 generic UTF-16 search would incorrectly promote those nested strings.
 
-`lib/reviter/material-records.ts` applies all of these gates and is disabled for
+Appearance-backed records have a second, independently bounded layout matching
+the static `MaterialElem.m_pMaterial` → `Material.m_name` object boundary:
+
+- a bounded UTF-16 source description starts at object byte `+231`;
+- the description ends in `0d b9 f0 ff ff ff ff ff 00 00 00 00`;
+- the next bounded UTF-16 field is the material name;
+- eight zero bytes and a nonzero 64-bit persisted object reference close it.
+
+All parts of that chain are required. The decoder does not select “the second
+string” or compare text to IFC at runtime, and it still rejects schema labels,
+asset paths, and 21 lightweight “Unassigned” appearance records.
+
+`lib/reviter/material-records.ts` applies both gated layouts and is disabled for
 releases other than 2027. It returns material element identity and name only.
-It does not synthesize colors, appearances, or assignments.
+It does not synthesize colors or appearances.
 
 ## UNBC result
 
 | Measure | Count |
 | --- | ---: |
 | Framed native `MaterialElem` records | 94 |
-| Safely named material definitions | 54 |
-| Unique safely decoded RVT names | 54 |
-| Records with absent or unsupported name layout | 40 |
+| Direct-name-layout definitions | 54 |
+| Nested-name-layout definitions | 15 |
+| Safely named material definitions | 69 |
+| Unique safely decoded RVT names | 69 |
+| Records with absent or unsupported name layout | 25 |
 | IFC material entities | 30 |
 | Unique IFC material names | 29 |
-| Exact IFC names found in decoded RVT definitions | 21 (72.4%) |
+| Exact IFC names found in decoded RVT definitions | 28 (96.6%) |
 | IFC material-association relations | 7,554 |
-| Native RVT assignments decoded | 0 |
+| Native shared-geometry assignments decoded | 5,413 |
 
-The eight unmatched IFC names are:
+The sole unmatched IFC name is:
 
 - `<Unnamed>`;
-- `Acier inoxydable, brossé`;
-- `K.Line Accessoire Blanc - KQ`;
-- `K.Line Accessoires Noir - FQ`;
-- `K.Line Intemporel Blanc satiné (9016 S) - KQ`;
-- `K.Line Intemporel Taupe (7022 S) - JK`;
-- `K.Line Vintage Anodisé Argent - AC`;
-- `Деревянные доски`.
 
-Their absence from the strict result is not evidence that they are absent from
-the RVT. They may be inside family documents or one of the 40 material records
-whose name layout has not been proven. The decoder deliberately does not infer
-them from the IFC.
+The literal `<Unnamed>` occurs zero times in the 421,867,755 inflated partition
+bytes and is not synthesized. Each of the other seven formerly missing IFC
+names occurs exactly once as a length-prefixed UTF-16 field inside a distinct
+framed `MaterialElem`, and all seven now decode through the nested field chain.
 
-This improves the evidence boundary but does not yet change the converter's
-material-parity score: the current GLB/semantic output still contains zero
-native definitions and zero native assignments. The 54 definitions are exposed
-by a standalone diagnostic until their nested material properties and
-assignment references can be resolved safely.
+The converter exports all 69 native definitions. Three separately proven
+shared-geometry layouts resolve 5,413 geometry-to-material assignments; exact
+element/type, compound-layer, BRep-face, appearance, category-style, and view
+override paths remain separate work.
 
 ## Assignment layers inspected
 
@@ -77,9 +83,9 @@ resolution is layered:
 | Layer | Evidence | Current status |
 | --- | --- | --- |
 | Material definition | `MaterialElem.m_pMaterial`; `Material.m_name`; `MaterialId` color/transparency fields | Outer identity and name decoded; nested properties unresolved |
-| Element/type material | element, family instance, and family symbol material-ID accessors | Serialized references unresolved |
+| Element/type material | element, family instance, and family symbol material-ID accessors | Shared family geometry assignment partially decoded; direct instance/type sets unresolved |
 | Structural material | structural material accessor/reference | Serialized reference unresolved |
-| Family geometry tag | `m_geomTag2MaterialId`; geometry marker material ID plus geometry tag | Map exists; geometry-tag record serialization unresolved |
+| Family geometry tag | `m_geomTag2MaterialId`; geometry marker material ID plus geometry tag | 5,413 shared-geometry assignments decoded; per-tag maps unresolved |
 | Stored polygon mesh | `GPolyMesh` material-ID field/accessor | Runtime member location is not accepted as serialized layout |
 | BRep face | face material and mapper APIs, including per-face overrides | Requires general BRep decode and face identity |
 | Category/object style | graphics-style material reference | Serialized style/category references unresolved |
@@ -96,12 +102,12 @@ produce plausible but unverified assignments.
 ## Smallest defensible next step
 
 The next decoder should interpret the embedded schema's generic object tokens
-and fixups sufficiently to resolve:
+and fixups sufficiently to extend the proven definition/assignment subset:
 
-1. `MaterialElem.m_pMaterial` into `Material` and `MaterialId` values;
-2. element/type and graphics-style material references;
-3. family `geomTag -> materialId` maps;
-4. stored mesh and BRep face references once stable geometry/face identity is
+1. `MaterialElem.m_pMaterial` into complete `MaterialId` appearance values;
+2. direct element/type and graphics-style material references;
+3. complete family `geomTag -> materialId` maps;
+4. stored-mesh and BRep-face references once stable geometry/face identity is
    available.
 
 A renderer can then preserve explicit provenance and apply a tested precedence,

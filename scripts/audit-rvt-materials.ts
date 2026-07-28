@@ -81,9 +81,12 @@ const definitions = new Map<number, {
   storedOffset: number;
   recordOffset: number;
   objectLength: number;
-  evidence: "framed-material-element-name";
+  evidence:
+    | "framed-material-element-name"
+    | "framed-nested-material-name";
 }>();
 let framedMaterialElements = 0;
+let namedMaterialElementRecords = 0;
 let partitionStreams = 0;
 let gzipChunks = 0;
 let inflatedBytes = 0;
@@ -130,6 +133,7 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
       offset += 319;
     }
     framedMaterialElements += scan.framedMaterialElements;
+    namedMaterialElementRecords += scan.namedMaterialElements;
     for (const definition of scan.definitions) {
       if (definitions.has(definition.elementId)) continue;
       definitions.set(definition.elementId, {
@@ -178,8 +182,11 @@ const result = {
     inflatedBytes,
     materialElementMarker: "0x0ad3",
     framedMaterialElements,
+    namedMaterialElementRecords,
     namedMaterialDefinitions: definitions.size,
-    unnamedOrUnsupportedNameLayout: framedMaterialElements - definitions.size,
+    duplicateNamedMaterialRecords: namedMaterialElementRecords - definitions.size,
+    unnamedOrUnsupportedNameLayout:
+      framedMaterialElements - namedMaterialElementRecords,
     uniqueDecodedNames: uniqueRvtNames.size,
     definitions: [...definitions.values()].sort((a, b) => a.elementId - b.elementId),
   },

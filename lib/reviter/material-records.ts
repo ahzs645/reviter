@@ -26,6 +26,21 @@ const REVIT_2027_MATERIAL_NAME_TRAILER = [
   0xe0,
   0x0c,
 ] as const;
+const REVIT_2027_NESTED_NAME_SEPARATOR = [
+  0x0d,
+  0xb9,
+  0xf0,
+  0xff,
+  0xff,
+  0xff,
+  0xff,
+  0xff,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+] as const;
+const ZERO_U64 = [0, 0, 0, 0, 0, 0, 0, 0] as const;
 
 const MIN_OBJECT_BYTES = 40;
 const MAX_OBJECT_BYTES = 0xffff;
@@ -34,6 +49,7 @@ const OBJECT_LENGTH_ECHO_OFFSET = 16;
 const MATERIAL_NAME_SEARCH_BYTES = 1_024;
 const MIN_MATERIAL_NAME_CHARS = 3;
 const MAX_MATERIAL_NAME_CHARS = 200;
+const NESTED_DESCRIPTION_OFFSET = 231;
 
 export type NativeMaterialDefinition = {
   elementId: number;
@@ -41,7 +57,9 @@ export type NativeMaterialDefinition = {
   recordOffset: number;
   objectLength: number;
   objectMarker: typeof REVIT_2027_MATERIAL_ELEMENT_MARKER;
-  evidence: "framed-material-element-name";
+  evidence:
+    | "framed-material-element-name"
+    | "framed-nested-material-name";
 };
 
 export type MaterialRecordScan = {
@@ -62,6 +80,30 @@ function matchesAt(data: Uint8Array, offset: number, pattern: readonly number[])
 function validMaterialName(value: string): boolean {
   if (!value.trim() || !/[\p{L}\p{N}]/u.test(value)) return false;
   return !/[\u0000-\u001f\u007f\ufffd]/u.test(value);
+}
+
+function readUtf16Field(
+  data: Uint8Array,
+  view: DataView,
+  offset: number,
+  limit: number,
+  minimumCharacters: number,
+): { value: string; end: number } | null {
+  if (offset < 0 || offset + 4 > limit) return null;
+  const characters = view.getUint32(offset, true);
+  const start = offset + 4;
+  const end = start + characters * 2;
+  if (
+    characters < minimumCharacters ||
+    characters > MAX_MATERIAL_NAME_CHARS ||
+    end > limit
+  ) {
+    return null;
+  }
+  const value = new TextDecoder("utf-16le")
+    .decode(data.subarray(start, end))
+    .normalize("NFC");
+  return validMaterialName(value) ? { value, end } : null;
 }
 
 /**
@@ -103,6 +145,54 @@ function readMaterialName(
     if (validMaterialName(name)) return name.normalize("NFC");
   }
   return null;
+}
+
+/**
+ * Read the second persisted material-name layout.
+ *
+ * Larger appearance-backed `MaterialElem` records place a source description
+ * at `+231`, followed by a fixed field separator, then `Material.m_name`.
+ * Eight zero bytes and a nonzero 64-bit object reference close the field.
+ * Requiring the entire chain avoids selecting schema labels or asset paths
+ * from the same nested object.
+ */
+function readNestedMaterialName(
+  data: Uint8Array,
+  view: DataView,
+  objectOffset: number,
+  objectLength: number,
+): string | null {
+  const limit = Math.min(data.byteLength, objectOffset + objectLength);
+  const description = readUtf16Field(
+    data,
+    view,
+    objectOffset + NESTED_DESCRIPTION_OFFSET,
+    limit,
+    3,
+  );
+  if (
+    !description ||
+    !matchesAt(data, description.end, REVIT_2027_NESTED_NAME_SEPARATOR)
+  ) {
+    return null;
+  }
+  const name = readUtf16Field(
+    data,
+    view,
+    description.end + REVIT_2027_NESTED_NAME_SEPARATOR.length,
+    limit,
+    MIN_MATERIAL_NAME_CHARS,
+  );
+  if (
+    !name ||
+    name.end + 16 > limit ||
+    !matchesAt(data, name.end, ZERO_U64) ||
+    view.getUint32(name.end + 8, true) === 0 ||
+    view.getUint32(name.end + 12, true) !== 0
+  ) {
+    return null;
+  }
+  return name.value;
 }
 
 /**
@@ -153,7 +243,11 @@ export function scanMaterialElementRecords(
     }
 
     framedMaterialElements += 1;
-    const name = readMaterialName(data, view, offset, objectLength);
+    const directName = readMaterialName(data, view, offset, objectLength);
+    const nestedName = directName
+      ? null
+      : readNestedMaterialName(data, view, offset, objectLength);
+    const name = directName ?? nestedName;
     if (!name) continue;
     definitions.push({
       elementId,
@@ -161,7 +255,9 @@ export function scanMaterialElementRecords(
       recordOffset: offset,
       objectLength,
       objectMarker: REVIT_2027_MATERIAL_ELEMENT_MARKER,
-      evidence: "framed-material-element-name",
+      evidence: directName
+        ? "framed-material-element-name"
+        : "framed-nested-material-name",
     });
     offset += objectLength + OBJECT_TRAILER_BYTES - 1;
   }

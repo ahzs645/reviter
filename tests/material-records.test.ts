@@ -7,6 +7,10 @@ import {
 } from "../lib/reviter/material-records.ts";
 
 const NAME_TRAILER = [0xff, 0xff, 0xff, 0xff, 0xe0, 0x0c] as const;
+const NESTED_NAME_SEPARATOR = [
+  0x0d, 0xb9, 0xf0, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+] as const;
 
 function writeUtf16(
   data: Uint8Array,
@@ -50,6 +54,43 @@ function materialRecord({
   return data;
 }
 
+function nestedMaterialRecord({
+  elementId = 1_242_151,
+  name = "Acier inoxydable, brossé",
+  validSeparator = true,
+  referenceId = 1_242_063,
+}: {
+  elementId?: number;
+  name?: string;
+  validSeparator?: boolean;
+  referenceId?: number;
+} = {}): Uint8Array {
+  const objectLength = 520;
+  const data = new Uint8Array(objectLength + 20);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, elementId, true);
+  view.setUint32(4, 0, true);
+  view.setUint32(12, objectLength, true);
+  view.setUint16(16, REVIT_2027_MATERIAL_ELEMENT_MARKER, true);
+  const descriptionEnd = writeUtf16(
+    data,
+    view,
+    231,
+    "Stainless Steel 18/8, brushed finish",
+  );
+  data.set(NESTED_NAME_SEPARATOR, descriptionEnd);
+  if (!validSeparator) data[descriptionEnd] = 0;
+  const nameEnd = writeUtf16(
+    data,
+    view,
+    descriptionEnd + NESTED_NAME_SEPARATOR.length,
+    name,
+  );
+  view.setBigUint64(nameEnd + 8, BigInt(referenceId), true);
+  view.setUint32(objectLength + 16, objectLength, true);
+  return data;
+}
+
 test("decodes a framed Revit 2027 material element name and identity", () => {
   const result = scanMaterialElementRecords(materialRecord(), 2027);
   assert.equal(result.framedMaterialElements, 1);
@@ -70,6 +111,33 @@ test("keeps Unicode names and skips earlier appearance-asset strings", () => {
     2027,
   );
   assert.equal(result.definitions[0]?.name, "Краска - Охра");
+});
+
+test("decodes the nested material name only through its complete field chain", () => {
+  const result = scanMaterialElementRecords(nestedMaterialRecord(), 2027);
+  assert.deepEqual(result.definitions, [{
+    elementId: 1_242_151,
+    name: "Acier inoxydable, brossé",
+    recordOffset: 0,
+    objectLength: 520,
+    objectMarker: REVIT_2027_MATERIAL_ELEMENT_MARKER,
+    evidence: "framed-nested-material-name",
+  }]);
+
+  assert.equal(
+    scanMaterialElementRecords(
+      nestedMaterialRecord({ validSeparator: false }),
+      2027,
+    ).namedMaterialElements,
+    0,
+  );
+  assert.equal(
+    scanMaterialElementRecords(
+      nestedMaterialRecord({ referenceId: 0 }),
+      2027,
+    ).namedMaterialElements,
+    0,
+  );
 });
 
 test("does not promote a framed material element whose name trailer is absent", () => {

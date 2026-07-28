@@ -20,9 +20,11 @@
     "inflatedBytes": 421867755,
     "materialElementMarker": "0x0ad3",
     "framedMaterialElements": 94,
-    "namedMaterialDefinitions": 54,
-    "unnamedOrUnsupportedNameLayout": 40,
-    "uniqueDecodedNames": 54,
+    "namedMaterialElementRecords": 69,
+    "namedMaterialDefinitions": 69,
+    "duplicateNamedMaterialRecords": 0,
+    "unnamedOrUnsupportedNameLayout": 25,
+    "uniqueDecodedNames": 69,
     "definitions": [
       {
         "elementId": 23,
@@ -415,6 +417,46 @@
         "evidence": "framed-material-element-name"
       },
       {
+        "elementId": 179017,
+        "name": "Сталь, углеродистая",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 49649,
+        "objectLength": 12602,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 179018,
+        "name": "Медь",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 62271,
+        "objectLength": 12580,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 179019,
+        "name": "Чугун, ковкий",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 74871,
+        "objectLength": 4787,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 179020,
+        "name": "Нержавеющая сталь (1)",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "storedOffset": 25224967,
+        "recordOffset": 79678,
+        "objectLength": 12614,
+        "evidence": "framed-nested-material-name"
+      },
+      {
         "elementId": 182549,
         "name": "Алюминий",
         "stream": "Partitions/325",
@@ -423,6 +465,16 @@
         "recordOffset": 92312,
         "objectLength": 13622,
         "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 272922,
+        "name": "Деревянные доски",
+        "stream": "Partitions/325",
+        "chunkIndex": 1342,
+        "storedOffset": 25175101,
+        "recordOffset": 9449,
+        "objectLength": 12461,
+        "evidence": "framed-nested-material-name"
       },
       {
         "elementId": 617540,
@@ -473,6 +525,106 @@
         "recordOffset": 49153,
         "objectLength": 6106,
         "evidence": "framed-material-element-name"
+      },
+      {
+        "elementId": 1242061,
+        "name": "K.Line Accessoires Aspect Inox - TD",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "storedOffset": 21866411,
+        "recordOffset": 116376,
+        "objectLength": 13220,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242067,
+        "name": "Laiton",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "storedOffset": 21891471,
+        "recordOffset": 26370,
+        "objectLength": 12354,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242074,
+        "name": "K.Line Intemporel Blanc satiné (9016 S) - KQ",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "storedOffset": 21891471,
+        "recordOffset": 69328,
+        "objectLength": 13376,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242075,
+        "name": "K.Line Tendance Grège (9007 T) - RQ",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "storedOffset": 21891471,
+        "recordOffset": 82724,
+        "objectLength": 13358,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242076,
+        "name": "K.Line Vintage Anodisé Argent - AC",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "storedOffset": 21891471,
+        "recordOffset": 96102,
+        "objectLength": 13218,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242080,
+        "name": "K.Line Intemporel Taupe (7022 S) - JK",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "storedOffset": 21901360,
+        "recordOffset": 0,
+        "objectLength": 13224,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242120,
+        "name": "Isolant rigide",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "storedOffset": 21901360,
+        "recordOffset": 29708,
+        "objectLength": 3694,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242146,
+        "name": "K.Line Accessoire Blanc - KQ",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "storedOffset": 21901360,
+        "recordOffset": 55755,
+        "objectLength": 13344,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242150,
+        "name": "K.Line Accessoires Noir - FQ",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "storedOffset": 21901360,
+        "recordOffset": 70411,
+        "objectLength": 13484,
+        "evidence": "framed-nested-material-name"
+      },
+      {
+        "elementId": 1242151,
+        "name": "Acier inoxydable, brossé",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "storedOffset": 21901360,
+        "recordOffset": 83915,
+        "objectLength": 12470,
+        "evidence": "framed-nested-material-name"
       },
       {
         "elementId": 1378520,
@@ -570,12 +722,18 @@
     "materialEntities": 30,
     "uniqueMaterialNames": 29,
     "materialAssociationRelations": 7554,
-    "exactDecodedNameMatches": 21,
-    "exactDecodedNameCoverage": 0.7241379310344828,
+    "exactDecodedNameMatches": 28,
+    "exactDecodedNameCoverage": 0.9655172413793104,
     "exactNameMatches": [
+      "Acier inoxydable, brossé",
       "Default Wall",
       "Glass",
       "Gypsum Wallboard",
+      "K.Line Accessoire Blanc - KQ",
+      "K.Line Accessoires Noir - FQ",
+      "K.Line Intemporel Blanc satiné (9016 S) - KQ",
+      "K.Line Intemporel Taupe (7022 S) - JK",
+      "K.Line Vintage Anodisé Argent - AC",
       "Metal - Aluminum",
       "Metal layer of lathing",
       "Paint - Sienna",
@@ -587,6 +745,7 @@
       "Бетон, монолитный",
       "Дверь - Каркас",
       "Дверь - Панель",
+      "Деревянные доски",
       "Древесина - Береза - массив, светлое морение, со слабым глянцем",
       "Кладка - плиты из керамогранита",
       "Краска - Охра",
@@ -596,20 +755,15 @@
       "Стекло"
     ],
     "missingIfcNames": [
-      "<Unnamed>",
-      "Acier inoxydable, brossé",
-      "K.Line Accessoire Blanc - KQ",
-      "K.Line Accessoires Noir - FQ",
-      "K.Line Intemporel Blanc satiné (9016 S) - KQ",
-      "K.Line Intemporel Taupe (7022 S) - JK",
-      "K.Line Vintage Anodisé Argent - AC",
-      "Деревянные доски"
+      "<Unnamed>"
     ]
   },
   "assignments": {
-    "decodedElementAssignments": 0,
+    "decodedElementAssignments": 5413,
     "decodedPrimitiveAssignments": 0,
-    "status": "not-decoded",
-    "reason": "The proven outer MaterialElem record contains definition identity and name only. Element/type, geometry-tag, stored-mesh, BRep-face, category-style, and view-override assignment layers remain schema-generic or geometry-dependent and are not inferred."
+    "decodedRelations": 5413,
+    "assignedMaterialDefinitions": 3,
+    "status": "shared-geometry-decoded",
+    "reason": "Persisted MaterialElem ids are decoded for three release-gated shared-geometry layouts. They are exact geometry/type assignments, not yet per-BRep-face, per-triangle, category-style, or view-override assignments."
   }
 }
