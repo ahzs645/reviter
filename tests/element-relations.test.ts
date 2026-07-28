@@ -9,7 +9,7 @@ import {
 const INVALID_OBJECT_ID = 0xffff_ffff_ffff_ffffn;
 
 function fixture(
-  rows: Array<{ elementId: number; owningElementId: number | null; partitionId?: number }>,
+  rows: Array<{ elementId: number; owningElementId: number | null; originalElementId?: number }>,
 ): Uint8Array {
   const data = new Uint8Array(34 + rows.length * 40 + 36);
   const view = new DataView(data.buffer);
@@ -23,8 +23,7 @@ function fixture(
     );
     view.setUint32(offset + 8, 0, true);
     view.setBigUint64(offset + 12, BigInt(row.elementId), true);
-    view.setUint32(offset + 20, row.partitionId ?? 776, true);
-    view.setBigUint64(offset + 32, BigInt(row.elementId), true);
+    view.setBigUint64(offset + 32, BigInt(row.originalElementId ?? row.elementId), true);
   });
   return data;
 }
@@ -36,7 +35,7 @@ test("decodes persisted owning-element ids and builds a bidirectional graph", ()
     { elementId: 102, owningElementId: 100 },
     { elementId: 200, owningElementId: 200 },
   ]));
-  assert.equal(result.format, "revit-2024-2026-elem-table");
+  assert.equal(result.format, "revit-2024-2027-elem-table");
 
   assert.equal(result.declaredRecordCount, 5);
   assert.equal(result.decodedRecordCount, 4);
@@ -72,7 +71,7 @@ test("does not turn row adjacency into an ownership relation", () => {
     { elementId: 1_272_040, owningElementId: 1_271_877 },
     { elementId: 1_272_041, owningElementId: 1_271_877 },
   ]));
-  assert.equal(result.format, "revit-2024-2026-elem-table");
+  assert.equal(result.format, "revit-2024-2027-elem-table");
 
   assert.equal(
     result.relations.some(
@@ -82,12 +81,15 @@ test("does not turn row adjacency into an ownership relation", () => {
   );
 });
 
-test("rejects a false fixed-width match when the object-id echo disagrees", () => {
+test("accepts a distinct original id and rejects a nonzero object-id prefix", () => {
   const data = fixture([{ elementId: 101, owningElementId: 100 }]);
   new DataView(data.buffer).setBigUint64(34 + 32, 999n, true);
+  assert.equal(decodeElementOwnership(data).format, "revit-2024-2027-elem-table");
+
+  new DataView(data.buffer).setUint32(34 + 8, 1, true);
   const result = decodeElementOwnership(data);
   assert.deepEqual(result, {
     format: "unsupported",
-    reason: "row 0 does not repeat its object id",
+    reason: "row 0 has a non-zero object-id prefix",
   });
 });

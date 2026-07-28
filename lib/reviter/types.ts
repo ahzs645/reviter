@@ -6,6 +6,7 @@ import type { Point3 } from "./sketch-curves.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
+import type { ElementOwnershipDecode } from "./element-relations.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -71,12 +72,21 @@ export type DecoderCoverage = {
   nativeMeshes: number;
   nativeMaterialDefinitions: number;
   nativeMaterialAssignments: number;
+  /** Complete ordinary records decoded from `Global/ElemTable`. */
+  nativeOwnershipRecords?: number;
+  /** Persisted, non-self `OwningElementId` relations. */
+  nativeOwnershipRelations?: number;
   approximateSolids: number;
   /** Elements carrying a natively decoded Revit `BuiltInCategory`. */
   nativeCategorisedElements: number;
   geometryFidelity: "native-profile-approximate-solid" | "native-bounds-envelope" | "diagnostic-only";
   materialFidelity: "native-definitions-unassigned" | "native-assigned" | "display-fallback";
-  semanticFidelity: "native-categories" | "record-code-heuristic" | "none";
+  semanticFidelity:
+    | "native-categories-and-ownership"
+    | "native-categories"
+    | "native-ownership"
+    | "record-code-heuristic"
+    | "none";
 };
 
 export type ElementBoundsRecord = {
@@ -440,6 +450,8 @@ export type ConvertResult = {
   method: "native-profile-recovery" | "partition-bounds-recovery" | "partition-coordinate-recovery";
   readerDiagnostics?: ReaderDiagnostics;
   elementIndex?: RvtElementIndex;
+  /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
+  elementOwnership?: ElementOwnershipDecode;
 };
 
 export type ConvertFailure = {

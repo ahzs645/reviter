@@ -71,7 +71,7 @@ const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)BasicFileInfo$/i, decoder: "metadata", depth: "full", note: "Revit release, build, locale, and document identity" },
   { pattern: /(^|\/)RevitPreview/i, decoder: "thumbnail", depth: "full", note: "Embedded preview image" },
   { pattern: /(^|\/)Formats\/Latest$/i, decoder: "schema", depth: "partial", note: "Serializable class inventory with tags and base classes; field lists not walked" },
-  { pattern: /(^|\/)Global\/ElemTable$/i, decoder: "element-index", depth: "partial", note: "Native element-ID index; the remaining record fields are not decoded" },
+  { pattern: /(^|\/)Global\/ElemTable$/i, decoder: "element-index", depth: "partial", note: "Native element-ID index and persisted OwningElementId graph; pointer fields remain outside this decoder" },
   { pattern: /(^|\/)Global\/PartitionTable$/i, decoder: "partition-names", depth: "partial", note: "Workset or family partition names" },
   { pattern: /(^|\/)Partitions\/[^/]+$/i, decoder: "element-records", depth: "partial", note: "Element bounds records and BuiltInCategory tokens; element shapes, materials, and parameters are not decoded" },
   { pattern: /(^|\/)Global\/Latest$/i, decoder: "none", depth: "none", note: "Document-level object graph; wire format not decoded" },

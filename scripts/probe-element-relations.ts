@@ -53,7 +53,6 @@ if (decoded.format === "unsupported") {
       elementId,
       present: Boolean(record),
       owningElementId: record?.owningElementId ?? null,
-      partitionId: record?.partitionId ?? null,
       byteOffset: record?.byteOffset ?? null,
       childIds: graph.childrenByOwner.get(elementId) ?? [],
     };

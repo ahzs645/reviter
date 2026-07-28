@@ -63,10 +63,11 @@ joined to the current RVT records and is excluded from the 36,144 denominator.
 | IfcRoof | 6 | 6 | 100% | 2,136 |
 
 The only missing tagged drawable products are member `1272040` and stair flight
-`1280585`. The RVT parser currently recovers adjacent geometry records
-`1272041` and `1280586`; a persisted ownership/subcomponent relation is still
-needed before those shapes can be assigned to the IFC-tagged elements without
-hard-coding adjacency.
+`1280585`. Persisted `Global/ElemTable.OwningElementId` now proves that the
+adjacent records cannot be reassigned: `1272040` and `1272041` are siblings
+under owner `1271877`, while `1280586` belongs to `1280525`, not `1280585`.
+Closing these last geometry gaps requires each missing element's own BRep or a
+different typed relation; record adjacency is explicitly rejected.
 
 The IFC also contains 1,835 `IfcCurtainWall`, 92 `IfcStair`, and 3,071
 `IfcOpeningElement` objects with no standalone streamed mesh. They are semantic
@@ -119,6 +120,15 @@ The IFC provides a concrete minimum target:
   relationships, and 36,221 elements with a direct or inherited material;
 - 11,838 spatially contained elements and 26,403 aggregated elements, with
   38,241 unique elements participating in that model tree.
+
+The model-tree parity ratio joins only IFC tree members carrying numeric Revit
+tags to persisted RVT ownership members. This keeps both sides in the same
+identifier domain instead of comparing all RVT database records to an IFC
+product-only denominator. In the exact UNBC run, 38,063 IFC tree members carry
+numeric tags and 25,884 of them are non-self members in the persisted RVT
+ownership graph, or **68.0%**. The remaining gap is expected to include spatial
+containment that `OwningElementId` does not represent; the metric deliberately
+does not relabel that as recovered ownership.
 
 An IFC `GlobalId` is not the same value as Revit's native `UniqueId`. Therefore
 “recover native Revit UniqueId” remains a stricter RVT-parser requirement than

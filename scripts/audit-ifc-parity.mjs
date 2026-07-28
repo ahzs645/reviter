@@ -175,9 +175,13 @@ function parseGlb(bytes) {
 function parseSemantic(bytes) {
   const semantic = JSON.parse(bytes.toString("utf8"));
   const elements = semantic.elementManifest?.elements ?? [];
+  const modelTreeElements = semantic.modelTree?.evidence === "persisted"
+    ? semantic.modelTree?.elements ?? []
+    : [];
   const byCategory = new Map();
   const ids = new Set();
   const displayedIds = new Set();
+  const modelTreeMemberIds = new Set();
   let categorized = 0;
   let typed = 0;
   let withParameters = 0;
@@ -195,10 +199,20 @@ function parseSemantic(bytes) {
       parameterValues += element.parameters.length;
     }
   }
+  for (const element of modelTreeElements) {
+    if (
+      Number.isSafeInteger(element.elementId) &&
+      Number.isSafeInteger(element.owningElementId) &&
+      element.elementId !== element.owningElementId
+    ) {
+      modelTreeMemberIds.add(element.elementId);
+    }
+  }
   return {
     raw: semantic,
     ids,
     displayedIds,
+    modelTreeMemberIds,
     summary: {
       records: elements.length,
       displayed: displayedIds.size,
@@ -207,7 +221,8 @@ function parseSemantic(bytes) {
       withParameters,
       parameterValues,
       uniqueIds: 0,
-      modelTreeMemberships: 0,
+      modelTreeRecords: modelTreeElements.length,
+      modelTreeMemberships: modelTreeMemberIds.size,
       nativeMaterialDefinitions: semantic.fidelity?.materialDefinitions ?? 0,
       nativeMaterialAssignments: semantic.fidelity?.materialAssignments ?? 0,
       boundsLocalFeet: semantic.boundsLocalFeet ?? null,
@@ -505,6 +520,14 @@ async function analyzeIfc(ifcBytes, semantic) {
     for (const related of relation.related) if (elementIds.has(related)) aggregatedElements.add(related);
   }
   const treeElements = new Set([...containedElements, ...aggregatedElements]);
+  const modelTreeNumericTags = new Set(
+    [...treeElements]
+      .map((elementId) => elements.get(elementId)?.numericTag)
+      .filter((tag) => tag != null),
+  );
+  const modelTreeTagsSeenByReviter = new Set(
+    [...modelTreeNumericTags].filter((tag) => semantic.modelTreeMemberIds.has(tag)),
+  );
 
   for (const [type, row] of byClass) {
     row.uniqueNumericTags = numericTagsByClass.get(type)?.size ?? 0;
@@ -592,6 +615,8 @@ async function analyzeIfc(ifcBytes, semantic) {
     spatiallyContainedElements: containedElements.size,
     aggregatedElements: aggregatedElements.size,
     modelTreeElements: treeElements.size,
+    modelTreeNumericTags: modelTreeNumericTags.size,
+    modelTreeTagsSeenByReviter: modelTreeTagsSeenByReviter.size,
     byClass: classRows,
     topEntityTypes: Object.fromEntries([...step.typeCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)),
     materialNames: [...materials].sort(),
@@ -640,7 +665,7 @@ const report = {
     triangleRatio: ratio(glb.triangles, ifc.triangles),
     vertexReferenceRatio: ratio(glb.vertices, ifc.vertexReferences),
     uniqueIdRatio: ratio(semantic.summary.uniqueIds, ifc.globalIds),
-    modelTreeRatio: ratio(semantic.summary.modelTreeMemberships, ifc.modelTreeElements),
+    modelTreeRatio: ratio(ifc.modelTreeTagsSeenByReviter, ifc.modelTreeNumericTags),
     typeNameRatio: ratio(semantic.summary.typed, ifc.typeAssignedElements),
     propertyElementRatio: ratio(semantic.summary.withParameters, ifc.propertyAssignedElements),
     materialDefinitionRatio: ratio(

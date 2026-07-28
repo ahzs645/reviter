@@ -1,5 +1,10 @@
 /** JSON audit report: what was decoded, from what evidence, and what was not. */
 import type { ConvertResult, ElementBoundsRecord } from "./types";
+import {
+  bimSemanticFidelity,
+  modelTreeFidelity,
+  modelTreeReport,
+} from "./ownership-report.ts";
 
 export type ElementManifestGeometrySource =
   | "analytic-plane-solid"
@@ -47,8 +52,9 @@ function evidenceRank(record: ElementBoundsRecord): number {
  *
  * The ODA sample prompted this shape of export, but none of its code or schema
  * is used here. Every field below already exists in Reviter's own decoded
- * evidence. Family name, Revit UniqueId, and model hierarchy are intentionally
- * absent until their native RVT records are decoded.
+ * evidence. Family name and Revit UniqueId remain absent until their native RVT
+ * records are decoded. Persisted model ownership is exported separately because
+ * `Global/ElemTable` covers many valid non-geometric records too.
  */
 export function elementManifest(result: ConvertResult) {
   const bestByElement = new Map<number, ElementBoundsRecord>();
@@ -109,13 +115,12 @@ export function makeReport(
         geometry: result.method === "partition-bounds-recovery"
           ? "validated-rvt-element-bounds"
           : "experimental-coordinate-recovery",
-        bimSemantics: result.decoderCoverage.nativeCategorisedElements
-          ? "native-revit-categories"
-          : "unavailable",
+        bimSemantics: bimSemanticFidelity(result),
         nativeProfiles: result.decoderCoverage.nativeProfiles,
         nativeMeshes: result.decoderCoverage.nativeMeshes,
         materialDefinitions: result.decoderCoverage.nativeMaterialDefinitions,
         materialAssignments: result.decoderCoverage.nativeMaterialAssignments,
+        ...modelTreeFidelity(result),
       },
       file: { name: result.fileName, byteLength: result.byteLength, metadata: safeMetadata },
       originFeet: result.origin,
@@ -127,6 +132,7 @@ export function makeReport(
       schema: result.schema ?? null,
       partitionNames: result.partitionNames ?? null,
       partAtom: result.partAtom ?? null,
+      modelTree: modelTreeReport(result),
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       elementManifest: {
@@ -135,7 +141,7 @@ export function makeReport(
         unavailableFields: [
           "Revit UniqueId",
           "loadable-family name",
-          "model-tree hierarchy",
+          ...(!result.elementOwnership ? ["model-tree hierarchy"] : []),
           "element-to-material assignment",
         ],
         elements: elementManifest(result),

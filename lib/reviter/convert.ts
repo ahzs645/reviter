@@ -63,6 +63,10 @@ import {
 } from "./sketch-curves.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
+  decodeElementOwnership,
+  type ElementOwnershipDecode,
+} from "./element-relations.ts";
+import {
   applyNativeCategories,
   collectCategoryTokens,
   resolveElementCategories,
@@ -681,11 +685,16 @@ export function convertRvtBytes(
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
     let elementIndex;
+    let elementOwnership: ElementOwnershipDecode | undefined;
     if (elemTableEntry) {
       const elemTableBytes = stripRevitPageChecksums(asBytes(elemTableEntry.entry.content));
       const offset = gzipOffsets(elemTableBytes, 1)[0];
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
-      if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
+      if (inflated) {
+        elementIndex = parseElemTable(inflated) ?? undefined;
+        const ownership = decodeElementOwnership(inflated);
+        if (ownership.format !== "unsupported") elementOwnership = ownership;
+      }
     }
     const coverage = summariseCoverage(
       cfb.FileIndex
@@ -1170,6 +1179,7 @@ export function convertRvtBytes(
         for (const elementId of ringCandidates) known.add(elementId);
         for (const elementId of markerByElement.keys()) known.add(elementId);
         for (const elementId of elementIndex?.uniqueElementIds ?? []) known.add(elementId);
+        for (const record of elementOwnership?.records ?? []) known.add(record.elementId);
         const candidateCategories = resolveElementCategories(categoryTokens, known);
         const markerCategories = markerCategoryConsensus(markerByElement, candidateCategories);
         for (const elementId of ringCandidates) {
@@ -1717,17 +1727,22 @@ export function convertRvtBytes(
           activeDecoders: [
             "revit-2027-duplicated-bounds-v1",
             ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
+            ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: 0,
           nativeMaterialAssignments: 0,
+          nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
+          nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
           approximateSolids: displayBounds.length,
           nativeCategorisedElements: categorisedElements,
           geometryFidelity: "native-bounds-envelope",
           materialFidelity: "display-fallback",
-          semanticFidelity: categorisedElements ? "native-categories" : "record-code-heuristic",
+          semanticFidelity: categorisedElements
+            ? (elementOwnership ? "native-categories-and-ownership" : "native-categories")
+            : (elementOwnership ? "native-ownership" : "record-code-heuristic"),
         },
         origin,
         bbox: relativeBounds,
@@ -1740,11 +1755,15 @@ export function convertRvtBytes(
               partitionRecords,
             }
           : undefined,
+        elementOwnership,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
             ? [`${categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`]
             : ["No native Revit category tokens were decoded, so element display falls back to record-code clusters."]),
+          ...(elementOwnership
+            ? [`${elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
+            : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
             : []),
@@ -1851,17 +1870,24 @@ export function convertRvtBytes(
       coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
-        activeDecoders: nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : [],
+        activeDecoders: [
+          ...(nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
+          ...(elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
+        ],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: 0,
         nativeMaterialAssignments: 0,
+        nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
+        nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
         approximateSolids: used.length,
         nativeCategorisedElements: categorisedElements,
         geometryFidelity: "diagnostic-only",
         materialFidelity: "display-fallback",
-        semanticFidelity: categorisedElements ? "native-categories" : "none",
+        semanticFidelity: categorisedElements
+          ? (elementOwnership ? "native-categories-and-ownership" : "native-categories")
+          : (elementOwnership ? "native-ownership" : "none"),
       },
       origin,
       bbox: relativeBounds,
@@ -1876,6 +1902,7 @@ export function convertRvtBytes(
             partitionRecords,
           }
         : undefined,
+      elementOwnership,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -1883,6 +1910,9 @@ export function convertRvtBytes(
         familyScale
           ? "Family file: geometry is inferred from component-scale coordinate-like partition records and is not a native Revit element model."
           : "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
+        ...(elementOwnership
+          ? [`${elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
+          : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`
           : "No isolated spatial cluster was removed.",

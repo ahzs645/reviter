@@ -1,5 +1,5 @@
 /**
- * Persisted element ownership from Revit 2024-2026 `Global/ElemTable`.
+ * Persisted element ownership from Revit 2024-2027 `Global/ElemTable`.
  *
  * This decoder is intentionally narrow. It accepts only the fixed-width layout
  * whose invariants can be checked for every row:
@@ -7,9 +7,9 @@
  * - the collection count at byte 2;
  * - one special leading record, followed by 40-byte element records at byte 34;
  * - a zero word at row + 8;
- * - a 64-bit object id at row + 12, repeated at row + 32;
+ * - a 64-bit current object id at row + 12;
  * - a 64-bit `OwningElementId` at row + 0;
- * - the 36-byte table suffix used by the 2024-2026 reader.
+ * - the 36-byte table suffix used by the 2024-2027 files validated so far.
  *
  * The field identity is independently corroborated by the public
  * `OdBmElemRec::getOwningElementId` API and its four reflected properties:
@@ -26,7 +26,6 @@ const MAX_ARRAY_RECORDS = 10_000_000;
 export type ElementOwnershipRecord = {
   elementId: number;
   owningElementId: number | null;
-  partitionId: number;
   byteOffset: number;
 };
 
@@ -39,7 +38,7 @@ export type ElementOwnershipRelation = {
 };
 
 export type ElementOwnershipDecode = {
-  format: "revit-2024-2026-elem-table";
+  format: "revit-2024-2027-elem-table";
   declaredRecordCount: number;
   decodedRecordCount: number;
   skippedLeadingRecordCount: 1;
@@ -91,7 +90,7 @@ export function decodeElementOwnership(
   data: Uint8Array,
 ): ElementOwnershipDecode | ElementOwnershipFailure {
   if (data.byteLength < RECORD_START + TABLE_SUFFIX_BYTES) {
-    return unsupported("element table is shorter than the 2024-2026 framing");
+    return unsupported("element table is shorter than the 2024-2027 framing");
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -123,10 +122,6 @@ export function decodeElementOwnership(
     }
 
     const rawElementId = u64(view, byteOffset + 12);
-    const rawEchoedId = u64(view, byteOffset + 32);
-    if (rawElementId !== rawEchoedId) {
-      return unsupported(`row ${index} does not repeat its object id`);
-    }
     const elementId = safeObjectId(rawElementId);
     if (elementId == null) {
       return unsupported(`row ${index} has an invalid object id`);
@@ -152,7 +147,6 @@ export function decodeElementOwnership(
     records.push({
       elementId,
       owningElementId,
-      partitionId: u32(view, byteOffset + 20),
       byteOffset,
     });
   }
@@ -173,7 +167,7 @@ export function decodeElementOwnership(
   }
 
   return {
-    format: "revit-2024-2026-elem-table",
+    format: "revit-2024-2027-elem-table",
     declaredRecordCount,
     decodedRecordCount,
     skippedLeadingRecordCount: 1,
