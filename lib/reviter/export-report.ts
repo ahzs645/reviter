@@ -76,32 +76,35 @@ export function elementManifest(result: ConvertResult) {
 
   return [...bestByElement.values()]
     .sort((a, b) => a.elementId - b.elementId)
-    .map((record) => ({
-      elementId: record.elementId,
-      uniqueId: identityByElement.get(record.elementId)?.uniqueId ?? null,
-      displayed: drawnIds.has(record.elementId),
-      category: record.categoryId == null && !record.categoryName
-        ? null
-        : {
-            id: record.categoryId ?? null,
-            name: record.categoryName ?? null,
-            evidence: record.categorySource ?? null,
-          },
-      type: record.typeId == null && !record.typeName
-        ? null
-        : { elementId: record.typeId ?? null, name: record.typeName ?? null },
-      geometry: {
-        source: geometrySource(record),
-        boundsFeet: record.boundsFeet,
-        bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
-        nativeFaces: record.quads?.length ?? 0,
-      },
-      parameters: (record.parameters ?? []).map(({ parameterId, name, value }) => ({
-        id: parameterId,
-        name,
-        value,
-      })),
-    }));
+    .map((record) => {
+      const identity = identityByElement.get(record.elementId);
+      return {
+        elementId: record.elementId,
+        ...(identity ? { uniqueId: identity.uniqueId } : {}),
+        displayed: drawnIds.has(record.elementId),
+        category: record.categoryId == null && !record.categoryName
+          ? null
+          : {
+              id: record.categoryId ?? null,
+              name: record.categoryName ?? null,
+              evidence: record.categorySource ?? null,
+            },
+        type: record.typeId == null && !record.typeName
+          ? null
+          : { elementId: record.typeId ?? null, name: record.typeName ?? null },
+        geometry: {
+          source: geometrySource(record),
+          boundsFeet: record.boundsFeet,
+          bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
+          nativeFaces: record.quads?.length ?? 0,
+        },
+        parameters: (record.parameters ?? []).map(({ parameterId, name, value }) => ({
+          id: parameterId,
+          name,
+          value,
+        })),
+      };
+    });
 }
 
 export function makeReport(
