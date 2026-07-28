@@ -1,0 +1,157 @@
+# UNBC stored faceted-topology probe
+
+This note records a clean-room, executable probe of the exact local UNBC RVT:
+
+```text
+UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt
+70,336,512 bytes
+SHA-256 8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178
+```
+
+No ODA code is executed. The probe uses Reviter's browser-safe CFB,
+checksum-page, DEFLATE, and schema readers.
+
+## What is now implemented
+
+`lib/reviter/faceted-topology.ts` decodes already-located topology fields into
+a neutral indexed mesh. It supports:
+
+- little-endian float32 and float64 points;
+- a separately supplied point offset, matching the native
+  `OffsetFloatFacetedTopology` contract;
+- little-endian unsigned-16 and signed-32 triangle indices, range-checked and
+  widened to `Uint32Array`;
+- common, per-vertex, and per-corner normals;
+- opaque edge-visibility bytes;
+- strict allocation, byte-range, coordinate, index, and unit-normal checks;
+- explicit reporting of repeated-index triangles.
+
+It intentionally does not search arbitrary bytes for a mesh. The outer RVT
+object and nested-array framing must be supplied by a future, corroborated
+record locator.
+
+`scripts/probe-faceted-topology.ts` inventories the exact file schema and scans
+every inflated partition byte pair for schema-defined topology tags, comparing
+each with its neighbouring numeric controls. It labels these as raw token
+occurrences, not records.
+
+## Native and file-schema agreement
+
+The native symbol evidence divides the stored mesh contract as follows:
+
+| Contract | Symbol/schema evidence |
+| --- | --- |
+| Point storage | `FloatFacetedTopology`, `DoubleFacetedTopology`, `m_pointsArr` |
+| Origin-relative points | `OffsetFloatFacetedTopology`, `m_offset` |
+| Index width | even `FacetedTopology` variants take unsigned-short facets; odd variants take integer facets |
+| Normals | `m_normalsFlag`, `m_commonNormal`, `m_normalsArr` |
+| Edge visibility | variants 8–13 and later expose `m_edgeVisFlagsArr` |
+| Texture coordinates | newer variants expose `m_UVStorage` |
+| Mesh attachment | `GPolyMesh` carries `m_pFacetedTopology` |
+| Material/style | `m_materialID`, `m_interiorGStyleID`, `m_polyMeshFlags` |
+
+The UNBC `Formats/Latest` stream is 513,948 inflated bytes. It contains 17
+tagged faceted-topology classes and 23 related class references. The exact
+corroborated field strings are:
+
+```text
+m_commonNormal
+m_edgeVisFlagsArr
+m_facetsArr
+m_interiorGStyleID
+m_materialID
+m_normalsArr
+m_normalsFlag
+m_offset
+m_pFacetedTopology
+m_pointsArr
+m_polyMeshFlags
+m_UVStorage
+```
+
+The file defines the older storage families and aliases newer release variants
+to them. Native `TB_Main.tx` symbols additionally expose variants 16–45 and
+their UV-storage accessors. This is sufficient to define the neutral field
+types, but not sufficient to locate their length-prefixed nested arrays in a
+partition object.
+
+An important negative result is that the schema entry for `GPolyMesh` is a
+reference with value 1426; tag 1426 is actually defined by `GEdgeBase`.
+Treating 1426 as a GPolyMesh record marker would therefore be false.
+
+## Full UNBC partition measurement
+
+The probe scanned the only partition stream, `Partitions/325`:
+
+| Measure | Count |
+| --- | ---: |
+| Stored partition bytes | 68,999,154 |
+| Bytes after checksum-page removal | 68,626,033 |
+| Gzip chunks | 3,666 |
+| Chunks inflated in this run | 3,666 |
+| Inflated partition bytes | 421,867,755 |
+| Adjacent byte pairs scanned | 421,864,089 |
+| Validated topology record boundaries | 0 |
+| Meshes emitted from stored topology | 0 |
+
+Raw little-endian u16 tag counts are:
+
+| Tag | Schema class | Raw hits | `tag | 0x8000` hits | Chunks | Neighbour median | Ratio |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1381 | `DoubleFacetedTopology` | 1,564 | 379 | 438 | 1,469 | 1.065 |
+| 1382 | `FloatNormalsFacetedTopology` | 1,283 | 940 | 517 | 1,469 | 0.873 |
+| 1383 | `FacetedTopologyImpl` | 1,511 | 471 | 461 | 1,282 | 1.179 |
+| 1387 | `DoubleTinyFacetedTopology` | 1,169 | 761 | 454 | 1,167 | 1.002 |
+| 1869 | `FacetedTopology0` | 540 | 1,131 | 331 | 806.5 | 0.670 |
+| 1871 | `FacetedTopology0t` | 940 | 639 | 425 | 810 | 1.160 |
+| 1874 | `FacetedTopology10` | 883 | 535 | 442 | 819 | 1.078 |
+| 1875 | `FacetedTopology2` | 978 | 677 | 418 | 833 | 1.174 |
+| 1877 | `FacetedTopology10t` | 1,000 | 262 | 392 | 838.5 | 1.193 |
+| 1878 | `FacetedTopology2t` | 820 | 535 | 431 | 838.5 | 0.978 |
+| 1880 | `FacetedTopology11` | 1,247 | 546 | 411 | 875 | 1.425 |
+| 1882 | `FacetedTopology12` | 1,339 | 462 | 451 | 844 | 1.586 |
+| 1884 | `FacetedTopology12t` | 1,754 | 320 | 449 | 875 | 2.005 |
+| 1886 | `FacetedTopology13` | 1,243 | 293 | 409 | 908.5 | 1.368 |
+| 1899 | `FacetedTopology24` | 854 | 394 | 451 | 938 | 0.910 |
+| 1901 | `FacetedTopology24t` | 812 | 376 | 421 | 873.5 | 0.930 |
+| 1903 | `FacetedTopology25` | 632 | 424 | 382 | 938 | 0.674 |
+
+These values are broadly dispersed across hundreds of chunks. Seven tagged
+values occur no more often than their neighbouring controls; the strongest is
+only 2.005 times its local median. Some first hits also occur in a close run of
+different topology values in the same chunk. The counts therefore do not
+establish a record marker or field boundary. Promoting them directly into
+meshes would produce false positives.
+
+## Precisely bounded missing work
+
+The remaining blocker is narrower than “implement tessellation,” but still
+real:
+
+1. Determine how an embedded polymorphic object selects one of the topology
+   variants.
+2. Determine the nested-array count and byte-length framing for
+   `m_pointsArr`, `m_facetsArr`, normals, UV storage, and edge flags.
+3. Determine whether a facet row is always a triangle in this release or can
+   contain a polygon that must be triangulated.
+4. Associate the containing `GPolyMesh` with its element/geometry marker,
+   transform, material ID, and style ID.
+5. Feed only those validated field slices to
+   `decodeFacetedTopologyFields`.
+
+Until steps 1–4 have independent structural checks, the measured correct
+result is zero native stored meshes—not a guessed vertex cloud.
+
+## Reproduce
+
+```sh
+node --experimental-strip-types scripts/probe-faceted-topology.ts \
+  "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
+
+node --experimental-strip-types --test tests/faceted-topology.test.ts
+npx tsc --noEmit --pretty false
+```
+
+The decoder tests cover float64/int32 topology, offset-float/u16 topology,
+normals, edge bytes, degenerate indices, truncation, invalid indices,
+non-finite coordinates, and allocation caps.
