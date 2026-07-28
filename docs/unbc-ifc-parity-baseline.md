@@ -16,10 +16,11 @@ so it does not depend on Revit or the proprietary ODA binaries.
 
 ## Executive result
 
-After decoding the RVT checksum-page layer and releasing named analytic wall
-solids from the curtain-wall wrapper rule, Reviter is two elements short of the
-IFC's tagged drawable population. It still does not match the IFC's **shape
-detail or BIM semantics**.
+At checkpoint `67e32d4`, Reviter is two elements short of the IFC's tagged
+drawable population. Native Revit identity is complete for every numeric IFC
+Tag, persisted ownership reaches 68.0% of comparable IFC tree members, and 21
+of 29 IFC material names are decoded as native definitions. It still does not
+match the IFC's **shape detail, material assignment, or family semantics**.
 
 | Measure | IFC reference | Current Reviter | Parity |
 | --- | ---: | ---: | ---: |
@@ -28,17 +29,24 @@ detail or BIM semantics**.
 | Tessellated triangles | 934,123 | 470,558 | **50.4%** |
 | Vertex references | 2,394,161 | 309,434 | 12.9% |
 | Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.400 / 217.899 / 374.766 m | matches at displayed precision |
-| IFC GlobalIds | 41,312 | 0 | 0% |
-| Elements assigned an IFC type | 38,171 | 7,523 with recovered type name | 19.7% |
+| Numeric IFC Tags with native Revit UniqueId | 38,187 | 38,187 | **100%** |
+| Numeric-tagged elements assigned an IFC type | 38,063 | 7,515 exact type names | 19.7% |
+| Numeric-tagged elements with IFC family name | 38,063 | 0 | 0% |
 | Elements assigned IFC property sets | 39,487 | 11,541 with recovered parameters | 29.2% population coverage |
+| Unique IFC material names | 29 | 21 exact native definitions | 72.4% |
 | Elements assigned materials, including through type | 36,221 | 0 native assignments | 0% |
-| Elements in containment/aggregation tree | 38,241 | 0 genuine memberships | 0% |
+| Numeric-tagged containment/aggregation members | 38,063 | 25,884 persisted ownership members | 68.0% |
 
 The triangle and vertex ratios are diagnostic, not a demand for byte-identical
 tessellation. Different valid chord tolerances produce different triangle
 counts. Matching the IFC means the same product population and materially
 equivalent surfaces, openings, placement, extent, names, types, properties,
 materials, and hierarchy—not merely emitting exactly 934,123 triangles.
+
+The native Revit UniqueId is not the IFC `GlobalId`. The audit joins native
+identity by the numeric Revit element ID in IFC `Tag`; all 38,187 unique Tags
+resolve to one of the 74,437 persisted `Global/ElemTable` identities, with no
+identity conflicts.
 
 ## Geometry population by IFC class
 
@@ -130,11 +138,23 @@ ownership graph, or **68.0%**. The remaining gap is expected to include spatial
 containment that `OwningElementId` does not represent; the metric deliberately
 does not relabel that as recovered ownership.
 
-An IFC `GlobalId` is not the same value as Revit's native `UniqueId`. Therefore
-“recover native Revit UniqueId” remains a stricter RVT-parser requirement than
-IFC parity. For the minimum IFC parity gate, Reviter needs a stable identifier
-on every IFC-equivalent element and must retain the numeric Revit element ID;
-native `UniqueId` should be added when its RVT record is decoded.
+An IFC `GlobalId` is not the same value as Revit's native `UniqueId`. Reviter
+now reconstructs all 74,437 persisted native identities from creation episode
+GUID plus original element ID, and every one of the IFC's 38,187 numeric Tags
+joins to that table. The audit deliberately reports this tag-to-identity
+coverage rather than comparing unlike `GlobalId` and `UniqueId` strings.
+
+Type recovery is smaller but exact: all 7,515 IFC-tagged elements for which
+Reviter emits a type name match the corresponding IFC type-object name after
+splitting its `Family:Type` representation. The remaining 30,548 typed Tags
+have no decoded type name. No family name is emitted for any of the 38,063
+numeric-tagged IFC type members, so full loadable-family/type regeneration
+remains open.
+
+Native material-definition framing yields 54 RVT names. Of the IFC's 29 unique
+names, 21 match exactly. The eight unresolved IFC names are recorded in the
+machine report. This is definition coverage only: native element, type, layer,
+geometry, and face assignments remain 0 of the IFC's 36,221 assigned elements.
 
 The current 81,806 recovered parameter entries cannot be compared one-for-one
 with 12,375 IFC property value entities because the IFC reuses property
@@ -142,6 +162,41 @@ entities across many property sets. The defensible first population measure is
 elements with any properties: 11,541 of the IFC's 39,487, or 29.2%. A later
 value-level test should join by Revit element ID plus normalized property name
 and compare typed values and units.
+
+## Smallest evidence-backed next improvements
+
+1. **Close the two-product population gap with typed geometry evidence.**
+   Recover the own geometry or a proven typed geometry relation for member
+   `1272040` and stair flight `1280585`. Persisted ownership proves that their
+   adjacent element rows are not substitutes.
+2. **Finish the topology collection boundary, then use the tessellator already
+   exposed.** Current field-schema work resolves `FacetedTopology0` point and
+   facet descriptors, but the UNBC probe finds no direct counted-array body
+   after the selector. The next missing grammar is the property/inheritance or
+   PArray item/group token immediately before its dynamic count. Decoding that
+   token is smaller and more general than adding another category-specific box
+   rule; it is the path to the missing door, railing, stair, wall, and column
+   surface detail.
+3. **Decode the family/type carrier that follows the proven instance type ID.**
+   Existing system-family type names are trustworthy—7,515 of 7,515 match the
+   IFC exactly—but 30,548 tagged type members and all 38,063 family names remain
+   absent. Preserve shared family geometry plus transforms rather than
+   expanding its 27,776 IFC mapped-item occurrences.
+4. **Extend material records in two bounded steps.** First, close the remaining
+   material-name layouts (40 framed material elements currently have an
+   unsupported or empty name layout; the IFC has eight names not yet matched).
+   Second, decode persisted element/type/layer/face material references and
+   resolve them to the 54 definition IDs. Definition counts or display colors
+   cannot substitute for the 36,221 IFC-assigned elements.
+5. **Add spatial containment separately from ownership.** `OwningElementId`
+   gives 25,884 comparable IFC tree memberships and must remain the genuine
+   ownership edge. The residual 12,179 tagged IFC tree members require level,
+   storey, assembly, host, or other typed relations; relabelling ownership as
+   spatial containment would inflate the metric without matching IFC.
+
+These are decoder boundaries, not presentation work. The audit shows no
+evidence that more envelope heuristics, triangle inflation, or IFC `GlobalId`
+copying would close the remaining parity gaps.
 
 ## “At least match the IFC” acceptance gates
 
@@ -189,8 +244,10 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `db41ac0a0a31cb49f52bce8e7822f6a5a5c5a5d9eb8e5a12ed9e707022d7c0d8`
-- GLB: `91f2f4def44c0a7cfbea1a9ab730ce0be6d89802bc032f97b218de2e8caba47d`
+- semantic JSON: `b72e2abd02d7d83acc0fee41901f407ff320251a50e281aecd3ffba6a51024b2`
+- semantic analytical payload, excluding volatile `stats.durationMs`:
+  `1dfb873b5d51f1b3c21f7bb417d4e1f995d0655ce3cea4e121a24a91a92b979c`
+- GLB: `77818ed3b4245f165017349fd695e7c49cfd4eced6bdd33828602d470cf4a38e`
 
 The script exits nonzero on a missing or invalid input and writes the complete
 measurement as JSON for future diffs.

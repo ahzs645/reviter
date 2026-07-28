@@ -178,28 +178,72 @@ function parseSemantic(bytes) {
   const modelTreeElements = semantic.modelTree?.evidence === "persisted"
     ? semantic.modelTree?.elements ?? []
     : [];
+  const nativeMaterialDefinitions = semantic.nativeMaterialDefinitions ?? [];
   const byCategory = new Map();
+  const geometrySources = new Map();
   const ids = new Set();
   const displayedIds = new Set();
   const modelTreeMemberIds = new Set();
+  const nativeIdentityIds = new Set();
+  const nativeUniqueIds = new Set();
+  const uniqueIdByElement = new Map();
+  const typeNameByElement = new Map();
+  const familyNameByElement = new Map();
+  const nativeMaterialNames = new Set(
+    nativeMaterialDefinitions
+      .map((definition) => definition.name)
+      .filter((name) => typeof name === "string" && name.length > 0),
+  );
   let categorized = 0;
   let typed = 0;
+  let familyNamed = 0;
   let withParameters = 0;
   let parameterValues = 0;
+  let manifestUniqueIds = 0;
+  let nativeIdentityConflicts = 0;
+  let elementsWithNativeFaces = 0;
+  let nativeFaces = 0;
   for (const element of elements) {
     ids.add(element.elementId);
     if (element.displayed) displayedIds.add(element.elementId);
+    if (typeof element.uniqueId === "string" && element.uniqueId) {
+      manifestUniqueIds += 1;
+      nativeIdentityIds.add(element.elementId);
+      nativeUniqueIds.add(element.uniqueId);
+      uniqueIdByElement.set(element.elementId, element.uniqueId);
+    }
     if (element.category?.name) {
       categorized += 1;
       increment(byCategory, element.category.name);
     }
-    if (element.type?.name) typed += 1;
+    if (element.type?.name) {
+      typed += 1;
+      typeNameByElement.set(element.elementId, element.type.name);
+    }
+    if (element.type?.familyName) {
+      familyNamed += 1;
+      familyNameByElement.set(element.elementId, element.type.familyName);
+    }
+    if (element.geometry?.source) increment(geometrySources, element.geometry.source);
+    if ((element.geometry?.nativeFaces ?? 0) > 0) {
+      elementsWithNativeFaces += 1;
+      nativeFaces += element.geometry.nativeFaces;
+    }
     if (element.parameters?.length) {
       withParameters += 1;
       parameterValues += element.parameters.length;
     }
   }
   for (const element of modelTreeElements) {
+    if (typeof element.uniqueId === "string" && element.uniqueId) {
+      const existingUniqueId = uniqueIdByElement.get(element.elementId);
+      if (existingUniqueId && existingUniqueId !== element.uniqueId) {
+        nativeIdentityConflicts += 1;
+      }
+      nativeIdentityIds.add(element.elementId);
+      nativeUniqueIds.add(element.uniqueId);
+      uniqueIdByElement.set(element.elementId, element.uniqueId);
+    }
     if (
       Number.isSafeInteger(element.elementId) &&
       Number.isSafeInteger(element.owningElementId) &&
@@ -218,19 +262,51 @@ function parseSemantic(bytes) {
       displayed: displayedIds.size,
       categorized,
       typed,
+      familyNamed,
       withParameters,
       parameterValues,
-      uniqueIds: 0,
+      manifestUniqueIds,
+      nativeIdentityRecords: nativeIdentityIds.size,
+      uniqueIds: nativeUniqueIds.size,
+      nativeIdentityConflicts,
       modelTreeRecords: modelTreeElements.length,
       modelTreeMemberships: modelTreeMemberIds.size,
-      nativeMaterialDefinitions: semantic.fidelity?.materialDefinitions ?? 0,
+      nativeMaterialDefinitions: nativeMaterialDefinitions.length,
+      nativeMaterialNames: [...nativeMaterialNames].sort(),
       nativeMaterialAssignments: semantic.fidelity?.materialAssignments ?? 0,
+      geometrySources: sortedRecord(geometrySources),
+      elementsWithNativeFaces,
+      nativeFaces,
       boundsLocalFeet: semantic.boundsLocalFeet ?? null,
       byCategory: sortedRecord(byCategory),
       unavailableFields: semantic.elementManifest?.unavailableFields ?? [],
       declaredFidelity: semantic.fidelity ?? null,
     },
+    nativeIdentityIds,
+    typeNameByElement,
+    familyNameByElement,
+    nativeMaterialNames,
   };
+}
+
+function familyFromIfcElementName(name, numericTag) {
+  if (typeof name !== "string" || numericTag == null) return null;
+  const suffix = `:${numericTag}`;
+  if (!name.endsWith(suffix)) return null;
+  const withoutTag = name.slice(0, -suffix.length);
+  const separator = withoutTag.indexOf(":");
+  return separator < 1 ? null : withoutTag.slice(0, separator);
+}
+
+function splitIfcTypeObjectName(name) {
+  if (typeof name !== "string" || !name) return { familyName: null, typeName: null };
+  const separator = name.indexOf(":");
+  return separator < 1
+    ? { familyName: null, typeName: name }
+    : {
+        familyName: name.slice(0, separator),
+        typeName: name.slice(separator + 1),
+      };
 }
 
 function parseInterestingStepEntities(text) {
@@ -477,6 +553,12 @@ async function analyzeIfc(ifcBytes, semantic) {
       }
     }
   }
+  const typeNameByObject = new Map();
+  for (const typeObject of new Set(typeByElement.values())) {
+    const line = api.GetLine(model, typeObject, false);
+    const name = scalar(line?.Name);
+    if (typeof name === "string" && name) typeNameByObject.set(typeObject, name);
+  }
 
   const directMaterialObjects = new Map();
   const materials = new Set();
@@ -528,6 +610,44 @@ async function analyzeIfc(ifcBytes, semantic) {
   const modelTreeTagsSeenByReviter = new Set(
     [...modelTreeNumericTags].filter((tag) => semantic.modelTreeMemberIds.has(tag)),
   );
+  const typeAssignedNumericTags = new Set();
+  const typeTagsWithNamedIfcType = new Set();
+  const typeTagsWithReviterTypeName = new Set();
+  const typeTagsWithExactReviterTypeName = new Set();
+  const familyNamedNumericTags = new Set();
+  const familyTagsWithReviterFamilyName = new Set();
+  const familyTagsWithExactReviterFamilyName = new Set();
+  const typeNameMismatchSamples = [];
+  for (const [elementId, typeObject] of typeByElement) {
+    const detail = elements.get(elementId);
+    const tag = detail?.numericTag;
+    if (tag == null) continue;
+    typeAssignedNumericTags.add(tag);
+    const ifcTypeObjectName = typeNameByObject.get(typeObject);
+    const splitType = splitIfcTypeObjectName(ifcTypeObjectName);
+    const ifcTypeName = splitType.typeName;
+    const reviterTypeName = semantic.typeNameByElement.get(tag);
+    if (ifcTypeName) typeTagsWithNamedIfcType.add(tag);
+    if (reviterTypeName) typeTagsWithReviterTypeName.add(tag);
+    if (ifcTypeName && reviterTypeName === ifcTypeName) {
+      typeTagsWithExactReviterTypeName.add(tag);
+    } else if (
+      ifcTypeName &&
+      reviterTypeName &&
+      typeNameMismatchSamples.length < 12
+    ) {
+      typeNameMismatchSamples.push({ elementId: tag, ifcTypeName, reviterTypeName });
+    }
+
+    const ifcFamilyName =
+      splitType.familyName ?? familyFromIfcElementName(detail?.name, tag);
+    const reviterFamilyName = semantic.familyNameByElement.get(tag);
+    if (ifcFamilyName) familyNamedNumericTags.add(tag);
+    if (reviterFamilyName) familyTagsWithReviterFamilyName.add(tag);
+    if (ifcFamilyName && reviterFamilyName === ifcFamilyName) {
+      familyTagsWithExactReviterFamilyName.add(tag);
+    }
+  }
 
   for (const [type, row] of byClass) {
     row.uniqueNumericTags = numericTagsByClass.get(type)?.size ?? 0;
@@ -575,6 +695,18 @@ async function analyzeIfc(ifcBytes, semantic) {
       .filter(([, tags]) => tags.length > 0)
       .sort(([left], [right]) => left.localeCompare(right)),
   );
+  const numericTagsWithNativeUniqueId = new Set(
+    [...numericTags].filter((tag) => semantic.nativeIdentityIds.has(tag)),
+  );
+  const materialDefinitionNameMatches = [...materials]
+    .filter((name) => semantic.nativeMaterialNames.has(name))
+    .sort();
+  const missingIfcMaterialNames = [...materials]
+    .filter((name) => !semantic.nativeMaterialNames.has(name))
+    .sort();
+  const additionalRvtMaterialNames = [...semantic.nativeMaterialNames]
+    .filter((name) => !materials.has(name))
+    .sort();
 
   const result = {
     schema: api.GetModelSchema(model),
@@ -592,6 +724,7 @@ async function analyzeIfc(ifcBytes, semantic) {
     geometryColors: geometryColors.size,
     globalIds: globalIds.size,
     numericRevitTags: numericTags.size,
+    numericTagsWithNativeUniqueId: numericTagsWithNativeUniqueId.size,
     numericTagsSeenByReviter: numericTagsSeenByReviter.size,
     numericTagsDrawnByReviter: numericTagsDrawnByReviter.size,
     geometryNumericTags: geometryNumericTags.size,
@@ -603,12 +736,24 @@ async function analyzeIfc(ifcBytes, semantic) {
     objectTypedElements: [...elements.values()].filter((element) => element.objectType).length,
     placedElements: [...elements.values()].filter((element) => element.placement != null).length,
     typeAssignedElements: typeMembers.size,
+    typeAssignedNumericTags: typeAssignedNumericTags.size,
+    typeTagsWithNamedIfcType: typeTagsWithNamedIfcType.size,
+    typeTagsWithReviterTypeName: typeTagsWithReviterTypeName.size,
+    typeTagsWithExactReviterTypeName: typeTagsWithExactReviterTypeName.size,
+    typeNameMismatchSamples,
+    familyNamedNumericTags: familyNamedNumericTags.size,
+    familyTagsWithReviterFamilyName: familyTagsWithReviterFamilyName.size,
+    familyTagsWithExactReviterFamilyName: familyTagsWithExactReviterFamilyName.size,
     propertySets: step.propertySetNodes.size,
     propertySetNames: propertySetNames.size,
     propertyValues: step.propertyValueCount,
     propertyAssignedElements: propertyElements.size,
     materialDefinitions: step.typeCounts.get("IFCMATERIAL") ?? 0,
     uniqueMaterialNames: materials.size,
+    materialDefinitionNameMatches: materialDefinitionNameMatches.length,
+    matchingMaterialNames: materialDefinitionNameMatches,
+    missingIfcMaterialNames,
+    additionalRvtMaterialNames,
     materialAssociationRelations: step.materialRelations.length,
     directMaterialAssignedElements: directMaterialElements.size,
     materialAssignedElementsIncludingTypes: materialElements.size,
@@ -638,6 +783,9 @@ const glbBytes = readFileSync(paths.glb);
 const semantic = parseSemantic(semanticBytes);
 const glb = parseGlb(glbBytes);
 const ifc = await analyzeIfc(ifcBytes, semantic);
+const semanticForAnalyticalHash = structuredClone(semantic.raw);
+if (semanticForAnalyticalHash.stats) delete semanticForAnalyticalHash.stats.durationMs;
+const semanticAnalyticalSha256 = sha256(JSON.stringify(semanticForAnalyticalHash));
 
 const report = {
   schemaVersion: 1,
@@ -648,6 +796,8 @@ const report = {
       name: basename(paths.semantic),
       bytes: semanticBytes.length,
       sha256: sha256(semanticBytes),
+      analyticalSha256: semanticAnalyticalSha256,
+      analyticalHashExcludes: ["stats.durationMs"],
     },
     glb: { name: basename(paths.glb), bytes: glbBytes.length, sha256: sha256(glbBytes) },
   },
@@ -664,13 +814,21 @@ const report = {
     productGeometryCoverage: ratio(ifc.geometryTagsDrawnByReviter, ifc.geometryNumericTags),
     triangleRatio: ratio(glb.triangles, ifc.triangles),
     vertexReferenceRatio: ratio(glb.vertices, ifc.vertexReferences),
-    uniqueIdRatio: ratio(semantic.summary.uniqueIds, ifc.globalIds),
+    uniqueIdRatio: ratio(ifc.numericTagsWithNativeUniqueId, ifc.numericRevitTags),
     modelTreeRatio: ratio(ifc.modelTreeTagsSeenByReviter, ifc.modelTreeNumericTags),
-    typeNameRatio: ratio(semantic.summary.typed, ifc.typeAssignedElements),
+    typeNameRatio: ratio(ifc.typeTagsWithReviterTypeName, ifc.typeAssignedNumericTags),
+    exactTypeNameRatio: ratio(
+      ifc.typeTagsWithExactReviterTypeName,
+      ifc.typeTagsWithNamedIfcType,
+    ),
+    familyNameRatio: ratio(
+      ifc.familyTagsWithReviterFamilyName,
+      ifc.familyNamedNumericTags,
+    ),
     propertyElementRatio: ratio(semantic.summary.withParameters, ifc.propertyAssignedElements),
     materialDefinitionRatio: ratio(
-      semantic.summary.nativeMaterialDefinitions,
-      ifc.materialDefinitions,
+      ifc.materialDefinitionNameMatches,
+      ifc.uniqueMaterialNames,
     ),
     materialAssignmentRatio: ratio(
       semantic.summary.nativeMaterialAssignments,
@@ -691,5 +849,7 @@ writeFileSync(paths.json, `${JSON.stringify(report, null, 2)}\n`);
 console.log(`IFC: ${ifc.elements.toLocaleString()} elements; ${ifc.productsWithGeometry.toLocaleString()} with geometry; ${ifc.triangles.toLocaleString()} triangles`);
 console.log(`Reviter: ${semantic.summary.displayed.toLocaleString()} displayed records; ${glb.triangles.toLocaleString()} triangles`);
 console.log(`Triangle parity: ${(report.parity.triangleRatio * 100).toFixed(1)}%`);
+console.log(`Native UniqueIds: ${ifc.numericTagsWithNativeUniqueId.toLocaleString()} / ${ifc.numericRevitTags.toLocaleString()} numeric IFC tags`);
+console.log(`Native material names: ${ifc.materialDefinitionNameMatches.toLocaleString()} / ${ifc.uniqueMaterialNames.toLocaleString()} IFC names`);
 console.log(`Native materials: ${semantic.summary.nativeMaterialAssignments.toLocaleString()} / ${ifc.materialAssignedElementsIncludingTypes.toLocaleString()} assigned elements`);
 console.log(`Wrote ${paths.json}`);
