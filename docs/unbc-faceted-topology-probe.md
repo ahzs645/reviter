@@ -35,6 +35,14 @@ every inflated partition byte pair for schema-defined topology tags, comparing
 each with its neighbouring numeric controls. It labels these as raw token
 occurrences, not records.
 
+`scripts/probe-counted-topology.ts` makes the complementary selector-free
+measurement. It tests every plausible signed 32-bit count as the start of
+adjacent point and triangle arrays in the four storage layouts evidenced by
+the schema. Candidates must have finite, bounded coordinates that span model
+space, in-range indices, and at least one geometrically nondegenerate triangle.
+It also reports, but does not require, a following counted edge-visibility
+array.
+
 ## Native and file-schema agreement
 
 The native symbol evidence divides the stored mesh contract as follows:
@@ -149,6 +157,42 @@ structurally valid bodies at raw selector-like byte hits. This does not mean
 the model has no stored meshes; it shows that raw two-byte values are not a
 safe substitute for the outer reader's scoped class context.
 
+### Selector-free counted-array result
+
+The selector-free probe tested 64,956,699 plausible count offsets. It found
+exactly three strict adjacent float32/u16 point-and-triangle bodies and no
+float32/int32, float64/u16, or float64/int32 bodies:
+
+| Chunk / offset | Vertices | Triangles | Used vertices | Degenerate | Point bounds | Following edge bytes |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| 2953 / 38,703 | 144 | 144 | 144 | 0 | `(437.943, 307.156, 0)`–`(525.709, 720.612, 0)` | count 144, matches triangles |
+| 3002 / 3,258 | 20 | 26 | 20 | 0 | `(294.075, 145.946, 0.167)`–`(294.736, 146.134, 0.398)` | count 26, matches triangles |
+| 3169 / 10,944 | 104 | 104 | 104 | 0 | `(277.741, 87.273, 0)`–`(352.227, 136.434, 0)` | count 104, matches triangles |
+
+These bodies are substantially stronger evidence than raw tag hits:
+
+- every vertex is referenced;
+- every triangle is in range and geometrically nondegenerate;
+- the first facets use ordinary indexed-mesh patterns such as
+  `(0,1,2)`, `(1,3,2)`, `(2,3,4)`;
+- all three are immediately followed by a signed 32-bit count equal to the
+  triangle count and exactly that many plausible edge-visibility bytes.
+
+They are therefore described as **corroborated counted mesh bodies**, but not
+as topology records. A three-chunk neighbourhood check found none inside the
+length-echoed element envelope. The bytes after two bodies begin separate
+geometry-shaped tables, while the first continues into additional fields.
+That is consistent with geometry being stored below an outer `GRep`/`GNode`
+reader rather than inline in the element envelope.
+
+The reference IFC does not provide a shortcut around that boundary. A
+diagnostic comparison of sorted per-triangle edge-length triples found no
+matches at the native scale, Revit's feet-to-metres scale, or the common
+decimal scales tested. These may be view/display meshes, may require an outer
+transform, or may be tessellated differently from the IFC. Without the outer
+reader there is no defensible owner, transform, material/style ID, or proof
+that any body belongs in the exported 3D model, so Reviter still emits none.
+
 ## Precisely bounded missing work
 
 The remaining blocker is narrower than “implement tessellation,” but still
@@ -166,8 +210,10 @@ real:
 5. Feed only those validated field slices to
    `decodeFacetedTopologyFields`.
 
-Until steps 1–4 have independent structural checks, the measured correct
-result is zero native stored meshes—not a guessed vertex cloud.
+The primitive body problem is now partly solved: three counted mesh bodies are
+located and validated. Until steps 1–4 have independent structural checks, the
+measured correct conversion result remains zero native stored meshes—not an
+ownerless vertex cloud.
 
 ## Reproduce
 
@@ -176,6 +222,9 @@ node --experimental-strip-types scripts/probe-faceted-topology.ts \
   "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
 
 node --experimental-strip-types scripts/probe-schema-fields.ts \
+  "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
+
+node --experimental-strip-types scripts/probe-counted-topology.ts \
   "/path/to/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt"
 
 node --experimental-strip-types --test tests/faceted-topology.test.ts
