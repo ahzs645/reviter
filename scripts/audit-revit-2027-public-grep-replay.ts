@@ -25,6 +25,9 @@ import {
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import {
+  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-face-static.ts";
+import {
   isRevit2027DirectGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
@@ -45,7 +48,11 @@ import {
 } from "../lib/reviter/revit-2027-planar-owner-mesh.ts";
 import {
   meshRevit2027CertifiedOwnerReplay,
+  type Revit2027CertifiedOwnerMesh,
 } from "../lib/reviter/revit-2027-certified-owner-mesh.ts";
+import {
+  certifyRevit2027DrawableFaceCoverage,
+} from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
 
 function increment<K>(map: Map<K, number>, key: K, count = 1): void {
   map.set(key, (map.get(key) ?? 0) + count);
@@ -63,6 +70,71 @@ function entries<K extends string | number>(
         }),
     ),
   );
+}
+
+function drawableBlockingIssues(
+  mesh: Revit2027CertifiedOwnerMesh,
+  nestedLinkCount: number,
+): {
+  issueCount: number;
+  issues: Map<string, number>;
+  drawableFaceTokens: ReadonlySet<number>;
+} {
+  const coverage = certifyRevit2027DrawableFaceCoverage(
+    mesh.replay.spans,
+    mesh.faceMeshes,
+    mesh.issues,
+  );
+  const missing = new Set(coverage.missingFaceTokens);
+  const reported = new Set<number>();
+  const issues = new Map<string, number>();
+  const drawableFaceTokens = new Set<number>();
+  for (const faceMesh of mesh.faceMeshes) {
+    const faceSpans = mesh.replay.spans.filter(
+      (span) =>
+        span.propertySourceClassSlot ===
+          REVIT_2027_FACE_SOURCE_CLASS_SLOT &&
+        span.propertyToken === faceMesh.faceToken,
+    );
+    const faceCoverage = certifyRevit2027DrawableFaceCoverage(
+      faceSpans,
+      [faceMesh],
+    );
+    if (faceCoverage.complete) {
+      drawableFaceTokens.add(faceMesh.faceToken);
+    }
+  }
+  for (const issue of mesh.issues) {
+    const faceToken = issue.issue.faceToken;
+    if (
+      issue.issue.code === "material-unresolved" ||
+      faceToken == null ||
+      !missing.has(faceToken)
+    ) {
+      continue;
+    }
+    reported.add(faceToken);
+    increment(issues, `${issue.path}:${issue.issue.code}`);
+  }
+  for (const faceToken of missing) {
+    if (!reported.has(faceToken)) {
+      increment(issues, "coverage:missing-drawable-face");
+    }
+  }
+  if (
+    coverage.code === "no-drawable-faces" &&
+    nestedLinkCount === 0
+  ) {
+    increment(issues, "coverage:no-drawable-faces");
+  }
+  return {
+    issueCount: [...issues.values()].reduce(
+      (total, count) => total + count,
+      0,
+    ),
+    issues,
+    drawableFaceTokens,
+  };
 }
 
 const modelPath = process.argv[2];
@@ -136,6 +208,15 @@ let certifiedPlanarAdditionalFilledRegions = 0;
 let certifiedPlanarHoleLoops = 0;
 let certifiedPlanarMultiLoopTriangles = 0;
 const certifiedIssues = new Map<string, number>();
+const certifiedIssueRecords: Array<{
+  ownerElementId: number;
+  path: string;
+  code: string;
+  faceToken: number | null;
+  loopToken: number | null;
+  edgeToken: number | null;
+  detail: string | null;
+}> = [];
 type CertifiedOwnerElement = {
   faces: number;
   planarMultiLoopFaces: number;
@@ -146,8 +227,11 @@ type CertifiedOwnerElement = {
   maximum: [number, number, number];
 };
 const certifiedOwnerElements = new Map<number, CertifiedOwnerElement>();
-const certifiedIssueCountByOwner = new Map<number, number>();
-const certifiedIssuesByOwner = new Map<number, Map<string, number>>();
+const certifiedBlockingIssueCountByOwner = new Map<number, number>();
+const certifiedBlockingIssuesByOwner = new Map<
+  number,
+  Map<string, number>
+>();
 const completedOwnerElementIds = new Set<bigint>();
 const nestedInstancesByOwner = new Map<
   bigint,
@@ -272,6 +356,10 @@ for (const partition of partitions) {
         increment(failures, `certified owner mesh: ${certified.error}`);
         continue;
       }
+      const blocking = drawableBlockingIssues(
+        certified.value,
+        nestedInstances.value.length,
+      );
       for (const face of certified.value.faceMeshes) {
         increment(certifiedFacesByKind, face.kind);
         certifiedPositions += face.mesh.positions.length / 3;
@@ -287,6 +375,7 @@ for (const partition of partitions) {
           certifiedPlanarMultiLoopFaces += 1;
           certifiedPlanarMultiLoopTriangles += face.mesh.indices.length / 3;
         }
+        if (!blocking.drawableFaceTokens.has(face.faceToken)) continue;
         const elementId = Number(certified.value.ownerElementId);
         if (!Number.isSafeInteger(elementId)) {
           increment(failures, "certified owner id is outside safe integer range");
@@ -328,15 +417,25 @@ for (const partition of partitions) {
         const issueCode = `${issue.path}:${issue.issue.code}`;
         increment(certifiedIssues, issueCode);
         const ownerElementId = Number(certified.value.ownerElementId);
-        const ownerIssues =
-          certifiedIssuesByOwner.get(ownerElementId) ?? new Map<string, number>();
-        increment(ownerIssues, issueCode);
-        certifiedIssuesByOwner.set(ownerElementId, ownerIssues);
-        increment(
-          certifiedIssueCountByOwner,
+        certifiedIssueRecords.push({
           ownerElementId,
-        );
+          path: issue.path,
+          code: issue.issue.code,
+          faceToken: issue.issue.faceToken ?? null,
+          loopToken: issue.issue.loopToken ?? null,
+          edgeToken: issue.issue.edgeToken ?? null,
+          detail: issue.issue.detail ?? null,
+        });
       }
+      const certifiedOwnerElementId = Number(certified.value.ownerElementId);
+      certifiedBlockingIssueCountByOwner.set(
+        certifiedOwnerElementId,
+        blocking.issueCount,
+      );
+      certifiedBlockingIssuesByOwner.set(
+        certifiedOwnerElementId,
+        blocking.issues,
+      );
       descriptors += replayed.value.descriptors.length;
       spans += replayed.value.spans.length;
       for (const descriptor of replayed.value.descriptors) {
@@ -397,13 +496,25 @@ const nestedSymbolTargetFrames = new Map<number, Array<{
   replayError: string | null;
 }>>();
 const nestedTargetOwnerElements = new Map<number, CertifiedOwnerElement>();
-const nestedTargetIssueCountByOwner = new Map<number, number>();
-const nestedTargetIssuesByOwner = new Map<number, Map<string, number>>();
+const nestedTargetBlockingIssueCountByOwner = new Map<number, number>();
+const nestedTargetBlockingIssuesByOwner = new Map<
+  number,
+  Map<string, number>
+>();
 const nestedTargetInstancesByOwner = new Map<
   bigint,
   readonly Revit2027NestedInstance[]
 >();
 const nestedTargetMeshFailures = new Map<string, number>();
+const nestedTargetIssueRecords: Array<{
+  ownerElementId: number;
+  path: string;
+  code: string;
+  faceToken: number | null;
+  loopToken: number | null;
+  edgeToken: number | null;
+  detail: string | null;
+}> = [];
 const scannedNestedSymbolTargetIds = new Set<number>();
 let pendingNestedSymbolTargetIds = new Set(nestedSymbolTargetIds);
 let nestedSymbolTargetPasses = 0;
@@ -499,64 +610,78 @@ while (pendingNestedSymbolTargetIds.size > 0) {
                       nestedTargetMeshFailures,
                       `target mesh: ${targetMesh.error}`,
                     );
-                  } else if (
-                    targetMesh.value.faceMeshes.length === 0 &&
-                    targetInstances.value.length === 0
-                  ) {
-                    increment(
-                      nestedTargetMeshFailures,
-                      "target replay has neither mesh nor nested instances",
+                  } else {
+                    const blocking = drawableBlockingIssues(
+                      targetMesh.value,
+                      targetInstances.value.length,
                     );
-                  } else if (targetMesh.value.faceMeshes.length > 0) {
-                    const summary: CertifiedOwnerElement = {
-                      faces: 0,
-                      planarMultiLoopFaces: 0,
-                      facesByKind: new Map(),
-                      positions: 0,
-                      triangles: 0,
-                      minimum: [Infinity, Infinity, Infinity],
-                      maximum: [-Infinity, -Infinity, -Infinity],
-                    };
-                    for (const face of targetMesh.value.faceMeshes) {
-                      summary.faces += 1;
-                      increment(summary.facesByKind, face.kind);
-                      summary.positions += face.mesh.positions.length / 3;
-                      summary.triangles += face.mesh.indices.length / 3;
-                      for (
-                        let index = 0;
-                        index < face.mesh.positions.length;
-                        index += 3
-                      ) {
-                        for (let axis = 0; axis < 3; axis += 1) {
-                          const coordinate =
-                            face.mesh.positions[index + axis]!;
-                          summary.minimum[axis] = Math.min(
-                            summary.minimum[axis]!,
-                            coordinate,
-                          );
-                          summary.maximum[axis] = Math.max(
-                            summary.maximum[axis]!,
-                            coordinate,
-                          );
+                    nestedTargetBlockingIssueCountByOwner.set(
+                      frame.elementId,
+                      blocking.issueCount,
+                    );
+                    nestedTargetBlockingIssuesByOwner.set(
+                      frame.elementId,
+                      blocking.issues,
+                    );
+                    for (const issue of targetMesh.value.issues) {
+                      nestedTargetIssueRecords.push({
+                        ownerElementId: frame.elementId,
+                        path: issue.path,
+                        code: issue.issue.code,
+                        faceToken: issue.issue.faceToken ?? null,
+                        loopToken: issue.issue.loopToken ?? null,
+                        edgeToken: issue.issue.edgeToken ?? null,
+                        detail: issue.issue.detail ?? null,
+                      });
+                    }
+                    if (
+                      blocking.issueCount > 0 &&
+                      blocking.drawableFaceTokens.size === 0 &&
+                      targetInstances.value.length === 0
+                    ) {
+                      increment(
+                        nestedTargetMeshFailures,
+                        "target replay has neither complete drawable mesh nor nested instances",
+                      );
+                    } else if (blocking.drawableFaceTokens.size > 0) {
+                      const summary: CertifiedOwnerElement = {
+                        faces: 0,
+                        planarMultiLoopFaces: 0,
+                        facesByKind: new Map(),
+                        positions: 0,
+                        triangles: 0,
+                        minimum: [Infinity, Infinity, Infinity],
+                        maximum: [-Infinity, -Infinity, -Infinity],
+                      };
+                      for (const face of targetMesh.value.faceMeshes) {
+                        if (!blocking.drawableFaceTokens.has(face.faceToken)) {
+                          continue;
+                        }
+                        summary.faces += 1;
+                        increment(summary.facesByKind, face.kind);
+                        summary.positions += face.mesh.positions.length / 3;
+                        summary.triangles += face.mesh.indices.length / 3;
+                        for (
+                          let index = 0;
+                          index < face.mesh.positions.length;
+                          index += 3
+                        ) {
+                          for (let axis = 0; axis < 3; axis += 1) {
+                            const coordinate =
+                              face.mesh.positions[index + axis]!;
+                            summary.minimum[axis] = Math.min(
+                              summary.minimum[axis]!,
+                              coordinate,
+                            );
+                            summary.maximum[axis] = Math.max(
+                              summary.maximum[axis]!,
+                              coordinate,
+                            );
+                          }
                         }
                       }
+                      nestedTargetOwnerElements.set(frame.elementId, summary);
                     }
-                    nestedTargetOwnerElements.set(frame.elementId, summary);
-                    nestedTargetIssueCountByOwner.set(
-                      frame.elementId,
-                      targetMesh.value.issues.length,
-                    );
-                    const ownerIssues = new Map<string, number>();
-                    for (const issue of targetMesh.value.issues) {
-                      increment(
-                        ownerIssues,
-                        `${issue.path}:${issue.issue.code}`,
-                      );
-                    }
-                    nestedTargetIssuesByOwner.set(
-                      frame.elementId,
-                      ownerIssues,
-                    );
                   }
                 }
               }
@@ -602,6 +727,27 @@ const nestedOwnerDefinitions = [...nestedOwnerDefinitionIds].map(
       [],
   }),
 );
+const nestedOwnerDefinitionById = new Map(
+  nestedOwnerDefinitions.map((definition) => [
+    definition.ownerElementId,
+    definition,
+  ]),
+);
+function reachableNestedOwnerIds(rootOwnerElementId: bigint): Set<bigint> {
+  const reachable = new Set<bigint>();
+  const pending = [rootOwnerElementId];
+  while (pending.length > 0) {
+    const ownerElementId = pending.pop()!;
+    if (reachable.has(ownerElementId)) continue;
+    reachable.add(ownerElementId);
+    const owner = nestedOwnerDefinitionById.get(ownerElementId);
+    if (!owner) continue;
+    for (const instance of owner.nestedInstances) {
+      pending.push(instance.symbolElementId);
+    }
+  }
+  return reachable;
+}
 const nestedCompositionFailures = new Map<string, number>();
 const composedNestedOwnerElements: Array<{
   elementId: number;
@@ -650,6 +796,32 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
   let sourceIssueCount = 0;
   const sourceIssues = new Map<string, number>();
   const sourceOwnerElementIds = new Set<number>();
+  let invalidDefinitionOwnerId = false;
+  const definitionOwnerElementIds = reachableNestedOwnerIds(
+    rootOwnerElementId,
+  );
+  for (const definitionOwnerElementId of definitionOwnerElementIds) {
+    const sourceOwnerElementId = Number(definitionOwnerElementId);
+    if (!Number.isSafeInteger(sourceOwnerElementId)) {
+      increment(
+        nestedCompositionFailures,
+        "nested definition owner id is outside safe integer range",
+      );
+      invalidDefinitionOwnerId = true;
+      break;
+    }
+    sourceIssueCount +=
+      certifiedBlockingIssueCountByOwner.get(sourceOwnerElementId) ??
+      nestedTargetBlockingIssueCountByOwner.get(sourceOwnerElementId) ??
+      0;
+    for (const [issue, count] of
+      certifiedBlockingIssuesByOwner.get(sourceOwnerElementId) ??
+      nestedTargetBlockingIssuesByOwner.get(sourceOwnerElementId) ??
+      []) {
+      sourceIssues.set(issue, (sourceIssues.get(issue) ?? 0) + count);
+    }
+  }
+  if (invalidDefinitionOwnerId) continue;
   for (const occurrence of composed.value.occurrences) {
     const sourceOwnerElementId = Number(occurrence.geometryOwnerElementId);
     if (!Number.isSafeInteger(sourceOwnerElementId)) {
@@ -664,16 +836,6 @@ for (const [rootOwnerElementId, nestedInstances] of nestedInstancesByOwner) {
     faces += occurrence.geometry.faces;
     positions += occurrence.geometry.positions;
     triangles += occurrence.geometry.triangles;
-    sourceIssueCount +=
-      certifiedIssueCountByOwner.get(sourceOwnerElementId) ??
-      nestedTargetIssueCountByOwner.get(sourceOwnerElementId) ??
-      0;
-    for (const [issue, count] of
-      certifiedIssuesByOwner.get(sourceOwnerElementId) ??
-      nestedTargetIssuesByOwner.get(sourceOwnerElementId) ??
-      []) {
-      sourceIssues.set(issue, (sourceIssues.get(issue) ?? 0) + count);
-    }
     includeTransformedBounds(
       minimum,
       maximum,
@@ -784,6 +946,7 @@ console.log(JSON.stringify({
     planarHoleLoops: certifiedPlanarHoleLoops,
     planarMultiLoopTriangles: certifiedPlanarMultiLoopTriangles,
     issues: entries(certifiedIssues),
+    issueRecords: certifiedIssueRecords,
     ownerElements: certifiedOwnerElements.size,
     decodedInstancePlacements: instancePlacements.size,
     placedInstancesUsingCertifiedOwners: certifiedInstances.length,
@@ -847,6 +1010,7 @@ console.log(JSON.stringify({
           0,
         ),
         meshFailures: entries(nestedTargetMeshFailures),
+        issueRecords: nestedTargetIssueRecords,
         frames: [...nestedSymbolTargetFrames]
           .sort((left, right) => left[0] - right[0])
           .map(([elementId, frames]) => ({ elementId, frames })),

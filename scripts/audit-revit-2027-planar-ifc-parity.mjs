@@ -709,6 +709,12 @@ const report = {
           right.maximumCornerErrorFeet - left.maximumCornerErrorFeet,
       )
       .slice(0, 100),
+    worstNestedOwnerBoundsTags: [...nestedOwnerBoundsRows]
+      .sort(
+        (left, right) =>
+          right.maximumCornerErrorFeet - left.maximumCornerErrorFeet,
+      )
+      .slice(0, 100),
   },
   interpretation: {
     geometry:
