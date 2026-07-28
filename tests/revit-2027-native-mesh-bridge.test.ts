@@ -101,10 +101,29 @@ test("drawable coverage excludes zero-loop reference faces and fails closed on p
 test("collector is inert outside the Revit 2027 release gate", () => {
   const collector = createRevit2027NativeMeshCollector(2026);
   collector.scanPage(new Uint8Array(256));
-  const state = collector.snapshot();
+  const state = collector.snapshot([10]);
   assert.equal(state.enabled, false);
   assert.equal(state.scannedFrames, 0);
   assert.equal(state.owners.size, 0);
+  assert.equal(state.requestedOwnerDefinitions, 0);
+});
+
+test("collector reports an absent persisted placement owner without publishing geometry", () => {
+  const state = createRevit2027NativeMeshCollector(2027).snapshot([
+    10,
+    10,
+    -1,
+    Number.MAX_SAFE_INTEGER + 1,
+  ]);
+  assert.equal(state.requestedOwnerDefinitions, 1);
+  assert.equal(state.completeRequestedOwners, 0);
+  assert.equal(state.partialRequestedOwners, 1);
+  assert.equal(state.requestedOwnerFailures, 1);
+  assert.equal(state.owners.size, 0);
+  assert.deepEqual(state.requestedOwnerFailureSamples, [{
+    ownerElementId: 10,
+    detail: "persisted placement geometry owner has no framed GRep definition",
+  }]);
 });
 
 test("native scene places shared owners, recentres once, groups proven materials, and covers only admitted elements", () => {
@@ -141,6 +160,12 @@ test("native scene places shared owners, recentres once, groups proven materials
     nestedTriangles: 0,
     nestedFailures: 0,
     nestedFailureSamples: [],
+    requestedOwnerDefinitions: 0,
+    completeRequestedOwners: 0,
+    partialRequestedOwners: 0,
+    requestedOwnerTriangles: 0,
+    requestedOwnerFailures: 0,
+    requestedOwnerFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,
@@ -206,6 +231,12 @@ test("output cap declines an element atomically and leaves its proxy eligible", 
     nestedTriangles: 0,
     nestedFailures: 0,
     nestedFailureSamples: [],
+    requestedOwnerDefinitions: 0,
+    completeRequestedOwners: 0,
+    partialRequestedOwners: 0,
+    requestedOwnerTriangles: 0,
+    requestedOwnerFailures: 0,
+    requestedOwnerFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,
@@ -257,6 +288,12 @@ test("nested owner faces compose root-local transforms before scene placement an
     nestedTriangles: 1,
     nestedFailures: 0,
     nestedFailureSamples: [],
+    requestedOwnerDefinitions: 0,
+    completeRequestedOwners: 0,
+    partialRequestedOwners: 0,
+    requestedOwnerTriangles: 0,
+    requestedOwnerFailures: 0,
+    requestedOwnerFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,
@@ -312,6 +349,12 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
     nestedTriangles: 0,
     nestedFailures: 0,
     nestedFailureSamples: [],
+    requestedOwnerDefinitions: 0,
+    completeRequestedOwners: 0,
+    partialRequestedOwners: 0,
+    requestedOwnerTriangles: 0,
+    requestedOwnerFailures: 0,
+    requestedOwnerFailureSamples: [],
   };
   const scene = buildRevit2027NativeMeshScene(
     collection,

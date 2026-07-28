@@ -127,6 +127,11 @@ export type DecoderCoverage = {
   nativeMeshNestedTriangles?: number;
   /** Nested roots rejected by graph, selector, coverage, conflict, or cap checks. */
   nativeMeshNestedFailures?: number;
+  nativeMeshRequestedOwnerDefinitions?: number;
+  nativeMeshCompleteRequestedOwners?: number;
+  nativeMeshPartialRequestedOwners?: number;
+  nativeMeshRequestedOwnerTriangles?: number;
+  nativeMeshRequestedOwnerFailures?: number;
   nativeMaterialDefinitions: number;
   /** Placed elements inheriting at least one exact shared-geometry material. */
   nativeMaterialAssignments: number;

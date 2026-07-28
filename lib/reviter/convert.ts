@@ -1977,7 +1977,12 @@ export function convertRvtBytes(
         y: (bounds.min.y + bounds.max.y) / 2,
         z: bounds.min.z,
       };
-      const nativeMeshCollection = nativeMeshCollector.snapshot();
+      // Only definitions proven to be referenced by persisted placements may
+      // leave the collector as reusable local geometry. The collector composes
+      // their exact nested GInstance closure atomically and never publishes
+      // unrelated non-scene definitions.
+      const nativeMeshCollection =
+        nativeMeshCollector.snapshot(sharedGeometryIds);
       const nativeMeshScene = buildRevit2027NativeMeshScene(
         nativeMeshCollection,
         instancePlacements.values(),
@@ -2071,6 +2076,9 @@ export function convertRvtBytes(
             ...(nativeMeshCollection.completeNestedRoots
               ? ["revit-2027-nested-symbol-composition-v1"]
               : []),
+            ...(nativeMeshCollection.completeRequestedOwners
+              ? ["revit-2027-placement-referenced-grep-composition-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
@@ -2093,6 +2101,16 @@ export function convertRvtBytes(
             nativeMeshCollection.partialNestedRoots,
           nativeMeshNestedTriangles: nativeMeshCollection.nestedTriangles,
           nativeMeshNestedFailures: nativeMeshCollection.nestedFailures,
+          nativeMeshRequestedOwnerDefinitions:
+            nativeMeshCollection.requestedOwnerDefinitions,
+          nativeMeshCompleteRequestedOwners:
+            nativeMeshCollection.completeRequestedOwners,
+          nativeMeshPartialRequestedOwners:
+            nativeMeshCollection.partialRequestedOwners,
+          nativeMeshRequestedOwnerTriangles:
+            nativeMeshCollection.requestedOwnerTriangles,
+          nativeMeshRequestedOwnerFailures:
+            nativeMeshCollection.requestedOwnerFailures,
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
           nativeMaterialAssignments: nativeMaterialAssignedElements,
           nativeGeometryMaterialAssignments: nativeGeometryMaterialAssignments.length,
@@ -2184,6 +2202,11 @@ export function convertRvtBytes(
           ...(nativeMeshCollection.nestedRootOwners
             ? [
                 `${nativeMeshCollection.completeNestedRoots.toLocaleString()} of ${nativeMeshCollection.nestedRootOwners.toLocaleString()} nested-symbol GRep roots resolved atomically through ${nativeMeshCollection.nestedLinks.toLocaleString()} exact GInstance links (${nativeMeshCollection.nestedTriangles.toLocaleString()} triangles); incomplete recursive roots remain on the proxy path.`,
+              ]
+            : []),
+          ...(nativeMeshCollection.requestedOwnerDefinitions
+            ? [
+                `${nativeMeshCollection.completeRequestedOwners.toLocaleString()} of ${nativeMeshCollection.requestedOwnerDefinitions.toLocaleString()} exact placement-referenced GRep owners resolved to complete reusable local meshes (${nativeMeshCollection.requestedOwnerTriangles.toLocaleString()} triangles); incomplete or absent definitions remain on the proxy path.`,
               ]
             : []),
           ...(nativeMeshScene.boundsMismatches

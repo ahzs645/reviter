@@ -93,6 +93,16 @@ export type Revit2027NativeMeshCollection = {
     ownerElementId: number | null;
     detail: string;
   }[];
+  /** Exact geometry owners requested by persisted instance placements. */
+  readonly requestedOwnerDefinitions: number;
+  readonly completeRequestedOwners: number;
+  readonly partialRequestedOwners: number;
+  readonly requestedOwnerTriangles: number;
+  readonly requestedOwnerFailures: number;
+  readonly requestedOwnerFailureSamples: readonly {
+    ownerElementId: number | null;
+    detail: string;
+  }[];
 };
 
 type CompactOwnerDefinition = {
@@ -128,7 +138,11 @@ type MutableCollection = {
 export type Revit2027NativeMeshCollector = {
   readonly release: number | null;
   scanPage(data: Uint8Array): void;
-  snapshot(): Revit2027NativeMeshCollection;
+  /**
+   * Finalize direct scene roots plus only the non-direct definitions proven to
+   * be referenced by persisted instance placements.
+   */
+  snapshot(requestedOwnerIds?: Iterable<number>): Revit2027NativeMeshCollection;
 };
 
 function safeLimit(value: number | undefined, fallback: number): number {
@@ -283,11 +297,23 @@ type NestedGeometryMarker = {
 
 function finalizeRevit2027NativeMeshCollection(
   state: MutableCollection,
+  requestedOwnerIds: Iterable<number> = [],
 ): Revit2027NativeMeshCollection {
+  const requestedOwners = state.enabled
+    ? new Set(
+        [...requestedOwnerIds].filter(
+          (ownerElementId) =>
+            Number.isSafeInteger(ownerElementId) &&
+            ownerElementId > 0 &&
+            ownerElementId <= 0xffff_ffff,
+        ),
+      )
+    : new Set<number>();
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
   for (const definition of state.definitions.values()) {
     if (
-      definition.directRoot &&
+      (definition.directRoot ||
+        requestedOwners.has(definition.ownerElementId)) &&
       definition.nestedInstances.length === 0 &&
       definition.localComplete &&
       definition.geometry &&
@@ -301,11 +327,22 @@ function finalizeRevit2027NativeMeshCollection(
     (definition) =>
       definition.directRoot && definition.nestedInstances.length > 0,
   );
+  const selectedNestedRoots = [...state.definitions.values()].filter(
+    (definition) =>
+      definition.nestedInstances.length > 0 &&
+      (definition.directRoot ||
+        requestedOwners.has(definition.ownerElementId)),
+  );
   let completeNestedRoots = 0;
   let partialNestedRoots = 0;
   let nestedTriangles = 0;
   let nestedFailures = 0;
   const nestedFailureSamples = [...state.nestedFailureSamples];
+  let requestedOwnerFailures = 0;
+  const requestedOwnerFailureSamples: {
+    ownerElementId: number | null;
+    detail: string;
+  }[] = [];
   const rememberNestedFailure = (
     ownerElementId: number | null,
     detail: string,
@@ -313,6 +350,15 @@ function finalizeRevit2027NativeMeshCollection(
     nestedFailures += 1;
     if (nestedFailureSamples.length < MAX_INCOMPLETE_SAMPLES) {
       nestedFailureSamples.push({ ownerElementId, detail });
+    }
+  };
+  const rememberRequestedOwnerFailure = (
+    ownerElementId: number | null,
+    detail: string,
+  ): void => {
+    requestedOwnerFailures += 1;
+    if (requestedOwnerFailureSamples.length < MAX_INCOMPLETE_SAMPLES) {
+      requestedOwnerFailureSamples.push({ ownerElementId, detail });
     }
   };
 
@@ -333,19 +379,24 @@ function finalizeRevit2027NativeMeshCollection(
       nestedInstances: definition.nestedInstances,
     }));
 
-  for (const root of nestedRoots) {
+  for (const root of selectedNestedRoots) {
+    const directRoot = root.directRoot;
+    const requestedRoot = requestedOwners.has(root.ownerElementId);
+    const rememberFailure = (detail: string): void => {
+      if (directRoot) {
+        partialNestedRoots += 1;
+        rememberNestedFailure(root.ownerElementId, detail);
+      }
+      if (requestedRoot) {
+        rememberRequestedOwnerFailure(root.ownerElementId, detail);
+      }
+    };
     if (state.truncated) {
-      partialNestedRoots += 1;
-      rememberNestedFailure(
-        root.ownerElementId,
-        "nested definition storage was truncated",
-      );
+      rememberFailure("nested definition storage was truncated");
       continue;
     }
     if (state.conflictingOwnerIds.has(root.ownerElementId)) {
-      partialNestedRoots += 1;
-      rememberNestedFailure(
-        root.ownerElementId,
+      rememberFailure(
         "nested root has a duplicate or conflicting owner definition",
       );
       continue;
@@ -355,17 +406,14 @@ function finalizeRevit2027NativeMeshCollection(
       definitions,
     );
     if (!composed.ok) {
-      partialNestedRoots += 1;
-      rememberNestedFailure(root.ownerElementId, composed.error);
+      rememberFailure(composed.error);
       continue;
     }
     const incomplete = composed.value.occurrences.find(
       (occurrence) => !occurrence.geometry.localComplete,
     );
     if (incomplete) {
-      partialNestedRoots += 1;
-      rememberNestedFailure(
-        root.ownerElementId,
+      rememberFailure(
         `nested source owner ${incomplete.geometryOwnerElementId} lacks complete local drawable-face coverage`,
       );
       continue;
@@ -382,11 +430,7 @@ function finalizeRevit2027NativeMeshCollection(
       }
     }
     if (faces.length === 0) {
-      partialNestedRoots += 1;
-      rememberNestedFailure(
-        root.ownerElementId,
-        "nested root resolves to no complete drawable faces",
-      );
+      rememberFailure("nested root resolves to no complete drawable faces");
       continue;
     }
     owners.set(root.ownerElementId, {
@@ -394,9 +438,47 @@ function finalizeRevit2027NativeMeshCollection(
       faces,
       triangles,
     });
-    completeNestedRoots += 1;
-    nestedTriangles += triangles;
+    if (directRoot) {
+      completeNestedRoots += 1;
+      nestedTriangles += triangles;
+    }
   }
+
+  for (const ownerElementId of requestedOwners) {
+    if (owners.has(ownerElementId)) continue;
+    const definition = state.definitions.get(ownerElementId);
+    if (!definition) {
+      rememberRequestedOwnerFailure(
+        ownerElementId,
+        "persisted placement geometry owner has no framed GRep definition",
+      );
+      continue;
+    }
+    if (definition.nestedInstances.length > 0) {
+      // A selected nested root already recorded its exact composition failure.
+      continue;
+    }
+    if (state.conflictingOwnerIds.has(ownerElementId)) {
+      rememberRequestedOwnerFailure(
+        ownerElementId,
+        "persisted placement geometry owner has duplicate or conflicting definitions",
+      );
+      continue;
+    }
+    rememberRequestedOwnerFailure(
+      ownerElementId,
+      "persisted placement geometry owner lacks complete local drawable-face coverage",
+    );
+  }
+
+  const completeRequestedOwners = [...requestedOwners].filter((ownerElementId) =>
+    owners.has(ownerElementId)
+  );
+  const requestedOwnerTriangles = completeRequestedOwners.reduce(
+    (total, ownerElementId) =>
+      total + (owners.get(ownerElementId)?.triangles ?? 0),
+    0,
+  );
 
   return {
     enabled: state.enabled,
@@ -420,6 +502,13 @@ function finalizeRevit2027NativeMeshCollection(
     nestedTriangles,
     nestedFailures,
     nestedFailureSamples,
+    requestedOwnerDefinitions: requestedOwners.size,
+    completeRequestedOwners: completeRequestedOwners.length,
+    partialRequestedOwners:
+      requestedOwners.size - completeRequestedOwners.length,
+    requestedOwnerTriangles,
+    requestedOwnerFailures,
+    requestedOwnerFailureSamples,
   };
 }
 
@@ -462,7 +551,6 @@ export function createRevit2027NativeMeshCollector(
     incompleteSamples: [],
     nestedFailureSamples: [],
   };
-  let cachedSnapshot: Revit2027NativeMeshCollection | null = null;
 
   const rememberIncomplete = (
     reason: Revit2027IncompleteOwnerReason,
@@ -477,7 +565,6 @@ export function createRevit2027NativeMeshCollector(
     release: release ?? null,
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
-      cachedSnapshot = null;
       for (const frame of scanFramedElementObjects(data)) {
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
@@ -616,9 +703,13 @@ export function createRevit2027NativeMeshCollector(
         state.nestedLinks += nested.value.length;
       }
     },
-    snapshot(): Revit2027NativeMeshCollection {
-      cachedSnapshot ??= finalizeRevit2027NativeMeshCollection(state);
-      return cachedSnapshot;
+    snapshot(
+      requestedOwnerIds: Iterable<number> = [],
+    ): Revit2027NativeMeshCollection {
+      return finalizeRevit2027NativeMeshCollection(
+        state,
+        requestedOwnerIds,
+      );
     },
   };
 }

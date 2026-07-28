@@ -138,6 +138,31 @@ its proxy, and reached no cap. All 109 complete roots passed the independent
 RVT-envelope gate. The final scene therefore contains 32,520 native elements,
 586,709 native triangles, and 4,028 proxy elements.
 
+That direct-root checkpoint was extended by commit `c613144`, which proved
+that persisted instance placements also reference ordinary non-direct GRep
+definitions. Production now passes the exact placement-owned geometry id set
+into collector finalization; it does not publish every scanned definition.
+On the same exact RVT:
+
+- 7,532 / 7,805 production-eligible shared owners resolve to complete meshes;
+- 273 missing, conflicting, or incomplete requested owners remain proxies;
+- 109,938 owner-local triangles are available for exact placement reuse;
+- 34,196 elements pass complete native-mesh admission;
+- 702,145 native triangles replace their proxies;
+- 657 otherwise complete transformed meshes escape the independent RVT
+  envelope and are rejected;
+- 3,184 otherwise complete meshes lack an independent display envelope and are
+  rejected;
+- no definition-storage or output-triangle cap is reached.
+
+The resulting GLB contains 36,548 displayed elements, 750,521 total triangles
+(native plus retained proxies), 46 mesh batches, and 10 display materials.
+Against the IFC, the placement-seeded audit certifies 34,867 / 36,144 numeric
+geometry Tags (`96.4669%`) before the production display-envelope gate.
+The generic final-scene parity audit reports a triangle ratio of `80.34499%`
+because it includes the intentional proxy fallback in both the displayed
+element set and the triangle total.
+
 ## Tessellator/kernel boundary
 
 `TB_Geometry`, `libTD_Ge`, `libOdBrepModeler`, `libTD_BrepBuilder`, and
