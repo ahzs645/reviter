@@ -2,8 +2,11 @@ export { convertRvtBytes } from "./convert";
 export { revitVersionFromBasicFileInfo } from "./basic-file-info";
 export { partAtomMetadataFromSummary } from "./part-atom";
 export { parsePartAtomXml } from "./part-atom";
+export { parseProjectInformationArchive } from "./project-information";
 export type {
   PartAtomDesignFile,
+  PartAtomFeature,
+  PartAtomFeatureGroup,
   PartAtomFamilyType,
   PartAtomLink,
   PartAtomMetadata,
@@ -35,8 +38,14 @@ export {
   asBytes,
   gzipOffsets,
   inflateRevitChunk,
+  isRevitChecksumPagedStream,
+  REVIT_PAGE_CHECKSUM_BYTES,
+  REVIT_PAGE_PAYLOAD_BYTES,
+  REVIT_STORED_PAGE_BYTES,
   REVIT_WINDOW_BYTES,
+  revitStoredPageOffset,
   revitWindowTail,
+  stripRevitPageChecksums,
 } from "./revit-container";
 export {
   buildBoundsMeshes,

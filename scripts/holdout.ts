@@ -156,6 +156,7 @@ import {
   gzipOffsets,
   inflateRevitChunk,
   revitWindowTail,
+  stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 
@@ -550,7 +551,7 @@ export function rescanPartitions(rvtPath: string): RescanResult {
   let pagesRead = 0;
 
   for (const partition of partitions) {
-    const data = asBytes(partition.entry.content);
+    const data = stripRevitPageChecksums(asBytes(partition.entry.content));
     const offsets = gzipOffsets(data);
 
     // Markers are measured from the file exactly as `convert.ts` measures them,

@@ -1,9 +1,12 @@
 /**
- * Revit's OLE/CFB stream payloads, and the truncated-gzip framing inside them.
+ * Revit's OLE/CFB stream payloads, checksum pages, and truncated-gzip framing.
  *
- * A Revit stream is a run of independently compressed chunks. Each chunk starts
- * with a gzip header and is followed by a raw DEFLATE body with no trailer, so
- * the chunk boundaries have to be recovered by scanning for the signature.
+ * Structured database streams are first split into 65,249-byte stored pages.
+ * A full page carries 64,896 bytes of stream payload followed by 353 bytes of
+ * checksum data. After those page tails are removed, the payload is a run of
+ * independently compressed chunks. Each chunk starts with a gzip header and is
+ * followed by a raw DEFLATE body with no trailer, so chunk boundaries still
+ * have to be recovered by scanning for the signature.
  */
 import { Inflate, inflateSync } from "fflate";
 
@@ -15,6 +18,15 @@ const GZIP_OPTIONAL_FIELD_LIMIT = 1_024;
 /** Input cap when re-reading a chunk truncated by a false gzip signature. */
 const GZIP_RETRY_BYTES = 8 << 20;
 
+/** Stored bytes in a full checksum page (`PagedStreamImplReader<..., 65249>`). */
+export const REVIT_STORED_PAGE_BYTES = 65_249;
+
+/** Original payload bytes recovered from a full checksum page. */
+export const REVIT_PAGE_PAYLOAD_BYTES = 64_896;
+
+export const REVIT_PAGE_CHECKSUM_BYTES =
+  REVIT_STORED_PAGE_BYTES - REVIT_PAGE_PAYLOAD_BYTES;
+
 /**
  * Bytes of a chunk's output kept as the preset dictionary for the next chunk.
  * 32 KiB is the DEFLATE window, so this is everything a chunk can reference
@@ -24,6 +36,56 @@ export const REVIT_WINDOW_BYTES = 32 << 10;
 
 export function asBytes(value: number[] | Uint8Array): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
+}
+
+/**
+ * Whether a CFB path uses the checksum-paged loader route.
+ *
+ * `ProjectInformation` is deliberately absent: the native loader routes that
+ * PKZip stream through `PageReader<false>`. Metadata, previews, and arbitrary
+ * attachments must not be trimmed merely because they happen to be large.
+ */
+export function isRevitChecksumPagedStream(path: string): boolean {
+  const clean = path.replace(/^Root Entry\//i, "");
+  return (
+    /^Partitions\/[^/]+$/i.test(clean) ||
+    /^Formats\/Latest$/i.test(clean) ||
+    /^Global\/(?:ContentDocuments|DocumentIncrementTable|ElemTable|History|Latest|PartitionTable)$/i
+      .test(clean)
+  );
+}
+
+/**
+ * Remove each complete stored page's checksum tail.
+ *
+ * The last partial page is intentionally retained in full. Its trailing
+ * checksum follows the final DEFLATE stream and is ignored by the inflater,
+ * while its encoded payload length varies with the short page size.
+ */
+export function stripRevitPageChecksums(data: Uint8Array): Uint8Array {
+  const fullPages = Math.floor(data.byteLength / REVIT_STORED_PAGE_BYTES);
+  if (!fullPages) return data;
+  const remainder = data.byteLength - fullPages * REVIT_STORED_PAGE_BYTES;
+  const output = new Uint8Array(fullPages * REVIT_PAGE_PAYLOAD_BYTES + remainder);
+  let outputOffset = 0;
+  for (let page = 0; page < fullPages; page += 1) {
+    const storedOffset = page * REVIT_STORED_PAGE_BYTES;
+    output.set(
+      data.subarray(storedOffset, storedOffset + REVIT_PAGE_PAYLOAD_BYTES),
+      outputOffset,
+    );
+    outputOffset += REVIT_PAGE_PAYLOAD_BYTES;
+  }
+  output.set(data.subarray(fullPages * REVIT_STORED_PAGE_BYTES), outputOffset);
+  return output;
+}
+
+/** Map a checksum-clean payload offset back to its stored CFB stream offset. */
+export function revitStoredPageOffset(payloadOffset: number): number {
+  if (!Number.isFinite(payloadOffset) || payloadOffset <= 0) return 0;
+  const offset = Math.floor(payloadOffset);
+  const page = Math.floor(offset / REVIT_PAGE_PAYLOAD_BYTES);
+  return page * REVIT_STORED_PAGE_BYTES + (offset % REVIT_PAGE_PAYLOAD_BYTES);
 }
 
 /**

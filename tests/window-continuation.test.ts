@@ -11,10 +11,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { constants, deflateRawSync, gzipSync } from "node:zlib";
 import {
+  isRevitChecksumPagedStream,
+  REVIT_PAGE_CHECKSUM_BYTES,
+  REVIT_PAGE_PAYLOAD_BYTES,
+  REVIT_STORED_PAGE_BYTES,
   REVIT_WINDOW_BYTES,
   inflateRevitChunk,
+  revitStoredPageOffset,
   revitWindowTail,
   salvageRevitChunk,
+  stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 
 /** A Revit chunk: a gzip header, then a raw DEFLATE body with no trailer. */
@@ -62,6 +68,30 @@ test("the window is the trailing 32 KiB of the previous chunk", () => {
 test("a short chunk is its own window", () => {
   const short = payload(2, 400);
   assert.deepEqual(revitWindowTail(short), short);
+});
+
+test("removes checksum tails from complete Revit database pages", () => {
+  assert.equal(REVIT_PAGE_CHECKSUM_BYTES, 353);
+  const first = payload(7, REVIT_PAGE_PAYLOAD_BYTES);
+  const checksum = payload(201, REVIT_PAGE_CHECKSUM_BYTES);
+  const second = payload(31, 1_234);
+  const stored = new Uint8Array(REVIT_STORED_PAGE_BYTES + second.length);
+  stored.set(first);
+  stored.set(checksum, first.length);
+  stored.set(second, REVIT_STORED_PAGE_BYTES);
+
+  const clean = stripRevitPageChecksums(stored);
+  assert.equal(clean.length, first.length + second.length);
+  assert.deepEqual(clean.subarray(0, first.length), first);
+  assert.deepEqual(clean.subarray(first.length), second);
+  assert.equal(revitStoredPageOffset(REVIT_PAGE_PAYLOAD_BYTES), REVIT_STORED_PAGE_BYTES);
+  assert.equal(
+    revitStoredPageOffset(REVIT_PAGE_PAYLOAD_BYTES + 17),
+    REVIT_STORED_PAGE_BYTES + 17,
+  );
+  assert.equal(isRevitChecksumPagedStream("Root Entry/Partitions/325"), true);
+  assert.equal(isRevitChecksumPagedStream("Global/ElemTable"), true);
+  assert.equal(isRevitChecksumPagedStream("ProjectInformation"), false);
 });
 
 test("the wrong window is rejected rather than returning garbage", () => {

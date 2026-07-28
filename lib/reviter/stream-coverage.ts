@@ -8,7 +8,13 @@
  * the point of the table is to make the remaining gap measurable instead of
  * invisible.
  */
-import { gzipOffsets, inflateRevitChunk, revitWindowTail } from "./revit-container.ts";
+import {
+  gzipOffsets,
+  inflateRevitChunk,
+  isRevitChecksumPagedStream,
+  revitWindowTail,
+  stripRevitPageChecksums,
+} from "./revit-container.ts";
 
 /**
  * How much of a stream is understood.
@@ -72,7 +78,7 @@ const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)Global\/ContentDocuments$/i, decoder: "none", depth: "none", note: "Structured content index on a different ID space; 0.8% of recovered element IDs appear in it, at chance level" },
   { pattern: /(^|\/)Global\/History$/i, decoder: "none", depth: "none", note: "Document edit history; not decoded" },
   { pattern: /(^|\/)Global\/DocumentIncrementTable$/i, decoder: "none", depth: "none", note: "Incremental save table; not decoded" },
-  { pattern: /(^|\/)ProjectInformation$/i, decoder: "none", depth: "none", note: "Project information record; not decoded" },
+  { pattern: /(^|\/)ProjectInformation$/i, decoder: "metadata", depth: "full", note: "PKZip Atom metadata: project identity, design file, and property groups" },
   { pattern: /(^|\/)TransmissionData$/i, decoder: "none", depth: "none", note: "eTransmit link data; not decoded" },
   { pattern: /(^|\/)PartAtom$/i, decoder: "metadata", depth: "full", note: "Family/type title, category, parameters, and taxonomies from PartAtom XML" },
   { pattern: /(^|\/)Contents$/i, decoder: "none", depth: "none", note: "Container contents record; not decoded" },
@@ -100,20 +106,28 @@ export function measureStream(
   inflateLimit = 8 << 20,
 ): StreamCoverage {
   const rule = classify(path);
+  const payload = isRevitChecksumPagedStream(path)
+    ? stripRevitPageChecksums(data)
+    : data;
   // Chunk counting is a byte scan and always affordable; inflating a second
   // time is not, for the partition stream that expands to hundreds of MB.
-  const offsets = gzipOffsets(data);
+  const offsets = gzipOffsets(payload);
   let inflatedBytes: number | undefined;
-  if (data.byteLength <= inflateLimit) {
+  if (payload.byteLength <= inflateLimit) {
     inflatedBytes = 0;
     let window: Uint8Array | null = null;
     for (let index = 0; index < offsets.length; index += 1) {
-      const inflated = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      const inflated = inflateRevitChunk(
+        payload,
+        offsets[index]!,
+        offsets[index + 1],
+        window,
+      );
       if (!inflated) continue;
       window = revitWindowTail(inflated);
       inflatedBytes += inflated.byteLength;
     }
-    if (!offsets.length) inflatedBytes = data.byteLength;
+    if (!offsets.length) inflatedBytes = payload.byteLength;
   }
   return {
     path,

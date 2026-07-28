@@ -29,6 +29,16 @@ export type PartAtomFamilyType = {
   parameters: PartAtomParameter[];
 };
 
+export type PartAtomFeatureGroup = {
+  title?: string;
+  parameters: PartAtomParameter[];
+};
+
+export type PartAtomFeature = {
+  title?: string;
+  groups: PartAtomFeatureGroup[];
+};
+
 export type PartAtomDesignFile = {
   title?: string;
   product?: string;
@@ -55,6 +65,8 @@ export type PartAtomMetadata = {
   familyType?: string;
   variationCount?: number;
   types: PartAtomFamilyType[];
+  /** Project identity/property groups from the ProjectInformation Atom entry. */
+  features: PartAtomFeature[];
 };
 
 function text(value: unknown): string | undefined {
@@ -93,6 +105,7 @@ export function partAtomMetadataFromSummary(summary: unknown): PartAtomMetadata 
     taxonomies,
     links: [],
     types: [],
+    features: [],
   };
 }
 
@@ -146,6 +159,28 @@ function blocks(source: string, localName: string): Array<{ attributes: string; 
     result.push({ attributes: match[1] ?? "", body: match[2] ?? "" });
   }
   return result;
+}
+
+function simpleParameters(source: string): PartAtomParameter[] {
+  const parameters: PartAtomParameter[] = [];
+  const simple = /<([\w:.-]+)\b([^>]*)>([^<]*)<\/\1>/g;
+  for (let match = simple.exec(source); match; match = simple.exec(source)) {
+    const name = match[1]!.replace(/^.*:/, "");
+    if (name.toLowerCase() === "title") continue;
+    const attrs = attributes(match[2] ?? "");
+    parameters.push({
+      name,
+      ...(text(attrs.displayName) ? { displayName: text(attrs.displayName) } : {}),
+      ...(text(attrs.type) ? { sourceType: text(attrs.type) } : {}),
+      ...(text(attrs.id) ? { id: text(attrs.id) } : {}),
+      ...(text(attrs.typeOfParameter)
+        ? { parameterType: text(attrs.typeOfParameter) }
+        : {}),
+      ...(text(attrs.units) ? { units: text(attrs.units) } : {}),
+      value: decodeXml((match[3] ?? "").trim()),
+    });
+  }
+  return parameters;
 }
 
 /**
@@ -206,34 +241,33 @@ export function parsePartAtomXml(xml: string): PartAtomMetadata | undefined {
   const variationCount = variationRaw == null ? undefined : Number(variationRaw);
   const types = family
     ? blocks(family.body, "part").flatMap((part): PartAtomFamilyType[] => {
-        const title = tagValue(part.body, "title");
-        if (!title) return [];
-        const partAttrs = attributes(part.attributes);
-        const parameters: PartAtomParameter[] = [];
-        const simple = /<([\w:.-]+)\b([^>]*)>([^<]*)<\/\1>/g;
-        for (let match = simple.exec(part.body); match; match = simple.exec(part.body)) {
-          const name = match[1]!.replace(/^.*:/, "");
-          if (name.toLowerCase() === "title") continue;
-          const attrs = attributes(match[2] ?? "");
-          parameters.push({
-            name,
-            ...(text(attrs.displayName) ? { displayName: text(attrs.displayName) } : {}),
-            ...(text(attrs.type) ? { sourceType: text(attrs.type) } : {}),
-            ...(text(attrs.id) ? { id: text(attrs.id) } : {}),
-            ...(text(attrs.typeOfParameter)
-              ? { parameterType: text(attrs.typeOfParameter) }
-              : {}),
-            ...(text(attrs.units) ? { units: text(attrs.units) } : {}),
-            value: decodeXml((match[3] ?? "").trim()),
-          });
-        }
-        return [{
-          title,
-          ...(text(partAttrs.type) ? { sourceType: text(partAttrs.type) } : {}),
-          parameters,
-        }];
+      const title = tagValue(part.body, "title");
+      if (!title) return [];
+      const partAttrs = attributes(part.attributes);
+      return [{
+        title,
+        ...(text(partAttrs.type) ? { sourceType: text(partAttrs.type) } : {}),
+        parameters: simpleParameters(part.body),
+      }];
       })
     : [];
+
+  const features = blocks(xml, "features").flatMap((container): PartAtomFeature[] =>
+    blocks(container.body, "feature").map((feature): PartAtomFeature => {
+      const title = tagValue(feature.body, "title");
+      const groups = blocks(feature.body, "group").map((group): PartAtomFeatureGroup => {
+        const groupTitle = tagValue(group.body, "title");
+        return {
+          ...(groupTitle ? { title: groupTitle } : {}),
+          parameters: simpleParameters(group.body),
+        };
+      });
+      return {
+        ...(title ? { title } : {}),
+        groups,
+      };
+    }),
+  );
 
   const title = types[0]?.title ?? entryTitle;
   if (!title && !updated && !categories.length && !taxonomies.length) return undefined;
@@ -248,5 +282,6 @@ export function parsePartAtomXml(xml: string): PartAtomMetadata | undefined {
     ...(text(familyAttrs.type) ? { familyType: text(familyAttrs.type) } : {}),
     ...(Number.isInteger(variationCount) ? { variationCount } : {}),
     types,
+    features,
   };
 }

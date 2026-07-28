@@ -79,13 +79,16 @@ import {
   gzipOffsets,
   inflateRevitChunk,
   leadingU32,
+  revitStoredPageOffset,
   revitWindowTail,
   salvageRevitChunk,
+  stripRevitPageChecksums,
 } from "./revit-container.ts";
 import { summariseSchema } from "./schema.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
 import { parsePartAtomXml } from "./part-atom.ts";
+import { parseProjectInformationArchive } from "./project-information.ts";
 import {
   buildBoundsMeshes,
   buildMeshes,
@@ -626,7 +629,7 @@ function readStreamSummary<T>(
     .map((candidate, index) => ({ entry: candidate, path: cfb.FullPaths[index] ?? "" }))
     .find(({ entry: candidate, path }) => candidate.size > 0 && pattern.test(path));
   if (!entry) return undefined;
-  const bytes = asBytes(entry.entry.content);
+  const bytes = stripRevitPageChecksums(asBytes(entry.entry.content));
   const offset = gzipOffsets(bytes, 1)[0];
   const inflated = offset == null ? null : inflateRevitChunk(bytes, offset);
   return inflated ? decode(inflated) : undefined;
@@ -651,9 +654,19 @@ export function convertRvtBytes(
     const partAtomEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/PartAtom$/i.test(path));
-    const partAtom = partAtomEntry
+    let partAtom = partAtomEntry
       ? parsePartAtomXml(new TextDecoder().decode(asBytes(partAtomEntry.entry.content)))
       : undefined;
+    if (!partAtom) {
+      const projectInformationEntry = cfb.FileIndex
+        .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+        .find(({ entry, path }) => entry.size > 0 && /\/ProjectInformation$/i.test(path));
+      if (projectInformationEntry) {
+        partAtom = parseProjectInformationArchive(
+          asBytes(projectInformationEntry.entry.content),
+        );
+      }
+    }
     if (!Number.isInteger(options.revitVersion)) {
       const basicFileInfo = cfb.FileIndex
         .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
@@ -669,7 +682,7 @@ export function convertRvtBytes(
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
     let elementIndex;
     if (elemTableEntry) {
-      const elemTableBytes = asBytes(elemTableEntry.entry.content);
+      const elemTableBytes = stripRevitPageChecksums(asBytes(elemTableEntry.entry.content));
       const offset = gzipOffsets(elemTableBytes, 1)[0];
       const inflated = offset == null ? null : inflateRevitChunk(elemTableBytes, offset);
       if (inflated) elementIndex = parseElemTable(inflated) ?? undefined;
@@ -700,7 +713,7 @@ export function convertRvtBytes(
     if (decoderPlan.elementBoundsDecoder) {
       const sampleCounts = new Map<number, number>();
       const samplePartition = partitions[0]!;
-      const sampleData = asBytes(samplePartition.entry.content);
+      const sampleData = stripRevitPageChecksums(asBytes(samplePartition.entry.content));
       const sampleOffsets = gzipOffsets(sampleData);
       const stride = Math.max(1, Math.floor(sampleOffsets.length / MARKER_SAMPLE_PAGES));
       for (let index = 0; index < sampleOffsets.length; index += stride) {
@@ -748,7 +761,7 @@ export function convertRvtBytes(
 
     for (let partitionIndex = 0; partitionIndex < partitions.length; partitionIndex += 1) {
       const partition = partitions[partitionIndex]!;
-      const data = asBytes(partition.entry.content);
+      const data = stripRevitPageChecksums(asBytes(partition.entry.content));
       const offsets = gzipOffsets(data);
       const stride = offsets.length > 900 ? Math.ceil(offsets.length / 700) : 1;
 
@@ -774,7 +787,7 @@ export function convertRvtBytes(
               elementId,
               stream: partition.path.replace(/^Root Entry\//, ""),
               chunkIndex: index,
-              rawOffset: offsets[index]!,
+              rawOffset: revitStoredPageOffset(offsets[index]!),
               inflatedBytes: inflated.byteLength,
             });
           }

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { zipSync } from "fflate";
 
 import { parsePartAtomXml, partAtomMetadataFromSummary } from "../lib/reviter/part-atom.ts";
+import { parseProjectInformationArchive } from "../lib/reviter/project-information.ts";
 
 test("keeps useful PartAtom family metadata and drops its raw XML", () => {
   assert.deepEqual(
@@ -21,6 +23,7 @@ test("keeps useful PartAtom family metadata and drops its raw XML", () => {
       taxonomies: [{ term: "adsk:revit", label: "Autodesk Revit" }],
       links: [],
       types: [],
+      features: [],
     },
   );
 });
@@ -85,4 +88,57 @@ test("parses family types and parameters from PartAtom XML in a worker-safe way"
     units: "W",
     value: "900 W",
   });
+});
+
+test("reads bounded ProjectInformation ZIP metadata and property groups", () => {
+  const archive = zipSync({
+    "temporary/Revit.project.xml": new TextEncoder().encode(`
+      <entry xmlns="http://www.w3.org/2005/Atom" xmlns:A="urn:schemas-autodesk-com:partatom">
+        <title>Campus Model</title>
+        <updated>2026-06-30T08:54:58Z</updated>
+        <link rel="design-2d" type="application/rvt" href=".">
+          <A:design-file>
+            <A:title>Campus Model.rvt</A:title>
+            <A:product>Revit</A:product>
+            <A:product-version>2027</A:product-version>
+          </A:design-file>
+        </link>
+        <A:features>
+          <A:feature>
+            <A:title>Project Information</A:title>
+            <A:group>
+              <A:title>Identity Data</A:title>
+              <Organization_Name displayName="Organization Name" type="system"
+                typeOfParameter="Text">Example Studio</Organization_Name>
+              <Building_Name displayName="Building Name" type="system"
+                typeOfParameter="Text">Library</Building_Name>
+            </A:group>
+          </A:feature>
+        </A:features>
+      </entry>
+    `),
+  });
+  const result = parseProjectInformationArchive(archive);
+  assert.equal(result?.title, "Campus Model");
+  assert.equal(result?.links[0]?.files[0]?.productVersion, 2027);
+  assert.deepEqual(result?.features[0], {
+    title: "Project Information",
+    groups: [{
+      title: "Identity Data",
+      parameters: [{
+        name: "Organization_Name",
+        displayName: "Organization Name",
+        sourceType: "system",
+        parameterType: "Text",
+        value: "Example Studio",
+      }, {
+        name: "Building_Name",
+        displayName: "Building Name",
+        sourceType: "system",
+        parameterType: "Text",
+        value: "Library",
+      }],
+    }],
+  });
+  assert.equal(parseProjectInformationArchive(new Uint8Array([1, 2, 3, 4])), undefined);
 });
