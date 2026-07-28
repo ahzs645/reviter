@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Exercise the reusable browser-safe GRep FIFO registry against every direct
- * single-Geometry owner in a Revit 2027 RVT.
+ * Exercise the reusable browser-safe GRep FIFO registry and certified owner
+ * mesh paths against every direct single-Geometry owner in a Revit 2027 RVT.
+ * Exact persisted instance transforms are reported separately from owner-local
+ * meshes so the output can feed the post-decode IFC parity oracle.
  */
 import { readFileSync } from "node:fs";
 
@@ -22,6 +24,11 @@ import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
+import {
+  instanceCorners,
+  readInstancePlacement,
+  type InstancePlacement,
+} from "../lib/reviter/instanced-geometry.ts";
 import {
   replayRevit2027GRepFifo,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
@@ -105,6 +112,15 @@ const certifiedFacesByKind = new Map<string, number>();
 let certifiedPositions = 0;
 let certifiedTriangles = 0;
 const certifiedIssues = new Map<string, number>();
+const certifiedOwnerElements = new Map<number, {
+  faces: number;
+  facesByKind: Map<string, number>;
+  positions: number;
+  triangles: number;
+  minimum: [number, number, number];
+  maximum: [number, number, number];
+}>();
+const instancePlacements = new Map<number, InstancePlacement>();
 
 for (const partition of partitions) {
   const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
@@ -132,6 +148,10 @@ for (const partition of partitions) {
     if (read) dictionary = revitWindowTail(read);
     chunks += 1;
     for (const frame of scanFramedElementObjects(inflated)) {
+      const placement = readInstancePlacement(inflated, frame);
+      if (placement && !instancePlacements.has(placement.elementId)) {
+        instancePlacements.set(placement.elementId, placement);
+      }
       if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
       const root = decodeRevit2027FramedGRepRoot(inflated, frame, release);
       if (
@@ -171,6 +191,40 @@ for (const partition of partitions) {
         increment(certifiedFacesByKind, face.kind);
         certifiedPositions += face.mesh.positions.length / 3;
         certifiedTriangles += face.mesh.indices.length / 3;
+        const elementId = Number(certified.value.ownerElementId);
+        if (!Number.isSafeInteger(elementId)) {
+          increment(failures, "certified owner id is outside safe integer range");
+          continue;
+        }
+        let element = certifiedOwnerElements.get(elementId);
+        if (!element) {
+          element = {
+            faces: 0,
+            facesByKind: new Map(),
+            positions: 0,
+            triangles: 0,
+            minimum: [Infinity, Infinity, Infinity],
+            maximum: [-Infinity, -Infinity, -Infinity],
+          };
+          certifiedOwnerElements.set(elementId, element);
+        }
+        element.faces += 1;
+        increment(element.facesByKind, face.kind);
+        element.positions += face.mesh.positions.length / 3;
+        element.triangles += face.mesh.indices.length / 3;
+        for (let index = 0; index < face.mesh.positions.length; index += 3) {
+          for (let axis = 0; axis < 3; axis += 1) {
+            const coordinate = face.mesh.positions[index + axis]!;
+            element.minimum[axis] = Math.min(
+              element.minimum[axis]!,
+              coordinate,
+            );
+            element.maximum[axis] = Math.max(
+              element.maximum[axis]!,
+              coordinate,
+            );
+          }
+        }
       }
       for (const issue of certified.value.issues) {
         increment(certifiedIssues, `${issue.path}:${issue.issue.code}`);
@@ -192,6 +246,41 @@ for (const partition of partitions) {
     }
   }
 }
+
+const certifiedInstances = [...instancePlacements.values()]
+  .map((placement) => {
+    const geometry = certifiedOwnerElements.get(placement.geometryId);
+    if (!geometry) return null;
+    const corners = instanceCorners(placement, {
+      elementId: placement.geometryId,
+      min: geometry.minimum,
+      max: geometry.maximum,
+    });
+    const minimum: [number, number, number] = [Infinity, Infinity, Infinity];
+    const maximum: [number, number, number] = [
+      -Infinity,
+      -Infinity,
+      -Infinity,
+    ];
+    for (const corner of corners) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        minimum[axis] = Math.min(minimum[axis]!, corner[axis]!);
+        maximum[axis] = Math.max(maximum[axis]!, corner[axis]!);
+      }
+    }
+    return {
+      elementId: placement.elementId,
+      geometryOwnerId: placement.geometryId,
+      faces: geometry.faces,
+      facesByKind: entries(geometry.facesByKind),
+      positions: geometry.positions,
+      triangles: geometry.triangles,
+      minimum,
+      maximum,
+    };
+  })
+  .filter((value) => value != null)
+  .sort((left, right) => left.elementId - right.elementId);
 
 const readerCorpusValid =
   failedChunks === 0 &&
@@ -222,6 +311,25 @@ console.log(JSON.stringify({
     positions: certifiedPositions,
     triangles: certifiedTriangles,
     issues: entries(certifiedIssues),
+    ownerElements: certifiedOwnerElements.size,
+    decodedInstancePlacements: instancePlacements.size,
+    placedInstancesUsingCertifiedOwners: certifiedInstances.length,
+    placedInstanceTriangles: certifiedInstances.reduce(
+      (total, instance) => total + instance.triangles,
+      0,
+    ),
+    elements: [...certifiedOwnerElements]
+      .sort((left, right) => left[0] - right[0])
+      .map(([elementId, value]) => ({
+        elementId,
+        faces: value.faces,
+        facesByKind: entries(value.facesByKind),
+        positions: value.positions,
+        triangles: value.triangles,
+        minimum: value.minimum,
+        maximum: value.maximum,
+      })),
+    instances: certifiedInstances,
   },
   failures: entries(failures),
   readerCorpusValid,

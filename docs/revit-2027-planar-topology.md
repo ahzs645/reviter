@@ -125,13 +125,13 @@ assumed to be world coordinates.
 | Metric | Result |
 | --- | ---: |
 | IFC geometry Tags | 36,144 |
-| RVT sampled product candidates | 31,344 |
-| Tags with both RVT sampled and IFC geometry | 25,641 |
+| RVT certified product candidates | 31,352 |
+| Tags with both RVT certified and IFC geometry | 25,642 |
 | IFC geometry-Tag coverage | 70.94% |
-| RVT triangles on matched Tags | 313,541 |
-| IFC triangles on the same Tags | 317,480 |
-| RVT / IFC triangles on matched Tags | 98.76% |
-| Tags with exactly equal triangle counts | 25,535 / 25,641 (99.59%) |
+| RVT triangles on matched Tags | 315,907 |
+| IFC triangles on the same Tags | 318,304 |
+| RVT / IFC triangles on matched Tags | 99.25% |
+| Tags with exactly equal triangle counts | 25,535 / 25,642 (99.58%) |
 | Persisted instances with matched IFC geometry | 25,533 |
 | World bounds within 0.000001 ft on every corner | 25,326 / 25,533 (99.19%) |
 | World bounds within 1 inch on every corner | 25,505 / 25,533 (99.89%) |
@@ -139,9 +139,11 @@ assumed to be world coordinates.
 | Equal triangle count and bounds within 0.000001 ft | 25,320 / 25,533 (99.17%) |
 
 Members account for 19,298 matched Tags and plates for 6,235. Their triangle
-ratios are 99.96% and 99.98%, respectively. Slabs, coverings, and roofs form
-most of the remaining matched-set shortfall because the current path rejects
-multi-loop/hole and non-planar surface cases.
+ratios remain 99.96% and 99.98%, respectively. The certified curved paths add
+eight direct owner candidates and one matched IFC Tag relative to the planar
+baseline. Coverings now reach 97.49% and slabs 85.69%; roofs remain 36.98%.
+Multi-loop/hole and the remaining general curved-surface cases dominate the
+matched-set shortfall.
 
 Equal triangle counts are diagnostic, not geometric identity: different valid
 tessellation tolerances can emit different triangle counts. World bounds now

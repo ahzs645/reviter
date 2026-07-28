@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Compare the browser-safe Revit 2027 sampled-planar mesh audit with the
- * reference IFC by numeric Revit Tag.
+ * Compare a browser-safe Revit 2027 owner-mesh audit with the reference IFC
+ * by numeric Revit Tag. A certified-browser payload is preferred; the legacy
+ * sampled-planar payload remains accepted for baseline comparisons.
  *
  * Usage:
  *   node scripts/audit-revit-2027-planar-ifc-parity.mjs \
@@ -147,14 +148,23 @@ function toleranceCounts(rows) {
 const ifcBytes = readFileSync(paths.ifc);
 const rvtAuditBytes = readFileSync(paths.rvtAudit);
 const rvtAudit = JSON.parse(rvtAuditBytes.toString("utf8"));
+const rvtMesh =
+  Array.isArray(rvtAudit.certifiedBrowserMesh?.elements) &&
+    Array.isArray(rvtAudit.certifiedBrowserMesh?.instances)
+    ? rvtAudit.certifiedBrowserMesh
+    : rvtAudit.sampledPlanarMesh;
+const rvtMeshScope =
+  rvtMesh === rvtAudit.certifiedBrowserMesh
+    ? "certified-browser"
+    : "sampled-planar";
 const rvtOwnerElements = new Map(
-  (rvtAudit.sampledPlanarMesh?.elements ?? []).map((element) => [
+  (rvtMesh?.elements ?? []).map((element) => [
     element.elementId,
     element,
   ]),
 );
 const rvtPlacedElements = new Map(
-  (rvtAudit.sampledPlanarMesh?.instances ?? []).map((element) => [
+  (rvtMesh?.instances ?? []).map((element) => [
     element.elementId,
     element,
   ]),
@@ -328,7 +338,8 @@ const report = {
   },
   scope: {
     comparisonKey: "numeric Revit Tag",
-    rvtSampledPlanarOwnerTags: rvtOwnerElements.size,
+    rvtMeshScope,
+    rvtGeometryOwnerTags: rvtOwnerElements.size,
     rvtPlacedInstanceTags: rvtPlacedElements.size,
     uniqueRvtProductCandidates: rvtElements.size,
     ifcGeometryProducts,
@@ -340,9 +351,8 @@ const report = {
     ifcOnlyTags: ifcOnlyTags.length,
   },
   triangles: {
-    rvtGeometryOwners: rvtAudit.sampledPlanarMesh?.triangles ?? 0,
-    rvtPlacedInstances:
-      rvtAudit.sampledPlanarMesh?.placedInstanceTriangles ?? 0,
+    rvtGeometryOwners: rvtMesh?.triangles ?? 0,
+    rvtPlacedInstances: rvtMesh?.placedInstanceTriangles ?? 0,
     ifcAllGeometry: ifcTriangles,
     rvtOnMatchedTags: matchedRvtTriangles,
     ifcOnMatchedTags: matchedIfcTriangles,
@@ -429,13 +439,15 @@ const report = {
   },
   interpretation: {
     geometry:
-      "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements; they still contain only certified single-loop planar sampled faces. IFC counts contain each matched product's complete exported geometry.",
+      rvtMeshScope === "certified-browser"
+        ? "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements and the certified planar, Cylinder, Cone apex-sector, and Arc/SurfRev face subsets. IFC counts contain each matched product's complete exported geometry."
+        : "RVT candidates combine direct geometry owners with exact persisted instance-to-shared-owner placements; they contain only certified single-loop planar sampled faces. IFC counts contain each matched product's complete exported geometry.",
     transforms:
       "Placed-instance bounds use the persisted instance basis and origin and are compared directly to IFC world AABBs. Nested GArray/source-target transform chains remain outside this checkpoint.",
     triangles:
       "Equal triangle counts are diagnostic only because valid tessellation policies can produce different triangle counts.",
     materials:
-      "The RVT sampled mesh deliberately carries null materials until an exact native face-material relation is bound.",
+      "This parity audit does not load MaterialElem definitions; the reusable owner mesh APIs bind exact positive face materials when those independently decoded definitions are supplied.",
   },
 };
 

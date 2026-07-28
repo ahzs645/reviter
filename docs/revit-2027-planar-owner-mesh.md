@@ -73,6 +73,14 @@ The remaining planar `unsupported-surface` count becomes 19: six Cone faces
 and thirteen Cylinder faces whose trims remain fail-closed. No planar result
 changes.
 
+Joining those owner meshes through the 30,608 decoded instance records still
+finds 25,538 placed instances and 308,107 placed triangles; the newly promoted
+curved owners in this model are direct owner candidates rather than additional
+shared placements. In the numeric-Tag IFC oracle, the combined owner plus
+placement set reaches 25,642 products and 315,907 of 318,304 IFC triangles
+(99.25%). That ratio is diagnostic because RVT and IFC may use different valid
+curved-surface tessellation policies.
+
 Run:
 
 ```sh
