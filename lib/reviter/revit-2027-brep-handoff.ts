@@ -217,7 +217,7 @@ export const CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE:
     "face-regions": "missing",
     "ordered-loops": "exact-rvt",
     "ordered-coedges": "inferred",
-    "coedge-direction": "inferred",
+    "coedge-direction": "exact-rvt",
     "edge-curves-3d": "missing",
     "surface-pcurves-2d": "sampled-rvt",
     "body-transform": "missing",

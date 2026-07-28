@@ -37,8 +37,11 @@ test("current exact corpus coverage stops before the general persisted graph", (
       .map((issue) => [issue.capability, issue.code]),
     [
       ["ordered-coedges", "inferred-only"],
-      ["coedge-direction", "inferred-only"],
     ],
+  );
+  assert.equal(
+    CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["coedge-direction"],
+    "exact-rvt",
   );
   assert.equal(
     CURRENT_REVIT_2027_BREP_HANDOFF_EVIDENCE["surface-pcurves-2d"],
