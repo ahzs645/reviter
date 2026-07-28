@@ -6,6 +6,9 @@ import type {
   NeutralBrep,
   NeutralBrepFace,
 } from "./brep-tessellator.ts";
+import {
+  evaluateRevit2027AnalyticSurfacePoint,
+} from "./revit-2027-analytic-edge.ts";
 import type {
   Revit2027EdgePoint,
   Revit2027GEdgeStatic,
@@ -145,17 +148,6 @@ function edgeUvs(
   return edgeUse.direction === 1 ? points : points.reverse();
 }
 
-function planePoint(
-  surface: Revit2027PlaneSurface,
-  uv: ParamPoint,
-): BrepPoint3 {
-  return [
-    surface.origin[0] + uv[0] * surface.xVector[0] + uv[1] * surface.yVector[0],
-    surface.origin[1] + uv[0] * surface.xVector[1] + uv[1] * surface.yVector[1],
-    surface.origin[2] + uv[0] * surface.xVector[2] + uv[1] * surface.yVector[2],
-  ];
-}
-
 function adaptLoop(
   face: Revit2027PlanarSampledFace,
   loop: Revit2027PlanarSampledLoop,
@@ -244,8 +236,20 @@ function adaptLoop(
       });
       continue;
     }
-    const points = uvs.map((point) => planePoint(face.surface, point));
-    if (points.some((point) => !finitePoint3(point))) {
+    const points: BrepPoint3[] = [];
+    let evaluationFailed = false;
+    for (const uv of uvs) {
+      const evaluated = evaluateRevit2027AnalyticSurfacePoint(
+        face.surface,
+        uv,
+      );
+      if (!evaluated.ok) {
+        evaluationFailed = true;
+        break;
+      }
+      points.push(evaluated.point);
+    }
+    if (evaluationFailed) {
       issues.push({
         code: "non-finite-uv",
         faceToken: face.faceToken,

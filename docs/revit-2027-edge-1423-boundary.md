@@ -260,6 +260,14 @@ general 3D curve geometry: the current browser adapter still maps persisted UV
 samples through supported surfaces and retains sampled polylines where the
 analytic curve has not been reconstructed.
 
+`revit-2027-analytic-edge.ts` implements the exact dominant line subset. It
+evaluates each endpoint on its explicitly selected adjacent Face surface using
+the decoded Plane, Cylinder, Cone, or circular-profile SurfRev convention and
+returns the intrinsic shared-edge direction. Coedge reversal remains separate.
+The planar neutral adapter uses the same evaluator for all persisted samples.
+An edge is not promoted to an exact shared 3D curve until both adjacent surface
+evaluations and shared identity can be checked.
+
 These value domains, the paired next/previous population, the UV values, and
 the `113 + 32n` boundary agreement independently support the field grammar.
 The audit stops after the Geometry-owned GEdge run, before Geometry

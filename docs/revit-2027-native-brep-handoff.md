@@ -79,8 +79,11 @@ native-builder-equivalent graph:
   loop Face, and direction combines that face side with the GEdge flip bit.
 - Native `getCurveType()` proves 84,097 line segments, 372 circular arcs, and
   30 surface-derived edges in the exact replay. Supported-surface adapters map
-  persisted samples into 3D, but exact general arc/surface-derived parameters
-  and shared 3D edge curves remain incomplete.
+  persisted samples into 3D. The shared browser evaluator reconstructs the
+  intrinsic endpoints of native-proven two-point lines on decoded Plane,
+  Cylinder, Cone, and circular-profile SurfRev surfaces without applying
+  coedge reversal. Exact general arc/surface-derived parameters and shared
+  cross-face curve identity remain incomplete.
 - Exact face-region membership remains unavailable for the general handoff.
 - The body transform feeding the general BRep boundary is unresolved.
 - Positive face material IDs now bind directly to exact framed `MaterialElem`
@@ -129,7 +132,10 @@ The shortest route to general geometry is:
    retaining shared edge identity.
 3. Resolve the owning BRep transform and face markers.
 4. Convert those records into a neutral graph and add mathematically
-   independent evaluators for the already decoded analytic surfaces.
+   independent evaluators for the already decoded analytic surfaces. Plane,
+   Cylinder, Cone, circular-profile SurfRev point evaluation, and exact
+   two-point line reconstruction are now implemented in
+   `revit-2027-analytic-edge.ts`.
 5. Add bounded trimmed-surface tessellation and preserve one triangle group per
    face marker/material.
 6. Only then compare the independently produced RVT mesh with the supplied IFC
