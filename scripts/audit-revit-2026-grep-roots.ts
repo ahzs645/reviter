@@ -42,6 +42,7 @@ const partitions = cfb.FileIndex
 
 const childSourceClassCounts = new Map<number, number>();
 const failures = new Map<string, number>();
+const failedFrameLengths = new Map<number, number>();
 let chunks = 0;
 let failedChunks = 0;
 let inflatedBytes = 0;
@@ -91,6 +92,10 @@ for (const partition of partitions) {
       const root = decodeRevit2026GRepRoot(inflated, frame);
       if (!root.ok) {
         failures.set(root.error, (failures.get(root.error) ?? 0) + 1);
+        failedFrameLengths.set(
+          frame.objectLength,
+          (failedFrameLengths.get(frame.objectLength) ?? 0) + 1,
+        );
         continue;
       }
       decodedRoots += 1;
@@ -139,5 +144,8 @@ console.log(JSON.stringify({
   ),
   failures: Object.fromEntries(
     [...failures].sort((a, b) => b[1] - a[1]),
+  ),
+  failedFrameLengths: Object.fromEntries(
+    [...failedFrameLengths].sort((a, b) => a[0] - b[0]),
   ),
 }, null, 2));

@@ -254,6 +254,51 @@ This proves why the end of a `GGroup` child collection cannot be used as the
 replay offset. The derived `GRep` reader still reads both bounds, its element
 ID, type, and flags after returning from `GGroup`.
 
+### Persisted `GElement` / `GRep` root
+
+The exact project now supplies that outer boundary directly. In the
+release-scoped `Formats/Latest` table, `GElement` is tag 2,247 with parent
+`GRep`; its zero-based wire selector is therefore 2,246 (`0x08c6`). A
+length/echo-framed object under that selector has this inherited static order
+starting at frame `+18`:
+
+```text
+GNode/GInfo                         20 bytes
+GGroup child count                 int32
+GGroup children                    count * CondInt16
+GRep local extents                 6 * float64
+GRep world extents                 6 * float64
+GRep owner element id              int64
+GRep object type                   int32
+GRep flags                         uint32
+dynamic replay                     begins here
+```
+
+`decodeRevit2026GRepRoot` revalidates the independent frame length/echo,
+selector, conditional child descriptors, complete derived-reader boundary, and
+the required equality between the framed and stored owner IDs. It keeps
+sentinel/invalid extents as data but does not certify them as bounds.
+
+The comprehensive exact-model audit finds 63,955 distinct, non-overlapping
+`0x08c6` frames. It safely decodes 63,820 distinct roots (99.79%), of which
+63,486 have two ordered finite extents. Every accepted root has the exact same
+stored and framed owner ID. The 135 rejected frames all have the same
+138-byte short form and end before the required `GRep` tail, so they remain
+opaque rather than being padded or guessed.
+
+The accepted roots contain 148,223 child descriptors. Their dominant
+release-scoped source slots are 2,248 (42,832), 2,215 (40,652), 2,254
+(22,104), 1,973 (21,849), and 2,343 (19,057). None directly names
+`GPolyMesh` slot 2,237. This is strong negative evidence for a direct mesh
+child, but not evidence that a deeper child class cannot queue a mesh.
+
+Reproduce the census locally:
+
+```sh
+node --experimental-strip-types \
+  scripts/audit-revit-2026-grep-roots.ts model.rvt
+```
+
 The retained state is also more specific than a serialized token.
 `OdBmDynamicQueue::addData` at `0x173d62` constructs a `DataKey` from the
 current `ValueDisposition`: object identity, `OdBmClassProperty` identity,
