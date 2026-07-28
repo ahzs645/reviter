@@ -1110,35 +1110,6 @@ Each stream is graded by depth rather than weighed by bytes. Weighing by bytes w
 
 The largest fully-unread payload is `Global/ContentDocuments`, and it was probed rather than assumed. Of the 38,223 element IDs recovered from the partition stream, 306 — 0.8% — appear anywhere in its 2.76 MB of inflated bytes, at any alignment. That is chance, so the stream indexes something other than model elements. It independently reproduces the same conclusion `rvt-rs` reached from the other direction, against `ElemTable` rather than against recovered element records.
 
-### What the public prior art does and does not have
-
-`CodeCavePro/revitless-toolkit` was reviewed in full, because a working third-party Revit reader would be worth more than any amount of scanning. **It does not decode the binary format.** It never opens `Partitions/*`, never inflates anything, and holds no record layouts, byte offsets, markers or class tags. Its entire `.rvt` surface is three streams read as text, XML and PNG: `BasicFileInfo` parsed as `Key: Value` lines, `PartAtom` parsed as XML, and `RevitPreview4.0` scanned for the PNG signature — the last of which is exactly what this project already does. Nothing in it contradicts anything here, because there is no overlap. It is a mature library for Revit's *companion text* formats — shared-parameter files, type catalogs, OmniClass — and "revitless" means not needing Revit installed, not decoding `.rvt`.
-
-Its one item of interest was `PartAtom`, an Atom `<entry>` in the `urn:schemas-autodesk-com:partatom` namespace carrying a family's category, its type names, and each type's parameters with `typeOfParameter` and `units` — the class of data this file says is out of reach for loadable families. **It is not in the supplied project**: that file has 14 streams and `PartAtom` is not among them, so the stream table above is corrected accordingly. `PartAtom` is a family-document stream, so the idea is worth revisiting when there is an `.rfa` to test it on, and it is plain XML in a public namespace, so there would be nothing to reverse-engineer.
-
-One caution for anyone else reading that repository: 76% of its source is `src/Decompiled/`, 12,683 lines carrying an unedited `// Decompiled with JetBrains decompiler … Assembly location: C:\Program Files\Autodesk\Revit 2021\RevitAPI.dll` header, redistributed under an MIT licence its authors have no standing to grant for that material. Nothing was taken from it. This project's practice of transcribing parameter names from the *published* API documentation, and treating them as corroborating evidence rather than as part of the decode, is deliberate and stays.
-
-**Two other repositories were checked and neither bears on the format.** `pvesey/Revit-ThreeJS` is a Three.js viewer that loads models already exported to FBX, OBJ, PLY or STL — the geometry never comes out of a `.rvt`, and its `js/libs` folder is entirely vendored third-party minified libraries. Two of them are jobs this project already does better: `zlib_and_gzip.min.js` against `fflate`, which unlike theirs supports the preset dictionary that recovered 32.4 MB of payload, and `earcut` against `lib/reviter/polygon.ts`, which was built on earcut's construction including its recovery passes. `alireza116/rvt-journal-parser` reads Revit **journal files** — the plain-text logs Revit writes of user actions — into a dataframe. That is session forensics, and journals live beside the `.rvt`, never inside it.
-
-### The one body of prior art that does know the format, and why it is not used
-
-Two folders of an **Open Design Alliance** SDK distribution were offered and reviewed. The identification matters, because the obvious guess is wrong: the `AEC*` header set is not Autodesk's AEC Object Enabler but **ODA's own Architecture SDK**, which reimplements AutoCAD Architecture's object model inside DWG and deliberately mirrors Autodesk's `Aec*` naming. `AECBase.h`'s banner reads *Open Design Alliance, 2002–2026* and states the software may only be incorporated into applications owned by Alliance members under a signed Membership Agreement and Supplemental Software Licence Agreement. It concerns DWG and has no bearing on `.rvt`.
-
-The second folder is the `AssemblyInfos` tree of the same distribution: SWIG-generated C# bindings, 562 files across 56 modules under **`BimRv`**, ODA's commercial Revit reader — `TB_Loader`, `TB_Family`, `TB_ModelerGeometry`, and `TB_Format2011Readers` through `TB_Format2022Writers`. That is genuinely a Revit decoder's API surface, and it is the only such material anyone has produced.
-
-**It is not used, for three reasons in ascending order of weight.**
-
-The payoff is thin. SWIG bindings are machine-generated projections of public C++ headers — class names, method signatures, enums — carrying no byte layouts, no offsets and no tag tables. The decode logic lives in the C++ implementation of those reader modules, which is in neither folder and is licensed only at ODA's Founding tier. The per-release modules stop at **2022** while this corpus is 2027, and `Formats/Latest` inside the file is already Autodesk's own dictionary for the same job.
-
-The licence does not permit the redistribution. ODA is a paid membership consortium; the material ships under a signed agreement, and `docs.opendesign.com` sits behind SSO. Whoever assembled those folders had no standing to share them — structurally the same defect as `src/Decompiled/` above, which this file already declines.
-
-**And the harm cannot be undone or bounded.** You cannot establish whether the bindings contain anything load-bearing without reading them, and reading them is the contamination. There is no cheap look. ODA's reader is itself the product of reverse-engineering Revit, so consulting it is not reading a vendor specification but reading a competitor's worked solution to this exact problem. Every claim in this document is that a rule was *measured from the file, with a control*; re-deriving a fact later does not repair a decoder written after seeing someone else's object model, and no test distinguishes the two. The clean-room claim is only worth what it costs to keep.
-
-The line already drawn here is a different category, not a softer point on the same spectrum: Autodesk's *published* API documentation is published to be read by anyone, and is used as corroborating evidence rather than as part of the decode.
-
-**There is no public substitute for the one thing that material has** — the numeric tag to class mapping. A search of patents and academic literature found nothing usable, which is worth stating rather than padding a list. `Formats/Latest` remains the correct route to the registry, and its limit — roughly 200 classes named, the rest referenced by tag — closes with more files and more releases.
-
-
 ## Embedded schema
 
 `Formats/Latest` is Autodesk's own dictionary for the on-disk object graph — roughly half a megabyte of class names, inheritance, and field declarations shipped inside every Revit file. A class that is serializable at the top level is written as:
