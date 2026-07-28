@@ -73,6 +73,70 @@ frame. Exact field-order and queue inspection identifies them as
 face region, so these are unbounded reference faces rather than drawable BRep
 topology.
 
+## FamilySymbol regeneration checkpoint
+
+All offsets below are relative to the start of the independently
+length/echo-framed FamilySymbol record, including its 16-byte frame prefix.
+The three reproducible target records are:
+
+| Owner | Object length | First queue descriptors | `m_refFaces` descriptors | Face bodies | Plane bodies |
+| ---: | ---: | --- | --- | --- | --- |
+| 845,328 | 8,297 | `+34`: token `-1`, slot 2,337 `GeomStepList`; `+40`: token `-1`, slot 2,338 `GeomTable` | count 11 at `+247`; tokens 3–13 at `+251..+317` | `+2478..+3116`, 11 × 58 bytes | `+7158..+8313`, 11 × 105 bytes |
+| 788,064 | 8,297 | `+34`: token `-1`, slot 2,337; `+40`: token `-1`, slot 2,338 | count 11 at `+247`; tokens 3–13 at `+251..+317` | `+2478..+3116`, 11 × 58 bytes | `+7158..+8313`, 11 × 105 bytes |
+| 2,179,544 | 4,570 | `+38`: token `-1`, slot 2,337; `+44`: token `-1`, slot 2,338 | count 16 at `+203`; tokens 3–18 at `+207..+303` | `+1261..+2189`, 16 × 58 bytes | `+2906..+4586`, 16 × 105 bytes |
+
+These are exact byte facts:
+
+- Every Face has a null first loop, zero face regions, null foreground and
+  background fillings, and one queued slot-634 `Plane`.
+- The Plane representation is the native 32-byte parameter envelope, one
+  orientation byte, and three 24-byte vectors. The old surface scan began 32
+  bytes into each body and crossed into the next body's envelope; ten scan
+  hits therefore represented eleven Plane bodies.
+- The three frames contain no property descriptor selecting slot 4,019
+  `SnapshotData`, slot 2,343 `Geometry`, slot 2,248 `GGroup`, slot 2,177
+  `GBRep`, slot 2,237 `GPolyMesh`, or a complete Face/EdgeLoop/GEdge topology
+  graph.
+- Owners 845,328 and 788,064 contain four additional slot-1,973 `GLine`
+  descriptors, tokens 27–30 at `+1686..+1710`. Their four 84-byte bodies are
+  contiguous at `+6822..+7158` and have geometry tags 3, 2, 1, and 0. Lines
+  are curve evidence, not face-loop ownership.
+
+The following is the current queue interpretation and is deliberately not a
+published reader contract:
+
+- The candidate replay boundary is `+1678` for owners 845,328 and 788,064,
+  and `+1011` for owner 2,179,544.
+- A zero `u32` at each candidate boundary is consistent with the compact
+  empty-`GeomStepList` representation. The next bytes are consistent with
+  `GeomTable`: count 4 plus the four GLine descriptors at `+1682` for the two
+  door symbols, and count 5 at `+1015` for the column symbol.
+- The column's five table records do not decode as CondInt16 properties. The
+  first unsupported schema carrier is `GeomTable.m_table`, whose inline slot
+  643 `BigArrGeomTabEntryWrapper` owns slot 644 `GeomTabEntry` records.
+  `GeomTabEntry` in turn contains `m_pGNode` and
+  `m_geomGeneratorId`. Its retained/reference representation must be decoded
+  before the replay boundary or table ownership can be certified.
+- No slot-4,019 descriptor exists in any target, so the four declared
+  `GeomStepList` snapshots—form, adjust, cut-out, and post-cut-out—do not
+  provide a persisted fallback geometry graph in these records.
+
+This is also the boundary of the native tessellator layer. `TB_Geometry`
+`OdBmGeometryImpl::brepBuilder` (`0x3891c6`) and `brep` (`0x389408`),
+`TB_Database` `OdBmModelerGeometryImpl::createBrepRendererImpl`
+(`0x221cf42`), and the downstream `libTD_Ge`, `libOdBrepModeler`,
+`libTD_BrepBuilder`, `libTD_Br`, and `libTD_BrepRenderer` stack require an
+already reconstructed, owned BRep. They do not deserialize
+`BigArrGeomTabEntryWrapper`, regenerate a family, or invent loop/coedge
+ownership.
+
+The remaining shared-owner gap is 327 owners and 2,019 placed IFC Tags:
+1,912 doors, 87 columns, and 20 windows. The three targets above account for
+464 of those Tags (222 + 218 + 24). Until the slot-643/644 table representation
+and any referenced family-regeneration state are exact, the browser converter
+must not infer boxes or solids from the GLine set, `m_refFaces`, or the IFC
+export.
+
 ## System-wall route correction
 
 The original inventory admitted only a GRep root with one initial `Geometry`
