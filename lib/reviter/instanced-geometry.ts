@@ -101,6 +101,34 @@ export type LocalBounds = {
   faceRead?: boolean;
 };
 
+/** Native category of a Revit stair assembly (`OST_Stairs`). */
+const STAIRS_CATEGORY_ID = -2_000_120;
+
+/**
+ * Resolve the ids that are genuinely reusable local shapes.
+ *
+ * `InstInfoBase` persists the trailing id as `m_symbolId`, and for ordinary
+ * family instances that symbol owns the local geometry cache. A stair assembly
+ * is the measured exception: its same field points at a run or stringer
+ * subelement, which has its own validated bounds and must remain a scene
+ * element. Treating those two meanings as interchangeable removed the only
+ * `IfcMember` and `IfcStairFlight` products absent from the exact UNBC scene.
+ *
+ * The exception is gated by the assembly's own persisted `OST_Stairs` token.
+ * No IFC class, element id, adjacency, or object-marker singleton participates.
+ */
+export function sharedGeometryIdsForPlacements(
+  placements: Iterable<InstancePlacement>,
+  categoryByElement: ReadonlyMap<number, number>,
+): Set<number> {
+  const shared = new Set<number>();
+  for (const placement of placements) {
+    if (categoryByElement.get(placement.elementId) === STAIRS_CATEGORY_ID) continue;
+    shared.add(placement.geometryId);
+  }
+  return shared;
+}
+
 function finite(value: number): boolean {
   return Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
 }

@@ -9,17 +9,17 @@
     },
     "semantic": {
       "name": "unbc-parity.json",
-      "bytes": 59417462,
-      "sha256": "796f7004f804b39c248be0a59e3071a829b011f33cb72ff28fbb08deebeccaee",
-      "analyticalSha256": "bc1df8a04fa15f77107bf8239059d1baf3de0f08c9b885b35c2612251cc3a97e",
+      "bytes": 59419054,
+      "sha256": "4a397e12b8075f4af2dba6fcfc55843f33517ec331a8df7ec9b703be3b8c4d5d",
+      "analyticalSha256": "6e023fdfc2046a0aed0b9ae387e80c38966ceb5c4185bff529d31f8b2187c5a1",
       "analyticalHashExcludes": [
         "stats.durationMs"
       ]
     },
     "glb": {
       "name": "unbc-parity.glb",
-      "bytes": 13104148,
-      "sha256": "58b36e71f8bb3f540402049f2ecd32db72aed8d09af021d0bb18b980e34174bb"
+      "bytes": 13104544,
+      "sha256": "757d8d1d0d0cfb0627dc96b79c2dfe9a209df6f136029ee5cd2c19327abee5b3"
     }
   },
   "ifc": {
@@ -54,23 +54,13 @@
     "globalIds": 41312,
     "numericRevitTags": 38187,
     "numericTagsWithNativeUniqueId": 38187,
-    "numericTagsSeenByReviter": 38051,
-    "numericTagsDrawnByReviter": 36214,
+    "numericTagsSeenByReviter": 38053,
+    "numericTagsDrawnByReviter": 36216,
     "geometryNumericTags": 36144,
-    "geometryTagsSeenByReviter": 36142,
-    "geometryTagsDrawnByReviter": 36142,
-    "missingGeometryTags": [
-      1272040,
-      1280585
-    ],
-    "missingGeometryTagsByClass": {
-      "IfcMember": [
-        1272040
-      ],
-      "IfcStairFlight": [
-        1280585
-      ]
-    },
+    "geometryTagsSeenByReviter": 36144,
+    "geometryTagsDrawnByReviter": 36144,
+    "missingGeometryTags": [],
+    "missingGeometryTagsByClass": {},
     "namedElements": 41312,
     "objectTypedElements": 3071,
     "placedElements": 41312,
@@ -179,14 +169,14 @@
         "withTag": 19707,
         "withPlacement": 19707,
         "represented": 19707,
-        "reviterSeenByTag": 19706,
-        "reviterDrawnByTag": 19706,
+        "reviterSeenByTag": 19707,
+        "reviterDrawnByTag": 19707,
         "uniqueNumericTags": 19652,
-        "uniqueTagsSeenByReviter": 19651,
-        "uniqueTagsDrawnByReviter": 19651,
+        "uniqueTagsSeenByReviter": 19652,
+        "uniqueTagsDrawnByReviter": 19652,
         "geometryNumericTags": 19652,
-        "geometryTagsSeenByReviter": 19651,
-        "geometryTagsDrawnByReviter": 19651
+        "geometryTagsSeenByReviter": 19652,
+        "geometryTagsDrawnByReviter": 19652
       },
       "IfcDoor": {
         "elements": 1912,
@@ -263,14 +253,14 @@
         "withTag": 121,
         "withPlacement": 121,
         "represented": 121,
-        "reviterSeenByTag": 120,
-        "reviterDrawnByTag": 120,
+        "reviterSeenByTag": 121,
+        "reviterDrawnByTag": 121,
         "uniqueNumericTags": 108,
-        "uniqueTagsSeenByReviter": 107,
-        "uniqueTagsDrawnByReviter": 107,
+        "uniqueTagsSeenByReviter": 108,
+        "uniqueTagsDrawnByReviter": 108,
         "geometryNumericTags": 108,
-        "geometryTagsSeenByReviter": 107,
-        "geometryTagsDrawnByReviter": 107
+        "geometryTagsSeenByReviter": 108,
+        "geometryTagsDrawnByReviter": 108
       },
       "IfcPlate": {
         "elements": 6235,
@@ -697,14 +687,14 @@
   },
   "reviter": {
     "semantic": {
-      "records": 40666,
-      "displayed": 36547,
-      "categorized": 39157,
+      "records": 40668,
+      "displayed": 36548,
+      "categorized": 39159,
       "typed": 7523,
       "familyNamed": 143,
       "withParameters": 11541,
       "parameterValues": 81806,
-      "manifestUniqueIds": 40569,
+      "manifestUniqueIds": 40571,
       "nativeIdentityRecords": 74437,
       "uniqueIds": 74437,
       "nativeIdentityConflicts": 0,
@@ -772,15 +762,15 @@
       "geometrySources": {
         "placed-shared-shape": 25871,
         "analytic-plane-solid": 9096,
-        "validated-bounds-envelope": 3071,
+        "validated-bounds-envelope": 3073,
         "door-leaf-from-shape": 1903,
         "sketch-prism": 514,
         "sketch-rail-sweep": 156,
         "analytic-cylinder-arc": 32,
         "door-leaf-from-host-wall": 23
       },
-      "elementsWithNativeFaces": 430,
-      "nativeFaces": 2248,
+      "elementsWithNativeFaces": 431,
+      "nativeFaces": 2252,
       "boundsLocalFeet": {
         "min": {
           "x": -352.0067084305153,
@@ -799,12 +789,12 @@
         "Curtain Wall Panels": 6252,
         "Doors": 1936,
         "Railing Rail Path Extension Lines": 580,
-        "Stairs Stringer Carriage": 364,
+        "Stairs Stringer Carriage": 365,
         "Columns": 313,
         "Railing Top Rail": 297,
         "Stairs Railing": 215,
         "Stairs Railing Baluster": 99,
-        "Stairs Runs": 87,
+        "Stairs Runs": 88,
         "Floors": 67,
         "Stairs Sketch Boundary Lines": 48,
         "Ceilings": 46,
@@ -838,8 +828,8 @@
       }
     },
     "glb": {
-      "triangles": 470558,
-      "vertices": 309434,
+      "triangles": 470570,
+      "vertices": 309442,
       "batches": 38,
       "materials": 10,
       "materialAssignmentsClaimed": 0,
@@ -893,8 +883,8 @@
         },
         "Stairs Stringer Carriage": {
           "batches": 1,
-          "triangles": 4344,
-          "vertices": 2896
+          "triangles": 4356,
+          "vertices": 2904
         },
         "Columns": {
           "batches": 1,
@@ -903,13 +893,13 @@
         },
         "Uncategorised elements": {
           "batches": 1,
-          "triangles": 1944,
-          "vertices": 1248
+          "triangles": 1932,
+          "vertices": 1240
         },
         "Stairs Runs": {
           "batches": 1,
-          "triangles": 1710,
-          "vertices": 1038
+          "triangles": 1722,
+          "vertices": 1046
         },
         "Railing Rail Path Extension Lines": {
           "batches": 1,
@@ -986,6 +976,7 @@
           "revit-2027-native-identity-v1",
           "revit-2027-material-element-name-v1",
           "revit-2027-family-symbol-family-v1",
+          "revit-2027-family-name-path-v1",
           "revit-2027-geometry-material-id-v1"
         ],
         "nativeCurves": 0,
@@ -993,13 +984,14 @@
         "nativeMeshes": 0,
         "nativeMaterialDefinitions": 54,
         "nativeMaterialAssignments": 5413,
-        "nativeFamilySymbols": 7807,
+        "nativeFamilySymbols": 7805,
         "nativeFamilyRelations": 66,
+        "nativeFamilyDefinitions": 3,
         "nativeUniqueIds": 74437,
         "nativeOwnershipRecords": 74437,
         "nativeOwnershipRelations": 50205,
-        "approximateSolids": 36547,
-        "nativeCategorisedElements": 39157,
+        "approximateSolids": 36548,
+        "nativeCategorisedElements": 39159,
         "geometryFidelity": "native-bounds-envelope",
         "materialFidelity": "native-assigned",
         "semanticFidelity": "native-categories-and-ownership"
@@ -1007,13 +999,13 @@
     }
   },
   "parity": {
-    "ifcElementsRecoveredByNumericTag": 38051,
-    "ifcElementsDrawnByNumericTag": 36214,
-    "geometryElementsRecoveredByNumericTag": 36142,
-    "geometryElementsDrawnByNumericTag": 36142,
-    "productGeometryCoverage": 0.9999446657813191,
-    "triangleRatio": 0.5037430830843476,
-    "vertexReferenceRatio": 0.12924527632018065,
+    "ifcElementsRecoveredByNumericTag": 38053,
+    "ifcElementsDrawnByNumericTag": 36216,
+    "geometryElementsRecoveredByNumericTag": 36144,
+    "geometryElementsDrawnByNumericTag": 36144,
+    "productGeometryCoverage": 1,
+    "triangleRatio": 0.5037559293583393,
+    "vertexReferenceRatio": 0.12924861778301458,
     "uniqueIdRatio": 1,
     "modelTreeRatio": 0.6800304757901374,
     "typeNameRatio": 0.19743583007119775,

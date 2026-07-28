@@ -16,7 +16,7 @@ so it does not depend on Revit or the proprietary ODA binaries.
 
 ## Executive result
 
-At this checkpoint, Reviter is two elements short of the IFC's tagged drawable
+At this checkpoint, Reviter matches the IFC's complete tagged drawable product
 population. Native Revit identity is complete for every numeric IFC Tag,
 persisted ownership reaches 68.0% of comparable IFC tree members, and 21 of 29
 IFC material names are decoded as native definitions. The parser now recovers
@@ -27,10 +27,10 @@ full material assignment population, or complete family semantics**.
 
 | Measure | IFC reference | Current Reviter | Parity |
 | --- | ---: | ---: | ---: |
-| IFC elements | 41,312 | 38,051 IFC numeric tags recovered | 99.6% of the 38,187 tagged elements |
-| Unique tagged products with drawable geometry | 36,144 | 36,142 drawn | **99.994%** |
-| Tessellated triangles | 934,123 | 470,558 | **50.4%** |
-| Vertex references | 2,394,161 | 309,434 | 12.9% |
+| IFC elements | 41,312 | 38,053 IFC numeric tags recovered | 99.6% of the 38,187 tagged elements |
+| Unique tagged products with drawable geometry | 36,144 | 36,144 drawn | **100%** |
+| Tessellated triangles | 934,123 | 470,570 | **50.4%** |
+| Vertex references | 2,394,161 | 309,442 | 12.9% |
 | Model spans, sorted axes | 19.400 / 217.899 / 374.766 m | 19.400 / 217.899 / 374.766 m | matches at displayed precision |
 | Numeric IFC Tags with native Revit UniqueId | 38,187 | 38,187 | **100%** |
 | Numeric-tagged elements assigned an IFC type | 38,063 | 7,515 exact type names | 19.7% |
@@ -59,26 +59,27 @@ joined to the current RVT records and is excluded from the 36,144 denominator.
 
 | IFC class | Tagged products with geometry | Drawn by Reviter | Coverage | IFC triangles |
 | --- | ---: | ---: | ---: | ---: |
-| IfcMember | 19,652 | 19,651 | 99.995% | 244,628 |
+| IfcMember | 19,652 | 19,652 | 100% | 244,628 |
 | IfcWallStandardCase | 7,381 | 7,381 | 100% | 147,772 |
 | IfcPlate | 6,235 | 6,235 | 100% | 74,934 |
 | IfcDoor | 1,912 | 1,912 | 100% | 160,104 |
 | IfcColumn | 311 | 311 | 100% | 48,826 |
 | IfcRailing | 215 | 215 | 100% | 142,212 |
 | IfcWall | 140 | 140 | 100% | 6,889 |
-| IfcStairFlight | 108 | 107 | 99.1% | 78,136 |
+| IfcStairFlight | 108 | 108 | 100% | 78,136 |
 | IfcSlab | 107 | 107 | 100% | 21,504 |
 | IfcCovering | 46 | 46 | 100% | 1,592 |
 | IfcWindow | 20 | 20 | 100.0% | 4,184 |
 | IfcRamp | 11 | 11 | 100.0% | 1,182 |
 | IfcRoof | 6 | 6 | 100% | 2,136 |
 
-The only missing tagged drawable products are member `1272040` and stair flight
-`1280585`. Persisted `Global/ElemTable.OwningElementId` now proves that the
-adjacent records cannot be reassigned: `1272040` and `1272041` are siblings
-under owner `1271877`, while `1280586` belongs to `1280525`, not `1280585`.
-Closing these last geometry gaps requires each missing element's own BRep or a
-different typed relation; record adjacency is explicitly rejected.
+The final two products were present as their own strict duplicated-bounds
+records. They were lost later because `InstInfoBase.m_symbolId` was treated as a
+cached local-shape id for every placement. For ordinary family instances that
+is valid; a stair assembly uses the same field for its run or stringer
+subelement. Gating that distinction on the assembly's persisted `OST_Stairs`
+category retains member `1272040` and stair flight `1280585` without any IFC
+class, element-id list, record adjacency, or inferred ownership.
 
 The IFC also contains 1,835 `IfcCurtainWall`, 92 `IfcStair`, and 3,071
 `IfcOpeningElement` objects with no standalone streamed mesh. They are semantic
@@ -176,19 +177,18 @@ and compare typed values and units.
 
 ## Smallest evidence-backed next improvements
 
-1. **Close the two-product population gap with typed geometry evidence.**
-   Recover the own geometry or a proven typed geometry relation for member
-   `1272040` and stair flight `1280585`. Persisted ownership proves that their
-   adjacent element rows are not substitutes.
-2. **Enter a proven `GPolyMesh` context and replay its retained topology
+1. **Enter a proven `GPolyMesh` context and replay its retained topology
    property.** The three UNBC spans that fit the `FacetedTopology8` byte grammar
    are now proven to begin at multi-entry `GStyle`/`GFlipControl` replay
    boundaries, so they are rejected as mesh-shaped collisions rather than
    emitted as geometry. The browser decoder now understands the counted
    `CondInt16` collection, enforces an unambiguous slot-5,255 topology binding,
-   and decodes the 96-byte `GInstance`/`GArray` transform. The remaining grammar
-   is exact outer-object entry plus retained `DynamicQueue` state.
-3. **Resolve the remaining family carrier and regenerate shared family
+   and decodes the 96-byte `GInstance`/`GArray` transform. The full-stream
+   queue audit finds no structurally proven slot-2,237/slot-5,255 owner. The
+   remaining layer is a browser surrogate object/property registry during
+   `ObjectPtrInitReader`, preserving `DynamicQueue` `DataKey` identity through
+   `initReferences` and property replay.
+2. **Resolve the remaining family carrier and regenerate shared family
    geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
    match the IFC exactly—and 66 persisted `FamilySymbol` → `Family` relations
    are now proven. Three referenced family definitions supply 143/143 exact
@@ -217,7 +217,7 @@ The reference suggests staged gates that are strict enough to guide work:
 
 1. **Product population:** 100% of the 36,144 uniquely tagged IFC products with
    geometry are represented, with every IFC class at 99% or better. Untagged IFC
-   replicas are reported separately.
+   replicas are reported separately. Reviter now passes this gate.
 2. **Placement and extent:** each joined product has a world-space bounds
    center within 0.5 ft and its extents within an agreed per-axis/volume
    tolerance. Whole-model spans must remain within 1%; Reviter already passes
@@ -257,7 +257,8 @@ node scripts/audit-ifc-parity.mjs \
 The committed input hashes are:
 
 - IFC: `adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0`
-- semantic JSON: `b72e2abd02d7d83acc0fee41901f407ff320251a50e281aecd3ffba6a51024b2`
+- semantic JSON: `4a397e12b8075f4af2dba6fcfc55843f33517ec331a8df7ec9b703be3b8c4d5d`
+- GLB: `757d8d1d0d0cfb0627dc96b79c2dfe9a209df6f136029ee5cd2c19327abee5b3`
 - semantic analytical payload, excluding volatile `stats.durationMs`:
   `1dfb873b5d51f1b3c21f7bb417d4e1f995d0655ce3cea4e121a24a91a92b979c`
 - GLB: `77818ed3b4245f165017349fd695e7c49cfd4eced6bdd33828602d470cf4a38e`

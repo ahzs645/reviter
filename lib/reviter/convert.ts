@@ -48,6 +48,7 @@ import {
   readLocalBounds,
   readLocalShape,
   SHAPE_OBJECT_MARKERS,
+  sharedGeometryIdsForPlacements,
   type InstancePlacement,
   type LocalBounds,
 } from "./instanced-geometry.ts";
@@ -1281,12 +1282,30 @@ export function convertRvtBytes(
     // them were drawn that way, 97% of them stacked within 50 ft of the origin,
     // and only 7 corresponded to anything in the paired export.
     //
-    // The file names them: an instance's trailer points at the shape it uses, so
-    // the referenced set is read straight out of the placements rather than
-    // guessed at from position. No id is both a shape and an instance in this
-    // model, so removing them cannot take an element with them.
-    const sharedGeometryIds = new Set<number>();
-    for (const placement of instancePlacements.values()) sharedGeometryIds.add(placement.geometryId);
+    // The file names them: an ordinary family instance's persisted symbol id
+    // points at the local shape it uses, so the referenced set is read straight
+    // out of the placements rather than guessed at from position.
+    //
+    // A stair assembly uses that same field for a run/stringer subelement,
+    // which is independently drawable. Its own native category token makes the
+    // distinction before cached records are removed.
+    // Category-token ownership is resolved against the complete element table,
+    // just as `applyNativeCategories` does below. Restricting the known set to
+    // placements alone lets an earlier nearby placement steal a stair token.
+    const placementCategoryKnownIds = new Set<number>(elementBounds.map(
+      (record) => record.elementId,
+    ));
+    for (const elementId of elementIndex?.uniqueElementIds ?? []) {
+      placementCategoryKnownIds.add(elementId);
+    }
+    const placementCategories = resolveElementCategories(
+      categoryTokens,
+      placementCategoryKnownIds,
+    );
+    const sharedGeometryIds = sharedGeometryIdsForPlacements(
+      instancePlacements.values(),
+      placementCategories,
+    );
     let cachedShapeRecords = 0;
     if (sharedGeometryIds.size) {
       for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
