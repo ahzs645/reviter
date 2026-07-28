@@ -36,11 +36,16 @@ import {
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gline.ts";
 import {
-  decodeRevit2027GArray,
-  REVIT_2027_GARRAY_BODY_BYTES,
-  REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
 } from "./revit-2027-grep-prefixes.ts";
+import {
+  decodeRevit2027GInstanceStatic,
+  decodeRevit2027InstanceInfo,
+  REVIT_2027_GINSTANCE_BODY_BYTES,
+  REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+  REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+  REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+} from "./revit-2027-ginstance.ts";
 import {
   decodeRevit2027GGroupStatic,
 } from "./revit-2027-ggroup-fifo.ts";
@@ -231,16 +236,27 @@ const BUILTIN_READERS: readonly [
   Revit2027GRepReplayReaderRegistration,
 ][] = [
   [
-    REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
+    REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
     {
-      id: "Revit2027GArray",
+      id: "Revit2027GInstance",
       read: fixedBodyReader(
-        REVIT_2027_GARRAY_BODY_BYTES,
-        decodeRevit2027GArray,
+        REVIT_2027_GINSTANCE_BODY_BYTES,
+        decodeRevit2027GInstanceStatic,
         (value) => [
           value.instanceInfo as CondInt16QueueEntry,
           value.embeddedSymbolGRep as CondInt16QueueEntry,
         ],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027InstanceInfo",
+      read: fixedBodyReader(
+        REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+        decodeRevit2027InstanceInfo,
+        () => [],
       ),
     },
   ],

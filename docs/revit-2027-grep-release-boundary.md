@@ -9,6 +9,13 @@ The result is a clean-room interoperability boundary. The native modules were
 inspected statically; they were not executed. The IFC remains an output audit
 oracle and is not an input to any RVT decoder.
 
+> **Slot-2,215 correction.** Later full-FIFO evidence supersedes the older
+> 144-byte `GArray` interpretation in this document. Source-name ordering and
+> body boundaries identify source slot 2,215 as a 44-byte `GInstance`.
+> Its token-`-1` source-2,513 `InstanceInfo` body is 112 bytes and is replayed
+> only after older siblings. The former 144-byte window crossed those two
+> objects and read the low int32 of `m_symbolId` as `m_numInstances`.
+
 ## Inputs
 
 | Input | SHA-256 |
@@ -33,14 +40,14 @@ high-volume source classes that were previously called 2026 “leaves”:
 
 | UNBC source slot | Root descriptors | 2027 identity | Independent evidence |
 | ---: | ---: | --- | --- |
-| 2,215 | 40,652 | `GArray` | `Formats/Latest` defines `GArray` with tag 2,215 and parent `GInstance`; its derived fields are the 96-byte transform and trailing `m_numInstances` int32 |
+| 2,215 | 40,652 | `GInstance` | 2027 source-name ordering identifies `GInstance`; exact bodies end after its 44-byte static base, and token `-1` queues source 2,513 `InstanceInfo` |
 | 2,248 | 42,832 | `GGroup` | the 2027 source order is `GElement` 2,246, `GRep` 2,247, `GGroup` 2,248; every tested payload begins with the exact `GNode/GInfo + AllSubNodes` prefix |
 
 They are **not** the classes at the same numeric indexes in the 2026 module:
 
 | Numeric slot | 2026 module class | Exact 2027 UNBC class |
 | ---: | --- | --- |
-| 2,215 | `GFlipControl` | `GArray` |
+| 2,215 | `GFlipControl` | `GInstance` |
 | 2,248 | `GStyle` | `GGroup` |
 
 The old same-number lookup crossed release-scoped source tables. It must not
@@ -49,32 +56,36 @@ be used to authorize body consumption.
 ### Slot 2,215 payload
 
 There are 30,572 roots whose only initial child is slot 2,215. The
-schema-complete `GArray` body is exactly 144 bytes. All 30,572 have:
+schema-complete `GInstance` static body is exactly 44 bytes:
 
 ```text
 GInfo                                      20 bytes
-GInstance conditional instanceInfo         6 bytes (token -1, source 2513)
-GInstance null embedded-symbol GRep         4 bytes
-GInstance tag ElementId                     8 bytes
-GTarget target value                        4 bytes
+conditional instanceInfo                    6 bytes (token -1, source 2513)
+null embedded-symbol GRep                    4 bytes
+tag ElementId                               8 bytes
+target value                                4 bytes
 resolveSymInView + hasScale                  2 bytes
-stepTrf                                    96 bytes (12 float64)
-m_numInstances                              4 bytes
                                            --------
-                                            144 bytes
+                                             44 bytes
 ```
 
-All 30,572 transforms are finite and have three mutually orthogonal unit
-basis vectors. The available 2026 `GArray` reader also calls `GInstance` and
-then the 96-byte `Trf201120260Reader`, which corroborates the shared portion
-of the call order.
+Its queued source-2,513 `InstanceInfo` body is exactly 112 bytes:
 
-An earlier audit stopped at `frame + objectLength` and therefore reported 140
-bytes. The object-length echo actually sits 16 bytes later, and exact
-single-child `GLine` bodies prove those pre-echo bytes are live FIFO payload.
-Extending the replay envelope exposes the schema-declared `m_numInstances`
-field at byte 140. Twelve later bytes remain for queued data and are not
-assigned to `GArray`.
+```text
+InstInfoBase m_Trf                       96 bytes (12 float64)
+InstInfoBase m_symbolId                   8 bytes
+InstInfoBase m_GRepId                     4 bytes
+InstanceInfo m_cda                        4 bytes
+                                          --------
+                                           112 bytes
+```
+
+In a one-child root these bodies are adjacent and total 156 bytes. With older
+siblings, FIFO replay consumes every sibling static body before
+`InstanceInfo`. The former 144-byte decoder accidentally consumed the
+44-byte static body plus the transform and first four symbol-ID bytes. That
+misalignment produced the apparent non-finite transforms in 110 railing
+roots; it was not a persisted NaN sentinel.
 
 ### Slot 2,248 nested group prefix
 
@@ -186,18 +197,26 @@ The following release-gated, browser-safe subset is now implemented:
 - `decodeRevit2027FramedGRepRoot` adapts only the independently measured
   length/echo frame, `GInfo`, `AllSubNodes`, extents, owner, object-type, and
   flags grammar;
-- `decodeRevit2027GArray` consumes only an exact 144-byte slot-2,215 body;
+- `decodeRevit2027GInstanceStatic` consumes the exact 44-byte slot-2,215
+  static body and appends its descriptors to the shared FIFO;
+- `decodeRevit2027InstanceInfo` consumes the exact 112-byte source-2,513 body
+  and retains finite, nonsingular `Trf201120260` validation;
 - `decodeRevit2027GLine` consumes only an exact 84-byte slot-1,973 body;
 - `decodeRevit2027GGroupPrefix` consumes `GInfo + AllSubNodes` only and
   returns the first suffix byte without guessing its derived fields;
 - `decodeRevit2027GeometryStatic` consumes slot 2,343 through the complete
   face/edge/shared-surface queue descriptors and stops before queued bodies.
 
-The exact audit in
+The older observational audit in
 [`audit-revit-2027-grep-prefixes.ts`](../scripts/audit-revit-2027-grep-prefixes.ts)
-decodes 30,572/30,572 `GArray` bodies and 17,038/17,038 first-child
-`GGroup` prefixes across 3,666 chunks, with zero reader or chunk failures.
-It reads `BasicFileInfo` and refuses any release other than 2027.
+reports 30,572/30,572 legacy 144-byte windows and 17,038/17,038 first-child
+`GGroup` prefixes across 3,666 chunks. Those windows are retained only for
+reproducing the earlier observation and are not object-boundary certificates.
+
+The complete public FIFO audit now replays 13,568/13,568 direct-Geometry
+owners, including all 110 formerly rejected railing roots. It observes 248
+exact 44-byte slot-2,215 bodies and 248 exact 112-byte source-2,513 bodies,
+with zero reader, queue, or chunk failures.
 
 ## Safe next step
 

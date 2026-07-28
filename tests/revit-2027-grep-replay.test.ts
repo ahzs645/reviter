@@ -23,10 +23,14 @@ import {
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-gline.ts";
 import {
-  REVIT_2027_GARRAY_BODY_BYTES,
-  REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-grep-prefixes.ts";
+import {
+  REVIT_2027_GINSTANCE_BODY_BYTES,
+  REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+  REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+  REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-ginstance.ts";
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-geometry.ts";
 import {
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
@@ -35,8 +39,6 @@ import {
 
 const FACE_SLOT = REVIT_2027_FACE_SOURCE_CLASS_SLOT;
 const EDGE_SLOT = REVIT_2027_GEDGE_SOURCE_CLASS_SLOT;
-const INSTANCE_INFO_SLOT = 2513;
-
 function descriptor(
   token: number,
   sourceClassSlot: number | null,
@@ -139,19 +141,31 @@ function writeGLine(data: Uint8Array, offset: number): number {
   return offset + REVIT_2027_GLINE_BODY_BYTES;
 }
 
-function writeGArray(data: Uint8Array, offset: number): number {
+function writeGInstance(data: Uint8Array, offset: number): number {
   const view = new DataView(data.buffer);
   writeGInfo(view, offset);
-  writeDescriptor(view, offset + 20, -1, INSTANCE_INFO_SLOT);
+  writeDescriptor(
+    view,
+    offset + 20,
+    -1,
+    REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+  );
   writeDescriptor(view, offset + 26, 0, null);
   data[offset + 42] = 0;
   data[offset + 43] = 0;
+  return offset + REVIT_2027_GINSTANCE_BODY_BYTES;
+}
+
+function writeInstanceInfo(data: Uint8Array, offset: number): number {
+  const view = new DataView(data.buffer);
   const transform = [1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 20, 30];
   transform.forEach((value, index) => {
-    view.setFloat64(offset + 44 + index * 8, value, true);
+    view.setFloat64(offset + index * 8, value, true);
   });
-  view.setInt32(offset + 140, 7, true);
-  return offset + REVIT_2027_GARRAY_BODY_BYTES;
+  view.setBigInt64(offset + 96, 1_031_707n, true);
+  view.setInt32(offset + 104, 0, true);
+  view.setInt32(offset + 108, 1, true);
+  return offset + REVIT_2027_INSTANCE_INFO_BODY_BYTES;
 }
 
 function writeGeometry(
@@ -187,6 +201,14 @@ function oneByteReader(id: string): Revit2027GRepReplayReaderRegistration {
 
 test("default registry includes the certified Face-child replay readers", () => {
   const registry = createRevit2027GRepReplayRegistry();
+  assert.equal(
+    registry.get(REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GInstance",
+  );
+  assert.equal(
+    registry.get(REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027InstanceInfo",
+  );
   assert.equal(registry.get(FACE_SLOT)?.id, "Revit2027Face");
   assert.equal(registry.get(EDGE_SLOT)?.id, "Revit2027GEdge");
   assert.equal(
@@ -302,30 +324,26 @@ test("older root siblings replay before children appended by a GGroup", () => {
 
 test("token -1 is queued in FIFO order without advancing positive tokens", () => {
   const payloadOffset = 16;
-  const nestedBytes = 1;
   const data = new Uint8Array(
     payloadOffset +
-      REVIT_2027_GARRAY_BODY_BYTES +
+      REVIT_2027_GINSTANCE_BODY_BYTES +
       REVIT_2027_GLINE_BODY_BYTES +
-      nestedBytes,
+      REVIT_2027_INSTANCE_INFO_BODY_BYTES,
   );
-  let cursor = writeGArray(data, payloadOffset);
+  let cursor = writeGInstance(data, payloadOffset);
   cursor = writeGLine(data, cursor);
-  data[cursor] = 0x55;
+  assert.equal(writeInstanceInfo(data, cursor), data.byteLength);
 
-  const registry = createRevit2027GRepReplayRegistry();
-  registry.set(INSTANCE_INFO_SLOT, oneByteReader("InstanceInfo"));
   const replayed = replayRevit2027GRepFifo(
     data,
     root(
       [
-        descriptor(3, REVIT_2027_GARRAY_SOURCE_CLASS_SLOT, 0),
+        descriptor(3, REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT, 0),
         descriptor(4, REVIT_2027_GLINE_SOURCE_CLASS_SLOT, 6),
       ],
       payloadOffset,
       data.byteLength,
     ),
-    registry,
   );
 
   assert.equal(replayed.ok, true);
@@ -337,9 +355,9 @@ test("token -1 is queued in FIFO order without advancing positive tokens", () =>
       span.path,
     ]),
     [
-      [REVIT_2027_GARRAY_SOURCE_CLASS_SLOT, 3, [0]],
+      [REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT, 3, [0]],
       [REVIT_2027_GLINE_SOURCE_CLASS_SLOT, 4, [1]],
-      [INSTANCE_INFO_SLOT, -1, [0, 0]],
+      [REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT, -1, [0, 0]],
     ],
   );
   assert.equal(replayed.value.finalTokenCount, 5);

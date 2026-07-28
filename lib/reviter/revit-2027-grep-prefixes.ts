@@ -6,6 +6,10 @@ import {
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
 
+/**
+ * @deprecated Source slot 2215 is now schema-certified as `GInstance`; use
+ * `REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT`.
+ */
 export const REVIT_2027_GARRAY_SOURCE_CLASS_SLOT = 2215;
 export const REVIT_2027_GGROUP_SOURCE_CLASS_SLOT = 2248;
 export const REVIT_2027_GARRAY_BODY_BYTES = 144;
@@ -38,7 +42,10 @@ export type Revit2027GArray = {
   resolveSymbolInView: boolean;
   hasScale: boolean;
   stepTransform: RevitTransform3d;
-  /** Exact persisted `m_numInstances` int32; its model values are ID-like. */
+  /**
+   * @deprecated This is the low int32 of the following InstanceInfo symbol ID,
+   * not a schema-certified `m_numInstances` field.
+   */
   numInstances: number;
 };
 
@@ -96,13 +103,13 @@ function readBoolean(data: Uint8Array, byteOffset: number): boolean | null {
 }
 
 /**
- * Decode the exact selector-free 144-byte Revit 2027 `GArray` body measured
- * in the supplied UNBC model.
+ * Decode the legacy 144-byte slot-2215 observational window.
  *
- * The file's schema identifies source slot 2215 as `GArray`. The body contains
- * `GInfo`, the bounded `GInstance` prefix, a 96-byte transform, and the
- * schema-declared trailing `m_numInstances` int32. This reader is deliberately
- * gated to release 2027 and this exact body boundary.
+ * @deprecated Persisted-schema and FIFO evidence now prove that this window
+ * crosses object boundaries: a 44-byte `GInstance`, followed later by the
+ * first 100 bytes of its queued 112-byte `InstanceInfo`. It remains only so
+ * older audit scripts stay reproducible. Certified replay must use
+ * `decodeRevit2027GInstanceStatic` and `decodeRevit2027InstanceInfo`.
  */
 export function decodeRevit2027GArray(
   data: Uint8Array,
