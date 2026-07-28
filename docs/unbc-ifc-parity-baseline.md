@@ -186,17 +186,22 @@ and compare typed values and units.
 
 ## Smallest evidence-backed next improvements
 
-1. **Enter a proven `GPolyMesh` context and replay its retained topology
-   property.** The three UNBC spans that fit the `FacetedTopology8` byte grammar
-   are now proven to begin at multi-entry `GStyle`/`GFlipControl` replay
-   boundaries, so they are rejected as mesh-shaped collisions rather than
-   emitted as geometry. The browser decoder now understands the counted
-   `CondInt16` collection, enforces an unambiguous slot-5,255 topology binding,
-   and decodes the 96-byte `GInstance`/`GArray` transform. The full-stream
-   queue audit finds no structurally proven slot-2,237/slot-5,255 owner. The
-   remaining layer is a browser surrogate object/property registry during
-   `ObjectPtrInitReader`, preserving `DynamicQueue` `DataKey` identity through
-   `initReferences` and property replay.
+1. **Recover a genuine outer-object scope for `GPolyMesh` replay.** The three
+   UNBC spans that fit the `FacetedTopology8` byte grammar are proven to begin
+   at multi-entry `GStyle`/`GFlipControl` replay boundaries, so they are
+   rejected as mesh-shaped collisions rather than emitted as geometry. The
+   browser decoder now has the counted `CondInt16` collection, an unambiguous
+   slot-5,255 topology binding, the 96-byte `GInstance`/`GArray` transform, a
+   fail-closed surrogate object/property registry, and the release-scoped
+   Revit 2026 `ObjectPtrInitReader` dispatch for slot 2,237. Across all 3,666
+   exact UNBC chunks it sees 4,893 raw slot-2,237 occurrences and 3,463
+   complete fixed-width static shapes, but none carries the required
+   slot-5,255 topology descriptor. The remaining boundary is the genuine
+   parent outer-object position or already scoped source-class context; raw
+   selector scans cannot establish that ownership. Once recovered, replay the
+   retained topology into the neutral browser BRep/mesh layer modeled from the
+   public concepts exposed by `TB_Geometry`, `libTD_Ge`,
+   `libOdBrepModeler`, `libTD_BrepBuilder`, and `libTD_Br`.
 2. **Resolve the remaining family carrier and regenerate shared family
    geometry.** Existing system-family type names are trustworthy—7,515 of 7,515
    match the IFC exactly—and 66 persisted `FamilySymbol` → `Family` relations
