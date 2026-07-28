@@ -55,6 +55,11 @@ export type InstancePlacement = {
   origin: [number, number, number];
   /** Element id of the shared geometry object this instance references. */
   geometryId: number;
+  /**
+   * Persisted `InstInfoBase.m_symbolId`. In Revit 2027 the symbol object also
+   * owns the shared local geometry, so this is the renderer's geometry id too.
+   */
+  symbolId?: number;
 };
 
 export type LocalBounds = {
@@ -200,7 +205,7 @@ function readTailPlacement(
     if (view.getUint32(at + 100, true) !== 0) continue;
     const geometryId = view.getUint32(at + 96, true);
     if (!geometryId) continue;
-    return { elementId: object.elementId, basis, origin, geometryId };
+    return { elementId: object.elementId, basis, origin, geometryId, symbolId: geometryId };
   }
   return null;
 }
@@ -240,7 +245,7 @@ export function readInstancePlacement(
   const geometryId = view.getUint32(end, true);
   if (!geometryId) return null;
 
-  return { elementId: object.elementId, basis, origin, geometryId };
+  return { elementId: object.elementId, basis, origin, geometryId, symbolId: geometryId };
 }
 
 /** Constant word introducing an object's bounds sub-record. */

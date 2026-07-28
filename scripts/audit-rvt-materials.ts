@@ -15,6 +15,11 @@ import CFB from "cfb";
 
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
 import {
+  resolveGeometryMaterialAssignments,
+  scanPersistedRelationshipCandidates,
+  type GeometryMaterialCandidate,
+} from "../lib/reviter/family-material-relations.ts";
+import {
   asBytes,
   gzipOffsets,
   inflateRevitChunk,
@@ -82,6 +87,8 @@ let framedMaterialElements = 0;
 let partitionStreams = 0;
 let gzipChunks = 0;
 let inflatedBytes = 0;
+const referencedGeometryIds = new Set<number>();
+const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
 
 for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
   const path = cfb.FullPaths[entryIndex] ?? "";
@@ -105,6 +112,23 @@ for (let entryIndex = 0; entryIndex < cfb.FileIndex.length; entryIndex += 1) {
     inflatedBytes += inflated.byteLength;
 
     const scan = scanMaterialElementRecords(inflated, 2027);
+    geometryMaterialCandidates.push(
+      ...scanPersistedRelationshipCandidates(inflated, 2027).geometryMaterialCandidates,
+    );
+    const view = new DataView(inflated.buffer, inflated.byteOffset, inflated.byteLength);
+    for (let offset = 0; offset + 320 <= inflated.byteLength; offset += 1) {
+      if (
+        view.getUint32(offset + 4, true) !== 0 ||
+        view.getUint32(offset + 12, true) !== 300 ||
+        view.getUint32(offset + 316, true) !== 300 ||
+        view.getUint32(offset + 304, true) !== 0
+      ) {
+        continue;
+      }
+      const geometryId = view.getUint32(offset + 300, true);
+      if (geometryId) referencedGeometryIds.add(geometryId);
+      offset += 319;
+    }
     framedMaterialElements += scan.framedMaterialElements;
     for (const definition of scan.definitions) {
       if (definitions.has(definition.elementId)) continue;
@@ -134,6 +158,11 @@ const missingIfcNames = [...uniqueIfcNames]
   .sort((a, b) => a.localeCompare(b));
 const materialAssociationRelations =
   ifcText.match(/^#\d+ *= *IFCRELASSOCIATESMATERIAL\(/gm)?.length ?? 0;
+const assignments = resolveGeometryMaterialAssignments(
+  geometryMaterialCandidates,
+  new Set(definitions.keys()),
+  referencedGeometryIds,
+);
 
 const result = {
   schemaVersion: 1,
@@ -166,13 +195,17 @@ const result = {
     missingIfcNames,
   },
   assignments: {
-    decodedElementAssignments: 0,
+    decodedElementAssignments: new Set(assignments.map((assignment) => assignment.geometryId)).size,
     decodedPrimitiveAssignments: 0,
-    status: "not-decoded",
+    decodedRelations: assignments.length,
+    assignedMaterialDefinitions: new Set(
+      assignments.map((assignment) => assignment.materialId),
+    ).size,
+    status: assignments.length ? "shared-geometry-decoded" : "not-decoded",
     reason:
-      "The proven outer MaterialElem record contains definition identity and name only. " +
-      "Element/type, geometry-tag, stored-mesh, BRep-face, category-style, and view-override " +
-      "assignment layers remain schema-generic or geometry-dependent and are not inferred.",
+      "Persisted MaterialElem ids are decoded for three release-gated shared-geometry layouts. " +
+      "They are exact geometry/type assignments, not yet per-BRep-face, per-triangle, " +
+      "category-style, or view-override assignments.",
   },
 };
 
@@ -186,5 +219,8 @@ console.log(
   `IFC: ${ifcNames.length} material entities; ${uniqueIfcNames.size} unique names; ` +
   `${exactNameMatches.length} exact name matches`,
 );
-console.log("Assignments: 0 (intentionally not inferred)");
+console.log(
+  `Assignments: ${assignments.length} shared-geometry relations across ` +
+  `${new Set(assignments.map((assignment) => assignment.geometryId)).size} sources`,
+);
 console.log(`Wrote ${paths.json}`);

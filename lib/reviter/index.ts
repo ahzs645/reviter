@@ -64,6 +64,18 @@ export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surf
 export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry";
 export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
 export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
+export {
+  resolveFamilySymbolRelations,
+  resolveGeometryMaterialAssignments,
+  scanPersistedRelationshipCandidates,
+} from "./family-material-relations";
+export type {
+  FamilySymbolCandidate,
+  GeometryMaterialCandidate,
+  NativeFamilySymbolRelation,
+  NativeGeometryMaterialAssignment,
+  PersistedRelationshipScan,
+} from "./family-material-relations";
 export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";
 export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves";
 export { tessellatePlanarBrep } from "./brep-tessellator";

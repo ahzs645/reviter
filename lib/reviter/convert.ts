@@ -73,6 +73,13 @@ import {
 } from "./native-identity.ts";
 import { scanMaterialElementRecords } from "./material-records.ts";
 import {
+  resolveFamilySymbolRelations,
+  resolveGeometryMaterialAssignments,
+  scanPersistedRelationshipCandidates,
+  type FamilySymbolCandidate,
+  type GeometryMaterialCandidate,
+} from "./family-material-relations.ts";
+import {
   applyNativeCategories,
   collectCategoryTokens,
   resolveElementCategories,
@@ -780,6 +787,9 @@ export function convertRvtBytes(
     const nativeProfiles: NativeProfileLocator[] = [];
     const nativeMaterialDefinitionMap =
       new Map<number, LocatedNativeMaterialDefinition>();
+    const familyElementIds = new Set<number>();
+    const familySymbolCandidates: FamilySymbolCandidate[] = [];
+    const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
     const boundedElementIds = new Set<number>();
     const partitionRecords: PartitionRecordLocator[] = [];
     const partitionRecordIds = new Set<number>();
@@ -825,6 +835,13 @@ export function convertRvtBytes(
               storedOffset: revitStoredPageOffset(offsets[index]!),
             });
           }
+          const relationships = scanPersistedRelationshipCandidates(
+            inflated,
+            decoderPlan.revitVersion,
+          );
+          for (const familyId of relationships.familyElementIds) familyElementIds.add(familyId);
+          familySymbolCandidates.push(...relationships.familySymbolCandidates);
+          geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
         }
         const elementId = leadingU32(inflated);
         if (elementId && elementId !== 0xffffffff) {
@@ -1719,6 +1736,16 @@ export function convertRvtBytes(
     const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
     const nativeMaterialDefinitions = [...nativeMaterialDefinitionMap.values()]
       .sort((left, right) => left.elementId - right.elementId);
+    const nativeFamilySymbolRelations = resolveFamilySymbolRelations(
+      familySymbolCandidates,
+      familyElementIds,
+      sharedGeometryIds,
+    );
+    const nativeGeometryMaterialAssignments = resolveGeometryMaterialAssignments(
+      geometryMaterialCandidates,
+      new Set(nativeMaterialDefinitionMap.keys()),
+      sharedGeometryIds,
+    );
     // An element needs a volume to be worth drawing, with one exception: a
     // sketch-bounded element is a plan boundary plus a thickness, and Revit can
     // record that thickness as zero. `prismGeometry` already substitutes a
@@ -1773,19 +1800,29 @@ export function convertRvtBytes(
             ...(nativeMaterialDefinitions.length
               ? ["revit-2027-material-element-name-v1"]
               : []),
+            ...(nativeFamilySymbolRelations.length
+              ? ["revit-2027-family-symbol-family-v1"]
+              : []),
+            ...(nativeGeometryMaterialAssignments.length
+              ? ["revit-2027-geometry-material-id-v1"]
+              : []),
           ],
           nativeCurves: 0,
           nativeProfiles: 0,
           nativeMeshes: 0,
           nativeMaterialDefinitions: nativeMaterialDefinitions.length,
-          nativeMaterialAssignments: 0,
+          nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
+          nativeFamilySymbols: sharedGeometryIds.size,
+          nativeFamilyRelations: nativeFamilySymbolRelations.length,
           nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
           nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
           nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
           approximateSolids: displayBounds.length,
           nativeCategorisedElements: categorisedElements,
           geometryFidelity: "native-bounds-envelope",
-          materialFidelity: nativeMaterialDefinitions.length
+          materialFidelity: nativeGeometryMaterialAssignments.length
+            ? "native-assigned"
+            : nativeMaterialDefinitions.length
             ? "native-definitions-unassigned"
             : "display-fallback",
           semanticFidelity: categorisedElements
@@ -1806,6 +1843,8 @@ export function convertRvtBytes(
         elementOwnership,
         nativeIdentity,
         nativeMaterialDefinitions,
+        nativeFamilySymbolRelations,
+        nativeGeometryMaterialAssignments,
         warnings: [
           `${boundedSolids.length.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           ...(categorisedElements
@@ -1818,7 +1857,10 @@ export function convertRvtBytes(
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
             : []),
           ...(nativeMaterialDefinitions.length
-            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; appearances and assignments remain unresolved.`]
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions, while exact appearance properties remain unresolved.`]
+            : []),
+          ...(nativeFamilySymbolRelations.length
+            ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
             : []),
           ...(displaySelection.omittedContainerCount
             ? ["One dominant container-like envelope remains in audit and IFC output but is omitted from the default scene so it cannot hide the building."]
@@ -1933,19 +1975,29 @@ export function convertRvtBytes(
           ...(nativeMaterialDefinitions.length
             ? ["revit-2027-material-element-name-v1"]
             : []),
+          ...(nativeFamilySymbolRelations.length
+            ? ["revit-2027-family-symbol-family-v1"]
+            : []),
+          ...(nativeGeometryMaterialAssignments.length
+            ? ["revit-2027-geometry-material-id-v1"]
+            : []),
         ],
         nativeCurves: 0,
         nativeProfiles: 0,
         nativeMeshes: 0,
         nativeMaterialDefinitions: nativeMaterialDefinitions.length,
-        nativeMaterialAssignments: 0,
+        nativeMaterialAssignments: nativeGeometryMaterialAssignments.length,
+        nativeFamilySymbols: sharedGeometryIds.size,
+        nativeFamilyRelations: nativeFamilySymbolRelations.length,
         nativeUniqueIds: nativeIdentity?.decodedIdentityCount ?? 0,
         nativeOwnershipRecords: elementOwnership?.decodedRecordCount ?? 0,
         nativeOwnershipRelations: elementOwnership?.relations.length ?? 0,
         approximateSolids: used.length,
         nativeCategorisedElements: categorisedElements,
         geometryFidelity: "diagnostic-only",
-        materialFidelity: nativeMaterialDefinitions.length
+        materialFidelity: nativeGeometryMaterialAssignments.length
+          ? "native-assigned"
+          : nativeMaterialDefinitions.length
           ? "native-definitions-unassigned"
           : "display-fallback",
         semanticFidelity: categorisedElements
@@ -1968,6 +2020,8 @@ export function convertRvtBytes(
       elementOwnership,
       nativeIdentity,
       nativeMaterialDefinitions,
+      nativeFamilySymbolRelations,
+      nativeGeometryMaterialAssignments,
       warnings: [
         ...(decoderPlan.revitVersion == null
           ? ["No Revit release was supplied, so release-specific native record decoders were safely disabled."]
@@ -1982,7 +2036,10 @@ export function convertRvtBytes(
           ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
           : []),
         ...(nativeMaterialDefinitions.length
-          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; appearances and assignments remain unresolved.`]
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeGeometryMaterialAssignments.length.toLocaleString()} shared-geometry assignments resolve to those definitions, while exact appearance properties remain unresolved.`]
+          : []),
+        ...(nativeFamilySymbolRelations.length
+          ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

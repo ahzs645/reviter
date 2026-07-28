@@ -9,6 +9,10 @@ import type { PartAtomMetadata } from "./part-atom.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
+import type {
+  NativeFamilySymbolRelation,
+  NativeGeometryMaterialAssignment,
+} from "./family-material-relations.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -80,6 +84,10 @@ export type DecoderCoverage = {
   nativeMeshes: number;
   nativeMaterialDefinitions: number;
   nativeMaterialAssignments: number;
+  /** Persisted instance-to-symbol links read from InstInfoBase. */
+  nativeFamilySymbols?: number;
+  /** Persisted FamilySymbol-to-Family links whose target class resolved. */
+  nativeFamilyRelations?: number;
   /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
   nativeUniqueIds?: number;
   /** Complete ordinary records decoded from `Global/ElemTable`. */
@@ -464,8 +472,12 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
-  /** Persisted material identities/names; assignment and appearance remain separate. */
+  /** Persisted material identities/names; appearance properties remain separate. */
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
+  /** Loadable-family symbol to family relationships persisted in partition objects. */
+  nativeFamilySymbolRelations?: NativeFamilySymbolRelation[];
+  /** Exact MaterialElem ids attached to referenced shared geometry objects. */
+  nativeGeometryMaterialAssignments?: NativeGeometryMaterialAssignment[];
 };
 
 export type ConvertFailure = {
