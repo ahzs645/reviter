@@ -24,6 +24,12 @@ export type Revit2027PlanarSampledEdgeUse = {
   faceSide: 0 | 1;
   /** Direction of this edge use in the owning loop. */
   direction: 1 | -1;
+  /**
+   * Optional direction-oriented trim samples produced by a separately
+   * certified p-curve repair. When present, the count must exactly match the
+   * persisted endpoint/interior sample count.
+   */
+  trimUvs?: readonly (readonly [number, number])[];
 };
 
 export type Revit2027PlanarSampledLoop = {
@@ -140,6 +146,7 @@ function uvForSide(
 function edgeUvs(
   edgeUse: Revit2027PlanarSampledEdgeUse,
 ): readonly ParamPoint[] {
+  if (edgeUse.trimUvs) return edgeUse.trimUvs;
   const points = [
     edgeUse.edge.firstAndLastEdgePoints[0],
     ...edgeUse.edge.interiorEdgePoints,
@@ -225,14 +232,19 @@ function adaptLoop(
       continue;
     }
 
+    const persistedSampleCount = edgeUse.edge.interiorEdgePoints.length + 2;
     const uvs = edgeUvs(edgeUse);
-    if (uvs.length < 2 || uvs.some((point) => !finitePoint2(point))) {
+    if (
+      uvs.length !== persistedSampleCount ||
+      uvs.some((point) => !finitePoint2(point))
+    ) {
       issues.push({
         code: "non-finite-uv",
         faceToken: face.faceToken,
         loopToken: loop.loopToken,
         edgeToken: edgeUse.edgeToken,
-        message: "GEdge has fewer than two finite face-local UV samples",
+        message:
+          "GEdge trim must retain the exact count of finite face-local UV samples",
       });
       continue;
     }

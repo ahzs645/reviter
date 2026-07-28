@@ -394,6 +394,56 @@ test("uses native edge orientation to resolve a two-edge closed contour", () => 
   assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 4);
 });
 
+test("retimes a small planar line-line p-curve gap at the exact intersection", () => {
+  const input = replay();
+  const first = input.spans.find(
+    (candidate) => candidate.propertyToken === 5,
+  )!.value as Revit2027GEdgeStatic;
+  first.firstAndLastEdgePoints = [
+    first.firstAndLastEdgePoints[0],
+    edgePoint([0.9995, 0]),
+  ];
+
+  const result = meshRevit2027PlanarSampledReplay(input);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.issues, []);
+  assert.equal(result.value.faceMeshes.length, 1);
+  assert.equal(result.value.faceMeshes[0]!.mesh.indices.length / 3, 2);
+  const positions = [...result.value.faceMeshes[0]!.mesh.positions];
+  assert.ok(positions.includes(11));
+  assert.equal(Math.max(...positions.filter((_, index) => index % 3 === 0)), 11);
+});
+
+test("keeps non-line and over-tolerance planar p-curve gaps fail closed", () => {
+  for (const mutate of [
+    (edge: Revit2027GEdgeStatic) => {
+      edge.firstAndLastEdgePoints = [
+        edge.firstAndLastEdgePoints[0],
+        edgePoint([0.98, 0]),
+      ];
+    },
+    (edge: Revit2027GEdgeStatic) => {
+      edge.firstAndLastEdgePoints = [
+        edge.firstAndLastEdgePoints[0],
+        edgePoint([0.9995, 0]),
+      ];
+      edge.interiorEdgePoints = [edgePoint([0.5, 0])];
+    },
+  ]) {
+    const input = replay();
+    const first = input.spans.find(
+      (candidate) => candidate.propertyToken === 5,
+    )!.value as Revit2027GEdgeStatic;
+    mutate(first);
+    const result = meshRevit2027PlanarSampledReplay(input);
+    assert.equal(result.ok, true);
+    if (!result.ok) continue;
+    assert.equal(result.value.faceMeshes.length, 0);
+    assert.equal(result.value.issues[0]?.code, "uv-link-unresolved");
+  }
+});
+
 test("combines persisted face side and GEdge flip bit for loop direction", () => {
   for (const flipped of [false, true]) {
     const result = meshRevit2027PlanarSampledReplay(

@@ -8,6 +8,7 @@ import {
 } from "./revit-2027-edge-loop-static.ts";
 import {
   REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  revit2027GEdgeNativeCurveKind,
   revit2027GEdgeLoopDirection,
   revit2027GEdgeLoopNextReference,
   revit2027GEdgeLoopPreviousReference,
@@ -34,6 +35,9 @@ import {
   type Revit2027PlanarSampledEdgeUse,
 } from "./revit-2027-planar-sampled-brep.ts";
 import {
+  evaluateRevit2027AnalyticSurfacePoint,
+} from "./revit-2027-analytic-edge.ts";
+import {
   groupRings,
   type Point2,
 } from "./polygon.ts";
@@ -43,6 +47,12 @@ import {
 } from "./revit-2027-surfaces.ts";
 
 const DEFAULT_UV_TOLERANCE = 1e-9;
+/**
+ * `checkCoedgeLoop` in the audited native BRep filler evaluates adjacent
+ * p-curve endpoints in model space and permits an intersection/retiming repair
+ * within this distance. It is deliberately not used as a raw UV tolerance.
+ */
+const NATIVE_PLANAR_COEDGE_REPAIR_DISTANCE_FEET = 0.01;
 
 export type Revit2027PlanarOwnerMeshIssueCode =
   | "replay-failed"
@@ -201,10 +211,119 @@ function matches(
   return result;
 }
 
+function lineIntersection(
+  firstStart: Point2,
+  firstEnd: Point2,
+  secondStart: Point2,
+  secondEnd: Point2,
+): Point2 | null {
+  const firstDirection = [
+    firstEnd[0] - firstStart[0],
+    firstEnd[1] - firstStart[1],
+  ] as const;
+  const secondDirection = [
+    secondEnd[0] - secondStart[0],
+    secondEnd[1] - secondStart[1],
+  ] as const;
+  const denominator =
+    firstDirection[0] * secondDirection[1] -
+    firstDirection[1] * secondDirection[0];
+  const scale =
+    Math.hypot(...firstDirection) * Math.hypot(...secondDirection);
+  if (
+    !Number.isFinite(scale) ||
+    scale === 0 ||
+    Math.abs(denominator) <= Number.EPSILON * 64 * scale
+  ) {
+    return null;
+  }
+  const delta = [
+    secondStart[0] - firstStart[0],
+    secondStart[1] - firstStart[1],
+  ] as const;
+  const parameter =
+    (delta[0] * secondDirection[1] -
+      delta[1] * secondDirection[0]) /
+    denominator;
+  const intersection = [
+    firstStart[0] + parameter * firstDirection[0],
+    firstStart[1] + parameter * firstDirection[1],
+  ] as const;
+  return intersection.every(Number.isFinite) ? intersection : null;
+}
+
+function modelDistance(
+  surface: Revit2027PlaneSurface,
+  first: Point2,
+  second: Point2,
+): number | null {
+  const firstPoint = evaluateRevit2027AnalyticSurfacePoint(surface, first);
+  const secondPoint = evaluateRevit2027AnalyticSurfacePoint(surface, second);
+  if (!firstPoint.ok || !secondPoint.ok) return null;
+  return Math.hypot(
+    firstPoint.point[0] - secondPoint.point[0],
+    firstPoint.point[1] - secondPoint.point[1],
+    firstPoint.point[2] - secondPoint.point[2],
+  );
+}
+
+function repairedPlanarLineJoin(
+  current: Revit2027PlanarSampledEdgeUse,
+  currentUvs: Point2[],
+  next: Revit2027PlanarSampledEdgeUse,
+  nextUvs: Point2[],
+  surface: Revit2027PlaneSurface,
+): Point2 | null {
+  if (
+    revit2027GEdgeNativeCurveKind(current.edge) !== "line-segment" ||
+    revit2027GEdgeNativeCurveKind(next.edge) !== "line-segment" ||
+    currentUvs.length !== 2 ||
+    nextUvs.length !== 2
+  ) {
+    return null;
+  }
+  const intersection = lineIntersection(
+    currentUvs[0]!,
+    currentUvs[1]!,
+    nextUvs[0]!,
+    nextUvs[1]!,
+  );
+  if (!intersection) return null;
+  const currentCorrection = modelDistance(
+    surface,
+    currentUvs[1]!,
+    intersection,
+  );
+  const nextCorrection = modelDistance(
+    surface,
+    nextUvs[0]!,
+    intersection,
+  );
+  if (
+    currentCorrection == null ||
+    nextCorrection == null ||
+    currentCorrection > NATIVE_PLANAR_COEDGE_REPAIR_DISTANCE_FEET ||
+    nextCorrection > NATIVE_PLANAR_COEDGE_REPAIR_DISTANCE_FEET
+  ) {
+    return null;
+  }
+  const currentLength = modelDistance(surface, currentUvs[0]!, intersection);
+  const nextLength = modelDistance(surface, intersection, nextUvs[1]!);
+  return (
+      currentLength != null &&
+      nextLength != null &&
+      currentLength > 0 &&
+      nextLength > 0
+    )
+    ? intersection
+    : null;
+}
+
 function directedEdgeUses(
   faceToken: number,
   loop: LoopRecord,
   edges: ReadonlyMap<number, Revit2027GEdgeStatic>,
+  surface: Revit2027PlaneSurface,
   tolerance: number,
 ):
   | { ok: true; edgeUses: Revit2027PlanarSampledEdgeUse[] }
@@ -289,18 +408,33 @@ function directedEdgeUses(
     faceSide: record.side,
     direction: revit2027GEdgeLoopDirection(record.edge, record.side),
   }));
+  const directedUvs = edgeUses.map((edgeUse) => edgeUseUvs(edgeUse));
+  const repaired = new Set<number>();
   for (let index = 0; index < ordered.length; index += 1) {
     const current = ordered[index]!;
     const next = ordered[(index + 1) % ordered.length]!;
-    const currentDirection = edgeUses[index]!.direction;
-    const nextDirection = edgeUses[(index + 1) % edgeUses.length]!.direction;
-    const currentEnd: 0 | 1 = currentDirection === 1 ? 1 : 0;
-    const nextStart: 0 | 1 = nextDirection === 1 ? 0 : 1;
+    const currentUvs = directedUvs[index]!;
+    const nextIndex = (index + 1) % edgeUses.length;
+    const nextUvs = directedUvs[nextIndex]!;
     const nativeJoinDistance = distance(
-      uv(current.edge, currentEnd, current.side),
-      uv(next.edge, nextStart, next.side),
+      currentUvs.at(-1)!,
+      nextUvs[0]!,
     );
     if (nativeJoinDistance <= tolerance) continue;
+    const intersection = repairedPlanarLineJoin(
+      edgeUses[index]!,
+      currentUvs,
+      edgeUses[nextIndex]!,
+      nextUvs,
+      surface,
+    );
+    if (intersection) {
+      currentUvs[currentUvs.length - 1] = intersection;
+      nextUvs[0] = intersection;
+      repaired.add(index);
+      repaired.add(nextIndex);
+      continue;
+    }
     const candidates = matches(
       current.edge,
       current.side,
@@ -339,12 +473,21 @@ function directedEdgeUses(
       },
     };
   }
+  for (const index of repaired) {
+    edgeUses[index] = {
+      ...edgeUses[index]!,
+      trimUvs: directedUvs[index],
+    };
+  }
   return { ok: true, edgeUses };
 }
 
 function edgeUseUvs(
   edgeUse: Revit2027PlanarSampledEdgeUse,
 ): Point2[] {
+  if (edgeUse.trimUvs) {
+    return edgeUse.trimUvs.map((point) => [point[0], point[1]]);
+  }
   const points = [
     edgeUse.edge.firstAndLastEdgePoints[0],
     ...edgeUse.edge.interiorEdgePoints,
@@ -617,6 +760,7 @@ export function meshRevit2027PlanarSampledReplay(
         faceToken,
         loop,
         edges,
+        surface,
         tolerance,
       );
       if (directed.ok === false) {

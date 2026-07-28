@@ -200,3 +200,24 @@ test("rejects ambiguous loop roles, face-side mismatches, and open samples", () 
     assert.ok(openResult.issues.some((issue) => issue.code === "open-loop"));
   }
 });
+
+test("accepts only count-preserving certified trim UV overrides", () => {
+  const value = input();
+  value.faces[0]!.loops[0]!.edgeUses[0] = {
+    ...value.faces[0]!.loops[0]!.edgeUses[0]!,
+    trimUvs: [[0, 0], [0.5, 0], [1, 0]],
+  };
+  const rejected = adaptRevit2027PlanarSampledBrep(value);
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) {
+    assert.ok(
+      rejected.issues.some((issue) => issue.code === "non-finite-uv"),
+    );
+  }
+
+  value.faces[0]!.loops[0]!.edgeUses[0] = {
+    ...value.faces[0]!.loops[0]!.edgeUses[0]!,
+    trimUvs: [[0, 0], [1, 0]],
+  };
+  assert.equal(adaptRevit2027PlanarSampledBrep(value).ok, true);
+});
