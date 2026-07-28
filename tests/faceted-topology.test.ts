@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   decodeFacetedTopologyFields,
+  locateFacetedTopology8Body,
   type FacetedTopologyFieldLayout,
 } from "../lib/reviter/faceted-topology.ts";
 
@@ -82,6 +83,68 @@ test("supports per-vertex normals and reports repeated-index triangles", () => {
 
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.mesh.degenerateTriangles, 1);
+});
+
+test("locates the corroborated selector-free FacetedTopology8 body", () => {
+  const data = new Uint8Array(91);
+  const view = new DataView(data.buffer);
+  const start = 4;
+  view.setInt32(start, 2, true);
+  writeFloat32(view, start + 4, [0, 0, 0]);
+  view.setInt32(start + 16, 1, true);
+  writeFloat32(view, start + 20, [0, 0, 1]);
+  view.setInt32(start + 32, 3, true);
+  writeFloat32(view, start + 36, [0, 0, 0, 2, 0, 0, 0, 3, 0]);
+  view.setInt32(start + 72, 1, true);
+  [0, 1, 2].forEach((value, index) =>
+    view.setUint16(start + 76 + index * 2, value, true),
+  );
+  view.setInt32(start + 82, 1, true);
+  data[start + 86] = 5;
+
+  const located = locateFacetedTopology8Body(data, start);
+  assert.equal(located.ok, true);
+  if (!located.ok) return;
+  assert.equal(located.body.endOffset, 91);
+  assert.equal(located.body.byteLength, 87);
+  assert.equal(located.body.normalCount, 1);
+  assert.equal(located.body.vertexCount, 3);
+  assert.equal(located.body.triangleCount, 1);
+  assert.equal(located.body.layout.normals?.binding, "per-face");
+
+  const decoded = decodeFacetedTopologyFields(data, located.body.layout);
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok) return;
+  assert.deepEqual([...decoded.mesh.positions], [0, 0, 0, 2, 0, 0, 0, 3, 0]);
+  assert.deepEqual([...decoded.mesh.indices], [0, 1, 2]);
+  assert.deepEqual([...decoded.mesh.normals!], [0, 0, 1]);
+  assert.deepEqual([...decoded.mesh.edgeVisibility!], [5]);
+});
+
+test("FacetedTopology8 locator fails closed on unsupported mode and count mismatch", () => {
+  const unsupported = new Uint8Array(20);
+  new DataView(unsupported.buffer).setInt32(0, 3, true);
+  assert.deepEqual(locateFacetedTopology8Body(unsupported, 0), {
+    ok: false,
+    error: "FacetedTopology8 normalsFlag is not the corroborated per-face mode 2",
+  });
+
+  const mismatch = new Uint8Array(87);
+  const view = new DataView(mismatch.buffer);
+  view.setInt32(0, 2, true);
+  view.setInt32(16, 0, true);
+  view.setInt32(20, 3, true);
+  writeFloat32(view, 24, [0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  view.setInt32(60, 1, true);
+  [0, 1, 2].forEach((value, index) =>
+    view.setUint16(64 + index * 2, value, true),
+  );
+  view.setInt32(70, 1, true);
+  mismatch[74] = 3;
+  assert.deepEqual(locateFacetedTopology8Body(mismatch, 0), {
+    ok: false,
+    error: "FacetedTopology8 face-normal count does not match facet count",
+  });
 });
 
 test("rejects truncated, out-of-range, and non-finite fields without throwing", () => {

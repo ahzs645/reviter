@@ -11,7 +11,11 @@
 
 export type FacetedScalarEncoding = "float32-le" | "float64-le";
 export type FacetedIndexEncoding = "uint16-le" | "int32-le";
-export type FacetedNormalBinding = "common" | "per-vertex" | "per-corner";
+export type FacetedNormalBinding =
+  | "common"
+  | "per-face"
+  | "per-vertex"
+  | "per-corner";
 
 export type FacetedVectorField = {
   byteOffset: number;
@@ -124,8 +128,179 @@ function normalVectorCount(
   triangleCount: number,
 ): number {
   if (binding === "common") return 1;
+  if (binding === "per-face") return triangleCount;
   if (binding === "per-vertex") return vertexCount;
   return triangleCount * 3;
+}
+
+export type FacetedTopology8Body = {
+  byteOffset: number;
+  endOffset: number;
+  byteLength: number;
+  normalsFlag: 2;
+  commonNormal: readonly [number, number, number];
+  normalCount: number;
+  vertexCount: number;
+  triangleCount: number;
+  layout: FacetedTopologyFieldLayout;
+};
+
+export type FacetedTopology8LocateResult =
+  | { ok: true; body: FacetedTopology8Body }
+  | { ok: false; error: string };
+
+function readCountedField(
+  data: Uint8Array,
+  view: DataView,
+  countOffset: number,
+  itemByteLength: number,
+  limit: number,
+): { count: number; itemsOffset: number; endOffset: number } | null {
+  if (!fieldFits(data, countOffset, 4)) return null;
+  const count = view.getInt32(countOffset, true);
+  if (!validCount(count, limit)) return null;
+  const itemsOffset = countOffset + 4;
+  const byteLength = count * itemByteLength;
+  if (!fieldFits(data, itemsOffset, byteLength)) return null;
+  return { count, itemsOffset, endOffset: itemsOffset + byteLength };
+}
+
+/**
+ * Locate the complete selector-free body of the Revit 2026
+ * `FacetedTopology8` form measured in the UNBC model.
+ *
+ * The release schema and native inheritance establish this exact order:
+ *
+ * `normalsFlag:i32`, `commonNormal:f32[3]`, counted face normals,
+ * counted float points, counted u16 triangle facets, counted edge bytes.
+ *
+ * This deliberately requires the corroborated normals mode (`2`) and the
+ * observed one-normal/one-edge-byte-per-face cardinalities. It starts only at
+ * an offset supplied by a higher-level queued-property reader; it does not
+ * scan arbitrary partition bytes or claim an owning `GPolyMesh`.
+ */
+export function locateFacetedTopology8Body(
+  data: Uint8Array,
+  byteOffset: number,
+  options: FacetedTopologyDecodeOptions = {},
+): FacetedTopology8LocateResult {
+  const maxVertices = options.maxVertices ?? DEFAULT_MAX_VERTICES;
+  const maxTriangles = options.maxTriangles ?? DEFAULT_MAX_TRIANGLES;
+  if (!fieldFits(data, byteOffset, 20)) {
+    return { ok: false, error: "FacetedTopology8 header is truncated" };
+  }
+
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const normalsFlag = view.getInt32(byteOffset, true);
+  if (normalsFlag !== 2) {
+    return {
+      ok: false,
+      error: "FacetedTopology8 normalsFlag is not the corroborated per-face mode 2",
+    };
+  }
+  const commonNormal: [number, number, number] = [
+    view.getFloat32(byteOffset + 4, true),
+    view.getFloat32(byteOffset + 8, true),
+    view.getFloat32(byteOffset + 12, true),
+  ];
+  if (
+    commonNormal.some(
+      (value) => !Number.isFinite(value) || Math.abs(value) > 1.0001,
+    )
+  ) {
+    return { ok: false, error: "FacetedTopology8 common normal is invalid" };
+  }
+
+  const normals = readCountedField(
+    data,
+    view,
+    byteOffset + 16,
+    3 * 4,
+    maxTriangles,
+  );
+  if (!normals) {
+    return { ok: false, error: "FacetedTopology8 normals array is invalid" };
+  }
+  const points = readCountedField(
+    data,
+    view,
+    normals.endOffset,
+    3 * 4,
+    maxVertices,
+  );
+  if (!points || points.count < 3) {
+    return { ok: false, error: "FacetedTopology8 points array is invalid" };
+  }
+  const facets = readCountedField(
+    data,
+    view,
+    points.endOffset,
+    3 * 2,
+    maxTriangles,
+  );
+  if (!facets || facets.count < 1) {
+    return { ok: false, error: "FacetedTopology8 facets array is invalid" };
+  }
+  if (normals.count !== facets.count) {
+    return {
+      ok: false,
+      error: "FacetedTopology8 face-normal count does not match facet count",
+    };
+  }
+  const edgeVisibility = readCountedField(
+    data,
+    view,
+    facets.endOffset,
+    1,
+    maxTriangles,
+  );
+  if (!edgeVisibility || edgeVisibility.count !== facets.count) {
+    return {
+      ok: false,
+      error: "FacetedTopology8 edge-visibility count does not match facet count",
+    };
+  }
+
+  const layout: FacetedTopologyFieldLayout = {
+    vertexCount: points.count,
+    triangleCount: facets.count,
+    normals: {
+      byteOffset: normals.itemsOffset,
+      encoding: "float32-le",
+      binding: "per-face",
+    },
+    points: {
+      byteOffset: points.itemsOffset,
+      encoding: "float32-le",
+    },
+    facets: {
+      byteOffset: facets.itemsOffset,
+      encoding: "uint16-le",
+    },
+    edgeVisibility: {
+      byteOffset: edgeVisibility.itemsOffset,
+      byteCount: edgeVisibility.count,
+    },
+  };
+  const decoded = decodeFacetedTopologyFields(data, layout, options);
+  if (!decoded.ok) {
+    return { ok: false, error: decoded.error };
+  }
+
+  return {
+    ok: true,
+    body: {
+      byteOffset,
+      endOffset: edgeVisibility.endOffset,
+      byteLength: edgeVisibility.endOffset - byteOffset,
+      normalsFlag: 2,
+      commonNormal,
+      normalCount: normals.count,
+      vertexCount: points.count,
+      triangleCount: facets.count,
+      layout,
+    },
+  };
 }
 
 /**

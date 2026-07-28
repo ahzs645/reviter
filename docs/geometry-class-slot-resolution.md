@@ -95,21 +95,23 @@ node --experimental-strip-types scripts/probe-geometry-tag-references.ts \
   1426
 ```
 
-The missing bridge is the scoped mapping created by the release-specific
-`OdBmFormatIOModule`. `getSpecifiedContainer(FileVersion)` in `TB_Loader.tx`
-contains dynamic module names `TB_Format2011Readers` through
-`TB_Format2026Readers` and queries the loaded module as
-`OdBmFormatIOModule`. The supplied isolated directory contains none of those
-reader modules; it exposes only the abstract module surface in
-`TB_LoaderBase.tx`.
+The release-specific bridge was subsequently found in a local ODA trial
+backup. Static inspection of `TB_Format2026Readers.tx` (SHA-256
+`09d1867c1aaea3653c750fb015fa17838e71da8ad0c52a9de834de920b644e0f`)
+resolves:
 
-For this exact 2026 model, `TB_Format2026Readers` is therefore the concrete
-native piece missing from the reference bundle. A client-side implementation
-still needs a lawful TypeScript replacement rather than loading that Linux
-module in a browser, but the module boundary tells us where the unresolved
-slot/representation registration belongs.
+| Source-class slot | Reader target |
+| ---: | --- |
+| 2,177 | `OdBmGBrep` |
+| 2,210 | `OdBmGFakeBRep` |
+| 2,237 | `OdBmGPolyMesh` |
 
-Recovering that mapping, then decoding an enclosing `GNode`/geometry
-collection boundary, is required before an actual partition selector can
-safely route `GPolyMesh` to the stored faceted-topology decoder or
-`GBRep`/`GFakeBRep` to a BRep-specific path.
+The exact `GPolyMesh` reader also proves that its nested topology is scheduled
+through `OdBmCondInt16Reader` and `OdBmDynamicQueue`, rather than read inline.
+The remaining bridge is therefore no longer the class-slot mapping: it is
+reproducing that queued-property association so a selector-free topology body
+can be joined back to its owning `GPolyMesh`.
+
+See `docs/rvt-2026-gpolymesh-reader-boundary.md` for the reader call order and
+the exact `FacetedTopology8` body boundary established against all three UNBC
+payloads.
