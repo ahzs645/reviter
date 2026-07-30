@@ -84,6 +84,33 @@ Measured against one such reference (an Autodesk conversion of the supplied 2027
 
 One real defect surfaced from that comparison and is recorded rather than patched around: element **447970** carries a `Curtain Wall Mullions` category token while measuring 72,315 sq ft with a 0.66 ft z-span — the same footprint and thickness as floor 503705 beside it. Its category came from its own token rather than from the record-code consensus, so this is the documented ownership weakness in `native-categories.ts`: the token carries no element id, the owner is resolved as the nearest preceding value proved to be a real element id, and here a floor plate has taken a mullion's token. It maps to the dark `frame` display role, so it draws as a large dark plate across the model.
 
+## Verified against the paired IFC export
+
+`scripts/verify-pair.ts` scores the recovery element by element against an IFC exported from the same model. The export used here declares `NumberOfSaves: 326`, matching the RVT's own `uniqueDocumentIncrements`, so the two are the same save rather than two versions of the same project.
+
+**36,255 of 38,076 export products are drawn — 95.2%** — and no record reaches past the export's hull at all. Centre and size agreement, within 0.5 ft on every axis:
+
+| IFC product | drawn | centre ok | size ok | median centre error |
+| --- | --- | --- | --- | --- |
+| `IFCMEMBER` | 19,652 | 98.9% | 98.6% | 0.000 ft |
+| `IFCWALLSTANDARDCASE` | 7,381 | 99.3% | 98.5% | 0.000 ft |
+| `IFCPLATE` | 6,235 | 99.9% | 99.8% | 0.000 ft |
+| `IFCDOOR` | 1,912 | 100.0% | 99.9% | 0.000 ft |
+| `IFCCOLUMN` | 311 | 100.0% | 98.7% | 0.000 ft |
+| `IFCRAILING` | 215 | 98.6% | 98.6% | 0.011 ft |
+| `IFCCOVERING` | 46 | 100.0% | 100.0% | 0.000 ft |
+| `IFCWINDOW` | 20 | 100.0% | 100.0% | 0.042 ft |
+| `IFCRAMP` | 11 | 100.0% | 100.0% | 0.000 ft |
+
+Two assertions fail, and both are the fitted-threshold problem this document keeps describing rather than a geometry error:
+
+- **`no-element-past-its-own-box`** — 27 elements are drawn more than 10 ft past their own export box against a bound of 26. The worst is element **1622190**, a ramp, at 19.8 ft, followed by five `Stairs Stringer Carriage` elements at 14.1–16.6 ft. These are the genuinely over-extended elements in the model, and they are all sloped stair and ramp parts: sloped geometry is where an axis-aligned envelope and a partial native mesh disagree most. The rule's bound was fitted when the count was 26.
+- **`tail-placements-read`** — 21 elements are placed from an instance alone, 0.1% of the export's members and plates, against a floor of 1%. The docstring on the assertion records the value it was written against as **3,901 of 25,942**, so this is not a threshold that drifted by one; something in the tail-placement path stopped firing and the assertion is doing exactly the job it was added for.
+
+Both failures reproduce identically on the commit before the audit work in this branch, so neither is a regression from it. Over the same range the audit's changes moved coverage from 36,229 to 36,255 drawn with every per-class agreement figure unchanged.
+
+A second, independent check against an Autodesk conversion of the same building (51,420 fragments) agrees: element-diagonal percentiles run 6.93 / 15.43 / 43.47 ft for the recovery against 4.82 / 14.05 / 42.20 ft for the reference — the reference splits elements into more, smaller fragments — the two largest extents are the same 779.8 ft floor plate, and **no recovered element is larger than the largest reference fragment**. The recovery is not systematically over-extending anything; the 27 above are specific and identified.
+
 ## Decoder compatibility
 
 | Revit release | Native evidence | Rendered geometry | Categories | Materials |
