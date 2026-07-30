@@ -245,10 +245,10 @@ function lineIntersection(
     (delta[0] * secondDirection[1] -
       delta[1] * secondDirection[0]) /
     denominator;
-  const intersection = [
+  const intersection: Point2 = [
     firstStart[0] + parameter * firstDirection[0],
     firstStart[1] + parameter * firstDirection[1],
-  ] as const;
+  ];
   return intersection.every(Number.isFinite) ? intersection : null;
 }
 
@@ -816,7 +816,19 @@ export function meshRevit2027PlanarSampledReplay(
       })));
       continue;
     }
-    const tessellated = tessellatePlanarBrep(adapted.brep);
+    const tessellated = tessellatePlanarBrep(adapted.brep, {
+      // Four exact native line edges can occasionally form one persisted
+      // bow-tie trim (the UNBC stringer end caps). The format-specific gate
+      // below lets the generic tessellator split only that one-crossing case
+      // into its two even-odd lobes.
+      allowSingleCrossingTrim:
+        loopChain.length === 1 &&
+        edgeUsesByLoop[0]?.length === 4 &&
+        edgeUsesByLoop[0].every(
+          (edgeUse) =>
+            revit2027GEdgeNativeCurveKind(edgeUse.edge) === "line-segment",
+        ),
+    });
     if (!tessellated.ok) {
       issues.push(...tessellated.issues.map((issue) => ({
         code: "tessellator-rejected" as const,

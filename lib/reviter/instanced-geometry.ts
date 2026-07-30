@@ -163,6 +163,23 @@ function finite(value: number): boolean {
 const TAIL_PLACEMENT_FROM_START_FIRST = 408;
 const TAIL_PLACEMENT_FROM_START_LAST = 448;
 
+/**
+ * Field prefix immediately before the placement embedded deeper in the 15
+ * structural-column `InsertableInstance` frames in the UNBC Revit 2027 file.
+ *
+ * Unlike the common fixed header at +408..+448, this placement follows a
+ * variable-length structural payload. The prefix and trailing `1` are stable
+ * schema fields, so the fallback remains a framed field read rather than an
+ * unconstrained search for matrix-shaped bytes.
+ */
+const DEEP_INSERTABLE_PLACEMENT_PREFIX = [
+  0x02, 0x00, 0x00, 0x00,
+  0xff, 0xff, 0xff, 0xff,
+  0x81, 0x01, 0xff, 0xff,
+  0xff, 0xff, 0xf4, 0x07,
+] as const;
+const INSERTABLE_INSTANCE_MARKER = 0x07ef;
+
 /** True when the columns of a row-major 3x3 are a right-handed orthonormal set. */
 function rightHandedOrthonormal(basis: number[]): boolean {
   const column = (index: number) => [basis[index]!, basis[index + 3]!, basis[index + 6]!];
@@ -238,6 +255,82 @@ function readTailPlacement(
   return null;
 }
 
+function matchesBytesAt(
+  data: Uint8Array,
+  offset: number,
+  expected: readonly number[],
+): boolean {
+  if (offset < 0 || offset + expected.length > data.byteLength) return false;
+  return expected.every((value, index) => data[offset + index] === value);
+}
+
+/**
+ * Read the variable-offset structural-column placement. Ambiguous frames fail
+ * closed, as do all object classes other than `InsertableInstance`.
+ */
+function readDeepInsertablePlacement(
+  data: Uint8Array,
+  object: ElementObject,
+): InstancePlacement | null {
+  if (object.marker !== INSERTABLE_INSTANCE_MARKER) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const end = Math.min(
+    data.byteLength,
+    object.offset + object.objectLength,
+  );
+  const candidates: InstancePlacement[] = [];
+  for (
+    let at = object.offset + DEEP_INSERTABLE_PLACEMENT_PREFIX.length;
+    at + 112 <= end;
+    at += 1
+  ) {
+    if (
+      !matchesBytesAt(
+        data,
+        at - DEEP_INSERTABLE_PLACEMENT_PREFIX.length,
+        DEEP_INSERTABLE_PLACEMENT_PREFIX,
+      )
+    ) {
+      continue;
+    }
+    const basis = Array.from(
+      { length: 9 },
+      (_, index) => view.getFloat64(at + index * 8, true),
+    );
+    if (
+      basis.some(
+        (value) => !Number.isFinite(value) || Math.abs(value) > 1.0001,
+      ) ||
+      !rightHandedOrthonormal(basis)
+    ) {
+      continue;
+    }
+    const origin: [number, number, number] = [
+      view.getFloat64(at + 72, true),
+      view.getFloat64(at + 80, true),
+      view.getFloat64(at + 88, true),
+    ];
+    if (!origin.every(finite)) continue;
+    if (
+      view.getUint32(at + 100, true) !== 0 ||
+      view.getUint32(at + 104, true) !== 0 ||
+      view.getUint32(at + 108, true) !== 1
+    ) {
+      continue;
+    }
+    const geometryId = view.getUint32(at + 96, true);
+    if (!geometryId) continue;
+    candidates.push({
+      elementId: object.elementId,
+      basis,
+      origin,
+      geometryId,
+      symbolId: geometryId,
+    });
+  }
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
 /** Read an instance's placement and its shared-geometry reference. */
 export function readInstancePlacement(
   data: Uint8Array,
@@ -249,7 +342,10 @@ export function readInstancePlacement(
     // library already reads: without it a shape whose tail happens to hold an
     // orthonormal basis would be taken for an instance and lose its own box.
     if (boundsOffsetWithin(data, object.offset) != null) return null;
-    return readTailPlacement(data, object);
+    return (
+      readTailPlacement(data, object) ??
+      readDeepInsertablePlacement(data, object)
+    );
   }
   const end = object.offset + object.objectLength;
   if (end + 8 > data.byteLength) return null;

@@ -62,6 +62,13 @@ import {
   type Point3,
   type SketchCurve,
 } from "./sketch-curves.ts";
+import {
+  recoverConnectedStairTreads,
+  recoverFlattenedProfileStairTreads,
+  recoverGuideChainStairTreads,
+  recoverProfiledGuideStairTreads,
+  recoverStraightStairTreads,
+} from "./stair-treads.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   decodeElementOwnership,
@@ -144,6 +151,7 @@ import {
   buildMeshes,
   boundsPlanSegments,
   displayMaterials,
+  isStairOrRailingHelperProxy,
   levelsForBounds,
   selectDisplayBounds,
 } from "./scene.ts";
@@ -162,6 +170,7 @@ import {
   buildRevit2027NativeMeshScene,
   createRevit2027NativeMeshCollector,
 } from "./revit-2027-native-mesh-bridge.ts";
+import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
 
 import type {
   Bounds3,
@@ -196,6 +205,9 @@ const MAX_SKETCH_CURVES = 400_000;
 const RAIL_PATH_CATEGORIES = new Set([
   -2000126, // Stairs Railing
 ]);
+
+/** Native category of a stair run whose own curves may describe its treads. */
+const STAIRS_RUN_CATEGORY = -2000919;
 
 /**
  * Where a railing's path is filed, as an offset from the railing's own id.
@@ -410,6 +422,16 @@ const ORIENTED_BOX_AGREEMENT_FEET = 1;
 
 /** Record code of the companion record holding a stair run's own elevations. */
 const STAIR_COMPANION_CODE = 169_671;
+
+/**
+ * Revit 2027 framed marker for the semantic floor/slab record that owns its
+ * footprint curves without carrying a GElement geometry definition.
+ *
+ * The marker is schema evidence, not a model id. One valid floor in the UNBC
+ * corpus carries a conflicting drawing subcategory, so its own category token
+ * cannot be used as the geometry discriminator.
+ */
+const REVIT_2027_FLOOR_SKETCH_OWNER_MARKER = 0x0869;
 
 /** Revit category of a door, whose record is its opening rather than its leaf. */
 const DOOR_CATEGORY = -2000023;
@@ -738,6 +760,9 @@ export function convertRvtBytes(
         ? undefined
         : { maxStoredBytes: options.maxNativeMeshBytes },
     );
+    const stairsRunCollector = createRevit2027StairsRunCollector(
+      decoderPlan.revitVersion,
+    );
     const elemTableEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -908,6 +933,7 @@ export function convertRvtBytes(
           });
         }
         nativeMeshCollector.scanPage(inflated);
+        stairsRunCollector.pushPage(inflated);
         if (decoderPlan.revitVersion != null) {
           const materialScan = scanMaterialElementRecords(
             inflated,
@@ -1121,7 +1147,9 @@ export function convertRvtBytes(
           });
         }
       }
+      stairsRunCollector.finishPartition();
     }
+    const stairsRuns = stairsRunCollector.snapshot();
 
     onProgress?.({
       ratio: 0.825,
@@ -1508,6 +1536,9 @@ export function convertRvtBytes(
       }
       const knownSketchCategory =
         record.categoryId != null && SKETCH_BOUNDARY_CATEGORIES.has(record.categoryId);
+      const nativeFloorSketchCarrier =
+        markerByElement.get(record.elementId) ===
+          REVIT_2027_FLOOR_SKETCH_OWNER_MARKER;
       // Boundary recovery used to require the category to have decoded first,
       // which is backwards for exactly the elements that need it: ceilings and
       // ramps are the smallest populations in the model and so the likeliest to
@@ -1527,8 +1558,57 @@ export function convertRvtBytes(
           sweptRailings += 1;
         }
       }
-      if (knownSketchCategory || mayBeUnnamedSketch) {
-        const loops = sketchLoopsFor(record, curvesByOwner, { verify: !knownSketchCategory });
+      // The category token is not a reliable discriminator for run geometry:
+      // 58 persisted StairsRun owners in the UNBC model carry a drawing-aid
+      // subcategory on their display record. The framed StairsRun aggregate is
+      // the stronger, schema-specific identity and lets their own repeated
+      // tread lines take the exact reconstruction route as well.
+      if (
+        record.categoryId === STAIRS_RUN_CATEGORY ||
+        stairsRuns.has(record.elementId)
+      ) {
+        const curves = curvesByOwner.get(record.elementId) ?? [];
+        const run = stairsRuns.get(record.elementId);
+        const stair =
+          recoverStraightStairTreads(curves, record.boundsFeet) ??
+          (run?.runProperties
+            ? recoverConnectedStairTreads(curves, record.boundsFeet, {
+                actualRunWidthFeet:
+                  run.runProperties.actualRunWidthFeet,
+                maximumRiserCount:
+                  run.runProperties.topRiserIndex - run.baseRiserIndex,
+              }) ??
+              recoverGuideChainStairTreads(curves, record.boundsFeet, {
+                actualRunWidthFeet:
+                  run.runProperties.actualRunWidthFeet,
+                maximumRiserCount:
+                  run.runProperties.topRiserIndex - run.baseRiserIndex,
+              }) ??
+              recoverProfiledGuideStairTreads(curves, record.boundsFeet, {
+                actualRunWidthFeet:
+                  run.runProperties.actualRunWidthFeet,
+                maximumRiserCount:
+                  run.runProperties.topRiserIndex - run.baseRiserIndex,
+              }) ??
+              recoverFlattenedProfileStairTreads(curves, record.boundsFeet, {
+                actualRunWidthFeet:
+                  run.runProperties.actualRunWidthFeet,
+                maximumRiserCount:
+                  run.runProperties.topRiserIndex - run.baseRiserIndex,
+              })
+            : null);
+        if (stair) record.stairTreads = stair.treads;
+      }
+      if (
+        knownSketchCategory ||
+        nativeFloorSketchCarrier ||
+        mayBeUnnamedSketch
+      ) {
+        const loops = sketchLoopsFor(record, curvesByOwner, {
+          // A category conflict must pass the same independent envelope gate
+          // as an unnamed sketch; the 0x0869 marker only establishes ownership.
+          verify: !knownSketchCategory,
+        });
         if (loops.length) {
           record.loops = loops;
           sketchBoundaryElements += 1;
@@ -1791,7 +1871,12 @@ export function convertRvtBytes(
     let narrowedFacetBands = 0;
     for (const record of elementBounds) {
       if (!record.quads?.length || adoptedIds.has(record.elementId)) continue;
-      if (record.railPath || record.loops?.length || record.orientedBox) continue;
+      if (
+        record.railPath ||
+        record.stairTreads?.length ||
+        record.loops?.length ||
+        record.orientedBox
+      ) continue;
       if (record.solids?.length || record.solid || record.arcs?.length) continue;
       const band = facetElevationBand(record.quads);
       if (!band) continue;
@@ -2008,7 +2093,10 @@ export function convertRvtBytes(
     // beforehand only threw away flat ceilings and ramp landings that had a
     // perfectly good recovered outline.
     const boundedSolids = elementBounds.filter(
-      (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
+      (record) =>
+        solidBounds(record) ||
+        (record.loops?.length ?? 0) > 0 ||
+        (record.stairTreads?.length ?? 0) > 0,
     );
     if (boundedSolids.length) {
       onProgress?.({
@@ -2030,7 +2118,16 @@ export function convertRvtBytes(
       // their exact nested GInstance closure atomically and never publishes
       // unrelated non-scene definitions.
       const nativeMeshCollection =
-        nativeMeshCollector.snapshot(sharedGeometryIds);
+        nativeMeshCollector.snapshot(
+          sharedGeometryIds,
+          stairsRuns,
+          new Map(
+            (elementOwnership?.relations ?? []).map((relation) => [
+              relation.elementId,
+              relation.ownerId,
+            ]),
+          ),
+        );
       const nativeMeshScene = buildRevit2027NativeMeshScene(
         nativeMeshCollection,
         instancePlacements.values(),
@@ -2052,10 +2149,42 @@ export function convertRvtBytes(
       );
       // A proxy is removed only after the complete native element was admitted
       // under the output cap. Incomplete and truncated owners keep their
-      // independently recovered envelope/solid.
+      // independently recovered envelope/solid. Drawing-aid records are the
+      // exception: an unresolved helper must not become a building-sized box.
+      // Resolved geometry for the same id remains in `nativeMeshScene.meshes`.
       const proxyDisplayBounds = displayBounds.filter(
-        (record) => !nativeMeshScene.coveredElementIds.has(record.elementId),
+        (record) =>
+          !nativeMeshScene.coveredElementIds.has(record.elementId) &&
+          !isStairOrRailingHelperProxy(record),
       );
+      const omittedHelperProxyCount =
+        displayBounds.length -
+        nativeMeshScene.coveredElementIds.size -
+        proxyDisplayBounds.length;
+      const proxyIds = new Set(
+        proxyDisplayBounds.map((record) => record.elementId),
+      );
+      for (const record of displayBounds) {
+        if (nativeMeshScene.reconstructedElementIds.has(record.elementId)) {
+          record.renderGeometryProvenance = "reconstructed";
+        } else if (nativeMeshScene.coveredElementIds.has(record.elementId)) {
+          record.renderGeometryProvenance = "native";
+        } else if (!proxyIds.has(record.elementId)) {
+          record.renderGeometryProvenance = "not-rendered-helper";
+        } else if (
+          record.stairTreads?.length ||
+          record.railPath ||
+          record.loops?.length ||
+          record.orientedBox ||
+          record.solids?.length ||
+          record.solid ||
+          record.arcs?.length
+        ) {
+          record.renderGeometryProvenance = "reconstructed";
+        } else {
+          record.renderGeometryProvenance = "bounds-fallback";
+        }
+      }
       const meshes = [
         ...buildBoundsMeshes(proxyDisplayBounds, origin),
         ...nativeMeshScene.meshes,
@@ -2319,6 +2448,9 @@ export function convertRvtBytes(
             : []),
           ...(displaySelection.omittedSheetCount
             ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]
+            : []),
+          ...(omittedHelperProxyCount
+            ? [`${omittedHelperProxyCount.toLocaleString()} unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.`]
             : []),
           nativeMeshScene.meshes.length
             ? "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements."

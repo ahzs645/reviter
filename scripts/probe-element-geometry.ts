@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import CFB from "cfb";
 
 import { detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
+import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import type { ElementObject } from "../lib/reviter/element-objects.ts";
 import {
   scanPersistedRelationshipCandidates,
@@ -80,6 +81,10 @@ const report = {
     stream: string;
     chunkIndex: number;
   }>,
+  parameterTables: [] as Array<ReturnType<typeof collectElementParameters>[number] & {
+    stream: string;
+    chunkIndex: number;
+  }>,
   familySymbolRelations: [] as Array<{
     stream: string;
     chunkIndex: number;
@@ -99,6 +104,17 @@ const report = {
     elementId: number;
     geometryId: number;
     symbolId?: number;
+  }>,
+  exhaustivePlacementCandidates: [] as Array<{
+    stream: string;
+    chunkIndex: number;
+    elementId: number;
+    objectMarker: number;
+    objectLength: number;
+    basisOffset: number;
+    origin: [number, number, number];
+    geometryId: number;
+    contextHex: string;
   }>,
   referencedGeometryMarkers: [] as Array<{
     marker: number;
@@ -132,6 +148,87 @@ function framedObjects(data: Uint8Array): ElementObject[] {
     offset += objectLength + 19;
   }
   return objects;
+}
+
+function rightHandedOrthonormal(basis: readonly number[]): boolean {
+  const column = (index: number) => [
+    basis[index]!,
+    basis[index + 3]!,
+    basis[index + 6]!,
+  ];
+  const dot = (left: readonly number[], right: readonly number[]) =>
+    left[0]! * right[0]! + left[1]! * right[1]! + left[2]! * right[2]!;
+  const [a, b, c] = [column(0), column(1), column(2)];
+  if ([a, b, c].some((axis) => Math.abs(dot(axis, axis) - 1) > 1e-6)) {
+    return false;
+  }
+  if (
+    Math.abs(dot(a, b)) > 1e-6 ||
+    Math.abs(dot(a, c)) > 1e-6 ||
+    Math.abs(dot(b, c)) > 1e-6
+  ) {
+    return false;
+  }
+  const determinant =
+    a[0]! * (b[1]! * c[2]! - b[2]! * c[1]!) -
+    a[1]! * (b[0]! * c[2]! - b[2]! * c[0]!) +
+    a[2]! * (b[0]! * c[1]! - b[1]! * c[0]!);
+  return Math.abs(determinant - 1) < 1e-6;
+}
+
+function exhaustivePlacementCandidates(
+  data: Uint8Array,
+  object: ElementObject,
+): Array<{
+  basisOffset: number;
+  origin: [number, number, number];
+  geometryId: number;
+  contextHex: string;
+}> {
+  const candidates: Array<{
+    basisOffset: number;
+    origin: [number, number, number];
+    geometryId: number;
+    contextHex: string;
+  }> = [];
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const end = Math.min(data.byteLength, object.offset + object.objectLength);
+  for (let at = object.offset; at + 104 <= end; at += 1) {
+    const basis = Array.from(
+      { length: 9 },
+      (_, index) => view.getFloat64(at + index * 8, true),
+    );
+    if (
+      basis.some((value) => !Number.isFinite(value) || Math.abs(value) > 1.0001) ||
+      !rightHandedOrthonormal(basis)
+    ) {
+      continue;
+    }
+    const origin: [number, number, number] = [
+      view.getFloat64(at + 72, true),
+      view.getFloat64(at + 80, true),
+      view.getFloat64(at + 88, true),
+    ];
+    if (
+      origin.some(
+        (value) => !Number.isFinite(value) || Math.abs(value) > 50_000,
+      ) ||
+      view.getUint32(at + 100, true) !== 0
+    ) {
+      continue;
+    }
+    const geometryId = view.getUint32(at + 96, true);
+    if (!geometryId) continue;
+    candidates.push({
+      basisOffset: at - object.offset,
+      origin,
+      geometryId,
+      contextHex: Buffer.from(
+        data.slice(Math.max(object.offset, at - 32), Math.min(end, at + 112)),
+      ).toString("hex"),
+    });
+  }
+  return candidates;
 }
 
 const container = CFB.read(readFileSync(inputPath), { type: "buffer" });
@@ -181,6 +278,16 @@ for (let entryIndex = 0; entryIndex < container.FileIndex.length; entryIndex += 
           localShape: readLocalShape(data, object),
           placement,
         });
+        for (const candidate of exhaustivePlacementCandidates(data, object)) {
+          report.exhaustivePlacementCandidates.push({
+            stream,
+            chunkIndex,
+            elementId: object.elementId,
+            objectMarker: object.marker,
+            objectLength: object.objectLength,
+            ...candidate,
+          });
+        }
       }
     }
 
@@ -198,6 +305,9 @@ for (let entryIndex = 0; entryIndex < container.FileIndex.length; entryIndex += 
     }
     for (const curve of collectSketchCurves(data)) {
       if (targets.has(curve.owner)) report.sketchCurves.push({ ...curve, stream, chunkIndex });
+    }
+    for (const table of collectElementParameters(data)) {
+      if (targets.has(table.elementId)) report.parameterTables.push({ ...table, stream, chunkIndex });
     }
 
     const relationships = scanPersistedRelationshipCandidates(data, 2027);

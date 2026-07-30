@@ -7,7 +7,8 @@
  *
  * Usage:
  *   node --experimental-strip-types \
- *     scripts/inspect-revit-2027-grep-owner.ts model.rvt element-id
+ *     scripts/inspect-revit-2027-grep-owner.ts model.rvt element-id \
+ *       [referenced-owner-id ...]
  */
 import { readFileSync } from "node:fs";
 
@@ -35,10 +36,12 @@ import {
 } from "../lib/reviter/revit-2027-certified-owner-mesh.ts";
 import {
   certifyRevit2027DrawableFaceCoverage,
+  createRevit2027NativeMeshCollector,
 } from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
 
 const modelPath = process.argv[2];
 const elementIdText = process.argv[3];
+const referencedOwnerTexts = process.argv.slice(4);
 if (!modelPath || !elementIdText || !/^[1-9]\d*$/u.test(elementIdText)) {
   throw new Error(
     "usage: node --experimental-strip-types " +
@@ -48,6 +51,17 @@ if (!modelPath || !elementIdText || !/^[1-9]\d*$/u.test(elementIdText)) {
 const targetElementId = Number(elementIdText);
 if (!Number.isSafeInteger(targetElementId)) {
   throw new Error("element-id must be a positive safe integer");
+}
+const inspectionOwnerIds = new Set([targetElementId]);
+for (const text of referencedOwnerTexts) {
+  if (!/^[1-9]\d*$/u.test(text)) {
+    throw new Error(`referenced-owner-id must be a positive integer: ${text}`);
+  }
+  const id = Number(text);
+  if (!Number.isSafeInteger(id)) {
+    throw new Error(`referenced-owner-id must be a safe integer: ${text}`);
+  }
+  inspectionOwnerIds.add(id);
 }
 
 const container = CFB.read(readFileSync(modelPath), { type: "buffer" });
@@ -69,6 +83,7 @@ if (release !== 2027) {
 }
 
 const records: unknown[] = [];
+const collector = createRevit2027NativeMeshCollector(release);
 let chunks = 0;
 let failedChunks = 0;
 for (const partition of entries.filter(
@@ -99,7 +114,15 @@ for (const partition of entries.filter(
     }
     if (read) dictionary = revitWindowTail(read);
     chunks += 1;
-    for (const frame of scanFramedElementObjects(inflated)) {
+    const frames = scanFramedElementObjects(inflated);
+    // The inspector is intentionally bounded to pages containing the requested
+    // owner. Revit normally co-locates that root and its nested definitions;
+    // unresolved cross-page targets are reported instead of turning a one-owner
+    // diagnostic into a whole-model native replay.
+    if (frames.some((frame) => inspectionOwnerIds.has(frame.elementId))) {
+      collector.scanPage(inflated);
+    }
+    for (const frame of frames) {
       if (
         frame.elementId !== targetElementId ||
         frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER
@@ -147,7 +170,6 @@ for (const partition of entries.filter(
         replay: replay.value,
         mesh: {
           faceMeshes: mesh.value.faceMeshes.map((face) => ({
-            path: face.path,
             faceToken: face.faceToken,
             kind: face.kind,
             positions: face.mesh.positions.length / 3,
@@ -165,6 +187,9 @@ for (const partition of entries.filter(
   }
 }
 
+const collection = collector.snapshot([targetElementId]);
+const composed = collection.owners.get(targetElementId);
+
 console.log(JSON.stringify({
   modelPath,
   release,
@@ -172,6 +197,15 @@ console.log(JSON.stringify({
   chunks,
   failedChunks,
   records,
+  composed: composed
+    ? {
+        faces: composed.faces.length,
+        triangles: composed.triangles,
+      }
+    : null,
+  requestedOwnerFailureSamples: collection.requestedOwnerFailureSamples.filter(
+    (failure) => failure.ownerElementId === targetElementId,
+  ),
 }, (_key, value) =>
   typeof value === "bigint" ? value.toString() : value, 2));
 

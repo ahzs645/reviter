@@ -1,6 +1,8 @@
 import {
   tessellateNeutralBrep,
+  type BrepProvenance,
   type NeutralFaceMesh,
+  type NeutralMeshFaceGroup,
 } from "./brep-tessellator.ts";
 import {
   REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
@@ -44,9 +46,15 @@ import {
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
   type Revit2027CylinderSurface,
 } from "./revit-2027-surfaces.ts";
-import { groupRings, type Point2 } from "./polygon.ts";
+import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 
 const DEFAULT_UV_TOLERANCE = 1e-9;
+const IDENTITY = [
+  1, 0, 0, 0,
+  0, 1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1,
+] as const;
 /**
  * `OdBrepBuilderFillerHelper::checkCoedgeLoop` evaluates adjacent p-curve
  * endpoints in 3D. `PointsDists::areEndsIntersecting` admits the closest pair
@@ -548,7 +556,7 @@ function classifySingleDiagonalSampledTrim(
       edgeToken?: number;
       detail?: string;
     } {
-  if (edges.length !== 4) {
+  if (edges.length < 4) {
     return {
       ok: false,
       code: "non-rectangular-trim",
@@ -612,15 +620,12 @@ function classifySingleDiagonalSampledTrim(
       );
     }
   }
-  if (
-    diagonalEdgeCount !== 1 ||
-    maximumAngularSampleStep <= tolerance
-  ) {
+  if (diagonalEdgeCount < 1 || maximumAngularSampleStep <= tolerance) {
     return {
       ok: false,
       code: "non-rectangular-trim",
       detail:
-        `${diagonalEdgeCount} sampled diagonal edges; expected exactly one`,
+        `${diagonalEdgeCount} sampled diagonal edges; expected at least one`,
     };
   }
   return {
@@ -683,6 +688,118 @@ function sameUvRing(
         point[1] === right[index]![1],
     )
   );
+}
+
+function directSampledCylinderMesh(
+  ownerElementId: bigint,
+  faceToken: number,
+  ring: readonly Point2[],
+  surface: Revit2027CylinderSurface,
+  materialId: string | number | null,
+): NeutralFaceMesh | null {
+  const triangleIndexes = triangulate(ring);
+  if (triangleIndexes.length === 0) return null;
+  const positions = new Float64Array(ring.length * 3);
+  const normals = new Float32Array(ring.length * 3);
+  const cross3 = (
+    left: readonly [number, number, number],
+    right: readonly [number, number, number],
+  ): [number, number, number] => [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0],
+  ];
+  const dot3 = (
+    left: readonly [number, number, number],
+    right: readonly [number, number, number],
+  ): number =>
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+  for (let index = 0; index < ring.length; index += 1) {
+    const uv = ring[index]!;
+    const evaluated = evaluateRevit2027AnalyticSurfacePoint(surface, uv);
+    if (!evaluated.ok) return null;
+    positions.set(evaluated.point, index * 3);
+    const du = [
+      surface.radius *
+        (-Math.sin(uv[0]) * surface.xVector[0] +
+          Math.cos(uv[0]) * surface.yVector[0]),
+      surface.radius *
+        (-Math.sin(uv[0]) * surface.xVector[1] +
+          Math.cos(uv[0]) * surface.yVector[1]),
+      surface.radius *
+        (-Math.sin(uv[0]) * surface.xVector[2] +
+          Math.cos(uv[0]) * surface.yVector[2]),
+    ] as const;
+    let normal: [number, number, number] = cross3(du, surface.zVector);
+    const length = Math.hypot(...normal);
+    if (!Number.isFinite(length) || length <= Number.EPSILON) return null;
+    normal = [
+      normal[0] / length,
+      normal[1] / length,
+      normal[2] / length,
+    ];
+    if (!surface.surface.orientFlag) {
+      normal = [-normal[0], -normal[1], -normal[2]];
+    }
+    normals.set(normal, index * 3);
+  }
+  const indices = Uint32Array.from(triangleIndexes);
+  const a = indices[0]!;
+  const b = indices[1]!;
+  const c = indices[2]!;
+  const point = (index: number): [number, number, number] => [
+    positions[index * 3]!,
+    positions[index * 3 + 1]!,
+    positions[index * 3 + 2]!,
+  ];
+  const subtract3 = (
+    left: readonly [number, number, number],
+    right: readonly [number, number, number],
+  ): [number, number, number] => [
+    left[0] - right[0],
+    left[1] - right[1],
+    left[2] - right[2],
+  ];
+  const triangleNormal = cross3(
+    subtract3(point(b), point(a)),
+    subtract3(point(c), point(a)),
+  );
+  const expectedNormal = [
+    normals[a * 3]!,
+    normals[a * 3 + 1]!,
+    normals[a * 3 + 2]!,
+  ] as const;
+  if (dot3(triangleNormal, expectedNormal) < 0) {
+    for (let index = 0; index < indices.length; index += 3) {
+      const swap = indices[index + 1]!;
+      indices[index + 1] = indices[index + 2]!;
+      indices[index + 2] = swap;
+    }
+  }
+  const elementId = Number(ownerElementId);
+  const provenance: BrepProvenance = {
+    decoderId: "revit-2027-cylinder-owner-mesh",
+    elementId: Number.isSafeInteger(elementId) ? elementId : undefined,
+  };
+  const faceId = `revit-2027-owner-${ownerElementId}-face-${faceToken}`;
+  const group: NeutralMeshFaceGroup = {
+    faceId,
+    indexOffset: 0,
+    indexCount: indices.length,
+    vertexOffset: 0,
+    vertexCount: ring.length,
+    materialId,
+    sourceTransform: IDENTITY,
+    brepProvenance: provenance,
+    faceProvenance: provenance,
+  };
+  return {
+    brepId: `revit-2027-owner-${ownerElementId}-sampled-cylinder`,
+    positions,
+    normals,
+    indices,
+    groups: [group],
+  };
 }
 
 function classifyNativeLoopRoles(
@@ -936,6 +1053,7 @@ export function meshRevit2027CylinderSampledReplay(
 
     const edgeUsesByLoop: Revit2027CylinderSampledEdgeUse[][] = [];
     const maximumAngularSteps: number[] = [];
+    let directSampledContour = false;
     let outerRectangle:
       | Extract<ReturnType<typeof classifyRectangle>, { ok: true }>
       | null = null;
@@ -979,6 +1097,7 @@ export function meshRevit2027CylinderSampledReplay(
           tolerance,
         );
         if (sampled.ok) {
+          directSampledContour = true;
           maximumAngularSteps.push(
             sampled.maximumAngularSampleStep,
           );
@@ -1040,6 +1159,37 @@ export function meshRevit2027CylinderSampledReplay(
           ),
         );
     const axialSegments = 1;
+    const materialId = faceMaterialId(faceToken, face, options, issues);
+    if (loopChain.length === 1 && directSampledContour) {
+      const ring = sampledUvRing(directedByLoop[0]!, tolerance);
+      const mesh = ring
+        ? directSampledCylinderMesh(
+            replay.ownerElementId,
+            faceToken,
+            ring,
+            surface,
+            materialId,
+          )
+        : null;
+      if (!mesh) {
+        issues.push({
+          code: "tessellator-rejected",
+          faceToken,
+          loopToken: outerLoop.token,
+          detail: "sampled cylinder contour could not be triangulated",
+        });
+        continue;
+      }
+      faceMeshes.push({
+        faceToken,
+        loopToken: outerLoop.token,
+        angularSegments,
+        axialSegments,
+        bridgedJoinCount: 0,
+        mesh,
+      });
+      continue;
+    }
     const adapted = adaptRevit2027CylinderSampledBrep({
       id: `revit-2027-owner-${replay.ownerElementId}-face-${faceToken}`,
       provenance,
@@ -1053,7 +1203,7 @@ export function meshRevit2027CylinderSampledReplay(
           edgeUses: edgeUsesByLoop[loopIndex]!,
           joinBridges: joinBridgesByLoop[loopIndex]!,
         })),
-        materialId: faceMaterialId(faceToken, face, options, issues),
+        materialId,
         provenance,
       }],
     });

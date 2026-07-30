@@ -254,6 +254,22 @@ export type ElementBoundsRecord = {
    * a slab across the floor, so a railing that can be swept is swept instead.
    */
   railPath?: { polylines: Point3[][]; guardHeightFeet: number };
+  /**
+   * Individual horizontal treads recovered from a straight stair run's own
+   * repeated plan lines and rising sketch segments.
+   */
+  stairTreads?: [Point3, Point3, Point3, Point3][];
+  /**
+   * Provenance of the geometry that actually reached the final scene.
+   *
+   * This is assigned only after native admission and helper suppression, so it
+   * must not be inferred earlier from whichever proxy fields happen to exist.
+   */
+  renderGeometryProvenance?:
+    | "native"
+    | "reconstructed"
+    | "bounds-fallback"
+    | "not-rendered-helper";
   boundsFeet: Bounds3;
 };
 

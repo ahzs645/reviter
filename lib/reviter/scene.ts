@@ -224,6 +224,58 @@ const SUB_ELEMENT_CATEGORIES = new Map<number, number>([
   [-2000946, -2000126], // a top rail belongs to a railing
 ]);
 
+/**
+ * Drawing-aid categories that must never be represented by an envelope proxy.
+ *
+ * Some real stair products inherit one of these category tokens in this file,
+ * so they cannot be removed during the initial display selection: a later
+ * native or reconstructed mesh for the same element id is still legitimate.
+ * The conversion pipeline applies this predicate only to the records left on
+ * the proxy path after native admission. That removes the large helper boxes
+ * without suppressing a resolved stair flight or railing.
+ */
+const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
+  -2000954, // Railing Rail Path Extension Lines
+  -2000938, // Stairs Paths
+  -2000067, // Stairs Sketch Boundary Lines
+  -2000045, // Sketch Lines
+]);
+
+export function isStairOrRailingHelperProxy(
+  record: Pick<
+    ElementBoundsRecord,
+    | "categoryId"
+    | "categoryName"
+    | "stairTreads"
+    | "railPath"
+    | "loops"
+    | "solid"
+    | "solids"
+    | "arcs"
+    | "orientedBox"
+  >,
+): boolean {
+  if (
+    record.stairTreads?.length ||
+    record.railPath ||
+    record.loops?.length ||
+    record.solid ||
+    record.solids?.length ||
+    record.arcs?.length ||
+    record.orientedBox
+  ) {
+    return false;
+  }
+  return (
+    (record.categoryId != null &&
+      PROXY_ONLY_HELPER_CATEGORY_IDS.has(record.categoryId)) ||
+    record.categoryName === "Railing Rail Path Extension Lines" ||
+    record.categoryName === "Stairs Paths" ||
+    record.categoryName === "Stairs Sketch Boundary Lines" ||
+    record.categoryName === "Sketch Lines"
+  );
+}
+
 function planArea(record: ElementBoundsRecord): number {
   const { min, max } = record.boundsFeet;
   return (max.x - min.x) * (max.y - min.y);
@@ -282,6 +334,7 @@ function isFaceHullOnly(record: ElementBoundsRecord): boolean {
     record.recordOffset < 0 &&
     (record.quads?.length ?? 0) > 0 &&
     !record.loops?.length &&
+    !record.stairTreads?.length &&
     !record.orientedBox &&
     !record.railPath &&
     !record.solid &&
@@ -801,6 +854,32 @@ function railGeometry(
   return items;
 }
 
+/**
+ * A straight run's stepped top, reconstructed from its own native tread lines.
+ *
+ * Each tread becomes the top of a contiguous vertical cell. The cells meet
+ * exactly in plan and rise from the run's independently decoded base, producing
+ * a closed selectable mesh with the recovered step profile.
+ */
+function stairTreadGeometry(
+  treads: [Point3, Point3, Point3, Point3][],
+  baseZ: number,
+  origin: Vec3,
+) {
+  return treads.flatMap((tread) => {
+    const topZ = tread[0][2];
+    if (topZ - baseZ < MIN_PRISM_THICKNESS_FEET) return [];
+    const points = [
+      ...tread.map(([x, y]) => [x, y, baseZ]),
+      ...tread,
+    ];
+    return [{
+      positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
+      indices: BOX_INDICES,
+    }];
+  });
+}
+
 /** Extrude a recovered centerline into a visible prism. */
 function extrude(segment: Segment, origin: Vec3, thickness: number, height: number) {
   const dx = segment.x1 - segment.x0;
@@ -907,6 +986,9 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // A swept railing wins over its own envelope, which is the rectangle the
         // path spans rather than anything the railing occupies.
         const rail = record.railPath ? railGeometry(record.railPath, origin) : [];
+        const stair = record.stairTreads?.length
+          ? stairTreadGeometry(record.stairTreads, record.boundsFeet.min.z, origin)
+          : [];
         // Native faces used to outrank both the rebuilt solid and the
         // element's own envelope. Measured against the paired export across
         // every class that owns them, they lose to the envelope for 168 of the
@@ -920,7 +1002,9 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // the solid route nor the sketch route and would otherwise be drawn as
         // the rectangle enclosing its whole bulge.
         const arcs = record.arcs?.length ? record.arcs.map((arc) => arcGeometry(arc, origin)) : [];
-        const items = rail.length
+        const items = stair.length
+          ? stair
+          : rail.length
           ? rail
           : prism.length
           ? prism

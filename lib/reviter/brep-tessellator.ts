@@ -176,6 +176,12 @@ export type BrepTessellationOptions = {
   maxFaces?: number;
   maxVertices?: number;
   /**
+   * Permit one four-edge outer trim with one proper crossing and tessellate
+   * its two exact even-odd lobes. Disabled unless a format-specific caller has
+   * independently certified the persisted line-edge topology.
+   */
+  allowSingleCrossingTrim?: boolean;
+  /**
    * Native analytic limits required by curved faces. Planar tessellation does
    * not consult this policy.
    */
@@ -530,6 +536,121 @@ function simpleRing(ring: readonly Point2[], tolerance: number): boolean {
   return true;
 }
 
+type SingleCrossingSplit = {
+  points2d: Point2[];
+  points3d: BrepPoint3[];
+  indices: number[];
+  area: number;
+};
+
+function properSegmentIntersection(
+  a: Point2,
+  b: Point2,
+  c: Point2,
+  d: Point2,
+  tolerance: number,
+): { point: Point2; firstParameter: number } | null {
+  const ab = [b[0] - a[0], b[1] - a[1]] as const;
+  const cd = [d[0] - c[0], d[1] - c[1]] as const;
+  const denominator = ab[0] * cd[1] - ab[1] * cd[0];
+  const scale = Math.hypot(...ab) * Math.hypot(...cd);
+  if (
+    !Number.isFinite(scale) ||
+    scale === 0 ||
+    Math.abs(denominator) <= tolerance * scale
+  ) {
+    return null;
+  }
+  const delta = [c[0] - a[0], c[1] - a[1]] as const;
+  const firstParameter =
+    (delta[0] * cd[1] - delta[1] * cd[0]) / denominator;
+  const secondParameter =
+    (delta[0] * ab[1] - delta[1] * ab[0]) / denominator;
+  if (
+    firstParameter <= tolerance ||
+    firstParameter >= 1 - tolerance ||
+    secondParameter <= tolerance ||
+    secondParameter >= 1 - tolerance
+  ) {
+    return null;
+  }
+  return {
+    point: [
+      a[0] + firstParameter * ab[0],
+      a[1] + firstParameter * ab[1],
+    ],
+    firstParameter,
+  };
+}
+
+function splitSingleCrossingQuad(
+  ring2d: readonly Point2[],
+  ring3d: readonly BrepPoint3[],
+  tolerance: number,
+): SingleCrossingSplit | null {
+  if (ring2d.length !== 4 || ring3d.length !== 4) return null;
+  const candidates = [
+    { first: 0, second: 2 },
+    { first: 1, second: 3 },
+  ].flatMap(({ first, second }) => {
+    const intersection = properSegmentIntersection(
+      ring2d[first]!,
+      ring2d[(first + 1) % 4]!,
+      ring2d[second]!,
+      ring2d[(second + 1) % 4]!,
+      tolerance,
+    );
+    return intersection ? [{ first, second, intersection }] : [];
+  });
+  if (candidates.length !== 1) return null;
+  const { first, second, intersection } = candidates[0]!;
+  const firstNext = (first + 1) % 4;
+  const secondNext = (second + 1) % 4;
+  const intersection3d: BrepPoint3 = [
+    ring3d[first]![0] +
+      (ring3d[firstNext]![0] - ring3d[first]![0]) *
+        intersection.firstParameter,
+    ring3d[first]![1] +
+      (ring3d[firstNext]![1] - ring3d[first]![1]) *
+        intersection.firstParameter,
+    ring3d[first]![2] +
+      (ring3d[firstNext]![2] - ring3d[first]![2]) *
+        intersection.firstParameter,
+  ];
+  const points2d = [
+    intersection.point,
+    ring2d[firstNext]!,
+    ring2d[second]!,
+    ring2d[secondNext]!,
+    ring2d[first]!,
+  ];
+  const points3d = [
+    intersection3d,
+    ring3d[firstNext]!,
+    ring3d[second]!,
+    ring3d[secondNext]!,
+    ring3d[first]!,
+  ];
+  const firstTurn = turn(points2d[0]!, points2d[1]!, points2d[2]!);
+  const secondTurn = turn(points2d[0]!, points2d[3]!, points2d[4]!);
+  if (
+    Math.abs(firstTurn) <= tolerance ||
+    Math.abs(secondTurn) <= tolerance
+  ) {
+    return null;
+  }
+  const indices = [
+    ...(firstTurn > 0 ? [0, 1, 2] : [0, 2, 1]),
+    ...(secondTurn > 0 ? [0, 3, 4] : [0, 4, 3]),
+  ];
+  return {
+    points2d,
+    points3d,
+    indices,
+    area: (Math.abs(firstTurn) + Math.abs(secondTurn)) / 2,
+  };
+}
+
 function signedArea(ring: readonly Point2[]): number {
   let twice = 0;
   for (let index = 0; index < ring.length; index += 1) {
@@ -660,6 +781,7 @@ export function tessellatePlanarBrep(
   const areaTolerance = options.areaTolerance ?? DEFAULT_AREA_TOLERANCE;
   const maxFaces = options.maxFaces ?? DEFAULT_MAX_FACES;
   const maxVertices = options.maxVertices ?? DEFAULT_MAX_VERTICES;
+  const allowSingleCrossingTrim = options.allowSingleCrossingTrim ?? false;
   const issues: BrepTessellationIssue[] = [];
 
   if (
@@ -672,7 +794,8 @@ export function tessellatePlanarBrep(
     !Number.isSafeInteger(maxFaces) ||
     maxFaces < 0 ||
     !Number.isSafeInteger(maxVertices) ||
-    maxVertices < 0
+    maxVertices < 0 ||
+    typeof allowSingleCrossingTrim !== "boolean"
   ) {
     return {
       ok: false,
@@ -785,6 +908,7 @@ export function tessellatePlanarBrep(
     if (loopFailed) continue;
 
     const projected: Point2[][] = [];
+    let singleCrossingSplit: SingleCrossingSplit | null = null;
     for (let loopIndex = 0; loopIndex < loop3d.length; loopIndex += 1) {
       const points = loop3d[loopIndex]!;
       const loop = loopIndex === 0 ? outerLoops[0]! : holeLoops[loopIndex - 1]!;
@@ -804,9 +928,22 @@ export function tessellatePlanarBrep(
         ring.push([dot(relative, u), dot(relative, v)]);
       }
       if (loopFailed) break;
+      const simple = simpleRing(ring, distanceTolerance);
+      const split =
+        !simple &&
+          allowSingleCrossingTrim &&
+          loopIndex === 0 &&
+          loop3d.length === 1 &&
+          holeLoops.length === 0
+          ? splitSingleCrossingQuad(
+              ring,
+              points,
+              distanceTolerance,
+            )
+          : null;
       if (
-        Math.abs(signedArea(ring)) <= areaTolerance ||
-        !simpleRing(ring, distanceTolerance)
+        (!split && !simple) ||
+        (!split && Math.abs(signedArea(ring)) <= areaTolerance)
       ) {
         issues.push({
           code: "invalid-loop",
@@ -817,6 +954,7 @@ export function tessellatePlanarBrep(
         loopFailed = true;
         break;
       }
+      if (split) singleCrossingSplit = split;
       projected.push(ring);
     }
     if (loopFailed) continue;
@@ -858,11 +996,16 @@ export function tessellatePlanarBrep(
     }
     if (loopFailed) continue;
 
-    const localIndices = triangulate(outer, holes);
-    const flat2d = projected.flat();
-    const expectedArea =
-      Math.abs(signedArea(outer)) -
-      holes.reduce((sum, hole) => sum + Math.abs(signedArea(hole)), 0);
+    const localIndices = singleCrossingSplit
+      ? singleCrossingSplit.indices
+      : triangulate(outer, holes);
+    const flat2d = singleCrossingSplit
+      ? singleCrossingSplit.points2d
+      : projected.flat();
+    const expectedArea = singleCrossingSplit
+      ? singleCrossingSplit.area
+      : Math.abs(signedArea(outer)) -
+        holes.reduce((sum, hole) => sum + Math.abs(signedArea(hole)), 0);
     const tessellatedArea = triangleArea(flat2d, localIndices);
     const allowedAreaError = Math.max(
       areaTolerance,
@@ -881,7 +1024,9 @@ export function tessellatePlanarBrep(
       continue;
     }
 
-    const flat3d = loop3d.flat();
+    const flat3d = singleCrossingSplit
+      ? singleCrossingSplit.points3d
+      : loop3d.flat();
     if (positions.length / 3 + flat3d.length > maxVertices) {
       issues.push({
         code: "invalid-loop",

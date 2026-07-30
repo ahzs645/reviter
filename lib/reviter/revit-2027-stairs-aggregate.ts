@@ -45,6 +45,20 @@ export type Revit2027StairsRunAndLandingAggregate = {
   objectLength: number;
   stairsIdOffset: number;
   staticSuffixEndOffset: number;
+  /** Exact leading `StairsRun` fields; null for `StairsLanding`. */
+  runProperties: {
+    bottomElevationFeet: number;
+    topElevationFeet: number;
+    extendBelowBaseFeet: number;
+    extendBelowTreadBaseFeet: number;
+    actualRunWidthFeet: number;
+    leftStringerWidthFeet: number;
+    rightStringerWidthFeet: number;
+    topRiserIndex: number;
+    centerMarkVisible: boolean;
+    beginWithRiser: boolean;
+    endWithRiser: boolean;
+  } | null;
 };
 
 export type Revit2027StairsAggregateDecodeResult<T> =
@@ -373,6 +387,42 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
       });
       cursor += 8;
     }
+    let runProperties: Revit2027StairsRunAndLandingAggregate["runProperties"] =
+      null;
+    if (frame.value.marker === REVIT_2027_STAIRS_RUN_MARKER) {
+      if (fits(data, cursor, 63, frame.value.objectEndOffset)) {
+        const scalars = Array.from(
+          { length: 7 },
+          (_, index) => view.getFloat64(cursor + index * 8, true),
+        );
+        const topRiserIndex = view.getInt32(cursor + 56, true);
+        const booleans = [
+          data[cursor + 60]!,
+          data[cursor + 61]!,
+          data[cursor + 62]!,
+        ];
+        if (
+          scalars.every(Number.isFinite) &&
+          topRiserIndex >= -1 &&
+          topRiserIndex <= 1_000_000 &&
+          booleans.every((value) => value <= 1)
+        ) {
+          runProperties = {
+            bottomElevationFeet: scalars[0]!,
+            topElevationFeet: scalars[1]!,
+            extendBelowBaseFeet: scalars[2]!,
+            extendBelowTreadBaseFeet: scalars[3]!,
+            actualRunWidthFeet: scalars[4]!,
+            leftStringerWidthFeet: scalars[5]!,
+            rightStringerWidthFeet: scalars[6]!,
+            topRiserIndex,
+            centerMarkVisible: booleans[0] === 1,
+            beginWithRiser: booleans[1] === 1,
+            endWithRiser: booleans[2] === 1,
+          };
+        }
+      }
+    }
     candidates.push({
       elementId: frame.value.elementId,
       stairsId,
@@ -386,6 +436,7 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
       objectLength,
       stairsIdOffset,
       staticSuffixEndOffset: cursor,
+      runProperties,
     });
   }
 

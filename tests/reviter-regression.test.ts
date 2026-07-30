@@ -38,7 +38,12 @@ import {
 import { decodeArcWall2023Record, decodeRvtMaterialDefinitions, decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { elementManifest, makeGlb, makeIfcCenterlines, makeReport } from "../lib/reviter/exports.ts";
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
-import { buildBoundsMeshes, displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
+import {
+  buildBoundsMeshes,
+  displayRole,
+  isStairOrRailingHelperProxy,
+  selectDisplayBounds,
+} from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 import { boxDifference } from "../lib/reviter/drawn-bounds.ts";
 
@@ -273,6 +278,7 @@ test("exports one semantic manifest record per recovered element", () => {
     type: { elementId: 609157, name: "Interior Wall - 120mm" },
     geometry: {
       source: "validated-bounds-envelope",
+      finalProvenance: "bounds-fallback",
       boundsFeet: record.boundsFeet,
       bodies: 1,
       nativeFaces: 0,
@@ -1242,6 +1248,36 @@ test("holds back an uncategorised record written under the no-class code", () =>
   const drawn = selectDisplayBounds([unnamed, wall]);
   assert.equal(drawn.records.length, 2);
   assert.equal(drawn.omittedSheetCount, 0);
+});
+
+test("identifies only unresolved stair and railing drawing aids as proxy helpers", () => {
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000954,
+    categoryName: "Railing Rail Path Extension Lines",
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000938,
+    categoryName: "Stairs Paths",
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000067,
+    categoryName: "Stairs Sketch Boundary Lines",
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000067,
+    categoryName: "Stairs Sketch Boundary Lines",
+    stairTreads: [
+      [[0, 0, 1], [0, 1, 1], [2, 1, 1], [2, 0, 1]],
+    ],
+  }), false);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000126,
+    categoryName: "Stairs Railing",
+  }), false);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000180,
+    categoryName: "Stairs Stringer Carriage",
+  }), false);
 });
 
 test("batches an uncategorised envelope under its own neutral role", () => {

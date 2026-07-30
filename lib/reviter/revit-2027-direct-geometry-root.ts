@@ -4,10 +4,12 @@ import {
 import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "./revit-2027-garc.ts";
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "./revit-2027-gline.ts";
 import { REVIT_2027_GPOINT_SOURCE_CLASS_SLOT } from "./revit-2027-gpoint.ts";
+import { REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT } from "./revit-2027-gcylindrical-helix.ts";
 import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "./revit-2027-grep-prefixes.ts";
 import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-ginstance.ts";
+import { REVIT_2027_GGTAG_SOURCE_CLASS_SLOT } from "./revit-2027-ggtag.ts";
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "./revit-2027-geometry.ts";
 
 export type Revit2027DirectGeometryRootLike = {
@@ -59,6 +61,7 @@ const CONDITIONED_GEOMETRY_PREFIX_SLOTS = new Set<number>([
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
   REVIT_2027_GARC_SOURCE_CLASS_SLOT,
   REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+  REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
 ]);
@@ -136,9 +139,9 @@ export function isRevit2027ConditionedGeometryRoot(
  * initial descriptor shape.
  *
  * The browser FIFO has exact readers for every accepted initial class. The
- * terminal Geometry owns the Face/Edge topology; leading GGroups, GFilters,
- * and GInstances append their children behind older root siblings during
- * replay.
+ * terminal Geometry owns the Face/Edge topology; leading GGroups, GGTags,
+ * GFilters, and GInstances append their children behind older root siblings
+ * during replay.
  *
  * This classifier checks only the release-certified source-slot shape.
  * `certifyRevitGRepInitialQueue` and full FIFO replay independently require
@@ -168,8 +171,9 @@ export function isRevit2027DirectGeometryRoot(
     .slice(0, -1)
     .every(
       (child) =>
-        child.sourceClassSlot === REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
-  );
+        child.sourceClassSlot === REVIT_2027_GGROUP_SOURCE_CLASS_SLOT ||
+        child.sourceClassSlot === REVIT_2027_GGTAG_SOURCE_CLASS_SLOT,
+    );
   return (
     directGroupShape ||
     isRevit2027ConditionedGeometryRoot(root)

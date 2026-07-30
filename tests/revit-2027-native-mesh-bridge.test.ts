@@ -6,9 +6,14 @@ import {
   buildRevit2027NativeMeshScene,
   certifyRevit2027DrawableFaceCoverage,
   createRevit2027NativeMeshCollector,
+  readRevit2027ConditionalStateCarrier,
   type Revit2027NativeMeshCollection,
 } from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
 import { REVIT_2027_FACE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-face-static.ts";
+import type {
+  Revit2027GRepReplay,
+  Revit2027GRepReplaySpan,
+} from "../lib/reviter/revit-2027-grep-replay.ts";
 
 function faceValue(surfaceToken: number, loopToken: number): unknown {
   return {
@@ -50,6 +55,78 @@ function triangle(materialId: number | null = null): NeutralFaceMesh {
     }],
   };
 }
+
+function replaySpan(
+  replayIndex: number,
+  propertySourceClassSlot: number,
+  parentReplayIndex: number | null,
+  value: unknown,
+): Revit2027GRepReplaySpan {
+  return {
+    replayIndex,
+    queueSequence: replayIndex,
+    ownerElementId: 10n,
+    path: [replayIndex],
+    parentPath: parentReplayIndex == null ? null : [parentReplayIndex],
+    parentReplayIndex,
+    propertyToken: replayIndex + 1,
+    propertySourceClassSlot,
+    descriptorOffset: 0,
+    descriptorEndOffset: 0,
+    startOffset: 0,
+    endOffset: 0,
+    readerId: "test",
+    value,
+  };
+}
+
+function conditionalStateReplay(
+  secondStateValue = 2,
+): Revit2027GRepReplay {
+  return {
+    ownerElementId: 10n,
+    startOffset: 0,
+    endOffset: 0,
+    initialTokenCount: 0,
+    finalTokenCount: 0,
+    descriptors: [],
+    spans: [
+      replaySpan(0, 2254, null, {}),
+      replaySpan(1, 1973, null, {
+        origin: [0, 0, 7],
+        direction: [1, 0, 0],
+      }),
+      replaySpan(2, 2343, null, {}),
+      replaySpan(3, 2271, 0, { coordinate: [3, 5, 11] }),
+      replaySpan(4, 2271, 0, { coordinate: [1, 2, 4] }),
+      replaySpan(5, 2238, 0, {
+        compareMode: 3,
+        parameter: 3,
+        value: 1,
+      }),
+      replaySpan(6, 2238, 0, {
+        compareMode: 3,
+        parameter: 3,
+        value: secondStateValue,
+      }),
+    ],
+  };
+}
+
+test("conditional-state carrier recognizes only the complete paired-state schema", () => {
+  assert.deepEqual(
+    readRevit2027ConditionalStateCarrier(conditionalStateReplay()),
+    {
+      displacement: [2, 3, 7],
+      lineOrigin: [0, 0, 7],
+      lineDirection: [1, 0, 0],
+    },
+  );
+  assert.equal(
+    readRevit2027ConditionalStateCarrier(conditionalStateReplay(3)),
+    null,
+  );
+});
 
 test("drawable coverage excludes zero-loop reference faces and fails closed on positive-loop issues", () => {
   const spans = [
@@ -129,6 +206,7 @@ test("collector reports an absent persisted placement owner without publishing g
 test("native scene places shared owners, recentres once, groups proven materials, and covers only admitted elements", () => {
   const collection: Revit2027NativeMeshCollection = {
     enabled: true,
+    reconstructedOwnerIds: new Set([20]),
     owners: new Map([
       [10, {
         ownerElementId: 10,
@@ -196,6 +274,7 @@ test("native scene places shared owners, recentres once, groups proven materials
     },
   );
   assert.deepEqual([...scene.coveredElementIds].sort((a, b) => a - b), [10, 30]);
+  assert.deepEqual([...scene.reconstructedElementIds], [30]);
   assert.equal(scene.ownerElements, 1);
   assert.equal(scene.placedElements, 1);
   assert.equal(scene.boundedTessellatorElements, 1);
@@ -212,6 +291,7 @@ test("native scene places shared owners, recentres once, groups proven materials
 test("output cap declines an element atomically and leaves its proxy eligible", () => {
   const collection: Revit2027NativeMeshCollection = {
     enabled: true,
+    reconstructedOwnerIds: new Set(),
     owners: new Map([
       [10, {
         ownerElementId: 10,
@@ -282,6 +362,7 @@ test("nested owner faces compose root-local transforms before scene placement an
   ] as const;
   const collection: Revit2027NativeMeshCollection = {
     enabled: true,
+    reconstructedOwnerIds: new Set(),
     owners: new Map([
       [40, {
         ownerElementId: 40,
@@ -354,6 +435,7 @@ test("nested owner faces compose root-local transforms before scene placement an
 test("independent RVT bounds reject mismatched direct and placed coordinates without suppressing proxies", () => {
   const collection: Revit2027NativeMeshCollection = {
     enabled: true,
+    reconstructedOwnerIds: new Set(),
     owners: new Map([
       [10, {
         ownerElementId: 10,

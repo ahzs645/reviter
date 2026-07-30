@@ -179,6 +179,8 @@ export function elementManifest(result: ConvertResult) {
             },
         geometry: {
           source: geometrySource(record),
+          finalProvenance:
+            record.renderGeometryProvenance ?? "bounds-fallback",
           boundsFeet: record.boundsFeet,
           bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
           nativeFaces: record.quads?.length ?? 0,

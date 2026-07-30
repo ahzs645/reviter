@@ -109,7 +109,7 @@ export function evaluateRevit2027AnalyticSurfacePoint(
         scale(surface.zVector, uv[1] * Math.cos(surface.halfAngle)),
       ),
     );
-  } else {
+  } else if (surface.kind === "surface-of-revolution") {
     if (!profile) {
       return {
         ok: false,
@@ -138,6 +138,13 @@ export function evaluateRevit2027AnalyticSurfacePoint(
         scale(surface.zVector, profilePoint[2]),
       ),
     );
+  } else {
+    return {
+      ok: false,
+      code: "missing-profile",
+      error:
+        "ruled-surface evaluation requires its two queued profile curves",
+    };
   }
 
   if (!finitePoint(point)) {

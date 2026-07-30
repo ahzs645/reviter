@@ -58,6 +58,10 @@ import {
   REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gfilter.ts";
 import {
+  decodeRevit2027GGTag,
+  REVIT_2027_GGTAG_SOURCE_CLASS_SLOT,
+} from "./revit-2027-ggtag.ts";
+import {
   decodeRevit2027GHermiteSpline,
   REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
 } from "./revit-2027-ghermite-spline.ts";
@@ -97,6 +101,11 @@ import {
   REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gpoint.ts";
 import {
+  decodeRevit2027GCylindricalHelix,
+  REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES,
+  REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gcylindrical-helix.ts";
+import {
   decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "./revit-2027-geometry.ts";
@@ -105,6 +114,7 @@ import {
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
 } from "./revit-2027-surfaces.ts";
 
@@ -415,6 +425,28 @@ const BUILTIN_READERS: readonly [
     },
   ],
   [
+    REVIT_2027_GGTAG_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GGTag",
+      read: (data, context) => {
+        const decoded = decodeRevit2027GGTag(
+          data,
+          context.byteOffset,
+          context.replayEndOffset,
+          context.revitVersion,
+        );
+        if (!decoded.ok) return decoded;
+        return {
+          ok: true,
+          startOffset: context.byteOffset,
+          endOffset: decoded.value.endOffset,
+          appendedProperties: decoded.value.queuedProperties,
+          value: decoded.value,
+        };
+      },
+    },
+  ],
+  [
     REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT,
     {
       id: "Revit2027GConditionDir",
@@ -520,6 +552,17 @@ const BUILTIN_READERS: readonly [
       read: fixedBodyReader(
         REVIT_2027_GPOINT_BODY_BYTES,
         decodeRevit2027GPoint,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GCylindricalHelix",
+      read: fixedBodyReader(
+        REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES,
+        decodeRevit2027GCylindricalHelix,
         () => [],
       ),
     },
@@ -737,6 +780,7 @@ const BUILTIN_READERS: readonly [
     REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
     REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
     REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
+    REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT,
   ].map(
     (sourceClassSlot): [
       number,

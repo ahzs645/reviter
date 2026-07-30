@@ -321,6 +321,22 @@ test("rejects open, self-intersecting, non-planar, and exterior-hole loops", () 
   );
 });
 
+test("tessellates one certified crossing quad as two exact even-odd lobes", () => {
+  const bowTie = planarFace("bow-tie", [loop("bow-loop", "outer", [
+    [0, 0, 0],
+    [2, 2, 0],
+    [0, 2, 0],
+    [2, 0, 0],
+  ])]);
+  const result = tessellatePlanarBrep(brep([bowTie]), {
+    allowSingleCrossingTrim: true,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.mesh.positions.length / 3, 5);
+  assert.equal(result.mesh.indices.length / 3, 2);
+});
+
 test("rejects invalid plane frames, projective transforms, and safety-bound overflow", () => {
   const trim = loop("loop", "outer", [
     [0, 0, 0],

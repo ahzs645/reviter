@@ -64,6 +64,59 @@ test("finds the basis wherever it starts, because the offset is not fixed", () =
   }
 });
 
+test("reads a schema-anchored placement after a variable structural payload", () => {
+  const basisAt = 3_781;
+  const { data, object } = objectWithPlacement({
+    objectLength: 20_492,
+    basisAt,
+    basis: IDENTITY,
+    origin: [219.15105015466463, 821.6419718582374, 0],
+    geometryId: 2_213_246,
+  });
+  const prefix = [
+    0x02, 0x00, 0x00, 0x00,
+    0xff, 0xff, 0xff, 0xff,
+    0x81, 0x01, 0xff, 0xff,
+    0xff, 0xff, 0xf4, 0x07,
+  ];
+  data.set(prefix, basisAt - prefix.length);
+  new DataView(data.buffer).setUint32(basisAt + 108, 1, true);
+
+  const placement = readInstancePlacement(data, object);
+  assert.ok(placement);
+  assert.equal(placement.geometryId, 2_213_246);
+  assert.deepEqual(placement.origin, [219.15105015466463, 821.6419718582374, 0]);
+});
+
+test("declines an ambiguous deep structural placement", () => {
+  const basisAt = 1_000;
+  const secondBasisAt = 2_000;
+  const { data, object } = objectWithPlacement({
+    objectLength: 4_000,
+    basisAt,
+    basis: IDENTITY,
+    origin: [1, 2, 3],
+    geometryId: 100,
+  });
+  const prefix = [
+    0x02, 0x00, 0x00, 0x00,
+    0xff, 0xff, 0xff, 0xff,
+    0x81, 0x01, 0xff, 0xff,
+    0xff, 0xff, 0xf4, 0x07,
+  ];
+  const view = new DataView(data.buffer);
+  for (const at of [basisAt, secondBasisAt]) {
+    data.set(prefix, at - prefix.length);
+    IDENTITY.forEach((value, index) =>
+      view.setFloat64(at + index * 8, value, true));
+    [1, 2, 3].forEach((value, index) =>
+      view.setFloat64(at + 72 + index * 8, value, true));
+    view.setUint32(at + 96, 100 + at, true);
+    view.setUint32(at + 108, 1, true);
+  }
+  assert.equal(readInstancePlacement(data, object), null);
+});
+
 test("will not take a shared geometry object for a placement", () => {
   // A shape whose tail happens to hold an orthonormal basis would lose its own
   // box. A shared shape is told apart by carrying a bounds sub-record, and that

@@ -21,6 +21,9 @@ import {
 import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
+import {
+  REVIT_2027_GGTAG_SOURCE_CLASS_SLOT,
+} from "../lib/reviter/revit-2027-ggtag.ts";
 
 const GGROUP = REVIT_2027_GGROUP_SOURCE_CLASS_SLOT;
 const GEOMETRY = REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT;
@@ -28,6 +31,7 @@ const GFILTER = REVIT_2027_GFILTER_SOURCE_CLASS_SLOT;
 const GINSTANCE = REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT;
 const GLINE = REVIT_2027_GLINE_SOURCE_CLASS_SLOT;
 const GPOINT = REVIT_2027_GPOINT_SOURCE_CLASS_SLOT;
+const GGTAG = REVIT_2027_GGTAG_SOURCE_CLASS_SLOT;
 
 function root(...sourceClassSlots: Array<number | null>) {
   return {
@@ -46,6 +50,15 @@ test("accepts leading GGroups followed by one terminal Geometry", () => {
   assert.equal(
     isRevit2027DirectGeometryRoot(
       root(GGROUP, GGROUP, GGROUP, GGROUP, GEOMETRY),
+    ),
+    true,
+  );
+});
+
+test("accepts GGTag group carriers followed by one terminal Geometry", () => {
+  assert.equal(
+    isRevit2027DirectGeometryRoot(
+      root(GGTAG, GGTAG, GGTAG, GGTAG, GEOMETRY),
     ),
     true,
   );
@@ -101,7 +114,7 @@ test("accepts conditioned Geometry roots only through certified prefix slots", (
   );
   assert.equal(
     isRevit2027ConditionedGeometryRoot(root(GFILTER, 2244, GEOMETRY)),
-    false,
+    true,
   );
 });
 

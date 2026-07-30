@@ -16,6 +16,24 @@ import {
   type Revit2027FaceStatic,
 } from "./revit-2027-face-static.ts";
 import {
+  REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT,
+  type Revit2027GConditionInt,
+} from "./revit-2027-gcondition-int.ts";
+import {
+  REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+} from "./revit-2027-gfilter.ts";
+import {
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+  type Revit2027GLine,
+} from "./revit-2027-gline.ts";
+import {
+  REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+  type Revit2027GPoint,
+} from "./revit-2027-gpoint.ts";
+import {
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+} from "./revit-2027-geometry.ts";
+import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "./revit-2027-framed-grep-root.ts";
@@ -23,6 +41,8 @@ import {
   replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
 } from "./revit-2027-grep-replay.ts";
+import { meshRevit2027SpiralStairReplay } from "./revit-2027-spiral-stair-mesh.ts";
+import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
 import {
   collectRevit2027GInstanceBindings,
   collectRevit2027NestedInstances,
@@ -86,6 +106,14 @@ export type Revit2027CompactOwnerMesh = {
 export type Revit2027NativeMeshCollection = {
   readonly enabled: boolean;
   readonly owners: ReadonlyMap<number, Revit2027CompactOwnerMesh>;
+  /** Owner ids produced by an exact reconstruction rather than face replay. */
+  readonly reconstructedOwnerIds: ReadonlySet<number>;
+  /**
+   * Direct owners composed from a complete sibling and an exact persisted
+   * GFilter state displacement. Their helper-only root extents do not enclose
+   * the selected state and therefore are not a valid independent mesh gate.
+   */
+  readonly carrierComposedOwnerIds?: ReadonlySet<number>;
   readonly scannedFrames: number;
   readonly eligibleRoots: number;
   /** Exact non-legacy syntactic roots entering bounded tessellator replay. */
@@ -149,6 +177,16 @@ type CompactOwnerDefinition = {
   localComplete: boolean;
   localFailureDetail: string | null;
   nestedInstances: readonly Revit2027NestedInstance[];
+  /** Retained only for a no-face root that may be an exact spiral flight. */
+  spiralReplay: Revit2027GRepReplay | null;
+  /** Minimal exact metadata for a two-state conditioned geometry carrier. */
+  conditionalStateCarrier: Revit2027ConditionalStateCarrier | null;
+};
+
+export type Revit2027ConditionalStateCarrier = {
+  displacement: readonly [number, number, number];
+  lineOrigin: readonly [number, number, number];
+  lineDirection: readonly [number, number, number];
 };
 
 type MutableCollection = {
@@ -186,7 +224,11 @@ export type Revit2027NativeMeshCollector = {
    * Finalize direct scene roots plus only the non-direct definitions proven to
    * be referenced by persisted instance placements.
    */
-  snapshot(requestedOwnerIds?: Iterable<number>): Revit2027NativeMeshCollection;
+  snapshot(
+    requestedOwnerIds?: Iterable<number>,
+    stairsRuns?: ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>,
+    owningElementByElement?: ReadonlyMap<number, number>,
+  ): Revit2027NativeMeshCollection;
 };
 
 function safeLimit(value: number | undefined, fallback: number): number {
@@ -259,6 +301,95 @@ function countExcludedNonTopologicalFaces(
     if (!hasLoop) count += 1;
   }
   return count;
+}
+
+/**
+ * Recognize the schema-complete conditioned carrier used by Revit for two
+ * mutually exclusive geometry states.
+ *
+ * The carrier is deliberately exact: one top-level GFilter, helper GLine and
+ * Geometry; two point subnodes; and the paired integer conditions
+ * `(mode=3,param=3,value=1|2)`. No id, adjacency, category, or model-specific
+ * coordinate participates.
+ */
+export function readRevit2027ConditionalStateCarrier(
+  replay: Revit2027GRepReplay,
+): Revit2027ConditionalStateCarrier | null {
+  const roots = replay.spans.filter((span) => span.parentReplayIndex == null);
+  if (
+    roots.length !== 3 ||
+    roots[0]?.propertySourceClassSlot !==
+      REVIT_2027_GFILTER_SOURCE_CLASS_SLOT ||
+    roots[1]?.propertySourceClassSlot !==
+      REVIT_2027_GLINE_SOURCE_CLASS_SLOT ||
+    roots[2]?.propertySourceClassSlot !==
+      REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+  ) {
+    return null;
+  }
+  const filterIndex = roots[0]!.replayIndex;
+  const children = replay.spans.filter(
+    (span) => span.parentReplayIndex === filterIndex,
+  );
+  const points = children.filter(
+    (span) => span.propertySourceClassSlot ===
+      REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
+  );
+  const conditions = children.filter(
+    (span) => span.propertySourceClassSlot ===
+      REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT,
+  );
+  if (
+    children.length !== 4 ||
+    points.length !== 2 ||
+    conditions.length !== 2
+  ) {
+    return null;
+  }
+  const pointValues = points.map(
+    (span) => span.value as Revit2027GPoint | undefined,
+  );
+  const conditionValues = conditions.map(
+    (span) => span.value as Revit2027GConditionInt | undefined,
+  );
+  const line = roots[1]!.value as Revit2027GLine | undefined;
+  if (
+    pointValues.some((point) => point == null) ||
+    conditionValues.some((condition) => condition == null) ||
+    !line
+  ) {
+    return null;
+  }
+  const [firstCondition, secondCondition] =
+    conditionValues as [Revit2027GConditionInt, Revit2027GConditionInt];
+  if (
+    firstCondition.compareMode !== 3 ||
+    firstCondition.parameter !== 3 ||
+    firstCondition.value !== 1 ||
+    secondCondition.compareMode !== 3 ||
+    secondCondition.parameter !== 3 ||
+    secondCondition.value !== 2
+  ) {
+    return null;
+  }
+  const [firstPoint, secondPoint] =
+    pointValues as [Revit2027GPoint, Revit2027GPoint];
+  const displacement = firstPoint.coordinate.map(
+    (coordinate, index) => coordinate - secondPoint.coordinate[index]!,
+  ) as unknown as [number, number, number];
+  const magnitude = Math.hypot(...displacement);
+  if (
+    !displacement.every(Number.isFinite) ||
+    magnitude <= 1e-9 ||
+    magnitude > 10_000
+  ) {
+    return null;
+  }
+  return {
+    displacement,
+    lineOrigin: line.origin,
+    lineDirection: line.direction,
+  };
 }
 
 /**
@@ -522,9 +653,98 @@ type NestedGeometryMarker = {
   localComplete: boolean;
 };
 
+function compactFacePoint(
+  face: Revit2027CompactOwnerMesh["faces"][number],
+  x: number,
+  y: number,
+  z: number,
+): readonly [number, number, number] {
+  const matrix = face.nestedTransform;
+  return matrix
+    ? [
+        matrix[0]! * x + matrix[4]! * y + matrix[8]! * z + matrix[12]!,
+        matrix[1]! * x + matrix[5]! * y + matrix[9]! * z + matrix[13]!,
+        matrix[2]! * x + matrix[6]! * y + matrix[10]! * z + matrix[14]!,
+      ]
+    : [x, y, z];
+}
+
+function compactOwnerProjectionRange(
+  owner: Revit2027CompactOwnerMesh,
+  axis: readonly [number, number, number],
+): readonly [number, number] | null {
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (const face of owner.faces) {
+    for (let index = 0; index < face.mesh.positions.length; index += 3) {
+      const point = compactFacePoint(
+        face,
+        face.mesh.positions[index]!,
+        face.mesh.positions[index + 1]!,
+        face.mesh.positions[index + 2]!,
+      );
+      const projection =
+        point[0] * axis[0] + point[1] * axis[1] + point[2] * axis[2];
+      if (!Number.isFinite(projection)) return null;
+      minimum = Math.min(minimum, projection);
+      maximum = Math.max(maximum, projection);
+    }
+  }
+  return Number.isFinite(minimum) && Number.isFinite(maximum)
+    ? [minimum, maximum]
+    : null;
+}
+
+function translatedCompactOwner(
+  ownerElementId: number,
+  source: Revit2027CompactOwnerMesh,
+  displacement: readonly [number, number, number],
+): Revit2027CompactOwnerMesh {
+  const translation = [
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    displacement[0], displacement[1], displacement[2], 1,
+  ] as const;
+  return {
+    ownerElementId,
+    faces: source.faces.map((face) => {
+      if (!face.nestedTransform) {
+        return { ...face, nestedTransform: translation };
+      }
+      const matrix = [...face.nestedTransform] as number[];
+      matrix[12] = matrix[12]! + displacement[0];
+      matrix[13] = matrix[13]! + displacement[1];
+      matrix[14] = matrix[14]! + displacement[2];
+      return {
+        ...face,
+        nestedTransform:
+          matrix as unknown as RevitTransform3d["matrix"],
+      };
+    }),
+    triangles: source.triangles,
+  };
+}
+
+function sameVector(
+  left: readonly number[],
+  right: readonly number[],
+  tolerance = 1e-8,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => Math.abs(value - right[index]!) <= tolerance)
+  );
+}
+
 function finalizeRevit2027NativeMeshCollection(
   state: MutableCollection,
   requestedOwnerIds: Iterable<number> = [],
+  stairsRuns: ReadonlyMap<
+    number,
+    Revit2027StairsRunAndLandingAggregate
+  > = new Map(),
+  owningElementByElement: ReadonlyMap<number, number> = new Map(),
 ): Revit2027NativeMeshCollection {
   const requestedOwners = state.enabled
     ? new Set(
@@ -537,6 +757,8 @@ function finalizeRevit2027NativeMeshCollection(
       )
     : new Set<number>();
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
+  const reconstructedOwnerIds = new Set<number>();
+  const carrierComposedOwnerIds = new Set<number>();
   for (const definition of state.definitions.values()) {
     if (
       (definition.directRoot ||
@@ -548,6 +770,102 @@ function finalizeRevit2027NativeMeshCollection(
     ) {
       owners.set(definition.ownerElementId, definition.geometry);
     }
+  }
+  for (const definition of state.definitions.values()) {
+    if (
+      owners.has(definition.ownerElementId) ||
+      !definition.directRoot ||
+      !definition.spiralReplay
+    ) {
+      continue;
+    }
+    const run = stairsRuns.get(definition.ownerElementId);
+    if (!run) continue;
+    const spiral = meshRevit2027SpiralStairReplay(
+      definition.spiralReplay,
+      run,
+    );
+    if (!spiral) continue;
+    owners.set(definition.ownerElementId, {
+      ownerElementId: definition.ownerElementId,
+      faces: [{ faceToken: spiral.faceToken, mesh: spiral.mesh }],
+      triangles: spiral.triangles,
+    });
+    reconstructedOwnerIds.add(definition.ownerElementId);
+  }
+
+  /*
+   * Revit can persist two mutually exclusive stringer states as sibling
+   * GElements: one owns the complete faces and the other owns only the same
+   * state selector plus the exact state displacement. Resolve that relationship
+   * only inside one decoded ownership scope and only when the helper plane
+   * coincides with the complete sibling's leading face along the displacement.
+   */
+  for (const target of state.definitions.values()) {
+    if (
+      owners.has(target.ownerElementId) ||
+      !target.directRoot ||
+      target.geometry ||
+      target.nestedInstances.length > 0 ||
+      !target.conditionalStateCarrier
+    ) {
+      continue;
+    }
+    const parentId = owningElementByElement.get(target.ownerElementId);
+    if (parentId == null) continue;
+    const targetCarrier = target.conditionalStateCarrier;
+    const magnitude = Math.hypot(...targetCarrier.displacement);
+    const axis = targetCarrier.displacement.map(
+      (value) => value / magnitude,
+    ) as unknown as [number, number, number];
+    const targetPlane =
+      targetCarrier.lineOrigin[0] * axis[0] +
+      targetCarrier.lineOrigin[1] * axis[1] +
+      targetCarrier.lineOrigin[2] * axis[2];
+    const lineAlongState =
+      Math.abs(
+        targetCarrier.lineDirection[0] * axis[0] +
+          targetCarrier.lineDirection[1] * axis[1] +
+          targetCarrier.lineDirection[2] * axis[2],
+      );
+    if (lineAlongState > 1e-8) continue;
+
+    const candidates = [...state.definitions.values()].filter((source) => {
+      if (
+        source.ownerElementId === target.ownerElementId ||
+        owningElementByElement.get(source.ownerElementId) !== parentId ||
+        !source.geometry ||
+        !source.localComplete ||
+        !source.conditionalStateCarrier ||
+        !sameVector(
+          source.conditionalStateCarrier.displacement,
+          targetCarrier.displacement,
+        )
+      ) {
+        return false;
+      }
+      const range = compactOwnerProjectionRange(source.geometry, axis);
+      if (!range) return false;
+      const sourcePlane =
+        source.conditionalStateCarrier.lineOrigin[0] * axis[0] +
+        source.conditionalStateCarrier.lineOrigin[1] * axis[1] +
+        source.conditionalStateCarrier.lineOrigin[2] * axis[2];
+      return (
+        Math.abs(sourcePlane - range[1]) <= 1e-6 &&
+        Math.abs(targetPlane - sourcePlane) <= 1e-6
+      );
+    });
+    if (candidates.length !== 1) continue;
+    owners.set(
+      target.ownerElementId,
+      translatedCompactOwner(
+        target.ownerElementId,
+        candidates[0]!.geometry!,
+        targetCarrier.displacement,
+      ),
+    );
+    reconstructedOwnerIds.add(target.ownerElementId);
+    carrierComposedOwnerIds.add(target.ownerElementId);
   }
 
   const nestedRoots = [...state.definitions.values()].filter(
@@ -607,6 +925,7 @@ function finalizeRevit2027NativeMeshCollection(
     }));
 
   for (const root of selectedNestedRoots) {
+    if (owners.has(root.ownerElementId)) continue;
     const directRoot = root.directRoot;
     const requestedRoot = requestedOwners.has(root.ownerElementId);
     const rememberFailure = (detail: string): void => {
@@ -739,6 +1058,8 @@ function finalizeRevit2027NativeMeshCollection(
   return {
     enabled: state.enabled,
     owners,
+    reconstructedOwnerIds,
+    carrierComposedOwnerIds,
     scannedFrames: state.scannedFrames,
     eligibleRoots: state.eligibleRoots,
     boundedTessellatorCandidateRoots:
@@ -1063,6 +1384,13 @@ export function createRevit2027NativeMeshCollector(
           localComplete,
           localFailureDetail,
           nestedInstances: nested.value,
+          spiralReplay:
+            coverage.code === "no-drawable-faces" &&
+              nested.value.length > 0
+              ? replayed.value
+              : null,
+          conditionalStateCarrier:
+            readRevit2027ConditionalStateCarrier(replayed.value),
         });
         state.definitionFailures.delete(ownerElementId);
         if (directRoot && coverage.complete) state.completeOwners += 1;
@@ -1073,10 +1401,17 @@ export function createRevit2027NativeMeshCollector(
     },
     snapshot(
       requestedOwnerIds: Iterable<number> = [],
+      stairsRuns: ReadonlyMap<
+        number,
+        Revit2027StairsRunAndLandingAggregate
+      > = new Map(),
+      owningElementByElement: ReadonlyMap<number, number> = new Map(),
     ): Revit2027NativeMeshCollection {
       return finalizeRevit2027NativeMeshCollection(
         state,
         requestedOwnerIds,
+        stairsRuns,
+        owningElementByElement,
       );
     },
   };
@@ -1097,6 +1432,8 @@ export type Revit2027NativeMeshScene = {
   meshes: MeshData[];
   /** Elements replaced only after all of their native triangles were admitted. */
   coveredElementIds: ReadonlySet<number>;
+  /** Covered elements whose admitted owner used exact reconstruction. */
+  reconstructedElementIds: ReadonlySet<number>;
   ownerElements: number;
   placedElements: number;
   /** Admitted direct/placed elements sourced from the bounded root route. */
@@ -1232,6 +1569,7 @@ export function buildRevit2027NativeMeshScene(
     return {
       meshes: [],
       coveredElementIds: new Set(),
+      reconstructedElementIds: new Set(),
       ownerElements: 0,
       placedElements: 0,
       boundedTessellatorElements: 0,
@@ -1272,6 +1610,7 @@ export function buildRevit2027NativeMeshScene(
 
   const meshes: MeshData[] = [];
   const coveredElementIds = new Set<number>();
+  const reconstructedElementIds = new Set<number>();
   let triangles = 0;
   let faceMeshes = 0;
   let ownerElements = 0;
@@ -1319,7 +1658,11 @@ export function buildRevit2027NativeMeshScene(
   };
 
   for (const item of items) {
-    if (options.expectedBoundsByElement) {
+    const exactCarrierComposition =
+      item.placement == null &&
+      collection.carrierComposedOwnerIds?.has(item.owner.ownerElementId) ===
+        true;
+    if (options.expectedBoundsByElement && !exactCarrierComposition) {
       const expected = options.expectedBoundsByElement.get(item.elementId);
       if (!expected) {
         missingBounds += 1;
@@ -1354,6 +1697,9 @@ export function buildRevit2027NativeMeshScene(
     triangles += item.owner.triangles;
     faceMeshes += item.owner.faces.length;
     coveredElementIds.add(item.elementId);
+    if (collection.reconstructedOwnerIds.has(item.owner.ownerElementId)) {
+      reconstructedElementIds.add(item.elementId);
+    }
     if (
       collection.boundedTessellatorOwnerIds.has(item.owner.ownerElementId)
     ) {
@@ -1444,6 +1790,7 @@ export function buildRevit2027NativeMeshScene(
   return {
     meshes,
     coveredElementIds,
+    reconstructedElementIds,
     ownerElements,
     placedElements,
     boundedTessellatorElements,

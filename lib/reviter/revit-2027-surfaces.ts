@@ -8,6 +8,7 @@ export const REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT = 634;
 export const REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT = 900;
 export const REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT = 1144;
 export const REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT = 4283;
+export const REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT = 3859;
 
 const POINT_2D_BYTES = 16;
 const POINT_3D_BYTES = 24;
@@ -72,11 +73,21 @@ export type Revit2027SurfaceOfRevolution = Revit2027SurfaceCommon & {
   profileCurve: CondInt16QueueEntry;
 };
 
+export type Revit2027RuledSurface = Revit2027SurfaceCommon & {
+  kind: "ruled";
+  sourceClassSlot: typeof REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT;
+  profileCurve1: CondInt16QueueEntry;
+  profileCurve2: CondInt16QueueEntry;
+  point1: RevitPoint3d;
+  point2: RevitPoint3d;
+};
+
 export type Revit2027AnalyticSurface =
   | Revit2027PlaneSurface
   | Revit2027ConeSurface
   | Revit2027CylinderSurface
-  | Revit2027SurfaceOfRevolution;
+  | Revit2027SurfaceOfRevolution
+  | Revit2027RuledSurface;
 
 export type Revit2027SurfaceDecodeResult =
   | { ok: true; value: Revit2027AnalyticSurface }
@@ -331,6 +342,52 @@ export function decodeRevit2027AnalyticSurface(
           profileCurve.descriptor.token === 0
             ? []
             : [profileCurve.descriptor],
+      },
+    };
+  }
+
+  if (sourceClassSlot === REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT) {
+    const profileCurve1 = decodeCondInt16PropertyDescriptor(data, cursor);
+    if (!profileCurve1.ok) {
+      return {
+        ok: false,
+        error: `Revit 2027 RuledSurf profile curve 1: ${profileCurve1.error}`,
+      };
+    }
+    cursor = profileCurve1.descriptor.endOffset;
+    const profileCurve2 = decodeCondInt16PropertyDescriptor(data, cursor);
+    if (!profileCurve2.ok) {
+      return {
+        ok: false,
+        error: `Revit 2027 RuledSurf profile curve 2: ${profileCurve2.error}`,
+      };
+    }
+    cursor = profileCurve2.descriptor.endOffset;
+    if (!bounded(data, cursor, POINT_3D_BYTES * 2, enclosingEndOffset)) {
+      return { ok: false, error: "Revit 2027 RuledSurf points are truncated" };
+    }
+    const point1 = point3d(view, cursor);
+    const point2 = point3d(view, cursor + POINT_3D_BYTES);
+    if (!finite([...point1, ...point2])) {
+      return { ok: false, error: "Revit 2027 RuledSurf points are not finite" };
+    }
+    cursor += POINT_3D_BYTES * 2;
+    return {
+      ok: true,
+      value: {
+        kind: "ruled",
+        sourceClassSlot,
+        byteOffset,
+        endOffset: cursor,
+        surface,
+        profileCurve1: profileCurve1.descriptor,
+        profileCurve2: profileCurve2.descriptor,
+        point1,
+        point2,
+        queuedProperties: [
+          profileCurve1.descriptor,
+          profileCurve2.descriptor,
+        ].filter((entry) => entry.token !== 0),
       },
     };
   }

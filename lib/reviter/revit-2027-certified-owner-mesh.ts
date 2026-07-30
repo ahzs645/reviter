@@ -24,6 +24,14 @@ import {
   meshRevit2027ConeApexSectorReplay,
   type Revit2027ConeOwnerMeshIssue,
 } from "./revit-2027-cone-owner-mesh.ts";
+import {
+  meshRevit2027RuledHelixReplay,
+  type Revit2027RuledHelixOwnerMeshIssue,
+} from "./revit-2027-ruled-helix-owner-mesh.ts";
+import {
+  meshRevit2027HermiteReplay,
+  type Revit2027HermiteOwnerMeshIssue,
+} from "./revit-2027-hermite-owner-mesh.ts";
 
 export type Revit2027CertifiedOwnerFaceMesh =
   | {
@@ -58,6 +66,23 @@ export type Revit2027CertifiedOwnerFaceMesh =
       faceToken: number;
       loopToken: number;
       mesh: NeutralFaceMesh;
+    }
+  | {
+      kind: "ruled-helix";
+      faceToken: number;
+      loopToken: number;
+      profileTokens: readonly [number, number];
+      uSegments: number;
+      vSegments: number;
+      mesh: NeutralFaceMesh;
+    }
+  | {
+      kind: "hermite-sampled";
+      faceToken: number;
+      loopToken: number;
+      uSegments: number;
+      vSegments: number;
+      mesh: NeutralFaceMesh;
     };
 
 export type Revit2027CertifiedOwnerMeshIssue =
@@ -76,6 +101,14 @@ export type Revit2027CertifiedOwnerMeshIssue =
   | {
       path: "cone-apex-sector";
       issue: Revit2027ConeOwnerMeshIssue;
+    }
+  | {
+      path: "ruled-helix";
+      issue: Revit2027RuledHelixOwnerMeshIssue;
+    }
+  | {
+      path: "hermite-sampled";
+      issue: Revit2027HermiteOwnerMeshIssue;
     };
 
 export type Revit2027CertifiedOwnerMesh = {
@@ -122,11 +155,17 @@ export function meshRevit2027CertifiedOwnerReplay(
   if (cylinder.ok === false) return cylinder;
   const cone = meshRevit2027ConeApexSectorReplay(replay, shared);
   if (cone.ok === false) return cone;
+  const ruledHelix = meshRevit2027RuledHelixReplay(replay, shared);
+  if (ruledHelix.ok === false) return ruledHelix;
+  const hermite = meshRevit2027HermiteReplay(replay, shared);
+  if (hermite.ok === false) return hermite;
   const certifiedCurvedFaceTokens = new Set(
     [
       ...surfRev.value.faceMeshes,
       ...cylinder.value.faceMeshes,
       ...cone.value.faceMeshes,
+      ...ruledHelix.value.faceMeshes,
+      ...hermite.value.faceMeshes,
     ].map((face) => face.faceToken),
   );
   const planarIssues = planar.value.issues.filter(
@@ -159,6 +198,14 @@ export function meshRevit2027CertifiedOwnerReplay(
           kind: "cone-apex-sector" as const,
           ...face,
         })),
+        ...ruledHelix.value.faceMeshes.map((face) => ({
+          kind: "ruled-helix" as const,
+          ...face,
+        })),
+        ...hermite.value.faceMeshes.map((face) => ({
+          kind: "hermite-sampled" as const,
+          ...face,
+        })),
       ],
       issues: [
         ...planarIssues.map((issue) => ({
@@ -175,6 +222,14 @@ export function meshRevit2027CertifiedOwnerReplay(
         })),
         ...cone.value.issues.map((issue) => ({
           path: "cone-apex-sector" as const,
+          issue,
+        })),
+        ...ruledHelix.value.issues.map((issue) => ({
+          path: "ruled-helix" as const,
+          issue,
+        })),
+        ...hermite.value.issues.map((issue) => ({
+          path: "hermite-sampled" as const,
           issue,
         })),
       ],

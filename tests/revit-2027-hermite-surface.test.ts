@@ -4,7 +4,11 @@ import test from "node:test";
 import {
   decodeRevit2027HermiteSurface,
   REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT,
+  type Revit2027HermiteSurface,
 } from "../lib/reviter/revit-2027-hermite-surface.ts";
+import {
+  evaluateRevit2027HermiteSurface,
+} from "../lib/reviter/revit-2027-hermite-owner-mesh.ts";
 import {
   createRevit2027GRepReplayRegistry,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
@@ -91,5 +95,35 @@ test("default Revit 2027 FIFO registry includes HermiteSurf", () => {
       REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT,
     )?.id,
     "Revit2027HermiteSurface",
+  );
+});
+
+test("evaluates the persisted U-fast bicubic Hermite node grid", () => {
+  const node = (u: number, v: number) => ({
+    point: [u, v, u + 2 * v] as const,
+    tangents: [
+      [1, 0, 1] as const,
+      [0, 1, 2] as const,
+    ] as const,
+    mixedDerivative: [0, 0, 0] as const,
+  });
+  const surface: Revit2027HermiteSurface = {
+    byteOffset: 0,
+    endOffset: 0,
+    envelope: { firstCorner: [0, 0], secondCorner: [1, 1] },
+    orientFlag: true,
+    periodic: [false, false],
+    constructedOk: true,
+    nodes: [node(0, 0), node(1, 0), node(0, 1), node(1, 1)],
+    uParameters: [0, 1],
+    vParameters: [0, 1],
+  };
+  assert.deepEqual(
+    evaluateRevit2027HermiteSurface(surface, 0.25, 0.75),
+    {
+      point: [0.25, 0.75, 1.75],
+      tangentU: [1, 0, 1],
+      tangentV: [0, 1, 2],
+    },
   );
 });

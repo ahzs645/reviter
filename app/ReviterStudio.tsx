@@ -469,10 +469,11 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         buffer,
         options: {
           maxSegments: 12_000,
-          // The paired browser workflow ultimately renders the IFC reference.
-          // Keep the RVT's native-definition cache bounded so dense late pages
-          // cannot spend minutes in GC; records beyond the cap retain proxies.
-          maxNativeMeshBytes: 96 * 1024 * 1024,
+          // Do not impose the studio's former 96 MB override here. Native
+          // component definitions can be filed long after the railing/stair
+          // that instances them; truncating the cache by storage order breaks
+          // an otherwise complete recursive symbol closure. The converter's
+          // own bounded default remains the browser-safety backstop.
           revitVersion: Number.parseInt(info.version, 10),
         },
       };
@@ -1260,6 +1261,17 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     {selectedRecord && selectedDimensions ? (
                       <dl className="property-table">
                         <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
+                        <div><dt>Rendered geometry</dt><dd>{
+                          selectedRecord.renderGeometryProvenance === "native"
+                            ? "Native RVT face mesh"
+                            : selectedRecord.renderGeometryProvenance === "reconstructed"
+                              ? "Exact reconstructed geometry"
+                              : selectedRecord.renderGeometryProvenance === "bounds-fallback"
+                                ? "Bounds fallback"
+                                : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
+                                  ? "Drawing aid—not rendered"
+                                  : "Not classified"
+                        }</dd></div>
                         {selectedRecord.categoryName && (
                           <div><dt>Category</dt><dd>{selectedRecord.categoryName}</dd></div>
                         )}
