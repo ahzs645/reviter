@@ -28,6 +28,18 @@ export type AutodeskSceneBatchStats = {
 
 const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
 
+export function setAutodeskLineVisibility(
+  root: THREE.Object3D,
+  visible: boolean,
+): void {
+  root.traverse((object) => {
+    if (object.userData.source === "autodesk-runtime-batch"
+      && object.userData.primitive === "lines") {
+      object.visible = visible;
+    }
+  });
+}
+
 function singleMaterial(
   object: THREE.Mesh | THREE.LineSegments,
 ): THREE.Material {

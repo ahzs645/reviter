@@ -8,6 +8,7 @@ export function FirstPersonPanel({
   guideOpen,
   onSpeed,
   onGravity,
+  onDrop,
   onGuide,
   onNeverShow,
   onExit,
@@ -17,7 +18,8 @@ export function FirstPersonPanel({
   gravity: boolean;
   guideOpen: boolean;
   onSpeed: (speed: WalkSpeed) => void;
-  onGravity: () => void;
+  onGravity: (enabled: boolean) => void;
+  onDrop: () => void;
   onGuide: (open: boolean) => void;
   onNeverShow: () => void;
   onExit: () => void;
@@ -44,12 +46,34 @@ export function FirstPersonPanel({
             >{entry}</button>
           ))}
         </div>
+        <div className="first-person-mode" role="group" aria-label="First person movement mode">
+          <button
+            className={gravity ? "active" : ""}
+            onClick={(event) => {
+              event.currentTarget.blur();
+              onGravity(true);
+            }}
+            aria-pressed={gravity}
+          >Walk</button>
+          <button
+            className={!gravity ? "active" : ""}
+            onClick={(event) => {
+              event.currentTarget.blur();
+              onGravity(false);
+            }}
+            aria-pressed={!gravity}
+          >Float</button>
+        </div>
         <button
-          className={`first-person-gravity${gravity ? " active" : ""}`}
-          onClick={onGravity}
-          aria-pressed={gravity}
-        >Floor follow {gravity ? "on" : "off"}</button>
-        <small>WASD move · Q down / E up · Shift run · −/+ speed · double-click teleport{gravity ? "" : " · Space/C free flight"}</small>
+          className="first-person-drop"
+          onClick={(event) => {
+            event.currentTarget.blur();
+            onDrop();
+          }}
+        >
+          Drop to nearest surface <kbd>Space</kbd>
+        </button>
+        <small>WASD move · Q down / E up · Shift run · −/+ speed · double-click teleport</small>
       </section>
       {guideOpen && (
         <section className="first-person-guide" role="dialog" aria-modal="true" aria-label="Navigate in first person">
@@ -59,11 +83,12 @@ export function FirstPersonPanel({
           </header>
           <div>
             <article><b>Walk</b><kbd>↑ ↓ ← →</kbd><span>or</span><kbd>W A S D</kbd></article>
-            <article><b>Go up and down</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Release to land on the nearest floor</small></article>
+            <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Teleport</b><i>◎</i><small>Double-click a destination</small></article>
             <article><b>Look around</b><i>↔</i><small>Drag with the left mouse button</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
+            <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>
           </div>
           <button className="first-person-guide-accept" onClick={() => onGuide(false)}>OK, got it</button>
           <button className="first-person-guide-dismiss" onClick={onNeverShow}>Don&apos;t remind me again</button>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  droppedEyeCoordinate,
   FIRST_PERSON_SPEEDS,
   floorTravelDirection,
   horizontalWalkDirection,
@@ -31,4 +32,10 @@ test("first-person strafing moves to the camera's visual right", () => {
 
   const zUpRight = horizontalWalkDirection("z", 0, 0, 1);
   assert.deepEqual(zUpRight.toArray(), [0, -1, 0]);
+});
+
+test("surface drop uses the hit surface or the safe model baseline", () => {
+  assert.equal(droppedEyeCoordinate(12, 5.6, 5.6), 17.6);
+  assert.equal(droppedEyeCoordinate(null, 5.6, 5.6), 5.6);
+  assert.equal(droppedEyeCoordinate(-20, 5.6, 5.6), 5.6);
 });

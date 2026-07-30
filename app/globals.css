@@ -371,10 +371,13 @@ button[data-reason]:hover::after, button[data-reason]:focus-visible::after { con
 .first-person-panel header button { width: 23px; height: 23px; border: 0; border-radius: 4px; color: #526a7e; background: transparent; cursor: pointer; font-size: 17px; line-height: 1; }
 .first-person-panel header button:hover { color: #174f7f; background: #dfeaf5; }
 .first-person-panel p { margin: 3px 0 8px; color: #708293; font-family: var(--font-plex-mono); font-size: 7px; }
-.first-person-speed { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.first-person-speed button, .first-person-gravity { min-height: 26px; border: 1px solid #ccd6df; border-radius: 5px; color: #52697c; background: white; cursor: pointer; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; }
-.first-person-speed button:hover, .first-person-speed button.active, .first-person-gravity:hover, .first-person-gravity.active { color: #124f84; border-color: #9fb6c9; background: #dfeaf5; }
-.first-person-gravity { width: 100%; margin-top: 4px; }
+.first-person-speed, .first-person-mode { display: grid; gap: 3px; }
+.first-person-speed { grid-template-columns: repeat(3, 1fr); }
+.first-person-mode { grid-template-columns: repeat(2, 1fr); margin-top: 4px; }
+.first-person-speed button, .first-person-mode button, .first-person-drop { min-height: 26px; border: 1px solid #ccd6df; border-radius: 5px; color: #52697c; background: white; cursor: pointer; font-family: var(--font-plex-mono); font-size: 7px; text-transform: uppercase; }
+.first-person-speed button:hover, .first-person-speed button.active, .first-person-mode button:hover, .first-person-mode button.active, .first-person-drop:hover { color: #124f84; border-color: #9fb6c9; background: #dfeaf5; }
+.first-person-drop { width: 100%; margin-top: 4px; }
+.first-person-drop kbd { margin-left: 5px; padding: 1px 4px; border: 1px solid #b8c5d0; border-radius: 3px; background: #f5f8fa; font-size: 6px; }
 .first-person-panel small { display: block; margin-top: 7px; color: #718392; font-family: var(--font-plex-mono); font-size: 6px; line-height: 1.55; }
 .first-person-guide { position: absolute; z-index: 10; left: 50%; top: 50%; width: min(460px, calc(100% - 28px)); padding: 13px; border: 1px solid rgba(37, 52, 64, .8); border-radius: 4px; color: #f4f7f9; background: rgba(47, 50, 52, .96); box-shadow: 0 20px 54px rgba(0, 0, 0, .42); transform: translate(-50%, -50%); }
 .first-person-guide header { display: flex; align-items: center; justify-content: space-between; padding: 0 3px 10px; }

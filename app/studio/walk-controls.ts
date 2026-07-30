@@ -67,6 +67,16 @@ export function horizontalWalkDirection(
   return forward.multiplyScalar(forwardInput).addScaledVector(right, strafeInput);
 }
 
+export function droppedEyeCoordinate(
+  surface: number | null,
+  minimumEyeCoordinate: number,
+  eyeHeight: number,
+): number {
+  return surface == null
+    ? minimumEyeCoordinate
+    : Math.max(minimumEyeCoordinate, surface + eyeHeight);
+}
+
 export type WalkControls = {
   /** Attach listeners and take over the camera. */
   enable(): void;
@@ -80,6 +90,8 @@ export type WalkControls = {
   setSpeed(speed: WalkSpeed): void;
   /** Toggle floor following. Off becomes a free-flight first-person camera. */
   setGravity(enabled: boolean): void;
+  /** Drop vertically onto the nearest model surface and resume walking. */
+  dropToSurface(): boolean;
   /** Travel to a picked surface, keeping clearance from vertical faces. */
   teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void;
   dispose(): void;
@@ -103,11 +115,14 @@ export type WalkOptions = {
   /** Follow horizontal model surfaces when true. */
   gravity?: boolean;
   /** Return the walking-surface coordinate below this eye position. */
-  resolveFloor?: (eyePosition: THREE.Vector3) => number | null;
+  resolveFloor?: (eyePosition: THREE.Vector3, maxDrop?: number) => number | null;
+  /** Longest vertical search used by the explicit Space-key drop. */
+  dropDistance?: number;
   /** Constrain a proposed camera move against model walls or other obstacles. */
   resolveMovement?: (from: THREE.Vector3, to: THREE.Vector3) => THREE.Vector3;
   onLookChange?: (looking: boolean) => void;
   onSpeedChange?: (speed: WalkSpeed) => void;
+  onGravityChange?: (enabled: boolean) => void;
   onExit?: () => void;
 };
 
@@ -185,6 +200,11 @@ export function createWalkControls(
       event.preventDefault();
       return;
     }
+    if (!event.repeat && event.code === "Space") {
+      dropToSurface();
+      event.preventDefault();
+      return;
+    }
     pressed.add(event.code);
     // The keys that drive the walker would otherwise scroll the page.
     if (/^(Arrow|Space|Key[WASDCQE])/.test(event.code)) event.preventDefault();
@@ -259,7 +279,6 @@ export function createWalkControls(
       - (pressed.has("KeyS") || pressed.has("ArrowDown") ? 1 : 0);
     const strafeInput = (pressed.has("KeyD") || pressed.has("ArrowRight") ? 1 : 0)
       - (pressed.has("KeyA") || pressed.has("ArrowLeft") ? 1 : 0);
-    const freeFlightInput = (pressed.has("Space") ? 1 : 0) - (pressed.has("KeyC") ? 1 : 0);
     const floorTravelInput = floorTravelDirection(pressed);
 
     // Movement stays in the horizontal plane whatever the camera is looking at,
@@ -268,8 +287,9 @@ export function createWalkControls(
       * (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? RUN_MULTIPLIER : 1);
     const target = horizontalWalkDirection(up, yaw, forwardInput, strafeInput)
       .multiplyScalar(movementSpeed);
-    if (!gravity) target.addScaledVector(upVector, freeFlightInput * RISE_SPEED * sceneUnitsPerFoot);
-    else if (floorTravelInput) target.addScaledVector(upVector, floorTravelInput * RISE_SPEED * sceneUnitsPerFoot);
+    if (floorTravelInput) {
+      target.addScaledVector(upVector, floorTravelInput * RISE_SPEED * sceneUnitsPerFoot);
+    }
 
     velocity.lerp(target, Math.min(1, DAMPING * step));
     const from = camera.position.clone();
@@ -302,6 +322,22 @@ export function createWalkControls(
       if (velocity[up] < 0) velocity[up] = 0;
     }
     applyRotation();
+  }
+
+  function dropToSurface(): boolean {
+    const surface = options.resolveFloor?.(
+      camera.position,
+      options.dropDistance ?? 10_000 * sceneUnitsPerFoot,
+    ) ?? null;
+    const droppedEye = droppedEyeCoordinate(surface, options.floor, eyeHeight);
+    if (up === "y") camera.position.y = droppedEye;
+    else camera.position.z = droppedEye;
+    velocity.set(0, 0, 0);
+    gravity = true;
+    floorProbeElapsed = 0;
+    options.onGravityChange?.(true);
+    applyRotation();
+    return surface != null;
   }
 
   function teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
@@ -340,6 +376,7 @@ export function createWalkControls(
       velocity[up] = 0;
       floorProbeElapsed = FLOOR_PROBE_INTERVAL;
     },
+    dropToSurface,
     teleport,
     dispose: disable,
   };

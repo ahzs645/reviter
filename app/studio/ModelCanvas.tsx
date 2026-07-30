@@ -21,7 +21,7 @@ import {
   publicAssetUrl,
   styleAutodeskReference,
 } from "./autodesk-reference.ts";
-import { batchAutodeskScene } from "./autodesk-scene.ts";
+import { batchAutodeskScene, setAutodeskLineVisibility } from "./autodesk-scene.ts";
 import {
   applyNavigationMode,
   disposeGroup,
@@ -176,7 +176,7 @@ export function ModelCanvas({
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
   const [walkGravity, setWalkGravity] = useState(true);
   const [walkLooking, setWalkLooking] = useState(false);
-  const [walkGuideOpen, setWalkGuideOpen] = useState(true);
+  const [walkGuideOpen, setWalkGuideOpen] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>("distance");
   const [measureUnit, setMeasureUnit] = useState<MeasureUnit>("feet");
   const [measureCalibration, setMeasureCalibration] = useState(1);
@@ -801,6 +801,7 @@ export function ModelCanvas({
       walkRef.current?.dispose();
       walkRef.current = null;
       runtime.controls.enabled = true;
+      if (source === "autodesk") setAutodeskLineVisibility(runtime.root, true);
       runtime.camera.near = Math.max(0.1, runtime.radius / 1_000);
       runtime.camera.updateProjectionMatrix();
       // Orbit around whatever is in front of the camera now, rather than
@@ -816,6 +817,7 @@ export function ModelCanvas({
     }
 
     runtime.controls.enabled = false;
+    if (source === "autodesk") setAutodeskLineVisibility(runtime.root, false);
     runtime.camera.near = Math.max(0.02 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
     runtime.camera.updateProjectionMatrix();
     const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
@@ -855,9 +857,11 @@ export function ModelCanvas({
       speed: walkSpeedRef.current,
       gravity: walkGravityRef.current,
       resolveFloor: runtime.surfaceFloorAt,
+      dropDistance: runtime.radius * 4,
       resolveMovement: runtime.resolveMovement,
       onLookChange: setWalkLooking,
       onSpeedChange: setWalkSpeed,
+      onGravityChange: setWalkGravity,
       onExit: () => onWalkingChange(false),
     });
     walk.enable();
@@ -1069,7 +1073,8 @@ export function ModelCanvas({
           gravity={walkGravity}
           guideOpen={walkGuideOpen}
           onSpeed={setWalkSpeed}
-          onGravity={() => setWalkGravity((enabled) => !enabled)}
+          onGravity={setWalkGravity}
+          onDrop={() => walkRef.current?.dropToSurface()}
           onGuide={setWalkGuideOpen}
           onNeverShow={() => {
             try {

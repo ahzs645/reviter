@@ -4,6 +4,7 @@ import * as THREE from "three";
 
 import {
   batchAutodeskScene,
+  setAutodeskLineVisibility,
   type AutodeskSceneBatchStats,
 } from "../app/studio/autodesk-scene.ts";
 import { applyExplode, collectExplodeParts } from "../app/studio/scene-tools.ts";
@@ -99,6 +100,10 @@ test("batches static meshes by material and merges line segments", () => {
   mergedLines.geometry.computeBoundingBox();
   assert.deepEqual(mergedLines.geometry.boundingBox?.min.toArray(), [0, 4, 0]);
   assert.deepEqual(mergedLines.geometry.boundingBox?.max.toArray(), [1, 4, 2]);
+  setAutodeskLineVisibility(batched, false);
+  assert.equal(mergedLines.visible, false);
+  setAutodeskLineVisibility(batched, true);
+  assert.equal(mergedLines.visible, true);
 });
 
 test("bakes mirrored mesh transforms into right-handed batch instances", () => {
