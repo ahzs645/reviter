@@ -364,7 +364,7 @@ export function createFaceSelection(
 }
 
 /**
- * Select every GLB fragment carrying the picked Autodesk element key. Complex
+ * Select every GLB fragment carrying the picked reference element key. Complex
  * elements such as stairs can span many meshes and materials.
  */
 export function createElementSelection(
@@ -402,7 +402,7 @@ export function createElementSelection(
   return createSelectionOverlay(
     fragments,
     sceneScale,
-    "Selected Autodesk model element",
+    "Selected reference model element",
     {
       scope: "element",
       elementKey,

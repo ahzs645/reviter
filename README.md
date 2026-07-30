@@ -76,6 +76,14 @@ Every assignment is reported with its evidence. In the supplied model the consen
 
 A 2027 envelope is not an element's native shape. Native family meshes, curved faces, openings, compound-layer assignments, element-material references, parameters, constraints, and general typed BIM semantics beyond the category remain undecoded. Appearance/material strings, colors, and embedded previews exist in the partition corpus, but production extraction and assignment are not implemented. The IFC exporter therefore writes clearly described `IfcBuildingElementProxy` geometry; it does not mislabel proxies as native `IfcWall`, `IfcSlab`, or family geometry.
 
+## Comparing against a reference conversion
+
+Reviter can draw a second conversion of the same building beside its own so the two can be judged against each other. Pair a GLB or glTF from the **Reference model** button, the same way a paired IFC export is supplied; it is read locally and never uploaded. A reference carries no element ids, so the object, category and property panels stay on the RVT diagnostic source — it is a yardstick, not a decode.
+
+Measured against one such reference (an Autodesk conversion of the supplied 2027 project, 51,420 fragments), the recovery's extents agree: 704.0 x 1228.4 x 62.3 ft against the reference's 714.9 x 1229.6 x 63.7 ft, and the per-category size medians are ordinary — mullions 3.82 ft, doors 7.25 ft, walls 12.32 ft, with 1 mullion of 19,316 and 0 doors of 1,933 above a sane size bound. The recovery is not systematically over-extending anything.
+
+One real defect surfaced from that comparison and is recorded rather than patched around: element **447970** carries a `Curtain Wall Mullions` category token while measuring 72,315 sq ft with a 0.66 ft z-span — the same footprint and thickness as floor 503705 beside it. Its category came from its own token rather than from the record-code consensus, so this is the documented ownership weakness in `native-categories.ts`: the token carries no element id, the owner is resolved as the nearest preceding value proved to be a real element id, and here a floor plate has taken a mullion's token. It maps to the dark `frame` display role, so it draws as a large dark plate across the model.
+
 ## Decoder compatibility
 
 | Revit release | Native evidence | Rendered geometry | Categories | Materials |
@@ -1332,7 +1340,7 @@ node scripts/browser-check.mjs dist-pages /path/to/model.rvt shot.png /path/to/r
 
 Build it with the default base path for that check; a bundle built for GitHub Pages requests its assets from `/reviter/` and will not boot under the local root server. Passing the matching IFC export also pairs it in the same tab, which is how the paired workflow below was verified: the 67 MB model converts in about 25 seconds and the 80 MB IFC pairs to 41,312 typed elements, both without leaving the browser.
 
-The raw SVF extraction remains in ignored `work/` storage. The deployment includes only the optimized `public/autodesk-reference.glb` reference derivative and its small runtime loader; that reference activates only for the matching supplied-project filename.
+The raw SVF extraction remains in ignored `work/` storage. **No reference derivative is bundled any more.** A 25.6 MB GLB of one building used to ship in the repository and be offered to whichever file matched it, which meant every clone carried a derivative of someone's project and every other RVT found the feature permanently disabled. The comparison is worth keeping — a conversion by Revit's own tooling is the best yardstick there is for judging a recovery — so the capability stayed and the asset went: pair your own GLB or glTF from disk, exactly as a paired IFC export is already supplied. It is read in the browser through an object URL and never uploaded, it works for any model, and nothing about a particular building is compiled in. The deployment now ships only the small glTF runtime loader.
 
 ### Google Colab build
 

@@ -47,7 +47,7 @@ import {
   type WorkerResponse,
 } from "../lib/reviter";
 
-import { AUTODESK_PREVIEW_RESULT, hasAutodeskReference, staticWorkerUrl } from "./studio/autodesk-reference.ts";
+import { staticWorkerUrl } from "./studio/reference-model.ts";
 import { canvasMenuPosition, formatBytes, formatNumber, matchesFilter, savedFileName } from "./studio/format.ts";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { MarkupOverlay } from "./studio/MarkupOverlay.tsx";
@@ -90,27 +90,27 @@ function BlobThumbnail({ blob, alt }: { blob?: Blob; alt: string }) {
     : <span className="family-library-fallback">RFA</span>;
 }
 
-export default function ReviterStudio({ referencePreview = false }: { referencePreview?: boolean }) {
-  const [phase, setPhase] = useState<Phase>(referencePreview ? "ready" : "idle");
-  const [progress, setProgress] = useState(referencePreview ? 1 : 0);
-  const [progressMessage, setProgressMessage] = useState(
-    referencePreview ? "Autodesk derivative reference loaded for visual review" : "Waiting for a local file",
-  );
+export default function ReviterStudio() {
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("Waiting for a local file");
   const [conversionStartedAt, setConversionStartedAt] = useState<number | null>(null);
   const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState<StudioFileInfo | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const [result, setResult] = useState<ConvertResult | null>(referencePreview ? AUTODESK_PREVIEW_RESULT : null);
+  const [result, setResult] = useState<ConvertResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [geometrySource, setGeometrySource] = useState<GeometrySource>(referencePreview ? "autodesk" : "recovered");
+  const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
   const [activeTool, setActiveTool] = useState<ViewerTool>("orbit");
   const [markupTool, setMarkupTool] = useState<MarkupTool>("pencil");
-  const [modelComments, setModelComments] = useState<ModelComment[]>(
-    () => referencePreview ? loadModelComments(AUTODESK_PREVIEW_RESULT) : [],
-  );
+  const [modelComments, setModelComments] = useState<ModelComment[]>([]);
+  // A reference the user paired from disk. Held as an object URL so the file
+  // never leaves the browser, exactly like the RVT and the paired IFC.
+  const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
+  const [referenceModelName, setReferenceModelName] = useState<string | null>(null);
   const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: DEFAULT_CAMERA_PRESET, sequence: 0 });
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
@@ -164,6 +164,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
+  const referenceModelInputRef = useRef<HTMLInputElement>(null);
   const familyInputRef = useRef<HTMLInputElement>(null);
   const sharedInputRef = useRef<HTMLInputElement>(null);
   const dwgInputRef = useRef<HTMLInputElement>(null);
@@ -459,14 +460,10 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         }
         setResult(message.result);
         setModelComments(loadModelComments(message.result));
-        // Identity from the file, not from its name: `info.documentId` is the
-        // `BasicFileInfo` Unique Document GUID read a moment ago, so renaming
-        // the model no longer changes which geometry the viewer opens on.
-        setGeometrySource(
-          hasAutodeskReference({ documentId: info.documentId, fileName: message.result.fileName })
-            ? "autodesk"
-            : "recovered",
-        );
+        // Reviter's own recovery is what opening a model shows. Nothing about
+        // the file — not its name, not its document id — switches the viewer to
+        // a different converter's output behind the user's back.
+        setGeometrySource("recovered");
         setProgress(1);
         setProgressMessage("Conversion ready");
         setPhase("ready");
@@ -603,15 +600,35 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     }
   };
 
+  /**
+   * Pair a reference conversion of the same building from disk.
+   *
+   * An object URL, so the file is read by the viewer and never uploaded — the
+   * same contract as the RVT and the paired IFC. Reviter used to ship one such
+   * reference for one building; supplying your own is what makes the comparison
+   * available for any model.
+   */
+  const pairReferenceModel = (file: File | null | undefined) => {
+    if (!file) return;
+    setReferenceModelUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return URL.createObjectURL(file);
+    });
+    setReferenceModelName(file.name);
+    setGeometrySource("reference-model");
+    setSelectedElementId(null);
+  };
+  // The object URL outlives a render, so it is released when the studio goes
+  // away rather than leaking the file for the life of the tab.
+  useEffect(() => () => { if (referenceModelUrl) URL.revokeObjectURL(referenceModelUrl); }, [referenceModelUrl]);
+
   const versionNumber = Number(metadata?.version ?? 0);
   // Not "future": a release the optional standards-aware reader declines. The
   // check reads both ends of its range so a legacy file is described the same
   // way rather than silently falling through as if it were supported.
   const isBeyondStandardsReader =
     versionNumber > 0 && !standardsReaderSupports(versionNumber);
-  const autodeskReferenceAvailable = Boolean(
-    result && hasAutodeskReference({ documentId: metadata?.documentId, fileName: result.fileName }),
-  );
+  const referenceModelAvailable = Boolean(referenceModelUrl);
   // Objects, categories and properties all read the per-triangle element ids,
   // and only the recovery carries them — the derivative and the export arrive
   // as anonymous meshes.
@@ -985,18 +1002,18 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             <FidelityRow label="OLE / CFB streams" value={result ? "Parsed" : "Awaiting file"} tone={result ? "good" : "off"} />
             <FidelityRow
               label="3D geometry"
-              value={geometrySource === "autodesk" ? "Autodesk derivative" : geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "native-profile-recovery" ? "Native wall profiles" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
-              tone={geometrySource === "autodesk" || geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
+              value={geometrySource === "reference-model" ? "Paired reference model" : geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "native-profile-recovery" ? "Native wall profiles" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
+              tone={geometrySource === "reference-model" || geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
             />
             <FidelityRow
               label="Native meshes"
-              value={geometrySource === "autodesk" ? "From the derivative" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
-              tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
+              value={geometrySource === "reference-model" ? "From the reference" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
+              tone={geometrySource === "reference-model" ? "good" : result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
             />
             <FidelityRow
               label="RVT materials"
-              value={geometrySource === "autodesk" ? "From the derivative" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
-              tone={geometrySource === "autodesk" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
+              value={geometrySource === "reference-model" ? "From the reference" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
+              tone={geometrySource === "reference-model" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
             />
             <FidelityRow
               label="Placed instances"
@@ -1118,7 +1135,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           <div className="stage-toolbar">
             <div className="stage-title">
               <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{!result ? "" : geometrySource === "autodesk" ? "Autodesk server-generated derivative" : geometrySource === "overlay" && comparison ? `${formatNumber(result.stats.candidatesUsed)} recovered · ${formatNumber(comparison.reference.elementCount)} in the export` : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines`}</span></div>
+              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{!result ? "" : geometrySource === "reference-model" ? `paired reference${referenceModelName ? ` · ${referenceModelName}` : ""}` : geometrySource === "overlay" && comparison ? `${formatNumber(result.stats.candidatesUsed)} recovered · ${formatNumber(comparison.reference.elementCount)} in the export` : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines`}</span></div>
             </div>
             <div className="toolbar-controls">
               {/* Every source this viewer has is on the switcher whether or not
@@ -1129,10 +1146,20 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
               {result && (
                 <div className="segmented-control source-control" aria-label="Geometry source">
                   <ToolButton
-                    className={geometrySource === "autodesk" ? "active" : ""}
-                    reason={autodeskReferenceAvailable ? null : "No Autodesk derivative is bundled for this file"}
-                    onClick={() => { setGeometrySource("autodesk"); setSelectedElementId(null); }}
-                  >Autodesk</ToolButton>
+                    className={geometrySource === "reference-model" ? "active" : ""}
+                    reason={referenceModelAvailable
+                      ? null
+                      : "Pair a GLB or glTF reference model to compare"}
+                    title={referenceModelName
+                      ? `Paired reference: ${referenceModelName}`
+                      : "A conversion of the same building by other tooling, for comparison"}
+                    onClick={() => {
+                      if (referenceModelAvailable) {
+                        setGeometrySource("reference-model");
+                        setSelectedElementId(null);
+                      } else referenceModelInputRef.current?.click();
+                    }}
+                  >Reference model</ToolButton>
                   <ToolButton
                     className={geometrySource === "reference" ? "active" : ""}
                     reason={comparison?.referenceMeshes.length
@@ -1157,13 +1184,25 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             </div>
           </div>
 
-          <div className={`viewport viewport-${renderMode} ${geometrySource === "autodesk" ? "viewport-autodesk" : ""}`}>
+          <input
+            ref={referenceModelInputRef}
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            hidden
+            onChange={(event) => {
+              pairReferenceModel(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+
+          <div className={`viewport viewport-${renderMode} ${geometrySource === "reference-model" ? "viewport-reference-model" : ""}`}>
             {result ? (
               <>
                 <ModelCanvas
                   result={result}
                   comparison={comparison}
                   source={geometrySource}
+                  referenceModelUrl={referenceModelUrl}
                   renderMode={renderMode}
                   navigationMode={navigationMode}
                   cameraRequest={cameraRequest}
@@ -1221,7 +1260,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     pressed={detailsOpen}
                   ><i>▤</i>Report & exports</ToolButton>
                   <span className="command-divider" />
-                  <span className="viewer-fidelity-chip">{geometrySource === "autodesk" ? "Autodesk derivative reference" : result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
+                  <span className="viewer-fidelity-chip">{geometrySource === "reference-model" ? "paired reference model" : result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
                 </nav>
 
                 {viewerPanel === "model" && (
@@ -1428,8 +1467,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                 )}
                 {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>{selectedRecord.categoryName ?? "Uncategorised"} {selectedRecord.elementId}<span>View properties</span></button>}
                 <div className="viewport-legend">
-                  {geometrySource === "autodesk" ? (
-                    <span><i className="legend-cyan" />Autodesk source meshes</span>
+                  {geometrySource === "reference-model" ? (
+                    <span><i className="legend-cyan" />Reference source meshes</span>
                   ) : geometrySource === "overlay" && comparison ? (
                     <><span><i className="legend-amber" />Recovered</span><span><i className="legend-cyan" />Aligned within 0.5 ft</span><span><i className="legend-missing" />Geometric difference</span><span><i className="legend-context" />Unmatched IFC context</span></>
                   ) : geometrySource === "reference" && comparison ? (
@@ -1437,9 +1476,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   ) : (
                     <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
-                  {geometrySource !== "autodesk" && <span><i className="legend-grid" />Model grid</span>}
+                  {geometrySource !== "reference-model" && <span><i className="legend-grid" />Model grid</span>}
                 </div>
-                <div className="viewport-stamp">{geometrySource === "autodesk" ? "Autodesk SVF derivative · metres · y-up" : geometrySource === "overlay" && comparison ? "recovery over paired IFC · feet · z-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
+                <div className="viewport-stamp">{geometrySource === "reference-model" ? "paired reference model · as supplied" : geometrySource === "overlay" && comparison ? "recovery over paired IFC · feet · z-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
               </>
             ) : (
               <div className="empty-stage">

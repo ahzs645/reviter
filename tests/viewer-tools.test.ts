@@ -45,7 +45,7 @@ test("comment anchors register between RVT feet and IFC metres", () => {
     scenePointToModelFeet(inIfc!, "reference", origin)?.map((value) => Number(value.toFixed(6))),
     [101, 202, 303],
   );
-  assert.equal(scenePointToModelFeet([1, 2, 3], "autodesk", origin), undefined);
+  assert.equal(scenePointToModelFeet([1, 2, 3], "reference-model", origin), undefined);
 });
 
 test("section direction reverses axis clipping and boxes use six planes", () => {

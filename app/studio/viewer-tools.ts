@@ -47,7 +47,7 @@ export function scenePointToModelFeet(
   source: GeometrySource,
   originFeet: Point3Tuple,
 ): Point3Tuple | undefined {
-  if (source === "autodesk") return undefined;
+  if (source === "reference-model") return undefined;
   if (source === "reference") return point.map((value) => value / 0.3048) as Point3Tuple;
   return point.map((value, axis) => value + originFeet[axis]!) as Point3Tuple;
 }
@@ -57,7 +57,7 @@ export function modelFeetToScenePoint(
   source: GeometrySource,
   originFeet: Point3Tuple,
 ): Point3Tuple | undefined {
-  if (source === "autodesk") return undefined;
+  if (source === "reference-model") return undefined;
   if (source === "reference") return pointFeet.map((value) => value * 0.3048) as Point3Tuple;
   return pointFeet.map((value, axis) => value - originFeet[axis]!) as Point3Tuple;
 }

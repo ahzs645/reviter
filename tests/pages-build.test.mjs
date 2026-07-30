@@ -14,10 +14,11 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   await stat(new URL("omniclass/OmniClassTaxonomy_Vanilla.txt", output));
   await stat(new URL("omniclass/OmniClassTaxonomy_FoodService.txt", output));
   await stat(new URL(".nojekyll", output));
-  const autodeskModel = await stat(new URL("autodesk-reference.glb", output));
-  const autodeskLoader = await stat(new URL("autodesk-gltf-loader.js", output));
-  assert.ok(autodeskModel.size > 20_000_000, "Autodesk reference derivative was copied");
-  assert.ok(autodeskLoader.size > 100_000, "Autodesk GLB runtime loader was copied");
+  // No reference model is bundled: a reference is paired from disk, per model,
+  // so the deployed site must not ship a 25.6 MB derivative of one building.
+  await assert.rejects(stat(new URL("autodesk-reference.glb", output)));
+  const gltfLoader = await stat(new URL("gltf-loader.js", output));
+  assert.ok(gltfLoader.size > 100_000, "glTF runtime loader was copied");
 
   const assets = await readdir(new URL("assets/", output));
   assert.ok(assets.some((name) => /^worker-.*\.js$/.test(name)), "RVT worker was emitted");

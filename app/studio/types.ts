@@ -3,7 +3,7 @@ import type { CameraPreset } from "../../lib/reviter";
 
 export type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 export type ReferencePhase = "idle" | "reading" | "ready" | "error";
-export type GeometrySource = "autodesk" | "reference" | "recovered" | "overlay";
+export type GeometrySource = "reference-model" | "reference" | "recovered" | "overlay";
 export type ViewerPanel = "none" | "model" | "properties" | "categories";
 export type CameraRequest = { preset: CameraPreset; sequence: number; fit?: boolean };
 /**

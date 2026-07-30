@@ -222,8 +222,6 @@ export {
   standardsReaderSupports,
 } from "./reader-support";
 export { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes";
-export { AUTODESK_REFERENCE_GLB_PALETTE } from "./autodesk-reference-palette";
-export type { AutodeskReferenceGlbPaletteEntry } from "./autodesk-reference-palette";
 export {
   boundsDimensions,
   CAMERA_PRESETS,
