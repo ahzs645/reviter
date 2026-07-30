@@ -26,6 +26,18 @@ export type Revit2027CylinderSampledLoop = {
   loopToken: number;
   role: "outer" | "hole";
   edgeUses: readonly Revit2027CylinderSampledEdgeUse[];
+  /**
+   * Face-local UV connectors admitted by the native BRep filler's evaluated
+   * 3D endpoint tolerance. They preserve both persisted endpoints rather than
+   * rewriting a shared GEdge.
+   */
+  joinBridges?: readonly Revit2027CylinderSampledJoinBridge[];
+};
+
+export type Revit2027CylinderSampledJoinBridge = {
+  afterEdgeToken: number;
+  start: readonly [number, number];
+  end: readonly [number, number];
 };
 
 export type Revit2027CylinderSampledFace = {
@@ -239,6 +251,20 @@ function adaptLoop(
   }
 
   const seenEdges = new Set<number>();
+  const bridgesByEdge = new Map(
+    (loop.joinBridges ?? []).map((bridge) => [
+      bridge.afterEdgeToken,
+      bridge,
+    ]),
+  );
+  if (bridgesByEdge.size !== (loop.joinBridges?.length ?? 0)) {
+    issues.push({
+      code: "invalid-loop",
+      faceToken: face.faceToken,
+      loopToken: loop.loopToken,
+      message: "a cylinder loop has duplicate join bridges",
+    });
+  }
   const curves: BrepTrimCurve[] = [];
   let firstPoint: BrepParamPoint2 | null = null;
   let previousPoint: BrepParamPoint2 | null = null;
@@ -344,7 +370,7 @@ function adaptLoop(
       (point) => Math.abs(point[1] - points[0]![1]) <= tolerance,
     );
     curves.push(
-      constantFirst !== constantSecond
+      points.length === 2 && constantFirst !== constantSecond
         ? {
             kind: "pcurve-line",
             start: points[0]!,
@@ -352,8 +378,53 @@ function adaptLoop(
           }
         : { kind: "pcurve-polyline", points },
     );
+    const bridge = bridgesByEdge.get(edgeUse.edgeToken);
+    if (bridge) {
+      const start = mapUv(
+        bridge.start,
+        face.surface.radius,
+        handedness,
+      );
+      const end = mapUv(
+        bridge.end,
+        face.surface.radius,
+        handedness,
+      );
+      const constantFirst =
+        Math.abs(start[0] - end[0]) <= tolerance;
+      const constantSecond =
+        Math.abs(start[1] - end[1]) <= tolerance;
+      if (
+        !bridge.start.every(Number.isFinite) ||
+        !bridge.end.every(Number.isFinite) ||
+        previousPoint == null ||
+        !samePoint(previousPoint, start, tolerance) ||
+        constantFirst === constantSecond
+      ) {
+        issues.push({
+          code: "invalid-loop",
+          faceToken: face.faceToken,
+          loopToken: loop.loopToken,
+          edgeToken: edgeUse.edgeToken,
+          message:
+            "join bridge must start at its directed edge end and follow exactly one parameter axis",
+        });
+      } else {
+        curves.push({ kind: "pcurve-line", start, end });
+        previousPoint = end;
+      }
+      bridgesByEdge.delete(edgeUse.edgeToken);
+    }
   }
 
+  if (bridgesByEdge.size > 0) {
+    issues.push({
+      code: "invalid-loop",
+      faceToken: face.faceToken,
+      loopToken: loop.loopToken,
+      message: "join bridge references an edge outside its loop",
+    });
+  }
   if (
     firstPoint &&
     previousPoint &&

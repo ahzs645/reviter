@@ -1,5 +1,25 @@
 export { convertRvtBytes } from "./convert";
-export { revitVersionFromBasicFileInfo } from "./basic-file-info";
+export {
+  parseBasicFileInfoProperties,
+  redactBasicFileInfoProperties,
+  revitVersionFromBasicFileInfo,
+} from "./basic-file-info";
+export type { BasicFileInfoProperties } from "./basic-file-info";
+export { decodeRevitTextBytes } from "./revit-text-encoding";
+export type { DecodedRevitText, RevitTextEncoding } from "./revit-text-encoding";
+export { dwgThumbnailBlob, extractDwgThumbnail } from "./dwg-thumbnail";
+export type { DwgThumbnail } from "./dwg-thumbnail";
+export {
+  indexFamilyLibraryFiles,
+  searchFamilyLibrary,
+  serializableFamilyLibraryIndex,
+} from "./family-library";
+export type {
+  FamilyLibraryEntry,
+  FamilyLibraryError,
+  FamilyLibraryIndex,
+  FamilyLibraryProgress,
+} from "./family-library";
 export { partAtomMetadataFromSummary } from "./part-atom";
 export { parsePartAtomXml } from "./part-atom";
 export { parseProjectInformationArchive } from "./project-information";
@@ -19,20 +39,54 @@ export type {
   PartAtomParameter,
   PartAtomTerm,
 } from "./part-atom";
-export { parseSharedParameterFile, writeSharedParameterFile } from "./shared-parameters";
+export {
+  compareSharedParameterDocuments,
+  deduplicateSharedParameterDocument,
+  mergeSharedParameterDocuments,
+  parseSharedParameterBytes,
+  parseSharedParameterFile,
+  regroupSharedParameters,
+  validateSharedParameterDocument,
+  writeSharedParameterFile,
+} from "./shared-parameters";
 export type {
+  DecodedSharedParameterDocument,
+  SharedParameterComparison,
   SharedParameterDefinition,
+  SharedParameterDifference,
   SharedParameterDocument,
   SharedParameterGroup,
+  SharedParameterIssue,
 } from "./shared-parameters";
-export { parseTypeCatalog, writeTypeCatalog } from "./type-catalog";
-export type { TypeCatalog, TypeCatalogParameter, TypeCatalogType } from "./type-catalog";
+export { parseTypeCatalog, parseTypeCatalogBytes, writeTypeCatalog } from "./type-catalog";
+export type {
+  DecodedTypeCatalog,
+  TypeCatalog,
+  TypeCatalogParameter,
+  TypeCatalogType,
+} from "./type-catalog";
 export {
+  loadBundledOmniClassTaxonomy,
   mergeOmniClassTaxonomies,
+  omniClassForPartAtom,
   parseOmniClassTaxonomy,
+  searchOmniClassTaxonomy,
   writeOmniClassTaxonomy,
 } from "./omniclass";
-export type { OmniClassItem } from "./omniclass";
+export type { BundledOmniClassEdition, OmniClassItem } from "./omniclass";
+export { loadLegacyRevit2021Api } from "./legacy-revit-2021";
+export type {
+  LegacyCategoryInfo,
+  LegacyDisplayUnitInfo,
+  LegacyNamedValue,
+  LegacyParameterTypeInfo,
+  LegacyRevit2021Api,
+  LegacyRevit2021EnumName,
+  LegacyRevit2021MapName,
+  LegacySearchResult,
+  LegacyUnitSymbolInfo,
+  LegacyUnitTypeInfo,
+} from "./legacy-revit-2021";
 export {
   boundsOfRecords,
   detectDuplicatedBoundsRecord,
@@ -40,6 +94,8 @@ export {
   solidBounds,
 } from "./bounds-records";
 export type { DetectedBoundsRecord } from "./bounds-records";
+export { boxDifference, drawnBounds } from "./drawn-bounds";
+export type { Box } from "./drawn-bounds";
 export {
   asBytes,
   gzipOffsets,
@@ -155,6 +211,8 @@ export { doorLeafCorners } from "./door-leaf";
 export type { WallRun } from "./door-leaf";
 export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
+export { AUTODESK_REFERENCE_GLB_PALETTE } from "./autodesk-reference-palette";
+export type { AutodeskReferenceGlbPaletteEntry } from "./autodesk-reference-palette";
 export {
   boundsDimensions,
   CAMERA_PRESETS,

@@ -424,6 +424,102 @@ test("tessellates a bounded cylindrical p-curve chart with native angular steps"
   });
 });
 
+test("tessellates a bounded orthogonal concave cylinder chart", () => {
+  const face = cylinderFace("notched-cylinder", [
+    pcurveLoop("notched-outer", "outer", [
+      [0, 0],
+      [2, 0],
+      [2, Math.PI / 2],
+      [1, Math.PI / 2],
+      [1, Math.PI / 4],
+      [0, Math.PI / 4],
+    ]),
+  ]);
+  const result = tessellateNeutralBrep(
+    brep([face]),
+    { nativePolicy: CYLINDER_POLICY },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  // The 2×4 native-bounded chart grid contains six cells after the notch.
+  assert.equal(result.mesh.indices.length / 3, 12);
+  assert.equal(result.mesh.groups.length, 1);
+  assert.equal(result.mesh.groups[0]!.faceId, "notched-cylinder");
+  assert.equal(result.mesh.groups[0]!.vertexCount, 13);
+  assert.ok([...result.mesh.positions].every(Number.isFinite));
+  assert.ok([...result.mesh.normals].every(Number.isFinite));
+});
+
+test("tessellates a persisted sampled diagonal cylinder p-curve without inventing boundary points", () => {
+  const face = cylinderFace("sampled-intersection-cylinder", [{
+    id: "sampled-outer",
+    role: "outer",
+    curves: [
+      {
+        kind: "pcurve-polyline",
+        points: [[0, 0], [0.5, 0.25], [1, 0.5]],
+      },
+      {
+        kind: "pcurve-line",
+        start: [1, 0.5],
+        end: [1, 1],
+      },
+      {
+        kind: "pcurve-polyline",
+        points: [[1, 1], [0.5, 1], [0, 1]],
+      },
+      {
+        kind: "pcurve-polyline",
+        points: [[0, 1], [0, 0.5], [0, 0]],
+      },
+    ],
+  }]);
+  const result = tessellateNeutralBrep(
+    brep([face]),
+    { nativePolicy: CYLINDER_POLICY },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  // Eight persisted boundary samples remain exact; only overlong internal
+  // triangulation edges may add vertices.
+  assert.ok(result.mesh.positions.length / 3 >= 8);
+  assert.ok(result.mesh.indices.length > 0);
+  assert.ok([...result.mesh.positions].every(Number.isFinite));
+  assert.ok([...result.mesh.normals].every(Number.isFinite));
+});
+
+test("tessellates an orthogonal cylinder chart with a strict hole", () => {
+  const face = cylinderFace("perforated-cylinder", [
+    pcurveLoop("outer", "outer", [
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+    ]),
+    pcurveLoop("hole", "hole", [
+      [0.5, 0.5],
+      [0.5, 1.5],
+      [1.5, 1.5],
+      [1.5, 0.5],
+    ]),
+  ]);
+  const result = tessellateNeutralBrep(
+    brep([face]),
+    { nativePolicy: CYLINDER_POLICY },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  // Native 30-degree refinement creates four angular rows; the hole removes
+  // the two cells in its bounded middle column.
+  assert.equal(result.mesh.indices.length / 3, 20);
+  assert.equal(result.mesh.groups[0]!.vertexCount, 20);
+  assert.ok([...result.mesh.positions].every(Number.isFinite));
+  assert.ok([...result.mesh.normals].every(Number.isFinite));
+});
+
 test("combines planar and cylindrical faces as contiguous source groups", () => {
   const plane = planarFace("plane", [loop("plane-outer", "outer", [
     [0, 0, 0],
@@ -499,7 +595,7 @@ test("requires an explicit native policy for a cylindrical face", () => {
   }
 });
 
-test("rejects cylinder seams, ambiguous wraps, non-rectangles, holes, and 3D trims", () => {
+test("rejects cylinder seams, ambiguous wraps, invalid holes, and 3D trims", () => {
   const fullPeriod = cylinderFace("full-period", [
     pcurveLoop("outer", "outer", [
       [0, 0], [1, 0], [1, Math.PI * 2], [0, Math.PI * 2],
@@ -513,7 +609,7 @@ test("rejects cylinder seams, ambiguous wraps, non-rectangles, holes, and 3D tri
   ]);
   const withHole = cylinderFace("with-hole", [
     pcurveLoop("outer", "outer", [[0, 0], [2, 0], [2, 2], [0, 2]]),
-    pcurveLoop("hole", "hole", [[0.5, 0.5], [1.5, 0.5], [1.5, 1.5], [0.5, 1.5]]),
+    pcurveLoop("hole", "hole", [[1.5, 0.5], [2.5, 0.5], [2.5, 1.5], [1.5, 1.5]]),
   ]);
   const threeDimensional = cylinderFace("three-dimensional", [
     loop("outer", "outer", [

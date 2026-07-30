@@ -199,8 +199,26 @@ export function makeReport(
   result: ConvertResult,
   metadata: Record<string, unknown> | null,
 ): string {
+  const sensitiveMetadataKeys = new Set([
+    "path",
+    "content",
+    "username",
+    "centralmodelpath",
+    "lastsavepath",
+    "centralmodelidentity",
+    "modelidentity",
+    "author",
+  ]);
+  const safeMetadataValue = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(safeMetadataValue);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value).flatMap(([key, child]) =>
+      sensitiveMetadataKeys.has(key.replace(/[^a-z]/gi, "").toLowerCase())
+        ? []
+        : [[key, safeMetadataValue(child)]]));
+  };
   const safeMetadata = metadata
-    ? Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== "path" && key !== "content"))
+    ? safeMetadataValue(metadata) as Record<string, unknown>
     : null;
   return JSON.stringify(
     {

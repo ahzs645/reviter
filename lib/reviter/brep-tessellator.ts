@@ -12,6 +12,7 @@ import {
   nativeCircularArcSegmentCount,
   nativeCylinderMaximumParamSteps,
   type NativeTessellationPolicy,
+  type NativeTessellationResult,
 } from "./native-tessellation-policy.ts";
 import { triangulate, type Point2 } from "./polygon.ts";
 
@@ -586,6 +587,66 @@ function triangleArea(vertices: readonly Point2[], indices: readonly number[]): 
   return area;
 }
 
+function clusteredCoordinates(
+  values: readonly number[],
+  tolerance: number,
+): number[] {
+  const sorted = [...values].sort((left, right) => left - right);
+  const clustered: number[] = [];
+  for (const value of sorted) {
+    if (
+      clustered.length === 0 ||
+      value - clustered.at(-1)! > tolerance
+    ) {
+      clustered.push(value);
+    }
+  }
+  return clustered;
+}
+
+function nearestCoordinate(
+  coordinates: readonly number[],
+  value: number,
+  tolerance: number,
+): number | null {
+  let nearest: number | null = null;
+  let distance = Infinity;
+  for (const coordinate of coordinates) {
+    const candidate = Math.abs(coordinate - value);
+    if (candidate < distance) {
+      distance = candidate;
+      nearest = coordinate;
+    }
+  }
+  return distance <= tolerance ? nearest : null;
+}
+
+function refinedLinearCoordinates(
+  coordinates: readonly number[],
+  maximumStep: number,
+  maximumCoordinates: number,
+): number[] | null {
+  const refined: number[] = [];
+  for (let index = 0; index + 1 < coordinates.length; index += 1) {
+    const first = coordinates[index]!;
+    const second = coordinates[index + 1]!;
+    const segments = maximumStep > 0
+      ? Math.max(1, Math.ceil((second - first) / maximumStep))
+      : 1;
+    if (
+      !Number.isSafeInteger(segments) ||
+      refined.length + segments + 1 > maximumCoordinates
+    ) {
+      return null;
+    }
+    if (index === 0) refined.push(first);
+    for (let segment = 1; segment <= segments; segment += 1) {
+      refined.push(first + ((second - first) * segment) / segments);
+    }
+  }
+  return refined;
+}
+
 /**
  * Tessellate a complete BRep only when every face is a validated planar,
  * linearly-trimmed face. No partial mesh is returned on an unsupported face.
@@ -893,6 +954,659 @@ export function tessellatePlanarBrep(
   };
 }
 
+function tessellateOrthogonalCylinderChart(
+  brep: NeutralBrep,
+  face: NeutralBrepFace & { surface: BrepCylinderSurface },
+  charts: {
+    outer: readonly BrepParamPoint2[];
+    holes: readonly (readonly BrepParamPoint2[])[];
+  },
+  frame: {
+    axis: Vec3;
+    xAxis: Vec3;
+    yAxis: Vec3;
+  },
+  composedTransform: BrepMatrix4,
+  policy: Pick<
+    NativeTessellationPolicy,
+    "maximumEdgeLength" | "maximumAngleDegrees" | "surfaceDeviation"
+  >,
+  options: {
+    uTolerance: number;
+    angularTolerance: number;
+    areaTolerance: number;
+    maxVertices: number;
+    maximumUStep: number;
+  },
+): BrepTessellationResult {
+  const { surface: cylinder } = face;
+  const {
+    uTolerance,
+    angularTolerance,
+    areaTolerance,
+    maxVertices,
+    maximumUStep,
+  } = options;
+  const outerLoop = face.trims.find((loop) => loop.role === "outer");
+  const holeLoops = face.trims.filter((loop) => loop.role === "hole");
+  const loopId = outerLoop?.id;
+  const issue = (
+    code: BrepTessellationIssueCode,
+    message: string,
+  ): BrepTessellationResult => ({
+    ok: false,
+    issues: [{ code, faceId: face.id, loopId, message }],
+  });
+
+  const uCoordinates = clusteredCoordinates(
+    [charts.outer, ...charts.holes]
+      .flat()
+      .map((point) => point[0]),
+    uTolerance,
+  );
+  const vCoordinates = clusteredCoordinates(
+    [charts.outer, ...charts.holes]
+      .flat()
+      .map((point) => point[1]),
+    angularTolerance,
+  );
+  if (uCoordinates.length < 2 || vCoordinates.length < 2) {
+    return issue(
+      "invalid-cylinder-chart",
+      "orthogonal cylinder chart has fewer than two coordinates per axis",
+    );
+  }
+
+  const snappedCharts: Point2[][] = [];
+  for (const chart of [charts.outer, ...charts.holes]) {
+    const snapped: Point2[] = [];
+    for (const point of chart) {
+      const u = nearestCoordinate(uCoordinates, point[0], uTolerance);
+      const v = nearestCoordinate(vCoordinates, point[1], angularTolerance);
+      if (u == null || v == null) {
+        return issue(
+          "invalid-cylinder-chart",
+          "cylinder p-curve cannot be snapped within its declared tolerances",
+        );
+      }
+      snapped.push([u, v]);
+    }
+    snappedCharts.push(snapped);
+  }
+  const chartTolerance = Math.max(uTolerance, angularTolerance);
+  const minimumArea = Math.max(
+    areaTolerance,
+    uTolerance * angularTolerance,
+  );
+  for (let index = 0; index < snappedCharts.length; index += 1) {
+    const ring = snappedCharts[index]!;
+    if (
+      Math.abs(signedArea(ring)) <= minimumArea ||
+      !simpleRing(ring, chartTolerance)
+    ) {
+      return {
+        ok: false,
+        issues: [{
+          code: "invalid-cylinder-chart",
+          faceId: face.id,
+          loopId: index === 0 ? loopId : holeLoops[index - 1]?.id,
+          message:
+            "orthogonal cylinder p-curve is degenerate or self-intersecting",
+        }],
+      };
+    }
+  }
+  const snappedOuter = snappedCharts[0]!;
+  const snappedHoles = snappedCharts.slice(1);
+  for (let index = 0; index < snappedHoles.length; index += 1) {
+    const hole = snappedHoles[index]!;
+    if (
+      !pointInRingStrict(hole[0]!, snappedOuter, chartTolerance) ||
+      ringsIntersect(hole, snappedOuter, chartTolerance)
+    ) {
+      return {
+        ok: false,
+        issues: [{
+          code: "invalid-hole",
+          faceId: face.id,
+          loopId: holeLoops[index]?.id,
+          message:
+            "cylinder hole is not strictly contained by the outer p-curve",
+        }],
+      };
+    }
+    for (let other = 0; other < index; other += 1) {
+      if (
+        ringsIntersect(hole, snappedHoles[other]!, chartTolerance) ||
+        pointInRingStrict(hole[0]!, snappedHoles[other]!, chartTolerance) ||
+        pointInRingStrict(
+          snappedHoles[other]![0]!,
+          hole,
+          chartTolerance,
+        )
+      ) {
+        return {
+          ok: false,
+          issues: [{
+            code: "invalid-hole",
+            faceId: face.id,
+            loopId: holeLoops[index]?.id,
+            message: "cylinder holes intersect or contain one another",
+          }],
+        };
+      }
+    }
+  }
+  const expectedArea =
+    Math.abs(signedArea(snappedOuter)) -
+    snappedHoles.reduce(
+      (sum, hole) => sum + Math.abs(signedArea(hole)),
+      0,
+    );
+  if (expectedArea <= minimumArea) {
+    return issue(
+      "invalid-hole",
+      "cylinder holes consume or exceed the outer p-curve area",
+    );
+  }
+
+  const refinedU = refinedLinearCoordinates(
+    uCoordinates,
+    maximumUStep,
+    maxVertices,
+  );
+  if (!refinedU) {
+    return issue(
+      "invalid-cylinder-chart",
+      "cylindrical axial grid exceeds the safety bound",
+    );
+  }
+  const refinedV: number[] = [];
+  for (let index = 0; index + 1 < vCoordinates.length; index += 1) {
+    const first = vCoordinates[index]!;
+    const second = vCoordinates[index + 1]!;
+    const segmented = nativeCircularArcSegmentCount(
+      cylinder.radius,
+      second - first,
+      policy,
+      { minimumSegments: 1, maximumSegments: Math.max(1, maxVertices) },
+    );
+    if (!segmented.ok) {
+      return issue("invalid-options", segmented.error);
+    }
+    if (
+      refinedV.length + segmented.value + 1 > maxVertices
+    ) {
+      return issue(
+        "invalid-cylinder-chart",
+        "cylindrical angular grid exceeds the safety bound",
+      );
+    }
+    if (index === 0) refinedV.push(first);
+    for (let segment = 1; segment <= segmented.value; segment += 1) {
+      refinedV.push(
+        first + ((second - first) * segment) / segmented.value,
+      );
+    }
+  }
+  if (
+    refinedU.length * refinedV.length > maxVertices ||
+    refinedU.length < 2 ||
+    refinedV.length < 2
+  ) {
+    return issue(
+      "invalid-cylinder-chart",
+      "cylindrical mesh vertex grid exceeds the safety bound",
+    );
+  }
+
+  const activeCells: { uIndex: number; vIndex: number }[] = [];
+  let coveredArea = 0;
+  for (let uIndex = 0; uIndex + 1 < refinedU.length; uIndex += 1) {
+    const u0 = refinedU[uIndex]!;
+    const u1 = refinedU[uIndex + 1]!;
+    for (let vIndex = 0; vIndex + 1 < refinedV.length; vIndex += 1) {
+      const v0 = refinedV[vIndex]!;
+      const v1 = refinedV[vIndex + 1]!;
+      if (
+        !pointInRingStrict(
+          [(u0 + u1) / 2, (v0 + v1) / 2],
+          snappedOuter,
+          chartTolerance,
+        ) ||
+        snappedHoles.some((hole) =>
+          pointInRingStrict(
+            [(u0 + u1) / 2, (v0 + v1) / 2],
+            hole,
+            chartTolerance,
+          )
+        )
+      ) {
+        continue;
+      }
+      activeCells.push({ uIndex, vIndex });
+      coveredArea += (u1 - u0) * (v1 - v0);
+    }
+  }
+  const allowedAreaError = Math.max(
+    areaTolerance,
+    expectedArea * Math.max(chartTolerance, Number.EPSILON),
+  );
+  if (
+    activeCells.length === 0 ||
+    Math.abs(coveredArea - expectedArea) > allowedAreaError
+  ) {
+    return issue(
+      "triangulation-failed",
+      "orthogonal cylinder grid does not cover the persisted p-curve area",
+    );
+  }
+
+  const oriented = face.orientation ?? 1;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const vertexByGridPoint = new Map<string, number>();
+  const vertex = (
+    uIndex: number,
+    vIndex: number,
+  ): NativeTessellationResult<number> => {
+    const key = `${uIndex},${vIndex}`;
+    const existing = vertexByGridPoint.get(key);
+    if (existing != null) return { ok: true, value: existing };
+    if (vertexByGridPoint.size >= maxVertices) {
+      return {
+        ok: false,
+        error: "cylindrical mesh vertex count exceeds the safety bound",
+      };
+    }
+    const u = refinedU[uIndex]!;
+    const v = refinedV[vIndex]!;
+    const cosine = Math.cos(v);
+    const sine = Math.sin(v);
+    const radial: Vec3 = [
+      cosine * frame.xAxis[0] + sine * frame.yAxis[0],
+      cosine * frame.xAxis[1] + sine * frame.yAxis[1],
+      cosine * frame.xAxis[2] + sine * frame.yAxis[2],
+    ];
+    const point: Vec3 = [
+      cylinder.origin[0] +
+        cylinder.radius * (u * frame.axis[0] + radial[0]),
+      cylinder.origin[1] +
+        cylinder.radius * (u * frame.axis[1] + radial[1]),
+      cylinder.origin[2] +
+        cylinder.radius * (u * frame.axis[2] + radial[2]),
+    ];
+    const dV: Vec3 = [
+      cylinder.radius *
+        (-sine * frame.xAxis[0] + cosine * frame.yAxis[0]),
+      cylinder.radius *
+        (-sine * frame.xAxis[1] + cosine * frame.yAxis[1]),
+      cylinder.radius *
+        (-sine * frame.xAxis[2] + cosine * frame.yAxis[2]),
+    ];
+    const dU: Vec3 = [
+      cylinder.radius * frame.axis[0],
+      cylinder.radius * frame.axis[1],
+      cylinder.radius * frame.axis[2],
+    ];
+    const worldNormal = normalized(
+      cross(
+        transformVector(composedTransform, dV),
+        transformVector(composedTransform, dU),
+      ),
+    );
+    if (!worldNormal) {
+      return {
+        ok: false,
+        error: "transformed cylindrical face collapses to zero area",
+      };
+    }
+    const index = positions.length / 3;
+    positions.push(...transformPoint(composedTransform, point));
+    normals.push(
+      ...worldNormal.map((component) => {
+        const value = component * oriented;
+        return Object.is(value, -0) ? 0 : value;
+      }),
+    );
+    vertexByGridPoint.set(key, index);
+    return { ok: true, value: index };
+  };
+
+  for (const { uIndex, vIndex } of activeCells) {
+    const a = vertex(uIndex, vIndex);
+    const b = vertex(uIndex + 1, vIndex);
+    const c = vertex(uIndex + 1, vIndex + 1);
+    const d = vertex(uIndex, vIndex + 1);
+    const failed = [a, b, c, d].find((candidate) => !candidate.ok);
+    if (failed && !failed.ok) {
+      return issue("invalid-cylinder-chart", failed.error);
+    }
+    if (!a.ok || !b.ok || !c.ok || !d.ok) {
+      return issue(
+        "invalid-cylinder-chart",
+        "cylindrical vertex construction failed",
+      );
+    }
+    if (oriented === 1) {
+      indices.push(a.value, c.value, b.value, a.value, d.value, c.value);
+    } else {
+      indices.push(a.value, b.value, c.value, a.value, c.value, d.value);
+    }
+  }
+
+  return {
+    ok: true,
+    mesh: {
+      brepId: brep.id,
+      positions: Float64Array.from(positions),
+      normals: Float32Array.from(normals),
+      indices: Uint32Array.from(indices),
+      groups: [{
+        faceId: face.id,
+        indexOffset: 0,
+        indexCount: indices.length,
+        vertexOffset: 0,
+        vertexCount: positions.length / 3,
+        materialId: face.materialId ?? null,
+        objectMarker: face.objectMarker,
+        sourceTransform: composedTransform,
+        brepProvenance: { ...brep.provenance },
+        faceProvenance: { ...face.provenance },
+      }],
+    },
+  };
+}
+
+/**
+ * Tessellate the narrow sampled-pcurve cylinder subset proved by persisted
+ * GEdge samples. Unlike the orthogonal chart path, this admits one simple
+ * outer polyline with a sampled diagonal segment (for example a
+ * plane-cylinder intersection). Boundary segments are never invented: every
+ * persisted segment must already satisfy the active native policy. Only
+ * interior triangulation edges may be bisected to meet that policy.
+ */
+function tessellateSampledCylinderChart(
+  brep: NeutralBrep,
+  face: NeutralBrepFace & { surface: BrepCylinderSurface },
+  chart: readonly BrepParamPoint2[],
+  frame: {
+    axis: Vec3;
+    xAxis: Vec3;
+    yAxis: Vec3;
+  },
+  composedTransform: BrepMatrix4,
+  policy: Pick<
+    NativeTessellationPolicy,
+    "maximumEdgeLength" | "maximumAngleDegrees" | "surfaceDeviation"
+  >,
+  options: {
+    uTolerance: number;
+    angularTolerance: number;
+    areaTolerance: number;
+    maxVertices: number;
+    maximumUStep: number;
+  },
+): BrepTessellationResult {
+  const { surface: cylinder } = face;
+  const {
+    uTolerance,
+    angularTolerance,
+    areaTolerance,
+    maxVertices,
+    maximumUStep,
+  } = options;
+  const loopId = face.trims.find((loop) => loop.role === "outer")?.id;
+  const issue = (
+    code: BrepTessellationIssueCode,
+    message: string,
+  ): BrepTessellationResult => ({
+    ok: false,
+    issues: [{ code, faceId: face.id, loopId, message }],
+  });
+  const chartTolerance = Math.max(uTolerance, angularTolerance);
+  const expectedArea = Math.abs(
+    signedArea(chart as readonly Point2[]),
+  );
+  const minimumArea = Math.max(
+    areaTolerance,
+    uTolerance * angularTolerance,
+  );
+  if (
+    expectedArea <= minimumArea ||
+    !simpleRing(chart as readonly Point2[], chartTolerance)
+  ) {
+    return issue(
+      "invalid-cylinder-chart",
+      "sampled cylinder p-curve is degenerate or self-intersecting",
+    );
+  }
+
+  const localIndices = triangulate(chart as readonly Point2[]);
+  const tessellatedArea = triangleArea(
+    chart as readonly Point2[],
+    localIndices,
+  );
+  const allowedAreaError = Math.max(
+    areaTolerance,
+    expectedArea * Math.max(chartTolerance, Number.EPSILON),
+  );
+  if (
+    localIndices.length < 3 ||
+    localIndices.length % 3 !== 0 ||
+    Math.abs(tessellatedArea - expectedArea) > allowedAreaError
+  ) {
+    return issue(
+      "triangulation-failed",
+      "triangles do not cover the sampled cylinder p-curve",
+    );
+  }
+
+  const vertices = chart.map(
+    (point): Point2 => [point[0], point[1]],
+  );
+  let triangles: [number, number, number][] = [];
+  for (let index = 0; index < localIndices.length; index += 3) {
+    triangles.push([
+      localIndices[index]!,
+      localIndices[index + 1]!,
+      localIndices[index + 2]!,
+    ]);
+  }
+  const boundaryEdges = new Set<string>();
+  const edgeKey = (a: number, b: number): string =>
+    a < b ? `${a}:${b}` : `${b}:${a}`;
+  for (let index = 0; index < chart.length; index += 1) {
+    boundaryEdges.add(edgeKey(index, (index + 1) % chart.length));
+  }
+  const edgeRequiresSplit = (
+    a: number,
+    b: number,
+  ): NativeTessellationResult<boolean> => {
+    const first = vertices[a]!;
+    const second = vertices[b]!;
+    if (
+      maximumUStep > 0 &&
+      Math.abs(second[0] - first[0]) >
+        maximumUStep * (1 + Number.EPSILON * 8)
+    ) {
+      return { ok: true, value: true };
+    }
+    const angularSpan = Math.abs(second[1] - first[1]);
+    if (angularSpan <= angularTolerance) {
+      return { ok: true, value: false };
+    }
+    const angular = nativeCircularArcSegmentCount(
+      cylinder.radius,
+      angularSpan,
+      policy,
+      {
+        minimumSegments: 1,
+        maximumSegments: Math.max(1, maxVertices),
+      },
+    );
+    if (!angular.ok) return angular;
+    return { ok: true, value: angular.value > 1 };
+  };
+
+  while (true) {
+    let split: readonly [number, number] | null = null;
+    const seen = new Set<string>();
+    for (const triangle of triangles) {
+      for (let side = 0; side < 3; side += 1) {
+        const a = triangle[side]!;
+        const b = triangle[(side + 1) % 3]!;
+        const key = edgeKey(a, b);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const required = edgeRequiresSplit(a, b);
+        if (!required.ok) return issue("invalid-options", required.error);
+        if (required.value) {
+          if (boundaryEdges.has(key)) {
+            const first = vertices[a]!;
+            const second = vertices[b]!;
+            return issue(
+              "invalid-cylinder-chart",
+              "persisted sampled cylinder boundary exceeds the native policy " +
+                `(du=${Math.abs(second[0] - first[0])}, ` +
+                `dv=${Math.abs(second[1] - first[1])})`,
+            );
+          }
+          split = [a, b];
+          break;
+        }
+      }
+      if (split) break;
+    }
+    if (!split) break;
+    if (vertices.length >= maxVertices) {
+      return issue(
+        "invalid-cylinder-chart",
+        "sampled cylindrical mesh vertex count exceeds the safety bound",
+      );
+    }
+    const [splitA, splitB] = split;
+    const first = vertices[splitA]!;
+    const second = vertices[splitB]!;
+    const midpoint = vertices.length;
+    vertices.push([
+      (first[0] + second[0]) / 2,
+      (first[1] + second[1]) / 2,
+    ]);
+    const nextTriangles: [number, number, number][] = [];
+    for (const triangle of triangles) {
+      let matched = false;
+      for (let side = 0; side < 3; side += 1) {
+        const a = triangle[side]!;
+        const b = triangle[(side + 1) % 3]!;
+        if (
+          !(
+            (a === splitA && b === splitB) ||
+            (a === splitB && b === splitA)
+          )
+        ) {
+          continue;
+        }
+        const third = triangle[(side + 2) % 3]!;
+        nextTriangles.push(
+          [a, midpoint, third],
+          [midpoint, b, third],
+        );
+        matched = true;
+        break;
+      }
+      if (!matched) nextTriangles.push(triangle);
+    }
+    triangles = nextTriangles;
+  }
+
+  if (vertices.length > maxVertices) {
+    return issue(
+      "invalid-cylinder-chart",
+      "sampled cylindrical mesh vertex count exceeds the safety bound",
+    );
+  }
+  const oriented = face.orientation ?? 1;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  for (const [u, v] of vertices) {
+    const cosine = Math.cos(v);
+    const sine = Math.sin(v);
+    const radial: Vec3 = [
+      cosine * frame.xAxis[0] + sine * frame.yAxis[0],
+      cosine * frame.xAxis[1] + sine * frame.yAxis[1],
+      cosine * frame.xAxis[2] + sine * frame.yAxis[2],
+    ];
+    const point: Vec3 = [
+      cylinder.origin[0] +
+        cylinder.radius * (u * frame.axis[0] + radial[0]),
+      cylinder.origin[1] +
+        cylinder.radius * (u * frame.axis[1] + radial[1]),
+      cylinder.origin[2] +
+        cylinder.radius * (u * frame.axis[2] + radial[2]),
+    ];
+    positions.push(...transformPoint(composedTransform, point));
+    const dV: Vec3 = [
+      cylinder.radius *
+        (-sine * frame.xAxis[0] + cosine * frame.yAxis[0]),
+      cylinder.radius *
+        (-sine * frame.xAxis[1] + cosine * frame.yAxis[1]),
+      cylinder.radius *
+        (-sine * frame.xAxis[2] + cosine * frame.yAxis[2]),
+    ];
+    const dU: Vec3 = [
+      cylinder.radius * frame.axis[0],
+      cylinder.radius * frame.axis[1],
+      cylinder.radius * frame.axis[2],
+    ];
+    const worldNormal = normalized(
+      cross(
+        transformVector(composedTransform, dV),
+        transformVector(composedTransform, dU),
+      ),
+    );
+    if (!worldNormal) {
+      return issue(
+        "triangulation-failed",
+        "transformed sampled cylinder face collapses to zero area",
+      );
+    }
+    normals.push(
+      ...worldNormal.map((component) => {
+        const value = component * oriented;
+        return Object.is(value, -0) ? 0 : value;
+      }),
+    );
+  }
+  const indices: number[] = [];
+  for (const [a, b, c] of triangles) {
+    if (oriented === 1) indices.push(a, c, b);
+    else indices.push(a, b, c);
+  }
+  return {
+    ok: true,
+    mesh: {
+      brepId: brep.id,
+      positions: Float64Array.from(positions),
+      normals: Float32Array.from(normals),
+      indices: Uint32Array.from(indices),
+      groups: [{
+        faceId: face.id,
+        indexOffset: 0,
+        indexCount: indices.length,
+        vertexOffset: 0,
+        vertexCount: vertices.length,
+        materialId: face.materialId ?? null,
+        objectMarker: face.objectMarker,
+        sourceTransform: composedTransform,
+        brepProvenance: { ...brep.provenance },
+        faceProvenance: { ...face.provenance },
+      }],
+    },
+  };
+}
+
 function tessellateCylinderFace(
   brep: NeutralBrep,
   face: NeutralBrepFace,
@@ -910,6 +1624,7 @@ function tessellateCylinderFace(
   }
   const distanceTolerance = options.distanceTolerance ?? DEFAULT_DISTANCE_TOLERANCE;
   const angularTolerance = options.angularTolerance ?? DEFAULT_ANGULAR_TOLERANCE;
+  const areaTolerance = options.areaTolerance ?? DEFAULT_AREA_TOLERANCE;
   const maxVertices = options.maxVertices ?? DEFAULT_MAX_VERTICES;
   const cylinder = face.surface;
 
@@ -990,38 +1705,19 @@ function tessellateCylinderFace(
       }],
     };
   }
-  if (holeLoops.length) {
-    return {
-      ok: false,
-      issues: [{
-        code: "invalid-hole",
-        faceId: face.id,
-        loopId: holeLoops[0]!.id,
-        message: "cylindrical holes require constrained curved-surface remeshing",
-      }],
-    };
-  }
-
   const uTolerance = distanceTolerance / cylinder.radius;
-  const decoded = loopParamPoints(
-    face.id,
-    outerLoops[0]!,
-    uTolerance,
-    angularTolerance,
-  );
-  if (!decoded.ok) return { ok: false, issues: [decoded.issue] };
-  const chart = decoded.points;
-  if (chart.length !== 4) {
-    return {
-      ok: false,
-      issues: [{
-        code: "invalid-cylinder-chart",
-        faceId: face.id,
-        loopId: outerLoops[0]!.id,
-        message: "only four-corner rectangular cylinder charts are verified",
-      }],
-    };
+  const charts: BrepParamPoint2[][] = [];
+  for (const loop of [outerLoops[0]!, ...holeLoops]) {
+    const decoded = loopParamPoints(
+      face.id,
+      loop,
+      uTolerance,
+      angularTolerance,
+    );
+    if (!decoded.ok) return { ok: false, issues: [decoded.issue] };
+    charts.push(decoded.points);
   }
+  const chart = charts[0]!;
 
   const uMin = Math.min(...chart.map((point) => point[0]));
   const uMax = Math.max(...chart.map((point) => point[0]));
@@ -1052,59 +1748,99 @@ function tessellateCylinderFace(
     };
   }
 
+  let parameterAligned = true;
+  const hasSampledDiagonalCurve = outerLoops[0]!.curves.some(
+    (curve) =>
+      curve.kind === "pcurve-polyline" &&
+      curve.points.length >= 3 &&
+      curve.points.some((point, index) => {
+        if (index === 0) return false;
+        const previous = curve.points[index - 1]!;
+        return (
+          Math.abs(point[0] - previous[0]) > uTolerance &&
+          Math.abs(point[1] - previous[1]) > angularTolerance
+        );
+      }),
+  );
   const cornerKeys = new Set<string>();
-  for (let index = 0; index < chart.length; index += 1) {
-    const point = chart[index]!;
-    const next = chart[(index + 1) % chart.length]!;
-    const constantU = Math.abs(point[0] - next[0]) <= uTolerance;
-    const constantV = Math.abs(point[1] - next[1]) <= angularTolerance;
-    if (constantU === constantV) {
-      return {
-        ok: false,
-        issues: [{
-          code: "invalid-cylinder-chart",
-          faceId: face.id,
-          loopId: outerLoops[0]!.id,
-          message: "cylinder chart edges must alternate along one parameter axis",
-        }],
-      };
-    }
-    if (Math.abs(point[1] - next[1]) > Math.PI + angularTolerance) {
-      return {
-        ok: false,
-        issues: [{
-          code: "wrapping-cylinder-chart",
-          faceId: face.id,
-          loopId: outerLoops[0]!.id,
-          message: "cylinder p-curve edge has an ambiguous angular wrap",
-        }],
-      };
-    }
+  for (let chartIndex = 0; chartIndex < charts.length; chartIndex += 1) {
+    const oneChart = charts[chartIndex]!;
+    const oneLoop = chartIndex === 0
+      ? outerLoops[0]!
+      : holeLoops[chartIndex - 1]!;
+    for (let index = 0; index < oneChart.length; index += 1) {
+      const point = oneChart[index]!;
+      const next = oneChart[(index + 1) % oneChart.length]!;
+      const constantU = Math.abs(point[0] - next[0]) <= uTolerance;
+      const constantV = Math.abs(point[1] - next[1]) <= angularTolerance;
+      if (constantU === constantV) {
+        parameterAligned = false;
+      }
+      if (Math.abs(point[1] - next[1]) > Math.PI + angularTolerance) {
+        return {
+          ok: false,
+          issues: [{
+            code: "wrapping-cylinder-chart",
+            faceId: face.id,
+            loopId: oneLoop.id,
+            message: "cylinder p-curve edge has an ambiguous angular wrap",
+          }],
+        };
+      }
 
-    const uSide = Math.abs(point[0] - uMin) <= uTolerance
-      ? "min"
-      : Math.abs(point[0] - uMax) <= uTolerance
-        ? "max"
-        : null;
-    const vSide = Math.abs(point[1] - vMin) <= angularTolerance
-      ? "min"
-      : Math.abs(point[1] - vMax) <= angularTolerance
-        ? "max"
-        : null;
-    if (!uSide || !vSide) {
-      return {
-        ok: false,
-        issues: [{
-          code: "invalid-cylinder-chart",
-          faceId: face.id,
-          loopId: outerLoops[0]!.id,
-          message: "cylinder p-curve vertex is not a rectangle corner",
-        }],
-      };
+      if (
+        holeLoops.length === 0 &&
+        chart.length === 4 &&
+        parameterAligned
+      ) {
+        const uSide = Math.abs(point[0] - uMin) <= uTolerance
+          ? "min"
+          : Math.abs(point[0] - uMax) <= uTolerance
+            ? "max"
+            : null;
+        const vSide = Math.abs(point[1] - vMin) <= angularTolerance
+          ? "min"
+          : Math.abs(point[1] - vMax) <= angularTolerance
+            ? "max"
+            : null;
+        if (!uSide || !vSide) {
+          return {
+            ok: false,
+            issues: [{
+              code: "invalid-cylinder-chart",
+              faceId: face.id,
+              loopId: outerLoops[0]!.id,
+              message: "cylinder p-curve vertex is not a rectangle corner",
+            }],
+          };
+        }
+        cornerKeys.add(`${uSide}-${vSide}`);
+      }
     }
-    cornerKeys.add(`${uSide}-${vSide}`);
   }
-  if (cornerKeys.size !== 4) {
+  const rectangular =
+    holeLoops.length === 0 &&
+    chart.length === 4 &&
+    parameterAligned;
+  if (
+    !parameterAligned &&
+    (
+      holeLoops.length !== 0 ||
+      !hasSampledDiagonalCurve
+    )
+  ) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-cylinder-chart",
+        faceId: face.id,
+        loopId: outerLoops[0]!.id,
+        message:
+          "non-orthogonal cylinder charts require one sampled outer p-curve without holes",
+      }],
+    };
+  }
+  if (rectangular && cornerKeys.size !== 4) {
     return {
       ok: false,
       issues: [{
@@ -1142,6 +1878,41 @@ function tessellateCylinderFace(
       }],
     };
   }
+  const composedTransform = multiplyMatrix(modelTransform, faceTransform);
+  if (!rectangular) {
+    if (!parameterAligned) {
+      return tessellateSampledCylinderChart(
+        brep,
+        face as NeutralBrepFace & { surface: BrepCylinderSurface },
+        chart,
+        { axis, xAxis, yAxis },
+        composedTransform,
+        policy,
+        {
+          uTolerance,
+          angularTolerance,
+          areaTolerance,
+          maxVertices,
+          maximumUStep: nativeSteps.value.maximumUStep,
+        },
+      );
+    }
+    return tessellateOrthogonalCylinderChart(
+      brep,
+      face as NeutralBrepFace & { surface: BrepCylinderSurface },
+      { outer: chart, holes: charts.slice(1) },
+      { axis, xAxis, yAxis },
+      composedTransform,
+      policy,
+      {
+        uTolerance,
+        angularTolerance,
+        areaTolerance,
+        maxVertices,
+        maximumUStep: nativeSteps.value.maximumUStep,
+      },
+    );
+  }
   const vSegmentsResult = nativeCircularArcSegmentCount(
     cylinder.radius,
     vSpan,
@@ -1175,7 +1946,6 @@ function tessellateCylinderFace(
     };
   }
 
-  const composedTransform = multiplyMatrix(modelTransform, faceTransform);
   const oriented = face.orientation ?? 1;
   const positions: number[] = [];
   const normals: number[] = [];

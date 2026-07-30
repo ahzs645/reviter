@@ -74,6 +74,10 @@ import {
 } from "./native-identity.ts";
 import { scanMaterialElementRecords } from "./material-records.ts";
 import {
+  applyNativeMaterialIndices,
+  buildNativeMaterialPalette,
+} from "./material-palette.ts";
+import {
   resolveElementMaterialAssignments,
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
@@ -730,6 +734,9 @@ export function convertRvtBytes(
     }
     const nativeMeshCollector = createRevit2027NativeMeshCollector(
       decoderPlan.revitVersion,
+      options.maxNativeMeshBytes == null
+        ? undefined
+        : { maxStoredBytes: options.maxNativeMeshBytes },
     );
     const elemTableEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
@@ -894,6 +901,12 @@ export function convertRvtBytes(
         if (read) window = revitWindowTail(read);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
+        if (gzipChunks % 12 === 1) {
+          onProgress?.({
+            ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
+            message: `Scanning partition ${partitionIndex + 1}/${partitions.length} · page ${index + 1}/${offsets.length} · ${elementBounds.length.toLocaleString()} exact bounds`,
+          });
+        }
         nativeMeshCollector.scanPage(inflated);
         if (decoderPlan.revitVersion != null) {
           const materialScan = scanMaterialElementRecords(
@@ -1110,6 +1123,10 @@ export function convertRvtBytes(
       }
     }
 
+    onProgress?.({
+      ratio: 0.825,
+      message: `Reconstructing native surfaces · ${planesByElement.size.toLocaleString()} surface owners`,
+    });
     const solidStream = partitions[0]!.path.replace(/^Root Entry\//, "");
     // An element can own more than one solid — a wall built from several
     // segments. All of them are kept and all of them are drawn; the longest is
@@ -1164,6 +1181,10 @@ export function convertRvtBytes(
       if (quads.length) quadsByElement.set(elementId, quads);
     }
 
+    onProgress?.({
+      ratio: 0.83,
+      message: `Resolving placed geometry · ${instancePlacements.size.toLocaleString()} instances`,
+    });
     // Most elements that own native geometry have no duplicated-bounds record —
     // 2,818 wall records exist against 7,401 wall objects — so building the
     // scene only from bounds records drops the majority of the walls. Elements
@@ -1326,6 +1347,10 @@ export function convertRvtBytes(
      * consensus to read; and 1 under `0x07ef`, at purity 0.35.
      */
     {
+      onProgress?.({
+        ratio: 0.835,
+        message: `Recovering sketch boundaries · ${curvesByOwner.size.toLocaleString()} curve owners`,
+      });
       const ringCandidates = new Set<number>();
       for (const owner of curvesByOwner.keys()) {
         // A slab's edges are filed under its Sketch companion at `id - 1`, so a
@@ -1441,7 +1466,10 @@ export function convertRvtBytes(
       }
     }
 
-    onProgress?.({ ratio: 0.84, message: "Resolving native Revit categories" });
+    onProgress?.({
+      ratio: 0.84,
+      message: `Resolving native Revit categories · ${elementBounds.length.toLocaleString()} element records`,
+    });
     const nativeCategories = applyNativeCategories(
       elementBounds,
       categoryTokens,
@@ -1854,7 +1882,10 @@ export function convertRvtBytes(
       doorLeaves += 1;
     }
 
-    onProgress?.({ ratio: 0.86, message: "Removing duplicates and spatial noise" });
+    onProgress?.({
+      ratio: 0.90,
+      message: `Finalising element geometry · ${elementBounds.length.toLocaleString()} element records`,
+    });
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
@@ -1949,6 +1980,19 @@ export function convertRvtBytes(
         ...nativeCompoundLayerMaterialAssignments,
       ].map((assignment) => assignment.elementId),
     ).size;
+    const nativeMaterialPalette = buildNativeMaterialPalette(
+      nativeMaterialDefinitions,
+      [
+        ...nativeElementMaterialAssignments,
+        ...nativeCompoundLayerMaterialAssignments,
+      ],
+    );
+    const materials = displayMaterials();
+    const nativeMaterialIndexById = new Map<number, number>();
+    for (const entry of nativeMaterialPalette) {
+      nativeMaterialIndexById.set(entry.materialElementId, materials.length);
+      materials.push(entry.material);
+    }
     const nativeHostRelations = resolveHostRelations(
       hostRelationCandidates,
       new Set(markerByElement.keys()),
@@ -1967,6 +2011,10 @@ export function convertRvtBytes(
       (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
     );
     if (boundedSolids.length) {
+      onProgress?.({
+        ratio: 0.96,
+        message: `Building the display scene · ${boundedSolids.length.toLocaleString()} drawable records`,
+      });
       const displaySelection = selectDisplayBounds(boundedSolids);
       const displayBounds = displaySelection.records;
       // Framed to the building rather than to the outermost record, so a few
@@ -1998,6 +2046,10 @@ export function convertRvtBytes(
           ),
         },
       );
+      applyNativeMaterialIndices(
+        nativeMeshScene.meshes,
+        nativeMaterialIndexById,
+      );
       // A proxy is removed only after the complete native element was admitted
       // under the output cap. Incomplete and truncated owners keep their
       // independently recovered envelope/solid.
@@ -2022,7 +2074,7 @@ export function convertRvtBytes(
         fileName,
         byteLength: bytes.byteLength,
         meshes,
-        materials: displayMaterials(),
+        materials,
         segments,
         elementBounds,
         nativeProfiles,
@@ -2042,6 +2094,9 @@ export function convertRvtBytes(
             ...(transmissionData ? ["revit-transmission-data-v1"] : []),
             ...(nativeMaterialDefinitions.length
               ? ["revit-2027-material-element-name-v1"]
+              : []),
+            ...(nativeMaterialPalette.length
+              ? ["revit-2027-material-color-packed-v1"]
               : []),
             ...(fixedFamilySymbolRelations.length
               ? ["revit-2027-family-symbol-family-v1"]
@@ -2207,7 +2262,7 @@ export function convertRvtBytes(
             ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
             : []),
           ...(nativeMaterialDefinitions.length
-            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry, ${nativeFamilySymbolMaterialMaps.length.toLocaleString()} FamilySymbol geometry-tag maps, and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, and shared geometry, ${nativeFamilySymbolMaterialMaps.length.toLocaleString()} FamilySymbol geometry-tag maps, and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Transparency and texture channels remain unresolved.`]
             : []),
           ...(nativeFamilySymbolRelations.length
             ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
@@ -2351,7 +2406,7 @@ export function convertRvtBytes(
       fileName,
       byteLength: bytes.byteLength,
       meshes,
-      materials: displayMaterials(),
+      materials,
       segments: used,
       elementBounds,
       nativeProfiles,
@@ -2370,6 +2425,9 @@ export function convertRvtBytes(
           ...(transmissionData ? ["revit-transmission-data-v1"] : []),
           ...(nativeMaterialDefinitions.length
             ? ["revit-2027-material-element-name-v1"]
+            : []),
+          ...(nativeMaterialPalette.length
+            ? ["revit-2027-material-color-packed-v1"]
             : []),
           ...(fixedFamilySymbolRelations.length
             ? ["revit-2027-family-symbol-family-v1"]
@@ -2471,7 +2529,7 @@ export function convertRvtBytes(
           ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
           : []),
         ...(nativeMaterialDefinitions.length
-          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements, while exact appearance properties remain unresolved.`]
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, and shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Transparency and texture channels remain unresolved.`]
           : []),
         ...(nativeFamilySymbolRelations.length
           ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]

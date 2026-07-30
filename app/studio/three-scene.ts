@@ -114,13 +114,17 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeVertexNormals();
-    const color = technical
-      ? new THREE.Color(data.matched ? 0xc6d6e8 : 0xaebed2)
-      : new THREE.Color().setRGB(...data.color);
+    const color = data.diffStatus === "different"
+      ? new THREE.Color(0xff3b46)
+      : technical
+        ? new THREE.Color(data.diffStatus === "aligned" ? 0xc6d6e8 : 0xaebed2)
+        : new THREE.Color().setRGB(...data.color);
     const material = new THREE.MeshStandardMaterial({
       color,
-      emissive: data.matched ? color.clone().multiplyScalar(0.08) : new THREE.Color(0x000000),
-      roughness: technical ? 0.84 : data.matched ? 0.58 : 0.82,
+      emissive: data.diffStatus === "different"
+        ? new THREE.Color(0x3a0206)
+        : data.matched ? color.clone().multiplyScalar(0.08) : new THREE.Color(0x000000),
+      roughness: technical ? 0.84 : data.diffStatus === "aligned" ? 0.58 : 0.82,
       metalness: technical ? 0 : 0.02,
       side: THREE.DoubleSide,
     });
@@ -153,10 +157,9 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
  * problem. The export is therefore parented to a group carrying exactly that
  * transform instead of having its vertices rewritten.
  *
- * The colouring is the point of the mode: the recovery reads as solid, an
- * exported element the recovery also has is a quiet ghost, and an exported
- * element that is **missing** from the recovery is picked out in red. What is
- * wrong with the conversion becomes something you can look at.
+ * The colouring is the point of the mode: recovery reads as solid orange,
+ * IFC geometry aligned within tolerance is a quiet ghost, and actual
+ * centre/size differences are red.
  */
 export function overlayMeshGroup(
   result: ConvertResult,
@@ -193,21 +196,21 @@ export function overlayMeshGroup(
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeVertexNormals();
+    const aligned = data.diffStatus === "aligned";
+    const different = data.diffStatus === "different";
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(data.matched ? 0x4a6b86 : 0xff3b46),
-      emissive: data.matched ? new THREE.Color(0x000000) : new THREE.Color(0x3a0206),
+      color: new THREE.Color(aligned ? 0x4a6b86 : different ? 0xff3b46 : 0x334e55),
+      emissive: different ? new THREE.Color(0x3a0206) : new THREE.Color(0x000000),
       roughness: 0.85,
       metalness: 0,
       side: THREE.DoubleSide,
       transparent: true,
-      // A matched element is context and stays out of the way; a missing one
-      // has to be visible through the recovery standing in front of it.
-      opacity: data.matched ? 0.22 : 0.95,
-      depthWrite: !data.matched,
+      opacity: aligned ? 0.18 : different ? 0.92 : 0.12,
+      depthWrite: different,
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = `${data.name} (${data.matched ? "matched" : "missing from recovery"})`;
-    mesh.renderOrder = data.matched ? 0 : 3;
+    mesh.name = `${data.name} (${data.diffStatus})`;
+    mesh.renderOrder = different ? 3 : 0;
     reference.add(mesh);
   }
   group.add(reference);
@@ -229,6 +232,11 @@ export function disposeGroup(group: THREE.Object3D) {
 }
 
 export function applyNavigationMode(controls: OrbitControls, mode: NavigationMode) {
+  // OrbitControls defaults to moving the camera in the pointer's direction,
+  // which makes the model under the cursor appear to move the other way.
+  // Reviter treats an orbit drag as direct manipulation of the building: pull
+  // right/down and the building follows right/down.
+  controls.rotateSpeed = -1;
   controls.mouseButtons.LEFT = mode === "pan"
     ? THREE.MOUSE.PAN
     : mode === "zoom"

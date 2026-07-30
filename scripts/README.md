@@ -25,6 +25,26 @@ The same browser-safe library also exposes `parsePartAtomXml`,
 `writeOmniClassTaxonomy`. These are the portable pieces brought over from the
 Revitless toolkit; they do not require Revit, .NET, or a server.
 
+The real Revitless text corpus is retained under
+`tests/fixtures/revitless-toolkit`: 18 valid and 6 intentionally invalid
+shared-parameter files, four type catalogs, the Revit 2014 family, and three
+DWGs exercising both preview encodings. These fixtures verify multilingual and
+large-file behavior rather than only synthetic happy paths.
+
+## Regenerating the personal Revit 2021 compatibility data
+
+The optional legacy API chunk is mechanically generated from the Revitless
+toolkit's `src/Decompiled` folder:
+
+```sh
+npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master
+```
+
+This produces `lib/reviter/legacy-revit-2021.generated.ts`. Browser code loads
+it only through `loadLegacyRevit2021Api()`, keeping it out of the initial
+viewer chunk. The generated tables are compatibility vocabulary and are not
+used as evidence for native RVT geometry.
+
 ## Checking a model against its own IFC export
 
 Every rule in this decoder was fitted on one building. `verify-pair.ts` is the

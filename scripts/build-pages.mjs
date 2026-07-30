@@ -30,7 +30,10 @@ await Promise.all([
   build({
     ...shared,
     entryPoints: [resolve(projectRoot, "github-pages/main.tsx")],
-    outfile: resolve(assetsDirectory, "index.js"),
+    outdir: assetsDirectory,
+    entryNames: "index",
+    chunkNames: "chunks/[name]-[hash]",
+    splitting: true,
   }),
   build({
     ...shared,

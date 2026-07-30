@@ -477,6 +477,13 @@ export type IfcReferenceManifest = {
   placedGeometries: number;
   vertexCount: number;
   triangleCount: number;
+  /** Matched IFC/Revit elements classified by the geometric diff. */
+  geometricComparedElementCount?: number;
+  /** Compared elements whose centre and size errors are within the tolerance. */
+  geometricAlignedElementCount?: number;
+  /** Compared elements outside the geometric tolerance. */
+  geometricDifferentElementCount?: number;
+  geometryToleranceFeet?: number;
   boundsMetres: Bounds3;
   elementTypes: IfcElementTypeMatch[];
   matchedSamples: IfcMatchedElement[];
@@ -486,7 +493,7 @@ export type IfcReferenceManifest = {
 export type GateStatus = "pass" | "warn" | "fail";
 
 export type RegressionGate = {
-  id: "identity" | "extents" | "topology" | "semantics";
+  id: "identity" | "extents" | "topology" | "semantics" | "geometry";
   label: string;
   status: GateStatus;
   value: string;
@@ -499,6 +506,7 @@ export type ReferenceMeshData = {
   indices: Uint32Array;
   color: [number, number, number];
   matched: boolean;
+  diffStatus: "aligned" | "different" | "context";
 };
 
 export type PairedRegressionResult = {
@@ -530,6 +538,13 @@ export type RvtRegressionInput = {
   boundsFeet: Bounds3;
   triangleCount: number;
   productionElements: number;
+  /** Native category coverage, used when the production decoder is version-gated. */
+  typedElements?: number;
+  /**
+   * Viewer-visible AABBs packed as
+   * [elementId,minX,minY,minZ,maxX,maxY,maxZ], in feet.
+   */
+  displayBounds?: Float64Array;
 };
 
 export type ConvertResult = {
@@ -565,7 +580,7 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
-  /** Persisted material identities/names; appearance properties remain separate. */
+  /** Persisted material identities/names and optional packed render colour. */
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
   /** Loadable-family symbol to family relationships persisted in partition objects. */
   nativeFamilySymbolRelations?: NativeFamilySymbolRelation[];
@@ -595,6 +610,12 @@ export type ConvertOutcome = ConvertResult | ConvertFailure;
 
 export type ConvertOptions = {
   maxSegments?: number;
+  /**
+   * Optional browser/runtime cap for cached native Revit mesh definitions.
+   * When reached, conversion continues with the independently recovered proxy
+   * geometry. The native decoder's default is used when this is omitted.
+   */
+  maxNativeMeshBytes?: number;
   wallHeight?: number;
   wallThickness?: number;
   revitVersion?: number;

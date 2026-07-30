@@ -211,6 +211,7 @@ let certifiedPlanarFilledRegions = 0;
 let certifiedPlanarAdditionalFilledRegions = 0;
 let certifiedPlanarHoleLoops = 0;
 let certifiedPlanarMultiLoopTriangles = 0;
+let certifiedCylinderBridgedJoins = 0;
 const certifiedIssues = new Map<string, number>();
 const certifiedIssueRecords: Array<{
   ownerElementId: number;
@@ -374,6 +375,9 @@ for (const partition of partitions) {
           certifiedPlanarFilledRegions += face.regionCount;
           certifiedPlanarAdditionalFilledRegions += face.regionCount - 1;
           certifiedPlanarHoleLoops += face.holeLoopCount;
+        }
+        if (face.kind === "cylinder-sampled") {
+          certifiedCylinderBridgedJoins += face.bridgedJoinCount;
         }
         if (planarMultiLoop) {
           certifiedPlanarMultiLoopFaces += 1;
@@ -1100,6 +1104,7 @@ console.log(JSON.stringify({
     planarAdditionalFilledRegions: certifiedPlanarAdditionalFilledRegions,
     planarHoleLoops: certifiedPlanarHoleLoops,
     planarMultiLoopTriangles: certifiedPlanarMultiLoopTriangles,
+    cylinderBridgedJoins: certifiedCylinderBridgedJoins,
     issues: entries(certifiedIssues),
     issueRecords: certifiedIssueRecords,
     ownerElements: certifiedOwnerElements.size,

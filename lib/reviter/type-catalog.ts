@@ -1,5 +1,7 @@
 /** Browser-safe Revit family type-catalog CSV parsing and writing. */
 
+import { decodeRevitTextBytes, type DecodedRevitText } from "./revit-text-encoding.ts";
+
 export type TypeCatalogParameter = {
   name: string;
   parameterType: string;
@@ -15,6 +17,8 @@ export type TypeCatalog = {
   parameters: TypeCatalogParameter[];
   types: TypeCatalogType[];
 };
+
+export type DecodedTypeCatalog = DecodedRevitText & { catalog: TypeCatalog };
 
 function csvRows(source: string): string[][] {
   const rows: string[][] = [];
@@ -77,6 +81,11 @@ export function parseTypeCatalog(source: string): TypeCatalog {
     values: parameters.map((_, index) => values[index + 1] ?? ""),
   }));
   return { parameters, types };
+}
+
+export function parseTypeCatalogBytes(data: Uint8Array): DecodedTypeCatalog {
+  const decoded = decodeRevitTextBytes(data);
+  return { ...decoded, catalog: parseTypeCatalog(decoded.text) };
 }
 
 export function writeTypeCatalog(catalog: TypeCatalog): string {

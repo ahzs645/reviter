@@ -4,6 +4,7 @@ import test from "node:test";
 import { tessellateNeutralBrep } from "../lib/reviter/brep-tessellator.ts";
 import {
   adaptRevit2027CylinderSampledBrep,
+  type Revit2027CylinderSampledBrepInput,
   type Revit2027CylinderSampledEdgeUse,
 } from "../lib/reviter/revit-2027-cylinder-sampled-brep.ts";
 import type {
@@ -78,7 +79,7 @@ function input(
     edge(3, [Math.PI / 2, 2], [[Math.PI / 4, 2]], [0, 2]),
     edge(4, [0, 2], [], [0, 0]),
   ],
-) {
+): Revit2027CylinderSampledBrepInput {
   return {
     id: "cylinder-owner",
     provenance: { decoderId: "test-cylinder-owner" },
@@ -106,9 +107,15 @@ test("maps Revit angle/height UV into the neutral cylinder chart", () => {
   });
   assert.equal(face.orientation, 1);
   assert.deepEqual(face.trims[0]!.curves, [
-    { kind: "pcurve-line", start: [0, 0], end: [0, Math.PI / 2] },
+    {
+      kind: "pcurve-polyline",
+      points: [[0, 0], [0, Math.PI / 4], [0, Math.PI / 2]],
+    },
     { kind: "pcurve-line", start: [0, Math.PI / 2], end: [1, Math.PI / 2] },
-    { kind: "pcurve-line", start: [1, Math.PI / 2], end: [1, 0] },
+    {
+      kind: "pcurve-polyline",
+      points: [[1, Math.PI / 2], [1, Math.PI / 4], [1, 0]],
+    },
     { kind: "pcurve-line", start: [1, 0], end: [0, 0] },
   ]);
 
@@ -121,8 +128,8 @@ test("maps Revit angle/height UV into the neutral cylinder chart", () => {
   });
   assert.equal(mesh.ok, true);
   if (!mesh.ok) return;
-  assert.equal(mesh.mesh.positions.length / 3, 8);
-  assert.equal(mesh.mesh.indices.length / 3, 6);
+  assert.equal(mesh.mesh.positions.length / 3, 10);
+  assert.equal(mesh.mesh.indices.length / 3, 8);
 });
 
 test("canonicalizes a left-handed persisted cylinder without moving points", () => {
@@ -139,9 +146,8 @@ test("canonicalizes a left-handed persisted cylinder without moving points", () 
   assert.deepEqual(face.surface.yAxis, [0, 1, 0]);
   assert.equal(face.orientation, -1);
   assert.deepEqual(face.trims[0]!.curves[0], {
-    kind: "pcurve-line",
-    start: [0, 0],
-    end: [0, -Math.PI / 2],
+    kind: "pcurve-polyline",
+    points: [[0, 0], [0, -Math.PI / 4], [0, -Math.PI / 2]],
   });
 });
 
@@ -174,6 +180,40 @@ test("preserves a non-axis-aligned sampled p-curve for fail-closed rejection", (
   }
 });
 
+test("preserves an explicitly certified orthogonal coedge join bridge", () => {
+  const angularGap = 0.001;
+  const bridged = input(surface, [
+    edge(1, [0, 0], [], [Math.PI / 2, 0]),
+    edge(
+      2,
+      [Math.PI / 2 + angularGap, 0],
+      [],
+      [Math.PI / 2 + angularGap, 2],
+    ),
+    edge(
+      3,
+      [Math.PI / 2 + angularGap, 2],
+      [],
+      [0, 2],
+    ),
+    edge(4, [0, 2], [], [0, 0]),
+  ]);
+  bridged.faces[0]!.loops[0]!.joinBridges = [{
+    afterEdgeToken: 1,
+    start: [Math.PI / 2, 0],
+    end: [Math.PI / 2 + angularGap, 0],
+  }];
+  const adapted = adaptRevit2027CylinderSampledBrep(bridged);
+  assert.equal(adapted.ok, true);
+  if (!adapted.ok) return;
+  assert.deepEqual(adapted.brep.faces[0]!.trims[0]!.curves[1], {
+    kind: "pcurve-line",
+    start: [0, Math.PI / 2],
+    end: [0, Math.PI / 2 + angularGap],
+  });
+  assert.equal(adapted.brep.faces[0]!.trims[0]!.curves.length, 5);
+});
+
 test("fails closed on invalid bases and discontinuous topology", () => {
   const badBasis: Revit2027CylinderSurface = {
     ...surface,
@@ -194,4 +234,15 @@ test("fails closed on invalid bases and discontinuous topology", () => {
   const open = adaptRevit2027CylinderSampledBrep(discontinuous);
   assert.equal(open.ok, false);
   if (!open.ok) assert.equal(open.issues[0]?.code, "open-loop");
+
+  discontinuous.faces[0]!.loops[0]!.joinBridges = [{
+    afterEdgeToken: 1,
+    start: [Math.PI / 2 - 0.01, 0],
+    end: [Math.PI / 2, 0.1],
+  }];
+  const wrongAxis = adaptRevit2027CylinderSampledBrep(discontinuous);
+  assert.equal(wrongAxis.ok, false);
+  if (!wrongAxis.ok) {
+    assert.equal(wrongAxis.issues[0]?.code, "invalid-loop");
+  }
 });

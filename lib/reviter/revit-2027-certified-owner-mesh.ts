@@ -30,6 +30,9 @@ export type Revit2027CertifiedOwnerFaceMesh =
       kind: "planar-sampled";
       faceToken: number;
       loopToken: number;
+      loopTokens: readonly number[];
+      regionCount: number;
+      holeLoopCount: number;
       mesh: NeutralFaceMesh;
     }
   | {
@@ -47,6 +50,7 @@ export type Revit2027CertifiedOwnerFaceMesh =
       loopToken: number;
       angularSegments: number;
       axialSegments: number;
+      bridgedJoinCount: number;
       mesh: NeutralFaceMesh;
     }
   | {

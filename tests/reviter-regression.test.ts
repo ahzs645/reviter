@@ -40,6 +40,7 @@ import { elementManifest, makeGlb, makeIfcCenterlines, makeReport } from "../lib
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import { buildBoundsMeshes, displayRole, selectDisplayBounds } from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
+import { boxDifference } from "../lib/reviter/drawn-bounds.ts";
 
 test("parses Revit project ElemTable records with 40-byte framing", () => {
   const data = new Uint8Array(34 + 40 * 2);
@@ -279,14 +280,35 @@ test("exports one semantic manifest record per recovered element", () => {
     parameters: [{ id: -1_001_105, name: "Unconnected Height", value: 14 }],
   }]);
 
-  const report = JSON.parse(makeReport(result, null)) as {
+  const report = JSON.parse(makeReport(result, {
+    version: "2027",
+    username: "private-user",
+    centralModelPath: "C:\\private\\central.rvt",
+    lastSavePath: "C:\\private\\local.rvt",
+    basicFileInfo: {
+      locale: "ENU",
+      properties: {
+        Username: "nested-private-user",
+        "Central Model Path": "C:\\nested\\central.rvt",
+        Worksharing: "Enabled",
+      },
+    },
+  })) as {
     schemaVersion: number;
+    file: { metadata: Record<string, unknown> };
     elementManifest: { count: number; unavailableFields: string[]; elements: unknown[] };
   };
   assert.equal(report.schemaVersion, 2);
   assert.equal(report.elementManifest.count, 1);
   assert.equal(report.elementManifest.elements.length, 1);
   assert.ok(report.elementManifest.unavailableFields.includes("model-tree hierarchy"));
+  assert.deepEqual(report.file.metadata, {
+    version: "2027",
+    basicFileInfo: {
+      locale: "ENU",
+      properties: { Worksharing: "Enabled" },
+    },
+  });
 });
 
 test("labels IFC proxies with the decoded Revit category without retyping them", () => {
@@ -335,6 +357,58 @@ test("rejects recovered geometry when identity, extents, topology, and semantics
   assert.equal(result.status, "fail");
   assert.equal(result.gates.every((gate) => gate.status === "fail"), true);
   assert.match(result.conclusion, /fails/);
+});
+
+test("uses native category coverage and reports the geometric diff as its own gate", () => {
+  const rvt: RvtRegressionInput = {
+    elemTableIds: new Uint32Array([1, 2]),
+    partitionRecordIds: new Uint32Array(),
+    partitionRecords: [],
+    boundsFeet: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 20, z: 30 } },
+    triangleCount: 100,
+    productionElements: 0,
+    typedElements: 95,
+  };
+  const reference: IfcReferenceManifest = {
+    fileName: "reference.ifc",
+    byteLength: 1,
+    schema: "IFC4",
+    elementCount: 100,
+    taggedElementCount: 2,
+    matchedElementCount: 2,
+    unmatchedTaggedElementCount: 0,
+    matchedGeometryProducts: 2,
+    storeyCount: 1,
+    geometryProducts: 2,
+    placedGeometries: 2,
+    vertexCount: 100,
+    triangleCount: 100,
+    geometricComparedElementCount: 2,
+    geometricAlignedElementCount: 1,
+    geometricDifferentElementCount: 1,
+    geometryToleranceFeet: 0.5,
+    boundsMetres: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 10 * 0.3048, y: 20 * 0.3048, z: 30 * 0.3048 },
+    },
+    elementTypes: [],
+    matchedSamples: [],
+    durationMs: 1,
+  };
+
+  const result = compareRvtToIfc(rvt, reference);
+  assert.equal(result.gates.find((gate) => gate.id === "semantics")?.status, "pass");
+  assert.equal(result.gates.find((gate) => gate.id === "geometry")?.status, "warn");
+  assert.equal(result.semanticCoverage, 0.95);
+});
+
+test("measures geometric diff by worst-axis centre and size errors", () => {
+  const difference = boxDifference(
+    [0, 0, 0, 10, 20, 30],
+    [0.2, -0.1, 0, 10.2, 20.3, 30],
+  );
+  assert.ok(Math.abs(difference.centreErrorFeet - 0.2) < 1e-9);
+  assert.ok(Math.abs(difference.sizeErrorFeet - 0.4) < 1e-9);
 });
 
 test("decodes a native Revit BuiltInCategory token and its preceding element id", () => {

@@ -26,6 +26,26 @@ element when one is available:
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc
 ```
 
+## Local utility workspace
+
+The browser studio also includes personal tools that never upload or attach
+local identity data to the model export:
+
+- a folder-based `.rfa` library index with embedded previews, PartAtom family
+  types and parameters, adjacent `_cat.txt` catalogs, manufacturer/dimension/
+  voltage search, and explicit OmniClass-number resolution;
+- a shared-parameter manager that detects encodings, validates, merges,
+  deduplicates, compares by GUID, reports renames/datatype changes/regrouping,
+  and downloads a merged Revit text file;
+- the merged 9,543-row vanilla and food-service OmniClass editions as a
+  searchable, on-demand classification browser;
+- full `BasicFileInfo` worksharing metadata in a local-only inspector, including
+  username and saved paths; those sensitive fields are filtered from JSON
+  reports;
+- embedded PNG and legacy indexed-BMP preview extraction from local DWG files;
+  and
+- UTF-8, UTF-16LE/BE, Windows-1251, and Windows-1252 text decoding.
+
 ## What is reliable
 
 - OLE/CFB container validation and stream inventory
@@ -1166,7 +1186,26 @@ The field *list* is deliberately not walked. The declared count and schema versi
 
 A second review of the supplied projects found little left to bring over from the browser ones: `rvt-app-main`'s Revit handling is a thin wrapper over `@phi-ag/rvt` that Reviter already calls directly, `rvt-ts-viewer`'s recovery is a subset of `lib/reviter/segment-scan.ts`, and `rvt2ifc-fe-master`'s IFC type-code table is redundant now that `web-ifc` reports type names directly. The remaining value was in `rvt-rs`: its `Formats/Latest` work is the basis for the schema inventory above, and its published tag-drift dataset is what that inventory is checked against.
 
-The Revitless review did not uncover another RVT geometry decoder. Its useful portable surface has been reimplemented as worker-safe TypeScript in `lib/reviter`, without .NET, filesystem APIs, or Autodesk runtime assemblies. The repository's `Decompiled/*` API enums were deliberately not copied: they identify themselves as decompiled from `RevitAPI.dll`, are unnecessary for reading raw parameter identifiers, and are not clean input for this client-side implementation. The bundled OmniClass text editions are also not redistributed; callers can parse, merge, edit, and write taxonomy text supplied by the user. A separate [static analysis of the isolated ODA BmJsonExport example](docs/bm-json-export-static-analysis.md) documents its semantic JSON contract, the native geometry API boundary, and the pieces that cannot be carried into a browser from the supplied ELF binaries.
+The Revitless review did not uncover another RVT geometry decoder. Its useful portable surface has been reimplemented as worker-safe TypeScript in `lib/reviter`, without .NET, filesystem APIs, or Autodesk runtime assemblies. For this personal/internal build, its `Decompiled/*` Revit 2021 vocabulary is also mechanically transposed into an explicitly marked optional compatibility module. The generated data preserves the old API enum aliases, category and parameter-group labels, MEP classifications, shared-data types, display units, symbols, and their cross-mappings. It is lazy-loaded so the 0.5 MB table does not enter the initial viewer bundle, and it is not treated as clean evidence by the RVT geometry decoder. The toolkit's vanilla and food-service OmniClass editions are bundled as static, on-demand text assets for the local classification browser. A separate [static analysis of the isolated ODA BmJsonExport example](docs/bm-json-export-static-analysis.md) documents its semantic JSON contract, the native geometry API boundary, and the pieces that cannot be carried into a browser from the supplied ELF binaries.
+
+### Personal Revit 2021 compatibility API
+
+```ts
+import { loadLegacyRevit2021Api } from "./lib/reviter";
+
+const legacy = await loadLegacyRevit2021Api();
+legacy.category(-2000011);
+// { value: -2000011, names: ["OST_Walls"], label: "Walls" }
+
+legacy.displayUnit("DUT_MILLIMETERS");
+// catalog string, symbol, compatible unit types and parameter types
+```
+
+Regenerate the compatibility data from a local Revitless checkout with:
+
+```sh
+npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master
+```
 
 The implementation also uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
 

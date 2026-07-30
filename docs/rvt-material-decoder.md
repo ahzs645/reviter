@@ -42,8 +42,20 @@ string” or compare text to IFC at runtime, and it still rejects schema labels,
 asset paths, and 21 lightweight “Unassigned” appearance records.
 
 `lib/reviter/material-records.ts` applies both gated layouts and is disabled for
-releases other than 2027. It returns material element identity and name only.
-It does not synthesize colors or appearances.
+releases other than 2027. It also reads the packed `0x00BBGGRR` render colour
+that follows the proven name field:
+
+- direct-name records use the zero-prefix/descriptor/zero-suffix field boundary,
+  with the measured `name end + 84` slot retained for five legacy/system
+  variants that omit the suffix;
+- nested appearance records carry three graphic/render colours at eight-byte
+  intervals. The middle `name end + 72` value is the render colour. The
+  `Деревянные доски` record distinguishes the fields: its first colour is grey,
+  while its middle colour is the wood tone used by the Autodesk derivative.
+
+This produces an RVT-owned material colour, not a colour guessed from a name or
+copied from the paired IFC/GLB. Transparency, smoothness, texture paths, and
+other appearance channels remain unresolved.
 
 ## UNBC result
 
@@ -53,6 +65,7 @@ It does not synthesize colors or appearances.
 | Direct-name-layout definitions | 54 |
 | Nested-name-layout definitions | 15 |
 | Safely named material definitions | 69 |
+| Definitions with structurally decoded packed render colour | 69 |
 | Unique safely decoded RVT names | 69 |
 | Records with absent or unsupported name layout | 25 |
 | IFC material entities | 30 |
@@ -60,6 +73,7 @@ It does not synthesize colors or appearances.
 | Exact IFC names found in decoded RVT definitions | 28 (96.6%) |
 | IFC material-association relations | 7,554 |
 | Native shared-geometry assignments decoded | 5,413 |
+| Autodesk GLB palette entries matched by decoded RVT colour | 21 of 22 |
 
 The sole unmatched IFC name is:
 
@@ -75,6 +89,25 @@ shared-geometry layouts resolve 5,413 geometry-to-material assignments; exact
 element/type, compound-layer, BRep-face, appearance, category-style, and view
 override paths remain separate work.
 
+The supplied Autodesk GLB contains 22 unnamed PBR materials and no textures.
+Twenty-one palette RGB triples map exactly to one or more decoded RVT material
+IDs. The sole unmapped value is pure green `(0,255,0)`, which behaves as a
+presentation/system colour rather than a named material colour. Distinctive
+checks include:
+
+| RVT material | MaterialElem id | Packed RVT RGB | GLB palette index |
+| --- | ---: | --- | ---: |
+| `Стекло` | 26 | `(0,128,192)` | 19 |
+| `Дверь - Каркас` | 30,200 | `(118,70,51)` | 15 |
+| `Алюминий` | 182,549 | `(247,247,247)` | 11 |
+| `Деревянные доски` | 272,922 | `(193,160,115)` | 8 |
+| `Wood - Birch - Solid Stained Light Low Gloss` | 1,650,845 | `(210,159,95)` | 10 |
+
+The reproducible map is
+[`generated/unbc-rvt-glb-material-palette.json`](generated/unbc-rvt-glb-material-palette.json).
+Exact native face batches now use these RVT colours through their persisted
+`MaterialElem` IDs. Proxy geometry keeps the category display palette.
+
 ## Assignment layers inspected
 
 The embedded schema and isolated binary API surfaces agree that Revit material
@@ -82,7 +115,7 @@ resolution is layered:
 
 | Layer | Evidence | Current status |
 | --- | --- | --- |
-| Material definition | `MaterialElem.m_pMaterial`; `Material.m_name`; `MaterialId` color/transparency fields | Outer identity and name decoded; nested properties unresolved |
+| Material definition | `MaterialElem.m_pMaterial`; `Material.m_name`; `MaterialId` color/transparency fields | Identity, name, and packed render colour decoded; transparency/texture channels unresolved |
 | Element/type material | element, family instance, and family symbol material-ID accessors | Shared family geometry assignment partially decoded; direct instance/type sets unresolved |
 | Structural material | structural material accessor/reference | Serialized reference unresolved |
 | Family geometry tag | `m_geomTag2MaterialId`; geometry marker material ID plus geometry tag | 5,413 shared-geometry assignments decoded; per-tag maps unresolved |
@@ -104,7 +137,7 @@ produce plausible but unverified assignments.
 The next decoder should interpret the embedded schema's generic object tokens
 and fixups sufficiently to extend the proven definition/assignment subset:
 
-1. `MaterialElem.m_pMaterial` into complete `MaterialId` appearance values;
+1. the remaining `MaterialId` transparency/smoothness values and texture-bearing appearance properties;
 2. direct element/type and graphics-style material references;
 3. complete family `geomTag -> materialId` maps;
 4. stored-mesh and BRep-face references once stable geometry/face identity is
@@ -132,6 +165,11 @@ node --experimental-strip-types scripts/audit-rvt-materials.ts \
   --rvt '/Users/ahmadjalil/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Projects/UNBC BIM/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt' \
   --ifc '/Users/ahmadjalil/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Projects/UNBC BIM/UNBC Model - 2026-06-30 - FINAL (Fixed Library).ifc' \
   --json docs/generated/unbc-rvt-materials.json
+
+node --experimental-strip-types scripts/audit-rvt-glb-material-palette.ts \
+  --rvt '/Users/ahmadjalil/Library/CloudStorage/GoogleDrive-ahzs645@gmail.com/My Drive/Projects/UNBC BIM/UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt' \
+  --glb public/autodesk-reference.glb \
+  --json docs/generated/unbc-rvt-glb-material-palette.json
 ```
 
 The exact inputs are pinned in the generated report by SHA-256:

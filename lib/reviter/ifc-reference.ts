@@ -2,6 +2,7 @@
 
 import { IfcAPI } from "web-ifc";
 
+import { boxDifference, type Box } from "./drawn-bounds";
 import { compareRvtToIfc } from "./regression";
 import type {
   IfcElementTypeMatch,
@@ -56,6 +57,7 @@ type ReferenceBatch = {
   indices: number[];
   vertexCount: number;
   matched: boolean;
+  diffStatus: ReferenceMeshData["diffStatus"];
   batchNumber: number;
 };
 
@@ -64,11 +66,22 @@ const MAX_REFERENCE_BATCH_VERTICES = 240_000;
 function flushReferenceBatch(batch: ReferenceBatch, meshes: ReferenceMeshData[]): void {
   if (!batch.vertexCount) return;
   meshes.push({
-    name: `${batch.matched ? "Matched RVT records" : "IFC context"} ${batch.batchNumber}`,
+    name: `${
+      batch.diffStatus === "aligned"
+        ? "Geometrically aligned"
+        : batch.diffStatus === "different"
+          ? "Geometric differences"
+          : "IFC context"
+    } ${batch.batchNumber}`,
     positions: new Float32Array(batch.positions),
     indices: new Uint32Array(batch.indices),
-    color: batch.matched ? [0.2, 0.86, 0.76] : [0.1, 0.28, 0.32],
+    color: batch.diffStatus === "aligned"
+      ? [0.2, 0.86, 0.76]
+      : batch.diffStatus === "different"
+        ? [1, 0.23, 0.28]
+        : [0.1, 0.28, 0.32],
     matched: batch.matched,
+    diffStatus: batch.diffStatus,
   });
   batch.positions = [];
   batch.indices = [];
@@ -116,6 +129,34 @@ function transformPoint(matrix: Array<number>, x: number, y: number, z: number):
   };
 }
 
+const FEET_PER_METRE = 3.280839895;
+const GEOMETRY_TOLERANCE_FEET = 0.5;
+
+function addPointToBox(box: Box, x: number, y: number, z: number): void {
+  box[0] = Math.min(box[0], x);
+  box[1] = Math.min(box[1], y);
+  box[2] = Math.min(box[2], z);
+  box[3] = Math.max(box[3], x);
+  box[4] = Math.max(box[4], y);
+  box[5] = Math.max(box[5], z);
+}
+
+function displayBoundsByElement(packed?: Float64Array): Map<number, Box> {
+  const result = new Map<number, Box>();
+  if (!packed) return result;
+  for (let index = 0; index + 6 < packed.length; index += 7) {
+    result.set(packed[index]!, [
+      packed[index + 1]!,
+      packed[index + 2]!,
+      packed[index + 3]!,
+      packed[index + 4]!,
+      packed[index + 5]!,
+      packed[index + 6]!,
+    ]);
+  }
+  return result;
+}
+
 export async function analyzeIfcReference(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
@@ -130,7 +171,11 @@ export async function analyzeIfcReference(
   await api.Init((path) => (path.endsWith(".wasm") ? wasmUrl : path), true);
   onProgress?.({ ratio: 0.1, message: "Opening IFC reference model" });
   const modelId = api.OpenModel(bytes, {
-    COORDINATE_TO_ORIGIN: true,
+    // Keep the export in its authored project coordinates. The recovered RVT
+    // bounds are absolute feet and the viewer already subtracts `result.origin`
+    // from both sources when it registers the overlay. Asking web-ifc to apply
+    // a second, opaque origin shift makes every otherwise aligned box differ.
+    COORDINATE_TO_ORIGIN: false,
     MEMORY_LIMIT: 2_000_000_000,
   });
   if (modelId < 0) throw new Error("web-ifc could not open the reference model.");
@@ -143,6 +188,7 @@ export async function analyzeIfcReference(
       rvt.partitionRecords.map((record) => [record.elementId, record] as const),
     );
     const matchedExpressIds = new Set<number>();
+    const revitIdByExpressId = new Map<number, number>();
     const elementTypes: IfcElementTypeMatch[] = [];
     const matchedSamples: IfcMatchedElement[] = [];
     let elementCount = 0;
@@ -184,6 +230,7 @@ export async function analyzeIfcReference(
         if (inPartitionRecords) matchedPartitionRecords += 1;
         matchedElementCount += 1;
         matchedExpressIds.add(expressId);
+        revitIdByExpressId.set(expressId, revitElementId);
         if (matchedSamples.length < 12) {
           const partitionRecord = partitionRecordById.get(revitElementId);
           matchedSamples.push({
@@ -228,13 +275,7 @@ export async function analyzeIfcReference(
     const min: Vec3 = { x: Infinity, y: Infinity, z: Infinity };
     const max: Vec3 = { x: -Infinity, y: -Infinity, z: -Infinity };
     const geometryExpressIds = new Set<number>();
-    const referenceMeshes: ReferenceMeshData[] = [];
-    const matchedBatch: ReferenceBatch = {
-      positions: [], indices: [], vertexCount: 0, matched: true, batchNumber: 1,
-    };
-    const contextBatch: ReferenceBatch = {
-      positions: [], indices: [], vertexCount: 0, matched: false, batchNumber: 1,
-    };
+    const truthBoundsByElement = new Map<number, Box>();
     let geometryProducts = 0;
     let placedGeometries = 0;
     let vertexCount = 0;
@@ -248,13 +289,6 @@ export async function analyzeIfcReference(
         const geometry = api.GetGeometry(modelId, placed.geometryExpressID);
         const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
         const indices = api.GetIndexArray(geometry.GetIndexData(), geometry.GetIndexDataSize());
-        appendReferenceGeometry(
-          matchedExpressIds.has(mesh.expressID) ? matchedBatch : contextBatch,
-          referenceMeshes,
-          vertices,
-          indices,
-          placed.flatTransformation,
-        );
         placedGeometries += 1;
         vertexCount += vertices.length / 6;
         triangleCount += indices.length / 3;
@@ -271,19 +305,99 @@ export async function analyzeIfcReference(
           max.x = Math.max(max.x, point.x);
           max.y = Math.max(max.y, point.y);
           max.z = Math.max(max.z, point.z);
+          const revitElementId = revitIdByExpressId.get(mesh.expressID);
+          if (revitElementId != null) {
+            let truthBox = truthBoundsByElement.get(revitElementId);
+            if (!truthBox) {
+              truthBox = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+              truthBoundsByElement.set(revitElementId, truthBox);
+            }
+            // Match the displayed reference frame: Y-up metres -> Z-up feet.
+            addPointToBox(
+              truthBox,
+              point.x * FEET_PER_METRE,
+              -point.z * FEET_PER_METRE,
+              point.y * FEET_PER_METRE,
+            );
+          }
         }
         geometry.delete();
       }
       if (typeof mesh.delete === "function") mesh.delete();
       if (index % 250 === 0 || index + 1 === total) {
         onProgress?.({
-          ratio: 0.38 + ((index + 1) / Math.max(1, total)) * 0.57,
+          ratio: 0.38 + ((index + 1) / Math.max(1, total)) * 0.27,
           message: `Measuring IFC geometry · ${(index + 1).toLocaleString()} / ${total.toLocaleString()}`,
         });
       }
     });
-    flushReferenceBatch(matchedBatch, referenceMeshes);
-    flushReferenceBatch(contextBatch, referenceMeshes);
+
+    const rvtDisplayBounds = displayBoundsByElement(rvt.displayBounds);
+    const diffStatusByElement = new Map<number, ReferenceMeshData["diffStatus"]>();
+    let geometricComparedElementCount = 0;
+    let geometricAlignedElementCount = 0;
+    let geometricDifferentElementCount = 0;
+    for (const [elementId, truthBox] of truthBoundsByElement) {
+      geometricComparedElementCount += 1;
+      const recoveredBox = rvtDisplayBounds.get(elementId);
+      if (!recoveredBox) {
+        diffStatusByElement.set(elementId, "different");
+        geometricDifferentElementCount += 1;
+        continue;
+      }
+      const difference = boxDifference(recoveredBox, truthBox);
+      const aligned =
+        difference.centreErrorFeet < GEOMETRY_TOLERANCE_FEET &&
+        difference.sizeErrorFeet < GEOMETRY_TOLERANCE_FEET;
+      diffStatusByElement.set(elementId, aligned ? "aligned" : "different");
+      if (aligned) geometricAlignedElementCount += 1;
+      else geometricDifferentElementCount += 1;
+    }
+
+    const referenceMeshes: ReferenceMeshData[] = [];
+    const batches = new Map<ReferenceMeshData["diffStatus"], ReferenceBatch>([
+      ["aligned", {
+        positions: [], indices: [], vertexCount: 0, matched: true,
+        diffStatus: "aligned", batchNumber: 1,
+      }],
+      ["different", {
+        positions: [], indices: [], vertexCount: 0, matched: true,
+        diffStatus: "different", batchNumber: 1,
+      }],
+      ["context", {
+        positions: [], indices: [], vertexCount: 0, matched: false,
+        diffStatus: "context", batchNumber: 1,
+      }],
+    ]);
+    api.StreamAllMeshes(modelId, (mesh, index, total) => {
+      const revitElementId = revitIdByExpressId.get(mesh.expressID);
+      const diffStatus = revitElementId == null
+        ? "context"
+        : diffStatusByElement.get(revitElementId) ?? "different";
+      const batch = batches.get(diffStatus)!;
+      for (let placementIndex = 0; placementIndex < mesh.geometries.size(); placementIndex += 1) {
+        const placed = mesh.geometries.get(placementIndex);
+        const geometry = api.GetGeometry(modelId, placed.geometryExpressID);
+        const vertices = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
+        const indices = api.GetIndexArray(geometry.GetIndexData(), geometry.GetIndexDataSize());
+        appendReferenceGeometry(
+          batch,
+          referenceMeshes,
+          vertices,
+          indices,
+          placed.flatTransformation,
+        );
+        geometry.delete();
+      }
+      if (typeof mesh.delete === "function") mesh.delete();
+      if (index % 250 === 0 || index + 1 === total) {
+        onProgress?.({
+          ratio: 0.66 + ((index + 1) / Math.max(1, total)) * 0.29,
+          message: `Building geometric diff · ${(index + 1).toLocaleString()} / ${total.toLocaleString()}`,
+        });
+      }
+    });
+    for (const batch of batches.values()) flushReferenceBatch(batch, referenceMeshes);
 
     for (const sample of matchedSamples) sample.hasGeometry = geometryExpressIds.has(sample.expressId);
     const matchedGeometryProducts = [...matchedExpressIds].filter((id) => geometryExpressIds.has(id)).length;
@@ -302,6 +416,10 @@ export async function analyzeIfcReference(
       placedGeometries,
       vertexCount,
       triangleCount,
+      geometricComparedElementCount,
+      geometricAlignedElementCount,
+      geometricDifferentElementCount,
+      geometryToleranceFeet: GEOMETRY_TOLERANCE_FEET,
       boundsMetres: finiteBounds
         ? { min, max }
         : { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },

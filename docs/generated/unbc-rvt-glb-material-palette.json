@@ -1,0 +1,3971 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-rvt-glb-material-palette.ts",
+  "inputs": {
+    "rvt": {
+      "name": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+      "bytes": 70336512
+    },
+    "glb": {
+      "name": "autodesk-reference.glb",
+      "bytes": 26819844
+    }
+  },
+  "palette": [
+    {
+      "materialIndex": 0,
+      "name": null,
+      "rgba": [
+        0.752941,
+        0.752941,
+        0.752941,
+        1
+      ],
+      "rgbaBytes": [
+        192,
+        192,
+        192,
+        255
+      ]
+    },
+    {
+      "materialIndex": 1,
+      "name": null,
+      "rgba": [
+        0.498039,
+        0.498039,
+        0.498039,
+        1
+      ],
+      "rgbaBytes": [
+        127,
+        127,
+        127,
+        255
+      ]
+    },
+    {
+      "materialIndex": 2,
+      "name": null,
+      "rgba": [
+        0.847059,
+        0.843137,
+        0.811765,
+        1
+      ],
+      "rgbaBytes": [
+        216,
+        215,
+        207,
+        255
+      ]
+    },
+    {
+      "materialIndex": 3,
+      "name": null,
+      "rgba": [
+        0.921569,
+        0.921569,
+        0.921569,
+        1
+      ],
+      "rgbaBytes": [
+        235,
+        235,
+        235,
+        255
+      ]
+    },
+    {
+      "materialIndex": 4,
+      "name": null,
+      "rgba": [
+        0.74902,
+        0.74902,
+        0.74902,
+        1
+      ],
+      "rgbaBytes": [
+        191,
+        191,
+        191,
+        255
+      ]
+    },
+    {
+      "materialIndex": 5,
+      "name": null,
+      "rgba": [
+        0.698039,
+        0.698039,
+        0.698039,
+        1
+      ],
+      "rgbaBytes": [
+        178,
+        178,
+        178,
+        255
+      ]
+    },
+    {
+      "materialIndex": 6,
+      "name": null,
+      "rgba": [
+        0.635294,
+        0.6,
+        0.564706,
+        1
+      ],
+      "rgbaBytes": [
+        162,
+        153,
+        144,
+        255
+      ]
+    },
+    {
+      "materialIndex": 7,
+      "name": null,
+      "rgba": [
+        0.878431,
+        0.698039,
+        0.494118,
+        1
+      ],
+      "rgbaBytes": [
+        224,
+        178,
+        126,
+        255
+      ]
+    },
+    {
+      "materialIndex": 8,
+      "name": null,
+      "rgba": [
+        0.756863,
+        0.627451,
+        0.45098,
+        1
+      ],
+      "rgbaBytes": [
+        193,
+        160,
+        115,
+        255
+      ]
+    },
+    {
+      "materialIndex": 9,
+      "name": null,
+      "rgba": [
+        0,
+        1,
+        0,
+        1
+      ],
+      "rgbaBytes": [
+        0,
+        255,
+        0,
+        255
+      ]
+    },
+    {
+      "materialIndex": 10,
+      "name": null,
+      "rgba": [
+        0.823529,
+        0.623529,
+        0.372549,
+        1
+      ],
+      "rgbaBytes": [
+        210,
+        159,
+        95,
+        255
+      ]
+    },
+    {
+      "materialIndex": 11,
+      "name": null,
+      "rgba": [
+        0.968627,
+        0.968627,
+        0.968627,
+        1
+      ],
+      "rgbaBytes": [
+        247,
+        247,
+        247,
+        255
+      ]
+    },
+    {
+      "materialIndex": 12,
+      "name": null,
+      "rgba": [
+        0.439216,
+        0.443137,
+        0.45098,
+        1
+      ],
+      "rgbaBytes": [
+        112,
+        113,
+        115,
+        255
+      ]
+    },
+    {
+      "materialIndex": 13,
+      "name": null,
+      "rgba": [
+        0.968627,
+        0.964706,
+        0.964706,
+        1
+      ],
+      "rgbaBytes": [
+        247,
+        246,
+        246,
+        255
+      ]
+    },
+    {
+      "materialIndex": 14,
+      "name": null,
+      "rgba": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "rgbaBytes": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "materialIndex": 15,
+      "name": null,
+      "rgba": [
+        0.462745,
+        0.27451,
+        0.2,
+        1
+      ],
+      "rgbaBytes": [
+        118,
+        70,
+        51,
+        255
+      ]
+    },
+    {
+      "materialIndex": 16,
+      "name": null,
+      "rgba": [
+        0.823529,
+        0.823529,
+        0.823529,
+        1
+      ],
+      "rgbaBytes": [
+        210,
+        210,
+        210,
+        255
+      ]
+    },
+    {
+      "materialIndex": 17,
+      "name": null,
+      "rgba": [
+        0.156863,
+        0.156863,
+        0.156863,
+        1
+      ],
+      "rgbaBytes": [
+        40,
+        40,
+        40,
+        255
+      ]
+    },
+    {
+      "materialIndex": 18,
+      "name": null,
+      "rgba": [
+        0.470588,
+        0.470588,
+        0.470588,
+        1
+      ],
+      "rgbaBytes": [
+        120,
+        120,
+        120,
+        255
+      ]
+    },
+    {
+      "materialIndex": 19,
+      "name": null,
+      "rgba": [
+        0,
+        0.501961,
+        0.752941,
+        0.10196099999999997
+      ],
+      "rgbaBytes": [
+        0,
+        128,
+        192,
+        26
+      ]
+    },
+    {
+      "materialIndex": 20,
+      "name": null,
+      "rgba": [
+        0,
+        0,
+        1,
+        0.25098
+      ],
+      "rgbaBytes": [
+        0,
+        0,
+        255,
+        64
+      ]
+    },
+    {
+      "materialIndex": 21,
+      "name": null,
+      "rgba": [
+        0.360784,
+        0.388235,
+        0.694118,
+        0.30196100000000003
+      ],
+      "rgbaBytes": [
+        92,
+        99,
+        177,
+        77
+      ]
+    }
+  ],
+  "paletteMappings": [
+    {
+      "materialIndex": 0,
+      "rgba": [
+        0.752941,
+        0.752941,
+        0.752941,
+        1
+      ],
+      "rgbaBytes": [
+        192,
+        192,
+        192,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 523,
+          "name": "Бетон, монолитный",
+          "colorFieldOffset": 413,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 1,
+      "rgba": [
+        0.498039,
+        0.498039,
+        0.498039,
+        1
+      ],
+      "rgbaBytes": [
+        127,
+        127,
+        127,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 23,
+          "name": "По умолчанию",
+          "colorFieldOffset": 359,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 416,
+          "name": "Metal layer of lathing",
+          "colorFieldOffset": 587,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 419,
+          "name": "Барьер проникновению воздуха",
+          "colorFieldOffset": 435,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 421,
+          "name": "Замедлитель испарения 2",
+          "colorFieldOffset": 453,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 422,
+          "name": "Гидроизоляция",
+          "colorFieldOffset": 393,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 758,
+          "name": "Этаж по умолчанию",
+          "colorFieldOffset": 369,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 792,
+          "name": "Кровля, пленка ЭПДМ",
+          "colorFieldOffset": 417,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 105007,
+          "name": "Стадия - Существующие",
+          "colorFieldOffset": 377,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1378542,
+          "name": "Default Wall",
+          "colorFieldOffset": 359,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1401447,
+          "name": "Wall Material (1)",
+          "colorFieldOffset": 293,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1763182,
+          "name": "Default",
+          "colorFieldOffset": 267,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 2,
+      "rgba": [
+        0.847059,
+        0.843137,
+        0.811765,
+        1
+      ],
+      "rgbaBytes": [
+        216,
+        215,
+        207,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 863,
+          "name": "Roofing Tiles",
+          "colorFieldOffset": 659,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 3,
+      "rgba": [
+        0.921569,
+        0.921569,
+        0.921569,
+        1
+      ],
+      "rgbaBytes": [
+        235,
+        235,
+        235,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 7247,
+          "name": "Потолочная плитка 600 x 600",
+          "colorFieldOffset": 629,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 4,
+      "rgba": [
+        0.74902,
+        0.74902,
+        0.74902,
+        1
+      ],
+      "rgbaBytes": [
+        191,
+        191,
+        191,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 423,
+          "name": "Gypsum Wallboard",
+          "colorFieldOffset": 629,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 5,
+      "rgba": [
+        0.698039,
+        0.698039,
+        0.698039,
+        1
+      ],
+      "rgbaBytes": [
+        178,
+        178,
+        178,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 138363,
+          "name": "Бетон - Пенобетоные блоки",
+          "colorFieldOffset": 391,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 6,
+      "rgba": [
+        0.635294,
+        0.6,
+        0.564706,
+        1
+      ],
+      "rgbaBytes": [
+        162,
+        153,
+        144,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 138312,
+          "name": "Кладка - плиты из керамогранита",
+          "colorFieldOffset": 403,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 7,
+      "rgba": [
+        0.878431,
+        0.698039,
+        0.494118,
+        1
+      ],
+      "rgbaBytes": [
+        224,
+        178,
+        126,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 10988,
+          "name": "Переплет",
+          "colorFieldOffset": 351,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 8,
+      "rgba": [
+        0.756863,
+        0.627451,
+        0.45098,
+        1
+      ],
+      "rgbaBytes": [
+        193,
+        160,
+        115,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 272922,
+          "name": "Деревянные доски",
+          "colorFieldOffset": 395,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 9,
+      "rgba": [
+        0,
+        1,
+        0,
+        1
+      ],
+      "rgbaBytes": [
+        0,
+        255,
+        0,
+        255
+      ],
+      "rvtMaterials": []
+    },
+    {
+      "materialIndex": 10,
+      "rgba": [
+        0.823529,
+        0.623529,
+        0.372549,
+        1
+      ],
+      "rgbaBytes": [
+        210,
+        159,
+        95,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 10429,
+          "name": "Дверь - Панель",
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 617544,
+          "name": "Древесина - Береза - массив, светлое морение, со слабым глянцем",
+          "colorFieldOffset": 461,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1650845,
+          "name": "Wood - Birch - Solid Stained Light Low Gloss",
+          "colorFieldOffset": 411,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 11,
+      "rgba": [
+        0.968627,
+        0.968627,
+        0.968627,
+        1
+      ],
+      "rgbaBytes": [
+        247,
+        247,
+        247,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 182549,
+          "name": "Алюминий",
+          "colorFieldOffset": 377,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1401451,
+          "name": "Metal - Aluminum",
+          "colorFieldOffset": 271,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 12,
+      "rgba": [
+        0.439216,
+        0.443137,
+        0.45098,
+        1
+      ],
+      "rgbaBytes": [
+        112,
+        113,
+        115,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242080,
+          "name": "K.Line Intemporel Taupe (7022 S) - JK",
+          "colorFieldOffset": 423,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 13,
+      "rgba": [
+        0.968627,
+        0.964706,
+        0.964706,
+        1
+      ],
+      "rgbaBytes": [
+        247,
+        246,
+        246,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242074,
+          "name": "K.Line Intemporel Blanc satiné (9016 S) - KQ",
+          "colorFieldOffset": 437,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        {
+          "elementId": 1242146,
+          "name": "K.Line Accessoire Blanc - KQ",
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 14,
+      "rgba": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "rgbaBytes": [
+        0,
+        0,
+        0,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 8798,
+          "name": "Стадия - Новые",
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 21208,
+          "name": "Дверь - Ручка",
+          "colorFieldOffset": 361,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 102856,
+          "name": "Пластмасса",
+          "colorFieldOffset": 391,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 179017,
+          "name": "Сталь, углеродистая",
+          "colorFieldOffset": 397,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        {
+          "elementId": 179018,
+          "name": "Медь",
+          "colorFieldOffset": 373,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        {
+          "elementId": 179019,
+          "name": "Чугун, ковкий",
+          "colorFieldOffset": 373,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        {
+          "elementId": 179020,
+          "name": "Нержавеющая сталь (1)",
+          "colorFieldOffset": 409,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 15,
+      "rgba": [
+        0.462745,
+        0.27451,
+        0.2,
+        1
+      ],
+      "rgbaBytes": [
+        118,
+        70,
+        51,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 30200,
+          "name": "Дверь - Каркас",
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 617540,
+          "name": "Краска - Охра",
+          "colorFieldOffset": 367,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1650844,
+          "name": "Paint - Sienna",
+          "colorFieldOffset": 357,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 16,
+      "rgba": [
+        0.823529,
+        0.823529,
+        0.823529,
+        1
+      ],
+      "rgbaBytes": [
+        210,
+        210,
+        210,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242076,
+          "name": "K.Line Vintage Anodisé Argent - AC",
+          "colorFieldOffset": 417,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 17,
+      "rgba": [
+        0.156863,
+        0.156863,
+        0.156863,
+        1
+      ],
+      "rgbaBytes": [
+        40,
+        40,
+        40,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242150,
+          "name": "K.Line Accessoires Noir - FQ",
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 18,
+      "rgba": [
+        0.470588,
+        0.470588,
+        0.470588,
+        1
+      ],
+      "rgbaBytes": [
+        120,
+        120,
+        120,
+        255
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242120,
+          "name": "Isolant rigide",
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        {
+          "elementId": 1242151,
+          "name": "Acier inoxydable, brossé",
+          "colorFieldOffset": 443,
+          "evidence": "framed-material-color-packed-nested"
+        }
+      ]
+    },
+    {
+      "materialIndex": 19,
+      "rgba": [
+        0,
+        0.501961,
+        0.752941,
+        0.10196099999999997
+      ],
+      "rgbaBytes": [
+        0,
+        128,
+        192,
+        26
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 26,
+          "name": "Стекло",
+          "colorFieldOffset": 401,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 155293,
+          "name": "Стекло, прозрачное остекление",
+          "colorFieldOffset": 460,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 20,
+      "rgba": [
+        0,
+        0,
+        1,
+        0.25098
+      ],
+      "rgbaBytes": [
+        0,
+        0,
+        255,
+        64
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 51455,
+          "name": "Условный материал-отделка",
+          "colorFieldOffset": 385,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1242031,
+          "name": "Coupe",
+          "colorFieldOffset": 263,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1378520,
+          "name": "Glass",
+          "colorFieldOffset": 369,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        {
+          "elementId": 1378543,
+          "name": "Poche",
+          "colorFieldOffset": 263,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    },
+    {
+      "materialIndex": 21,
+      "rgba": [
+        0.360784,
+        0.388235,
+        0.694118,
+        0.30196100000000003
+      ],
+      "rgbaBytes": [
+        92,
+        99,
+        177,
+        77
+      ],
+      "rvtMaterials": [
+        {
+          "elementId": 1242009,
+          "name": "Verre",
+          "colorFieldOffset": 381,
+          "evidence": "framed-material-color-packed-direct"
+        }
+      ]
+    }
+  ],
+  "scan": {
+    "namedMaterialDefinitions": 69,
+    "recordsWithCandidateMatches": 39,
+    "candidateMatches": 59,
+    "structurallyDecodedCandidates": 69,
+    "structurallyDecodedPaletteMatches": 48,
+    "glbPaletteEntriesMapped": 21,
+    "records": [
+      {
+        "elementId": 23,
+        "name": "По умолчанию",
+        "objectLength": 6239,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 359,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 359,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 359,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 24,
+        "name": "Стена по умолчанию",
+        "objectLength": 6251,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 371,
+          "colorPacked": 8421504,
+          "rgb": [
+            128,
+            128,
+            128
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8421504,
+          "baseColorSrgb": [
+            128,
+            128,
+            128
+          ],
+          "colorFieldOffset": 371,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 25,
+        "name": "Крыша по умолчанию",
+        "objectLength": 6251,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 371,
+          "colorPacked": 32512,
+          "rgb": [
+            0,
+            127,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 32512,
+          "baseColorSrgb": [
+            0,
+            127,
+            0
+          ],
+          "colorFieldOffset": 371,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 26,
+        "name": "Стекло",
+        "objectLength": 4212,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          301,
+          423,
+          439
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 301,
+          "colorPackedOffset": 401,
+          "colorPacked": 12615680,
+          "rgb": [
+            0,
+            128,
+            192
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 12615680,
+          "baseColorSrgb": [
+            0,
+            128,
+            192
+          ],
+          "colorFieldOffset": 401,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 19,
+            "rgbaBytes": [
+              0,
+              128,
+              192,
+              26
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 401,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 00 80 c0 00 0c 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 29,
+        "name": "Стадия - Временные",
+        "objectLength": 6263,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": null,
+        "nativeAppearance": {
+          "colorPacked": 8323072,
+          "baseColorSrgb": [
+            0,
+            0,
+            127
+          ],
+          "colorFieldOffset": 371,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 414,
+        "name": "Brick, ordinary",
+        "objectLength": 12946,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1234,
+        "nameFieldOffsets": [
+          233,
+          283
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 283,
+          "colorPackedOffset": 401,
+          "colorPacked": 6907050,
+          "rgb": [
+            170,
+            100,
+            105
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 6907050,
+          "baseColorSrgb": [
+            170,
+            100,
+            105
+          ],
+          "colorFieldOffset": 401,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 416,
+        "name": "Metal layer of lathing",
+        "objectLength": 14119,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1232,
+        "nameFieldOffsets": [
+          455
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 455,
+          "colorPackedOffset": 587,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 587,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 587,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 417,
+        "name": "Фанера, обшивка",
+        "objectLength": 9683,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          379
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 379,
+          "colorPackedOffset": 497,
+          "colorPacked": 4504504,
+          "rgb": [
+            184,
+            187,
+            68
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 4504504,
+          "baseColorSrgb": [
+            184,
+            187,
+            68
+          ],
+          "colorFieldOffset": 497,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 418,
+        "name": "Воздух",
+        "objectLength": 5679,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          233,
+          265
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 265,
+          "colorPackedOffset": 365,
+          "colorPacked": 16777215,
+          "rgb": [
+            255,
+            255,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16777215,
+          "baseColorSrgb": [
+            255,
+            255,
+            255
+          ],
+          "colorFieldOffset": 365,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 419,
+        "name": "Барьер проникновению воздуха",
+        "objectLength": 6309,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          291
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 291,
+          "colorPackedOffset": 435,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 435,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 435,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 421,
+        "name": "Замедлитель испарения 2",
+        "objectLength": 6327,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          319
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 319,
+          "colorPackedOffset": 453,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 453,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 453,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 422,
+        "name": "Гидроизоляция",
+        "objectLength": 4718,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          233,
+          279
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 279,
+          "colorPackedOffset": 393,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 393,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 393,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 423,
+        "name": "Gypsum Wallboard",
+        "objectLength": 14593,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1233,
+        "nameFieldOffsets": [
+          451,
+          509
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 509,
+          "colorPackedOffset": 629,
+          "colorPacked": 12566463,
+          "rgb": [
+            191,
+            191,
+            191
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 12566463,
+          "baseColorSrgb": [
+            191,
+            191,
+            191
+          ],
+          "colorFieldOffset": 629,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 4,
+            "rgbaBytes": [
+              191,
+              191,
+              191,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 629,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 bf bf bf 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 519,
+        "name": "Земля",
+        "objectLength": 13893,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1342,
+        "nameFieldOffsets": [
+          473
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 473,
+          "colorPackedOffset": 571,
+          "colorPacked": 4082529,
+          "rgb": [
+            97,
+            75,
+            62
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 4082529,
+          "baseColorSrgb": [
+            97,
+            75,
+            62
+          ],
+          "colorFieldOffset": 571,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 523,
+        "name": "Бетон, монолитный",
+        "objectLength": 13348,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          291
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 291,
+          "colorPackedOffset": 413,
+          "colorPacked": 12632256,
+          "rgb": [
+            192,
+            192,
+            192
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 12632256,
+          "baseColorSrgb": [
+            192,
+            192,
+            192
+          ],
+          "colorFieldOffset": 413,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 0,
+            "rgbaBytes": [
+              192,
+              192,
+              192,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 413,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 c0 c0 c0 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 758,
+        "name": "Этаж по умолчанию",
+        "objectLength": 6249,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 369,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 369,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 369,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 792,
+        "name": "Кровля, пленка ЭПДМ",
+        "objectLength": 13794,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1343,
+        "nameFieldOffsets": [
+          291
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 291,
+          "colorPackedOffset": 417,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 417,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 417,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 863,
+        "name": "Roofing Tiles",
+        "objectLength": 14049,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "nameFieldOffsets": [
+          545
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 545,
+          "colorPackedOffset": 659,
+          "colorPacked": 13621208,
+          "rgb": [
+            216,
+            215,
+            207
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 13621208,
+          "baseColorSrgb": [
+            216,
+            215,
+            207
+          ],
+          "colorFieldOffset": 659,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 2,
+            "rgbaBytes": [
+              216,
+              215,
+              207,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 659,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 d8 d7 cf 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 865,
+        "name": "Асфальт, битум",
+        "objectLength": 13280,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          303
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 303,
+          "colorPackedOffset": 419,
+          "colorPacked": 10197915,
+          "rgb": [
+            155,
+            155,
+            155
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 10197915,
+          "baseColorSrgb": [
+            155,
+            155,
+            155
+          ],
+          "colorFieldOffset": 419,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 7247,
+        "name": "Потолочная плитка 600 x 600",
+        "objectLength": 10197,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          487
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 487,
+          "colorPackedOffset": 629,
+          "colorPacked": 15461355,
+          "rgb": [
+            235,
+            235,
+            235
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 15461355,
+          "baseColorSrgb": [
+            235,
+            235,
+            235
+          ],
+          "colorFieldOffset": 629,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 3,
+            "rgbaBytes": [
+              235,
+              235,
+              235,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 629,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 eb eb eb 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 8798,
+        "name": "Стадия - Новые",
+        "objectLength": 6255,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 363,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 10429,
+        "name": "Дверь - Панель",
+        "objectLength": 13523,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 363,
+          "colorPacked": 6266834,
+          "rgb": [
+            210,
+            159,
+            95
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 6266834,
+          "baseColorSrgb": [
+            210,
+            159,
+            95
+          ],
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 10,
+            "rgbaBytes": [
+              210,
+              159,
+              95,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 363,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 d2 9f 5f 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 10988,
+        "name": "Переплет",
+        "objectLength": 13513,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 351,
+          "colorPacked": 8303328,
+          "rgb": [
+            224,
+            178,
+            126
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8303328,
+          "baseColorSrgb": [
+            224,
+            178,
+            126
+          ],
+          "colorFieldOffset": 351,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 7,
+            "rgbaBytes": [
+              224,
+              178,
+              126,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 351,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 e0 b2 7e 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 21116,
+        "name": "Дверь - Каркас/импост",
+        "objectLength": 13543,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 377,
+          "colorPacked": 7451604,
+          "rgb": [
+            212,
+            179,
+            113
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 7451604,
+          "baseColorSrgb": [
+            212,
+            179,
+            113
+          ],
+          "colorFieldOffset": 377,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 21208,
+        "name": "Дверь - Ручка",
+        "objectLength": 5264,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 361,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 361,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 30200,
+        "name": "Дверь - Каркас",
+        "objectLength": 5288,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 363,
+          "colorPacked": 3360374,
+          "rgb": [
+            118,
+            70,
+            51
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 3360374,
+          "baseColorSrgb": [
+            118,
+            70,
+            51
+          ],
+          "colorFieldOffset": 363,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 15,
+            "rgbaBytes": [
+              118,
+              70,
+              51,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 363,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 76 46 33 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 51455,
+        "name": "Условный материал-отделка",
+        "objectLength": 6287,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 385,
+          "colorPacked": 16711680,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16711680,
+          "baseColorSrgb": [
+            0,
+            0,
+            255
+          ],
+          "colorFieldOffset": 385,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 9,
+            "rgbaBytes": [
+              0,
+              255,
+              0,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 370,
+            "context": "ff ff ff 00 00 00 00 00 00 00 3f 00 00 ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 52139,
+        "name": "Формообразующий элемент-перекрытие по умолчанию",
+        "objectLength": 6319,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 429,
+          "colorPacked": 13390181,
+          "rgb": [
+            101,
+            81,
+            204
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 13390181,
+          "baseColorSrgb": [
+            101,
+            81,
+            204
+          ],
+          "colorFieldOffset": 429,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 102856,
+        "name": "Пластмасса",
+        "objectLength": 13198,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          283,
+          413,
+          437
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 283,
+          "colorPackedOffset": 391,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 391,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 103647,
+        "name": "Источник света по умолчанию",
+        "objectLength": 6281,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 389,
+          "colorPacked": 65535,
+          "rgb": [
+            255,
+            255,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 65535,
+          "baseColorSrgb": [
+            255,
+            255,
+            0
+          ],
+          "colorFieldOffset": 389,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 105006,
+        "name": "Стадия - Снос",
+        "objectLength": 6253,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 361,
+          "colorPacked": 255,
+          "rgb": [
+            255,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 255,
+          "baseColorSrgb": [
+            255,
+            0,
+            0
+          ],
+          "colorFieldOffset": 361,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 9,
+            "rgbaBytes": [
+              0,
+              255,
+              0,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 360,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 00 ff 00 00 00 40 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 105007,
+        "name": "Стадия - Существующие",
+        "objectLength": 6269,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1344,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": null,
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 377,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 361,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 7f 7f 7f 00 00 00 00 00 7f 7f 7f 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 369,
+            "context": "00 00 00 3f 7f 7f 7f 00 00 00 00 00 7f 7f 7f 00 00 00 00 00 7f 7f 7f 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 377,
+            "context": "00 00 00 00 7f 7f 7f 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 111600,
+        "name": "Форма по умолчанию",
+        "objectLength": 6290,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          272
+        ],
+        "decodedCandidate": null,
+        "nativeAppearance": {
+          "colorPacked": 12893625,
+          "baseColorSrgb": [
+            185,
+            189,
+            196
+          ],
+          "colorFieldOffset": 396,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 138312,
+        "name": "Кладка - плиты из керамогранита",
+        "objectLength": 18405,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1074,
+        "nameFieldOffsets": [
+          253
+        ],
+        "decodedCandidate": null,
+        "nativeAppearance": {
+          "colorPacked": 9476514,
+          "baseColorSrgb": [
+            162,
+            153,
+            144
+          ],
+          "colorFieldOffset": 403,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 6,
+            "rgbaBytes": [
+              162,
+              153,
+              144,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 403,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 a2 99 90 00 40 00 00 00 00 01 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 138363,
+        "name": "Бетон - Пенобетоные блоки",
+        "objectLength": 13580,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          253
+        ],
+        "decodedCandidate": null,
+        "nativeAppearance": {
+          "colorPacked": 11711154,
+          "baseColorSrgb": [
+            178,
+            178,
+            178
+          ],
+          "colorFieldOffset": 391,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 5,
+            "rgbaBytes": [
+              178,
+              178,
+              178,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 391,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 b2 b2 b2 00 40 00 00 00 00 01 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 155283,
+        "name": "Формообразующий экран по умолчанию",
+        "objectLength": 6297,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 403,
+          "colorPacked": 9081488,
+          "rgb": [
+            144,
+            146,
+            138
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 9081488,
+          "baseColorSrgb": [
+            144,
+            146,
+            138
+          ],
+          "colorFieldOffset": 403,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 155289,
+        "name": "Формообразующий проем по умолчанию",
+        "objectLength": 6297,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 403,
+          "colorPacked": 16777215,
+          "rgb": [
+            255,
+            255,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16777215,
+          "baseColorSrgb": [
+            255,
+            255,
+            255
+          ],
+          "colorFieldOffset": 403,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 155292,
+        "name": "Мягкая древесина, пиломатериалы",
+        "objectLength": 12794,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          312
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 312,
+          "colorPackedOffset": 462,
+          "colorPacked": 8831199,
+          "rgb": [
+            223,
+            192,
+            134
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8831199,
+          "baseColorSrgb": [
+            223,
+            192,
+            134
+          ],
+          "colorFieldOffset": 462,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 155293,
+        "name": "Стекло, прозрачное остекление",
+        "objectLength": 4271,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          314
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 314,
+          "colorPackedOffset": 460,
+          "colorPacked": 12615680,
+          "rgb": [
+            0,
+            128,
+            192
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 12615680,
+          "baseColorSrgb": [
+            0,
+            128,
+            192
+          ],
+          "colorFieldOffset": 460,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 19,
+            "rgbaBytes": [
+              0,
+              128,
+              192,
+              26
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 460,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 00 80 c0 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 179017,
+        "name": "Сталь, углеродистая",
+        "objectLength": 12602,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          283
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 283,
+          "colorPackedOffset": 397,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 397,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 179018,
+        "name": "Медь",
+        "objectLength": 12580,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          231,
+          289
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 289,
+          "colorPackedOffset": 373,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 373,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 179019,
+        "name": "Чугун, ковкий",
+        "objectLength": 4787,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          271
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 271,
+          "colorPackedOffset": 373,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 373,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 179020,
+        "name": "Нержавеющая сталь (1)",
+        "objectLength": 12614,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          291
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 291,
+          "colorPackedOffset": 409,
+          "colorPacked": 0,
+          "rgb": [
+            0,
+            0,
+            0
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 0,
+          "baseColorSrgb": [
+            0,
+            0,
+            0
+          ],
+          "colorFieldOffset": 409,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 182549,
+        "name": "Алюминий",
+        "objectLength": 13622,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1345,
+        "nameFieldOffsets": [
+          231,
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 377,
+          "colorPacked": 16250871,
+          "rgb": [
+            247,
+            247,
+            247
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16250871,
+          "baseColorSrgb": [
+            247,
+            247,
+            247
+          ],
+          "colorFieldOffset": 377,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 11,
+            "rgbaBytes": [
+              247,
+              247,
+              247,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 377,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 f7 f7 f7 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 272922,
+        "name": "Деревянные доски",
+        "objectLength": 12461,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1342,
+        "nameFieldOffsets": [
+          287
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 287,
+          "colorPackedOffset": 395,
+          "colorPacked": 7577793,
+          "rgb": [
+            193,
+            160,
+            115
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 7577793,
+          "baseColorSrgb": [
+            193,
+            160,
+            115
+          ],
+          "colorFieldOffset": 395,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 8,
+            "rgbaBytes": [
+              193,
+              160,
+              115,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 395,
+            "context": "00 00 00 3f 78 78 78 00 78 78 78 00 c1 a0 73 00 78 78 78 00 c1 a0 73 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 8,
+            "rgbaBytes": [
+              193,
+              160,
+              115,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 403,
+            "context": "78 78 78 00 c1 a0 73 00 78 78 78 00 c1 a0 73 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 387,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 78 78 78 00 78 78 78 00 c1 a0 73 00 78 78 78 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 391,
+            "context": "00 00 00 00 00 00 00 3f 78 78 78 00 78 78 78 00 c1 a0 73 00 78 78 78 00 c1 a0 73 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 399,
+            "context": "78 78 78 00 78 78 78 00 c1 a0 73 00 78 78 78 00 c1 a0 73 00 40 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 617540,
+        "name": "Краска - Охра",
+        "objectLength": 5174,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1271,
+        "nameFieldOffsets": [
+          253
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 253,
+          "colorPackedOffset": 367,
+          "colorPacked": 3360374,
+          "rgb": [
+            118,
+            70,
+            51
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 3360374,
+          "baseColorSrgb": [
+            118,
+            70,
+            51
+          ],
+          "colorFieldOffset": 367,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 15,
+            "rgbaBytes": [
+              118,
+              70,
+              51,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 367,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 76 46 33 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 617544,
+        "name": "Древесина - Береза - массив, светлое морение, со слабым глянцем",
+        "objectLength": 13445,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1271,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 461,
+          "colorPacked": 6266834,
+          "rgb": [
+            210,
+            159,
+            95
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 6266834,
+          "baseColorSrgb": [
+            210,
+            159,
+            95
+          ],
+          "colorFieldOffset": 461,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 10,
+            "rgbaBytes": [
+              210,
+              159,
+              95,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 461,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 d2 9f 5f 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242007,
+        "name": "Mur par défaut",
+        "objectLength": 1925,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "nameFieldOffsets": [
+          165
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 165,
+          "colorPackedOffset": 281,
+          "colorPacked": 8031374,
+          "rgb": [
+            142,
+            140,
+            122
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8031374,
+          "baseColorSrgb": [
+            142,
+            140,
+            122
+          ],
+          "colorFieldOffset": 281,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1242009,
+        "name": "Verre",
+        "objectLength": 4081,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "nameFieldOffsets": [
+          231,
+          283,
+          403,
+          417
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 283,
+          "colorPackedOffset": 381,
+          "colorPacked": 11625308,
+          "rgb": [
+            92,
+            99,
+            177
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 11625308,
+          "baseColorSrgb": [
+            92,
+            99,
+            177
+          ],
+          "colorFieldOffset": 381,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 21,
+            "rgbaBytes": [
+              92,
+              99,
+              177,
+              77
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 381,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 5c 63 b1 00 0c 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242031,
+        "name": "Coupe",
+        "objectLength": 6106,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "nameFieldOffsets": [
+          165
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 165,
+          "colorPackedOffset": 263,
+          "colorPacked": 16711680,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16711680,
+          "baseColorSrgb": [
+            0,
+            0,
+            255
+          ],
+          "colorFieldOffset": 263,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1242061,
+        "name": "K.Line Accessoires Aspect Inox - TD",
+        "objectLength": 13220,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1247,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 419,
+          "colorPacked": 8488327,
+          "rgb": [
+            135,
+            133,
+            129
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8488327,
+          "baseColorSrgb": [
+            135,
+            133,
+            129
+          ],
+          "colorFieldOffset": 419,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1242067,
+        "name": "Laiton",
+        "objectLength": 12354,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "nameFieldOffsets": [
+          277,
+          1774
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 277,
+          "colorPackedOffset": 365,
+          "colorPacked": 2847895,
+          "rgb": [
+            151,
+            116,
+            43
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 2847895,
+          "baseColorSrgb": [
+            151,
+            116,
+            43
+          ],
+          "colorFieldOffset": 365,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1242074,
+        "name": "K.Line Intemporel Blanc satiné (9016 S) - KQ",
+        "objectLength": 13376,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 437,
+          "colorPacked": 16185079,
+          "rgb": [
+            247,
+            246,
+            246
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16185079,
+          "baseColorSrgb": [
+            247,
+            246,
+            246
+          ],
+          "colorFieldOffset": 437,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 429,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 437,
+            "context": "00 00 00 3f f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 445,
+            "context": "00 00 00 00 f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242075,
+        "name": "K.Line Tendance Grège (9007 T) - RQ",
+        "objectLength": 13358,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 419,
+          "colorPacked": 8488327,
+          "rgb": [
+            135,
+            133,
+            129
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8488327,
+          "baseColorSrgb": [
+            135,
+            133,
+            129
+          ],
+          "colorFieldOffset": 419,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1242076,
+        "name": "K.Line Vintage Anodisé Argent - AC",
+        "objectLength": 13218,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1248,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 417,
+          "colorPacked": 13816530,
+          "rgb": [
+            210,
+            210,
+            210
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 13816530,
+          "baseColorSrgb": [
+            210,
+            210,
+            210
+          ],
+          "colorFieldOffset": 417,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 16,
+            "rgbaBytes": [
+              210,
+              210,
+              210,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 409,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f d2 d2 d2 00 00 00 00 00 d2 d2 d2 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 16,
+            "rgbaBytes": [
+              210,
+              210,
+              210,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 417,
+            "context": "00 00 00 3f d2 d2 d2 00 00 00 00 00 d2 d2 d2 00 00 00 00 00 d2 d2 d2 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 16,
+            "rgbaBytes": [
+              210,
+              210,
+              210,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 425,
+            "context": "00 00 00 00 d2 d2 d2 00 00 00 00 00 d2 d2 d2 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242080,
+        "name": "K.Line Intemporel Taupe (7022 S) - JK",
+        "objectLength": 13224,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 423,
+          "colorPacked": 7565680,
+          "rgb": [
+            112,
+            113,
+            115
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 7565680,
+          "baseColorSrgb": [
+            112,
+            113,
+            115
+          ],
+          "colorFieldOffset": 423,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 12,
+            "rgbaBytes": [
+              112,
+              113,
+              115,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 415,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 70 71 73 00 00 00 00 00 70 71 73 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 12,
+            "rgbaBytes": [
+              112,
+              113,
+              115,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 423,
+            "context": "00 00 00 3f 70 71 73 00 00 00 00 00 70 71 73 00 00 00 00 00 70 71 73 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 12,
+            "rgbaBytes": [
+              112,
+              113,
+              115,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 431,
+            "context": "00 00 00 00 70 71 73 00 00 00 00 00 70 71 73 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242120,
+        "name": "Isolant rigide",
+        "objectLength": 3694,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "nameFieldOffsets": [
+          301
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 301,
+          "colorPackedOffset": 405,
+          "colorPacked": 7895160,
+          "rgb": [
+            120,
+            120,
+            120
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 7895160,
+          "baseColorSrgb": [
+            120,
+            120,
+            120
+          ],
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 397,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 78 78 78 00 00 00 00 00 78 78 78 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 405,
+            "context": "00 00 00 3f 78 78 78 00 00 00 00 00 78 78 78 00 00 00 00 00 78 78 78 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 413,
+            "context": "00 00 00 00 78 78 78 00 00 00 00 00 78 78 78 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242146,
+        "name": "K.Line Accessoire Blanc - KQ",
+        "objectLength": 13344,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 405,
+          "colorPacked": 16185079,
+          "rgb": [
+            247,
+            246,
+            246
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16185079,
+          "baseColorSrgb": [
+            247,
+            246,
+            246
+          ],
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 397,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 405,
+            "context": "00 00 00 3f f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 13,
+            "rgbaBytes": [
+              247,
+              246,
+              246,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 413,
+            "context": "00 00 00 00 f7 f6 f6 00 00 00 00 00 f7 f6 f6 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242150,
+        "name": "K.Line Accessoires Noir - FQ",
+        "objectLength": 13484,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "nameFieldOffsets": [
+          273
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 273,
+          "colorPackedOffset": 405,
+          "colorPacked": 2631720,
+          "rgb": [
+            40,
+            40,
+            40
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 2631720,
+          "baseColorSrgb": [
+            40,
+            40,
+            40
+          ],
+          "colorFieldOffset": 405,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 17,
+            "rgbaBytes": [
+              40,
+              40,
+              40,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 397,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 28 28 28 00 00 00 00 00 28 28 28 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 17,
+            "rgbaBytes": [
+              40,
+              40,
+              40,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 405,
+            "context": "00 00 00 3f 28 28 28 00 00 00 00 00 28 28 28 00 00 00 00 00 28 28 28 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 17,
+            "rgbaBytes": [
+              40,
+              40,
+              40,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 413,
+            "context": "00 00 00 00 28 28 28 00 00 00 00 00 28 28 28 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1242151,
+        "name": "Acier inoxydable, brossé",
+        "objectLength": 12470,
+        "evidence": "framed-nested-material-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1249,
+        "nameFieldOffsets": [
+          319
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 319,
+          "colorPackedOffset": 443,
+          "colorPacked": 7895160,
+          "rgb": [
+            120,
+            120,
+            120
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 7895160,
+          "baseColorSrgb": [
+            120,
+            120,
+            120
+          ],
+          "colorFieldOffset": 443,
+          "evidence": "framed-material-color-packed-nested"
+        },
+        "matches": [
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 435,
+            "context": "ff ff ff ff 00 00 00 00 00 00 00 3f 78 78 78 00 00 00 00 00 78 78 78 00 00 00 00 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 443,
+            "context": "00 00 00 3f 78 78 78 00 00 00 00 00 78 78 78 00 00 00 00 00 78 78 78 00 40 00 00 00"
+          },
+          {
+            "materialIndex": 18,
+            "rgbaBytes": [
+              120,
+              120,
+              120,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 451,
+            "context": "00 00 00 00 78 78 78 00 00 00 00 00 78 78 78 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1378520,
+        "name": "Glass",
+        "objectLength": 3970,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1237,
+        "nameFieldOffsets": [
+          241,
+          271,
+          391,
+          405,
+          1420,
+          1464
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 271,
+          "colorPackedOffset": 369,
+          "colorPacked": 16711680,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16711680,
+          "baseColorSrgb": [
+            0,
+            0,
+            255
+          ],
+          "colorFieldOffset": 369,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1378542,
+        "name": "Default Wall",
+        "objectLength": 2097,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1234,
+        "nameFieldOffsets": [
+          247
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 247,
+          "colorPackedOffset": 359,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 359,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 359,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1378543,
+        "name": "Poche",
+        "objectLength": 5871,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1238,
+        "nameFieldOffsets": [
+          165
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 165,
+          "colorPackedOffset": 263,
+          "colorPacked": 16711680,
+          "rgb": [
+            0,
+            0,
+            255
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16711680,
+          "baseColorSrgb": [
+            0,
+            0,
+            255
+          ],
+          "colorFieldOffset": 263,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1401447,
+        "name": "Wall Material (1)",
+        "objectLength": 1971,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "nameFieldOffsets": [
+          171
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 171,
+          "colorPackedOffset": 293,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 293,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 293,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1401451,
+        "name": "Metal - Aluminum",
+        "objectLength": 1313,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1231,
+        "nameFieldOffsets": [
+          153
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 153,
+          "colorPackedOffset": 271,
+          "colorPacked": 16250871,
+          "rgb": [
+            247,
+            247,
+            247
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 16250871,
+          "baseColorSrgb": [
+            247,
+            247,
+            247
+          ],
+          "colorFieldOffset": 271,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 11,
+            "rgbaBytes": [
+              247,
+              247,
+              247,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 271,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 f7 f7 f7 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1416371,
+        "name": "Softwood, Lumber",
+        "objectLength": 12598,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1232,
+        "nameFieldOffsets": [
+          288
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 288,
+          "colorPackedOffset": 408,
+          "colorPacked": 8831199,
+          "rgb": [
+            223,
+            192,
+            134
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8831199,
+          "baseColorSrgb": [
+            223,
+            192,
+            134
+          ],
+          "colorFieldOffset": 408,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": []
+      },
+      {
+        "elementId": 1650844,
+        "name": "Paint - Sienna",
+        "objectLength": 5138,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1176,
+        "nameFieldOffsets": [
+          241
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 241,
+          "colorPackedOffset": 357,
+          "colorPacked": 3360374,
+          "rgb": [
+            118,
+            70,
+            51
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 3360374,
+          "baseColorSrgb": [
+            118,
+            70,
+            51
+          ],
+          "colorFieldOffset": 357,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 15,
+            "rgbaBytes": [
+              118,
+              70,
+              51,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 357,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 76 46 33 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1650845,
+        "name": "Wood - Birch - Solid Stained Light Low Gloss",
+        "objectLength": 13321,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1177,
+        "nameFieldOffsets": [
+          235
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 235,
+          "colorPackedOffset": 411,
+          "colorPacked": 6266834,
+          "rgb": [
+            210,
+            159,
+            95
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 6266834,
+          "baseColorSrgb": [
+            210,
+            159,
+            95
+          ],
+          "colorFieldOffset": 411,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 10,
+            "rgbaBytes": [
+              210,
+              159,
+              95,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 411,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 d2 9f 5f 00 80 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      },
+      {
+        "elementId": 1763182,
+        "name": "Default",
+        "objectLength": 1945,
+        "evidence": "framed-material-element-name",
+        "stream": "Partitions/325",
+        "chunkIndex": 1116,
+        "nameFieldOffsets": [
+          165
+        ],
+        "decodedCandidate": {
+          "nameFieldOffset": 165,
+          "colorPackedOffset": 267,
+          "colorPacked": 8355711,
+          "rgb": [
+            127,
+            127,
+            127
+          ]
+        },
+        "nativeAppearance": {
+          "colorPacked": 8355711,
+          "baseColorSrgb": [
+            127,
+            127,
+            127
+          ],
+          "colorFieldOffset": 267,
+          "evidence": "framed-material-color-packed-direct"
+        },
+        "matches": [
+          {
+            "materialIndex": 1,
+            "rgbaBytes": [
+              127,
+              127,
+              127,
+              255
+            ],
+            "encoding": "color-packed-rgb-u32le",
+            "recordOffset": 267,
+            "context": "00 00 00 00 00 00 00 00 00 00 00 00 7f 7f 7f 00 40 00 00 00 00 00 00 00 00 00 00 00"
+          }
+        ]
+      }
+    ]
+  },
+  "caveat": "A raw byte match is diagnostic evidence only. Stable field offsets, schema typing, and agreement with independently named materials are required before a match can be promoted to a decoder."
+}

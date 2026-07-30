@@ -1,17 +1,20 @@
 /**
  * Release-gated Revit material-element identity and name records.
  *
- * This decoder intentionally stops before color, appearance, or assignment.
+ * This decoder recovers material identity, name, and the packed render colour.
+ * It intentionally stops before transparency, texture/appearance assets, or
+ * assignment.
  * The supplied 2027 file's embedded `Formats/Latest` schema identifies:
  *
  *   MaterialElem.m_pMaterial
  *   Material.m_name
  *   MaterialId.m_colorId / m_transparency / m_smoothness / ...
  *
- * but those nested objects still require the generic schema reader. The outer
- * material element is independently recoverable because it uses the same
- * length/echo framing as other partition objects, a release-specific class
- * marker, and a name string with its own stable field trailer.
+ * The remaining nested properties still require the generic schema reader. The
+ * outer material element and its packed colour are independently recoverable
+ * because they use the same length/echo framing as other partition objects, a
+ * release-specific class marker, a name string with its own stable field
+ * trailer, and the bounded colour layouts documented below.
  */
 
 /** `MaterialElem` object marker measured in the supplied Revit 2027 file. */
@@ -50,6 +53,21 @@ const MATERIAL_NAME_SEARCH_BYTES = 1_024;
 const MIN_MATERIAL_NAME_CHARS = 3;
 const MAX_MATERIAL_NAME_CHARS = 200;
 const NESTED_DESCRIPTION_OFFSET = 231;
+const MIN_APPEARANCE_RECORD_BYTES = 1_024;
+const DIRECT_COLOR_SEARCH_START = 48;
+const DIRECT_COLOR_SEARCH_END = 104;
+const DIRECT_COLOR_EXPECTED_OFFSET = 84;
+const NESTED_RENDER_COLOR_OFFSET = 72;
+
+export type NativeMaterialAppearance = {
+  /** Packed little-endian 0x00BBGGRR value persisted by Revit. */
+  colorPacked: number;
+  baseColorSrgb: [number, number, number];
+  colorFieldOffset: number;
+  evidence:
+    | "framed-material-color-packed-direct"
+    | "framed-material-color-packed-nested";
+};
 
 export type NativeMaterialDefinition = {
   elementId: number;
@@ -60,6 +78,7 @@ export type NativeMaterialDefinition = {
   evidence:
     | "framed-material-element-name"
     | "framed-nested-material-name";
+  appearance?: NativeMaterialAppearance;
 };
 
 export type MaterialRecordScan = {
@@ -114,12 +133,17 @@ function readUtf16Field(
  * labels. Requiring the observed `ff ff ff ff e0 0c` field trailer selects the
  * element name rather than one of those nested strings.
  */
+type MaterialNameField = {
+  value: string;
+  end: number;
+};
+
 function readMaterialName(
   data: Uint8Array,
   view: DataView,
   objectOffset: number,
   objectLength: number,
-): string | null {
+): MaterialNameField | null {
   const limit = Math.min(
     data.byteLength,
     objectOffset + objectLength,
@@ -142,7 +166,9 @@ function readMaterialName(
       continue;
     }
     const name = new TextDecoder("utf-16le").decode(data.subarray(start, end));
-    if (validMaterialName(name)) return name.normalize("NFC");
+    if (validMaterialName(name)) {
+      return { value: name.normalize("NFC"), end };
+    }
   }
   return null;
 }
@@ -161,7 +187,7 @@ function readNestedMaterialName(
   view: DataView,
   objectOffset: number,
   objectLength: number,
-): string | null {
+): MaterialNameField | null {
   const limit = Math.min(data.byteLength, objectOffset + objectLength);
   const description = readUtf16Field(
     data,
@@ -192,7 +218,125 @@ function readNestedMaterialName(
   ) {
     return null;
   }
-  return name.value;
+  return name;
+}
+
+function zeroBytes(
+  data: Uint8Array,
+  offset: number,
+  length: number,
+): boolean {
+  if (offset < 0 || offset + length > data.byteLength) return false;
+  for (let index = 0; index < length; index += 1) {
+    if (data[offset + index] !== 0) return false;
+  }
+  return true;
+}
+
+function appearanceAt(
+  view: DataView,
+  objectOffset: number,
+  colorFieldOffset: number,
+  evidence: NativeMaterialAppearance["evidence"],
+): NativeMaterialAppearance {
+  const colorPacked = view.getUint32(colorFieldOffset, true);
+  return {
+    colorPacked,
+    baseColorSrgb: [
+      colorPacked & 0xff,
+      (colorPacked >>> 8) & 0xff,
+      (colorPacked >>> 16) & 0xff,
+    ],
+    colorFieldOffset: colorFieldOffset - objectOffset,
+    evidence,
+  };
+}
+
+/**
+ * Locate the persisted packed render colour following a proven material name.
+ *
+ * Direct-name records put the packed value after a zeroed MaterialId prefix and
+ * before a one-byte-range descriptor plus an eight-byte zero suffix. The five
+ * system/legacy variants that omit that suffix retain the same +84 field slot.
+ * The separately bounded nested layout stores three graphic/render colours at
+ * eight-byte intervals; the middle (+72) value is the render colour that agrees
+ * with the Autodesk derivative palette (the wood record is the discriminating
+ * case because its first colour is grey and its middle colour is wood).
+ */
+function readMaterialAppearance(
+  data: Uint8Array,
+  view: DataView,
+  objectOffset: number,
+  objectLength: number,
+  name: MaterialNameField,
+  nested: boolean,
+): NativeMaterialAppearance | null {
+  if (objectLength < MIN_APPEARANCE_RECORD_BYTES) return null;
+  const objectEnd = Math.min(data.byteLength, objectOffset + objectLength);
+  if (nested) {
+    const colorFieldOffset = name.end + NESTED_RENDER_COLOR_OFFSET;
+    if (
+      colorFieldOffset + 4 > objectEnd ||
+      data[colorFieldOffset + 3] !== 0
+    ) {
+      return null;
+    }
+    return appearanceAt(
+      view,
+      objectOffset,
+      colorFieldOffset,
+      "framed-material-color-packed-nested",
+    );
+  }
+
+  const structuralCandidates: number[] = [];
+  for (
+    let colorFieldOffset = name.end + DIRECT_COLOR_SEARCH_START;
+    colorFieldOffset + 16 <= Math.min(objectEnd, name.end + DIRECT_COLOR_SEARCH_END);
+    colorFieldOffset += 1
+  ) {
+    if (
+      !zeroBytes(data, colorFieldOffset - 12, 12) ||
+      data[colorFieldOffset + 3] !== 0
+    ) {
+      continue;
+    }
+    const descriptor = view.getUint32(colorFieldOffset + 4, true);
+    if (
+      descriptor === 0 ||
+      descriptor > 0xff ||
+      !zeroBytes(data, colorFieldOffset + 8, 8)
+    ) {
+      continue;
+    }
+    structuralCandidates.push(colorFieldOffset);
+  }
+  structuralCandidates.sort((left, right) =>
+    Math.abs(left - (name.end + DIRECT_COLOR_EXPECTED_OFFSET)) -
+    Math.abs(right - (name.end + DIRECT_COLOR_EXPECTED_OFFSET)));
+  if (structuralCandidates[0] != null) {
+    return appearanceAt(
+      view,
+      objectOffset,
+      structuralCandidates[0],
+      "framed-material-color-packed-direct",
+    );
+  }
+
+  const fallback = name.end + DIRECT_COLOR_EXPECTED_OFFSET;
+  if (
+    fallback + 4 > objectEnd ||
+    data[fallback + 3] !== 0 ||
+    view.getUint32(fallback, true) === 0
+  ) {
+    return null;
+  }
+  return appearanceAt(
+    view,
+    objectOffset,
+    fallback,
+    "framed-material-color-packed-direct",
+  );
 }
 
 /**
@@ -247,17 +391,26 @@ export function scanMaterialElementRecords(
     const nestedName = directName
       ? null
       : readNestedMaterialName(data, view, offset, objectLength);
-    const name = directName ?? nestedName;
-    if (!name) continue;
+    const nameField = directName ?? nestedName;
+    if (!nameField) continue;
+    const appearance = readMaterialAppearance(
+      data,
+      view,
+      offset,
+      objectLength,
+      nameField,
+      nestedName != null,
+    );
     definitions.push({
       elementId,
-      name,
+      name: nameField.value,
       recordOffset: offset,
       objectLength,
       objectMarker: REVIT_2027_MATERIAL_ELEMENT_MARKER,
       evidence: directName
         ? "framed-material-element-name"
         : "framed-nested-material-name",
+      ...(appearance ? { appearance } : {}),
     });
     offset += objectLength + OBJECT_TRAILER_BYTES - 1;
   }

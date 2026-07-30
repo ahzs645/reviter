@@ -8,8 +8,12 @@ import * as THREE from "three";
 
 import { cameraPoseForPreset, type CameraPreset, type ConvertResult, type RenderMode } from "../../lib/reviter";
 import type { ReviterGlobal } from "./types.ts";
+import {
+  AUTODESK_REFERENCE_FILE,
+  hasAutodeskReference,
+} from "./autodesk-reference-file.ts";
 
-export const AUTODESK_REFERENCE_FILE = "UNBC Model - 2026-06-30 - FINAL (Fixed Library).rvt";
+export { AUTODESK_REFERENCE_FILE, hasAutodeskReference };
 export const AUTODESK_REFERENCE_BOUNDS = {
   min: { x: -108.9497, y: -9.7, z: -187.3832 },
   max: { x: 108.9497, y: 9.7, z: 187.3832 },
@@ -65,10 +69,6 @@ export const AUTODESK_PREVIEW_RESULT: ConvertResult = {
   method: "partition-coordinate-recovery",
 };
 
-export function hasAutodeskReference(fileName: string): boolean {
-  return fileName.localeCompare(AUTODESK_REFERENCE_FILE, undefined, { sensitivity: "base" }) === 0;
-}
-
 export function publicAssetUrl(fileName: string): string {
   const base = document.baseURI.replace(/[?#].*$/, "").replace(/[^/]*$/, "");
   return `${base}${fileName}`;
@@ -99,11 +99,7 @@ export function styleAutodeskReference(root: THREE.Object3D, renderMode: RenderM
       material.side = THREE.DoubleSide;
       const standard = material as THREE.MeshStandardMaterial;
       if (standard.isMeshStandardMaterial) {
-        standard.metalness = 0;
-        standard.roughness = renderMode === "technical" ? 0.82 : 0.68;
-        if (renderMode === "technical") {
-          standard.color.lerp(new THREE.Color(0xe3e7ec), 0.18);
-        } else {
+        if (renderMode !== "technical") {
           standard.transparent = true;
           standard.opacity = Math.min(standard.opacity, 0.24);
           standard.depthWrite = false;

@@ -52,8 +52,9 @@ export function compareRvtToIfc(
   const triangleRatio = reference.triangleCount
     ? rvt.triangleCount / reference.triangleCount
     : 0;
+  const typedElements = Math.max(rvt.productionElements, rvt.typedElements ?? 0);
   const semanticCoverage = reference.elementCount
-    ? rvt.productionElements / reference.elementCount
+    ? typedElements / reference.elementCount
     : 0;
 
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
@@ -84,9 +85,21 @@ export function compareRvtToIfc(
       label: "Typed semantics",
       status: semanticCoverage >= 0.9 ? "pass" : semanticCoverage > 0 ? "warn" : "fail",
       value: percent(semanticCoverage),
-      detail: `${rvt.productionElements.toLocaleString()} validated RVT elements versus ${reference.elementCount.toLocaleString()} typed IFC elements.`,
+      detail: `${typedElements.toLocaleString()} natively typed RVT elements versus ${reference.elementCount.toLocaleString()} typed IFC elements.`,
     },
   ];
+  const geometricCompared = reference.geometricComparedElementCount ?? 0;
+  const geometricAligned = reference.geometricAlignedElementCount ?? 0;
+  if (geometricCompared > 0) {
+    const geometricAgreement = geometricAligned / geometricCompared;
+    gates.push({
+      id: "geometry",
+      label: "Visible geometry",
+      status: geometricAgreement >= 0.9 ? "pass" : geometricAgreement >= 0.5 ? "warn" : "fail",
+      value: percent(geometricAgreement),
+      detail: `${geometricAligned.toLocaleString()} of ${geometricCompared.toLocaleString()} matched elements agree within ${(reference.geometryToleranceFeet ?? 0.5).toFixed(1)} ft for both centre and size.`,
+    });
+  }
   const status = overallStatus(gates);
 
   return {

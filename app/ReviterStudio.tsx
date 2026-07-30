@@ -6,20 +6,39 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   boundsDimensions,
   CAMERA_PRESETS,
+  compareSharedParameterDocuments,
   DEFAULT_CAMERA_PRESET,
   downloadBlob,
+  drawnBounds,
+  dwgThumbnailBlob,
+  extractDwgThumbnail,
+  indexFamilyLibraryFiles,
+  loadBundledOmniClassTaxonomy,
+  mergeSharedParameterDocuments,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
   makeObj,
   makePlanSvg,
   makeReport,
+  loadLegacyRevit2021Api,
   outputName,
+  parseBasicFileInfoProperties,
+  parseSharedParameterBytes,
   revitVersionFromBasicFileInfo,
+  searchFamilyLibrary,
+  searchOmniClassTaxonomy,
+  validateSharedParameterDocument,
+  writeSharedParameterFile,
   type CameraPreset,
+  type BasicFileInfoProperties,
   type ConvertResult,
+  type DecodedSharedParameterDocument,
+  type FamilyLibraryIndex,
   type IfcWorkerRequest,
   type IfcWorkerResponse,
+  type LegacyRevit2021Api,
+  type OmniClassItem,
   type PairedRegressionResult,
   type NavigationMode,
   type RenderMode,
@@ -43,12 +62,31 @@ import type {
 
 type StudioFileInfo = Omit<FileInfo, "fileVersion"> & { fileVersion: number };
 
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes ? `${minutes}m ${remainder.toString().padStart(2, "0")}s` : `${remainder}s`;
+}
+
+function BlobThumbnail({ blob, alt }: { blob?: Blob; alt: string }) {
+  const url = useMemo(() => blob ? URL.createObjectURL(blob) : null, [blob]);
+  useEffect(() => () => {
+    if (url) URL.revokeObjectURL(url);
+  }, [url]);
+  return url
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img className="family-library-thumbnail" src={url} alt={alt} />
+    : <span className="family-library-fallback">RFA</span>;
+}
+
 export default function ReviterStudio({ referencePreview = false }: { referencePreview?: boolean }) {
   const [phase, setPhase] = useState<Phase>(referencePreview ? "ready" : "idle");
   const [progress, setProgress] = useState(referencePreview ? 1 : 0);
   const [progressMessage, setProgressMessage] = useState(
     referencePreview ? "Autodesk derivative reference loaded for visual review" : "Waiting for a local file",
   );
+  const [conversionStartedAt, setConversionStartedAt] = useState<number | null>(null);
+  const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState<StudioFileInfo | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
@@ -67,6 +105,30 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [schemaSearch, setSchemaSearch] = useState("");
+  const [legacySearch, setLegacySearch] = useState("");
+  const [legacyApi, setLegacyApi] = useState<LegacyRevit2021Api | null>(null);
+  const [legacyLoading, setLegacyLoading] = useState(false);
+  const [legacyError, setLegacyError] = useState<string | null>(null);
+  const [privateFileInfo, setPrivateFileInfo] = useState<BasicFileInfoProperties | null>(null);
+  const [familyLibrary, setFamilyLibrary] = useState<FamilyLibraryIndex | null>(null);
+  const [familySearch, setFamilySearch] = useState("");
+  const [familyBusy, setFamilyBusy] = useState(false);
+  const [familyMessage, setFamilyMessage] = useState("Choose a folder containing .rfa files");
+  const [omniClass, setOmniClass] = useState<OmniClassItem[] | null>(null);
+  const [omniSearch, setOmniSearch] = useState("");
+  const [omniBusy, setOmniBusy] = useState(false);
+  const [omniError, setOmniError] = useState<string | null>(null);
+  const [sharedFiles, setSharedFiles] = useState<Array<{
+    name: string;
+    decoded: DecodedSharedParameterDocument;
+  }>>([]);
+  const [dwgPreview, setDwgPreview] = useState<{
+    url: string;
+    fileName: string;
+    width?: number;
+    height?: number;
+  } | null>(null);
+  const [dwgError, setDwgError] = useState<string | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
@@ -83,7 +145,46 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
+  const familyInputRef = useRef<HTMLInputElement>(null);
+  const sharedInputRef = useRef<HTMLInputElement>(null);
+  const dwgInputRef = useRef<HTMLInputElement>(null);
   const canvasMenuRef = useRef<HTMLDivElement>(null);
+
+  const legacyMatches = useMemo(
+    () => legacyApi && legacySearch.trim() ? legacyApi.search(legacySearch, 60) : [],
+    [legacyApi, legacySearch],
+  );
+  const familyMatches = useMemo(
+    () => familyLibrary ? searchFamilyLibrary(familyLibrary, familySearch, 30) : [],
+    [familyLibrary, familySearch],
+  );
+  const omniMatches = useMemo(
+    () => omniClass && omniSearch.trim()
+      ? searchOmniClassTaxonomy(omniClass, omniSearch, 60)
+      : [],
+    [omniClass, omniSearch],
+  );
+  const mergedSharedParameters = useMemo(
+    () => sharedFiles.length
+      ? mergeSharedParameterDocuments(sharedFiles.map((file) => file.decoded.document))
+      : null,
+    [sharedFiles],
+  );
+  const sharedIssues = useMemo(
+    () => mergedSharedParameters
+      ? validateSharedParameterDocument(mergedSharedParameters)
+      : [],
+    [mergedSharedParameters],
+  );
+  const sharedComparison = useMemo(
+    () => sharedFiles.length >= 2
+      ? compareSharedParameterDocuments(
+          sharedFiles[0]!.decoded.document,
+          sharedFiles[1]!.decoded.document,
+        )
+      : null,
+    [sharedFiles],
+  );
 
   // Tear the workers down when the studio unmounts, and only then. This was
   // keyed on the thumbnail, so opening a second file — which sets a new
@@ -103,6 +204,20 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     if (thumbnail) URL.revokeObjectURL(thumbnail);
   }, [thumbnail]);
 
+  useEffect(() => () => {
+    if (dwgPreview) URL.revokeObjectURL(dwgPreview.url);
+  }, [dwgPreview]);
+
+  useEffect(() => {
+    if (conversionStartedAt == null || (phase !== "reading" && phase !== "converting")) return;
+    const updateElapsed = () => {
+      setConversionElapsedSeconds(Math.max(0, Math.floor((Date.now() - conversionStartedAt) / 1_000)));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(timer);
+  }, [conversionStartedAt, phase]);
+
   const getWorker = useCallback(() => {
     if (!workerRef.current) {
       const url = staticWorkerUrl("rvt") ?? new URL("../lib/reviter/worker.ts", import.meta.url);
@@ -117,6 +232,93 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
       ifcWorkerRef.current = new Worker(url, { type: "module" });
     }
     return ifcWorkerRef.current;
+  }, []);
+
+  const loadLegacyApi = useCallback(async () => {
+    setLegacyLoading(true);
+    setLegacyError(null);
+    try {
+      setLegacyApi(await loadLegacyRevit2021Api());
+      setLegacySearch((current) => current || "-2000011");
+    } catch (caught) {
+      setLegacyError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setLegacyLoading(false);
+    }
+  }, []);
+
+  const loadOmniClass = useCallback(async () => {
+    if (omniClass) return omniClass;
+    setOmniBusy(true);
+    setOmniError(null);
+    try {
+      const taxonomy = await loadBundledOmniClassTaxonomy();
+      setOmniClass(taxonomy);
+      setOmniSearch((current) => current || "23.10");
+      return taxonomy;
+    } catch (caught) {
+      setOmniError(caught instanceof Error ? caught.message : String(caught));
+      return null;
+    } finally {
+      setOmniBusy(false);
+    }
+  }, [omniClass]);
+
+  const processFamilyFolder = useCallback(async (selected: File[]) => {
+    setFamilyBusy(true);
+    setFamilyMessage("Loading OmniClass taxonomy");
+    try {
+      const taxonomy = await loadOmniClass();
+      setFamilyMessage("Indexing local Revit families");
+      const index = await indexFamilyLibraryFiles(selected, {
+        ...(taxonomy ? { taxonomy } : {}),
+        onProgress: ({ completed, total, fileName }) => {
+          setFamilyMessage(
+            total
+              ? `${completed.toLocaleString()} / ${total.toLocaleString()} · ${fileName}`
+              : "No .rfa files found",
+          );
+        },
+      });
+      setFamilyLibrary(index);
+      setFamilyMessage(
+        `${index.entries.length.toLocaleString()} families · ` +
+        `${index.catalogFiles.toLocaleString()} type catalogs · ` +
+        `${index.errors.length.toLocaleString()} errors`,
+      );
+    } catch (caught) {
+      setFamilyMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setFamilyBusy(false);
+    }
+  }, [loadOmniClass]);
+
+  const processSharedParameterFiles = useCallback(async (selected: File[]) => {
+    const decoded = await Promise.all(selected.map(async (selectedFile) => ({
+      name: selectedFile.name,
+      decoded: parseSharedParameterBytes(new Uint8Array(await selectedFile.arrayBuffer())),
+    })));
+    setSharedFiles(decoded);
+  }, []);
+
+  const processDwgFile = useCallback(async (selected: File) => {
+    setDwgError(null);
+    try {
+      const thumbnail = extractDwgThumbnail(new Uint8Array(await selected.arrayBuffer()));
+      if (!thumbnail) throw new Error("This DWG does not contain a supported embedded preview.");
+      const url = URL.createObjectURL(dwgThumbnailBlob(thumbnail));
+      setDwgPreview((current) => {
+        if (current) URL.revokeObjectURL(current.url);
+        return {
+          url,
+          fileName: selected.name,
+          ...(thumbnail.width != null ? { width: thumbnail.width } : {}),
+          ...(thumbnail.height != null ? { height: thumbnail.height } : {}),
+        };
+      });
+    } catch (caught) {
+      setDwgError(caught instanceof Error ? caught.message : String(caught));
+    }
   }, []);
 
   const processFile = useCallback(async (nextFile: File) => {
@@ -150,13 +352,20 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     setReferencePhase("idle");
     setReferenceError(null);
     setMetadata(null);
+    setPrivateFileInfo(null);
     setError(null);
     setProgress(0.03);
     setProgressMessage("Reading metadata and thumbnail");
+    setConversionStartedAt(Date.now());
+    setConversionElapsedSeconds(0);
     setPhase("reading");
 
     try {
       const cfb = await openFile(nextFile);
+      const basicEntry = cfb.findEntry("BasicFileInfo");
+      const basicDataPromise = basicEntry
+        ? cfb.entryData(basicEntry)
+        : Promise.resolve<Uint8Array | undefined>(undefined);
       const infoPromise = (async (): Promise<StudioFileInfo> => {
         try {
           return await basicFileInfo(cfb);
@@ -165,9 +374,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           // and 14. Older families commonly use version 6, but the release is
           // still available in the same legacy length-prefixed application
           // string. Keep those files moving into the client-side worker.
-          const entry = cfb.findEntry("BasicFileInfo");
-          if (!entry) throw metadataError;
-          const data = await cfb.entryData(entry);
+          const data = await basicDataPromise;
+          if (!data) throw metadataError;
           const version = revitVersionFromBasicFileInfo(data);
           if (version == null) throw metadataError;
           const content = new TextDecoder("utf-16le").decode(data.subarray(18));
@@ -185,9 +393,14 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           };
         }
       })();
-      const [info, preview] = await Promise.all([infoPromise, tryThumbnail(cfb)]);
+      const [info, preview, basicData] = await Promise.all([
+        infoPromise,
+        tryThumbnail(cfb),
+        basicDataPromise,
+      ]);
       if (requestId !== requestIdRef.current) return;
       setMetadata(info);
+      setPrivateFileInfo(basicData ? parseBasicFileInfoProperties(basicData) : null);
       if (thumbnail) URL.revokeObjectURL(thumbnail);
       setThumbnail(preview.ok ? URL.createObjectURL(preview.data) : null);
       setPhase("converting");
@@ -196,6 +409,16 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
 
       const buffer = await nextFile.arrayBuffer();
       const worker = getWorker();
+      worker.onerror = (event) => {
+        if (requestId !== requestIdRef.current) return;
+        setError(event.message || "The local conversion worker stopped unexpectedly.");
+        setPhase("error");
+      };
+      worker.onmessageerror = () => {
+        if (requestId !== requestIdRef.current) return;
+        setError("The local conversion worker returned an unreadable result.");
+        setPhase("error");
+      };
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         const message = event.data;
         if (message.id !== requestId || requestId !== requestIdRef.current) return;
@@ -227,6 +450,10 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         buffer,
         options: {
           maxSegments: 12_000,
+          // The paired browser workflow ultimately renders the IFC reference.
+          // Keep the RVT's native-definition cache bounded so dense late pages
+          // cannot spend minutes in GC; records beyond the cap retain proxies.
+          maxNativeMeshBytes: 96 * 1024 * 1024,
           revitVersion: Number.parseInt(info.version, 10),
         },
       };
@@ -259,6 +486,27 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     try {
       const buffer = await referenceFile.arrayBuffer();
       const worker = getIfcWorker();
+      const displayedIds = new Set(
+        result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []),
+      );
+      const packedDisplayBounds: number[] = [];
+      for (const record of result.elementBounds) {
+        if (!displayedIds.has(record.elementId)) continue;
+        const bounds = drawnBounds(record);
+        if (!bounds.every(Number.isFinite)) continue;
+        packedDisplayBounds.push(record.elementId, ...bounds);
+      }
+      const displayBounds = Float64Array.from(packedDisplayBounds);
+      worker.onerror = (event) => {
+        if (requestId !== referenceRequestIdRef.current) return;
+        setReferenceError(event.message || "The local IFC worker stopped unexpectedly.");
+        setReferencePhase("error");
+      };
+      worker.onmessageerror = () => {
+        if (requestId !== referenceRequestIdRef.current) return;
+        setReferenceError("The local IFC worker returned an unreadable result.");
+        setReferencePhase("error");
+      };
       worker.onmessage = (event: MessageEvent<IfcWorkerResponse>) => {
         const message = event.data;
         if (message.id !== requestId || requestId !== referenceRequestIdRef.current) return;
@@ -291,9 +539,11 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           boundsFeet: result.bbox,
           triangleCount: result.stats.triangleCount,
           productionElements: result.readerDiagnostics?.productionElements ?? 0,
+          typedElements: result.decoderCoverage.nativeCategorisedElements,
+          displayBounds,
         },
       };
-      worker.postMessage(request, [buffer]);
+      worker.postMessage(request, [buffer, displayBounds.buffer as ArrayBuffer]);
     } catch (caught) {
       if (requestId !== referenceRequestIdRef.current) return;
       setReferenceError(caught instanceof Error ? caught.message : String(caught));
@@ -494,10 +744,112 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             }}
           />
 
+          <section className="rail-section local-library-section">
+            <div className="section-heading">
+              <span>Local family library</span>
+              <span>{familyLibrary ? familyLibrary.entries.length.toLocaleString() : "folder"}</span>
+            </div>
+            <button
+              type="button"
+              className="legacy-api-load"
+              onClick={() => familyInputRef.current?.click()}
+              disabled={familyBusy}
+            >
+              {familyBusy ? "Indexing family folder…" : "Choose family folder"}
+            </button>
+            <input
+              ref={familyInputRef}
+              className="visually-hidden"
+              type="file"
+              accept=".rfa,.txt"
+              multiple
+              {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+              onChange={(event) => {
+                const selected = Array.from(event.target.files ?? []);
+                if (selected.length) void processFamilyFolder(selected);
+                event.currentTarget.value = "";
+              }}
+            />
+            <p className="privacy-note">{familyMessage}</p>
+            {familyLibrary && (
+              <>
+                <label className="model-search inline-search">
+                  <span>Search families</span>
+                  <input
+                    value={familySearch}
+                    onChange={(event) => setFamilySearch(event.target.value)}
+                    placeholder="manufacturer, voltage, type…"
+                  />
+                </label>
+                <div className="family-library-list">
+                  {familyMatches.slice(0, 12).map((entry) => (
+                    <button
+                      type="button"
+                      key={entry.fileName}
+                      onClick={() => void processFile(entry.sourceFile)}
+                      title={`Open ${entry.fileName}`}
+                    >
+                      <BlobThumbnail blob={entry.thumbnail} alt="" />
+                      <span>
+                        <strong>{entry.title}</strong>
+                        <small>
+                          {[entry.category, entry.manufacturer, entry.voltage]
+                            .filter(Boolean)
+                            .join(" · ") || entry.fileName}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="rail-section dwg-preview-section">
+            <div className="section-heading"><span>DWG preview</span><span>local</span></div>
+            <button
+              type="button"
+              className="legacy-api-load"
+              onClick={() => dwgInputRef.current?.click()}
+            >
+              Choose DWG
+            </button>
+            <input
+              ref={dwgInputRef}
+              className="visually-hidden"
+              type="file"
+              accept=".dwg"
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                if (selected) void processDwgFile(selected);
+                event.currentTarget.value = "";
+              }}
+            />
+            {dwgPreview && (
+              <div className="dwg-preview">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={dwgPreview.url} alt={`Embedded preview from ${dwgPreview.fileName}`} />
+                <small>
+                  {dwgPreview.fileName}
+                  {dwgPreview.width && dwgPreview.height
+                    ? ` · ${dwgPreview.width}×${dwgPreview.height}`
+                    : ""}
+                </small>
+              </div>
+            )}
+            {dwgError && <p className="privacy-note">{dwgError}</p>}
+          </section>
+
           {phase !== "idle" && (
             <div className="progress-card" aria-live="polite">
               <div className="progress-heading">
-                <span>{phase === "ready" ? "Local conversion complete" : phase === "error" ? "Conversion stopped" : "Working in this tab"}</span>
+                <span>
+                  {phase === "ready"
+                    ? `Local conversion complete · ${formatElapsed(conversionElapsedSeconds)}`
+                    : phase === "error"
+                      ? `Conversion stopped · ${formatElapsed(conversionElapsedSeconds)}`
+                      : `Working locally · ${formatElapsed(conversionElapsedSeconds)}`}
+                </span>
                 <b>{Math.round(progress * 100)}%</b>
               </div>
               <div className="progress-track"><span style={{ width: `${Math.max(2, progress * 100)}%` }} /></div>
@@ -509,6 +861,8 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             <section className="rail-section file-section">
               <div className="section-heading"><span>File record</span><span className="verified-tag">verified</span></div>
               <div className="file-record">
+                {/* Embedded CFB previews are local object URLs, not Next.js image assets. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 {thumbnail ? <img src={thumbnail} alt="Embedded Revit preview" /> : <div className="thumbnail-fallback">RVT</div>}
                 <div><strong>{file?.name}</strong><span>{file ? formatBytes(file.size) : null}</span></div>
               </div>
@@ -639,7 +993,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           {result && (
             <section className="rail-section reference-section">
               <div className="section-heading"><span>Paired IFC export</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
-              <p>Pair this model&apos;s IFC export to check the recovery against it, and to unlock the overlay view.</p>
+              <p>{comparison
+                ? `${comparison.reference.geometricAlignedElementCount?.toLocaleString() ?? 0} of ${comparison.reference.geometricComparedElementCount?.toLocaleString() ?? 0} matched elements align within ${comparison.reference.geometryToleranceFeet?.toFixed(1) ?? "0.5"} ft. Open Overlay to inspect the differences.`
+                : "Pair this model's IFC export to check the recovery against it, and to unlock the overlay view."}</p>
               <button
                 type="button"
                 onClick={() => ifcInputRef.current?.click()}
@@ -703,7 +1059,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                     reason={comparison?.referenceMeshes.length
                       ? null
                       : referencePhase === "reading" ? "Reading the IFC export now" : "Pair an IFC export to compare it with the recovery"}
-                    title="Recovered model over the paired export: matched elements ghosted, elements missing from the recovery in red"
+                    title="Recovered model over the paired export: aligned IFC geometry is ghosted and geometric differences are red"
                     onClick={() => setGeometrySource("overlay")}
                   >Overlay</ToolButton>
                   <ToolButton
@@ -970,9 +1326,9 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   {geometrySource === "autodesk" ? (
                     <span><i className="legend-cyan" />Autodesk source meshes</span>
                   ) : geometrySource === "overlay" && comparison ? (
-                    <><span><i className="legend-amber" />Recovered</span><span><i className="legend-context" />In the export, matched</span><span><i className="legend-missing" />Missing from the recovery</span></>
+                    <><span><i className="legend-amber" />Recovered</span><span><i className="legend-cyan" />Aligned within 0.5 ft</span><span><i className="legend-missing" />Geometric difference</span><span><i className="legend-context" />Unmatched IFC context</span></>
                   ) : geometrySource === "reference" && comparison ? (
-                    <><span><i className="legend-cyan" />Matched RVT records</span><span><i className="legend-context" />IFC context</span></>
+                    <><span><i className="legend-cyan" />Geometrically aligned</span><span><i className="legend-missing" />Geometric difference</span><span><i className="legend-context" />IFC context</span></>
                   ) : (
                     <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
                   )}
@@ -1064,6 +1420,205 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   <p className="export-disclaimer">Class names, serialization tags, and base classes are decoded from the file. Field lists are declared but not walked — their layout does not close across the corpus, so they are counted, not invented.</p>
                 </section>
               )}
+
+              {privateFileInfo && (
+                <section className="coverage-panel private-metadata-panel">
+                  <div className="section-heading">
+                    <span>Local-only file metadata</span>
+                    <span>excluded from exports</span>
+                  </div>
+                  <table className="coverage-table">
+                    <tbody>
+                      <tr><td>Worksharing</td><td>{privateFileInfo.worksharing ?? "—"}</td></tr>
+                      <tr><td>Username</td><td>{privateFileInfo.username ?? "—"}</td></tr>
+                      <tr><td>Central model path</td><td>{privateFileInfo.centralModelPath ?? "—"}</td></tr>
+                      <tr><td>Last save path</td><td>{privateFileInfo.lastSavePath ?? "—"}</td></tr>
+                      <tr><td>Central identity</td><td>{privateFileInfo.centralModelIdentity ?? "—"}</td></tr>
+                      <tr><td>Document GUID</td><td>{privateFileInfo.uniqueDocumentGuid ?? "—"}</td></tr>
+                      <tr>
+                        <td>Document increment</td>
+                        <td>{privateFileInfo.uniqueDocumentIncrements ?? "—"}</td>
+                      </tr>
+                      <tr>
+                        <td>Saved to central</td>
+                        <td>
+                          {privateFileInfo.allLocalChangesSavedToCentral == null
+                            ? "—"
+                            : privateFileInfo.allLocalChangesSavedToCentral ? "Yes" : "No"}
+                        </td>
+                      </tr>
+                      <tr><td>Open workset default</td><td>{privateFileInfo.openWorksetDefault ?? "—"}</td></tr>
+                      <tr><td>Build architecture</td><td>{privateFileInfo.architecture ?? "—"}</td></tr>
+                      <tr><td>Locale</td><td>{privateFileInfo.locale ?? "—"}</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="export-disclaimer">
+                    Paths and usernames are held only in this component state and are not
+                    attached to the conversion result or JSON audit.
+                  </p>
+                </section>
+              )}
+
+              <section className="coverage-panel omniclass-panel">
+                <div className="section-heading">
+                  <span>Bundled OmniClass browser</span>
+                  <span>{omniClass ? `${omniClass.length.toLocaleString()} rows` : "optional"}</span>
+                </div>
+                {!omniClass ? (
+                  <button
+                    type="button"
+                    className="legacy-api-load"
+                    disabled={omniBusy}
+                    onClick={() => void loadOmniClass()}
+                  >
+                    {omniBusy ? "Loading classifications…" : "Load OmniClass editions"}
+                  </button>
+                ) : (
+                  <>
+                    <label className="model-search inline-search">
+                      <span>Number, title, or category ID</span>
+                      <input
+                        value={omniSearch}
+                        onChange={(event) => setOmniSearch(event.target.value)}
+                        placeholder="23.10, retaining wall…"
+                      />
+                    </label>
+                    <table className="coverage-table">
+                      <tbody>
+                        {omniMatches.map((item) => (
+                          <tr key={`${item.number}-${item.title}-${item.categoryId ?? ""}`}>
+                            <td>{item.number}</td>
+                            <td>{item.title}</td>
+                            <td>Level {item.level}</td>
+                            <td>{item.categoryId ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+                {omniError && <p className="export-disclaimer">{omniError}</p>}
+              </section>
+
+              <section className="coverage-panel shared-parameter-panel">
+                <div className="section-heading">
+                  <span>Shared-parameter manager</span>
+                  <span>{sharedFiles.length ? `${sharedFiles.length} files` : "local files"}</span>
+                </div>
+                <button
+                  type="button"
+                  className="legacy-api-load"
+                  onClick={() => sharedInputRef.current?.click()}
+                >
+                  Choose shared-parameter files
+                </button>
+                <input
+                  ref={sharedInputRef}
+                  className="visually-hidden"
+                  type="file"
+                  accept=".txt"
+                  multiple
+                  onChange={(event) => {
+                    const selected = Array.from(event.target.files ?? []);
+                    if (selected.length) void processSharedParameterFiles(selected);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                {mergedSharedParameters && (
+                  <>
+                    <div className="shared-parameter-metrics">
+                      <span>{mergedSharedParameters.groups.length.toLocaleString()} groups</span>
+                      <span>{mergedSharedParameters.parameters.length.toLocaleString()} parameters</span>
+                      <span>{sharedIssues.filter((issue) => issue.severity === "error").length} errors</span>
+                      <span>{sharedIssues.filter((issue) => issue.severity === "warning").length} warnings</span>
+                    </div>
+                    {sharedComparison && (
+                      <p className="export-disclaimer">
+                        First-two-file comparison: {sharedComparison.added.length} added ·{" "}
+                        {sharedComparison.removed.length} removed · {sharedComparison.renamed.length} renamed ·{" "}
+                        {sharedComparison.incompatibleDataTypes.length} incompatible datatypes ·{" "}
+                        {sharedComparison.movedGroups.length} regrouped.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      className="legacy-api-load"
+                      onClick={() => downloadBlob(
+                        new Blob([writeSharedParameterFile(mergedSharedParameters)], {
+                          type: "text/plain;charset=utf-8",
+                        }),
+                        "merged-shared-parameters.txt",
+                      )}
+                    >
+                      Download merged file
+                    </button>
+                    {sharedIssues.length > 0 && (
+                      <table className="coverage-table">
+                        <tbody>
+                          {sharedIssues.slice(0, 30).map((issue, index) => (
+                            <tr key={`${issue.code}-${issue.guid ?? issue.groupId ?? index}`}>
+                              <td>{issue.severity}</td>
+                              <td>{issue.code}</td>
+                              <td>{issue.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+              </section>
+
+              <section className="coverage-panel legacy-api-panel">
+                <div className="section-heading">
+                  <span>Personal Revit 2021 API vocabulary</span>
+                  <span>{legacyApi ? "5,426 enum members" : "optional · lazy loaded"}</span>
+                </div>
+                {!legacyApi ? (
+                  <>
+                    <p className="export-disclaimer">
+                      Load the transposed RevitAPI compatibility tables to inspect legacy
+                      IDs, aliases, parameter groups, MEP classifications, units, and symbols.
+                    </p>
+                    <button
+                      className="legacy-api-load"
+                      type="button"
+                      onClick={() => void loadLegacyApi()}
+                      disabled={legacyLoading}
+                    >
+                      {legacyLoading ? "Loading compatibility data…" : "Load legacy API data"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <label className="model-search inline-search">
+                      <span>ID or enum member</span>
+                      <input
+                        value={legacySearch}
+                        onChange={(event) => setLegacySearch(event.target.value)}
+                        placeholder="-2000011, OST_Walls, SupplyAir…"
+                      />
+                    </label>
+                    <table className="coverage-table">
+                      <tbody>
+                        {legacyMatches.map((entry, index) => (
+                          <tr key={`${entry.enumName}-${entry.name}-${index}`}>
+                            <td>{entry.enumName}</td>
+                            <td>{entry.name}</td>
+                            <td>{entry.value}</td>
+                            <td>{entry.label ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="export-disclaimer">
+                      Personal compatibility data transposed from the toolkit&apos;s
+                      Revit 2021 decompiled folder; it is not geometry-decoder evidence.
+                    </p>
+                  </>
+                )}
+                {legacyError && <p className="export-disclaimer">{legacyError}</p>}
+              </section>
 
               <section className="export-panel">
                 <div className="export-heading"><div><p className="eyebrow">Export recovered data</p><h3>Choose an open format</h3></div><span>client generated</span></div>

@@ -33,13 +33,14 @@ function materialRecord({
   marker = REVIT_2027_MATERIAL_ELEMENT_MARKER,
   echo = true,
   name = "Paint - Sienna",
+  objectLength = 320,
 }: {
   elementId?: number;
   marker?: number;
   echo?: boolean;
   name?: string;
+  objectLength?: number;
 } = {}): Uint8Array {
-  const objectLength = 320;
   const data = new Uint8Array(objectLength + 20);
   const view = new DataView(data.buffer);
   view.setUint32(0, elementId, true);
@@ -59,13 +60,14 @@ function nestedMaterialRecord({
   name = "Acier inoxydable, brossé",
   validSeparator = true,
   referenceId = 1_242_063,
+  objectLength = 520,
 }: {
   elementId?: number;
   name?: string;
   validSeparator?: boolean;
   referenceId?: number;
+  objectLength?: number;
 } = {}): Uint8Array {
-  const objectLength = 520;
   const data = new Uint8Array(objectLength + 20);
   const view = new DataView(data.buffer);
   view.setUint32(0, elementId, true);
@@ -149,6 +151,45 @@ test("does not promote a framed material element whose name trailer is absent", 
   assert.equal(result.framedMaterialElements, 1);
   assert.equal(result.namedMaterialElements, 0);
   assert.deepEqual(result.definitions, []);
+});
+
+test("decodes the structurally anchored packed color after a direct material name", () => {
+  const name = "Metal - Aluminum";
+  const data = materialRecord({ name, objectLength: 1_400 });
+  const view = new DataView(data.buffer);
+  const nameEnd = 140 + 4 + name.length * 2;
+  const colorOffset = nameEnd + 82;
+  view.setUint32(colorOffset, 0x00f7_f7f7, true);
+  view.setUint32(colorOffset + 4, 0x80, true);
+
+  const definition = scanMaterialElementRecords(data, 2027).definitions[0]!;
+  assert.deepEqual(definition.appearance, {
+    colorPacked: 0x00f7_f7f7,
+    baseColorSrgb: [247, 247, 247],
+    colorFieldOffset: colorOffset,
+    evidence: "framed-material-color-packed-direct",
+  });
+});
+
+test("selects the nested render color rather than its different graphic color", () => {
+  const name = "Деревянные доски";
+  const description = "Stainless Steel 18/8, brushed finish";
+  const data = nestedMaterialRecord({ name, objectLength: 1_400 });
+  const view = new DataView(data.buffer);
+  const descriptionEnd = 231 + 4 + description.length * 2;
+  const nameField = descriptionEnd + NESTED_NAME_SEPARATOR.length;
+  const nameEnd = nameField + 4 + name.length * 2;
+  view.setUint32(nameEnd + 64, 0x0078_7878, true);
+  view.setUint32(nameEnd + 72, 0x0073_a0c1, true);
+  view.setUint32(nameEnd + 80, 0x0073_a0c1, true);
+
+  const definition = scanMaterialElementRecords(data, 2027).definitions[0]!;
+  assert.deepEqual(definition.appearance, {
+    colorPacked: 0x0073_a0c1,
+    baseColorSrgb: [193, 160, 115],
+    colorFieldOffset: nameEnd + 72,
+    evidence: "framed-material-color-packed-nested",
+  });
 });
 
 test("rejects the record on a different release, marker, or broken length echo", () => {
