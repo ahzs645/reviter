@@ -51,7 +51,12 @@ export function displayMaterials(): MaterialData[] {
     fallback("Panel display proxy", [0.40, 0.60, 0.74, 0.85], 0.5),
     fallback("Frame display proxy", [0.20, 0.26, 0.33, 1], 0.5),
     fallback("Structural display proxy", [0.44, 0.48, 0.54, 1], 0.84),
-    fallback("Railing display proxy", [0.28, 0.34, 0.41, 1], 0.58),
+    // Translucent because everything on this slot is a stand-in: the swept
+    // ribbon and the fallback box are continuous sheets where the real railing
+    // is a top rail and pickets with air between them. At 0.45 the guard reads
+    // as a guard instead of a parapet wall; native railing face meshes carry
+    // native materials and never use this slot.
+    fallback("Railing display proxy", [0.28, 0.34, 0.41, 0.45], 0.58),
     fallback("Slab and roof display proxy", [0.86, 0.85, 0.82, 1], 0.95),
     fallback("Covering display proxy", [0.70, 0.72, 0.68, 1], 0.9),
     fallback("Glazing display proxy", [0.36, 0.66, 0.82, 0.55], 0.3),
@@ -274,12 +279,26 @@ const SUB_ELEMENT_CATEGORIES = new Map<number, number>([
  * The conversion pipeline applies this predicate only to the records left on
  * the proxy path after native admission. That removes the large helper boxes
  * without suppressing a resolved stair flight or railing.
+ *
+ * `Stairs Railing Baluster` joins the set on the same evidence pattern as the
+ * others. A baluster record is not a baluster: it is the per-railing *set* —
+ * its envelope is the railing's plan extent times a storey of height, it sits
+ * on the all-ones "no class" record code with no geometry evidence of any
+ * kind, its persisted owner is the railing's top rail, and it owns the
+ * ElemTable rows that are the actual balusters. Drawn as a fallback envelope
+ * it is a solid wall standing in a railing's run — 19 such boxes on the
+ * supplied model, up to 20.7 x 19.0 x 9.5 ft — while the railing itself is
+ * already drawn as its swept ribbon. The export never gives these records
+ * geometry, in keeping with the all-ones measurement above. Native baluster
+ * meshes, where they exist, are untouched: this predicate only ever sees the
+ * proxy path.
  */
 const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
   -2000954, // Railing Rail Path Extension Lines
   -2000938, // Stairs Paths
   -2000067, // Stairs Sketch Boundary Lines
   -2000045, // Sketch Lines
+  -2000127, // Stairs Railing Baluster (the per-railing set container)
 ]);
 
 export function isStairOrRailingHelperProxy(
@@ -313,7 +332,8 @@ export function isStairOrRailingHelperProxy(
     record.categoryName === "Railing Rail Path Extension Lines" ||
     record.categoryName === "Stairs Paths" ||
     record.categoryName === "Stairs Sketch Boundary Lines" ||
-    record.categoryName === "Sketch Lines"
+    record.categoryName === "Sketch Lines" ||
+    record.categoryName === "Stairs Railing Baluster"
   );
 }
 

@@ -53,7 +53,7 @@ import {
   type WalkControls,
   type WalkSpeed,
 } from "./walk-controls.ts";
-import type { WalkSurfaceIndex } from "./walk-surface.ts";
+import { WalkCollisionIndex, WalkSurfaceIndex } from "./walk-surface.ts";
 import {
   ExplodeToolPanel,
   FirstPersonPanel,
@@ -65,6 +65,7 @@ import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadSta
 import {
   createElementSelection,
   createFaceSelection,
+  createRecoveredElementSelection,
   firstTriangleHit,
   hitWorldNormal,
   type ViewerIntersection,
@@ -171,6 +172,13 @@ export function ModelCanvas({
     sceneUnitsPerFoot: number;
     surfaceFloorAt: (eyePosition: THREE.Vector3, maxDrop?: number) => number | null;
     resolveMovement: (from: THREE.Vector3, to: THREE.Vector3) => THREE.Vector3;
+    /**
+     * Build (or rebuild, after `walkIndexDirty`) the spatial walk indexes for a
+     * recovered-geometry scene. Called on walk entry, so a session that never
+     * walks never pays for it.
+     */
+    prepareWalkIndexes: () => void;
+    walkIndexDirty: boolean;
     selectionOverlay: THREE.Group | null;
     measurement: MeasurementScene;
     sectionHelper: THREE.Group | null;
@@ -233,12 +241,19 @@ export function ModelCanvas({
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isReferenceModel && technical, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isReferenceModel ? 1.5 : 2));
+    // The recovered path used to run at 2x device pixels against the reference
+    // path's 1.5 — a constant fill-rate penalty on exactly the heavier scene,
+    // for a difference MSAA already papers over.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = isReferenceModel ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = isReferenceModel ? 0.95 : technical ? 1.16 : 1.08;
     renderer.shadowMap.enabled = technical && !isReferenceModel;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The sun does not move and neither does the building: the shadow map is
+    // rendered when the scene actually changes rather than every frame, which
+    // previously re-drew every triangle into the depth map per frame.
+    renderer.shadowMap.autoUpdate = false;
     renderer.localClippingEnabled = false;
     if (isReferenceModel && technical) renderer.setClearColor(0xffffff, 0);
 
@@ -299,14 +314,35 @@ export function ModelCanvas({
     controls.target.copy(center);
 
     if (technical && !isReferenceModel) {
-      sun.shadow.mapSize.set(2048, 2048);
-      sun.shadow.camera.left = -radius * 1.5;
-      sun.shadow.camera.right = radius * 1.5;
-      sun.shadow.camera.top = radius * 1.5;
-      sun.shadow.camera.bottom = -radius * 1.5;
-      sun.shadow.camera.near = 0.1;
-      sun.shadow.camera.far = radius * 8;
+      // The ortho frustum only has to cover the model's bounding sphere; the
+      // old square of ±radius*1.5 was fitted to the longest axis, which on an
+      // elongated site plan doubled the shadow texel size. With the map static
+      // (autoUpdate above) a 4096 map costs one render, and together these take
+      // the texel from ~1.1 ft to ~0.35 ft — the blocky shadows in first
+      // person were shadow texels, not screen pixels.
+      const shadowRadius = Math.hypot(dx, dy, dz) * 0.51 + 1;
+      sun.shadow.mapSize.set(4096, 4096);
+      sun.shadow.camera.left = -shadowRadius;
+      sun.shadow.camera.right = shadowRadius;
+      sun.shadow.camera.top = shadowRadius;
+      sun.shadow.camera.bottom = -shadowRadius;
+      // The sun sits closer to the target than the shadow sphere's radius, so
+      // a near plane at 0.1 clipped the far corners of the model out of the
+      // caster pass entirely; an ortho near may be negative, and covering the
+      // whole sphere is what makes every surface a caster. The tight far also
+      // shrinks the depth range ~3.4x, so the constant bias below is worth
+      // about one texel instead of three and a half.
+      sun.shadow.camera.near = -shadowRadius;
+      sun.shadow.camera.far = sun.position.length() + shadowRadius;
       sun.shadow.bias = -0.0002;
+      // These batches are DoubleSide, so the lit face itself is the stored
+      // caster depth and a constant bias alone cannot cover the PCF kernel's
+      // 1-2 texel reach on walls the sun grazes at 50-70 degrees — that
+      // mismatch was the diagonal striping that shimmered as the camera
+      // moved. Offsetting the receiver along its normal by ~2 shadow texels
+      // (2 x 0.35 ft) scales the slack with the grazing angle, which the
+      // constant cannot.
+      sun.shadow.normalBias = 0.7;
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(Math.max(dx, dy, 100) * 2.2, Math.max(dx, dy, 100) * 2.2),
         new THREE.ShadowMaterial({ color: isReferenceModel ? 0x857f76 : 0x6f829a, opacity: isReferenceModel ? 0.2 : 0.16 }),
@@ -365,6 +401,10 @@ export function ModelCanvas({
     const pointer = new THREE.Vector2();
     const measurement = createMeasurementScene(scene);
     let needsRender = true;
+    // Scene content changed since the shadow map was last rendered. Camera
+    // movement alone never sets this: shadows depend on the sun and the
+    // geometry, not on the eye.
+    let shadowsStale = true;
     const handleControlsChange = () => {
       needsRender = true;
     };
@@ -410,6 +450,28 @@ export function ModelCanvas({
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
     let referenceWalkSurface: WalkSurfaceIndex | null = null;
+    // Spatial indexes for first-person walking over recovered geometry; built
+    // on walk entry, and rebuilt when something has moved the meshes since.
+    // The reference path had these from the start; the recovered path was
+    // handing every batch to Raycaster.intersectObjects every frame instead,
+    // which is where the first-person lag came from.
+    let recoveredWalkSurface: WalkSurfaceIndex | null = null;
+    let recoveredWalkCollision: WalkCollisionIndex | null = null;
+    const prepareWalkIndexes = () => {
+      if (isReferenceModel) return;
+      if (recoveredWalkSurface && !runtimeRef.current?.walkIndexDirty) return;
+      root.updateMatrixWorld(true);
+      const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
+      const collision = new WalkCollisionIndex({ up, cellSize: 4 * sceneUnitsPerFoot });
+      for (const object of interactionMeshes) {
+        const mesh = object as THREE.Mesh;
+        surface.addGeometry(mesh.geometry, mesh.matrixWorld);
+        collision.addGeometry(mesh.geometry, mesh.matrixWorld);
+      }
+      recoveredWalkSurface = surface;
+      recoveredWalkCollision = collision;
+      if (runtimeRef.current) runtimeRef.current.walkIndexDirty = false;
+    };
     const surfaceFloorAt = (eyePosition: THREE.Vector3, maxDrop?: number) => {
       if (isReferenceModel && referenceWalkSurface) {
         const eyeCoordinate = up === "y" ? eyePosition.y : eyePosition.z;
@@ -424,6 +486,20 @@ export function ModelCanvas({
         });
       }
       if (isReferenceModel) return null;
+      // Walking queries the spatial index; the raycast below only serves the
+      // occasional probe made before a walk has built it.
+      if (recoveredWalkSurface) {
+        const eyeCoordinate = up === "y" ? eyePosition.y : eyePosition.z;
+        const continuousProbe = maxDrop == null;
+        return recoveredWalkSurface.floorAt(eyePosition, {
+          maxDrop: maxDrop ?? (WALK_EYE_HEIGHT + 12) * sceneUnitsPerFoot,
+          maximumHeight: continuousProbe
+            ? eyeCoordinate
+              - WALK_EYE_HEIGHT * sceneUnitsPerFoot
+              + WALK_MAX_STEP_UP * sceneUnitsPerFoot
+            : eyeCoordinate,
+        });
+      }
       const origin = eyePosition.clone().addScaledVector(upVector, 1.5);
       floorRaycaster.set(origin, downVector);
       floorRaycaster.near = 0;
@@ -446,13 +522,25 @@ export function ModelCanvas({
       const distance = horizontal.length();
       if (distance < 1e-6) return to;
       const margin = 0.72 * sceneUnitsPerFoot;
-      collisionRaycaster.set(from, horizontal.normalize());
-      collisionRaycaster.near = 0;
-      collisionRaycaster.far = distance + margin;
-      const hit = firstTriangleHit(collisionRaycaster, interactionMeshes);
-      if (!hit || hit.distance > distance + margin) return to;
+      let hitDistance: number | null = null;
+      if (recoveredWalkCollision) {
+        // The per-frame path: a step sweeps a couple of feet, so the index
+        // opens a handful of plan cells instead of every batch in the scene.
+        hitDistance = recoveredWalkCollision.nearestHit(
+          from,
+          horizontal.normalize(),
+          distance + margin,
+        );
+      } else {
+        collisionRaycaster.set(from, horizontal.normalize());
+        collisionRaycaster.near = 0;
+        collisionRaycaster.far = distance + margin;
+        const hit = firstTriangleHit(collisionRaycaster, interactionMeshes);
+        hitDistance = hit && hit.distance <= distance + margin ? hit.distance : null;
+      }
+      if (hitDistance == null) return to;
       return from.clone()
-        .addScaledVector(horizontal, Math.max(0, hit.distance - margin))
+        .addScaledVector(horizontal, Math.max(0, hitDistance - margin))
         .addScaledVector(upVector, vertical);
     };
     const addMeasurementHit = (point: THREE.Vector3) => {
@@ -666,12 +754,15 @@ export function ModelCanvas({
       sceneUnitsPerFoot,
       surfaceFloorAt,
       resolveMovement: resolveWalkMovement,
+      prepareWalkIndexes,
+      walkIndexDirty: false,
       selectionOverlay: null,
       measurement,
       sectionHelper: null,
       explodeParts: [],
       invalidate: () => {
         needsRender = true;
+        shadowsStale = true;
       },
     };
 
@@ -709,6 +800,7 @@ export function ModelCanvas({
         root.add(batchedScene);
         refreshInteractionMeshes();
         needsRender = true;
+        shadowsStale = true;
         setReferenceLoadState("ready");
       }).catch(() => {
         if (active) setReferenceLoadState("error");
@@ -747,6 +839,10 @@ export function ModelCanvas({
         cameraChanged = controls.update();
       }
       if (cameraChanged || needsRender) {
+        if (shadowsStale && renderer.shadowMap.enabled) {
+          renderer.shadowMap.needsUpdate = true;
+          shadowsStale = false;
+        }
         renderer.render(scene, camera);
         needsRender = false;
       }
@@ -851,6 +947,7 @@ export function ModelCanvas({
       runtime.controls.enabled = true;
       if (source === "reference-model") setReferenceOutlineMode(runtime.root, "orbit");
       runtime.camera.near = Math.max(0.1, runtime.radius / 1_000);
+      runtime.camera.far = runtime.radius * 30;
       runtime.camera.updateProjectionMatrix();
       // Orbit around whatever is in front of the camera now, rather than
       // snapping back to the model centre.
@@ -866,8 +963,33 @@ export function ModelCanvas({
 
     runtime.controls.enabled = false;
     if (source === "reference-model") setReferenceOutlineMode(runtime.root, "walk");
-    runtime.camera.near = Math.max(0.02 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
+    // First-person needs a close near plane, but pulling it to 0.02 ft against
+    // a far of radius*30 left a ~1:300,000 depth range on a 24-bit buffer —
+    // the z-fighting shimmer on coplanar recovered faces. A tenth of a foot
+    // still lets you put your nose to a wall, and the far plane only has to
+    // clear the building, not the orbit framing.
+    runtime.camera.near = Math.max(0.1 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
+    runtime.camera.far = runtime.radius * 8;
     runtime.camera.updateProjectionMatrix();
+    // Build the spatial walk indexes before the first step so the per-frame
+    // probes never fall back to whole-scene raycasts.
+    runtime.prepareWalkIndexes();
+    // The proxy edge hairlines read as a technical drawing from orbit and as
+    // moiré at eye height; the reference path already dims its outlines for
+    // walking, this hides the recovered ones the same way.
+    const hiddenEdgeOverlays: THREE.Object3D[] = [];
+    if (source !== "reference-model") {
+      runtime.root.traverse((object) => {
+        if (
+          (object as THREE.LineSegments).isLineSegments &&
+          object.name.endsWith(" edges") &&
+          object.visible
+        ) {
+          object.visible = false;
+          hiddenEdgeOverlays.push(object);
+        }
+      });
+    }
     const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
     const start = runtime.camera.position.clone();
     let nearbyFloor = runtime.surfaceFloorAt(start, runtime.radius * 4);
@@ -904,7 +1026,7 @@ export function ModelCanvas({
       up: runtime.up,
       speed: walkSpeedRef.current,
       gravity: walkGravityRef.current,
-      floorProbeInterval: source === "reference-model" ? 1 / 30 : 0.1,
+      floorProbeInterval: 1 / 30,
       resolveFloor: runtime.surfaceFloorAt,
       dropDistance: runtime.radius * 4,
       resolveMovement: runtime.resolveMovement,
@@ -920,6 +1042,8 @@ export function ModelCanvas({
     return () => {
       walk.dispose();
       if (walkRef.current === walk) walkRef.current = null;
+      for (const object of hiddenEdgeOverlays) object.visible = true;
+      runtime.invalidate();
     };
   }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, source, walking]);
 
@@ -984,12 +1108,15 @@ export function ModelCanvas({
     if (!runtime) return;
     if (!exploding) {
       applyExplode(runtime.explodeParts, 0);
+      runtime.walkIndexDirty = true;
       runtime.invalidate();
       return;
     }
     if (!runtime.explodeParts.length) runtime.explodeParts = collectExplodeParts(runtime.root, runtime.center);
     queueMicrotask(() => setExplodePartCount(runtime.explodeParts.length));
     applyExplode(runtime.explodeParts, explodeAmount);
+    // Exploding moves the meshes the walk indexes were built over.
+    runtime.walkIndexDirty = true;
     runtime.invalidate();
   }, [comparison, explodeAmount, exploding, referenceLoadState, renderMode, result, source]);
 
@@ -1005,6 +1132,19 @@ export function ModelCanvas({
     if (source !== "recovered" || selectedElementId == null) return;
     const record = result.elementBounds.find((candidate) => candidate.elementId === selectedElementId);
     if (!record) return;
+    const overlay = new THREE.Group();
+    // Highlight the triangles the element actually draws. The filled
+    // record-bounds box that used to stand in for this swallowed sparse
+    // elements whole — an 83-baluster native railing read as a solid crate.
+    runtime.root.updateMatrixWorld(true);
+    const triangles = createRecoveredElementSelection(
+      runtime.root,
+      selectedElementId,
+      runtime.sceneUnitsPerFoot,
+    );
+    if (triangles) overlay.add(triangles);
+    // The record-bounds wireframe stays as a locator — it is what makes a
+    // small element findable from across the model — but it no longer fills.
     const dimensions = boundsDimensions(record.boundsFeet);
     const selectedCenter = new THREE.Vector3(
       (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - result.origin.x,
@@ -1012,19 +1152,24 @@ export function ModelCanvas({
       (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - result.origin.z,
     );
     const selectedGeometry = new THREE.BoxGeometry(dimensions.x, dimensions.y, dimensions.z);
-    const fill = new THREE.Mesh(
-      selectedGeometry,
-      new THREE.MeshBasicMaterial({ color: 0xffc441, transparent: true, opacity: 0.22, depthWrite: false }),
-    );
-    fill.position.copy(selectedCenter);
     const outline = new THREE.LineSegments(
       new THREE.EdgesGeometry(selectedGeometry),
       new THREE.LineBasicMaterial({ color: 0xff9f1c, linewidth: 2, depthTest: false }),
     );
     outline.position.copy(selectedCenter);
     outline.renderOrder = 20;
-    const overlay = new THREE.Group();
-    overlay.add(fill, outline);
+    overlay.add(outline);
+    // An element whose triangles are hidden or held back still shows a fill,
+    // so "selected but not drawn" stays visible — as the envelope, which in
+    // that case is all there is.
+    if (!triangles) {
+      const fill = new THREE.Mesh(
+        selectedGeometry,
+        new THREE.MeshBasicMaterial({ color: 0xffc441, transparent: true, opacity: 0.22, depthWrite: false }),
+      );
+      fill.position.copy(selectedCenter);
+      overlay.add(fill);
+    }
     runtime.selectionOverlay = overlay;
     runtime.scene.add(overlay);
     runtime.invalidate();

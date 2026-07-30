@@ -29,6 +29,7 @@ import type { Point2 } from "../lib/reviter/polygon.ts";
 import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
+  applyNativeCategories,
   categoryDisplayName,
   collectCategoryTokens,
   deriveRecordCodeCategories,
@@ -472,6 +473,53 @@ test("derives a record-code category consensus only above the support and purity
   });
   // One supporting element is below the floor, so no consensus is published.
   assert.equal(consensus.get(recordCodeKey(44, 1)), undefined);
+});
+
+test("overrides a donated token only where the element's own cluster disagrees decisively", () => {
+  // Nine floors resolve their own tokens cleanly; the plate's only token has a
+  // nearer candidate that the persisted element table proves is a real —
+  // undrawn — element, so its mullion label is a fall-through donation.
+  const floors = Array.from({ length: 9 }, (_, index) => ({
+    elementId: 100 + index,
+    recordCode: 54,
+    recordCount: 1,
+  }));
+  const plate = { elementId: 200, recordCode: 54, recordCount: 1 };
+  // A donated drawing-aid label with no contradicting cluster stays: the scene
+  // admission rules depend on it and nothing stronger disagrees.
+  const helper = { elementId: 300, recordCode: 99, recordCount: 2 };
+  const undrawnMullion = 999_555;
+  const undrawnPathOwner = 999_666;
+  const tokens = [
+    ...floors.map((record) => ({
+      categoryId: -2_000_032,
+      ownerCandidates: [record.elementId],
+    })),
+    { categoryId: -2_000_171, ownerCandidates: [undrawnMullion, plate.elementId] },
+    { categoryId: -2_000_938, ownerCandidates: [undrawnPathOwner, helper.elementId] },
+  ];
+
+  type Records = Parameters<typeof applyNativeCategories>[0];
+  const records = [...floors, plate, helper] as unknown as Records;
+  const summary = applyNativeCategories(
+    records,
+    tokens,
+    undefined,
+    new Set([undrawnMullion, undrawnPathOwner]),
+  );
+  const byId = new Map(records.map((record) => [record.elementId, record]));
+  assert.equal(byId.get(200)!.categoryName, "Floors");
+  assert.equal(byId.get(200)!.categorySource, "record-code-consensus");
+  assert.equal(byId.get(300)!.categoryName, "Stairs Paths");
+  assert.equal(byId.get(300)!.categorySource, "native-token");
+  assert.equal(summary.donatedTokenElements, 2);
+  assert.equal(summary.donatedTokensOverridden, 1);
+
+  // Without the persisted ownership evidence the fall-through is invisible and
+  // the plate keeps the mullion's token — the documented 447970 defect.
+  const legacy = [...floors, { ...plate }, { ...helper }] as unknown as Records;
+  applyNativeCategories(legacy, tokens);
+  assert.equal(legacy[9]!.categoryName, "Curtain Wall Mullions");
 });
 
 test("skips gzip signatures whose reserved header flag bits are set", () => {
@@ -1269,6 +1317,17 @@ test("identifies only unresolved stair and railing drawing aids as proxy helpers
     stairTreads: [
       [[0, 0, 1], [0, 1, 1], [2, 1, 1], [2, 0, 1]],
     ],
+  }), false);
+  // A baluster record is the per-railing set container, not a baluster; its
+  // fallback envelope is a solid wall standing in the railing's run.
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000127,
+    categoryName: "Stairs Railing Baluster",
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000127,
+    categoryName: "Stairs Railing Baluster",
+    solid: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } } as never,
   }), false);
   assert.equal(isStairOrRailingHelperProxy({
     categoryId: -2000126,

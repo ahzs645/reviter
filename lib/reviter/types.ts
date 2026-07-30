@@ -82,6 +82,14 @@ export type MaterialData = {
   doubleSided: boolean;
   source: "rvt-material" | "display-fallback";
   assignedElements: number;
+  /**
+   * Persisted `MaterialId.m_transparency` in `[0, 1]`, present only when the
+   * field was actually decoded from the RVT. Its complement is already applied
+   * to `baseColorLinear[3]`; the field itself lets a consumer tell "decoded
+   * opaque" apart from "transparency unknown, defaulted to opaque" — the
+   * difference between a spandrel panel and an undecoded pane of glass.
+   */
+  transparency?: number;
 };
 
 export type LocatedNativeMaterialDefinition = NativeMaterialDefinition & {
@@ -315,6 +323,18 @@ export type NativeCategorySummary = {
   tokensFound: number;
   directElements: number;
   inheritedElements: number;
+  /**
+   * Elements whose direct label rests only on donated tokens — tokens whose
+   * nearest real element id (per the persisted element table) is an element
+   * this conversion does not draw, so the nearest-preceding ownership rule
+   * fell through past the true owner.
+   */
+  donatedTokenElements?: number;
+  /**
+   * The subset of those overridden by their own record-code cluster because
+   * the cluster clears the consensus floors and names a different category.
+   */
+  donatedTokensOverridden?: number;
   categories: NativeCategoryCount[];
   codeConsensus: NativeCategoryCodeConsensus[];
 };

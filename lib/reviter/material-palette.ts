@@ -18,8 +18,10 @@ export type NativeMaterialPaletteEntry = {
  * Convert independently decoded RVT packed colours into renderer materials.
  *
  * The channel values stay as byte/255 factors because that is exactly how the
- * supplied Autodesk derivative encodes the same palette in glTF. Transparency
- * remains opaque until the separate persisted transparency field is decoded.
+ * supplied Autodesk derivative encodes the same palette in glTF. Where the
+ * persisted `MaterialId.m_transparency` was decoded its complement becomes the
+ * alpha channel, and the raw value is carried so a consumer can tell decoded
+ * opacity apart from the opaque default a record without the field keeps.
  */
 export function buildNativeMaterialPalette(
   definitions: readonly LocatedNativeMaterialDefinition[],
@@ -36,11 +38,17 @@ export function buildNativeMaterialPalette(
     const appearance = definition.appearance;
     if (!appearance) return [];
     const [red, green, blue] = appearance.baseColorSrgb;
+    const transparency = appearance.transparency;
     return [{
       materialElementId: definition.elementId,
       material: {
         name: definition.name,
-        baseColorLinear: [red / 255, green / 255, blue / 255, 1],
+        baseColorLinear: [
+          red / 255,
+          green / 255,
+          blue / 255,
+          transparency != null ? Math.min(1, Math.max(0, 1 - transparency)) : 1,
+        ],
         // The Autodesk derivative palette is entirely non-metallic and uses
         // roughness 0.2 for its appearance-backed entries.
         metallic: 0,
@@ -48,6 +56,7 @@ export function buildNativeMaterialPalette(
         doubleSided: true,
         source: "rvt-material",
         assignedElements: assignedElements.get(definition.elementId)?.size ?? 0,
+        ...(transparency != null ? { transparency } : {}),
       },
     }];
   });

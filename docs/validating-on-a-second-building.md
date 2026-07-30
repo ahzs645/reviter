@@ -70,7 +70,9 @@ list is that nothing has contradicted it yet.
 
 ## Ranked backlog
 
-By visible impact rather than by how well understood each one is.
+By visible impact rather than by how well understood each one is. All four have
+since been worked without a second building; the section after this one records
+what was done and the assumption each fix rests on.
 
 | | What | Effort | Why |
 | --- | --- | --- | --- |
@@ -88,6 +90,143 @@ behind it — the nearest-preceding-id ownership rule in `native-categories.ts` 
 is what assigns 15,697 elements their categories directly and seeds the
 record-code consensus that assigns another 23,462, so a proper fix reaches
 considerably further than the plate.
+
+## Working the backlog without the second building
+
+The second building never arrived, so each fix below was made against the one
+pair we have, with its assumption stated where a second model would otherwise
+have tested it. The paired IFC export and the Autodesk-derived GLB are the two
+independent witnesses; every fix was required to move at least one of them or
+to be a pure decode with the field's value confirmed against the export.
+
+### 1. `447970` — donated category tokens (fixed)
+
+The probe that settled it: the mullion token that labelled `447970` has *nearer*
+preceding candidates — element ids `1450156` and `1456618` — that the persisted
+`Global/ElemTable` proves are real elements of this document, just ones the
+converter draws nothing for. The nearest-preceding rule skipped them because
+"known element id" meant "element with a bounds record", and fell through to the
+floor plate 109 bytes back. The token was never the plate's; it was *donated*.
+
+The fix (`resolveElementCategoriesWithEvidence` in `native-categories.ts`): a
+token whose nearest real element id is undrawn still votes, but the assignment
+is flagged **donated**, and a donated-only label yields to the element's own
+record-code cluster when that cluster clears the ordinary consensus floors and
+disagrees. No new threshold: a consensus trusted to hand categories to
+unlabelled siblings is trusted to outvote a token that provably fell through.
+
+Measured on the pair: 65 of 385 donated-only labels overridden. `447970`
+inherits **Floors** from its 98.4%-pure cluster of 63 floors. 26 records the
+export itself names `IfcCurtainWall` — assembly wrappers that had taken their
+children's mullion/panel tokens and were drawn as duplicate plates — now
+classify as walls coincident with curtain assemblies and join the deliberate
+held-back-as-wrappers set. Every verify-pair assertion and per-class agreement
+figure is unchanged.
+
+**The assumption**: dropping donated tokens outright would be wrong — the
+drawing-aid labels (`Stairs Paths`, `Sketch Lines`, balusters) that the scene
+admission rules depend on are themselves donated, uncontradicted, and load-
+bearing. The blunt version of this fix (resolve against the full ElemTable id
+set) was measured first and rejected: it stripped 300 direct labels and would
+have re-admitted the large stair helper boxes. On a second building the ratio
+of donated to clean tokens (385 of 15,697 here) is the number to watch.
+
+### 2. Spandrels and glass — persisted transparency (decoded)
+
+`MaterialId.m_transparency` is now read, not guessed. In the direct-layout
+`MaterialElem` record it is an `f32` 24 bytes before the packed colour: an
+eight-byte `ff` run, the transparency, a companion ratio, twelve zero bytes,
+then the colour. Against the paired export's `IFCSURFACESTYLERENDERING` values
+the field agrees **exactly on every named material**: the three glasses read
+0.75 (`Glass`), 0.70 (`Verre`) and 0.90 (`Стекло`), and all fourteen
+export-matched opaque materials read 0.0. The unmatched values are sensible on
+their face — the temporary-phase material 0.4, the massing-opening default 1.0,
+a light source 0.75. The structural `ff`-run guard holds on all 54 direct
+records and correctly rejects all 15 nested-layout records.
+
+Downstream, the palette carries the raw value and its complement as alpha, and
+the viewer lets a decoded material decide translucency; the category heuristic
+survives only as the fallback for batches whose material never framed the
+field. On this model that flips 12 glazing-category elements — the spandrel
+panels, 900 triangles — to opaque because Revit says their material is, and
+draws 77,236 glass triangles at the transparency the file actually stores
+instead of a display constant.
+
+**The assumption**: the nested appearance-backed layout stores `ff` bytes where
+the direct layout stores the field, so nested materials report no transparency
+and render opaque. Every nested record the export names *is* opaque in this
+model, so nothing is currently lost — but a second building with a transparent
+appearance-backed material would render it solid, and would be the file that
+locates the nested field.
+
+### 3. The 76 balusters (characterised, still not drawn)
+
+Probing what evidence exists located the absence rather than closing it. After
+the donated-token fix, 79 records carry the baluster label (20 of the original
+99 were overridden as donated). Every one sits on the all-ones "no class"
+record code with **no geometry evidence of any kind** — no solid, no quads, no
+arcs, no rail path, no oriented box — and 58 of 79 have zero-height envelopes;
+22 are persistently owned by `Railing Top Rail` records. Most telling, those 79
+records themselves **own 885 ElemTable child rows**, about eleven per record,
+and the children own no bounds records and no GRep faces either.
+
+The reading that fits all of it: the labelled records are per-railing baluster
+*sets*, the 885 children are the individual balusters, and their geometry
+exists only as a family symbol repeated along the rail path — an instancing
+relation the decoder does not yet read. So drawing the balusters is a decode
+task with a now known shape, not a gate to loosen.
+
+A follow-up probe narrowed that shape further. The children are *not* ordinary
+placed instances: of the 885, only 80 appear in the `InstInfoBase` placement
+scan, every one at identity origin referencing itself — those are the twelve
+baluster family **symbol definitions**, and all twelve symbol shapes already
+decode. The per-station transforms live in the railing's nested GRep instead:
+railing `1842055`, which draws correctly, gets its 83 balusters through
+`composeRevit2027NestedMesh`, every face carrying a `nestedTransform`. The
+railings still drawn as swept ribbons are the ones whose nested GRep roots are
+incomplete — the "incomplete recursive roots remain on the proxy path" bucket
+in the conversion warnings. So the remaining work is completing those nested
+roots in the existing recovery, with the paired export's railing meshes as the
+per-position check, not writing a new distribution decoder.
+
+One consequence *was* fixed once walking the model made it visible: 19 of the
+set records carried enough envelope height to pass the solid test, and the
+display fell back to drawing each as a literal envelope box — a solid grey
+wall standing in its railing's run, the largest 20.7 × 19.0 × 9.5 ft floating
+at a curtain wall. `Stairs Railing Baluster` now joins
+`PROXY_ONLY_HELPER_CATEGORY_IDS` in `scene.ts` on the same evidence as the
+other members: no geometry evidence of any kind, the all-ones record code,
+persisted ownership under the railing's top rail, and an export that gives
+such records geometry in none of its cases. The predicate only ever sees the
+proxy fallback path, so any future native or instanced baluster mesh is
+unaffected.
+
+### 4. Carrier composition — the wrong sibling (fixed)
+
+Instrumenting the composition site showed the diagnosis's one wrong guess: the
+complete face-owning sibling *also* carries a `conditionalStateCarrier` with
+the same displacement, so "the source must not be a carrier" cannot be the
+filter. What separates them in the data is extent: for every one of the five
+targets the group sharing the state signature (same displacement, leading face
+exactly on the target's helper plane) contains one complete stringer spanning
+5.6-7.6 ft along the state axis and one or more selector stubs whose 1.31 ft
+fragments end on the same face — and the stub's range is strictly contained in
+the complete sibling's.
+
+The new rule: among siblings with the state signature, compose from the
+**unique widest** candidate along the displacement axis; a tie declines the
+composition. The justification is the relationship itself — a fragment cannot
+span more of the state than the faces it is a fragment of — so no magic
+constant is introduced. The previous rule's `sourcePlane == range[1]` clause,
+which reliably selected the stub (that equation is *true* of a selector stub
+and false of the complete sibling), is gone.
+
+**The assumption**: uniqueness-of-the-widest stands in for the sibling-state
+schema we still have not decoded. Both cases the model contains — five clean
+one-stringer groups, and two ambiguous groups with twin 2.87 ft candidates —
+resolve correctly (composed and declined respectively), but a building whose
+mutually exclusive states have equal extents would decline compositions a
+schema read would accept.
 
 ## What not to do
 

@@ -1511,10 +1511,17 @@ export function convertRvtBytes(
       ratio: 0.84,
       message: `Resolving native Revit categories · ${elementBounds.length.toLocaleString()} element records`,
     });
+    // The persisted ownership table lists every element in the document, not
+    // only the drawable ones, which is what lets the category resolver tell a
+    // token that fell through from an undrawn element apart from one that
+    // genuinely belongs to the record claiming it.
     const nativeCategories = applyNativeCategories(
       elementBounds,
       categoryTokens,
       elementIndex?.uniqueElementIds,
+      elementOwnership
+        ? new Set(elementOwnership.records.map((record) => record.elementId))
+        : undefined,
     );
 
 
@@ -2183,15 +2190,19 @@ export function convertRvtBytes(
       // independently recovered envelope/solid. Drawing-aid records are the
       // exception: an unresolved helper must not become a building-sized box.
       // Resolved geometry for the same id remains in `nativeMeshScene.meshes`.
-      const proxyDisplayBounds = displayBounds.filter(
-        (record) =>
-          !nativeMeshScene.coveredElementIds.has(record.elementId) &&
-          !isStairOrRailingHelperProxy(record),
-      );
-      const omittedHelperProxyCount =
-        displayBounds.length -
-        nativeMeshScene.coveredElementIds.size -
-        proxyDisplayBounds.length;
+      // Counted directly rather than by subtraction: the native admission set
+      // is not a subset of the display set, so the old difference of totals
+      // could go negative and once reported "-3,547 records not rendered".
+      const proxyDisplayBounds: typeof displayBounds = [];
+      let omittedHelperProxyCount = 0;
+      for (const record of displayBounds) {
+        if (nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
+        if (isStairOrRailingHelperProxy(record)) {
+          omittedHelperProxyCount += 1;
+          continue;
+        }
+        proxyDisplayBounds.push(record);
+      }
       const proxyIds = new Set(
         proxyDisplayBounds.map((record) => record.elementId),
       );
@@ -2424,6 +2435,9 @@ export function convertRvtBytes(
           ...(elementOwnership
             ? [`${elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
             : []),
+          ...(nativeCategories.donatedTokensOverridden
+            ? [`${nativeCategories.donatedTokensOverridden.toLocaleString()} of ${(nativeCategories.donatedTokenElements ?? 0).toLocaleString()} category labels resting only on tokens that fell through from undrawn elements were overridden by their own record-code cluster's consensus.`]
+            : []),
           ...(nativeIdentity
             ? [`${nativeIdentity.decodedIdentityCount.toLocaleString()} native Revit UniqueIds were decoded from Global/History and Global/ElemTable.`]
             : []),
@@ -2431,7 +2445,7 @@ export function convertRvtBytes(
             ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
             : []),
           ...(nativeMaterialDefinitions.length
-            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, and shared geometry, ${nativeFamilySymbolMaterialMaps.length.toLocaleString()} FamilySymbol geometry-tag maps, and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Transparency and texture channels remain unresolved.`]
+            ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, ${nativeMaterialPalette.filter((entry) => entry.material.transparency != null).length.toLocaleString()} a persisted transparency, and shared geometry, ${nativeFamilySymbolMaterialMaps.length.toLocaleString()} FamilySymbol geometry-tag maps, and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Texture channels and nested-layout transparency remain unresolved.`]
             : []),
           ...(nativeFamilySymbolRelations.length
             ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]
@@ -2710,7 +2724,7 @@ export function convertRvtBytes(
           ? [`${transmissionData.missingReferenceCount.toLocaleString()} desired external Revit resources were not found when this model was saved; only redacted filenames and load states are exposed.`]
           : []),
         ...(nativeMaterialDefinitions.length
-          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, and shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Transparency and texture channels remain unresolved.`]
+          ? [`${nativeMaterialDefinitions.length.toLocaleString()} native Revit material definitions were decoded; ${nativeMaterialPalette.length.toLocaleString()} expose a packed render colour, ${nativeMaterialPalette.filter((entry) => entry.material.transparency != null).length.toLocaleString()} a persisted transparency, and shared geometry and ${nativeCompoundStructureDefinitions.length.toLocaleString()} compound wall structures persistently assign ${nativeMaterialAssignedElements.toLocaleString()} placed elements. Texture channels and nested-layout transparency remain unresolved.`]
           : []),
         ...(nativeFamilySymbolRelations.length
           ? [`${nativeFamilySymbolRelations.length.toLocaleString()} loadable-family symbols resolve to persisted Family elements.`]

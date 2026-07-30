@@ -340,6 +340,42 @@ function createSelectionOverlay(
  * Anonymous GLB/IFC fragments cannot populate the Revit properties panel, but
  * their triangulation should not leak into the selection interaction.
  */
+/**
+ * Highlight every triangle a recovered element actually draws.
+ *
+ * The recovered scene batches many elements into each mesh with one element id
+ * per triangle — the table picking already reads. Selecting by those triangles
+ * shows the element's real shape; the record-bounds box that used to stand in
+ * for it swallowed sparse elements whole, so an 83-baluster railing read as a
+ * solid 50 ft crate.
+ */
+export function createRecoveredElementSelection(
+  root: THREE.Object3D,
+  elementId: number,
+  sceneScale: number,
+): THREE.Group | null {
+  let remaining = MAX_ELEMENT_TRIANGLES;
+  const fragments: SelectionFragment[] = [];
+  root.traverse((object) => {
+    if (!remaining || !isTriangleMesh(object)) return;
+    const elementIds = object.userData.elementIds as Uint32Array | undefined;
+    if (!elementIds) return;
+    const faceIndices: number[] = [];
+    for (let face = 0; face < elementIds.length && remaining; face += 1) {
+      if (elementIds[face] !== elementId) continue;
+      faceIndices.push(face);
+      remaining -= 1;
+    }
+    if (faceIndices.length) fragments.push({ object, faceIndices });
+  });
+  if (!fragments.length) return null;
+  return createSelectionOverlay(fragments, sceneScale, "Selected recovered element", {
+    scope: "element",
+    elementId,
+    truncated: remaining === 0,
+  });
+}
+
 export function createFaceSelection(
   hit: ViewerIntersection,
   camera: THREE.Camera,

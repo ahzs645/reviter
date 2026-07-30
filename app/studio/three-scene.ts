@@ -100,10 +100,11 @@ export function meshGroup(
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
   const technical = renderMode === "technical";
-  // Revit's persisted material transparency is not decoded, so every native
-  // material arrives opaque — including the one this file names `Стекло`,
-  // which is glass. Asking the decoded categories instead is the same evidence
-  // the proxy path already uses to pick the translucent glazing material.
+  // Where a batch's native material carries the decoded persisted transparency
+  // the material decides: glass reads translucent because Revit says 0.9, and
+  // a spandrel panel reads solid because Revit says 0. The decoded categories
+  // below remain the fallback for batches whose material never framed the
+  // field — the same evidence the proxy path uses to pick the glazing slot.
   const glazingIds = glazingElementIds(result.elementBounds);
   group.name = "Reviter recovered geometry";
   group.userData = {
@@ -121,14 +122,20 @@ export function meshGroup(
       : new THREE.Color(0xb9cbe0);
     const sourceOpacity = sourceMaterial?.baseColorLinear[3] ?? 1;
 
-    // A native batch is grouped by native *material*, so one batch routinely
-    // holds several categories: the model's largest is 97.4% curtain-wall
-    // glazing and 2.6% something else. Splitting the triangles is exact, where
-    // a "mostly glazing" threshold would either turn 2,028 opaque triangles
-    // translucent or leave 74,968 glass ones solid — and would be one more
+    // A native batch is grouped by native *material*. When that material's
+    // persisted transparency was decoded, the whole batch shares one verdict
+    // and there is nothing to split. Otherwise one batch routinely holds
+    // several categories — the model's largest is 97.4% curtain-wall glazing
+    // and 2.6% something else — and splitting the triangles is exact, where a
+    // "mostly glazing" threshold would either turn 2,028 opaque triangles
+    // translucent or leave 74,968 glass ones solid, and would be one more
     // number fitted to one building. Two draw calls at most, and only when a
     // batch is genuinely mixed.
-    for (const part of splitByGlazing(visible, glazingIds)) {
+    const materialDecides = sourceMaterial?.transparency != null;
+    const parts = materialDecides
+      ? [{ indices: visible.indices, elementIds: visible.elementIds, glazing: sourceOpacity < 0.995 }]
+      : splitByGlazing(visible, glazingIds);
+    for (const part of parts) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
       geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
@@ -138,9 +145,10 @@ export function meshGroup(
       // `data.name.startsWith("Glazing")` used to stand here. It had not matched
       // anything for some time: batches are named by decoded Revit category
       // ("Curtain Wall Panels 1") or by native material ("Certified native BRep
-      // · Material 26 · 19"), and neither starts with "Glazing". Only the
-      // material-alpha clause was doing any work, and it cannot see a native
-      // batch at all, because that alpha is an undecoded 1.
+      // · Material 26 · 19"), and neither starts with "Glazing". The
+      // material-alpha clause sees a native batch now that the persisted
+      // transparency is decoded into the palette alpha; `part.glazing` carries
+      // the category fallback for batches without a decoded material.
       const glazing = part.glazing || sourceOpacity < 0.995;
       const transparent = technical ? glazing : true;
       const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);

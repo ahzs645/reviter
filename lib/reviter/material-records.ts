@@ -67,6 +67,19 @@ export type NativeMaterialAppearance = {
   evidence:
     | "framed-material-color-packed-direct"
     | "framed-material-color-packed-nested";
+  /**
+   * Persisted `MaterialId.m_transparency`, `0` opaque through `1` invisible.
+   *
+   * In the direct layout the field is an `f32` 24 bytes before the packed
+   * colour, paired with a second ratio at 20 and preceded by an eight-byte
+   * `ff` run. Measured against the paired IFC export's surface styles the
+   * value agrees exactly on every named material: the three glasses read
+   * 0.75, 0.70 and 0.90 against the export's transparencies, and all 14
+   * export-matched opaque materials read 0.0. The nested appearance-backed
+   * layout stores `ff` bytes at the same relative position, so no value is
+   * reported there — every nested record the export names is opaque.
+   */
+  transparency?: number;
 };
 
 export type NativeMaterialDefinition = {
@@ -233,13 +246,46 @@ function zeroBytes(
   return true;
 }
 
+/** Bytes between the persisted transparency `f32` and the packed colour. */
+const TRANSPARENCY_BEFORE_COLOR_BYTES = 24;
+
+/**
+ * Read `MaterialId.m_transparency` behind a proven direct-layout colour.
+ *
+ * Three requirements, all measured on the supplied file and each one cheap to
+ * check: an eight-byte `ff` run immediately before the field, the field itself
+ * a finite ratio in `[0, 1]`, and the companion ratio beside it also in
+ * `[0, 1]`. The nested layout keeps `ff` bytes here, so it fails the first
+ * check and reports nothing rather than a guess.
+ */
+function readTransparency(
+  data: Uint8Array,
+  view: DataView,
+  colorFieldOffset: number,
+): number | undefined {
+  const fieldOffset = colorFieldOffset - TRANSPARENCY_BEFORE_COLOR_BYTES;
+  if (fieldOffset < 8) return undefined;
+  for (let index = fieldOffset - 8; index < fieldOffset; index += 1) {
+    if (data[index] !== 0xff) return undefined;
+  }
+  const transparency = view.getFloat32(fieldOffset, true);
+  const companion = view.getFloat32(fieldOffset + 4, true);
+  if (!Number.isFinite(transparency) || transparency < 0 || transparency > 1) return undefined;
+  if (!Number.isFinite(companion) || companion < 0 || companion > 1) return undefined;
+  return transparency;
+}
+
 function appearanceAt(
+  data: Uint8Array,
   view: DataView,
   objectOffset: number,
   colorFieldOffset: number,
   evidence: NativeMaterialAppearance["evidence"],
 ): NativeMaterialAppearance {
   const colorPacked = view.getUint32(colorFieldOffset, true);
+  const transparency = evidence === "framed-material-color-packed-direct"
+    ? readTransparency(data, view, colorFieldOffset)
+    : undefined;
   return {
     colorPacked,
     baseColorSrgb: [
@@ -249,6 +295,7 @@ function appearanceAt(
     ],
     colorFieldOffset: colorFieldOffset - objectOffset,
     evidence,
+    ...(transparency != null ? { transparency } : {}),
   };
 }
 
@@ -282,6 +329,7 @@ function readMaterialAppearance(
       return null;
     }
     return appearanceAt(
+      data,
       view,
       objectOffset,
       colorFieldOffset,
@@ -316,6 +364,7 @@ function readMaterialAppearance(
     Math.abs(right - (name.end + DIRECT_COLOR_EXPECTED_OFFSET)));
   if (structuralCandidates[0] != null) {
     return appearanceAt(
+      data,
       view,
       objectOffset,
       structuralCandidates[0],
@@ -332,6 +381,7 @@ function readMaterialAppearance(
     return null;
   }
   return appearanceAt(
+    data,
     view,
     objectOffset,
     fallback,

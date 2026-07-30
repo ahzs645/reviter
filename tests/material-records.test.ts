@@ -171,6 +171,31 @@ test("decodes the structurally anchored packed color after a direct material nam
   });
 });
 
+test("decodes the persisted transparency behind a direct-layout color", () => {
+  const name = "Glass";
+  const data = materialRecord({ name, objectLength: 1_400 });
+  const view = new DataView(data.buffer);
+  const nameEnd = 140 + 4 + name.length * 2;
+  const colorOffset = nameEnd + 82;
+  view.setUint32(colorOffset, 0x00c0_8000, true);
+  view.setUint32(colorOffset + 4, 0x0c, true);
+  // The measured layout: an eight-byte ff run, the transparency ratio, and a
+  // companion ratio, then twelve zero bytes and the packed color.
+  data.fill(0xff, colorOffset - 32, colorOffset - 24);
+  view.setFloat32(colorOffset - 24, 0.9, true);
+  view.setFloat32(colorOffset - 20, 0.5, true);
+
+  const definition = scanMaterialElementRecords(data, 2027).definitions[0]!;
+  assert.ok(definition.appearance);
+  assert.ok(Math.abs(definition.appearance!.transparency! - 0.9) < 1e-6);
+
+  // A companion outside [0, 1] breaks the structural chain: no value at all
+  // beats a guess.
+  view.setFloat32(colorOffset - 20, 7.5, true);
+  const withoutCompanion = scanMaterialElementRecords(data, 2027).definitions[0]!;
+  assert.equal(withoutCompanion.appearance?.transparency, undefined);
+});
+
 test("selects the nested render color rather than its different graphic color", () => {
   const name = "Деревянные доски";
   const description = "Stainless Steel 18/8, brushed finish";

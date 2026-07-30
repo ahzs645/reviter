@@ -164,6 +164,77 @@ export function resolveElementCategories(
   return resolved;
 }
 
+export type ResolvedCategoriesWithEvidence = {
+  /** Majority category per element, exactly as `resolveElementCategories`. */
+  resolved: Map<number, number>;
+  /**
+   * Elements whose winning category is backed only by donated tokens: every
+   * supporting token has a *nearer* preceding value that the persisted element
+   * table proves is a real element — just not one this conversion draws — so
+   * the nearest-preceding rule fell through past the token's actual owner.
+   */
+  donatedOnly: Set<number>;
+};
+
+/**
+ * Resolve tokens like `resolveElementCategories`, but also report which
+ * assignments rest entirely on donated tokens.
+ *
+ * The persisted `Global/ElemTable` lists every element in the document, not
+ * merely the ones with a decodable bounds record. A token whose nearest real
+ * element id belongs to an undrawn element was written for that element; when
+ * the nearest *drawable* id then claims it, the claim is a fall-through, not
+ * evidence. The measured case is element `447970`: a 72,315 sq ft floor plate
+ * that took a mullion's token because the mullion itself owns no bounds record.
+ *
+ * The vote still lands — dropping donated tokens outright would also strip the
+ * drawing-aid labels (`Stairs Paths`, `Sketch Lines`, balusters) that the scene
+ * admission rules rely on, and those labels are uncontradicted. The flag lets
+ * the caller override a donated-only label only where stronger evidence — the
+ * element's own record-code cluster — actively disagrees.
+ */
+export function resolveElementCategoriesWithEvidence(
+  tokens: CategoryToken[],
+  knownElementIds: Set<number>,
+  realElementIds: Set<number>,
+): ResolvedCategoriesWithEvidence {
+  const votes = new Map<number, Map<number, number>>();
+  const cleanVotes = new Map<number, Map<number, number>>();
+  for (const token of tokens) {
+    const owner = token.ownerCandidates.find((candidate) => knownElementIds.has(candidate));
+    if (owner == null) continue;
+    const realOwner = token.ownerCandidates.find((candidate) => realElementIds.has(candidate));
+    const perElement = votes.get(owner) ?? new Map<number, number>();
+    perElement.set(token.categoryId, (perElement.get(token.categoryId) ?? 0) + 1);
+    votes.set(owner, perElement);
+    // `realElementIds` is a superset of `knownElementIds`, so the nearest real
+    // candidate sits at or before the nearest known one; the vote is clean
+    // exactly when the two are the same value.
+    if (realOwner === owner) {
+      const perClean = cleanVotes.get(owner) ?? new Map<number, number>();
+      perClean.set(token.categoryId, (perClean.get(token.categoryId) ?? 0) + 1);
+      cleanVotes.set(owner, perClean);
+    }
+  }
+
+  const resolved = new Map<number, number>();
+  const donatedOnly = new Set<number>();
+  for (const [elementId, perElement] of votes) {
+    let bestCategory = 0;
+    let bestCount = 0;
+    for (const [categoryId, count] of perElement) {
+      if (count > bestCount) {
+        bestCount = count;
+        bestCategory = categoryId;
+      }
+    }
+    if (!bestCategory) continue;
+    resolved.set(elementId, bestCategory);
+    if (!(cleanVotes.get(elementId)?.get(bestCategory))) donatedOnly.add(elementId);
+  }
+  return { resolved, donatedOnly };
+}
+
 export type RecordCodeConsensus = {
   categoryId: number;
   /** Elements of this record code that carry a directly resolved category. */
@@ -218,26 +289,56 @@ export function deriveRecordCodeCategories(
  * Resolve category tokens against the element ids the scan actually proved,
  * then fill the remainder from per-record-code consensus. Mutates `records`
  * and returns the evidence behind every assignment.
+ *
+ * With `ownershipElementIds` — the persisted `Global/ElemTable` id set — a
+ * direct label that rests only on donated tokens (see
+ * `resolveElementCategoriesWithEvidence`) yields to the element's own
+ * record-code cluster when that cluster clears the ordinary consensus floors
+ * and disagrees. No new threshold is introduced: a consensus trusted to hand
+ * out categories to unlabelled siblings is trusted to outvote a token that
+ * provably fell through from an undrawn element.
  */
 export function applyNativeCategories(
   records: ElementBoundsRecord[],
   tokens: CategoryToken[],
   elemTableIds?: Uint32Array,
+  ownershipElementIds?: Set<number>,
 ): NativeCategorySummary {
   const knownElementIds = new Set<number>(records.map((record) => record.elementId));
   if (elemTableIds) for (const elementId of elemTableIds) knownElementIds.add(elementId);
 
-  const resolved = resolveElementCategories(tokens, knownElementIds);
+  let resolved: Map<number, number>;
+  let donatedOnly: Set<number>;
+  if (ownershipElementIds?.size) {
+    const realElementIds = new Set(knownElementIds);
+    for (const elementId of ownershipElementIds) realElementIds.add(elementId);
+    ({ resolved, donatedOnly } = resolveElementCategoriesWithEvidence(
+      tokens,
+      knownElementIds,
+      realElementIds,
+    ));
+  } else {
+    resolved = resolveElementCategories(tokens, knownElementIds);
+    donatedOnly = new Set();
+  }
   const consensus = deriveRecordCodeCategories(records, resolved);
 
   let directElements = 0;
   let inheritedElements = 0;
+  let donatedTokenElements = 0;
+  let donatedTokensOverridden = 0;
   const counts = new Map<number, number>();
   for (const record of records) {
-    const direct = resolved.get(record.elementId);
-    const inherited = direct == null
-      ? consensus.get(recordCodeKey(record.recordCode, record.recordCount))
-      : undefined;
+    let direct = resolved.get(record.elementId);
+    const clusterEntry = consensus.get(recordCodeKey(record.recordCode, record.recordCount));
+    if (direct != null && donatedOnly.has(record.elementId)) {
+      donatedTokenElements += 1;
+      if (clusterEntry && clusterEntry.categoryId !== direct) {
+        donatedTokensOverridden += 1;
+        direct = undefined;
+      }
+    }
+    const inherited = direct == null ? clusterEntry : undefined;
     const categoryId = direct ?? inherited?.categoryId;
     if (categoryId == null) continue;
     record.categoryId = categoryId;
@@ -262,6 +363,8 @@ export function applyNativeCategories(
     tokensFound: tokens.length,
     directElements,
     inheritedElements,
+    donatedTokenElements,
+    donatedTokensOverridden,
     categories: [...counts.entries()]
       .map(([categoryId, elements]) => ({
         categoryId,

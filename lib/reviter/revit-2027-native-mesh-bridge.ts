@@ -830,7 +830,20 @@ function finalizeRevit2027NativeMeshCollection(
       );
     if (lineAlongState > 1e-8) continue;
 
-    const candidates = [...state.definitions.values()].filter((source) => {
+    /*
+     * Several siblings can share the target's state signature — the same
+     * displacement and a leading face exactly on the target's helper plane.
+     * Measured on the supplied model every such group holds one complete
+     * stringer (5.6-7.6 ft along the state axis) and one or more selector
+     * stubs whose 1.31 ft fragments end on the same leading face; a plane
+     * test alone reliably picked a stub, translating a twelve-triangle box
+     * into a stringer's place. A fragment can never span more of the state
+     * than the sibling whose faces it is a fragment of, so the complete
+     * owner is the unique widest candidate along the axis — and a tie means
+     * the relationship is ambiguous and nothing is composed.
+     */
+    const candidates: { geometry: Revit2027CompactOwnerMesh; span: number }[] = [];
+    for (const source of state.definitions.values()) {
       if (
         source.ownerElementId === target.ownerElementId ||
         owningElementByElement.get(source.ownerElementId) !== parentId ||
@@ -842,25 +855,24 @@ function finalizeRevit2027NativeMeshCollection(
           targetCarrier.displacement,
         )
       ) {
-        return false;
+        continue;
       }
       const range = compactOwnerProjectionRange(source.geometry, axis);
-      if (!range) return false;
-      const sourcePlane =
-        source.conditionalStateCarrier.lineOrigin[0] * axis[0] +
-        source.conditionalStateCarrier.lineOrigin[1] * axis[1] +
-        source.conditionalStateCarrier.lineOrigin[2] * axis[2];
-      return (
-        Math.abs(sourcePlane - range[1]) <= 1e-6 &&
-        Math.abs(targetPlane - sourcePlane) <= 1e-6
-      );
-    });
-    if (candidates.length !== 1) continue;
+      if (!range || Math.abs(targetPlane - range[1]) > 1e-6) continue;
+      candidates.push({ geometry: source.geometry, span: range[1] - range[0] });
+    }
+    candidates.sort((left, right) => right.span - left.span);
+    if (
+      !candidates.length ||
+      (candidates.length > 1 && candidates[0]!.span - candidates[1]!.span <= 1e-6)
+    ) {
+      continue;
+    }
     owners.set(
       target.ownerElementId,
       translatedCompactOwner(
         target.ownerElementId,
-        candidates[0]!.geometry!,
+        candidates[0]!.geometry,
         targetCarrier.displacement,
       ),
     );
