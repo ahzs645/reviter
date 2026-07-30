@@ -10,18 +10,25 @@
  * speeds and heights here are real building dimensions — a 5.6 ft eye height,
  * a walking pace of about 9 ft/s — and need no scaling.
  *
- * Mouse look uses the browser's pointer lock. Movement is WASD or the arrow
- * keys, `Shift` to run, `Space` and `C` to rise and fall, and `Escape` releases
- * the pointer.
+ * Mouse look follows Autodesk Viewer's left-button drag. Movement is WASD or
+ * the arrow keys, `Shift` to run, and Q/E to descend/ascend between floors.
  */
 import * as THREE from "three";
 
 /** Eye height above the floor the walker is standing on, in feet. */
 const EYE_HEIGHT_FEET = 5.6;
 
-/** Walking pace and the multiplier applied while running, in feet per second. */
-const WALK_SPEED = 9;
-const RUN_MULTIPLIER = 3.2;
+export type WalkSpeed = "slow" | "normal" | "fast";
+
+/** Autodesk-style speed steps, expressed in model feet per second. */
+export const FIRST_PERSON_SPEEDS: Readonly<Record<WalkSpeed, number>> = {
+  slow: 3.5,
+  normal: 9,
+  fast: 24,
+};
+
+const WALK_SPEED_ORDER: readonly WalkSpeed[] = ["slow", "normal", "fast"];
+const RUN_MULTIPLIER = 2;
 
 /** Vertical pace for rising and falling, in feet per second. */
 const RISE_SPEED = 7;
@@ -34,6 +41,31 @@ const MAX_PITCH = Math.PI / 2 - 0.02;
 
 /** Mouse sensitivity, radians per pixel. */
 const LOOK_SPEED = 0.0022;
+const FLOOR_PROBE_INTERVAL = 0.1;
+const MAX_STEP_UP = 1.5;
+
+export function stepWalkSpeed(speed: WalkSpeed, direction: -1 | 1): WalkSpeed {
+  const index = WALK_SPEED_ORDER.indexOf(speed);
+  return WALK_SPEED_ORDER[Math.max(0, Math.min(WALK_SPEED_ORDER.length - 1, index + direction))];
+}
+
+export function floorTravelDirection(keys: ReadonlySet<string>): -1 | 0 | 1 {
+  return ((keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0)) as -1 | 0 | 1;
+}
+
+export function horizontalWalkDirection(
+  up: "y" | "z",
+  yaw: number,
+  forwardInput: number,
+  strafeInput: number,
+): THREE.Vector3 {
+  const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  const forward = up === "y"
+    ? new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw))
+    : new THREE.Vector3(Math.cos(yaw), Math.sin(yaw), 0);
+  const right = new THREE.Vector3().crossVectors(forward, upVector).normalize();
+  return forward.multiplyScalar(forwardInput).addScaledVector(right, strafeInput);
+}
 
 export type WalkControls = {
   /** Attach listeners and take over the camera. */
@@ -42,8 +74,14 @@ export type WalkControls = {
   disable(): void;
   /** Advance by `deltaSeconds`; call once per animation frame while enabled. */
   update(deltaSeconds: number): void;
-  /** True while the pointer is locked and mouse look is live. */
-  isLocked(): boolean;
+  /** True while a left-button look drag is active. */
+  isLooking(): boolean;
+  /** Change the persistent movement speed without rebuilding the camera. */
+  setSpeed(speed: WalkSpeed): void;
+  /** Toggle floor following. Off becomes a free-flight first-person camera. */
+  setGravity(enabled: boolean): void;
+  /** Travel to a picked surface, keeping clearance from vertical faces. */
+  teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void;
   dispose(): void;
 };
 
@@ -54,9 +92,23 @@ export type WalkOptions = {
   lookAt: THREE.Vector3;
   /** Lowest the camera may go, so the walker cannot sink through the model. */
   floor: number;
+  /** Eye offset above a detected walking surface. */
+  eyeHeight?: number;
+  /** Scene distance represented by one foot (1 for RVT recovery, 0.3048 for metre geometry). */
+  sceneUnitsPerFoot?: number;
   /** Which axis points up in this scene. */
   up: "y" | "z";
-  onLockChange?: (locked: boolean) => void;
+  /** Initial speed shown by the first-person popup. */
+  speed?: WalkSpeed;
+  /** Follow horizontal model surfaces when true. */
+  gravity?: boolean;
+  /** Return the walking-surface coordinate below this eye position. */
+  resolveFloor?: (eyePosition: THREE.Vector3) => number | null;
+  /** Constrain a proposed camera move against model walls or other obstacles. */
+  resolveMovement?: (from: THREE.Vector3, to: THREE.Vector3) => THREE.Vector3;
+  onLookChange?: (looking: boolean) => void;
+  onSpeedChange?: (speed: WalkSpeed) => void;
+  onExit?: () => void;
 };
 
 /**
@@ -75,7 +127,12 @@ export function createWalkControls(
   let yaw = 0;
   let pitch = 0;
   let enabled = false;
-  let locked = false;
+  let looking = false;
+  let speed = options.speed ?? "normal";
+  let gravity = options.gravity ?? true;
+  let floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+  const sceneUnitsPerFoot = options.sceneUnitsPerFoot ?? 1;
+  const eyeHeight = options.eyeHeight ?? EYE_HEIGHT_FEET * sceneUnitsPerFoot;
 
   // A basis that maps "forward, right, up" to whichever axis this scene stands
   // on, so the same movement code serves both the Y-up and Z-up viewports.
@@ -102,8 +159,8 @@ export function createWalkControls(
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
   }
 
-  function onMouseMove(event: MouseEvent): void {
-    if (!locked) return;
+  function onPointerMove(event: PointerEvent): void {
+    if (!looking) return;
     yaw -= event.movementX * LOOK_SPEED;
     pitch -= event.movementY * LOOK_SPEED;
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
@@ -112,23 +169,54 @@ export function createWalkControls(
 
   function onKeyDown(event: KeyboardEvent): void {
     if (!enabled) return;
+    if (event.code === "Escape") {
+      options.onExit?.();
+      return;
+    }
+    if (!event.repeat && (event.code === "Minus" || event.code === "NumpadSubtract")) {
+      speed = stepWalkSpeed(speed, -1);
+      options.onSpeedChange?.(speed);
+      event.preventDefault();
+      return;
+    }
+    if (!event.repeat && (event.code === "Equal" || event.code === "NumpadAdd")) {
+      speed = stepWalkSpeed(speed, 1);
+      options.onSpeedChange?.(speed);
+      event.preventDefault();
+      return;
+    }
     pressed.add(event.code);
     // The keys that drive the walker would otherwise scroll the page.
-    if (/^(Arrow|Space|Key[WASDC])/.test(event.code)) event.preventDefault();
+    if (/^(Arrow|Space|Key[WASDCQE])/.test(event.code)) event.preventDefault();
   }
 
   function onKeyUp(event: KeyboardEvent): void {
     pressed.delete(event.code);
   }
 
-  function onPointerLockChange(): void {
-    locked = document.pointerLockElement === domElement;
-    if (!locked) pressed.clear();
-    options.onLockChange?.(locked);
+  function onPointerDown(event: PointerEvent): void {
+    if (!enabled || event.button !== 0) return;
+    looking = true;
+    domElement.setPointerCapture(event.pointerId);
+    options.onLookChange?.(true);
   }
 
-  function onClick(): void {
-    if (enabled && !locked) void domElement.requestPointerLock();
+  function releaseInput(): void {
+    pressed.clear();
+    stopLooking();
+  }
+
+  function onVisibilityChange(): void {
+    if (document.hidden) releaseInput();
+  }
+
+  function stopLooking(event?: PointerEvent): void {
+    if (!looking) return;
+    looking = false;
+    if (event && domElement.hasPointerCapture(event.pointerId)) {
+      domElement.releasePointerCapture(event.pointerId);
+    }
+    options.onLookChange?.(false);
   }
 
   function enable(): void {
@@ -138,25 +226,29 @@ export function createWalkControls(
     setFacing(options.start, options.lookAt);
     applyRotation();
     velocity.set(0, 0, 0);
-    domElement.addEventListener("click", onClick);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
-    document.addEventListener("mousemove", onMouseMove);
+    floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+    domElement.addEventListener("pointerdown", onPointerDown);
+    domElement.addEventListener("pointermove", onPointerMove);
+    domElement.addEventListener("pointerup", stopLooking);
+    domElement.addEventListener("pointercancel", stopLooking);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    void domElement.requestPointerLock();
+    window.addEventListener("blur", releaseInput);
+    document.addEventListener("visibilitychange", onVisibilityChange);
   }
 
   function disable(): void {
     if (!enabled) return;
     enabled = false;
-    pressed.clear();
-    domElement.removeEventListener("click", onClick);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("mousemove", onMouseMove);
+    releaseInput();
+    domElement.removeEventListener("pointerdown", onPointerDown);
+    domElement.removeEventListener("pointermove", onPointerMove);
+    domElement.removeEventListener("pointerup", stopLooking);
+    domElement.removeEventListener("pointercancel", stopLooking);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
-    if (document.pointerLockElement === domElement) document.exitPointerLock();
-    locked = false;
+    window.removeEventListener("blur", releaseInput);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
   }
 
   function update(deltaSeconds: number): void {
@@ -167,26 +259,43 @@ export function createWalkControls(
       - (pressed.has("KeyS") || pressed.has("ArrowDown") ? 1 : 0);
     const strafeInput = (pressed.has("KeyD") || pressed.has("ArrowRight") ? 1 : 0)
       - (pressed.has("KeyA") || pressed.has("ArrowLeft") ? 1 : 0);
-    const riseInput = (pressed.has("Space") ? 1 : 0) - (pressed.has("KeyC") ? 1 : 0);
+    const freeFlightInput = (pressed.has("Space") ? 1 : 0) - (pressed.has("KeyC") ? 1 : 0);
+    const floorTravelInput = floorTravelDirection(pressed);
 
     // Movement stays in the horizontal plane whatever the camera is looking at,
     // so looking down at the floor does not drive the walker into it.
-    const forward = up === "y"
-      ? new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw))
-      : new THREE.Vector3(Math.cos(yaw), Math.sin(yaw), 0);
-    const right = new THREE.Vector3().crossVectors(forward, upVector).normalize();
-
-    const speed = WALK_SPEED * (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? RUN_MULTIPLIER : 1);
-    const target = new THREE.Vector3()
-      .addScaledVector(forward, forwardInput * speed)
-      .addScaledVector(right, -strafeInput * speed)
-      .addScaledVector(upVector, riseInput * RISE_SPEED);
+    const movementSpeed = FIRST_PERSON_SPEEDS[speed] * sceneUnitsPerFoot
+      * (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? RUN_MULTIPLIER : 1);
+    const target = horizontalWalkDirection(up, yaw, forwardInput, strafeInput)
+      .multiplyScalar(movementSpeed);
+    if (!gravity) target.addScaledVector(upVector, freeFlightInput * RISE_SPEED * sceneUnitsPerFoot);
+    else if (floorTravelInput) target.addScaledVector(upVector, floorTravelInput * RISE_SPEED * sceneUnitsPerFoot);
 
     velocity.lerp(target, Math.min(1, DAMPING * step));
-    camera.position.addScaledVector(velocity, step);
+    const from = camera.position.clone();
+    const next = from.clone().addScaledVector(velocity, step);
+    camera.position.copy(options.resolveMovement?.(from, next) ?? next);
 
-    // Keep the walker above the floor rather than under the building.
-    const height = up === "y" ? camera.position.y : camera.position.z;
+    let height = up === "y" ? camera.position.y : camera.position.z;
+    floorProbeElapsed += step;
+    if (gravity && !floorTravelInput && options.resolveFloor && floorProbeElapsed >= FLOOR_PROBE_INTERVAL) {
+      floorProbeElapsed = 0;
+      const surface = options.resolveFloor(camera.position);
+      if (surface != null) {
+        const targetEye = surface + eyeHeight;
+        // A stair riser is walkable; a desk or roof encountered by the probe is
+        // not something the camera should snap upward onto.
+        if (targetEye <= height + MAX_STEP_UP * sceneUnitsPerFoot) {
+          height = THREE.MathUtils.lerp(height, Math.max(options.floor, targetEye), Math.min(1, DAMPING * step));
+          if (up === "y") camera.position.y = height;
+          else camera.position.z = height;
+          velocity[up] = 0;
+        }
+      }
+    }
+
+    // Keep the walker above the model baseline even when no surface was hit.
+    height = up === "y" ? camera.position.y : camera.position.z;
     if (height < options.floor) {
       if (up === "y") camera.position.y = options.floor;
       else camera.position.z = options.floor;
@@ -195,11 +304,43 @@ export function createWalkControls(
     applyRotation();
   }
 
+  function teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
+    const normal = surfaceNormal?.clone().normalize() ?? upVector.clone();
+    const horizontalNormal = normal.clone().addScaledVector(upVector, -normal.dot(upVector));
+    const isWalkingSurface = Math.abs(normal.dot(upVector)) >= 0.55;
+    if (isWalkingSurface || horizontalNormal.lengthSq() < 1e-6) {
+      camera.position.copy(point).addScaledVector(upVector, eyeHeight);
+    } else {
+      horizontalNormal.normalize();
+      if (horizontalNormal.dot(camera.position.clone().sub(point)) < 0) horizontalNormal.negate();
+      const standOff = 3 * sceneUnitsPerFoot;
+      camera.position.copy(point).addScaledVector(horizontalNormal, standOff);
+      const floor = options.resolveFloor?.(camera.position);
+      if (floor != null) {
+        if (up === "y") camera.position.y = floor + eyeHeight;
+        else camera.position.z = floor + eyeHeight;
+      }
+      setFacing(camera.position, point);
+    }
+    velocity.set(0, 0, 0);
+    floorProbeElapsed = 0;
+    applyRotation();
+  }
+
   return {
     enable,
     disable,
     update,
-    isLocked: () => locked,
+    isLooking: () => looking,
+    setSpeed: (nextSpeed) => {
+      speed = nextSpeed;
+    },
+    setGravity: (enabled) => {
+      gravity = enabled;
+      velocity[up] = 0;
+      floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+    },
+    teleport,
     dispose: disable,
   };
 }

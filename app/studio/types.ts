@@ -5,7 +5,7 @@ export type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 export type ReferencePhase = "idle" | "reading" | "ready" | "error";
 export type GeometrySource = "autodesk" | "reference" | "recovered" | "overlay";
 export type ViewerPanel = "none" | "model" | "properties" | "categories";
-export type CameraRequest = { preset: CameraPreset; sequence: number };
+export type CameraRequest = { preset: CameraPreset; sequence: number; fit?: boolean };
 /**
  * A right-click on the canvas: what was under it, where it happened in the
  * canvas's own pixels, and how big the canvas was — the size is what lets the

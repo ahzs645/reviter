@@ -59,8 +59,8 @@ export const AUTODESK_PREVIEW_RESULT: ConvertResult = {
     candidatesFocused: 0,
     candidatesUsed: 0,
     vertexCount: 0,
-    triangleCount: 1_220_000,
-    meshCount: 8_698,
+    triangleCount: 616_185,
+    meshCount: 16_401,
     boundsRecordsFound: 0,
     solidBoundsRecords: 0,
     durationMs: 0,
@@ -90,19 +90,33 @@ export function styleAutodeskReference(root: THREE.Object3D, renderMode: RenderM
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = renderMode === "technical";
-    mesh.receiveShadow = renderMode === "technical";
+    // This reference contains more than sixteen thousand fragments. Dynamic
+    // per-fragment shadows nearly double its draw work and expose coplanar
+    // derivative faces as shadow acne while the camera moves.
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const material of materials) {
       if (styled.has(material)) continue;
       styled.add(material);
-      material.side = THREE.DoubleSide;
       const standard = material as THREE.MeshStandardMaterial;
       if (standard.isMeshStandardMaterial) {
-        if (renderMode !== "technical") {
-          standard.transparent = true;
+        // The GLB intentionally marks its three glazing materials BLEND. Keep
+        // those source alpha values in Shaded mode and do not make their back
+        // faces contribute a second layer of blue.
+        standard.side = THREE.FrontSide;
+        standard.depthTest = true;
+        if (renderMode === "technical") {
+          standard.alphaHash = false;
+          standard.transparent = standard.opacity < 0.995;
+          standard.depthWrite = !standard.transparent;
+        } else {
+          // X-ray uses depth-tested alpha hashing so thousands of fragments do
+          // not swap transparent sort order and flash as the view changes.
+          standard.transparent = false;
           standard.opacity = Math.min(standard.opacity, 0.24);
-          standard.depthWrite = false;
+          standard.alphaHash = true;
+          standard.depthWrite = true;
         }
       }
       material.needsUpdate = true;

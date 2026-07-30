@@ -67,7 +67,14 @@ export function meshGroup(
     const sourceColor = sourceMaterial
       ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
       : new THREE.Color(0xb9cbe0);
-    const glazingProxy = data.name.startsWith("Glazing");
+    const sourceOpacity = sourceMaterial?.baseColorLinear[3] ?? 1;
+    const glazingProxy = data.name.startsWith("Glazing") || sourceOpacity < 0.995;
+    const transparent = technical
+      ? glazingProxy
+      : true;
+    const opacity = technical
+      ? (isElementBounds && glazingProxy ? Math.min(sourceOpacity, 0.58) : sourceOpacity)
+      : Math.min(sourceOpacity, isElementBounds ? 0.32 : 0.28);
     const material = new THREE.MeshStandardMaterial({
       color: sourceColor,
       vertexColors: !technical,
@@ -75,9 +82,9 @@ export function meshGroup(
       metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
       flatShading: true,
       side: THREE.DoubleSide,
-      transparent: isElementBounds && (!technical || glazingProxy),
-      opacity: isElementBounds ? (technical ? (glazingProxy ? 0.58 : 1) : 0.32) : 1,
-      depthWrite: technical ? !glazingProxy : !isElementBounds,
+      transparent,
+      opacity,
+      depthWrite: !transparent,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
@@ -229,6 +236,10 @@ export function disposeGroup(group: THREE.Object3D) {
   });
   geometries.forEach((geometry) => geometry.dispose());
   materials.forEach((material) => material.dispose());
+  group.traverse((object) => {
+    const batch = object as THREE.BatchedMesh;
+    if (batch.isBatchedMesh) batch.dispose();
+  });
 }
 
 export function applyNavigationMode(controls: OrbitControls, mode: NavigationMode) {

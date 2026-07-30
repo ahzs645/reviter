@@ -40,7 +40,6 @@ import {
   type LegacyRevit2021Api,
   type OmniClassItem,
   type PairedRegressionResult,
-  type NavigationMode,
   type RenderMode,
   type WorkerRequest,
   type WorkerResponse,
@@ -49,8 +48,18 @@ import {
 import { AUTODESK_PREVIEW_RESULT, hasAutodeskReference, staticWorkerUrl } from "./studio/autodesk-reference.ts";
 import { canvasMenuPosition, formatBytes, formatNumber, matchesFilter, savedFileName } from "./studio/format.ts";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { MarkupOverlay } from "./studio/MarkupOverlay.tsx";
+import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { ObjectList } from "./studio/ObjectList.tsx";
 import { FidelityRow, RegressionPanel, ToolButton } from "./studio/panels.tsx";
+import { ViewerToolbar } from "./studio/ViewerToolbar.tsx";
+import {
+  navigationModeForTool,
+  type MarkupTool,
+  type ModelComment,
+  type NewModelComment,
+  type ViewerTool,
+} from "./studio/viewer-tools.ts";
 import type {
   CameraRequest,
   CanvasMenuRequest,
@@ -95,13 +104,15 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [dragging, setDragging] = useState(false);
   const [geometrySource, setGeometrySource] = useState<GeometrySource>(referencePreview ? "autodesk" : "recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>("orbit");
+  const [activeTool, setActiveTool] = useState<ViewerTool>("orbit");
+  const [markupTool, setMarkupTool] = useState<MarkupTool>("pencil");
+  const [modelComments, setModelComments] = useState<ModelComment[]>(
+    () => referencePreview ? loadModelComments(AUTODESK_PREVIEW_RESULT) : [],
+  );
   const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: DEFAULT_CAMERA_PRESET, sequence: 0 });
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
   const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
-  const [sectionEnabled, setSectionEnabled] = useState(false);
-  const [walking, setWalking] = useState(false);
   const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [schemaSearch, setSchemaSearch] = useState("");
@@ -139,9 +150,15 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   const [referenceMessage, setReferenceMessage] = useState("Choose the matching IFC export");
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
+  const navigationMode = navigationModeForTool(activeTool);
+  const walking = activeTool === "firstPerson";
+  const handleWalkingChange = useCallback((enabled: boolean) => {
+    setActiveTool(enabled ? "firstPerson" : "orbit");
+  }, []);
   const workerRef = useRef<Worker | null>(null);
   const ifcWorkerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
+  const commentSessionRef = useRef<ModelComment[]>([]);
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
@@ -340,9 +357,10 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     setComparison(null);
     setGeometrySource("recovered");
     setRenderMode("technical");
-    setNavigationMode("orbit");
-    setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId });
-    setSectionEnabled(false);
+    setActiveTool("orbit");
+    setMarkupTool("pencil");
+    setModelComments([]);
+    setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId, fit: false });
     setViewerPanel("none");
     setSelectedElementId(null);
     setModelSearch("");
@@ -438,6 +456,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
           return;
         }
         setResult(message.result);
+        setModelComments(loadModelComments(message.result));
         setGeometrySource(hasAutodeskReference(message.result.fileName) ? "autodesk" : "recovered");
         setProgress(1);
         setProgressMessage("Conversion ready");
@@ -668,9 +687,60 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
     [hoveredElementId, result],
   );
   const requestCamera = useCallback((preset: CameraPreset) => {
-    setCameraRequest((current) => ({ preset, sequence: current.sequence + 1 }));
+    setCameraRequest((current) => ({ preset, sequence: current.sequence + 1, fit: false }));
     setViewMenuOpen(false);
   }, []);
+
+  const commitComments = useCallback((update: (current: ModelComment[]) => ModelComment[]) => {
+    setModelComments((current) => {
+      const next = update(current);
+      if (result) saveModelComments(result, next);
+      return next;
+    });
+  }, [result]);
+
+  const createModelComment = useCallback((comment: NewModelComment): string => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const now = new Date().toISOString();
+    commitComments((current) => [...current, {
+      ...comment,
+      id,
+      text: "New review comment",
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    }]);
+    return id;
+  }, [commitComments]);
+
+  const updateModelComment = useCallback((
+    id: string,
+    patch: Partial<Pick<ModelComment, "text" | "status">>,
+  ) => {
+    commitComments((current) => current.map((comment) => comment.id === id
+      ? { ...comment, ...patch, updatedAt: new Date().toISOString() }
+      : comment));
+  }, [commitComments]);
+
+  const deleteModelComment = useCallback((id: string) => {
+    commitComments((current) => current.filter((comment) => comment.id !== id));
+  }, [commitComments]);
+
+  const selectViewerTool = useCallback((tool: ViewerTool) => {
+    if (tool === "markup" && activeTool !== "markup") {
+      commentSessionRef.current = modelComments;
+    }
+    setActiveTool(tool);
+  }, [activeTool, modelComments]);
+
+  const cancelMarkup = useCallback(() => {
+    const restored = commentSessionRef.current;
+    setModelComments(restored);
+    if (result) saveModelComments(result, restored);
+    setActiveTool("orbit");
+  }, [result]);
 
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
@@ -1081,15 +1151,33 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   renderMode={renderMode}
                   navigationMode={navigationMode}
                   cameraRequest={cameraRequest}
-                  sectionEnabled={sectionEnabled}
+                  measuring={activeTool === "measure"}
+                  sectioning={activeTool === "section"}
+                  onSectionClear={() => setActiveTool("orbit")}
+                  exploding={activeTool === "explode"}
+                  commenting={activeTool === "markup" && markupTool === "comment"}
+                  commentEditing={activeTool === "markup"}
+                  comments={modelComments}
+                  onCreateComment={createModelComment}
+                  onUpdateComment={updateModelComment}
+                  onDeleteComment={deleteModelComment}
                   walking={walking}
-                  onWalkingChange={setWalking}
+                  onWalkingChange={handleWalkingChange}
                   selectedElementId={selectedElementId}
                   onSelectElement={setSelectedElementId}
                   hiddenElementIds={hiddenElementIds}
                   onHoverElement={setHoveredElementId}
                   onCanvasMenu={setCanvasMenu}
                   focusRequest={focusRequest}
+                />
+                <MarkupOverlay
+                  key={`${result.fileName}:${result.byteLength}`}
+                  active={activeTool === "markup"}
+                  tool={markupTool}
+                  commentCount={modelComments.length}
+                  onToolChange={setMarkupTool}
+                  onDone={() => setActiveTool("orbit")}
+                  onCancel={cancelMarkup}
                 />
                 <nav className="viewer-commandbar" aria-label="Model tools">
                   <ToolButton
@@ -1257,27 +1345,17 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   </div>
                 </div>
 
-                <nav className="viewer-navigation" aria-label="Viewport navigation">
-                  {/* Re-applies the current orientation and re-frames the model. */}
-                  <button onClick={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 }))}><i>⛶</i><span>Zoom extents</span></button>
-                  <ToolButton
-                    onClick={requestZoomToSelection}
-                    reason={selectedRecord ? null : "Pick an object first"}
-                    title="Frame the picked object"
-                  ><i>⊙</i><span>Zoom object</span></ToolButton>
-                  <button className={navigationMode === "pan" ? "active" : ""} onClick={() => setNavigationMode("pan")} aria-pressed={navigationMode === "pan"}><i>✣</i><span>Pan</span></button>
-                  <button className={navigationMode === "zoom" ? "active" : ""} onClick={() => setNavigationMode("zoom")} aria-pressed={navigationMode === "zoom"}><i>⌕</i><span>Zoom</span></button>
-                  <button className={navigationMode === "orbit" ? "active" : ""} onClick={() => setNavigationMode("orbit")} aria-pressed={navigationMode === "orbit"}><i>◉</i><span>Orbit</span></button>
-                  <button
-                    className={walking ? "active" : ""}
-                    onClick={() => setWalking((current) => !current)}
-                    aria-pressed={walking}
-                    title="Walk the model at eye level — W A S D to move, mouse to look, Shift to run, Esc to leave"
-                  ><i>⇱</i><span>Walk</span></button>
-                  <span />
-                  <button className={sectionEnabled ? "active" : ""} onClick={() => setSectionEnabled((current) => !current)} aria-pressed={sectionEnabled}><i>◩</i><span>Section</span></button>
-                  <button onClick={() => { setSelectedElementId(null); setSectionEnabled(false); setHiddenCategories(new Set()); requestCamera(DEFAULT_CAMERA_PRESET); }}><i>↺</i><span>Reset</span></button>
-                </nav>
+                <ViewerToolbar
+                  activeTool={activeTool}
+                  propertiesActive={viewerPanel === "properties"}
+                  onTool={selectViewerTool}
+                  onFit={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1, fit: true }))}
+                  onProperties={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
+                  onHome={() => {
+                    setActiveTool("orbit");
+                    requestCamera(DEFAULT_CAMERA_PRESET);
+                  }}
+                />
 
                 {/* The right-click menu. A read-only viewer has no last command
                     to repeat and nothing to paste, so what survives from a CAD
@@ -1295,7 +1373,7 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
                   >
                     {canvasMenu.elementId == null ? (
                       <>
-                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1 })); }}>Zoom extents</button>
+                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1, fit: true })); }}>Zoom extents</button>
                         <ToolButton
                           role="menuitem"
                           reason={selectedElementId == null ? "Nothing is picked" : null}
