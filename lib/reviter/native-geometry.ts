@@ -19,6 +19,7 @@
  * of the wall it joins. That is the modelled extent, and it is what the file
  * says.
  */
+import { noteLimit } from "./limit-census.ts";
 import type { CylinderPatch, PlanePatch } from "./surfaces.ts";
 
 /** Byte stride between the three plane records of one wall. */
@@ -124,7 +125,10 @@ export function wallSolidsFor(elementId: number, planes: PlanePatch[]): WallSoli
         (faceB.origin.y - faceA.origin.y) * axis.y +
         (faceB.origin.z - faceA.origin.z) * axis.z,
     );
-    if (separation < MIN_THICKNESS_FEET || separation > MAX_HALF_THICKNESS_FEET * 2) continue;
+    if (separation < MIN_THICKNESS_FEET || separation > MAX_HALF_THICKNESS_FEET * 2) {
+      if (separation > MAX_HALF_THICKNESS_FEET * 2) noteLimit("max-half-thickness-feet");
+      continue;
+    }
 
     const start = {
       x: centre.origin.x + centre.uDir.x * centre.uMin,
@@ -260,7 +264,10 @@ export function surfaceQuadsFor(elementId: number, planes: PlanePatch[]): Surfac
     const du = plane.uMax - plane.uMin;
     const dv = plane.vMax - plane.vMin;
     if (du < MIN_LENGTH_FEET || dv < MIN_LENGTH_FEET) continue;
-    if (du > MAX_QUAD_SPAN_FEET || dv > MAX_QUAD_SPAN_FEET) continue;
+    if (du > MAX_QUAD_SPAN_FEET || dv > MAX_QUAD_SPAN_FEET) {
+      noteLimit("max-quad-span-feet");
+      continue;
+    }
     const at = (u: number, v: number): [number, number, number] => [
       plane.origin.x + plane.uDir.x * u + plane.vDir.x * v,
       plane.origin.y + plane.uDir.y * u + plane.vDir.y * v,
@@ -347,7 +354,10 @@ export function wallArcsFor(elementId: number, cylinders: CylinderPatch[]): Wall
     if (Math.abs(mean - centre.radius) > CENTRE_RADIUS_TOLERANCE) continue;
 
     const thickness = Math.abs(faceB.radius - faceA.radius);
-    if (thickness < MIN_THICKNESS_FEET || thickness > MAX_HALF_THICKNESS_FEET * 2) continue;
+    if (thickness < MIN_THICKNESS_FEET || thickness > MAX_HALF_THICKNESS_FEET * 2) {
+      if (thickness > MAX_HALF_THICKNESS_FEET * 2) noteLimit("max-half-thickness-feet");
+      continue;
+    }
 
     const sweep = Math.abs(centre.uMax - centre.uMin);
     if (sweep < MIN_SWEEP_RADIANS || sweep > 2 * Math.PI + MIN_SWEEP_RADIANS) continue;

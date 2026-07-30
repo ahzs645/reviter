@@ -50,6 +50,8 @@
  * and `assembleRings` can be asked for the bare corners instead.
  */
 
+import { noteLimit } from "./limit-census.ts";
+
 /** `04 00 08 01` — the edge-record signature. */
 const CURVE_SIGNATURE = [0x04, 0x00, 0x08, 0x01] as const;
 
@@ -103,7 +105,16 @@ export type BoundaryLoop = {
 };
 
 function coordinateLike(value: number): boolean {
-  return Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
+  if (!Number.isFinite(value)) return false;
+  // Only a finite value that overshoots is worth reporting. A NaN or an
+  // infinity here is a byte pattern that is not a coordinate at all, which is
+  // this predicate working, not a limit binding — counting those would bury the
+  // signal under the scan's ordinary rejections.
+  if (Math.abs(value) > MAX_COORDINATE) {
+    noteLimit("max-coordinate");
+    return false;
+  }
+  return true;
 }
 
 function isUnit(x: number, y: number, z: number): boolean {
@@ -269,7 +280,10 @@ export function assembleRings(
   const unique: SketchCurve[] = [];
   const seen = new Set<string>();
   for (const curve of curves) {
-    if (unique.length >= MAX_CURVES_PER_ELEMENT) break;
+    if (unique.length >= MAX_CURVES_PER_ELEMENT) {
+      noteLimit("max-curves-per-element");
+      break;
+    }
     if (distance(curve.start, curve.end) < JOIN_TOLERANCE) continue;
     const key = edgeKey(curve);
     if (seen.has(key)) continue;

@@ -140,6 +140,12 @@ import {
   salvageRevitChunk,
   stripRevitPageChecksums,
 } from "./revit-container.ts";
+import {
+  limitCensus,
+  limitCensusWarning,
+  resetLimitCensus,
+} from "./limit-census.ts";
+import { STAIR_COMPANION_CODE } from "./record-codes.ts";
 import { summariseSchema } from "./schema.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parsePartitionNames } from "./partition-names.ts";
@@ -153,6 +159,7 @@ import {
   displayMaterials,
   isStairOrRailingHelperProxy,
   levelsForBounds,
+  levelsFromRelations,
   selectDisplayBounds,
 } from "./scene.ts";
 import {
@@ -420,8 +427,11 @@ const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
  */
 const ORIENTED_BOX_AGREEMENT_FEET = 1;
 
-/** Record code of the companion record holding a stair run's own elevations. */
-const STAIR_COMPANION_CODE = 169_671;
+/**
+ * Record code of the companion record holding a stair run's own elevations.
+ * The value is `STAIR_COMPANION_CODE` in `record-codes.ts`, shared with
+ * `scene.ts` so a re-measurement cannot correct one copy and miss the other.
+ */
 
 /**
  * Revit 2027 framed marker for the semantic floor/slab record that owns its
@@ -719,6 +729,9 @@ export function convertRvtBytes(
   onProgress?: ProgressCallback,
 ): ConvertOutcome {
   const started = performance.now();
+  // Fitted-limit counters are module-level, so a previous conversion's tally
+  // must not carry into this one.
+  resetLimitCensus();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   let decoderPlan = decoderPlanForVersion(options.revitVersion);
@@ -2356,7 +2369,13 @@ export function convertRvtBytes(
         },
         origin,
         bbox: relativeBounds,
-        levels: levelsForBounds(displayBounds),
+        // Prefer the storeys the file states over storeys inferred from a pile
+        // of elevations. `levelsFromRelations` is given every recovered record
+        // rather than only the drawn ones, because an element held back from
+        // the scene still says which level it sits on.
+        levels: nativeAssociatedLevelRelations.length
+          ? levelsFromRelations(elementBounds, nativeAssociatedLevelRelations)
+          : levelsForBounds(displayBounds),
         method: "partition-bounds-recovery",
         elementIndex: elementIndex
           ? {
@@ -2455,6 +2474,9 @@ export function convertRvtBytes(
           nativeMeshScene.meshes.length
             ? "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements."
             : "Geometry uses exact RVT axis-aligned element envelopes; curved profiles, openings, materials, and parameters are not decoded yet.",
+          // Last, and only when it applies: a limit measured on one building
+          // turned geometry away in this one.
+          ...(limitCensusWarning() ? [limitCensusWarning()!] : []),
         ],
         stats: {
           streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
@@ -2503,6 +2525,7 @@ export function convertRvtBytes(
           typedElements: typeReferences.size,
           namedTypeElements,
           elementObjectMarker: dominantMarker(elementObjects) ?? undefined,
+          fittedLimitsReached: limitCensus(),
           durationMs: performance.now() - started,
         },
       };
@@ -2675,6 +2698,7 @@ export function convertRvtBytes(
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`
           : "No isolated spatial cluster was removed.",
+        ...(limitCensusWarning() ? [limitCensusWarning()!] : []),
       ],
       stats: {
         streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
@@ -2690,6 +2714,7 @@ export function convertRvtBytes(
         boundsRecordsFound: elementBounds.length,
         solidBoundsRecords: boundedSolids.length,
         elementObjects: elementObjects.length,
+        fittedLimitsReached: limitCensus(),
         durationMs: performance.now() - started,
       },
     };

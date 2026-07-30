@@ -28,6 +28,8 @@ import {
   revitVersionFromBasicFileInfo,
   searchFamilyLibrary,
   searchOmniClassTaxonomy,
+  STANDARDS_READER_RANGE_LABEL,
+  standardsReaderSupports,
   validateSharedParameterDocument,
   writeSharedParameterFile,
   type CameraPreset,
@@ -457,7 +459,14 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
         }
         setResult(message.result);
         setModelComments(loadModelComments(message.result));
-        setGeometrySource(hasAutodeskReference(message.result.fileName) ? "autodesk" : "recovered");
+        // Identity from the file, not from its name: `info.documentId` is the
+        // `BasicFileInfo` Unique Document GUID read a moment ago, so renaming
+        // the model no longer changes which geometry the viewer opens on.
+        setGeometrySource(
+          hasAutodeskReference({ documentId: info.documentId, fileName: message.result.fileName })
+            ? "autodesk"
+            : "recovered",
+        );
         setProgress(1);
         setProgressMessage("Conversion ready");
         setPhase("ready");
@@ -595,8 +604,14 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
   };
 
   const versionNumber = Number(metadata?.version ?? 0);
-  const isFutureVersion = versionNumber > 2026;
-  const autodeskReferenceAvailable = Boolean(result && hasAutodeskReference(result.fileName));
+  // Not "future": a release the optional standards-aware reader declines. The
+  // check reads both ends of its range so a legacy file is described the same
+  // way rather than silently falling through as if it were supported.
+  const isBeyondStandardsReader =
+    versionNumber > 0 && !standardsReaderSupports(versionNumber);
+  const autodeskReferenceAvailable = Boolean(
+    result && hasAutodeskReference({ documentId: metadata?.documentId, fileName: result.fileName }),
+  );
   // Objects, categories and properties all read the per-triangle element ids,
   // and only the recovery carries them — the derivative and the export arrive
   // as anonymous meshes.
@@ -1725,11 +1740,16 @@ export default function ReviterStudio({ referencePreview = false }: { referenceP
             </div>
           )}
 
-          {detailsOpen && (result || isFutureVersion) && (
+          {detailsOpen && (result || isBeyondStandardsReader) && (
             <aside className="evidence-banner">
               <span className="evidence-icon">!</span>
               <div>
-                <strong>{isFutureVersion ? `Revit ${metadata?.version} is newer than the supplied Rust reader’s verified 2016–2026 range.` : "This is a geometry recovery, not a native RVT decode."}</strong>
+                {/* The optional Rust/WASM reader's range is not a verdict on
+                    the file. Reviter's own decoders are chosen per release and
+                    the ones that carry a 2027 model are 2027-only, so a release
+                    that reader declines can still be the best-decoded release
+                    there is. Say which reader stopped, and say what still ran. */}
+                <strong>{isBeyondStandardsReader ? `Revit ${metadata?.version} is outside the optional Rust reader’s verified ${STANDARDS_READER_RANGE_LABEL} range; Reviter’s own decoders ran normally.` : "This is a geometry recovery, not a native RVT decode."}</strong>
                 <p>{result?.readerDiagnostics?.summary ?? "The standards-aware reader found no validated building elements in this file. IFC export therefore uses clearly labeled centerline proxies."}</p>
               </div>
             </aside>

@@ -1,4 +1,5 @@
 import type { ElementParameter } from "./element-parameters.ts";
+import type { LimitCensusEntry } from "./limit-census.ts";
 import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
 import type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
@@ -306,6 +307,16 @@ export type NativeCategorySummary = {
 export type LevelBand = {
   elevation: number;
   candidates: number;
+  /**
+   * The Revit element id of the level, when the storey came from the file's own
+   * `Element.m_assocLevelId` relations. Absent for an inferred elevation band.
+   */
+  levelId?: number;
+  /**
+   * How this band was arrived at, so a consumer can tell a storey the file
+   * states from one inferred out of a pile of elevations.
+   */
+  source?: "assoc-level-id" | "elevation-band";
 };
 
 export type ConvertStats = {
@@ -413,6 +424,15 @@ export type ConvertStats = {
   namedTypeElements?: number;
   /** Release-specific object marker observed in this file, e.g. 0x08c6 in 2027. */
   elementObjectMarker?: number;
+  /**
+   * Fitted decoder limits that turned geometry away during this conversion.
+   *
+   * Empty on a model that stays inside every threshold measured on the
+   * reference building — which is the ordinary case, and is why these limits
+   * were invisible before. A non-empty census means at least one number fitted
+   * to a different model decided what this one shows.
+   */
+  fittedLimitsReached?: LimitCensusEntry[];
   durationMs: number;
 };
 
