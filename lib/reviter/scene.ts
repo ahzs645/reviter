@@ -606,6 +606,55 @@ function heldBackWrappers(records: ElementBoundsRecord[]): Set<ElementBoundsReco
  * record's, and dropping it trades a missing label for a missing building
  * element — a hole in the model rather than an unnamed part of it.
  */
+/**
+ * Every element's display role, keyed by element id.
+ *
+ * The viewer needs this because a render batch is not a category. Proxy batches
+ * are grouped by decoded category and carry a display material that already
+ * encodes the role, but native BRep batches are grouped by *native material*,
+ * so a batch can hold several categories and its material says nothing about
+ * what the elements are. Handing the viewer the per-element roles lets it make
+ * a role-aware decision — drawing glazing as glazing, say — from the decoded
+ * category rather than from a batch's name or its material's alpha.
+ */
+export function elementDisplayRoles(
+  records: ElementBoundsRecord[],
+): Map<number, DisplayRole> {
+  const roles = new Map<number, DisplayRole>();
+  for (const record of records) {
+    const resolved = displayRole(record);
+    if (resolved === "unknown" || resolved === "wrapper") continue;
+    roles.set(record.elementId, resolved);
+  }
+  return roles;
+}
+
+/**
+ * Element ids the file's own categories say are glazing.
+ *
+ * Named separately from `elementDisplayRoles` because transparency is the one
+ * display decision that cannot be carried by a batch's material: Revit's
+ * persisted material transparency is not decoded yet, so every native material
+ * arrives opaque — including the one this model names `Стекло`, which is
+ * *glass*, and which carries 74,968 of the model's 76,314 glazing triangles.
+ * Every window in the model rendered as a solid blue plate because of it.
+ *
+ * The category is decoded evidence, and it is the same evidence the proxy path
+ * already uses to pick the translucent glazing display material. This extends
+ * it to native geometry rather than introducing a new rule. The limitation is
+ * real and worth stating: Revit models a solid spandrel panel as a curtain wall
+ * panel too, so a spandrel is drawn translucent here. Until the persisted
+ * transparency field is decoded, the choice is between glazing that reads as
+ * glass and spandrels that read as opaque; this takes the first.
+ */
+export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
+  const ids = new Set<number>();
+  for (const [elementId, role] of elementDisplayRoles(records)) {
+    if (role === "glazing") ids.add(elementId);
+  }
+  return ids;
+}
+
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
   const held = heldBackWrappers(records);
   const withoutWrappers = records.filter((record) => !held.has(record));
@@ -1109,6 +1158,7 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         indices: new Uint32Array(indices),
         colors: new Float32Array(colors),
         materialIndex: DISPLAY_MATERIAL_INDEX[role],
+        source: "display-proxy",
         // One entry per triangle: drawn items vary in size, so the face index
         // picking reports is the only thing that indexes them all.
         elementIds: Uint32Array.from(drawnIds),

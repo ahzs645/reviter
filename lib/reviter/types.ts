@@ -61,6 +61,17 @@ export type MeshData = {
    * Absent when the face style is null, unresolved, or mixed.
    */
   nativeMaterialElementId?: number;
+  /**
+   * How this batch's geometry was produced.
+   *
+   * The viewer used to infer this from the batch *name* — a `startsWith` test
+   * that silently stopped matching once batches were labelled by decoded Revit
+   * category, and which cannot distinguish a tessellated native BRep from a
+   * twelve-triangle envelope box in any case. The two need genuinely different
+   * treatment: a wireframe overlay makes a box proxy legible and turns 912,044
+   * triangles of native geometry into moiré.
+   */
+  source?: "native-brep" | "display-proxy";
 };
 
 export type MaterialData = {

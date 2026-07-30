@@ -1651,6 +1651,7 @@ export function buildRevit2027NativeMeshScene(
       colors: Float32Array.from(batch.colors),
       materialIndex: 0,
       elementIds: Uint32Array.from(batch.elementIds),
+      source: "native-brep",
       ...(batch.materialId == null
         ? {}
         : { nativeMaterialElementId: batch.materialId }),
@@ -1665,6 +1666,20 @@ export function buildRevit2027NativeMeshScene(
     if (options.expectedBoundsByElement && !exactCarrierComposition) {
       const expected = options.expectedBoundsByElement.get(item.elementId);
       if (!expected) {
+        // No envelope to check against — which is a gap in the *envelope*
+        // evidence, not evidence against the mesh. This used to `continue`, and
+        // the cost was concrete: a stair baluster's bounds record is written
+        // with zero height and the railing's plan extent (76.58 × 6.26 × 0.00
+        // ft), so it fails the solid test, leaves no envelope behind, and the
+        // baluster's own complete certified face mesh was discarded with it.
+        // 76 of the model's 99 balusters disappeared that way, along with the
+        // rest of the 3,048 elements in this bucket.
+        //
+        // A complete certified GRep/BRep face set is the stronger of the two
+        // pieces of evidence, so it is admitted. It is still counted, and
+        // `convert.ts` reports the count, because "drawn without an independent
+        // cross-check" is a real qualification on the geometry and the reader
+        // should be told rather than left to infer it from a silence.
         missingBounds += 1;
         if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
           boundsMismatchSamples.push({
@@ -1674,9 +1689,7 @@ export function buildRevit2027NativeMeshScene(
             code: "missing-bounds",
           });
         }
-        continue;
-      }
-      if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+      } else if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
         boundsMismatches += 1;
         if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
           boundsMismatchSamples.push({

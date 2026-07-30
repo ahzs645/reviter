@@ -114,6 +114,10 @@ export {
   boundsPlanSegments,
   displayMaterials,
   displayRole,
+  elementDisplayRoles,
+  glazingElementIds,
+  levelsForBounds,
+  levelsFromRelations,
   selectDisplayBounds,
 } from "./scene";
 export type { DisplayRole, DisplaySelection } from "./scene";

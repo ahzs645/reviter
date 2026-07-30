@@ -2148,8 +2148,26 @@ export function convertRvtBytes(
         {
           materialElementIds: new Set(nativeMaterialDefinitionMap.keys()),
           sharedOwnerIds: sharedGeometryIds,
+          // Cross-check native geometry against the element's **own** decoded
+          // envelope, which is `boundedSolids` — not `displayBounds`, the
+          // subset left after display selection.
+          //
+          // The two were conflated, and the consequence was circular: an
+          // element held back from the proxy scene as a curtain-wall wrapper, a
+          // sheet, or a stair/railing drawing aid was absent from
+          // `displayBounds`, so its complete native BRep mesh failed the
+          // "is there an envelope to check against" test and was discarded —
+          // leaving the element with no proxy *and* no mesh, drawn as nothing
+          // at all. On the supplied model that silently dropped 3,720 complete
+          // native items, most of them railing top rails and balusters.
+          //
+          // Holding back a crude box is a statement about the box. It is not a
+          // statement about the element's real geometry, and it should not
+          // decide whether that geometry is admitted. The check itself is
+          // unchanged: a native mesh whose transformed AABB escapes the
+          // element's own envelope is still declined.
           expectedBoundsByElement: new Map(
-            displayBounds.map((record) => [
+            boundedSolids.map((record) => [
               record.elementId,
               record.boundsFeet,
             ]),
@@ -2448,7 +2466,7 @@ export function convertRvtBytes(
             : []),
           ...(nativeMeshScene.missingBounds
             ? [
-                `${nativeMeshScene.missingBounds.toLocaleString()} complete native items lacked an independent display-envelope cross-check and were not added to the production scene.`,
+                `${nativeMeshScene.missingBounds.toLocaleString()} complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.`,
               ]
             : []),
           ...(nativeMeshScene.truncated
