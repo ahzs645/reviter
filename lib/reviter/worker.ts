@@ -3,6 +3,10 @@
 import { convertRvtBytes } from "./convert";
 import { decodeRvtMaterialDefinitions } from "./native-decoder";
 import { partAtomMetadataFromSummary } from "./part-atom";
+import {
+  STANDARDS_READER_RANGE_LABEL,
+  standardsReaderSupports,
+} from "./reader-support";
 import type { MaterialData, ReaderDiagnostics, WorkerRequest, WorkerResponse } from "./types";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
@@ -35,14 +39,14 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
     const summary = wasm.quickSummary(bytes);
     const partAtom = partAtomMetadataFromSummary(summary);
     const summaryVersion = summary.version ?? 0;
-    if (summaryVersion < 2016 || summaryVersion > 2026) {
+    if (!standardsReaderSupports(summaryVersion)) {
       return { diagnostics: {
           available: true,
           supportedVersion: false,
           productionElements: 0,
           diagnosticCandidates: 0,
           exportLevel: "unsupported-version",
-          summary: `The Rust/WASM reader opened the container and inventoried ${summary.class_name_count?.toLocaleString() ?? "unknown"} schema classes, but Revit ${summaryVersion || "unknown"} is outside its verified 2016–2026 range.`,
+          summary: `The Rust/WASM reader opened the container and inventoried ${summary.class_name_count?.toLocaleString() ?? "unknown"} schema classes, but Revit ${summaryVersion || "unknown"} is outside its verified ${STANDARDS_READER_RANGE_LABEL} range. Reviter's own decoders are unaffected and are selected separately by release.`,
           warnings: ["Standards-aware element and material decoding was skipped for this unverified Revit version."],
           partAtom,
         }, materials: [] };
@@ -57,7 +61,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
     const version = diagnostics.input?.revit_version ?? 0;
     const productionElements = diagnostics.decoded?.production_walker_elements ?? 0;
     const diagnosticCandidates = diagnostics.decoded?.diagnostic_proxy_candidates ?? 0;
-    const supportedVersion = version >= 2016 && version <= 2026;
+    const supportedVersion = standardsReaderSupports(version);
     const materials = decodeRvtMaterialDefinitions(result.model?.materials ?? []);
     return { diagnostics: {
         available: true,

@@ -55,7 +55,7 @@ export function ViewerToolbar({
               : runAction(definition.id)}
             aria-pressed={active}
             title={definition.label === "1st Person"
-              ? "Autodesk-style first person navigation"
+              ? "First person navigation"
               : definition.label}
           >
             <i>{definition.icon}</i>

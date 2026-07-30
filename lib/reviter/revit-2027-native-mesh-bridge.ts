@@ -1447,11 +1447,16 @@ export type Revit2027NativeMeshScene = {
   truncated: boolean;
   boundsMismatches: number;
   missingBounds: number;
+  /** Items admitted through the carrier-composition route, which skips the check. */
+  carrierComposedItems: number;
+  /** Of those, how many the envelope cross-check would have declined. */
+  carrierComposedOutsideEnvelope: number;
+  carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"];
   boundsMismatchSamples: readonly {
     elementId: number;
     ownerElementId: number;
     placed: boolean;
-    code: "bounds-mismatch" | "missing-bounds";
+    code: "bounds-mismatch" | "missing-bounds" | "carrier-composed-outside-envelope";
   }[];
 };
 
@@ -1580,6 +1585,9 @@ export function buildRevit2027NativeMeshScene(
       truncated: collection.truncated,
       boundsMismatches: 0,
       missingBounds: 0,
+      carrierComposedItems: 0,
+      carrierComposedOutsideEnvelope: 0,
+      carrierComposedSamples: [],
       boundsMismatchSamples: [],
     };
   }
@@ -1621,7 +1629,10 @@ export function buildRevit2027NativeMeshScene(
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
+  let carrierComposedItems = 0;
+  let carrierComposedOutsideEnvelope = 0;
   const boundsMismatchSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
+  const carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const boundsToleranceFeet =
     Number.isFinite(options.boundsToleranceFeet) &&
     options.boundsToleranceFeet! >= 0
@@ -1651,6 +1662,7 @@ export function buildRevit2027NativeMeshScene(
       colors: Float32Array.from(batch.colors),
       materialIndex: 0,
       elementIds: Uint32Array.from(batch.elementIds),
+      source: "native-brep",
       ...(batch.materialId == null
         ? {}
         : { nativeMaterialElementId: batch.materialId }),
@@ -1662,9 +1674,42 @@ export function buildRevit2027NativeMeshScene(
       item.placement == null &&
       collection.carrierComposedOwnerIds?.has(item.owner.ownerElementId) ===
         true;
+    // Carrier-composed geometry is another owner's mesh translated by a carrier
+    // displacement, so it is the one route that can put a correct shape in the
+    // wrong place — and it is the one route that skips the envelope check. Count
+    // what the check would have said, so the bypass stops being unmeasured.
+    if (exactCarrierComposition && options.expectedBoundsByElement) {
+      carrierComposedItems += 1;
+      const expected = options.expectedBoundsByElement.get(item.elementId);
+      if (expected && !containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+        carrierComposedOutsideEnvelope += 1;
+        if (carrierComposedSamples.length < MAX_INCOMPLETE_SAMPLES) {
+          carrierComposedSamples.push({
+            elementId: item.elementId,
+            ownerElementId: item.owner.ownerElementId,
+            placed: false,
+            code: "carrier-composed-outside-envelope",
+          });
+        }
+      }
+    }
     if (options.expectedBoundsByElement && !exactCarrierComposition) {
       const expected = options.expectedBoundsByElement.get(item.elementId);
       if (!expected) {
+        // No envelope to check against — which is a gap in the *envelope*
+        // evidence, not evidence against the mesh. This used to `continue`, and
+        // the cost was concrete: a stair baluster's bounds record is written
+        // with zero height and the railing's plan extent (76.58 × 6.26 × 0.00
+        // ft), so it fails the solid test, leaves no envelope behind, and the
+        // baluster's own complete certified face mesh was discarded with it.
+        // 76 of the model's 99 balusters disappeared that way, along with the
+        // rest of the 3,048 elements in this bucket.
+        //
+        // A complete certified GRep/BRep face set is the stronger of the two
+        // pieces of evidence, so it is admitted. It is still counted, and
+        // `convert.ts` reports the count, because "drawn without an independent
+        // cross-check" is a real qualification on the geometry and the reader
+        // should be told rather than left to infer it from a silence.
         missingBounds += 1;
         if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
           boundsMismatchSamples.push({
@@ -1674,9 +1719,7 @@ export function buildRevit2027NativeMeshScene(
             code: "missing-bounds",
           });
         }
-        continue;
-      }
-      if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+      } else if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
         boundsMismatches += 1;
         if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
           boundsMismatchSamples.push({
@@ -1801,6 +1844,9 @@ export function buildRevit2027NativeMeshScene(
     truncated,
     boundsMismatches,
     missingBounds,
+    carrierComposedItems,
+    carrierComposedOutsideEnvelope,
+    carrierComposedSamples,
     boundsMismatchSamples,
   };
 }

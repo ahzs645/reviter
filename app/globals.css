@@ -198,8 +198,8 @@ button { color: inherit; }
 
 .viewport-technical { background: linear-gradient(180deg, #bfd7f1 0%, #a8bfd9 58%, #8ea3bb 100%); }
 .viewport-technical::after { display: none; }
-.viewport-autodesk.viewport-technical { background: linear-gradient(180deg, #e8f2fc 0%, #f1f4f2 62%, #d8d3c9 100%); }
-.viewport-autodesk .model-canvas { position: relative; z-index: 1; }
+.viewport-reference-model.viewport-technical { background: linear-gradient(180deg, #e8f2fc 0%, #f1f4f2 62%, #d8d3c9 100%); }
+.viewport-reference-model .model-canvas { position: relative; z-index: 1; }
 .viewport-technical .viewport-legend { color: #334b64; }
 .viewport-technical .viewport-stamp { color: #435c75; }
 .viewport-technical .legend-grid { background: #6b8097; }

@@ -114,6 +114,10 @@ export {
   boundsPlanSegments,
   displayMaterials,
   displayRole,
+  elementDisplayRoles,
+  glazingElementIds,
+  levelsForBounds,
+  levelsFromRelations,
   selectDisplayBounds,
 } from "./scene";
 export type { DisplayRole, DisplaySelection } from "./scene";
@@ -211,8 +215,13 @@ export { doorLeafCorners } from "./door-leaf";
 export type { WallRun } from "./door-leaf";
 export type { ClassCoverage } from "./coverage";
 export { compareRvtToIfc } from "./regression";
-export { AUTODESK_REFERENCE_GLB_PALETTE } from "./autodesk-reference-palette";
-export type { AutodeskReferenceGlbPaletteEntry } from "./autodesk-reference-palette";
+export {
+  STANDARDS_READER_MAX_VERSION,
+  STANDARDS_READER_MIN_VERSION,
+  STANDARDS_READER_RANGE_LABEL,
+  standardsReaderSupports,
+} from "./reader-support";
+export { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes";
 export {
   boundsDimensions,
   CAMERA_PRESETS,

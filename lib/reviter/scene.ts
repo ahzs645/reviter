@@ -8,6 +8,7 @@
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
 import type { WallArc, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
+import { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes.ts";
 import type { Point3 } from "./sketch-curves.ts";
 
 import type {
@@ -147,11 +148,51 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
   glazing: 9,
 };
 
+/**
+ * The record shape a curtain-wall container is written in.
+ *
+ * This is a record-code fingerprint measured on one building, so on its own it
+ * is a guess about a byte pattern, not a statement about the element. It is
+ * kept because it is the only container evidence available when no category
+ * token decodes — but where a category *is* decoded, `CONTAINER_CATEGORIES`
+ * has the final say.
+ */
+function matchesWrapperRecordShape(record: ElementBoundsRecord): boolean {
+  const hasNamedAnalyticSolid =
+    !!record.typeName && (!!record.solid || (record.solids?.length ?? 0) > 0);
+  const count = record.recordCount;
+  return !hasNamedAnalyticSolid && record.recordCode === 30 &&
+    count != null && count >= 8 && count <= 10;
+}
+
+/**
+ * Categories Revit can model as a host holding other elements' geometry.
+ *
+ * The wrapper fingerprint used to run ahead of the decoded category and win,
+ * which meant a byte pattern from one building could hide an element the file
+ * had *named*. On the supplied model it claimed 1,840 records — and every one
+ * of them carried a decoded category, so the fingerprint was never breaking a
+ * tie, it was overruling evidence.
+ *
+ * Of those 1,840, **1,809 are `Walls`** and a curtain wall is a Wall in Revit,
+ * so the rule was right about the overwhelming majority. The other 31 are not
+ * containers at all — 14 Curtain Wall Mullions, 9 Curtain Grids Wall, 8 Curtain
+ * Wall Panels — they are precisely the *children* a wrapper exists to reveal,
+ * and hiding them removed real facade geometry from the scene.
+ *
+ * Requiring the category to be one that can host keeps all 1,809 and returns
+ * those 31 to the scene. A record with no decoded category is unaffected: the
+ * fingerprint still stands alone there, because nothing better exists.
+ */
+const CONTAINER_CATEGORIES = new Set([
+  -2000011, // Walls — a curtain wall is a Wall hosting panels and mullions
+  -2000035, // Roofs — a curtain-system roof hosts the same way
+  -2000090, // Curtain Systems — the non-wall, non-roof host of the same parts
+]);
+
 export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper" | "unknown" {
   const code = record.recordCode;
   const count = record.recordCount;
-  const hasNamedAnalyticSolid =
-    !!record.typeName && (!!record.solid || (record.solids?.length ?? 0) > 0);
   // A curtain-wall container stays a wrapper even once its category is known,
   // so its child panels and mullions are not swallowed by one large envelope.
   // Whether a wrapper is actually held back is decided by `selectDisplayBounds`,
@@ -160,8 +201,8 @@ export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper
   // The UNBC IFC corroborates all 11 such records as drawable wall products;
   // treating them as wrappers hid valid solids whenever nearby facade elements
   // happened to stand inside their envelopes.
-  const isWrapper =
-    !hasNamedAnalyticSolid && code === 30 && count != null && count >= 8 && count <= 10;
+  const isWrapper = matchesWrapperRecordShape(record) &&
+    (record.categoryId == null || CONTAINER_CATEGORIES.has(record.categoryId));
   if (!isWrapper && record.categoryId != null) {
     return CATEGORY_DISPLAY_ROLE[record.categoryId] ?? "native";
   }
@@ -343,13 +384,16 @@ function isFaceHullOnly(record: ElementBoundsRecord): boolean {
 }
 
 /**
- * Record code of the companion record holding a stair run's own elevations.
- * `convert.ts` hands that box to the run one id below; what is left here is a
- * record the export names in none of its 111 cases, sitting on top of a stair
- * part that is now drawn correctly. It is held back only when that owner exists,
- * so a companion whose stair part was never recovered stays as its only trace.
+ * `convert.ts` hands the companion's box to the run one id below; what is left
+ * here is a record the export names in none of its 111 cases, sitting on top of
+ * a stair part that is now drawn correctly. It is held back only when that
+ * owner exists, so a companion whose stair part was never recovered stays as
+ * its only trace.
+ *
+ * The code itself lives in `record-codes.ts`: it is a byte value observed in
+ * one file, and two modules keeping their own copy of it meant a re-measurement
+ * could correct one and leave the other reading a stale number.
  */
-const STAIR_COMPANION_CODE = 169_671;
 
 /**
  * The record code that means "no class", and which no building element uses.
@@ -399,8 +443,9 @@ const STAIR_COMPANION_CODE = 169_671;
  * column, 6 products for those 4 elements because one is a multistorey stair the
  * exporter splits per storey — the same trade `IFCCURTAINWALL` already makes,
  * a container held back because its parts are drawn instead.
+ *
+ * The value itself is `NO_CLASS_RECORD_CODE` in `record-codes.ts`.
  */
-const NO_CLASS_RECORD_CODE = 0xffff_ffff;
 
 /**
  * Which of the sheet rules claims a record, or `null` when none does.
@@ -561,6 +606,55 @@ function heldBackWrappers(records: ElementBoundsRecord[]): Set<ElementBoundsReco
  * record's, and dropping it trades a missing label for a missing building
  * element — a hole in the model rather than an unnamed part of it.
  */
+/**
+ * Every element's display role, keyed by element id.
+ *
+ * The viewer needs this because a render batch is not a category. Proxy batches
+ * are grouped by decoded category and carry a display material that already
+ * encodes the role, but native BRep batches are grouped by *native material*,
+ * so a batch can hold several categories and its material says nothing about
+ * what the elements are. Handing the viewer the per-element roles lets it make
+ * a role-aware decision — drawing glazing as glazing, say — from the decoded
+ * category rather than from a batch's name or its material's alpha.
+ */
+export function elementDisplayRoles(
+  records: ElementBoundsRecord[],
+): Map<number, DisplayRole> {
+  const roles = new Map<number, DisplayRole>();
+  for (const record of records) {
+    const resolved = displayRole(record);
+    if (resolved === "unknown" || resolved === "wrapper") continue;
+    roles.set(record.elementId, resolved);
+  }
+  return roles;
+}
+
+/**
+ * Element ids the file's own categories say are glazing.
+ *
+ * Named separately from `elementDisplayRoles` because transparency is the one
+ * display decision that cannot be carried by a batch's material: Revit's
+ * persisted material transparency is not decoded yet, so every native material
+ * arrives opaque — including the one this model names `Стекло`, which is
+ * *glass*, and which carries 74,968 of the model's 76,314 glazing triangles.
+ * Every window in the model rendered as a solid blue plate because of it.
+ *
+ * The category is decoded evidence, and it is the same evidence the proxy path
+ * already uses to pick the translucent glazing display material. This extends
+ * it to native geometry rather than introducing a new rule. The limitation is
+ * real and worth stating: Revit models a solid spandrel panel as a curtain wall
+ * panel too, so a spandrel is drawn translucent here. Until the persisted
+ * transparency field is decoded, the choice is between glazing that reads as
+ * glass and spandrels that read as opaque; this takes the first.
+ */
+export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
+  const ids = new Set<number>();
+  for (const [elementId, role] of elementDisplayRoles(records)) {
+    if (role === "glazing") ids.add(elementId);
+  }
+  return ids;
+}
+
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
   const held = heldBackWrappers(records);
   const withoutWrappers = records.filter((record) => !held.has(record));
@@ -939,8 +1033,30 @@ export function buildMeshes(
   return meshes;
 }
 
+/**
+ * How tall the drawn scene is, ignoring the extremes.
+ *
+ * A handful of misparsed envelopes land thousands of feet from the building —
+ * `framingBoundsOfRecords` exists for the same reason — so the raw z extent is
+ * not the model's height. The same one-part-in-a-thousand trim is used here so
+ * the shade ramp is scaled by the building, not by its worst record.
+ */
+function elevationSpanFeet(records: ElementBoundsRecord[]): number {
+  if (!records.length) return 0;
+  const bases = records.map((record) => record.boundsFeet.min.z).sort((a, b) => a - b);
+  const tail = Math.floor(bases.length * 0.001);
+  return bases[bases.length - 1 - tail]! - bases[tail]!;
+}
+
 export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
   const meshes: MeshData[] = [];
+  // The elevation shade spans the model's own height rather than a fixed 80 ft
+  // window with a 10 ft lead-in. Those two numbers were this building's — 62 ft
+  // tall, so the ramp happened to land in a reasonable place — but a taller
+  // model saturated at the top and a single-storey one used a sliver of the
+  // range. Measuring it here keeps the same effect on any model. The tiny floor
+  // stops a division by zero on a perfectly flat scene.
+  const shadeSpanFeet = Math.max(1, elevationSpanFeet(records));
   // Batch by decoded Revit category when one is available so the model browser
   // lists real categories; otherwise fall back to the record-code display role.
   const grouped = new Map<string, { role: DisplayRole; records: ElementBoundsRecord[] }>();
@@ -1017,7 +1133,10 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
                 : [boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
-        const elevation = Math.max(0, Math.min(1, (record.boundsFeet.min.z - origin.z + 10) / 80));
+        const elevation = Math.max(
+          0,
+          Math.min(1, (record.boundsFeet.min.z - origin.z) / shadeSpanFeet),
+        );
         const shade = 0.88 + elevation * 0.22;
         const [tintR, tintG, tintB] = ROLE_TINT[role];
         for (const item of items) {
@@ -1039,6 +1158,7 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         indices: new Uint32Array(indices),
         colors: new Float32Array(colors),
         materialIndex: DISPLAY_MATERIAL_INDEX[role],
+        source: "display-proxy",
         // One entry per triangle: drawn items vary in size, so the face index
         // picking reports is the only thing that indexes them all.
         elementIds: Uint32Array.from(drawnIds),
@@ -1058,6 +1178,19 @@ export function boundsPlanSegments(records: ElementBoundsRecord[]): Segment[] {
   ]);
 }
 
+/**
+ * Elevation bands, when the file gives no levels of its own.
+ *
+ * This is a histogram of where elements start in z, not a storey list: a band
+ * is one 0.5 ft bucket that many elements happen to share. It stands in only
+ * when `Element.m_assocLevelId` did not decode, because a dense bucket is the
+ * last available evidence that a storey is there at all.
+ *
+ * Where the relations *do* decode, `levelsFromRelations` is used instead and
+ * this is not called. The old 8-band cap is gone with it — a cap sized to one
+ * building silently truncates a taller one, and a model's storey count is not
+ * something this module gets to decide.
+ */
 export function levelsForBounds(records: ElementBoundsRecord[]): LevelBand[] {
   const bands = new Map<number, number>();
   for (const record of records) {
@@ -1065,7 +1198,68 @@ export function levelsForBounds(records: ElementBoundsRecord[]): LevelBand[] {
     bands.set(elevation, (bands.get(elevation) ?? 0) + 1);
   }
   return [...bands.entries()]
-    .map(([elevation, candidates]) => ({ elevation, candidates }))
-    .sort((a, b) => b.candidates - a.candidates)
-    .slice(0, 8);
+    .map(([elevation, candidates]) => ({ elevation, candidates, source: "elevation-band" as const }))
+    .sort((a, b) => a.elevation - b.elevation);
+}
+
+/**
+ * Members a decoded level needs before it is reported as a storey.
+ *
+ * Revit keeps levels that host nothing an element in the model refers to —
+ * reference planes, a survey datum, a level left behind by a deleted storey.
+ * On the supplied model 6 of the 18 decoded level ids hold fewer than 20
+ * elements between them and four hold one or two, all at z 0; the twelve above
+ * the floor are the building. The floor is deliberately low: it exists to drop
+ * stubs, not to rank storeys by popularity the way the old histogram did.
+ */
+const MIN_LEVEL_MEMBERS = 20;
+
+/**
+ * Storeys, from the file's own element-to-level relationships.
+ *
+ * Revit persists `Element.m_assocLevelId` on every element that is placed on a
+ * level, and `level-relations.ts` decodes it without consulting names, IFC, or
+ * proximity. That is the model's own answer to "what level is this on", and it
+ * is strictly better than guessing from a z histogram: the histogram cannot
+ * tell a storey from a run of elements that merely share a starting height, it
+ * has no level identity to join anything else to, and it invents a band
+ * wherever a big enough pile lands.
+ *
+ * Each level's elevation is the **median** of its members' base heights rather
+ * than the minimum, so one mis-parsed envelope thousands of feet out cannot
+ * move a storey. Elevation is reported in the same raw record feet the bands
+ * used, so existing consumers do not have to change frames.
+ */
+export function levelsFromRelations(
+  records: ElementBoundsRecord[],
+  relations: readonly { elementId: number; levelId: number }[],
+): LevelBand[] {
+  const baseByElement = new Map<number, number>();
+  for (const record of records) {
+    const z = record.boundsFeet.min.z;
+    const previous = baseByElement.get(record.elementId);
+    if (previous == null || z < previous) baseByElement.set(record.elementId, z);
+  }
+
+  const membersByLevel = new Map<number, number[]>();
+  for (const relation of relations) {
+    const base = baseByElement.get(relation.elementId);
+    if (base == null) continue;
+    const members = membersByLevel.get(relation.levelId) ?? [];
+    members.push(base);
+    membersByLevel.set(relation.levelId, members);
+  }
+
+  const levels: LevelBand[] = [];
+  for (const [levelId, members] of membersByLevel) {
+    if (members.length < MIN_LEVEL_MEMBERS) continue;
+    members.sort((a, b) => a - b);
+    levels.push({
+      elevation: members[Math.floor(members.length / 2)]!,
+      candidates: members.length,
+      levelId,
+      source: "assoc-level-id",
+    });
+  }
+  return levels.sort((a, b) => a.elevation - b.elevation);
 }

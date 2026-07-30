@@ -15,6 +15,7 @@
  * GCylindricalHelix route; declining them here prevents the straight-flight
  * heuristic from competing with that stronger evidence.
  */
+import { noteLimit } from "./limit-census.ts";
 import type { SketchCurve, Point3 } from "./sketch-curves.ts";
 import type { Bounds3 } from "./types.ts";
 
@@ -136,7 +137,10 @@ export function recoverStraightStairTreads(
   }
 
   const candidates = [...repeated.values()].filter((line) => line.count >= MIN_REPEAT_COUNT);
-  if (candidates.length < MIN_TREADS + 1 || candidates.length > MAX_TREADS + 1) return null;
+  if (candidates.length < MIN_TREADS + 1 || candidates.length > MAX_TREADS + 1) {
+    if (candidates.length > MAX_TREADS + 1) noteLimit("max-treads");
+    return null;
+  }
 
   const width = median(candidates.map((line) => line.length));
   const reference = candidates[0]!;
@@ -489,6 +493,7 @@ export function recoverGuideChainStairTreads(
   }
   const boundaries = [...planLines.values()];
   if (boundaries.length < MIN_TREADS + 1 || boundaries.length > MAX_TREADS + 1) {
+    if (boundaries.length > MAX_TREADS + 1) noteLimit("max-treads");
     return null;
   }
 
@@ -1099,7 +1104,10 @@ export function recoverFlattenedProfileStairTreads(
     );
   });
   const riserCount = options.maximumRiserCount;
-  if (profiles.length !== riserCount || riserCount > MAX_TREADS) return null;
+  if (profiles.length !== riserCount || riserCount > MAX_TREADS) {
+    if (profiles.length === riserCount && riserCount > MAX_TREADS) noteLimit("max-treads");
+    return null;
+  }
 
   const included = new Set<number>([0]);
   const edges: { first: number; second: number; distance: number }[] = [];

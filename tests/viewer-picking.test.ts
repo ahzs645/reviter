@@ -8,7 +8,7 @@ import {
   createFaceSelection,
   type ViewerIntersection,
 } from "../app/studio/viewer-picking.ts";
-import { batchAutodeskScene } from "../app/studio/autodesk-scene.ts";
+import { batchReferenceScene } from "../app/studio/reference-scene.ts";
 
 function floorAndWallGeometry(): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
@@ -114,7 +114,7 @@ test("Autodesk element selection collects every same-key material fragment", () 
   second.name = "stair-42";
   second.position.x = 5;
   root.add(first, second);
-  const batched = batchAutodeskScene(root);
+  const batched = batchReferenceScene(root);
   batched.updateMatrixWorld(true);
   const pickedBatch = batched.children.find(
     (child): child is THREE.BatchedMesh =>

@@ -15,13 +15,13 @@ import {
   type RenderMode,
 } from "../../lib/reviter";
 import {
-  AUTODESK_REFERENCE_BOUNDS,
-  autodeskHomePose,
-  autodeskPoseForPreset,
-  publicAssetUrl,
-  styleAutodeskReference,
-} from "./autodesk-reference.ts";
-import { batchAutodeskScene, setAutodeskOutlineMode } from "./autodesk-scene.ts";
+  referenceHomePose,
+  referenceIsYUp,
+  referenceModelBounds,
+  referencePoseForPreset,
+  styleReferenceModel,
+} from "./reference-model.ts";
+import { batchReferenceScene, setReferenceOutlineMode } from "./reference-scene.ts";
 import {
   applyNavigationMode,
   disposeGroup,
@@ -91,7 +91,7 @@ function commentScenePoint(
   source: GeometrySource,
   result: ConvertResult,
 ): THREE.Vector3 | null {
-  if (comment.modelPositionFeet && source !== "autodesk") {
+  if (comment.modelPositionFeet && source !== "reference-model") {
     const position = modelFeetToScenePoint(
       comment.modelPositionFeet,
       source,
@@ -127,10 +127,13 @@ export function ModelCanvas({
   onHoverElement,
   onCanvasMenu,
   focusRequest,
+  referenceModelUrl,
 }: {
   result: ConvertResult;
   comparison: PairedRegressionResult | null;
   source: GeometrySource;
+  /** Object URL of a paired GLB/glTF reference, when the user has supplied one. */
+  referenceModelUrl: string | null;
   renderMode: RenderMode;
   navigationMode: NavigationMode;
   cameraRequest: CameraRequest;
@@ -175,6 +178,10 @@ export function ModelCanvas({
     invalidate: () => void;
   } | null>(null);
   const walkRef = useRef<WalkControls | null>(null);
+  // Measured from the reference once it loads; null until then.
+  const referenceBoundsRef = useRef<
+    { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null
+  >(null);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
   const [walkGravity, setWalkGravity] = useState(true);
@@ -217,23 +224,23 @@ export function ModelCanvas({
     if (!canvas) return;
 
     const technical = renderMode === "technical";
-    const isAutodesk = source === "autodesk";
+    const isReferenceModel = source === "reference-model";
     const scene = new THREE.Scene();
-    scene.background = isAutodesk && technical ? null : new THREE.Color(technical ? 0xb8d0ee : 0x081419);
-    scene.fog = isAutodesk && technical
+    scene.background = isReferenceModel && technical ? null : new THREE.Color(technical ? 0xb8d0ee : 0x081419);
+    scene.fog = isReferenceModel && technical
       ? new THREE.FogExp2(0xeaf1f8, 0.00015)
       : new THREE.FogExp2(technical ? 0xb8d0ee : 0x081419, technical ? 0.00018 : 0.00045);
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isAutodesk && technical, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isAutodesk ? 1.5 : 2));
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isReferenceModel && technical, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isReferenceModel ? 1.5 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = isAutodesk ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isAutodesk ? 0.95 : technical ? 1.16 : 1.08;
-    renderer.shadowMap.enabled = technical && !isAutodesk;
+    renderer.toneMapping = isReferenceModel ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = isReferenceModel ? 0.95 : technical ? 1.16 : 1.08;
+    renderer.shadowMap.enabled = technical && !isReferenceModel;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.localClippingEnabled = false;
-    if (isAutodesk && technical) renderer.setClearColor(0xffffff, 0);
+    if (isReferenceModel && technical) renderer.setClearColor(0xffffff, 0);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
@@ -245,32 +252,35 @@ export function ModelCanvas({
     // The overlay is drawn in the recovered model's own frame, so it keeps that
     // model's bounds and stays pickable.
     const useOverlay = source === "overlay" && comparison?.referenceMeshes.length;
-    const sceneUnitsPerFoot = isAutodesk || useReference ? 0.3048 : 1;
-    const root = isAutodesk
+    const sceneUnitsPerFoot = isReferenceModel || useReference ? 0.3048 : 1;
+    const root = isReferenceModel
       ? new THREE.Group()
       : useOverlay
         ? overlayMeshGroup(result, comparison.referenceMeshes, renderMode)
         : useReference
           ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
           : meshGroup(result, renderMode, hiddenElementIds);
-    const bounds = isAutodesk
-      ? AUTODESK_REFERENCE_BOUNDS
+    // A paired reference's extent is measured when it arrives, not declared.
+    // Until then the recovery's own bounds frame the empty scene, which is the
+    // right guess: the two are the same building.
+    const bounds = isReferenceModel
+      ? referenceBoundsRef.current ?? result.bbox
       : useReference
         ? comparison.referenceBoundsMetres
         : result.bbox;
     scene.add(root);
     scene.add(new THREE.HemisphereLight(
       technical ? 0xf8fbff : 0xccefff,
-      isAutodesk ? 0x9da6ad : technical ? 0x7589a1 : 0x102026,
-      isAutodesk ? 0.9 : technical ? 2.1 : 1.45,
+      isReferenceModel ? 0x9da6ad : technical ? 0x7589a1 : 0x102026,
+      isReferenceModel ? 0.9 : technical ? 2.1 : 1.45,
     ));
-    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, isAutodesk ? 0.25 : technical ? 0.58 : 0.18));
+    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, isReferenceModel ? 0.25 : technical ? 0.58 : 0.18));
     const sun = new THREE.DirectionalLight(
       technical ? 0xfff7e8 : 0xfff4d8,
-      isAutodesk ? 1.6 : technical ? 2.8 : 2.3,
+      isReferenceModel ? 1.6 : technical ? 2.8 : 2.3,
     );
-    sun.position.set(180, isAutodesk ? 280 : -120, isAutodesk ? -120 : 280);
-    sun.castShadow = technical && !isAutodesk;
+    sun.position.set(180, isReferenceModel ? 280 : -120, isReferenceModel ? -120 : 280);
+    sun.castShadow = technical && !isReferenceModel;
     scene.add(sun);
 
     const dx = bounds.max.x - bounds.min.x;
@@ -288,7 +298,7 @@ export function ModelCanvas({
     );
     controls.target.copy(center);
 
-    if (technical && !isAutodesk) {
+    if (technical && !isReferenceModel) {
       sun.shadow.mapSize.set(2048, 2048);
       sun.shadow.camera.left = -radius * 1.5;
       sun.shadow.camera.right = radius * 1.5;
@@ -299,9 +309,9 @@ export function ModelCanvas({
       sun.shadow.bias = -0.0002;
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(Math.max(dx, dy, 100) * 2.2, Math.max(dx, dy, 100) * 2.2),
-        new THREE.ShadowMaterial({ color: isAutodesk ? 0x857f76 : 0x6f829a, opacity: isAutodesk ? 0.2 : 0.16 }),
+        new THREE.ShadowMaterial({ color: isReferenceModel ? 0x857f76 : 0x6f829a, opacity: isReferenceModel ? 0.2 : 0.16 }),
       );
-      if (isAutodesk) {
+      if (isReferenceModel) {
         ground.rotation.x = -Math.PI / 2;
         ground.position.set(center.x, bounds.min.y - 0.06, center.z);
       } else {
@@ -313,17 +323,17 @@ export function ModelCanvas({
     }
 
     const grid = new THREE.GridHelper(
-      Math.max(dx, isAutodesk ? dz : dy, 100) * 1.35,
+      Math.max(dx, isReferenceModel ? dz : dy, 100) * 1.35,
       32,
       technical ? 0x667f9b : 0x3c7176,
       technical ? 0x91a7bf : 0x17363d,
     );
-    if (isAutodesk) grid.position.y = bounds.min.y - 0.04;
+    if (isReferenceModel) grid.position.y = bounds.min.y - 0.04;
     else {
       grid.rotation.x = Math.PI / 2;
       grid.position.z = bounds.min.z - 0.04;
     }
-    grid.visible = !isAutodesk;
+    grid.visible = !isReferenceModel;
     if (technical && Array.isArray(grid.material)) {
       for (const material of grid.material) {
         material.transparent = true;
@@ -332,8 +342,11 @@ export function ModelCanvas({
     }
     scene.add(grid);
 
-    const pose = isAutodesk
-      ? autodeskHomePose()
+    // A reference that has already been measured opens on its own framing; one
+    // that has not yet arrived borrows the recovery's, because it is the same
+    // building and that beats opening on nothing.
+    const pose = isReferenceModel && referenceBoundsRef.current
+      ? referenceHomePose(referenceBoundsRef.current)
       : { ...cameraPoseForPreset(center, radius, DEFAULT_CAMERA_PRESET), target: center, fov: 45 };
     const poseTarget = pose.target;
     camera.fov = pose.fov;
@@ -387,15 +400,21 @@ export function ModelCanvas({
       // extruded sketch boundary with as many triangles as its ring has edges.
       return elementIds?.[hit.faceIndex] ?? null;
     };
-    const up = (isAutodesk ? "y" : "z") as "y" | "z";
+    // glTF declares +Y up, so a reference normally is; but ask the geometry
+    // rather than assume, so a z-up reference is not drawn on its side.
+    const up = (
+      isReferenceModel && referenceBoundsRef.current
+        ? (referenceIsYUp(referenceBoundsRef.current) ? "y" : "z")
+        : isReferenceModel ? "y" : "z"
+    ) as "y" | "z";
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
-    let autodeskWalkSurface: WalkSurfaceIndex | null = null;
+    let referenceWalkSurface: WalkSurfaceIndex | null = null;
     const surfaceFloorAt = (eyePosition: THREE.Vector3, maxDrop?: number) => {
-      if (isAutodesk && autodeskWalkSurface) {
+      if (isReferenceModel && referenceWalkSurface) {
         const eyeCoordinate = up === "y" ? eyePosition.y : eyePosition.z;
         const continuousProbe = maxDrop == null;
-        return autodeskWalkSurface.floorAt(eyePosition, {
+        return referenceWalkSurface.floorAt(eyePosition, {
           maxDrop: maxDrop ?? (WALK_EYE_HEIGHT + 12) * sceneUnitsPerFoot,
           maximumHeight: continuousProbe
             ? eyeCoordinate
@@ -404,7 +423,7 @@ export function ModelCanvas({
             : eyeCoordinate,
         });
       }
-      if (isAutodesk) return null;
+      if (isReferenceModel) return null;
       const origin = eyePosition.clone().addScaledVector(upVector, 1.5);
       floorRaycaster.set(origin, downVector);
       floorRaycaster.near = 0;
@@ -420,7 +439,7 @@ export function ModelCanvas({
       // The reference derivative has no lightweight collision representation
       // yet. Keep its first-person movement responsive and use picked-surface
       // travel for precise placement instead of scanning every batch each frame.
-      if (isAutodesk) return to;
+      if (isReferenceModel) return to;
       const delta = to.clone().sub(from);
       const vertical = delta.dot(upVector);
       const horizontal = delta.addScaledVector(upVector, -vertical);
@@ -478,7 +497,7 @@ export function ModelCanvas({
         runtime.selectionOverlay = null;
       }
       if (!hit || !runtime) return;
-      const selection = (isAutodesk
+      const selection = (isReferenceModel
         ? createElementSelection(hit, sceneUnitsPerFoot)
         : null) ?? createFaceSelection(hit, camera, sceneUnitsPerFoot);
       if (!selection) return;
@@ -529,9 +548,9 @@ export function ModelCanvas({
       const hit = geometryHitAt(event.clientX, event.clientY);
       lastSurfaceHit = hit;
       lastSurfaceHitAt = performance.now();
-      if (walkRef.current || useReference || isAutodesk) {
+      if (walkRef.current || useReference || isReferenceModel) {
         showSurfaceSelection(hit);
-        if (useReference || isAutodesk) onSelectElement(null);
+        if (useReference || isReferenceModel) onSelectElement(null);
         else if (hit?.faceIndex != null) {
           const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
           onSelectElement(elementIds?.[hit.faceIndex] ?? null);
@@ -548,7 +567,7 @@ export function ModelCanvas({
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       if (walkRef.current || measuringRef.current) return;
-      const elementId = useReference || isAutodesk ? null : pickAt(event.clientX, event.clientY);
+      const elementId = useReference || isReferenceModel ? null : pickAt(event.clientX, event.clientY);
       if (elementId != null) onSelectElement(elementId);
       const rect = canvas.getBoundingClientRect();
       onCanvasMenu({
@@ -613,7 +632,7 @@ export function ModelCanvas({
         });
         return;
       }
-      if (useReference || isAutodesk || walkRef.current) return;
+      if (useReference || isReferenceModel || walkRef.current) return;
       hoverEvent = event;
       if (hoverPending) return;
       hoverPending = true;
@@ -642,7 +661,7 @@ export function ModelCanvas({
       bounds: sceneBounds,
       // Where the walker's feet go: the bottom of the model on whichever axis
       // this source stands on.
-      floor: isAutodesk ? bounds.min.y : bounds.min.z,
+      floor: isReferenceModel ? bounds.min.y : bounds.min.z,
       up,
       sceneUnitsPerFoot,
       surfaceFloorAt,
@@ -663,18 +682,30 @@ export function ModelCanvas({
       setCalibrationSample(null);
       measurementIdRef.current = 1;
     });
-    if (isAutodesk) {
+    if (isReferenceModel && referenceModelUrl) {
+      referenceBoundsRef.current = null;
       queueMicrotask(() => active && setReferenceLoadState("loading"));
-      void import("./autodesk-gltf-loader.ts").then((module) =>
-        module.loadAutodeskModel(publicAssetUrl("autodesk-reference.glb")),
+      void import("./gltf-loader.ts").then((module) =>
+        module.loadReferenceModel(referenceModelUrl!),
       ).then((loadedScene) => {
         if (!active) {
           disposeGroup(loadedScene);
           return;
         }
-        styleAutodeskReference(loadedScene, renderMode);
-        const batchedScene = batchAutodeskScene(loadedScene);
-        autodeskWalkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
+        styleReferenceModel(loadedScene, renderMode);
+        // Measure it, then frame it. Both used to be constants describing one
+        // building, so any other reference opened on a view of empty space.
+        const measured = referenceModelBounds(loadedScene);
+        referenceBoundsRef.current = measured;
+        const home = referenceHomePose(measured);
+        camera.up.copy(home.up);
+        camera.fov = home.fov;
+        camera.position.copy(home.position);
+        camera.updateProjectionMatrix();
+        controls.target.copy(home.target);
+        controls.update();
+        const batchedScene = batchReferenceScene(loadedScene);
+        referenceWalkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
         root.add(batchedScene);
         refreshInteractionMeshes();
         needsRender = true;
@@ -743,7 +774,7 @@ export function ModelCanvas({
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, renderMode, result, source]);
+  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, renderMode, result, source]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -756,8 +787,8 @@ export function ModelCanvas({
     const frameCenter = frameBounds.getCenter(new THREE.Vector3());
     const frameSize = frameBounds.getSize(new THREE.Vector3());
     const frameRadius = Math.max(25, frameSize.x, frameSize.y, frameSize.z) * 0.62;
-    const pose = source === "autodesk"
-      ? { ...autodeskPoseForPreset(preset, frameRadius), target: frameCenter }
+    const pose = source === "reference-model"
+      ? { ...referencePoseForPreset(preset, frameRadius), target: frameCenter }
       : { ...cameraPoseForPreset(frameCenter, frameRadius, preset), target: frameCenter, fov: 45 };
     const target = pose.target;
     runtime.camera.fov = pose.fov;
@@ -775,7 +806,7 @@ export function ModelCanvas({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || !focusRequest.sequence || focusRequest.elementId == null) return;
-    if (source === "autodesk") return;
+    if (source === "reference-model") return;
     const record = result.elementBounds.find((entry) => entry.elementId === focusRequest.elementId);
     if (!record) return;
     const origin = result.origin;
@@ -818,7 +849,7 @@ export function ModelCanvas({
       walkRef.current?.dispose();
       walkRef.current = null;
       runtime.controls.enabled = true;
-      if (source === "autodesk") setAutodeskOutlineMode(runtime.root, "orbit");
+      if (source === "reference-model") setReferenceOutlineMode(runtime.root, "orbit");
       runtime.camera.near = Math.max(0.1, runtime.radius / 1_000);
       runtime.camera.updateProjectionMatrix();
       // Orbit around whatever is in front of the camera now, rather than
@@ -834,7 +865,7 @@ export function ModelCanvas({
     }
 
     runtime.controls.enabled = false;
-    if (source === "autodesk") setAutodeskOutlineMode(runtime.root, "walk");
+    if (source === "reference-model") setReferenceOutlineMode(runtime.root, "walk");
     runtime.camera.near = Math.max(0.02 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
     runtime.camera.updateProjectionMatrix();
     const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
@@ -873,7 +904,7 @@ export function ModelCanvas({
       up: runtime.up,
       speed: walkSpeedRef.current,
       gravity: walkGravityRef.current,
-      floorProbeInterval: source === "autodesk" ? 1 / 30 : 0.1,
+      floorProbeInterval: source === "reference-model" ? 1 / 30 : 0.1,
       resolveFloor: runtime.surfaceFloorAt,
       dropDistance: runtime.radius * 4,
       resolveMovement: runtime.resolveMovement,
@@ -1137,10 +1168,12 @@ export function ModelCanvas({
       {exploding && (
         <ExplodeToolPanel amount={explodeAmount} parts={explodePartCount} onAmount={setExplodeAmount} />
       )}
-      {source === "autodesk" && referenceLoadState !== "ready" && (
+      {source === "reference-model" && referenceLoadState !== "ready" && (
         <div className={`reference-load-state reference-load-${referenceLoadState}`} role="status">
           <i />
-          <span>{referenceLoadState === "error" ? "Reference model failed to load" : "Loading Autodesk reference geometry"}</span>
+          <span>{referenceLoadState === "error"
+            ? "Reference model failed to load"
+            : referenceModelUrl ? "Loading paired reference geometry" : "Pair a GLB or glTF reference to compare"}</span>
         </div>
       )}
     </>

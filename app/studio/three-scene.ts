@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
+  glazingElementIds,
   referenceRegistration,
   type ConvertResult,
   type NavigationMode,
@@ -40,6 +41,57 @@ function visibleTriangles(
   return { indices: keptIndices.subarray(0, at), elementIds: keptIds.subarray(0, at / 3) };
 }
 
+/** Alpha the glazing display material carries, reused for native glass. */
+const GLAZING_DISPLAY_ALPHA = 0.55;
+
+type BatchPart = {
+  indices: Uint32Array;
+  elementIds: Uint32Array | undefined;
+  glazing: boolean;
+};
+
+/**
+ * Split one batch's triangles into its glazing and non-glazing halves.
+ *
+ * Returns the batch untouched when it is already uniform, which is the common
+ * case — the split only costs anything for a batch that genuinely mixes glass
+ * with something else.
+ */
+function splitByGlazing(
+  visible: { indices: Uint32Array; elementIds: Uint32Array | undefined },
+  glazingIds: ReadonlySet<number>,
+): BatchPart[] {
+  const { indices, elementIds } = visible;
+  if (!elementIds || !glazingIds.size) return [{ indices, elementIds, glazing: false }];
+
+  let glazingTriangles = 0;
+  for (const elementId of elementIds) if (glazingIds.has(elementId)) glazingTriangles += 1;
+  if (glazingTriangles === 0) return [{ indices, elementIds, glazing: false }];
+  if (glazingTriangles === elementIds.length) return [{ indices, elementIds, glazing: true }];
+
+  const glass = { indices: new Uint32Array(glazingTriangles * 3), ids: new Uint32Array(glazingTriangles), at: 0 };
+  const rest = {
+    indices: new Uint32Array((elementIds.length - glazingTriangles) * 3),
+    ids: new Uint32Array(elementIds.length - glazingTriangles),
+    at: 0,
+  };
+  for (let triangle = 0; triangle < elementIds.length; triangle += 1) {
+    const elementId = elementIds[triangle]!;
+    const into = glazingIds.has(elementId) ? glass : rest;
+    into.indices[into.at * 3] = indices[triangle * 3]!;
+    into.indices[into.at * 3 + 1] = indices[triangle * 3 + 1]!;
+    into.indices[into.at * 3 + 2] = indices[triangle * 3 + 2]!;
+    // Picking indexes by face, so the id table has to stay in step with the
+    // split exactly as it does with the hidden-category filter above.
+    into.ids[into.at] = elementId;
+    into.at += 1;
+  }
+  return [
+    { indices: rest.indices, elementIds: rest.ids, glazing: false },
+    { indices: glass.indices, elementIds: glass.ids, glazing: true },
+  ];
+}
+
 export function meshGroup(
   result: ConvertResult,
   renderMode: RenderMode,
@@ -48,6 +100,11 @@ export function meshGroup(
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
   const technical = renderMode === "technical";
+  // Revit's persisted material transparency is not decoded, so every native
+  // material arrives opaque — including the one this file names `Стекло`,
+  // which is glass. Asking the decoded categories instead is the same evidence
+  // the proxy path already uses to pick the translucent glazing material.
+  const glazingIds = glazingElementIds(result.elementBounds);
   group.name = "Reviter recovered geometry";
   group.userData = {
     sourceFile: result.fileName,
@@ -58,54 +115,86 @@ export function meshGroup(
   for (const data of result.meshes) {
     const visible = visibleTriangles(data.indices, data.elementIds, hiddenElementIds);
     if (!visible.indices.length) continue;
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
-    geometry.setIndex(new THREE.BufferAttribute(visible.indices, 1));
-    geometry.computeVertexNormals();
     const sourceMaterial = result.materials[data.materialIndex] ?? result.materials[0];
     const sourceColor = sourceMaterial
       ? new THREE.Color().setRGB(...sourceMaterial.baseColorLinear.slice(0, 3) as [number, number, number])
       : new THREE.Color(0xb9cbe0);
     const sourceOpacity = sourceMaterial?.baseColorLinear[3] ?? 1;
-    const glazingProxy = data.name.startsWith("Glazing") || sourceOpacity < 0.995;
-    const transparent = technical
-      ? glazingProxy
-      : true;
-    const opacity = technical
-      ? (isElementBounds && glazingProxy ? Math.min(sourceOpacity, 0.58) : sourceOpacity)
-      : Math.min(sourceOpacity, isElementBounds ? 0.32 : 0.28);
-    const material = new THREE.MeshStandardMaterial({
-      color: sourceColor,
-      vertexColors: !technical,
-      roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
-      metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
-      flatShading: true,
-      side: THREE.DoubleSide,
-      transparent,
-      opacity,
-      depthWrite: !transparent,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = data.name;
-    mesh.castShadow = technical;
-    mesh.receiveShadow = technical;
-    mesh.userData.elementIds = visible.elementIds;
-    mesh.renderOrder = 1;
-    group.add(mesh);
-    if (isElementBounds) {
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geometry, 1),
-        new THREE.LineBasicMaterial({
-          color: technical ? 0x263c55 : 0x9be7e3,
-          transparent: true,
-          opacity: technical ? 0.56 : 0.68,
-          depthWrite: false,
-        }),
-      );
-      edges.name = `${data.name} edges`;
-      edges.renderOrder = 2;
-      group.add(edges);
+
+    // A native batch is grouped by native *material*, so one batch routinely
+    // holds several categories: the model's largest is 97.4% curtain-wall
+    // glazing and 2.6% something else. Splitting the triangles is exact, where
+    // a "mostly glazing" threshold would either turn 2,028 opaque triangles
+    // translucent or leave 74,968 glass ones solid — and would be one more
+    // number fitted to one building. Two draw calls at most, and only when a
+    // batch is genuinely mixed.
+    for (const part of splitByGlazing(visible, glazingIds)) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(data.colors, 3));
+      geometry.setIndex(new THREE.BufferAttribute(part.indices, 1));
+      geometry.computeVertexNormals();
+
+      // `data.name.startsWith("Glazing")` used to stand here. It had not matched
+      // anything for some time: batches are named by decoded Revit category
+      // ("Curtain Wall Panels 1") or by native material ("Certified native BRep
+      // · Material 26 · 19"), and neither starts with "Glazing". Only the
+      // material-alpha clause was doing any work, and it cannot see a native
+      // batch at all, because that alpha is an undecoded 1.
+      const glazing = part.glazing || sourceOpacity < 0.995;
+      const transparent = technical ? glazing : true;
+      const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);
+      const opacity = technical
+        ? (glazing
+            ? (isElementBounds ? Math.min(glazingOpacity, 0.58) : glazingOpacity)
+            : sourceOpacity)
+        : Math.min(sourceOpacity, isElementBounds ? 0.32 : 0.28);
+      const material = new THREE.MeshStandardMaterial({
+        color: sourceColor,
+        vertexColors: !technical,
+        roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
+        metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
+        flatShading: true,
+        side: THREE.DoubleSide,
+        transparent,
+        opacity,
+        depthWrite: !transparent,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = part.glazing ? `${data.name} · glazing` : data.name;
+      mesh.castShadow = technical;
+      mesh.receiveShadow = technical;
+      mesh.userData.elementIds = part.elementIds;
+      mesh.renderOrder = 1;
+      group.add(mesh);
+
+      // The wireframe overlay is what makes a twelve-triangle envelope box read
+      // as a technical drawing. On native BRep geometry it is the opposite of
+      // legible: the recovered scene is 912,044 native triangles against 49,738
+      // proxy ones, and running `EdgesGeometry` over all of it emitted **928,488
+      // line segments** — 1.86M line vertices rebuilt on the CPU and redrawn
+      // every frame, transparent and depth-write-disabled. That is the lag, and
+      // the interference between a million hairlines and the pixel grid is the
+      // moiré that looks like the viewport is pixelating.
+      //
+      // Raising the threshold angle does not help — 28° still yields 894,064 —
+      // because these batches are assembled from many elements' faces and are
+      // not index-welded, so almost every triangle edge reads as a boundary.
+      // The overlay belongs on the proxies it was built for.
+      if (isElementBounds && data.source !== "native-brep") {
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry, 1),
+          new THREE.LineBasicMaterial({
+            color: technical ? 0x263c55 : 0x9be7e3,
+            transparent: true,
+            opacity: technical ? 0.56 : 0.68,
+            depthWrite: false,
+          }),
+        );
+        edges.name = `${data.name} edges`;
+        edges.renderOrder = 2;
+        group.add(edges);
+      }
     }
   }
   return group;

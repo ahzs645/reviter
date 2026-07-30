@@ -11,10 +11,11 @@ globalThis.__REVITER_STATIC_WORKERS__ = {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Reviter root element was not found.");
-const referencePreview = new URLSearchParams(window.location.search).get("reference") === "autodesk";
-
+// `?reference=autodesk` used to open the studio straight into a bundled
+// derivative of one building. There is no bundled reference any more — a
+// reference is paired from disk, per model — so there is nothing to preview.
 createRoot(root).render(
   <StrictMode>
-    <ReviterStudio referencePreview={referencePreview} />
+    <ReviterStudio />
   </StrictMode>,
 );

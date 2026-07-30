@@ -46,8 +46,7 @@
  *   sheets-held-back-small                215 of 31,177      <= 3% of drawn
  *   sheets-held-back-fires                215 held back      >= 1
  *   stair-companions-adopted              111 adopted        >= 1
- *   instance-placements-resolved          21,257 resolved    >= 1
- *   tail-placements-read                  3,901 of 25,942    >= 1% of families
+ *   tail-placements-read                  30,696 of 25,887   >= 50% of families
  *
  * **The per-class centre floors** are the classes the README reports at 96-100%
  * (members 98.6, plates 99.9, columns 100, railings 100, coverings 100, walls
@@ -223,12 +222,28 @@ const MIN_FAMILIES_FOR_PLACEMENT_CHECK = 500;
  *
  * A floor of one would be decoration here. `readInstancePlacement` returned
  * early on any object whose length was not exactly 300, so before that was
- * fixed this model placed **3** elements from an instance alone against 25,942
- * members and plates in the export — 0.01%. After it, 3,901, or 15%. 1% is
- * therefore 15x under today's figure and 100x over the broken state, which is
- * the same way the hull budget is sized.
+ * fixed this model placed **3** elements against 25,942 members and plates in
+ * the export — 0.01%. After it, 30,696.
+ *
+ * **What is counted changed, because the original count measured the wrong
+ * thing.** This asserted on `instanceOnlyElements`: elements the placement read
+ * was the *sole* source of geometry for. That was a sharp signal when it was
+ * written — 3 broken against 3,901 working — but it is a measure of how little
+ * other evidence exists, not of whether the read works, so it falls whenever
+ * the rest of the pipeline improves. It has since fallen to **21**, not because
+ * the read broke but because 30,675 of those elements now also carry a real
+ * duplicated-bounds record, which is the better evidence of the two. An
+ * assertion that fails when the decoder gets better is worse than no assertion:
+ * it trains the reader to ignore it.
+ *
+ * `placedInstances` measures the read directly — an element whose own object
+ * yielded a transform and a shared shape — and it collapses toward zero if the
+ * read breaks, exactly as the old metric did, without being pushed down by
+ * unrelated progress. Today it is 30,696 against 25,887 families, 118%. A floor
+ * of 50% sits well under that and two orders of magnitude over the broken
+ * state, which is the same way the hull budget is sized.
  */
-const MIN_TAIL_PLACEMENT_SHARE = 0.01;
+const MIN_PLACEMENT_SHARE = 0.5;
 
 // --- assertion plumbing ------------------------------------------------------
 
@@ -615,30 +630,27 @@ function checkRulesFire(coverage: CoverageResult): void {
 
   const families = (rows.IFCMEMBER?.inIfc ?? 0) + (rows.IFCPLATE?.inIfc ?? 0);
   if (families < MIN_FAMILIES_FOR_PLACEMENT_CHECK) {
-    skip("instance-placements-resolved", `only ${families} members and plates in the export`, ">= 1");
-    skip("tail-placements-read", `only ${families} members and plates in the export`, ">= 1");
+    skip(
+      "tail-placements-read",
+      `only ${families} members and plates in the export`,
+      `>= ${percent(MIN_PLACEMENT_SHARE * 100)}`,
+    );
     return;
   }
+  // `placedInstances` counts the elements whose own object yielded a transform
+  // and a shared shape, which is the tail read itself rather than a side effect
+  // of it. See `MIN_PLACEMENT_SHARE` for why the previous metric was retired.
   const placed = stats.placedInstances ?? 0;
-  check(
-    "instance-placements-resolved",
-    placed,
-    placed >= 1,
-    `${placed.toLocaleString()} placements resolved to a transform and a shared shape`,
-    ">= 1",
-  );
-  // `instanceOnlyElements` is the sharp proxy for the tail read specifically:
-  // it was 3 before an element's own object was read for its placement, and
-  // 3,901 after, so it moves by three orders of magnitude when that read breaks.
-  const tailPlaced = stats.instanceOnlyElements ?? 0;
-  const share = tailPlaced / families;
+  const share = placed / families;
+  const tailOnly = stats.instanceOnlyElements ?? 0;
   check(
     "tail-placements-read",
     share * 100,
-    share >= MIN_TAIL_PLACEMENT_SHARE,
-    `${tailPlaced.toLocaleString()} elements placed from an instance alone, ` +
-      `${percent(share * 100)} of the ${families.toLocaleString()} members and plates in the export`,
-    `>= ${percent(MIN_TAIL_PLACEMENT_SHARE * 100)}`,
+    share >= MIN_PLACEMENT_SHARE,
+    `${placed.toLocaleString()} placements resolved to a transform and a shared shape, ` +
+      `${percent(share * 100)} of the ${families.toLocaleString()} members and plates in the export ` +
+      `(${tailOnly.toLocaleString()} of them have no other geometry)`,
+    `>= ${percent(MIN_PLACEMENT_SHARE * 100)}`,
   );
 }
 
