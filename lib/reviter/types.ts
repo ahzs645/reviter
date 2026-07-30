@@ -183,6 +183,10 @@ export type DecoderCoverage = {
   nativeFamilyDefinitions?: number;
   /** Native Revit UniqueIds joined from `Global/History` and `Global/ElemTable`. */
   nativeUniqueIds?: number;
+  /** Native items admitted through the carrier-composition route, which skips the envelope check. */
+  nativeMeshCarrierComposedItems?: number;
+  /** Of those, how many the envelope cross-check would have declined. */
+  nativeMeshCarrierComposedOutsideEnvelope?: number;
   /** Complete ordinary records decoded from `Global/ElemTable`. */
   nativeOwnershipRecords?: number;
   /** Persisted, non-self `OwningElementId` relations. */

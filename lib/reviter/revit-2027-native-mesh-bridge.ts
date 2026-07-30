@@ -1447,11 +1447,16 @@ export type Revit2027NativeMeshScene = {
   truncated: boolean;
   boundsMismatches: number;
   missingBounds: number;
+  /** Items admitted through the carrier-composition route, which skips the check. */
+  carrierComposedItems: number;
+  /** Of those, how many the envelope cross-check would have declined. */
+  carrierComposedOutsideEnvelope: number;
+  carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"];
   boundsMismatchSamples: readonly {
     elementId: number;
     ownerElementId: number;
     placed: boolean;
-    code: "bounds-mismatch" | "missing-bounds";
+    code: "bounds-mismatch" | "missing-bounds" | "carrier-composed-outside-envelope";
   }[];
 };
 
@@ -1580,6 +1585,9 @@ export function buildRevit2027NativeMeshScene(
       truncated: collection.truncated,
       boundsMismatches: 0,
       missingBounds: 0,
+      carrierComposedItems: 0,
+      carrierComposedOutsideEnvelope: 0,
+      carrierComposedSamples: [],
       boundsMismatchSamples: [],
     };
   }
@@ -1621,7 +1629,10 @@ export function buildRevit2027NativeMeshScene(
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
+  let carrierComposedItems = 0;
+  let carrierComposedOutsideEnvelope = 0;
   const boundsMismatchSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
+  const carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const boundsToleranceFeet =
     Number.isFinite(options.boundsToleranceFeet) &&
     options.boundsToleranceFeet! >= 0
@@ -1663,6 +1674,25 @@ export function buildRevit2027NativeMeshScene(
       item.placement == null &&
       collection.carrierComposedOwnerIds?.has(item.owner.ownerElementId) ===
         true;
+    // Carrier-composed geometry is another owner's mesh translated by a carrier
+    // displacement, so it is the one route that can put a correct shape in the
+    // wrong place — and it is the one route that skips the envelope check. Count
+    // what the check would have said, so the bypass stops being unmeasured.
+    if (exactCarrierComposition && options.expectedBoundsByElement) {
+      carrierComposedItems += 1;
+      const expected = options.expectedBoundsByElement.get(item.elementId);
+      if (expected && !containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+        carrierComposedOutsideEnvelope += 1;
+        if (carrierComposedSamples.length < MAX_INCOMPLETE_SAMPLES) {
+          carrierComposedSamples.push({
+            elementId: item.elementId,
+            ownerElementId: item.owner.ownerElementId,
+            placed: false,
+            code: "carrier-composed-outside-envelope",
+          });
+        }
+      }
+    }
     if (options.expectedBoundsByElement && !exactCarrierComposition) {
       const expected = options.expectedBoundsByElement.get(item.elementId);
       if (!expected) {
@@ -1814,6 +1844,9 @@ export function buildRevit2027NativeMeshScene(
     truncated,
     boundsMismatches,
     missingBounds,
+    carrierComposedItems,
+    carrierComposedOutsideEnvelope,
+    carrierComposedSamples,
     boundsMismatchSamples,
   };
 }

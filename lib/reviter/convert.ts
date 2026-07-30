@@ -2334,6 +2334,9 @@ export function convertRvtBytes(
           nativeMeshTruncated: nativeMeshScene.truncated,
           nativeMeshStoredBytes: nativeMeshCollection.storedBytes,
           nativeMeshBoundsMismatches: nativeMeshScene.boundsMismatches,
+          nativeMeshCarrierComposedItems: nativeMeshScene.carrierComposedItems,
+          nativeMeshCarrierComposedOutsideEnvelope:
+            nativeMeshScene.carrierComposedOutsideEnvelope,
           nativeMeshMissingBounds: nativeMeshScene.missingBounds,
           nativeMeshNestedDefinitions:
             nativeMeshCollection.nestedDefinitions,
@@ -2462,6 +2465,11 @@ export function convertRvtBytes(
           ...(nativeMeshScene.boundsMismatches
             ? [
                 `${nativeMeshScene.boundsMismatches.toLocaleString()} complete native items were declined because their transformed AABB escaped the element's independent RVT envelope; their proxies remain.`,
+              ]
+            : []),
+          ...(nativeMeshScene.carrierComposedOutsideEnvelope
+            ? [
+                `${nativeMeshScene.carrierComposedOutsideEnvelope.toLocaleString()} of ${nativeMeshScene.carrierComposedItems.toLocaleString()} carrier-composed stringer meshes are drawn outside the element's own RVT envelope; that route composes a sibling's geometry by a state displacement and skips the envelope cross-check.`,
               ]
             : []),
           ...(nativeMeshScene.missingBounds
