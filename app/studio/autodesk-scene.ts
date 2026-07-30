@@ -1,17 +1,17 @@
 /** Runtime compaction for the static Autodesk glTF reference scene. */
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { WalkSurfaceIndex, type WalkSurfaceStats } from "./walk-surface.ts";
 
 type MeshEntry = {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
   matrix: THREE.Matrix4;
+  elementKey: string;
 };
 
-type LineEntry = {
-  geometry: THREE.BufferGeometry;
-  material: THREE.Material;
-  matrix: THREE.Matrix4;
+export type AutodeskElementFragment = {
+  object: THREE.BatchedMesh;
+  batchId: number;
 };
 
 export type AutodeskSceneBatchStats = {
@@ -24,20 +24,90 @@ export type AutodeskSceneBatchStats = {
   copiedGeometryVariants: number;
   disposedSourceGeometries: number;
   retainedMaterials: number;
+  walkSurface: WalkSurfaceStats;
 };
 
 const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
 
-export function setAutodeskLineVisibility(
+export type AutodeskOutlineMode = "orbit" | "walk";
+
+export function setAutodeskOutlineMode(
   root: THREE.Object3D,
-  visible: boolean,
+  mode: AutodeskOutlineMode,
 ): void {
   root.traverse((object) => {
     if (object.userData.source === "autodesk-runtime-batch"
       && object.userData.primitive === "lines") {
-      object.visible = visible;
+      object.visible = true;
+      const material = (object as THREE.LineSegments).material as THREE.LineBasicMaterial;
+      material.opacity = mode === "walk" ? 0.26 : 0.11;
     }
   });
+}
+
+function autodeskOutlineMaterial(): THREE.LineBasicMaterial {
+  const material = new THREE.LineBasicMaterial({
+    color: 0x111820,
+    transparent: true,
+    opacity: 0.11,
+    depthTest: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  material.name = "Reviter Autodesk depth-aware outlines";
+  material.depthFunc = THREE.LessEqualDepth;
+  return material;
+}
+
+function createAutodeskOutlines(
+  meshEntries: ReadonlyMap<THREE.Material, readonly MeshEntry[]>,
+): THREE.LineSegments | null {
+  const edgeGeometries = new Map<THREE.BufferGeometry, THREE.EdgesGeometry>();
+  let vertexCount = 0;
+  for (const entries of meshEntries.values()) {
+    for (const entry of entries) {
+      let edges = edgeGeometries.get(entry.geometry);
+      if (!edges) {
+        edges = new THREE.EdgesGeometry(entry.geometry, 28);
+        edgeGeometries.set(entry.geometry, edges);
+      }
+      vertexCount += edges.getAttribute("position").count;
+    }
+  }
+  if (!vertexCount) return null;
+
+  const positions = new Float32Array(vertexCount * 3);
+  const point = new THREE.Vector3();
+  let offset = 0;
+  for (const entries of meshEntries.values()) {
+    for (const entry of entries) {
+      const edgePositions = edgeGeometries.get(entry.geometry)!.getAttribute("position");
+      for (let index = 0; index < edgePositions.count; index += 1) {
+        point.fromBufferAttribute(edgePositions, index).applyMatrix4(entry.matrix);
+        positions[offset++] = point.x;
+        positions[offset++] = point.y;
+        positions[offset++] = point.z;
+      }
+    }
+  }
+  edgeGeometries.forEach((geometry) => geometry.dispose());
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  const lines = new THREE.LineSegments(geometry, autodeskOutlineMaterial());
+  lines.name = "Autodesk generated topology outlines";
+  lines.castShadow = false;
+  lines.receiveShadow = false;
+  lines.renderOrder = 4;
+  lines.userData = {
+    source: "autodesk-runtime-batch",
+    primitive: "lines",
+    generatedFromVisibleMeshes: true,
+    vertexCount,
+  };
+  return lines;
 }
 
 function singleMaterial(
@@ -90,6 +160,15 @@ function copyRootTransform(
   target.matrixWorldAutoUpdate = source.matrixWorldAutoUpdate;
 }
 
+function sourceElementKey(object: THREE.Object3D, root: THREE.Object3D): string {
+  let candidate: THREE.Object3D | null = object;
+  while (candidate && candidate !== root) {
+    if (candidate.name) return candidate.name;
+    candidate = candidate.parent;
+  }
+  return object.uuid;
+}
+
 /**
  * Consume a loaded, static Autodesk scene and replace its thousands of primitive
  * objects with material batches.
@@ -103,21 +182,19 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
   root.updateMatrixWorld(true);
   const rootWorldInverse = root.matrixWorld.clone().invert();
   const meshEntries = new Map<THREE.Material, MeshEntry[]>();
-  const lineEntries = new Map<THREE.Material, LineEntry[]>();
   const sourceGeometries = new Set<THREE.BufferGeometry>();
+  const discardedLineMaterials = new Set<THREE.Material>();
   const retainedMaterials = new Set<THREE.Material>();
   let sourceTriangleMeshes = 0;
+  let sourceLineSegments = 0;
 
   root.traverse((object) => {
     if ((object as THREE.LineSegments).isLineSegments) {
       const line = object as THREE.LineSegments;
       const material = singleMaterial(line);
-      const matrix = rootWorldInverse.clone().multiply(line.matrixWorld);
-      const entries = lineEntries.get(material) ?? [];
-      entries.push({ geometry: line.geometry, material, matrix });
-      lineEntries.set(material, entries);
       sourceGeometries.add(line.geometry);
-      retainedMaterials.add(material);
+      discardedLineMaterials.add(material);
+      sourceLineSegments += 1;
       return;
     }
 
@@ -129,6 +206,7 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
     const material = singleMaterial(mesh);
     const entries = meshEntries.get(material) ?? [];
     const meshMatrix = rootWorldInverse.clone().multiply(mesh.matrixWorld);
+    const elementKey = sourceElementKey(mesh, root);
     const instanced = mesh as THREE.InstancedMesh;
     if (instanced.isInstancedMesh) {
       if (instanced.instanceColor || instanced.morphTexture) {
@@ -141,10 +219,16 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
           geometry: mesh.geometry,
           material,
           matrix: meshMatrix.clone().multiply(instanceMatrix),
+          elementKey,
         });
       }
     } else {
-      entries.push({ geometry: mesh.geometry, material, matrix: meshMatrix });
+      entries.push({
+        geometry: mesh.geometry,
+        material,
+        matrix: meshMatrix,
+        elementKey,
+      });
     }
     meshEntries.set(material, entries);
     sourceGeometries.add(mesh.geometry);
@@ -158,6 +242,13 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
 
   let mirroredTriangleInstances = 0;
   let copiedGeometryVariants = 0;
+  const walkSurface = new WalkSurfaceIndex({
+    up: "y",
+    cellSize: 1.25,
+    minUpDot: 0.45,
+  });
+  const walkMatrix = new THREE.Matrix4();
+  const elementFragments = new Map<string, AutodeskElementFragment[]>();
 
   for (const [material, entries] of meshEntries) {
     const geometryVariants = new Map<
@@ -201,6 +292,10 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
     batch.sortObjects = true;
 
     for (const entry of entries) {
+      walkSurface.addGeometry(
+        entry.geometry,
+        walkMatrix.multiplyMatrices(root.matrixWorld, entry.matrix),
+      );
       const mirrored = entry.matrix.determinant() < 0;
       const variants = geometryVariants.get(entry.geometry) ?? {};
       let geometryId = mirrored ? variants.mirrored : variants.regular;
@@ -224,6 +319,9 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
         ? entry.matrix.clone().multiply(MIRROR_X)
         : entry.matrix;
       batch.setMatrixAt(instanceId, matrix);
+      const fragments = elementFragments.get(entry.elementKey) ?? [];
+      fragments.push({ object: batch, batchId: instanceId });
+      elementFragments.set(entry.elementKey, fragments);
       if (mirrored) mirroredTriangleInstances += 1;
     }
 
@@ -235,6 +333,7 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
       materialName: material.name,
       transparent: material.transparent,
       instanceCount: entries.length,
+      elementKeys: entries.map((entry) => entry.elementKey),
       geometryVariants: geometryVariants.size
         + [...geometryVariants.values()].filter((entry) =>
           entry.regular != null && entry.mirrored != null
@@ -244,40 +343,14 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
     output.add(batch);
   }
 
-  for (const [material, entries] of lineEntries) {
-    const transformed = entries.map((entry) => {
-      const geometry = entry.geometry.clone();
-      geometry.applyMatrix4(entry.matrix);
-      return geometry;
-    });
-    const merged = mergeGeometries(transformed, false);
-    transformed.forEach((geometry) => geometry.dispose());
-    if (!merged) {
-      throw new Error(
-        `Could not merge Autodesk line material "${material.name || material.uuid}".`,
-      );
-    }
-    const lines = new THREE.LineSegments(merged, material);
-    lines.name = `Autodesk line batch · ${material.name || material.uuid}`;
-    lines.castShadow = false;
-    lines.receiveShadow = false;
-    lines.userData = {
-      source: "autodesk-runtime-batch",
-      primitive: "lines",
-      materialName: material.name,
-      sourceObjectCount: entries.length,
-    };
-    output.add(lines);
-  }
+  const outlines = createAutodeskOutlines(meshEntries);
+  if (outlines) output.add(outlines);
 
   const stats: AutodeskSceneBatchStats = {
     sourceTriangleMeshes,
-    sourceLineSegments: [...lineEntries.values()].reduce(
-      (sum, entries) => sum + entries.length,
-      0,
-    ),
+    sourceLineSegments,
     triangleBatches: meshEntries.size,
-    lineBatches: lineEntries.size,
+    lineBatches: outlines ? 1 : 0,
     triangleInstances: [...meshEntries.values()].reduce(
       (sum, entries) => sum + entries.length,
       0,
@@ -286,12 +359,15 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
     copiedGeometryVariants,
     disposedSourceGeometries: sourceGeometries.size,
     retainedMaterials: retainedMaterials.size,
+    walkSurface: walkSurface.stats(),
   };
   output.userData = {
     ...root.userData,
     source: root.userData.source ?? "autodesk-gltf-derivative",
     runtimeBatched: true,
     batchStats: stats,
+    walkSurface,
+    elementFragments,
   };
 
   // BatchedMesh and merged lines now own independent geometry buffers. Detach
@@ -299,5 +375,8 @@ export function batchAutodeskScene(root: THREE.Object3D): THREE.Group {
   // because the output scene reuses those exact objects.
   root.clear();
   sourceGeometries.forEach((geometry) => geometry.dispose());
+  discardedLineMaterials.forEach((material) => {
+    if (!retainedMaterials.has(material)) material.dispose();
+  });
   return output;
 }

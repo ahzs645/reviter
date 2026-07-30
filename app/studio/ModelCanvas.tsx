@@ -21,7 +21,7 @@ import {
   publicAssetUrl,
   styleAutodeskReference,
 } from "./autodesk-reference.ts";
-import { batchAutodeskScene, setAutodeskLineVisibility } from "./autodesk-scene.ts";
+import { batchAutodeskScene, setAutodeskOutlineMode } from "./autodesk-scene.ts";
 import {
   applyNavigationMode,
   disposeGroup,
@@ -49,9 +49,11 @@ import {
 import {
   createWalkControls,
   WALK_EYE_HEIGHT,
+  WALK_MAX_STEP_UP,
   type WalkControls,
   type WalkSpeed,
 } from "./walk-controls.ts";
+import type { WalkSurfaceIndex } from "./walk-surface.ts";
 import {
   ExplodeToolPanel,
   FirstPersonPanel,
@@ -61,6 +63,7 @@ import {
 import { ModelCommentLayer, type CommentProjection } from "./ModelCommentLayer.tsx";
 import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
 import {
+  createElementSelection,
   createFaceSelection,
   firstTriangleHit,
   hitWorldNormal,
@@ -387,11 +390,21 @@ export function ModelCanvas({
     const up = (isAutodesk ? "y" : "z") as "y" | "z";
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
+    let autodeskWalkSurface: WalkSurfaceIndex | null = null;
     const surfaceFloorAt = (eyePosition: THREE.Vector3, maxDrop?: number) => {
-      // The compact Autodesk scene contains tens of thousands of batch
-      // instances. A one-off long probe is acceptable when entering walk mode,
-      // but repeating that full raycast at 10 Hz would make walking stutter.
-      if (isAutodesk && maxDrop == null) return null;
+      if (isAutodesk && autodeskWalkSurface) {
+        const eyeCoordinate = up === "y" ? eyePosition.y : eyePosition.z;
+        const continuousProbe = maxDrop == null;
+        return autodeskWalkSurface.floorAt(eyePosition, {
+          maxDrop: maxDrop ?? (WALK_EYE_HEIGHT + 12) * sceneUnitsPerFoot,
+          maximumHeight: continuousProbe
+            ? eyeCoordinate
+              - WALK_EYE_HEIGHT * sceneUnitsPerFoot
+              + WALK_MAX_STEP_UP * sceneUnitsPerFoot
+            : eyeCoordinate,
+        });
+      }
+      if (isAutodesk) return null;
       const origin = eyePosition.clone().addScaledVector(upVector, 1.5);
       floorRaycaster.set(origin, downVector);
       floorRaycaster.near = 0;
@@ -465,7 +478,9 @@ export function ModelCanvas({
         runtime.selectionOverlay = null;
       }
       if (!hit || !runtime) return;
-      const selection = createFaceSelection(hit, camera, sceneUnitsPerFoot);
+      const selection = (isAutodesk
+        ? createElementSelection(hit, sceneUnitsPerFoot)
+        : null) ?? createFaceSelection(hit, camera, sceneUnitsPerFoot);
       if (!selection) return;
       runtime.selectionOverlay = selection;
       runtime.scene.add(selection);
@@ -552,7 +567,7 @@ export function ModelCanvas({
         : geometryHitAt(event.clientX, event.clientY);
       if (hit) {
         showSurfaceSelection(hit);
-        walk.teleport(hit.point, hitWorldNormal(hit));
+        walk.travelToSurface(hit.point, hitWorldNormal(hit));
       }
     };
     // What is under the cursor should name itself before you commit to
@@ -658,7 +673,9 @@ export function ModelCanvas({
           return;
         }
         styleAutodeskReference(loadedScene, renderMode);
-        root.add(batchAutodeskScene(loadedScene));
+        const batchedScene = batchAutodeskScene(loadedScene);
+        autodeskWalkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
+        root.add(batchedScene);
         refreshInteractionMeshes();
         needsRender = true;
         setReferenceLoadState("ready");
@@ -801,7 +818,7 @@ export function ModelCanvas({
       walkRef.current?.dispose();
       walkRef.current = null;
       runtime.controls.enabled = true;
-      if (source === "autodesk") setAutodeskLineVisibility(runtime.root, true);
+      if (source === "autodesk") setAutodeskOutlineMode(runtime.root, "orbit");
       runtime.camera.near = Math.max(0.1, runtime.radius / 1_000);
       runtime.camera.updateProjectionMatrix();
       // Orbit around whatever is in front of the camera now, rather than
@@ -817,7 +834,7 @@ export function ModelCanvas({
     }
 
     runtime.controls.enabled = false;
-    if (source === "autodesk") setAutodeskLineVisibility(runtime.root, false);
+    if (source === "autodesk") setAutodeskOutlineMode(runtime.root, "walk");
     runtime.camera.near = Math.max(0.02 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
     runtime.camera.updateProjectionMatrix();
     const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
@@ -856,6 +873,7 @@ export function ModelCanvas({
       up: runtime.up,
       speed: walkSpeedRef.current,
       gravity: walkGravityRef.current,
+      floorProbeInterval: source === "autodesk" ? 1 / 30 : 0.1,
       resolveFloor: runtime.surfaceFloorAt,
       dropDistance: runtime.radius * 4,
       resolveMovement: runtime.resolveMovement,

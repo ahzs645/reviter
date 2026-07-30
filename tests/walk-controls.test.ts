@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as THREE from "three";
 
 import {
+  createWalkControls,
   droppedEyeCoordinate,
+  easeTravelProgress,
   FIRST_PERSON_SPEEDS,
   floorTravelDirection,
   horizontalWalkDirection,
   stepWalkSpeed,
+  travelDurationSeconds,
 } from "../app/studio/walk-controls.ts";
 
 test("first-person speed steps are ordered and clamp at both ends", () => {
@@ -38,4 +42,57 @@ test("surface drop uses the hit surface or the safe model baseline", () => {
   assert.equal(droppedEyeCoordinate(12, 5.6, 5.6), 17.6);
   assert.equal(droppedEyeCoordinate(null, 5.6, 5.6), 5.6);
   assert.equal(droppedEyeCoordinate(-20, 5.6, 5.6), 5.6);
+});
+
+test("face travel uses a bounded ease-out animation", () => {
+  assert.equal(easeTravelProgress(0), 0);
+  assert.ok(easeTravelProgress(0.5) > 0.5);
+  assert.equal(easeTravelProgress(1), 1);
+  assert.equal(travelDurationSeconds(0), 0.42);
+  assert.equal(travelDurationSeconds(100), 1.25);
+});
+
+test("face travel preserves the first-person view direction", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const controls = createWalkControls(camera, element, {
+      start: new THREE.Vector3(0, 5.6, 10),
+      lookAt: new THREE.Vector3(0, 5.6, 0),
+      floor: 5.6,
+      up: "y",
+      gravity: false,
+    });
+    controls.enable();
+    const before = new THREE.Vector3();
+    camera.getWorldDirection(before);
+
+    controls.travelToSurface(
+      new THREE.Vector3(0, 20, 0),
+      new THREE.Vector3(0, 0, 1),
+    );
+    for (let frame = 0; frame < 20; frame += 1) controls.update(0.1);
+
+    const after = new THREE.Vector3();
+    camera.getWorldDirection(after);
+    assert.ok(before.angleTo(after) < 1e-6);
+    assert.ok(camera.position.z < 10);
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
 });

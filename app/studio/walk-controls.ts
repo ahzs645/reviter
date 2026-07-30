@@ -42,7 +42,7 @@ const MAX_PITCH = Math.PI / 2 - 0.02;
 /** Mouse sensitivity, radians per pixel. */
 const LOOK_SPEED = 0.0022;
 const FLOOR_PROBE_INTERVAL = 0.1;
-const MAX_STEP_UP = 1.5;
+export const WALK_MAX_STEP_UP = 1.5;
 
 export function stepWalkSpeed(speed: WalkSpeed, direction: -1 | 1): WalkSpeed {
   const index = WALK_SPEED_ORDER.indexOf(speed);
@@ -77,6 +77,15 @@ export function droppedEyeCoordinate(
     : Math.max(minimumEyeCoordinate, surface + eyeHeight);
 }
 
+export function easeTravelProgress(progress: number): number {
+  const clamped = THREE.MathUtils.clamp(progress, 0, 1);
+  return 1 - (1 - clamped) ** 3;
+}
+
+export function travelDurationSeconds(distanceFeet: number): number {
+  return THREE.MathUtils.clamp(0.42 + Math.max(0, distanceFeet) / 38, 0.42, 1.25);
+}
+
 export type WalkControls = {
   /** Attach listeners and take over the camera. */
   enable(): void;
@@ -92,8 +101,8 @@ export type WalkControls = {
   setGravity(enabled: boolean): void;
   /** Drop vertically onto the nearest model surface and resume walking. */
   dropToSurface(): boolean;
-  /** Travel to a picked surface, keeping clearance from vertical faces. */
-  teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void;
+  /** Animate travel to a picked surface without changing the current view direction. */
+  travelToSurface(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void;
   dispose(): void;
 };
 
@@ -114,6 +123,8 @@ export type WalkOptions = {
   speed?: WalkSpeed;
   /** Follow horizontal model surfaces when true. */
   gravity?: boolean;
+  /** Seconds between walking-surface samples. */
+  floorProbeInterval?: number;
   /** Return the walking-surface coordinate below this eye position. */
   resolveFloor?: (eyePosition: THREE.Vector3, maxDrop?: number) => number | null;
   /** Longest vertical search used by the explicit Space-key drop. */
@@ -145,7 +156,20 @@ export function createWalkControls(
   let looking = false;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
-  let floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+  const floorProbeInterval = Math.max(1 / 120, options.floorProbeInterval ?? FLOOR_PROBE_INTERVAL);
+  let floorProbeElapsed = floorProbeInterval;
+  let trackedSurface: number | null = null;
+  let travel: {
+    from: THREE.Vector3;
+    to: THREE.Vector3;
+    fromYaw: number;
+    toYaw: number;
+    fromPitch: number;
+    toPitch: number;
+    elapsed: number;
+    duration: number;
+    surface: number | null;
+  } | null = null;
   const sceneUnitsPerFoot = options.sceneUnitsPerFoot ?? 1;
   const eyeHeight = options.eyeHeight ?? EYE_HEIGHT_FEET * sceneUnitsPerFoot;
 
@@ -162,16 +186,34 @@ export function createWalkControls(
     camera.lookAt(camera.position.clone().add(forward));
   }
 
-  function setFacing(from: THREE.Vector3, to: THREE.Vector3): void {
+  function facingAngles(from: THREE.Vector3, to: THREE.Vector3): { yaw: number; pitch: number } {
     const direction = to.clone().sub(from);
     if (up === "y") {
-      yaw = Math.atan2(direction.x, direction.z);
-      pitch = Math.atan2(direction.y, Math.hypot(direction.x, direction.z));
-    } else {
-      yaw = Math.atan2(direction.y, direction.x);
-      pitch = Math.atan2(direction.z, Math.hypot(direction.x, direction.y));
+      return {
+        yaw: Math.atan2(direction.x, direction.z),
+        pitch: Math.max(
+          -MAX_PITCH,
+          Math.min(MAX_PITCH, Math.atan2(direction.y, Math.hypot(direction.x, direction.z))),
+        ),
+      };
     }
-    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
+    return {
+      yaw: Math.atan2(direction.y, direction.x),
+      pitch: Math.max(
+        -MAX_PITCH,
+        Math.min(MAX_PITCH, Math.atan2(direction.z, Math.hypot(direction.x, direction.y))),
+      ),
+    };
+  }
+
+  function setFacing(from: THREE.Vector3, to: THREE.Vector3): void {
+    const facing = facingAngles(from, to);
+    yaw = facing.yaw;
+    pitch = facing.pitch;
+  }
+
+  function cancelTravel(): void {
+    travel = null;
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -205,6 +247,7 @@ export function createWalkControls(
       event.preventDefault();
       return;
     }
+    if (/^(Arrow|Key[WASDQE])/.test(event.code)) cancelTravel();
     pressed.add(event.code);
     // The keys that drive the walker would otherwise scroll the page.
     if (/^(Arrow|Space|Key[WASDCQE])/.test(event.code)) event.preventDefault();
@@ -216,6 +259,7 @@ export function createWalkControls(
 
   function onPointerDown(event: PointerEvent): void {
     if (!enabled || event.button !== 0) return;
+    cancelTravel();
     looking = true;
     domElement.setPointerCapture(event.pointerId);
     options.onLookChange?.(true);
@@ -246,7 +290,8 @@ export function createWalkControls(
     setFacing(options.start, options.lookAt);
     applyRotation();
     velocity.set(0, 0, 0);
-    floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+    floorProbeElapsed = floorProbeInterval;
+    trackedSurface = null;
     domElement.addEventListener("pointerdown", onPointerDown);
     domElement.addEventListener("pointermove", onPointerMove);
     domElement.addEventListener("pointerup", stopLooking);
@@ -260,6 +305,7 @@ export function createWalkControls(
   function disable(): void {
     if (!enabled) return;
     enabled = false;
+    cancelTravel();
     releaseInput();
     domElement.removeEventListener("pointerdown", onPointerDown);
     domElement.removeEventListener("pointermove", onPointerMove);
@@ -274,6 +320,28 @@ export function createWalkControls(
   function update(deltaSeconds: number): void {
     if (!enabled) return;
     const step = Math.min(deltaSeconds, 0.1);
+    if (travel) {
+      travel.elapsed += step;
+      const progress = Math.min(1, travel.elapsed / travel.duration);
+      const eased = easeTravelProgress(progress);
+      camera.position.lerpVectors(travel.from, travel.to, eased);
+      const yawDelta = Math.atan2(
+        Math.sin(travel.toYaw - travel.fromYaw),
+        Math.cos(travel.toYaw - travel.fromYaw),
+      );
+      yaw = travel.fromYaw + yawDelta * eased;
+      pitch = THREE.MathUtils.lerp(travel.fromPitch, travel.toPitch, eased);
+      if (progress >= 1) {
+        camera.position.copy(travel.to);
+        yaw = travel.toYaw;
+        pitch = travel.toPitch;
+        trackedSurface = travel.surface;
+        travel = null;
+        floorProbeElapsed = floorProbeInterval;
+      }
+      applyRotation();
+      return;
+    }
 
     const forwardInput = (pressed.has("KeyW") || pressed.has("ArrowUp") ? 1 : 0)
       - (pressed.has("KeyS") || pressed.has("ArrowDown") ? 1 : 0);
@@ -298,20 +366,24 @@ export function createWalkControls(
 
     let height = up === "y" ? camera.position.y : camera.position.z;
     floorProbeElapsed += step;
-    if (gravity && !floorTravelInput && options.resolveFloor && floorProbeElapsed >= FLOOR_PROBE_INTERVAL) {
+    if (gravity && !floorTravelInput && options.resolveFloor && floorProbeElapsed >= floorProbeInterval) {
       floorProbeElapsed = 0;
       const surface = options.resolveFloor(camera.position);
       if (surface != null) {
         const targetEye = surface + eyeHeight;
         // A stair riser is walkable; a desk or roof encountered by the probe is
         // not something the camera should snap upward onto.
-        if (targetEye <= height + MAX_STEP_UP * sceneUnitsPerFoot) {
-          height = THREE.MathUtils.lerp(height, Math.max(options.floor, targetEye), Math.min(1, DAMPING * step));
-          if (up === "y") camera.position.y = height;
-          else camera.position.z = height;
-          velocity[up] = 0;
+        if (targetEye <= height + WALK_MAX_STEP_UP * sceneUnitsPerFoot) {
+          trackedSurface = surface;
         }
       }
+    }
+    if (gravity && !floorTravelInput && trackedSurface != null) {
+      const targetEye = Math.max(options.floor, trackedSurface + eyeHeight);
+      height = THREE.MathUtils.lerp(height, targetEye, Math.min(1, DAMPING * step));
+      if (up === "y") camera.position.y = height;
+      else camera.position.z = height;
+      velocity[up] = 0;
     }
 
     // Keep the walker above the model baseline even when no surface was hit.
@@ -325,6 +397,7 @@ export function createWalkControls(
   }
 
   function dropToSurface(): boolean {
+    cancelTravel();
     const surface = options.resolveFloor?.(
       camera.position,
       options.dropDistance ?? 10_000 * sceneUnitsPerFoot,
@@ -335,32 +408,48 @@ export function createWalkControls(
     velocity.set(0, 0, 0);
     gravity = true;
     floorProbeElapsed = 0;
+    trackedSurface = surface;
     options.onGravityChange?.(true);
     applyRotation();
     return surface != null;
   }
 
-  function teleport(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
+  function travelToSurface(point: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
     const normal = surfaceNormal?.clone().normalize() ?? upVector.clone();
     const horizontalNormal = normal.clone().addScaledVector(upVector, -normal.dot(upVector));
     const isWalkingSurface = Math.abs(normal.dot(upVector)) >= 0.55;
+    const destination = point.clone();
+    let destinationSurface: number | null = null;
     if (isWalkingSurface || horizontalNormal.lengthSq() < 1e-6) {
-      camera.position.copy(point).addScaledVector(upVector, eyeHeight);
+      destination.addScaledVector(upVector, eyeHeight);
+      destinationSurface = up === "y" ? point.y : point.z;
     } else {
       horizontalNormal.normalize();
       if (horizontalNormal.dot(camera.position.clone().sub(point)) < 0) horizontalNormal.negate();
       const standOff = 3 * sceneUnitsPerFoot;
-      camera.position.copy(point).addScaledVector(horizontalNormal, standOff);
-      const floor = options.resolveFloor?.(camera.position);
+      destination.addScaledVector(horizontalNormal, standOff);
+      const floor = options.resolveFloor?.(destination);
       if (floor != null) {
-        if (up === "y") camera.position.y = floor + eyeHeight;
-        else camera.position.z = floor + eyeHeight;
+        if (up === "y") destination.y = floor + eyeHeight;
+        else destination.z = floor + eyeHeight;
+        destinationSurface = floor;
       }
-      setFacing(camera.position, point);
     }
+    const distanceFeet = camera.position.distanceTo(destination) / sceneUnitsPerFoot;
+    travel = {
+      from: camera.position.clone(),
+      to: destination,
+      fromYaw: yaw,
+      toYaw: yaw,
+      fromPitch: pitch,
+      toPitch: pitch,
+      elapsed: 0,
+      duration: travelDurationSeconds(distanceFeet),
+      surface: destinationSurface,
+    };
     velocity.set(0, 0, 0);
     floorProbeElapsed = 0;
-    applyRotation();
+    trackedSurface = null;
   }
 
   return {
@@ -373,11 +462,13 @@ export function createWalkControls(
     },
     setGravity: (enabled) => {
       gravity = enabled;
+      cancelTravel();
       velocity[up] = 0;
-      floorProbeElapsed = FLOOR_PROBE_INTERVAL;
+      floorProbeElapsed = floorProbeInterval;
+      trackedSurface = null;
     },
     dropToSurface,
-    teleport,
+    travelToSurface,
     dispose: disable,
   };
 }
