@@ -7,7 +7,7 @@ import {
 } from "./revit-2027-certified-owner-mesh.ts";
 import {
   decodeRevit2027BalusterInstanceDefinition,
-  decodeRevit2027TopRailTypeEvidence,
+  decodeRevit2027TopRailTypeCurves,
   REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
   type Revit2027BalusterInstanceDefinition,
@@ -1433,7 +1433,7 @@ export function createRevit2027NativeMeshCollector(
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) {
           if (frame.marker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
-            const evidence = decodeRevit2027TopRailTypeEvidence(
+            const evidence = decodeRevit2027TopRailTypeCurves(
               data,
               frame,
               2027,
