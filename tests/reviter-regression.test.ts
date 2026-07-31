@@ -30,6 +30,7 @@ import type { PlanePatch } from "../lib/reviter/surfaces.ts";
 import { segmentScaleFor } from "../lib/reviter/segment-scan.ts";
 import {
   applyNativeCategories,
+  categoryFromNativeObjectEvidence,
   categoryDisplayName,
   collectCategoryTokens,
   deriveRecordCodeCategories,
@@ -43,6 +44,9 @@ import {
   buildBoundsMeshes,
   curtainAssemblyHelperProxyIds,
   displayRole,
+  excludeMeshElementIds,
+  isNonSceneObjectDefinition,
+  nonSceneNativeMeshHelperIds,
   isStairOrRailingHelperProxy,
   selectDisplayBounds,
 } from "../lib/reviter/scene.ts";
@@ -1387,6 +1391,142 @@ test("identifies only unresolved stair and railing drawing aids as proxy helpers
       [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
     ],
   }), false);
+});
+
+test("classifies exact native ramp, top-rail, baluster, and footprint-roof evidence", () => {
+  const blank = {
+    recordCode: 0,
+    recordCount: 0,
+  };
+  assert.equal(
+    categoryFromNativeObjectEvidence(blank, new Set([3462])),
+    -2_000_180,
+  );
+  assert.equal(
+    categoryFromNativeObjectEvidence(blank, new Set([967])),
+    -2_000_946,
+  );
+  assert.equal(
+    categoryFromNativeObjectEvidence(
+      {
+        ...blank,
+        orientedBox: [
+          [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+          [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+        ],
+      },
+      new Set([605]),
+    ),
+    -2_000_127,
+  );
+  assert.equal(
+    categoryFromNativeObjectEvidence(
+      {
+        recordCode: 58,
+        recordCount: 1,
+        parameters: [{
+          parameterId: -1_001_705,
+          name: "Maximum Ridge Height",
+          value: 19.7,
+        }],
+      },
+      undefined,
+    ),
+    -2_000_035,
+  );
+  assert.equal(
+    categoryFromNativeObjectEvidence(
+      { recordCode: 54, recordCount: 1, parameters: [{ parameterId: -1_001_705, name: "Maximum Ridge Height", value: 1 }] },
+      undefined,
+    ),
+    undefined,
+  );
+  assert.equal(
+    categoryFromNativeObjectEvidence(blank, new Set([605])),
+    undefined,
+  );
+});
+
+test("removes unplaced native definitions without removing instances or named elements", () => {
+  const unnamed = { categoryId: undefined, categoryName: undefined };
+  assert.equal(isNonSceneObjectDefinition(unnamed, new Set([974]), false), true);
+  assert.equal(isNonSceneObjectDefinition(unnamed, new Set([0x0810]), false), true);
+  assert.equal(isNonSceneObjectDefinition(unnamed, new Set([0x0810]), true), false);
+  assert.equal(
+    isNonSceneObjectDefinition(
+      { categoryId: -2_000_023, categoryName: "Doors" },
+      new Set([0x0810]),
+      false,
+    ),
+    false,
+  );
+});
+
+test("keeps stair companions and categoryless flat face hulls out of native mesh batches", () => {
+  const makeRecord = (
+    elementId: number,
+    extra: Partial<ElementBoundsRecord> = {},
+  ): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 4, y: 4, z: 4 },
+    },
+    ...extra,
+  });
+  const owner = makeRecord(100);
+  const companion = makeRecord(101, { recordCode: 169671, recordCount: 1 });
+  const orphanCompanion = makeRecord(201, { recordCode: 169671, recordCount: 1 });
+  const flatFaceHull = makeRecord(300, {
+    recordOffset: -1,
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 7 },
+      max: { x: 2, y: 3, z: 7 },
+    },
+    quads: [{
+      elementId: 300,
+      corners: [[0, 0, 7], [2, 0, 7], [2, 3, 7], [0, 3, 7]],
+    }],
+  });
+  const namedFlatFaceHull = {
+    ...flatFaceHull,
+    elementId: 301,
+    categoryId: -2_000_032,
+    categoryName: "Floors",
+  };
+
+  assert.deepEqual(
+    [...nonSceneNativeMeshHelperIds([
+      owner,
+      companion,
+      orphanCompanion,
+      flatFaceHull,
+      namedFlatFaceHull,
+    ])].sort((left, right) => left - right),
+    [101, 300],
+  );
+});
+
+test("filters excluded element triangles and preserves the batch material", () => {
+  const mesh = {
+    name: "mixed native batch",
+    positions: new Float32Array(12),
+    indices: new Uint32Array([0, 1, 2, 1, 2, 3]),
+    colors: new Float32Array(16),
+    materialIndex: 4,
+    elementIds: new Uint32Array([10, 20]),
+    source: "native-brep" as const,
+  };
+  const filtered = excludeMeshElementIds([mesh], new Set([10]));
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0]!.materialIndex, 4);
+  assert.deepEqual([...filtered[0]!.indices], [1, 2, 3]);
+  assert.deepEqual([...filtered[0]!.elementIds!], [20]);
+  assert.deepEqual(excludeMeshElementIds([mesh], new Set([10, 20])), []);
 });
 
 test("suppresses only proven curtain assembly envelopes over resolved children", () => {

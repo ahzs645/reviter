@@ -22,6 +22,10 @@
  */
 
 import { builtInCategoryName, humaniseCategoryName } from "./built-in-categories.ts";
+import {
+  REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
+  REVIT_2027_TOP_RAIL_TYPE_MARKER,
+} from "./revit-2027-baluster-instances.ts";
 
 import type { ElementBoundsRecord, NativeCategorySummary } from "./types";
 
@@ -80,6 +84,53 @@ export function categoryDisplayName(categoryId: number): string {
 /** True when the category id resolves to a published Revit category name. */
 export function isNamedCategory(categoryId: number): boolean {
   return builtInCategoryName(categoryId) != null;
+}
+
+/** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
+const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
+
+/** Footprint-roof parameter which is independent of the duplicated-bounds code. */
+const MAXIMUM_RIDGE_HEIGHT_PARAMETER_ID = -1_001_705;
+
+/**
+ * Category identities proved by a native class or a class-specific parameter.
+ *
+ * These are deliberately narrower than general marker consensus. The marker
+ * names the exact Revit 2027 class in `Formats/Latest`, while the roof rule
+ * requires both the one-field slab/roof record shape and the footprint-roof
+ * `Maximum Ridge Height` parameter. No category is inferred from dimensions or
+ * from an IFC class.
+ */
+export function categoryFromNativeObjectEvidence(
+  record: Pick<
+    ElementBoundsRecord,
+    | "recordCode"
+    | "recordCount"
+    | "parameters"
+    | "orientedBox"
+    | "solid"
+    | "solids"
+    | "arcs"
+  >,
+  markers: ReadonlySet<number> | undefined,
+): number | undefined {
+  if (markers?.has(REVIT_2027_RAMP_SYMBOL_MARKER)) return -2_000_180; // Ramps
+  if (markers?.has(REVIT_2027_TOP_RAIL_TYPE_MARKER)) return -2_000_946; // Railing Top Rail
+  if (
+    markers?.has(REVIT_2027_BASE_RAILING_SYMBOL_MARKER) &&
+    (record.orientedBox || record.solid || record.solids?.length || record.arcs?.length)
+  ) {
+    return -2_000_127; // Stairs Railing Baluster
+  }
+  if (
+    record.recordCode === 58 &&
+    record.parameters?.some(
+      (parameter) => parameter.parameterId === MAXIMUM_RIDGE_HEIGHT_PARAMETER_ID,
+    )
+  ) {
+    return -2_000_035; // Roofs
+  }
+  return undefined;
 }
 
 export type CategoryToken = {

@@ -27,7 +27,7 @@ import {
   dominantMarker,
   markerCategoryConsensus,
   markerObjectSeeds,
-  scanFramedObjectClasses,
+  scanFramedObjectClassEvidence,
   scanObjectMarkers,
   type ElementObject,
 } from "./element-objects.ts";
@@ -122,6 +122,8 @@ import {
 } from "./level-relations.ts";
 import {
   applyNativeCategories,
+  categoryDisplayName,
+  categoryFromNativeObjectEvidence,
   collectCategoryTokens,
   resolveElementCategories,
   type CategoryToken,
@@ -160,6 +162,9 @@ import {
   boundsPlanSegments,
   curtainAssemblyHelperProxyIds,
   displayMaterials,
+  excludeMeshElementIds,
+  isNonSceneObjectDefinition,
+  nonSceneNativeMeshHelperIds,
   isStairOrRailingHelperProxy,
   levelsForBounds,
   levelsFromRelations,
@@ -202,6 +207,16 @@ const DEFAULT_MAX_SEGMENTS = 12_000;
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
+
+/** Exact native classes used for narrow category/helper decisions below. */
+const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
+  605, // BaseRailingSym
+  967, // TopRailType
+  974, // ContourLabelingElem
+  0x0810, // FamilySymbol
+  3392, // FootprintRoof
+  3462, // RampSym
+]);
 
 /** Same backstop for sketch edges, which are chained pairwise per element. */
 const MAX_SKETCH_CURVES = 400_000;
@@ -935,6 +950,12 @@ export function convertRvtBytes(
     // only the chained ones. Used solely as a class key for the ring-synthesis
     // gate below; no object, placement or record is added from it.
     const markerByElement = new Map<number, number>();
+    // Some elements carry more than one independently framed native object —
+    // a FamilySymbol followed by its GElement, for example. The first marker is
+    // retained above for the existing consensus logic; the complete set is
+    // needed when an exact class identity decides whether an unlabelled record
+    // is a placed object or merely a reusable definition.
+    const markersByElement = new Map<number, Set<number>>();
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
@@ -1088,8 +1109,19 @@ export function convertRvtBytes(
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
         if (decoderPlan.elementBoundsDecoder) {
-          for (const [elementId, marker] of scanFramedObjectClasses(inflated)) {
-            if (!markerByElement.has(elementId)) markerByElement.set(elementId, marker);
+          const classEvidence = scanFramedObjectClassEvidence(
+            inflated,
+            NATIVE_OBJECT_EVIDENCE_MARKERS,
+          );
+          for (const [elementId, marker] of classEvidence.classes) {
+            if (!markerByElement.has(elementId)) {
+              markerByElement.set(elementId, marker);
+            }
+          }
+          for (const [elementId, pageMarkers] of classEvidence.trackedByElement) {
+            const markers = markersByElement.get(elementId) ?? new Set<number>();
+            for (const marker of pageMarkers) markers.add(marker);
+            markersByElement.set(elementId, markers);
           }
         }
         // Seed the object chain from every validated object marker on the page,
@@ -1752,6 +1784,22 @@ export function convertRvtBytes(
       }
     }
 
+    // A handful of elements lose their BuiltInCategory token while retaining a
+    // stronger class identity. Apply only the exact native-object rules: ramps,
+    // top-rail definitions, resolved baluster instances, and footprint roofs
+    // carrying their class-specific ridge-height parameter.
+    for (const record of elementBounds) {
+      if (record.categoryId != null || record.categoryName) continue;
+      const categoryId = categoryFromNativeObjectEvidence(
+        record,
+        markersByElement.get(record.elementId),
+      );
+      if (categoryId == null) continue;
+      record.categoryId = categoryId;
+      record.categoryName = categoryDisplayName(categoryId);
+      record.categorySource = "native-object";
+    }
+
     /*
      * A sketch-based element with no thickness at all takes its category's.
      *
@@ -2223,6 +2271,26 @@ export function convertRvtBytes(
       associatedLevelRelationCandidates,
       markerByElement,
     );
+    const nonSceneObjectDefinitionIds = new Set(
+      elementBounds
+        .filter((record) =>
+          isNonSceneObjectDefinition(
+            record,
+            markersByElement.get(record.elementId),
+            instancePlacements.has(record.elementId),
+          ),
+        )
+        .map((record) => record.elementId),
+    );
+    const nonSceneNativeMeshIds = nonSceneNativeMeshHelperIds(elementBounds);
+    for (const elementId of nonSceneObjectDefinitionIds) {
+      nonSceneNativeMeshIds.add(elementId);
+    }
+    for (const record of elementBounds) {
+      if (nonSceneNativeMeshIds.has(record.elementId)) {
+        record.renderGeometryProvenance = "not-rendered-helper";
+      }
+    }
     // An element needs a volume to be worth drawing, with one exception: a
     // sketch-bounded element is a plan boundary plus a thickness, and Revit can
     // record that thickness as zero. `prismGeometry` already substitutes a
@@ -2231,9 +2299,12 @@ export function convertRvtBytes(
     // perfectly good recovered outline.
     const boundedSolids = elementBounds.filter(
       (record) =>
-        solidBounds(record) ||
-        (record.loops?.length ?? 0) > 0 ||
-        (record.stairTreads?.length ?? 0) > 0,
+        !nonSceneNativeMeshIds.has(record.elementId) &&
+        (
+          solidBounds(record) ||
+          (record.loops?.length ?? 0) > 0 ||
+          (record.stairTreads?.length ?? 0) > 0
+        ),
     );
     if (boundedSolids.length) {
       onProgress?.({
@@ -2337,6 +2408,24 @@ export function convertRvtBytes(
           ),
         },
       );
+      nativeMeshScene.meshes = excludeMeshElementIds(
+        nativeMeshScene.meshes,
+        nonSceneNativeMeshIds,
+      );
+      nativeMeshScene.coveredElementIds = new Set(
+        [...nativeMeshScene.coveredElementIds].filter(
+          (elementId) => !nonSceneNativeMeshIds.has(elementId),
+        ),
+      );
+      nativeMeshScene.reconstructedElementIds = new Set(
+        [...nativeMeshScene.reconstructedElementIds].filter(
+          (elementId) => !nonSceneNativeMeshIds.has(elementId),
+        ),
+      );
+      nativeMeshScene.triangles = nativeMeshScene.meshes.reduce(
+        (total, mesh) => total + mesh.indices.length / 3,
+        0,
+      );
       const nativeMeshCleanup = cleanNativeMeshScene(
         nativeMeshScene.meshes,
         {
@@ -2370,7 +2459,7 @@ export function convertRvtBytes(
       // is not a subset of the display set, so the old difference of totals
       // could go negative and once reported "-3,547 records not rendered".
       const proxyDisplayBounds: typeof displayBounds = [];
-      let omittedHelperProxyCount = 0;
+      let omittedHelperProxyCount = nonSceneNativeMeshIds.size;
       let omittedCurtainAssemblyProxyCount = 0;
       const displayRecordById = new Map(
         displayBounds.map((record) => [record.elementId, record]),

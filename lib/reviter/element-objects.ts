@@ -152,18 +152,36 @@ export function scanObjectMarkers(data: Uint8Array): Map<number, number> {
  * supplied project it reads 417 MB of inflated pages in **3.9 s**, against the
  * 12.9 s the same pages cost to inflate.
  */
-export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {
+export function scanFramedObjectClassEvidence(
+  data: Uint8Array,
+  trackedMarkers: ReadonlySet<number> = new Set(),
+): {
+  classes: Map<number, number>;
+  trackedByElement: Map<number, Set<number>>;
+} {
   const classes = new Map<number, number>();
-  if (data.byteLength < 64) return classes;
+  const trackedByElement = new Map<number, Set<number>>();
+  if (data.byteLength < 64) return { classes, trackedByElement };
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
     if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
     const object = readObject(view, offset, data.byteLength);
-    if (!object || classes.has(object.elementId)) continue;
-    classes.set(object.elementId, object.marker);
+    if (!object) continue;
+    if (!classes.has(object.elementId)) {
+      classes.set(object.elementId, object.marker);
+    }
+    if (trackedMarkers.has(object.marker)) {
+      const markers = trackedByElement.get(object.elementId) ?? new Set<number>();
+      markers.add(object.marker);
+      trackedByElement.set(object.elementId, markers);
+    }
   }
-  return classes;
+  return { classes, trackedByElement };
+}
+
+export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {
+  return scanFramedObjectClassEvidence(data).classes;
 }
 
 /**

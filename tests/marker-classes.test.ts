@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   markerCategoryConsensus,
   scanFramedElementObjects,
+  scanFramedObjectClassEvidence,
   scanFramedObjectClasses,
 } from "../lib/reviter/element-objects.ts";
 
@@ -82,6 +83,17 @@ test("the first framed object claims the id", () => {
   writeObject(view, next, 8_200, 0x08c6, 48);
 
   assert.equal(scanFramedObjectClasses(data).get(8_200), 0x0d7b);
+});
+
+test("retains tracked secondary class markers without changing the primary class", () => {
+  const data = new Uint8Array(512);
+  const view = new DataView(data.buffer);
+  const next = writeObject(view, 0, 8_300, 0, 64);
+  writeObject(view, next, 8_300, 0x0810, 48);
+
+  const evidence = scanFramedObjectClassEvidence(data, new Set([0x0810]));
+  assert.equal(evidence.classes.get(8_300), 0);
+  assert.deepEqual([...evidence.trackedByElement.get(8_300)!], [0x0810]);
 });
 
 test("a marker's members speak for the member that carries no category token", () => {

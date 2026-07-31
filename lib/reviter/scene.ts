@@ -6,6 +6,7 @@
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
+import { REVIT_2027_FAMILY_SYMBOL_MARKER } from "./family-material-relations.ts";
 import type { WallArc, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 import {
@@ -318,6 +319,112 @@ const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
 
 /** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
 const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
+
+/** `ContourLabelingElem`, an annotation/drawing-aid class in Formats/Latest. */
+const REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = 974;
+
+/**
+ * An unlabelled type/annotation definition is not a placed scene element.
+ *
+ * Both identities come from exact framed classes in the file's own schema.
+ * Requiring no placement prevents a FamilyInstance from being mistaken for its
+ * FamilySymbol, and requiring no category keeps the rule from overruling an
+ * element the file itself names.
+ */
+export function isNonSceneObjectDefinition(
+  record: Pick<ElementBoundsRecord, "categoryId" | "categoryName">,
+  nativeMarkers: ReadonlySet<number> | undefined,
+  hasInstancePlacement: boolean,
+): boolean {
+  if (record.categoryId != null || record.categoryName || hasInstancePlacement) {
+    return false;
+  }
+  return Boolean(
+    nativeMarkers?.has(REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER) ||
+      nativeMarkers?.has(REVIT_2027_FAMILY_SYMBOL_MARKER),
+  );
+}
+
+/**
+ * Native faces that belong to persisted drawing helpers rather than model
+ * elements.
+ *
+ * Stair companion records are the sketch-side box that the owning stair part
+ * one id below already adopts.  Categoryless, synthetic horizontal geometry
+ * is likewise 2D sketch residue: it has no persisted element envelope, no
+ * independently rebuilt body, and no volume to display. Both are excluded
+ * from native batches as well as from proxy selection so the exact-mesh path
+ * cannot put a helper back into the scene after the display selector removed
+ * it.
+ */
+export function nonSceneNativeMeshHelperIds(
+  records: readonly ElementBoundsRecord[],
+): Set<number> {
+  const ids = new Set(records.map((record) => record.elementId));
+  const helpers = new Set<number>();
+  for (const record of records) {
+    if (
+      record.recordCode === STAIR_COMPANION_CODE &&
+      record.recordCount === 1 &&
+      ids.has(record.elementId - 1)
+    ) {
+      helpers.add(record.elementId);
+      continue;
+    }
+    if (
+      record.categoryId == null &&
+      !record.categoryName &&
+      record.recordOffset < 0 &&
+      !record.loops?.length &&
+      !record.stairTreads?.length &&
+      !record.railPath &&
+      !record.solid &&
+      !record.solids?.length &&
+      !record.arcs?.length &&
+      Math.abs(record.boundsFeet.max.z - record.boundsFeet.min.z) <= 1e-6
+    ) {
+      helpers.add(record.elementId);
+    }
+  }
+  return helpers;
+}
+
+/** Remove selected elements' triangles while preserving batch material data. */
+export function excludeMeshElementIds(
+  meshes: readonly MeshData[],
+  excluded: ReadonlySet<number>,
+): MeshData[] {
+  if (!excluded.size) return [...meshes];
+  const filtered: MeshData[] = [];
+  for (const mesh of meshes) {
+    const ids = mesh.elementIds;
+    if (!ids || ids.length * 3 !== mesh.indices.length) {
+      filtered.push(mesh);
+      continue;
+    }
+    let keptTriangles = 0;
+    for (const elementId of ids) if (!excluded.has(elementId)) keptTriangles += 1;
+    if (keptTriangles === ids.length) {
+      filtered.push(mesh);
+      continue;
+    }
+    if (!keptTriangles) continue;
+    const indices = new Uint32Array(keptTriangles * 3);
+    const elementIds = new Uint32Array(keptTriangles);
+    let at = 0;
+    for (let triangle = 0; triangle < ids.length; triangle += 1) {
+      const elementId = ids[triangle]!;
+      if (excluded.has(elementId)) continue;
+      indices[at * 3] = mesh.indices[triangle * 3]!;
+      indices[at * 3 + 1] = mesh.indices[triangle * 3 + 1]!;
+      indices[at * 3 + 2] = mesh.indices[triangle * 3 + 2]!;
+      elementIds[at] = elementId;
+      at += 1;
+    }
+    filtered.push({ ...mesh, indices, elementIds });
+  }
+  return filtered;
+}
 
 export function isStairOrRailingHelperProxy(
   record: Pick<
