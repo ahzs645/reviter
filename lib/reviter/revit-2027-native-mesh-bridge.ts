@@ -6,6 +6,13 @@ import {
   type Revit2027CertifiedOwnerFaceMesh,
 } from "./revit-2027-certified-owner-mesh.ts";
 import {
+  decodeRevit2027BalusterInstanceDefinition,
+  decodeRevit2027TopRailTypeEvidence,
+  REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
+  REVIT_2027_TOP_RAIL_TYPE_MARKER,
+  type Revit2027BalusterInstanceDefinition,
+} from "./revit-2027-baluster-instances.ts";
+import {
   isRevit2027BoundedTessellatorRoot,
   isRevit2027ConditionedGeometryRoot,
   isRevit2027DirectGeometryRoot,
@@ -155,6 +162,15 @@ export type Revit2027NativeMeshCollection = {
     ownerElementId: number | null;
     detail: string;
   }[];
+  /** Separately decoded, exact definitions admitted at the marker boundary. */
+  readonly alternateDefinitions?: number;
+  readonly alternateDefinitionFailures?: number;
+  readonly alternateDefinitionFailureSamples?: readonly {
+    ownerElementId: number | null;
+    detail: string;
+  }[];
+  /** Identified TopRailType frames withheld because no face body was proven. */
+  readonly topRailTypeEvidenceFrames?: number;
   /** Exact geometry owners requested by persisted instance placements. */
   readonly requestedOwnerDefinitions: number;
   readonly completeRequestedOwners: number;
@@ -182,6 +198,34 @@ type CompactOwnerDefinition = {
   /** Minimal exact metadata for a two-state conditioned geometry carrier. */
   conditionalStateCarrier: Revit2027ConditionalStateCarrier | null;
 };
+
+export type Revit2027AlternateDefinitionInput = {
+  ownerElementId: number;
+  owningRailingElementId: number;
+  geometry: Revit2027CompactOwnerMesh | null;
+  localComplete: boolean;
+  localFailureDetail: string | null;
+  nestedInstances: readonly Revit2027NestedInstance[];
+  requiredCompleteSymbolMeshIds: ReadonlySet<number>;
+  estimatedBytes: number;
+  source:
+    | "BaseRailingSym.m_balusterInstances"
+    | "fixture";
+};
+
+export type Revit2027AlternateDefinitionProviderResult =
+  | { ok: true; value: Revit2027AlternateDefinitionInput | null }
+  | { ok: false; error: string };
+
+export type Revit2027AlternateDefinitionProvider = (
+  data: Uint8Array,
+  frame: ReturnType<typeof scanFramedElementObjects>[number],
+  revitVersion: number,
+  limits: {
+    maxNestedLinks: number;
+    maxStoredBytes: number;
+  },
+) => Revit2027AlternateDefinitionProviderResult;
 
 export type Revit2027ConditionalStateCarrier = {
   displacement: readonly [number, number, number];
@@ -214,6 +258,15 @@ type MutableCollection = {
     ownerElementId: number | null;
     detail: string;
   }[];
+  alternateDefinitionInputs: Revit2027AlternateDefinitionInput[];
+  alternateDefinitionFailures: number;
+  alternateDefinitionFailureSamples: {
+    ownerElementId: number | null;
+    detail: string;
+  }[];
+  alternateDefinitions: number;
+  alternateDefinitionsFinalized: boolean;
+  topRailTypeEvidenceFrames: number;
   maxFailureSamples: number;
 };
 
@@ -646,6 +699,93 @@ function estimatedDefinitionBytes(
       face.mesh.groups.length * 512;
   }
   return bytes;
+}
+
+function defaultRevit2027AlternateDefinitionProvider(
+  data: Uint8Array,
+  frame: ReturnType<typeof scanFramedElementObjects>[number],
+  revitVersion: number,
+  limits: {
+    maxNestedLinks: number;
+    maxStoredBytes: number;
+  },
+): Revit2027AlternateDefinitionProviderResult {
+  if (frame.marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) {
+    return { ok: true, value: null };
+  }
+  const decoded = decodeRevit2027BalusterInstanceDefinition(
+    data,
+    frame,
+    revitVersion,
+    {
+      maxInstances: limits.maxNestedLinks,
+      maxFrameBytes: limits.maxStoredBytes,
+    },
+  );
+  if (!decoded.ok) return decoded;
+  const value: Revit2027BalusterInstanceDefinition = decoded.value;
+  return {
+    ok: true,
+    value: {
+      ownerElementId: value.ownerElementId,
+      owningRailingElementId: value.baseRailingElementId,
+      geometry: null,
+      localComplete: value.nestedInstances.length > 0,
+      localFailureDetail:
+        value.nestedInstances.length > 0
+          ? null
+          : "BaseRailingSym contains no placed baluster GInstances",
+      nestedInstances: value.nestedInstances,
+      requiredCompleteSymbolMeshIds: new Set([
+        ...value.familySymbolElementIds,
+        ...value.nestedInstances.map((instance) =>
+          Number(instance.symbolElementId)
+        ),
+      ]),
+      estimatedBytes: value.estimatedBytes,
+      source: value.source,
+    },
+  };
+}
+
+function nestedInstanceStructuralKey(
+  instance: Revit2027NestedInstance,
+): string {
+  return JSON.stringify({
+    symbolElementId: instance.symbolElementId.toString(),
+    gRepId: instance.gRepId,
+    cda: instance.cda,
+    matrix: instance.transform.matrix,
+    tagElementId: instance.tagElementId.toString(),
+    forbiddenTarget: instance.forbiddenTarget,
+    resolveSymbolInView: instance.resolveSymbolInView,
+    hasScale: instance.hasScale,
+  });
+}
+
+function alternateDefinitionEquivalent(
+  existing: CompactOwnerDefinition,
+  alternate: Revit2027AlternateDefinitionInput,
+): boolean {
+  if (
+    existing.ownerElementId !== alternate.ownerElementId ||
+    existing.localComplete !== alternate.localComplete ||
+    existing.localFailureDetail !== alternate.localFailureDetail ||
+    existing.geometry !== null ||
+    alternate.geometry !== null ||
+    existing.nestedInstances.length !== alternate.nestedInstances.length
+  ) {
+    return false;
+  }
+  const existingKeys = existing.nestedInstances
+    .map(nestedInstanceStructuralKey)
+    .sort();
+  const alternateKeys = alternate.nestedInstances
+    .map(nestedInstanceStructuralKey)
+    .sort();
+  return existingKeys.every(
+    (value, index) => value === alternateKeys[index],
+  );
 }
 
 type NestedGeometryMarker = {
@@ -1102,6 +1242,11 @@ function finalizeRevit2027NativeMeshCollection(
     nestedTriangles,
     nestedFailures,
     nestedFailureSamples,
+    alternateDefinitions: state.alternateDefinitions,
+    alternateDefinitionFailures: state.alternateDefinitionFailures,
+    alternateDefinitionFailureSamples:
+      state.alternateDefinitionFailureSamples,
+    topRailTypeEvidenceFrames: state.topRailTypeEvidenceFrames,
     requestedOwnerDefinitions: requestedOwners.size,
     completeRequestedOwners: completeRequestedOwners.length,
     partialRequestedOwners:
@@ -1119,6 +1264,8 @@ function finalizeRevit2027NativeMeshCollection(
 export function createRevit2027NativeMeshCollector(
   release: number | null | undefined,
   limits: Revit2027NativeMeshLimits = {},
+  alternateDefinitionProvider: Revit2027AlternateDefinitionProvider =
+    defaultRevit2027AlternateDefinitionProvider,
 ): Revit2027NativeMeshCollector {
   const maxStoredTriangles = safeLimit(
     limits.maxStoredTriangles,
@@ -1158,6 +1305,12 @@ export function createRevit2027NativeMeshCollector(
     truncated: false,
     incompleteSamples: [],
     nestedFailureSamples: [],
+    alternateDefinitionInputs: [],
+    alternateDefinitionFailures: 0,
+    alternateDefinitionFailureSamples: [],
+    alternateDefinitions: 0,
+    alternateDefinitionsFinalized: false,
+    topRailTypeEvidenceFrames: 0,
     maxFailureSamples,
   };
 
@@ -1170,13 +1323,146 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
+  const rememberAlternateDefinitionFailure = (
+    ownerElementId: number | null,
+    detail: string,
+  ): void => {
+    state.alternateDefinitionFailures += 1;
+    if (
+      state.alternateDefinitionFailureSamples.length <
+        state.maxFailureSamples
+    ) {
+      state.alternateDefinitionFailureSamples.push({
+        ownerElementId,
+        detail,
+      });
+    }
+  };
+
+  const admitAlternateDefinitions = (): void => {
+    if (state.alternateDefinitionsFinalized) return;
+    state.alternateDefinitionsFinalized = true;
+    for (const input of state.alternateDefinitionInputs) {
+      const owningRailing = state.definitions.get(
+        input.owningRailingElementId,
+      );
+      if (!owningRailing?.directRoot) {
+        rememberAlternateDefinitionFailure(
+          input.ownerElementId,
+          `${input.source} ownership ${input.owningRailingElementId} ` +
+            "does not resolve to an existing direct railing root",
+        );
+        continue;
+      }
+      const unresolvedSymbol = [
+        ...input.requiredCompleteSymbolMeshIds,
+      ].find((ownerElementId) => {
+          const definition = state.definitions.get(ownerElementId);
+          return !(
+            definition?.localComplete &&
+              definition.geometry &&
+              !state.conflictingOwnerIds.has(ownerElementId)
+          );
+        });
+      if (unresolvedSymbol != null) {
+        rememberAlternateDefinitionFailure(
+          input.ownerElementId,
+          `${input.source} symbol ${unresolvedSymbol} does not resolve ` +
+            "to a complete existing mesh",
+        );
+        continue;
+      }
+      const existing = state.definitions.get(input.ownerElementId);
+      if (existing) {
+        if (!alternateDefinitionEquivalent(existing, input)) {
+          state.conflictingOwnerIds.add(input.ownerElementId);
+          rememberAlternateDefinitionFailure(
+            input.ownerElementId,
+            `${input.source} conflicts with the marker-2246 definition`,
+          );
+        }
+        continue;
+      }
+      const definitionBytes = estimatedDefinitionBytes(
+        input.geometry,
+        input.nestedInstances,
+      );
+      const triangles = input.geometry?.triangles ?? 0;
+      if (
+        state.definitions.size >= maxOwners ||
+        state.storedTriangles + triangles > maxStoredTriangles ||
+        state.nestedLinks + input.nestedInstances.length >
+          maxNestedLinks ||
+        state.storedBytes + definitionBytes > maxStoredBytes
+      ) {
+        state.truncated = true;
+        rememberAlternateDefinitionFailure(
+          input.ownerElementId,
+          `${input.source} reached the native definition storage cap at ` +
+            `${state.storedTriangles} triangles, ${state.nestedLinks} links, ` +
+            `and ${state.storedBytes} estimated bytes`,
+        );
+        break;
+      }
+      state.definitions.set(input.ownerElementId, {
+        ownerElementId: input.ownerElementId,
+        directRoot: false,
+        boundedTessellatorRoot: false,
+        conditionedGeometryRoot: false,
+        embeddedGeometryRoot: false,
+        geometry: input.geometry,
+        localComplete: input.localComplete,
+        localFailureDetail: input.localFailureDetail,
+        nestedInstances: input.nestedInstances,
+        spiralReplay: null,
+        conditionalStateCarrier: null,
+      });
+      state.definitionFailures.delete(input.ownerElementId);
+      state.storedTriangles += triangles;
+      state.nestedLinks += input.nestedInstances.length;
+      state.storedBytes += definitionBytes;
+      state.alternateDefinitions += 1;
+    }
+  };
+
   return {
     release: release ?? null,
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
       for (const frame of scanFramedElementObjects(data)) {
         state.scannedFrames += 1;
-        if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+        if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) {
+          if (frame.marker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
+            const evidence = decodeRevit2027TopRailTypeEvidence(
+              data,
+              frame,
+              2027,
+            );
+            if (evidence.ok) {
+              state.topRailTypeEvidenceFrames += 1;
+            } else {
+              rememberAlternateDefinitionFailure(
+                frame.elementId,
+                evidence.error,
+              );
+            }
+          }
+          const alternate = alternateDefinitionProvider(
+            data,
+            frame,
+            2027,
+            { maxNestedLinks, maxStoredBytes },
+          );
+          if (!alternate.ok) {
+            rememberAlternateDefinitionFailure(
+              frame.elementId,
+              alternate.error,
+            );
+          } else if (alternate.value) {
+            state.alternateDefinitionInputs.push(alternate.value);
+          }
+          continue;
+        }
         const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
         if (!root.ok) {
           state.definitionFailures.set(
@@ -1419,6 +1705,7 @@ export function createRevit2027NativeMeshCollector(
       > = new Map(),
       owningElementByElement: ReadonlyMap<number, number> = new Map(),
     ): Revit2027NativeMeshCollection {
+      admitAlternateDefinitions();
       return finalizeRevit2027NativeMeshCollection(
         state,
         requestedOwnerIds,
