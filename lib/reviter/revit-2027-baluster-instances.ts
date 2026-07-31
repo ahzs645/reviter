@@ -13,6 +13,23 @@ import {
   type Revit2027InstanceInfo,
 } from "./revit-2027-ginstance.ts";
 import type { Revit2027NestedInstance } from "./revit-2027-nested-instance.ts";
+import {
+  decodeRevit2027GLine,
+  REVIT_2027_GLINE_BODY_BYTES,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+  type Revit2027GLine,
+} from "./revit-2027-gline.ts";
+import {
+  decodeRevit2027GArc,
+  REVIT_2027_GARC_BODY_BYTES,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+  type Revit2027GArc,
+} from "./revit-2027-garc.ts";
+import {
+  decodeRevit2027GHermiteSpline,
+  REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
+  type Revit2027GHermiteSpline,
+} from "./revit-2027-ghermite-spline.ts";
 
 /** `BaseRailingSym`, measured from the release-2027 framed class table. */
 export const REVIT_2027_BASE_RAILING_SYMBOL_MARKER = 605;
@@ -20,6 +37,8 @@ export const REVIT_2027_BASE_RAILING_SYMBOL_MARKER = 605;
 export const REVIT_2027_TOP_RAIL_TYPE_MARKER = 967;
 /** Formats/Latest source slot for `RailingCurveLoopData`. */
 export const REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT = 3444;
+/** Formats/Latest source slot for the `CurveLoop` property. */
+export const REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT = 1087;
 
 const FRAME_HEADER_BYTES = 18;
 const FRAME_ECHO_OFFSET = 16;
@@ -74,6 +93,35 @@ export type Revit2027TopRailTypeEvidence = {
 
 export type Revit2027TopRailTypeEvidenceResult =
   | { ok: true; value: Revit2027TopRailTypeEvidence }
+  | { ok: false; error: string };
+
+export type Revit2027TopRailCurveSegment = {
+  curve: Revit2027GLine | Revit2027GArc | Revit2027GHermiteSpline;
+  kind: "GLine" | "GArc" | "GHermiteSpline";
+  start: readonly [number, number, number];
+  end: readonly [number, number, number];
+};
+
+export type Revit2027TopRailCurveLoop = {
+  curveLoopDescriptorOffset: number;
+  heightsOffset: number;
+  curveLoopBodyOffset: number;
+  persistedBoolean: boolean;
+  segments: readonly Revit2027TopRailCurveSegment[];
+};
+
+export type Revit2027TopRailTypeCurves =
+  Omit<Revit2027TopRailTypeEvidence, "source"> & {
+    loops: readonly [
+      Revit2027TopRailCurveLoop,
+      Revit2027TopRailCurveLoop,
+    ];
+    curveCount: number;
+    source: "TopRailType.m_curveLoopData.curves";
+  };
+
+export type Revit2027TopRailTypeCurvesResult =
+  | { ok: true; value: Revit2027TopRailTypeCurves }
   | { ok: false; error: string };
 
 export type Revit2027BalusterDecoderLimits = {
@@ -218,11 +266,14 @@ function locateUniqueInstanceInfoBlock(
   data: Uint8Array,
   startOffset: number,
   endOffset: number,
+  count: number,
   paramsAndIds: readonly Revit2027BalusterParamAndId[],
 ): { ok: true; values: Array<
   Revit2027InstanceInfo
 > } | { ok: false; error: string } {
-  const count = paramsAndIds.length;
+  const allowedSymbolElementIds = new Set(
+    paramsAndIds.map(({ symbolElementId }) => symbolElementId),
+  );
   const byteLength = count * REVIT_2027_INSTANCE_INFO_BODY_BYTES;
   const matches: Revit2027InstanceInfo[][] = [];
   for (
@@ -241,8 +292,9 @@ function locateUniqueInstanceInfoBlock(
       );
       if (
         !decoded.ok ||
-        positiveObjectId(decoded.value.symbolElementId) !==
-          paramsAndIds[index]!.symbolElementId
+        !allowedSymbolElementIds.has(
+          positiveObjectId(decoded.value.symbolElementId) ?? -1,
+        )
       ) {
         break;
       }
@@ -259,7 +311,7 @@ function locateUniqueInstanceInfoBlock(
       ok: false,
       error:
         `BaseRailingSym requires one exact ${count}-entry InstanceInfo body block ` +
-        `matching m_paramsAndIds; found ${matches.length}`,
+        `whose symbol ids belong to m_paramsAndIds; found ${matches.length}`,
     };
   }
   return { ok: true, values: matches[0]! };
@@ -272,8 +324,12 @@ function locateUniqueInstanceInfoBlock(
  * The parent symbol payload between the derived suffix and the queued bodies
  * remains opaque. It is never searched for ids or transforms. The two dynamic
  * blocks are accepted only when their exact fixed-body decoders produce one
- * unique, count-sized run and every InstanceInfo symbol agrees with the
- * corresponding persisted params record.
+ * unique, instance-count-sized run. `m_paramsAndIds` is not an occurrence
+ * array: the supplied model has 9,045 placed GInstances and 2,675 parameter
+ * rows. Its independently decoded InstanceInfo block proves the join instead:
+ * the set of its symbol ids equals the set of persisted `m_symId` values,
+ * while duplicate parameter rows are permitted because the corpus contains
+ * 63 of them.
  */
 export function decodeRevit2027BalusterInstanceDefinition(
   data: Uint8Array,
@@ -353,12 +409,11 @@ export function decodeRevit2027BalusterInstanceDefinition(
   }
   const paramsCount = framed.view.getInt32(cursor, true);
   cursor += 4;
-  if (paramsCount !== balusters.collection.count) {
+  if (paramsCount <= 0 || paramsCount > maxInstances) {
     return {
       ok: false,
       error:
-        `BaseRailingSym count mismatch: ${balusters.collection.count} ` +
-        `m_balusterInstances versus ${paramsCount} m_paramsAndIds`,
+        "BaseRailingSym m_paramsAndIds count is empty or exceeds the link cap",
     };
   }
   if (
@@ -478,19 +533,43 @@ export function decodeRevit2027BalusterInstanceDefinition(
     data,
     cursor,
     framed.echoOffset,
-    paramsCount,
+    balusters.collection.count,
   );
   if (!gInstances.ok) return gInstances;
   const instanceInfos = locateUniqueInstanceInfoBlock(
     data,
     cursor,
     framed.echoOffset,
+    balusters.collection.count,
     paramsAndIds,
   );
   if (!instanceInfos.ok) return instanceInfos;
 
+  const paramsSymbolElementIds = new Set(
+    paramsAndIds.map(({ symbolElementId }) => symbolElementId),
+  );
+  const instanceSymbolElementIds = new Set(
+    instanceInfos.values.flatMap((info) => {
+      const id = positiveObjectId(info.symbolElementId);
+      return id == null ? [] : [id];
+    }),
+  );
+  if (
+    paramsSymbolElementIds.size !== instanceSymbolElementIds.size ||
+    [...paramsSymbolElementIds].some(
+      (symbolElementId) => !instanceSymbolElementIds.has(symbolElementId),
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "BaseRailingSym m_paramsAndIds m_symId set does not match the " +
+        "InstanceInfo symbol-id set",
+    };
+  }
+
   const nestedInstances: Revit2027NestedInstance[] = [];
-  for (let index = 0; index < paramsCount; index += 1) {
+  for (let index = 0; index < balusters.collection.count; index += 1) {
     const instance = gInstances.values[index]!;
     const info = instanceInfos.values[index]!;
     const symbolElementId = positiveObjectId(info.symbolElementId);
@@ -500,7 +579,7 @@ export function decodeRevit2027BalusterInstanceDefinition(
     nestedInstances.push({
       ownerElementId: BigInt(frame.elementId),
       instanceReplayIndex: index,
-      instanceInfoReplayIndex: paramsCount + index,
+      instanceInfoReplayIndex: balusters.collection.count + index,
       path: [index],
       symbolElementId: BigInt(symbolElementId),
       gRepId: info.gRepId,
@@ -599,6 +678,369 @@ export function decodeRevit2027TopRailTypeEvidence(
       frameEndOffset: framed.echoOffset + 4,
       objectLength: frame.objectLength,
       source: "TopRailType.m_curveLoopData",
+    },
+  };
+}
+
+type LocatedRailingCurveLoopData = {
+  descriptorOffset: number;
+  heightsOffset: number;
+  endOffset: number;
+  heights: number[];
+};
+
+function locateRailingCurveLoopDataPair(
+  data: Uint8Array,
+  startOffset: number,
+  endOffset: number,
+  maxInstances: number,
+): { ok: true; value: readonly [
+  LocatedRailingCurveLoopData,
+  LocatedRailingCurveLoopData,
+] } | { ok: false; error: string } {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const matches: Array<readonly [
+    LocatedRailingCurveLoopData,
+    LocatedRailingCurveLoopData,
+  ]> = [];
+  const readOne = (
+    descriptorOffset: number,
+  ): LocatedRailingCurveLoopData | null => {
+    const descriptor = decodeCondInt16PropertyDescriptor(
+      data,
+      descriptorOffset,
+    );
+    if (
+      !descriptor.ok ||
+      descriptor.descriptor.token !== -1 ||
+      descriptor.descriptor.sourceClassSlot !==
+        REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT ||
+      descriptor.descriptor.endOffset > endOffset - 4
+    ) {
+      return null;
+    }
+    const count = view.getInt32(descriptor.descriptor.endOffset, true);
+    const heightsOffset = descriptor.descriptor.endOffset + 4;
+    if (
+      count < 0 ||
+      count % 2 !== 0 ||
+      count / 2 > maxInstances ||
+      heightsOffset > endOffset - count * 8
+    ) {
+      return null;
+    }
+    const heights: number[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const value = view.getFloat64(heightsOffset + index * 8, true);
+      if (!Number.isFinite(value)) return null;
+      heights.push(value);
+    }
+    return {
+      descriptorOffset,
+      heightsOffset,
+      endOffset: heightsOffset + count * 8,
+      heights,
+    };
+  };
+  for (let offset = startOffset; offset <= endOffset - 20; offset += 1) {
+    const first = readOne(offset);
+    if (!first) continue;
+    const second = readOne(first.endOffset);
+    if (!second) continue;
+    matches.push([first, second]);
+    offset = second.endOffset - 1;
+  }
+  if (matches.length !== 1) {
+    return {
+      ok: false,
+      error:
+        "TopRailType requires one exact adjacent pair of " +
+        `RailingCurveLoopData bodies; found ${matches.length}`,
+    };
+  }
+  return { ok: true, value: matches[0]! };
+}
+
+/**
+ * Decode the complete curve evidence in a release-2027 `TopRailType` frame.
+ *
+ * The parent type payload remains opaque. The derived bodies are located only
+ * by a single schema-complete sequence that accounts for the frame tail:
+ * adjacent `RailingCurveLoopData` records each contribute one CurveLoop
+ * descriptor and two heights per curve; two strict-boolean CurveLoop bodies
+ * contribute consecutive GLine/GArc descriptor arrays; and the corresponding
+ * schema-complete fixed bodies end exactly at the independently validated
+ * length echo. A curve array containing any other source class fails closed.
+ *
+ * This reader deliberately returns curves, not a solid. In the supplied model
+ * the two target paths persist their plan separation and elevations, but the
+ * frame supplies neither a section profile nor a vertical section dimension.
+ */
+export function decodeRevit2027TopRailTypeCurves(
+  data: Uint8Array,
+  frame: ElementObject,
+  revitVersion: number,
+  limits: Revit2027BalusterDecoderLimits = {},
+): Revit2027TopRailTypeCurvesResult {
+  const evidence = decodeRevit2027TopRailTypeEvidence(
+    data,
+    frame,
+    revitVersion,
+  );
+  if (!evidence.ok) return evidence;
+  const maxInstances = safeLimit(limits.maxInstances, DEFAULT_MAX_INSTANCES);
+  const maxFrameBytes = safeLimit(limits.maxFrameBytes, DEFAULT_MAX_FRAME_BYTES);
+  const framed = validateFrame(
+    data,
+    frame,
+    REVIT_2027_TOP_RAIL_TYPE_MARKER,
+    revitVersion,
+    maxFrameBytes,
+  );
+  if (!framed.ok) return framed;
+
+  const derivedLoops = decodeCondInt16QueueCollection(
+    data,
+    frame.offset + TOP_RAIL_TYPE_DERIVED_OFFSET,
+  );
+  if (!derivedLoops.ok) {
+    return { ok: false, error: derivedLoops.error };
+  }
+  const dataPair = locateRailingCurveLoopDataPair(
+    data,
+    derivedLoops.collection.endOffset + 8,
+    framed.echoOffset,
+    maxInstances,
+  );
+  if (!dataPair.ok) return dataPair;
+
+  const curveBodyMatches: {
+    bodyOffsets: readonly [number, number];
+    persistedBooleans: readonly [boolean, boolean];
+    collections: readonly [
+      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true },
+      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true },
+    ];
+    curves: Array<{
+      curve: Revit2027GLine | Revit2027GArc | Revit2027GHermiteSpline;
+      kind: "GLine" | "GArc" | "GHermiteSpline";
+    }>;
+  }[] = [];
+  for (
+    let offset = dataPair.value[1].endOffset;
+    offset < framed.echoOffset;
+    offset += 1
+  ) {
+    const firstBoolean = readBoolean(data, offset);
+    if (firstBoolean == null) continue;
+    const first = decodeCondInt16QueueCollection(data, offset + 1, {
+      maxEntries: maxInstances,
+    });
+    if (!first.ok || first.collection.count <= 0) continue;
+    const secondOffset = first.collection.endOffset;
+    const secondBoolean = readBoolean(data, secondOffset);
+    if (secondBoolean == null) continue;
+    const second = decodeCondInt16QueueCollection(data, secondOffset + 1, {
+      maxEntries: maxInstances,
+    });
+    if (
+      !second.ok ||
+      second.collection.count <= 0
+    ) {
+      continue;
+    }
+    const entries = [
+      ...first.collection.entries,
+      ...second.collection.entries,
+    ];
+    if (
+      entries.length > maxInstances ||
+      entries.some(
+        (entry) =>
+          entry.token <= 0 ||
+          entry.sourceClassSlot !== REVIT_2027_GLINE_SOURCE_CLASS_SLOT &&
+          entry.sourceClassSlot !== REVIT_2027_GARC_SOURCE_CLASS_SLOT &&
+          entry.sourceClassSlot !==
+            REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
+      ) ||
+      entries.some(
+        (entry, index) =>
+          index > 0 && entry.token !== entries[index - 1]!.token + 1,
+      )
+    ) {
+      continue;
+    }
+    let curveOffset = second.collection.endOffset;
+    const curves: Array<{
+      curve: Revit2027GLine | Revit2027GArc | Revit2027GHermiteSpline;
+      kind: "GLine" | "GArc" | "GHermiteSpline";
+    }> = [];
+    for (const entry of entries) {
+      if (entry.sourceClassSlot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT) {
+        const decoded = decodeRevit2027GLine(
+          data,
+          curveOffset,
+          curveOffset + REVIT_2027_GLINE_BODY_BYTES,
+          revitVersion,
+        );
+        if (!decoded.ok) break;
+        curves.push({ curve: decoded.value, kind: "GLine" });
+        curveOffset = decoded.value.endOffset;
+      } else if (
+        entry.sourceClassSlot === REVIT_2027_GARC_SOURCE_CLASS_SLOT
+      ) {
+        const decoded = decodeRevit2027GArc(
+          data,
+          curveOffset,
+          curveOffset + REVIT_2027_GARC_BODY_BYTES,
+          revitVersion,
+        );
+        if (!decoded.ok) break;
+        curves.push({ curve: decoded.value, kind: "GArc" });
+        curveOffset = decoded.value.endOffset;
+      } else {
+        const decoded = decodeRevit2027GHermiteSpline(
+          data,
+          curveOffset,
+          framed.echoOffset,
+          revitVersion,
+          { maxNodes: maxInstances },
+        );
+        if (!decoded.ok) break;
+        curves.push({ curve: decoded.value, kind: "GHermiteSpline" });
+        curveOffset = decoded.value.endOffset;
+      }
+    }
+    if (curves.length !== entries.length || curveOffset !== framed.echoOffset) {
+      continue;
+    }
+    curveBodyMatches.push({
+      bodyOffsets: [offset, secondOffset],
+      persistedBooleans: [firstBoolean, secondBoolean],
+      collections: [first, second],
+      curves,
+    });
+  }
+  if (curveBodyMatches.length !== 1) {
+    return {
+      ok: false,
+      error:
+        "TopRailType requires one exact two-CurveLoop curve descriptor " +
+        `sequence ending at its line bodies; found ${curveBodyMatches.length}`,
+    };
+  }
+
+  const match = curveBodyMatches[0]!;
+  const counts = match.collections.map(
+    (collection) => collection.collection.count,
+  );
+  for (let loopIndex = 0; loopIndex < 2; loopIndex += 1) {
+    const heightCount = dataPair.value[loopIndex]!.heights.length;
+    if (heightCount !== 0 && heightCount !== counts[loopIndex]! * 2) {
+      return {
+        ok: false,
+        error:
+          `TopRailType loop ${loopIndex} has ${heightCount} persisted heights ` +
+          `for ${counts[loopIndex]} curves`,
+      };
+    }
+  }
+  const totalCurveCount = counts[0]! + counts[1]!;
+  for (const decoded of match.curves) {
+    if (decoded.kind !== "GHermiteSpline") continue;
+    const spline = decoded.curve as Revit2027GHermiteSpline;
+    const first = spline.nodes[0];
+    const last = spline.nodes.at(-1);
+    if (
+      !first ||
+      !last ||
+      Math.abs(first.parameter - spline.endParameters[0]) > 1e-9 ||
+      Math.abs(last.parameter - spline.endParameters[1]) > 1e-9
+    ) {
+      return {
+        ok: false,
+        error:
+          "TopRailType GHermiteSpline endpoints do not coincide with its " +
+          "bounded persisted node array",
+      };
+    }
+  }
+
+  let curveIndex = 0;
+  const decodeLoop = (loopIndex: 0 | 1): Revit2027TopRailCurveLoop => {
+    const item = dataPair.value[loopIndex];
+    const segments: Revit2027TopRailCurveSegment[] = [];
+    for (let index = 0; index < counts[loopIndex]!; index += 1) {
+      const decoded = match.curves[curveIndex++]!;
+      const startParameter = decoded.curve.endParameters[0];
+      const endParameter = decoded.curve.endParameters[1];
+      const pointAt = (
+        parameter: number,
+      ): readonly [number, number, number] => {
+        if (decoded.kind === "GLine") {
+          const line = decoded.curve as Revit2027GLine;
+          return [
+            line.origin[0] + line.direction[0] * parameter,
+            line.origin[1] + line.direction[1] * parameter,
+            line.origin[2] + line.direction[2] * parameter,
+          ];
+        }
+        if (decoded.kind === "GHermiteSpline") {
+          const spline = decoded.curve as Revit2027GHermiteSpline;
+          return Math.abs(parameter - spline.endParameters[0]) <= 1e-9
+            ? spline.nodes[0]!.point
+            : spline.nodes.at(-1)!.point;
+        }
+        const arc = decoded.curve as Revit2027GArc;
+        const cosine = Math.cos(parameter);
+        const sine = Math.sin(parameter);
+        return [
+          arc.center[0] +
+            arc.radius *
+              (arc.xDirection[0] * cosine + arc.yDirection[0] * sine),
+          arc.center[1] +
+            arc.radius *
+              (arc.xDirection[1] * cosine + arc.yDirection[1] * sine),
+          arc.center[2] +
+            arc.radius *
+              (arc.xDirection[2] * cosine + arc.yDirection[2] * sine),
+        ];
+      };
+      const rawStart = pointAt(startParameter);
+      const rawEnd = pointAt(endParameter);
+      const start = [
+        rawStart[0],
+        rawStart[1],
+        item.heights.length
+          ? item.heights[index * 2]!
+          : rawStart[2],
+      ] as const;
+      const end = [
+        rawEnd[0],
+        rawEnd[1],
+        item.heights.length
+          ? item.heights[index * 2 + 1]!
+          : rawEnd[2],
+      ] as const;
+      segments.push({ ...decoded, start, end });
+    }
+    return {
+      curveLoopDescriptorOffset: item.descriptorOffset,
+      heightsOffset: item.heightsOffset,
+      curveLoopBodyOffset: match.bodyOffsets[loopIndex]!,
+      persistedBoolean: match.persistedBooleans[loopIndex]!,
+      segments,
+    };
+  };
+  const decodedLoops = [decodeLoop(0), decodeLoop(1)] as const;
+
+  return {
+    ok: true,
+    value: {
+      ...evidence.value,
+      loops: decodedLoops,
+      curveCount: totalCurveCount,
+      source: "TopRailType.m_curveLoopData.curves",
     },
   };
 }
