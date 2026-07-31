@@ -28,7 +28,7 @@ import { convertModel } from "./audit-coverage.ts";
 import { framingBoundsOfRecords, solidBounds } from "../lib/reviter/bounds-records.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 
-import type { Bounds3, ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
+import type { Bounds3, ConvertResult, ElementBoundsRecord, MeshData } from "../lib/reviter/types.ts";
 
 const FEET_PER_METRE = 3.280839895;
 
@@ -43,6 +43,49 @@ const CLOSE = 0.5;
 const HULL_SLACK_FEET = 1;
 
 export type Box = [number, number, number, number, number, number];
+
+/**
+ * Measure the triangles that actually reached the viewer, grouped by their
+ * native Revit id.
+ *
+ * A native mesh can be much tighter than the duplicated record envelope that
+ * admitted it. Stair stringers in this file are the important case: their
+ * native triangles occupy one tread-height band while the corroborating record
+ * spans several storeys. Falling back to the record for those elements makes
+ * the offline overlay report a box that the app never draws.
+ */
+export function meshBoundsByElement(
+  meshes: readonly MeshData[],
+  origin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
+): Map<number, Box> {
+  const bounds = new Map<number, Box>();
+  for (const mesh of meshes) {
+    if (!mesh.elementIds?.length) continue;
+    const triangleCount = Math.min(mesh.elementIds.length, Math.floor(mesh.indices.length / 3));
+    for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+      const elementId = mesh.elementIds[triangle]!;
+      let box = bounds.get(elementId);
+      if (!box) {
+        box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+        bounds.set(elementId, box);
+      }
+      for (let corner = 0; corner < 3; corner += 1) {
+        const vertex = mesh.indices[triangle * 3 + corner]! * 3;
+        const localX = mesh.positions[vertex];
+        const localY = mesh.positions[vertex + 1];
+        const localZ = mesh.positions[vertex + 2];
+        if (localX == null || localY == null || localZ == null) continue;
+        const x = localX + origin.x;
+        const y = localY + origin.y;
+        const z = localZ + origin.z;
+        box[0] = Math.min(box[0], x); box[3] = Math.max(box[3], x);
+        box[1] = Math.min(box[1], y); box[4] = Math.max(box[4], y);
+        box[2] = Math.min(box[2], z); box[5] = Math.max(box[5], z);
+      }
+    }
+  }
+  return bounds;
+}
 
 /** `#id=IFCTYPE(...)` products and their Revit element id, by express id. */
 function readProducts(text: string): Map<number, { type: string; tag: number }> {
@@ -300,9 +343,16 @@ export function computeOverlay(
   truth: Map<number, { type: string; box: Box; parts?: Box[] }>,
 ): OverlayResult {
   const drawn = selectDisplayBounds(
-    outcome.elementBounds.filter((record) => solidBounds(record) || (record.loops?.length ?? 0) > 0),
+    outcome.elementBounds.filter(
+      (record) =>
+        record.renderGeometryProvenance !== "not-rendered-helper" &&
+        (solidBounds(record) || (record.loops?.length ?? 0) > 0),
+    ),
   ).records;
   const byId = new Map(drawn.map((record) => [record.elementId, record]));
+  const renderedBounds = meshBoundsByElement(outcome.meshes, outcome.origin);
+  const displayedBounds = (record: ElementBoundsRecord) =>
+    renderedBounds.get(record.elementId) ?? drawnBounds(record);
 
   const buildingBox: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   for (const { box } of truth.values()) {
@@ -341,7 +391,7 @@ export function computeOverlay(
   const escaped: EscapedRecord[] = [];
   let worstOverhangFeet = 0;
   for (const record of drawn) {
-    const box = drawnBounds(record);
+    const box = displayedBounds(record);
     let overhang = 0;
     for (let axis = 0; axis < 3; axis += 1) {
       overhang = Math.max(
@@ -370,7 +420,7 @@ export function computeOverlay(
   for (const record of drawn) {
     const own = truth.get(record.elementId);
     if (!own) continue;
-    const box = drawnBounds(record);
+    const box = displayedBounds(record);
     let overhang = 0;
     for (let axis = 0; axis < 3; axis += 1) {
       overhang = Math.max(
@@ -416,7 +466,7 @@ export function computeOverlay(
   for (const [tag, { type, box, parts }] of truth) {
     const record = byId.get(tag);
     if (!record) continue;
-    const got = drawnBounds(record);
+    const got = displayedBounds(record);
     const [dCentre, dSize] = errorsAgainst(got, box);
 
     // The nearest single product, chosen on centre error: an element the

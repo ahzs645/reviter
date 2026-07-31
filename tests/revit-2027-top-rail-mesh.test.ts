@@ -8,6 +8,7 @@ import type {
 } from "../lib/reviter/revit-2027-baluster-instances.ts";
 import {
   meshRevit2027MeasuredSquareTopRail,
+  meshRevit2027MeasuredSquareTopRailRuns,
   REVIT_2027_MEASURED_SQUARE_TOP_RAIL_SECTION_FEET,
 } from "../lib/reviter/revit-2027-top-rail-mesh.ts";
 
@@ -91,4 +92,24 @@ test("fails closed outside the measured flat GLine section family", () => {
   const first = unsupported.loops[0].segments[0]!;
   (first as { kind: string }).kind = "GArc";
   assert.equal(meshRevit2027MeasuredSquareTopRail(unsupported), null);
+});
+
+test("meshes every consecutive edge-loop pair in a multi-run top rail", () => {
+  const first = curves();
+  const multiRun: Revit2027TopRailTypeCurves = {
+    ...first,
+    curveLoopCount: 4,
+    loops: [...first.loops, ...first.loops],
+    curveCount: first.curveCount * 2,
+  };
+
+  assert.equal(
+    meshRevit2027MeasuredSquareTopRail(multiRun),
+    null,
+    "the single-run primitive does not silently discard extra loops",
+  );
+  const runs = meshRevit2027MeasuredSquareTopRailRuns(multiRun);
+  assert.ok(runs);
+  assert.equal(runs.length, 2);
+  assert.deepEqual(runs.map((run) => run.triangles), [12, 12]);
 });

@@ -49,7 +49,7 @@ import {
   type Revit2027GRepReplay,
 } from "./revit-2027-grep-replay.ts";
 import { meshRevit2027SpiralStairReplay } from "./revit-2027-spiral-stair-mesh.ts";
-import { meshRevit2027MeasuredSquareTopRail } from "./revit-2027-top-rail-mesh.ts";
+import { meshRevit2027MeasuredSquareTopRailRuns } from "./revit-2027-top-rail-mesh.ts";
 import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
 import {
   collectRevit2027GInstanceBindings,
@@ -276,6 +276,11 @@ type MutableCollection = {
 export type Revit2027NativeMeshCollector = {
   readonly release: number | null;
   scanPage(data: Uint8Array): void;
+  /**
+   * Admit one independently reassembled alternate frame whose size or page
+   * split kept it outside the ordinary framed-object scanner.
+   */
+  scanAlternateFrame(data: Uint8Array): void;
   /**
    * Finalize direct scene roots plus only the non-direct definitions proven to
    * be referenced by persisted instance placements.
@@ -724,8 +729,16 @@ function defaultRevit2027AlternateDefinitionProvider(
       },
     );
     if (!decoded.ok) return decoded;
-    const topRail = meshRevit2027MeasuredSquareTopRail(decoded.value);
-    if (!topRail) return { ok: true, value: null };
+    const topRails = meshRevit2027MeasuredSquareTopRailRuns(decoded.value);
+    if (!topRails) return { ok: true, value: null };
+    const faces = topRails.map((topRail, index) => ({
+      faceToken: index,
+      mesh: topRail.mesh,
+    }));
+    const triangles = topRails.reduce(
+      (total, topRail) => total + topRail.triangles,
+      0,
+    );
     return {
       ok: true,
       value: {
@@ -733,8 +746,8 @@ function defaultRevit2027AlternateDefinitionProvider(
         owningRailingElementId: null,
         geometry: {
           ownerElementId: decoded.value.ownerElementId,
-          faces: [{ faceToken: topRail.faceToken, mesh: topRail.mesh }],
-          triangles: topRail.triangles,
+          faces,
+          triangles,
         },
         localComplete: true,
         localFailureDetail: null,
@@ -743,8 +756,8 @@ function defaultRevit2027AlternateDefinitionProvider(
         estimatedBytes: estimatedDefinitionBytes(
           {
             ownerElementId: decoded.value.ownerElementId,
-            faces: [{ faceToken: topRail.faceToken, mesh: topRail.mesh }],
-            triangles: topRail.triangles,
+            faces,
+            triangles,
           },
           [],
         ),
@@ -1393,6 +1406,41 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
+  const collectAlternateDefinition = (
+    data: Uint8Array,
+    frame: ReturnType<typeof scanFramedElementObjects>[number],
+  ): void => {
+    if (frame.marker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
+      const evidence = decodeRevit2027TopRailTypeCurves(
+        data,
+        frame,
+        2027,
+      );
+      if (evidence.ok) {
+        state.topRailTypeEvidenceFrames += 1;
+      } else {
+        rememberAlternateDefinitionFailure(
+          frame.elementId,
+          evidence.error,
+        );
+      }
+    }
+    const alternate = alternateDefinitionProvider(
+      data,
+      frame,
+      2027,
+      { maxNestedLinks, maxStoredBytes },
+    );
+    if (!alternate.ok) {
+      rememberAlternateDefinitionFailure(
+        frame.elementId,
+        alternate.error,
+      );
+    } else if (alternate.value) {
+      state.alternateDefinitionInputs.push(alternate.value);
+    }
+  };
+
   const admitAlternateDefinitions = (): void => {
     if (state.alternateDefinitionsFinalized) return;
     state.alternateDefinitionsFinalized = true;
@@ -1489,40 +1537,42 @@ export function createRevit2027NativeMeshCollector(
 
   return {
     release: release ?? null,
+    scanAlternateFrame(data: Uint8Array): void {
+      if (!state.enabled || state.truncated || data.byteLength < 60) return;
+      const view = new DataView(
+        data.buffer,
+        data.byteOffset,
+        data.byteLength,
+      );
+      const elementId = view.getUint32(0, true);
+      const objectLength = view.getUint32(12, true);
+      const marker = view.getUint16(16, true);
+      if (
+        elementId === 0 ||
+        view.getUint32(4, true) !== 0 ||
+        objectLength < 40 ||
+        objectLength + 20 !== data.byteLength ||
+        (marker !== REVIT_2027_TOP_RAIL_TYPE_MARKER &&
+          marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) ||
+        view.getUint32(objectLength + 16, true) !== objectLength
+      ) {
+        return;
+      }
+      state.scannedFrames += 1;
+      collectAlternateDefinition(data, {
+        offset: 0,
+        elementId,
+        objectLength,
+        marker,
+        typeCode: view.getUint32(18, true),
+      });
+    },
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
       for (const frame of scanFramedElementObjects(data)) {
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) {
-          if (frame.marker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
-            const evidence = decodeRevit2027TopRailTypeCurves(
-              data,
-              frame,
-              2027,
-            );
-            if (evidence.ok) {
-              state.topRailTypeEvidenceFrames += 1;
-            } else {
-              rememberAlternateDefinitionFailure(
-                frame.elementId,
-                evidence.error,
-              );
-            }
-          }
-          const alternate = alternateDefinitionProvider(
-            data,
-            frame,
-            2027,
-            { maxNestedLinks, maxStoredBytes },
-          );
-          if (!alternate.ok) {
-            rememberAlternateDefinitionFailure(
-              frame.elementId,
-              alternate.error,
-            );
-          } else if (alternate.value) {
-            state.alternateDefinitionInputs.push(alternate.value);
-          }
+          collectAlternateDefinition(data, frame);
           continue;
         }
         const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);

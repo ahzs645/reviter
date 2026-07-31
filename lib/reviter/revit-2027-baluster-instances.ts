@@ -47,7 +47,7 @@ const BASE_RAILING_SYMBOL_DERIVED_OFFSET = 149;
 const PARAMS_AND_ID_BYTES = 57;
 const BASE_RAILING_SYMBOL_DERIVED_SUFFIX_BYTES = 35;
 const TOP_RAIL_TYPE_DERIVED_OFFSET = 149;
-const TOP_RAIL_TYPE_CURVE_LOOP_COUNT = 2;
+const MIN_TOP_RAIL_TYPE_CURVE_LOOPS = 2;
 const DEFAULT_MAX_INSTANCES = 100_000;
 const DEFAULT_MAX_FRAME_BYTES = 320 * 1024 * 1024;
 
@@ -83,7 +83,7 @@ export type Revit2027BalusterInstanceDecodeResult =
 export type Revit2027TopRailTypeEvidence = {
   ownerElementId: number;
   owningTopRailElementId: number;
-  curveLoopCount: 2;
+  curveLoopCount: number;
   curveLoopSourceClassSlot: 3444;
   frameOffset: number;
   frameEndOffset: number;
@@ -112,10 +112,8 @@ export type Revit2027TopRailCurveLoop = {
 
 export type Revit2027TopRailTypeCurves =
   Omit<Revit2027TopRailTypeEvidence, "source"> & {
-    loops: readonly [
-      Revit2027TopRailCurveLoop,
-      Revit2027TopRailCurveLoop,
-    ];
+    /** Consecutive outer/inner edge-loop pairs for each disconnected rail run. */
+    loops: readonly Revit2027TopRailCurveLoop[];
     curveCount: number;
     source: "TopRailType.m_curveLoopData.curves";
   };
@@ -618,9 +616,10 @@ export function decodeRevit2027BalusterInstanceDefinition(
 /**
  * Identify the marker-967 representation without promoting its curve records
  * to faces. Formats/Latest names class id 969 as `TopRailType` and source slot
- * 3444 as `RailingCurveLoopData`; the target frame carries exactly two such
- * descriptors followed by the owning TopRail id. No certified sweep/profile
- * body is implied by this evidence reader.
+ * 3444 as `RailingCurveLoopData`; the target frame carries an even collection
+ * of such descriptors followed by the owning TopRail id. Each consecutive pair
+ * describes the two persisted edges of one disconnected rail run. No certified
+ * sweep/profile body is implied by this evidence reader.
  */
 export function decodeRevit2027TopRailTypeEvidence(
   data: Uint8Array,
@@ -646,7 +645,8 @@ export function decodeRevit2027TopRailTypeEvidence(
     return { ok: false, error: `TopRailType curve-loop array: ${loops.error}` };
   }
   if (
-    loops.collection.count !== TOP_RAIL_TYPE_CURVE_LOOP_COUNT ||
+    loops.collection.count < MIN_TOP_RAIL_TYPE_CURVE_LOOPS ||
+    loops.collection.count % 2 !== 0 ||
     loops.collection.entries.some(
       (entry) =>
         entry.token !== -1 ||
@@ -656,7 +656,9 @@ export function decodeRevit2027TopRailTypeEvidence(
   ) {
     return {
       ok: false,
-      error: "TopRailType does not contain the certified two RailingCurveLoopData descriptors",
+      error:
+        "TopRailType does not contain a certified even " +
+        "RailingCurveLoopData descriptor collection",
     };
   }
   const owningTopRailElementId = readPositiveObjectId(
@@ -671,7 +673,7 @@ export function decodeRevit2027TopRailTypeEvidence(
     value: {
       ownerElementId: frame.elementId,
       owningTopRailElementId,
-      curveLoopCount: 2,
+      curveLoopCount: loops.collection.count,
       curveLoopSourceClassSlot:
         REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT,
       frameOffset: frame.offset,
@@ -689,20 +691,16 @@ type LocatedRailingCurveLoopData = {
   heights: number[];
 };
 
-function locateRailingCurveLoopDataPair(
+function locateRailingCurveLoopData(
   data: Uint8Array,
   startOffset: number,
   endOffset: number,
   maxInstances: number,
-): { ok: true; value: readonly [
-  LocatedRailingCurveLoopData,
-  LocatedRailingCurveLoopData,
-] } | { ok: false; error: string } {
+  loopCount: number,
+): { ok: true; value: readonly LocatedRailingCurveLoopData[] } |
+  { ok: false; error: string } {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const matches: Array<readonly [
-    LocatedRailingCurveLoopData,
-    LocatedRailingCurveLoopData,
-  ]> = [];
+  const matches: LocatedRailingCurveLoopData[][] = [];
   const readOne = (
     descriptorOffset: number,
   ): LocatedRailingCurveLoopData | null => {
@@ -743,18 +741,26 @@ function locateRailingCurveLoopDataPair(
     };
   };
   for (let offset = startOffset; offset <= endOffset - 20; offset += 1) {
-    const first = readOne(offset);
-    if (!first) continue;
-    const second = readOne(first.endOffset);
-    if (!second) continue;
-    matches.push([first, second]);
-    offset = second.endOffset - 1;
+    const items: LocatedRailingCurveLoopData[] = [];
+    let cursor = offset;
+    let persistedCurveCount = 0;
+    for (let index = 0; index < loopCount; index += 1) {
+      const item = readOne(cursor);
+      if (!item) break;
+      persistedCurveCount += item.heights.length / 2;
+      if (persistedCurveCount > maxInstances) break;
+      items.push(item);
+      cursor = item.endOffset;
+    }
+    if (items.length !== loopCount) continue;
+    matches.push(items);
+    offset = cursor - 1;
   }
   if (matches.length !== 1) {
     return {
       ok: false,
       error:
-        "TopRailType requires one exact adjacent pair of " +
+        `TopRailType requires one exact adjacent ${loopCount}-item sequence of ` +
         `RailingCurveLoopData bodies; found ${matches.length}`,
     };
   }
@@ -806,53 +812,62 @@ export function decodeRevit2027TopRailTypeCurves(
   if (!derivedLoops.ok) {
     return { ok: false, error: derivedLoops.error };
   }
-  const dataPair = locateRailingCurveLoopDataPair(
+  const loopCount = evidence.value.curveLoopCount;
+  if (loopCount > maxInstances) {
+    return { ok: false, error: "TopRailType curve-loop count exceeds limit" };
+  }
+  const loopData = locateRailingCurveLoopData(
     data,
     derivedLoops.collection.endOffset + 8,
     framed.echoOffset,
     maxInstances,
+    loopCount,
   );
-  if (!dataPair.ok) return dataPair;
+  if (!loopData.ok) return loopData;
 
   const curveBodyMatches: {
-    bodyOffsets: readonly [number, number];
-    persistedBooleans: readonly [boolean, boolean];
-    collections: readonly [
-      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true },
-      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true },
-    ];
+    bodyOffsets: readonly number[];
+    persistedBooleans: readonly boolean[];
+    collections: readonly (
+      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true }
+    )[];
     curves: Array<{
       curve: Revit2027GLine | Revit2027GArc | Revit2027GHermiteSpline;
       kind: "GLine" | "GArc" | "GHermiteSpline";
     }>;
   }[] = [];
   for (
-    let offset = dataPair.value[1].endOffset;
+    let offset = loopData.value.at(-1)!.endOffset;
     offset < framed.echoOffset;
     offset += 1
   ) {
-    const firstBoolean = readBoolean(data, offset);
-    if (firstBoolean == null) continue;
-    const first = decodeCondInt16QueueCollection(data, offset + 1, {
-      maxEntries: maxInstances,
-    });
-    if (!first.ok || first.collection.count <= 0) continue;
-    const secondOffset = first.collection.endOffset;
-    const secondBoolean = readBoolean(data, secondOffset);
-    if (secondBoolean == null) continue;
-    const second = decodeCondInt16QueueCollection(data, secondOffset + 1, {
-      maxEntries: maxInstances,
-    });
-    if (
-      !second.ok ||
-      second.collection.count <= 0
-    ) {
-      continue;
+    const bodyOffsets: number[] = [];
+    const persistedBooleans: boolean[] = [];
+    const collections: Array<
+      ReturnType<typeof decodeCondInt16QueueCollection> & { ok: true }
+    > = [];
+    let descriptorOffset = offset;
+    let totalEntries = 0;
+    for (let loopIndex = 0; loopIndex < loopCount; loopIndex += 1) {
+      const persistedBoolean = readBoolean(data, descriptorOffset);
+      if (persistedBoolean == null) break;
+      const collection = decodeCondInt16QueueCollection(
+        data,
+        descriptorOffset + 1,
+        { maxEntries: maxInstances },
+      );
+      if (!collection.ok || collection.collection.count <= 0) break;
+      totalEntries += collection.collection.count;
+      if (totalEntries > maxInstances) break;
+      bodyOffsets.push(descriptorOffset);
+      persistedBooleans.push(persistedBoolean);
+      collections.push(collection);
+      descriptorOffset = collection.collection.endOffset;
     }
-    const entries = [
-      ...first.collection.entries,
-      ...second.collection.entries,
-    ];
+    if (collections.length !== loopCount) continue;
+    const entries = collections.flatMap(
+      (collection) => collection.collection.entries,
+    );
     if (
       entries.length > maxInstances ||
       entries.some(
@@ -870,7 +885,7 @@ export function decodeRevit2027TopRailTypeCurves(
     ) {
       continue;
     }
-    let curveOffset = second.collection.endOffset;
+    let curveOffset = descriptorOffset;
     const curves: Array<{
       curve: Revit2027GLine | Revit2027GArc | Revit2027GHermiteSpline;
       kind: "GLine" | "GArc" | "GHermiteSpline";
@@ -915,9 +930,9 @@ export function decodeRevit2027TopRailTypeCurves(
       continue;
     }
     curveBodyMatches.push({
-      bodyOffsets: [offset, secondOffset],
-      persistedBooleans: [firstBoolean, secondBoolean],
-      collections: [first, second],
+      bodyOffsets,
+      persistedBooleans,
+      collections,
       curves,
     });
   }
@@ -925,7 +940,7 @@ export function decodeRevit2027TopRailTypeCurves(
     return {
       ok: false,
       error:
-        "TopRailType requires one exact two-CurveLoop curve descriptor " +
+        `TopRailType requires one exact ${loopCount}-CurveLoop curve descriptor ` +
         `sequence ending at its line bodies; found ${curveBodyMatches.length}`,
     };
   }
@@ -934,8 +949,8 @@ export function decodeRevit2027TopRailTypeCurves(
   const counts = match.collections.map(
     (collection) => collection.collection.count,
   );
-  for (let loopIndex = 0; loopIndex < 2; loopIndex += 1) {
-    const heightCount = dataPair.value[loopIndex]!.heights.length;
+  for (let loopIndex = 0; loopIndex < loopCount; loopIndex += 1) {
+    const heightCount = loopData.value[loopIndex]!.heights.length;
     if (heightCount !== 0 && heightCount !== counts[loopIndex]! * 2) {
       return {
         ok: false,
@@ -945,7 +960,7 @@ export function decodeRevit2027TopRailTypeCurves(
       };
     }
   }
-  const totalCurveCount = counts[0]! + counts[1]!;
+  const totalCurveCount = counts.reduce((total, count) => total + count, 0);
   for (const decoded of match.curves) {
     if (decoded.kind !== "GHermiteSpline") continue;
     const spline = decoded.curve as Revit2027GHermiteSpline;
@@ -967,8 +982,8 @@ export function decodeRevit2027TopRailTypeCurves(
   }
 
   let curveIndex = 0;
-  const decodeLoop = (loopIndex: 0 | 1): Revit2027TopRailCurveLoop => {
-    const item = dataPair.value[loopIndex];
+  const decodeLoop = (loopIndex: number): Revit2027TopRailCurveLoop => {
+    const item = loopData.value[loopIndex]!;
     const segments: Revit2027TopRailCurveSegment[] = [];
     for (let index = 0; index < counts[loopIndex]!; index += 1) {
       const decoded = match.curves[curveIndex++]!;
@@ -1032,7 +1047,10 @@ export function decodeRevit2027TopRailTypeCurves(
       segments,
     };
   };
-  const decodedLoops = [decodeLoop(0), decodeLoop(1)] as const;
+  const decodedLoops = Array.from(
+    { length: loopCount },
+    (_, loopIndex) => decodeLoop(loopIndex),
+  );
 
   return {
     ok: true,

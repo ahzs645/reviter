@@ -143,6 +143,14 @@ export type DecoderCoverage = {
   nativeMeshEmbeddedGeometryElements?: number;
   /** Exact certified triangles emitted after owner placement expansion. */
   nativeMeshTriangles?: number;
+  /** Quantized, orientation-independent duplicate native triangles suppressed. */
+  nativeMeshDuplicateTrianglesRemoved?: number;
+  /** Suppressed duplicates whose two copies claimed different materials. */
+  nativeMeshCrossMaterialDuplicateTrianglesRemoved?: number;
+  /** Original wall triangles intersected by persisted door/window openings. */
+  nativeHostOpeningWallTrianglesClipped?: number;
+  /** Retained wall fragments emitted around those hosted openings. */
+  nativeHostOpeningWallTrianglesGenerated?: number;
   /** True when a native storage/output safety cap declined complete elements. */
   nativeMeshTruncated?: boolean;
   /** Conservative byte estimate for compact cross-page GRep definitions. */
@@ -300,6 +308,8 @@ export type ElementBoundsRecord = {
     positions: number[];
     indices: number[];
   };
+  /** Analytic planes kept only after every corner fits this panel's envelope. */
+  curtainPanelSurfaceQuads?: SurfaceQuad[];
   /**
    * Provenance of the geometry that actually reached the final scene.
    *

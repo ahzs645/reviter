@@ -15,6 +15,7 @@ import type {
   Revit2027GRepReplay,
   Revit2027GRepReplaySpan,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
+import { REVIT_2027_BASE_RAILING_SYMBOL_MARKER } from "../lib/reviter/revit-2027-baluster-instances.ts";
 
 function faceValue(surfaceToken: number, loopToken: number): unknown {
   return {
@@ -212,6 +213,37 @@ test("collector is inert outside the Revit 2027 release gate", () => {
   assert.equal(state.scannedFrames, 0);
   assert.equal(state.owners.size, 0);
   assert.equal(state.requestedOwnerDefinitions, 0);
+});
+
+test("collector admits a complete oversized alternate frame directly", () => {
+  const objectLength = 70_000;
+  const frame = new Uint8Array(objectLength + 20);
+  const view = new DataView(frame.buffer);
+  view.setUint32(0, 1856526, true);
+  view.setUint32(4, 0, true);
+  view.setUint32(12, objectLength, true);
+  view.setUint16(16, REVIT_2027_BASE_RAILING_SYMBOL_MARKER, true);
+  view.setUint32(18, 123, true);
+  view.setUint32(objectLength + 16, objectLength, true);
+
+  let providerCalls = 0;
+  const collector = createRevit2027NativeMeshCollector(
+    2027,
+    {},
+    (_data, decodedFrame) => {
+      providerCalls += 1;
+      assert.equal(decodedFrame.elementId, 1856526);
+      assert.equal(decodedFrame.objectLength, objectLength);
+      return { ok: true, value: null };
+    },
+  );
+  collector.scanAlternateFrame(frame);
+  assert.equal(providerCalls, 1);
+  assert.equal(collector.snapshot().scannedFrames, 1);
+
+  view.setUint32(objectLength + 16, objectLength - 1, true);
+  collector.scanAlternateFrame(frame);
+  assert.equal(providerCalls, 1, "a bad independent length echo fails closed");
 });
 
 test("collector reports an absent persisted placement owner without publishing geometry", () => {

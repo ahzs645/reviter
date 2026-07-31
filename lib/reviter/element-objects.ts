@@ -30,8 +30,13 @@
  * are still linked into the chain.
  */
 
-/** Objects are well under 64 KB; anything larger is a misread length. */
-const MAX_OBJECT_BYTES = 0xffff;
+/**
+ * General page-scanner ceiling. Most element frames are below 64 KB; the
+ * bounded release-specific collectors handle the proven large collection
+ * carriers without weakening this broad byte-by-byte scanner's false-positive
+ * guard.
+ */
+export const MAX_SCANNED_OBJECT_BYTES = 0xffff;
 
 /** Below this an "object" cannot hold even its own header and trailer. */
 const MIN_OBJECT_BYTES = 40;
@@ -65,7 +70,10 @@ export type ElementObject = {
 function readObject(view: DataView, offset: number, byteLength: number): ElementObject | null {
   if (offset < 0 || offset + 20 > byteLength) return null;
   const objectLength = view.getUint32(offset + 12, true);
-  if (objectLength < MIN_OBJECT_BYTES || objectLength > MAX_OBJECT_BYTES) return null;
+  if (
+    objectLength < MIN_OBJECT_BYTES ||
+    objectLength > MAX_SCANNED_OBJECT_BYTES
+  ) return null;
   const echoAt = offset + objectLength + ECHO_OFFSET;
   if (echoAt + 4 > byteLength) return null;
   if (view.getUint32(echoAt, true) !== objectLength) return null;
@@ -298,7 +306,10 @@ export function chainElementObjects(data: Uint8Array, seeds: Iterable<number>): 
     cursor = seed;
     while (cursor >= TRAILER_BYTES + 4) {
       const previousLength = view.getUint32(cursor - 4, true);
-      if (previousLength < MIN_OBJECT_BYTES || previousLength > MAX_OBJECT_BYTES) break;
+      if (
+        previousLength < MIN_OBJECT_BYTES ||
+        previousLength > MAX_SCANNED_OBJECT_BYTES
+      ) break;
       const previous = cursor - TRAILER_BYTES - previousLength;
       if (previous < 0 || found.has(previous)) break;
       const object = readObject(view, previous, data.byteLength);

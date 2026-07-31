@@ -54,6 +54,72 @@ test("display roles are exposed per element, because a native batch mixes catego
   assert.equal(roles.get(5), "railing");
 });
 
+test("curtain panel analytic faces replace its enclosing box", () => {
+  const panel = record(9, -2000170);
+  panel.curtainPanelSurfaceQuads = [{
+    elementId: 9,
+    corners: [
+      [0, 0, 0],
+      [4, 0, 0],
+      [4, 0, 8],
+      [0, 0, 8],
+    ],
+  }];
+  const [mesh] = buildBoundsMeshes([panel], { x: 0, y: 0, z: 0 });
+  assert.equal(mesh!.indices.length / 3, 2);
+  assert.equal(mesh!.positions.length / 3, 4);
+  assert.deepEqual([...mesh!.elementIds!], [9, 9]);
+});
+
+test("a proxy with one persisted material uses its native material batch", () => {
+  const nativeGlassMaterialIndex = displayMaterials().length;
+  const assigned = record(10, -2000170);
+  const fallback = record(11, -2000170);
+  const meshes = buildBoundsMeshes(
+    [assigned, fallback],
+    { x: 0, y: 0, z: 0 },
+    [],
+    new Map([[assigned.elementId, nativeGlassMaterialIndex]]),
+  );
+
+  assert.equal(meshes.length, 2, "different materials require separate draw batches");
+  const native = meshes.find((mesh) => mesh.materialIndex === nativeGlassMaterialIndex);
+  const categoryFallback = meshes.find((mesh) => mesh.materialIndex !== nativeGlassMaterialIndex);
+  assert.deepEqual([...native!.elementIds!], Array(12).fill(assigned.elementId));
+  assert.deepEqual([...categoryFallback!.elementIds!], Array(12).fill(fallback.elementId));
+
+  const materials = [
+    ...displayMaterials(),
+    {
+      name: "Native glass",
+      baseColorLinear: [0, 0.5, 0.75, 0.1] as [number, number, number, number],
+      metallic: 0,
+      roughness: 0.2,
+      doubleSided: true,
+      source: "rvt-material" as const,
+      assignedElements: 1,
+      transparency: 0.9,
+    },
+  ];
+  const group = meshGroup({
+    fileName: "proxy-material.rvt",
+    method: "partition-bounds-recovery",
+    origin: { x: 0, y: 0, z: 0 },
+    elementBounds: [assigned, fallback],
+    materials,
+    meshes,
+  } as unknown as ConvertResult, "technical");
+  const renderedNative = group.children.find((child): child is THREE.Mesh =>
+    (child as THREE.Mesh).isMesh &&
+    (child.userData.elementIds as Uint32Array | undefined)?.includes(assigned.elementId));
+  assert.ok(renderedNative);
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).opacity,
+    0.1,
+    "the proxy keeps Revit's 90%-transparent glass instead of the 55%-opaque fallback",
+  );
+});
+
 test("a record with no decoded category contributes no glazing claim", () => {
   const bare: ElementBoundsRecord = {
     elementId: 9,
@@ -183,6 +249,54 @@ test("a wrapper beside one wall face does not cut the wall", () => {
   );
   assert.ok(uncut);
   assert.equal(uncut.indices.length / 3, 12);
+});
+
+test("a persisted door host relation cuts a reconstructed wall proxy", () => {
+  const wall: ElementBoundsRecord = {
+    ...record(804162, -2000011),
+    categoryName: "Walls",
+    solid: {
+      elementId: 804162,
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 0 },
+      baseElevation: 0,
+      topElevation: 10,
+      thickness: 0.4,
+    },
+  };
+  const door: ElementBoundsRecord = {
+    ...record(1028273, -2000023),
+    categoryName: "Doors",
+    boundsFeet: {
+      min: { x: 3, y: -2, z: 0 },
+      max: { x: 7, y: 2, z: 7 },
+    },
+  };
+  const [data] = buildBoundsMeshes(
+    [wall],
+    { x: 0, y: 0, z: 0 },
+    [],
+    new Map(),
+    new Map([[wall.elementId, [door]]]),
+  );
+  assert.ok(data);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  const rendered = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  rendered.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  ray.set(new THREE.Vector3(5, 3, 4), new THREE.Vector3(0, -1, 0));
+  assert.equal(
+    ray.intersectObject(rendered).length,
+    0,
+    "the persisted door envelope opens the proxy host wall",
+  );
+  geometry.dispose();
+  (rendered.material as THREE.Material).dispose();
 });
 
 test("the glazing display material keeps the alpha the viewer reuses for native glass", () => {

@@ -154,7 +154,9 @@ export function computeCoverage(
   // Re-run the scene's own selection so the audit reports the set the viewer
   // draws, rather than a set assembled a second, possibly different way.
   const withVolume = outcome.elementBounds.filter(
-    (record) => solidBounds(record) || (record.loops?.length ?? 0) > 0,
+    (record) =>
+      record.renderGeometryProvenance !== "not-rendered-helper" &&
+      (solidBounds(record) || (record.loops?.length ?? 0) > 0),
   );
   const selection = selectDisplayBounds(withVolume);
   const drawn = new Set(selection.records.map((record) => record.elementId));

@@ -1324,6 +1324,13 @@ test("identifies only unresolved stair and railing drawing aids as proxy helpers
       [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
     ],
   }, 605), false);
+  // TopRailType definitions that fail native closure are not physical boxes;
+  // the owning railing remains the scene element.
+  assert.equal(isStairOrRailingHelperProxy({}, 967), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    railPath: { polylines: [[[0, 0, 0], [1, 0, 1]]], guardHeightFeet: 3 },
+  }, 967), false);
+  assert.equal(isStairOrRailingHelperProxy({}, 3462), true);
   assert.equal(isStairOrRailingHelperProxy({
     categoryId: -2000954,
     categoryName: "Railing Rail Path Extension Lines",
@@ -1361,6 +1368,24 @@ test("identifies only unresolved stair and railing drawing aids as proxy helpers
   assert.equal(isStairOrRailingHelperProxy({
     categoryId: -2000180,
     categoryName: "Stairs Stringer Carriage",
+  }), false);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryName: "Stairs Stringer Carriage",
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 0.05, y: 0.08, z: 9.84 },
+    },
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryName: "Stairs Stringer Carriage",
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 0.05, y: 0.08, z: 9.84 },
+    },
+    orientedBox: [
+      [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+      [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ],
   }), false);
 });
 

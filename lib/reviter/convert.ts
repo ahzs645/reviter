@@ -41,6 +41,7 @@ import {
   solidBelongsToEnvelope,
 } from "./solid-clip.ts";
 import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
+import { curvedWallArcFromSketch } from "./curved-wall-sketch.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type CylinderPatch, type PlanePatch } from "./surfaces.ts";
 import {
@@ -179,7 +180,9 @@ import {
   buildRevit2027NativeMeshScene,
   createRevit2027NativeMeshCollector,
 } from "./revit-2027-native-mesh-bridge.ts";
+import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
 import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
+import { createRevit2027SplitAlternateFrameCollector } from "./revit-2027-split-alternate-frame-collector.ts";
 
 import type {
   Bounds3,
@@ -414,6 +417,12 @@ const MAX_UNNAMED_SKETCH_CURVES = 512;
 /** Plan agreement required before an unnamed element's ring is trusted, in feet. */
 const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
 
+/** Persisted Revit 2027 footprint-roof class marker in the supplied schema. */
+const REVIT_2027_FOOTPRINT_ROOF_MARKER = 3392;
+
+/** Arc sampling can miss the exact plan extremum by one 50 mm segment. */
+const ROOF_SKETCH_PLAN_TOLERANCE_FEET = 0.2;
+
 /**
  * How far a placed instance's oriented box may sit from the element's own
  * duplicated-bounds record before the box is disbelieved, in feet.
@@ -506,7 +515,10 @@ function agreesWithBounds(corners: [number, number, number][], bounds: Bounds3):
 function sketchLoopsFor(
   record: ElementBoundsRecord,
   curvesByOwner: Map<number, SketchCurve[]>,
-  { verify }: { verify: boolean },
+  {
+    verify,
+    planToleranceFeet = SKETCH_PLAN_TOLERANCE_FEET,
+  }: { verify: boolean; planToleranceFeet?: number },
 ): Point3[][] {
   if (verify) {
     const owned =
@@ -531,10 +543,10 @@ function sketchLoopsFor(
   }
   const { min, max } = record.boundsFeet;
   const agrees =
-    Math.abs(minX - min.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
-    Math.abs(minY - min.y) <= SKETCH_PLAN_TOLERANCE_FEET &&
-    Math.abs(maxX - max.x) <= SKETCH_PLAN_TOLERANCE_FEET &&
-    Math.abs(maxY - max.y) <= SKETCH_PLAN_TOLERANCE_FEET;
+    Math.abs(minX - min.x) <= planToleranceFeet &&
+    Math.abs(minY - min.y) <= planToleranceFeet &&
+    Math.abs(maxX - max.x) <= planToleranceFeet &&
+    Math.abs(maxY - max.y) <= planToleranceFeet;
   return agrees ? loops : [];
 }
 
@@ -778,6 +790,11 @@ export function convertRvtBytes(
     const stairsRunCollector = createRevit2027StairsRunCollector(
       decoderPlan.revitVersion,
     );
+    const splitAlternateFrameCollector =
+      createRevit2027SplitAlternateFrameCollector(
+        decoderPlan.revitVersion,
+        options.maxNativeMeshBytes,
+      );
     const elemTableEntry = cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
       .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -948,6 +965,10 @@ export function convertRvtBytes(
           });
         }
         nativeMeshCollector.scanPage(inflated);
+        for (const splitFrame of
+          splitAlternateFrameCollector.pushPage(inflated)) {
+          nativeMeshCollector.scanAlternateFrame(splitFrame);
+        }
         stairsRunCollector.pushPage(inflated);
         if (decoderPlan.revitVersion != null) {
           const materialScan = scanMaterialElementRecords(
@@ -1163,8 +1184,20 @@ export function convertRvtBytes(
         }
       }
       stairsRunCollector.finishPartition();
+      splitAlternateFrameCollector.finishPartition();
     }
     const stairsRuns = stairsRunCollector.snapshot();
+    const nativeCompoundStructureDefinitions =
+      resolveCompoundStructureDefinitions(
+        compoundStructureCandidates,
+        new Set(nativeMaterialDefinitionMap.keys()),
+      );
+    const wallThicknessByType = new Map(
+      nativeCompoundStructureDefinitions.map((definition) => [
+        definition.typeId,
+        definition.layers.reduce((sum, layer) => sum + layer.widthFeet, 0),
+      ]),
+    );
 
     onProgress?.({
       ratio: 0.825,
@@ -1218,10 +1251,13 @@ export function convertRvtBytes(
     // Elements with surfaces that do not form a wall triple still have real
     // faces; drawing those beats falling back to a bounding box.
     const quadsByElement = new Map<number, ReturnType<typeof surfaceQuadsFor>>();
+    const allSurfaceQuadsByElement =
+      new Map<number, ReturnType<typeof surfaceQuadsFor>>();
     for (const [elementId, planes] of planesByElement) {
-      if (solidsByElement.has(elementId)) continue;
       const quads = surfaceQuadsFor(elementId, planes);
-      if (quads.length) quadsByElement.set(elementId, quads);
+      if (!quads.length) continue;
+      allSurfaceQuadsByElement.set(elementId, quads);
+      if (!solidsByElement.has(elementId)) quadsByElement.set(elementId, quads);
     }
 
     onProgress?.({
@@ -1541,7 +1577,34 @@ export function convertRvtBytes(
       record.solid = solidsByElement.get(record.elementId);
       record.solids = solidGroups.get(record.elementId);
       record.quads = quadsByElement.get(record.elementId);
+      const panelQuads = allSurfaceQuadsByElement.get(record.elementId);
+      if (record.categoryId === -2000170 && panelQuads?.length) {
+        const tolerance = 1e-5;
+        const { min, max } = record.boundsFeet;
+        const inside = panelQuads.filter((quad) =>
+          quad.corners.every(
+            ([x, y, z]) =>
+              x >= min.x - tolerance && x <= max.x + tolerance &&
+              y >= min.y - tolerance && y <= max.y + tolerance &&
+              z >= min.z - tolerance && z <= max.z + tolerance,
+          ),
+        );
+        if (inside.length >= 2) record.curtainPanelSurfaceQuads = inside;
+      }
       record.arcs = arcsByElement.get(record.elementId);
+      if (!record.arcs?.length && record.categoryId === -2000011) {
+        const typeId = typeReferences.get(record.elementId);
+        const thickness = typeId == null ? undefined : wallThicknessByType.get(typeId);
+        if (thickness != null) {
+          const recoveredArc = curvedWallArcFromSketch(
+            record.elementId,
+            curvesByOwner.get(record.elementId) ?? [],
+            thickness,
+            record.boundsFeet,
+          );
+          if (recoveredArc) record.arcs = [recoveredArc];
+        }
+      }
       if (record.arcs?.length) curvedWalls += 1;
       const orientedBox = orientedBoxes.get(record.elementId);
       // A record synthesised from the instance itself has nothing to check
@@ -1561,6 +1624,10 @@ export function convertRvtBytes(
       const nativeFloorSketchCarrier =
         markerByElement.get(record.elementId) ===
           REVIT_2027_FLOOR_SKETCH_OWNER_MARKER;
+      const nativeFootprintRoof =
+        markerByElement.get(record.elementId) ===
+          REVIT_2027_FOOTPRINT_ROOF_MARKER &&
+        parameters?.has(-1001705); // Maximum Ridge Height
       // Boundary recovery used to require the category to have decoded first,
       // which is backwards for exactly the elements that need it: ceilings and
       // ramps are the smallest populations in the model and so the likeliest to
@@ -1651,6 +1718,9 @@ export function convertRvtBytes(
           // A category conflict must pass the same independent envelope gate
           // as an unnamed sketch; the 0x0869 marker only establishes ownership.
           verify: !knownSketchCategory,
+          ...(nativeFootprintRoof
+            ? { planToleranceFeet: ROOF_SKETCH_PLAN_TOLERANCE_FEET }
+            : {}),
         });
         if (loops.length) {
           record.loops = loops;
@@ -2089,11 +2159,6 @@ export function convertRvtBytes(
       ...nativeSharedGeometryMaterialAssignments,
       ...nativeFamilySymbolMaterialAssignments,
     ];
-    const nativeCompoundStructureDefinitions =
-      resolveCompoundStructureDefinitions(
-        compoundStructureCandidates,
-        new Set(nativeMaterialDefinitionMap.keys()),
-      );
     const nativeCompoundLayerMaterialAssignments =
       resolveCompoundLayerMaterialAssignments(
         [...typeReferences].map(([elementId, typeId]) => ({
@@ -2121,10 +2186,39 @@ export function convertRvtBytes(
       nativeMaterialIndexById.set(entry.materialElementId, materials.length);
       materials.push(entry.material);
     }
+    const proxyMaterialIdsByElement = new Map<number, Set<number>>();
+    for (const assignment of nativeElementMaterialAssignments) {
+      if (!nativeMaterialIndexById.has(assignment.materialId)) continue;
+      const materialIds = proxyMaterialIdsByElement.get(assignment.elementId)
+        ?? new Set<number>();
+      materialIds.add(assignment.materialId);
+      proxyMaterialIdsByElement.set(assignment.elementId, materialIds);
+    }
+    // An element-wide proxy can represent only one material faithfully. Use a
+    // persisted assignment when it is unambiguous; multi-material family
+    // geometry continues to use the category fallback instead of choosing an
+    // arbitrary material for the whole proxy.
+    const proxyMaterialIndexByElement = new Map<number, number>();
+    for (const [elementId, materialIds] of proxyMaterialIdsByElement) {
+      if (materialIds.size !== 1) continue;
+      const [materialId] = materialIds;
+      const materialIndex = nativeMaterialIndexById.get(materialId!);
+      if (materialIndex != null) {
+        proxyMaterialIndexByElement.set(elementId, materialIndex);
+      }
+    }
     const nativeHostRelations = resolveHostRelations(
       hostRelationCandidates,
       new Set(markerByElement.keys()),
     );
+    const preferredWallMaterialIdsByElement = new Map<number, Set<number>>();
+    for (const assignment of nativeCompoundLayerMaterialAssignments) {
+      const materialIds = preferredWallMaterialIdsByElement.get(
+        assignment.elementId,
+      ) ?? new Set<number>();
+      materialIds.add(assignment.materialId);
+      preferredWallMaterialIdsByElement.set(assignment.elementId, materialIds);
+    }
     const nativeAssociatedLevelRelations = resolveAssociatedLevelRelations(
       associatedLevelRelationCandidates,
       markerByElement,
@@ -2156,6 +2250,45 @@ export function convertRvtBytes(
         y: (bounds.min.y + bounds.max.y) / 2,
         z: bounds.min.z,
       };
+      const recordByElementId = new Map(
+        elementBounds.map((record) => [record.elementId, record]),
+      );
+      const hostedOpeningsByWall = new Map<
+        number,
+        ElementBoundsRecord[]
+      >();
+      for (const relation of nativeHostRelations) {
+        const opening = recordByElementId.get(relation.elementId);
+        const host = recordByElementId.get(relation.hostId);
+        if (
+          !opening ||
+          !host ||
+          host.categoryId !== -2000011 ||
+          (opening.categoryId !== -2000023 && opening.categoryId !== -2000014)
+        ) {
+          continue;
+        }
+        const openings = hostedOpeningsByWall.get(host.elementId) ?? [];
+        openings.push(opening);
+        hostedOpeningsByWall.set(host.elementId, openings);
+      }
+      const relativeHostedOpeningsByWall = new Map(
+        [...hostedOpeningsByWall].map(([hostId, openings]) => [
+          hostId,
+          openings.map(({ boundsFeet }) => ({
+            min: {
+              x: boundsFeet.min.x - origin.x,
+              y: boundsFeet.min.y - origin.y,
+              z: boundsFeet.min.z - origin.z,
+            },
+            max: {
+              x: boundsFeet.max.x - origin.x,
+              y: boundsFeet.max.y - origin.y,
+              z: boundsFeet.max.z - origin.z,
+            },
+          })),
+        ]),
+      );
       // Only definitions proven to be referenced by persisted placements may
       // leave the collector as reusable local geometry. The collector composes
       // their exact nested GInstance closure atomically and never publishes
@@ -2204,6 +2337,16 @@ export function convertRvtBytes(
           ),
         },
       );
+      const nativeMeshCleanup = cleanNativeMeshScene(
+        nativeMeshScene.meshes,
+        {
+          hostedOpeningsByWall: relativeHostedOpeningsByWall,
+          preferredMaterialIdsByElement:
+            preferredWallMaterialIdsByElement,
+        },
+      );
+      nativeMeshScene.meshes = nativeMeshCleanup.meshes;
+      nativeMeshScene.triangles = nativeMeshCleanup.outputTriangles;
       applyNativeMaterialIndices(
         nativeMeshScene.meshes,
         nativeMaterialIndexById,
@@ -2232,10 +2375,48 @@ export function convertRvtBytes(
       const displayRecordById = new Map(
         displayBounds.map((record) => [record.elementId, record]),
       );
+      const elementRecordById = new Map(
+        elementBounds.map((record) => [record.elementId, record]),
+      );
       const stairAssembliesWithRecoveredChildren = new Set<number>();
+      // StairsRunAndLanding.m_stairsId is the direct native aggregate link.
+      // ElemTable can instead place a stairs container under its top rail, so
+      // ownership alone misses containers whose run already replaced the box.
+      for (const run of stairsRuns.values()) {
+        const child = displayRecordById.get(run.elementId);
+        if (
+          child &&
+          (
+            nativeMeshScene.coveredElementIds.has(child.elementId) ||
+            nativeMeshScene.reconstructedElementIds.has(child.elementId) ||
+            child.stairTreads?.length
+          )
+        ) {
+          stairAssembliesWithRecoveredChildren.add(run.stairsId);
+        }
+      }
       for (const relation of elementOwnership?.relations ?? []) {
-        const owner = displayRecordById.get(relation.ownerId);
+        const owner = elementRecordById.get(relation.ownerId);
         const child = displayRecordById.get(relation.elementId);
+        if (
+          child?.categoryId === -2000120 &&
+          owner &&
+          (
+            nativeMeshScene.coveredElementIds.has(owner.elementId) ||
+            nativeMeshScene.reconstructedElementIds.has(owner.elementId) ||
+            owner.orientedBox ||
+            owner.railPath ||
+            owner.solids?.length ||
+            owner.solid ||
+            owner.arcs?.length
+          )
+        ) {
+          // Legacy stair/railing aggregates can be persisted beneath the exact
+          // top-rail instance that replaces their common envelope. Object
+          // 1500238 in the supplied file is this shape: its only descendants
+          // are rail-path drawing aids, while owner 1500236 is admitted native.
+          stairAssembliesWithRecoveredChildren.add(child.elementId);
+        }
         if (
           owner?.categoryId === -2000120 &&
           child &&
@@ -2297,7 +2478,8 @@ export function convertRvtBytes(
           record.orientedBox ||
           record.solids?.length ||
           record.solid ||
-          record.arcs?.length
+          record.arcs?.length ||
+          record.curtainPanelSurfaceQuads?.length
         ) {
           record.renderGeometryProvenance = "reconstructed";
         } else {
@@ -2309,6 +2491,8 @@ export function convertRvtBytes(
           proxyDisplayBounds,
           origin,
           displaySelection.openingWrappers,
+          proxyMaterialIndexByElement,
+          hostedOpeningsByWall,
         ),
         ...nativeMeshScene.meshes,
       ];
@@ -2374,6 +2558,10 @@ export function convertRvtBytes(
             ...(nativeHostRelations.length
               ? ["revit-2027-insertable-host-id-v1"]
               : []),
+            ...(nativeMeshCleanup.duplicateTrianglesRemoved ||
+                nativeMeshCleanup.hostTrianglesClipped
+              ? ["revit-2027-native-mesh-visibility-cleanup-v1"]
+              : []),
             ...(nativeAssociatedLevelRelations.length
               ? ["revit-2027-associated-level-id-v1"]
               : []),
@@ -2423,6 +2611,14 @@ export function convertRvtBytes(
           nativeMeshEmbeddedGeometryElements:
             nativeMeshScene.embeddedGeometryElements,
           nativeMeshTriangles: nativeMeshScene.triangles,
+          nativeMeshDuplicateTrianglesRemoved:
+            nativeMeshCleanup.duplicateTrianglesRemoved,
+          nativeMeshCrossMaterialDuplicateTrianglesRemoved:
+            nativeMeshCleanup.crossMaterialDuplicateTrianglesRemoved,
+          nativeHostOpeningWallTrianglesClipped:
+            nativeMeshCleanup.hostTrianglesClipped,
+          nativeHostOpeningWallTrianglesGenerated:
+            nativeMeshCleanup.hostTrianglesGenerated,
           nativeMeshTruncated: nativeMeshScene.truncated,
           nativeMeshStoredBytes: nativeMeshCollection.storedBytes,
           nativeMeshBoundsMismatches: nativeMeshScene.boundsMismatches,
@@ -2533,6 +2729,12 @@ export function convertRvtBytes(
             : []),
           ...(nativeHostRelations.length
             ? [`${nativeHostRelations.length.toLocaleString()} persisted hosted-element relationships were decoded from InsertableInst.m_hostId.`]
+            : []),
+          ...(nativeMeshCleanup.duplicateTrianglesRemoved
+            ? [`${nativeMeshCleanup.duplicateTrianglesRemoved.toLocaleString()} coincident native triangles were removed before rendering (${nativeMeshCleanup.crossMaterialDuplicateTrianglesRemoved.toLocaleString()} crossed material batches).`]
+            : []),
+          ...(nativeMeshCleanup.hostTrianglesClipped
+            ? [`${nativeMeshCleanup.hostTrianglesClipped.toLocaleString()} native host-wall triangles were clipped around persisted door and window openings.`]
             : []),
           ...(nativeAssociatedLevelRelations.length
             ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]

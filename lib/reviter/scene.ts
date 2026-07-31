@@ -13,7 +13,10 @@ import {
   NO_CLASS_RECORD_CODE,
   STAIR_COMPANION_CODE,
 } from "./record-codes.ts";
-import { REVIT_2027_BASE_RAILING_SYMBOL_MARKER } from "./revit-2027-baluster-instances.ts";
+import {
+  REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
+  REVIT_2027_TOP_RAIL_TYPE_MARKER,
+} from "./revit-2027-baluster-instances.ts";
 import type { Point3 } from "./sketch-curves.ts";
 
 import type {
@@ -313,6 +316,9 @@ const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
   -2000127, // Stairs Railing Baluster (the per-railing set container)
 ]);
 
+/** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
+const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
+
 export function isStairOrRailingHelperProxy(
   record: Pick<
     ElementBoundsRecord,
@@ -325,7 +331,7 @@ export function isStairOrRailingHelperProxy(
     | "solids"
     | "arcs"
     | "orientedBox"
-  >,
+  > & Partial<Pick<ElementBoundsRecord, "boundsFeet">>,
   nativeObjectMarker?: number,
 ): boolean {
   if (
@@ -346,6 +352,31 @@ export function isStairOrRailingHelperProxy(
   // so the exact framed class marker is the stronger fallback identity.
   if (nativeObjectMarker === REVIT_2027_BASE_RAILING_SYMBOL_MARKER) {
     return true;
+  }
+  // TopRailType is a railing-owned geometry definition. Flat definitions are
+  // admitted as native meshes before this predicate runs; an unresolved
+  // sloped definition must not become a stair-flight-sized envelope box.
+  if (nativeObjectMarker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
+    return true;
+  }
+  // RampSym is the per-ramp symbol/helper record. Its curves describe helper
+  // regions, while the Ramp instance is the physical scene element; an
+  // unresolved symbol envelope otherwise becomes a 24.6 x 9.6 x 3.8 ft block.
+  if (nativeObjectMarker === REVIT_2027_RAMP_SYMBOL_MARKER) {
+    return true;
+  }
+  // Some Stairs Stringer Carriage records are persisted as a near-zero-width
+  // vertical aid rather than as the physical stringer. The paired IFC proves
+  // the two tagged examples: their fallback records are 0.04 x 0.06 x 9.84 ft
+  // and 0.05 x 0.08 x 9.84 ft, while the exported products are ordinary
+  // tread-height components. A sub-inch plan section spanning more than five
+  // feet cannot be a usable carriage solid, so do not inflate that aid into a
+  // visible needle. Native or reconstructed stringers returned above remain.
+  if (record.categoryName === "Stairs Stringer Carriage" && record.boundsFeet) {
+    const width = record.boundsFeet.max.x - record.boundsFeet.min.x;
+    const depth = record.boundsFeet.max.y - record.boundsFeet.min.y;
+    const height = record.boundsFeet.max.z - record.boundsFeet.min.z;
+    if (Math.max(width, depth) <= 0.1 && height >= 5) return true;
   }
   return (
     (record.categoryId != null &&
@@ -1154,6 +1185,20 @@ function inferredGeometry(
   return { positions, indices: geometry.indices };
 }
 
+function surfaceQuadGeometry(
+  quad: NonNullable<ElementBoundsRecord["curtainPanelSurfaceQuads"]>[number],
+  origin: Vec3,
+) {
+  return {
+    positions: quad.corners.flatMap(([x, y, z]) => [
+      x - origin.x,
+      y - origin.y,
+      z - origin.z,
+    ]),
+    indices: [0, 1, 2, 0, 2, 3],
+  };
+}
+
 /**
  * A slab, floor or roof as Revit models it: its sketch boundary extruded
  * through the element's own thickness. The outer ring is the body and the
@@ -1532,6 +1577,11 @@ export function buildBoundsMeshes(
   records: ElementBoundsRecord[],
   origin: Vec3,
   openingWrappers: readonly ElementBoundsRecord[] = [],
+  materialIndexByElement: ReadonlyMap<number, number> = new Map(),
+  hostedOpeningsByWall: ReadonlyMap<
+    number,
+    readonly ElementBoundsRecord[]
+  > = new Map(),
 ): MeshData[] {
   const meshes: MeshData[] = [];
   // The elevation shade spans the model's own height rather than a fixed 80 ft
@@ -1543,7 +1593,15 @@ export function buildBoundsMeshes(
   const shadeSpanFeet = Math.max(1, elevationSpanFeet(records));
   // Batch by decoded Revit category when one is available so the model browser
   // lists real categories; otherwise fall back to the record-code display role.
-  const grouped = new Map<string, { role: DisplayRole; records: ElementBoundsRecord[] }>();
+  const grouped = new Map<
+    string,
+    {
+      label: string;
+      role: DisplayRole;
+      materialIndex: number;
+      records: ElementBoundsRecord[];
+    }
+  >();
   for (const record of records) {
     const resolved = displayRole(record);
     // An unclassified record is drawn under its own neutral batch, so it is
@@ -1560,11 +1618,23 @@ export function buildBoundsMeshes(
       ?? (role === "unclassified"
         ? "Uncategorised elements"
         : `${role[0]!.toUpperCase()}${role.slice(1)} proxies`);
-    const group = grouped.get(label) ?? { role, records: [] };
+    // A proxy can still have an exact persisted material assignment. Keep it
+    // in a separate draw batch so transparent glass uses Revit's own opacity
+    // instead of inheriting the category fallback merely because its native
+    // face mesh was not admitted.
+    const materialIndex = materialIndexByElement.get(record.elementId)
+      ?? DISPLAY_MATERIAL_INDEX[role];
+    const groupKey = `${label}\0${materialIndex}`;
+    const group = grouped.get(groupKey) ?? {
+      label,
+      role,
+      materialIndex,
+      records: [],
+    };
     group.records.push(record);
-    grouped.set(label, group);
+    grouped.set(groupKey, group);
   }
-  for (const [label, { role, records: roleRecords }] of grouped) {
+  for (const { label, role, materialIndex, records: roleRecords } of grouped.values()) {
     for (let start = 0; start < roleRecords.length; start += MESH_BATCH_SIZE) {
       const positions: number[] = [];
       const indices: number[] = [];
@@ -1584,9 +1654,15 @@ export function buildBoundsMeshes(
         // rebuilt geometry, and picking indexes by triangle rather than by box.
         const recoveredSolids =
           record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+        const wallOpenings = role === "wall"
+          ? [
+              ...openingWrappers,
+              ...(hostedOpeningsByWall.get(record.elementId) ?? []),
+            ]
+          : [];
         const solids = role === "wall"
           ? recoveredSolids.flatMap((solid) =>
-            cutSolidAroundWrappers(solid, openingWrappers))
+            cutSolidAroundWrappers(solid, wallOpenings))
           : recoveredSolids;
         // A swept railing wins over its own envelope, which is the rectangle the
         // path spans rather than anything the railing occupies.
@@ -1612,6 +1688,9 @@ export function buildBoundsMeshes(
         // the solid route nor the sketch route and would otherwise be drawn as
         // the rectangle enclosing its whole bulge.
         const arcs = record.arcs?.length ? record.arcs.map((arc) => arcGeometry(arc, origin)) : [];
+        const curtainPanelSurfaces = record.curtainPanelSurfaceQuads?.map(
+          (quad) => surfaceQuadGeometry(quad, origin),
+        ) ?? [];
         const items = stair.length
           ? stair
           : rail.length
@@ -1620,6 +1699,8 @@ export function buildBoundsMeshes(
           ? prism
           : record.inferredCurtainPanelGeometry
             ? [inferredGeometry(record.inferredCurtainPanelGeometry, origin)]
+          : curtainPanelSurfaces.length
+            ? curtainPanelSurfaces
           : record.orientedBox
             ? [cornersGeometry(record.orientedBox, origin)]
             : solids.length
@@ -1653,7 +1734,7 @@ export function buildBoundsMeshes(
         positions: new Float32Array(positions),
         indices: new Uint32Array(indices),
         colors: new Float32Array(colors),
-        materialIndex: DISPLAY_MATERIAL_INDEX[role],
+        materialIndex,
         source: "display-proxy",
         // One entry per triangle: drawn items vary in size, so the face index
         // picking reports is the only thing that indexes them all.

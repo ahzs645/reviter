@@ -15,6 +15,7 @@ export type ElementManifestGeometrySource =
   | "sketch-prism"
   | "sketch-rail-sweep"
   | "mullion-clipped-panel-proxy"
+  | "analytic-panel-faces"
   | "validated-bounds-envelope";
 
 function geometrySource(record: ElementBoundsRecord): ElementManifestGeometrySource {
@@ -23,6 +24,7 @@ function geometrySource(record: ElementBoundsRecord): ElementManifestGeometrySou
   if (record.doorLeafSource === "shape") return "door-leaf-from-shape";
   if (record.doorLeafSource === "wall") return "door-leaf-from-host-wall";
   if (record.inferredCurtainPanelGeometry) return "mullion-clipped-panel-proxy";
+  if (record.curtainPanelSurfaceQuads?.length) return "analytic-panel-faces";
   if (record.orientedBox) return "placed-shared-shape";
   if (record.solids?.length || record.solid) return "analytic-plane-solid";
   if (record.arcs?.length) return "analytic-cylinder-arc";
@@ -38,6 +40,7 @@ function evidenceRank(record: ElementBoundsRecord): number {
     "door-leaf-from-host-wall": 6,
     "placed-shared-shape": 5,
     "mullion-clipped-panel-proxy": 5,
+    "analytic-panel-faces": 5,
     "analytic-plane-solid": 4,
     "analytic-cylinder-arc": 4,
     "validated-bounds-envelope": 1,

@@ -33,6 +33,10 @@ const IDENTITY = [
 ] as const;
 
 type Point3 = readonly [number, number, number];
+type TopRailLoopPair = readonly [
+  Revit2027TopRailCurveLoop,
+  Revit2027TopRailCurveLoop,
+];
 
 export type Revit2027TopRailSectionMesh = {
   faceToken: 0;
@@ -123,7 +127,7 @@ function parallelSeparation(
 }
 
 function edgePairSeparation(
-  loops: Revit2027TopRailTypeCurves["loops"],
+  loops: TopRailLoopPair,
 ): number | null {
   const distances: number[] = [];
   const collect = (
@@ -164,7 +168,7 @@ function edgePairSeparation(
 }
 
 function perimeter(
-  loops: Revit2027TopRailTypeCurves["loops"],
+  loops: TopRailLoopPair,
 ): Point3[] | null {
   const first = loopPoints(loops[0]);
   const second = loopPoints(loops[1]);
@@ -210,7 +214,9 @@ function perimeter(
 export function meshRevit2027MeasuredSquareTopRail(
   curves: Revit2027TopRailTypeCurves,
 ): Revit2027TopRailSectionMesh | null {
-  const ring = perimeter(curves.loops);
+  if (curves.loops.length !== 2) return null;
+  const loops = curves.loops as TopRailLoopPair;
+  const ring = perimeter(loops);
   if (!ring) return null;
   const top = ring[0]![2];
   if (
@@ -222,7 +228,7 @@ export function meshRevit2027MeasuredSquareTopRail(
   ) {
     return null;
   }
-  const sectionWidthFeet = edgePairSeparation(curves.loops);
+  const sectionWidthFeet = edgePairSeparation(loops);
   if (
     sectionWidthFeet == null ||
     Math.abs(
@@ -301,4 +307,29 @@ export function meshRevit2027MeasuredSquareTopRail(
     boundarySegments: ring.length,
     source: "TopRailType.m_curveLoopData.curves+measured-square-section",
   };
+}
+
+/**
+ * Mesh every complete persisted edge pair in a multi-run TopRailType.
+ *
+ * Revit stores disconnected runs as consecutive two-loop pairs in the same
+ * type frame. The single-pair mesher remains the fail-closed primitive; this
+ * wrapper requires every pair to belong to the measured square-section family
+ * so one unsupported run cannot yield a partial railing.
+ */
+export function meshRevit2027MeasuredSquareTopRailRuns(
+  curves: Revit2027TopRailTypeCurves,
+): readonly Revit2027TopRailSectionMesh[] | null {
+  if (curves.loops.length < 2 || curves.loops.length % 2 !== 0) return null;
+  const meshes: Revit2027TopRailSectionMesh[] = [];
+  for (let index = 0; index < curves.loops.length; index += 2) {
+    const result = meshRevit2027MeasuredSquareTopRail({
+      ...curves,
+      curveLoopCount: 2,
+      loops: [curves.loops[index]!, curves.loops[index + 1]!],
+    });
+    if (!result) return null;
+    meshes.push(result);
+  }
+  return meshes;
 }
