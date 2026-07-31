@@ -87,6 +87,26 @@ function tuple(point: THREE.Vector3): Point3Tuple {
   return [point.x, point.y, point.z];
 }
 
+type NormalizedCameraPose = {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+  up: THREE.Vector3;
+};
+
+/** Convert a scene vector into the recovery's canonical z-up axes. */
+function canonicalCameraVector(vector: THREE.Vector3, up: "y" | "z"): THREE.Vector3 {
+  return up === "y"
+    ? new THREE.Vector3(vector.x, -vector.z, vector.y)
+    : vector.clone();
+}
+
+/** Convert a canonical z-up vector into a scene's declared axes. */
+function sceneCameraVector(vector: THREE.Vector3, up: "y" | "z"): THREE.Vector3 {
+  return up === "y"
+    ? new THREE.Vector3(vector.x, vector.z, -vector.y)
+    : vector.clone();
+}
+
 function commentScenePoint(
   comment: ModelComment,
   source: GeometrySource,
@@ -210,6 +230,8 @@ export function ModelCanvas({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const walkSpeedRef = useRef<WalkSpeed>("normal");
   const walkGravityRef = useRef(true);
+  const matchedCameraRef = useRef<NormalizedCameraPose | null>(null);
+  const appliedCameraRequestRef = useRef(cameraRequest.sequence);
   const measuringRef = useRef(false);
   const commentingRef = useRef(false);
   const measureModeRef = useRef<MeasureMode>("distance");
@@ -234,10 +256,13 @@ export function ModelCanvas({
     const technical = renderMode === "technical";
     const isReferenceModel = source === "reference-model";
     const scene = new THREE.Scene();
-    scene.background = isReferenceModel && technical ? null : new THREE.Color(technical ? 0xb8d0ee : 0x081419);
-    scene.fog = isReferenceModel && technical
-      ? new THREE.FogExp2(0xeaf1f8, 0.00015)
-      : new THREE.FogExp2(technical ? 0xb8d0ee : 0x081419, technical ? 0.00018 : 0.00045);
+    scene.background = isReferenceModel && technical
+      ? null
+      : new THREE.Color(technical ? 0xeaf1f8 : 0x081419);
+    scene.fog = new THREE.FogExp2(
+      technical ? 0xeaf1f8 : 0x081419,
+      technical ? 0.00015 : 0.00045,
+    );
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isReferenceModel && technical, powerPreference: "high-performance" });
@@ -246,14 +271,14 @@ export function ModelCanvas({
     // for a difference MSAA already papers over.
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = isReferenceModel ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isReferenceModel ? 0.95 : technical ? 1.16 : 1.08;
-    renderer.shadowMap.enabled = technical && !isReferenceModel;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // The sun does not move and neither does the building: the shadow map is
-    // rendered when the scene actually changes rather than every frame, which
-    // previously re-drew every triangle into the depth map per frame.
-    renderer.shadowMap.autoUpdate = false;
+    renderer.toneMapping = technical ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = technical ? 0.95 : 1.08;
+    // Autodesk derivatives are intentionally shadow-free in this viewer.
+    // Recovered meshes need the same policy: their unwelded, double-sided wall
+    // faces self-shadow into a stippled pattern that shimmers during movement.
+    // Keeping shadows disabled in every navigation mode also avoids making an
+    // orbit/first-person switch change the building's material appearance.
+    renderer.shadowMap.enabled = false;
     renderer.localClippingEnabled = false;
     if (isReferenceModel && technical) renderer.setClearColor(0xffffff, 0);
 
@@ -286,22 +311,26 @@ export function ModelCanvas({
     scene.add(root);
     scene.add(new THREE.HemisphereLight(
       technical ? 0xf8fbff : 0xccefff,
-      isReferenceModel ? 0x9da6ad : technical ? 0x7589a1 : 0x102026,
-      isReferenceModel ? 0.9 : technical ? 2.1 : 1.45,
+      technical ? 0x9da6ad : 0x102026,
+      technical ? 0.9 : 1.45,
     ));
-    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, isReferenceModel ? 0.25 : technical ? 0.58 : 0.18));
+    scene.add(new THREE.AmbientLight(technical ? 0xffffff : 0x16333a, technical ? 0.25 : 0.18));
     const sun = new THREE.DirectionalLight(
       technical ? 0xfff7e8 : 0xfff4d8,
-      isReferenceModel ? 1.6 : technical ? 2.8 : 2.3,
+      technical ? 1.6 : 2.3,
     );
-    sun.position.set(180, isReferenceModel ? 280 : -120, isReferenceModel ? -120 : 280);
-    sun.castShadow = technical && !isReferenceModel;
+    const sunOffset = new THREE.Vector3(
+      180,
+      isReferenceModel ? 280 : -120,
+      isReferenceModel ? -120 : 280,
+    );
+    sun.castShadow = false;
     scene.add(sun);
 
     const dx = bounds.max.x - bounds.min.x;
     const dy = bounds.max.y - bounds.min.y;
     const dz = bounds.max.z - bounds.min.z;
-    const radius = Math.max(25, dx, dy, dz) * 0.62;
+    let radius = Math.max(25 * sceneUnitsPerFoot, dx, dy, dz) * 0.62;
     const center = new THREE.Vector3(
       (bounds.min.x + bounds.max.x) / 2,
       (bounds.min.y + bounds.max.y) / 2,
@@ -311,52 +340,15 @@ export function ModelCanvas({
       new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
       new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
     );
+    let up = (
+      isReferenceModel && referenceBoundsRef.current
+        ? (referenceIsYUp(referenceBoundsRef.current) ? "y" : "z")
+        : isReferenceModel ? "y" : "z"
+    ) as "y" | "z";
+    sun.position.copy(center).add(sunOffset);
+    sun.target.position.copy(center);
+    scene.add(sun.target);
     controls.target.copy(center);
-
-    if (technical && !isReferenceModel) {
-      // The ortho frustum only has to cover the model's bounding sphere; the
-      // old square of ±radius*1.5 was fitted to the longest axis, which on an
-      // elongated site plan doubled the shadow texel size. With the map static
-      // (autoUpdate above) a 4096 map costs one render, and together these take
-      // the texel from ~1.1 ft to ~0.35 ft — the blocky shadows in first
-      // person were shadow texels, not screen pixels.
-      const shadowRadius = Math.hypot(dx, dy, dz) * 0.51 + 1;
-      sun.shadow.mapSize.set(4096, 4096);
-      sun.shadow.camera.left = -shadowRadius;
-      sun.shadow.camera.right = shadowRadius;
-      sun.shadow.camera.top = shadowRadius;
-      sun.shadow.camera.bottom = -shadowRadius;
-      // The sun sits closer to the target than the shadow sphere's radius, so
-      // a near plane at 0.1 clipped the far corners of the model out of the
-      // caster pass entirely; an ortho near may be negative, and covering the
-      // whole sphere is what makes every surface a caster. The tight far also
-      // shrinks the depth range ~3.4x, so the constant bias below is worth
-      // about one texel instead of three and a half.
-      sun.shadow.camera.near = -shadowRadius;
-      sun.shadow.camera.far = sun.position.length() + shadowRadius;
-      sun.shadow.bias = -0.0002;
-      // These batches are DoubleSide, so the lit face itself is the stored
-      // caster depth and a constant bias alone cannot cover the PCF kernel's
-      // 1-2 texel reach on walls the sun grazes at 50-70 degrees — that
-      // mismatch was the diagonal striping that shimmered as the camera
-      // moved. Offsetting the receiver along its normal by ~2 shadow texels
-      // (2 x 0.35 ft) scales the slack with the grazing angle, which the
-      // constant cannot.
-      sun.shadow.normalBias = 0.7;
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(Math.max(dx, dy, 100) * 2.2, Math.max(dx, dy, 100) * 2.2),
-        new THREE.ShadowMaterial({ color: isReferenceModel ? 0x857f76 : 0x6f829a, opacity: isReferenceModel ? 0.2 : 0.16 }),
-      );
-      if (isReferenceModel) {
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.set(center.x, bounds.min.y - 0.06, center.z);
-      } else {
-        ground.position.set(center.x, center.y, bounds.min.z - 0.06);
-      }
-      ground.receiveShadow = true;
-      (ground.material as THREE.Material).userData.outlineParameters = { visible: false };
-      scene.add(ground);
-    }
 
     const grid = new THREE.GridHelper(
       Math.max(dx, isReferenceModel ? dz : dy, 100) * 1.35,
@@ -369,7 +361,9 @@ export function ModelCanvas({
       grid.rotation.x = Math.PI / 2;
       grid.position.z = bounds.min.z - 0.04;
     }
-    grid.visible = !isReferenceModel;
+    // The technical GLB presentation has no model grid. Keep the grid as an
+    // X-ray diagnostic aid, but remove it from the matched Shaded comparison.
+    grid.visible = !technical && !isReferenceModel;
     if (technical && Array.isArray(grid.material)) {
       for (const material of grid.material) {
         material.transparent = true;
@@ -395,16 +389,35 @@ export function ModelCanvas({
     camera.updateProjectionMatrix();
     controls.update();
 
+    const applyMatchedCamera = (): boolean => {
+      const matched = matchedCameraRef.current;
+      if (!matched) return false;
+      const position = sceneCameraVector(
+        matched.position.clone().multiplyScalar(radius),
+        up,
+      ).add(center);
+      const target = sceneCameraVector(
+        matched.target.clone().multiplyScalar(radius),
+        up,
+      ).add(center);
+      camera.position.copy(position);
+      camera.up.copy(sceneCameraVector(matched.up, up).normalize());
+      camera.lookAt(target);
+      controls.target.copy(target);
+      controls.update();
+      return true;
+    };
+    // A reference has to wait for its own measured bounds. Recovered geometry
+    // already has trustworthy bounds, so a camera handed off from the GLB can
+    // be placed immediately.
+    if (!isReferenceModel) applyMatchedCamera();
+
     const raycaster = new THREE.Raycaster();
     const floorRaycaster = new THREE.Raycaster();
     const collisionRaycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const measurement = createMeasurementScene(scene);
     let needsRender = true;
-    // Scene content changed since the shadow map was last rendered. Camera
-    // movement alone never sets this: shadows depend on the sun and the
-    // geometry, not on the eye.
-    let shadowsStale = true;
     const handleControlsChange = () => {
       needsRender = true;
     };
@@ -442,11 +455,6 @@ export function ModelCanvas({
     };
     // glTF declares +Y up, so a reference normally is; but ask the geometry
     // rather than assume, so a z-up reference is not drawn on its side.
-    const up = (
-      isReferenceModel && referenceBoundsRef.current
-        ? (referenceIsYUp(referenceBoundsRef.current) ? "y" : "z")
-        : isReferenceModel ? "y" : "z"
-    ) as "y" | "z";
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
     let referenceWalkSurface: WalkSurfaceIndex | null = null;
@@ -762,7 +770,6 @@ export function ModelCanvas({
       explodeParts: [],
       invalidate: () => {
         needsRender = true;
-        shadowsStale = true;
       },
     };
 
@@ -789,9 +796,27 @@ export function ModelCanvas({
         const measured = referenceModelBounds(loadedScene);
         referenceBoundsRef.current = measured;
         const home = referenceHomePose(measured);
+        const measuredBounds = new THREE.Box3(
+          new THREE.Vector3(measured.min.x, measured.min.y, measured.min.z),
+          new THREE.Vector3(measured.max.x, measured.max.y, measured.max.z),
+        );
+        const measuredSize = measuredBounds.getSize(new THREE.Vector3());
+        radius = Math.max(
+          25 * sceneUnitsPerFoot,
+          measuredSize.x,
+          measuredSize.y,
+          measuredSize.z,
+        ) * 0.62;
+        center.copy(home.target);
+        sceneBounds.copy(measuredBounds);
+        up = referenceIsYUp(measured) ? "y" : "z";
+        sun.position.copy(center).add(sunOffset);
+        sun.target.position.copy(center);
         camera.up.copy(home.up);
         camera.fov = home.fov;
         camera.position.copy(home.position);
+        camera.near = Math.max(0.1 * sceneUnitsPerFoot, radius / 1_000);
+        camera.far = radius * 30;
         camera.updateProjectionMatrix();
         controls.target.copy(home.target);
         controls.update();
@@ -799,8 +824,16 @@ export function ModelCanvas({
         referenceWalkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
         root.add(batchedScene);
         refreshInteractionMeshes();
+        const runtime = runtimeRef.current;
+        if (runtime) {
+          runtime.center.copy(center);
+          runtime.radius = radius;
+          runtime.bounds.copy(sceneBounds);
+          runtime.floor = up === "y" ? measured.min.y : measured.min.z;
+          runtime.up = up;
+        }
+        applyMatchedCamera();
         needsRender = true;
-        shadowsStale = true;
         setReferenceLoadState("ready");
       }).catch(() => {
         if (active) setReferenceLoadState("error");
@@ -839,10 +872,6 @@ export function ModelCanvas({
         cameraChanged = controls.update();
       }
       if (cameraChanged || needsRender) {
-        if (shadowsStale && renderer.shadowMap.enabled) {
-          renderer.shadowMap.needsUpdate = true;
-          shadowsStale = false;
-        }
         renderer.render(scene, camera);
         needsRender = false;
       }
@@ -852,6 +881,22 @@ export function ModelCanvas({
     return () => {
       active = false;
       cancelAnimationFrame(frame);
+      // Carry a normalized camera between the feet/z-up recovery and the
+      // metres/y-up GLB. First-person controls do not maintain OrbitControls'
+      // target, so derive a target from the live look direction while walking.
+      const cameraTarget = walkRef.current
+        ? camera.position.clone().addScaledVector(
+            camera.getWorldDirection(new THREE.Vector3()),
+            radius * 0.25,
+          )
+        : controls.target.clone();
+      matchedCameraRef.current = {
+        position: canonicalCameraVector(camera.position.clone().sub(center), up)
+          .divideScalar(radius),
+        target: canonicalCameraVector(cameraTarget.sub(center), up)
+          .divideScalar(radius),
+        up: canonicalCameraVector(camera.up, up).normalize(),
+      };
       observer.disconnect();
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
@@ -875,6 +920,11 @@ export function ModelCanvas({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
+    // Scene/source rebuilds preserve the matched camera above. Only an explicit
+    // Home/Fit/view-preset request should replace it.
+    if (cameraRequest.sequence === appliedCameraRequestRef.current) return;
+    if (source === "reference-model" && referenceLoadState !== "ready") return;
+    appliedCameraRequestRef.current = cameraRequest.sequence;
     // One control decides the orientation now, so there is nothing to
     // reconcile: the requested preset is the camera.
     const preset = cameraRequest.preset;
@@ -882,10 +932,23 @@ export function ModelCanvas({
     const frameBounds = visibleBounds && !visibleBounds.isEmpty() ? visibleBounds : runtime.bounds;
     const frameCenter = frameBounds.getCenter(new THREE.Vector3());
     const frameSize = frameBounds.getSize(new THREE.Vector3());
-    const frameRadius = Math.max(25, frameSize.x, frameSize.y, frameSize.z) * 0.62;
-    const pose = source === "reference-model"
-      ? { ...referencePoseForPreset(preset, frameRadius), target: frameCenter }
-      : { ...cameraPoseForPreset(frameCenter, frameRadius, preset), target: frameCenter, fov: 45 };
+    const frameRadius = Math.max(
+      25 * runtime.sceneUnitsPerFoot,
+      frameSize.x,
+      frameSize.y,
+      frameSize.z,
+    ) * 0.62;
+    const pose = (() => {
+      if (source !== "reference-model") {
+        return { ...cameraPoseForPreset(frameCenter, frameRadius, preset), target: frameCenter, fov: 45 };
+      }
+      const referencePose = referencePoseForPreset(preset, frameRadius);
+      return {
+        ...referencePose,
+        position: referencePose.position.clone().add(frameCenter),
+        target: frameCenter,
+      };
+    })();
     const target = pose.target;
     runtime.camera.fov = pose.fov;
     runtime.camera.up.set(pose.up.x, pose.up.y, pose.up.z);

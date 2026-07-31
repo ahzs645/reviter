@@ -1147,12 +1147,9 @@ export default function ReviterStudio() {
                 <div className="segmented-control source-control" aria-label="Geometry source">
                   <ToolButton
                     className={geometrySource === "reference-model" ? "active" : ""}
-                    reason={referenceModelAvailable
-                      ? null
-                      : "Pair a GLB or glTF reference model to compare"}
                     title={referenceModelName
                       ? `Paired reference: ${referenceModelName}`
-                      : "A conversion of the same building by other tooling, for comparison"}
+                      : "Pair a GLB or glTF conversion of the same building"}
                     onClick={() => {
                       if (referenceModelAvailable) {
                         setGeometrySource("reference-model");

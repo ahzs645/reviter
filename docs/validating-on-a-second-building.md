@@ -189,6 +189,19 @@ in the conversion warnings. So the remaining work is completing those nested
 roots in the existing recovery, with the paired export's railing meshes as the
 per-position check, not writing a new distribution decoder.
 
+The persisted schema behind that route has since been recovered from the
+model's own `Formats/Latest` declarations —
+`BaseRailingSym.m_balusterInstances` holds the placed balusters as GRep nodes,
+with a `paramsAndId` record per instance naming the family symbol and the
+child element id. See `revit-2027-baluster-instances.md`, which also names
+`AppearanceAsset.m_transparency` for the nested-material transparency gap in
+item 2. A follow-up instrumented investigation,
+`revit-2027-railing-nested-roots.md`, measured the incomplete-root bucket
+against that schema: of 61 incomplete nested roots, 57 are stair flights and
+only 2 are railings — one completable from 258 already-persisted station
+transforms, one requiring the instance-array decode itself, and neither
+recoverable by loosening the composer.
+
 One consequence *was* fixed once walking the model made it visible: 19 of the
 set records carried enough envelope height to pass the solid test, and the
 display fell back to drawing each as a literal envelope box — a solid grey

@@ -170,8 +170,13 @@ export function meshGroup(
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.name = part.glazing ? `${data.name} · glazing` : data.name;
-      mesh.castShadow = technical;
-      mesh.receiveShadow = technical;
+      // Recovered BRep batches contain many unwelded, double-sided faces.
+      // Shadowing those faces makes the depth pass self-interfere: opaque walls
+      // acquire a stippled diagonal pattern that shimmers as the camera moves.
+      // The paired Autodesk scene deliberately remains shadow-free for the same
+      // reason, so keep both comparison sources on stable direct lighting.
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
       mesh.userData.elementIds = part.elementIds;
       mesh.renderOrder = 1;
       group.add(mesh);
@@ -234,8 +239,8 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
-    mesh.castShadow = technical;
-    mesh.receiveShadow = technical;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
     mesh.renderOrder = data.matched ? 2 : 1;
     group.add(mesh);
     if (technical && data.indices.length <= 600_000) {
