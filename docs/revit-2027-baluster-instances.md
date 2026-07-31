@@ -203,6 +203,73 @@ publishes the exact paths but does not turn them into a solid sweep. A
 rectangular or other top-rail section would add geometry the bytes do not
 state.
 
+### Phase 4: the native population supplies the missing section height
+
+Phase 4 tested the square-section hypothesis against this file's own native
+railings before adding any geometry. The join follows the exact nested GRep
+graph from each railing root to its owning TopRail and TopRailType; it does not
+use id proximity or `Global/ElemTable` ownership (only four TopRails have that
+ownership join). Of the 209 certified TopRailType curve frames, 208 map to a
+railing that was already natively drawable before this change. The remaining
+frame is target `1834274`, reached by residual railing `1833657`, and therefore
+cannot support its own inference.
+
+The section probe measures a local horizontal top-rail band, not the z extent
+of an entire sloped stair run. Faces are grouped by their persisted nested
+occurrence transform; a section is certified only when at least three
+coincident native faces establish the same upper and lower band. This matters:
+a square swept normal to a sloped path has a larger z projection (for example,
+`1496333` has a `0.187657300616 ft` sloped projection), while its adjacent
+horizontal section measures `0.164041994751 ft`. Of the 208 joined native
+railings:
+
+- 165 have a certified horizontal native section;
+- 38 expose only one or two local/end faces, below the certification floor;
+- five expose no measurable horizontal band; and
+- none of the 43 insufficient cases is treated as a match or a
+  counterexample.
+
+All 165 certified measurements belong to one separation family:
+
+| edge-pair separation family (ft) | certified railings | bit-for-bit equal height | equal within 1e-12 ft | separation range (ft) | native height range (ft) | maximum deviation (ft) | counterexamples |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `0.164041995` | 165 | 2 | 165 | `0.164041994750612..0.164041994750733` | `0.164041994750654..0.164041994750770` | `1.4364e-13` | 0 |
+
+Control `1842055` is an especially direct instance: persisted separation
+`0.164041994750654 ft`, native height `0.164041994750658 ft`, deviation
+`3.77e-15 ft`. Target `1834274`'s independently decoded separation
+`0.164041994750656 ft` lies in the same family and has 165 native supporters.
+The decision gates therefore pass: support is greater than 30, the maximum
+deviation is far below `0.01 ft`, and the target family is supported natively.
+
+The production assumption is explicit and deliberately narrow:
+**within this Revit 2027 model's measured `0.164041995 ft` top-rail family, the
+section is square (height equals persisted edge-pair separation), n=165**.
+`meshRevit2027MeasuredSquareTopRail` accepts only a flat, GLine-only, closed
+two-edge frame in that measured family. The top perimeter and all plan width
+come directly from the two persisted edge curves; no width constant is used.
+Only height is completed, by setting it equal to the decoded separation under
+the measured relationship. Sloped, curved, open, degenerate, differently sized
+or untriangulable frames remain opaque.
+
+For `1833657`, the two edge paths form a 62-segment closed perimeter. Its two
+caps contribute 60 triangles each and its 62 sides contribute 124, for one
+244-triangle top-rail part. The unchanged atomic nested composer then admits
+that part with the 258 already-persisted baluster occurrences:
+
+- RVT result: 259 parts, 3,340 triangles (`258 × 12 + 1 × 244`);
+- IFC oracle: 259 parts, 3,340 triangles with the same histogram;
+- all 259 greedy one-to-one AABB/station clusters match within `1e-6 ft`
+  (median maximum-corner error `6.15e-10 ft`, worst `8.78e-7 ft`);
+- the aggregate AABB is contained by `1833657`'s independently decoded record
+  envelope, so final render provenance is `native`; and
+- controls remain unchanged: `1842055` 548 faces/1,096 triangles,
+  `1496333` 282/564, `1498371` 564/1,128, and `1500202` 282/564.
+
+Railing `1856525` remains outside this completion. It still has no exact
+station frame, and no station or definition is borrowed from a neighbouring
+railing.
+
 ## Where nested-material transparency lives: `AppearanceAsset.m_transparency`
 
 The same schema stream also names the field behind the other open gap. The

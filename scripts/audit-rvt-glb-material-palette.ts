@@ -104,7 +104,7 @@ function colorEncodings(color: PaletteColor): Encoding[] {
   });
 }
 
-function findAll(data: Uint8Array, pattern: readonly number[]): number[] {
+function findAll(data: Uint8Array, pattern: ArrayLike<number>): number[] {
   const offsets: number[] = [];
   if (!pattern.length || pattern.length > data.byteLength) return offsets;
   outer: for (let offset = 0; offset <= data.byteLength - pattern.length; offset += 1) {

@@ -49,6 +49,7 @@ import {
   type Revit2027GRepReplay,
 } from "./revit-2027-grep-replay.ts";
 import { meshRevit2027SpiralStairReplay } from "./revit-2027-spiral-stair-mesh.ts";
+import { meshRevit2027MeasuredSquareTopRail } from "./revit-2027-top-rail-mesh.ts";
 import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
 import {
   collectRevit2027GInstanceBindings,
@@ -201,7 +202,8 @@ type CompactOwnerDefinition = {
 
 export type Revit2027AlternateDefinitionInput = {
   ownerElementId: number;
-  owningRailingElementId: number;
+  /** Exact direct railing root for station frames; null for curve-owned rail definitions. */
+  owningRailingElementId: number | null;
   geometry: Revit2027CompactOwnerMesh | null;
   localComplete: boolean;
   localFailureDetail: string | null;
@@ -210,6 +212,7 @@ export type Revit2027AlternateDefinitionInput = {
   estimatedBytes: number;
   source:
     | "BaseRailingSym.m_balusterInstances"
+    | "TopRailType.m_curveLoopData.curves"
     | "fixture";
 };
 
@@ -710,6 +713,45 @@ function defaultRevit2027AlternateDefinitionProvider(
     maxStoredBytes: number;
   },
 ): Revit2027AlternateDefinitionProviderResult {
+  if (frame.marker === REVIT_2027_TOP_RAIL_TYPE_MARKER) {
+    const decoded = decodeRevit2027TopRailTypeCurves(
+      data,
+      frame,
+      revitVersion,
+      {
+        maxInstances: limits.maxNestedLinks,
+        maxFrameBytes: limits.maxStoredBytes,
+      },
+    );
+    if (!decoded.ok) return decoded;
+    const topRail = meshRevit2027MeasuredSquareTopRail(decoded.value);
+    if (!topRail) return { ok: true, value: null };
+    return {
+      ok: true,
+      value: {
+        ownerElementId: decoded.value.ownerElementId,
+        owningRailingElementId: null,
+        geometry: {
+          ownerElementId: decoded.value.ownerElementId,
+          faces: [{ faceToken: topRail.faceToken, mesh: topRail.mesh }],
+          triangles: topRail.triangles,
+        },
+        localComplete: true,
+        localFailureDetail: null,
+        nestedInstances: [],
+        requiredCompleteSymbolMeshIds: new Set(),
+        estimatedBytes: estimatedDefinitionBytes(
+          {
+            ownerElementId: decoded.value.ownerElementId,
+            faces: [{ faceToken: topRail.faceToken, mesh: topRail.mesh }],
+            triangles: topRail.triangles,
+          },
+          [],
+        ),
+        source: "TopRailType.m_curveLoopData.curves",
+      },
+    };
+  }
   if (frame.marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) {
     return { ok: true, value: null };
   }
@@ -771,8 +813,7 @@ function alternateDefinitionEquivalent(
     existing.ownerElementId !== alternate.ownerElementId ||
     existing.localComplete !== alternate.localComplete ||
     existing.localFailureDetail !== alternate.localFailureDetail ||
-    existing.geometry !== null ||
-    alternate.geometry !== null ||
+    (existing.geometry == null) !== (alternate.geometry == null) ||
     existing.nestedInstances.length !== alternate.nestedInstances.length
   ) {
     return false;
@@ -783,6 +824,7 @@ function alternateDefinitionEquivalent(
   const alternateKeys = alternate.nestedInstances
     .map(nestedInstanceStructuralKey)
     .sort();
+  if (existing.geometry && alternate.geometry) return false;
   return existingKeys.every(
     (value, index) => value === alternateKeys[index],
   );
@@ -1343,10 +1385,14 @@ export function createRevit2027NativeMeshCollector(
     if (state.alternateDefinitionsFinalized) return;
     state.alternateDefinitionsFinalized = true;
     for (const input of state.alternateDefinitionInputs) {
-      const owningRailing = state.definitions.get(
-        input.owningRailingElementId,
-      );
-      if (!owningRailing?.directRoot) {
+      const owningRailing =
+        input.owningRailingElementId == null
+          ? null
+          : state.definitions.get(input.owningRailingElementId);
+      if (
+        input.owningRailingElementId != null &&
+        !owningRailing?.directRoot
+      ) {
         rememberAlternateDefinitionFailure(
           input.ownerElementId,
           `${input.source} ownership ${input.owningRailingElementId} ` +
@@ -1374,6 +1420,10 @@ export function createRevit2027NativeMeshCollector(
       }
       const existing = state.definitions.get(input.ownerElementId);
       if (existing) {
+        // TopRailType completion is strictly a missing-definition fallback.
+        // A marker-2246 definition for the same owner already supplies the
+        // ordinary native route and must remain byte/geometry authoritative.
+        if (input.source === "TopRailType.m_curveLoopData.curves") continue;
         if (!alternateDefinitionEquivalent(existing, input)) {
           state.conflictingOwnerIds.add(input.ownerElementId);
           rememberAlternateDefinitionFailure(
