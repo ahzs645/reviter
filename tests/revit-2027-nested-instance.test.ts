@@ -470,3 +470,45 @@ test("composition rejects missing targets, cycles, conflicts, and selectors", ()
     assert.match(viewDependent.error, /view-dependent symbol resolution/);
   }
 });
+
+test("an exact alternate definition closes a missing target without changing the missing-target guard", () => {
+  const identity = IDENTITY.matrix;
+  const root = {
+    ownerElementId: 10n,
+    geometry: null,
+    nestedInstances: [nested(10n, 20n, identity)],
+  };
+  const withoutAlternate = composeRevit2027NestedMesh(10n, [root]);
+  assert.equal(withoutAlternate.ok, false);
+  if (!withoutAlternate.ok) {
+    assert.match(withoutAlternate.error, /target 20 is missing/);
+  }
+
+  const withAlternate = composeRevit2027NestedMesh(10n, [
+    root,
+    {
+      ownerElementId: 20n,
+      geometry: null,
+      nestedInstances: [nested(20n, 30n, identity)],
+    },
+    {
+      ownerElementId: 30n,
+      geometry: "complete-symbol-mesh",
+      nestedInstances: [],
+    },
+  ]);
+  assert.equal(withAlternate.ok, true);
+  if (!withAlternate.ok) return;
+  assert.deepEqual(
+    withAlternate.value.occurrences.map((occurrence) => ({
+      owner: occurrence.geometryOwnerElementId,
+      geometry: occurrence.geometry,
+      depth: occurrence.chain.length,
+    })),
+    [{
+      owner: 30n,
+      geometry: "complete-symbol-mesh",
+      depth: 2,
+    }],
+  );
+});
