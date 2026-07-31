@@ -7,12 +7,20 @@ export type ViewerTool =
   | "measure"
   | "section"
   | "explode"
+  /** Pin a 3D comment on the next surface that is clicked. */
+  | "comment"
+  /** Draw 2D annotation over the viewport. */
   | "markup";
 
 export type MeasureMode = "distance" | "angle" | "calibrate" | "coordinates" | "laser";
 export type MeasureUnit = "feet" | "metres";
 export type SectionMode = "x" | "y" | "z" | "box";
-export type MarkupTool = "pencil" | "arrow" | "cloud" | "text" | "comment" | "delete";
+/**
+ * Markup is 2D annotation only. Pinning a 3D comment used to be one of these,
+ * which meant the Comment tool raised the whole drawing toolbar alongside the
+ * comment banner — two controls for the same act, stacked over the model.
+ */
+export type MarkupTool = "pencil" | "arrow" | "cloud" | "text" | "delete";
 export type Point3Tuple = [number, number, number];
 
 export type ModelViewpoint = {

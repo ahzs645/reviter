@@ -17,6 +17,7 @@ import {
   Footprints,
   Hand,
   MessageSquarePlus,
+  PenLine,
   PanelBottom,
   PanelLeft,
   PanelRight,
@@ -42,7 +43,11 @@ const TOOLS: readonly ToolEntry[] = [
   { id: "measure", label: "Measure", Icon: Ruler },
   { id: "section", label: "Section", Icon: Scissors },
   { id: "explode", label: "Explode", Icon: Expand },
-  { id: "markup", label: "Comment", Icon: MessageSquarePlus },
+  { id: "comment", label: "Comment", Icon: MessageSquarePlus },
+  // Not in the four-group layout the handoff describes, but 2D markup predates
+  // it and would otherwise have no entry point at all once the Comment tool
+  // stopped raising the drawing toolbar with it.
+  { id: "markup", label: "Markup", Icon: PenLine },
 ];
 
 export type SourceOption = {

@@ -7,7 +7,7 @@ import type { MarkupTool } from "./viewer-tools.ts";
 type MarkupPoint = { x: number; y: number };
 type MarkupPath = {
   id: number;
-  tool: Exclude<MarkupTool, "delete" | "comment">;
+  tool: Exclude<MarkupTool, "delete">;
   points: MarkupPoint[];
   color: string;
   weight: number;
@@ -40,14 +40,12 @@ function pathData(markup: MarkupPath): string {
 export function MarkupOverlay({
   active,
   tool,
-  commentCount,
   onToolChange,
   onDone,
   onCancel,
 }: {
   active: boolean;
   tool: MarkupTool;
-  commentCount: number;
   onToolChange: (tool: MarkupTool) => void;
   onDone: () => void;
   onCancel: () => void;
@@ -78,7 +76,7 @@ export function MarkupOverlay({
   };
 
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!active || event.button !== 0 || tool === "delete" || tool === "comment") return;
+    if (!active || event.button !== 0 || tool === "delete") return;
     const point = svgPoint(event);
     const next: MarkupPath = {
       id: idRef.current++,
@@ -173,7 +171,7 @@ export function MarkupOverlay({
   const visibleMarkups = draft ? [...markups, draft] : markups;
 
   return (
-    <div className={`markup-layer${active ? " active" : ""}${tool === "comment" ? " commenting" : ""}`}>
+    <div className={`markup-layer${active ? " active" : ""}`}>
       <svg
         viewBox="0 0 1000 1000"
         preserveAspectRatio="none"
@@ -215,18 +213,18 @@ export function MarkupOverlay({
       {active && (
         <div className="markup-toolbar" role="toolbar" aria-label="Markup tools">
           <div className="markup-toolbar-title">
-            <strong>Create Markup <span>{commentCount} 3D comment{commentCount === 1 ? "" : "s"}</span></strong>
+            <strong>Markup <span>2D annotation over the view</span></strong>
             <button onClick={cancel}>Cancel</button>
             <button className="primary" onClick={onDone}>Save</button>
           </div>
           <div className="markup-toolbar-row">
-            {(["pencil", "arrow", "cloud", "text", "comment", "delete"] as const).map((entry) => (
+            {(["pencil", "arrow", "cloud", "text", "delete"] as const).map((entry) => (
               <button
                 key={entry}
                 className={tool === entry ? "active" : ""}
                 onClick={() => onToolChange(entry)}
                 aria-pressed={tool === entry}
-              >{entry === "comment" ? "3D Comment" : entry}</button>
+              >{entry}</button>
             ))}
             <label>Color <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
             <label>Weight <input type="range" min="1" max="10" value={weight} onChange={(event) => setWeight(Number(event.target.value))} /></label>
@@ -234,9 +232,6 @@ export function MarkupOverlay({
             <button onClick={undo} disabled={!history.length}>Undo</button>
             <button onClick={redoChange} disabled={!redo.length}>Redo</button>
           </div>
-          {tool === "comment" && (
-            <p className="markup-comment-hint">Click a model surface to pin an editable comment and save this viewpoint.</p>
-          )}
         </div>
       )}
     </div>

@@ -234,7 +234,6 @@ export default function ReviterStudio() {
   const ifcWorkerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
   const referenceRequestIdRef = useRef(0);
-  const commentSessionRef = useRef<ModelComment[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
   const referenceModelInputRef = useRef<HTMLInputElement>(null);
@@ -856,36 +855,26 @@ export default function ReviterStudio() {
     setViewpointRequest((current) => ({ commentId: id, sequence: current.sequence + 1 }));
   }, []);
 
-  const commentToolArmed = activeTool === "markup" && markupTool === "comment";
+  const commentToolArmed = activeTool === "comment";
+
+  /** Open the panel the Comment tool writes into, wherever that panel lives. */
+  const revealComments = useCallback(() => {
+    if (mobile) setSheet("comments");
+    else {
+      setBrowserTab("comments");
+      setLeftOpen(true);
+    }
+  }, [mobile]);
 
   const armCommentTool = useCallback(() => {
-    setActiveTool((current) => {
-      if (current === "markup") return "orbit";
-      commentSessionRef.current = modelComments;
-      return "markup";
-    });
-    setMarkupTool("comment");
-  }, [modelComments]);
+    setActiveTool((current) => current === "comment" ? "orbit" : "comment");
+    revealComments();
+  }, [revealComments]);
 
   const selectViewerTool = useCallback((tool: ViewerTool) => {
-    if (tool === "markup") {
-      if (activeTool !== "markup") commentSessionRef.current = modelComments;
-      setMarkupTool("comment");
-      if (mobile) setSheet("comments");
-      else {
-        setBrowserTab("comments");
-        setLeftOpen(true);
-      }
-    }
+    if (tool === "comment") revealComments();
     setActiveTool(tool);
-  }, [activeTool, mobile, modelComments]);
-
-  const cancelMarkup = useCallback(() => {
-    const restored = commentSessionRef.current;
-    setModelComments(restored);
-    if (result) saveModelComments(result, restored);
-    setActiveTool("orbit");
-  }, [result]);
+  }, [revealComments]);
 
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
@@ -915,8 +904,19 @@ export default function ReviterStudio() {
   // way rather than silently falling through as if it were supported.
   const isBeyondStandardsReader = versionNumber > 0 && !standardsReaderSupports(versionNumber);
   const referenceModelAvailable = Boolean(referenceModelUrl);
+  /**
+   * How many objects the file holds.
+   *
+   * The ownership records name every element the decoder saw, which is the only
+   * count that can legitimately exceed the recovery. `elementIndex` is the
+   * element *table* — a partial index, and on this building an eighth of the
+   * ownership count, so reading it as "objects in file" put a smaller number
+   * above a larger "recovered" beside it.
+   */
   const objectsInFile = result
-    ? result.elementIndex?.uniqueElementIds.length ?? result.stats.candidatesFound
+    ? result.decoderCoverage.nativeUniqueIds
+      || result.elementIndex?.uniqueElementIds.length
+      || result.stats.candidatesFound
     : 0;
 
   const metricCards = useMemo(() => result ? [
@@ -936,14 +936,12 @@ export default function ReviterStudio() {
         tone: metadata ? "good" : "off",
       },
       {
+        // The decoder already grades its own output; saying "element envelopes"
+        // over a certified native BREP understates what was actually read.
         label: "Geometry",
         value: geometrySource === "reference-model"
           ? "Paired reference model"
-          : result.method === "native-profile-recovery"
-            ? "Native wall profiles · approximate"
-            : result.method === "partition-bounds-recovery"
-              ? "Element envelopes · approximate"
-              : "Recovered · approximate",
+          : result.decoderCoverage.geometryFidelity.replaceAll("-", " "),
         tone: geometrySource === "reference-model" ? "good" : "warn",
       },
       {
@@ -983,7 +981,11 @@ export default function ReviterStudio() {
     const materials = result?.decoderCoverage.nativeMaterialDefinitions ?? 0;
     return [
       { label: "File metadata", value: metadata ? "Read from file" : "Not read", tone: metadata ? "good" : "off" },
-      { label: "Object bounds", value: result ? "Recovered" : "Not evaluated", tone: result ? "warn" : "off" },
+      {
+        label: "Object bounds",
+        value: result ? result.decoderCoverage.geometryFidelity.replaceAll("-", " ") : "Not evaluated",
+        tone: result ? "warn" : "off",
+      },
       {
         label: "Materials",
         value: materials ? `${materials.toLocaleString()} definitions` : "Not decoded",
@@ -1312,10 +1314,9 @@ export default function ReviterStudio() {
                   key={`${result.fileName}:${result.byteLength}`}
                   active={activeTool === "markup"}
                   tool={markupTool}
-                  commentCount={modelComments.length}
                   onToolChange={setMarkupTool}
                   onDone={() => setActiveTool("orbit")}
-                  onCancel={cancelMarkup}
+                  onCancel={() => setActiveTool("orbit")}
                 />
               )}
             </>
@@ -1395,10 +1396,9 @@ export default function ReviterStudio() {
                     key={`${result.fileName}:${result.byteLength}`}
                     active={activeTool === "markup"}
                     tool={markupTool}
-                    commentCount={modelComments.length}
                     onToolChange={setMarkupTool}
                     onDone={() => setActiveTool("orbit")}
-                    onCancel={cancelMarkup}
+                    onCancel={() => setActiveTool("orbit")}
                   />
 
                   {selectedRecord && (
