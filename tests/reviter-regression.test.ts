@@ -41,6 +41,7 @@ import { elementManifest, makeGlb, makeIfcCenterlines, makeReport } from "../lib
 import { compareRvtToIfc } from "../lib/reviter/regression.ts";
 import {
   buildBoundsMeshes,
+  curtainAssemblyHelperProxyIds,
   displayRole,
   isStairOrRailingHelperProxy,
   selectDisplayBounds,
@@ -1299,6 +1300,30 @@ test("holds back an uncategorised record written under the no-class code", () =>
 });
 
 test("identifies only unresolved stair and railing drawing aids as proxy helpers", () => {
+  // A Revit Stairs element is an assembly container. The runs, landings and
+  // supports remain independent scene elements, so its unresolved envelope
+  // must not become one solid box around the whole staircase.
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000120,
+    categoryName: "Stairs",
+  }), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    categoryId: -2000120,
+    categoryName: "Stairs",
+    stairTreads: [
+      [[0, 0, 1], [0, 1, 1], [2, 1, 1], [2, 0, 1]],
+    ],
+  }), false);
+  // The reported staircase boxes are uncategorised BaseRailingSym records.
+  // Their native class marker identifies the baluster-set container even when
+  // the BuiltInCategory token is absent.
+  assert.equal(isStairOrRailingHelperProxy({}, 605), true);
+  assert.equal(isStairOrRailingHelperProxy({
+    orientedBox: [
+      [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+      [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ],
+  }, 605), false);
   assert.equal(isStairOrRailingHelperProxy({
     categoryId: -2000954,
     categoryName: "Railing Rail Path Extension Lines",
@@ -1337,6 +1362,86 @@ test("identifies only unresolved stair and railing drawing aids as proxy helpers
     categoryId: -2000180,
     categoryName: "Stairs Stringer Carriage",
   }), false);
+});
+
+test("suppresses only proven curtain assembly envelopes over resolved children", () => {
+  const makeRecord = (
+    elementId: number,
+    extra: Partial<ElementBoundsRecord>,
+  ): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 4, y: 4, z: 8 },
+    },
+    ...extra,
+  });
+  const curtainWall = makeRecord(100, {
+    categoryId: -2000011,
+    categoryName: "Walls",
+    recordCode: 30,
+    recordCount: 10,
+  });
+  const gridCell = makeRecord(101, {
+    recordCode: 34_702,
+    recordCount: 1,
+  });
+  const panel = makeRecord(102, {
+    categoryId: -2000170,
+    categoryName: "Curtain Wall Panels",
+    recordCode: 114,
+    recordCount: 1,
+    orientedBox: [
+      [0, 0, 0], [1, 0, 0], [1, 0.1, 0], [0, 0.1, 0],
+      [0, 0, 1], [1, 0, 1], [1, 0.1, 1], [0, 0.1, 1],
+    ],
+  });
+  const aggregate = makeRecord(200, {
+    categoryId: -2000171,
+    categoryName: "Curtain Wall Mullions",
+    recordCode: 0xffff_ffff,
+    recordCount: 5,
+  });
+  const mullion = makeRecord(201, {
+    categoryId: -2000171,
+    categoryName: "Curtain Wall Mullions",
+    recordCode: 116,
+    recordCount: 1,
+  });
+  const ordinaryUnknown = makeRecord(300, {
+    recordCode: 34_702,
+    recordCount: 1,
+  });
+  const relations = [
+    { ownerId: 100, elementId: 101 },
+    { ownerId: 100, elementId: 102 },
+    { ownerId: 200, elementId: 201 },
+    { ownerId: 300, elementId: 300 },
+  ];
+
+  assert.deepEqual(
+    [...curtainAssemblyHelperProxyIds(
+      [curtainWall, gridCell, panel, aggregate, mullion, ordinaryUnknown],
+      relations,
+      new Set([102, 201]),
+    )].sort((left, right) => left - right),
+    [101, 200],
+  );
+
+  // If the facade child never reached the scene, the envelope remains the only
+  // evidence and must not be removed.
+  assert.equal(
+    curtainAssemblyHelperProxyIds(
+      [curtainWall, gridCell, panel],
+      relations.slice(0, 2),
+      new Set(),
+    ).size,
+    0,
+  );
 });
 
 test("batches an uncategorised envelope under its own neutral role", () => {

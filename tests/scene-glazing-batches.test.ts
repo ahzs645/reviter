@@ -8,6 +8,7 @@ import {
   displayMaterials,
   elementDisplayRoles,
   glazingElementIds,
+  selectDisplayBounds,
 } from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
@@ -76,6 +77,112 @@ test("proxy batches are tagged as proxies, so the wireframe overlay can find the
   const meshes = buildBoundsMeshes([record(1, -2000011)], { x: 0, y: 0, z: 0 });
   assert.ok(meshes.length > 0);
   for (const mesh of meshes) assert.equal(mesh.source, "display-proxy");
+});
+
+test("curtain-wall wrappers cut openings through an intersecting reconstructed wall", () => {
+  const wall: ElementBoundsRecord = {
+    ...record(100, -2000011),
+    recordCode: 30,
+    recordCount: 5,
+    categoryName: "Walls",
+    typeName: "Interior Wall - 175mm",
+    boundsFeet: {
+      min: { x: 0, y: -0.5, z: 0 },
+      max: { x: 10, y: 0.5, z: 10 },
+    },
+    solid: {
+      elementId: 100,
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 0 },
+      baseElevation: 0,
+      topElevation: 10,
+      thickness: 1,
+    },
+  };
+  const wrapper: ElementBoundsRecord = {
+    ...record(200, -2000011),
+    recordCode: 30,
+    recordCount: 9,
+    categoryName: "Walls",
+    boundsFeet: {
+      min: { x: 3, y: -2, z: 2 },
+      max: { x: 7, y: 2, z: 8 },
+    },
+  };
+  const panel: ElementBoundsRecord = {
+    ...record(201, -2000170),
+    recordCode: 114,
+    recordCount: 1,
+    categoryName: "Curtain Wall Panels",
+    boundsFeet: {
+      min: { x: 3.2, y: -0.25, z: 2.2 },
+      max: { x: 6.8, y: 0.25, z: 7.8 },
+    },
+  };
+  const selection = selectDisplayBounds([wall, wrapper, panel]);
+  assert.deepEqual(
+    selection.records.map((entry) => entry.elementId),
+    [wall.elementId, panel.elementId],
+  );
+  assert.deepEqual(
+    selection.openingWrappers.map((entry) => entry.elementId),
+    [wrapper.elementId],
+  );
+
+  const [data] = buildBoundsMeshes(
+    [wall],
+    { x: 0, y: 0, z: 0 },
+    selection.openingWrappers,
+  );
+  assert.ok(data);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  mesh.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  const intersectionsAt = (x: number, z: number) => {
+    ray.set(new THREE.Vector3(x, 3, z), new THREE.Vector3(0, -1, 0));
+    return ray.intersectObject(mesh).length;
+  };
+
+  assert.equal(intersectionsAt(5, 5), 0, "the curtain panel has a clear opening");
+  assert.ok(intersectionsAt(1, 5) > 0, "the wall remains beside the opening");
+  assert.ok(intersectionsAt(5, 1) > 0, "the wall remains below the opening");
+  geometry.dispose();
+  (mesh.material as THREE.Material).dispose();
+});
+
+test("a wrapper beside one wall face does not cut the wall", () => {
+  const wall: ElementBoundsRecord = {
+    ...record(300, -2000011),
+    categoryName: "Walls",
+    solid: {
+      elementId: 300,
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 0 },
+      baseElevation: 0,
+      topElevation: 10,
+      thickness: 1,
+    },
+  };
+  const adjacent = {
+    ...record(301, -2000011),
+    boundsFeet: {
+      min: { x: 3, y: 0.2, z: 2 },
+      max: { x: 7, y: 2, z: 8 },
+    },
+  };
+  const [uncut] = buildBoundsMeshes(
+    [wall],
+    { x: 0, y: 0, z: 0 },
+    [adjacent],
+  );
+  assert.ok(uncut);
+  assert.equal(uncut.indices.length / 3, 12);
 });
 
 test("the glazing display material keeps the alpha the viewer reuses for native glass", () => {

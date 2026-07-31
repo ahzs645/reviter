@@ -6,6 +6,7 @@ import {
   buildRevit2027NativeMeshScene,
   certifyRevit2027DrawableFaceCoverage,
   createRevit2027NativeMeshCollector,
+  decodedStairStringerIds,
   readRevit2027ConditionalStateCarrier,
   type Revit2027NativeMeshCollection,
 } from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
@@ -79,6 +80,34 @@ function replaySpan(
     value,
   };
 }
+
+test("conditional sibling reconstruction is scoped to decoded stair stringers", () => {
+  const stringers = decodedStairStringerIds(new Map([
+    [100, {
+      elementId: 100,
+      stairsId: 90,
+      triserSymbolId: null,
+      baseRiserIndex: 0,
+      isMirrored: false,
+      stringerIds: [101, 102],
+      supportPathCurveLoops: {
+        countOffset: 0,
+        entriesOffset: 4,
+        endOffset: 4,
+        count: 0,
+        entries: [],
+      },
+      supportExistenceStatus: [],
+      objectOffset: 0,
+      objectLength: 0,
+      stairsIdOffset: 0,
+      staticSuffixEndOffset: 0,
+      runProperties: null,
+    }],
+  ]));
+  assert.deepEqual([...stringers], [101, 102]);
+  assert.equal(stringers.has(1850389), false, "a curtain panel cannot enter the stringer-only route");
+});
 
 function conditionalStateReplay(
   secondStateValue = 2,

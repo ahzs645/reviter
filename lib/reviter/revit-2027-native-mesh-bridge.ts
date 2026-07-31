@@ -919,6 +919,12 @@ function sameVector(
   );
 }
 
+export function decodedStairStringerIds(
+  stairsRuns: ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>,
+): Set<number> {
+  return new Set([...stairsRuns.values()].flatMap((run) => run.stringerIds));
+}
+
 function finalizeRevit2027NativeMeshCollection(
   state: MutableCollection,
   requestedOwnerIds: Iterable<number> = [],
@@ -941,6 +947,11 @@ function finalizeRevit2027NativeMeshCollection(
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
   const reconstructedOwnerIds = new Set<number>();
   const carrierComposedOwnerIds = new Set<number>();
+  // Conditional sibling composition is a stringer encoding, not a generic
+  // GFilter rule. The target must be named by a decoded stair-run aggregate;
+  // otherwise an unrelated sibling under the same owner can donate its body.
+  // That is how a rectangular curtain panel was copied into a sloped boundary.
+  const stringerOwnerIds = decodedStairStringerIds(stairsRuns);
   for (const definition of state.definitions.values()) {
     if (
       (definition.directRoot ||
@@ -989,7 +1000,8 @@ function finalizeRevit2027NativeMeshCollection(
       !target.directRoot ||
       target.geometry ||
       target.nestedInstances.length > 0 ||
-      !target.conditionalStateCarrier
+      !target.conditionalStateCarrier ||
+      !stringerOwnerIds.has(target.ownerElementId)
     ) {
       continue;
     }

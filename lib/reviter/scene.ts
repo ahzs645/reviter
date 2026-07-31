@@ -8,7 +8,12 @@
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
 import type { WallArc, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
-import { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes.ts";
+import {
+  CURTAIN_GRID_CELL_RECORD_CODE,
+  NO_CLASS_RECORD_CODE,
+  STAIR_COMPANION_CODE,
+} from "./record-codes.ts";
+import { REVIT_2027_BASE_RAILING_SYMBOL_MARKER } from "./revit-2027-baluster-instances.ts";
 import type { Point3 } from "./sketch-curves.ts";
 
 import type {
@@ -227,6 +232,12 @@ export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper
 
 export type DisplaySelection = {
   records: ElementBoundsRecord[];
+  /**
+   * Curtain-wall/opening containers omitted because their panels and mullions
+   * are drawn instead. Their envelopes are also the only recovered evidence of
+   * the void Revit cuts through an intersecting host wall.
+   */
+  openingWrappers: ElementBoundsRecord[];
   omittedContainerCount: number;
   omittedWrapperCount: number;
   /** Records drawn without a decoded category, under the unclassified role. */
@@ -294,6 +305,7 @@ const SUB_ELEMENT_CATEGORIES = new Map<number, number>([
  * proxy path.
  */
 const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
+  -2000120, // Stairs (assembly container; children carry the geometry)
   -2000954, // Railing Rail Path Extension Lines
   -2000938, // Stairs Paths
   -2000067, // Stairs Sketch Boundary Lines
@@ -314,6 +326,7 @@ export function isStairOrRailingHelperProxy(
     | "arcs"
     | "orientedBox"
   >,
+  nativeObjectMarker?: number,
 ): boolean {
   if (
     record.stairTreads?.length ||
@@ -326,6 +339,14 @@ export function isStairOrRailingHelperProxy(
   ) {
     return false;
   }
+  // `BaseRailingSym` is the native per-railing baluster-set definition. Its
+  // bounds span from the host stair/landing to the top rail and therefore form
+  // a storey-high box, not a physical railing solid. Most such records inherit
+  // `Stairs Railing Baluster`; a small record-code tail has no category token,
+  // so the exact framed class marker is the stronger fallback identity.
+  if (nativeObjectMarker === REVIT_2027_BASE_RAILING_SYMBOL_MARKER) {
+    return true;
+  }
   return (
     (record.categoryId != null &&
       PROXY_ONLY_HELPER_CATEGORY_IDS.has(record.categoryId)) ||
@@ -335,6 +356,92 @@ export function isStairOrRailingHelperProxy(
     record.categoryName === "Sketch Lines" ||
     record.categoryName === "Stairs Railing Baluster"
   );
+}
+
+type PersistedOwnershipEdge = {
+  ownerId: number;
+  elementId: number;
+};
+
+function hasIndependentRecoveredGeometry(record: ElementBoundsRecord): boolean {
+  return Boolean(
+    record.stairTreads?.length ||
+    record.railPath ||
+    record.loops?.length ||
+    record.solid ||
+    record.solids?.length ||
+    record.arcs?.length ||
+    record.orientedBox ||
+    record.inferredCurtainPanelGeometry,
+  );
+}
+
+/**
+ * Unresolved curtain-assembly records whose bounds are containers, not solids.
+ *
+ * There are two independently checkable encodings:
+ *
+ * - code 34702 is a curtain-grid cell. It is omitted only when its persisted
+ *   owner is a curtain-wall wrapper that also owns a resolved panel or mullion;
+ * - an all-ones/no-class record is an assembly shell when it itself owns a
+ *   resolved facade child. Object 2322290 is exactly this form: the shell was
+ *   mislabelled as a mullion, while its child carries the actual mullion mesh.
+ *
+ * The caller supplies the ids that reached the native scene. Consequently a
+ * missing or declined child keeps the fallback envelope as the only available
+ * trace, and any record with its own reconstructed geometry is retained.
+ */
+export function curtainAssemblyHelperProxyIds(
+  records: readonly ElementBoundsRecord[],
+  ownership: readonly PersistedOwnershipEdge[],
+  resolvedElementIds: ReadonlySet<number>,
+): Set<number> {
+  const byId = new Map(records.map((record) => [record.elementId, record]));
+  const ownerByElement = new Map<number, number>();
+  const resolvedFacadeOwners = new Set<number>();
+
+  for (const relation of ownership) {
+    ownerByElement.set(relation.elementId, relation.ownerId);
+    const child = byId.get(relation.elementId);
+    if (
+      child?.categoryId != null &&
+      FACADE_CATEGORY_IDS.has(child.categoryId) &&
+      resolvedElementIds.has(child.elementId)
+    ) {
+      resolvedFacadeOwners.add(relation.ownerId);
+    }
+  }
+
+  const helpers = new Set<number>();
+  for (const record of records) {
+    if (
+      resolvedElementIds.has(record.elementId) ||
+      hasIndependentRecoveredGeometry(record)
+    ) {
+      continue;
+    }
+
+    if (
+      record.recordCode === NO_CLASS_RECORD_CODE &&
+      resolvedFacadeOwners.has(record.elementId)
+    ) {
+      helpers.add(record.elementId);
+      continue;
+    }
+
+    if (record.recordCode !== CURTAIN_GRID_CELL_RECORD_CODE) continue;
+    const ownerId = ownerByElement.get(record.elementId);
+    const owner = ownerId == null ? undefined : byId.get(ownerId);
+    if (
+      owner &&
+      owner.elementId !== record.elementId &&
+      displayRole(owner) === "wrapper" &&
+      resolvedFacadeOwners.has(owner.elementId)
+    ) {
+      helpers.add(record.elementId);
+    }
+  }
+  return helpers;
 }
 
 function planArea(record: ElementBoundsRecord): number {
@@ -677,6 +784,7 @@ export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
 
 export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
   const held = heldBackWrappers(records);
+  const openingWrappers = [...held];
   const withoutWrappers = records.filter((record) => !held.has(record));
   const omittedWrapperCount = held.size;
   const byId = new Map(records.map((record) => [record.elementId, record]));
@@ -684,7 +792,14 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   const omittedSheetCount = withoutWrappers.length - classified.length;
   const unclassifiedCount = classified.filter((record) => displayRole(record) === "unknown").length;
   if (classified.length < 2) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount, omittedSheetCount };
+    return {
+      records: classified,
+      openingWrappers,
+      omittedContainerCount: 0,
+      omittedWrapperCount,
+      unclassifiedCount,
+      omittedSheetCount,
+    };
   }
   const byFootprint = classified
     .map((record) => {
@@ -699,10 +814,18 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   const isDominantContainer =
     largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5;
   if (!isDominantContainer) {
-    return { records: classified, omittedContainerCount: 0, omittedWrapperCount, unclassifiedCount, omittedSheetCount };
+    return {
+      records: classified,
+      openingWrappers,
+      omittedContainerCount: 0,
+      omittedWrapperCount,
+      unclassifiedCount,
+      omittedSheetCount,
+    };
   }
   return {
     records: classified.filter((record) => record !== largest.record),
+    openingWrappers,
     omittedContainerCount: 1,
     omittedWrapperCount,
     unclassifiedCount,
@@ -798,6 +921,158 @@ function solidGeometry(solid: WallSolid, origin: Vec3) {
   };
 }
 
+type SolidOpening = {
+  start: number;
+  end: number;
+  base: number;
+  top: number;
+};
+
+/**
+ * Project one axis-aligned wrapper envelope into a wall solid's local frame.
+ *
+ * A wrapper is accepted as an opening only when its envelope crosses both wall
+ * faces. Merely touching or sitting beside a wall must not punch a hole in it.
+ * The wrapper's z band and longitudinal overlap then describe the rectangular
+ * void that Revit's host Boolean would have cut.
+ */
+function solidOpening(
+  solid: WallSolid,
+  wrapper: ElementBoundsRecord,
+): SolidOpening | null {
+  const dx = solid.end.x - solid.start.x;
+  const dy = solid.end.y - solid.start.y;
+  const length = Math.hypot(dx, dy);
+  if (length < MIN_SOLID_SPAN_FEET) return null;
+
+  const ux = dx / length;
+  const uy = dy / length;
+  const nx = -uy;
+  const ny = ux;
+  const { min, max } = wrapper.boundsFeet;
+  const centreX = (min.x + max.x) / 2 - solid.start.x;
+  const centreY = (min.y + max.y) / 2 - solid.start.y;
+  const halfX = (max.x - min.x) / 2;
+  const halfY = (max.y - min.y) / 2;
+  const alongCentre = centreX * ux + centreY * uy;
+  const alongRadius = Math.abs(ux) * halfX + Math.abs(uy) * halfY;
+  const normalCentre = centreX * nx + centreY * ny;
+  const normalRadius = Math.abs(nx) * halfX + Math.abs(ny) * halfY;
+  const normalMin = normalCentre - normalRadius;
+  const normalMax = normalCentre + normalRadius;
+  const halfThickness = solid.thickness / 2;
+  const epsilon = MIN_SOLID_SPAN_FEET;
+  if (
+    normalMin > -halfThickness + epsilon ||
+    normalMax < halfThickness - epsilon
+  ) {
+    return null;
+  }
+
+  const start = Math.max(0, alongCentre - alongRadius);
+  const end = Math.min(length, alongCentre + alongRadius);
+  const base = Math.max(solid.baseElevation, min.z);
+  const top = Math.min(solid.topElevation, max.z);
+  if (
+    end - start < MIN_SOLID_SPAN_FEET ||
+    top - base < MIN_SOLID_SPAN_FEET
+  ) {
+    return null;
+  }
+  return { start, end, base, top };
+}
+
+function uniqueStops(values: number[]): number[] {
+  return values
+    .sort((left, right) => left - right)
+    .filter((value, index, sorted) =>
+      index === 0 || value - sorted[index - 1]! >= MIN_SOLID_SPAN_FEET);
+}
+
+/**
+ * Split a straight reconstructed wall around recovered curtain-wall wrappers.
+ *
+ * The operation is performed in the wall's own length/elevation plane, so it
+ * also works for walls rotated in plan. Each retained rectangle becomes a
+ * closed wall-solid cell; together they cover the original wall volume minus
+ * the wrapper voids.
+ */
+function cutSolidAroundWrappers(
+  solid: WallSolid,
+  wrappers: readonly ElementBoundsRecord[],
+): WallSolid[] {
+  if (!wrappers.length) return [solid];
+  const openings = wrappers
+    .map((wrapper) => solidOpening(solid, wrapper))
+    .filter((opening): opening is SolidOpening => opening != null);
+  if (!openings.length) return [solid];
+
+  const dx = solid.end.x - solid.start.x;
+  const dy = solid.end.y - solid.start.y;
+  const length = Math.hypot(dx, dy);
+  const ux = dx / length;
+  const uy = dy / length;
+  const zStops = uniqueStops([
+    solid.baseElevation,
+    solid.topElevation,
+    ...openings.flatMap((opening) => [opening.base, opening.top]),
+  ]);
+  const cells: WallSolid[] = [];
+
+  for (let zIndex = 0; zIndex + 1 < zStops.length; zIndex += 1) {
+    const baseElevation = zStops[zIndex]!;
+    const topElevation = zStops[zIndex + 1]!;
+    if (topElevation - baseElevation < MIN_SOLID_SPAN_FEET) continue;
+    const midpoint = (baseElevation + topElevation) / 2;
+    const covered = openings
+      .filter((opening) => midpoint > opening.base && midpoint < opening.top)
+      .map((opening) => [opening.start, opening.end] as const)
+      .sort((left, right) => left[0] - right[0]);
+    const merged: Array<[number, number]> = [];
+    for (const interval of covered) {
+      const previous = merged.at(-1);
+      if (previous && interval[0] <= previous[1] + MIN_SOLID_SPAN_FEET) {
+        previous[1] = Math.max(previous[1], interval[1]);
+      } else {
+        merged.push([interval[0], interval[1]]);
+      }
+    }
+
+    let cursor = 0;
+    for (const [openingStart, openingEnd] of merged) {
+      if (openingStart - cursor >= MIN_SOLID_SPAN_FEET) {
+        cells.push({
+          ...solid,
+          start: {
+            x: solid.start.x + ux * cursor,
+            y: solid.start.y + uy * cursor,
+          },
+          end: {
+            x: solid.start.x + ux * openingStart,
+            y: solid.start.y + uy * openingStart,
+          },
+          baseElevation,
+          topElevation,
+        });
+      }
+      cursor = Math.max(cursor, openingEnd);
+    }
+    if (length - cursor >= MIN_SOLID_SPAN_FEET) {
+      cells.push({
+        ...solid,
+        start: {
+          x: solid.start.x + ux * cursor,
+          y: solid.start.y + uy * cursor,
+        },
+        end: { ...solid.end },
+        baseElevation,
+        topElevation,
+      });
+    }
+  }
+  return cells;
+}
+
 
 /** Arcs are tessellated no coarser than this, in radians. */
 const ARC_STEP_RADIANS = Math.PI / 32;
@@ -864,6 +1139,19 @@ function cornersGeometry(corners: [number, number, number][], origin: Vec3) {
     positions: corners.flatMap(([x, y, z]) => [x - origin.x, y - origin.y, z - origin.z]),
     indices: BOX_INDICES,
   };
+}
+
+function inferredGeometry(
+  geometry: NonNullable<ElementBoundsRecord["inferredCurtainPanelGeometry"]>,
+  origin: Vec3,
+) {
+  const positions = [...geometry.positions];
+  for (let index = 0; index < positions.length; index += 3) {
+    positions[index] = positions[index]! - origin.x;
+    positions[index + 1] = positions[index + 1]! - origin.y;
+    positions[index + 2] = positions[index + 2]! - origin.z;
+  }
+  return { positions, indices: geometry.indices };
 }
 
 /**
@@ -971,27 +1259,199 @@ function railGeometry(
 /**
  * A straight run's stepped top, reconstructed from its own native tread lines.
  *
- * Each tread becomes the top of a contiguous vertical cell. The cells meet
- * exactly in plan and rise from the run's independently decoded base, producing
- * a closed selectable mesh with the recovered step profile.
+ * Each tread becomes the top of a horizontal slab. When the StairsRun
+ * aggregate supplies the paired-export tread thickness, adjacent slabs share
+ * one exposed riser surface instead of overlapping closed-box faces.
  */
 function stairTreadGeometry(
   treads: [Point3, Point3, Point3, Point3][],
   baseZ: number,
   origin: Vec3,
+  treadThicknessFeet?: number,
 ) {
-  return treads.flatMap((tread) => {
+  const treadThickness =
+    treadThicknessFeet != null &&
+    Number.isFinite(treadThicknessFeet) &&
+    treadThicknessFeet >= MIN_PRISM_THICKNESS_FEET
+      ? treadThicknessFeet
+      : null;
+  const cells: Array<{
+    points: number[][];
+    tread: [Point3, Point3, Point3, Point3];
+    topZ: number;
+  }> = [];
+  for (const tread of treads) {
     const topZ = tread[0][2];
-    if (topZ - baseZ < MIN_PRISM_THICKNESS_FEET) return [];
-    const points = [
-      ...tread.map(([x, y]) => [x, y, baseZ]),
+    if (topZ - baseZ < MIN_PRISM_THICKNESS_FEET) continue;
+    const bottomZ = treadThickness == null
+      ? baseZ
+      : Math.max(baseZ, topZ - treadThickness);
+    cells.push({
+      tread,
+      topZ,
+      points: [
+      [tread[0][0], tread[0][1], bottomZ],
+      [tread[1][0], tread[1][1], bottomZ],
+      [tread[2][0], tread[2][1], bottomZ],
+      [tread[3][0], tread[3][1], bottomZ],
       ...tread,
-    ];
-    return [{
-      positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
-      indices: BOX_INDICES,
-    }];
-  });
+      ],
+    });
+  }
+  if (!cells.length) return [];
+
+  const positions = cells.flatMap(({ points }) =>
+    points.flatMap(([x, y, z]) => [
+      x! - origin.x,
+      y! - origin.y,
+      z! - origin.z,
+    ]));
+  const indices: number[] = [];
+  type Side = {
+    cellIndex: number;
+    elevationGroup: number;
+    startCorner: number;
+    endCorner: number;
+    topZ: number;
+  };
+  const sidesByEdge = new Map<string, Side[]>();
+  const elevationGroupByKey = new Map(
+    [...new Set(cells.map(({ topZ }) => topZ.toFixed(6)))]
+      .sort((left, right) => Number(left) - Number(right))
+      .map((key, index) => [key, index]),
+  );
+  const pointKey = (point: Point3) =>
+    `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+  const edgeKey = (start: Point3, end: Point3) => {
+    const startKey = pointKey(start);
+    const endKey = pointKey(end);
+    return startKey < endKey
+      ? `${startKey}|${endKey}`
+      : `${endKey}|${startKey}`;
+  };
+
+  for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+    const cell = cells[cellIndex]!;
+    const base = cellIndex * 8;
+    // Bottom and top faces never overlap between adjacent tread cells.
+    indices.push(
+      base, base + 2, base + 1,
+      base, base + 3, base + 2,
+      base + 4, base + 5, base + 6,
+      base + 4, base + 6, base + 7,
+    );
+    for (let startCorner = 0; startCorner < 4; startCorner += 1) {
+      const endCorner = (startCorner + 1) % 4;
+      const key = edgeKey(cell.tread[startCorner]!, cell.tread[endCorner]!);
+      const sides = sidesByEdge.get(key) ?? [];
+      sides.push({
+        cellIndex,
+        elevationGroup: elevationGroupByKey.get(cell.topZ.toFixed(6))!,
+        startCorner,
+        endCorner,
+        topZ: cell.topZ,
+      });
+      sidesByEdge.set(key, sides);
+    }
+  }
+
+  const emitSides = (sides: Side[]) => {
+    const emitIndependentSide = (side: Side) => {
+      const base = side.cellIndex * 8;
+      const start = base + side.startCorner;
+      const end = base + side.endCorner;
+      indices.push(
+        start, end, end + 4,
+        start, end + 4, start + 4,
+      );
+    };
+    if (sides.length === 1) {
+      emitIndependentSide(sides[0]!);
+      return;
+    }
+    if (sides.length > 2) {
+      for (const side of sides) emitIndependentSide(side);
+      return;
+    }
+
+    // Equal-height cells are pieces of one physical tread, so their shared side
+    // is internal. Between different tread elevations, one riser spans from the
+    // lower slab's underside to the upper tread. It is split at both slabs'
+    // horizontal faces so no edge terminates in the middle of a large triangle.
+    const sorted = [...sides].sort((left, right) => left.topZ - right.topZ);
+    const lower = sorted[0]!;
+    const upper = sorted.at(-1)!;
+    if (upper.topZ - lower.topZ < MIN_PRISM_THICKNESS_FEET) return;
+    const upperCell = cells[upper.cellIndex]!;
+    const lowerCell = cells[lower.cellIndex]!;
+    const upperStartKey = pointKey(upperCell.tread[upper.startCorner]!);
+    const lowerStartCorner =
+      pointKey(lowerCell.tread[lower.startCorner]!) === upperStartKey
+        ? lower.startCorner
+        : lower.endCorner;
+    const lowerEndCorner =
+      lowerStartCorner === lower.startCorner
+        ? lower.endCorner
+        : lower.startCorner;
+    const lowerBase = lower.cellIndex * 8;
+    const upperBase = upper.cellIndex * 8;
+    const riserStops = [
+      {
+        z: lowerCell.points[lowerStartCorner]![2]!,
+        start: lowerBase + lowerStartCorner,
+        end: lowerBase + lowerEndCorner,
+      },
+      {
+        z: lower.topZ,
+        start: lowerBase + lowerStartCorner + 4,
+        end: lowerBase + lowerEndCorner + 4,
+      },
+      {
+        z: upperCell.points[upper.startCorner]![2]!,
+        start: upperBase + upper.startCorner,
+        end: upperBase + upper.endCorner,
+      },
+      {
+        z: upper.topZ,
+        start: upperBase + upper.startCorner + 4,
+        end: upperBase + upper.endCorner + 4,
+      },
+    ]
+      .sort((left, right) => left.z - right.z)
+      .filter((stop, index, orderedStops) =>
+        index === 0 ||
+        stop.z - orderedStops[index - 1]!.z >= MIN_PRISM_THICKNESS_FEET);
+    for (let index = 0; index + 1 < riserStops.length; index += 1) {
+      const bottom = riserStops[index]!;
+      const top = riserStops[index + 1]!;
+      indices.push(
+        bottom.start, top.start, top.end,
+        bottom.start, top.end, bottom.end,
+      );
+    }
+  };
+
+  for (const sides of sidesByEdge.values()) {
+    // The same plan edge may recur several storeys apart in a spiral or
+    // switchback. Only equal or consecutive tread elevations are neighbours.
+    const ordered = [...sides].sort((left, right) =>
+      left.elevationGroup - right.elevationGroup);
+    let cluster: Side[] = [];
+    for (const side of ordered) {
+      const previous = cluster.at(-1);
+      if (
+        previous &&
+        side.elevationGroup - previous.elevationGroup > 1
+      ) {
+        emitSides(cluster);
+        cluster = [];
+      }
+      cluster.push(side);
+    }
+    if (cluster.length) emitSides(cluster);
+  }
+
+  return [{ positions, indices }];
 }
 
 /** Extrude a recovered centerline into a visible prism. */
@@ -1068,7 +1528,11 @@ function elevationSpanFeet(records: ElementBoundsRecord[]): number {
   return bases[bases.length - 1 - tail]! - bases[tail]!;
 }
 
-export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3): MeshData[] {
+export function buildBoundsMeshes(
+  records: ElementBoundsRecord[],
+  origin: Vec3,
+  openingWrappers: readonly ElementBoundsRecord[] = [],
+): MeshData[] {
   const meshes: MeshData[] = [];
   // The elevation shade spans the model's own height rather than a fixed 80 ft
   // window with a 10 ft lead-in. Those two numbers were this building's — 62 ft
@@ -1118,12 +1582,22 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
         // An element can be built from several solids — a wall run modelled in
         // segments. Every one of them is drawn: they are all the element's own
         // rebuilt geometry, and picking indexes by triangle rather than by box.
-        const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+        const recoveredSolids =
+          record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+        const solids = role === "wall"
+          ? recoveredSolids.flatMap((solid) =>
+            cutSolidAroundWrappers(solid, openingWrappers))
+          : recoveredSolids;
         // A swept railing wins over its own envelope, which is the rectangle the
         // path spans rather than anything the railing occupies.
         const rail = record.railPath ? railGeometry(record.railPath, origin) : [];
         const stair = record.stairTreads?.length
-          ? stairTreadGeometry(record.stairTreads, record.boundsFeet.min.z, origin)
+          ? stairTreadGeometry(
+              record.stairTreads,
+              record.boundsFeet.min.z,
+              origin,
+              record.stairTreadThicknessFeet,
+            )
           : [];
         // Native faces used to outrank both the rebuilt solid and the
         // element's own envelope. Measured against the paired export across
@@ -1144,6 +1618,8 @@ export function buildBoundsMeshes(records: ElementBoundsRecord[], origin: Vec3):
           ? rail
           : prism.length
           ? prism
+          : record.inferredCurtainPanelGeometry
+            ? [inferredGeometry(record.inferredCurtainPanelGeometry, origin)]
           : record.orientedBox
             ? [cornersGeometry(record.orientedBox, origin)]
             : solids.length

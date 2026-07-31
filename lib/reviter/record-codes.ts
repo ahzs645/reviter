@@ -22,6 +22,22 @@
 export const STAIR_COMPANION_CODE = 169_671;
 
 /**
+ * Bounds-only curtain-grid cell carried beneath a curtain-wall owner.
+ *
+ * The supplied Revit 2027 model contains 725 of these records. 717 are flat
+ * grid loci and therefore never enter the solid proxy path. The remaining
+ * eight all have the same 4.868 × 3.042 × 9.186 ft envelope and sit beside the
+ * independently persisted panels and mullions of their curtain-wall owner.
+ * Extruding those eight envelopes creates the opaque boxes visible through the
+ * sloped atrium glazing.
+ *
+ * This code alone is not a deletion rule. `curtainAssemblyHelperProxyIds`
+ * additionally requires persisted curtain-wall ownership and a resolved facade
+ * child before an unresolved envelope can be omitted.
+ */
+export const CURTAIN_GRID_CELL_RECORD_CODE = 34_702;
+
+/**
  * The "no class" record code: a record Revit wrote without a class code.
  *
  * Unlike the codes around it this one is self-describing — it is the all-ones

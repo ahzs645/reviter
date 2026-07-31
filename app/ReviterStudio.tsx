@@ -698,12 +698,16 @@ export default function ReviterStudio() {
       value: selectedRecord.renderGeometryProvenance === "native"
         ? "Native RVT face mesh"
         : selectedRecord.renderGeometryProvenance === "reconstructed"
-          ? "Exact reconstructed geometry"
-          : selectedRecord.renderGeometryProvenance === "bounds-fallback"
-            ? "Bounds fallback"
-            : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
-              ? "Drawing aid—not rendered"
-              : "Not classified",
+          ? selectedRecord.stairTreads?.length
+            ? "Reconstructed stair-run geometry"
+            : "Reconstructed RVT geometry"
+          : selectedRecord.renderGeometryProvenance === "boundary-clipped-proxy"
+            ? "Mullion-clipped panel proxy"
+            : selectedRecord.renderGeometryProvenance === "bounds-fallback"
+              ? "Bounds fallback"
+              : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
+                ? "Drawing aid—not rendered"
+                : "Not classified",
     },
     ...(selectedRecord.categoryName
       ? [{ key: "category", label: "Category", value: selectedRecord.categoryName }]
@@ -712,21 +716,33 @@ export default function ReviterStudio() {
       ? [{
         key: "category-id",
         label: "Category ID",
-        value: `${selectedRecord.categoryId}${selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}`,
+        value: `${selectedRecord.categoryId}${
+          selectedRecord.categorySource === "record-code-consensus"
+            ? " (record-code consensus)"
+            : selectedRecord.categorySource === "native-object"
+              ? " (native object)"
+              : " (native token)"
+        }`,
       }]
       : []),
     {
       key: "evidence",
       label: "Evidence",
-      value: selectedRecord.recordOffset >= 0
-        ? "Duplicated bounds record"
-        : selectedRecord.loops?.length
-          ? "Sketch boundary"
-          : selectedRecord.orientedBox
-            ? "Placed family instance"
-            : selectedRecord.solids?.length || selectedRecord.solid
-              ? "Rebuilt from native surfaces"
-              : "Native faces",
+      value: selectedRecord.stairTreads?.length
+        ? selectedRecord.categorySource === "native-object"
+          ? "Native StairsRun sketch and aggregate"
+          : "Recovered stair tread sketch"
+        : selectedRecord.railPath
+          ? "Native railing path"
+          : selectedRecord.loops?.length
+            ? "Sketch boundary"
+            : selectedRecord.recordOffset >= 0
+              ? "Duplicated bounds record"
+              : selectedRecord.orientedBox
+                ? "Placed family instance"
+                : selectedRecord.solids?.length || selectedRecord.solid
+                  ? "Rebuilt from native surfaces"
+                  : "Native faces",
     },
     ...(selectedRecord.solid
       ? [{
@@ -1432,6 +1448,10 @@ export default function ReviterStudio() {
                           ))}
                         </dl>
                         <div className="property-actions">
+                          <button
+                            type="button"
+                            onClick={requestZoomToSelection}
+                          >Zoom to object</button>
                           <button
                             type="button"
                             onClick={() => { void copySelectedProperties(); }}

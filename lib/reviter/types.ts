@@ -284,6 +284,23 @@ export type ElementBoundsRecord = {
    */
   stairTreads?: [Point3, Point3, Point3, Point3][];
   /**
+   * Horizontal slab thickness used below each recovered stair tread.
+   *
+   * The supplied project's native StairsRun aggregate persists equal left/right
+   * support widths, and the paired Autodesk export independently proves the
+   * same 50 mm dimension on both target runs' tread extrusions.
+   */
+  stairTreadThicknessFeet?: number;
+  /**
+   * A rectangular placed curtain-panel proxy clipped by the long axis of an
+   * independently placed diagonal mullion. Present only for an unambiguous
+   * larger-side cut; ordinary rectangular panels retain their oriented box.
+   */
+  inferredCurtainPanelGeometry?: {
+    positions: number[];
+    indices: number[];
+  };
+  /**
    * Provenance of the geometry that actually reached the final scene.
    *
    * This is assigned only after native admission and helper suppression, so it
@@ -292,6 +309,7 @@ export type ElementBoundsRecord = {
   renderGeometryProvenance?:
     | "native"
     | "reconstructed"
+    | "boundary-clipped-proxy"
     | "bounds-fallback"
     | "not-rendered-helper";
   boundsFeet: Bounds3;
@@ -299,10 +317,14 @@ export type ElementBoundsRecord = {
 
 /**
  * `native-token` means the element's own category token was decoded.
+ * `native-object` means a schema-specific native object proved the class.
  * `record-code-consensus` means the category was inherited from sibling records
  * that share the element's record code.
  */
-export type NativeCategorySource = "native-token" | "record-code-consensus";
+export type NativeCategorySource =
+  | "native-token"
+  | "native-object"
+  | "record-code-consensus";
 
 export type NativeCategoryCount = {
   categoryId: number;
@@ -414,6 +436,8 @@ export type ConvertStats = {
   sweptRailings?: number;
   /** Walls rebuilt as an arc from their own cylinder triple. */
   curvedWalls?: number;
+  /** Rectangular curtain-panel proxies clipped by a diagonal mullion boundary. */
+  inferredCurtainPanels?: number;
   /** Doors whose leaf was cut out of the opening using their host wall. */
   doorLeaves?: number;
   /** Doors whose leaf was folded out of their own shared shape's swing. */

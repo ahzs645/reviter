@@ -40,6 +40,7 @@ import {
   shrinkSolidIntoEnvelope,
   solidBelongsToEnvelope,
 } from "./solid-clip.ts";
+import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { collectOwnedSurfaces, type CylinderPatch, type PlanePatch } from "./surfaces.ts";
 import {
@@ -156,6 +157,7 @@ import {
   buildBoundsMeshes,
   buildMeshes,
   boundsPlanSegments,
+  curtainAssemblyHelperProxyIds,
   displayMaterials,
   isStairOrRailingHelperProxy,
   levelsForBounds,
@@ -1583,12 +1585,18 @@ export function convertRvtBytes(
       // subcategory on their display record. The framed StairsRun aggregate is
       // the stronger, schema-specific identity and lets their own repeated
       // tread lines take the exact reconstruction route as well.
-      if (
-        record.categoryId === STAIRS_RUN_CATEGORY ||
-        stairsRuns.has(record.elementId)
-      ) {
+      const nativeStairsRun = stairsRuns.get(record.elementId);
+      if (nativeStairsRun) {
+        // Stronger than a record-code vote: object 1821222 inherited
+        // "Stairs Landings", while its framed StairsRun object and Autodesk's
+        // export both identify it as a 31-tread stair flight.
+        record.categoryId = STAIRS_RUN_CATEGORY;
+        record.categoryName = "Stairs Runs";
+        record.categorySource = "native-object";
+      }
+      if (record.categoryId === STAIRS_RUN_CATEGORY || nativeStairsRun) {
         const curves = curvesByOwner.get(record.elementId) ?? [];
-        const run = stairsRuns.get(record.elementId);
+        const run = nativeStairsRun;
         const stair =
           recoverStraightStairTreads(curves, record.boundsFeet) ??
           (run?.runProperties
@@ -1617,7 +1625,22 @@ export function convertRvtBytes(
                   run.runProperties.topRiserIndex - run.baseRiserIndex,
               })
             : null);
-        if (stair) record.stairTreads = stair.treads;
+        if (stair) {
+          record.stairTreads = stair.treads;
+          const left = run?.runProperties?.leftStringerWidthFeet;
+          const right = run?.runProperties?.rightStringerWidthFeet;
+          if (
+            left != null &&
+            right != null &&
+            Number.isFinite(left) &&
+            Number.isFinite(right) &&
+            left > 0 &&
+            right > 0 &&
+            Math.abs(left - right) <= 0.01
+          ) {
+            record.stairTreadThicknessFeet = (left + right) / 2;
+          }
+        }
       }
       if (
         knownSketchCategory ||
@@ -2185,6 +2208,16 @@ export function convertRvtBytes(
         nativeMeshScene.meshes,
         nativeMaterialIndexById,
       );
+      const inferredCurtainPanels = inferCurtainPanelBoundaries(displayBounds);
+      let inferredCurtainPanelCount = 0;
+      for (const record of displayBounds) {
+        if (nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
+        const geometry = inferredCurtainPanels.get(record.elementId);
+        if (geometry) {
+          record.inferredCurtainPanelGeometry = geometry;
+          inferredCurtainPanelCount += 1;
+        }
+      }
       // A proxy is removed only after the complete native element was admitted
       // under the output cap. Incomplete and truncated owners keep their
       // independently recovered envelope/solid. Drawing-aid records are the
@@ -2195,9 +2228,51 @@ export function convertRvtBytes(
       // could go negative and once reported "-3,547 records not rendered".
       const proxyDisplayBounds: typeof displayBounds = [];
       let omittedHelperProxyCount = 0;
+      let omittedCurtainAssemblyProxyCount = 0;
+      const displayRecordById = new Map(
+        displayBounds.map((record) => [record.elementId, record]),
+      );
+      const stairAssembliesWithRecoveredChildren = new Set<number>();
+      for (const relation of elementOwnership?.relations ?? []) {
+        const owner = displayRecordById.get(relation.ownerId);
+        const child = displayRecordById.get(relation.elementId);
+        if (
+          owner?.categoryId === -2000120 &&
+          child &&
+          child.elementId !== owner.elementId &&
+          (
+            nativeMeshScene.coveredElementIds.has(child.elementId) ||
+            nativeMeshScene.reconstructedElementIds.has(child.elementId) ||
+            !isStairOrRailingHelperProxy(
+              child,
+              markerByElement.get(child.elementId),
+            )
+          )
+        ) {
+          stairAssembliesWithRecoveredChildren.add(owner.elementId);
+        }
+      }
+      const curtainAssemblyHelpers = curtainAssemblyHelperProxyIds(
+        elementBounds,
+        elementOwnership?.relations ?? [],
+        nativeMeshScene.coveredElementIds,
+      );
       for (const record of displayBounds) {
         if (nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
-        if (isStairOrRailingHelperProxy(record)) {
+        if (curtainAssemblyHelpers.has(record.elementId)) {
+          omittedCurtainAssemblyProxyCount += 1;
+          continue;
+        }
+        const canSuppressHelper =
+          record.categoryId !== -2000120 ||
+          stairAssembliesWithRecoveredChildren.has(record.elementId);
+        if (
+          canSuppressHelper &&
+          isStairOrRailingHelperProxy(
+            record,
+            markerByElement.get(record.elementId),
+          )
+        ) {
           omittedHelperProxyCount += 1;
           continue;
         }
@@ -2213,6 +2288,8 @@ export function convertRvtBytes(
           record.renderGeometryProvenance = "native";
         } else if (!proxyIds.has(record.elementId)) {
           record.renderGeometryProvenance = "not-rendered-helper";
+        } else if (record.inferredCurtainPanelGeometry) {
+          record.renderGeometryProvenance = "boundary-clipped-proxy";
         } else if (
           record.stairTreads?.length ||
           record.railPath ||
@@ -2228,7 +2305,11 @@ export function convertRvtBytes(
         }
       }
       const meshes = [
-        ...buildBoundsMeshes(proxyDisplayBounds, origin),
+        ...buildBoundsMeshes(
+          proxyDisplayBounds,
+          origin,
+          displaySelection.openingWrappers,
+        ),
         ...nativeMeshScene.meshes,
       ];
       const segments = boundsPlanSegments(displayBounds);
@@ -2491,6 +2572,11 @@ export function convertRvtBytes(
                 `${nativeMeshScene.missingBounds.toLocaleString()} complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.`,
               ]
             : []),
+          ...(inferredCurtainPanelCount
+            ? [
+                `${inferredCurtainPanelCount.toLocaleString()} rectangular curtain-panel proxies were clipped by unambiguous diagonal mullion boundaries; ambiguous and ordinary bays retain their placed boxes.`,
+              ]
+            : []),
           ...(nativeMeshScene.truncated
             ? [
                 "The certified native mesh safety cap was reached; declined elements retain their display proxies.",
@@ -2510,6 +2596,9 @@ export function convertRvtBytes(
             : []),
           ...(omittedHelperProxyCount
             ? [`${omittedHelperProxyCount.toLocaleString()} unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.`]
+            : []),
+          ...(omittedCurtainAssemblyProxyCount
+            ? [`${omittedCurtainAssemblyProxyCount.toLocaleString()} unresolved curtain-grid/assembly envelope records are not rendered over their independently resolved panels and mullions.`]
             : []),
           nativeMeshScene.meshes.length
             ? "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements."
@@ -2548,6 +2637,7 @@ export function convertRvtBytes(
           completedFlatSketches,
           sweptRailings,
           curvedWalls,
+          inferredCurtainPanels: inferredCurtainPanelCount,
           doorLeaves,
           doorLeavesFromShape,
           adoptedStairBoxes,

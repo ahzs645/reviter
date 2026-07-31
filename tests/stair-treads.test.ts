@@ -256,6 +256,98 @@ test("the diagnostic scene draws every recovered tread instead of the run envelo
   const meshes = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
   assert.equal(meshes.length, 1);
   assert.equal(meshes[0]!.positions.length, 3 * 8 * 3);
-  assert.equal(meshes[0]!.indices.length, 3 * 12 * 3);
+  assert.equal(meshes[0]!.indices.length, 36 * 3);
   assert.ok(meshes[0]!.elementIds?.every((elementId) => elementId === 1));
+});
+
+test("a persisted tread thickness produces horizontal slabs instead of base-filled columns", () => {
+  const record = {
+    elementId: 2,
+    stream: "Partitions/1",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    stairTreadThicknessFeet: 0.16,
+    stairTreads: [
+      [[0, 0, 0.5], [1, 0, 0.5], [1, 3, 0.5], [0, 3, 0.5]],
+      [[1, 0, 1], [2, 0, 1], [2, 3, 1], [1, 3, 1]],
+    ],
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 2, y: 3, z: 1 },
+    },
+  } satisfies ElementBoundsRecord;
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const roundedBottom = (start: number) =>
+    [...mesh.positions.slice(start, start + 12)]
+      .filter((_, index) => index % 3 === 2)
+      .map((value) => Number(value.toFixed(2)));
+  const firstBottom = roundedBottom(0);
+  const secondBottom = roundedBottom(24);
+  assert.deepEqual(firstBottom, [0.34, 0.34, 0.34, 0.34]);
+  assert.deepEqual(secondBottom, [0.84, 0.84, 0.84, 0.84]);
+  // The shared boundary retains the lower slab edge and continues it as one
+  // riser. The upper slab's covered back face is not emitted on top of it.
+  assert.equal(mesh.indices.length, 26 * 3);
+  const sharedEdgeTriangles = [];
+  for (let index = 0; index < mesh.indices.length; index += 3) {
+    const vertexIndices = mesh.indices.slice(index, index + 3);
+    const vertices = Array.from(vertexIndices, (vertexIndex) =>
+      Array.from(mesh.positions.slice(vertexIndex * 3, vertexIndex * 3 + 3)));
+    if (vertices.every(([x]) => Math.abs(x! - 1) < 1e-6)) {
+      sharedEdgeTriangles.push([
+        Math.min(...vertices.map(([, , z]) => z!)),
+        Math.max(...vertices.map(([, , z]) => z!)),
+      ]);
+    }
+  }
+  assert.deepEqual(
+    sharedEdgeTriangles.map(([min, max]) => [
+      Number(min!.toFixed(2)),
+      Number(max!.toFixed(2)),
+    ]),
+    [
+      [0.34, 0.5], [0.34, 0.5],
+      [0.5, 0.84], [0.5, 0.84],
+      [0.84, 1], [0.84, 1],
+    ],
+  );
+});
+
+test("equal-height curved tread segments share one horizontal slab elevation", () => {
+  const record = {
+    elementId: 3,
+    stream: "Partitions/1",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    stairTreadThicknessFeet: 0.16,
+    stairTreads: [
+      [[0, 0, 0.5], [1, 0, 0.5], [1, 1, 0.5], [0, 1, 0.5]],
+      [[0, 1, 0.5], [1, 1, 0.5], [1, 2, 0.5], [0, 2, 0.5]],
+      [[1, 0, 1], [2, 0, 1], [2, 1, 1], [1, 1, 1]],
+      [[1, 1, 1], [2, 1, 1], [2, 2, 1], [1, 2, 1]],
+    ],
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 2, y: 2, z: 1 },
+    },
+  } satisfies ElementBoundsRecord;
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const bottomZ = (cellIndex: number) =>
+    [...mesh.positions.slice(cellIndex * 24, cellIndex * 24 + 12)]
+      .filter((_, index) => index % 3 === 2)
+      .map((value) => Number(value.toFixed(2)));
+  assert.deepEqual(bottomZ(0), [0.34, 0.34, 0.34, 0.34]);
+  assert.deepEqual(bottomZ(1), [0.34, 0.34, 0.34, 0.34]);
+  assert.deepEqual(bottomZ(2), [0.84, 0.84, 0.84, 0.84]);
+  assert.deepEqual(bottomZ(3), [0.84, 0.84, 0.84, 0.84]);
 });
