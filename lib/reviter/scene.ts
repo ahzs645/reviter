@@ -51,12 +51,12 @@ export function displayMaterials(): MaterialData[] {
     fallback("Panel display proxy", [0.40, 0.60, 0.74, 0.85], 0.5),
     fallback("Frame display proxy", [0.20, 0.26, 0.33, 1], 0.5),
     fallback("Structural display proxy", [0.44, 0.48, 0.54, 1], 0.84),
-    // Translucent because everything on this slot is a stand-in: the swept
-    // ribbon and the fallback box are continuous sheets where the real railing
-    // is a top rail and pickets with air between them. At 0.45 the guard reads
-    // as a guard instead of a parapet wall; native railing face meshes carry
-    // native materials and never use this slot.
-    fallback("Railing display proxy", [0.28, 0.34, 0.41, 0.45], 0.58),
+    // Native admission removes the rail-path proxy per railing before batches
+    // are built. On the measured model 154 of 156 records carrying rail paths
+    // are already native; this slot serves only the two evidence-starved
+    // residual ribbons. Keep those visible and opaque instead of globally
+    // fading the railing category to compensate for geometry no longer drawn.
+    fallback("Railing display proxy", [0.28, 0.34, 0.41, 1], 0.58),
     fallback("Slab and roof display proxy", [0.86, 0.85, 0.82, 1], 0.95),
     fallback("Covering display proxy", [0.70, 0.72, 0.68, 1], 0.9),
     fallback("Glazing display proxy", [0.36, 0.66, 0.82, 0.55], 0.3),

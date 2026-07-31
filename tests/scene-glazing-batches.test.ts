@@ -82,10 +82,11 @@ test("the glazing display material keeps the alpha the viewer reuses for native 
   assert.equal(glazing!.baseColorLinear[3], 0.55);
 });
 
-test("the railing display material is translucent, because its geometry is a stand-in", () => {
-  // A swept rail ribbon or a fallback box is a continuous sheet where the real
-  // railing is a top rail and pickets; opaque it reads as a parapet wall.
+test("the residual railing display material is opaque", () => {
+  // Native admission suppresses the proxy per railing. The fallback material
+  // therefore serves only the evidence-starved residuals, not the native
+  // category population, and no longer needs a global translucency concession.
   const railing = displayMaterials().find((material) => material.name.startsWith("Railing"));
   assert.ok(railing);
-  assert.equal(railing!.baseColorLinear[3], 0.45);
+  assert.equal(railing!.baseColorLinear[3], 1);
 });
