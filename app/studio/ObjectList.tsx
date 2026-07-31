@@ -13,8 +13,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { boundsDimensions, type ElementBoundsRecord } from "../../lib/reviter";
 
-/** Must match `.object-list > .object-row` in globals.css. */
-const ROW_HEIGHT = 48;
+/** Must match `.object-row` in globals.css. */
+export const ROW_HEIGHT = 46;
+
+/** And `.mobile .object-row`, where the row is sized as a touch target. */
+export const MOBILE_ROW_HEIGHT = 58;
 
 /** Rows rendered beyond each edge, so a fast scroll does not show a gap. */
 const OVERSCAN = 6;
@@ -23,10 +26,12 @@ export function ObjectList({
   records,
   selectedElementId,
   onSelect,
+  rowHeight = ROW_HEIGHT,
 }: {
   records: ElementBoundsRecord[];
   selectedElementId: number | null;
   onSelect: (elementId: number) => void;
+  rowHeight?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ top: 0, height: 480 });
@@ -52,18 +57,18 @@ export function ObjectList({
     if (!element || selectedElementId == null) return;
     const index = records.findIndex((record) => record.elementId === selectedElementId);
     if (index < 0) return;
-    const rowTop = index * ROW_HEIGHT;
-    const rowBottom = rowTop + ROW_HEIGHT;
+    const rowTop = index * rowHeight;
+    const rowBottom = rowTop + rowHeight;
     if (rowTop < element.scrollTop) element.scrollTop = rowTop;
     else if (rowBottom > element.scrollTop + element.clientHeight) {
       element.scrollTop = rowBottom - element.clientHeight;
     }
-  }, [records, selectedElementId]);
+  }, [records, rowHeight, selectedElementId]);
 
-  const first = Math.max(0, Math.floor(viewport.top / ROW_HEIGHT) - OVERSCAN);
+  const first = Math.max(0, Math.floor(viewport.top / rowHeight) - OVERSCAN);
   const last = Math.min(
     records.length,
-    Math.ceil((viewport.top + viewport.height) / ROW_HEIGHT) + OVERSCAN,
+    Math.ceil((viewport.top + viewport.height) / rowHeight) + OVERSCAN,
   );
   const visible = records.slice(first, last);
 
@@ -75,23 +80,29 @@ export function ObjectList({
       ref={scrollRef}
       onScroll={measure}
     >
-      <div style={{ height: first * ROW_HEIGHT }} />
+      <div style={{ height: first * rowHeight }} />
       {visible.map((record) => {
         const dimensions = boundsDimensions(record.boundsFeet);
+        const selected = selectedElementId === record.elementId;
         return (
           <button
             key={record.elementId}
-            className={`object-row${selectedElementId === record.elementId ? " selected" : ""}`}
+            type="button"
+            className={`object-row${selected ? " selected" : ""}`}
             onClick={() => onSelect(record.elementId)}
             role="option"
-            aria-selected={selectedElementId === record.elementId}
+            aria-selected={selected}
           >
-            <span><i />{record.categoryName ?? "Uncategorised"} <em>{record.elementId}</em></span>
+            <span>
+              <i />
+              <b>{record.categoryName ?? "Uncategorised"}</b>
+              <em>{record.elementId}</em>
+            </span>
             <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
           </button>
         );
       })}
-      <div style={{ height: Math.max(0, (records.length - last) * ROW_HEIGHT) }} />
+      <div style={{ height: Math.max(0, (records.length - last) * rowHeight) }} />
     </div>
   );
 }

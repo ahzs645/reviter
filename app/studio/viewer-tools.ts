@@ -30,6 +30,12 @@ export type ModelComment = {
   scenePosition: Point3Tuple;
   /** Canonical Revit/IFC point in feet when the source can be registered. */
   modelPositionFeet?: Point3Tuple;
+  /**
+   * The object the pin landed on, when the pick carried one. It is what lets a
+   * comment row say "Curtain Panel 291044" instead of a coordinate; comments
+   * saved before this existed simply have no target and say so.
+   */
+  elementId?: number;
   text: string;
   status: "open" | "resolved";
   createdAt: string;

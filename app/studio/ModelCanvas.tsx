@@ -135,11 +135,12 @@ export function ModelCanvas({
   onSectionClear,
   exploding,
   commenting,
-  commentEditing,
   comments,
+  visibleCommentIds,
+  activeCommentId,
+  onActiveComment,
   onCreateComment,
-  onUpdateComment,
-  onDeleteComment,
+  viewpointRequest,
   walking,
   onWalkingChange,
   selectedElementId,
@@ -163,11 +164,18 @@ export function ModelCanvas({
   onSectionClear: () => void;
   exploding: boolean;
   commenting: boolean;
-  commentEditing: boolean;
   comments: readonly ModelComment[];
+  /** The ids the Comments filter is showing, or null when it is showing all. */
+  visibleCommentIds: ReadonlySet<string> | null;
+  activeCommentId: string | null;
+  onActiveComment: (id: string | null) => void;
   onCreateComment: (comment: NewModelComment) => string;
-  onUpdateComment: (id: string, patch: Partial<Pick<ModelComment, "text" | "status">>) => void;
-  onDeleteComment: (id: string) => void;
+  /**
+   * "Restore the camera this comment was written from." The sequence number is
+   * what makes asking for the same viewpoint twice a new request rather than a
+   * no-op, exactly as `focusRequest` does for framing an object.
+   */
+  viewpointRequest: { commentId: string | null; sequence: number };
   walking: boolean;
   onWalkingChange: (walking: boolean) => void;
   selectedElementId: number | null;
@@ -231,7 +239,11 @@ export function ModelCanvas({
   const [sectionReverse, setSectionReverse] = useState(false);
   const [explodeAmount, setExplodeAmount] = useState(0);
   const [explodePartCount, setExplodePartCount] = useState(0);
-  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  // Pinning a comment activates it, and the scene effect that owns the pointer
+  // handler is rebuilt only when the model or the source changes. The callback
+  // rides on a ref so a new function identity from the shell does not tear the
+  // WebGL scene down and build it again.
+  const activateCommentRef = useRef(onActiveComment);
   const walkSpeedRef = useRef<WalkSpeed>("normal");
   const walkGravityRef = useRef(true);
   const walkCollisionRef = useRef(false);
@@ -644,10 +656,15 @@ export function ModelCanvas({
           source,
           [result.origin.x, result.origin.y, result.origin.z],
         );
+        // Recording what the pin landed on is what lets the Comments panel name
+        // the object instead of quoting a coordinate back at the reviewer.
+        const hitElementIds = hit.object.userData.elementIds as Uint32Array | undefined;
+        const elementId = hit.faceIndex == null ? undefined : hitElementIds?.[hit.faceIndex];
         const id = onCreateComment({
           source,
           scenePosition: tuple(hit.point),
           ...(modelPositionFeet ? { modelPositionFeet } : {}),
+          ...(elementId == null ? {} : { elementId }),
           viewpoint: {
             source,
             position: tuple(camera.position),
@@ -656,7 +673,7 @@ export function ModelCanvas({
             fov: camera.fov,
           },
         });
-        setActiveCommentId(id);
+        activateCommentRef.current(id);
         return;
       }
       if (measuringRef.current) {
@@ -1160,6 +1177,10 @@ export function ModelCanvas({
   }, [commenting]);
 
   useEffect(() => {
+    activateCommentRef.current = onActiveComment;
+  }, [onActiveComment]);
+
+  useEffect(() => {
     measureModeRef.current = measureMode;
     const runtime = runtimeRef.current;
     if (runtime) clearPendingMeasurement(runtime.measurement);
@@ -1330,6 +1351,16 @@ export function ModelCanvas({
     runtime.invalidate();
   }, [result, source]);
 
+  // "Viewpoint" now lives in the Comments panel, so the request arrives as a
+  // sequence-stamped prop rather than a click inside this component.
+  const viewpointSequenceRef = useRef(viewpointRequest.sequence);
+  useEffect(() => {
+    if (viewpointRequest.sequence === viewpointSequenceRef.current) return;
+    viewpointSequenceRef.current = viewpointRequest.sequence;
+    const comment = comments.find((entry) => entry.id === viewpointRequest.commentId);
+    if (comment) restoreCommentViewpoint(comment);
+  }, [comments, restoreCommentViewpoint, viewpointRequest]);
+
   return (
     <>
       <canvas
@@ -1339,16 +1370,10 @@ export function ModelCanvas({
       />
       <ModelCommentLayer
         comments={comments}
+        visibleIds={visibleCommentIds}
         activeId={activeCommentId}
-        editing={commentEditing}
         project={projectComment}
-        onActive={setActiveCommentId}
-        onUpdate={onUpdateComment}
-        onDelete={(id) => {
-          onDeleteComment(id);
-          if (activeCommentId === id) setActiveCommentId(null);
-        }}
-        onViewpoint={restoreCommentViewpoint}
+        onActivate={onActiveComment}
       />
       {walking && (
         <FirstPersonPanel
