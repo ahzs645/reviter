@@ -2,6 +2,28 @@
 
 import type { CanvasMenuRequest } from "./types.ts";
 
+export type PropertyTextRow = {
+  label: string;
+  value: string;
+};
+
+/**
+ * A plain-text version of the properties palette for pasting into an issue,
+ * spreadsheet, email, or chat without carrying any of the palette's markup.
+ */
+export function propertyClipboardText(
+  title: string,
+  subtitle: string,
+  rows: readonly PropertyTextRow[],
+): string {
+  return [
+    title,
+    subtitle,
+    "",
+    ...rows.map(({ label, value }) => `${label}\t${value}`),
+  ].join("\n");
+}
+
 /**
  * The one filter test every list in the studio runs.
  *

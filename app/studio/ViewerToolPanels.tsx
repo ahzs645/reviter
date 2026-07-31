@@ -5,9 +5,11 @@ export function FirstPersonPanel({
   looking,
   speed,
   gravity,
+  collision,
   guideOpen,
   onSpeed,
   onGravity,
+  onCollision,
   onDrop,
   onGuide,
   onNeverShow,
@@ -16,9 +18,12 @@ export function FirstPersonPanel({
   looking: boolean;
   speed: WalkSpeed;
   gravity: boolean;
+  /** Null hides the toggle: the reference model has no collision to offer. */
+  collision: boolean | null;
   guideOpen: boolean;
   onSpeed: (speed: WalkSpeed) => void;
   onGravity: (enabled: boolean) => void;
+  onCollision: (enabled: boolean) => void;
   onDrop: () => void;
   onGuide: (open: boolean) => void;
   onNeverShow: () => void;
@@ -64,6 +69,28 @@ export function FirstPersonPanel({
             aria-pressed={!gravity}
           >Float</button>
         </div>
+        {collision != null && (
+          <div className="first-person-mode" role="group" aria-label="Wall collision">
+            <button
+              className={!collision ? "active" : ""}
+              onClick={(event) => {
+                event.currentTarget.blur();
+                onCollision(false);
+              }}
+              aria-pressed={!collision}
+              title="Move through walls and doors"
+            >Ghost</button>
+            <button
+              className={collision ? "active" : ""}
+              onClick={(event) => {
+                event.currentTarget.blur();
+                onCollision(true);
+              }}
+              aria-pressed={collision}
+              title="Walls and doors block movement"
+            >Solid</button>
+          </div>
+        )}
         <button
           className="first-person-drop"
           onClick={(event) => {

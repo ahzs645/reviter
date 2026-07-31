@@ -287,10 +287,17 @@ button { color: inherit; }
 /* The id is reference detail beside the category, not the headline. */
 .object-list span em { margin-left: auto; color: #7c8b99; font-family: var(--font-plex-mono); font-style: normal; font-weight: 500; }
 .model-browser-panel > p { margin: 0; padding: 9px 12px; color: #70808e; border-top: 1px solid #dce4ea; font-size: 7px; line-height: 1.45; }
-.property-table { margin: 0; overflow: auto; }
+.properties-panel .viewer-panel-heading > div,
+.property-table dt,
+.property-table dd { user-select: text; }
+.property-table { min-height: 0; margin: 0; flex: 1; overflow: auto; }
 .property-table > div { min-height: 39px; padding: 8px 12px; display: grid; grid-template-columns: 1fr 1.1fr; gap: 10px; align-items: center; border-bottom: 1px solid #e1e7ec; }
 .property-table dt { color: #67798a; font-size: 8px; }
-.property-table dd { margin: 0; overflow: hidden; color: #263b4e; font-family: var(--font-plex-mono); font-size: 8px; text-align: right; text-overflow: ellipsis; }
+.property-table dd { margin: 0; overflow: hidden; color: #263b4e; font-family: var(--font-plex-mono); font-size: 8px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.property-actions { padding: 9px 12px; border-top: 1px solid #d7e0e8; background: #f3f7fa; }
+.property-actions button { width: 100%; min-height: 30px; border: 1px solid #aebfcd; border-radius: 5px; color: #274f71; background: white; cursor: pointer; font-family: var(--font-plex-mono); font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.property-actions button:hover { border-color: #7f9db4; background: #e8f1f8; }
+.property-actions button:focus-visible { outline: 2px solid #4d86ba; outline-offset: 2px; }
 .property-empty { margin: auto; padding: 30px 25px; text-align: center; }
 .property-empty b { font-size: 12px; }
 .property-empty p { margin: 8px 0 0; color: #6d7e8d; font-size: 9px; line-height: 1.6; }

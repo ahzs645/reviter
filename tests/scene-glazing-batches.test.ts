@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as THREE from "three";
 
+import { meshGroup } from "../app/studio/three-scene.ts";
 import {
   buildBoundsMeshes,
   displayMaterials,
   elementDisplayRoles,
   glazingElementIds,
 } from "../lib/reviter/scene.ts";
-import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
+import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 function record(elementId: number, categoryId: number): ElementBoundsRecord {
   return {
@@ -89,4 +91,97 @@ test("the residual railing display material is opaque", () => {
   const railing = displayMaterials().find((material) => material.name.startsWith("Railing"));
   assert.ok(railing);
   assert.equal(railing!.baseColorLinear[3], 1);
+});
+
+test("opaque hosted inserts win coplanar depth ties with their host wall", () => {
+  const wall = record(1, -2000011);
+  const door = record(2, -2000023);
+  const result = {
+    fileName: "coplanar.rvt",
+    method: "partition-bounds-recovery",
+    origin: { x: 0, y: 0, z: 0 },
+    elementBounds: [wall, door],
+    materials: [{
+      name: "Resolved native material",
+      baseColorLinear: [0.5, 0.5, 0.5, 1],
+      metallic: 0,
+      roughness: 0.8,
+      doubleSided: true,
+      source: "rvt-material",
+      assignedElements: 2,
+    }],
+    meshes: [{
+      name: "Mixed wall and door material",
+      positions: new Float32Array([
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+      ]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+      colors: new Float32Array([
+        1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1,
+      ]),
+      elementIds: new Uint32Array([wall.elementId, door.elementId]),
+      materialIndex: 0,
+      source: "native-brep",
+    }],
+  } as unknown as ConvertResult;
+
+  const group = meshGroup(result, "technical");
+  const meshes = group.children.filter((child): child is THREE.Mesh => (child as THREE.Mesh).isMesh);
+  assert.equal(meshes.length, 2, "a mixed native batch is split only at the semantic depth boundary");
+
+  const forElement = (elementId: number) => meshes.find((mesh) =>
+    (mesh.userData.elementIds as Uint32Array | undefined)?.[0] === elementId);
+  const wallMesh = forElement(wall.elementId);
+  const doorMesh = forElement(door.elementId);
+  assert.ok(wallMesh);
+  assert.ok(doorMesh);
+  assert.equal((wallMesh.material as THREE.MeshStandardMaterial).depthFunc, THREE.LessDepth);
+  assert.equal((doorMesh.material as THREE.MeshStandardMaterial).depthFunc, THREE.LessDepth);
+  assert.equal((wallMesh.material as THREE.MeshStandardMaterial).polygonOffset, true);
+  assert.ok(
+    (wallMesh.material as THREE.MeshStandardMaterial).polygonOffsetUnits > 0,
+    "conventional depth moves the lower-priority host away with a positive unit bias",
+  );
+  assert.equal(
+    (doorMesh.material as THREE.MeshStandardMaterial).polygonOffset,
+    false,
+    "the hosted insert remains the unbiased foreground surface",
+  );
+  assert.equal(
+    (doorMesh.material as THREE.MeshStandardMaterial).side,
+    THREE.DoubleSide,
+    "recovered native faces remain visible when an incomplete shell is viewed from behind",
+  );
+  assert.ok(
+    doorMesh.renderOrder < wallMesh.renderOrder,
+    "the door draws first, so equal-depth wall fragments cannot replace its material",
+  );
+
+  const proxyResult = {
+    ...result,
+    materials: displayMaterials(),
+    elementBounds: [wall],
+    meshes: buildBoundsMeshes([wall], { x: 0, y: 0, z: 0 }),
+  } as unknown as ConvertResult;
+  const proxyGroup = meshGroup(proxyResult, "technical");
+  const proxyMesh = proxyGroup.children.find((child): child is THREE.Mesh =>
+    (child as THREE.Mesh).isMesh);
+  assert.ok(proxyMesh);
+  assert.equal(
+    (proxyMesh.material as THREE.MeshStandardMaterial).side,
+    THREE.DoubleSide,
+    "fallback envelopes remain visible even when their winding is not certified",
+  );
+
+  const reverseGroup = meshGroup(result, "technical", new Set(), true);
+  const reverseWall = reverseGroup.children.find((child): child is THREE.Mesh =>
+    (child as THREE.Mesh).isMesh &&
+    (child.userData.elementIds as Uint32Array | undefined)?.[0] === wall.elementId);
+  assert.ok(reverseWall);
+  assert.ok(
+    (reverseWall.material as THREE.MeshStandardMaterial).polygonOffsetUnits < 0,
+    "reverse-Z flips the unit-bias sign while keeping the same material priority",
+  );
 });

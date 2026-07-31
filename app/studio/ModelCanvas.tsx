@@ -213,6 +213,10 @@ export function ModelCanvas({
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
   const [walkGravity, setWalkGravity] = useState(true);
+  // Off by default: the walkthrough is for reading the building, and gliding
+  // through a closed door beats hunting for an opening. The paired reference
+  // model walks this way too — it has no collision representation at all.
+  const [walkCollision, setWalkCollision] = useState(false);
   const [walkLooking, setWalkLooking] = useState(false);
   const [walkGuideOpen, setWalkGuideOpen] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>("distance");
@@ -230,6 +234,7 @@ export function ModelCanvas({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const walkSpeedRef = useRef<WalkSpeed>("normal");
   const walkGravityRef = useRef(true);
+  const walkCollisionRef = useRef(false);
   const matchedCameraRef = useRef<NormalizedCameraPose | null>(null);
   const appliedCameraRequestRef = useRef(cameraRequest.sequence);
   const measuringRef = useRef(false);
@@ -265,7 +270,16 @@ export function ModelCanvas({
     );
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: isReferenceModel && technical, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: isReferenceModel && technical,
+      powerPreference: "high-performance",
+      // First-person uses a close near plane across a campus-scale model.
+      // Reverse-Z keeps substantially more precision at the wall distances
+      // where recovered faces differ by only a few millionths of a foot.
+      reversedDepthBuffer: true,
+    });
     // The recovered path used to run at 2x device pixels against the reference
     // path's 1.5 — a constant fill-rate penalty on exactly the heavier scene,
     // for a difference MSAA already papers over.
@@ -293,13 +307,19 @@ export function ModelCanvas({
     // model's bounds and stays pickable.
     const useOverlay = source === "overlay" && comparison?.referenceMeshes.length;
     const sceneUnitsPerFoot = isReferenceModel || useReference ? 0.3048 : 1;
+    const reverseDepthBuffer = renderer.capabilities.reversedDepthBuffer;
     const root = isReferenceModel
       ? new THREE.Group()
       : useOverlay
-        ? overlayMeshGroup(result, comparison.referenceMeshes, renderMode)
+        ? overlayMeshGroup(
+            result,
+            comparison.referenceMeshes,
+            renderMode,
+            reverseDepthBuffer,
+          )
         : useReference
           ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-          : meshGroup(result, renderMode, hiddenElementIds);
+          : meshGroup(result, renderMode, hiddenElementIds, reverseDepthBuffer);
     // A paired reference's extent is measured when it arrives, not declared.
     // Until then the recovery's own bounds frame the empty scene, which is the
     // right guess: the two are the same building.
@@ -524,6 +544,9 @@ export function ModelCanvas({
       // yet. Keep its first-person movement responsive and use picked-surface
       // travel for precise placement instead of scanning every batch each frame.
       if (isReferenceModel) return to;
+      // Ghost movement is the default: colliding with every wall, door leaf,
+      // and pane is realistic and mostly in the way. Solid is one toggle over.
+      if (!walkCollisionRef.current) return to;
       const delta = to.clone().sub(from);
       const vertical = delta.dot(upVector);
       const horizontal = delta.addScaledVector(upVector, -vertical);
@@ -1121,6 +1144,10 @@ export function ModelCanvas({
   }, [walkGravity]);
 
   useEffect(() => {
+    walkCollisionRef.current = walkCollision;
+  }, [walkCollision]);
+
+  useEffect(() => {
     measuringRef.current = measuring;
     if (!measuring) {
       const runtime = runtimeRef.current;
@@ -1328,9 +1355,11 @@ export function ModelCanvas({
           looking={walkLooking}
           speed={walkSpeed}
           gravity={walkGravity}
+          collision={source !== "reference-model" ? walkCollision : null}
           guideOpen={walkGuideOpen}
           onSpeed={setWalkSpeed}
           onGravity={setWalkGravity}
+          onCollision={setWalkCollision}
           onDrop={() => walkRef.current?.dropToSurface()}
           onGuide={setWalkGuideOpen}
           onNeverShow={() => {

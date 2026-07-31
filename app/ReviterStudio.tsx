@@ -48,7 +48,14 @@ import {
 } from "../lib/reviter";
 
 import { staticWorkerUrl } from "./studio/reference-model.ts";
-import { canvasMenuPosition, formatBytes, formatNumber, matchesFilter, savedFileName } from "./studio/format.ts";
+import {
+  canvasMenuPosition,
+  formatBytes,
+  formatNumber,
+  matchesFilter,
+  propertyClipboardText,
+  savedFileName,
+} from "./studio/format.ts";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { MarkupOverlay } from "./studio/MarkupOverlay.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
@@ -77,6 +84,26 @@ function formatElapsed(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return minutes ? `${minutes}m ${remainder.toString().padStart(2, "0")}s` : `${remainder}s`;
+}
+
+async function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  // Clipboard access is unavailable in some embedded or non-secure previews.
+  // Keep the action working there through the older synchronous browser path.
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.appendChild(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("The browser did not grant clipboard access");
 }
 
 function BlobThumbnail({ blob, alt }: { blob?: Blob; alt: string }) {
@@ -145,6 +172,10 @@ export default function ReviterStudio() {
   const [modelSearch, setModelSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
+  const [propertyCopyFeedback, setPropertyCopyFeedback] = useState<{
+    elementId: number;
+    status: "copied" | "failed";
+  } | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
@@ -659,6 +690,90 @@ export default function ReviterStudio() {
     [result, selectedElementId],
   );
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
+  const selectedPropertyRows = selectedRecord && selectedDimensions ? [
+    { key: "native-revit-id", label: "Native Revit ID", value: String(selectedRecord.elementId) },
+    {
+      key: "rendered-geometry",
+      label: "Rendered geometry",
+      value: selectedRecord.renderGeometryProvenance === "native"
+        ? "Native RVT face mesh"
+        : selectedRecord.renderGeometryProvenance === "reconstructed"
+          ? "Exact reconstructed geometry"
+          : selectedRecord.renderGeometryProvenance === "bounds-fallback"
+            ? "Bounds fallback"
+            : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
+              ? "Drawing aid—not rendered"
+              : "Not classified",
+    },
+    ...(selectedRecord.categoryName
+      ? [{ key: "category", label: "Category", value: selectedRecord.categoryName }]
+      : []),
+    ...(selectedRecord.categoryId != null
+      ? [{
+        key: "category-id",
+        label: "Category ID",
+        value: `${selectedRecord.categoryId}${selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}`,
+      }]
+      : []),
+    {
+      key: "evidence",
+      label: "Evidence",
+      value: selectedRecord.recordOffset >= 0
+        ? "Duplicated bounds record"
+        : selectedRecord.loops?.length
+          ? "Sketch boundary"
+          : selectedRecord.orientedBox
+            ? "Placed family instance"
+            : selectedRecord.solids?.length || selectedRecord.solid
+              ? "Rebuilt from native surfaces"
+              : "Native faces",
+    },
+    ...(selectedRecord.solid
+      ? [{
+        key: "native-geometry",
+        label: "Native geometry",
+        value: `${Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
+      }]
+      : []),
+    ...(selectedRecord.typeName
+      ? [{ key: "type", label: "Type", value: selectedRecord.typeName }]
+      : []),
+    ...(selectedRecord.typeId != null
+      ? [{ key: "type-element", label: "Type element", value: String(selectedRecord.typeId) }]
+      : []),
+    ...(selectedRecord.parameters?.map((parameter) => ({
+      key: `parameter-${parameter.parameterId}`,
+      label: parameter.name,
+      value: `${parameter.value.toFixed(4)} ft`,
+    })) ?? []),
+    { key: "stream", label: "Stream", value: selectedRecord.stream },
+    ...(selectedRecord.chunkIndex >= 0
+      ? [{ key: "chunk", label: "Chunk", value: selectedRecord.chunkIndex.toLocaleString() }]
+      : []),
+    { key: "width", label: "Width", value: `${selectedDimensions.x.toFixed(3)} ft` },
+    { key: "depth", label: "Depth", value: `${selectedDimensions.y.toFixed(3)} ft` },
+    { key: "height", label: "Height", value: `${selectedDimensions.z.toFixed(3)} ft` },
+    { key: "minimum-z", label: "Minimum Z", value: `${selectedRecord.boundsFeet.min.z.toFixed(3)} ft` },
+    ...(selectedRecord.recordOffset >= 0
+      ? [{ key: "record-offset", label: "Record offset", value: `0x${selectedRecord.recordOffset.toString(16)}` }]
+      : []),
+  ] : [];
+  const copySelectedProperties = useCallback(async () => {
+    if (!selectedRecord || !selectedPropertyRows.length) return;
+    try {
+      await writeClipboardText(propertyClipboardText(
+        selectedRecord.categoryName ?? "Uncategorised object",
+        `Object ${selectedRecord.elementId}`,
+        selectedPropertyRows,
+      ));
+      setPropertyCopyFeedback({ elementId: selectedRecord.elementId, status: "copied" });
+    } catch {
+      setPropertyCopyFeedback({ elementId: selectedRecord.elementId, status: "failed" });
+    }
+    window.setTimeout(() => {
+      setPropertyCopyFeedback((current) => current?.elementId === selectedRecord.elementId ? null : current);
+    }, 2_000);
+  }, [selectedPropertyRows, selectedRecord]);
   // Asking the user to filter by an id they would have to already know is not
   // much of a filter; category and type names are on the record too.
   const visibleModelRecords = useMemo(
@@ -1310,66 +1425,24 @@ export default function ReviterStudio() {
                         id is which one, which is the subtitle's job. */}
                     <div className="viewer-panel-heading"><div><strong>{selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection"}</strong><span>{selectedRecord ? `Object ${selectedRecord.elementId}` : "Nothing picked"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
                     {selectedRecord && selectedDimensions ? (
-                      <dl className="property-table">
-                        <div><dt>Native Revit ID</dt><dd>{selectedRecord.elementId}</dd></div>
-                        <div><dt>Rendered geometry</dt><dd>{
-                          selectedRecord.renderGeometryProvenance === "native"
-                            ? "Native RVT face mesh"
-                            : selectedRecord.renderGeometryProvenance === "reconstructed"
-                              ? "Exact reconstructed geometry"
-                              : selectedRecord.renderGeometryProvenance === "bounds-fallback"
-                                ? "Bounds fallback"
-                                : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
-                                  ? "Drawing aid—not rendered"
-                                  : "Not classified"
-                        }</dd></div>
-                        {selectedRecord.categoryName && (
-                          <div><dt>Category</dt><dd>{selectedRecord.categoryName}</dd></div>
-                        )}
-                        {selectedRecord.categoryId != null && (
-                          <div><dt>Category ID</dt><dd>{selectedRecord.categoryId}{selectedRecord.categorySource === "record-code-consensus" ? " (record-code consensus)" : " (native token)"}</dd></div>
-                        )}
-                        {/* Not every element reaches the scene through a bounds
-                            record any more — some are rebuilt from surfaces, a
-                            placed instance, or a sketch — so the row says which. */}
-                        <div><dt>Evidence</dt><dd>{
-                          selectedRecord.recordOffset >= 0
-                            ? "Duplicated bounds record"
-                            : selectedRecord.loops?.length
-                              ? "Sketch boundary"
-                              : selectedRecord.orientedBox
-                                ? "Placed family instance"
-                                : selectedRecord.solids?.length || selectedRecord.solid
-                                  ? "Rebuilt from native surfaces"
-                                  : "Native faces"
-                        }</dd></div>
-                        {selectedRecord.solid && (
-                          <div><dt>Native geometry</dt><dd>{Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · {(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick</dd></div>
-                        )}
-                        {selectedRecord.typeName && (
-                          <div><dt>Type</dt><dd>{selectedRecord.typeName}</dd></div>
-                        )}
-                        {selectedRecord.typeId != null && (
-                          <div><dt>Type element</dt><dd>{selectedRecord.typeId}</dd></div>
-                        )}
-                        {selectedRecord.parameters?.map((parameter) => (
-                          <div key={parameter.parameterId}>
-                            <dt>{parameter.name}</dt>
-                            <dd>{parameter.value.toFixed(4)} ft</dd>
-                          </div>
-                        ))}
-                        <div><dt>Stream</dt><dd>{selectedRecord.stream}</dd></div>
-                        {selectedRecord.chunkIndex >= 0 && (
-                          <div><dt>Chunk</dt><dd>{selectedRecord.chunkIndex.toLocaleString()}</dd></div>
-                        )}
-                        <div><dt>Width</dt><dd>{selectedDimensions.x.toFixed(3)} ft</dd></div>
-                        <div><dt>Depth</dt><dd>{selectedDimensions.y.toFixed(3)} ft</dd></div>
-                        <div><dt>Height</dt><dd>{selectedDimensions.z.toFixed(3)} ft</dd></div>
-                        <div><dt>Minimum Z</dt><dd>{selectedRecord.boundsFeet.min.z.toFixed(3)} ft</dd></div>
-                        {selectedRecord.recordOffset >= 0 && (
-                          <div><dt>Record offset</dt><dd>0x{selectedRecord.recordOffset.toString(16)}</dd></div>
-                        )}
-                      </dl>
+                      <>
+                        <dl className="property-table">
+                          {selectedPropertyRows.map((row) => (
+                            <div key={row.key}><dt>{row.label}</dt><dd title={row.value}>{row.value}</dd></div>
+                          ))}
+                        </dl>
+                        <div className="property-actions">
+                          <button
+                            type="button"
+                            onClick={() => { void copySelectedProperties(); }}
+                            aria-live="polite"
+                          >{
+                            propertyCopyFeedback?.elementId === selectedRecord.elementId
+                              ? propertyCopyFeedback.status === "copied" ? "Copied" : "Copy failed"
+                              : "Copy properties"
+                          }</button>
+                        </div>
+                      </>
                     ) : (
                       <div className="property-empty"><b>Pick an object in the viewport</b><p>Click a recovered solid, or choose one from the Objects list.</p></div>
                     )}

@@ -3,13 +3,19 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
+  elementDisplayRoles,
   glazingElementIds,
+  type DisplayRole,
+} from "../../lib/reviter/scene.ts";
+import type {
+  ConvertResult,
+  ReferenceMeshData,
+} from "../../lib/reviter/types.ts";
+import {
   referenceRegistration,
-  type ConvertResult,
   type NavigationMode,
-  type ReferenceMeshData,
   type RenderMode,
-} from "../../lib/reviter";
+} from "../../lib/reviter/viewer.ts";
 
 /**
  * The triangles of one batch minus the ones belonging to a hidden element.
@@ -48,6 +54,7 @@ type BatchPart = {
   indices: Uint32Array;
   elementIds: Uint32Array | undefined;
   glazing: boolean;
+  foreground: boolean;
 };
 
 /**
@@ -62,12 +69,18 @@ function splitByGlazing(
   glazingIds: ReadonlySet<number>,
 ): BatchPart[] {
   const { indices, elementIds } = visible;
-  if (!elementIds || !glazingIds.size) return [{ indices, elementIds, glazing: false }];
+  if (!elementIds || !glazingIds.size) {
+    return [{ indices, elementIds, glazing: false, foreground: false }];
+  }
 
   let glazingTriangles = 0;
   for (const elementId of elementIds) if (glazingIds.has(elementId)) glazingTriangles += 1;
-  if (glazingTriangles === 0) return [{ indices, elementIds, glazing: false }];
-  if (glazingTriangles === elementIds.length) return [{ indices, elementIds, glazing: true }];
+  if (glazingTriangles === 0) {
+    return [{ indices, elementIds, glazing: false, foreground: false }];
+  }
+  if (glazingTriangles === elementIds.length) {
+    return [{ indices, elementIds, glazing: true, foreground: false }];
+  }
 
   const glass = { indices: new Uint32Array(glazingTriangles * 3), ids: new Uint32Array(glazingTriangles), at: 0 };
   const rest = {
@@ -87,15 +100,117 @@ function splitByGlazing(
     into.at += 1;
   }
   return [
-    { indices: rest.indices, elementIds: rest.ids, glazing: false },
-    { indices: glass.indices, elementIds: glass.ids, glazing: true },
+    { indices: rest.indices, elementIds: rest.ids, glazing: false, foreground: false },
+    { indices: glass.indices, elementIds: glass.ids, glazing: true, foreground: false },
   ];
+}
+
+/**
+ * Hosted inserts and facade children win an exact depth tie with their host.
+ *
+ * The recovered RVT contains uncut host faces under doors, panels and frames.
+ * They occupy the same plane as the insert, so merely changing the depth
+ * comparison would make whichever batch happened to be created first win.
+ * Splitting only the mixed batches lets semantic evidence decide that tie
+ * without turning every element into its own draw call.
+ */
+const FOREGROUND_ROLES = new Set<DisplayRole>(["door", "panel", "frame", "covering"]);
+
+function splitByForeground(
+  part: BatchPart,
+  foregroundIds: ReadonlySet<number>,
+): BatchPart[] {
+  const { indices, elementIds } = part;
+  if (part.glazing || !elementIds || !foregroundIds.size) return [part];
+
+  let foregroundTriangles = 0;
+  for (const elementId of elementIds) {
+    if (foregroundIds.has(elementId)) foregroundTriangles += 1;
+  }
+  if (foregroundTriangles === 0) return [part];
+  if (foregroundTriangles === elementIds.length) return [{ ...part, foreground: true }];
+
+  const foreground = {
+    indices: new Uint32Array(foregroundTriangles * 3),
+    ids: new Uint32Array(foregroundTriangles),
+    at: 0,
+  };
+  const background = {
+    indices: new Uint32Array((elementIds.length - foregroundTriangles) * 3),
+    ids: new Uint32Array(elementIds.length - foregroundTriangles),
+    at: 0,
+  };
+  for (let triangle = 0; triangle < elementIds.length; triangle += 1) {
+    const elementId = elementIds[triangle]!;
+    const into = foregroundIds.has(elementId) ? foreground : background;
+    into.indices[into.at * 3] = indices[triangle * 3]!;
+    into.indices[into.at * 3 + 1] = indices[triangle * 3 + 1]!;
+    into.indices[into.at * 3 + 2] = indices[triangle * 3 + 2]!;
+    into.ids[into.at] = elementId;
+    into.at += 1;
+  }
+  return [
+    {
+      indices: foreground.indices,
+      elementIds: foreground.ids,
+      glazing: false,
+      foreground: true,
+    },
+    {
+      indices: background.indices,
+      elementIds: background.ids,
+      glazing: false,
+      foreground: false,
+    },
+  ];
+}
+
+function recoveredRenderOrder(
+  source: "native-brep" | "display-proxy" | undefined,
+  materialSource: "rvt-material" | "display-fallback" | undefined,
+  foreground: boolean,
+): number {
+  // Opaque objects are sorted from low to high renderOrder. With LessDepth,
+  // this is also their deterministic priority when two fragments are exactly
+  // coplanar: hosted native inserts first, then resolved native materials,
+  // unresolved native material, and finally display proxies.
+  if (source !== "display-proxy") {
+    if (foreground) return 0;
+    return materialSource === "rvt-material" ? 1 : 2;
+  }
+  return foreground ? 3 : 4;
+}
+
+/**
+ * A tiny deterministic separation for recovered layers that occupy one plane.
+ *
+ * Strict depth comparison stabilises bit-identical triangles, but Revit also
+ * emits overlapping faces with different tessellations and material ids. Their
+ * interpolated depths can alternate by a handful of buffer units across one
+ * wall, producing the fine horizontal/diagonal bands. Hosted inserts remain
+ * unbiased; resolved native materials follow their stable palette order, then
+ * unresolved native faces and display proxies sit progressively farther away.
+ */
+function recoveredDepthBias(
+  source: "native-brep" | "display-proxy" | undefined,
+  materialSource: "rvt-material" | "display-fallback" | undefined,
+  materialIndex: number,
+  foreground: boolean,
+): number {
+  if (source !== "display-proxy") {
+    if (foreground) return 0;
+    return materialSource === "rvt-material"
+      ? 1 + Math.min(Math.max(materialIndex, 0), 127) * 2
+      : 320;
+  }
+  return foreground ? 384 : 448;
 }
 
 export function meshGroup(
   result: ConvertResult,
   renderMode: RenderMode,
   hiddenElementIds: ReadonlySet<number> = new Set(),
+  reverseDepthBuffer = false,
 ): THREE.Group {
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
@@ -106,6 +221,11 @@ export function meshGroup(
   // below remain the fallback for batches whose material never framed the
   // field — the same evidence the proxy path uses to pick the glazing slot.
   const glazingIds = glazingElementIds(result.elementBounds);
+  const foregroundIds = new Set(
+    [...elementDisplayRoles(result.elementBounds)]
+      .filter(([, role]) => FOREGROUND_ROLES.has(role))
+      .map(([elementId]) => elementId),
+  );
   group.name = "Reviter recovered geometry";
   group.userData = {
     sourceFile: result.fileName,
@@ -132,9 +252,15 @@ export function meshGroup(
     // number fitted to one building. Two draw calls at most, and only when a
     // batch is genuinely mixed.
     const materialDecides = sourceMaterial?.transparency != null;
-    const parts = materialDecides
-      ? [{ indices: visible.indices, elementIds: visible.elementIds, glazing: sourceOpacity < 0.995 }]
+    const glazingParts = materialDecides
+      ? [{
+          indices: visible.indices,
+          elementIds: visible.elementIds,
+          glazing: sourceOpacity < 0.995,
+          foreground: false,
+        }]
       : splitByGlazing(visible, glazingIds);
+    const parts = glazingParts.flatMap((part) => splitByForeground(part, foregroundIds));
     for (const part of parts) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
@@ -157,16 +283,44 @@ export function meshGroup(
             ? (isElementBounds ? Math.min(glazingOpacity, 0.58) : glazingOpacity)
             : sourceOpacity)
         : Math.min(sourceOpacity, isElementBounds ? 0.32 : 0.28);
+      const depthBias = technical && !transparent
+        ? recoveredDepthBias(
+            data.source,
+            sourceMaterial?.source,
+            data.materialIndex,
+            part.foreground,
+          )
+        : 0;
       const material = new THREE.MeshStandardMaterial({
         color: sourceColor,
         vertexColors: !technical,
         roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
         metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
         flatShading: true,
+        // Recovered native faces are not guaranteed to form a closed,
+        // consistently wound shell. Roof 1848155, for example, has only the
+        // top-facing surface on this route; front-face culling therefore makes
+        // it disappear from below. Keep recovered geometry visible from both
+        // sides. Coplanar material competition is handled by the deterministic
+        // depth ordering and bias above rather than by discarding back faces.
         side: THREE.DoubleSide,
         transparent,
         opacity,
         depthWrite: !transparent,
+        // The supplied RVT contains about 91k repeated native triangles, with
+        // some host-wall faces also left beneath doors and facade children.
+        // LessEqual lets coplanar triangles overwrite the same depth sample,
+        // producing the moving diagonal patches visible at eye height. Keep the
+        // first opaque fragment instead; genuinely nearer faces still pass,
+        // while glazing keeps the normal transparency path below.
+        depthFunc: technical && !transparent ? THREE.LessDepth : THREE.LessEqualDepth,
+        // In reverse-Z a negative polygon offset moves a lower-priority layer
+        // away; the sign is the opposite for the conventional depth buffer.
+        // Factor stays zero so steep surfaces receive the same small unit bias
+        // as front-facing ones.
+        polygonOffset: depthBias > 0,
+        polygonOffsetFactor: 0,
+        polygonOffsetUnits: reverseDepthBuffer ? -depthBias : depthBias,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.name = part.glazing ? `${data.name} · glazing` : data.name;
@@ -178,7 +332,9 @@ export function meshGroup(
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.userData.elementIds = part.elementIds;
-      mesh.renderOrder = 1;
+      mesh.renderOrder = technical && !transparent
+        ? recoveredRenderOrder(data.source, sourceMaterial?.source, part.foreground)
+        : 1;
       group.add(mesh);
 
       // The wireframe overlay is what makes a twelve-triangle envelope box read
@@ -274,12 +430,13 @@ export function overlayMeshGroup(
   result: ConvertResult,
   meshes: ReferenceMeshData[],
   renderMode: RenderMode,
+  reverseDepthBuffer = false,
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = "Recovery over export";
   group.userData = { source: "overlay", fidelity: "comparison" };
 
-  const recovered = meshGroup(result, renderMode);
+  const recovered = meshGroup(result, renderMode, new Set(), reverseDepthBuffer);
   recovered.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;

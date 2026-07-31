@@ -11,7 +11,24 @@ import {
   CANVAS_MENU_WIDTH,
   canvasMenuPosition,
   matchesFilter,
+  propertyClipboardText,
 } from "../app/studio/format.ts";
+
+test("properties copy as a labelled, spreadsheet-friendly text block", () => {
+  assert.equal(
+    propertyClipboardText("Curtain Wall Panels", "Object 1850389", [
+      { label: "Native Revit ID", value: "1850389" },
+      { label: "Width", value: "4.093 ft" },
+    ]),
+    [
+      "Curtain Wall Panels",
+      "Object 1850389",
+      "",
+      "Native Revit ID\t1850389",
+      "Width\t4.093 ft",
+    ].join("\n"),
+  );
+});
 
 test("an untouched filter is the whole list, not an empty one", () => {
   // A filter that matched nothing until you typed would hide every list behind
