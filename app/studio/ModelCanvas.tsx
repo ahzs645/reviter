@@ -58,6 +58,7 @@ import {
   WalkCollisionIndex,
   WalkSurfaceIndex,
 } from "./walk-surface.ts";
+import { SourceAssetCache } from "./source-asset-cache.ts";
 import {
   ExplodeToolPanel,
   FirstPersonPanel,
@@ -110,6 +111,24 @@ type NormalizedCameraPose = {
   position: THREE.Vector3;
   target: THREE.Vector3;
   up: THREE.Vector3;
+};
+
+type ReferenceBounds = {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+};
+
+type CachedSourceAssets = {
+  root: THREE.Group;
+  disposed: boolean;
+  walkSurface: WalkSurfaceIndex | null;
+  walkCollision: WalkCollisionIndex | null;
+  walkIndexDirty: boolean;
+  walkSurfaceBuildMs: number | null;
+  walkCollisionBuildMs: number | null;
+  referenceBounds: ReferenceBounds | null;
+  referenceState: ReferenceLoadState;
+  referenceLoad: Promise<void> | null;
 };
 
 /** Convert a scene vector into the recovery's canonical z-up axes. */
@@ -251,6 +270,16 @@ export function ModelCanvas({
   focusRequest: { elementId: number | null; sequence: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [sourceCache] = useState(() =>
+    // One entry for each source in the active visual style. Keeping both
+    // Shaded and X-ray copies of every million-triangle root would trade the
+    // switch delay for an avoidable GPU-memory spike; changing style therefore
+    // ages the least-recently-used source out instead of retaining eight roots.
+    new SourceAssetCache<CachedSourceAssets>(4, (assets) => {
+      assets.disposed = true;
+      disposeGroup(assets.root);
+    }),
+  );
   const runtimeRef = useRef<{
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -272,6 +301,7 @@ export function ModelCanvas({
      */
     prepareWalkIndexes: () => Promise<void>;
     walkIndexDirty: boolean;
+    invalidateWalkIndexes: () => void;
     /** Floor picked before entering Walk, consumed by the next walk session. */
     walkStart: { point: THREE.Vector3; normal: THREE.Vector3 } | null;
     selectionOverlay: THREE.Group | null;
@@ -329,6 +359,10 @@ export function ModelCanvas({
   const walkGravityRef = useRef(true);
   const walkCollisionRef = useRef(false);
   const matchedCameraRef = useRef<NormalizedCameraPose | null>(null);
+  // A source rebuild while Walk owns the camera must resume from the eye, not
+  // from OrbitControls' target in front of it. Ordinary Orbit -> Walk entry
+  // still uses that target as the convenient default floor location.
+  const walkCameraHandoffPendingRef = useRef(false);
   const appliedCameraRequestRef = useRef(cameraRequest.sequence);
   const measuringRef = useRef(false);
   const commentingRef = useRef(false);
@@ -337,6 +371,10 @@ export function ModelCanvas({
   const measureCalibrationRef = useRef(1);
   const measurementIdRef = useRef(1);
   const appliedWalkStartRequestRef = useRef(walkStartRequest.sequence);
+
+  useEffect(() => () => {
+    sourceCache.clear();
+  }, [sourceCache]);
 
   useEffect(() => {
     try {
@@ -403,23 +441,44 @@ export function ModelCanvas({
     const useOverlay = source === "overlay" && comparison?.referenceMeshes.length;
     const sceneUnitsPerFoot = isReferenceModel || useReference ? 0.3048 : 1;
     const reverseDepthBuffer = renderer.capabilities.reversedDepthBuffer;
-    const root = isReferenceModel
-      ? new THREE.Group()
-      : useOverlay
-        ? overlayMeshGroup(
-            result,
-            comparison.referenceMeshes,
-            renderMode,
-            reverseDepthBuffer,
-          )
-        : useReference
-          ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
-          : meshGroup(result, renderMode, hiddenElementIds, reverseDepthBuffer);
+    const cacheKey = `${source}:${renderMode}`;
+    const cacheOwners = source === "recovered"
+      ? [result, hiddenElementIds]
+      : source === "reference-model"
+        ? [result, referenceModelUrl]
+        : [result, comparison];
+    const cachedSource = sourceCache.acquire(cacheKey, cacheOwners, () => ({
+      root: isReferenceModel
+        ? new THREE.Group()
+        : useOverlay
+          ? overlayMeshGroup(
+              result,
+              comparison.referenceMeshes,
+              renderMode,
+              reverseDepthBuffer,
+            )
+          : useReference
+            ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
+            : meshGroup(result, renderMode, hiddenElementIds, reverseDepthBuffer),
+      disposed: false,
+      walkSurface: null,
+      walkCollision: null,
+      walkIndexDirty: false,
+      walkSurfaceBuildMs: null,
+      walkCollisionBuildMs: null,
+      referenceBounds: null,
+      referenceState: "idle",
+      referenceLoad: null,
+    }));
+    const sourceAssets = cachedSource.value;
+    const root = sourceAssets.root;
+    canvas.dataset.sceneCache = cachedSource.hit ? "hit" : "miss";
+    if (isReferenceModel) referenceBoundsRef.current = sourceAssets.referenceBounds;
     // A paired reference's extent is measured when it arrives, not declared.
     // Until then the recovery's own bounds frame the empty scene, which is the
     // right guess: the two are the same building.
     const bounds = isReferenceModel
-      ? referenceBoundsRef.current ?? result.bbox
+      ? sourceAssets.referenceBounds ?? result.bbox
       : useReference
         ? comparison.referenceBoundsMetres
         : result.bbox;
@@ -457,7 +516,7 @@ export function ModelCanvas({
     );
     let up = (
       isReferenceModel && referenceBoundsRef.current
-        ? (referenceIsYUp(referenceBoundsRef.current) ? "y" : "z")
+        ? (referenceIsYUp(sourceAssets.referenceBounds ?? referenceBoundsRef.current) ? "y" : "z")
         : isReferenceModel ? "y" : "z"
     ) as "y" | "z";
     sun.position.copy(center).add(sunOffset);
@@ -573,16 +632,42 @@ export function ModelCanvas({
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
     let active = true;
-    let referenceWalkSurface: WalkSurfaceIndex | null = null;
+    let referenceWalkSurface: WalkSurfaceIndex | null = isReferenceModel
+      ? sourceAssets.walkSurface
+      : null;
     // Spatial indexes for first-person walking over recovered geometry; built
     // on walk entry, and rebuilt when something has moved the meshes since.
     // The reference path had these from the start; the recovered path was
     // handing every batch to Raycaster.intersectObjects every frame instead,
     // which is where the first-person lag came from.
-    let recoveredWalkSurface: WalkSurfaceIndex | null = null;
-    let recoveredWalkCollision: WalkCollisionIndex | null = null;
+    let recoveredWalkSurface: WalkSurfaceIndex | null = isReferenceModel
+      ? null
+      : sourceAssets.walkSurface;
+    let recoveredWalkCollision: WalkCollisionIndex | null = isReferenceModel
+      ? null
+      : sourceAssets.walkCollision;
     let walkIndexBuild: Promise<void> | null = null;
+    let collisionIndexBuild: Promise<void> | null = null;
     let walkIndexBuildVersion = 0;
+    let collisionIndexBuildVersion = 0;
+    canvas.dataset.activeSource = source;
+    canvas.dataset.walkSurfaceCache = recoveredWalkSurface || referenceWalkSurface ? "hit" : "miss";
+    canvas.dataset.walkCollisionCache = recoveredWalkCollision ? "hit" : "miss";
+    canvas.dataset.walkIndexState = referenceWalkSurface || recoveredWalkCollision
+      ? "ready"
+      : recoveredWalkSurface
+        ? "surface-ready"
+        : "empty";
+    canvas.dataset.walkIndexState = recoveredWalkCollision
+      ? "ready"
+      : recoveredWalkSurface || referenceWalkSurface ? "surface-ready" : "idle";
+    if (!isReferenceModel) delete canvas.dataset.referenceCache;
+    if (sourceAssets.walkSurfaceBuildMs != null) {
+      canvas.dataset.walkIndexBuildMs = sourceAssets.walkSurfaceBuildMs.toFixed(1);
+    } else delete canvas.dataset.walkIndexBuildMs;
+    if (sourceAssets.walkCollisionBuildMs != null) {
+      canvas.dataset.walkCollisionBuildMs = sourceAssets.walkCollisionBuildMs.toFixed(1);
+    } else delete canvas.dataset.walkCollisionBuildMs;
     const waitForIdleSlice = () => new Promise<void>((resolve) => {
       if (typeof window.requestIdleCallback === "function") {
         window.requestIdleCallback(() => resolve(), { timeout: 50 });
@@ -590,9 +675,72 @@ export function ModelCanvas({
         window.setTimeout(resolve, 0);
       }
     });
+    const walkGeometryJobs = () => {
+      root.updateMatrixWorld(true);
+      return interactionMeshes.map((object) => {
+        const mesh = object as THREE.Mesh;
+        return {
+          geometry: mesh.geometry,
+          matrix: mesh.matrixWorld.clone(),
+          triangleCount: geometryTriangleCount(mesh.geometry),
+        };
+      });
+    };
+    const prepareCollisionIndex = (
+      jobs: ReturnType<typeof walkGeometryJobs>,
+      buildVersion: number,
+    ): void => {
+      if (recoveredWalkCollision || collisionIndexBuild || isReferenceModel) return;
+      const collisionBuildVersion = ++collisionIndexBuildVersion;
+      const collisionStartedAt = performance.now();
+      const build = (async () => {
+        const collision = new WalkCollisionIndex({ up, cellSize: 4 * sceneUnitsPerFoot });
+        for (const job of jobs) {
+          for (
+            let startTriangle = 0;
+            startTriangle < job.triangleCount;
+            startTriangle += WALK_INDEX_CHUNK_TRIANGLES
+          ) {
+            await waitForIdleSlice();
+            if (!active
+              || buildVersion !== walkIndexBuildVersion
+              || collisionBuildVersion !== collisionIndexBuildVersion
+              || sourceAssets.walkIndexDirty) return;
+            collision.addGeometry(job.geometry, job.matrix, {
+              startTriangle,
+              triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
+            });
+          }
+        }
+        if (!active
+          || buildVersion !== walkIndexBuildVersion
+          || collisionBuildVersion !== collisionIndexBuildVersion
+          || sourceAssets.walkIndexDirty) return;
+        recoveredWalkCollision = collision;
+        sourceAssets.walkCollision = collision;
+        sourceAssets.walkCollisionBuildMs = performance.now() - collisionStartedAt;
+        canvas.dataset.walkCollisionBuildMs = sourceAssets.walkCollisionBuildMs.toFixed(1);
+        canvas.dataset.walkCollisionCache = "ready";
+        canvas.dataset.walkIndexState = "ready";
+      })().catch(() => {
+        // Solid can keep using its accurate raycast fallback if indexing it
+        // fails; Ghost and floor following are already ready.
+        canvas.dataset.walkIndexState = "surface-ready";
+      }).finally(() => {
+        if (collisionIndexBuild === build) collisionIndexBuild = null;
+      });
+      collisionIndexBuild = build;
+    };
     const prepareWalkIndexes = (): Promise<void> => {
       if (isReferenceModel) return Promise.resolve();
-      if (recoveredWalkSurface && !runtimeRef.current?.walkIndexDirty) return Promise.resolve();
+      if (recoveredWalkSurface && !sourceAssets.walkIndexDirty) {
+        canvas.dataset.walkSurfaceCache = "hit";
+        canvas.dataset.walkIndexState = recoveredWalkCollision ? "ready" : "surface-ready";
+        if (!recoveredWalkCollision && !collisionIndexBuild) {
+          prepareCollisionIndex(walkGeometryJobs(), walkIndexBuildVersion);
+        }
+        return Promise.resolve();
+      }
       if (walkIndexBuild) return walkIndexBuild;
 
       const buildVersion = ++walkIndexBuildVersion;
@@ -603,16 +751,10 @@ export function ModelCanvas({
           const runtime = runtimeRef.current;
           if (!runtime) return;
           runtime.walkIndexDirty = false;
+          sourceAssets.walkIndexDirty = false;
           recoveredWalkCollision = null;
-          root.updateMatrixWorld(true);
-          const jobs = interactionMeshes.map((object) => {
-            const mesh = object as THREE.Mesh;
-            return {
-              geometry: mesh.geometry,
-              matrix: mesh.matrixWorld.clone(),
-              triangleCount: geometryTriangleCount(mesh.geometry),
-            };
-          });
+          sourceAssets.walkCollision = null;
+          const jobs = walkGeometryJobs();
           const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
           const startedAt = performance.now();
           for (const job of jobs) {
@@ -630,39 +772,17 @@ export function ModelCanvas({
               surface.addGeometry(job.geometry, job.matrix, range);
             }
           }
-          if (runtime.walkIndexDirty) continue;
+          if (runtime.walkIndexDirty || sourceAssets.walkIndexDirty) continue;
           recoveredWalkSurface = surface;
-          canvas.dataset.walkIndexBuildMs = (performance.now() - startedAt).toFixed(1);
+          sourceAssets.walkSurface = surface;
+          sourceAssets.walkSurfaceBuildMs = performance.now() - startedAt;
+          canvas.dataset.walkIndexBuildMs = sourceAssets.walkSurfaceBuildMs.toFixed(1);
+          canvas.dataset.walkSurfaceCache = "ready";
           canvas.dataset.walkIndexState = "surface-ready";
           // Ghost is the default and needs only the floor index. Solid is beta,
           // so prepare its steep-triangle collision index afterward without
           // making the common Walk entry wait for optional work.
-          void (async () => {
-            const collisionStartedAt = performance.now();
-            const collision = new WalkCollisionIndex({ up, cellSize: 4 * sceneUnitsPerFoot });
-            for (const job of jobs) {
-              for (
-                let startTriangle = 0;
-                startTriangle < job.triangleCount;
-                startTriangle += WALK_INDEX_CHUNK_TRIANGLES
-              ) {
-                await waitForIdleSlice();
-                if (!active || buildVersion !== walkIndexBuildVersion || runtime.walkIndexDirty) return;
-                collision.addGeometry(job.geometry, job.matrix, {
-                  startTriangle,
-                  triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
-                });
-              }
-            }
-            if (!active || buildVersion !== walkIndexBuildVersion || runtime.walkIndexDirty) return;
-            recoveredWalkCollision = collision;
-            canvas.dataset.walkCollisionBuildMs = (performance.now() - collisionStartedAt).toFixed(1);
-            canvas.dataset.walkIndexState = "ready";
-          })().catch(() => {
-            // Solid can keep using its accurate raycast fallback if indexing it
-            // fails; Ghost and floor following are already ready.
-            canvas.dataset.walkIndexState = "surface-ready";
-          });
+          prepareCollisionIndex(jobs, buildVersion);
           return;
         }
       })();
@@ -1143,7 +1263,20 @@ export function ModelCanvas({
       surfaceFloorAt,
       resolveMovement: resolveWalkMovement,
       prepareWalkIndexes,
-      walkIndexDirty: false,
+      walkIndexDirty: sourceAssets.walkIndexDirty,
+      invalidateWalkIndexes: () => {
+        const runtime = runtimeRef.current;
+        if (runtime) runtime.walkIndexDirty = true;
+        sourceAssets.walkIndexDirty = true;
+        sourceAssets.walkSurface = null;
+        sourceAssets.walkCollision = null;
+        recoveredWalkSurface = null;
+        recoveredWalkCollision = null;
+        collisionIndexBuildVersion += 1;
+        collisionIndexBuild = null;
+        canvas.dataset.walkSurfaceCache = "dirty";
+        canvas.dataset.walkCollisionCache = "dirty";
+      },
       walkStart: null,
       selectionOverlay: null,
       measurement,
@@ -1178,19 +1311,9 @@ export function ModelCanvas({
       measurementIdRef.current = 1;
     });
     if (isReferenceModel && referenceModelUrl) {
-      referenceBoundsRef.current = null;
-      queueMicrotask(() => active && setReferenceLoadState("loading"));
-      void import("./gltf-loader.ts").then((module) =>
-        module.loadReferenceModel(referenceModelUrl!),
-      ).then((loadedScene) => {
-        if (!active) {
-          disposeGroup(loadedScene);
-          return;
-        }
-        styleReferenceModel(loadedScene, renderMode);
-        // Measure it, then frame it. Both used to be constants describing one
-        // building, so any other reference opened on a view of empty space.
-        const measured = referenceModelBounds(loadedScene);
+      const applyLoadedReference = () => {
+        const measured = sourceAssets.referenceBounds;
+        if (!active || !measured || sourceAssets.referenceState !== "ready") return;
         referenceBoundsRef.current = measured;
         const home = referenceHomePose(measured);
         const measuredBounds = new THREE.Box3(
@@ -1217,9 +1340,7 @@ export function ModelCanvas({
         camera.updateProjectionMatrix();
         controls.target.copy(home.target);
         controls.update();
-        const batchedScene = batchReferenceScene(loadedScene);
-        referenceWalkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
-        root.add(batchedScene);
+        referenceWalkSurface = sourceAssets.walkSurface;
         refreshInteractionMeshes();
         const runtime = runtimeRef.current;
         if (runtime) {
@@ -1229,11 +1350,44 @@ export function ModelCanvas({
           runtime.floor = up === "y" ? measured.min.y : measured.min.z;
           runtime.up = up;
         }
+        canvas.dataset.referenceCache = cachedSource.hit ? "hit" : "ready";
+        canvas.dataset.walkSurfaceCache = referenceWalkSurface ? "hit" : "miss";
         applyMatchedCamera();
         needsRender = true;
         setReferenceLoadState("ready");
-      }).catch(() => {
-        if (active) setReferenceLoadState("error");
+      };
+
+      if (!sourceAssets.referenceLoad && sourceAssets.referenceState !== "ready") {
+        sourceAssets.referenceState = "loading";
+        sourceAssets.referenceLoad = import("./gltf-loader.ts").then((module) =>
+          module.loadReferenceModel(referenceModelUrl),
+        ).then((loadedScene) => {
+          if (sourceAssets.disposed) {
+            disposeGroup(loadedScene);
+            return;
+          }
+          styleReferenceModel(loadedScene, renderMode);
+          const measured = referenceModelBounds(loadedScene);
+          const batchedScene = batchReferenceScene(loadedScene);
+          if (sourceAssets.disposed) {
+            disposeGroup(batchedScene);
+            return;
+          }
+          sourceAssets.referenceBounds = measured;
+          sourceAssets.walkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
+          sourceAssets.root.add(batchedScene);
+          sourceAssets.referenceState = "ready";
+        }).catch(() => {
+          if (!sourceAssets.disposed) sourceAssets.referenceState = "error";
+        }).finally(() => {
+          sourceAssets.referenceLoad = null;
+        });
+      }
+      queueMicrotask(() => active && setReferenceLoadState(sourceAssets.referenceState));
+      if (sourceAssets.referenceState === "ready") applyLoadedReference();
+      else void sourceAssets.referenceLoad?.then(() => {
+        if (sourceAssets.referenceState === "ready") applyLoadedReference();
+        else if (active) setReferenceLoadState("error");
       });
     } else {
       queueMicrotask(() => active && setReferenceLoadState("idle"));
@@ -1277,6 +1431,12 @@ export function ModelCanvas({
         canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
         canvas.dataset.cameraTarget = target.toArray().map((value) => value.toFixed(5)).join(",");
         canvas.dataset.cameraDirection = direction.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
+          camera.position.clone().sub(center),
+          up,
+        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+        canvas.dataset.canonicalCameraDirection = canonicalCameraVector(direction, up)
+          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
         canvas.dataset.pointerLocked = String(walkRef.current?.isPointerLocked() ?? false);
         canvas.dataset.walkGravity = String(walkGravityRef.current);
       }
@@ -1301,6 +1461,7 @@ export function ModelCanvas({
             radius * 0.25,
           )
         : controls.target.clone();
+      walkCameraHandoffPendingRef.current = Boolean(walkRef.current);
       matchedCameraRef.current = {
         position: canonicalCameraVector(camera.position.clone().sub(center), up)
           .divideScalar(radius),
@@ -1322,14 +1483,22 @@ export function ModelCanvas({
       controls.removeEventListener("start", handleControlsStart);
       controls.removeEventListener("end", handleControlsEnd);
       controls.dispose();
-      disposeGroup(root);
+      // Cached roots must be stored in their canonical geometry pose. The next
+      // source effect will reapply the current explode amount; retaining moved
+      // parts here would make that displacement compound on every revisit.
+      if (runtimeRef.current?.explodeParts.length) {
+        applyExplode(runtimeRef.current.explodeParts, 0);
+        runtimeRef.current.invalidateWalkIndexes();
+      }
+      sourceAssets.walkIndexDirty ||= runtimeRef.current?.walkIndexDirty ?? false;
+      root.removeFromParent();
       if (runtimeRef.current?.sectionHelper) disposeGroup(runtimeRef.current.sectionHelper);
       disposeMeasurementScene(scene, measurement);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, renderMode, result, source]);
+  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, renderMode, result, source, sourceCache]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -1419,6 +1588,7 @@ export function ModelCanvas({
     if (!runtime || !canvas) return;
 
     if (!walking) {
+      walkCameraHandoffPendingRef.current = false;
       const previousWalk = walkRef.current;
       previousWalk?.dispose();
       walkRef.current = null;
@@ -1495,7 +1665,12 @@ export function ModelCanvas({
       // OrbitControls' target describes the area the user is inspecting. Use it
       // as the default plan location instead of teleporting to the model centre;
       // a double-click or “Walk from here” supplies an exact floor point.
-      const start = pickedStart ?? runtime.controls.target.clone();
+      const resumeFromMatchedEye = walkCameraHandoffPendingRef.current;
+      walkCameraHandoffPendingRef.current = false;
+      const start = pickedStart
+        ?? (resumeFromMatchedEye
+          ? runtime.camera.position.clone()
+          : runtime.controls.target.clone());
       let nearbyFloor = pickedStart
         ? (runtime.up === "y" ? pickedStart.y : pickedStart.z)
         : null;
@@ -1544,6 +1719,12 @@ export function ModelCanvas({
 
     return () => {
       cancelled = true;
+      // Reference loading and source-scene changes can restart this effect
+      // while Walk remains selected. Resume that replacement controller from
+      // the live eye; a later intentional exit clears the flag above.
+      if (walkRef.current === walk || walk) {
+        walkCameraHandoffPendingRef.current = true;
+      }
       walk?.dispose();
       if (walkRef.current === walk) walkRef.current = null;
       for (const object of hiddenEdgeOverlays) object.visible = true;
@@ -1635,7 +1816,7 @@ export function ModelCanvas({
     if (!exploding) {
       const hadExplodedParts = runtime.explodeParts.length > 0;
       applyExplode(runtime.explodeParts, 0);
-      if (hadExplodedParts) runtime.walkIndexDirty = true;
+      if (hadExplodedParts) runtime.invalidateWalkIndexes();
       runtime.invalidate();
       return;
     }
@@ -1643,7 +1824,7 @@ export function ModelCanvas({
     queueMicrotask(() => setExplodePartCount(runtime.explodeParts.length));
     applyExplode(runtime.explodeParts, explodeAmount);
     // Exploding moves the meshes the walk indexes were built over.
-    runtime.walkIndexDirty = true;
+    runtime.invalidateWalkIndexes();
     runtime.invalidate();
   }, [comparison, explodeAmount, exploding, referenceLoadState, renderMode, result, source]);
 

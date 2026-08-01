@@ -394,6 +394,20 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
       : technical
         ? new THREE.Color(data.diffStatus === "aligned" ? 0xc6d6e8 : 0xaebed2)
         : new THREE.Color().setRGB(...data.color);
+    // IFC batches are diagnostic geometry rather than authored materials. In
+    // X-ray, make that distinction useful: aligned/context surfaces become a
+    // quiet ghost so stairs and walls remain readable behind curtain panels,
+    // while geometric differences stay visibly red. Previously both visual
+    // styles were fully opaque, so the X-ray button could not reveal anything
+    // behind the first IFC face it encountered.
+    const transparent = !technical;
+    const opacity = technical
+      ? 1
+      : data.diffStatus === "different"
+        ? 0.72
+        : data.diffStatus === "aligned"
+          ? 0.22
+          : 0.14;
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: data.diffStatus === "different"
@@ -402,12 +416,15 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
       roughness: technical ? 0.84 : data.diffStatus === "aligned" ? 0.58 : 0.82,
       metalness: technical ? 0 : 0.02,
       side: THREE.DoubleSide,
+      transparent,
+      opacity,
+      depthWrite: !transparent,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
-    mesh.renderOrder = data.matched ? 2 : 1;
+    mesh.renderOrder = data.diffStatus === "different" ? 3 : data.matched ? 2 : 1;
     group.add(mesh);
     if (technical && data.indices.length <= 600_000) {
       const edges = new THREE.LineSegments(

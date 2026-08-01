@@ -46,6 +46,14 @@ import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
+import {
+  assertSidecarMatchesModel,
+  makeCommentsSidecar,
+  makeMarkupSidecar,
+  mergeComments,
+  mergeMarkup,
+  parseReviewSidecar,
+} from "./studio/review-exchange.ts";
 import { PropertiesDock, type EvidenceRow } from "./studio/PropertiesDock.tsx";
 import { ToolButton } from "./studio/panels.tsx";
 import {
@@ -63,9 +71,11 @@ import {
 } from "./studio/recents.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
 import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
+import { FirstPersonSourcePanel } from "./studio/ViewerToolPanels.tsx";
 import {
   isNavigationTool,
   navigationModeForTool,
+  walkComparisonSourceForCode,
   type ActionTool,
   type MarkupEdit,
   type MarkupStroke,
@@ -238,6 +248,7 @@ export default function ReviterStudio() {
   });
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
 
   const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
   const [referenceModelName, setReferenceModelName] = useState<string | null>(null);
@@ -260,6 +271,7 @@ export default function ReviterStudio() {
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
   const referenceModelInputRef = useRef<HTMLInputElement>(null);
+  const reviewInputRef = useRef<HTMLInputElement>(null);
   const canvasMenuRef = useRef<HTMLDivElement>(null);
 
   // Tear the workers down when the studio unmounts, and only then. This was
@@ -349,6 +361,7 @@ export default function ReviterStudio() {
     setMetadata(null);
     setPrivateFileInfo(null);
     setError(null);
+    setReviewImportMessage(null);
     setProgress(0.03);
     setPhase("reading");
 
@@ -500,6 +513,7 @@ export default function ReviterStudio() {
     setDockOpen(false);
     setSheet(null);
     setError(null);
+    setReviewImportMessage(null);
     setPhase("idle");
     setProgress(0);
   }, []);
@@ -1028,6 +1042,47 @@ export default function ReviterStudio() {
     text: markupText,
   }), [actionTool, markupColor, markupText, markupTool, markupWeight]);
 
+  const importReviewFile = useCallback(async (reviewFile: File) => {
+    if (!result) {
+      setReviewImportMessage("Open the matching Revit source file before importing review data.");
+      return;
+    }
+    try {
+      const sidecar = parseReviewSidecar(await reviewFile.text());
+      assertSidecarMatchesModel(sidecar, result);
+      // Canonical anchors are in the RVT's model feet, so reveal the recovery
+      // rather than leaving an imported review hidden on an unrelated source.
+      setGeometrySource("recovered");
+      if (sidecar.format === "reviter-comments") {
+        setModelComments((current) => {
+          const next = mergeComments(current, sidecar.comments);
+          saveModelComments(result, next);
+          return next;
+        });
+        setActiveCommentId(null);
+        setCommentFilter("all");
+        setBrowserTab("comments");
+        setLeftOpen(true);
+        setReviewImportMessage(
+          `Imported ${sidecar.comments.length} comment${sidecar.comments.length === 1 ? "" : "s"} from ${reviewFile.name}.`,
+        );
+      } else {
+        setMarkup((current) => {
+          const next = mergeMarkup(current, sidecar.markup);
+          saveModelMarkup(result, next);
+          return next;
+        });
+        setMarkupUndo([]);
+        setMarkupRedo([]);
+        setReviewImportMessage(
+          `Imported ${sidecar.markup.length} markup stroke${sidecar.markup.length === 1 ? "" : "s"} from ${reviewFile.name}.`,
+        );
+      }
+    } catch (caught) {
+      setReviewImportMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [result]);
+
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
   // window, because a press on a menu item would otherwise unmount the button
@@ -1214,8 +1269,30 @@ export default function ReviterStudio() {
           "application/json",
         ),
       },
+      {
+        id: "COMMENTS",
+        format: "Comments",
+        detail: `${modelComments.length} pinned · portable JSON`,
+        run: () => exportText(
+          "COMMENTS",
+          "comments.reviter.json",
+          () => makeCommentsSidecar(result, modelComments),
+          "application/vnd.reviter.comments+json",
+        ),
+      },
+      {
+        id: "MARKUP",
+        format: "Markup",
+        detail: `${markup.length} stroke${markup.length === 1 ? "" : "s"} · portable JSON`,
+        run: () => exportText(
+          "MARKUP",
+          "markup.reviter.json",
+          () => makeMarkupSidecar(result, markup),
+          "application/vnd.reviter.markup+json",
+        ),
+      },
     ];
-  }, [exportText, metadata, result]);
+  }, [exportText, markup, metadata, modelComments, result]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1224,7 +1301,7 @@ export default function ReviterStudio() {
         : result.method === "partition-bounds-recovery"
           ? "native-ID element envelopes"
           : "the recovered geometry"
-    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable.`
+    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable. Comments and markup export as separate review sidecars and can be imported after opening the matching source model.`
     : "";
 
   // --- Chrome ------------------------------------------------------------
@@ -1242,9 +1319,9 @@ export default function ReviterStudio() {
     : referencePhase === "reading"
       ? "Reading the IFC export now"
       : "Pair an IFC export in Report → Coverage to enable this source";
-  const sources: SourceOption[] = [
-    { id: "recovered", label: "Recovered", reason: null, title: "Geometry rebuilt from the RVT file" },
-    { id: "reference", label: "IFC", reason: ifcReason, title: "The paired IFC export on its own" },
+  const sources = useMemo<SourceOption[]>(() => [
+    { id: "recovered", label: "RVT", reason: null, shortcut: "1", title: "Geometry rebuilt from the RVT file" },
+    { id: "reference", label: "IFC", reason: ifcReason, shortcut: "2", title: "The paired IFC export on its own" },
     {
       id: "overlay",
       label: "Overlay",
@@ -1253,18 +1330,39 @@ export default function ReviterStudio() {
     },
     {
       id: "reference-model",
-      label: "Reference",
+      label: "Autodesk GLB",
+      shortcut: "3",
       reason: referenceModelAvailable
         ? null
         : "Pair a GLB or glTF of the same building in Report → Coverage to enable this source",
       title: referenceModelName ? `Paired reference: ${referenceModelName}` : "A GLB or glTF conversion of the same building",
     },
-  ];
+  ], [ifcReason, referenceModelAvailable, referenceModelName]);
 
   const selectGeometrySource = useCallback((source: GeometrySource) => {
     setGeometrySource(source);
     if (source !== "recovered") setSelectedElementId(null);
   }, []);
+
+  useEffect(() => {
+    if (!walking) return;
+    const onWalkComparisonKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement
+        && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName))
+      ) return;
+      const next = walkComparisonSourceForCode(event.code);
+      if (!next || next === geometrySource) return;
+      const option = sources.find((entry) => entry.id === next);
+      if (!option || option.reason) return;
+      event.preventDefault();
+      selectGeometrySource(next);
+    };
+    window.addEventListener("keydown", onWalkComparisonKey);
+    return () => window.removeEventListener("keydown", onWalkComparisonKey);
+  }, [geometrySource, selectGeometrySource, sources, walking]);
 
   const fileMeta = [
     file ? formatBytes(file.size) : null,
@@ -1317,7 +1415,8 @@ export default function ReviterStudio() {
   const openPicker = useCallback(() => inputRef.current?.click(), []);
 
   const canvas = result ? (
-    <ModelCanvas
+    <>
+      <ModelCanvas
       result={result}
       comparison={comparison}
       source={geometrySource}
@@ -1349,7 +1448,15 @@ export default function ReviterStudio() {
       onHoverElement={setHoveredElementId}
       onCanvasMenu={setCanvasMenu}
       focusRequest={focusRequest}
-    />
+      />
+      {walking && (
+        <FirstPersonSourcePanel
+          sources={sources}
+          source={geometrySource}
+          onSource={selectGeometrySource}
+        />
+      )}
+    </>
   ) : null;
 
   const fileInputs = (
@@ -1386,6 +1493,17 @@ export default function ReviterStudio() {
           event.currentTarget.value = "";
         }}
       />
+      <input
+        ref={reviewInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".json,application/json,application/vnd.reviter.comments+json,application/vnd.reviter.markup+json"
+        onChange={(event) => {
+          const selected = event.target.files?.[0];
+          if (selected) void importReviewFile(selected);
+          event.currentTarget.value = "";
+        }}
+      />
     </>
   );
 
@@ -1417,7 +1535,9 @@ export default function ReviterStudio() {
       onDrop={(event) => {
         event.preventDefault();
         const dropped = event.dataTransfer.files[0];
-        if (dropped) void processFile(dropped);
+        if (!dropped) return;
+        if (/\.json$/i.test(dropped.name)) void importReviewFile(dropped);
+        else void processFile(dropped);
       }}
     >
       {fileInputs}
@@ -1690,6 +1810,8 @@ export default function ReviterStudio() {
                   recoveredElementIds={recoveredElementIds}
                   drawnElementIds={displayedElementIds}
                   exportDisclaimer={exportDisclaimer}
+                  onImportReview={() => reviewInputRef.current?.click()}
+                  reviewImportMessage={reviewImportMessage}
                   onPairIfc={() => ifcInputRef.current?.click()}
                   onPairReferenceModel={() => referenceModelInputRef.current?.click()}
                   pairingStatus={referencePhase === "idle"

@@ -56,6 +56,8 @@ export type SourceOption = {
   /** Null when the source can be used; otherwise why it cannot be. */
   reason: string | null;
   title?: string;
+  /** Direct source-selection key available while walking. */
+  shortcut?: string;
 };
 
 export function ViewerToolbar({
@@ -149,7 +151,8 @@ export function ViewerToolbar({
               key={entry.id}
               className={geometrySource === entry.id ? "active" : ""}
               reason={entry.reason}
-              title={entry.title}
+              title={[entry.title, entry.shortcut ? `Walk shortcut: ${entry.shortcut}` : null]
+                .filter(Boolean).join(" · ")}
               pressed={geometrySource === entry.id}
               onClick={() => onSource(entry.id)}
             >{entry.label}</ToolButton>

@@ -8,7 +8,7 @@
  * left rail and are not about the open model at all.
  */
 import { useState } from "react";
-import { Download, Search, X } from "lucide-react";
+import { Download, FileUp, Search, X } from "lucide-react";
 
 import type { BasicFileInfoProperties, ConvertResult, PairedRegressionResult } from "../../lib/reviter";
 import { formatBytes, formatNumber, matchesFilter } from "./format.ts";
@@ -54,6 +54,8 @@ export function ReportDock({
   recoveredElementIds,
   drawnElementIds,
   exportDisclaimer,
+  onImportReview,
+  reviewImportMessage,
   onPairIfc,
   onPairReferenceModel,
   pairingStatus,
@@ -75,6 +77,8 @@ export function ReportDock({
   recoveredElementIds: Set<number>;
   drawnElementIds: Set<number>;
   exportDisclaimer: string;
+  onImportReview: () => void;
+  reviewImportMessage: string | null;
   onPairIfc: () => void;
   onPairReferenceModel: () => void;
   /** Progress of an in-flight IFC pairing, or null when none has been asked for. */
@@ -335,6 +339,19 @@ export function ReportDock({
                 </button>
               ))}
             </div>
+            <div className="review-import">
+              <span>
+                <strong>Open a shared review</strong>
+                <small>Open the matching source model, then import a comments or markup sidecar.</small>
+              </span>
+              <button type="button" className="rv-button" onClick={onImportReview}>
+                <FileUp size={14} aria-hidden />
+                Import review
+              </button>
+            </div>
+            {reviewImportMessage && (
+              <p className="review-import-status" role="status">{reviewImportMessage}</p>
+            )}
             <p className="report-disclaimer">{exportDisclaimer}</p>
           </>
         )}

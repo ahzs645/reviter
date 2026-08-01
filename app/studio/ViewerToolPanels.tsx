@@ -1,5 +1,63 @@
 import type { WalkSpeed } from "./walk-controls.ts";
-import type { MeasureMode, MeasureUnit, SectionMode } from "./viewer-tools.ts";
+import type { GeometrySource } from "./types.ts";
+import type { SourceOption } from "./ViewerToolbar.tsx";
+import {
+  WALK_COMPARISON_SOURCES,
+  type MeasureMode,
+  type MeasureUnit,
+  type SectionMode,
+} from "./viewer-tools.ts";
+
+/**
+ * Source switching stays outside ModelCanvas so it follows the same camera
+ * handoff as the main toolbar and remains available in the mobile shell.
+ */
+export function FirstPersonSourcePanel({
+  sources,
+  source,
+  onSource,
+}: {
+  sources: readonly SourceOption[];
+  source: GeometrySource;
+  onSource: (source: GeometrySource) => void;
+}) {
+  const current = WALK_COMPARISON_SOURCES.find((entry) => entry.source === source);
+
+  return (
+    <section className="walk-source-panel" aria-label="First person source comparison">
+      <header>
+        <strong>Compare</strong>
+        <span>camera stays in place</span>
+      </header>
+      <div role="group" aria-label="Walk geometry source">
+        {WALK_COMPARISON_SOURCES.map((entry) => {
+          const option = sources.find((candidate) => candidate.id === entry.source);
+          const reason = option?.reason ?? null;
+          const selected = source === entry.source;
+          return (
+            <button
+              key={entry.source}
+              type="button"
+              className={selected ? "active" : ""}
+              aria-pressed={selected}
+              aria-disabled={reason ? true : undefined}
+              aria-keyshortcuts={entry.key}
+              title={reason ?? `${option?.title ?? entry.label} · Walk shortcut: ${entry.key}`}
+              data-reason={reason ?? undefined}
+              onClick={() => { if (!reason) onSource(entry.source); }}
+            >
+              <span>{entry.label}</span>
+              <kbd>{entry.key}</kbd>
+            </button>
+          );
+        })}
+      </div>
+      <p role="status" aria-live="polite">
+        {current ? `${current.label} source active` : "Choose RVT, IFC, or Autodesk GLB"}
+      </p>
+    </section>
+  );
+}
 
 export function FirstPersonPanel({
   looking,
@@ -49,10 +107,10 @@ export function FirstPersonPanel({
         <p>{preparing
           ? "Preparing walkable surfaces…"
           : looking
-          ? "Mouse captured · Esc releases"
+          ? "Looking · release to stop"
           : drawing
             ? "Left drag draws · right drag looks"
-            : "Click the viewport to look"}</p>
+            : "Drag the viewport to look"}</p>
         <div className="first-person-speed" role="group" aria-label="Movement speed">
           {(["slow", "normal", "fast"] as const).map((entry) => (
             <button
@@ -112,7 +170,7 @@ export function FirstPersonPanel({
         >
           Drop to nearest surface <kbd>Space</kbd>
         </button>
-        <small>WASD move · Q down / E up · Shift run · −/+ speed · double-click travel</small>
+        <small>WASD move · Q down / E up · Shift run · −/+ speed · 1/2/3 compare · double-click travel</small>
       </section>
       {guideOpen && (
         <section className="first-person-guide" role="dialog" aria-modal="true" aria-label="Navigate in first person">
@@ -125,10 +183,11 @@ export function FirstPersonPanel({
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Click the viewport to capture the mouse; Esc releases it. Right-drag while markup is armed.</small></article>
+            <article><b>Look around</b><i>↔</i><small>Drag the viewport. Right-drag while markup is armed.</small></article>
             <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>
+            <article><b>Compare sources</b><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><small>RVT · IFC · Autodesk GLB, with the camera kept in place</small></article>
           </div>
           <button className="first-person-guide-accept" onClick={() => onGuide(false)}>OK, got it</button>
           <button className="first-person-guide-dismiss" onClick={onNeverShow}>Don&apos;t remind me again</button>

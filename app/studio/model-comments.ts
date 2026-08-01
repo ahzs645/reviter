@@ -38,18 +38,30 @@ function isPoint3(value: unknown): value is [number, number, number] {
     && value.every((entry) => typeof entry === "number" && Number.isFinite(entry));
 }
 
+function isGeometrySource(value: unknown): boolean {
+  return value === "recovered" || value === "reference" || value === "reference-model" || value === "overlay";
+}
+
 export function isModelComment(value: unknown): value is ModelComment {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<ModelComment>;
   return typeof entry.id === "string"
     && typeof entry.text === "string"
     && (entry.status === "open" || entry.status === "resolved")
-    && typeof entry.source === "string"
+    && isGeometrySource(entry.source)
     && isPoint3(entry.scenePosition)
-    && (!entry.modelPositionFeet || isPoint3(entry.modelPositionFeet))
+    && (entry.modelPositionFeet == null || isPoint3(entry.modelPositionFeet))
+    && (entry.elementId == null || (Number.isSafeInteger(entry.elementId) && entry.elementId > 0))
+    && typeof entry.createdAt === "string"
+    && Number.isFinite(Date.parse(entry.createdAt))
+    && typeof entry.updatedAt === "string"
+    && Number.isFinite(Date.parse(entry.updatedAt))
     && Boolean(entry.viewpoint)
+    && isGeometrySource(entry.viewpoint?.source)
     && isPoint3(entry.viewpoint?.position)
     && isPoint3(entry.viewpoint?.target)
     && isPoint3(entry.viewpoint?.up)
-    && typeof entry.viewpoint?.fov === "number";
+    && typeof entry.viewpoint?.fov === "number"
+    && Number.isFinite(entry.viewpoint.fov)
+    && entry.viewpoint.fov > 0;
 }

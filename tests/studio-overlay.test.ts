@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as THREE from "three";
+
+import { referenceMeshGroup } from "../app/studio/three-scene.ts";
 
 import {
   CAMERA_PRESETS,
@@ -61,4 +64,36 @@ test("top and bottom look at the model from opposite sides", () => {
   const bottom = cameraPoseForPreset(center, 20, "bottom");
   assert.ok(top.position.z > 0 && bottom.position.z < 0);
   assert.equal(top.position.z, -bottom.position.z);
+});
+
+test("IFC X-ray reveals geometry behind aligned and context surfaces", () => {
+  const triangle = {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [0.2, 0.86, 0.76] as [number, number, number],
+    matched: true,
+  };
+  const xray = referenceMeshGroup([
+    { ...triangle, name: "Aligned", diffStatus: "aligned" },
+    { ...triangle, name: "Difference", diffStatus: "different" },
+    { ...triangle, name: "Context", diffStatus: "context", matched: false },
+  ], "xray");
+  const materials = Object.fromEntries(xray.children.map((child) => {
+    const mesh = child as THREE.Mesh;
+    return [mesh.name, mesh.material as THREE.MeshStandardMaterial];
+  }));
+
+  assert.equal(materials.Aligned.transparent, true);
+  assert.equal(materials.Aligned.depthWrite, false);
+  assert.equal(materials.Context.opacity, 0.14);
+  assert.ok(materials.Aligned.opacity < materials.Difference.opacity);
+  assert.equal(xray.getObjectByName("Difference")!.renderOrder, 3);
+
+  const shaded = referenceMeshGroup([
+    { ...triangle, name: "Aligned", diffStatus: "aligned" },
+  ], "technical");
+  const shadedMaterial = (shaded.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
+  assert.equal(shadedMaterial.transparent, false);
+  assert.equal(shadedMaterial.opacity, 1);
+  assert.equal(shadedMaterial.depthWrite, true);
 });

@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { meshBoundsByElement } from "../scripts/overlay-diff.ts";
+import { meshBoundsByElement, summarizeAgreement } from "../scripts/overlay-diff.ts";
+
+test("reports joint centre-and-size agreement separately from either marginal", () => {
+  const summary = summarizeAgreement([
+    { centre: 0.1, size: 0.8 },
+    { centre: 0.8, size: 0.1 },
+    { centre: 0.1, size: 0.1 },
+    { centre: 0.5, size: 0.1 },
+  ]);
+
+  assert.deepEqual(summary, {
+    matched: 4,
+    centreOk: 2,
+    sizeOk: 3,
+    bothOk: 1,
+    centreOkPercent: 50,
+    sizeOkPercent: 75,
+    bothOkPercent: 25,
+  });
+});
 
 test("measures the rendered triangles per element instead of a record envelope", () => {
   const bounds = meshBoundsByElement([{

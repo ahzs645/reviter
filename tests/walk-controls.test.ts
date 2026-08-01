@@ -97,32 +97,28 @@ test("face travel preserves the first-person view direction", () => {
   }
 });
 
-test("desktop click captures mouse look and Escape releases without exiting Walk", () => {
+test("desktop look uses pointer drag without locking the mouse", () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const fakeWindow = new EventTarget();
-  const fakeDocument = Object.assign(new EventTarget(), {
-    hidden: false,
-    pointerLockElement: null as HTMLElement | null,
-    exitPointerLock() {
-      this.pointerLockElement = null;
-      this.dispatchEvent(new Event("pointerlockchange"));
-    },
-  });
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
   Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
   Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
 
   try {
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
     let exitCount = 0;
+    let pointerLockRequests = 0;
+    let capturedPointer: number | null = null;
     const element = Object.assign(new EventTarget(), {
       requestPointerLock() {
-        fakeDocument.pointerLockElement = element as unknown as HTMLElement;
-        fakeDocument.dispatchEvent(new Event("pointerlockchange"));
+        pointerLockRequests += 1;
       },
-      setPointerCapture: () => {},
-      releasePointerCapture: () => {},
-      hasPointerCapture: () => false,
+      setPointerCapture: (pointerId: number) => { capturedPointer = pointerId; },
+      releasePointerCapture: (pointerId: number) => {
+        if (capturedPointer === pointerId) capturedPointer = null;
+      },
+      hasPointerCapture: (pointerId: number) => capturedPointer === pointerId,
     }) as unknown as HTMLElement;
     const controls = createWalkControls(camera, element, {
       start: new THREE.Vector3(0, 5.6, 10),
@@ -139,21 +135,26 @@ test("desktop click captures mouse look and Escape releases without exiting Walk
       pointerType: "mouse",
       pointerId: 1,
     }));
-    assert.equal(controls.isPointerLocked(), true);
+    assert.equal(pointerLockRequests, 0);
+    assert.equal(controls.isPointerLocked(), false);
     assert.equal(controls.isLooking(), true);
+    assert.equal(capturedPointer, 1);
     const before = camera.getWorldDirection(new THREE.Vector3());
-    fakeDocument.dispatchEvent(Object.assign(new Event("mousemove"), {
+    element.dispatchEvent(Object.assign(new Event("pointermove"), {
       movementX: 40,
       movementY: -10,
     }));
     assert.ok(before.angleTo(camera.getWorldDirection(new THREE.Vector3())) > 0.01);
 
+    element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));
+    assert.equal(controls.isLooking(), false);
+    assert.equal(capturedPointer, null);
+
     fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
       code: "Escape",
       repeat: false,
     }));
-    assert.equal(controls.isPointerLocked(), false);
-    assert.equal(exitCount, 0, "the release Escape must not also close Walk");
+    assert.equal(exitCount, 1);
     controls.dispose();
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);

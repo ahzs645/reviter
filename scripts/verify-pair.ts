@@ -744,6 +744,7 @@ if (jsonPath) {
         },
         overlay: {
           truthCount: overlay.truthCount,
+          agreement: overlay.agreement,
           buildingBox: overlay.buildingBox,
           framingErrorFeet: overlay.framingErrorFeet,
           escapedCount: overlay.escaped.length,

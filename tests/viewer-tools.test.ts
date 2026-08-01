@@ -12,6 +12,8 @@ import {
   navigationModeForTool,
   sceneUnitsPerPixel,
   scenePointToModelFeet,
+  WALK_COMPARISON_SOURCES,
+  walkComparisonSourceForCode,
 } from "../app/studio/viewer-tools.ts";
 
 test("viewer tools only change the camera navigation mode when appropriate", () => {
@@ -31,6 +33,18 @@ test("navigating and acting are separate choices", () => {
   for (const tool of ["measure", "section", "explode", "comment", "markup"] as const) {
     assert.equal(isNavigationTool(tool), false, `${tool} is an action, not a navigation mode`);
   }
+});
+
+test("Walk comparison shortcuts select only the three standalone sources", () => {
+  assert.deepEqual(
+    WALK_COMPARISON_SOURCES.map(({ source, key }) => [key, source]),
+    [["1", "recovered"], ["2", "reference"], ["3", "reference-model"]],
+  );
+  assert.equal(walkComparisonSourceForCode("Digit1"), "recovered");
+  assert.equal(walkComparisonSourceForCode("Digit2"), "reference");
+  assert.equal(walkComparisonSourceForCode("Digit3"), "reference-model");
+  assert.equal(walkComparisonSourceForCode("Digit4"), null);
+  assert.equal(walkComparisonSourceForCode("Numpad1"), null);
 });
 
 test("a markup width is stored as a length in the room, not a count of pixels", () => {

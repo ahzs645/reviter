@@ -46,17 +46,28 @@ function isPoint3(value: unknown): value is [number, number, number] {
     && value.every((entry) => typeof entry === "number" && Number.isFinite(entry));
 }
 
+function isGeometrySource(value: unknown): boolean {
+  return value === "recovered" || value === "reference" || value === "reference-model" || value === "overlay";
+}
+
 export function isMarkupStroke(value: unknown): value is MarkupStroke {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<MarkupStroke>;
   return typeof entry.id === "string"
-    && typeof entry.source === "string"
+    && isGeometrySource(entry.source)
     && (entry.tool === "pencil" || entry.tool === "arrow" || entry.tool === "cloud" || entry.tool === "text")
     && Array.isArray(entry.points)
     && entry.points.length > 0
     && entry.points.every(isPoint3)
-    && (!entry.pointsFeet || (Array.isArray(entry.pointsFeet) && entry.pointsFeet.every(isPoint3)))
+    && (entry.pointsFeet == null || (
+      Array.isArray(entry.pointsFeet)
+      && entry.pointsFeet.length === entry.points.length
+      && entry.pointsFeet.every(isPoint3)
+    ))
     && typeof entry.color === "string"
     && typeof entry.worldWeight === "number"
-    && Number.isFinite(entry.worldWeight);
+    && Number.isFinite(entry.worldWeight)
+    && entry.worldWeight > 0
+    && typeof entry.createdAt === "string"
+    && Number.isFinite(Date.parse(entry.createdAt));
 }

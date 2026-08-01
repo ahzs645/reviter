@@ -298,6 +298,45 @@ export type ClassAgreement = {
   replicatedCount: number;
 };
 
+export type AgreementSummary = {
+  /** Elements with both a rendered RVT extent and an IFC truth extent. */
+  matched: number;
+  centreOk: number;
+  sizeOk: number;
+  /** Elements satisfying both half-foot tests; this cannot be reconstructed from the marginals. */
+  bothOk: number;
+  centreOkPercent: number;
+  sizeOkPercent: number;
+  bothOkPercent: number;
+};
+
+/**
+ * Summarise element-level errors without averaging already-rounded class
+ * percentages. Keeping the joint count is important: "centre and size" is a
+ * different claim from reporting the two marginal percentages side by side.
+ */
+export function summarizeAgreement(
+  errors: readonly { centre: number; size: number }[],
+  close = CLOSE,
+): AgreementSummary {
+  const matched = errors.length;
+  const centreOk = errors.filter((entry) => entry.centre < close).length;
+  const sizeOk = errors.filter((entry) => entry.size < close).length;
+  const bothOk = errors.filter(
+    (entry) => entry.centre < close && entry.size < close,
+  ).length;
+  const percent = (count: number) => matched ? (count / matched) * 100 : 0;
+  return {
+    matched,
+    centreOk,
+    sizeOk,
+    bothOk,
+    centreOkPercent: percent(centreOk),
+    sizeOkPercent: percent(sizeOk),
+    bothOkPercent: percent(bothOk),
+  };
+}
+
 export type EscapedRecord = {
   elementId: number;
   overhangFeet: number;
@@ -329,6 +368,7 @@ export type OverlayResult = {
   overhangingElements?: EscapedRecord[];
   worstOverhangFeet: number;
   drawnCount: number;
+  agreement: AgreementSummary;
   byClass: ClassAgreement[];
 };
 
@@ -463,11 +503,13 @@ export function computeOverlay(
     replicated: number;
   };
   const pairs = new Map<string, Pair>();
+  const agreementErrors: Array<{ centre: number; size: number }> = [];
   for (const [tag, { type, box, parts }] of truth) {
     const record = byId.get(tag);
     if (!record) continue;
     const got = displayedBounds(record);
     const [dCentre, dSize] = errorsAgainst(got, box);
+    agreementErrors.push({ centre: dCentre, size: dSize });
 
     // The nearest single product, chosen on centre error: an element the
     // exporter replicated per storey should be judged against the storey it
@@ -521,6 +563,7 @@ export function computeOverlay(
     overhangingElements,
     worstOverhangFeet,
     drawnCount: drawn.length,
+    agreement: summarizeAgreement(agreementErrors),
     byClass,
   };
 }
@@ -532,6 +575,14 @@ export function printOverlay(result: OverlayResult): void {
   console.log(`  from the outermost record  ${round(result.outermostRecordCentre).join(", ")}`);
   console.log(`  as the scene is framed     ${round(result.framingCentre).join(", ")}`);
   console.log(`  framing error              ${round(result.framingErrorFeet).join(", ")} ft`);
+
+  const agreement = result.agreement;
+  console.log(
+    `\nmatched element agreement    ${agreement.matched.toLocaleString()} total; ` +
+      `${agreement.centreOkPercent.toFixed(1)}% centre; ` +
+      `${agreement.sizeOkPercent.toFixed(1)}% size; ` +
+      `${agreement.bothOkPercent.toFixed(1)}% both`,
+  );
 
   const over = result.overhangingElements ?? [];
   console.log(

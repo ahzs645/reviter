@@ -26,6 +26,29 @@ export type ViewerTool = NavigationTool | ActionTool;
 
 export const NAVIGATION_TOOLS: readonly NavigationTool[] = ["orbit", "pan", "zoom", "firstPerson"];
 
+/**
+ * The three comparable model representations, in their keyboard order while
+ * walking. Overlay is intentionally omitted: it is an audit view rather than
+ * a source a reviewer can walk on its own.
+ */
+export const WALK_COMPARISON_SOURCES = [
+  { source: "recovered", key: "1", code: "Digit1", label: "RVT" },
+  { source: "reference", key: "2", code: "Digit2", label: "IFC" },
+  { source: "reference-model", key: "3", code: "Digit3", label: "Autodesk GLB" },
+] as const satisfies readonly {
+  source: GeometrySource;
+  key: string;
+  code: string;
+  label: string;
+}[];
+
+export type WalkComparisonSource = typeof WALK_COMPARISON_SOURCES[number]["source"];
+
+/** Resolve a physical number-row key without making keyboard layout assumptions. */
+export function walkComparisonSourceForCode(code: string): WalkComparisonSource | null {
+  return WALK_COMPARISON_SOURCES.find((entry) => entry.code === code)?.source ?? null;
+}
+
 export function isNavigationTool(tool: ViewerTool): tool is NavigationTool {
   return (NAVIGATION_TOOLS as readonly string[]).includes(tool);
 }

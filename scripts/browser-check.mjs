@@ -8,10 +8,10 @@
  * check rather than part of `npm test`.
  *
  *   npm run build:pages
- *   REVITER_BROWSER_HEADED=1 node scripts/browser-check.mjs dist-pages /path/to/model.rvt [screenshot.png] [reference.ifc]
+ *   REVITER_BROWSER_HEADED=1 node scripts/browser-check.mjs dist-pages /path/to/model.rvt [screenshot.png] [reference.ifc] [reference.glb]
  *
- * Passing a matching IFC export additionally pairs it in the same tab and
- * reports the regression gates.
+ * Passing matching IFC and Autodesk GLB references additionally checks the
+ * three-source first-person handoff and per-source scene/walk-index caches.
  *
  * Build with the default base path. A bundle built for GitHub Pages
  * (`PAGES_BASE_PATH=/reviter/`) requests its assets from that subpath and will
@@ -22,9 +22,9 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-const [root, revitFile, screenshot = "browser-check.png", ifcFile] = process.argv.slice(2);
+const [root, revitFile, screenshot = "browser-check.png", ifcFile, glbFile] = process.argv.slice(2);
 if (!root || !revitFile) {
-  console.error("usage: node scripts/browser-check.mjs <pages-dir> <model.rvt> [screenshot.png] [reference.ifc]");
+  console.error("usage: node scripts/browser-check.mjs <pages-dir> <model.rvt> [screenshot.png] [reference.ifc] [reference.glb]");
   process.exit(2);
 }
 
@@ -109,7 +109,44 @@ if (terminalPhase !== "ready" && terminalPhase !== "error") {
 console.log("conversion wall clock", `${((Date.now() - started) / 1000).toFixed(1)}s`);
 console.log(rendered);
 
+// Pair references before navigation so Walk can exercise all available sources
+// in one continuous camera session.
+if (ifcFile) {
+  const pairingStarted = Date.now();
+  await page.setInputFiles('input[type="file"][accept=".ifc"]', resolve(ifcFile));
+  // The regression panel can be closed and therefore absent from body text.
+  // The source control is always mounted and becomes actionable only after
+  // IFC geometry has finished streaming, so it is the stable completion
+  // contract for both the ordinary shell and this browser check.
+  await page.waitForFunction(() => {
+    const buttons = [...document.querySelectorAll("button")];
+    const source = buttons.find((button) => button.textContent?.trim() === "IFC");
+    return source && source.getAttribute("aria-disabled") !== "true" && !source.hasAttribute("disabled");
+  }, null, { timeout: 600_000 });
+  console.log("ifc pairing wall clock", `${((Date.now() - pairingStarted) / 1000).toFixed(1)}s`);
+}
+if (glbFile) {
+  const pairingStarted = Date.now();
+  await page.setInputFiles('input[type="file"][accept*=".glb"]', resolve(glbFile));
+  const autodeskSource = page.getByRole("button", { name: "Autodesk GLB", exact: true }).first();
+  await autodeskSource.waitFor({ state: "visible", timeout: 120_000 });
+  await page.waitForFunction(() => {
+    const buttons = [...document.querySelectorAll("button")];
+    const source = buttons.find((button) => button.textContent?.trim() === "Autodesk GLB");
+    return source && source.getAttribute("aria-disabled") !== "true" && !source.hasAttribute("disabled");
+  }, null, { timeout: 120_000 });
+  console.log("glb pairing wall clock", `${((Date.now() - pairingStarted) / 1000).toFixed(1)}s`);
+}
+
 if (terminalPhase === "ready") {
+  // Pairing intentionally opens the newly supplied source for inspection.
+  // Navigation coverage starts on RVT so its collision controls and the final
+  // RVT cache round trip have one unambiguous baseline.
+  if (ifcFile || glbFile) {
+    await page.getByRole("button", { name: "RVT", exact: true }).first().click();
+    await page.waitForFunction(() =>
+      document.querySelector("canvas.model-canvas")?.dataset.activeSource === "recovered");
+  }
   const objectCountText = await page.locator('.tabstrip [role="tab"]', { hasText: "Objects" })
     .locator("em")
     .textContent();
@@ -137,6 +174,8 @@ if (terminalPhase === "ready") {
     position: canvas.dataset.cameraPosition,
     target: canvas.dataset.cameraTarget,
     direction: canvas.dataset.cameraDirection,
+    canonicalPosition: canvas.dataset.canonicalCameraPosition,
+    canonicalDirection: canvas.dataset.canonicalCameraDirection,
   }));
   const canvas = page.locator("canvas.model-canvas");
   for (const panelName of ["Browser", "Properties"]) {
@@ -226,32 +265,83 @@ if (terminalPhase === "ready") {
     throw new Error("Solid collision is not labelled beta.");
   }
 
+  if (ifcFile && glbFile) {
+    const sourceGroup = page.getByRole("group", { name: "Walk geometry source" });
+    await sourceGroup.waitFor({ state: "visible" });
+    for (const [label, shortcut] of [["RVT 1", "1"], ["IFC 2", "2"], ["Autodesk GLB 3", "3"]]) {
+      const button = sourceGroup.getByRole("button", { name: label, exact: true });
+      if (await button.getAttribute("aria-keyshortcuts") !== shortcut) {
+        throw new Error(`${label} does not expose keyboard shortcut ${shortcut}.`);
+      }
+    }
+
+    const sourcePose = await pose();
+    const switchSource = async (code, expected, label) => {
+      await page.keyboard.press(code);
+      await page.waitForFunction((source) => {
+        const modelCanvas = document.querySelector("canvas.model-canvas");
+        return modelCanvas?.dataset.activeSource === source &&
+          modelCanvas.dataset.navigationState === "walk" &&
+          ["hit", "ready"].includes(modelCanvas.dataset.walkSurfaceCache ?? "");
+      }, expected, { timeout: 120_000 });
+      const button = sourceGroup.getByRole("button", { name: label, exact: true });
+      if (await button.getAttribute("aria-pressed") !== "true") {
+        throw new Error(`${label} did not become the pressed Walk source.`);
+      }
+      return pose();
+    };
+    const ifcPose = await switchSource("Digit2", "reference", "IFC 2");
+    const glbPose = await switchSource("Digit3", "reference-model", "Autodesk GLB 3");
+    const recoveredPose = await switchSource("Digit1", "recovered", "RVT 1");
+    console.log("source camera poses", JSON.stringify({ rvt: sourcePose, ifc: ifcPose, glb: glbPose, rvtReturn: recoveredPose }));
+
+    // When the navigation-test build exposes the canonical frame, verify every
+    // hop. The raw RVT round trip remains a guard for older bundles.
+    for (const [name, candidate] of [["IFC", ifcPose], ["Autodesk GLB", glbPose], ["RVT", recoveredPose]]) {
+      if (sourcePose.canonicalPosition && candidate.canonicalPosition &&
+          distance(vector(sourcePose.canonicalPosition), vector(candidate.canonicalPosition)) > 0.03) {
+        throw new Error(`${name} source switch changed the canonical first-person position.`);
+      }
+      if (sourcePose.canonicalDirection && candidate.canonicalDirection &&
+          distance(vector(sourcePose.canonicalDirection), vector(candidate.canonicalDirection)) > 0.01) {
+        throw new Error(`${name} source switch changed the canonical first-person direction.`);
+      }
+    }
+    if (distance(vector(sourcePose.position), vector(recoveredPose.position)) > 0.05 ||
+        distance(vector(sourcePose.direction), vector(recoveredPose.direction)) > 0.01) {
+      throw new Error("RVT→IFC→GLB→RVT did not preserve the first-person camera round trip.");
+    }
+    const sceneCache = await canvas.getAttribute("data-scene-cache");
+    const walkSurfaceCache = await canvas.getAttribute("data-walk-surface-cache");
+    if (sceneCache !== "hit" || walkSurfaceCache !== "hit") {
+      throw new Error(`RVT revisit missed a cache (scene=${sceneCache}, walk surface=${walkSurfaceCache}).`);
+    }
+    console.log(
+      "source comparison smoke",
+      `RVT→IFC→GLB→RVT camera handoff passed; scene ${sceneCache}; walk surface ${walkSurfaceCache}`,
+    );
+  }
+
   await canvas.evaluate((modelCanvas) => {
     window.__reviterNavigationEvents = [];
     const report = (message) => window.__reviterNavigationEvents.push(message);
     modelCanvas.addEventListener("pointerdown", (event) => {
       report(`pointerdown:${event.pointerType}:${event.button}`);
     });
-    document.addEventListener("pointerlockchange", () => {
-      report(`change:${document.pointerLockElement === modelCanvas}`);
-    });
-    document.addEventListener("pointerlockerror", () => report("pointerlockerror"));
   });
   await page.bringToFront();
-  await page.mouse.click(point.x, point.y);
-  try {
-    await page.waitForFunction(() =>
-      document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "true", null, { timeout: 5_000 });
-  } catch {
-    const pointerEvents = await page.evaluate(() => window.__reviterNavigationEvents ?? []);
-    throw new Error(`Pointer lock was not granted (${pointerEvents.join(", ") || "no pointer events"}).`);
-  }
   const lookBefore = await pose();
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
   await page.mouse.move(point.x + 130, point.y - 45, { steps: 6 });
+  await page.mouse.up();
   await page.waitForTimeout(200);
   const lookAfter = await pose();
   if (distance(vector(lookBefore.direction), vector(lookAfter.direction)) < 0.001) {
-    throw new Error("Pointer-lock mouse look did not change the view direction.");
+    throw new Error("Drag mouse look did not change the view direction.");
+  }
+  if (await canvas.getAttribute("data-pointer-locked") !== "false") {
+    throw new Error("Walk unexpectedly locked the system pointer.");
   }
 
   const moveBefore = await pose();
@@ -271,13 +361,6 @@ if (terminalPhase === "ready") {
     throw new Error("Gravity did not settle the z-up walk camera onto a stable surface.");
   }
 
-  await page.keyboard.press("Escape");
-  await page.waitForFunction(() =>
-    document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "false");
-  if (!await page.getByText("First person", { exact: true }).isVisible()) {
-    throw new Error("The Escape that released pointer lock also exited Walk.");
-  }
-  await page.waitForTimeout(300);
   const handoffBefore = await pose();
   await page.keyboard.press("Escape");
   await page.waitForFunction(() =>
@@ -288,21 +371,10 @@ if (terminalPhase === "ready") {
   }
   console.log(
     "navigation smoke",
-    `orbit, pan, wheel, pivot, Walk, pointer lock, WASD, gravity, Escape and handoff passed; entry ${walkEntryMs}ms; index ${indexBuildMs ?? "prewarmed"}ms`,
+    `orbit, pan, wheel, pivot, Walk, drag look, WASD, gravity, Escape and handoff passed; entry ${walkEntryMs}ms; index ${indexBuildMs ?? "prewarmed"}ms`,
   );
 }
 
-if (ifcFile) {
-  const pairingStarted = Date.now();
-  await page.setInputFiles('input[type="file"][accept=".ifc"]', resolve(ifcFile));
-  for (let attempt = 0; attempt < 300; attempt += 1) {
-    await page.waitForTimeout(2_000);
-    const text = await page.evaluate(() => document.body.innerText);
-    if (/typed IFC elements/i.test(text) && !/Analyzing IFC/i.test(text)) break;
-  }
-  console.log("ifc pairing wall clock", `${((Date.now() - pairingStarted) / 1000).toFixed(1)}s`);
-  console.log(await page.evaluate(() => document.body.innerText.slice(0, 4_000)));
-}
 if (logs.length) console.log(`--- browser log ---\n${logs.slice(-20).join("\n")}`);
 await page.screenshot({ path: screenshot });
 console.log("screenshot", screenshot);
