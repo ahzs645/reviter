@@ -15,7 +15,7 @@
     "build:pages": "node scripts/build-pages.mjs",
     "preview:pages": "vite preview --config vite.pages.config.ts",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs && node --experimental-strip-types --test tests/reviter-regression.test.ts tests/studio-overlay.test.ts tests/coverage-split.test.ts tests/curtain-panel-boundary.test.ts tests/door-leaf.test.ts tests/tail-placement.test.ts tests/studio-controls.test.ts tests/solid-clip.test.ts tests/door-shape-leaf.test.ts tests/window-continuation.test.ts tests/holdout.test.ts tests/curved-wall.test.ts tests/footprint-audit.test.ts tests/window-shape.test.ts tests/facet-band.test.ts tests/recovered-extents.test.ts tests/stair-run-sketch.test.ts tests/marker-classes.test.ts tests/basic-file-info.test.ts tests/scene-container-levels.test.ts tests/scene-glazing-batches.test.ts tests/limit-census.test.ts tests/part-atom.test.ts tests/revit-text-formats.test.ts tests/legacy-revit-2021.test.ts tests/toolkit-utilities.test.ts",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs && node --experimental-strip-types --test tests/reviter-regression.test.ts tests/studio-overlay.test.ts tests/coverage-split.test.ts tests/curtain-panel-boundary.test.ts tests/door-leaf.test.ts tests/tail-placement.test.ts tests/studio-controls.test.ts tests/solid-clip.test.ts tests/door-shape-leaf.test.ts tests/window-continuation.test.ts tests/holdout.test.ts tests/curved-wall.test.ts tests/footprint-audit.test.ts tests/window-shape.test.ts tests/facet-band.test.ts tests/recovered-extents.test.ts tests/stair-run-sketch.test.ts tests/marker-classes.test.ts tests/basic-file-info.test.ts tests/scene-container-levels.test.ts tests/scene-glazing-batches.test.ts tests/limit-census.test.ts tests/part-atom.test.ts tests/revit-text-formats.test.ts tests/legacy-revit-2021.test.ts tests/toolkit-utilities.test.ts tests/viewer-tools.test.ts tests/model-markup.test.ts",
     "test:pages": "PAGES_BASE_PATH=/reviter/ npm run build:pages && node --test tests/pages-build.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern dist-pages --ignore-pattern .next --ignore-pattern .vinext --ignore-pattern .output --ignore-pattern lib/rvt-wasm"
   },
@@ -23,6 +23,7 @@
     "@phi-ag/rvt": "^0.2.4",
     "cfb": "^1.2.2",
     "fflate": "^0.8.2",
+    "lucide-react": "^1.28.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",

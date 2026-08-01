@@ -19,11 +19,33 @@ test("server-renders the Reviter client-only converter", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Reviter — Browser-only Revit converter<\/title>/i);
-  assert.match(html, /Inspect first/);
-  assert.match(html, /Local-only processing/);
-  assert.match(html, /Zero upload/);
-  assert.match(html, /Fidelity ledger/);
+  // The empty state is what a first visit renders: the promise, the one action,
+  // and the badge that says where the file goes.
+  assert.match(html, /Open a model\. Nothing leaves this machine\./);
+  assert.match(html, /Open a Revit file/);
+  assert.match(html, /Local only/);
+  assert.match(html, /\.rvt · \.rfa · \.rte · \.rft/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
+});
+
+test("the empty state renders neither the docks nor the toolbar", async () => {
+  // Every dock is gated on an open model, the way the old panels were: with no
+  // file there is nothing for a browser, a properties palette or a report to
+  // describe, and a shell full of empty chrome is what the redesign removed.
+  const html = await (await render()).text();
+  assert.doesNotMatch(html, /class="toolbar"/);
+  assert.doesNotMatch(html, /class="left-dock"/);
+  assert.doesNotMatch(html, /class="right-dock"/);
+  assert.doesNotMatch(html, /class="report-dock"/);
+  assert.match(html, /class="recent-card"/);
+});
+
+test("the stored theme is applied before the first paint", async () => {
+  // Reading it after hydration instead would flash the default theme on every
+  // load for anyone who chose the other one.
+  const html = await (await render()).text();
+  assert.match(html, /localStorage\.getItem\("reviter\.theme"\)/);
+  assert.match(html, /setAttribute\("data-theme"/);
 });
 
 test("the converter and browser interface contain no upload or remote conversion path", async () => {

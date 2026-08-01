@@ -44,7 +44,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/*
+          The stored theme is applied before the first paint. Reading it from a
+          `useEffect` instead would render the default, then correct it — a
+          visible flash of the wrong theme on every load for anyone who chose
+          the other one. `data-theme` is the only thing this writes, and the
+          studio's toggle keeps writing the same attribute afterwards.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("reviter.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`,
+          }}
+        />
+      </head>
       <body
         className={`${manrope.variable} ${plexMono.variable}`}
       >

@@ -5,18 +5,50 @@ import * as THREE from "three";
 import { applyExplode, sectionPlanes } from "../app/studio/scene-tools.ts";
 import {
   formatMeasuredLength,
+  isNavigationTool,
   measuredAngleDegrees,
   modelFeetToScenePoint,
+  NAVIGATION_TOOLS,
   navigationModeForTool,
+  sceneUnitsPerPixel,
   scenePointToModelFeet,
 } from "../app/studio/viewer-tools.ts";
 
 test("viewer tools only change the camera navigation mode when appropriate", () => {
   assert.equal(navigationModeForTool("pan"), "pan");
   assert.equal(navigationModeForTool("zoom"), "zoom");
+  assert.equal(navigationModeForTool("orbit"), "orbit");
   assert.equal(navigationModeForTool("firstPerson"), "orbit");
-  assert.equal(navigationModeForTool("measure"), "orbit");
-  assert.equal(navigationModeForTool("markup"), "orbit");
+});
+
+test("navigating and acting are separate choices", () => {
+  // Measuring, commenting and marking up are things a click does; they are not
+  // ways of driving the camera. Holding them in one `activeTool` meant arming
+  // the Comment tool dropped you out of first person — out of the very place
+  // the comment was being written about.
+  assert.deepEqual([...NAVIGATION_TOOLS], ["orbit", "pan", "zoom", "firstPerson"]);
+  for (const tool of NAVIGATION_TOOLS) assert.equal(isNavigationTool(tool), true);
+  for (const tool of ["measure", "section", "explode", "comment", "markup"] as const) {
+    assert.equal(isNavigationTool(tool), false, `${tool} is an action, not a navigation mode`);
+  }
+});
+
+test("a markup width is stored as a length in the room, not a count of pixels", () => {
+  // Twice as far away is half as wide on screen, so converting a pixel width to
+  // world units at draw time and back at render time is what makes a redline
+  // grow as you walk up to it instead of hanging in front of your eyes.
+  const near = sceneUnitsPerPixel(10, 45, 1000);
+  const far = sceneUnitsPerPixel(20, 45, 1000);
+  assert.ok(Math.abs(far - near * 2) < 1e-12);
+
+  const drawnAt = 10;
+  const widthPx = 4;
+  const worldWeight = widthPx * sceneUnitsPerPixel(drawnAt, 45, 1000);
+  assert.ok(Math.abs(worldWeight / sceneUnitsPerPixel(drawnAt, 45, 1000) - widthPx) < 1e-9);
+  assert.ok(Math.abs(worldWeight / sceneUnitsPerPixel(drawnAt / 2, 45, 1000) - widthPx * 2) < 1e-9);
+
+  // A zero-height viewport has no pixels to divide by, and must not produce NaN.
+  assert.equal(sceneUnitsPerPixel(10, 45, 0), 0);
 });
 
 test("measurement helpers format calibrated lengths and stable angles", () => {

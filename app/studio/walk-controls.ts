@@ -93,8 +93,10 @@ export type WalkControls = {
   disable(): void;
   /** Advance by `deltaSeconds`; call once per animation frame while enabled. */
   update(deltaSeconds: number): void;
-  /** True while a left-button look drag is active. */
+  /** True while a look drag is active. */
   isLooking(): boolean;
+  /** Move the look drag to another mouse button, releasing any drag in flight. */
+  setLookButton(button: number): void;
   /** Change the persistent movement speed without rebuilding the camera. */
   setSpeed(speed: WalkSpeed): void;
   /** Toggle floor following. Off becomes a free-flight first-person camera. */
@@ -131,6 +133,12 @@ export type WalkOptions = {
   dropDistance?: number;
   /** Constrain a proposed camera move against model walls or other obstacles. */
   resolveMovement?: (from: THREE.Vector3, to: THREE.Vector3) => THREE.Vector3;
+  /**
+   * Mouse button that drags to look. Left by default; a drawing tool takes the
+   * left button for its stroke, so looking moves to the right one rather than
+   * the two gestures fighting over the same drag.
+   */
+  lookButton?: number;
   onLookChange?: (looking: boolean) => void;
   onSpeedChange?: (speed: WalkSpeed) => void;
   onGravityChange?: (enabled: boolean) => void;
@@ -154,6 +162,7 @@ export function createWalkControls(
   let pitch = 0;
   let enabled = false;
   let looking = false;
+  let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
   const floorProbeInterval = Math.max(1 / 120, options.floorProbeInterval ?? FLOOR_PROBE_INTERVAL);
@@ -258,7 +267,7 @@ export function createWalkControls(
   }
 
   function onPointerDown(event: PointerEvent): void {
-    if (!enabled || event.button !== 0) return;
+    if (!enabled || event.button !== lookButton) return;
     cancelTravel();
     looking = true;
     domElement.setPointerCapture(event.pointerId);
@@ -457,6 +466,11 @@ export function createWalkControls(
     disable,
     update,
     isLooking: () => looking,
+    setLookButton: (button) => {
+      if (button === lookButton) return;
+      lookButton = button;
+      stopLooking();
+    },
     setSpeed: (nextSpeed) => {
       speed = nextSpeed;
     },

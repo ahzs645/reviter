@@ -1,46 +1,30 @@
 "use client";
 
 import { basicFileInfo, openFile, tryThumbnail, type FileInfo } from "@phi-ag/rvt";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 
 import {
   boundsDimensions,
-  CAMERA_PRESETS,
-  compareSharedParameterDocuments,
   DEFAULT_CAMERA_PRESET,
   downloadBlob,
   drawnBounds,
-  dwgThumbnailBlob,
-  extractDwgThumbnail,
-  indexFamilyLibraryFiles,
-  loadBundledOmniClassTaxonomy,
-  mergeSharedParameterDocuments,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
   makeObj,
   makePlanSvg,
   makeReport,
-  loadLegacyRevit2021Api,
   outputName,
   parseBasicFileInfoProperties,
-  parseSharedParameterBytes,
   revitVersionFromBasicFileInfo,
-  searchFamilyLibrary,
-  searchOmniClassTaxonomy,
   STANDARDS_READER_RANGE_LABEL,
   standardsReaderSupports,
-  validateSharedParameterDocument,
-  writeSharedParameterFile,
   type CameraPreset,
   type BasicFileInfoProperties,
   type ConvertResult,
-  type DecodedSharedParameterDocument,
-  type FamilyLibraryIndex,
   type IfcWorkerRequest,
   type IfcWorkerResponse,
-  type LegacyRevit2021Api,
-  type OmniClassItem,
   type PairedRegressionResult,
   type RenderMode,
   type WorkerRequest,
@@ -56,34 +40,77 @@ import {
   propertyClipboardText,
   savedFileName,
 } from "./studio/format.ts";
+import { BrowserDock } from "./studio/BrowserDock.tsx";
+import { EmptyState } from "./studio/EmptyState.tsx";
+import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
-import { MarkupOverlay } from "./studio/MarkupOverlay.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
-import { ObjectList } from "./studio/ObjectList.tsx";
-import { FidelityRow, RegressionPanel, ToolButton } from "./studio/panels.tsx";
-import { ViewerToolbar } from "./studio/ViewerToolbar.tsx";
+import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
+import { PropertiesDock, type EvidenceRow } from "./studio/PropertiesDock.tsx";
+import { ToolButton } from "./studio/panels.tsx";
 import {
+  ReportDock,
+  type ExportAction,
+  type FileRecord,
+  type ReportCheck,
+} from "./studio/ReportDock.tsx";
+import {
+  recentFilesServerSnapshot,
+  recentFilesSnapshot,
+  recordRecentFile,
+  subscribeToRecentFiles,
+  type RecentFile,
+} from "./studio/recents.ts";
+import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
+import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
+import {
+  isNavigationTool,
   navigationModeForTool,
+  type ActionTool,
+  type MarkupEdit,
+  type MarkupStroke,
   type MarkupTool,
   type ModelComment,
+  type NavigationTool,
+  type NewMarkupStroke,
   type NewModelComment,
   type ViewerTool,
 } from "./studio/viewer-tools.ts";
 import type {
+  BrowserTab,
   CameraRequest,
   CanvasMenuRequest,
+  CommentFilter,
   GeometrySource,
+  MobileSheet,
   Phase,
+  PropertyRow,
   ReferencePhase,
-  ViewerPanel,
+  ReportTab,
 } from "./studio/types.ts";
 
 type StudioFileInfo = Omit<FileInfo, "fileVersion"> & { fileVersion: number };
 
-function formatElapsed(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return minutes ? `${minutes}m ${remainder.toString().padStart(2, "0")}s` : `${remainder}s`;
+/** The layout below this width is the phone shell, not a narrowed desktop. */
+const MOBILE_QUERY = "(max-width: 860px)";
+
+function subscribeToBreakpoint(listener: () => void): () => void {
+  const query = window.matchMedia(MOBILE_QUERY);
+  query.addEventListener("change", listener);
+  return () => query.removeEventListener("change", listener);
+}
+
+function breakpointSnapshot(): boolean {
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+/**
+ * Server-rendered markup is the desktop shell. The viewport width is not
+ * knowable until there is a window, and guessing produces a layout that has to
+ * be thrown away on hydration.
+ */
+function breakpointServerSnapshot(): boolean {
+  return false;
 }
 
 async function writeClipboardText(text: string): Promise<void> {
@@ -106,136 +133,128 @@ async function writeClipboardText(text: string): Promise<void> {
   if (!copied) throw new Error("The browser did not grant clipboard access");
 }
 
-function BlobThumbnail({ blob, alt }: { blob?: Blob; alt: string }) {
-  const url = useMemo(() => blob ? URL.createObjectURL(blob) : null, [blob]);
-  useEffect(() => () => {
-    if (url) URL.revokeObjectURL(url);
-  }, [url]);
-  return url
-    // eslint-disable-next-line @next/next/no-img-element
-    ? <img className="family-library-thumbnail" src={url} alt={alt} />
-    : <span className="family-library-fallback">RFA</span>;
+/**
+ * The theme lives on `<html data-theme>` and in `localStorage`, not in React
+ * state. Nothing in the tree needs to re-render when it flips — the tokens and
+ * both toggle icons are switched by CSS — and keeping it out of state is what
+ * lets `app/layout.tsx` apply the stored value before the first paint instead
+ * of flashing the default and correcting it afterwards.
+ */
+const THEME_KEY = "reviter.theme";
+
+function toggleTheme(): void {
+  const root = document.documentElement;
+  const next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+  root.setAttribute("data-theme", next);
+  try {
+    window.localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // The theme still applies for this session.
+  }
+}
+
+/** Both icons are rendered; the stylesheet shows whichever matches the theme. */
+function ThemeIcons({ size }: { size: number }) {
+  return (
+    <>
+      <Sun className="theme-icon-dark" size={size} aria-hidden />
+      <Moon className="theme-icon-light" size={size} aria-hidden />
+    </>
+  );
 }
 
 export default function ReviterStudio() {
+  const mobile = useSyncExternalStore(
+    subscribeToBreakpoint,
+    breakpointSnapshot,
+    breakpointServerSnapshot,
+  );
+  const recents = useSyncExternalStore(
+    subscribeToRecentFiles,
+    recentFilesSnapshot,
+    recentFilesServerSnapshot,
+  );
+  const [sheet, setSheet] = useState<MobileSheet | null>(null);
+
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
-  const [progressMessage, setProgressMessage] = useState("Waiting for a local file");
-  const [conversionStartedAt, setConversionStartedAt] = useState<number | null>(null);
-  const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState<StudioFileInfo | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [privateFileInfo, setPrivateFileInfo] = useState<BasicFileInfoProperties | null>(null);
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
+
   const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
-  const [activeTool, setActiveTool] = useState<ViewerTool>("orbit");
+  // How the camera is driven, and what a click does, are separate choices — so
+  // a review can be conducted from inside the building rather than having to
+  // leave first person to say anything about it.
+  const [navTool, setNavTool] = useState<NavigationTool>("orbit");
+  const [actionTool, setActionTool] = useState<ActionTool | null>(null);
   const [markupTool, setMarkupTool] = useState<MarkupTool>("pencil");
+  const [markupColor, setMarkupColor] = useState("#ef3f45");
+  const [markupWeight, setMarkupWeight] = useState(4);
+  const [markupText, setMarkupText] = useState("Note");
+  const [markup, setMarkup] = useState<MarkupStroke[]>([]);
+  const [markupUndo, setMarkupUndo] = useState<MarkupEdit[]>([]);
+  const [markupRedo, setMarkupRedo] = useState<MarkupEdit[]>([]);
+  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({
+    preset: DEFAULT_CAMERA_PRESET,
+    sequence: 0,
+  });
+  const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
+  const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<{ elementId: number; label: string } | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ elementId: number | null; sequence: number }>({
+    elementId: null,
+    sequence: 0,
+  });
+
+  // The docks are independent now: opening Properties no longer closes the
+  // Browser, because neither is an overlay on the model any more.
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [dockOpen, setDockOpen] = useState(false);
+  const [browserTab, setBrowserTab] = useState<BrowserTab>("objects");
+  const [reportTab, setReportTab] = useState<ReportTab>("summary");
+  const [browserSearch, setBrowserSearch] = useState("");
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+
   const [modelComments, setModelComments] = useState<ModelComment[]>([]);
-  // A reference the user paired from disk. Held as an object URL so the file
-  // never leaves the browser, exactly like the RVT and the paired IFC.
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>("open");
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [viewpointRequest, setViewpointRequest] = useState<{ commentId: string | null; sequence: number }>({
+    commentId: null,
+    sequence: 0,
+  });
+
+  const [exporting, setExporting] = useState<string | null>(null);
+
   const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
   const [referenceModelName, setReferenceModelName] = useState<string | null>(null);
-  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ preset: DEFAULT_CAMERA_PRESET, sequence: 0 });
-  const [viewMenuOpen, setViewMenuOpen] = useState(false);
-  const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
-  const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
-  const [viewerPanel, setViewerPanel] = useState<ViewerPanel>("none");
-  const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
-  const [schemaSearch, setSchemaSearch] = useState("");
-  const [legacySearch, setLegacySearch] = useState("");
-  const [legacyApi, setLegacyApi] = useState<LegacyRevit2021Api | null>(null);
-  const [legacyLoading, setLegacyLoading] = useState(false);
-  const [legacyError, setLegacyError] = useState<string | null>(null);
-  const [privateFileInfo, setPrivateFileInfo] = useState<BasicFileInfoProperties | null>(null);
-  const [familyLibrary, setFamilyLibrary] = useState<FamilyLibraryIndex | null>(null);
-  const [familySearch, setFamilySearch] = useState("");
-  const [familyBusy, setFamilyBusy] = useState(false);
-  const [familyMessage, setFamilyMessage] = useState("Choose a folder containing .rfa files");
-  const [omniClass, setOmniClass] = useState<OmniClassItem[] | null>(null);
-  const [omniSearch, setOmniSearch] = useState("");
-  const [omniBusy, setOmniBusy] = useState(false);
-  const [omniError, setOmniError] = useState<string | null>(null);
-  const [sharedFiles, setSharedFiles] = useState<Array<{
-    name: string;
-    decoded: DecodedSharedParameterDocument;
-  }>>([]);
-  const [dwgPreview, setDwgPreview] = useState<{
-    url: string;
-    fileName: string;
-    width?: number;
-    height?: number;
-  } | null>(null);
-  const [dwgError, setDwgError] = useState<string | null>(null);
-  const [modelSearch, setModelSearch] = useState("");
-  const [categorySearch, setCategorySearch] = useState("");
-  const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
-  const [propertyCopyFeedback, setPropertyCopyFeedback] = useState<{
-    elementId: number;
-    status: "copied" | "failed";
-  } | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [exporting, setExporting] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
   const [referenceProgress, setReferenceProgress] = useState(0);
   const [referenceMessage, setReferenceMessage] = useState("Choose the matching IFC export");
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
-  const navigationMode = navigationModeForTool(activeTool);
-  const walking = activeTool === "firstPerson";
+
+  const navigationMode = navigationModeForTool(navTool);
+  const walking = navTool === "firstPerson";
   const handleWalkingChange = useCallback((enabled: boolean) => {
-    setActiveTool(enabled ? "firstPerson" : "orbit");
+    setNavTool(enabled ? "firstPerson" : "orbit");
   }, []);
+
   const workerRef = useRef<Worker | null>(null);
   const ifcWorkerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
-  const commentSessionRef = useRef<ModelComment[]>([]);
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
   const referenceModelInputRef = useRef<HTMLInputElement>(null);
-  const familyInputRef = useRef<HTMLInputElement>(null);
-  const sharedInputRef = useRef<HTMLInputElement>(null);
-  const dwgInputRef = useRef<HTMLInputElement>(null);
   const canvasMenuRef = useRef<HTMLDivElement>(null);
-
-  const legacyMatches = useMemo(
-    () => legacyApi && legacySearch.trim() ? legacyApi.search(legacySearch, 60) : [],
-    [legacyApi, legacySearch],
-  );
-  const familyMatches = useMemo(
-    () => familyLibrary ? searchFamilyLibrary(familyLibrary, familySearch, 30) : [],
-    [familyLibrary, familySearch],
-  );
-  const omniMatches = useMemo(
-    () => omniClass && omniSearch.trim()
-      ? searchOmniClassTaxonomy(omniClass, omniSearch, 60)
-      : [],
-    [omniClass, omniSearch],
-  );
-  const mergedSharedParameters = useMemo(
-    () => sharedFiles.length
-      ? mergeSharedParameterDocuments(sharedFiles.map((file) => file.decoded.document))
-      : null,
-    [sharedFiles],
-  );
-  const sharedIssues = useMemo(
-    () => mergedSharedParameters
-      ? validateSharedParameterDocument(mergedSharedParameters)
-      : [],
-    [mergedSharedParameters],
-  );
-  const sharedComparison = useMemo(
-    () => sharedFiles.length >= 2
-      ? compareSharedParameterDocuments(
-          sharedFiles[0]!.decoded.document,
-          sharedFiles[1]!.decoded.document,
-        )
-      : null,
-    [sharedFiles],
-  );
 
   // Tear the workers down when the studio unmounts, and only then. This was
   // keyed on the thumbnail, so opening a second file — which sets a new
@@ -249,25 +268,11 @@ export default function ReviterStudio() {
     ifcWorkerRef.current = null;
   }, []);
 
-  // The previous preview URL is revoked where the next one is created, so the
-  // object URL's lifetime no longer depends on an unmount cleanup.
+  // The object URL outlives a render, so it is released when the studio goes
+  // away rather than leaking the file for the life of the tab.
   useEffect(() => () => {
-    if (thumbnail) URL.revokeObjectURL(thumbnail);
-  }, [thumbnail]);
-
-  useEffect(() => () => {
-    if (dwgPreview) URL.revokeObjectURL(dwgPreview.url);
-  }, [dwgPreview]);
-
-  useEffect(() => {
-    if (conversionStartedAt == null || (phase !== "reading" && phase !== "converting")) return;
-    const updateElapsed = () => {
-      setConversionElapsedSeconds(Math.max(0, Math.floor((Date.now() - conversionStartedAt) / 1_000)));
-    };
-    updateElapsed();
-    const timer = window.setInterval(updateElapsed, 1_000);
-    return () => window.clearInterval(timer);
-  }, [conversionStartedAt, phase]);
+    if (referenceModelUrl) URL.revokeObjectURL(referenceModelUrl);
+  }, [referenceModelUrl]);
 
   const getWorker = useCallback(() => {
     if (!workerRef.current) {
@@ -285,92 +290,16 @@ export default function ReviterStudio() {
     return ifcWorkerRef.current;
   }, []);
 
-  const loadLegacyApi = useCallback(async () => {
-    setLegacyLoading(true);
-    setLegacyError(null);
-    try {
-      setLegacyApi(await loadLegacyRevit2021Api());
-      setLegacySearch((current) => current || "-2000011");
-    } catch (caught) {
-      setLegacyError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setLegacyLoading(false);
-    }
+  const rememberFile = useCallback((
+    name: string,
+    size: number,
+    revitVersion: string | null,
+    status: RecentFile["status"],
+  ) => {
+    recordRecentFile({ name, size, revitVersion, openedAt: Date.now(), status });
   }, []);
 
-  const loadOmniClass = useCallback(async () => {
-    if (omniClass) return omniClass;
-    setOmniBusy(true);
-    setOmniError(null);
-    try {
-      const taxonomy = await loadBundledOmniClassTaxonomy();
-      setOmniClass(taxonomy);
-      setOmniSearch((current) => current || "23.10");
-      return taxonomy;
-    } catch (caught) {
-      setOmniError(caught instanceof Error ? caught.message : String(caught));
-      return null;
-    } finally {
-      setOmniBusy(false);
-    }
-  }, [omniClass]);
-
-  const processFamilyFolder = useCallback(async (selected: File[]) => {
-    setFamilyBusy(true);
-    setFamilyMessage("Loading OmniClass taxonomy");
-    try {
-      const taxonomy = await loadOmniClass();
-      setFamilyMessage("Indexing local Revit families");
-      const index = await indexFamilyLibraryFiles(selected, {
-        ...(taxonomy ? { taxonomy } : {}),
-        onProgress: ({ completed, total, fileName }) => {
-          setFamilyMessage(
-            total
-              ? `${completed.toLocaleString()} / ${total.toLocaleString()} · ${fileName}`
-              : "No .rfa files found",
-          );
-        },
-      });
-      setFamilyLibrary(index);
-      setFamilyMessage(
-        `${index.entries.length.toLocaleString()} families · ` +
-        `${index.catalogFiles.toLocaleString()} type catalogs · ` +
-        `${index.errors.length.toLocaleString()} errors`,
-      );
-    } catch (caught) {
-      setFamilyMessage(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setFamilyBusy(false);
-    }
-  }, [loadOmniClass]);
-
-  const processSharedParameterFiles = useCallback(async (selected: File[]) => {
-    const decoded = await Promise.all(selected.map(async (selectedFile) => ({
-      name: selectedFile.name,
-      decoded: parseSharedParameterBytes(new Uint8Array(await selectedFile.arrayBuffer())),
-    })));
-    setSharedFiles(decoded);
-  }, []);
-
-  const processDwgFile = useCallback(async (selected: File) => {
-    setDwgError(null);
-    try {
-      const thumbnail = extractDwgThumbnail(new Uint8Array(await selected.arrayBuffer()));
-      if (!thumbnail) throw new Error("This DWG does not contain a supported embedded preview.");
-      const url = URL.createObjectURL(dwgThumbnailBlob(thumbnail));
-      setDwgPreview((current) => {
-        if (current) URL.revokeObjectURL(current.url);
-        return {
-          url,
-          fileName: selected.name,
-          ...(thumbnail.width != null ? { width: thumbnail.width } : {}),
-          ...(thumbnail.height != null ? { height: thumbnail.height } : {}),
-        };
-      });
-    } catch (caught) {
-      setDwgError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }, []);
+  // --- Opening a file ----------------------------------------------------
 
   const processFile = useCallback(async (nextFile: File) => {
     if (!/\.(rvt|rfa|rte|rft)$/i.test(nextFile.name)) {
@@ -391,25 +320,29 @@ export default function ReviterStudio() {
     setComparison(null);
     setGeometrySource("recovered");
     setRenderMode("technical");
-    setActiveTool("orbit");
+    setNavTool("orbit");
+    setActionTool(null);
     setMarkupTool("pencil");
     setModelComments([]);
+    setMarkup([]);
+    setMarkupUndo([]);
+    setMarkupRedo([]);
+    setActiveCommentId(null);
+    setCommentFilter("open");
     setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId, fit: false });
-    setViewerPanel("none");
     setSelectedElementId(null);
-    setModelSearch("");
-    setCategorySearch("");
+    setHiddenCategories(new Set());
+    setBrowserTab("objects");
+    setBrowserSearch("");
     setCanvasMenu(null);
-    setDetailsOpen(false);
+    setDockOpen(false);
+    setSheet(null);
     setReferencePhase("idle");
     setReferenceError(null);
     setMetadata(null);
     setPrivateFileInfo(null);
     setError(null);
     setProgress(0.03);
-    setProgressMessage("Reading metadata and thumbnail");
-    setConversionStartedAt(Date.now());
-    setConversionElapsedSeconds(0);
     setPhase("reading");
 
     try {
@@ -452,52 +385,61 @@ export default function ReviterStudio() {
       ]);
       if (requestId !== requestIdRef.current) return;
       setMetadata(info);
+      // The previous preview URL is revoked where the next one is created, so
+      // the object URL's lifetime does not depend on an unmount cleanup.
+      setThumbnail((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return preview.ok ? URL.createObjectURL(preview.data) : null;
+      });
       setPrivateFileInfo(basicData ? parseBasicFileInfoProperties(basicData) : null);
-      if (thumbnail) URL.revokeObjectURL(thumbnail);
-      setThumbnail(preview.ok ? URL.createObjectURL(preview.data) : null);
       setPhase("converting");
       setProgress(0.08);
-      setProgressMessage("Preparing local conversion worker");
 
       const buffer = await nextFile.arrayBuffer();
       const worker = getWorker();
+      const fail = (message: string) => {
+        setError(message);
+        setPhase("error");
+        rememberFile(nextFile.name, nextFile.size, info.version, "partial");
+      };
       worker.onerror = (event) => {
         if (requestId !== requestIdRef.current) return;
-        setError(event.message || "The local conversion worker stopped unexpectedly.");
-        setPhase("error");
+        fail(event.message || "The local conversion worker stopped unexpectedly.");
       };
       worker.onmessageerror = () => {
         if (requestId !== requestIdRef.current) return;
-        setError("The local conversion worker returned an unreadable result.");
-        setPhase("error");
+        fail("The local conversion worker returned an unreadable result.");
       };
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         const message = event.data;
         if (message.id !== requestId || requestId !== requestIdRef.current) return;
         if (message.type === "progress") {
           setProgress(message.ratio);
-          setProgressMessage(message.message);
           return;
         }
         if (message.type === "error") {
-          setError(message.error);
-          setPhase("error");
+          fail(message.error);
           return;
         }
         if (!message.result.ok) {
-          setError(message.result.error);
-          setPhase("error");
+          fail(message.result.error);
           return;
         }
         setResult(message.result);
         setModelComments(loadModelComments(message.result));
+        setMarkup(loadModelMarkup(message.result));
         // Reviter's own recovery is what opening a model shows. Nothing about
         // the file — not its name, not its document id — switches the viewer to
         // a different converter's output behind the user's back.
         setGeometrySource("recovered");
         setProgress(1);
-        setProgressMessage("Conversion ready");
         setPhase("ready");
+        rememberFile(
+          nextFile.name,
+          nextFile.size,
+          info.version,
+          message.result.stats.candidatesUsed >= message.result.elementBounds.length ? "ready" : "partial",
+        );
       };
       const request: WorkerRequest = {
         id: requestId,
@@ -520,7 +462,33 @@ export default function ReviterStudio() {
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase("error");
     }
-  }, [getWorker, thumbnail]);
+  }, [getWorker, rememberFile]);
+
+  const closeModel = useCallback(() => {
+    requestIdRef.current += 1;
+    setResult(null);
+    setComparison(null);
+    setFile(null);
+    setMetadata(null);
+    setThumbnail((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setPrivateFileInfo(null);
+    setModelComments([]);
+    setMarkup([]);
+    setMarkupUndo([]);
+    setMarkupRedo([]);
+    setActiveCommentId(null);
+    setSelectedElementId(null);
+    setHiddenCategories(new Set());
+    setCanvasMenu(null);
+    setDockOpen(false);
+    setSheet(null);
+    setError(null);
+    setPhase("idle");
+    setProgress(0);
+  }, []);
 
   const processIfcFile = useCallback(async (referenceFile: File) => {
     if (!result?.elementIndex) {
@@ -608,63 +576,25 @@ export default function ReviterStudio() {
     }
   }, [getIfcWorker, result]);
 
-  const exportText = (kind: string, extension: string, content: () => string, type = "text/plain") => {
-    if (!result) return;
-    setExporting(kind);
-    try {
-      downloadBlob(new Blob([content()], { type }), outputName(result.fileName, extension));
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const exportGlb = async () => {
-    if (!result) return;
-    setExporting("GLB");
-    try {
-      const data = makeGlb(result);
-      downloadBlob(new Blob([data], { type: "model/gltf-binary" }), outputName(result.fileName, "glb"));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setExporting(null);
-    }
-  };
-
   /**
    * Pair a reference conversion of the same building from disk.
    *
    * An object URL, so the file is read by the viewer and never uploaded — the
-   * same contract as the RVT and the paired IFC. Reviter used to ship one such
-   * reference for one building; supplying your own is what makes the comparison
-   * available for any model.
+   * same contract as the RVT and the paired IFC.
    */
-  const pairReferenceModel = (file: File | null | undefined) => {
-    if (!file) return;
+  const pairReferenceModel = (selected: File | null | undefined) => {
+    if (!selected) return;
     setReferenceModelUrl((previous) => {
       if (previous) URL.revokeObjectURL(previous);
-      return URL.createObjectURL(file);
+      return URL.createObjectURL(selected);
     });
-    setReferenceModelName(file.name);
+    setReferenceModelName(selected.name);
     setGeometrySource("reference-model");
     setSelectedElementId(null);
   };
-  // The object URL outlives a render, so it is released when the studio goes
-  // away rather than leaking the file for the life of the tab.
-  useEffect(() => () => { if (referenceModelUrl) URL.revokeObjectURL(referenceModelUrl); }, [referenceModelUrl]);
 
-  const versionNumber = Number(metadata?.version ?? 0);
-  // Not "future": a release the optional standards-aware reader declines. The
-  // check reads both ends of its range so a legacy file is described the same
-  // way rather than silently falling through as if it were supported.
-  const isBeyondStandardsReader =
-    versionNumber > 0 && !standardsReaderSupports(versionNumber);
-  const referenceModelAvailable = Boolean(referenceModelUrl);
-  // Objects, categories and properties all read the per-triangle element ids,
-  // and only the recovery carries them — the derivative and the export arrive
-  // as anonymous meshes.
-  const panelReason = geometrySource === "recovered" ? null : "Only the RVT diagnostic source carries object ids";
-  const savedName = savedFileName(metadata?.path);
+  // --- Derived model views ----------------------------------------------
+
   const displayedElementIds = useMemo(() => {
     if (!result) return new Set<number>();
     return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
@@ -683,122 +613,11 @@ export default function ReviterStudio() {
     () => result ? result.elementBounds.filter((record) => displayedElementIds.has(record.elementId)) : [],
     [displayedElementIds, result],
   );
-  const selectedRecord = useMemo(
-    () => selectedElementId == null
-      ? null
-      : result?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
-    [result, selectedElementId],
-  );
-  const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
-  const selectedPropertyRows = selectedRecord && selectedDimensions ? [
-    { key: "native-revit-id", label: "Native Revit ID", value: String(selectedRecord.elementId) },
-    {
-      key: "rendered-geometry",
-      label: "Rendered geometry",
-      value: selectedRecord.renderGeometryProvenance === "native"
-        ? "Native RVT face mesh"
-        : selectedRecord.renderGeometryProvenance === "reconstructed"
-          ? selectedRecord.stairTreads?.length
-            ? "Reconstructed stair-run geometry"
-            : "Reconstructed RVT geometry"
-          : selectedRecord.renderGeometryProvenance === "boundary-clipped-proxy"
-            ? "Mullion-clipped panel proxy"
-            : selectedRecord.renderGeometryProvenance === "bounds-fallback"
-              ? "Bounds fallback"
-              : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
-                ? "Drawing aid—not rendered"
-                : "Not classified",
-    },
-    ...(selectedRecord.categoryName
-      ? [{ key: "category", label: "Category", value: selectedRecord.categoryName }]
-      : []),
-    ...(selectedRecord.categoryId != null
-      ? [{
-        key: "category-id",
-        label: "Category ID",
-        value: `${selectedRecord.categoryId}${
-          selectedRecord.categorySource === "record-code-consensus"
-            ? " (record-code consensus)"
-            : selectedRecord.categorySource === "native-object"
-              ? " (native object)"
-              : " (native token)"
-        }`,
-      }]
-      : []),
-    {
-      key: "evidence",
-      label: "Evidence",
-      value: selectedRecord.stairTreads?.length
-        ? selectedRecord.categorySource === "native-object"
-          ? "Native StairsRun sketch and aggregate"
-          : "Recovered stair tread sketch"
-        : selectedRecord.railPath
-          ? "Native railing path"
-          : selectedRecord.loops?.length
-            ? "Sketch boundary"
-            : selectedRecord.recordOffset >= 0
-              ? "Duplicated bounds record"
-              : selectedRecord.orientedBox
-                ? "Placed family instance"
-                : selectedRecord.solids?.length || selectedRecord.solid
-                  ? "Rebuilt from native surfaces"
-                  : "Native faces",
-    },
-    ...(selectedRecord.solid
-      ? [{
-        key: "native-geometry",
-        label: "Native geometry",
-        value: `${Math.hypot(selectedRecord.solid.end.x - selectedRecord.solid.start.x, selectedRecord.solid.end.y - selectedRecord.solid.start.y).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
-      }]
-      : []),
-    ...(selectedRecord.typeName
-      ? [{ key: "type", label: "Type", value: selectedRecord.typeName }]
-      : []),
-    ...(selectedRecord.typeId != null
-      ? [{ key: "type-element", label: "Type element", value: String(selectedRecord.typeId) }]
-      : []),
-    ...(selectedRecord.parameters?.map((parameter) => ({
-      key: `parameter-${parameter.parameterId}`,
-      label: parameter.name,
-      value: `${parameter.value.toFixed(4)} ft`,
-    })) ?? []),
-    { key: "stream", label: "Stream", value: selectedRecord.stream },
-    ...(selectedRecord.chunkIndex >= 0
-      ? [{ key: "chunk", label: "Chunk", value: selectedRecord.chunkIndex.toLocaleString() }]
-      : []),
-    { key: "width", label: "Width", value: `${selectedDimensions.x.toFixed(3)} ft` },
-    { key: "depth", label: "Depth", value: `${selectedDimensions.y.toFixed(3)} ft` },
-    { key: "height", label: "Height", value: `${selectedDimensions.z.toFixed(3)} ft` },
-    { key: "minimum-z", label: "Minimum Z", value: `${selectedRecord.boundsFeet.min.z.toFixed(3)} ft` },
-    ...(selectedRecord.recordOffset >= 0
-      ? [{ key: "record-offset", label: "Record offset", value: `0x${selectedRecord.recordOffset.toString(16)}` }]
-      : []),
-  ] : [];
-  const copySelectedProperties = useCallback(async () => {
-    if (!selectedRecord || !selectedPropertyRows.length) return;
-    try {
-      await writeClipboardText(propertyClipboardText(
-        selectedRecord.categoryName ?? "Uncategorised object",
-        `Object ${selectedRecord.elementId}`,
-        selectedPropertyRows,
-      ));
-      setPropertyCopyFeedback({ elementId: selectedRecord.elementId, status: "copied" });
-    } catch {
-      setPropertyCopyFeedback({ elementId: selectedRecord.elementId, status: "failed" });
-    }
-    window.setTimeout(() => {
-      setPropertyCopyFeedback((current) => current?.elementId === selectedRecord.elementId ? null : current);
-    }, 2_000);
-  }, [selectedPropertyRows, selectedRecord]);
-  // Asking the user to filter by an id they would have to already know is not
-  // much of a filter; category and type names are on the record too.
   const visibleModelRecords = useMemo(
     () => solidRecords.filter((record) =>
-      matchesFilter(modelSearch, record.elementId, record.categoryName, record.typeName)),
-    [modelSearch, solidRecords],
+      matchesFilter(browserSearch, record.elementId, record.categoryName, record.typeName)),
+    [browserSearch, solidRecords],
   );
-  // One row per category, which is the layer list a CAD user reaches for, and
-  // the only visibility control that scales to tens of thousands of envelopes.
   const categoryRows = useMemo(() => {
     const counts = new Map<string, number>();
     for (const record of solidRecords) {
@@ -807,12 +626,9 @@ export default function ReviterStudio() {
     }
     return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
   }, [solidRecords]);
-  // Sorted largest first, so the category you want by name is somewhere down a
-  // 24-row scroller on the supplied model. Filtering is how a layer list is
-  // used everywhere else.
   const visibleCategoryRows = useMemo(
-    () => categoryRows.filter((row) => matchesFilter(categorySearch, row.name)),
-    [categoryRows, categorySearch],
+    () => categoryRows.filter((row) => matchesFilter(browserSearch, row.name)),
+    [browserSearch, categoryRows],
   );
   const hiddenElementIds = useMemo(() => {
     if (!result || !hiddenCategories.size) return new Set<number>();
@@ -822,16 +638,139 @@ export default function ReviterStudio() {
     }
     return hidden;
   }, [hiddenCategories, result]);
-  // Framing one object keeps the current orientation and only moves in; a
-  // sequence number is what makes asking for the same object twice a new
-  // request rather than a no-op.
-  const [focusRequest, setFocusRequest] = useState<{ elementId: number | null; sequence: number }>({
-    elementId: null,
-    sequence: 0,
-  });
+
+  const selectedRecord = useMemo(
+    () => selectedElementId == null
+      ? null
+      : result?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
+    [result, selectedElementId],
+  );
+  const hoveredRecord = useMemo(
+    () => hoveredElementId == null
+      ? null
+      : result?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
+    [hoveredElementId, result],
+  );
+  const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
+
+  /**
+   * The properties palette.
+   *
+   * Category, type and id lead, because that is what a CAD palette answers
+   * first; the recovery's own evidence follows, because in this viewer it is a
+   * property of the object rather than a footnote about the file.
+   */
+  const propertyRows: PropertyRow[] = useMemo(() => {
+    if (!selectedRecord || !selectedDimensions) return [];
+    return [
+      { key: "category", label: "Category", value: selectedRecord.categoryName ?? "Uncategorised" },
+      ...(selectedRecord.typeName ? [{ key: "type", label: "Type", value: selectedRecord.typeName }] : []),
+      { key: "element-id", label: "Element id", value: String(selectedRecord.elementId) },
+      ...(selectedRecord.typeId != null
+        ? [{ key: "type-element", label: "Type element", value: String(selectedRecord.typeId) }]
+        : []),
+      {
+        key: "geometry",
+        label: "Geometry",
+        value: selectedRecord.renderGeometryProvenance === "native"
+          ? "Native RVT face mesh"
+          : selectedRecord.renderGeometryProvenance === "reconstructed"
+            ? selectedRecord.stairTreads?.length
+              ? "Reconstructed stair-run geometry"
+              : "Reconstructed RVT geometry"
+            : selectedRecord.renderGeometryProvenance === "boundary-clipped-proxy"
+              ? "Mullion-clipped panel proxy"
+              : selectedRecord.renderGeometryProvenance === "bounds-fallback"
+                ? "Bounds fallback"
+                : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
+                  ? "Drawing aid—not rendered"
+                  : "Not classified",
+      },
+      {
+        key: "evidence",
+        label: "Evidence",
+        value: selectedRecord.stairTreads?.length
+          ? selectedRecord.categorySource === "native-object"
+            ? "Native StairsRun sketch and aggregate"
+            : "Recovered stair tread sketch"
+          : selectedRecord.railPath
+            ? "Native railing path"
+            : selectedRecord.loops?.length
+              ? "Sketch boundary"
+              : selectedRecord.recordOffset >= 0
+                ? "Duplicated bounds record"
+                : selectedRecord.orientedBox
+                  ? "Placed family instance"
+                  : selectedRecord.solids?.length || selectedRecord.solid
+                    ? "Rebuilt from native surfaces"
+                    : "Native faces",
+      },
+      ...(selectedRecord.categoryId != null
+        ? [{
+          key: "category-id",
+          label: "Category ID",
+          value: `${selectedRecord.categoryId}${
+            selectedRecord.categorySource === "record-code-consensus"
+              ? " (record-code consensus)"
+              : selectedRecord.categorySource === "native-object"
+                ? " (native object)"
+                : " (native token)"
+          }`,
+        }]
+        : []),
+      ...(selectedRecord.solid
+        ? [{
+          key: "native-geometry",
+          label: "Native geometry",
+          value: `${Math.hypot(
+            selectedRecord.solid.end.x - selectedRecord.solid.start.x,
+            selectedRecord.solid.end.y - selectedRecord.solid.start.y,
+          ).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
+        }]
+        : []),
+      ...(selectedRecord.parameters?.map((parameter) => ({
+        key: `parameter-${parameter.parameterId}`,
+        label: parameter.name,
+        value: `${parameter.value.toFixed(4)} ft`,
+      })) ?? []),
+      {
+        key: "bounding-size",
+        label: "Bounding size",
+        value: `${selectedDimensions.x.toFixed(2)} × ${selectedDimensions.y.toFixed(2)} × ${selectedDimensions.z.toFixed(2)} ft`,
+      },
+      { key: "minimum-z", label: "Minimum Z", value: `${selectedRecord.boundsFeet.min.z.toFixed(3)} ft` },
+      { key: "stream", label: "Source stream", value: selectedRecord.stream },
+      ...(selectedRecord.chunkIndex >= 0
+        ? [{ key: "chunk", label: "Chunk", value: selectedRecord.chunkIndex.toLocaleString() }]
+        : []),
+      ...(selectedRecord.recordOffset >= 0
+        ? [{ key: "record-offset", label: "Record offset", value: `0x${selectedRecord.recordOffset.toString(16)}` }]
+        : []),
+    ];
+  }, [selectedDimensions, selectedRecord]);
+
+  const copySelectedProperties = useCallback(async () => {
+    if (!selectedRecord || !propertyRows.length) return;
+    const elementId = selectedRecord.elementId;
+    try {
+      await writeClipboardText(propertyClipboardText(
+        selectedRecord.categoryName ?? "Uncategorised object",
+        `Object ${elementId}`,
+        propertyRows,
+      ));
+      setCopyFeedback({ elementId, label: "Copied" });
+    } catch {
+      setCopyFeedback({ elementId, label: "Copy failed" });
+    }
+    window.setTimeout(() => {
+      setCopyFeedback((current) => current?.elementId === elementId ? null : current);
+    }, 1_400);
+  }, [propertyRows, selectedRecord]);
+
   const requestZoomToSelection = useCallback(() => {
     setFocusRequest((current) => ({ elementId: selectedElementId, sequence: current.sequence + 1 }));
   }, [selectedElementId]);
+
   const toggleCategory = useCallback((name: string) => {
     setHiddenCategories((current) => {
       const next = new Set(current);
@@ -839,21 +778,18 @@ export default function ReviterStudio() {
       return next;
     });
   }, []);
+
   const canvasMenuCategory = useMemo(() => {
     if (canvasMenu?.elementId == null) return null;
     const record = result?.elementBounds.find((entry) => entry.elementId === canvasMenu.elementId);
     return record ? record.categoryName ?? "Uncategorised" : null;
   }, [canvasMenu, result]);
-  const hoveredRecord = useMemo(
-    () => hoveredElementId == null
-      ? null
-      : result?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
-    [hoveredElementId, result],
-  );
+
   const requestCamera = useCallback((preset: CameraPreset) => {
     setCameraRequest((current) => ({ preset, sequence: current.sequence + 1, fit: false }));
-    setViewMenuOpen(false);
   }, []);
+
+  // --- Comments ----------------------------------------------------------
 
   const commitComments = useCallback((update: (current: ModelComment[]) => ModelComment[]) => {
     setModelComments((current) => {
@@ -876,6 +812,8 @@ export default function ReviterStudio() {
       createdAt: now,
       updatedAt: now,
     }]);
+    // A new comment is open, so a list filtered to resolved would swallow it.
+    setCommentFilter((current) => current === "resolved" ? "all" : current);
     return id;
   }, [commitComments]);
 
@@ -890,21 +828,184 @@ export default function ReviterStudio() {
 
   const deleteModelComment = useCallback((id: string) => {
     commitComments((current) => current.filter((comment) => comment.id !== id));
+    setActiveCommentId((current) => current === id ? null : current);
   }, [commitComments]);
 
-  const selectViewerTool = useCallback((tool: ViewerTool) => {
-    if (tool === "markup" && activeTool !== "markup") {
-      commentSessionRef.current = modelComments;
-    }
-    setActiveTool(tool);
-  }, [activeTool, modelComments]);
-
-  const cancelMarkup = useCallback(() => {
-    const restored = commentSessionRef.current;
-    setModelComments(restored);
-    if (result) saveModelComments(result, restored);
-    setActiveTool("orbit");
+  const resolveModelComment = useCallback((id: string) => {
+    setModelComments((current) => {
+      const next = current.map((comment) => comment.id === id
+        ? {
+          ...comment,
+          status: comment.status === "open" ? "resolved" as const : "open" as const,
+          updatedAt: new Date().toISOString(),
+        }
+        : comment);
+      if (result) saveModelComments(result, next);
+      return next;
+    });
   }, [result]);
+
+  const visibleComments = useMemo(
+    () => commentFilter === "all"
+      ? modelComments
+      : modelComments.filter((comment) => comment.status === commentFilter),
+    [commentFilter, modelComments],
+  );
+  // Filtering the list filters the pins with it, but the numbering never moves.
+  const visibleCommentIds = useMemo(
+    () => commentFilter === "all" ? null : new Set(visibleComments.map((comment) => comment.id)),
+    [commentFilter, visibleComments],
+  );
+
+  const describeCommentTarget = useCallback((comment: ModelComment) => {
+    if (comment.elementId != null) {
+      const record = result?.elementBounds.find((entry) => entry.elementId === comment.elementId);
+      return `${record?.categoryName ?? "Object"} ${comment.elementId}`;
+    }
+    const point = comment.modelPositionFeet ?? comment.scenePosition;
+    return `${point[0].toFixed(1)}, ${point[1].toFixed(1)}, ${point[2].toFixed(1)} ft`;
+  }, [result]);
+
+  const activateComment = useCallback((id: string | null) => {
+    setActiveCommentId(id);
+    if (!id) return;
+    if (mobile) setSheet("comments");
+    else {
+      setBrowserTab("comments");
+      setLeftOpen(true);
+    }
+  }, [mobile]);
+
+  const requestCommentViewpoint = useCallback((id: string) => {
+    setViewpointRequest((current) => ({ commentId: id, sequence: current.sequence + 1 }));
+  }, []);
+
+  const commentToolArmed = actionTool === "comment";
+
+  /** Open the panel the Comment tool writes into, wherever that panel lives. */
+  const revealComments = useCallback(() => {
+    if (mobile) setSheet("comments");
+    else {
+      setBrowserTab("comments");
+      setLeftOpen(true);
+    }
+  }, [mobile]);
+
+  const armCommentTool = useCallback(() => {
+    setActionTool((current) => current === "comment" ? null : "comment");
+    revealComments();
+  }, [revealComments]);
+
+  /**
+   * A tool click.
+   *
+   * Navigation replaces navigation; an action toggles and leaves the camera
+   * alone. Walking through a building and pinning comments as you go is one
+   * activity, not two that take turns.
+   */
+  const selectViewerTool = useCallback((tool: ViewerTool) => {
+    if (isNavigationTool(tool)) {
+      setNavTool(tool);
+      return;
+    }
+    setActionTool((current) => current === tool ? null : tool);
+    if (tool === "comment") revealComments();
+  }, [revealComments]);
+
+  // --- Markup ------------------------------------------------------------
+
+  const commitMarkup = useCallback((update: (current: MarkupStroke[]) => MarkupStroke[]) => {
+    setMarkup((current) => {
+      const next = update(current);
+      if (result) saveModelMarkup(result, next);
+      return next;
+    });
+  }, [result]);
+
+  /**
+   * Undo walks a log of edits, not a stack of strokes.
+   *
+   * Holding "what to put back" in one list made Undo mean two different things:
+   * after erasing the last stroke there was nothing left to pop, so Undo went
+   * grey and the only way back was Redo — which is not what anyone reaches for
+   * having just deleted something by mistake.
+   */
+  const applyMarkupEdit = useCallback((edit: MarkupEdit, invert: boolean) => {
+    commitMarkup((current) => {
+      const removing = invert ? edit.kind === "add" : edit.kind !== "add";
+      if (edit.kind === "clear") return removing ? [] : [...edit.strokes];
+      if (removing) return current.filter((stroke) => stroke.id !== edit.stroke.id);
+      const next = [...current];
+      next.splice(Math.min(edit.index, next.length), 0, edit.stroke);
+      return next;
+    });
+  }, [commitMarkup]);
+
+  const pushMarkupEdit = useCallback((edit: MarkupEdit) => {
+    setMarkupUndo((current) => [...current, edit]);
+    // A fresh edit invalidates anything that was waiting to be redone.
+    setMarkupRedo([]);
+  }, []);
+
+  const createMarkupStroke = useCallback((stroke: NewMarkupStroke) => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `markup-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const created: MarkupStroke = { ...stroke, id, createdAt: new Date().toISOString() };
+    let index = 0;
+    commitMarkup((current) => {
+      index = current.length;
+      return [...current, created];
+    });
+    pushMarkupEdit({ kind: "add", stroke: created, index });
+  }, [commitMarkup, pushMarkupEdit]);
+
+  const deleteMarkupStroke = useCallback((id: string) => {
+    setMarkup((current) => {
+      const index = current.findIndex((stroke) => stroke.id === id);
+      if (index < 0) return current;
+      pushMarkupEdit({ kind: "delete", stroke: current[index]!, index });
+      const next = current.filter((stroke) => stroke.id !== id);
+      if (result) saveModelMarkup(result, next);
+      return next;
+    });
+  }, [pushMarkupEdit, result]);
+
+  const undoMarkup = useCallback(() => {
+    setMarkupUndo((current) => {
+      const last = current.at(-1);
+      if (!last) return current;
+      applyMarkupEdit(last, true);
+      setMarkupRedo((redo) => [...redo, last]);
+      return current.slice(0, -1);
+    });
+  }, [applyMarkupEdit]);
+
+  const redoMarkup = useCallback(() => {
+    setMarkupRedo((current) => {
+      const last = current.at(-1);
+      if (!last) return current;
+      applyMarkupEdit(last, false);
+      setMarkupUndo((undo) => [...undo, last]);
+      return current.slice(0, -1);
+    });
+  }, [applyMarkupEdit]);
+
+  const clearMarkup = useCallback(() => {
+    setMarkup((current) => {
+      if (!current.length) return current;
+      pushMarkupEdit({ kind: "clear", strokes: current, index: 0 });
+      if (result) saveModelMarkup(result, []);
+      return [];
+    });
+  }, [pushMarkupEdit, result]);
+
+  const markupSettings = useMemo(() => ({
+    tool: actionTool === "markup" ? markupTool : null,
+    color: markupColor,
+    weight: markupWeight,
+    text: markupText,
+  }), [actionTool, markupColor, markupText, markupTool, markupWeight]);
 
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
@@ -926,965 +1027,686 @@ export default function ReviterStudio() {
     };
   }, [canvasMenu]);
 
+  // --- Reporting ---------------------------------------------------------
+
+  const versionNumber = Number(metadata?.version ?? 0);
+  // Not "future": a release the optional standards-aware reader declines. The
+  // check reads both ends of its range so a legacy file is described the same
+  // way rather than silently falling through as if it were supported.
+  const isBeyondStandardsReader = versionNumber > 0 && !standardsReaderSupports(versionNumber);
+  const referenceModelAvailable = Boolean(referenceModelUrl);
+  /**
+   * How many objects the file holds.
+   *
+   * The ownership records name every element the decoder saw, which is the only
+   * count that can legitimately exceed the recovery. `elementIndex` is the
+   * element *table* — a partial index, and on this building an eighth of the
+   * ownership count, so reading it as "objects in file" put a smaller number
+   * above a larger "recovered" beside it.
+   */
+  const objectsInFile = result
+    ? result.decoderCoverage.nativeUniqueIds
+      || result.elementIndex?.uniqueElementIds.length
+      || result.stats.candidatesFound
+    : 0;
+
+  const metricCards = useMemo(() => result ? [
+    { label: "Objects in file", value: formatNumber(objectsInFile) },
+    { label: "Recovered", value: formatNumber(recoveredElementIds.size) },
+    { label: "Drawn", value: formatNumber(displayedElementIds.size) },
+    { label: "Read time", value: `${(result.stats.durationMs / 1_000).toFixed(1)} s` },
+  ] : [], [displayedElementIds, objectsInFile, recoveredElementIds, result]);
+
+  const checks: ReportCheck[] = useMemo(() => {
+    if (!result) return [];
+    const materials = result.decoderCoverage.nativeMaterialDefinitions;
+    return [
+      {
+        label: "Metadata",
+        value: metadata ? "Read from file" : "Not read",
+        tone: metadata ? "good" : "off",
+      },
+      {
+        // The decoder already grades its own output; saying "element envelopes"
+        // over a certified native BREP understates what was actually read.
+        label: "Geometry",
+        value: geometrySource === "reference-model"
+          ? "Paired reference model"
+          : result.decoderCoverage.geometryFidelity.replaceAll("-", " "),
+        tone: geometrySource === "reference-model" ? "good" : "warn",
+      },
+      {
+        label: "Materials",
+        value: materials ? `${materials.toLocaleString()} definitions` : "Not decoded",
+        tone: materials ? "warn" : "off",
+      },
+      {
+        label: "IFC comparison",
+        value: comparison
+          ? `${comparison.reference.matchedElementCount.toLocaleString()} matched · ${comparison.status}`
+          : "Not paired",
+        tone: comparison ? (comparison.status === "pass" ? "good" : "warn") : "off",
+      },
+    ];
+  }, [comparison, geometrySource, metadata, result]);
+
+  const fileRecord: FileRecord | null = useMemo(() => {
+    if (!metadata) return null;
+    const savedName = savedFileName(metadata.path);
+    return {
+      thumbnail,
+      rows: [
+        { label: "Release", value: `Revit ${metadata.version}` },
+        { label: "Build", value: metadata.build },
+        { label: "Locale", value: metadata.locale },
+        { label: "Size", value: file ? formatBytes(file.size) : "—" },
+        ...(metadata.documentId
+          ? [{ label: "Document", value: metadata.documentId }]
+          : []),
+      ],
+      note: savedName ? `Original folder path withheld · saved as ${savedName}` : null,
+    };
+  }, [file, metadata, thumbnail]);
+
+  const evidenceRows: EvidenceRow[] = useMemo(() => {
+    const materials = result?.decoderCoverage.nativeMaterialDefinitions ?? 0;
+    return [
+      { label: "File metadata", value: metadata ? "Read from file" : "Not read", tone: metadata ? "good" : "off" },
+      {
+        label: "Object bounds",
+        value: result ? result.decoderCoverage.geometryFidelity.replaceAll("-", " ") : "Not evaluated",
+        tone: result ? "warn" : "off",
+      },
+      {
+        label: "Materials",
+        value: materials ? `${materials.toLocaleString()} definitions` : "Not decoded",
+        tone: materials ? "warn" : "off",
+      },
+      { label: "Openings & textures", value: "Not available", tone: "off" },
+    ];
+  }, [metadata, result]);
+
+  const evidenceSummary = isBeyondStandardsReader
+    ? `Revit ${metadata?.version} is outside the optional Rust reader's verified ${STANDARDS_READER_RANGE_LABEL} range; Reviter's own decoders ran normally. Shapes are approximate; metadata is read directly from the file.`
+    : result?.readerDiagnostics?.summary
+      ?? "This is a recovery, not a native Revit decode. Shapes are approximate; metadata is read directly from the file.";
+
+  const exportText = useCallback((
+    id: string,
+    extension: string,
+    content: () => string,
+    type = "text/plain",
+  ) => {
+    if (!result) return;
+    setExporting(id);
+    try {
+      downloadBlob(new Blob([content()], { type }), outputName(result.fileName, extension));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setExporting(null);
+    }
+  }, [result]);
+
+  const exportActions: ExportAction[] = useMemo(() => {
+    if (!result) return [];
+    return [
+      {
+        id: "GLB",
+        format: "GLB",
+        detail: "3D scene",
+        run: () => {
+          setExporting("GLB");
+          try {
+            downloadBlob(new Blob([makeGlb(result)], { type: "model/gltf-binary" }), outputName(result.fileName, "glb"));
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          } finally {
+            setExporting(null);
+          }
+        },
+      },
+      { id: "OBJ", format: "OBJ", detail: "Mesh", run: () => exportText("OBJ", "obj", () => makeObj(result)) },
+      { id: "DXF", format: "DXF", detail: "3D lines", run: () => exportText("DXF", "dxf", () => makeDxf(result)) },
+      {
+        id: "SVG",
+        format: "SVG",
+        detail: "Plan",
+        run: () => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml"),
+      },
+      {
+        id: "IFC",
+        format: "IFC",
+        detail: result.method === "partition-bounds-recovery"
+          ? "Solid proxies"
+          : result.method === "native-profile-recovery" ? "Profile proxies" : "Proxies",
+        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step"),
+      },
+      {
+        id: "JSON",
+        format: "JSON",
+        detail: "Audit log",
+        run: () => exportText(
+          "JSON",
+          "json",
+          () => makeReport(result, metadata as unknown as Record<string, unknown>),
+          "application/json",
+        ),
+      },
+    ];
+  }, [exportText, metadata, result]);
+
+  const exportDisclaimer = result
+    ? `Exports preserve ${
+      result.method === "native-profile-recovery"
+        ? "native ArcWall centerlines with explicitly approximate solids"
+        : result.method === "partition-bounds-recovery"
+          ? "native-ID element envelopes"
+          : "the recovered geometry"
+    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable.`
+    : "";
+
+  // --- Chrome ------------------------------------------------------------
+
+  const busy = phase === "reading" || phase === "converting";
+  const statusText = phase === "error"
+    ? error ?? "Conversion stopped"
+    : busy
+      ? phase === "reading" ? "Reading file" : "Recovering geometry"
+      : result ? "Ready" : "No model open";
+  const statusTone = phase === "error" ? "error" : busy ? "busy" : result ? "ready" : "";
+
+  const ifcReason = comparison?.referenceMeshes.length
+    ? null
+    : referencePhase === "reading"
+      ? "Reading the IFC export now"
+      : "Pair an IFC export in Report → Coverage to enable this source";
+  const sources: SourceOption[] = [
+    { id: "recovered", label: "Recovered", reason: null, title: "Geometry rebuilt from the RVT file" },
+    { id: "reference", label: "IFC", reason: ifcReason, title: "The paired IFC export on its own" },
+    {
+      id: "overlay",
+      label: "Overlay",
+      reason: ifcReason,
+      title: "Recovered model over the paired export: aligned IFC geometry is ghosted and geometric differences are red",
+    },
+    {
+      id: "reference-model",
+      label: "Reference",
+      reason: referenceModelAvailable
+        ? null
+        : "Pair a GLB or glTF of the same building in Report → Coverage to enable this source",
+      title: referenceModelName ? `Paired reference: ${referenceModelName}` : "A GLB or glTF conversion of the same building",
+    },
+  ];
+
+  const selectGeometrySource = useCallback((source: GeometrySource) => {
+    setGeometrySource(source);
+    if (source !== "recovered") setSelectedElementId(null);
+  }, []);
+
+  const fileMeta = [
+    file ? formatBytes(file.size) : null,
+    metadata ? `Revit ${metadata.version}` : null,
+    result ? `${formatNumber(objectsInFile)} objects` : null,
+  ].filter(Boolean).join(" · ");
+
+  /**
+   * Why the Objects and Categories lists are empty when they are.
+   *
+   * Only the recovery carries per-triangle element ids; the paired export and
+   * the paired reference arrive as anonymous meshes. And a file can convert
+   * into drawable geometry with no identified elements at all — a family with
+   * no element table does exactly that — which is a fact about the file, not a
+   * list that failed to load.
+   */
+  const browserEmptyNote = geometrySource !== "recovered"
+    ? "Only the recovered source carries object ids. Switch back to Recovered to browse objects and categories."
+    : browserSearch.trim()
+      ? "Nothing in this model matches that filter."
+      : "This file converted into geometry, but no element ids were recovered from it — there is nothing to list. The Report dock has the stream-by-stream detail.";
+
+  const selectedTitle = selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection";
+  const selectedSubtitle = selectedRecord
+    ? [selectedRecord.typeName, `id ${selectedRecord.elementId}`].filter(Boolean).join(" · ")
+    : "Nothing picked";
+
+  const legend = geometrySource === "reference-model"
+    ? [{ tone: "cyan", label: "Reference source meshes" }]
+    : geometrySource === "overlay" && comparison
+      ? [
+        { tone: "amber", label: "Recovered" },
+        { tone: "cyan", label: "Matched" },
+        { tone: "missing", label: "Differs" },
+        { tone: "context", label: "Unmatched IFC" },
+      ]
+      : geometrySource === "reference" && comparison
+        ? [
+          { tone: "cyan", label: "Aligned" },
+          { tone: "missing", label: "Differs" },
+          { tone: "context", label: "IFC context" },
+        ]
+        : [{ tone: "amber", label: "Recovered" }];
+  const stamp = geometrySource === "reference-model"
+    ? "paired reference model"
+    : geometrySource === "reference" && comparison
+      ? "metres · z-up"
+      : "feet · z-up";
+
+  const openPicker = useCallback(() => inputRef.current?.click(), []);
+
+  const canvas = result ? (
+    <ModelCanvas
+      result={result}
+      comparison={comparison}
+      source={geometrySource}
+      referenceModelUrl={referenceModelUrl}
+      renderMode={renderMode}
+      navigationMode={navigationMode}
+      cameraRequest={cameraRequest}
+      measuring={actionTool === "measure"}
+      sectioning={actionTool === "section"}
+      onSectionClear={() => setActionTool(null)}
+      exploding={actionTool === "explode"}
+      commenting={commentToolArmed}
+      comments={modelComments}
+      visibleCommentIds={visibleCommentIds}
+      activeCommentId={activeCommentId}
+      onActiveComment={activateComment}
+      onCreateComment={createModelComment}
+      viewpointRequest={viewpointRequest}
+      markup={markup}
+      markupSettings={markupSettings}
+      onCreateMarkup={createMarkupStroke}
+      onDeleteMarkup={deleteMarkupStroke}
+      walking={walking}
+      onWalkingChange={handleWalkingChange}
+      selectedElementId={selectedElementId}
+      onSelectElement={setSelectedElementId}
+      hiddenElementIds={hiddenElementIds}
+      onHoverElement={setHoveredElementId}
+      onCanvasMenu={setCanvasMenu}
+      focusRequest={focusRequest}
+    />
+  ) : null;
+
+  const fileInputs = (
+    <>
+      <input
+        ref={inputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".rvt,.rfa,.rte,.rft"
+        onChange={(event) => {
+          const selected = event.target.files?.[0];
+          if (selected) void processFile(selected);
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={ifcInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".ifc"
+        onChange={(event) => {
+          const selected = event.target.files?.[0];
+          if (selected) void processIfcFile(selected);
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={referenceModelInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+        onChange={(event) => {
+          pairReferenceModel(event.target.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </>
+  );
+
+  const emptyState = (
+    <EmptyState recents={recents} error={phase === "error" ? error : null} onOpen={openPicker} />
+  );
+
+  const commentPanelProps = {
+    comments: modelComments,
+    visibleComments,
+    commentFilter,
+    activeCommentId,
+    commentToolArmed,
+    describeCommentTarget,
+    onCommentFilter: setCommentFilter,
+    onActiveComment: setActiveCommentId,
+    onEditComment: (id: string, text: string) => updateModelComment(id, { text }),
+    onResolveComment: resolveModelComment,
+    onDeleteComment: deleteModelComment,
+    onCommentViewpoint: requestCommentViewpoint,
+    onArmComment: armCommentTool,
+  };
+
   return (
-    <main className="studio-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-          <span className="brand-name">Reviter</span>
-          <span className="brand-subtitle">browser Revit lab</span>
+    <main
+      className="studio"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const dropped = event.dataTransfer.files[0];
+        if (dropped) void processFile(dropped);
+      }}
+    >
+      {fileInputs}
+
+      {/* The phone layout brings its own 52px header; two of them stacked is
+          what the old 760px breakpoint did, and is what this replaces. */}
+      {!mobile && (
+      <header className="titlebar">
+        <div className="titlebar-brand">
+          {/* The logo is a static asset, not a Next.js image route. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/favicon.png" alt="" />
+          <span>Reviter</span>
         </div>
-        <div className="privacy-badge"><span />Local-only processing</div>
-      </header>
-
-      <section className={`workspace ${result ? "model-open" : ""}`}>
-        <aside className="control-rail">
-          {/* The pitch belongs on the empty page, not above a model you are
-              already working on. */}
-          {!result && (
-            <div className="rail-intro">
-              <p className="eyebrow">RVT → open geometry</p>
-              <h1>Inspect first.<br />Convert honestly.</h1>
-              <p>Verified metadata stays separate from experimental geometry recovery.</p>
+        {result && (
+          <>
+            <span className="titlebar-divider" />
+            <div className="file-chip">
+              <FileBox size={14} aria-hidden />
+              <b title={result.fileName}>{result.fileName}</b>
+              <span>{fileMeta}</span>
             </div>
-          )}
-
+          </>
+        )}
+        <div className="titlebar-right">
+          <span className="local-chip">
+            <ShieldCheck size={12} aria-hidden />
+            Local only
+          </span>
           <button
-            className={`drop-card ${dragging ? "is-dragging" : ""}`}
-            onClick={() => inputRef.current?.click()}
-            onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-            onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              const dropped = event.dataTransfer.files[0];
-              if (dropped) void processFile(dropped);
-            }}
             type="button"
-          >
-            <span className="drop-icon" aria-hidden="true">↗</span>
-            <span><strong>{file ? "Choose another Revit file" : "Drop a Revit file here"}</strong><small>.rvt · .rfa · .rte · .rft</small></span>
-          </button>
-          <input
-            ref={inputRef}
-            className="visually-hidden"
-            type="file"
-            accept=".rvt,.rfa,.rte,.rft"
-            onChange={(event) => {
-              const selected = event.target.files?.[0];
-              if (selected) void processFile(selected);
-              event.currentTarget.value = "";
-            }}
-          />
+            className="rv-icon-button bordered"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+            onClick={toggleTheme}
+          ><ThemeIcons size={15} /></button>
+        </div>
+      </header>
+      )}
 
-          <section className="rail-section local-library-section">
-            <div className="section-heading">
-              <span>Local family library</span>
-              <span>{familyLibrary ? familyLibrary.entries.length.toLocaleString() : "folder"}</span>
-            </div>
-            <button
-              type="button"
-              className="legacy-api-load"
-              onClick={() => familyInputRef.current?.click()}
-              disabled={familyBusy}
-            >
-              {familyBusy ? "Indexing family folder…" : "Choose family folder"}
-            </button>
-            <input
-              ref={familyInputRef}
-              className="visually-hidden"
-              type="file"
-              accept=".rfa,.txt"
-              multiple
-              {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
-              onChange={(event) => {
-                const selected = Array.from(event.target.files ?? []);
-                if (selected.length) void processFamilyFolder(selected);
-                event.currentTarget.value = "";
-              }}
-            />
-            <p className="privacy-note">{familyMessage}</p>
-            {familyLibrary && (
-              <>
-                <label className="model-search inline-search">
-                  <span>Search families</span>
-                  <input
-                    value={familySearch}
-                    onChange={(event) => setFamilySearch(event.target.value)}
-                    placeholder="manufacturer, voltage, type…"
-                  />
-                </label>
-                <div className="family-library-list">
-                  {familyMatches.slice(0, 12).map((entry) => (
-                    <button
-                      type="button"
-                      key={entry.fileName}
-                      onClick={() => void processFile(entry.sourceFile)}
-                      title={`Open ${entry.fileName}`}
-                    >
-                      <BlobThumbnail blob={entry.thumbnail} alt="" />
-                      <span>
-                        <strong>{entry.title}</strong>
-                        <small>
-                          {[entry.category, entry.manufacturer, entry.voltage]
-                            .filter(Boolean)
-                            .join(" · ") || entry.fileName}
-                        </small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </section>
-
-          <section className="rail-section dwg-preview-section">
-            <div className="section-heading"><span>DWG preview</span><span>local</span></div>
-            <button
-              type="button"
-              className="legacy-api-load"
-              onClick={() => dwgInputRef.current?.click()}
-            >
-              Choose DWG
-            </button>
-            <input
-              ref={dwgInputRef}
-              className="visually-hidden"
-              type="file"
-              accept=".dwg"
-              onChange={(event) => {
-                const selected = event.target.files?.[0];
-                if (selected) void processDwgFile(selected);
-                event.currentTarget.value = "";
-              }}
-            />
-            {dwgPreview && (
-              <div className="dwg-preview">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={dwgPreview.url} alt={`Embedded preview from ${dwgPreview.fileName}`} />
-                <small>
-                  {dwgPreview.fileName}
-                  {dwgPreview.width && dwgPreview.height
-                    ? ` · ${dwgPreview.width}×${dwgPreview.height}`
-                    : ""}
-                </small>
-              </div>
-            )}
-            {dwgError && <p className="privacy-note">{dwgError}</p>}
-          </section>
-
-          {phase !== "idle" && (
-            <div className="progress-card" aria-live="polite">
-              <div className="progress-heading">
-                <span>
-                  {phase === "ready"
-                    ? `Local conversion complete · ${formatElapsed(conversionElapsedSeconds)}`
-                    : phase === "error"
-                      ? `Conversion stopped · ${formatElapsed(conversionElapsedSeconds)}`
-                      : `Working locally · ${formatElapsed(conversionElapsedSeconds)}`}
-                </span>
-                <b>{Math.round(progress * 100)}%</b>
-              </div>
-              <div className="progress-track"><span style={{ width: `${Math.max(2, progress * 100)}%` }} /></div>
-              <p>{error ?? progressMessage}</p>
-            </div>
-          )}
-
-          {metadata && (
-            <section className="rail-section file-section">
-              <div className="section-heading"><span>File record</span><span className="verified-tag">verified</span></div>
-              <div className="file-record">
-                {/* Embedded CFB previews are local object URLs, not Next.js image assets. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {thumbnail ? <img src={thumbnail} alt="Embedded Revit preview" /> : <div className="thumbnail-fallback">RVT</div>}
-                <div><strong>{file?.name}</strong><span>{file ? formatBytes(file.size) : null}</span></div>
-              </div>
-              <dl className="metadata-grid">
-                <div><dt>Revit</dt><dd>{metadata.version}</dd></div>
-                <div><dt>Build</dt><dd>{metadata.build}</dd></div>
-                <div><dt>Locale</dt><dd>{metadata.locale}</dd></div>
-                <div><dt>Document</dt><dd title={metadata.documentId}>{metadata.documentId.slice(0, 8)}…</dd></div>
-                {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.title && (
-                  <div>
-                    <dt>Family type</dt>
-                    <dd>{(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.title}</dd>
-                  </div>
-                )}
-                {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.categories.length ? (
-                  <div>
-                    <dt>Category</dt>
-                    <dd>
-                      {(result?.partAtom ?? result?.readerDiagnostics?.partAtom)?.categories
-                        .map((item) => item.term)
-                        .join(", ")}
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-              {savedName && <p className="privacy-note">Original folder path withheld · saved as {savedName}</p>}
-            </section>
-          )}
-
-          {(metadata || result) && (
-          <section className="rail-section fidelity-section">
-            <div className="section-heading"><span>Fidelity ledger</span></div>
-            <FidelityRow label="File metadata" value={metadata ? "Verified" : "Awaiting file"} tone={metadata ? "good" : "off"} />
-            <FidelityRow label="OLE / CFB streams" value={result ? "Parsed" : "Awaiting file"} tone={result ? "good" : "off"} />
-            <FidelityRow
-              label="3D geometry"
-              value={geometrySource === "reference-model" ? "Paired reference model" : geometrySource === "reference" && comparison ? "IFC reference" : result?.method === "native-profile-recovery" ? "Native wall profiles" : result?.method === "partition-bounds-recovery" ? "RVT element bounds" : result ? "Experimental" : "Not evaluated"}
-              tone={geometrySource === "reference-model" || geometrySource === "reference" && comparison ? "good" : result ? "warn" : "off"}
-            />
-            <FidelityRow
-              label="Native meshes"
-              value={geometrySource === "reference-model" ? "From the reference" : result ? result.decoderCoverage.nativeMeshes.toLocaleString() : "Not evaluated"}
-              tone={geometrySource === "reference-model" ? "good" : result?.decoderCoverage.nativeMeshes ? "warn" : "off"}
-            />
-            <FidelityRow
-              label="RVT materials"
-              value={geometrySource === "reference-model" ? "From the reference" : result?.decoderCoverage.nativeMaterialDefinitions ? `${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} definitions` : result ? "Not decoded" : "Not evaluated"}
-              tone={geometrySource === "reference-model" ? "good" : result?.decoderCoverage.nativeMaterialDefinitions ? "warn" : "off"}
-            />
-            <FidelityRow
-              label="Placed instances"
-              value={result?.stats.placedInstances
-                ? `${result.stats.placedInstances.toLocaleString()} oriented`
-                : result ? "Not placed" : "Not evaluated"}
-              tone={result?.stats.placedInstances ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Sketch boundaries"
-              value={result?.stats.sketchBoundaryElements
-                ? `${result.stats.sketchBoundaryElements.toLocaleString()} extruded`
-                : result ? "Not recovered" : "Not evaluated"}
-              tone={result?.stats.sketchBoundaryElements ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Native solids"
-              value={result?.stats.nativeSolids
-                ? `${result.stats.nativeSolids.toLocaleString()} rebuilt`
-                : result ? "Not rebuilt" : "Not evaluated"}
-              tone={result?.stats.nativeSolids ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Element types"
-              value={result?.stats.typedElements
-                ? `${result.stats.typedElements.toLocaleString()} linked · ${(result.stats.namedTypeElements ?? 0).toLocaleString()} named`
-                : result ? "Not decoded" : "Not evaluated"}
-              tone={result?.stats.typedElements ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Native surfaces"
-              value={result?.stats.surfaces?.planes
-                ? `${result.stats.surfaces.planes.toLocaleString()} planes · ${result.stats.surfaces.cylinders.toLocaleString()} cylinders`
-                : result ? "Not decoded" : "Not evaluated"}
-              tone={result?.stats.surfaces?.planes ? "warn" : "off"}
-            />
-            <FidelityRow
-              label="Element parameters"
-              value={result?.stats.parameterElements
-                ? `${result.stats.parameterElements.toLocaleString()} elements`
-                : result ? "Not decoded" : "Not evaluated"}
-              tone={result?.stats.parameterElements ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Element objects"
-              value={result?.stats.elementObjects
-                ? `${result.stats.elementObjects.toLocaleString()} chained`
-                : result ? "Not chained" : "Not evaluated"}
-              tone={result?.stats.elementObjects ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Container streams"
-              value={result?.coverage
-                ? `${result.coverage.fullStreams} full · ${result.coverage.partialStreams} partial · ${result.coverage.undecodedStreams} undecoded`
-                : result ? "Not evaluated" : "Not evaluated"}
-              tone={result?.coverage?.undecodedStreams ? "warn" : result?.coverage ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Embedded schema"
-              value={result?.schema
-                ? `${result.schema.taggedClasses.length} tagged classes`
-                : result ? "Not found" : "Not evaluated"}
-              tone={result?.schema?.taggedClasses.length ? "good" : "off"}
-            />
-            <FidelityRow
-              label="Revit categories"
-              value={result?.decoderCoverage.nativeCategorisedElements
-                ? `${result.decoderCoverage.nativeCategorisedElements.toLocaleString()} native`
-                : result ? "Not decoded" : "Not evaluated"}
-              tone={result?.decoderCoverage.nativeCategorisedElements ? "good" : "off"}
-            />
-            <FidelityRow
-              label="BIM semantics"
-              value={geometrySource === "reference" && comparison ? `${comparison.reference.elementCount.toLocaleString()} IFC` : result?.stats.parameterElements ? "Categories and parameters" : result?.decoderCoverage.nativeCategorisedElements ? "Categories only" : "Unavailable"}
-              tone={geometrySource === "reference" && comparison ? "good" : result?.decoderCoverage.nativeCategorisedElements ? "warn" : "off"}
-            />
-          </section>
-          )}
-
+      {mobile ? (
+        <MobileShell
+          themeIcons={<ThemeIcons size={16} />}
+          onTheme={toggleTheme}
+          fileName={result?.fileName ?? "Reviter"}
+          statusLine={busy ? `${Math.round(progress * 100)}% · ${statusText.toLowerCase()}` : statusText}
+          viewport={
+            canvas
+          }
+          activeTool={navTool}
+          actionTool={actionTool}
+          onTool={selectViewerTool}
+          sheet={sheet}
+          onSheet={setSheet}
+          selectedTitle={selectedTitle}
+          selectedSubtitle={selectedSubtitle}
+          hasSelection={Boolean(selectedRecord)}
+          records={visibleModelRecords}
+          selectedElementId={selectedElementId}
+          onSelectElement={setSelectedElementId}
+          properties={propertyRows}
+          emptyNote={browserEmptyNote}
+          metricCards={metricCards}
+          checks={checks}
+          emptyState={emptyState}
+          modelOpen={Boolean(result)}
+          {...commentPanelProps}
+        />
+      ) : (
+        <>
           {result && (
-            <section className="rail-section reference-section">
-              <div className="section-heading"><span>Paired IFC export</span><span className={comparison ? `fixture-${comparison.status}` : ""}>{comparison ? comparison.status : "optional"}</span></div>
-              <p>{comparison
-                ? `${comparison.reference.geometricAlignedElementCount?.toLocaleString() ?? 0} of ${comparison.reference.geometricComparedElementCount?.toLocaleString() ?? 0} matched elements align within ${comparison.reference.geometryToleranceFeet?.toFixed(1) ?? "0.5"} ft. Open Overlay to inspect the differences.`
-                : "Pair this model's IFC export to check the recovery against it, and to unlock the overlay view."}</p>
-              <button
-                type="button"
-                onClick={() => ifcInputRef.current?.click()}
-                disabled={referencePhase === "reading"}
-                title={referencePhase === "reading" ? "Reading the IFC export in this tab" : undefined}
-              >
-                {referencePhase === "reading" ? "Analyzing IFC…" : comparison ? "Choose another IFC" : "Pair IFC reference"}
-              </button>
-              <input
-                ref={ifcInputRef}
-                className="visually-hidden"
-                type="file"
-                accept=".ifc"
-                onChange={(event) => {
-                  const selected = event.target.files?.[0];
-                  if (selected) void processIfcFile(selected);
-                  event.currentTarget.value = "";
-                }}
-              />
-              {referencePhase !== "idle" && (
-                <div className="fixture-progress" aria-live="polite">
-                  <div><span>{referenceError ?? referenceMessage}</span><b>{Math.round(referenceProgress * 100)}%</b></div>
-                  <i><span style={{ width: `${Math.max(2, referenceProgress * 100)}%` }} /></i>
-                </div>
-              )}
-              {result.elementIndex && (
-                <small>{result.elementIndex.uniqueElementIds.length.toLocaleString()} indexed IDs · {result.elementIndex.partitionRecordIds.length.toLocaleString()} partition IDs</small>
-              )}
-            </section>
+            <ViewerToolbar
+              sources={sources}
+              geometrySource={geometrySource}
+              onSource={selectGeometrySource}
+              activeTool={navTool}
+              actionTool={actionTool}
+              onTool={selectViewerTool}
+              cameraPreset={cameraRequest.preset}
+              onCameraPreset={requestCamera}
+              renderMode={renderMode}
+              onRenderMode={setRenderMode}
+              leftOpen={leftOpen}
+              rightOpen={rightOpen}
+              dockOpen={dockOpen}
+              onLeft={() => setLeftOpen((open) => !open)}
+              onRight={() => setRightOpen((open) => !open)}
+              onDock={() => setDockOpen((open) => !open)}
+              onOpen={openPicker}
+              onCloseModel={closeModel}
+            />
           )}
-        </aside>
 
-        <section className={`stage ${result ? "viewer-active" : ""}`}>
-          <div className="stage-toolbar">
-            <div className="stage-title">
-              <span className={`status-dot status-${phase}`} />
-              <div><strong>{result ? result.fileName : "No model open"}</strong><span>{!result ? "" : geometrySource === "reference-model" ? `paired reference${referenceModelName ? ` · ${referenceModelName}` : ""}` : geometrySource === "overlay" && comparison ? `${formatNumber(result.stats.candidatesUsed)} recovered · ${formatNumber(comparison.reference.elementCount)} in the export` : geometrySource === "reference" && comparison ? `${formatNumber(comparison.reference.elementCount)} typed IFC elements` : result.method === "native-profile-recovery" ? `${formatNumber(result.stats.candidatesUsed)} native ArcWall profiles` : result.method === "partition-bounds-recovery" ? `${formatNumber(result.stats.candidatesUsed)} RVT element envelopes in scene` : `${formatNumber(result.stats.candidatesUsed)} recovered diagnostic centerlines`}</span></div>
-            </div>
-            <div className="toolbar-controls">
-              {/* Every source this viewer has is on the switcher whether or not
-                  it can be reached. Hiding the two that need something first
-                  made a model with no paired export look like a model that
-                  could not have one, so each unavailable source says what would
-                  turn it on instead. */}
-              {result && (
-                <div className="segmented-control source-control" aria-label="Geometry source">
-                  <ToolButton
-                    className={geometrySource === "reference-model" ? "active" : ""}
-                    title={referenceModelName
-                      ? `Paired reference: ${referenceModelName}`
-                      : "Pair a GLB or glTF conversion of the same building"}
-                    onClick={() => {
-                      if (referenceModelAvailable) {
-                        setGeometrySource("reference-model");
-                        setSelectedElementId(null);
-                      } else referenceModelInputRef.current?.click();
-                    }}
-                  >Reference model</ToolButton>
-                  <ToolButton
-                    className={geometrySource === "reference" ? "active" : ""}
-                    reason={comparison?.referenceMeshes.length
-                      ? null
-                      : referencePhase === "reading" ? "Reading the IFC export now" : "Pair an IFC export to enable"}
-                    onClick={() => { setGeometrySource("reference"); setSelectedElementId(null); }}
-                  >IFC reference</ToolButton>
-                  <ToolButton
-                    className={geometrySource === "overlay" ? "active" : ""}
-                    reason={comparison?.referenceMeshes.length
-                      ? null
-                      : referencePhase === "reading" ? "Reading the IFC export now" : "Pair an IFC export to compare it with the recovery"}
-                    title="Recovered model over the paired export: aligned IFC geometry is ghosted and geometric differences are red"
-                    onClick={() => setGeometrySource("overlay")}
-                  >Overlay</ToolButton>
-                  <ToolButton
-                    className={geometrySource === "recovered" ? "active diagnostic-active" : ""}
-                    onClick={() => setGeometrySource("recovered")}
-                  >RVT diagnostic</ToolButton>
-                </div>
-              )}
-            </div>
-          </div>
+          <div className="workarea">
+            {result && leftOpen && (
+              <BrowserDock
+                tab={browserTab}
+                onTab={(tab) => {
+                  setBrowserTab(tab);
+                  setBrowserSearch("");
+                }}
+                objectCount={visibleModelRecords.length}
+                categoryCount={visibleCategoryRows.length}
+                commentCount={modelComments.length}
+                search={browserSearch}
+                onSearch={setBrowserSearch}
+                records={visibleModelRecords}
+                selectedElementId={selectedElementId}
+                onSelect={setSelectedElementId}
+                categories={visibleCategoryRows}
+                emptyNote={browserEmptyNote}
+                hiddenCategories={hiddenCategories}
+                onToggleCategory={toggleCategory}
+                onShowAllCategories={() => setHiddenCategories(new Set())}
+                {...commentPanelProps}
+              />
+            )}
 
-          <input
-            ref={referenceModelInputRef}
-            type="file"
-            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
-            hidden
-            onChange={(event) => {
-              pairReferenceModel(event.target.files?.[0]);
-              event.target.value = "";
-            }}
-          />
+            <div className="stage">
+              {result ? (
+                <div className={`viewport ${renderMode === "technical" ? "shaded" : "xray"}`}>
+                  {canvas}
 
-          <div className={`viewport viewport-${renderMode} ${geometrySource === "reference-model" ? "viewport-reference-model" : ""}`}>
-            {result ? (
-              <>
-                <ModelCanvas
-                  result={result}
-                  comparison={comparison}
-                  source={geometrySource}
-                  referenceModelUrl={referenceModelUrl}
-                  renderMode={renderMode}
-                  navigationMode={navigationMode}
-                  cameraRequest={cameraRequest}
-                  measuring={activeTool === "measure"}
-                  sectioning={activeTool === "section"}
-                  onSectionClear={() => setActiveTool("orbit")}
-                  exploding={activeTool === "explode"}
-                  commenting={activeTool === "markup" && markupTool === "comment"}
-                  commentEditing={activeTool === "markup"}
-                  comments={modelComments}
-                  onCreateComment={createModelComment}
-                  onUpdateComment={updateModelComment}
-                  onDeleteComment={deleteModelComment}
-                  walking={walking}
-                  onWalkingChange={handleWalkingChange}
-                  selectedElementId={selectedElementId}
-                  onSelectElement={setSelectedElementId}
-                  hiddenElementIds={hiddenElementIds}
-                  onHoverElement={setHoveredElementId}
-                  onCanvasMenu={setCanvasMenu}
-                  focusRequest={focusRequest}
-                />
-                <MarkupOverlay
-                  key={`${result.fileName}:${result.byteLength}`}
-                  active={activeTool === "markup"}
-                  tool={markupTool}
-                  commentCount={modelComments.length}
-                  onToolChange={setMarkupTool}
-                  onDone={() => setActiveTool("orbit")}
-                  onCancel={cancelMarkup}
-                />
-                <nav className="viewer-commandbar" aria-label="Model tools">
-                  <ToolButton
-                    className={viewerPanel === "model" ? "active" : ""}
-                    onClick={() => setViewerPanel((current) => current === "model" ? "none" : "model")}
-                    pressed={viewerPanel === "model"}
-                    reason={panelReason}
-                  ><i>☷</i>Objects</ToolButton>
-                  <ToolButton
-                    className={viewerPanel === "categories" ? "active" : ""}
-                    onClick={() => setViewerPanel((current) => current === "categories" ? "none" : "categories")}
-                    pressed={viewerPanel === "categories"}
-                    reason={panelReason}
-                    title="Turn categories on and off"
-                  ><i>◑</i>Categories</ToolButton>
-                  <ToolButton
-                    className={viewerPanel === "properties" ? "active" : ""}
-                    onClick={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
-                    pressed={viewerPanel === "properties"}
-                    reason={panelReason}
-                  ><i>ⓘ</i>Properties</ToolButton>
-                  <ToolButton
-                    className={detailsOpen ? "active" : ""}
-                    onClick={() => setDetailsOpen((current) => !current)}
-                    pressed={detailsOpen}
-                  ><i>▤</i>Report & exports</ToolButton>
-                  <span className="command-divider" />
-                  <span className="viewer-fidelity-chip">{geometrySource === "reference-model" ? "paired reference model" : result.decoderCoverage.geometryFidelity.replaceAll("-", " ")}</span>
-                </nav>
-
-                {viewerPanel === "model" && (
-                  <aside className="viewer-sidepanel model-browser-panel" aria-label="Objects">
-                    <div className="viewer-panel-heading"><div><strong>Objects</strong><span>{visibleModelRecords.length.toLocaleString()}{visibleModelRecords.length === solidRecords.length ? "" : ` of ${solidRecords.length.toLocaleString()}`} in the scene</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close objects">×</button></div>
-                    <label className="model-search"><span>Filter</span><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, category, or type" /></label>
-                    <ObjectList
-                      records={visibleModelRecords}
-                      selectedElementId={selectedElementId}
-                      onSelect={setSelectedElementId}
+                  {actionTool === "markup" && (
+                    <MarkupToolbar
+                      tool={markupTool}
+                      color={markupColor}
+                      weight={markupWeight}
+                      text={markupText}
+                      strokeCount={markup.length}
+                      canUndo={markupUndo.length > 0}
+                      canRedo={markupRedo.length > 0}
+                      walking={walking}
+                      onTool={setMarkupTool}
+                      onColor={setMarkupColor}
+                      onWeight={setMarkupWeight}
+                      onText={setMarkupText}
+                      onUndo={undoMarkup}
+                      onRedo={redoMarkup}
+                      onClear={clearMarkup}
+                      onDone={() => setActionTool(null)}
                     />
-                  </aside>
-                )}
+                  )}
 
-                {viewerPanel === "categories" && (
-                  <aside className="viewer-sidepanel category-panel" aria-label="Categories">
-                    <div className="viewer-panel-heading"><div><strong>Categories</strong><span>{visibleCategoryRows.length}{visibleCategoryRows.length === categoryRows.length ? "" : ` of ${categoryRows.length}`} in the scene{hiddenCategories.size ? ` · ${hiddenCategories.size} off` : ""}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close categories">×</button></div>
-                    <label className="model-search"><span>Filter</span><input value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} placeholder="Category name" /></label>
-                    <div className="category-list" role="list">
-                      {visibleCategoryRows.map((row) => {
-                        const hidden = hiddenCategories.has(row.name);
-                        return (
-                          <div className={`category-row${hidden ? " category-off" : ""}`} role="listitem" key={row.name}>
-                            <button
-                              className="category-bulb"
-                              onClick={() => toggleCategory(row.name)}
-                              aria-pressed={!hidden}
-                              title={hidden ? `Turn ${row.name} on` : `Turn ${row.name} off`}
-                            >{hidden ? "○" : "●"}</button>
-                            <span>{row.name}</span>
-                            <em>{row.count.toLocaleString()}</em>
-                          </div>
-                        );
-                      })}
+                  {selectedRecord && (
+                    <button type="button" className="viewport-selection" onClick={() => setRightOpen(true)}>
+                      <b>{selectedTitle}</b>
+                      <span>{selectedSubtitle}</span>
+                    </button>
+                  )}
+
+                  {commentToolArmed && (
+                    <div className="comment-banner" role="status">
+                      Click a surface to pin a comment
+                      <button type="button" onClick={() => setActionTool(null)}>Cancel</button>
                     </div>
-                    <p>
-                      <ToolButton
-                        className="category-reset"
-                        reason={hiddenCategories.size ? null : "Every category is already on"}
-                        onClick={() => setHiddenCategories(new Set())}
-                      >Turn every category back on</ToolButton>
-                    </p>
-                  </aside>
-                )}
+                  )}
 
-                {viewerPanel === "properties" && (
-                  <aside className="viewer-sidepanel properties-panel" aria-label="Element properties">
-                    {/* The header is the object, the way every CAD properties
-                        palette names it — "Curtain Panel", not "Properties". The
-                        id is which one, which is the subtitle's job. */}
-                    <div className="viewer-panel-heading"><div><strong>{selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection"}</strong><span>{selectedRecord ? `Object ${selectedRecord.elementId}` : "Nothing picked"}</span></div><button onClick={() => setViewerPanel("none")} aria-label="Close properties">×</button></div>
-                    {selectedRecord && selectedDimensions ? (
-                      <>
-                        <dl className="property-table">
-                          {selectedPropertyRows.map((row) => (
-                            <div key={row.key}><dt>{row.label}</dt><dd title={row.value}>{row.value}</dd></div>
-                          ))}
-                        </dl>
-                        <div className="property-actions">
+                  {hoveredRecord && hoveredRecord.elementId !== selectedElementId && (
+                    <div className="hover-readout" aria-live="polite">
+                      {hoveredRecord.categoryName ?? "Uncategorised"}
+                      <span>{hoveredRecord.elementId}</span>
+                    </div>
+                  )}
+
+                  {/* Legend and unit stamp are one row, so a long legend pushes
+                      the stamp along instead of colliding with it. */}
+                  <div className="viewport-footer">
+                    <div className="viewport-legend">
+                      {legend.map((entry) => (
+                        <span key={entry.label}><i className={`legend-${entry.tone}`} />{entry.label}</span>
+                      ))}
+                      {geometrySource !== "reference-model" && (
+                        <span><i className="legend-grid" />Grid</span>
+                      )}
+                    </div>
+                    <span className="viewport-stamp">{stamp}</span>
+                  </div>
+
+                  {/* The right-click menu. A read-only viewer has no last
+                      command to repeat and nothing to paste, so what survives
+                      from a CAD context menu is four questions about the object
+                      under the cursor and two about the view. */}
+                  {canvasMenu && (
+                    <div
+                      className="canvas-menu"
+                      ref={canvasMenuRef}
+                      role="menu"
+                      aria-label="Canvas actions"
+                      style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 2 : 4)}
+                    >
+                      {canvasMenu.elementId == null ? (
+                        <>
                           <button
                             type="button"
-                            onClick={requestZoomToSelection}
+                            role="menuitem"
+                            onClick={() => {
+                              setCanvasMenu(null);
+                              setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1, fit: true }));
+                            }}
+                          >Zoom extents</button>
+                          <ToolButton
+                            role="menuitem"
+                            reason={selectedElementId == null ? "Nothing is picked" : null}
+                            onClick={() => { setCanvasMenu(null); setSelectedElementId(null); }}
+                          >Clear selection</ToolButton>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => { setCanvasMenu(null); requestZoomToSelection(); }}
                           >Zoom to object</button>
                           <button
                             type="button"
-                            onClick={() => { void copySelectedProperties(); }}
-                            aria-live="polite"
-                          >{
-                            propertyCopyFeedback?.elementId === selectedRecord.elementId
-                              ? propertyCopyFeedback.status === "copied" ? "Copied" : "Copy failed"
-                              : "Copy properties"
-                          }</button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="property-empty"><b>Pick an object in the viewport</b><p>Click a recovered solid, or choose one from the Objects list.</p></div>
-                    )}
-                  </aside>
-                )}
-
-                {/* One control for orientation, named the way a drawing package
-                    names it. A three-faced cube and a separate 3D/Plan switch
-                    held the same idea in two places and neither said "SE
-                    isometric", which is what people arrive knowing. */}
-                <div className="view-style-bar">
-                  <div className="view-menu">
-                    <button
-                      className={`view-control-button${viewMenuOpen ? " open" : ""}`}
-                      onClick={() => setViewMenuOpen((current) => !current)}
-                      aria-expanded={viewMenuOpen}
-                      aria-haspopup="listbox"
-                    >{CAMERA_PRESETS.find((entry) => entry.preset === cameraRequest.preset)?.label ?? "View"}</button>
-                    {viewMenuOpen && (
-                      <div className="view-menu-list" role="listbox" aria-label="Camera orientation">
-                        {CAMERA_PRESETS.map((entry) => (
+                            role="menuitem"
+                            onClick={() => {
+                              setCanvasMenu(null);
+                              void writeClipboardText(String(canvasMenu.elementId));
+                            }}
+                          >Copy object ID<em>{canvasMenu.elementId}</em></button>
                           <button
-                            key={entry.preset}
-                            role="option"
-                            aria-selected={cameraRequest.preset === entry.preset}
-                            className={cameraRequest.preset === entry.preset ? "selected" : ""}
-                            onClick={() => requestCamera(entry.preset)}
-                          >{entry.label}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="render-switch" aria-label="Visual style">
-                    <button className={renderMode === "technical" ? "active" : ""} onClick={() => setRenderMode("technical")}>Shaded</button>
-                    <button className={renderMode === "xray" ? "active" : ""} onClick={() => setRenderMode("xray")}>X-ray</button>
-                  </div>
-                </div>
-
-                <ViewerToolbar
-                  activeTool={activeTool}
-                  propertiesActive={viewerPanel === "properties"}
-                  onTool={selectViewerTool}
-                  onFit={() => setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1, fit: true }))}
-                  onProperties={() => setViewerPanel((current) => current === "properties" ? "none" : "properties")}
-                  onHome={() => {
-                    setActiveTool("orbit");
-                    requestCamera(DEFAULT_CAMERA_PRESET);
-                  }}
-                />
-
-                {/* The right-click menu. A read-only viewer has no last command
-                    to repeat and nothing to paste, so what survives from a CAD
-                    context menu is four questions about the object under the
-                    cursor and two about the view. Every entry calls a control
-                    that already exists elsewhere in this file rather than a
-                    second copy of it. */}
-                {canvasMenu && (
-                  <div
-                    className="canvas-menu"
-                    ref={canvasMenuRef}
-                    role="menu"
-                    aria-label="Canvas actions"
-                    style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 2 : 4)}
-                  >
-                    {canvasMenu.elementId == null ? (
-                      <>
-                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setCameraRequest((current) => ({ ...current, sequence: current.sequence + 1, fit: true })); }}>Zoom extents</button>
-                        <ToolButton
-                          role="menuitem"
-                          reason={selectedElementId == null ? "Nothing is picked" : null}
-                          onClick={() => { setCanvasMenu(null); setSelectedElementId(null); }}
-                        >Clear selection</ToolButton>
-                      </>
-                    ) : (
-                      <>
-                        <button role="menuitem" onClick={() => { setCanvasMenu(null); requestZoomToSelection(); }}>Zoom to object</button>
-                        <button role="menuitem" onClick={() => { setCanvasMenu(null); void navigator.clipboard?.writeText(String(canvasMenu.elementId)); }}>Copy object ID<em>{canvasMenu.elementId}</em></button>
-                        <button role="menuitem" onClick={() => { setCanvasMenu(null); setViewerPanel("properties"); }}>Show properties</button>
-                        <ToolButton
-                          role="menuitem"
-                          reason={canvasMenuCategory ? null : "This object has no category row"}
-                          onClick={() => { setCanvasMenu(null); if (canvasMenuCategory) toggleCategory(canvasMenuCategory); }}
-                        >Hide this category<em>{canvasMenuCategory}</em></ToolButton>
-                      </>
-                    )}
-                  </div>
-                )}
-                {hoveredRecord && hoveredRecord.elementId !== selectedElementId && (
-                  <div className="hover-readout" aria-live="polite">
-                    {hoveredRecord.categoryName ?? "Uncategorised"}<span>{hoveredRecord.elementId}</span>
-                  </div>
-                )}
-                {selectedRecord && <button className="selection-chip" onClick={() => setViewerPanel("properties")}>{selectedRecord.categoryName ?? "Uncategorised"} {selectedRecord.elementId}<span>View properties</span></button>}
-                <div className="viewport-legend">
-                  {geometrySource === "reference-model" ? (
-                    <span><i className="legend-cyan" />Reference source meshes</span>
-                  ) : geometrySource === "overlay" && comparison ? (
-                    <><span><i className="legend-amber" />Recovered</span><span><i className="legend-cyan" />Aligned within 0.5 ft</span><span><i className="legend-missing" />Geometric difference</span><span><i className="legend-context" />Unmatched IFC context</span></>
-                  ) : geometrySource === "reference" && comparison ? (
-                    <><span><i className="legend-cyan" />Geometrically aligned</span><span><i className="legend-missing" />Geometric difference</span><span><i className="legend-context" />IFC context</span></>
-                  ) : (
-                    <span><i className="legend-amber" />{result.method === "native-profile-recovery" ? "Native ArcWall profiles · approximate solids" : result.method === "partition-bounds-recovery" ? "RVT element envelopes" : "Rejected diagnostic recovery"}</span>
+                            type="button"
+                            role="menuitem"
+                            onClick={() => { setCanvasMenu(null); setRightOpen(true); }}
+                          >Show properties</button>
+                          <ToolButton
+                            role="menuitem"
+                            reason={canvasMenuCategory ? null : "This object has no category row"}
+                            onClick={() => {
+                              setCanvasMenu(null);
+                              if (canvasMenuCategory) toggleCategory(canvasMenuCategory);
+                            }}
+                          >Hide this category<em>{canvasMenuCategory}</em></ToolButton>
+                        </>
+                      )}
+                    </div>
                   )}
-                  {geometrySource !== "reference-model" && <span><i className="legend-grid" />Model grid</span>}
                 </div>
-                <div className="viewport-stamp">{geometrySource === "reference-model" ? "paired reference model · as supplied" : geometrySource === "overlay" && comparison ? "recovery over paired IFC · feet · z-up" : geometrySource === "reference" && comparison ? "paired IFC ground truth · metres · z-up" : result.method === "native-profile-recovery" ? "RVT 2023 ArcWall profiles · feet · z-up" : result.method === "partition-bounds-recovery" ? "RVT duplicated-bounds records · feet · z-up" : "rejected heuristic · feet · z-up"}</div>
-              </>
-            ) : (
-              <div className="empty-stage">
-                <div className="empty-orbit" aria-hidden="true"><span /><span /><b>R</b></div>
-                <h2>Your model stays<br />on your machine.</h2>
-                <p>Drop a Revit file on the left, or open one here. It is converted in a browser worker and never uploaded.</p>
-                <button onClick={() => inputRef.current?.click()}>Open a local model</button>
-              </div>
+              ) : emptyState}
+
+              {result && dockOpen && (
+                <ReportDock
+                  tab={reportTab}
+                  onTab={setReportTab}
+                  onClose={() => setDockOpen(false)}
+                  result={result}
+                  comparison={comparison}
+                  privateFileInfo={privateFileInfo}
+                  metricCards={metricCards}
+                  checks={checks}
+                  fileRecord={fileRecord}
+                  exports={exportActions}
+                  exporting={exporting}
+                  recoveredElementIds={recoveredElementIds}
+                  drawnElementIds={displayedElementIds}
+                  exportDisclaimer={exportDisclaimer}
+                  onPairIfc={() => ifcInputRef.current?.click()}
+                  onPairReferenceModel={() => referenceModelInputRef.current?.click()}
+                  pairingStatus={referencePhase === "idle"
+                    ? null
+                    : `${referenceError ?? referenceMessage} · ${Math.round(referenceProgress * 100)}%`}
+                  ifcPairingLabel={referencePhase === "reading"
+                    ? "Analyzing IFC…"
+                    : comparison ? "Choose another IFC" : "Pair IFC export"}
+                  referenceModelLabel={referenceModelName
+                    ? `Reference: ${referenceModelName}`
+                    : "Pair reference model"}
+                  onOpenFile={(selected) => { void processFile(selected); }}
+                />
+              )}
+            </div>
+
+            {result && rightOpen && (
+              <PropertiesDock
+                title={selectedTitle}
+                subtitle={selectedSubtitle}
+                rows={propertyRows}
+                copyLabel={copyFeedback?.elementId === selectedRecord?.elementId
+                  ? copyFeedback?.label ?? "Copy"
+                  : "Copy"}
+                evidenceOpen={evidenceOpen}
+                evidenceSummary={evidenceSummary}
+                evidenceRows={evidenceRows}
+                onClose={() => setRightOpen(false)}
+                onZoom={requestZoomToSelection}
+                onCopy={() => { void copySelectedProperties(); }}
+                onToggleEvidence={() => setEvidenceOpen((open) => !open)}
+              />
             )}
           </div>
 
-          {result && detailsOpen && (
-            <div className="results-dock">
-              {comparison && (
-                <RegressionPanel
-                  comparison={comparison}
-                  recoveredElementIds={recoveredElementIds}
-                  drawnElementIds={displayedElementIds}
-                />
-              )}
-              <section className="result-summary">
-                <p className="eyebrow">Recovery summary</p>
-                <div className="metric-row">
-                  <div><strong>{formatNumber(result.stats.candidatesFound)}</strong><span>records recovered</span></div>
-                  <div><strong>{formatNumber(result.stats.candidatesUsed)}</strong><span>drawn in the scene</span></div>
-                  <div><strong>{formatNumber(result.stats.triangleCount)}</strong><span>triangles</span></div>
-                  <div><strong>{(result.stats.durationMs / 1_000).toFixed(1)}s</strong><span>convert time</span></div>
-                </div>
-                <div className="level-bands">
-                  <span>Dominant elevations</span>
-                  {result.levels.slice(0, 5).map((level) => <b key={level.elevation}>{level.elevation.toFixed(1)}′ <small>{level.candidates}</small></b>)}
-                </div>
-              </section>
-
-              {result.coverage && (
-                <section className="coverage-panel">
-                  <div className="section-heading">
-                    <span>Container streams</span>
-                    <span>{result.coverage.fullStreams} full · {result.coverage.partialStreams} partial · {result.coverage.undecodedStreams} undecoded</span>
-                  </div>
-                  <table className="coverage-table">
-                    <tbody>
-                      {result.coverage.streams.map((stream) => (
-                        <tr key={stream.path} className={`coverage-${stream.depth}`}>
-                          <td>{stream.path}</td>
-                          <td>{formatBytes(stream.storedBytes)}</td>
-                          <td>{stream.inflatedBytes == null ? "—" : formatBytes(stream.inflatedBytes)}</td>
-                          <td>{stream.depth}</td>
-                          <td title={stream.note}>{stream.note}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="export-disclaimer">Depth is graded per stream rather than weighted by bytes: the partition stream is most of the file, so counting it as covered because a decoder reads part of it would overstate the result.</p>
-                </section>
-              )}
-
-              {result.schema && result.schema.taggedClasses.length > 0 && (
-                <section className="coverage-panel">
-                  <div className="section-heading">
-                    <span>Embedded schema · Formats/Latest</span>
-                    <span>{result.schema.taggedClasses.length} tagged classes{result.schema.rejectedCandidates ? ` · ${result.schema.rejectedCandidates} rejected` : ""}</span>
-                  </div>
-                  <label className="model-search inline-search"><span>Filter</span>
-                    <input value={schemaSearch} onChange={(event) => setSchemaSearch(event.target.value)} placeholder="Class or base class, e.g. Wall" />
-                  </label>
-                  <table className="coverage-table">
-                    <tbody>
-                      {result.schema.taggedClasses
-                        .filter((entry) => matchesFilter(schemaSearch, entry.name, entry.parent))
-                        .slice(0, 60)
-                        .map((entry) => (
-                          <tr key={`${entry.tag}-${entry.name}`}>
-                            <td>{entry.name}</td>
-                            <td>0x{entry.tag.toString(16).padStart(4, "0")}</td>
-                            <td>{entry.parent}</td>
-                            <td>{entry.version == null ? "—" : `v${entry.version}`}</td>
-                            <td>{entry.declaredFieldCount == null ? "—" : `${entry.declaredFieldCount} field${entry.declaredFieldCount === 1 ? "" : "s"} declared`}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                  <p className="export-disclaimer">Class names, serialization tags, and base classes are decoded from the file. Field lists are declared but not walked — their layout does not close across the corpus, so they are counted, not invented.</p>
-                </section>
-              )}
-
-              {privateFileInfo && (
-                <section className="coverage-panel private-metadata-panel">
-                  <div className="section-heading">
-                    <span>Local-only file metadata</span>
-                    <span>excluded from exports</span>
-                  </div>
-                  <table className="coverage-table">
-                    <tbody>
-                      <tr><td>Worksharing</td><td>{privateFileInfo.worksharing ?? "—"}</td></tr>
-                      <tr><td>Username</td><td>{privateFileInfo.username ?? "—"}</td></tr>
-                      <tr><td>Central model path</td><td>{privateFileInfo.centralModelPath ?? "—"}</td></tr>
-                      <tr><td>Last save path</td><td>{privateFileInfo.lastSavePath ?? "—"}</td></tr>
-                      <tr><td>Central identity</td><td>{privateFileInfo.centralModelIdentity ?? "—"}</td></tr>
-                      <tr><td>Document GUID</td><td>{privateFileInfo.uniqueDocumentGuid ?? "—"}</td></tr>
-                      <tr>
-                        <td>Document increment</td>
-                        <td>{privateFileInfo.uniqueDocumentIncrements ?? "—"}</td>
-                      </tr>
-                      <tr>
-                        <td>Saved to central</td>
-                        <td>
-                          {privateFileInfo.allLocalChangesSavedToCentral == null
-                            ? "—"
-                            : privateFileInfo.allLocalChangesSavedToCentral ? "Yes" : "No"}
-                        </td>
-                      </tr>
-                      <tr><td>Open workset default</td><td>{privateFileInfo.openWorksetDefault ?? "—"}</td></tr>
-                      <tr><td>Build architecture</td><td>{privateFileInfo.architecture ?? "—"}</td></tr>
-                      <tr><td>Locale</td><td>{privateFileInfo.locale ?? "—"}</td></tr>
-                    </tbody>
-                  </table>
-                  <p className="export-disclaimer">
-                    Paths and usernames are held only in this component state and are not
-                    attached to the conversion result or JSON audit.
-                  </p>
-                </section>
-              )}
-
-              <section className="coverage-panel omniclass-panel">
-                <div className="section-heading">
-                  <span>Bundled OmniClass browser</span>
-                  <span>{omniClass ? `${omniClass.length.toLocaleString()} rows` : "optional"}</span>
-                </div>
-                {!omniClass ? (
-                  <button
-                    type="button"
-                    className="legacy-api-load"
-                    disabled={omniBusy}
-                    onClick={() => void loadOmniClass()}
-                  >
-                    {omniBusy ? "Loading classifications…" : "Load OmniClass editions"}
-                  </button>
-                ) : (
-                  <>
-                    <label className="model-search inline-search">
-                      <span>Number, title, or category ID</span>
-                      <input
-                        value={omniSearch}
-                        onChange={(event) => setOmniSearch(event.target.value)}
-                        placeholder="23.10, retaining wall…"
-                      />
-                    </label>
-                    <table className="coverage-table">
-                      <tbody>
-                        {omniMatches.map((item) => (
-                          <tr key={`${item.number}-${item.title}-${item.categoryId ?? ""}`}>
-                            <td>{item.number}</td>
-                            <td>{item.title}</td>
-                            <td>Level {item.level}</td>
-                            <td>{item.categoryId ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-                {omniError && <p className="export-disclaimer">{omniError}</p>}
-              </section>
-
-              <section className="coverage-panel shared-parameter-panel">
-                <div className="section-heading">
-                  <span>Shared-parameter manager</span>
-                  <span>{sharedFiles.length ? `${sharedFiles.length} files` : "local files"}</span>
-                </div>
-                <button
-                  type="button"
-                  className="legacy-api-load"
-                  onClick={() => sharedInputRef.current?.click()}
-                >
-                  Choose shared-parameter files
-                </button>
-                <input
-                  ref={sharedInputRef}
-                  className="visually-hidden"
-                  type="file"
-                  accept=".txt"
-                  multiple
-                  onChange={(event) => {
-                    const selected = Array.from(event.target.files ?? []);
-                    if (selected.length) void processSharedParameterFiles(selected);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                {mergedSharedParameters && (
-                  <>
-                    <div className="shared-parameter-metrics">
-                      <span>{mergedSharedParameters.groups.length.toLocaleString()} groups</span>
-                      <span>{mergedSharedParameters.parameters.length.toLocaleString()} parameters</span>
-                      <span>{sharedIssues.filter((issue) => issue.severity === "error").length} errors</span>
-                      <span>{sharedIssues.filter((issue) => issue.severity === "warning").length} warnings</span>
-                    </div>
-                    {sharedComparison && (
-                      <p className="export-disclaimer">
-                        First-two-file comparison: {sharedComparison.added.length} added ·{" "}
-                        {sharedComparison.removed.length} removed · {sharedComparison.renamed.length} renamed ·{" "}
-                        {sharedComparison.incompatibleDataTypes.length} incompatible datatypes ·{" "}
-                        {sharedComparison.movedGroups.length} regrouped.
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      className="legacy-api-load"
-                      onClick={() => downloadBlob(
-                        new Blob([writeSharedParameterFile(mergedSharedParameters)], {
-                          type: "text/plain;charset=utf-8",
-                        }),
-                        "merged-shared-parameters.txt",
-                      )}
-                    >
-                      Download merged file
-                    </button>
-                    {sharedIssues.length > 0 && (
-                      <table className="coverage-table">
-                        <tbody>
-                          {sharedIssues.slice(0, 30).map((issue, index) => (
-                            <tr key={`${issue.code}-${issue.guid ?? issue.groupId ?? index}`}>
-                              <td>{issue.severity}</td>
-                              <td>{issue.code}</td>
-                              <td>{issue.message}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </>
-                )}
-              </section>
-
-              <section className="coverage-panel legacy-api-panel">
-                <div className="section-heading">
-                  <span>Personal Revit 2021 API vocabulary</span>
-                  <span>{legacyApi ? "5,426 enum members" : "optional · lazy loaded"}</span>
-                </div>
-                {!legacyApi ? (
-                  <>
-                    <p className="export-disclaimer">
-                      Load the transposed RevitAPI compatibility tables to inspect legacy
-                      IDs, aliases, parameter groups, MEP classifications, units, and symbols.
-                    </p>
-                    <button
-                      className="legacy-api-load"
-                      type="button"
-                      onClick={() => void loadLegacyApi()}
-                      disabled={legacyLoading}
-                    >
-                      {legacyLoading ? "Loading compatibility data…" : "Load legacy API data"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <label className="model-search inline-search">
-                      <span>ID or enum member</span>
-                      <input
-                        value={legacySearch}
-                        onChange={(event) => setLegacySearch(event.target.value)}
-                        placeholder="-2000011, OST_Walls, SupplyAir…"
-                      />
-                    </label>
-                    <table className="coverage-table">
-                      <tbody>
-                        {legacyMatches.map((entry, index) => (
-                          <tr key={`${entry.enumName}-${entry.name}-${index}`}>
-                            <td>{entry.enumName}</td>
-                            <td>{entry.name}</td>
-                            <td>{entry.value}</td>
-                            <td>{entry.label ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="export-disclaimer">
-                      Personal compatibility data transposed from the toolkit&apos;s
-                      Revit 2021 decompiled folder; it is not geometry-decoder evidence.
-                    </p>
-                  </>
-                )}
-                {legacyError && <p className="export-disclaimer">{legacyError}</p>}
-              </section>
-
-              <section className="export-panel">
-                <div className="export-heading"><div><p className="eyebrow">Export recovered data</p><h3>Choose an open format</h3></div><span>client generated</span></div>
-                <div className="export-grid">
-                  <button onClick={() => void exportGlb()} disabled={Boolean(exporting)}><strong>GLB</strong><span>3D scene</span></button>
-                  <button onClick={() => exportText("OBJ", "obj", () => makeObj(result))} disabled={Boolean(exporting)}><strong>OBJ</strong><span>mesh</span></button>
-                  <button onClick={() => exportText("DXF", "dxf", () => makeDxf(result))} disabled={Boolean(exporting)}><strong>DXF</strong><span>3D lines</span></button>
-                  <button onClick={() => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml")} disabled={Boolean(exporting)}><strong>SVG</strong><span>plan</span></button>
-                  <button onClick={() => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step")} disabled={Boolean(exporting)}><strong>IFC</strong><span>{result.method === "partition-bounds-recovery" ? "solid proxies" : result.method === "native-profile-recovery" ? "profile proxies" : "proxies"}</span></button>
-                  <button onClick={() => exportText("JSON", "json", () => makeReport(result, metadata as unknown as Record<string, unknown>), "application/json")} disabled={Boolean(exporting)}><strong>JSON</strong><span>audit</span></button>
-                </div>
-                <p className="export-disclaimer">Exports preserve {result.method === "native-profile-recovery" ? "native ArcWall centerlines with explicitly approximate solids" : result.method === "partition-bounds-recovery" ? "native-ID element envelopes" : "the recovered geometry"}. The audit records {result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and {result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable.</p>
-              </section>
-            </div>
-          )}
-
-          {detailsOpen && (result || isBeyondStandardsReader) && (
-            <aside className="evidence-banner">
-              <span className="evidence-icon">!</span>
-              <div>
-                {/* The optional Rust/WASM reader's range is not a verdict on
-                    the file. Reviter's own decoders are chosen per release and
-                    the ones that carry a 2027 model are 2027-only, so a release
-                    that reader declines can still be the best-decoded release
-                    there is. Say which reader stopped, and say what still ran. */}
-                <strong>{isBeyondStandardsReader ? `Revit ${metadata?.version} is outside the optional Rust reader’s verified ${STANDARDS_READER_RANGE_LABEL} range; Reviter’s own decoders ran normally.` : "This is a geometry recovery, not a native RVT decode."}</strong>
-                <p>{result?.readerDiagnostics?.summary ?? "The standards-aware reader found no validated building elements in this file. IFC export therefore uses clearly labeled centerline proxies."}</p>
-              </div>
-            </aside>
-          )}
-        </section>
-      </section>
+          <footer className="statusbar" aria-live="polite">
+            <span>
+              <span className={`status-dot ${statusTone}`} />
+              <b>{statusText}</b>
+            </span>
+            {busy && (
+              <span className="status-progress">
+                <span><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>
+                <em>{Math.round(progress * 100)}%</em>
+              </span>
+            )}
+            <span className="stats">
+              <span>{result ? `${formatNumber(result.stats.triangleCount)} triangles` : "—"}</span>
+              <span>{result ? `${formatNumber(displayedElementIds.size)} drawn` : "—"}</span>
+              <span>{stamp}</span>
+            </span>
+          </footer>
+        </>
+      )}
     </main>
   );
 }
