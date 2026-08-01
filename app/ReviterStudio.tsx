@@ -63,9 +63,11 @@ import {
   type ReportCheck,
 } from "./studio/ReportDock.tsx";
 import {
+  clearRecentFiles,
   recentFilesServerSnapshot,
   recentFilesSnapshot,
   recordRecentFile,
+  removeRecentFile,
   subscribeToRecentFiles,
   type RecentFile,
 } from "./studio/recents.ts";
@@ -1508,7 +1510,13 @@ export default function ReviterStudio() {
   );
 
   const emptyState = (
-    <EmptyState recents={recents} error={phase === "error" ? error : null} onOpen={openPicker} />
+    <EmptyState
+      recents={recents}
+      error={phase === "error" ? error : null}
+      onOpen={openPicker}
+      onRemoveRecent={removeRecentFile}
+      onClearRecents={clearRecentFiles}
+    />
   );
 
   const commentPanelProps = {

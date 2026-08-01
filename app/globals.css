@@ -1238,21 +1238,52 @@ button[data-reason]:focus-visible::after {
   letter-spacing: .1em;
   text-transform: uppercase;
 }
+.recent-head span { margin-right: auto; }
+.recent-head button {
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.recent-head button:hover { color: var(--text); }
 .recent-row {
+  position: relative;
   width: 100%;
-  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.recent-open {
+  width: 100%;
+  padding: 10px 46px 10px 12px;
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   border: 0;
-  border-bottom: 1px solid var(--line-soft);
   background: transparent;
   color: var(--text);
   cursor: pointer;
   text-align: left;
 }
 .recent-row:hover { background: var(--hover); }
+.recent-delete {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  translate: 0 -50%;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.recent-delete:hover { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 .recent-thumb {
   width: 38px;
   height: 30px;
@@ -1263,9 +1294,9 @@ button[data-reason]:focus-visible::after {
   font-family: var(--mono);
   font-size: 10px;
 }
-.recent-row > span:nth-child(2) { min-width: 0; display: block; }
-.recent-row b { display: block; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.recent-row small { display: block; margin-top: 3px; color: var(--text-3); font-family: var(--mono); font-size: 10px; }
+.recent-open > span:nth-child(2) { min-width: 0; display: block; }
+.recent-open b { display: block; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.recent-open small { display: block; margin-top: 3px; color: var(--text-3); font-family: var(--mono); font-size: 10px; }
 .recent-tag {
   padding: 3px 8px;
   color: var(--good);

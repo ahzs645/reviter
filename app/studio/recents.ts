@@ -62,6 +62,14 @@ export function mergeRecentFile(
   return [entry, ...rest].slice(0, LIMIT);
 }
 
+/** Remove one row by the same name-and-size identity used when recording it. */
+export function withoutRecentFile(
+  current: readonly RecentFile[],
+  entry: Pick<RecentFile, "name" | "size">,
+): RecentFile[] {
+  return current.filter((file) => !(file.name === entry.name && file.size === entry.size));
+}
+
 /**
  * The list as an external store.
  *
@@ -91,6 +99,18 @@ export function subscribeToRecentFiles(listener: () => void): () => void {
 
 export function recordRecentFile(entry: RecentFile): void {
   cache = mergeRecentFile(recentFilesSnapshot(), entry);
+  saveRecentFiles(cache);
+  for (const listener of listeners) listener();
+}
+
+export function removeRecentFile(entry: Pick<RecentFile, "name" | "size">): void {
+  cache = withoutRecentFile(recentFilesSnapshot(), entry);
+  saveRecentFiles(cache);
+  for (const listener of listeners) listener();
+}
+
+export function clearRecentFiles(): void {
+  cache = [];
   saveRecentFiles(cache);
   for (const listener of listeners) listener();
 }
