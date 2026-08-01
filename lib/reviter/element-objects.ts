@@ -155,19 +155,23 @@ export function scanObjectMarkers(data: Uint8Array): Map<number, number> {
 export function scanFramedObjectClassEvidence(
   data: Uint8Array,
   trackedMarkers: ReadonlySet<number> = new Set(),
+  seedMarkers: ReadonlySet<number> = new Set(),
 ): {
   classes: Map<number, number>;
   trackedByElement: Map<number, Set<number>>;
+  seedOffsets: number[];
 } {
   const classes = new Map<number, number>();
   const trackedByElement = new Map<number, Set<number>>();
-  if (data.byteLength < 64) return { classes, trackedByElement };
+  const seedOffsets: number[] = [];
+  if (data.byteLength < 64) return { classes, trackedByElement, seedOffsets };
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
     if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
     const object = readObject(view, offset, data.byteLength);
     if (!object) continue;
+    if (seedMarkers.has(object.marker)) seedOffsets.push(object.offset);
     if (!classes.has(object.elementId)) {
       classes.set(object.elementId, object.marker);
     }
@@ -177,7 +181,7 @@ export function scanFramedObjectClassEvidence(
       trackedByElement.set(object.elementId, markers);
     }
   }
-  return { classes, trackedByElement };
+  return { classes, trackedByElement, seedOffsets };
 }
 
 export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {

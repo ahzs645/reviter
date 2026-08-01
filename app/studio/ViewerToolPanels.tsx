@@ -3,6 +3,7 @@ import type { MeasureMode, MeasureUnit, SectionMode } from "./viewer-tools.ts";
 
 export function FirstPersonPanel({
   looking,
+  preparing,
   drawing,
   speed,
   gravity,
@@ -17,6 +18,8 @@ export function FirstPersonPanel({
   onExit,
 }: {
   looking: boolean;
+  /** The spatial floor index is still being prepared without blocking the UI. */
+  preparing: boolean;
   /** A drawing tool is armed, so the look drag has moved to the right button. */
   drawing: boolean;
   speed: WalkSpeed;
@@ -43,11 +46,13 @@ export function FirstPersonPanel({
             <button onClick={onExit} aria-label="Exit first person">×</button>
           </span>
         </header>
-        <p>{looking
-          ? "Looking around"
+        <p>{preparing
+          ? "Preparing walkable surfaces…"
+          : looking
+          ? "Mouse captured · Esc releases"
           : drawing
             ? "Left drag draws · right drag looks"
-            : "Drag with the left mouse button to look"}</p>
+            : "Click the viewport to look"}</p>
         <div className="first-person-speed" role="group" aria-label="Movement speed">
           {(["slow", "normal", "fast"] as const).map((entry) => (
             <button
@@ -95,7 +100,7 @@ export function FirstPersonPanel({
               }}
               aria-pressed={collision}
               title="Walls and doors block movement"
-            >Solid</button>
+            >Solid <small>beta</small></button>
           </div>
         )}
         <button
@@ -120,7 +125,7 @@ export function FirstPersonPanel({
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Drag with the left mouse button — the right one while a markup tool is armed</small></article>
+            <article><b>Look around</b><i>↔</i><small>Click the viewport to capture the mouse; Esc releases it. Right-drag while markup is armed.</small></article>
             <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>

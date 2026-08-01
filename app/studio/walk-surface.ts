@@ -16,6 +16,37 @@ export type WalkSurfaceStats = {
 
 type Axis = "x" | "y" | "z";
 
+export type WalkGeometryRange = {
+  /** Zero-based triangle offset within the indexed or non-indexed geometry. */
+  startTriangle: number;
+  /** Maximum number of triangles to add from that offset. */
+  triangleCount: number;
+};
+
+export function geometryTriangleCount(geometry: THREE.BufferGeometry): number {
+  const positions = geometry.getAttribute("position");
+  if (!positions) return 0;
+  return Math.floor((geometry.getIndex()?.count ?? positions.count) / 3);
+}
+
+function geometryOffsetRange(
+  count: number,
+  range?: WalkGeometryRange,
+): readonly [number, number] {
+  const availableTriangles = Math.floor(count / 3);
+  const firstTriangle = THREE.MathUtils.clamp(
+    Math.floor(range?.startTriangle ?? 0),
+    0,
+    availableTriangles,
+  );
+  const lastTriangle = THREE.MathUtils.clamp(
+    firstTriangle + Math.max(0, Math.floor(range?.triangleCount ?? availableTriangles)),
+    firstTriangle,
+    availableTriangles,
+  );
+  return [firstTriangle * 3, lastTriangle * 3];
+}
+
 function projectedAxes(up: Axis): readonly [Axis, Axis] {
   return up === "y" ? ["x", "z"] : up === "z" ? ["x", "y"] : ["y", "z"];
 }
@@ -56,14 +87,19 @@ export class WalkSurfaceIndex {
     this.axes = projectedAxes(up);
   }
 
-  addGeometry(geometry: THREE.BufferGeometry, matrix: THREE.Matrix4): void {
+  addGeometry(
+    geometry: THREE.BufferGeometry,
+    matrix: THREE.Matrix4,
+    range?: WalkGeometryRange,
+  ): void {
     const positions = geometry.getAttribute("position");
     if (!positions) return;
     const index = geometry.getIndex();
     const count = index?.count ?? positions.count;
     const vertexIndex = (offset: number) => index ? index.getX(offset) : offset;
+    const [firstOffset, lastOffset] = geometryOffsetRange(count, range);
 
-    for (let offset = 0; offset + 2 < count; offset += 3) {
+    for (let offset = firstOffset; offset + 2 < lastOffset; offset += 3) {
       this.a.fromBufferAttribute(positions, vertexIndex(offset)).applyMatrix4(matrix);
       this.b.fromBufferAttribute(positions, vertexIndex(offset + 1)).applyMatrix4(matrix);
       this.c.fromBufferAttribute(positions, vertexIndex(offset + 2)).applyMatrix4(matrix);
@@ -204,14 +240,19 @@ export class WalkCollisionIndex {
     this.axes = projectedAxes(up);
   }
 
-  addGeometry(geometry: THREE.BufferGeometry, matrix: THREE.Matrix4): void {
+  addGeometry(
+    geometry: THREE.BufferGeometry,
+    matrix: THREE.Matrix4,
+    range?: WalkGeometryRange,
+  ): void {
     const positions = geometry.getAttribute("position");
     if (!positions) return;
     const index = geometry.getIndex();
     const count = index?.count ?? positions.count;
     const vertexIndex = (offset: number) => index ? index.getX(offset) : offset;
+    const [firstOffset, lastOffset] = geometryOffsetRange(count, range);
 
-    for (let offset = 0; offset + 2 < count; offset += 3) {
+    for (let offset = firstOffset; offset + 2 < lastOffset; offset += 3) {
       this.a.fromBufferAttribute(positions, vertexIndex(offset)).applyMatrix4(matrix);
       this.b.fromBufferAttribute(positions, vertexIndex(offset + 1)).applyMatrix4(matrix);
       this.c.fromBufferAttribute(positions, vertexIndex(offset + 2)).applyMatrix4(matrix);

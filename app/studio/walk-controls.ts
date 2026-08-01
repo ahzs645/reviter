@@ -10,8 +10,9 @@
  * speeds and heights here are real building dimensions — a 5.6 ft eye height,
  * a walking pace of about 9 ft/s — and need no scaling.
  *
- * Mouse look follows Autodesk Viewer's left-button drag. Movement is WASD or
- * the arrow keys, `Shift` to run, and Q/E to descend/ascend between floors.
+ * Desktop mouse look uses pointer lock after a viewport click; touch, pen, and
+ * markup mode retain capture-drag. Movement is WASD or the arrow keys, `Shift`
+ * to run, and Q/E to descend/ascend between floors.
  */
 import * as THREE from "three";
 
@@ -93,8 +94,10 @@ export type WalkControls = {
   disable(): void;
   /** Advance by `deltaSeconds`; call once per animation frame while enabled. */
   update(deltaSeconds: number): void;
-  /** True while a look drag is active. */
+  /** True while pointer lock or a fallback look drag is active. */
   isLooking(): boolean;
+  /** True while this viewport owns the desktop pointer. */
+  isPointerLocked(): boolean;
   /** Move the look drag to another mouse button, releasing any drag in flight. */
   setLookButton(button: number): void;
   /** Change the persistent movement speed without rebuilding the camera. */
@@ -162,6 +165,8 @@ export function createWalkControls(
   let pitch = 0;
   let enabled = false;
   let looking = false;
+  let pointerLocked = false;
+  let pointerUnlockedAt = Number.NEGATIVE_INFINITY;
   let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
@@ -225,17 +230,53 @@ export function createWalkControls(
     travel = null;
   }
 
-  function onPointerMove(event: PointerEvent): void {
+  function applyLookDelta(movementX: number, movementY: number): void {
     if (!looking) return;
-    yaw -= event.movementX * LOOK_SPEED;
-    pitch -= event.movementY * LOOK_SPEED;
+    yaw -= movementX * LOOK_SPEED;
+    pitch -= movementY * LOOK_SPEED;
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
     applyRotation();
+  }
+
+  function onPointerMove(event: PointerEvent): void {
+    if (pointerLocked) return;
+    applyLookDelta(event.movementX, event.movementY);
+  }
+
+  function onLockedMouseMove(event: MouseEvent): void {
+    if (!pointerLocked) return;
+    applyLookDelta(event.movementX, event.movementY);
+  }
+
+  function reportLooking(next: boolean): void {
+    if (looking === next) return;
+    looking = next;
+    options.onLookChange?.(looking);
+  }
+
+  function onPointerLockChange(): void {
+    const wasPointerLocked = pointerLocked;
+    pointerLocked = document.pointerLockElement === domElement;
+    if (wasPointerLocked && !pointerLocked) pointerUnlockedAt = performance.now();
+    reportLooking(pointerLocked);
+    if (!pointerLocked) pressed.clear();
   }
 
   function onKeyDown(event: KeyboardEvent): void {
     if (!enabled) return;
     if (event.code === "Escape") {
+      if (pointerLocked) {
+        document.exitPointerLock?.();
+        event.preventDefault();
+        return;
+      }
+      // Browsers normally consume the Escape that releases pointer lock, but a
+      // few deliver keydown just after pointerlockchange. Do not interpret that
+      // same physical key press as both “release mouse” and “exit Walk”.
+      if (performance.now() - pointerUnlockedAt < 250) {
+        event.preventDefault();
+        return;
+      }
       options.onExit?.();
       return;
     }
@@ -269,9 +310,24 @@ export function createWalkControls(
   function onPointerDown(event: PointerEvent): void {
     if (!enabled || event.button !== lookButton) return;
     cancelTravel();
-    looking = true;
+    // Desktop walkthroughs should not require holding a mouse button forever.
+    // Keep capture-drag for touch, pens, browsers without pointer lock, and the
+    // right-button look gesture used while a markup tool owns the left button.
+    if (
+      lookButton === 0
+      && event.pointerType === "mouse"
+      && typeof domElement.requestPointerLock === "function"
+    ) {
+      try {
+        const request = domElement.requestPointerLock();
+        if (request && typeof request.catch === "function") void request.catch(() => {});
+        return;
+      } catch {
+        // A policy-disabled or embedded browser falls through to capture-drag.
+      }
+    }
+    reportLooking(true);
     domElement.setPointerCapture(event.pointerId);
-    options.onLookChange?.(true);
   }
 
   function releaseInput(): void {
@@ -284,12 +340,11 @@ export function createWalkControls(
   }
 
   function stopLooking(event?: PointerEvent): void {
-    if (!looking) return;
-    looking = false;
+    if (!looking || pointerLocked) return;
+    reportLooking(false);
     if (event && domElement.hasPointerCapture(event.pointerId)) {
       domElement.releasePointerCapture(event.pointerId);
     }
-    options.onLookChange?.(false);
   }
 
   function enable(): void {
@@ -305,6 +360,8 @@ export function createWalkControls(
     domElement.addEventListener("pointermove", onPointerMove);
     domElement.addEventListener("pointerup", stopLooking);
     domElement.addEventListener("pointercancel", stopLooking);
+    document.addEventListener("mousemove", onLockedMouseMove);
+    document.addEventListener("pointerlockchange", onPointerLockChange);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", releaseInput);
@@ -315,11 +372,15 @@ export function createWalkControls(
     if (!enabled) return;
     enabled = false;
     cancelTravel();
+    if (document.pointerLockElement === domElement) document.exitPointerLock?.();
+    pointerLocked = false;
     releaseInput();
     domElement.removeEventListener("pointerdown", onPointerDown);
     domElement.removeEventListener("pointermove", onPointerMove);
     domElement.removeEventListener("pointerup", stopLooking);
     domElement.removeEventListener("pointercancel", stopLooking);
+    document.removeEventListener("mousemove", onLockedMouseMove);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", releaseInput);
@@ -466,6 +527,7 @@ export function createWalkControls(
     disable,
     update,
     isLooking: () => looking,
+    isPointerLocked: () => pointerLocked,
     setLookButton: (button) => {
       if (button === lookButton) return;
       lookButton = button;

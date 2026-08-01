@@ -291,6 +291,16 @@ export function meshGroup(
             part.foreground,
           )
         : 0;
+      // `units` separates fragments that quantise to the same depth value.
+      // Revit's overlapping material faces are frequently triangulated along
+      // different diagonals, though, so their interpolated depth also changes
+      // with screen-space slope. A small, capped factor keeps the established
+      // material priority stable through an orbit without visibly pulling a
+      // layer away from the building.
+      const depthSlopeBias = depthBias > 0
+        ? Math.min(1.5, Math.max(0.125, depthBias / 256))
+        : 0;
+      const depthBiasSign = reverseDepthBuffer ? -1 : 1;
       const material = new THREE.MeshStandardMaterial({
         color: sourceColor,
         vertexColors: !technical,
@@ -316,11 +326,11 @@ export function meshGroup(
         depthFunc: technical && !transparent ? THREE.LessDepth : THREE.LessEqualDepth,
         // In reverse-Z a negative polygon offset moves a lower-priority layer
         // away; the sign is the opposite for the conventional depth buffer.
-        // Factor stays zero so steep surfaces receive the same small unit bias
-        // as front-facing ones.
+        // Reverse-Z flips both parts of the offset; otherwise an oblique face
+        // would move toward the camera while its depth-unit offset moves away.
         polygonOffset: depthBias > 0,
-        polygonOffsetFactor: 0,
-        polygonOffsetUnits: reverseDepthBuffer ? -depthBias : depthBias,
+        polygonOffsetFactor: depthBiasSign * depthSlopeBias,
+        polygonOffsetUnits: depthBiasSign * depthBias,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.name = part.glazing ? `${data.name} · glazing` : data.name;

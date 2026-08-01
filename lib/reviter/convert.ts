@@ -959,6 +959,10 @@ export function convertRvtBytes(
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
+    const objectSeedMarkers = new Set([
+      ...objectMarkers,
+      ...SHAPE_OBJECT_MARKERS,
+    ]);
 
     for (let partitionIndex = 0; partitionIndex < partitions.length; partitionIndex += 1) {
       const partition = partitions[partitionIndex]!;
@@ -1108,11 +1112,18 @@ export function convertRvtBytes(
         const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
           ? detectDuplicatedBoundsRecords(inflated)
           : [];
-        if (decoderPlan.elementBoundsDecoder) {
-          const classEvidence = scanFramedObjectClassEvidence(
-            inflated,
-            NATIVE_OBJECT_EVIDENCE_MARKERS,
-          );
+        // This full-page framing pass also collects the offsets used to seed
+        // the object chain. Previously each of as many as fifteen markers ran
+        // its own `indexOf` walk over the same page; on the UNBC model those
+        // redundant walks were the single largest CPU sample in the loader.
+        const classEvidence = decoderPlan.elementBoundsDecoder
+          ? scanFramedObjectClassEvidence(
+              inflated,
+              NATIVE_OBJECT_EVIDENCE_MARKERS,
+              objectSeedMarkers,
+            )
+          : null;
+        if (classEvidence) {
           for (const [elementId, marker] of classEvidence.classes) {
             if (!markerByElement.has(elementId)) {
               markerByElement.set(elementId, marker);
@@ -1133,9 +1144,14 @@ export function convertRvtBytes(
         // self-validating — each candidate has to echo its own length — so
         // seeding from all of them makes a break local instead of terminal, and
         // reaches pages that carry no bounds record at all.
-        const chainSeeds: number[] = [];
-        for (const marker of objectMarkers) {
-          for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
+        const chainSeeds = classEvidence?.seedOffsets ?? [];
+        if (!classEvidence) {
+          // Releases without the full framing-evidence pass keep the original
+          // targeted marker scan; do not make them pay for an otherwise unused
+          // map of every framed object on the page.
+          for (const marker of objectSeedMarkers) {
+            for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
+          }
         }
         // A shared shape's marker is too rare to survive the calibration above.
         // There are 250 door B-reps in this file against 51,455 objects under
@@ -1145,10 +1161,6 @@ export function convertRvtBytes(
         // are isolated `0x0810` objects, and they are the shape for 500 doors.
         // Seeding the shape markers directly is what finds them; every
         // candidate still has to echo its own length to be kept.
-        for (const marker of SHAPE_OBJECT_MARKERS) {
-          if (objectMarkers.includes(marker)) continue;
-          for (const seed of markerObjectSeeds(inflated, marker)) chainSeeds.push(seed);
-        }
         for (const record of detectedBoundsRecords) chainSeeds.push(record.recordOffset);
         if (chainSeeds.length) {
           for (const object of chainElementObjects(inflated, chainSeeds)) {

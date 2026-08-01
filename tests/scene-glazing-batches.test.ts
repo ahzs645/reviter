@@ -365,6 +365,10 @@ test("opaque hosted inserts win coplanar depth ties with their host wall", () =>
     (wallMesh.material as THREE.MeshStandardMaterial).polygonOffsetUnits > 0,
     "conventional depth moves the lower-priority host away with a positive unit bias",
   );
+  assert.ok(
+    (wallMesh.material as THREE.MeshStandardMaterial).polygonOffsetFactor > 0,
+    "the host also receives a slope bias so differently tessellated coplanar faces stay ordered",
+  );
   assert.equal(
     (doorMesh.material as THREE.MeshStandardMaterial).polygonOffset,
     false,
@@ -404,5 +408,9 @@ test("opaque hosted inserts win coplanar depth ties with their host wall", () =>
   assert.ok(
     (reverseWall.material as THREE.MeshStandardMaterial).polygonOffsetUnits < 0,
     "reverse-Z flips the unit-bias sign while keeping the same material priority",
+  );
+  assert.ok(
+    (reverseWall.material as THREE.MeshStandardMaterial).polygonOffsetFactor < 0,
+    "reverse-Z also flips the slope-bias sign",
   );
 });

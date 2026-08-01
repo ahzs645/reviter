@@ -25,6 +25,7 @@ test("server-renders the Reviter client-only converter", async () => {
   assert.match(html, /Open a Revit file/);
   assert.match(html, /Local only/);
   assert.match(html, /\.rvt · \.rfa · \.rte · \.rft/);
+  assert.match(html, /<main class="studio" data-phase="idle">/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 

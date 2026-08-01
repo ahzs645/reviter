@@ -1534,6 +1534,7 @@ button[data-reason]:focus-visible::after {
 .first-person-mode button:hover,
 .first-person-mode button.active,
 .first-person-drop:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.first-person-mode button small { margin-left: 3px; font-size: 8px; font-weight: 700; text-transform: uppercase; }
 .viewer-tool-panel button:disabled { opacity: .4; cursor: default; }
 .tool-option-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; }
 .measure-modes { grid-template-columns: repeat(3, 1fr); }

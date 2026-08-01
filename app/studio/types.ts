@@ -12,10 +12,18 @@ export type CameraRequest = { preset: CameraPreset; sequence: number; fit?: bool
  */
 export type CanvasMenuRequest = {
   elementId: number | null;
+  /** Scene-space surface under the menu, used by “Walk from here”. */
+  walkPoint?: [number, number, number];
+  walkNormal?: [number, number, number];
   x: number;
   y: number;
   width: number;
   height: number;
+};
+export type WalkStartRequest = {
+  point: [number, number, number] | null;
+  normal: [number, number, number] | null;
+  sequence: number;
 };
 export type ReferenceLoadState = "idle" | "loading" | "ready" | "error";
 export type ReviterGlobal = typeof globalThis & {

@@ -96,3 +96,69 @@ test("face travel preserves the first-person view direction", () => {
     else Reflect.deleteProperty(globalThis, "document");
   }
 });
+
+test("desktop click captures mouse look and Escape releases without exiting Walk", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), {
+    hidden: false,
+    pointerLockElement: null as HTMLElement | null,
+    exitPointerLock() {
+      this.pointerLockElement = null;
+      this.dispatchEvent(new Event("pointerlockchange"));
+    },
+  });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    let exitCount = 0;
+    const element = Object.assign(new EventTarget(), {
+      requestPointerLock() {
+        fakeDocument.pointerLockElement = element as unknown as HTMLElement;
+        fakeDocument.dispatchEvent(new Event("pointerlockchange"));
+      },
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const controls = createWalkControls(camera, element, {
+      start: new THREE.Vector3(0, 5.6, 10),
+      lookAt: new THREE.Vector3(0, 5.6, 0),
+      floor: 5.6,
+      up: "y",
+      gravity: false,
+      onExit: () => { exitCount += 1; },
+    });
+    controls.enable();
+
+    element.dispatchEvent(Object.assign(new Event("pointerdown"), {
+      button: 0,
+      pointerType: "mouse",
+      pointerId: 1,
+    }));
+    assert.equal(controls.isPointerLocked(), true);
+    assert.equal(controls.isLooking(), true);
+    const before = camera.getWorldDirection(new THREE.Vector3());
+    fakeDocument.dispatchEvent(Object.assign(new Event("mousemove"), {
+      movementX: 40,
+      movementY: -10,
+    }));
+    assert.ok(before.angleTo(camera.getWorldDirection(new THREE.Vector3())) > 0.01);
+
+    fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "Escape",
+      repeat: false,
+    }));
+    assert.equal(controls.isPointerLocked(), false);
+    assert.equal(exitCount, 0, "the release Escape must not also close Walk");
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});

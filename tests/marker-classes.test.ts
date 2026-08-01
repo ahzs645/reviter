@@ -96,6 +96,20 @@ test("retains tracked secondary class markers without changing the primary class
   assert.deepEqual([...evidence.trackedByElement.get(8_300)!], [0x0810]);
 });
 
+test("collects object-chain seeds during the existing full-page framing pass", () => {
+  const data = new Uint8Array(512);
+  const view = new DataView(data.buffer);
+  const next = writeObject(view, 0, 8_400, 0x08c6, 64);
+  writeObject(view, next, 8_401, 0x0810, 48);
+
+  const evidence = scanFramedObjectClassEvidence(
+    data,
+    new Set(),
+    new Set([0x0810]),
+  );
+  assert.deepEqual(evidence.seedOffsets, [next]);
+});
+
 test("a marker's members speak for the member that carries no category token", () => {
   // The supplied project writes 8 `Ramps` tokens against 12 ramps. The ramps
   // with a token and the ramps without share an object marker, which is the

@@ -94,15 +94,24 @@ context.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   try {
     const bytes = new Uint8Array(request.buffer);
+    let lastPostedRatio = -1;
     const result = convertRvtBytes(
       bytes,
       request.fileName,
       request.options,
       ({ ratio, message }) => {
+        // The converter reports page-level detail for CLI diagnostics. The
+        // redesigned browser shell displays a percentage rather than those
+        // messages, so forwarding sub-percent changes only makes React render
+        // hundreds of times during a large partition scan. Keep the progress
+        // bar smooth while leaving the worker's actual conversion untouched.
+        const scaledRatio = ratio * 0.82;
+        if (scaledRatio < 0.82 && scaledRatio - lastPostedRatio < 0.005) return;
+        lastPostedRatio = scaledRatio;
         const progress: WorkerResponse = {
           id: request.id,
           type: "progress",
-          ratio: ratio * 0.82,
+          ratio: scaledRatio,
           message,
         };
         context.postMessage(progress);

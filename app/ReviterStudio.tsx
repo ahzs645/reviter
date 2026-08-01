@@ -87,6 +87,7 @@ import type {
   PropertyRow,
   ReferencePhase,
   ReportTab,
+  WalkStartRequest,
 } from "./studio/types.ts";
 
 type StudioFileInfo = Omit<FileInfo, "fileVersion"> & { fileVersion: number };
@@ -207,6 +208,11 @@ export default function ReviterStudio() {
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
+  const [walkStartRequest, setWalkStartRequest] = useState<WalkStartRequest>({
+    point: null,
+    normal: null,
+    sequence: 0,
+  });
   const [copyFeedback, setCopyFeedback] = useState<{ elementId: number; label: string } | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ elementId: number | null; sequence: number }>({
     elementId: null,
@@ -335,6 +341,7 @@ export default function ReviterStudio() {
     setBrowserTab("objects");
     setBrowserSearch("");
     setCanvasMenu(null);
+    setWalkStartRequest({ point: null, normal: null, sequence: requestId });
     setDockOpen(false);
     setSheet(null);
     setReferencePhase("idle");
@@ -347,6 +354,13 @@ export default function ReviterStudio() {
 
     try {
       const cfb = await openFile(nextFile);
+      // Start the only full-file read and boot the conversion worker as soon as
+      // the container directory is known to be valid. Metadata and the embedded
+      // preview are small, independent CFB reads, so doing them while the file
+      // buffer is prepared removes an avoidable serial wait — especially for a
+      // cloud-backed File whose bytes are not warm on disk yet.
+      const bufferPromise = nextFile.arrayBuffer();
+      const worker = getWorker();
       const basicEntry = cfb.findEntry("BasicFileInfo");
       const basicDataPromise = basicEntry
         ? cfb.entryData(basicEntry)
@@ -378,10 +392,11 @@ export default function ReviterStudio() {
           };
         }
       })();
-      const [info, preview, basicData] = await Promise.all([
+      const [info, preview, basicData, buffer] = await Promise.all([
         infoPromise,
         tryThumbnail(cfb),
         basicDataPromise,
+        bufferPromise,
       ]);
       if (requestId !== requestIdRef.current) return;
       setMetadata(info);
@@ -395,8 +410,6 @@ export default function ReviterStudio() {
       setPhase("converting");
       setProgress(0.08);
 
-      const buffer = await nextFile.arrayBuffer();
-      const worker = getWorker();
       const fail = (message: string) => {
         setError(message);
         setPhase("error");
@@ -483,6 +496,7 @@ export default function ReviterStudio() {
     setSelectedElementId(null);
     setHiddenCategories(new Set());
     setCanvasMenu(null);
+    setWalkStartRequest((current) => ({ point: null, normal: null, sequence: current.sequence + 1 }));
     setDockOpen(false);
     setSheet(null);
     setError(null);
@@ -595,7 +609,10 @@ export default function ReviterStudio() {
 
   // --- Derived model views ----------------------------------------------
 
-  const displayedElementIds = useMemo(() => {
+  // Mesh batches can also name internal geometry carriers that do not have an
+  // element record of their own. They are useful provenance, but they are not
+  // selectable model objects and must not inflate the UI's "drawn" count.
+  const meshElementIds = useMemo(() => {
     if (!result) return new Set<number>();
     return new Set(result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []));
   }, [result]);
@@ -610,8 +627,12 @@ export default function ReviterStudio() {
   // applies — a sketch-bounded ceiling is drawn but has no thickness — so the
   // browser and the toolbar reported two different counts of the same thing.
   const solidRecords = useMemo(
-    () => result ? result.elementBounds.filter((record) => displayedElementIds.has(record.elementId)) : [],
-    [displayedElementIds, result],
+    () => result ? result.elementBounds.filter((record) => meshElementIds.has(record.elementId)) : [],
+    [meshElementIds, result],
+  );
+  const displayedElementIds = useMemo(
+    () => new Set(solidRecords.map((record) => record.elementId)),
+    [solidRecords],
   );
   const visibleModelRecords = useMemo(
     () => solidRecords.filter((record) =>
@@ -1321,6 +1342,7 @@ export default function ReviterStudio() {
       onDeleteMarkup={deleteMarkupStroke}
       walking={walking}
       onWalkingChange={handleWalkingChange}
+      walkStartRequest={walkStartRequest}
       selectedElementId={selectedElementId}
       onSelectElement={setSelectedElementId}
       hiddenElementIds={hiddenElementIds}
@@ -1390,6 +1412,7 @@ export default function ReviterStudio() {
   return (
     <main
       className="studio"
+      data-phase={phase}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
@@ -1584,8 +1607,22 @@ export default function ReviterStudio() {
                       ref={canvasMenuRef}
                       role="menu"
                       aria-label="Canvas actions"
-                      style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 2 : 4)}
+                      style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 3 : 5)}
                     >
+                      <ToolButton
+                        role="menuitem"
+                        reason={canvasMenu.walkPoint ? null : "Choose a model surface"}
+                        onClick={() => {
+                          if (!canvasMenu.walkPoint) return;
+                          setWalkStartRequest((current) => ({
+                            point: canvasMenu.walkPoint!,
+                            normal: canvasMenu.walkNormal ?? null,
+                            sequence: current.sequence + 1,
+                          }));
+                          setCanvasMenu(null);
+                          setNavTool("firstPerson");
+                        }}
+                      >Walk from here</ToolButton>
                       {canvasMenu.elementId == null ? (
                         <>
                           <button

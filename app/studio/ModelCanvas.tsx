@@ -53,7 +53,11 @@ import {
   type WalkControls,
   type WalkSpeed,
 } from "./walk-controls.ts";
-import { WalkCollisionIndex, WalkSurfaceIndex } from "./walk-surface.ts";
+import {
+  geometryTriangleCount,
+  WalkCollisionIndex,
+  WalkSurfaceIndex,
+} from "./walk-surface.ts";
 import {
   ExplodeToolPanel,
   FirstPersonPanel,
@@ -62,7 +66,13 @@ import {
 } from "./ViewerToolPanels.tsx";
 import { ModelCommentLayer, type CommentProjection } from "./ModelCommentLayer.tsx";
 import { MarkupLayer, type MarkupProjection, type ScreenPoint } from "./MarkupLayer.tsx";
-import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
+import type {
+  CameraRequest,
+  CanvasMenuRequest,
+  GeometrySource,
+  ReferenceLoadState,
+  WalkStartRequest,
+} from "./types.ts";
 import {
   createElementSelection,
   createFaceSelection,
@@ -91,6 +101,10 @@ import {
 function tuple(point: THREE.Vector3): Point3Tuple {
   return [point.x, point.y, point.z];
 }
+
+// Large enough to amortize one idle callback without monopolizing a frame on
+// the million-triangle UNBC model (typically a few milliseconds of CPU work).
+const WALK_INDEX_CHUNK_TRIANGLES = 8_192;
 
 type NormalizedCameraPose = {
   position: THREE.Vector3;
@@ -187,6 +201,7 @@ export function ModelCanvas({
   onDeleteMarkup,
   walking,
   onWalkingChange,
+  walkStartRequest,
   selectedElementId,
   onSelectElement,
   hiddenElementIds,
@@ -227,6 +242,7 @@ export function ModelCanvas({
   onDeleteMarkup: (id: string) => void;
   walking: boolean;
   onWalkingChange: (walking: boolean) => void;
+  walkStartRequest: WalkStartRequest;
   selectedElementId: number | null;
   onSelectElement: (elementId: number | null) => void;
   hiddenElementIds: ReadonlySet<number>;
@@ -254,8 +270,10 @@ export function ModelCanvas({
      * recovered-geometry scene. Called on walk entry, so a session that never
      * walks never pays for it.
      */
-    prepareWalkIndexes: () => void;
+    prepareWalkIndexes: () => Promise<void>;
     walkIndexDirty: boolean;
+    /** Floor picked before entering Walk, consumed by the next walk session. */
+    walkStart: { point: THREE.Vector3; normal: THREE.Vector3 } | null;
     selectionOverlay: THREE.Group | null;
     measurement: MeasurementScene;
     sectionHelper: THREE.Group | null;
@@ -275,6 +293,7 @@ export function ModelCanvas({
   // model walks this way too — it has no collision representation at all.
   const [walkCollision, setWalkCollision] = useState(false);
   const [walkLooking, setWalkLooking] = useState(false);
+  const [walkPreparing, setWalkPreparing] = useState(false);
   const [walkGuideOpen, setWalkGuideOpen] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>("distance");
   const [measureUnit, setMeasureUnit] = useState<MeasureUnit>("feet");
@@ -317,6 +336,7 @@ export function ModelCanvas({
   const measureUnitRef = useRef<MeasureUnit>("feet");
   const measureCalibrationRef = useRef(1);
   const measurementIdRef = useRef(1);
+  const appliedWalkStartRequestRef = useRef(walkStartRequest.sequence);
 
   useEffect(() => {
     try {
@@ -331,6 +351,7 @@ export function ModelCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const navigationTest = new URLSearchParams(window.location.search).has("navigation-test");
 
     const technical = renderMode === "technical";
     const isReferenceModel = source === "reference-model";
@@ -512,10 +533,19 @@ export function ModelCanvas({
     const pointer = new THREE.Vector2();
     const measurement = createMeasurementScene(scene);
     let needsRender = true;
+    let cameraInteracting = false;
     const handleControlsChange = () => {
       needsRender = true;
     };
+    const handleControlsStart = () => {
+      cameraInteracting = true;
+    };
+    const handleControlsEnd = () => {
+      cameraInteracting = false;
+    };
     controls.addEventListener("change", handleControlsChange);
+    controls.addEventListener("start", handleControlsStart);
+    controls.addEventListener("end", handleControlsEnd);
     let interactionMeshes: THREE.Object3D[] = [];
     const refreshInteractionMeshes = () => {
       interactionMeshes = [];
@@ -538,19 +568,11 @@ export function ModelCanvas({
       return firstTriangleHit(raycaster, interactionMeshes, (intersection) =>
         !useOverlay || intersection.object.userData.elementIds != null);
     };
-    /** The hit test both a left-click and a right-click run, in canvas pixels. */
-    const pickAt = (clientX: number, clientY: number) => {
-      const hit = geometryHitAt(clientX, clientY);
-      if (!hit || hit.faceIndex == null) return null;
-      const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-      // One id per triangle: drawn items range from a 12-triangle box to an
-      // extruded sketch boundary with as many triangles as its ring has edges.
-      return elementIds?.[hit.faceIndex] ?? null;
-    };
     // glTF declares +Y up, so a reference normally is; but ask the geometry
     // rather than assume, so a z-up reference is not drawn on its side.
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
+    let active = true;
     let referenceWalkSurface: WalkSurfaceIndex | null = null;
     // Spatial indexes for first-person walking over recovered geometry; built
     // on walk entry, and rebuilt when something has moved the meshes since.
@@ -559,20 +581,100 @@ export function ModelCanvas({
     // which is where the first-person lag came from.
     let recoveredWalkSurface: WalkSurfaceIndex | null = null;
     let recoveredWalkCollision: WalkCollisionIndex | null = null;
-    const prepareWalkIndexes = () => {
-      if (isReferenceModel) return;
-      if (recoveredWalkSurface && !runtimeRef.current?.walkIndexDirty) return;
-      root.updateMatrixWorld(true);
-      const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
-      const collision = new WalkCollisionIndex({ up, cellSize: 4 * sceneUnitsPerFoot });
-      for (const object of interactionMeshes) {
-        const mesh = object as THREE.Mesh;
-        surface.addGeometry(mesh.geometry, mesh.matrixWorld);
-        collision.addGeometry(mesh.geometry, mesh.matrixWorld);
+    let walkIndexBuild: Promise<void> | null = null;
+    let walkIndexBuildVersion = 0;
+    const waitForIdleSlice = () => new Promise<void>((resolve) => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(() => resolve(), { timeout: 50 });
+      } else {
+        window.setTimeout(resolve, 0);
       }
-      recoveredWalkSurface = surface;
-      recoveredWalkCollision = collision;
-      if (runtimeRef.current) runtimeRef.current.walkIndexDirty = false;
+    });
+    const prepareWalkIndexes = (): Promise<void> => {
+      if (isReferenceModel) return Promise.resolve();
+      if (recoveredWalkSurface && !runtimeRef.current?.walkIndexDirty) return Promise.resolve();
+      if (walkIndexBuild) return walkIndexBuild;
+
+      const buildVersion = ++walkIndexBuildVersion;
+      const build = (async () => {
+        // An explode can move meshes while an idle build is in flight. Repeat
+        // from a fresh matrix snapshot until one complete pass stays clean.
+        while (active && buildVersion === walkIndexBuildVersion) {
+          const runtime = runtimeRef.current;
+          if (!runtime) return;
+          runtime.walkIndexDirty = false;
+          recoveredWalkCollision = null;
+          root.updateMatrixWorld(true);
+          const jobs = interactionMeshes.map((object) => {
+            const mesh = object as THREE.Mesh;
+            return {
+              geometry: mesh.geometry,
+              matrix: mesh.matrixWorld.clone(),
+              triangleCount: geometryTriangleCount(mesh.geometry),
+            };
+          });
+          const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
+          const startedAt = performance.now();
+          for (const job of jobs) {
+            for (
+              let startTriangle = 0;
+              startTriangle < job.triangleCount;
+              startTriangle += WALK_INDEX_CHUNK_TRIANGLES
+            ) {
+              await waitForIdleSlice();
+              if (!active || buildVersion !== walkIndexBuildVersion) return;
+              const range = {
+                startTriangle,
+                triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
+              };
+              surface.addGeometry(job.geometry, job.matrix, range);
+            }
+          }
+          if (runtime.walkIndexDirty) continue;
+          recoveredWalkSurface = surface;
+          canvas.dataset.walkIndexBuildMs = (performance.now() - startedAt).toFixed(1);
+          canvas.dataset.walkIndexState = "surface-ready";
+          // Ghost is the default and needs only the floor index. Solid is beta,
+          // so prepare its steep-triangle collision index afterward without
+          // making the common Walk entry wait for optional work.
+          void (async () => {
+            const collisionStartedAt = performance.now();
+            const collision = new WalkCollisionIndex({ up, cellSize: 4 * sceneUnitsPerFoot });
+            for (const job of jobs) {
+              for (
+                let startTriangle = 0;
+                startTriangle < job.triangleCount;
+                startTriangle += WALK_INDEX_CHUNK_TRIANGLES
+              ) {
+                await waitForIdleSlice();
+                if (!active || buildVersion !== walkIndexBuildVersion || runtime.walkIndexDirty) return;
+                collision.addGeometry(job.geometry, job.matrix, {
+                  startTriangle,
+                  triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
+                });
+              }
+            }
+            if (!active || buildVersion !== walkIndexBuildVersion || runtime.walkIndexDirty) return;
+            recoveredWalkCollision = collision;
+            canvas.dataset.walkCollisionBuildMs = (performance.now() - collisionStartedAt).toFixed(1);
+            canvas.dataset.walkIndexState = "ready";
+          })().catch(() => {
+            // Solid can keep using its accurate raycast fallback if indexing it
+            // fails; Ghost and floor following are already ready.
+            canvas.dataset.walkIndexState = "surface-ready";
+          });
+          return;
+        }
+      })();
+      canvas.dataset.walkIndexState = "building";
+      walkIndexBuild = build.catch(() => {
+        // The existing raycast fallback keeps Walk usable if an unusually large
+        // or malformed mesh cannot be indexed; do not strand the entry screen.
+        canvas.dataset.walkIndexState = "fallback";
+      }).finally(() => {
+        if (buildVersion === walkIndexBuildVersion) walkIndexBuild = null;
+      });
+      return walkIndexBuild;
     };
     const surfaceFloorAt = (eyePosition: THREE.Vector3, maxDrop?: number) => {
       if (isReferenceModel && referenceWalkSurface) {
@@ -900,11 +1002,18 @@ export function ModelCanvas({
       // While a drawing tool is armed the right button is the look drag, so it
       // must not also raise a menu under the cursor.
       if (walkRef.current || measuringRef.current || markupSettingsRef.current.tool) return;
-      const elementId = useReference || isReferenceModel ? null : pickAt(event.clientX, event.clientY);
+      const hit = geometryHitAt(event.clientX, event.clientY);
+      const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
+      const elementId = useReference || isReferenceModel || hit?.faceIndex == null
+        ? null
+        : elementIds?.[hit.faceIndex] ?? null;
       if (elementId != null) onSelectElement(elementId);
+      const normal = hit ? hitWorldNormal(hit) : null;
+      const walkable = normal && Math.abs(normal.dot(upVector)) >= 0.55;
       const rect = canvas.getBoundingClientRect();
       onCanvasMenu({
         elementId,
+        ...(hit && walkable ? { walkPoint: tuple(hit.point), walkNormal: tuple(normal) } : {}),
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
         width: rect.width,
@@ -913,14 +1022,26 @@ export function ModelCanvas({
     };
     const handleDoubleClick = (event: MouseEvent) => {
       const walk = walkRef.current;
-      if (!walk) return;
       const hit = performance.now() - lastSurfaceHitAt < 500
         ? lastSurfaceHit
         : geometryHitAt(event.clientX, event.clientY);
-      if (hit) {
-        showSurfaceSelection(hit);
+      if (!hit) return;
+      showSurfaceSelection(hit);
+      if (walk) {
         walk.travelToSurface(hit.point, hitWorldNormal(hit));
+        return;
       }
+      // Outside Walk, a double-click makes the picked point the orbit pivot.
+      // Horizontal picks also become the next walk entry, so a person can point
+      // at a room or floor before pressing the Walk tool.
+      const normal = hitWorldNormal(hit);
+      controls.target.copy(hit.point);
+      camera.lookAt(hit.point);
+      controls.update();
+      if (Math.abs(normal.dot(upVector)) >= 0.55 && runtimeRef.current) {
+        runtimeRef.current.walkStart = { point: hit.point.clone(), normal };
+      }
+      needsRender = true;
     };
     // What is under the cursor should name itself before you commit to
     // clicking it. The raycast is the same one picking uses; it is throttled to
@@ -931,6 +1052,8 @@ export function ModelCanvas({
     let measurementPreviewPending = false;
     let measurementPreviewEvent: PointerEvent | null = null;
     let hoveredElementId: number | null = null;
+    let hoverRaycastCount = 0;
+    if (navigationTest) canvas.dataset.hoverRaycasts = "0";
     const reportHover = (elementId: number | null) => {
       if (elementId === hoveredElementId) return;
       hoveredElementId = elementId;
@@ -939,13 +1062,19 @@ export function ModelCanvas({
     const resolveHover = () => {
       hoverPending = false;
       const event = hoverEvent;
-      if (!event) return;
+      // OrbitControls runs its own pointer listeners before this one. Avoid
+      // tracing a ray through every triangle while that control is consuming
+      // the same pointer stream; the final click still gets an exact pick and
+      // the next unpressed move restores hover normally.
+      if (!event || cameraInteracting || pointerStart) return;
       const rect = canvas.getBoundingClientRect();
       pointer.set(
         ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
         -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
+      hoverRaycastCount += 1;
+      if (navigationTest) canvas.dataset.hoverRaycasts = String(hoverRaycastCount);
       const hit = firstTriangleHit(raycaster, interactionMeshes, (intersection) =>
         intersection.object.userData.elementIds != null);
       const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
@@ -971,6 +1100,10 @@ export function ModelCanvas({
       }
       if (useReference || isReferenceModel || walkRef.current) return;
       hoverEvent = event;
+      if (cameraInteracting || pointerStart) {
+        reportHover(null);
+        return;
+      }
       if (hoverPending) return;
       hoverPending = true;
       requestAnimationFrame(resolveHover);
@@ -992,6 +1125,7 @@ export function ModelCanvas({
     canvas.addEventListener("pointerleave", handlePointerLeave);
     canvas.addEventListener("contextmenu", handleContextMenu);
     canvas.addEventListener("dblclick", handleDoubleClick);
+    let cancelWalkPrewarm = () => {};
     runtimeRef.current = {
       scene,
       camera,
@@ -1010,6 +1144,7 @@ export function ModelCanvas({
       resolveMovement: resolveWalkMovement,
       prepareWalkIndexes,
       walkIndexDirty: false,
+      walkStart: null,
       selectionOverlay: null,
       measurement,
       sectionHelper: null,
@@ -1019,7 +1154,23 @@ export function ModelCanvas({
       },
     };
 
-    let active = true;
+    // The index is useful but not urgent while the user is orbiting. Start it
+    // after the browser has painted the model; each triangle chunk yields back
+    // to the event loop, so even a campus-sized RVT stays interactive.
+    if (!isReferenceModel) {
+      if (typeof window.requestIdleCallback === "function") {
+        const idleId = window.requestIdleCallback(() => {
+          if (active) void prepareWalkIndexes();
+        }, { timeout: 1_500 });
+        cancelWalkPrewarm = () => window.cancelIdleCallback(idleId);
+      } else {
+        const timeoutId = window.setTimeout(() => {
+          if (active) void prepareWalkIndexes();
+        }, 250);
+        cancelWalkPrewarm = () => window.clearTimeout(timeoutId);
+      }
+    }
+
     queueMicrotask(() => {
       if (!active) return;
       setMeasurementReadings([]);
@@ -1117,6 +1268,18 @@ export function ModelCanvas({
       } else {
         cameraChanged = controls.update();
       }
+      if (navigationTest) {
+        const direction = camera.getWorldDirection(new THREE.Vector3());
+        const target = walkRef.current
+          ? camera.position.clone().add(direction)
+          : controls.target;
+        canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
+        canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.cameraTarget = target.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.cameraDirection = direction.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.pointerLocked = String(walkRef.current?.isPointerLocked() ?? false);
+        canvas.dataset.walkGravity = String(walkGravityRef.current);
+      }
       if (cameraChanged || needsRender) {
         renderer.render(scene, camera);
         needsRender = false;
@@ -1126,6 +1289,8 @@ export function ModelCanvas({
 
     return () => {
       active = false;
+      walkIndexBuildVersion += 1;
+      cancelWalkPrewarm();
       cancelAnimationFrame(frame);
       // Carry a normalized camera between the feet/z-up recovery and the
       // metres/y-up GLB. First-person controls do not maintain OrbitControls'
@@ -1154,6 +1319,8 @@ export function ModelCanvas({
       onHoverElement(null);
       onCanvasMenu(null);
       controls.removeEventListener("change", handleControlsChange);
+      controls.removeEventListener("start", handleControlsStart);
+      controls.removeEventListener("end", handleControlsEnd);
       controls.dispose();
       disposeGroup(root);
       if (runtimeRef.current?.sectionHelper) disposeGroup(runtimeRef.current.sectionHelper);
@@ -1252,20 +1419,28 @@ export function ModelCanvas({
     if (!runtime || !canvas) return;
 
     if (!walking) {
-      walkRef.current?.dispose();
+      const previousWalk = walkRef.current;
+      previousWalk?.dispose();
       walkRef.current = null;
+      queueMicrotask(() => {
+        setWalkPreparing(false);
+        setWalkLooking(false);
+      });
       runtime.controls.enabled = true;
       if (source === "reference-model") setReferenceOutlineMode(runtime.root, "orbit");
       runtime.camera.near = Math.max(0.1, runtime.radius / 1_000);
       runtime.camera.far = runtime.radius * 30;
       runtime.camera.updateProjectionMatrix();
-      // Orbit around whatever is in front of the camera now, rather than
-      // snapping back to the model centre.
-      const forward = new THREE.Vector3();
-      runtime.camera.getWorldDirection(forward);
-      runtime.controls.target.copy(
-        runtime.camera.position.clone().addScaledVector(forward, runtime.radius * 0.35),
-      );
+      if (previousWalk) {
+        // Orbit around whatever is in front of the camera now, rather than
+        // snapping back to the model centre. Leave the initial Orbit target
+        // alone when this effect first mounts.
+        const forward = new THREE.Vector3();
+        runtime.camera.getWorldDirection(forward);
+        runtime.controls.target.copy(
+          runtime.camera.position.clone().addScaledVector(forward, runtime.radius * 0.35),
+        );
+      }
       runtime.controls.update();
       runtime.invalidate();
       return;
@@ -1281,9 +1456,6 @@ export function ModelCanvas({
     runtime.camera.near = Math.max(0.1 * runtime.sceneUnitsPerFoot, runtime.radius / 10_000);
     runtime.camera.far = runtime.radius * 8;
     runtime.camera.updateProjectionMatrix();
-    // Build the spatial walk indexes before the first step so the per-frame
-    // probes never fall back to whole-scene raycasts.
-    runtime.prepareWalkIndexes();
     // The proxy edge hairlines read as a technical drawing from orbit and as
     // moiré at eye height; the reference path already dims its outlines for
     // walking, this hides the recovered ones the same way.
@@ -1300,62 +1472,84 @@ export function ModelCanvas({
         }
       });
     }
-    const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
-    const start = runtime.camera.position.clone();
-    let nearbyFloor = runtime.surfaceFloorAt(start, runtime.radius * 4);
-    if (nearbyFloor == null) {
-      // Orbit views usually sit outside the building footprint. Move the walk
-      // entry probe to the model centre instead of dropping that distant camera
-      // onto an empty baseline where normal walking speed is imperceptible.
-      if (runtime.up === "y") {
-        start.x = runtime.center.x;
-        start.z = runtime.center.z;
-        start.y = runtime.bounds.max.y + runtime.radius * 0.25;
-      } else {
-        start.x = runtime.center.x;
-        start.y = runtime.center.y;
-        start.z = runtime.bounds.max.z + runtime.radius * 0.25;
+    let cancelled = false;
+    let walk: WalkControls | null = null;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setWalkPreparing(true);
+        setWalkLooking(false);
       }
-      nearbyFloor = runtime.surfaceFloorAt(start, runtime.radius * 4);
-    }
-    const eye = (nearbyFloor ?? runtime.floor) + eyeHeight;
-    if (runtime.up === "y") start.y = eye;
-    else start.z = eye;
-    const forward = runtime.camera.getWorldDirection(new THREE.Vector3());
-    if (runtime.up === "y") forward.y = 0;
-    else forward.z = 0;
-    if (forward.lengthSq() < 1e-6) forward.set(1, 0, 0);
-    const lookAt = start.clone().addScaledVector(forward.normalize(), runtime.radius * 0.25);
-
-    const walk = createWalkControls(runtime.camera, canvas, {
-      start,
-      lookAt,
-      floor: runtime.floor + eyeHeight,
-      eyeHeight,
-      sceneUnitsPerFoot: runtime.sceneUnitsPerFoot,
-      up: runtime.up,
-      speed: walkSpeedRef.current,
-      gravity: walkGravityRef.current,
-      floorProbeInterval: 1 / 30,
-      resolveFloor: runtime.surfaceFloorAt,
-      dropDistance: runtime.radius * 4,
-      resolveMovement: runtime.resolveMovement,
-      onLookChange: setWalkLooking,
-      onSpeedChange: setWalkSpeed,
-      onGravityChange: setWalkGravity,
-      onExit: () => onWalkingChange(false),
     });
-    walk.enable();
-    walkRef.current = walk;
-    runtime.invalidate();
+
+    void runtime.prepareWalkIndexes().then(() => {
+      if (cancelled) return;
+      setWalkPreparing(false);
+      const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
+      const hasRequestedStart = walkStartRequest.sequence !== appliedWalkStartRequestRef.current
+        && walkStartRequest.point !== null;
+      if (hasRequestedStart) appliedWalkStartRequestRef.current = walkStartRequest.sequence;
+      const pickedStart = hasRequestedStart
+        ? new THREE.Vector3(...walkStartRequest.point!)
+        : runtime.walkStart?.point.clone() ?? null;
+      runtime.walkStart = null;
+      // OrbitControls' target describes the area the user is inspecting. Use it
+      // as the default plan location instead of teleporting to the model centre;
+      // a double-click or “Walk from here” supplies an exact floor point.
+      const start = pickedStart ?? runtime.controls.target.clone();
+      let nearbyFloor = pickedStart
+        ? (runtime.up === "y" ? pickedStart.y : pickedStart.z)
+        : null;
+      if (nearbyFloor == null) {
+        const targetProbe = start.clone();
+        if (runtime.up === "y") targetProbe.y = runtime.bounds.max.y + eyeHeight;
+        else targetProbe.z = runtime.bounds.max.z + eyeHeight;
+        nearbyFloor = runtime.surfaceFloorAt(targetProbe, runtime.radius * 4);
+      }
+      if (nearbyFloor == null) {
+        const cameraProbe = runtime.camera.position.clone();
+        nearbyFloor = runtime.surfaceFloorAt(cameraProbe, runtime.radius * 4);
+        if (nearbyFloor != null) start.copy(cameraProbe);
+      }
+      const eye = (nearbyFloor ?? runtime.floor) + eyeHeight;
+      if (runtime.up === "y") start.y = eye;
+      else start.z = eye;
+      const forward = runtime.camera.getWorldDirection(new THREE.Vector3());
+      if (runtime.up === "y") forward.y = 0;
+      else forward.z = 0;
+      if (forward.lengthSq() < 1e-6) forward.set(1, 0, 0);
+      const lookAt = start.clone().addScaledVector(forward.normalize(), runtime.radius * 0.25);
+
+      walk = createWalkControls(runtime.camera, canvas, {
+        start,
+        lookAt,
+        floor: runtime.floor + eyeHeight,
+        eyeHeight,
+        sceneUnitsPerFoot: runtime.sceneUnitsPerFoot,
+        up: runtime.up,
+        speed: walkSpeedRef.current,
+        gravity: walkGravityRef.current,
+        floorProbeInterval: 1 / 30,
+        resolveFloor: runtime.surfaceFloorAt,
+        dropDistance: runtime.radius * 4,
+        resolveMovement: runtime.resolveMovement,
+        onLookChange: setWalkLooking,
+        onSpeedChange: setWalkSpeed,
+        onGravityChange: setWalkGravity,
+        onExit: () => onWalkingChange(false),
+      });
+      walk.enable();
+      walkRef.current = walk;
+      runtime.invalidate();
+    });
 
     return () => {
-      walk.dispose();
+      cancelled = true;
+      walk?.dispose();
       if (walkRef.current === walk) walkRef.current = null;
       for (const object of hiddenEdgeOverlays) object.visible = true;
       runtime.invalidate();
     };
-  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, source, walking]);
+  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, source, walking, walkStartRequest]);
 
   useEffect(() => {
     walkSpeedRef.current = walkSpeed;
@@ -1439,8 +1633,9 @@ export function ModelCanvas({
     const runtime = runtimeRef.current;
     if (!runtime) return;
     if (!exploding) {
+      const hadExplodedParts = runtime.explodeParts.length > 0;
       applyExplode(runtime.explodeParts, 0);
-      runtime.walkIndexDirty = true;
+      if (hadExplodedParts) runtime.walkIndexDirty = true;
       runtime.invalidate();
       return;
     }
@@ -1654,6 +1849,7 @@ export function ModelCanvas({
       {walking && (
         <FirstPersonPanel
           looking={walkLooking}
+          preparing={walkPreparing}
           drawing={Boolean(markupSettings.tool && markupSettings.tool !== "delete")}
           speed={walkSpeed}
           gravity={walkGravity}
