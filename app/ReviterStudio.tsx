@@ -44,8 +44,8 @@ import { BrowserDock } from "./studio/BrowserDock.tsx";
 import { EmptyState } from "./studio/EmptyState.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
-import { MarkupOverlay } from "./studio/MarkupOverlay.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
+import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import { PropertiesDock, type EvidenceRow } from "./studio/PropertiesDock.tsx";
 import { ToolButton } from "./studio/panels.tsx";
 import {
@@ -62,10 +62,17 @@ import {
   type RecentFile,
 } from "./studio/recents.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
+import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
 import {
+  isNavigationTool,
   navigationModeForTool,
+  type ActionTool,
+  type MarkupEdit,
+  type MarkupStroke,
   type MarkupTool,
   type ModelComment,
+  type NavigationTool,
+  type NewMarkupStroke,
   type NewModelComment,
   type ViewerTool,
 } from "./studio/viewer-tools.ts";
@@ -180,8 +187,18 @@ export default function ReviterStudio() {
 
   const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
   const [renderMode, setRenderMode] = useState<RenderMode>("technical");
-  const [activeTool, setActiveTool] = useState<ViewerTool>("orbit");
+  // How the camera is driven, and what a click does, are separate choices — so
+  // a review can be conducted from inside the building rather than having to
+  // leave first person to say anything about it.
+  const [navTool, setNavTool] = useState<NavigationTool>("orbit");
+  const [actionTool, setActionTool] = useState<ActionTool | null>(null);
   const [markupTool, setMarkupTool] = useState<MarkupTool>("pencil");
+  const [markupColor, setMarkupColor] = useState("#ef3f45");
+  const [markupWeight, setMarkupWeight] = useState(4);
+  const [markupText, setMarkupText] = useState("Note");
+  const [markup, setMarkup] = useState<MarkupStroke[]>([]);
+  const [markupUndo, setMarkupUndo] = useState<MarkupEdit[]>([]);
+  const [markupRedo, setMarkupRedo] = useState<MarkupEdit[]>([]);
   const [cameraRequest, setCameraRequest] = useState<CameraRequest>({
     preset: DEFAULT_CAMERA_PRESET,
     sequence: 0,
@@ -224,10 +241,10 @@ export default function ReviterStudio() {
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
 
-  const navigationMode = navigationModeForTool(activeTool);
-  const walking = activeTool === "firstPerson";
+  const navigationMode = navigationModeForTool(navTool);
+  const walking = navTool === "firstPerson";
   const handleWalkingChange = useCallback((enabled: boolean) => {
-    setActiveTool(enabled ? "firstPerson" : "orbit");
+    setNavTool(enabled ? "firstPerson" : "orbit");
   }, []);
 
   const workerRef = useRef<Worker | null>(null);
@@ -303,9 +320,13 @@ export default function ReviterStudio() {
     setComparison(null);
     setGeometrySource("recovered");
     setRenderMode("technical");
-    setActiveTool("orbit");
+    setNavTool("orbit");
+    setActionTool(null);
     setMarkupTool("pencil");
     setModelComments([]);
+    setMarkup([]);
+    setMarkupUndo([]);
+    setMarkupRedo([]);
     setActiveCommentId(null);
     setCommentFilter("open");
     setCameraRequest({ preset: DEFAULT_CAMERA_PRESET, sequence: requestId, fit: false });
@@ -406,6 +427,7 @@ export default function ReviterStudio() {
         }
         setResult(message.result);
         setModelComments(loadModelComments(message.result));
+        setMarkup(loadModelMarkup(message.result));
         // Reviter's own recovery is what opening a model shows. Nothing about
         // the file — not its name, not its document id — switches the viewer to
         // a different converter's output behind the user's back.
@@ -454,6 +476,9 @@ export default function ReviterStudio() {
     });
     setPrivateFileInfo(null);
     setModelComments([]);
+    setMarkup([]);
+    setMarkupUndo([]);
+    setMarkupRedo([]);
     setActiveCommentId(null);
     setSelectedElementId(null);
     setHiddenCategories(new Set());
@@ -855,7 +880,7 @@ export default function ReviterStudio() {
     setViewpointRequest((current) => ({ commentId: id, sequence: current.sequence + 1 }));
   }, []);
 
-  const commentToolArmed = activeTool === "comment";
+  const commentToolArmed = actionTool === "comment";
 
   /** Open the panel the Comment tool writes into, wherever that panel lives. */
   const revealComments = useCallback(() => {
@@ -867,14 +892,120 @@ export default function ReviterStudio() {
   }, [mobile]);
 
   const armCommentTool = useCallback(() => {
-    setActiveTool((current) => current === "comment" ? "orbit" : "comment");
+    setActionTool((current) => current === "comment" ? null : "comment");
     revealComments();
   }, [revealComments]);
 
+  /**
+   * A tool click.
+   *
+   * Navigation replaces navigation; an action toggles and leaves the camera
+   * alone. Walking through a building and pinning comments as you go is one
+   * activity, not two that take turns.
+   */
   const selectViewerTool = useCallback((tool: ViewerTool) => {
+    if (isNavigationTool(tool)) {
+      setNavTool(tool);
+      return;
+    }
+    setActionTool((current) => current === tool ? null : tool);
     if (tool === "comment") revealComments();
-    setActiveTool(tool);
   }, [revealComments]);
+
+  // --- Markup ------------------------------------------------------------
+
+  const commitMarkup = useCallback((update: (current: MarkupStroke[]) => MarkupStroke[]) => {
+    setMarkup((current) => {
+      const next = update(current);
+      if (result) saveModelMarkup(result, next);
+      return next;
+    });
+  }, [result]);
+
+  /**
+   * Undo walks a log of edits, not a stack of strokes.
+   *
+   * Holding "what to put back" in one list made Undo mean two different things:
+   * after erasing the last stroke there was nothing left to pop, so Undo went
+   * grey and the only way back was Redo — which is not what anyone reaches for
+   * having just deleted something by mistake.
+   */
+  const applyMarkupEdit = useCallback((edit: MarkupEdit, invert: boolean) => {
+    commitMarkup((current) => {
+      const removing = invert ? edit.kind === "add" : edit.kind !== "add";
+      if (edit.kind === "clear") return removing ? [] : [...edit.strokes];
+      if (removing) return current.filter((stroke) => stroke.id !== edit.stroke.id);
+      const next = [...current];
+      next.splice(Math.min(edit.index, next.length), 0, edit.stroke);
+      return next;
+    });
+  }, [commitMarkup]);
+
+  const pushMarkupEdit = useCallback((edit: MarkupEdit) => {
+    setMarkupUndo((current) => [...current, edit]);
+    // A fresh edit invalidates anything that was waiting to be redone.
+    setMarkupRedo([]);
+  }, []);
+
+  const createMarkupStroke = useCallback((stroke: NewMarkupStroke) => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `markup-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const created: MarkupStroke = { ...stroke, id, createdAt: new Date().toISOString() };
+    let index = 0;
+    commitMarkup((current) => {
+      index = current.length;
+      return [...current, created];
+    });
+    pushMarkupEdit({ kind: "add", stroke: created, index });
+  }, [commitMarkup, pushMarkupEdit]);
+
+  const deleteMarkupStroke = useCallback((id: string) => {
+    setMarkup((current) => {
+      const index = current.findIndex((stroke) => stroke.id === id);
+      if (index < 0) return current;
+      pushMarkupEdit({ kind: "delete", stroke: current[index]!, index });
+      const next = current.filter((stroke) => stroke.id !== id);
+      if (result) saveModelMarkup(result, next);
+      return next;
+    });
+  }, [pushMarkupEdit, result]);
+
+  const undoMarkup = useCallback(() => {
+    setMarkupUndo((current) => {
+      const last = current.at(-1);
+      if (!last) return current;
+      applyMarkupEdit(last, true);
+      setMarkupRedo((redo) => [...redo, last]);
+      return current.slice(0, -1);
+    });
+  }, [applyMarkupEdit]);
+
+  const redoMarkup = useCallback(() => {
+    setMarkupRedo((current) => {
+      const last = current.at(-1);
+      if (!last) return current;
+      applyMarkupEdit(last, false);
+      setMarkupUndo((undo) => [...undo, last]);
+      return current.slice(0, -1);
+    });
+  }, [applyMarkupEdit]);
+
+  const clearMarkup = useCallback(() => {
+    setMarkup((current) => {
+      if (!current.length) return current;
+      pushMarkupEdit({ kind: "clear", strokes: current, index: 0 });
+      if (result) saveModelMarkup(result, []);
+      return [];
+    });
+  }, [pushMarkupEdit, result]);
+
+  const markupSettings = useMemo(() => ({
+    tool: actionTool === "markup" ? markupTool : null,
+    color: markupColor,
+    weight: markupWeight,
+    text: markupText,
+  }), [actionTool, markupColor, markupText, markupTool, markupWeight]);
 
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
@@ -1173,10 +1304,10 @@ export default function ReviterStudio() {
       renderMode={renderMode}
       navigationMode={navigationMode}
       cameraRequest={cameraRequest}
-      measuring={activeTool === "measure"}
-      sectioning={activeTool === "section"}
-      onSectionClear={() => setActiveTool("orbit")}
-      exploding={activeTool === "explode"}
+      measuring={actionTool === "measure"}
+      sectioning={actionTool === "section"}
+      onSectionClear={() => setActionTool(null)}
+      exploding={actionTool === "explode"}
       commenting={commentToolArmed}
       comments={modelComments}
       visibleCommentIds={visibleCommentIds}
@@ -1184,6 +1315,10 @@ export default function ReviterStudio() {
       onActiveComment={activateComment}
       onCreateComment={createModelComment}
       viewpointRequest={viewpointRequest}
+      markup={markup}
+      markupSettings={markupSettings}
+      onCreateMarkup={createMarkupStroke}
+      onDeleteMarkup={deleteMarkupStroke}
       walking={walking}
       onWalkingChange={handleWalkingChange}
       selectedElementId={selectedElementId}
@@ -1307,22 +1442,11 @@ export default function ReviterStudio() {
           fileName={result?.fileName ?? "Reviter"}
           statusLine={busy ? `${Math.round(progress * 100)}% · ${statusText.toLowerCase()}` : statusText}
           viewport={
-            <>
-              {canvas}
-              {result && (
-                <MarkupOverlay
-                  key={`${result.fileName}:${result.byteLength}`}
-                  active={activeTool === "markup"}
-                  tool={markupTool}
-                  onToolChange={setMarkupTool}
-                  onDone={() => setActiveTool("orbit")}
-                  onCancel={() => setActiveTool("orbit")}
-                />
-              )}
-            </>
+            canvas
           }
-          activeTool={activeTool}
-          onTool={setActiveTool}
+          activeTool={navTool}
+          actionTool={actionTool}
+          onTool={selectViewerTool}
           sheet={sheet}
           onSheet={setSheet}
           selectedTitle={selectedTitle}
@@ -1346,7 +1470,8 @@ export default function ReviterStudio() {
               sources={sources}
               geometrySource={geometrySource}
               onSource={selectGeometrySource}
-              activeTool={activeTool}
+              activeTool={navTool}
+              actionTool={actionTool}
               onTool={selectViewerTool}
               cameraPreset={cameraRequest.preset}
               onCameraPreset={requestCamera}
@@ -1392,14 +1517,27 @@ export default function ReviterStudio() {
               {result ? (
                 <div className={`viewport ${renderMode === "technical" ? "shaded" : "xray"}`}>
                   {canvas}
-                  <MarkupOverlay
-                    key={`${result.fileName}:${result.byteLength}`}
-                    active={activeTool === "markup"}
-                    tool={markupTool}
-                    onToolChange={setMarkupTool}
-                    onDone={() => setActiveTool("orbit")}
-                    onCancel={() => setActiveTool("orbit")}
-                  />
+
+                  {actionTool === "markup" && (
+                    <MarkupToolbar
+                      tool={markupTool}
+                      color={markupColor}
+                      weight={markupWeight}
+                      text={markupText}
+                      strokeCount={markup.length}
+                      canUndo={markupUndo.length > 0}
+                      canRedo={markupRedo.length > 0}
+                      walking={walking}
+                      onTool={setMarkupTool}
+                      onColor={setMarkupColor}
+                      onWeight={setMarkupWeight}
+                      onText={setMarkupText}
+                      onUndo={undoMarkup}
+                      onRedo={redoMarkup}
+                      onClear={clearMarkup}
+                      onDone={() => setActionTool(null)}
+                    />
+                  )}
 
                   {selectedRecord && (
                     <button type="button" className="viewport-selection" onClick={() => setRightOpen(true)}>
@@ -1411,7 +1549,7 @@ export default function ReviterStudio() {
                   {commentToolArmed && (
                     <div className="comment-banner" role="status">
                       Click a surface to pin a comment
-                      <button type="button" onClick={() => setActiveTool("orbit")}>Cancel</button>
+                      <button type="button" onClick={() => setActionTool(null)}>Cancel</button>
                     </div>
                   )}
 

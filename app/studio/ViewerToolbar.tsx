@@ -31,7 +31,7 @@ import {
 import { CAMERA_PRESETS, type CameraPreset, type RenderMode } from "../../lib/reviter";
 import { ToolButton } from "./panels.tsx";
 import type { GeometrySource } from "./types.ts";
-import type { ViewerTool } from "./viewer-tools.ts";
+import { isNavigationTool, type ActionTool, type NavigationTool, type ViewerTool } from "./viewer-tools.ts";
 
 type ToolEntry = { id: ViewerTool; label: string; Icon: typeof Hand };
 
@@ -63,6 +63,7 @@ export function ViewerToolbar({
   geometrySource,
   onSource,
   activeTool,
+  actionTool,
   onTool,
   cameraPreset,
   onCameraPreset,
@@ -80,7 +81,10 @@ export function ViewerToolbar({
   sources: readonly SourceOption[];
   geometrySource: GeometrySource;
   onSource: (source: GeometrySource) => void;
-  activeTool: ViewerTool;
+  /** The navigation tool in force. */
+  activeTool: NavigationTool;
+  /** The armed action, if any. It is independent of the navigation tool. */
+  actionTool: ActionTool | null;
   onTool: (tool: ViewerTool) => void;
   cameraPreset: CameraPreset;
   onCameraPreset: (preset: CameraPreset) => void;
@@ -156,7 +160,10 @@ export function ViewerToolbar({
 
         <div className="toolbar-group" role="group" aria-label="Model tools">
           {TOOLS.map(({ id, label, Icon }) => {
-            const active = activeTool === id;
+            // A navigation tool is lit when it is the one driving the camera; an
+            // action is lit when it is armed. Both can be lit at once, which is
+            // the point: Walk and Comment together is a review from inside.
+            const active = isNavigationTool(id) ? activeTool === id : actionTool === id;
             return (
               <button
                 key={id}
@@ -166,7 +173,7 @@ export function ViewerToolbar({
                 aria-label={label}
                 aria-pressed={active}
                 data-tool={id}
-                onClick={() => onTool(active ? "orbit" : id)}
+                onClick={() => onTool(id)}
               ><Icon size={16} aria-hidden /></button>
             );
           })}

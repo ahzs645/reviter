@@ -61,6 +61,7 @@ import {
   SectionToolPanel,
 } from "./ViewerToolPanels.tsx";
 import { ModelCommentLayer, type CommentProjection } from "./ModelCommentLayer.tsx";
+import { MarkupLayer, type MarkupProjection, type ScreenPoint } from "./MarkupLayer.tsx";
 import type { CameraRequest, CanvasMenuRequest, GeometrySource, ReferenceLoadState } from "./types.ts";
 import {
   createElementSelection,
@@ -74,10 +75,14 @@ import {
   formatMeasuredLength,
   measuredAngleDegrees,
   modelFeetToScenePoint,
+  sceneUnitsPerPixel,
   scenePointToModelFeet,
+  type MarkupStroke,
+  type MarkupTool,
   type ModelComment,
   type MeasureMode,
   type MeasureUnit,
+  type NewMarkupStroke,
   type NewModelComment,
   type Point3Tuple,
   type SectionMode,
@@ -123,6 +128,41 @@ function commentScenePoint(
   return comment.source === source ? new THREE.Vector3(...comment.scenePosition) : null;
 }
 
+/**
+ * A stroke's anchors in the coordinates the current source is drawn in.
+ *
+ * Registered feet are preferred for the same reason comments prefer them: a
+ * redline put on the recovery is about the building, so it belongs over the
+ * paired export too. A stroke that cannot be registered shows only on the
+ * source it was drawn on.
+ */
+function markupScenePoints(
+  stroke: MarkupStroke,
+  source: GeometrySource,
+  result: ConvertResult,
+): THREE.Vector3[] | null {
+  if (stroke.pointsFeet && source !== "reference-model") {
+    const origin: Point3Tuple = [result.origin.x, result.origin.y, result.origin.z];
+    const placed: THREE.Vector3[] = [];
+    for (const pointFeet of stroke.pointsFeet) {
+      const position = modelFeetToScenePoint(pointFeet, source, origin);
+      if (!position) return null;
+      placed.push(new THREE.Vector3(...position));
+    }
+    return placed;
+  }
+  if (stroke.source !== source) return null;
+  return stroke.points.map((point) => new THREE.Vector3(...point));
+}
+
+export type MarkupSettings = {
+  /** Null when no markup tool is armed. */
+  tool: MarkupTool | null;
+  color: string;
+  weight: number;
+  text: string;
+};
+
 export function ModelCanvas({
   result,
   comparison,
@@ -141,6 +181,10 @@ export function ModelCanvas({
   onActiveComment,
   onCreateComment,
   viewpointRequest,
+  markup,
+  markupSettings,
+  onCreateMarkup,
+  onDeleteMarkup,
   walking,
   onWalkingChange,
   selectedElementId,
@@ -176,6 +220,11 @@ export function ModelCanvas({
    * no-op, exactly as `focusRequest` does for framing an object.
    */
   viewpointRequest: { commentId: string | null; sequence: number };
+  /** Strokes already committed to this model, in scene coordinates. */
+  markup: readonly MarkupStroke[];
+  markupSettings: MarkupSettings;
+  onCreateMarkup: (stroke: NewMarkupStroke) => void;
+  onDeleteMarkup: (id: string) => void;
   walking: boolean;
   onWalkingChange: (walking: boolean) => void;
   selectedElementId: number | null;
@@ -239,11 +288,24 @@ export function ModelCanvas({
   const [sectionReverse, setSectionReverse] = useState(false);
   const [explodeAmount, setExplodeAmount] = useState(0);
   const [explodePartCount, setExplodePartCount] = useState(0);
+  /**
+   * The stroke under the cursor right now. Held as state so the layer renders a
+   * node for it, but its `points` array is grown in place while the pointer
+   * moves — the layer reads the array every frame, so a re-render per sample
+   * would buy nothing and cost a lot on a 40,000-object scene.
+   */
+  const [markupDraft, setMarkupDraft] = useState<MarkupStroke | null>(null);
+  const markupDraftRef = useRef<MarkupStroke | null>(null);
   // Pinning a comment activates it, and the scene effect that owns the pointer
   // handler is rebuilt only when the model or the source changes. The callback
   // rides on a ref so a new function identity from the shell does not tear the
   // WebGL scene down and build it again.
   const activateCommentRef = useRef(onActiveComment);
+  // Markup settings and sinks ride on refs for the same reason: the pointer
+  // handlers live in the scene effect, and rebuilding that effect tears down
+  // the WebGL scene.
+  const markupSettingsRef = useRef(markupSettings);
+  const createMarkupRef = useRef(onCreateMarkup);
   const walkSpeedRef = useRef<WalkSpeed>("normal");
   const walkGravityRef = useRef(true);
   const walkCollisionRef = useRef(false);
@@ -636,14 +698,147 @@ export function ModelCanvas({
       runtime.scene.add(selection);
       runtime.invalidate();
     };
+    /**
+     * Markup drawing.
+     *
+     * A stroke is fixed to a plane rather than snapped per point to whatever
+     * surface is behind it: dragging across a door reveal would otherwise send
+     * alternate points metres apart and shred the line. The plane is set at the
+     * depth of the first point and faces the camera that drew it, which is what
+     * makes a cloud round a window stay round — and stay on that window — from
+     * every other camera afterwards.
+     */
+    const markupPlane = new THREE.Plane();
+    const markupRay = new THREE.Ray();
+    let markupPoints: THREE.Vector3[] | null = null;
+    let markupWorldWeight = 0;
+    let markupSpacing = 0;
+    const markupPointAt = (clientX: number, clientY: number): THREE.Vector3 | null => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(
+        ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      markupRay.copy(raycaster.ray);
+      const at = markupRay.intersectPlane(markupPlane, new THREE.Vector3());
+      return at ?? null;
+    };
+    const beginMarkup = (event: PointerEvent): boolean => {
+      const settings = markupSettingsRef.current;
+      if (!settings.tool || settings.tool === "delete") return false;
+      const hit = geometryHitAt(event.clientX, event.clientY);
+      const view = camera.getWorldDirection(new THREE.Vector3());
+      // Nothing under the cursor still deserves an anchor — annotating the sky
+      // over a roofline is a normal thing to want — but the depth it gets has
+      // to be somewhere in the building. A fixed fraction of the model radius
+      // put the plane on the camera's own axis, where dollying cannot move it,
+      // so a stroke that started off the building looked pinned to the glass.
+      // What the camera is looking at is the honest answer in orbit; an arm's
+      // length ahead is the honest answer indoors.
+      const missDistance = walkRef.current
+        ? 12 * sceneUnitsPerFoot
+        : Math.max(radius * 0.05, camera.position.distanceTo(controls.target));
+      const anchor = hit
+        ? hit.point.clone().addScaledVector(view, -radius * 0.0015)
+        : camera.position.clone().addScaledVector(view, missDistance);
+      markupPlane.setFromNormalAndCoplanarPoint(view.clone().negate(), anchor);
+      const perPixel = sceneUnitsPerPixel(
+        camera.position.distanceTo(anchor),
+        camera.fov,
+        canvas.clientHeight || 1,
+      );
+      markupWorldWeight = Math.max(1e-6, settings.weight * perPixel);
+      // Two pixels of travel before a new anchor, measured in the world so the
+      // sampling does not change with how far away the wall is.
+      markupSpacing = Math.max(1e-6, perPixel * 2.5);
+      if (settings.tool === "text") {
+        createMarkupRef.current({
+          source,
+          tool: "text",
+          points: [tuple(anchor)],
+          ...markupFeet([anchor]),
+          color: settings.color,
+          worldWeight: markupWorldWeight,
+          text: settings.text,
+        });
+        return true;
+      }
+      markupPoints = [anchor];
+      const draft: MarkupStroke = {
+        id: "markup-draft",
+        source,
+        tool: settings.tool,
+        points: [tuple(anchor)],
+        color: settings.color,
+        worldWeight: markupWorldWeight,
+        createdAt: new Date().toISOString(),
+      };
+      markupDraftRef.current = draft;
+      setMarkupDraft(draft);
+      canvas.setPointerCapture(event.pointerId);
+      // Orbit would spin the model under the line being drawn on it.
+      if (!walkRef.current) controls.enabled = false;
+      return true;
+    };
+    const extendMarkup = (event: PointerEvent) => {
+      if (!markupPoints) return;
+      const at = markupPointAt(event.clientX, event.clientY);
+      if (!at) return;
+      const last = markupPoints.at(-1)!;
+      const isArrow = markupDraftRef.current?.tool === "arrow";
+      if (!isArrow && at.distanceTo(last) < markupSpacing) return;
+      if (isArrow) markupPoints.splice(1, markupPoints.length - 1, at);
+      else markupPoints.push(at);
+      // The draft object is projected from `points` every frame, so growing the
+      // array in place is what the layer reads — no re-render per sample.
+      const draft = markupDraftRef.current;
+      if (draft) draft.points = markupPoints.map(tuple);
+    };
+    const finishMarkup = (event: PointerEvent) => {
+      if (!markupPoints) return;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      const settings = markupSettingsRef.current;
+      const points = markupPoints;
+      markupPoints = null;
+      markupDraftRef.current = null;
+      setMarkupDraft(null);
+      controls.enabled = true;
+      if (points.length > 1 && settings.tool && settings.tool !== "delete" && settings.tool !== "text") {
+        createMarkupRef.current({
+          source,
+          tool: settings.tool,
+          points: points.map(tuple),
+          ...markupFeet(points),
+          color: settings.color,
+          worldWeight: markupWorldWeight,
+        });
+      }
+    };
+    const markupFeet = (points: readonly THREE.Vector3[]) => {
+      const origin: Point3Tuple = [result.origin.x, result.origin.y, result.origin.z];
+      const feet: Point3Tuple[] = [];
+      for (const point of points) {
+        const registered = scenePointToModelFeet(tuple(point), source, origin);
+        if (!registered) return {};
+        feet.push(registered);
+      }
+      return { pointsFeet: feet };
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
       // Only the primary button picks. The right button used to run the same
       // pick on release, which cleared the selection under the menu that was
       // about to offer "Clear selection".
       if (event.button !== 0) return;
+      if (beginMarkup(event)) return;
       pointerStart = { x: event.clientX, y: event.clientY };
     };
     const handlePointerUp = (event: PointerEvent) => {
+      if (markupPoints) {
+        finishMarkup(event);
+        return;
+      }
       if (!pointerStart) return;
       const movement = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
       pointerStart = null;
@@ -702,7 +897,9 @@ export function ModelCanvas({
     // object" and the properties panel both read the selection.
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
-      if (walkRef.current || measuringRef.current) return;
+      // While a drawing tool is armed the right button is the look drag, so it
+      // must not also raise a menu under the cursor.
+      if (walkRef.current || measuringRef.current || markupSettingsRef.current.tool) return;
       const elementId = useReference || isReferenceModel ? null : pickAt(event.clientX, event.clientY);
       if (elementId != null) onSelectElement(elementId);
       const rect = canvas.getBoundingClientRect();
@@ -755,6 +952,10 @@ export function ModelCanvas({
       reportHover(hit?.faceIndex == null ? null : elementIds?.[hit.faceIndex] ?? null);
     };
     const handlePointerMove = (event: PointerEvent) => {
+      if (markupPoints) {
+        extendMarkup(event);
+        return;
+      }
       if (measuringRef.current) {
         measurementPreviewEvent = event;
         if (measurementPreviewPending) return;
@@ -776,6 +977,10 @@ export function ModelCanvas({
     };
     const handlePointerLeave = () => {
       hoverEvent = null;
+      markupPoints = null;
+      markupDraftRef.current = null;
+      setMarkupDraft(null);
+      controls.enabled = true;
       measurementPreviewEvent = null;
       updateMeasurementPreview(measurement, null);
       reportHover(null);
@@ -783,6 +988,7 @@ export function ModelCanvas({
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointerup", handlePointerUp);
     canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointercancel", handlePointerUp);
     canvas.addEventListener("pointerleave", handlePointerLeave);
     canvas.addEventListener("contextmenu", handleContextMenu);
     canvas.addEventListener("dblclick", handleDoubleClick);
@@ -940,6 +1146,7 @@ export function ModelCanvas({
       observer.disconnect();
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
+      canvas.removeEventListener("pointercancel", handlePointerUp);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerleave", handlePointerLeave);
       canvas.removeEventListener("contextmenu", handleContextMenu);
@@ -1181,6 +1388,20 @@ export function ModelCanvas({
   }, [onActiveComment]);
 
   useEffect(() => {
+    markupSettingsRef.current = markupSettings;
+  }, [markupSettings]);
+
+  useEffect(() => {
+    createMarkupRef.current = onCreateMarkup;
+  }, [onCreateMarkup]);
+
+  // A drawing tool takes the left drag, so first-person looking moves to the
+  // right button rather than the two gestures fighting over one gesture.
+  useEffect(() => {
+    walkRef.current?.setLookButton(markupSettings.tool && markupSettings.tool !== "delete" ? 2 : 0);
+  }, [markupSettings.tool, walking]);
+
+  useEffect(() => {
     measureModeRef.current = measureMode;
     const runtime = runtimeRef.current;
     if (runtime) clearPendingMeasurement(runtime.measurement);
@@ -1330,6 +1551,51 @@ export function ModelCanvas({
     };
   }, [result, source]);
 
+  /**
+   * Place a stroke on the glass from wherever the camera is now.
+   *
+   * The width comes back out of the world the same way it went in, so a redline
+   * you walk up to gets thicker exactly as a painted line on that wall would.
+   */
+  const projectMarkup = useCallback((stroke: MarkupStroke): MarkupProjection | null => {
+    const runtime = runtimeRef.current;
+    const canvas = canvasRef.current;
+    if (!runtime || !canvas) return null;
+    const points = markupScenePoints(stroke, source, result);
+    if (!points?.length) return null;
+    const cameraDirection = runtime.camera.getWorldDirection(new THREE.Vector3());
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const screen: ScreenPoint[] = [];
+    let anyVisible = false;
+    for (const point of points) {
+      const inFront = point.clone().sub(runtime.camera.position).dot(cameraDirection) > 0;
+      const projected = point.clone().project(runtime.camera);
+      const visible = inFront && projected.z >= -1 && projected.z <= 1;
+      if (visible) anyVisible = true;
+      screen.push({
+        x: (projected.x + 1) * 0.5 * width,
+        y: (1 - projected.y) * 0.5 * height,
+        visible,
+      });
+    }
+    // A stroke that straddles the near plane would otherwise draw a line across
+    // the whole screen through the point that flipped behind the camera.
+    if (!anyVisible || screen.some((point) => !point.visible)) {
+      return { points: screen, weight: 0, visible: anyVisible && screen.every((point) => point.visible) };
+    }
+    const perPixel = sceneUnitsPerPixel(
+      runtime.camera.position.distanceTo(points[0]!),
+      runtime.camera.fov,
+      height || 1,
+    );
+    return {
+      points: screen,
+      weight: perPixel > 0 ? stroke.worldWeight / perPixel : 1,
+      visible: true,
+    };
+  }, [result, source]);
+
   const restoreCommentViewpoint = useCallback((comment: ModelComment) => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
@@ -1365,8 +1631,18 @@ export function ModelCanvas({
     <>
       <canvas
         ref={canvasRef}
-        className={`model-canvas nav-${navigationMode}${commenting ? " comment-pick-mode" : ""}`}
+        className={`model-canvas nav-${navigationMode}${commenting ? " comment-pick-mode" : ""}${
+          markupSettings.tool && markupSettings.tool !== "delete" ? " markup-draw-mode" : ""
+        }`}
         aria-label="Interactive Revit geometry"
+      />
+      <MarkupLayer
+        strokes={markup}
+        draft={markupDraft}
+        active={Boolean(markupSettings.tool)}
+        erasing={markupSettings.tool === "delete"}
+        project={projectMarkup}
+        onErase={onDeleteMarkup}
       />
       <ModelCommentLayer
         comments={comments}
@@ -1378,6 +1654,7 @@ export function ModelCanvas({
       {walking && (
         <FirstPersonPanel
           looking={walkLooking}
+          drawing={Boolean(markupSettings.tool && markupSettings.tool !== "delete")}
           speed={walkSpeed}
           gravity={walkGravity}
           collision={source !== "reference-model" ? walkCollision : null}

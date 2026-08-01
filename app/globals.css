@@ -1666,12 +1666,23 @@ button[data-reason]:focus-visible::after {
 .first-person-guide-dismiss { width: 100%; min-height: 26px; border: 0; background: transparent; color: var(--text-3); cursor: pointer; font-size: 11px; }
 .first-person-guide-dismiss:hover { color: var(--text); text-decoration: underline; }
 
-.markup-layer { position: absolute; z-index: 6; inset: 0; pointer-events: none; }
-.markup-layer > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.markup-layer.active > svg { cursor: crosshair; pointer-events: auto; }
-.markup-layer.active.commenting > svg { cursor: default; pointer-events: none; }
-.markup-layer.active > svg path { pointer-events: stroke; }
-.markup-layer.active > svg text { pointer-events: all; }
+/* Markup is projected into canvas pixels every frame, so the layer is simply
+   the canvas's own box — no viewBox, no scaling. It never takes the pointer:
+   the drag that draws belongs to the canvas, which owns the camera and the
+   raycaster. Only the eraser needs strokes to be clickable. */
+.markup-layer {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Only the fat transparent twin takes clicks: a 1px redline is not a target. */
+.markup-layer.erasing .markup-hit { pointer-events: stroke; cursor: pointer; }
+.markup-layer.erasing text { pointer-events: all; cursor: pointer; }
+.model-canvas.markup-draw-mode { cursor: crosshair; }
 .markup-toolbar {
   position: absolute;
   z-index: 9;

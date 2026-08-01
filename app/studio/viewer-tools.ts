@@ -1,16 +1,34 @@
 import type { NavigationMode } from "../../lib/reviter";
 import type { GeometrySource } from "./types.ts";
 
-export type ViewerTool =
-  | NavigationMode
-  | "firstPerson"
+/**
+ * How the camera is being driven. Exactly one of these is always in force.
+ */
+export type NavigationTool = NavigationMode | "firstPerson";
+
+/**
+ * What a click does, over and above navigating. At most one is armed, and it is
+ * held separately from the navigation tool: reviewing a building means walking
+ * it *and* commenting on it, and a single `activeTool` made those two things
+ * take turns — arming Comment dropped you out of first person, which is exactly
+ * where the comment needed to be placed from.
+ */
+export type ActionTool =
   | "measure"
   | "section"
   | "explode"
   /** Pin a 3D comment on the next surface that is clicked. */
   | "comment"
-  /** Draw 2D annotation over the viewport. */
+  /** Draw annotation anchored in the model's own space. */
   | "markup";
+
+export type ViewerTool = NavigationTool | ActionTool;
+
+export const NAVIGATION_TOOLS: readonly NavigationTool[] = ["orbit", "pan", "zoom", "firstPerson"];
+
+export function isNavigationTool(tool: ViewerTool): tool is NavigationTool {
+  return (NAVIGATION_TOOLS as readonly string[]).includes(tool);
+}
 
 export type MeasureMode = "distance" | "angle" | "calibrate" | "coordinates" | "laser";
 export type MeasureUnit = "feet" | "metres";
@@ -76,8 +94,62 @@ export function modelFeetToScenePoint(
   return pointFeet.map((value, axis) => value - originFeet[axis]!) as Point3Tuple;
 }
 
-export function navigationModeForTool(tool: ViewerTool): NavigationMode {
+export function navigationModeForTool(tool: NavigationTool): NavigationMode {
   return tool === "pan" || tool === "zoom" ? tool : "orbit";
+}
+
+/**
+ * A stroke of markup, anchored in the model rather than on the glass.
+ *
+ * Markup used to be normalised screen coordinates in a 0–1000 viewBox, so it
+ * stayed where it was drawn on the *display*: take one step and the cloud you
+ * put round a door was over a window. Every point here is a scene position on
+ * the stroke's own plane — set at the depth of whatever the first point landed
+ * on, facing the camera that drew it — so the annotation belongs to the space
+ * and is re-projected from wherever you look at it next.
+ */
+export type MarkupStroke = {
+  id: string;
+  source: GeometrySource;
+  tool: Exclude<MarkupTool, "delete">;
+  /** Anchors in the source's rendered scene coordinates. */
+  points: Point3Tuple[];
+  /** Canonical Revit/IFC anchors in feet, when the source can be registered. */
+  pointsFeet?: Point3Tuple[];
+  color: string;
+  /**
+   * Stroke width as a length in scene units, not pixels: the redline is a thing
+   * in the room, so it grows as you walk up to it.
+   */
+  worldWeight: number;
+  text?: string;
+  createdAt: string;
+};
+
+export type NewMarkupStroke = Omit<MarkupStroke, "id" | "createdAt">;
+
+/**
+ * One reversible change to the markup on a model.
+ *
+ * `index` is where the stroke sat, so undoing a delete puts it back in order
+ * rather than on the end — which matters once strokes overlap and the later one
+ * draws on top.
+ */
+export type MarkupEdit =
+  | { kind: "add"; stroke: MarkupStroke; index: number }
+  | { kind: "delete"; stroke: MarkupStroke; index: number }
+  | { kind: "clear"; strokes: MarkupStroke[]; index: number };
+
+/**
+ * Scene units covered by one screen pixel at `distance` from the camera.
+ *
+ * The one conversion both ends of the markup pipeline need: drawing turns a
+ * pixel width into a world width with it, and rendering turns that world width
+ * back into pixels from wherever the camera is now.
+ */
+export function sceneUnitsPerPixel(distance: number, fovDegrees: number, viewportHeight: number): number {
+  if (viewportHeight <= 0) return 0;
+  return (2 * Math.abs(distance) * Math.tan((fovDegrees * Math.PI) / 360)) / viewportHeight;
 }
 
 export function formatMeasuredLength(feet: number, unit: MeasureUnit, calibration = 1): string {

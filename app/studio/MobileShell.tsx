@@ -27,7 +27,7 @@ import type { ElementBoundsRecord } from "../../lib/reviter";
 import type { CommentFilter, MobileSheet, PropertyRow } from "./types.ts";
 import type { ReportCheck } from "./ReportDock.tsx";
 import type { ModelComment } from "./viewer-tools.ts";
-import type { ViewerTool } from "./viewer-tools.ts";
+import { isNavigationTool, type ActionTool, type NavigationTool, type ViewerTool } from "./viewer-tools.ts";
 
 const QUICK_TOOLS: readonly { id: ViewerTool; label: string; Icon: typeof Hand }[] = [
   { id: "orbit", label: "Orbit", Icon: Rotate3d },
@@ -49,6 +49,7 @@ export function MobileShell({
   statusLine,
   viewport,
   activeTool,
+  actionTool,
   onTool,
   sheet,
   onSheet,
@@ -84,7 +85,8 @@ export function MobileShell({
   fileName: string;
   statusLine: string;
   viewport: ReactNode;
-  activeTool: ViewerTool;
+  activeTool: NavigationTool;
+  actionTool: ActionTool | null;
   onTool: (tool: ViewerTool) => void;
   sheet: MobileSheet | null;
   onSheet: (sheet: MobileSheet | null) => void;
@@ -159,16 +161,19 @@ export function MobileShell({
         {viewport}
 
         <div className="mobile-quick-tools" role="group" aria-label="Navigation">
-          {QUICK_TOOLS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={activeTool === id ? "active" : ""}
-              aria-label={label}
-              aria-pressed={activeTool === id}
-              onClick={() => onTool(id)}
-            ><Icon size={18} aria-hidden /></button>
-          ))}
+          {QUICK_TOOLS.map(({ id, label, Icon }) => {
+            const active = isNavigationTool(id) ? activeTool === id : actionTool === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={active ? "active" : ""}
+                aria-label={label}
+                aria-pressed={active}
+                onClick={() => onTool(id)}
+              ><Icon size={18} aria-hidden /></button>
+            );
+          })}
         </div>
 
         {hasSelection && (

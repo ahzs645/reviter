@@ -3,6 +3,7 @@ import type { MeasureMode, MeasureUnit, SectionMode } from "./viewer-tools.ts";
 
 export function FirstPersonPanel({
   looking,
+  drawing,
   speed,
   gravity,
   collision,
@@ -16,6 +17,8 @@ export function FirstPersonPanel({
   onExit,
 }: {
   looking: boolean;
+  /** A drawing tool is armed, so the look drag has moved to the right button. */
+  drawing: boolean;
   speed: WalkSpeed;
   gravity: boolean;
   /** Null hides the toggle: the reference model has no collision to offer. */
@@ -40,7 +43,11 @@ export function FirstPersonPanel({
             <button onClick={onExit} aria-label="Exit first person">×</button>
           </span>
         </header>
-        <p>{looking ? "Looking around" : "Drag with the left mouse button to look"}</p>
+        <p>{looking
+          ? "Looking around"
+          : drawing
+            ? "Left drag draws · right drag looks"
+            : "Drag with the left mouse button to look"}</p>
         <div className="first-person-speed" role="group" aria-label="Movement speed">
           {(["slow", "normal", "fast"] as const).map((entry) => (
             <button
@@ -113,7 +120,8 @@ export function FirstPersonPanel({
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Drag with the left mouse button</small></article>
+            <article><b>Look around</b><i>↔</i><small>Drag with the left mouse button — the right one while a markup tool is armed</small></article>
+            <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>
           </div>
