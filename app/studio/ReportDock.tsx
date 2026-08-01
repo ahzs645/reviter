@@ -7,13 +7,19 @@
  * Four tabs, plus `Toolkit` for the local-file utilities that used to fill the
  * left rail and are not about the open model at all.
  */
-import { useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Download, FileUp, Search, X } from "lucide-react";
 
-import type { BasicFileInfoProperties, ConvertResult, PairedRegressionResult } from "../../lib/reviter";
+import type {
+  BasicFileInfoProperties,
+  ConvertResult,
+  DerivedRoomResult,
+  PairedRegressionResult,
+} from "../../lib/reviter";
 import { formatBytes, formatNumber, matchesFilter } from "./format.ts";
 import { RegressionPanel } from "./panels.tsx";
 import { Toolkit } from "./Toolkit.tsx";
+import { FloorBrowser } from "./FloorBrowser.tsx";
 import type { ReportTab } from "./types.ts";
 
 export type ExportAction = { id: string; format: string; detail: string; run: () => void };
@@ -31,6 +37,7 @@ export type FileRecord = {
 
 const TABS: readonly { id: ReportTab; label: string }[] = [
   { id: "summary", label: "Summary" },
+  { id: "floors", label: "Floors" },
   { id: "coverage", label: "Coverage" },
   { id: "streams", label: "Streams" },
   { id: "exports", label: "Exports" },
@@ -51,6 +58,13 @@ export function ReportDock({
   fileRecord,
   exports,
   exporting,
+  planLevelId,
+  onPlanLevelId,
+  showDerivedRooms,
+  onShowDerivedRooms,
+  derivedRooms,
+  sideMapOpen,
+  onSideMap,
   recoveredElementIds,
   drawnElementIds,
   exportDisclaimer,
@@ -74,6 +88,13 @@ export function ReportDock({
   fileRecord: FileRecord | null;
   exports: readonly ExportAction[];
   exporting: string | null;
+  planLevelId: number | null;
+  onPlanLevelId: (levelId: number) => void;
+  showDerivedRooms: boolean;
+  onShowDerivedRooms: (visible: boolean) => void;
+  derivedRooms: DerivedRoomResult | null;
+  sideMapOpen: boolean;
+  onSideMap: () => void;
   recoveredElementIds: Set<number>;
   drawnElementIds: Set<number>;
   exportDisclaimer: string;
@@ -89,18 +110,44 @@ export function ReportDock({
 }) {
   const [schemaSearch, setSchemaSearch] = useState("");
   const levels = result.levels.slice(0, 6);
+  const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
+  const initialTabRef = useRef(tab);
+  const closeReport = useEffectEvent(onClose);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    tabsRef.current[TABS.findIndex((entry) => entry.id === initialTabRef.current)]?.focus();
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") closeReport(); };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); restoreFocusRef.current?.focus?.(); };
+  // Focus only when the report opens; tab changes retain the user's current context.
+  }, []);
+  const moveTab = (event: ReactKeyboardEvent, index: number) => {
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
+    else if (event.key === "ArrowLeft") next = (index + TABS.length - 1) % TABS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = TABS.length - 1;
+    else return;
+    event.preventDefault(); onTab(TABS[next]!.id); tabsRef.current[next]?.focus();
+  };
 
   return (
-    <section className="report-dock" aria-label="Recovery report">
+    <section className={`report-dock${tab === "floors" ? " floor-browser-open" : ""}`} aria-label="Recovery report">
       <div className="report-tabs" role="tablist" aria-label="Report views">
-        {TABS.map((entry) => (
+        {TABS.map((entry, index) => (
           <button
             key={entry.id}
+            ref={(node) => { tabsRef.current[index] = node; }}
             type="button"
             role="tab"
+            id={`report-tab-${entry.id}`}
+            aria-controls="report-active-panel"
             aria-selected={tab === entry.id}
+            tabIndex={tab === entry.id ? 0 : -1}
             className={tab === entry.id ? "active" : ""}
             onClick={() => onTab(entry.id)}
+            onKeyDown={(event) => moveTab(event, index)}
           >{entry.label}</button>
         ))}
         <button type="button" className="rv-icon-button" title="Close" aria-label="Close report" onClick={onClose}>
@@ -108,7 +155,7 @@ export function ReportDock({
         </button>
       </div>
 
-      <div className="report-body">
+      <div id="report-active-panel" className="report-body" role="tabpanel" tabIndex={0} aria-labelledby={`report-tab-${tab}`}>
         {tab === "summary" && (
           <>
             <div className="metric-grid">
@@ -164,6 +211,29 @@ export function ReportDock({
                 </div>
               </div>
             )}
+
+            {(result.persistedCadFileNames?.length ?? 0) > 0 && (
+              <div className="report-block">
+                <p className="report-heading">CAD files retained by the RVT</p>
+                <p className="report-disclaimer" style={{ marginTop: 0 }}>
+                  {result.persistedCadFileNames!.length.toLocaleString()} distinct DWG names were
+                  found in persisted partition records. These are name records rather than
+                  extractable original DWG byte streams. {result.transmissionData?.references.some(
+                    (reference) => /cad|dwg/iu.test(reference.referenceType),
+                  )
+                    ? "TransmissionData also reports an external CAD reference."
+                    : "TransmissionData contains no external CAD link for this model."}
+                </p>
+                <details className="cad-file-list">
+                  <summary>Show DWG names</summary>
+                  <ul>
+                    {result.persistedCadFileNames!.map((entry) => (
+                      <li key={entry.fileName}>{entry.fileName}</li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
           </>
         )}
 
@@ -201,6 +271,19 @@ export function ReportDock({
               </>
             )}
           </>
+        )}
+
+        {tab === "floors" && (
+          <FloorBrowser
+            result={result}
+            selectedLevelId={planLevelId}
+            onSelectedLevelId={onPlanLevelId}
+            showDerivedRooms={showDerivedRooms}
+            onShowDerivedRooms={onShowDerivedRooms}
+            derivedRooms={derivedRooms}
+            sideMapOpen={sideMapOpen}
+            onSideMap={onSideMap}
+          />
         )}
 
         {tab === "streams" && (
@@ -322,6 +405,25 @@ export function ReportDock({
 
         {tab === "exports" && (
           <>
+            {result.levels.some((level) => level.levelId != null) && planLevelId != null && (
+              <label className="floor-plan-picker">
+                <span>
+                  <strong>2D floor plan</strong>
+                  <small>Uses persisted Revit level membership, not a height guess.</small>
+                </span>
+                <select
+                  aria-label="Floor plan Revit level"
+                  value={planLevelId}
+                  onChange={(event) => onPlanLevelId(Number(event.target.value))}
+                >
+                  {result.levels.flatMap((level) => level.levelId == null ? [] : [(
+                    <option key={level.levelId} value={level.levelId}>
+                      {level.elevation.toFixed(1)}′ · {level.candidates.toLocaleString()} elements
+                    </option>
+                  )])}
+                </select>
+              </label>
+            )}
             <div className="export-grid">
               {exports.map((entry) => (
                 <button

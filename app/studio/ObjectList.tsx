@@ -38,16 +38,23 @@ export function ObjectList({
 
   const measure = useCallback(() => {
     const element = scrollRef.current;
-    if (element) setViewport({ top: element.scrollTop, height: element.clientHeight || 480 });
+    if (element) {
+      const next = { top: element.scrollTop, height: element.clientHeight || 480 };
+      setViewport((current) => current.top === next.top && current.height === next.height ? current : next);
+    }
   }, []);
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     measure();
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [measure]);
 
   // Picking in the viewport should bring the row into view; the list used to

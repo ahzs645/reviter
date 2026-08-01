@@ -11,7 +11,16 @@ import {
   horizontalWalkDirection,
   stepWalkSpeed,
   travelDurationSeconds,
+  walkKeyboardTargetIsInteractive,
 } from "../app/studio/walk-controls.ts";
+
+test("walk shortcuts ignore form and disclosure controls", () => {
+  for (const tagName of ["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A"]) {
+    assert.equal(walkKeyboardTargetIsInteractive({ tagName } as unknown as EventTarget), true);
+  }
+  assert.equal(walkKeyboardTargetIsInteractive({ tagName: "CANVAS" } as unknown as EventTarget), false);
+  assert.equal(walkKeyboardTargetIsInteractive({ tagName: "DIV", isContentEditable: true } as unknown as EventTarget), true);
+});
 
 test("first-person speed steps are ordered and clamp at both ends", () => {
   assert.ok(FIRST_PERSON_SPEEDS.slow < FIRST_PERSON_SPEEDS.normal);
@@ -146,9 +155,23 @@ test("desktop look uses pointer drag without locking the mouse", () => {
     }));
     assert.ok(before.angleTo(camera.getWorldDirection(new THREE.Vector3())) > 0.01);
 
+    const positionWhileLooking = camera.position.clone();
+    fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "KeyW",
+      repeat: false,
+    }));
+    controls.update(0.1);
+    assert.deepEqual(
+      camera.position.toArray(),
+      positionWhileLooking.toArray(),
+      "look dragging must rotate in place even while a movement key is held",
+    );
+
     element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));
     assert.equal(controls.isLooking(), false);
     assert.equal(capturedPointer, null);
+    controls.update(0.1);
+    assert.ok(camera.position.distanceTo(positionWhileLooking) > 0, "movement resumes after the drag");
 
     fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
       code: "Escape",

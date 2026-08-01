@@ -165,7 +165,62 @@ if (terminalPhase === "ready") {
   }
   await page.getByRole("button", { name: "Report" }).click();
   await page.getByRole("region", { name: "Recovery report" }).waitFor({ state: "visible" });
-  await page.getByRole("button", { name: "Close report" }).click();
+  await page.getByRole("tab", { name: "Floors", exact: true }).click();
+  const floorPreview = page.locator(".floor-browser-preview img");
+  if (await floorPreview.count()) {
+    await floorPreview.waitFor({ state: "visible" });
+    const previewLoaded = await floorPreview.evaluate((image) => image.complete && image.naturalWidth > 0);
+    if (!previewLoaded) throw new Error("Revit floor SVG preview did not render.");
+    const floorSelector = page.getByRole("combobox", { name: "Browse Revit floor level" });
+    const firstFloor = await floorSelector.inputValue();
+    const nextFloor = page.getByRole("button", { name: "Next Revit floor" });
+    if (await nextFloor.isEnabled()) {
+      await nextFloor.click();
+      if (await floorSelector.inputValue() === firstFloor) {
+        throw new Error("Next Revit floor did not change the SVG preview level.");
+      }
+    }
+    const levelValues = await floorSelector.locator("option").evaluateAll((options) =>
+      options.map((option) => option.value));
+    if (levelValues.includes("311")) await floorSelector.selectOption("311");
+    const derivedToggle = page.getByRole("checkbox", { name: "Show derived floor regions" });
+    await derivedToggle.check();
+    const derivedCountText = await page.locator(".floor-browser-sidebar dl div", {
+      hasText: "Derived regions",
+    }).locator("dd").textContent();
+    const derivedCount = Number(derivedCountText);
+    if (!Number.isFinite(derivedCount) || derivedCount < 1) {
+      throw new Error(`Derived floor-region overlay returned ${derivedCountText ?? "no count"}.`);
+    }
+    await page.locator(".floor-browser-room-toggle em", { hasText: "Inferred" })
+      .waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Open side sub-map" }).click();
+    const sideMap = page.getByRole("region", { name: "Floor navigation map" });
+    await sideMap.waitFor({ state: "visible" });
+    const sideMapPreview = sideMap.locator("img");
+    const sideMapLoaded = await sideMapPreview.evaluate((image) =>
+      image.complete && image.naturalWidth > 0);
+    if (!sideMapLoaded) throw new Error("Floor side sub-map SVG did not render.");
+    if (await sideMap.getByRole("combobox", { name: "Floor navigation map level" }).inputValue() !== "311") {
+      throw new Error("Floor navigation map did not preserve the selected Revit level.");
+    }
+    await sideMap.getByRole("button", { name: "Zoom map in" }).click();
+    await sideMap.getByRole("button", { name: "Fit whole floor" }).click();
+    await page.getByRole("button", { name: "Close report" }).click();
+    await sideMap.waitFor({ state: "visible" });
+    const roomScreenshot = screenshot.replace(/(\.[^./]+)?$/u, "-derived-rooms$1");
+    await page.screenshot({ path: roomScreenshot });
+    console.log(
+      "floor browser smoke",
+      `inline native-slab SVG, level navigation, ${derivedCount} derived regions and navigation map passed`,
+    );
+    console.log("derived room screenshot", roomScreenshot);
+    await sideMap.getByRole("button", { name: "Close floor navigation map" }).click();
+  } else {
+    await page.locator(".floor-browser-empty").waitFor({ state: "visible" });
+    console.log("floor browser smoke", "model exposes no level-owned Revit Floors sketches");
+    await page.getByRole("button", { name: "Close report" }).click();
+  }
   console.log("interface smoke", `${objectCount.toLocaleString()} selectable objects; properties and report docks opened`);
 
   const vector = (value) => (value ?? "").split(",").map(Number);

@@ -40,10 +40,34 @@ test("declines malformed or unsupported BasicFileInfo", () => {
 test("the extraction command infers format from its output", () => {
   assert.deepEqual(
     parseExtractArguments(["model.rvt", "--out", "model.glb"]),
-    { input: "model.rvt", output: "model.glb", format: "glb", revitVersion: undefined },
+    {
+      input: "model.rvt",
+      output: "model.glb",
+      format: "glb",
+      revitVersion: undefined,
+      planLevelId: undefined,
+      floorPlates: false,
+    },
   );
   assert.equal(
     parseExtractArguments(["model.rvt", "--out", "model.bin", "--format", "ifc"]).format,
     "ifc",
+  );
+});
+
+test("the extraction command accepts an exact Revit level only for SVG", () => {
+  assert.equal(
+    parseExtractArguments(["model.rvt", "--out", "floor.svg", "--level-id", "311"]).planLevelId,
+    311,
+  );
+  assert.throws(
+    () => parseExtractArguments(["model.rvt", "--out", "model.glb", "--level-id", "311"]),
+    /only for SVG/u,
+  );
+  assert.equal(
+    parseExtractArguments([
+      "model.rvt", "--out", "floors.svg", "--level-id", "311", "--floor-plates",
+    ]).floorPlates,
+    true,
   );
 });

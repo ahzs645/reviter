@@ -14,7 +14,7 @@ import { makeGlb } from "../lib/reviter/export-glb.ts";
 import { makeIfcCenterlines } from "../lib/reviter/export-ifc.ts";
 import { makeDxf, makeObj } from "../lib/reviter/export-mesh-text.ts";
 import { makeReport } from "../lib/reviter/export-report.ts";
-import { makePlanSvg } from "../lib/reviter/export-svg.ts";
+import { makeFloorPlateSvg, makePlanSvg } from "../lib/reviter/export-svg.ts";
 
 type Format = "glb" | "obj" | "dxf" | "svg" | "ifc" | "json";
 
@@ -23,6 +23,8 @@ export type ExtractArguments = {
   output: string;
   format: Format;
   revitVersion?: number;
+  planLevelId?: number;
+  floorPlates?: boolean;
 };
 
 const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json"]);
@@ -36,7 +38,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   const input = arguments_[0];
   const output = valueAfter(arguments_, "--out");
   if (!input || input.startsWith("-") || !output) {
-    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027]");
+    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates]");
   }
 
   const extension = extname(output).slice(1).toLowerCase();
@@ -57,17 +59,39 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     throw new Error(`Invalid Revit version "${rawVersion}".`);
   }
 
-  return { input, output, format: requestedFormat, revitVersion };
+  const rawLevelId = valueAfter(arguments_, "--level-id");
+  const planLevelId = rawLevelId == null ? undefined : Number(rawLevelId);
+  if (
+    rawLevelId != null &&
+    (!Number.isSafeInteger(planLevelId) || planLevelId! <= 0)
+  ) {
+    throw new Error(`Invalid Revit level id "${rawLevelId}".`);
+  }
+  if (planLevelId != null && requestedFormat !== "svg") {
+    throw new Error("--level-id is available only for SVG floor-plan exports.");
+  }
+  const floorPlates = arguments_.includes("--floor-plates");
+  if (floorPlates && (requestedFormat !== "svg" || planLevelId == null)) {
+    throw new Error("--floor-plates requires an SVG output and --level-id.");
+  }
+
+  return { input, output, format: requestedFormat, revitVersion, planLevelId, floorPlates };
 }
 
 type SuccessfulConversion = Extract<ReturnType<typeof convertRvtBytes>, { ok: true }>;
 
-function outputFor(format: Format, result: SuccessfulConversion): Uint8Array | string {
+function outputFor(
+  format: Format,
+  result: SuccessfulConversion,
+  options: Pick<ExtractArguments, "planLevelId" | "floorPlates"> = {},
+): Uint8Array | string {
   switch (format) {
     case "glb": return new Uint8Array(makeGlb(result));
     case "obj": return makeObj(result);
     case "dxf": return makeDxf(result);
-    case "svg": return makePlanSvg(result);
+    case "svg": return options.floorPlates
+      ? makeFloorPlateSvg(result, options.planLevelId!)
+      : makePlanSvg(result, { levelId: options.planLevelId });
     case "ifc": return makeIfcCenterlines(result);
     case "json": return makeReport(result, null);
   }
@@ -89,7 +113,7 @@ export function extractGeometry(arguments_: string[]): void {
   process.stderr.write("\n");
   if (!outcome.ok) throw new Error(outcome.error);
 
-  writeFileSync(options.output, outputFor(options.format, outcome));
+  writeFileSync(options.output, outputFor(options.format, outcome, options));
   const megabytes = input.byteLength / (1024 * 1024);
   console.log(
     `Extracted ${outcome.stats.candidatesUsed.toLocaleString()} elements and ` +

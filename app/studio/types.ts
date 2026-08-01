@@ -46,12 +46,12 @@ export type BrowserTab = "objects" | "categories" | "comments";
  * shared parameters, legacy API) that used to live in the removed left rail and
  * are about files on disk rather than about the open model.
  */
-export type ReportTab = "summary" | "coverage" | "streams" | "exports" | "toolkit";
+export type ReportTab = "summary" | "floors" | "coverage" | "streams" | "exports" | "toolkit";
 
 export type CommentFilter = "open" | "resolved" | "all";
 
 /** Mobile only: which panel is raised over the viewport. */
-export type MobileSheet = "model" | "comments" | "properties" | "report";
+export type MobileSheet = "model" | "comments" | "properties" | "map" | "report";
 
 export type PropertyRow = { key: string; label: string; value: string };
 export type CategoryRow = { name: string; count: number };

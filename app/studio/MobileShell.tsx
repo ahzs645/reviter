@@ -8,13 +8,14 @@
  * properties and report are sheets raised over the model from a four-tab bar.
  * Toolbar, docks and status bar are not rendered here at all.
  */
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   Box,
   ChevronUp,
   Hand,
   Info,
   MessageSquare,
+  MapPinned,
   Rotate3d,
   Ruler,
   Table,
@@ -39,6 +40,7 @@ const TABS: readonly { id: MobileSheet; label: string; Icon: typeof Box }[] = [
   { id: "model", label: "Model", Icon: Box },
   { id: "comments", label: "Comments", Icon: MessageSquare },
   { id: "properties", label: "Info", Icon: Info },
+  { id: "map", label: "Map", Icon: MapPinned },
   { id: "report", label: "Report", Icon: Table },
 ];
 
@@ -63,6 +65,7 @@ export function MobileShell({
   emptyNote,
   metricCards,
   checks,
+  floorMap,
   comments,
   visibleComments,
   commentFilter,
@@ -101,6 +104,7 @@ export function MobileShell({
   emptyNote: string;
   metricCards: readonly { label: string; value: string }[];
   checks: readonly ReportCheck[];
+  floorMap: ReactNode;
   comments: readonly ModelComment[];
   visibleComments: readonly ModelComment[];
   commentFilter: CommentFilter;
@@ -117,12 +121,23 @@ export function MobileShell({
   emptyState: ReactNode;
   modelOpen: boolean;
 }) {
+  const sheetCloseRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!sheet) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    sheetCloseRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onSheet(null); };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); restoreFocusRef.current?.focus?.(); };
+  }, [onSheet, sheet]);
   const openCount = comments.filter((comment) => comment.status === "open").length;
   const resolvedCount = comments.length - openCount;
   const sheetMeta: Record<MobileSheet, [string, string]> = {
     model: ["Model browser", `${records.length.toLocaleString()} objects shown`],
     comments: ["Comments", `${openCount} open · ${resolvedCount} resolved`],
     properties: [hasSelection ? selectedTitle : "Properties", hasSelection ? selectedSubtitle : "Nothing picked"],
+    map: ["Floor navigation map", "Live camera and inferred regions"],
     report: ["Report", "Recovery summary"],
   };
   const [sheetTitle, sheetSub] = sheet ? sheetMeta[sheet] : ["", ""];
@@ -193,7 +208,7 @@ export function MobileShell({
                 <strong>{sheetTitle}</strong>
                 <span>{sheetSub}</span>
               </div>
-              <button type="button" aria-label="Close panel" onClick={() => onSheet(null)}>
+              <button ref={sheetCloseRef} type="button" aria-label="Close panel" onClick={() => onSheet(null)}>
                 <X size={16} aria-hidden />
               </button>
             </div>
@@ -273,6 +288,8 @@ export function MobileShell({
                   </div>
                 </>
               )}
+
+              {sheet === "map" && floorMap}
             </div>
           </div>
         )}

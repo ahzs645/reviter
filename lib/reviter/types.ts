@@ -23,6 +23,7 @@ import type {
 } from "./compound-structure-materials.ts";
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
+import type { PersistedCadFileName } from "./cad-files.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -670,6 +671,8 @@ export type ConvertResult = {
   partAtom?: PartAtomMetadata;
   /** Redacted external-reference state decoded from `TransmissionData`. */
   transmissionData?: RevitTransmissionData;
+  /** DWG names retained in partition records; not the original DWG payloads. */
+  persistedCadFileNames?: PersistedCadFileName[];
   /** Every container stream, and which decoder claims it. */
   coverage?: CoverageSummary;
   decoderCoverage: DecoderCoverage;

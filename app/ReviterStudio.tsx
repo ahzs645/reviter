@@ -7,11 +7,13 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import {
   boundsDimensions,
   DEFAULT_CAMERA_PRESET,
+  cachedDerivedRoomsForLevel,
   downloadBlob,
   drawnBounds,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
+  makeFloorPlateSvg,
   makeObj,
   makePlanSvg,
   makeReport,
@@ -23,6 +25,7 @@ import {
   type CameraPreset,
   type BasicFileInfoProperties,
   type ConvertResult,
+  type DerivedRoomResult,
   type IfcWorkerRequest,
   type IfcWorkerResponse,
   type PairedRegressionResult,
@@ -44,6 +47,7 @@ import { BrowserDock } from "./studio/BrowserDock.tsx";
 import { EmptyState } from "./studio/EmptyState.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import {
@@ -77,6 +81,7 @@ import { FirstPersonSourcePanel } from "./studio/ViewerToolPanels.tsx";
 import {
   isNavigationTool,
   navigationModeForTool,
+  modelFeetToScenePoint,
   walkComparisonSourceForCode,
   type ActionTool,
   type MarkupEdit,
@@ -250,6 +255,10 @@ export default function ReviterStudio() {
   });
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [planLevelId, setPlanLevelId] = useState<number | null>(null);
+  const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
+  const [isolateMapLevel, setIsolateMapLevel] = useState(false);
+  const [showDerivedRooms, setShowDerivedRooms] = useState(false);
   const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
 
   const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
@@ -268,6 +277,9 @@ export default function ReviterStudio() {
 
   const workerRef = useRef<Worker | null>(null);
   const ifcWorkerRef = useRef<Worker | null>(null);
+  const floorRegionWorkerRef = useRef<Worker | null>(null);
+  const floorRegionRequestRef = useRef(0);
+  const floorRegionCacheRef = useRef(new Map<number, DerivedRoomResult>());
   const requestIdRef = useRef(0);
   const referenceRequestIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -286,6 +298,8 @@ export default function ReviterStudio() {
     workerRef.current = null;
     ifcWorkerRef.current?.terminate();
     ifcWorkerRef.current = null;
+    floorRegionWorkerRef.current?.terminate();
+    floorRegionWorkerRef.current = null;
   }, []);
 
   // The object URL outlives a render, so it is released when the studio goes
@@ -337,6 +351,7 @@ export default function ReviterStudio() {
     const requestId = requestIdRef.current;
     setFile(nextFile);
     setResult(null);
+    setPlanLevelId(null);
     setComparison(null);
     setGeometrySource("recovered");
     setRenderMode("technical");
@@ -357,6 +372,9 @@ export default function ReviterStudio() {
     setCanvasMenu(null);
     setWalkStartRequest({ point: null, normal: null, sequence: requestId });
     setDockOpen(false);
+    setFloorSideMapOpen(false);
+    setIsolateMapLevel(false);
+    setShowDerivedRooms(false);
     setSheet(null);
     setReferencePhase("idle");
     setReferenceError(null);
@@ -454,6 +472,13 @@ export default function ReviterStudio() {
           return;
         }
         setResult(message.result);
+        setPlanLevelId(
+          message.result.levels.find(
+            (level) => level.levelId != null && level.elevation >= -0.01,
+          )?.levelId
+            ?? message.result.levels.find((level) => level.levelId != null)?.levelId
+            ?? null,
+        );
         setModelComments(loadModelComments(message.result));
         setMarkup(loadModelMarkup(message.result));
         // Reviter's own recovery is what opening a model shows. Nothing about
@@ -513,6 +538,8 @@ export default function ReviterStudio() {
     setCanvasMenu(null);
     setWalkStartRequest((current) => ({ point: null, normal: null, sequence: current.sequence + 1 }));
     setDockOpen(false);
+    setFloorSideMapOpen(false);
+    setShowDerivedRooms(false);
     setSheet(null);
     setError(null);
     setReviewImportMessage(null);
@@ -668,13 +695,19 @@ export default function ReviterStudio() {
     [browserSearch, categoryRows],
   );
   const hiddenElementIds = useMemo(() => {
-    if (!result || !hiddenCategories.size) return new Set<number>();
+    if (!result) return new Set<number>();
     const hidden = new Set<number>();
     for (const record of result.elementBounds) {
       if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
     }
+    if (isolateMapLevel && planLevelId != null) {
+      const visible = new Set((result.nativeAssociatedLevelRelations ?? [])
+        .filter((relation) => relation.levelId === planLevelId)
+        .map((relation) => relation.elementId));
+      for (const record of result.elementBounds) if (!visible.has(record.elementId)) hidden.add(record.elementId);
+    }
     return hidden;
-  }, [hiddenCategories, result]);
+  }, [hiddenCategories, isolateMapLevel, planLevelId, result]);
 
   const selectedRecord = useMemo(
     () => selectedElementId == null
@@ -1135,6 +1168,86 @@ export default function ReviterStudio() {
     { label: "Read time", value: `${(result.stats.durationMs / 1_000).toFixed(1)} s` },
   ] : [], [displayedElementIds, objectsInFile, recoveredElementIds, result]);
 
+  const [derivedFloorRooms, setDerivedFloorRooms] = useState<DerivedRoomResult | null>(null);
+  useEffect(() => {
+    floorRegionCacheRef.current.clear();
+    queueMicrotask(() => setDerivedFloorRooms(null));
+  }, [result]);
+  useEffect(() => {
+    if (!result || planLevelId == null || !showDerivedRooms) {
+      queueMicrotask(() => setDerivedFloorRooms(null));
+      return;
+    }
+    const cached = floorRegionCacheRef.current.get(planLevelId);
+    if (cached) { queueMicrotask(() => setDerivedFloorRooms(cached)); return; }
+    const requestId = ++floorRegionRequestRef.current;
+    const worker = floorRegionWorkerRef.current ?? new Worker(
+      new URL("./studio/floor-regions.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    floorRegionWorkerRef.current = worker;
+    const onMessage = (event: MessageEvent<{ id: number; result?: DerivedRoomResult; error?: string }>) => {
+      if (event.data.id !== floorRegionRequestRef.current || !event.data.result) return;
+      floorRegionCacheRef.current.set(event.data.result.levelId, event.data.result);
+      setDerivedFloorRooms(event.data.result);
+    };
+    const onError = () => {
+      if (requestId !== floorRegionRequestRef.current) return;
+      // A strict fallback keeps the feature available if a browser blocks module workers.
+      const derived = cachedDerivedRoomsForLevel(result, planLevelId);
+      floorRegionCacheRef.current.set(planLevelId, derived);
+      setDerivedFloorRooms(derived);
+    };
+    worker.addEventListener("message", onMessage);
+    worker.addEventListener("error", onError);
+    const categories = new Set([-2_000_032, -2_000_011, -2_000_170, -2_000_171]);
+    const compactResult = {
+      levels: result.levels,
+      nativeAssociatedLevelRelations: result.nativeAssociatedLevelRelations,
+      elementBounds: result.elementBounds.filter((record) => categories.has(record.categoryId ?? 0)).map((record) => ({
+        elementId: record.elementId,
+        stream: record.stream,
+        chunkIndex: record.chunkIndex,
+        rawOffset: record.rawOffset,
+        recordOffset: record.recordOffset,
+        categoryId: record.categoryId,
+        boundsFeet: record.boundsFeet,
+        loops: record.loops,
+        solid: record.solid,
+        solids: record.solids,
+        arcs: record.arcs,
+        orientedBox: record.orientedBox,
+      })),
+    } as ConvertResult;
+    worker.postMessage({ id: requestId, levelId: planLevelId, result: compactResult });
+    return () => {
+      worker.removeEventListener("message", onMessage);
+      worker.removeEventListener("error", onError);
+    };
+  }, [planLevelId, result, showDerivedRooms]);
+  const selectedMapPoint = selectedRecord
+    ? [
+        (selectedRecord.boundsFeet.min.x + selectedRecord.boundsFeet.max.x) / 2,
+        (selectedRecord.boundsFeet.min.y + selectedRecord.boundsFeet.max.y) / 2,
+      ] as [number, number]
+    : null;
+  const walkFromMap = useCallback((point: [number, number], elevation: number) => {
+    if (!result) return;
+    const scenePoint = modelFeetToScenePoint(
+      [point[0], point[1], elevation],
+      "recovered",
+      [result.origin.x, result.origin.y, result.origin.z],
+    );
+    if (!scenePoint) return;
+    setGeometrySource("recovered");
+    setWalkStartRequest((current) => ({
+      point: scenePoint,
+      normal: [0, 0, 1],
+      sequence: current.sequence + 1,
+    }));
+    setNavTool("firstPerson");
+  }, [result]);
+
   const checks: ReportCheck[] = useMemo(() => {
     if (!result) return [];
     const materials = result.decoderCoverage.nativeMaterialDefinitions;
@@ -1249,9 +1362,35 @@ export default function ReviterStudio() {
       {
         id: "SVG",
         format: "SVG",
-        detail: "Plan",
+        detail: "All-level projection",
         run: () => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml"),
       },
+      ...(planLevelId == null
+        ? []
+        : [{
+            id: "FLOOR_SVG",
+            format: "Level plan SVG",
+            detail: `Revit level ${planLevelId}`,
+            run: () => exportText(
+              "FLOOR_SVG",
+              `level-${planLevelId}.svg`,
+              () => makePlanSvg(result, { levelId: planLevelId }),
+              "image/svg+xml",
+            ),
+          }]),
+      ...(planLevelId == null
+        ? []
+        : [{
+            id: "FLOOR_PLATES_SVG",
+            format: "Floor plates SVG",
+            detail: `Actual Floors · level ${planLevelId}`,
+            run: () => exportText(
+              "FLOOR_PLATES_SVG",
+              `floor-plates-${planLevelId}.svg`,
+              () => makeFloorPlateSvg(result, planLevelId),
+              "image/svg+xml",
+            ),
+          }]),
       {
         id: "IFC",
         format: "IFC",
@@ -1294,7 +1433,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, result]);
+  }, [exportText, markup, metadata, modelComments, planLevelId, result]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1320,26 +1459,35 @@ export default function ReviterStudio() {
     ? null
     : referencePhase === "reading"
       ? "Reading the IFC export now"
-      : "Pair an IFC export in Report → Coverage to enable this source";
+      : "Click to choose the matching IFC export";
   const sources = useMemo<SourceOption[]>(() => [
     { id: "recovered", label: "RVT", reason: null, shortcut: "1", title: "Geometry rebuilt from the RVT file" },
-    { id: "reference", label: "IFC", reason: ifcReason, shortcut: "2", title: "The paired IFC export on its own" },
+    {
+      id: "reference",
+      label: ifcReason ? "Add IFC" : "IFC",
+      reason: ifcReason,
+      shortcut: "2",
+      title: "The paired IFC export on its own",
+      missingAction: referencePhase === "reading" ? undefined : "ifc",
+    },
     {
       id: "overlay",
       label: "Overlay",
       reason: ifcReason,
       title: "Recovered model over the paired export: aligned IFC geometry is ghosted and geometric differences are red",
+      missingAction: referencePhase === "reading" ? undefined : "ifc",
     },
     {
       id: "reference-model",
-      label: "Autodesk GLB",
+      label: referenceModelAvailable ? "Autodesk GLB" : "Add GLB",
       shortcut: "3",
       reason: referenceModelAvailable
         ? null
-        : "Pair a GLB or glTF of the same building in Report → Coverage to enable this source",
+        : "Click to choose a GLB or glTF of the same building",
       title: referenceModelName ? `Paired reference: ${referenceModelName}` : "A GLB or glTF conversion of the same building",
+      missingAction: referenceModelAvailable ? undefined : "reference-model",
     },
-  ], [ifcReason, referenceModelAvailable, referenceModelName]);
+  ], [ifcReason, referenceModelAvailable, referenceModelName, referencePhase]);
 
   const selectGeometrySource = useCallback((source: GeometrySource) => {
     setGeometrySource(source);
@@ -1545,6 +1693,11 @@ export default function ReviterStudio() {
         const dropped = event.dataTransfer.files[0];
         if (!dropped) return;
         if (/\.json$/i.test(dropped.name)) void importReviewFile(dropped);
+        else if (/\.ifc$/i.test(dropped.name)) void processIfcFile(dropped);
+        else if (/\.(glb|gltf)$/i.test(dropped.name)) {
+          if (result) pairReferenceModel(dropped);
+          else void processFile(dropped);
+        }
         else void processFile(dropped);
       }}
     >
@@ -1610,6 +1763,22 @@ export default function ReviterStudio() {
           emptyNote={browserEmptyNote}
           metricCards={metricCards}
           checks={checks}
+          floorMap={result ? (
+            <FloorMiniMap
+              embedded
+              result={result}
+              selectedLevelId={planLevelId}
+              onSelectedLevelId={setPlanLevelId}
+              showDerivedRooms={showDerivedRooms}
+              onShowDerivedRooms={setShowDerivedRooms}
+              derivedRooms={derivedFloorRooms}
+              isolateLevel={isolateMapLevel}
+              onIsolateLevel={setIsolateMapLevel}
+              selectedPoint={selectedMapPoint}
+              onWalkTo={walkFromMap}
+              onClose={() => setSheet(null)}
+            />
+          ) : null}
           emptyState={emptyState}
           modelOpen={Boolean(result)}
           {...commentPanelProps}
@@ -1635,6 +1804,8 @@ export default function ReviterStudio() {
               onRight={() => setRightOpen((open) => !open)}
               onDock={() => setDockOpen((open) => !open)}
               onOpen={openPicker}
+              onPairIfc={() => ifcInputRef.current?.click()}
+              onPairReferenceModel={() => referenceModelInputRef.current?.click()}
               onCloseModel={closeModel}
             />
           )}
@@ -1668,6 +1839,22 @@ export default function ReviterStudio() {
               {result ? (
                 <div className={`viewport ${renderMode === "technical" ? "shaded" : "xray"}`}>
                   {canvas}
+
+                  {floorSideMapOpen && (
+                    <FloorMiniMap
+                      result={result}
+                      selectedLevelId={planLevelId}
+                      onSelectedLevelId={setPlanLevelId}
+                      showDerivedRooms={showDerivedRooms}
+                      onShowDerivedRooms={setShowDerivedRooms}
+                      derivedRooms={derivedFloorRooms}
+                      isolateLevel={isolateMapLevel}
+                      onIsolateLevel={setIsolateMapLevel}
+                      selectedPoint={selectedMapPoint}
+                      onWalkTo={walkFromMap}
+                      onClose={() => setFloorSideMapOpen(false)}
+                    />
+                  )}
 
                   {actionTool === "markup" && (
                     <MarkupToolbar
@@ -1815,6 +2002,13 @@ export default function ReviterStudio() {
                   fileRecord={fileRecord}
                   exports={exportActions}
                   exporting={exporting}
+                  planLevelId={planLevelId}
+                  onPlanLevelId={setPlanLevelId}
+                  showDerivedRooms={showDerivedRooms}
+                  onShowDerivedRooms={setShowDerivedRooms}
+                  derivedRooms={derivedFloorRooms}
+                  sideMapOpen={floorSideMapOpen}
+                  onSideMap={() => setFloorSideMapOpen((open) => !open)}
                   recoveredElementIds={recoveredElementIds}
                   drawnElementIds={displayedElementIds}
                   exportDisclaimer={exportDisclaimer}

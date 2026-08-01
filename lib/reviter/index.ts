@@ -29,6 +29,8 @@ export type {
   RevitTransmissionData,
   RevitTransmissionDataOptions,
 } from "./transmission-data";
+export { scanPersistedDwgFileNames } from "./cad-files";
+export type { PersistedCadFileName } from "./cad-files";
 export type {
   PartAtomDesignFile,
   PartAtomFeature,
@@ -239,10 +241,23 @@ export {
   makeGlb,
   makeIfcCenterlines,
   makeObj,
+  makeFloorPlateSvg,
+  floorPlateBounds,
+  floorPlateSvgDataUrl,
   makePlanSvg,
+  floorPlateLevels,
+  floorPlateRecords,
+  planSegments,
   makeReport,
   outputName,
 } from "./exports";
+export { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "./derived-rooms";
+export type {
+  DerivedRoom,
+  DerivedRoomOptions,
+  DerivedRoomResult,
+} from "./derived-rooms";
+export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports";
 export type {
   ConvertFailure,
   ConvertOptions,

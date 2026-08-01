@@ -87,6 +87,15 @@ export function travelDurationSeconds(distanceFeet: number): number {
   return THREE.MathUtils.clamp(0.42 + Math.max(0, distanceFeet) / 38, 0.42, 1.25);
 }
 
+/** Walk is global, but form controls must retain their native keyboard behaviour. */
+export function walkKeyboardTargetIsInteractive(target: EventTarget | null): boolean {
+  const element = target as (HTMLElement & { tagName?: string; isContentEditable?: boolean }) | null;
+  if (!element) return false;
+  const tag = element.tagName?.toUpperCase();
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "A") return true;
+  return Boolean(element.isContentEditable || element.closest?.("[contenteditable='true'], [role='button'], [role='slider'], [role='tab']"));
+}
+
 export type WalkControls = {
   /** Attach listeners and take over the camera. */
   enable(): void;
@@ -249,6 +258,7 @@ export function createWalkControls(
 
   function onKeyDown(event: KeyboardEvent): void {
     if (!enabled) return;
+    if (walkKeyboardTargetIsInteractive(event.target)) return;
     if (event.code === "Escape") {
       options.onExit?.();
       return;
@@ -283,6 +293,9 @@ export function createWalkControls(
   function onPointerDown(event: PointerEvent): void {
     if (!enabled || event.button !== lookButton) return;
     cancelTravel();
+    // Looking is an in-place gesture. Stop any damped walking momentum now so
+    // the camera cannot coast or settle vertically underneath a mouse drag.
+    velocity.set(0, 0, 0);
     lookPointerId = event.pointerId;
     reportLooking(true);
     domElement.setPointerCapture(event.pointerId);
@@ -344,6 +357,14 @@ export function createWalkControls(
 
   function update(deltaSeconds: number): void {
     if (!enabled) return;
+    // A look drag changes yaw and pitch only. In particular, do not continue a
+    // held movement key, residual velocity, gravity settling, or floor travel
+    // until the pointer is released.
+    if (looking) {
+      velocity.set(0, 0, 0);
+      applyRotation();
+      return;
+    }
     const step = Math.min(deltaSeconds, 0.1);
     if (travel) {
       travel.elapsed += step;

@@ -58,6 +58,8 @@ export type SourceOption = {
   title?: string;
   /** Direct source-selection key available while walking. */
   shortcut?: string;
+  /** File picker that makes this unavailable source usable. */
+  missingAction?: "ifc" | "reference-model";
 };
 
 export function ViewerToolbar({
@@ -78,6 +80,8 @@ export function ViewerToolbar({
   onRight,
   onDock,
   onOpen,
+  onPairIfc,
+  onPairReferenceModel,
   onCloseModel,
 }: {
   sources: readonly SourceOption[];
@@ -99,6 +103,8 @@ export function ViewerToolbar({
   onRight: () => void;
   onDock: () => void;
   onOpen: () => void;
+  onPairIfc: () => void;
+  onPairReferenceModel: () => void;
   onCloseModel: () => void;
 }) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
@@ -151,6 +157,9 @@ export function ViewerToolbar({
               key={entry.id}
               className={geometrySource === entry.id ? "active" : ""}
               reason={entry.reason}
+              onUnavailable={entry.missingAction === "ifc"
+                ? onPairIfc
+                : entry.missingAction === "reference-model" ? onPairReferenceModel : undefined}
               title={[entry.title, entry.shortcut ? `Walk shortcut: ${entry.shortcut}` : null]
                 .filter(Boolean).join(" · ")}
               pressed={geometrySource === entry.id}

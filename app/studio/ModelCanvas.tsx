@@ -1401,7 +1401,11 @@ export function ModelCanvas({
       camera.updateProjectionMatrix();
       needsRender = true;
     };
-    const observer = new ResizeObserver(resize);
+    let resizeFrame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(resize);
+    });
     observer.observe(canvas);
     resize();
 
@@ -1422,20 +1426,29 @@ export function ModelCanvas({
       } else {
         cameraChanged = controls.update();
       }
+      const liveDirection = camera.getWorldDirection(new THREE.Vector3());
+      const liveTarget = walkRef.current ? camera.position.clone().add(liveDirection) : controls.target;
+      canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
+      const modelPosition = scenePointToModelFeet(
+        tuple(camera.position), source, [result.origin.x, result.origin.y, result.origin.z],
+      );
+      if (modelPosition) {
+        canvas.dataset.modelCameraPositionFeet = modelPosition.map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.modelCameraDirection = canonicalCameraVector(liveDirection, up)
+          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
+      } else {
+        delete canvas.dataset.modelCameraPositionFeet;
+        delete canvas.dataset.modelCameraDirection;
+      }
       if (navigationTest) {
-        const direction = camera.getWorldDirection(new THREE.Vector3());
-        const target = walkRef.current
-          ? camera.position.clone().add(direction)
-          : controls.target;
-        canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
         canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraTarget = target.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraDirection = direction.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
+        canvas.dataset.cameraDirection = liveDirection.toArray().map((value) => value.toFixed(5)).join(",");
         canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
           camera.position.clone().sub(center),
           up,
         ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.canonicalCameraDirection = canonicalCameraVector(direction, up)
+        canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
           .normalize().toArray().map((value) => value.toFixed(7)).join(",");
         canvas.dataset.pointerLocked = String(walkRef.current?.isPointerLocked() ?? false);
         canvas.dataset.walkGravity = String(walkGravityRef.current);
@@ -1470,6 +1483,7 @@ export function ModelCanvas({
         up: canonicalCameraVector(camera.up, up).normalize(),
       };
       observer.disconnect();
+      cancelAnimationFrame(resizeFrame);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
       canvas.removeEventListener("pointercancel", handlePointerUp);

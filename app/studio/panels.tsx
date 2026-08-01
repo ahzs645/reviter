@@ -22,6 +22,7 @@ export function ToolButton({
   className,
   reason,
   onClick,
+  onUnavailable,
   pressed,
   role,
   title,
@@ -30,6 +31,8 @@ export function ToolButton({
   className?: string;
   reason?: string | null;
   onClick: () => void;
+  /** Optional action that can satisfy `reason`, such as choosing a missing reference file. */
+  onUnavailable?: () => void;
   pressed?: boolean;
   role?: string;
   title?: string;
@@ -39,8 +42,8 @@ export function ToolButton({
     <button
       type="button"
       className={className}
-      onClick={() => { if (!reason) onClick(); }}
-      aria-disabled={reason ? true : undefined}
+      onClick={() => { if (reason) onUnavailable?.(); else onClick(); }}
+      aria-disabled={reason && !onUnavailable ? true : undefined}
       aria-pressed={pressed}
       role={role}
       title={reason ?? title}

@@ -257,6 +257,7 @@ export function makeReport(
       partitionNames: result.partitionNames ?? null,
       partAtom: result.partAtom ?? null,
       transmissionData: result.transmissionData ?? null,
+      persistedCadFileNames: result.persistedCadFileNames ?? [],
       modelTree: modelTreeReport(result),
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],

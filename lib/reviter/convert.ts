@@ -157,6 +157,10 @@ import { parsePartAtomXml } from "./part-atom.ts";
 import { parseProjectInformationArchive } from "./project-information.ts";
 import { parseRevitTransmissionData } from "./transmission-data.ts";
 import {
+  persistedCadFileNames as finalisePersistedCadFileNames,
+  scanPersistedDwgFileNames,
+} from "./cad-files.ts";
+import {
   buildBoundsMeshes,
   buildMeshes,
   boundsPlanSegments,
@@ -956,6 +960,10 @@ export function convertRvtBytes(
     // needed when an exact class identity decides whether an unlabelled record
     // is a placed object or merely a reusable definition.
     const markersByElement = new Map<number, Set<number>>();
+    const cadFileNameOccurrences = new Map<
+      string,
+      { fileName: string; occurrences: number }
+    >();
     let gzipChunks = 0;
     let inflatedBytes = 0;
     const scanLimit = Math.max(maxSegments * 4, 40_000);
@@ -983,6 +991,12 @@ export function convertRvtBytes(
         if (read) window = revitWindowTail(read);
         gzipChunks += 1;
         inflatedBytes += inflated.byteLength;
+        for (const fileName of scanPersistedDwgFileNames(inflated)) {
+          const key = fileName.toLocaleLowerCase("en-US");
+          const current = cadFileNameOccurrences.get(key);
+          if (current) current.occurrences += 1;
+          else cadFileNameOccurrences.set(key, { fileName, occurrences: 1 });
+        }
         if (gzipChunks % 12 === 1) {
           onProgress?.({
             ratio: Math.min(0.82, 0.12 + (index / Math.max(1, offsets.length)) * 0.68),
@@ -1231,6 +1245,9 @@ export function convertRvtBytes(
       splitAlternateFrameCollector.finishPartition();
     }
     const stairsRuns = stairsRunCollector.snapshot();
+    const persistedCadFileNames = finalisePersistedCadFileNames(
+      cadFileNameOccurrences,
+    );
     const nativeCompoundStructureDefinitions =
       resolveCompoundStructureDefinitions(
         compoundStructureCandidates,
@@ -2620,6 +2637,7 @@ export function convertRvtBytes(
         partitionNames,
         partAtom,
         transmissionData,
+        persistedCadFileNames,
         coverage,
         decoderCoverage: {
           revitVersion: decoderPlan.revitVersion,
@@ -2840,6 +2858,9 @@ export function convertRvtBytes(
           ...(nativeAssociatedLevelRelations.length
             ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]
             : []),
+          ...(persistedCadFileNames.length
+            ? [`${persistedCadFileNames.length.toLocaleString()} distinct DWG file names are retained in partition records; these names do not include an extractable original DWG payload.`]
+            : []),
           ...(nativeMeshScene.meshes.length
             ? [
                 `${nativeMeshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit 2027 GRep/BRep face meshes (${nativeMeshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
@@ -3003,6 +3024,7 @@ export function convertRvtBytes(
       partitionNames,
       partAtom,
       transmissionData,
+      persistedCadFileNames,
       coverage,
       decoderCoverage: {
         revitVersion: decoderPlan.revitVersion,
@@ -3127,6 +3149,9 @@ export function convertRvtBytes(
           : []),
         ...(nativeAssociatedLevelRelations.length
           ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]
+          : []),
+        ...(persistedCadFileNames.length
+          ? [`${persistedCadFileNames.length.toLocaleString()} distinct DWG file names are retained in partition records; these names do not include an extractable original DWG payload.`]
           : []),
         focused.length < unique.length
           ? `Focused on the primary spatial cluster and omitted ${(unique.length - focused.length).toLocaleString()} isolated candidates.`

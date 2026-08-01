@@ -8,6 +8,9 @@
 export { downloadBlob, outputName } from "./export-naming.ts";
 export { makeGlb } from "./export-glb.ts";
 export { makeDxf, makeObj } from "./export-mesh-text.ts";
-export { makePlanSvg } from "./export-svg.ts";
+export { floorPlateBounds, floorPlateLevels, floorPlateRecords, floorPlateSvgDataUrl, makeFloorPlateSvg, makePlanSvg, planSegments } from "./export-svg.ts";
+export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./export-svg.ts";
+export { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "./derived-rooms.ts";
+export type { DerivedRoom, DerivedRoomOptions, DerivedRoomResult } from "./derived-rooms.ts";
 export { makeIfcCenterlines } from "./export-ifc.ts";
 export { elementManifest, makeReport } from "./export-report.ts";

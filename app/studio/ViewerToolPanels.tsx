@@ -110,7 +110,7 @@ export function FirstPersonPanel({
           ? "Looking · release to stop"
           : drawing
             ? "Left drag draws · right drag looks"
-            : "Drag the viewport to look"}</p>
+            : "Drag to look around in place"}</p>
         <div className="first-person-speed" role="group" aria-label="Movement speed">
           {(["slow", "normal", "fast"] as const).map((entry) => (
             <button
@@ -183,7 +183,7 @@ export function FirstPersonPanel({
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Drag the viewport. Right-drag while markup is armed.</small></article>
+            <article><b>Look around</b><i>↔</i><small>Drag to turn the view without moving. Right-drag while markup is armed.</small></article>
             <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>
