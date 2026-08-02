@@ -26,6 +26,7 @@ export function ToolButton({
   pressed,
   role,
   title,
+  ariaKeyShortcuts,
   children,
 }: {
   className?: string;
@@ -36,6 +37,7 @@ export function ToolButton({
   pressed?: boolean;
   role?: string;
   title?: string;
+  ariaKeyShortcuts?: string;
   children: ReactNode;
 }) {
   return (
@@ -45,6 +47,7 @@ export function ToolButton({
       onClick={() => { if (reason) onUnavailable?.(); else onClick(); }}
       aria-disabled={reason && !onUnavailable ? true : undefined}
       aria-pressed={pressed}
+      aria-keyshortcuts={ariaKeyShortcuts}
       role={role}
       title={reason ?? title}
       data-reason={reason ?? undefined}

@@ -42,7 +42,12 @@ const MAX_PITCH = Math.PI / 2 - 0.02;
 
 /** Mouse sensitivity, radians per pixel. */
 const LOOK_SPEED = 0.0022;
-const FLOOR_PROBE_INTERVAL = 0.1;
+// The indexed floor query is plan-binned and cheap enough to run once per
+// rendered update. The former 100 ms interval moved the normal walker almost
+// one foot between probes and the fast walker 2.4 ft, so a roughly one-foot
+// tread could be skipped and gravity would visibly snap over two or three
+// risers at once.
+export const DEFAULT_FLOOR_PROBE_INTERVAL = 0;
 export const WALK_MAX_STEP_UP = 1.5;
 
 export function stepWalkSpeed(speed: WalkSpeed, direction: -1 | 1): WalkSpeed {
@@ -178,7 +183,10 @@ export function createWalkControls(
   let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
-  const floorProbeInterval = Math.max(1 / 120, options.floorProbeInterval ?? FLOOR_PROBE_INTERVAL);
+  const floorProbeInterval = Math.max(
+    0,
+    options.floorProbeInterval ?? DEFAULT_FLOOR_PROBE_INTERVAL,
+  );
   let floorProbeElapsed = floorProbeInterval;
   let trackedSurface: number | null = null;
   let travel: {

@@ -4,9 +4,25 @@ import * as THREE from "three";
 
 import {
   geometryTriangleCount,
+  probableVerticalWalkObstacle,
   WalkCollisionIndex,
   WalkSurfaceIndex,
 } from "../app/studio/walk-surface.ts";
+
+test("reference-model fallback separates broad stairs from thin vertical obstacles", () => {
+  const identity = new THREE.Matrix4();
+  const wall = new THREE.BoxGeometry(0.4, 4.2, 4.1);
+  const broadStair = new THREE.BoxGeometry(14, 4.3, 14);
+
+  assert.equal(probableVerticalWalkObstacle(wall, identity, {
+    up: "y",
+    sceneUnitsPerFoot: 0.3048,
+  }), true);
+  assert.equal(probableVerticalWalkObstacle(broadStair, identity, {
+    up: "y",
+    sceneUnitsPerFoot: 0.3048,
+  }), false);
+});
 
 function tread(height: number, z: number): THREE.Mesh {
   const geometry = new THREE.BoxGeometry(1, 0.18, 0.3);
@@ -43,6 +59,29 @@ test("walk surface rejects walls and surfaces above the step-up ceiling", () => 
   ) < 1e-6);
   assert.equal(
     index.floorAt(new THREE.Vector3(4, 1.7, 0), { maxDrop: 3, maximumHeight: 0.5 }),
+    null,
+  );
+});
+
+test("semantic surface filtering keeps wall caps out of Ghost gravity", () => {
+  const index = new WalkSurfaceIndex({ cellSize: 0.5 });
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(1, 3, 1));
+  wall.position.y = 1.5;
+  wall.updateMatrix();
+  const triangleCount = geometryTriangleCount(wall.geometry);
+  const wallId = 308954;
+  index.addGeometry(wall.geometry, wall.matrix, {
+    startTriangle: 0,
+    triangleCount,
+    elementIds: new Uint32Array(triangleCount).fill(wallId),
+    excludedSurfaceElementIds: new Set([wallId]),
+  });
+
+  assert.equal(
+    index.floorAt(
+      new THREE.Vector3(0, 4.2, 0),
+      { maxDrop: 5, maximumHeight: 3.2 },
+    ),
     null,
   );
 });

@@ -73,7 +73,7 @@ test("batches static meshes by material and merges line segments", () => {
     retainedMaterials: 2,
     walkSurface: {
       triangles: 12,
-      cells: 10,
+      cells: 74,
       overflowTriangles: 0,
     },
   });

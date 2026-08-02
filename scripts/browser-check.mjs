@@ -230,9 +230,42 @@ if (terminalPhase === "ready") {
     target: canvas.dataset.cameraTarget,
     direction: canvas.dataset.cameraDirection,
     canonicalPosition: canvas.dataset.canonicalCameraPosition,
+    canonicalTarget: canvas.dataset.canonicalCameraTarget,
     canonicalDirection: canvas.dataset.canonicalCameraDirection,
   }));
   const canvas = page.locator("canvas.model-canvas");
+  // A focused RVT object must stay framed when inspecting its IFC and Autodesk
+  // counterparts. This caught the standalone reference views silently keeping
+  // a stale whole-building camera while RVT alone honoured "Zoom to object".
+  const zoomToObject = page.getByRole("button", { name: "Zoom to object", exact: true });
+  if (ifcFile && glbFile && objectCount > 0 && await zoomToObject.count()) {
+    await zoomToObject.click();
+    await page.waitForTimeout(250);
+    const focusedRvt = await pose();
+    const focusedSources = [];
+    for (const [label, expected] of [
+      ["IFC", "reference"],
+      ["Autodesk GLB", "reference-model"],
+    ]) {
+      await page.getByRole("button", { name: label, exact: true }).first().click();
+      await page.waitForFunction((source) => {
+        const modelCanvas = document.querySelector("canvas.model-canvas");
+        return modelCanvas?.dataset.activeSource === source &&
+          Boolean(modelCanvas.dataset.canonicalCameraTarget);
+      }, expected, { timeout: 120_000 });
+      await page.waitForTimeout(250);
+      focusedSources.push([label, await pose()]);
+    }
+    await page.getByRole("button", { name: "RVT", exact: true }).first().click();
+    await page.waitForFunction(() =>
+      document.querySelector("canvas.model-canvas")?.dataset.activeSource === "recovered");
+    for (const [label, candidate] of focusedSources) {
+      if (distance(vector(focusedRvt.canonicalTarget), vector(candidate.canonicalTarget)) > 0.03) {
+        throw new Error(`${label} did not preserve the focused object's canonical camera target.`);
+      }
+    }
+    console.log("focused comparison smoke", "RVT, IFC and Autodesk GLB kept the same object framing");
+  }
   for (const panelName of ["Browser", "Properties"]) {
     const toggle = page.getByRole("button", { name: panelName, exact: true });
     if (await toggle.getAttribute("aria-pressed") === "true") await toggle.click();
@@ -321,9 +354,9 @@ if (terminalPhase === "ready") {
   }
 
   if (ifcFile && glbFile) {
-    const sourceGroup = page.getByRole("group", { name: "Walk geometry source" });
+    const sourceGroup = page.getByRole("group", { name: "Geometry source" });
     await sourceGroup.waitFor({ state: "visible" });
-    for (const [label, shortcut] of [["RVT 1", "1"], ["IFC 2", "2"], ["Autodesk GLB 3", "3"]]) {
+    for (const [label, shortcut] of [["RVT", "1"], ["IFC", "2"], ["Autodesk GLB", "3"]]) {
       const button = sourceGroup.getByRole("button", { name: label, exact: true });
       if (await button.getAttribute("aria-keyshortcuts") !== shortcut) {
         throw new Error(`${label} does not expose keyboard shortcut ${shortcut}.`);
@@ -345,9 +378,9 @@ if (terminalPhase === "ready") {
       }
       return pose();
     };
-    const ifcPose = await switchSource("Digit2", "reference", "IFC 2");
-    const glbPose = await switchSource("Digit3", "reference-model", "Autodesk GLB 3");
-    const recoveredPose = await switchSource("Digit1", "recovered", "RVT 1");
+    const ifcPose = await switchSource("Digit2", "reference", "IFC");
+    const glbPose = await switchSource("Digit3", "reference-model", "Autodesk GLB");
+    const recoveredPose = await switchSource("Digit1", "recovered", "RVT");
     console.log("source camera poses", JSON.stringify({ rvt: sourcePose, ifc: ifcPose, glb: glbPose, rvtReturn: recoveredPose }));
 
     // When the navigation-test build exposes the canonical frame, verify every
@@ -394,6 +427,9 @@ if (terminalPhase === "ready") {
   const lookAfter = await pose();
   if (distance(vector(lookBefore.direction), vector(lookAfter.direction)) < 0.001) {
     throw new Error("Drag mouse look did not change the view direction.");
+  }
+  if (distance(vector(lookBefore.position), vector(lookAfter.position)) > 0.0001) {
+    throw new Error("First-person look drag moved the camera instead of turning in place.");
   }
   if (await canvas.getAttribute("data-pointer-locked") !== "false") {
     throw new Error("Walk unexpectedly locked the system pointer.");

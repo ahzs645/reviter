@@ -77,7 +77,6 @@ import {
 } from "./studio/recents.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
 import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
-import { FirstPersonSourcePanel } from "./studio/ViewerToolPanels.tsx";
 import {
   isNavigationTool,
   navigationModeForTool,
@@ -838,6 +837,10 @@ export default function ReviterStudio() {
   }, [propertyRows, selectedRecord]);
 
   const requestZoomToSelection = useCallback(() => {
+    // Object framing is an Orbit action. Leaving Walk explicitly makes a new
+    // request distinguishable from the stale focus request retained only for
+    // cross-source comparison.
+    setNavTool("orbit");
     setFocusRequest((current) => ({ elementId: selectedElementId, sequence: current.sequence + 1 }));
   }, [selectedElementId]);
 
@@ -1565,8 +1568,7 @@ export default function ReviterStudio() {
   const openPicker = useCallback(() => inputRef.current?.click(), []);
 
   const canvas = result ? (
-    <>
-      <ModelCanvas
+    <ModelCanvas
       result={result}
       comparison={comparison}
       source={geometrySource}
@@ -1598,15 +1600,7 @@ export default function ReviterStudio() {
       onHoverElement={setHoveredElementId}
       onCanvasMenu={setCanvasMenu}
       focusRequest={focusRequest}
-      />
-      {walking && (
-        <FirstPersonSourcePanel
-          sources={sources}
-          source={geometrySource}
-          onSource={selectGeometrySource}
-        />
-      )}
-    </>
+    />
   ) : null;
 
   const fileInputs = (

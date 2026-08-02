@@ -233,6 +233,7 @@ test("orders flattened profiles from the independently persisted bottom profile"
     recovered.treads.map((tread) => tread[0][2]),
     [0.5, 1, 1.5],
   );
+  assert.equal(recovered.treadDepthFeet, 1);
 });
 
 test("the diagnostic scene draws every recovered tread instead of the run envelope", () => {
@@ -316,6 +317,52 @@ test("a persisted tread thickness produces horizontal slabs instead of base-fill
       [0.84, 1], [0.84, 1],
     ],
   );
+});
+
+test("native run end conditions close the exposed first and last risers", () => {
+  const record = {
+    elementId: 1460781,
+    stream: "Partitions/325",
+    chunkIndex: 3_032,
+    rawOffset: 0,
+    recordOffset: 0x1d8b4,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    stairTreadThicknessFeet: 0.16,
+    stairBeginWithRiser: true,
+    stairEndWithRiser: true,
+    stairTreads: [
+      [[0, 0, 0.5], [1, 0, 0.5], [1, 3, 0.5], [0, 3, 0.5]],
+      [[1, 0, 1], [2, 0, 1], [2, 3, 1], [1, 3, 1]],
+    ],
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 2, y: 3, z: 1.25 },
+    },
+  } satisfies ElementBoundsRecord;
+
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const trianglesAtX = (x: number) => {
+    const bands: number[][] = [];
+    for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+      const vertices = Array.from(
+        mesh.indices.slice(offset, offset + 3),
+        (index) => Array.from(mesh.positions.slice(index * 3, index * 3 + 3)),
+      );
+      if (!vertices.every((point) => Math.abs(point[0]! - x) < 1e-6)) continue;
+      bands.push([
+        Number(Math.min(...vertices.map((point) => point[2]!)).toFixed(2)),
+        Number(Math.max(...vertices.map((point) => point[2]!)).toFixed(2)),
+      ]);
+    }
+    return bands;
+  };
+  assert.deepEqual(trianglesAtX(0), [[0, 0.5], [0, 0.5]]);
+  assert.deepEqual(trianglesAtX(2), [[0.84, 1.25], [0.84, 1.25]]);
+  const elevations = [...mesh.positions].filter((_, index) => index % 3 === 2);
+  assert.equal(Math.min(...elevations), 0);
+  assert.equal(Math.max(...elevations), 1.25);
 });
 
 test("equal-height curved tread segments share one horizontal slab elevation", () => {

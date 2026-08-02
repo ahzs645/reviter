@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
+import { WalkSurfaceIndex } from "../app/studio/walk-surface.ts";
 
 import {
   createWalkControls,
+  DEFAULT_FLOOR_PROBE_INTERVAL,
   droppedEyeCoordinate,
   easeTravelProgress,
   FIRST_PERSON_SPEEDS,
@@ -13,6 +15,84 @@ import {
   travelDurationSeconds,
   walkKeyboardTargetIsInteractive,
 } from "../app/studio/walk-controls.ts";
+
+test("fast Walk no longer uses the coarse interval that skipped UNBC stair treads", () => {
+  const treadDepthFeet = 0.9842519685;
+  assert.equal(DEFAULT_FLOOR_PROBE_INTERVAL, 0);
+  assert.ok(FIRST_PERSON_SPEEDS.fast * 0.1 > treadDepthFeet * 2);
+});
+
+test("object 1460781 advances across its curved-stair risers without multi-step snaps", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const riser = 0.41244844394450697;
+    const treadDepth = 0.984251968503937;
+    const eyeHeight = 5.6;
+    const surface = new WalkSurfaceIndex({ cellSize: 0.5 });
+    for (let step = 0; step < 12; step += 1) {
+      const top = riser * (step + 1);
+      const geometry = new THREE.BoxGeometry(4, 0.16404199475, treadDepth);
+      const matrix = new THREE.Matrix4().makeTranslation(
+        0,
+        top - 0.16404199475 / 2,
+        (step + 0.5) * treadDepth,
+      );
+      surface.addGeometry(geometry, matrix);
+    }
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const start = new THREE.Vector3(0, eyeHeight + riser, treadDepth * 0.25);
+    const controls = createWalkControls(camera, element, {
+      start,
+      lookAt: start.clone().add(new THREE.Vector3(0, 0, 10)),
+      floor: eyeHeight,
+      eyeHeight,
+      up: "y",
+      gravity: true,
+      speed: "fast",
+      resolveFloor: (position) => surface.floorAt(position, {
+        maxDrop: eyeHeight + 12,
+        maximumHeight: position.y - eyeHeight + 1.5,
+      }),
+    });
+    controls.enable();
+    fakeWindow.dispatchEvent(Object.assign(new Event("keydown"), {
+      code: "KeyW",
+      repeat: false,
+    }));
+
+    let previousHeight = camera.position.y;
+    let maximumFrameRise = 0;
+    for (let frame = 0; frame < 30; frame += 1) {
+      controls.update(1 / 60);
+      maximumFrameRise = Math.max(
+        maximumFrameRise,
+        camera.position.y - previousHeight,
+      );
+      previousHeight = camera.position.y;
+    }
+
+    assert.ok(camera.position.y >= eyeHeight + riser * 6);
+    assert.ok(maximumFrameRise < riser);
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
 
 test("walk shortcuts ignore form and disclosure controls", () => {
   for (const tagName of ["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A"]) {

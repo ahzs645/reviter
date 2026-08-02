@@ -107,6 +107,34 @@ function tuple(point: THREE.Vector3): Point3Tuple {
 // the million-triangle UNBC model (typically a few milliseconds of CPU work).
 const WALK_INDEX_CHUNK_TRIANGLES = 8_192;
 
+/**
+ * Native categories whose horizontal caps must not become gravity floors.
+ *
+ * These objects remain in the optional Solid collision index. Only their top
+ * faces are excluded from Ghost's floor follower, preventing a walker from
+ * stepping onto a wall, mullion, door, column, railing or drawing helper when
+ * its cap happens to fall inside the 1.5 ft step-up band.
+ */
+const NON_WALKABLE_SURFACE_CATEGORIES = new Set([
+  -2000011, // Walls
+  -2000014, // Windows
+  -2000023, // Doors
+  -2000038, // Ceilings
+  -2000045, // Sketch Lines
+  -2000067, // Stairs Sketch Boundary Lines
+  -2000100, // Columns
+  -2000123, // Stairs Stringer Carriage
+  -2000126, // Stairs Railing
+  -2000127, // Stairs Railing Baluster
+  -2000120, // Stairs assembly containers
+  -2000170, // Curtain Wall Panels
+  -2000171, // Curtain Wall Mullions
+  -2000321, // Curtain Grids Wall
+  -2000938, // Stairs Paths
+  -2000946, // Railing Top Rail
+  -2000954, // Railing Rail Path Extension Lines
+]);
+
 type NormalizedCameraPose = {
   position: THREE.Vector3;
   target: THREE.Vector3;
@@ -311,6 +339,10 @@ export function ModelCanvas({
     invalidate: () => void;
   } | null>(null);
   const walkRef = useRef<WalkControls | null>(null);
+  const walkingRef = useRef(walking);
+  useEffect(() => {
+    walkingRef.current = walking;
+  }, [walking]);
   // Measured from the reference once it loads; null until then.
   const referenceBoundsRef = useRef<
     { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null
@@ -683,9 +715,17 @@ export function ModelCanvas({
           geometry: mesh.geometry,
           matrix: mesh.matrixWorld.clone(),
           triangleCount: geometryTriangleCount(mesh.geometry),
+          elementIds: mesh.userData.elementIds as Uint32Array | undefined,
         };
       });
     };
+    const excludedWalkSurfaceElementIds = new Set(
+      result.elementBounds
+        .filter((record) =>
+          record.categoryId != null &&
+          NON_WALKABLE_SURFACE_CATEGORIES.has(record.categoryId))
+        .map((record) => record.elementId),
+    );
     const prepareCollisionIndex = (
       jobs: ReturnType<typeof walkGeometryJobs>,
       buildVersion: number,
@@ -768,6 +808,8 @@ export function ModelCanvas({
               const range = {
                 startTriangle,
                 triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
+                elementIds: job.elementIds,
+                excludedSurfaceElementIds: excludedWalkSurfaceElementIds,
               };
               surface.addGeometry(job.geometry, job.matrix, range);
             }
@@ -1448,6 +1490,10 @@ export function ModelCanvas({
           camera.position.clone().sub(center),
           up,
         ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+        canvas.dataset.canonicalCameraTarget = canonicalCameraVector(
+          liveTarget.clone().sub(center),
+          up,
+        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
         canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
           .normalize().toArray().map((value) => value.toFixed(7)).join(",");
         canvas.dataset.pointerLocked = String(walkRef.current?.isPointerLocked() ?? false);
@@ -1561,18 +1607,58 @@ export function ModelCanvas({
   // keeps its direction and only the distance and the target move.
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime || !focusRequest.sequence || focusRequest.elementId == null) return;
-    if (source === "reference-model") return;
+    // A source change remounts the scene while retaining the last object-focus
+    // request. Replaying that request during Walk overrides the normalized
+    // camera handoff and visibly teleports the user back to the framed object.
+    if (walkingRef.current || !runtime || !focusRequest.sequence || focusRequest.elementId == null) return;
+    if (source === "reference-model" && referenceLoadState !== "ready") return;
     const record = result.elementBounds.find((entry) => entry.elementId === focusRequest.elementId);
     if (!record) return;
     const origin = result.origin;
-    const target = new THREE.Vector3(
-      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - origin.x,
-      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - origin.y,
-      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - origin.z,
+    const modelTargetFeet: Point3Tuple = [
+      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2,
+      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2,
+      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2,
+    ];
+    const registeredTarget = modelFeetToScenePoint(
+      modelTargetFeet,
+      source,
+      [origin.x, origin.y, origin.z],
     );
+    const target = registeredTarget
+      ? new THREE.Vector3(...registeredTarget)
+      : (() => {
+          // Autodesk GLB carries no Revit element ids or project datum. Map the
+          // requested RVT point by its normalized position inside the measured
+          // building bounds, using the same z-up/y-up basis handoff as Walk.
+          const recoveredBounds = result.bbox;
+          const recoveredCenter = new THREE.Vector3(
+            (recoveredBounds.min.x + recoveredBounds.max.x) / 2,
+            (recoveredBounds.min.y + recoveredBounds.max.y) / 2,
+            (recoveredBounds.min.z + recoveredBounds.max.z) / 2,
+          );
+          const recoveredRadius = Math.max(
+            25,
+            recoveredBounds.max.x - recoveredBounds.min.x,
+            recoveredBounds.max.y - recoveredBounds.min.y,
+            recoveredBounds.max.z - recoveredBounds.min.z,
+          ) * 0.62;
+          const recoveredPoint = new THREE.Vector3(
+            modelTargetFeet[0] - origin.x,
+            modelTargetFeet[1] - origin.y,
+            modelTargetFeet[2] - origin.z,
+          );
+          const normalized = canonicalCameraVector(
+            recoveredPoint.sub(recoveredCenter),
+            "z",
+          ).divideScalar(recoveredRadius);
+          return sceneCameraVector(
+            normalized.multiplyScalar(runtime.radius),
+            runtime.up,
+          ).add(runtime.center);
+        })();
     const size = boundsDimensions(record.boundsFeet);
-    const extent = Math.max(size.x, size.y, size.z, 1);
+    const extent = Math.max(size.x, size.y, size.z, 1) * runtime.sceneUnitsPerFoot;
     const direction = runtime.camera.position.clone().sub(runtime.controls.target);
     if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
     direction.normalize().multiplyScalar(extent * 2.4);
@@ -1582,7 +1668,7 @@ export function ModelCanvas({
     runtime.camera.updateProjectionMatrix();
     runtime.controls.update();
     runtime.invalidate();
-  }, [focusRequest, result, source]);
+  }, [focusRequest, referenceLoadState, result, source]);
 
   useEffect(() => {
     const controls = runtimeRef.current?.controls;

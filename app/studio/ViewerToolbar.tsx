@@ -162,6 +162,7 @@ export function ViewerToolbar({
                 : entry.missingAction === "reference-model" ? onPairReferenceModel : undefined}
               title={[entry.title, entry.shortcut ? `Walk shortcut: ${entry.shortcut}` : null]
                 .filter(Boolean).join(" · ")}
+              ariaKeyShortcuts={entry.shortcut}
               pressed={geometrySource === entry.id}
               onClick={() => onSource(entry.id)}
             >{entry.label}</ToolButton>

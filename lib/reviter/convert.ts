@@ -190,6 +190,7 @@ import {
   createRevit2027NativeMeshCollector,
 } from "./revit-2027-native-mesh-bridge.ts";
 import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
+import { nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
 import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
 import { createRevit2027SplitAlternateFrameCollector } from "./revit-2027-split-alternate-frame-collector.ts";
 
@@ -1755,6 +1756,10 @@ export function convertRvtBytes(
             : null);
         if (stair) {
           record.stairTreads = stair.treads;
+          if (run?.runProperties) {
+            record.stairBeginWithRiser = run.runProperties.beginWithRiser;
+            record.stairEndWithRiser = run.runProperties.endWithRiser;
+          }
           const left = run?.runProperties?.leftStringerWidthFeet;
           const right = run?.runProperties?.rightStringerWidthFeet;
           if (
@@ -2437,18 +2442,36 @@ export function convertRvtBytes(
           ),
         },
       );
+      // A door family's complete native object can be the swept-open family
+      // geometry rather than the closed leaf the scene needs. Those meshes
+      // were admitted after `doorLeafFromShape` had reconstructed the leaf and
+      // therefore silently won display precedence over the better result. On
+      // the UNBC pair the admitted native door meshes score 88.6% on centre
+      // and size, while the independently reconstructed leaf boxes score
+      // 100.0% / 99.9%. Prefer the reconstruction only where its own persisted
+      // shape or host-wall evidence actually produced a leaf; unresolved doors
+      // continue through normal native admission.
+      const reconstructedDoorLeafIds = new Set(
+        elementBounds
+          .filter((record) => record.doorLeafSource != null)
+          .map((record) => record.elementId),
+      );
+      const excludedNativeMeshIds = new Set([
+        ...nonSceneNativeMeshIds,
+        ...reconstructedDoorLeafIds,
+      ]);
       nativeMeshScene.meshes = excludeMeshElementIds(
         nativeMeshScene.meshes,
-        nonSceneNativeMeshIds,
+        excludedNativeMeshIds,
       );
       nativeMeshScene.coveredElementIds = new Set(
         [...nativeMeshScene.coveredElementIds].filter(
-          (elementId) => !nonSceneNativeMeshIds.has(elementId),
+          (elementId) => !excludedNativeMeshIds.has(elementId),
         ),
       );
       nativeMeshScene.reconstructedElementIds = new Set(
         [...nativeMeshScene.reconstructedElementIds].filter(
-          (elementId) => !nonSceneNativeMeshIds.has(elementId),
+          (elementId) => !excludedNativeMeshIds.has(elementId),
         ),
       );
       nativeMeshScene.triangles = nativeMeshScene.meshes.reduce(
@@ -2465,6 +2488,46 @@ export function convertRvtBytes(
       );
       nativeMeshScene.meshes = nativeMeshCleanup.meshes;
       nativeMeshScene.triangles = nativeMeshCleanup.outputTriangles;
+      // Compare against the proxy *after* persisted hosted openings are cut.
+      // The uncut location-line solid can look better by span while an opening
+      // at an end removes its entire cap and changes the geometry the viewer
+      // would actually receive. Previewing the same builder used below keeps
+      // this admission decision about rendered geometry, not an idealised box.
+      const renderedWallProxyPreview = buildBoundsMeshes(
+        elementBounds.filter((record) =>
+          record.categoryId === -2_000_011 &&
+          Boolean(record.solids?.length || record.solid)),
+        origin,
+        [],
+        proxyMaterialIndexByElement,
+        hostedOpeningsByWall,
+      );
+      const nativeWallProxyReplacements = nativeWallProxyReplacementIds(
+        nativeMeshScene.meshes,
+        origin,
+        elementBounds,
+        renderedWallProxyPreview,
+      );
+      if (nativeWallProxyReplacements.size) {
+        nativeMeshScene.meshes = excludeMeshElementIds(
+          nativeMeshScene.meshes,
+          nativeWallProxyReplacements,
+        );
+        nativeMeshScene.coveredElementIds = new Set(
+          [...nativeMeshScene.coveredElementIds].filter(
+            (elementId) => !nativeWallProxyReplacements.has(elementId),
+          ),
+        );
+        nativeMeshScene.reconstructedElementIds = new Set(
+          [...nativeMeshScene.reconstructedElementIds].filter(
+            (elementId) => !nativeWallProxyReplacements.has(elementId),
+          ),
+        );
+        nativeMeshScene.triangles = nativeMeshScene.meshes.reduce(
+          (total, mesh) => total + mesh.indices.length / 3,
+          0,
+        );
+      }
       applyNativeMaterialIndices(
         nativeMeshScene.meshes,
         nativeMaterialIndexById,
@@ -2681,6 +2744,9 @@ export function convertRvtBytes(
                 nativeMeshCleanup.hostTrianglesClipped
               ? ["revit-2027-native-mesh-visibility-cleanup-v1"]
               : []),
+            ...(nativeWallProxyReplacements.size
+              ? ["revit-2027-wall-native-overfill-gate-v1"]
+              : []),
             ...(nativeAssociatedLevelRelations.length
               ? ["revit-2027-associated-level-id-v1"]
               : []),
@@ -2710,6 +2776,7 @@ export function convertRvtBytes(
           nativeMeshes: nativeMeshScene.meshes.length,
           nativeMeshFaces: nativeMeshScene.faceMeshes,
           nativeMeshElements: nativeMeshScene.coveredElementIds.size,
+          nativeWallProxyReplacements: nativeWallProxyReplacements.size,
           nativeMeshOwners: nativeMeshCollection.completeOwners,
           nativeMeshBoundedTessellatorCandidates:
             nativeMeshCollection.boundedTessellatorCandidateRoots,
@@ -2854,6 +2921,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeMeshCleanup.hostTrianglesClipped
             ? [`${nativeMeshCleanup.hostTrianglesClipped.toLocaleString()} native host-wall triangles were clipped around persisted door and window openings.`]
+            : []),
+          ...(nativeWallProxyReplacements.size
+            ? [`${nativeWallProxyReplacements.size.toLocaleString()} native wall meshes whose plan spans overfilled a centre-corroborating location-line solid were replaced by that tighter RVT reconstruction.`]
             : []),
           ...(nativeAssociatedLevelRelations.length
             ? [`${nativeAssociatedLevelRelations.length.toLocaleString()} persisted associated-level relationships were decoded from Element.m_assocLevelId.`]

@@ -122,6 +122,8 @@ export type DecoderCoverage = {
   nativeMeshFaces?: number;
   /** Placed/direct elements whose complete drawable Face set is emitted. */
   nativeMeshElements?: number;
+  /** Native wall meshes replaced by a corroborating, tighter location-line solid. */
+  nativeWallProxyReplacements?: number;
   /** Complete independently persisted GRep owners retained before placement. */
   nativeMeshOwners?: number;
   /** Exact non-legacy root shapes entering bounded tessellator replay. */
@@ -300,6 +302,9 @@ export type ElementBoundsRecord = {
    * same 50 mm dimension on both target runs' tread extrusions.
    */
   stairTreadThicknessFeet?: number;
+  /** Native StairsRun end conditions governing the exposed first/last risers. */
+  stairBeginWithRiser?: boolean;
+  stairEndWithRiser?: boolean;
   /**
    * A rectangular placed curtain-panel proxy clipped by the long axis of an
    * independently placed diagonal mullion. Present only for an unambiguous

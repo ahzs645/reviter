@@ -21,12 +21,49 @@ export type WalkGeometryRange = {
   startTriangle: number;
   /** Maximum number of triangles to add from that offset. */
   triangleCount: number;
+  /** Optional element id for each triangle in the complete geometry. */
+  elementIds?: Uint32Array;
+  /** Elements whose horizontal caps are obstacles, not walking surfaces. */
+  excludedSurfaceElementIds?: ReadonlySet<number>;
 };
 
 export function geometryTriangleCount(geometry: THREE.BufferGeometry): number {
   const positions = geometry.getAttribute("position");
   if (!positions) return 0;
   return Math.floor((geometry.getIndex()?.count ?? positions.count) / 3);
+}
+
+/**
+ * Conservative fallback for reference models that carry no BIM categories.
+ *
+ * A tall object with one very thin plan axis is a wall, door, mullion, column
+ * or railing far more often than a floor. Its vertical faces are rejected by
+ * the normal test already; skipping the object keeps its horizontal caps from
+ * becoming walkable. Broad stairs and slabs do not meet the thin-axis test.
+ */
+export function probableVerticalWalkObstacle(
+  geometry: THREE.BufferGeometry,
+  matrix: THREE.Matrix4,
+  {
+    up = "y",
+    sceneUnitsPerFoot = 1,
+  }: {
+    up?: Axis;
+    sceneUnitsPerFoot?: number;
+  } = {},
+): boolean {
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox?.clone().applyMatrix4(matrix);
+  if (!bounds || bounds.isEmpty()) return false;
+  const size = bounds.getSize(new THREE.Vector3());
+  const [firstPlanAxis, secondPlanAxis] = projectedAxes(up);
+  const height = size[up];
+  const thinPlanAxis = Math.min(size[firstPlanAxis], size[secondPlanAxis]);
+  return (
+    height >= 2.5 * sceneUnitsPerFoot &&
+    thinPlanAxis <= 1.5 * sceneUnitsPerFoot &&
+    height >= thinPlanAxis * 2
+  );
 }
 
 function geometryOffsetRange(
@@ -100,6 +137,14 @@ export class WalkSurfaceIndex {
     const [firstOffset, lastOffset] = geometryOffsetRange(count, range);
 
     for (let offset = firstOffset; offset + 2 < lastOffset; offset += 3) {
+      const triangle = Math.floor(offset / 3);
+      const elementId = range?.elementIds?.[triangle];
+      if (
+        elementId != null &&
+        range?.excludedSurfaceElementIds?.has(elementId)
+      ) {
+        continue;
+      }
       this.a.fromBufferAttribute(positions, vertexIndex(offset)).applyMatrix4(matrix);
       this.b.fromBufferAttribute(positions, vertexIndex(offset + 1)).applyMatrix4(matrix);
       this.c.fromBufferAttribute(positions, vertexIndex(offset + 2)).applyMatrix4(matrix);

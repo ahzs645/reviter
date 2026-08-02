@@ -1418,8 +1418,11 @@ function railGeometry(
 function stairTreadGeometry(
   treads: [Point3, Point3, Point3, Point3][],
   baseZ: number,
+  topZ: number,
   origin: Vec3,
   treadThicknessFeet?: number,
+  beginWithRiser = false,
+  endWithRiser = false,
 ) {
   const treadThickness =
     treadThicknessFeet != null &&
@@ -1481,6 +1484,12 @@ function stairTreadGeometry(
       ? `${startKey}|${endKey}`
       : `${endKey}|${startKey}`;
   };
+  const minimumTreadZ = Math.min(...cells.map((cell) => cell.topZ));
+  const maximumTreadZ = Math.max(...cells.map((cell) => cell.topZ));
+  const startCapSides = new Set<string>();
+  const endCapSides = new Set<string>();
+  const sideId = (cellIndex: number, startCorner: number, endCorner: number) =>
+    `${cellIndex}:${startCorner}:${endCorner}`;
 
   for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
     const cell = cells[cellIndex]!;
@@ -1505,9 +1514,36 @@ function stairTreadGeometry(
       });
       sidesByEdge.set(key, sides);
     }
+    // Every tread quad is ordered lower-profile → upper-profile. The 3→0
+    // edges therefore form the first exposed profile, while 1→2 form the last.
+    // Curved profiles consist of many cells at one elevation; tagging by cell
+    // closes the complete arc without mistaking its two side edges for risers.
+    if (Math.abs(cell.topZ - minimumTreadZ) < 1e-6) {
+      startCapSides.add(sideId(cellIndex, 3, 0));
+    }
+    if (Math.abs(cell.topZ - maximumTreadZ) < 1e-6) {
+      endCapSides.add(sideId(cellIndex, 1, 2));
+    }
   }
 
   const emitSides = (sides: Side[]) => {
+    const emitExtendedSide = (side: Side, bottomZ: number, capTopZ: number) => {
+      if (capTopZ - bottomZ < MIN_PRISM_THICKNESS_FEET) return;
+      const cell = cells[side.cellIndex]!;
+      const start = cell.tread[side.startCorner]!;
+      const end = cell.tread[side.endCorner]!;
+      const base = positions.length / 3;
+      positions.push(
+        start[0] - origin.x, start[1] - origin.y, bottomZ - origin.z,
+        end[0] - origin.x, end[1] - origin.y, bottomZ - origin.z,
+        end[0] - origin.x, end[1] - origin.y, capTopZ - origin.z,
+        start[0] - origin.x, start[1] - origin.y, capTopZ - origin.z,
+      );
+      indices.push(
+        base, base + 1, base + 2,
+        base, base + 2, base + 3,
+      );
+    };
     const emitIndependentSide = (side: Side) => {
       const base = side.cellIndex * 8;
       const start = base + side.startCorner;
@@ -1518,7 +1554,20 @@ function stairTreadGeometry(
       );
     };
     if (sides.length === 1) {
-      emitIndependentSide(sides[0]!);
+      const side = sides[0]!;
+      const id = sideId(side.cellIndex, side.startCorner, side.endCorner);
+      if (beginWithRiser && startCapSides.has(id)) {
+        emitExtendedSide(side, baseZ, side.topZ);
+      } else if (endWithRiser && endCapSides.has(id)) {
+        const cell = cells[side.cellIndex]!;
+        emitExtendedSide(
+          side,
+          cell.points[side.startCorner]![2]!,
+          topZ,
+        );
+      } else {
+        emitIndependentSide(side);
+      }
       return;
     }
     if (sides.length > 2) {
@@ -1778,8 +1827,11 @@ export function buildBoundsMeshes(
           ? stairTreadGeometry(
               record.stairTreads,
               record.boundsFeet.min.z,
+              record.boundsFeet.max.z,
               origin,
               record.stairTreadThicknessFeet,
+              record.stairBeginWithRiser,
+              record.stairEndWithRiser,
             )
           : [];
         // Native faces used to outrank both the rebuilt solid and the

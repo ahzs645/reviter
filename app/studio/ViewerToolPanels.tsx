@@ -1,63 +1,9 @@
 import type { WalkSpeed } from "./walk-controls.ts";
-import type { GeometrySource } from "./types.ts";
-import type { SourceOption } from "./ViewerToolbar.tsx";
 import {
-  WALK_COMPARISON_SOURCES,
   type MeasureMode,
   type MeasureUnit,
   type SectionMode,
 } from "./viewer-tools.ts";
-
-/**
- * Source switching stays outside ModelCanvas so it follows the same camera
- * handoff as the main toolbar and remains available in the mobile shell.
- */
-export function FirstPersonSourcePanel({
-  sources,
-  source,
-  onSource,
-}: {
-  sources: readonly SourceOption[];
-  source: GeometrySource;
-  onSource: (source: GeometrySource) => void;
-}) {
-  const current = WALK_COMPARISON_SOURCES.find((entry) => entry.source === source);
-
-  return (
-    <section className="walk-source-panel" aria-label="First person source comparison">
-      <header>
-        <strong>Compare</strong>
-        <span>camera stays in place</span>
-      </header>
-      <div role="group" aria-label="Walk geometry source">
-        {WALK_COMPARISON_SOURCES.map((entry) => {
-          const option = sources.find((candidate) => candidate.id === entry.source);
-          const reason = option?.reason ?? null;
-          const selected = source === entry.source;
-          return (
-            <button
-              key={entry.source}
-              type="button"
-              className={selected ? "active" : ""}
-              aria-pressed={selected}
-              aria-disabled={reason ? true : undefined}
-              aria-keyshortcuts={entry.key}
-              title={reason ?? `${option?.title ?? entry.label} · Walk shortcut: ${entry.key}`}
-              data-reason={reason ?? undefined}
-              onClick={() => { if (!reason) onSource(entry.source); }}
-            >
-              <span>{entry.label}</span>
-              <kbd>{entry.key}</kbd>
-            </button>
-          );
-        })}
-      </div>
-      <p role="status" aria-live="polite">
-        {current ? `${current.label} source active` : "Choose RVT, IFC, or Autodesk GLB"}
-      </p>
-    </section>
-  );
-}
 
 export function FirstPersonPanel({
   looking,

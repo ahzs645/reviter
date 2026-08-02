@@ -588,6 +588,14 @@ const report = {
     baseRailingTargetsOutsideDecodedStairsFrames,
     failures,
   },
+  runGeometryEvidence: [...runById.values()]
+    .filter((run) => run.runProperties != null)
+    .map((run) => ({
+      elementId: run.elementId,
+      baseRiserIndex: run.baseRiserIndex,
+      ...run.runProperties!,
+    }))
+    .sort((left, right) => left.elementId - right.elementId),
   ifcOracle: {
     expectedStairsAggregationPairs: expectedStairsPairs.size,
     exactDecodedPairs: exactIfcPairs.length,

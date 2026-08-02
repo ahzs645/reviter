@@ -1,6 +1,10 @@
 /** Runtime compaction for a paired glTF reference scene. */
 import * as THREE from "three";
-import { WalkSurfaceIndex, type WalkSurfaceStats } from "./walk-surface.ts";
+import {
+  probableVerticalWalkObstacle,
+  WalkSurfaceIndex,
+  type WalkSurfaceStats,
+} from "./walk-surface.ts";
 
 type MeshEntry = {
   geometry: THREE.BufferGeometry;
@@ -244,7 +248,10 @@ export function batchReferenceScene(root: THREE.Object3D): THREE.Group {
   let copiedGeometryVariants = 0;
   const walkSurface = new WalkSurfaceIndex({
     up: "y",
-    cellSize: 1.25,
+    // Autodesk GLB coordinates are metres. Match the recovered/IFC 1.25-foot
+    // grid so a campus-scale cell does not accumulate several rooms' worth of
+    // candidate triangles on every per-frame floor probe.
+    cellSize: 1.25 * 0.3048,
     minUpDot: 0.45,
   });
   const walkMatrix = new THREE.Matrix4();
@@ -292,10 +299,13 @@ export function batchReferenceScene(root: THREE.Object3D): THREE.Group {
     batch.sortObjects = true;
 
     for (const entry of entries) {
-      walkSurface.addGeometry(
-        entry.geometry,
-        walkMatrix.multiplyMatrices(root.matrixWorld, entry.matrix),
-      );
+      walkMatrix.multiplyMatrices(root.matrixWorld, entry.matrix);
+      if (!probableVerticalWalkObstacle(entry.geometry, walkMatrix, {
+        up: "y",
+        sceneUnitsPerFoot: 0.3048,
+      })) {
+        walkSurface.addGeometry(entry.geometry, walkMatrix);
+      }
       const mirrored = entry.matrix.determinant() < 0;
       const variants = geometryVariants.get(entry.geometry) ?? {};
       let geometryId = mirrored ? variants.mirrored : variants.regular;
