@@ -721,9 +721,10 @@ button[data-reason]:focus-visible::after {
 .viewport-legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .viewport-legend i { width: 10px; height: 3px; display: block; }
 .legend-cyan { background: #62d7d1; }
-.legend-amber { background: var(--warn); }
-.legend-missing { background: #ff3b46; }
-.legend-context { background: #607d80; }
+.legend-matched { background: #7d8792; }
+.legend-amber { background: #f2a93b; }
+.legend-missing { background: #ff1744; }
+.legend-context { background: #6f5ee8; }
 .legend-grid { background: #386067; }
 .viewport-stamp { flex: 0 0 auto; color: #6d868a; letter-spacing: .1em; white-space: nowrap; }
 

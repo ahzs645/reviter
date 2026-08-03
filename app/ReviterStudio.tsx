@@ -1540,16 +1540,16 @@ export default function ReviterStudio() {
     ? [{ tone: "cyan", label: "Reference source meshes" }]
     : geometrySource === "overlay" && comparison
       ? [
-        { tone: "amber", label: "Recovered" },
-        { tone: "cyan", label: "Matched" },
-        { tone: "missing", label: "Differs" },
-        { tone: "context", label: "Unmatched IFC" },
+        { tone: "matched", label: "Matched RVT + IFC" },
+        { tone: "amber", label: "RVT only" },
+        { tone: "missing", label: "Geometry differs" },
+        { tone: "context", label: "IFC only / context" },
       ]
       : geometrySource === "reference" && comparison
         ? [
-          { tone: "cyan", label: "Aligned" },
-          { tone: "missing", label: "Differs" },
-          { tone: "context", label: "IFC context" },
+          { tone: "matched", label: "Matched RVT + IFC" },
+          { tone: "missing", label: "Geometry differs" },
+          { tone: "context", label: "IFC only / context" },
         ]
         : [{ tone: "amber", label: "Recovered" }];
   const stamp = geometrySource === "reference-model"

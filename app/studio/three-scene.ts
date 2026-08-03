@@ -449,9 +449,11 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
  * problem. The export is therefore parented to a group carrying exactly that
  * transform instead of having its vertices rewritten.
  *
- * The colouring is the point of the mode: recovery reads as solid orange,
- * IFC geometry aligned within tolerance is a quiet ghost, and actual
- * centre/size differences are red.
+ * The colouring is the point of the mode. The paired IFC is deliberately
+ * rendered over the RVT body instead of as a faint ghost: gray means the IFC
+ * covers the recovered body, amber remains visible only where the RVT has no
+ * paired surface, red is a geometric disagreement, and violet is IFC-only
+ * context. Polygon offset keeps coincident matched faces stable while orbiting.
  */
 export function overlayMeshGroup(
   result: ConvertResult,
@@ -468,7 +470,7 @@ export function overlayMeshGroup(
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
     const material = mesh.material as THREE.MeshStandardMaterial;
-    material.color = new THREE.Color(0xff8a3d);
+    material.color = new THREE.Color(0xf2a93b);
     material.vertexColors = false;
     material.transparent = false;
     material.opacity = 1;
@@ -491,19 +493,26 @@ export function overlayMeshGroup(
     geometry.computeVertexNormals();
     const aligned = data.diffStatus === "aligned";
     const different = data.diffStatus === "different";
+    const context = data.diffStatus === "context";
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(aligned ? 0x4a6b86 : different ? 0xff3b46 : 0x334e55),
-      emissive: different ? new THREE.Color(0x3a0206) : new THREE.Color(0x000000),
-      roughness: 0.85,
+      color: new THREE.Color(aligned ? 0x7d8792 : different ? 0xff1744 : 0x6f5ee8),
+      emissive: new THREE.Color(
+        aligned ? 0x11161b : different ? 0x42000f : context ? 0x100b38 : 0x000000,
+      ),
+      emissiveIntensity: aligned ? 0.12 : different ? 0.34 : 0.18,
+      roughness: 0.78,
       metalness: 0,
       side: THREE.DoubleSide,
-      transparent: true,
-      opacity: aligned ? 0.18 : different ? 0.92 : 0.12,
-      depthWrite: different,
+      transparent: context,
+      opacity: context ? 0.78 : 1,
+      depthWrite: !context,
+      polygonOffset: true,
+      polygonOffsetFactor: reverseDepthBuffer ? 2 : -2,
+      polygonOffsetUnits: reverseDepthBuffer ? 2 : -2,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `${data.name} (${data.diffStatus})`;
-    mesh.renderOrder = different ? 3 : 0;
+    mesh.renderOrder = different ? 3 : context ? 2 : 1;
     reference.add(mesh);
   }
   group.add(reference);
