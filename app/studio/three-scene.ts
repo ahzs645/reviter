@@ -226,6 +226,11 @@ export function meshGroup(
       .filter(([, role]) => FOREGROUND_ROLES.has(role))
       .map(([elementId]) => elementId),
   );
+  const stairIds = new Set(
+    [...elementDisplayRoles(result.elementBounds)]
+      .filter(([, role]) => role === "stair")
+      .map(([elementId]) => elementId),
+  );
   group.name = "Reviter recovered geometry";
   group.userData = {
     sourceFile: result.fileName,
@@ -369,12 +374,20 @@ export function meshGroup(
       // not index-welded, so almost every triangle edge reads as a boundary.
       // The overlay belongs on the proxies it was built for.
       if (isElementBounds && data.source === "display-proxy") {
+        // Stair runs are assembled from thin tread slabs. Their silhouette is
+        // correct without extra geometry, but the normal proxy line treatment
+        // lets adjacent noses merge into one broad band at eye level. The GLB
+        // reference retains a dark separator at every nose, so strengthen only
+        // batches made entirely from stair elements. This does not restore the
+        // million-edge native overlay that made Orbit lag and shimmer.
+        const stairProfile = part.elementIds.length > 0 &&
+          part.elementIds.every((elementId) => stairIds.has(elementId));
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geometry, 1),
           new THREE.LineBasicMaterial({
-            color: technical ? 0x263c55 : 0x9be7e3,
+            color: technical ? (stairProfile ? 0x303033 : 0x263c55) : 0x9be7e3,
             transparent: true,
-            opacity: technical ? 0.56 : 0.68,
+            opacity: technical ? (stairProfile ? 0.86 : 0.56) : 0.68,
             depthWrite: false,
           }),
         );
@@ -383,6 +396,56 @@ export function meshGroup(
         group.add(edges);
       }
     }
+  }
+
+  // `EdgesGeometry` can describe the stair cells but cannot reliably keep a
+  // coplanar one-pixel line in front of their depth-writing top faces. In Walk
+  // that made object 1779476 read as one smooth band even though the converter
+  // recovered 80 native tread cells. Draw the persisted lower profile of each
+  // tread explicitly, lifted by less than 1/8 inch so it wins the depth test
+  // without changing the stair surface or showing through intervening walls.
+  const stairNosingPositions: number[] = [];
+  for (const record of result.elementBounds) {
+    if (
+      hiddenElementIds.has(record.elementId) ||
+      !stairIds.has(record.elementId) ||
+      !record.stairTreads?.length
+    ) continue;
+    for (const tread of record.stairTreads) {
+      // Stair recovery orders every cell lower-profile → upper-profile. The
+      // 3→0 edge is therefore the exposed tread nose, including each segment
+      // of a curved flight; the 1→2 edge belongs against the next riser.
+      const start = tread[3];
+      const end = tread[0];
+      const profileLiftFeet = 0.008;
+      stairNosingPositions.push(
+        start[0] - result.origin.x,
+        start[1] - result.origin.y,
+        start[2] - result.origin.z + profileLiftFeet,
+        end[0] - result.origin.x,
+        end[1] - result.origin.y,
+        end[2] - result.origin.z + profileLiftFeet,
+      );
+    }
+  }
+  if (stairNosingPositions.length) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(stairNosingPositions, 3),
+    );
+    const profiles = new THREE.LineSegments(
+      geometry,
+      new THREE.LineBasicMaterial({
+        color: technical ? 0x242629 : 0x9be7e3,
+        transparent: true,
+        opacity: technical ? 0.94 : 0.74,
+        depthWrite: false,
+      }),
+    );
+    profiles.name = "Recovered stair nosing profiles";
+    profiles.renderOrder = 3;
+    group.add(profiles);
   }
   return group;
 }

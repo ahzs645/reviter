@@ -49,10 +49,12 @@ test("display roles are exposed per element, because a native batch mixes catego
     record(1, -2000170),
     record(3, -2000011),
     record(5, -2000126),
+    record(7, -2000919),
   ]);
   assert.equal(roles.get(1), "glazing");
   assert.equal(roles.get(3), "wall");
   assert.equal(roles.get(5), "railing");
+  assert.equal(roles.get(7), "stair");
 });
 
 test("anonymous wall-contained fallback bodies do not pierce the recovered host", () => {
@@ -356,6 +358,70 @@ test("the residual railing display material is opaque", () => {
   const railing = displayMaterials().find((material) => material.name.startsWith("Railing"));
   assert.ok(railing);
   assert.equal(railing!.baseColorLinear[3], 1);
+});
+
+test("reconstructed stair runs use neutral concrete and stronger tread profiles", () => {
+  const stair = record(1460781, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 4, y: 4, z: 1 },
+  };
+  stair.stairTreads = [
+    [[0, 0, 0.25], [1, 0, 0.25], [1, 4, 0.25], [0, 4, 0.25]],
+    [[1, 0, 0.5], [2, 0, 0.5], [2, 4, 0.5], [1, 4, 0.5]],
+    [[2, 0, 0.75], [3, 0, 0.75], [3, 4, 0.75], [2, 4, 0.75]],
+  ];
+  stair.stairTreadThicknessFeet = 0.16;
+
+  const materials = displayMaterials();
+  const stairMaterial = materials.find((material) => material.name === "Stair display proxy");
+  assert.ok(stairMaterial);
+  const [red, green, blue, alpha] = stairMaterial.baseColorLinear;
+  assert.equal(red, green);
+  assert.ok(Math.abs(green - blue) <= 0.02);
+  assert.equal(alpha, 1);
+
+  const meshes = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.equal(meshes.length, 1);
+  assert.equal(materials[meshes[0]!.materialIndex]?.name, "Stair display proxy");
+
+  const result = {
+    fileName: "stair.rvt",
+    method: "partition-bounds-recovery",
+    origin: { x: 0, y: 0, z: 0 },
+    elementBounds: [stair],
+    materials,
+    meshes,
+  } as unknown as ConvertResult;
+  const group = meshGroup(result, "technical");
+  const rendered = group.children.find((child): child is THREE.Mesh =>
+    (child as THREE.Mesh).isMesh);
+  const profiles = group.children.find((child): child is THREE.LineSegments =>
+    child.name === "Recovered stair nosing profiles" &&
+    (child as THREE.LineSegments).isLineSegments);
+  assert.ok(rendered);
+  assert.ok(profiles);
+  const renderedColor = (rendered.material as THREE.MeshStandardMaterial).color;
+  assert.ok(Math.abs(renderedColor.r - renderedColor.g) < 1e-6);
+  assert.ok(Math.abs(renderedColor.g - renderedColor.b) < 0.03);
+  assert.equal(
+    (profiles.material as THREE.LineBasicMaterial).opacity,
+    0.94,
+    "tread noses remain distinct at first-person distance",
+  );
+  assert.equal(
+    (profiles.geometry.getAttribute("position") as THREE.BufferAttribute).count,
+    stair.stairTreads.length * 2,
+    "each native tread cell contributes its persisted lower-profile segment",
+  );
+
+  const hiddenGroup = meshGroup(result, "technical", new Set([stair.elementId]));
+  assert.equal(
+    hiddenGroup.children.some((child) => child.name === "Recovered stair nosing profiles"),
+    false,
+    "hiding a stair also hides its dedicated profile geometry",
+  );
 });
 
 test("opaque hosted inserts win coplanar depth ties with their host wall", () => {

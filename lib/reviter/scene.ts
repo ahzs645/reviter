@@ -69,6 +69,12 @@ export function displayMaterials(): MaterialData[] {
     fallback("Slab and roof display proxy", [0.86, 0.85, 0.82, 1], 0.95),
     fallback("Covering display proxy", [0.70, 0.72, 0.68, 1], 0.9),
     fallback("Glazing display proxy", [0.36, 0.66, 0.82, 0.55], 0.3),
+    // Reconstructed stair runs used to share the dark-blue railing slot. The
+    // tread evidence is considerably stronger than a railing proxy, and the
+    // Autodesk reference consistently presents these cast stair bodies as
+    // neutral concrete. Keep this at the end so every established fallback
+    // material index remains stable.
+    fallback("Stair display proxy", [0.46, 0.46, 0.46, 1], 0.92),
   ];
 }
 
@@ -79,6 +85,7 @@ export type DisplayRole =
   | "frame"
   | "structure"
   | "railing"
+  | "stair"
   | "slab"
   | "covering"
   | "glazing"
@@ -118,8 +125,11 @@ const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
   [-2000067]: "railing",
   [-2000123]: "railing",
   [-2000127]: "railing",
-  [-2000919]: "railing",
-  [-2000920]: "railing",
+  // A run and a landing are physical stair bodies. They previously inherited
+  // the railing material, which turned the reconstructed tread band blue even
+  // though its RVT sketch evidence already describes the individual steps.
+  [-2000919]: "stair",
+  [-2000920]: "stair",
   [-2000938]: "railing",
   [-2000945]: "railing",
   [-2000946]: "railing",
@@ -143,6 +153,7 @@ const ROLE_TINT: Record<DisplayRole, [number, number, number]> = {
   frame: [0.30, 0.38, 0.47],
   structure: [0.55, 0.62, 0.70],
   railing: [0.36, 0.43, 0.51],
+  stair: [0.58, 0.58, 0.56],
   slab: [0.80, 0.82, 0.85],
   covering: [0.78, 0.79, 0.76],
   glazing: [0.48, 0.74, 0.88],
@@ -160,6 +171,7 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
   slab: 7,
   covering: 8,
   glazing: 9,
+  stair: 10,
 };
 
 /**
