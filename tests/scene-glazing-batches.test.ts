@@ -4,6 +4,7 @@ import * as THREE from "three";
 
 import { meshGroup } from "../app/studio/three-scene.ts";
 import {
+  anonymousWallDuplicateProxyIds,
   buildBoundsMeshes,
   displayMaterials,
   elementDisplayRoles,
@@ -52,6 +53,30 @@ test("display roles are exposed per element, because a native batch mixes catego
   assert.equal(roles.get(1), "glazing");
   assert.equal(roles.get(3), "wall");
   assert.equal(roles.get(5), "railing");
+});
+
+test("anonymous wall-contained fallback bodies do not pierce the recovered host", () => {
+  const wall = record(1, -2000011);
+  wall.boundsFeet = {
+    min: { x: -5, y: -0.5, z: 0 },
+    max: { x: 5, y: 0.5, z: 8 },
+  };
+  const anonymous = record(2, -2000011);
+  delete anonymous.categoryId;
+  anonymous.boundsFeet = {
+    min: { x: -2, y: -0.4, z: 0 },
+    max: { x: 2, y: 0.52, z: 7 },
+  };
+  const namedInsert = { ...anonymous, elementId: 3, categoryName: "Specialty Equipment" };
+  const outside = { ...anonymous, elementId: 4, boundsFeet: {
+    min: { x: -2, y: 0.3, z: 0 },
+    max: { x: 2, y: 1.3, z: 7 },
+  } };
+
+  assert.deepEqual(
+    [...anonymousWallDuplicateProxyIds([wall, anonymous, namedInsert, outside])],
+    [anonymous.elementId],
+  );
 });
 
 test("curtain panel analytic faces replace its enclosing box", () => {

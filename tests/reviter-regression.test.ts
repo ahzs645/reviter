@@ -52,6 +52,7 @@ import {
 } from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 import { boxDifference } from "../lib/reviter/drawn-bounds.ts";
+import { residualDatumPileElementIds } from "../lib/reviter/datum-pile.ts";
 
 test("parses Revit project ElemTable records with 40-byte framing", () => {
   const data = new Uint8Array(34 + 40 * 2);
@@ -1460,6 +1461,68 @@ test("removes unplaced native definitions without removing instances or named el
       false,
     ),
     false,
+  );
+});
+
+test("removes a dense family-local datum pile while preserving placed and level-related doors", () => {
+  const record = (
+    elementId: number,
+    x: number,
+    y: number,
+    categoryName: string | undefined = "Doors",
+  ): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryName,
+    boundsFeet: {
+      min: { x: x - 0.5, y: y - 0.5, z: 0 },
+      max: { x: x + 0.5, y: y + 0.5, z: 7 },
+    },
+  });
+  const building = Array.from({ length: 520 }, (_, index) =>
+    record(index + 1, 100 + index, 80, "Walls"));
+  const pile = Array.from({ length: 30 }, (_, index) =>
+    record(1_000 + index, 0, 1.9, index % 2 ? "Doors" : undefined));
+  const placed = record(2_000, 0, 1.5);
+  const levelRelated = record(2_001, 1.5, 1.5, "Windows");
+
+  const ids = residualDatumPileElementIds(
+    [...building, ...pile, placed, levelRelated],
+    new Set([placed.elementId]),
+    new Set([levelRelated.elementId]),
+  );
+  assert.deepEqual([...ids].sort((a, b) => a - b), pile.map((item) => item.elementId));
+});
+
+test("does not call a small component or a few origin elements a datum pile", () => {
+  const records: ElementBoundsRecord[] = Array.from({ length: 40 }, (_, index) => ({
+    elementId: index + 1,
+    stream: "component",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryName: "Doors",
+    boundsFeet: {
+      min: { x: -1, y: -1, z: 0 },
+      max: { x: 1, y: 1, z: 7 },
+    },
+  }));
+  assert.equal(residualDatumPileElementIds(records, new Set(), new Set()).size, 0);
+
+  const largeBuilding = Array.from({ length: 520 }, (_, index) => ({
+    ...records[0]!,
+    elementId: 100 + index,
+    boundsFeet: {
+      min: { x: 100 + index, y: 80, z: 0 },
+      max: { x: 101 + index, y: 81, z: 7 },
+    },
+  }));
+  assert.equal(
+    residualDatumPileElementIds([...largeBuilding, ...records.slice(0, 5)], new Set(), new Set()).size,
+    0,
   );
 });
 

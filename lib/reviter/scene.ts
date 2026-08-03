@@ -389,6 +389,50 @@ export function nonSceneNativeMeshHelperIds(
   return helpers;
 }
 
+/**
+ * Categoryless fallback bodies almost wholly embedded in a recovered wall.
+ *
+ * These are not openings: no category, hosted relation, face set, or exported
+ * product identifies them as one. When their only drawable evidence is an
+ * envelope inside an opaque wall, drawing that envelope duplicates the host
+ * and any small overhang becomes a conspicuous block.
+ *
+ * The 95% threshold is deliberately about the anonymous body's volume, not an
+ * arbitrary distance. On UNBC it identifies the three-object cluster piercing
+ * stair 1460781: two bodies are 100% inside native wall 761182 and the third is
+ * 96.1% inside it; Autodesk IFC and GLB contain the wall but neither contains
+ * the cluster. A named or categorised insert is never eligible.
+ */
+export function anonymousWallDuplicateProxyIds(
+  records: readonly ElementBoundsRecord[],
+  minimumContainedFraction = 0.95,
+): Set<number> {
+  const walls = records.filter((record) =>
+    record.categoryId === -2_000_011 || record.categoryName === "Walls");
+  const duplicates = new Set<number>();
+  for (const record of records) {
+    if (record.categoryId != null || record.categoryName) continue;
+    const bounds = record.boundsFeet;
+    const volume =
+      (bounds.max.x - bounds.min.x) *
+      (bounds.max.y - bounds.min.y) *
+      (bounds.max.z - bounds.min.z);
+    if (!(volume > 0)) continue;
+    for (const wall of walls) {
+      const other = wall.boundsFeet;
+      const overlap =
+        Math.max(0, Math.min(bounds.max.x, other.max.x) - Math.max(bounds.min.x, other.min.x)) *
+        Math.max(0, Math.min(bounds.max.y, other.max.y) - Math.max(bounds.min.y, other.min.y)) *
+        Math.max(0, Math.min(bounds.max.z, other.max.z) - Math.max(bounds.min.z, other.min.z));
+      if (overlap / volume >= minimumContainedFraction) {
+        duplicates.add(record.elementId);
+        break;
+      }
+    }
+  }
+  return duplicates;
+}
+
 /** Remove selected elements' triangles while preserving batch material data. */
 export function excludeMeshElementIds(
   meshes: readonly MeshData[],

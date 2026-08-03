@@ -25,6 +25,7 @@ context.onmessage = async (event: MessageEvent<IfcWorkerRequest>) => {
     const transfers: Transferable[] = [];
     for (const mesh of result.referenceMeshes) {
       transfers.push(mesh.positions.buffer, mesh.indices.buffer);
+      if (mesh.elementIds) transfers.push(mesh.elementIds.buffer);
     }
     context.postMessage(
       { id: request.id, type: "result", result } satisfies IfcWorkerResponse,

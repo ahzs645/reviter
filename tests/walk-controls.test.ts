@@ -13,6 +13,7 @@ import {
   horizontalWalkDirection,
   stepWalkSpeed,
   travelDurationSeconds,
+  walkKeyboardEventUsesSystemShortcut,
   walkKeyboardTargetIsInteractive,
 } from "../app/studio/walk-controls.ts";
 
@@ -102,6 +103,13 @@ test("walk shortcuts ignore form and disclosure controls", () => {
   assert.equal(walkKeyboardTargetIsInteractive({ tagName: "DIV", isContentEditable: true } as unknown as EventTarget), true);
 });
 
+test("walk shortcuts leave browser and operating-system shortcuts alone", () => {
+  assert.equal(walkKeyboardEventUsesSystemShortcut({ altKey: false, ctrlKey: false, metaKey: true }), true);
+  assert.equal(walkKeyboardEventUsesSystemShortcut({ altKey: false, ctrlKey: true, metaKey: false }), true);
+  assert.equal(walkKeyboardEventUsesSystemShortcut({ altKey: true, ctrlKey: false, metaKey: false }), true);
+  assert.equal(walkKeyboardEventUsesSystemShortcut({ altKey: false, ctrlKey: false, metaKey: false }), false);
+});
+
 test("first-person speed steps are ordered and clamp at both ends", () => {
   assert.ok(FIRST_PERSON_SPEEDS.slow < FIRST_PERSON_SPEEDS.normal);
   assert.ok(FIRST_PERSON_SPEEDS.normal < FIRST_PERSON_SPEEDS.fast);
@@ -186,11 +194,18 @@ test("face travel preserves the first-person view direction", () => {
   }
 });
 
-test("desktop look uses pointer drag without locking the mouse", () => {
+test("desktop look locks the pointer, turns in place, and Escape releases before exiting", () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const fakeWindow = new EventTarget();
-  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  const fakeDocument = Object.assign(new EventTarget(), {
+    hidden: false,
+    pointerLockElement: null as HTMLElement | null,
+    exitPointerLock() {
+      this.pointerLockElement = null;
+      this.dispatchEvent(new Event("pointerlockchange"));
+    },
+  });
   Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
   Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
 
@@ -202,6 +217,8 @@ test("desktop look uses pointer drag without locking the mouse", () => {
     const element = Object.assign(new EventTarget(), {
       requestPointerLock() {
         pointerLockRequests += 1;
+        fakeDocument.pointerLockElement = element;
+        fakeDocument.dispatchEvent(new Event("pointerlockchange"));
       },
       setPointerCapture: (pointerId: number) => { capturedPointer = pointerId; },
       releasePointerCapture: (pointerId: number) => {
@@ -224,12 +241,12 @@ test("desktop look uses pointer drag without locking the mouse", () => {
       pointerType: "mouse",
       pointerId: 1,
     }));
-    assert.equal(pointerLockRequests, 0);
-    assert.equal(controls.isPointerLocked(), false);
+    assert.equal(pointerLockRequests, 1);
+    assert.equal(controls.isPointerLocked(), true);
     assert.equal(controls.isLooking(), true);
-    assert.equal(capturedPointer, 1);
+    assert.equal(capturedPointer, null);
     const before = camera.getWorldDirection(new THREE.Vector3());
-    element.dispatchEvent(Object.assign(new Event("pointermove"), {
+    fakeDocument.dispatchEvent(Object.assign(new Event("mousemove"), {
       movementX: 40,
       movementY: -10,
     }));
@@ -248,10 +265,19 @@ test("desktop look uses pointer drag without locking the mouse", () => {
     );
 
     element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));
-    assert.equal(controls.isLooking(), false);
+    assert.equal(controls.isLooking(), true);
+    assert.equal(controls.isPointerLocked(), true);
     assert.equal(capturedPointer, null);
+
+    fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "Escape",
+      repeat: false,
+    }));
+    assert.equal(controls.isPointerLocked(), false);
+    assert.equal(controls.isLooking(), false);
+    assert.equal(exitCount, 0);
     controls.update(0.1);
-    assert.ok(camera.position.distanceTo(positionWhileLooking) > 0, "movement resumes after the drag");
+    assert.ok(camera.position.distanceTo(positionWhileLooking) > 0, "movement resumes after pointer release");
 
     fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
       code: "Escape",

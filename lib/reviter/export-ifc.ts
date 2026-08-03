@@ -453,7 +453,9 @@ function emitElementProperties(
   element: ManifestElement,
   source: ElementBoundsRecord | undefined,
 ): void {
-  const nativeExact = element.geometry.finalProvenance === "native";
+  const exact =
+    element.geometry.finalProvenance === "native" ||
+    element.geometry.finalProvenance === "reference-assisted";
   const properties = [
     integerProperty(writer, "RevitElementId", element.elementId),
     ...(element.uniqueId ? [textProperty(writer, "RevitUniqueId", element.uniqueId)] : []),
@@ -462,7 +464,7 @@ function emitElementProperties(
     textProperty(writer, "CategoryEvidence", element.category?.evidence ?? "unknown"),
     textProperty(writer, "GeometrySource", element.geometry.source),
     textProperty(writer, "GeometryProvenance", element.geometry.finalProvenance),
-    booleanProperty(writer, "GeometryExact", nativeExact),
+    booleanProperty(writer, "GeometryExact", exact),
     ...(source ? [textProperty(
       writer,
       "SourceRecord",

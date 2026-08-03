@@ -7,7 +7,7 @@ import {
   floorPlateBounds,
   floorPlateLevels,
   floorPlateSvgDataUrl,
-  makeFloorPlateSvg,
+  makeArchitecturalFloorSvg,
   type ConvertResult,
   type DerivedRoomResult,
 } from "../../lib/reviter";
@@ -42,7 +42,7 @@ export function FloorMiniMap({
   const selectedIndex = Math.max(0, levels.findIndex((level) => level.levelId === selectedLevelId));
   const selected = levels[selectedIndex] ?? null;
   const selectedDerivedRooms = derivedRooms?.levelId === selected?.levelId ? derivedRooms : null;
-  const svg = useMemo(() => selected ? makeFloorPlateSvg(result, selected.levelId, { derivedRooms: selectedDerivedRooms ?? false }) : null, [result, selected, selectedDerivedRooms]);
+  const svg = useMemo(() => selected ? makeArchitecturalFloorSvg(result, selected.levelId, { derivedRooms: selectedDerivedRooms ?? false }) : null, [result, selected, selectedDerivedRooms]);
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
   const bounds = useMemo(() => selected ? floorPlateBounds(result, selected.levelId) : null, [result, selected]);
   const mapRef = useRef<HTMLElement>(null);
@@ -62,7 +62,8 @@ export function FloorMiniMap({
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      const mapTrigger = document.querySelector<HTMLElement>('[aria-controls="floor-navigation-map"]');
+      const mapTrigger = document.querySelector<HTMLElement>('[aria-controls="floor-navigation-map"]')
+        ?? document.querySelector<HTMLElement>('.workspace-switcher button[aria-pressed="true"]');
       (mapTrigger ?? restoreFocusRef.current)?.focus?.();
     };
   }, []);
@@ -117,7 +118,7 @@ export function FloorMiniMap({
           <span className="floor-map-north" aria-hidden>N ↑</span>
           <span className="floor-map-hint">Drag/scroll · click to walk</span>
         </div>
-        <figcaption id="floor-map-caption" className="sr-only">Interactive plan of native Revit floor slabs. The teal arrow is the live camera and the pink marker is the selected object.</figcaption>
+        <figcaption id="floor-map-caption" className="sr-only">Interactive architectural plan assembled from recovered Revit floors, walls, openings, windows, stairs, and columns. The teal arrow is the live camera and the pink marker is the selected object.</figcaption>
       </figure>
       <footer><label><input type="checkbox" checked={showDerivedRooms} onChange={(event) => onShowDerivedRooms(event.target.checked)} />Derived floor regions</label>{onIsolateLevel && <label><input type="checkbox" checked={isolateLevel} onChange={(event) => onIsolateLevel(event.target.checked)} />Isolate 3D floor</label>}{showDerivedRooms && selectedDerivedRooms && <span>{selectedDerivedRooms.rooms.length} regions <em>Inferred</em></span>}</footer>
       <span className="sr-only" role="status" aria-live="polite">Map level {selected.elevation.toFixed(1)} feet. {selectedDerivedRooms ? `${selectedDerivedRooms.rooms.length} inferred floor regions.` : ""}</span>

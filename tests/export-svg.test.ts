@@ -8,6 +8,10 @@ import {
   makePlanSvg,
   planSegments,
 } from "../lib/reviter/export-svg.ts";
+import {
+  architecturalPlanSummary,
+  makeArchitecturalFloorSvg,
+} from "../lib/reviter/architectural-plan.ts";
 import { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "../lib/reviter/derived-rooms.ts";
 import type { ConvertResult, ElementBoundsRecord, Segment } from "../lib/reviter/types.ts";
 
@@ -150,6 +154,86 @@ test("draws actual Revit floor sketch loops and keeps openings", () => {
   assert.match(svg, /data-revit-element-id="4"/u);
   assert.match(svg, /fill-rule="evenodd"/u);
   assert.equal((svg.match(/ Z/gu) ?? []).length, 2);
+});
+
+test("composes a level-aware architectural map from recovered RVT elements", () => {
+  const result = resultFixture();
+  const floor = roomTestFloor(10);
+  const wall = straightWall(11, [0, 5], [20, 5]);
+  const placed = (elementId: number, categoryId: number, categoryName: string, x: number): ElementBoundsRecord => ({
+    ...record(elementId, x),
+    categoryId,
+    categoryName,
+    orientedBox: [
+      [x, 4.8, 0], [x + 3, 4.8, 0], [x + 3, 5.2, 0], [x, 5.2, 0],
+      [x, 4.8, 7], [x + 3, 4.8, 7], [x + 3, 5.2, 7], [x, 5.2, 7],
+    ],
+    boundsFeet: { min: { x, y: 4.8, z: 0 }, max: { x: x + 3, y: 5.2, z: 7 } },
+  });
+  const door = placed(12, -2_000_023, "Doors", 2);
+  const window = placed(13, -2_000_014, "Windows", 8);
+  window.boundsFeet.min.z = 3;
+  const stair = placed(14, -2_000_121, "Stairs Runs", 13);
+  stair.boundsFeet.max.z = 10;
+  stair.stairTreads = [[
+    [13, 4, 1], [14, 4, 1], [14, 6, 1], [13, 6, 1],
+  ]];
+  const column = placed(15, -2_000_100, "Columns", 17);
+  column.boundsFeet.max.x = 18;
+  const stairContainer = placed(16, -2_000_120, "Stairs", 12);
+  stairContainer.boundsFeet.max.z = 10;
+  result.elementBounds.push(floor, wall, door, window, stair, column, stairContainer);
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: floor.elementId, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+
+  assert.deepEqual(architecturalPlanSummary(result, 100), {
+    levelId: 100,
+    elevation: 0,
+    cutElevation: 4,
+    floors: 1,
+    walls: 1,
+    doors: 1,
+    windows: 1,
+    stairs: 1,
+    columns: 1,
+  });
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  assert.match(svg, /data-wall-count="1"/u);
+  assert.match(svg, /data-door-count="1"/u);
+  assert.match(svg, /class="windows"/u);
+  assert.match(svg, /class="swing"/u);
+  assert.match(svg, /class="riser"/u);
+  assert.match(svg, /class="columns"/u);
+  assert.doesNotMatch(svg, /data-revit-element-id="16"/u);
+  assert.match(svg, /\.walls\{fill:#e0e7e5;stroke:#344b50;stroke-width:/u);
+  assert.doesNotMatch(svg, /\.walls\{fill:#263f46/u);
+
+  const rotated = makeArchitecturalFloorSvg(result, 100, { rotationQuarterTurns: 1 });
+  assert.match(rotated, /viewBox="0 0 15 25"/u);
+  assert.match(rotated, /data-view-rotation-degrees="90"/u);
+  assert.match(rotated, /transform="translate\(15 0\) rotate\(90\)"/u);
+});
+
+test("omits an unresolved stair run rather than inventing treads", () => {
+  const result = resultFixture();
+  const floor = roomTestFloor(10);
+  const unresolved = record(20, 4);
+  unresolved.categoryId = -2_000_121;
+  unresolved.categoryName = "Stairs Runs";
+  unresolved.boundsFeet = { min: { x: 4, y: 2, z: 0 }, max: { x: 16, y: 8, z: 10 } };
+  const otherStorey = { ...unresolved, elementId: 21, stairTreads: [[
+    [5, 3, 20], [6, 3, 20], [6, 4, 20], [5, 4, 20],
+  ]] };
+  result.elementBounds.push(floor, unresolved, otherStorey);
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: floor.elementId, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+
+  assert.equal(architecturalPlanSummary(result, 100).stairs, 0);
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  assert.doesNotMatch(svg, /data-revit-element-id="20"/u);
+  assert.doesNotMatch(svg, /data-revit-element-id="21"/u);
 });
 
 test("derives approximate floor regions only when recovered barriers fully enclose them", () => {

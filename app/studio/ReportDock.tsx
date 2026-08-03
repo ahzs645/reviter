@@ -13,13 +13,11 @@ import { Download, FileUp, Search, X } from "lucide-react";
 import type {
   BasicFileInfoProperties,
   ConvertResult,
-  DerivedRoomResult,
   PairedRegressionResult,
 } from "../../lib/reviter";
 import { formatBytes, formatNumber, matchesFilter } from "./format.ts";
 import { RegressionPanel } from "./panels.tsx";
 import { Toolkit } from "./Toolkit.tsx";
-import { FloorBrowser } from "./FloorBrowser.tsx";
 import type { ReportTab } from "./types.ts";
 
 export type ExportAction = { id: string; format: string; detail: string; run: () => void };
@@ -37,7 +35,6 @@ export type FileRecord = {
 
 const TABS: readonly { id: ReportTab; label: string }[] = [
   { id: "summary", label: "Summary" },
-  { id: "floors", label: "Floors" },
   { id: "coverage", label: "Coverage" },
   { id: "streams", label: "Streams" },
   { id: "exports", label: "Exports" },
@@ -58,13 +55,6 @@ export function ReportDock({
   fileRecord,
   exports,
   exporting,
-  planLevelId,
-  onPlanLevelId,
-  showDerivedRooms,
-  onShowDerivedRooms,
-  derivedRooms,
-  sideMapOpen,
-  onSideMap,
   recoveredElementIds,
   drawnElementIds,
   exportDisclaimer,
@@ -88,13 +78,6 @@ export function ReportDock({
   fileRecord: FileRecord | null;
   exports: readonly ExportAction[];
   exporting: string | null;
-  planLevelId: number | null;
-  onPlanLevelId: (levelId: number) => void;
-  showDerivedRooms: boolean;
-  onShowDerivedRooms: (visible: boolean) => void;
-  derivedRooms: DerivedRoomResult | null;
-  sideMapOpen: boolean;
-  onSideMap: () => void;
   recoveredElementIds: Set<number>;
   drawnElementIds: Set<number>;
   exportDisclaimer: string;
@@ -133,7 +116,7 @@ export function ReportDock({
   };
 
   return (
-    <section className={`report-dock${tab === "floors" ? " floor-browser-open" : ""}`} aria-label="Recovery report">
+    <section className="report-dock" aria-label="Recovery report">
       <div className="report-tabs" role="tablist" aria-label="Report views">
         {TABS.map((entry, index) => (
           <button
@@ -214,21 +197,30 @@ export function ReportDock({
 
             {(result.persistedCadFileNames?.length ?? 0) > 0 && (
               <div className="report-block">
-                <p className="report-heading">CAD files retained by the RVT</p>
+                <p className="report-heading">CAD source records retained by the RVT</p>
                 <p className="report-disclaimer" style={{ marginTop: 0 }}>
-                  {result.persistedCadFileNames!.length.toLocaleString()} distinct DWG names were
-                  found in persisted partition records. These are name records rather than
-                  extractable original DWG byte streams. {result.transmissionData?.references.some(
+                  {result.persistedCadFileNames!.length.toLocaleString()} distinct DWG source names were
+                  found in persisted element records. Revit kept each source label and may retain
+                  transformed imported geometry, but not a complete original DWG file that Reviter can
+                  open or download. {result.transmissionData?.references.some(
                     (reference) => /cad|dwg/iu.test(reference.referenceType),
                   )
-                    ? "TransmissionData also reports an external CAD reference."
-                    : "TransmissionData contains no external CAD link for this model."}
+                    ? "TransmissionData reports a CAD reference, but the original file still has to be supplied separately."
+                    : "TransmissionData contains no path or live external CAD link for this model."}
                 </p>
+                <dl className="cad-recovery-status">
+                  <div><dt>Source names</dt><dd>{result.persistedCadFileNames!.length.toLocaleString()} found</dd></div>
+                  <div><dt>Original DWG bytes</dt><dd>Not stored</dd></div>
+                  <div><dt>Recoverable link</dt><dd>{result.transmissionData?.references.some((reference) => /cad|dwg/iu.test(reference.referenceType)) ? "Reference found" : "None found"}</dd></div>
+                </dl>
+                <button type="button" className="rv-button cad-preview-action" onClick={() => onTab("toolkit")}>
+                  <FileUp size={14} aria-hidden /> Open local DWG preview tool
+                </button>
                 <details className="cad-file-list">
-                  <summary>Show DWG names</summary>
+                  <summary>Show source names</summary>
                   <ul>
                     {result.persistedCadFileNames!.map((entry) => (
-                      <li key={entry.fileName}>{entry.fileName}</li>
+                      <li key={entry.fileName}><span>{entry.fileName}</span><em>Name only</em></li>
                     ))}
                   </ul>
                 </details>
@@ -271,19 +263,6 @@ export function ReportDock({
               </>
             )}
           </>
-        )}
-
-        {tab === "floors" && (
-          <FloorBrowser
-            result={result}
-            selectedLevelId={planLevelId}
-            onSelectedLevelId={onPlanLevelId}
-            showDerivedRooms={showDerivedRooms}
-            onShowDerivedRooms={onShowDerivedRooms}
-            derivedRooms={derivedRooms}
-            sideMapOpen={sideMapOpen}
-            onSideMap={onSideMap}
-          />
         )}
 
         {tab === "streams" && (
@@ -405,25 +384,6 @@ export function ReportDock({
 
         {tab === "exports" && (
           <>
-            {result.levels.some((level) => level.levelId != null) && planLevelId != null && (
-              <label className="floor-plan-picker">
-                <span>
-                  <strong>2D floor plan</strong>
-                  <small>Uses persisted Revit level membership, not a height guess.</small>
-                </span>
-                <select
-                  aria-label="Floor plan Revit level"
-                  value={planLevelId}
-                  onChange={(event) => onPlanLevelId(Number(event.target.value))}
-                >
-                  {result.levels.flatMap((level) => level.levelId == null ? [] : [(
-                    <option key={level.levelId} value={level.levelId}>
-                      {level.elevation.toFixed(1)}′ · {level.candidates.toLocaleString()} elements
-                    </option>
-                  )])}
-                </select>
-              </label>
-            )}
             <div className="export-grid">
               {exports.map((entry) => (
                 <button

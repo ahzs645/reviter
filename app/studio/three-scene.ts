@@ -360,7 +360,7 @@ export function meshGroup(
       // because these batches are assembled from many elements' faces and are
       // not index-welded, so almost every triangle edge reads as a boundary.
       // The overlay belongs on the proxies it was built for.
-      if (isElementBounds && data.source !== "native-brep") {
+      if (isElementBounds && data.source === "display-proxy") {
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geometry, 1),
           new THREE.LineBasicMaterial({

@@ -48,12 +48,12 @@ Source: `UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt`
 
 ## App behavior added
 
-- Recovery Report → Summary lists the retained DWG names and explains whether they are name-only records or external links.
+- Recovery Report → Summary lists the retained DWG source records, labels each one **Name only**, and distinguishes source labels, original bytes, and recoverable links. The Toolkit accepts an original local DWG separately for thumbnail preview.
 - Recovery Report → Exports has a Revit-level selector and **Level plan SVG** action.
 - **Floor plates SVG** isolates the actual `Floors` category and draws its native sketch loops with openings, rather than drawing every element envelope on the level.
-- Recovery Report → **Floors** is an in-app browser with previous/next controls, a floor-level selector, inline slab preview, level metadata, and per-floor SVG download. Levels without recovered floor plates are omitted.
+- The persistent bottom **Floors** switch opens a dedicated workspace with previous/next controls, a floor-level selector, a large slab preview, level metadata, and per-floor SVG download. Levels without recovered floor plates are omitted.
 - Floors → **Show derived rooms** overlays the approximate zones in orange, labels the data **Inferred**, reports the wall inputs and grid resolution, and includes the overlay in the downloaded floor SVG. It is off by default and never presents the zones as native Revit Rooms.
-- **Open side sub-map** moves the synchronized floor/room SVG into a compact viewport overlay. It remains available after the Report dock closes, supports level switching and room visibility independently, and does not change the 3D camera.
+- **Open over 3D model** returns to the model workspace with the synchronized floor/room SVG in a compact viewport overlay. It supports level switching and room visibility independently and does not change the 3D camera.
 - Whole-model SVG export no longer overflows the JavaScript call stack on this model.
 - CLI floor export:
 

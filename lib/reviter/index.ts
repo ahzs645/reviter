@@ -1,4 +1,5 @@
 export { convertRvtBytes } from "./convert";
+export { applyIfcReferenceRepairs } from "./reference-assisted-recovery";
 export {
   parseBasicFileInfoProperties,
   redactBasicFileInfoProperties,
@@ -244,6 +245,8 @@ export {
   makeIfcCenterlines,
   makeObj,
   makeFloorPlateSvg,
+  makeArchitecturalFloorSvg,
+  architecturalPlanSummary,
   floorPlateBounds,
   floorPlateSvgDataUrl,
   makePlanSvg,
@@ -260,6 +263,7 @@ export type {
   DerivedRoomResult,
 } from "./derived-rooms";
 export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports";
+export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports";
 export type {
   ConvertFailure,
   ConvertOptions,

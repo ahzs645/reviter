@@ -5,10 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 
 import {
+  applyIfcReferenceRepairs,
   boundsDimensions,
   DEFAULT_CAMERA_PRESET,
   cachedDerivedRoomsForLevel,
   downloadBlob,
+  floorPlateLevels,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
@@ -48,6 +50,7 @@ import { EmptyState } from "./studio/EmptyState.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
+import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import {
@@ -76,6 +79,7 @@ import {
   type RecentFile,
 } from "./studio/recents.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
+import { WorkspaceSwitcher } from "./studio/WorkspaceSwitcher.tsx";
 import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
 import {
   isNavigationTool,
@@ -103,6 +107,7 @@ import type {
   PropertyRow,
   ReferencePhase,
   ReportTab,
+  StudioWorkspace,
   WalkStartRequest,
 } from "./studio/types.ts";
 
@@ -240,6 +245,7 @@ export default function ReviterStudio() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
+  const [workspace, setWorkspace] = useState<StudioWorkspace>("model");
   const [browserTab, setBrowserTab] = useState<BrowserTab>("objects");
   const [reportTab, setReportTab] = useState<ReportTab>("summary");
   const [browserSearch, setBrowserSearch] = useState("");
@@ -267,6 +273,12 @@ export default function ReviterStudio() {
   const [referenceMessage, setReferenceMessage] = useState("Choose the matching IFC export");
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
+  const referenceAssistedResult = useMemo(
+    () => result && comparison
+      ? applyIfcReferenceRepairs(result, comparison.referenceMeshes)
+      : null,
+    [comparison, result],
+  );
 
   const navigationMode = navigationModeForTool(navTool);
   const walking = navTool === "firstPerson";
@@ -371,6 +383,7 @@ export default function ReviterStudio() {
     setCanvasMenu(null);
     setWalkStartRequest({ point: null, normal: null, sequence: requestId });
     setDockOpen(false);
+    setWorkspace("model");
     setFloorSideMapOpen(false);
     setIsolateMapLevel(false);
     setShowDerivedRooms(false);
@@ -537,6 +550,7 @@ export default function ReviterStudio() {
     setCanvasMenu(null);
     setWalkStartRequest((current) => ({ point: null, normal: null, sequence: current.sequence + 1 }));
     setDockOpen(false);
+    setWorkspace("model");
     setFloorSideMapOpen(false);
     setShowDerivedRooms(false);
     setSheet(null);
@@ -597,7 +611,7 @@ export default function ReviterStudio() {
           return;
         }
         setComparison(message.result);
-        setGeometrySource("reference");
+        setGeometrySource("reference-assisted");
         setReferenceProgress(1);
         setReferenceMessage("Paired regression complete");
         setReferencePhase("ready");
@@ -1339,6 +1353,7 @@ export default function ReviterStudio() {
 
   const exportActions: ExportAction[] = useMemo(() => {
     if (!result) return [];
+    const geometryResult = referenceAssistedResult ?? result;
     return [
       {
         id: "GLB",
@@ -1347,7 +1362,7 @@ export default function ReviterStudio() {
         run: () => {
           setExporting("GLB");
           try {
-            downloadBlob(new Blob([makeGlb(result)], { type: "model/gltf-binary" }), outputName(result.fileName, "glb"));
+            downloadBlob(new Blob([makeGlb(geometryResult)], { type: "model/gltf-binary" }), outputName(result.fileName, "glb"));
           } catch (caught) {
             setError(caught instanceof Error ? caught.message : String(caught));
           } finally {
@@ -1355,13 +1370,13 @@ export default function ReviterStudio() {
           }
         },
       },
-      { id: "OBJ", format: "OBJ", detail: "Mesh", run: () => exportText("OBJ", "obj", () => makeObj(result)) },
-      { id: "DXF", format: "DXF", detail: "3D lines", run: () => exportText("DXF", "dxf", () => makeDxf(result)) },
+      { id: "OBJ", format: "OBJ", detail: "Mesh", run: () => exportText("OBJ", "obj", () => makeObj(geometryResult)) },
+      { id: "DXF", format: "DXF", detail: "3D lines", run: () => exportText("DXF", "dxf", () => makeDxf(geometryResult)) },
       {
         id: "SVG",
         format: "SVG",
         detail: "All-level projection",
-        run: () => exportText("SVG", "svg", () => makePlanSvg(result), "image/svg+xml"),
+        run: () => exportText("SVG", "svg", () => makePlanSvg(geometryResult), "image/svg+xml"),
       },
       ...(planLevelId == null
         ? []
@@ -1372,7 +1387,7 @@ export default function ReviterStudio() {
             run: () => exportText(
               "FLOOR_SVG",
               `level-${planLevelId}.svg`,
-              () => makePlanSvg(result, { levelId: planLevelId }),
+              () => makePlanSvg(geometryResult, { levelId: planLevelId }),
               "image/svg+xml",
             ),
           }]),
@@ -1385,15 +1400,17 @@ export default function ReviterStudio() {
             run: () => exportText(
               "FLOOR_PLATES_SVG",
               `floor-plates-${planLevelId}.svg`,
-              () => makeFloorPlateSvg(result, planLevelId),
+              () => makeFloorPlateSvg(geometryResult, planLevelId),
               "image/svg+xml",
             ),
           }]),
       {
         id: "IFC",
         format: "IFC",
-        detail: "IFC4 · elements, storeys, materials",
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step"),
+        detail: referenceAssistedResult
+          ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
+          : "IFC4 · elements, storeys, materials",
+        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult), "application/x-step"),
       },
       {
         id: "JSON",
@@ -1402,7 +1419,7 @@ export default function ReviterStudio() {
         run: () => exportText(
           "JSON",
           "json",
-          () => makeReport(result, metadata as unknown as Record<string, unknown>),
+          () => makeReport(geometryResult, metadata as unknown as Record<string, unknown>),
           "application/json",
         ),
       },
@@ -1429,7 +1446,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, planLevelId, result]);
+  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1459,6 +1476,13 @@ export default function ReviterStudio() {
   const sources = useMemo<SourceOption[]>(() => [
     { id: "recovered", label: "RVT", reason: null, shortcut: "1", title: "Geometry rebuilt from the RVT file" },
     {
+      id: "reference-assisted",
+      label: "RVT + IFC",
+      reason: ifcReason,
+      title: "RVT identity, semantics and materials with geometrically different bodies repaired from the tagged IFC",
+      missingAction: referencePhase === "reading" ? undefined : "ifc",
+    },
+    {
       id: "reference",
       label: ifcReason ? "Add IFC" : "IFC",
       reason: ifcReason,
@@ -1487,7 +1511,9 @@ export default function ReviterStudio() {
 
   const selectGeometrySource = useCallback((source: GeometrySource) => {
     setGeometrySource(source);
-    if (source !== "recovered") setSelectedElementId(null);
+    if (source !== "recovered" && source !== "reference-assisted") {
+      setSelectedElementId(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -1525,7 +1551,7 @@ export default function ReviterStudio() {
    * no element table does exactly that — which is a fact about the file, not a
    * list that failed to load.
    */
-  const browserEmptyNote = geometrySource !== "recovered"
+  const browserEmptyNote = geometrySource !== "recovered" && geometrySource !== "reference-assisted"
     ? "Only the recovered source carries object ids. Switch back to Recovered to browse objects and categories."
     : browserSearch.trim()
       ? "Nothing in this model matches that filter."
@@ -1551,18 +1577,26 @@ export default function ReviterStudio() {
           { tone: "missing", label: "Geometry differs" },
           { tone: "context", label: "IFC only / context" },
         ]
-        : [{ tone: "amber", label: "Recovered" }];
+        : geometrySource === "reference-assisted"
+          ? [{ tone: "matched", label: "Reference-assisted RVT" }]
+          : [{ tone: "amber", label: "Recovered" }];
   const stamp = geometrySource === "reference-model"
     ? "paired reference model"
     : geometrySource === "reference" && comparison
       ? "metres · z-up"
       : "feet · z-up";
+  const floorLevelCount = useMemo(
+    () => result ? floorPlateLevels(result).length : 0,
+    [result],
+  );
 
   const openPicker = useCallback(() => inputRef.current?.click(), []);
 
   const canvas = result ? (
     <ModelCanvas
-      result={result}
+      result={geometrySource === "reference-assisted"
+        ? referenceAssistedResult ?? result
+        : result}
       comparison={comparison}
       source={geometrySource}
       referenceModelUrl={referenceModelUrl}
@@ -1772,7 +1806,7 @@ export default function ReviterStudio() {
         />
       ) : (
         <>
-          {result && (
+          {result && workspace === "model" && (
             <ViewerToolbar
               sources={sources}
               geometrySource={geometrySource}
@@ -1797,6 +1831,21 @@ export default function ReviterStudio() {
             />
           )}
 
+          {result && workspace === "floors" ? (
+            <FloorWorkspace
+              result={result}
+              selectedLevelId={planLevelId}
+              onSelectedLevelId={setPlanLevelId}
+              showDerivedRooms={showDerivedRooms}
+              onShowDerivedRooms={setShowDerivedRooms}
+              derivedRooms={derivedFloorRooms}
+              onModel={() => setWorkspace("model")}
+              onOpenModelMap={() => {
+                setWorkspace("model");
+                setFloorSideMapOpen(true);
+              }}
+            />
+          ) : (
           <div className="workarea">
             {result && leftOpen && (
               <BrowserDock
@@ -1989,13 +2038,6 @@ export default function ReviterStudio() {
                   fileRecord={fileRecord}
                   exports={exportActions}
                   exporting={exporting}
-                  planLevelId={planLevelId}
-                  onPlanLevelId={setPlanLevelId}
-                  showDerivedRooms={showDerivedRooms}
-                  onShowDerivedRooms={setShowDerivedRooms}
-                  derivedRooms={derivedFloorRooms}
-                  sideMapOpen={floorSideMapOpen}
-                  onSideMap={() => setFloorSideMapOpen((open) => !open)}
                   recoveredElementIds={recoveredElementIds}
                   drawnElementIds={displayedElementIds}
                   exportDisclaimer={exportDisclaimer}
@@ -2035,17 +2077,33 @@ export default function ReviterStudio() {
               />
             )}
           </div>
+          )}
 
           <footer className="statusbar" aria-live="polite">
-            <span>
-              <span className={`status-dot ${statusTone}`} />
-              <b>{statusText}</b>
-            </span>
-            {busy && (
-              <span className="status-progress">
-                <span><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>
-                <em>{Math.round(progress * 100)}%</em>
+            <div className="statusbar-state">
+              <span>
+                <span className={`status-dot ${statusTone}`} />
+                <b>{statusText}</b>
               </span>
+              {busy && (
+                <span className="status-progress">
+                  <span><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>
+                  <em>{Math.round(progress * 100)}%</em>
+                </span>
+              )}
+            </div>
+            {result && (
+              <WorkspaceSwitcher
+                workspace={workspace}
+                floorLevelCount={floorLevelCount}
+                onWorkspace={(next) => {
+                  setWorkspace(next);
+                  if (next === "floors") {
+                    setDockOpen(false);
+                    setFloorSideMapOpen(false);
+                  }
+                }}
+              />
             )}
             <span className="stats">
               <span>{result ? `${formatNumber(result.stats.triangleCount)} triangles` : "—"}</span>

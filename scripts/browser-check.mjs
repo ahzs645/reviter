@@ -145,6 +145,19 @@ if (terminalPhase === "ready") {
   // treatment. Keep this before the navigation mutations so every run uses
   // the same fitted whole-building camera.
   if (ifcFile) {
+    await page.getByRole("button", { name: "RVT + IFC", exact: true }).first().click();
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector("canvas.model-canvas");
+      return canvas?.dataset.activeSource === "reference-assisted" &&
+        Number(canvas.dataset.referenceAssistedElements ?? 0) > 0;
+    }, null, { timeout: 120_000 });
+    const repairCount = await page.locator("canvas.model-canvas")
+      .getAttribute("data-reference-assisted-elements");
+    const repairedScreenshot = screenshot.replace(/(\.[^./]+)?$/u, "-ifc-repaired$1");
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: repairedScreenshot });
+    console.log("paired IFC repairs", repairCount, "screenshot", repairedScreenshot);
+
     await page.getByRole("button", { name: "Overlay", exact: true }).first().click();
     await page.waitForFunction(() =>
       document.querySelector("canvas.model-canvas")?.dataset.activeSource === "overlay");
@@ -169,6 +182,17 @@ if (terminalPhase === "ready") {
         if (await zoom.count()) {
           await zoom.click();
           await page.waitForTimeout(300);
+          await page.getByRole("button", { name: "RVT + IFC", exact: true }).first().click();
+          await page.waitForFunction(() =>
+            document.querySelector("canvas.model-canvas")?.dataset.activeSource === "reference-assisted");
+          await page.waitForTimeout(600);
+          const repairedStairScreenshot = screenshot.replace(
+            /(\.[^./]+)?$/u,
+            "-stair-1460781-ifc-repaired$1",
+          );
+          await page.screenshot({ path: repairedStairScreenshot });
+          console.log("stair 1460781 paired repair screenshot", repairedStairScreenshot);
+
           await page.getByRole("button", { name: "Overlay", exact: true }).first().click();
           await page.waitForFunction(() =>
             document.querySelector("canvas.model-canvas")?.dataset.activeSource === "overlay");
@@ -238,7 +262,17 @@ if (terminalPhase === "ready") {
   }
   await page.getByRole("button", { name: "Report" }).click();
   await page.getByRole("region", { name: "Recovery report" }).waitFor({ state: "visible" });
-  await page.getByRole("tab", { name: "Floors", exact: true }).click();
+  if (ifcFile) {
+    await page.getByRole("tab", { name: "Exports", exact: true }).click();
+    const download = page.waitForEvent("download", { timeout: 180_000 });
+    await page.locator("button.export-card", { hasText: "IFC4" }).click();
+    const repairedIfc = screenshot.replace(/(\.[^./]+)?$/u, "-repaired.ifc");
+    await (await download).saveAs(repairedIfc);
+    console.log("reference-assisted IFC export", repairedIfc);
+  }
+  await page.getByRole("button", { name: "Close report" }).click();
+  await page.getByRole("button", { name: /^Floors \d+ levels$/ }).click();
+  await page.getByRole("region", { name: "Revit Floors" }).waitFor({ state: "visible" });
   const floorPreview = page.locator(".floor-browser-preview img");
   if (await floorPreview.count()) {
     await floorPreview.waitFor({ state: "visible" });
@@ -267,7 +301,7 @@ if (terminalPhase === "ready") {
     }
     await page.locator(".floor-browser-room-toggle em", { hasText: "Inferred" })
       .waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Open side sub-map" }).click();
+    await page.getByRole("button", { name: "Open over 3D model" }).first().click();
     const sideMap = page.getByRole("region", { name: "Floor navigation map" });
     await sideMap.waitFor({ state: "visible" });
     const sideMapPreview = sideMap.locator("img");
@@ -279,7 +313,6 @@ if (terminalPhase === "ready") {
     }
     await sideMap.getByRole("button", { name: "Zoom map in" }).click();
     await sideMap.getByRole("button", { name: "Fit whole floor" }).click();
-    await page.getByRole("button", { name: "Close report" }).click();
     await sideMap.waitFor({ state: "visible" });
     const roomScreenshot = screenshot.replace(/(\.[^./]+)?$/u, "-derived-rooms$1");
     await page.screenshot({ path: roomScreenshot });
@@ -292,7 +325,7 @@ if (terminalPhase === "ready") {
   } else {
     await page.locator(".floor-browser-empty").waitFor({ state: "visible" });
     console.log("floor browser smoke", "model exposes no level-owned Revit Floors sketches");
-    await page.getByRole("button", { name: "Close report" }).click();
+    await page.getByRole("button", { name: "Model", exact: true }).click();
   }
   console.log("interface smoke", `${objectCount.toLocaleString()} selectable objects; properties and report docks opened`);
 
@@ -491,12 +524,15 @@ if (terminalPhase === "ready") {
     });
   });
   await page.bringToFront();
-  const lookBefore = await pose();
+  // Desktop Walk captures the pointer on click. Measure only after capture so
+  // this assertion isolates mouse look from any preceding source handoff.
   await page.mouse.move(point.x, point.y);
-  await page.mouse.down();
+  await page.mouse.click(point.x, point.y);
+  await page.waitForFunction(() =>
+    document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "true");
+  const lookBefore = await pose();
   await page.mouse.move(point.x + 130, point.y - 45, { steps: 6 });
-  await page.mouse.up();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(100);
   const lookAfter = await pose();
   if (distance(vector(lookBefore.direction), vector(lookAfter.direction)) < 0.001) {
     throw new Error("Drag mouse look did not change the view direction.");
@@ -504,8 +540,14 @@ if (terminalPhase === "ready") {
   if (distance(vector(lookBefore.position), vector(lookAfter.position)) > 0.0001) {
     throw new Error("First-person look drag moved the camera instead of turning in place.");
   }
-  if (await canvas.getAttribute("data-pointer-locked") !== "false") {
-    throw new Error("Walk unexpectedly locked the system pointer.");
+  if (await canvas.getAttribute("data-pointer-locked") !== "true") {
+    throw new Error("Walk did not retain the desktop pointer after clicking the viewport.");
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() =>
+    document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "false");
+  if (await canvas.getAttribute("data-navigation-state") !== "walk") {
+    throw new Error("The first Escape exited Walk instead of releasing mouse look.");
   }
 
   const moveBefore = await pose();

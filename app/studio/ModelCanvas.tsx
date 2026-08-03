@@ -480,7 +480,7 @@ export function ModelCanvas({
     const sceneUnitsPerFoot = isReferenceModel || useReference ? 0.3048 : 1;
     const reverseDepthBuffer = renderer.capabilities.reversedDepthBuffer;
     const cacheKey = `${source}:${renderMode}`;
-    const cacheOwners = source === "recovered"
+    const cacheOwners = source === "recovered" || source === "reference-assisted"
       ? [result, hiddenElementIds]
       : source === "reference-model"
         ? [result, referenceModelUrl]
@@ -689,6 +689,9 @@ export function ModelCanvas({
     let walkIndexBuildVersion = 0;
     let collisionIndexBuildVersion = 0;
     canvas.dataset.activeSource = source;
+    canvas.dataset.referenceAssistedElements = String(
+      result.referenceAssistedElementIds?.length ?? 0,
+    );
     canvas.dataset.walkSurfaceCache = recoveredWalkSurface || referenceWalkSurface ? "hit" : "miss";
     canvas.dataset.walkCollisionCache = recoveredWalkCollision ? "hit" : "miss";
     canvas.dataset.walkIndexState = referenceWalkSurface || recoveredWalkCollision
@@ -929,7 +932,7 @@ export function ModelCanvas({
       if (mode === "coordinates") {
         const at = points[0]!;
         const sceneFeet = 1 / sceneUnitsPerFoot;
-        const modelOrigin = source === "recovered" || source === "overlay" ? result.origin : { x: 0, y: 0, z: 0 };
+        const modelOrigin = source === "recovered" || source === "reference-assisted" || source === "overlay" ? result.origin : { x: 0, y: 0, z: 0 };
         const displayScale = measureUnitRef.current === "metres" ? 0.3048 : 1;
         const unitLabel = measureUnitRef.current === "metres" ? "m" : "ft";
         const x = (at.x * sceneFeet + modelOrigin.x) * displayScale;
@@ -1958,7 +1961,7 @@ export function ModelCanvas({
       runtime.selectionOverlay = null;
       runtime.invalidate();
     }
-    if (source !== "recovered" || selectedElementId == null) return;
+    if ((source !== "recovered" && source !== "reference-assisted") || selectedElementId == null) return;
     const record = result.elementBounds.find((candidate) => candidate.elementId === selectedElementId);
     if (!record) return;
     const overlay = new THREE.Group();

@@ -55,6 +55,7 @@ type ProgressCallback = (update: ProgressUpdate) => void;
 type ReferenceBatch = {
   positions: number[];
   indices: number[];
+  elementIds: number[];
   vertexCount: number;
   matched: boolean;
   diffStatus: ReferenceMeshData["diffStatus"];
@@ -75,6 +76,7 @@ function flushReferenceBatch(batch: ReferenceBatch, meshes: ReferenceMeshData[])
     } ${batch.batchNumber}`,
     positions: new Float32Array(batch.positions),
     indices: new Uint32Array(batch.indices),
+    elementIds: new Uint32Array(batch.elementIds),
     color: batch.diffStatus === "aligned"
       ? [0.2, 0.86, 0.76]
       : batch.diffStatus === "different"
@@ -85,6 +87,7 @@ function flushReferenceBatch(batch: ReferenceBatch, meshes: ReferenceMeshData[])
   });
   batch.positions = [];
   batch.indices = [];
+  batch.elementIds = [];
   batch.vertexCount = 0;
   batch.batchNumber += 1;
 }
@@ -95,6 +98,7 @@ function appendReferenceGeometry(
   vertices: Float32Array,
   indices: Uint32Array,
   matrix: Array<number>,
+  elementId: number,
 ): void {
   const incomingVertices = vertices.length / 6;
   if (batch.vertexCount && batch.vertexCount + incomingVertices > MAX_REFERENCE_BATCH_VERTICES) {
@@ -111,6 +115,9 @@ function appendReferenceGeometry(
     batch.positions.push(point.x, -point.z, point.y);
   }
   for (const index of indices) batch.indices.push(index + vertexOffset);
+  for (let triangle = 0; triangle < indices.length / 3; triangle += 1) {
+    batch.elementIds.push(elementId);
+  }
   batch.vertexCount += incomingVertices;
 }
 
@@ -357,15 +364,15 @@ export async function analyzeIfcReference(
     const referenceMeshes: ReferenceMeshData[] = [];
     const batches = new Map<ReferenceMeshData["diffStatus"], ReferenceBatch>([
       ["aligned", {
-        positions: [], indices: [], vertexCount: 0, matched: true,
+        positions: [], indices: [], elementIds: [], vertexCount: 0, matched: true,
         diffStatus: "aligned", batchNumber: 1,
       }],
       ["different", {
-        positions: [], indices: [], vertexCount: 0, matched: true,
+        positions: [], indices: [], elementIds: [], vertexCount: 0, matched: true,
         diffStatus: "different", batchNumber: 1,
       }],
       ["context", {
-        positions: [], indices: [], vertexCount: 0, matched: false,
+        positions: [], indices: [], elementIds: [], vertexCount: 0, matched: false,
         diffStatus: "context", batchNumber: 1,
       }],
     ]);
@@ -386,6 +393,7 @@ export async function analyzeIfcReference(
           vertices,
           indices,
           placed.flatTransformation,
+          revitElementId ?? 0,
         );
         geometry.delete();
       }

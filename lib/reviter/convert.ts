@@ -163,6 +163,7 @@ import {
 import {
   buildBoundsMeshes,
   buildMeshes,
+  anonymousWallDuplicateProxyIds,
   boundsPlanSegments,
   curtainAssemblyHelperProxyIds,
   displayMaterials,
@@ -193,6 +194,7 @@ import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
 import { nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
 import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
 import { createRevit2027SplitAlternateFrameCollector } from "./revit-2027-split-alternate-frame-collector.ts";
+import { residualDatumPileElementIds } from "./datum-pile.ts";
 
 import type {
   Bounds3,
@@ -2305,6 +2307,18 @@ export function convertRvtBytes(
       associatedLevelRelationCandidates,
       markerByElement,
     );
+    const residualDatumPileIds = residualDatumPileElementIds(
+      elementBounds,
+      new Set(instancePlacements.keys()),
+      new Set(nativeAssociatedLevelRelations.map((relation) => relation.elementId)),
+    );
+    if (residualDatumPileIds.size) {
+      for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
+        if (!residualDatumPileIds.has(elementBounds[index]!.elementId)) continue;
+        elementBounds.splice(index, 1);
+        unplacedRecords += 1;
+      }
+    }
     const nonSceneObjectDefinitionIds = new Set(
       elementBounds
         .filter((record) =>
@@ -2619,6 +2633,7 @@ export function convertRvtBytes(
         elementOwnership?.relations ?? [],
         nativeMeshScene.coveredElementIds,
       );
+      const anonymousWallDuplicates = anonymousWallDuplicateProxyIds(displayBounds);
       for (const record of displayBounds) {
         if (nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
         if (curtainAssemblyHelpers.has(record.elementId)) {
@@ -2630,9 +2645,12 @@ export function convertRvtBytes(
           stairAssembliesWithRecoveredChildren.has(record.elementId);
         if (
           canSuppressHelper &&
-          isStairOrRailingHelperProxy(
-            record,
-            markerByElement.get(record.elementId),
+          (
+            anonymousWallDuplicates.has(record.elementId) ||
+            isStairOrRailingHelperProxy(
+              record,
+              markerByElement.get(record.elementId),
+            )
           )
         ) {
           omittedHelperProxyCount += 1;

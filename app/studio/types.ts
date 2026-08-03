@@ -3,7 +3,12 @@ import type { CameraPreset } from "../../lib/reviter";
 
 export type Phase = "idle" | "reading" | "converting" | "ready" | "error";
 export type ReferencePhase = "idle" | "reading" | "ready" | "error";
-export type GeometrySource = "reference-model" | "reference" | "recovered" | "overlay";
+export type GeometrySource =
+  | "reference-model"
+  | "reference"
+  | "recovered"
+  | "reference-assisted"
+  | "overlay";
 export type CameraRequest = { preset: CameraPreset; sequence: number; fit?: boolean };
 /**
  * A right-click on the canvas: what was under it, where it happened in the
@@ -46,7 +51,10 @@ export type BrowserTab = "objects" | "categories" | "comments";
  * shared parameters, legacy API) that used to live in the removed left rail and
  * are about files on disk rather than about the open model.
  */
-export type ReportTab = "summary" | "floors" | "coverage" | "streams" | "exports" | "toolkit";
+export type ReportTab = "summary" | "coverage" | "streams" | "exports" | "toolkit";
+
+/** Primary desktop surfaces selected from the persistent bottom switcher. */
+export type StudioWorkspace = "model" | "floors";
 
 export type CommentFilter = "open" | "resolved" | "all";
 

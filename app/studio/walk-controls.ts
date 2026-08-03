@@ -10,9 +10,10 @@
  * speeds and heights here are real building dimensions — a 5.6 ft eye height,
  * a walking pace of about 9 ft/s — and need no scaling.
  *
- * Mouse look uses capture-drag so interacting with the viewport never traps the
- * system pointer. Movement is WASD or the arrow keys, `Shift` to run, and Q/E
- * to descend/ascend between floors.
+ * A desktop click captures the pointer for continuous mouse look; Escape
+ * releases it. Touch, pen, and markup interactions retain capture-drag.
+ * Movement is WASD or the arrow keys, `Shift` to run, and Q/E to
+ * descend/ascend between floors.
  */
 import * as THREE from "three";
 
@@ -101,6 +102,13 @@ export function walkKeyboardTargetIsInteractive(target: EventTarget | null): boo
   return Boolean(element.isContentEditable || element.closest?.("[contenteditable='true'], [role='button'], [role='slider'], [role='tab']"));
 }
 
+/** Browser and operating-system shortcuts must win over Walk movement keys. */
+export function walkKeyboardEventUsesSystemShortcut(
+  event: Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey">,
+): boolean {
+  return event.altKey || event.ctrlKey || event.metaKey;
+}
+
 export type WalkControls = {
   /** Attach listeners and take over the camera. */
   enable(): void;
@@ -110,7 +118,7 @@ export type WalkControls = {
   update(deltaSeconds: number): void;
   /** True while a look drag is active. */
   isLooking(): boolean;
-  /** Retained for navigation diagnostics; Walk never locks the pointer. */
+  /** True while this viewport owns the desktop pointer. */
   isPointerLocked(): boolean;
   /** Move the look drag to another mouse button, releasing any drag in flight. */
   setLookButton(button: number): void;
@@ -180,6 +188,7 @@ export function createWalkControls(
   let enabled = false;
   let looking = false;
   let lookPointerId: number | null = null;
+  let pointerLockRequested = false;
   let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
@@ -255,6 +264,12 @@ export function createWalkControls(
   }
 
   function onPointerMove(event: PointerEvent): void {
+    if (document.pointerLockElement === domElement) return;
+    applyLookDelta(event.movementX, event.movementY);
+  }
+
+  function onLockedMouseMove(event: MouseEvent): void {
+    if (document.pointerLockElement !== domElement) return;
     applyLookDelta(event.movementX, event.movementY);
   }
 
@@ -267,7 +282,15 @@ export function createWalkControls(
   function onKeyDown(event: KeyboardEvent): void {
     if (!enabled) return;
     if (walkKeyboardTargetIsInteractive(event.target)) return;
+    if (walkKeyboardEventUsesSystemShortcut(event)) return;
     if (event.code === "Escape") {
+      if (document.pointerLockElement === domElement || pointerLockRequested) {
+        pointerLockRequested = false;
+        document.exitPointerLock?.();
+        reportLooking(false);
+        event.preventDefault();
+        return;
+      }
       options.onExit?.();
       return;
     }
@@ -291,7 +314,7 @@ export function createWalkControls(
     if (/^(Arrow|Key[WASDQE])/.test(event.code)) cancelTravel();
     pressed.add(event.code);
     // The keys that drive the walker would otherwise scroll the page.
-    if (/^(Arrow|Space|Key[WASDCQE])/.test(event.code)) event.preventDefault();
+    if (/^(Arrow|Space|Key[WASDQE])/.test(event.code)) event.preventDefault();
   }
 
   function onKeyUp(event: KeyboardEvent): void {
@@ -304,9 +327,50 @@ export function createWalkControls(
     // Looking is an in-place gesture. Stop any damped walking momentum now so
     // the camera cannot coast or settle vertically underneath a mouse drag.
     velocity.set(0, 0, 0);
+    const height = up === "y" ? camera.position.y : camera.position.z;
+    trackedSurface = height - eyeHeight;
+    floorProbeElapsed = 0;
     lookPointerId = event.pointerId;
     reportLooking(true);
+    const canLockDesktopPointer =
+      event.pointerType === "mouse" &&
+      lookButton === 0 &&
+      typeof domElement.requestPointerLock === "function";
+    if (canLockDesktopPointer) {
+      pointerLockRequested = true;
+      try {
+        const request = domElement.requestPointerLock();
+        if (request && typeof request.catch === "function") {
+          request.catch(() => {
+            pointerLockRequested = false;
+            reportLooking(false);
+          });
+        }
+      } catch {
+        pointerLockRequested = false;
+        reportLooking(false);
+      }
+      return;
+    }
     domElement.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerLockChange(): void {
+    pointerLockRequested = false;
+    if (document.pointerLockElement === domElement) {
+      velocity.set(0, 0, 0);
+      reportLooking(true);
+      return;
+    }
+    lookPointerId = null;
+    reportLooking(false);
+  }
+
+  function onPointerLockError(): void {
+    if (!pointerLockRequested) return;
+    pointerLockRequested = false;
+    lookPointerId = null;
+    reportLooking(false);
   }
 
   function releaseInput(): void {
@@ -320,6 +384,7 @@ export function createWalkControls(
 
   function stopLooking(event?: PointerEvent): void {
     if (event && event.pointerId !== lookPointerId) return;
+    if (document.pointerLockElement === domElement || pointerLockRequested) return;
     if (!looking) return;
     const pointerId = lookPointerId;
     lookPointerId = null;
@@ -342,6 +407,9 @@ export function createWalkControls(
     domElement.addEventListener("pointermove", onPointerMove);
     domElement.addEventListener("pointerup", stopLooking);
     domElement.addEventListener("pointercancel", stopLooking);
+    document.addEventListener("mousemove", onLockedMouseMove);
+    document.addEventListener("pointerlockchange", onPointerLockChange);
+    document.addEventListener("pointerlockerror", onPointerLockError);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", releaseInput);
@@ -357,10 +425,15 @@ export function createWalkControls(
     domElement.removeEventListener("pointermove", onPointerMove);
     domElement.removeEventListener("pointerup", stopLooking);
     domElement.removeEventListener("pointercancel", stopLooking);
+    document.removeEventListener("mousemove", onLockedMouseMove);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("pointerlockerror", onPointerLockError);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", releaseInput);
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    pointerLockRequested = false;
+    if (document.pointerLockElement === domElement) document.exitPointerLock?.();
   }
 
   function update(deltaSeconds: number): void {
@@ -402,6 +475,7 @@ export function createWalkControls(
     const strafeInput = (pressed.has("KeyD") || pressed.has("ArrowRight") ? 1 : 0)
       - (pressed.has("KeyA") || pressed.has("ArrowLeft") ? 1 : 0);
     const floorTravelInput = floorTravelDirection(pressed);
+    const hasMovementIntent = forwardInput !== 0 || strafeInput !== 0 || floorTravelInput !== 0;
 
     // Movement stays in the horizontal plane whatever the camera is looking at,
     // so looking down at the floor does not drive the walker into it.
@@ -420,7 +494,13 @@ export function createWalkControls(
 
     let height = up === "y" ? camera.position.y : camera.position.z;
     floorProbeElapsed += step;
-    if (gravity && !floorTravelInput && options.resolveFloor && floorProbeElapsed >= floorProbeInterval) {
+    if (
+      gravity &&
+      !floorTravelInput &&
+      hasMovementIntent &&
+      options.resolveFloor &&
+      floorProbeElapsed >= floorProbeInterval
+    ) {
       floorProbeElapsed = 0;
       const surface = options.resolveFloor(camera.position);
       if (surface != null) {
@@ -511,7 +591,7 @@ export function createWalkControls(
     disable,
     update,
     isLooking: () => looking,
-    isPointerLocked: () => false,
+    isPointerLocked: () => document.pointerLockElement === domElement,
     setLookButton: (button) => {
       if (button === lookButton) return;
       lookButton = button;

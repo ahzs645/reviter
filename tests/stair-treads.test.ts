@@ -212,6 +212,111 @@ test("recovers repeated curved profiles from a complete rising guide chain", () 
   );
 });
 
+test("does not bridge opposing curved profiles across a stair core", () => {
+  const curves: SketchCurve[] = [];
+  const arc = (radius: number, upper: boolean): SketchCurve => ({
+    offset: 0,
+    owner: 1,
+    kind: "arc",
+    start: [radius, 0, 0],
+    end: [-radius, 0, 0],
+    interior: Array.from({ length: 7 }, (_, index) => {
+      const angle = Math.PI * (index + 1) / 8;
+      return [
+        radius * Math.cos(angle),
+        (upper ? 1 : -1) * radius * Math.sin(angle),
+        0,
+      ] as Point3;
+    }),
+  });
+  const profiles = [arc(10, true), arc(9.5, false), arc(9, false), arc(8.5, false)];
+  for (const profile of profiles) curves.push(profile, { ...profile });
+  for (let index = 0; index < 3; index += 1) {
+    curves.push(line(
+      [10 - index * 0.5, 0, 0.5 + index * 0.5],
+      [9.5 - index * 0.5, 0, 1 + index * 0.5],
+    ));
+  }
+
+  const recovered = recoverProfiledGuideStairTreads(
+    curves,
+    {
+      min: { x: -10, y: -10, z: 0 },
+      max: { x: 10, y: 10, z: 2 },
+    },
+    { actualRunWidthFeet: 4, maximumRiserCount: 4 },
+  );
+  assert.ok(recovered);
+  assert.ok(recovered.treads.length >= 3);
+  for (const tread of recovered.treads) {
+    const connector = (first: Point3, second: Point3) =>
+      Math.hypot(first[0] - second[0], first[1] - second[1]);
+    assert.ok(
+      connector(tread[0], tread[1]) <= 4 || connector(tread[3], tread[2]) <= 4,
+      "every retained patch has a plausible walking-side depth",
+    );
+  }
+});
+
+test("recovers complementary curved profiles as a certified circular landing", () => {
+  const curves: SketchCurve[] = [];
+  const arc = (
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+  ): SketchCurve => ({
+    offset: 0,
+    owner: 1,
+    kind: "arc",
+    start: [radius * Math.cos(startAngle), radius * Math.sin(startAngle), 0],
+    end: [radius * Math.cos(endAngle), radius * Math.sin(endAngle), 0],
+    interior: Array.from({ length: 15 }, (_, index) => {
+      const angle = startAngle + (endAngle - startAngle) * (index + 1) / 16;
+      return [
+        radius * Math.cos(angle),
+        radius * Math.sin(angle),
+        0,
+      ] as Point3;
+    }),
+  });
+  const profiles = [
+    arc(10, 0, Math.PI),
+    arc(9.5, 0.02, Math.PI - 0.02),
+    arc(9.5, Math.PI + 0.02, Math.PI * 2 - 0.02),
+    arc(9, Math.PI, Math.PI * 2),
+  ];
+  for (const profile of profiles) curves.push(profile, { ...profile });
+  curves.push(
+    line([0, 10, 0.5], [0, 9.5, 1]),
+    line([0, 9.5, 1], [0, -9.5, 1.5]),
+    line([0, -9.5, 1.5], [0, -9, 2]),
+  );
+
+  const recovered = recoverProfiledGuideStairTreads(
+    curves,
+    {
+      min: { x: -10, y: -10, z: 0 },
+      max: { x: 10, y: 10, z: 2 },
+    },
+    { actualRunWidthFeet: 4, maximumRiserCount: 4 },
+  );
+  assert.ok(recovered);
+  const landing = recovered.treads.filter(
+    (tread) => Math.abs(tread[0][2] - 1) < 1e-6,
+  );
+  assert.ok(landing.length >= 24);
+  const area = landing.reduce((total, tread) => {
+    let twice = 0;
+    for (let index = 0; index < tread.length; index += 1) {
+      const point = tread[index]!;
+      const next = tread[(index + 1) % tread.length]!;
+      twice += point[0] * next[1] - next[0] * point[1];
+    }
+    return total + Math.abs(twice) / 2;
+  }, 0);
+  assert.ok(Math.abs(area - Math.PI * 9.5 ** 2) / area < 0.02);
+});
+
 test("orders flattened profiles from the independently persisted bottom profile", () => {
   const curves: SketchCurve[] = [];
   for (let step = 0; step < 4; step += 1) {

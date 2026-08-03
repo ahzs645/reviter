@@ -72,7 +72,7 @@ export type MeshData = {
    * treatment: a wireframe overlay makes a box proxy legible and turns 912,044
    * triangles of native geometry into moiré.
    */
-  source?: "native-brep" | "display-proxy";
+  source?: "native-brep" | "display-proxy" | "reference-ifc";
 };
 
 export type MaterialData = {
@@ -325,6 +325,7 @@ export type ElementBoundsRecord = {
   renderGeometryProvenance?:
     | "native"
     | "reconstructed"
+    | "reference-assisted"
     | "boundary-clipped-proxy"
     | "bounds-fallback"
     | "not-rendered-helper";
@@ -615,6 +616,8 @@ export type ReferenceMeshData = {
   name: string;
   positions: Float32Array;
   indices: Uint32Array;
+  /** One matched Revit element id per triangle; zero marks untagged IFC context. */
+  elementIds?: Uint32Array;
   color: [number, number, number];
   matched: boolean;
   diffStatus: "aligned" | "different" | "context";
@@ -709,6 +712,8 @@ export type ConvertResult = {
   nativeCompoundLayerMaterialAssignments?: NativeCompoundLayerMaterialAssignment[];
   /** Persisted hosted-element relationships from InsertableInst.m_hostId. */
   nativeHostRelations?: NativeHostRelation[];
+  /** Elements whose display mesh was replaced by a tagged paired-IFC body. */
+  referenceAssistedElementIds?: Uint32Array;
   /** Persisted spatial relationships from Element.m_assocLevelId. */
   nativeAssociatedLevelRelations?: NativeAssociatedLevelRelation[];
 };

@@ -936,7 +936,6 @@ button[data-reason]:focus-visible::after {
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
-.report-dock.floor-browser-open { flex-basis: 430px; max-height: 65%; }
 .report-tabs {
   height: 38px;
   flex: 0 0 38px;
@@ -1084,13 +1083,54 @@ button[data-reason]:focus-visible::after {
 .floor-browser-region-list summary { cursor: pointer; color: var(--text); }
 .floor-browser-region-list ol { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 22px; }
 .floor-browser-region-list li { display: flex; justify-content: space-between; gap: 8px; }
+.floor-plan-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 10px; padding: 9px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--text-2); font-size: 10px; }
+.floor-plan-legend span { display: flex; align-items: center; gap: 7px; }
+.floor-plan-legend i { width: 18px; height: 4px; display: block; background: #263f46; }
+.floor-plan-legend i.door { height: 2px; background: #a35b35; }
+.floor-plan-legend i.window { height: 2px; border-top: 1px solid #2a7990; border-bottom: 1px solid #2a7990; background: transparent; }
+.floor-plan-legend i.stair { height: 7px; background: repeating-linear-gradient(90deg, #6e5a86 0 1px, transparent 1px 4px); }
 .floor-browser-side-map { justify-content: center; }
 .floor-browser-download { justify-content: center; margin-top: auto; }
 .floor-browser-preview { min-width: 0; min-height: 300px; display: flex; flex-direction: column; margin: 0; border: 1px solid var(--line); background: #f4f1e9; overflow: hidden; }
-.floor-browser-preview img { flex: 1; width: 100%; min-height: 250px; object-fit: contain; }
+.floor-browser-plan-scroll { flex: 1; min-height: 250px; overflow: auto; }
+.floor-browser-preview img { max-width: none; min-width: 100%; min-height: 100%; display: block; object-fit: contain; }
+.floor-browser-preview-toolbar { min-height: 34px; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.floor-browser-preview-toolbar button { min-width: 30px; height: 26px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); font: 10px var(--mono); cursor: pointer; }
+.floor-browser-preview-toolbar button:disabled { opacity: .35; cursor: default; }
+.floor-browser-preview-toolbar span { margin-left: auto; color: var(--text-3); font: 9px var(--mono); }
 .floor-browser-preview figcaption { padding: 8px 10px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font-size: 11px; }
 .floor-browser-empty { min-height: 220px; display: grid; place-content: center; gap: 5px; color: var(--text-3); text-align: center; }
 .floor-browser-empty strong { color: var(--text); }
+
+/* --- Revit Floors workspace -------------------------------------------- */
+
+.floor-workspace { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.floor-workspace-header { min-height: 76px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.floor-workspace-header > div:first-child { min-width: 0; }
+.floor-workspace-header > div:first-child > span { color: var(--accent); font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.floor-workspace-header h1 { margin: 2px 0 0; font-size: 17px; line-height: 1.2; }
+.floor-workspace-header p { margin: 4px 0 0; color: var(--text-3); font-size: 11.5px; }
+.floor-workspace-actions { flex: 0 0 auto; display: flex; gap: 7px; }
+.floor-workspace-body { flex: 1; min-height: 0; padding: 14px; container-type: inline-size; }
+.floor-workspace-body .floor-browser { height: 100%; min-height: 0; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); gap: 14px; }
+.floor-workspace-body .floor-browser-sidebar { min-height: 0; gap: 14px; padding: 16px; overflow-y: auto; }
+.floor-workspace-body .floor-browser-heading strong { font-size: 16px; }
+.floor-workspace-body .floor-browser-heading small { font-size: 11.5px; }
+.floor-workspace-body .floor-browser-heading .rv-icon-button { width: 34px; height: 34px; }
+.floor-workspace-body .floor-browser-sidebar > label { font-size: 10px; }
+.floor-workspace-body .floor-browser-sidebar select { min-height: 38px; padding: 8px 10px; font-size: 13px; }
+.floor-workspace-body .floor-browser-sidebar dl { gap: 8px; }
+.floor-workspace-body .floor-browser-sidebar dl div { font-size: 11.5px; }
+.floor-workspace-body .floor-browser-room-toggle { min-height: 38px; font-size: 11.5px !important; }
+.floor-workspace-body .rv-button { min-height: 34px; }
+.floor-workspace-body .floor-browser-preview { min-height: 0; }
+.floor-workspace-body .floor-browser-preview img { min-height: 0; }
+
+@container (max-width: 720px) {
+  .floor-workspace-body .floor-browser { grid-template-columns: 1fr; overflow: auto; }
+  .floor-workspace-body .floor-browser-sidebar { overflow: visible; }
+  .floor-workspace-body .floor-browser-preview { min-height: 360px; }
+}
 
 .floor-mini-map {
   position: absolute;
@@ -1238,8 +1278,16 @@ button[data-reason]:focus-visible::after {
 .dwg-preview { display: grid; gap: 6px; margin-top: 10px; }
 .dwg-preview img { width: 100%; max-height: 200px; border: 1px solid var(--line); object-fit: contain; background: var(--panel-2); }
 .dwg-preview small { color: var(--text-3); font-family: var(--mono); font-size: 10px; }
+.cad-recovery-status { max-width: 620px; margin: 11px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line-soft); border-left: 1px solid var(--line-soft); }
+.cad-recovery-status div { min-width: 0; padding: 8px 9px; border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.cad-recovery-status dt { color: var(--text-3); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.cad-recovery-status dd { margin: 4px 0 0; color: var(--text); font-size: 11px; }
+.cad-preview-action { margin-bottom: 10px; }
 .cad-file-list summary { cursor: pointer; color: var(--accent); font-size: 11px; font-weight: 700; }
-.cad-file-list ul { max-height: 180px; margin: 8px 0 0; padding-left: 20px; overflow: auto; color: var(--text-2); font-family: var(--mono); font-size: 10px; line-height: 1.55; }
+.cad-file-list ul { max-height: 210px; margin: 8px 0 0; padding: 0; overflow: auto; color: var(--text-2); font-family: var(--mono); font-size: 10px; list-style: none; }
+.cad-file-list li { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); }
+.cad-file-list li span { min-width: 0; overflow-wrap: anywhere; }
+.cad-file-list li em { flex: 0 0 auto; color: var(--warn); font-size: 8px; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
 .floor-plan-picker { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
 .floor-plan-picker span { min-width: 0; }
 .floor-plan-picker strong, .floor-plan-picker small { display: block; }
@@ -1261,7 +1309,8 @@ button[data-reason]:focus-visible::after {
 .statusbar {
   height: 28px;
   flex: 0 0 28px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   padding: 0 12px;
@@ -1271,7 +1320,8 @@ button[data-reason]:focus-visible::after {
   font-family: var(--mono);
   font-size: 10.5px;
 }
-.statusbar > span:first-child { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-2); }
+.statusbar-state { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.statusbar-state > span:first-child { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-2); }
 .statusbar b { overflow: hidden; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .status-dot { width: 8px; height: 8px; flex: 0 0 auto; display: block; background: var(--text-3); }
 .status-dot.busy { background: var(--warn); animation: rv-pulse 1.2s infinite; }
@@ -1281,7 +1331,18 @@ button[data-reason]:focus-visible::after {
 .status-progress > span { flex: 1; height: 4px; overflow: hidden; background: var(--panel-3); }
 .status-progress i { display: block; height: 100%; background: var(--accent); transition: width .2s ease; }
 .status-progress em { color: var(--accent); font-style: normal; }
-.statusbar > .stats { margin-left: auto; display: flex; gap: 16px; white-space: nowrap; }
+.statusbar > .stats { justify-self: end; display: flex; gap: 16px; white-space: nowrap; }
+.workspace-switcher { align-self: stretch; display: flex; align-items: stretch; gap: 1px; padding: 2px; border-right: 1px solid var(--line); border-left: 1px solid var(--line); }
+.workspace-switcher button { min-width: 78px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: var(--text-3); cursor: pointer; font-family: var(--mono); font-size: 10px; }
+.workspace-switcher button:hover { background: var(--hover); color: var(--text); }
+.workspace-switcher button.active { background: var(--accent-soft); color: var(--accent); }
+.workspace-switcher button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workspace-switcher em { min-width: 16px; padding: 1px 3px; background: var(--panel-3); color: currentColor; font-size: 8px; font-style: normal; text-align: center; }
+
+@media (max-width: 1120px) {
+  .statusbar > .stats span:first-child { display: none; }
+  .floor-workspace-header p { display: none; }
+}
 
 /* --- Empty state -------------------------------------------------------- */
 

@@ -266,6 +266,10 @@ export function Toolkit({ onOpenFile }: { onOpenFile: (file: File) => void }) {
 
       <section className="toolkit-block">
         <p className="report-heading">DWG preview · local</p>
+        <p className="report-disclaimer" style={{ marginTop: 0 }}>
+          Supply an original DWG from disk. Reviter can read its embedded preview image here;
+          full CAD entities and layers are not decoded or linked back into the Revit model yet.
+        </p>
         <div className="report-actions">
           <label className="rv-button">
             Choose DWG

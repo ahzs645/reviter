@@ -815,7 +815,27 @@ function profileTreadQuads(
     planLength(firstSamples.at(-1)!, secondSamples[0]!);
   if (crossed < direct) secondSamples = [...secondSamples].reverse();
   const quads: [Point3, Point3, Point3, Point3][] = [];
+  let rejectedBridgeSegments = 0;
   for (let index = 0; index + 1 < sampleCount; index += 1) {
+    const firstDepth = planLength(firstSamples[index]!, secondSamples[index]!);
+    const secondDepth = planLength(
+      firstSamples[index + 1]!,
+      secondSamples[index + 1]!,
+    );
+    // Profiles with nearby endpoints can bow onto opposite sides of a curved
+    // run. Resampling those curves by fraction then joins their interiors with
+    // a broad chord — object 1460781 produced 13.7 ft "tread" edges through
+    // the centre of its two flights. A winder may legitimately fan wider than
+    // the ordinary tread-depth ceiling at its outside edge, but one edge must
+    // remain on the walking side. If both exceed the same 4 ft evidence limit
+    // used by the guide decoders, this patch is a profile bridge, not a tread.
+    if (
+      firstDepth > MAX_TREAD_DEPTH_FEET &&
+      secondDepth > MAX_TREAD_DEPTH_FEET
+    ) {
+      rejectedBridgeSegments += 1;
+      continue;
+    }
     quads.push([
       [firstSamples[index]![0], firstSamples[index]![1], topZ],
       [secondSamples[index]![0], secondSamples[index]![1], topZ],
@@ -827,7 +847,78 @@ function profileTreadQuads(
       [firstSamples[index + 1]![0], firstSamples[index + 1]![1], topZ],
     ]);
   }
+  // A paired set of complementary arcs is not a tread-depth bridge: it is the
+  // two persisted halves of a circular stair landing. UNBC run 1460781 writes
+  // its mid-flight landing this way. Joining corresponding samples produces
+  // 13.7 ft chords through the landing, while dropping those chords leaves
+  // only 5.1 ft² of edge fragments where the paired IFC has a 149.1 ft² disk.
+  //
+  // Admit the disk only when the combined native samples independently prove
+  // one complete circle: dense angular coverage and a common radius within
+  // one percent. Opposing arcs at different radii retain the conservative
+  // bridge rejection above. Fan cells use degenerate fourth corners so the
+  // existing quad renderer emits one triangle per sector and cancels shared
+  // radial sides exactly like ordinary equal-height tread cells.
+  if (rejectedBridgeSegments > 0) {
+    const landing = fullCircleLandingQuads(firstSamples, secondSamples, topZ);
+    if (landing.length) return landing;
+  }
   return quads;
+}
+
+function fullCircleLandingQuads(
+  firstSamples: readonly Point3[],
+  secondSamples: readonly Point3[],
+  topZ: number,
+): [Point3, Point3, Point3, Point3][] {
+  const unique = new Map<string, Point3>();
+  for (const point of [...firstSamples, ...secondSamples]) {
+    unique.set(planPointKey(point), [point[0], point[1], topZ]);
+  }
+  const points = [...unique.values()];
+  if (points.length < 8) return [];
+
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  const center: Point3 = [
+    (Math.min(...xs) + Math.max(...xs)) / 2,
+    (Math.min(...ys) + Math.max(...ys)) / 2,
+    topZ,
+  ];
+  const radii = points.map((point) => planLength(center, point));
+  const radius = median(radii);
+  if (radius <= MAX_TREAD_DEPTH_FEET) return [];
+  if (
+    Math.max(...radii) - Math.min(...radii) >
+    Math.max(0.02, radius * 0.01)
+  ) {
+    return [];
+  }
+
+  const ordered = points
+    .map((point) => ({
+      point,
+      angle: Math.atan2(point[1] - center[1], point[0] - center[0]),
+    }))
+    .sort((left, right) => left.angle - right.angle);
+  let maximumGap = 0;
+  for (let index = 0; index < ordered.length; index += 1) {
+    const angle = ordered[index]!.angle;
+    const next = index + 1 < ordered.length
+      ? ordered[index + 1]!.angle
+      : ordered[0]!.angle + Math.PI * 2;
+    maximumGap = Math.max(maximumGap, next - angle);
+  }
+  // Native arcs are sampled at pi/16. Keep a little room for deduplicated
+  // endpoints and coarse fixtures, but a semicircle or partial arc must fail.
+  if (maximumGap > Math.PI / 5) return [];
+
+  return ordered.map(({ point }, index) => [
+    center,
+    point,
+    ordered[(index + 1) % ordered.length]!.point,
+    center,
+  ]);
 }
 
 type RisingGuide = {

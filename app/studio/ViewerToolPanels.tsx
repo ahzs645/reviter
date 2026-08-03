@@ -129,7 +129,7 @@ export function FirstPersonPanel({
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Drag to turn the view without moving. Right-drag while markup is armed.</small></article>
+            <article><b>Look around</b><i>↔</i><small>Click to capture the mouse, then move to look. Escape releases it. Touch and markup use drag.</small></article>
             <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>

@@ -39,7 +39,7 @@ function isPoint3(value: unknown): value is [number, number, number] {
 }
 
 function isGeometrySource(value: unknown): boolean {
-  return value === "recovered" || value === "reference" || value === "reference-model" || value === "overlay";
+  return value === "recovered" || value === "reference-assisted" || value === "reference" || value === "reference-model" || value === "overlay";
 }
 
 export function isModelComment(value: unknown): value is ModelComment {

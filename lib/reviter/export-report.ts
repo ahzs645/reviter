@@ -7,6 +7,7 @@ import {
 } from "./ownership-report.ts";
 
 export type ElementManifestGeometrySource =
+  | "paired-ifc-tessellation"
   | "analytic-plane-solid"
   | "analytic-cylinder-arc"
   | "placed-shared-shape"
@@ -19,6 +20,9 @@ export type ElementManifestGeometrySource =
   | "validated-bounds-envelope";
 
 function geometrySource(record: ElementBoundsRecord): ElementManifestGeometrySource {
+  if (record.renderGeometryProvenance === "reference-assisted") {
+    return "paired-ifc-tessellation";
+  }
   if (record.railPath) return "sketch-rail-sweep";
   if (record.loops?.length) return "sketch-prism";
   if (record.doorLeafSource === "shape") return "door-leaf-from-shape";
@@ -34,6 +38,7 @@ function geometrySource(record: ElementBoundsRecord): ElementManifestGeometrySou
 function evidenceRank(record: ElementBoundsRecord): number {
   const source = geometrySource(record);
   const geometryRank: Record<ElementManifestGeometrySource, number> = {
+    "paired-ifc-tessellation": 9,
     "sketch-rail-sweep": 8,
     "sketch-prism": 7,
     "door-leaf-from-shape": 6,

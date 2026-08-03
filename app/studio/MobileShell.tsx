@@ -5,7 +5,7 @@
  *
  * Not the desktop shell stacked: the viewport is full-bleed, three navigation
  * tools ride on the canvas as 44px targets, and the browser, comments,
- * properties and report are sheets raised over the model from a four-tab bar.
+ * properties, floors and report are sheets raised over the model from a five-tab bar.
  * Toolbar, docks and status bar are not rendered here at all.
  */
 import { useEffect, useRef, type ReactNode } from "react";
@@ -40,7 +40,7 @@ const TABS: readonly { id: MobileSheet; label: string; Icon: typeof Box }[] = [
   { id: "model", label: "Model", Icon: Box },
   { id: "comments", label: "Comments", Icon: MessageSquare },
   { id: "properties", label: "Info", Icon: Info },
-  { id: "map", label: "Map", Icon: MapPinned },
+  { id: "map", label: "Floors", Icon: MapPinned },
   { id: "report", label: "Report", Icon: Table },
 ];
 
