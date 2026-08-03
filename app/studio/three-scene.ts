@@ -276,14 +276,21 @@ export function meshGroup(
       // transparency is decoded into the palette alpha; `part.glazing` carries
       // the category fallback for batches without a decoded material.
       const glazing = part.glazing || sourceOpacity < 0.995;
-      const transparent = technical ? glazing : true;
+      // Recovered glass commonly contains both native pane faces plus its thin
+      // edge closure. Sorting that double-sided shell as transparent lets the
+      // front and back fragments exchange order while orbiting, which reads as
+      // material flicker. Alpha hashing keeps the decoded opacity, tests depth,
+      // and remains double-sided so a pane is still visible from an interior
+      // Walk view. X-ray mode continues to use its scene-wide transparency.
+      const alphaHashedGlazing = technical && glazing;
+      const transparent = !technical;
       const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);
       const opacity = technical
         ? (glazing
             ? (isElementBounds ? Math.min(glazingOpacity, 0.58) : glazingOpacity)
             : sourceOpacity)
         : Math.min(sourceOpacity, isElementBounds ? 0.32 : 0.28);
-      const depthBias = technical && !transparent
+      const depthBias = technical && !transparent && !glazing
         ? recoveredDepthBias(
             data.source,
             sourceMaterial?.source,
@@ -316,6 +323,7 @@ export function meshGroup(
         side: THREE.DoubleSide,
         transparent,
         opacity,
+        alphaHash: alphaHashedGlazing,
         depthWrite: !transparent,
         // The supplied RVT contains about 91k repeated native triangles, with
         // some host-wall faces also left beneath doors and facade children.
@@ -342,7 +350,7 @@ export function meshGroup(
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.userData.elementIds = part.elementIds;
-      mesh.renderOrder = technical && !transparent
+      mesh.renderOrder = technical && !transparent && !glazing
         ? recoveredRenderOrder(data.source, sourceMaterial?.source, part.foreground)
         : 1;
       group.add(mesh);

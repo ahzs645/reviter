@@ -6,6 +6,7 @@ import {
   deriveRegistration,
   makeVoxelGrid,
   renderDiffSvg,
+  residualDisposition,
   surfaceOrientation,
 } from "../scripts/glb-surface-diff.ts";
 import * as THREE from "three";
@@ -66,5 +67,23 @@ test("classifies signed Y-up surface orientations", () => {
   assert.equal(
     surfaceOrientation(point(0, 0, 0), point(0, 1, 1), point(1, 0, 0)),
     "obliqueUp",
+  );
+});
+
+test("retains native glazing shells and closed stairs without hiding other residuals", () => {
+  assert.equal(
+    residualDisposition("Certified native BRep · Material 26 · 20", {
+      alphaMode: "BLEND",
+      pbrMetallicRoughness: { baseColorFactor: [0.1, 0.2, 0.3, 0.1] },
+    }),
+    "retainedNativeGlazingShell",
+  );
+  assert.equal(
+    residualDisposition("Stairs Runs 1"),
+    "retainedClosedStairRun",
+  );
+  assert.equal(
+    residualDisposition("Walls 1"),
+    "review",
   );
 });

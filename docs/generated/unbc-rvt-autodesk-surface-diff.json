@@ -508,348 +508,1670 @@
       }
     ]
   },
+  "residualClassification": {
+    "retainedNativeGlazingShell": 3313,
+    "retainedClosedStairRun": 3699,
+    "mixedRetainedDetail": 1,
+    "review": 11218,
+    "meaning": {
+      "retainedNativeGlazingShell": "Native transparent pane thickness/back/edge surfaces absent from the optimized visual-reference GLB; retained.",
+      "retainedClosedStairRun": "Closed tread/riser surfaces reconstructed from native StairsRun evidence but simplified by the visual-reference GLB; retained.",
+      "review": "Recovered-only surface not explained by the two conservative retained-detail rules."
+    }
+  },
   "recoveredOnlyByMesh": [
     {
       "mesh": "Certified native BRep · Material 26 · 20",
       "voxels": 70736,
       "recoveredOnly": 9491,
-      "recoveredOnlyShare": 0.13417496041619542
+      "recoveredOnlyShare": 0.13417496041619542,
+      "disposition": "retainedNativeGlazingShell",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 17580,
+          "recoveredOnly": 491
+        },
+        "horizontalDown": {
+          "voxels": 17785,
+          "recoveredOnly": 473
+        },
+        "vertical": {
+          "voxels": 65770,
+          "recoveredOnly": 7385
+        },
+        "obliqueUp": {
+          "voxels": 5332,
+          "recoveredOnly": 2160
+        },
+        "obliqueDown": {
+          "voxels": 5254,
+          "recoveredOnly": 2159
+        }
+      }
     },
     {
       "mesh": "Stairs Runs 1",
       "voxels": 13595,
       "recoveredOnly": 3899,
-      "recoveredOnlyShare": 0.28679661640308934
+      "recoveredOnlyShare": 0.28679661640308934,
+      "disposition": "retainedClosedStairRun",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 8767,
+          "recoveredOnly": 2926
+        },
+        "horizontalDown": {
+          "voxels": 8725,
+          "recoveredOnly": 1731
+        },
+        "vertical": {
+          "voxels": 10467,
+          "recoveredOnly": 2732
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep 4",
       "voxels": 43122,
       "recoveredOnly": 3334,
-      "recoveredOnlyShare": 0.07731552339872919
+      "recoveredOnlyShare": 0.07731552339872919,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 10705,
+          "recoveredOnly": 411
+        },
+        "horizontalDown": {
+          "voxels": 9748,
+          "recoveredOnly": 350
+        },
+        "vertical": {
+          "voxels": 35557,
+          "recoveredOnly": 1222
+        },
+        "obliqueUp": {
+          "voxels": 6844,
+          "recoveredOnly": 2253
+        },
+        "obliqueDown": {
+          "voxels": 2271,
+          "recoveredOnly": 253
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 182549 · 22",
       "voxels": 23626,
       "recoveredOnly": 1626,
-      "recoveredOnlyShare": 0.06882248370439346
+      "recoveredOnlyShare": 0.06882248370439346,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 10548,
+          "recoveredOnly": 216
+        },
+        "horizontalDown": {
+          "voxels": 13588,
+          "recoveredOnly": 215
+        },
+        "vertical": {
+          "voxels": 23584,
+          "recoveredOnly": 1614
+        },
+        "obliqueUp": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 2,
+          "recoveredOnly": 1
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 182549 · 24",
       "voxels": 13506,
       "recoveredOnly": 1457,
-      "recoveredOnlyShare": 0.10787798015696727
+      "recoveredOnlyShare": 0.10787798015696727,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6615,
+          "recoveredOnly": 387
+        },
+        "horizontalDown": {
+          "voxels": 6945,
+          "recoveredOnly": 343
+        },
+        "vertical": {
+          "voxels": 13058,
+          "recoveredOnly": 1372
+        },
+        "obliqueUp": {
+          "voxels": 774,
+          "recoveredOnly": 179
+        },
+        "obliqueDown": {
+          "voxels": 681,
+          "recoveredOnly": 137
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 182549 · 23",
       "voxels": 23464,
       "recoveredOnly": 1392,
-      "recoveredOnlyShare": 0.05932492328673713
+      "recoveredOnlyShare": 0.05932492328673713,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 10024,
+          "recoveredOnly": 46
+        },
+        "horizontalDown": {
+          "voxels": 13167,
+          "recoveredOnly": 70
+        },
+        "vertical": {
+          "voxels": 23376,
+          "recoveredOnly": 1371
+        },
+        "obliqueUp": {
+          "voxels": 205,
+          "recoveredOnly": 116
+        },
+        "obliqueDown": {
+          "voxels": 202,
+          "recoveredOnly": 107
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 24 · 3",
       "voxels": 348526,
       "recoveredOnly": 1184,
-      "recoveredOnlyShare": 0.0033971640566270523
+      "recoveredOnlyShare": 0.0033971640566270523,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 615,
+          "recoveredOnly": 70
+        },
+        "horizontalDown": {
+          "voxels": 615,
+          "recoveredOnly": 15
+        },
+        "vertical": {
+          "voxels": 348290,
+          "recoveredOnly": 1141
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep 6",
       "voxels": 17292,
       "recoveredOnly": 1059,
-      "recoveredOnlyShare": 0.061242192921582235
+      "recoveredOnlyShare": 0.061242192921582235,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 2487,
+          "recoveredOnly": 105
+        },
+        "horizontalDown": {
+          "voxels": 2345,
+          "recoveredOnly": 114
+        },
+        "vertical": {
+          "voxels": 17262,
+          "recoveredOnly": 1055
+        },
+        "obliqueUp": {
+          "voxels": 136,
+          "recoveredOnly": 1
+        },
+        "obliqueDown": {
+          "voxels": 134,
+          "recoveredOnly": 4
+        }
+      }
     },
     {
       "mesh": "Certified native BRep 5",
       "voxels": 10552,
       "recoveredOnly": 496,
-      "recoveredOnlyShare": 0.04700530705079606
+      "recoveredOnlyShare": 0.04700530705079606,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6177,
+          "recoveredOnly": 308
+        },
+        "horizontalDown": {
+          "voxels": 4398,
+          "recoveredOnly": 211
+        },
+        "vertical": {
+          "voxels": 10392,
+          "recoveredOnly": 471
+        },
+        "obliqueUp": {
+          "voxels": 729,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 738,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Railing Top Rail 1",
       "voxels": 2764,
       "recoveredOnly": 433,
-      "recoveredOnlyShare": 0.15665701881331404
+      "recoveredOnlyShare": 0.15665701881331404,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 491,
+          "recoveredOnly": 70
+        },
+        "horizontalDown": {
+          "voxels": 491,
+          "recoveredOnly": 21
+        },
+        "vertical": {
+          "voxels": 2106,
+          "recoveredOnly": 370
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep 7",
       "voxels": 6209,
       "recoveredOnly": 404,
-      "recoveredOnlyShare": 0.06506683846029956
+      "recoveredOnlyShare": 0.06506683846029956,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 3787,
+          "recoveredOnly": 24
+        },
+        "horizontalDown": {
+          "voxels": 3633,
+          "recoveredOnly": 18
+        },
+        "vertical": {
+          "voxels": 6183,
+          "recoveredOnly": 401
+        },
+        "obliqueUp": {
+          "voxels": 1141,
+          "recoveredOnly": 9
+        },
+        "obliqueDown": {
+          "voxels": 1143,
+          "recoveredOnly": 12
+        }
+      }
     },
     {
       "mesh": "Walls 1",
       "voxels": 106928,
       "recoveredOnly": 389,
-      "recoveredOnlyShare": 0.003637961993116864
+      "recoveredOnlyShare": 0.003637961993116864,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 18694,
+          "recoveredOnly": 23
+        },
+        "horizontalDown": {
+          "voxels": 18899,
+          "recoveredOnly": 32
+        },
+        "vertical": {
+          "voxels": 106377,
+          "recoveredOnly": 375
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Doors 1",
       "voxels": 44363,
       "recoveredOnly": 201,
-      "recoveredOnlyShare": 0.004530802695940311
+      "recoveredOnlyShare": 0.004530802695940311,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 8651,
+          "recoveredOnly": 28
+        },
+        "horizontalDown": {
+          "voxels": 8649,
+          "recoveredOnly": 8
+        },
+        "vertical": {
+          "voxels": 44293,
+          "recoveredOnly": 201
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Stairs 1",
       "voxels": 802,
       "recoveredOnly": 182,
-      "recoveredOnlyShare": 0.22693266832917705
+      "recoveredOnlyShare": 0.22693266832917705,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 180,
+          "recoveredOnly": 81
+        },
+        "horizontalDown": {
+          "voxels": 180,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 578,
+          "recoveredOnly": 126
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Stairs Landings 1",
       "voxels": 595,
       "recoveredOnly": 143,
-      "recoveredOnlyShare": 0.24033613445378152
+      "recoveredOnlyShare": 0.24033613445378152,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 540,
+          "recoveredOnly": 122
+        },
+        "horizontalDown": {
+          "voxels": 540,
+          "recoveredOnly": 128
+        },
+        "vertical": {
+          "voxels": 391,
+          "recoveredOnly": 68
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242007 · 25",
       "voxels": 220,
       "recoveredOnly": 117,
-      "recoveredOnlyShare": 0.5318181818181819
+      "recoveredOnlyShare": 0.5318181818181819,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 30,
+          "recoveredOnly": 25
+        },
+        "horizontalDown": {
+          "voxels": 30,
+          "recoveredOnly": 3
+        },
+        "vertical": {
+          "voxels": 220,
+          "recoveredOnly": 117
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1378542 · 14",
       "voxels": 1966,
       "recoveredOnly": 113,
-      "recoveredOnlyShare": 0.05747711088504578
+      "recoveredOnlyShare": 0.05747711088504578,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 96,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 83,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1957,
+          "recoveredOnly": 113
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1401447 · 39",
       "voxels": 220,
       "recoveredOnly": 111,
-      "recoveredOnlyShare": 0.5045454545454545
+      "recoveredOnlyShare": 0.5045454545454545,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 36,
+          "recoveredOnly": 30
+        },
+        "horizontalDown": {
+          "voxels": 36,
+          "recoveredOnly": 15
+        },
+        "vertical": {
+          "voxels": 220,
+          "recoveredOnly": 111
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Ramps 1",
       "voxels": 1787,
       "recoveredOnly": 34,
-      "recoveredOnlyShare": 0.019026301063234472
+      "recoveredOnlyShare": 0.019026301063234472,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 687,
+          "recoveredOnly": 34
+        },
+        "horizontalDown": {
+          "voxels": 687,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1233,
+          "recoveredOnly": 26
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Floors 1",
       "voxels": 452527,
       "recoveredOnly": 28,
-      "recoveredOnlyShare": 0.00006187476106398071
+      "recoveredOnlyShare": 0.00006187476106398071,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 273806,
+          "recoveredOnly": 14
+        },
+        "horizontalDown": {
+          "voxels": 273806,
+          "recoveredOnly": 14
+        },
+        "vertical": {
+          "voxels": 33627,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 617540 · 28",
       "voxels": 34,
       "recoveredOnly": 22,
-      "recoveredOnlyShare": 0.6470588235294118
+      "recoveredOnlyShare": 0.6470588235294118,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 10,
+          "recoveredOnly": 6
+        },
+        "horizontalDown": {
+          "voxels": 14,
+          "recoveredOnly": 8
+        },
+        "vertical": {
+          "voxels": 34,
+          "recoveredOnly": 22
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 423 · 2",
       "voxels": 123045,
       "recoveredOnly": 21,
-      "recoveredOnlyShare": 0.00017066926734121663
+      "recoveredOnlyShare": 0.00017066926734121663,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 18110,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 17319,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 122525,
+          "recoveredOnly": 21
+        },
+        "obliqueUp": {
+          "voxels": 37,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 10988 · 21",
       "voxels": 257,
       "recoveredOnly": 21,
-      "recoveredOnlyShare": 0.08171206225680934
+      "recoveredOnlyShare": 0.08171206225680934,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 136,
+          "recoveredOnly": 13
+        },
+        "horizontalDown": {
+          "voxels": 136,
+          "recoveredOnly": 13
+        },
+        "vertical": {
+          "voxels": 257,
+          "recoveredOnly": 21
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 30200 · 17",
       "voxels": 40,
       "recoveredOnly": 18,
-      "recoveredOnlyShare": 0.45
+      "recoveredOnlyShare": 0.45,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 8,
+          "recoveredOnly": 4
+        },
+        "horizontalDown": {
+          "voxels": 14,
+          "recoveredOnly": 7
+        },
+        "vertical": {
+          "voxels": 40,
+          "recoveredOnly": 18
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242074 · 26",
       "voxels": 43,
       "recoveredOnly": 18,
-      "recoveredOnlyShare": 0.4186046511627907
+      "recoveredOnlyShare": 0.4186046511627907,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 27,
+          "recoveredOnly": 12
+        },
+        "horizontalDown": {
+          "voxels": 28,
+          "recoveredOnly": 12
+        },
+        "vertical": {
+          "voxels": 43,
+          "recoveredOnly": 18
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242009 · 31",
       "voxels": 30,
       "recoveredOnly": 18,
-      "recoveredOnlyShare": 0.6
+      "recoveredOnlyShare": 0.6,
+      "disposition": "retainedNativeGlazingShell",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 18,
+          "recoveredOnly": 12
+        },
+        "horizontalDown": {
+          "voxels": 6,
+          "recoveredOnly": 3
+        },
+        "vertical": {
+          "voxels": 30,
+          "recoveredOnly": 18
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242075 · 30",
       "voxels": 32,
       "recoveredOnly": 15,
-      "recoveredOnlyShare": 0.46875
+      "recoveredOnlyShare": 0.46875,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 19,
+          "recoveredOnly": 11
+        },
+        "horizontalDown": {
+          "voxels": 20,
+          "recoveredOnly": 11
+        },
+        "vertical": {
+          "voxels": 32,
+          "recoveredOnly": 15
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1650844 · 38",
       "voxels": 22,
       "recoveredOnly": 12,
-      "recoveredOnlyShare": 0.5454545454545454
+      "recoveredOnlyShare": 0.5454545454545454,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6,
+          "recoveredOnly": 4
+        },
+        "horizontalDown": {
+          "voxels": 10,
+          "recoveredOnly": 6
+        },
+        "vertical": {
+          "voxels": 22,
+          "recoveredOnly": 12
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1401451 · 40",
       "voxels": 24,
       "recoveredOnly": 12,
-      "recoveredOnlyShare": 0.5
+      "recoveredOnlyShare": 0.5,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 18,
+          "recoveredOnly": 9
+        },
+        "horizontalDown": {
+          "voxels": 18,
+          "recoveredOnly": 9
+        },
+        "vertical": {
+          "voxels": 24,
+          "recoveredOnly": 12
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242120 · 32",
       "voxels": 18,
       "recoveredOnly": 10,
-      "recoveredOnlyShare": 0.5555555555555556
+      "recoveredOnlyShare": 0.5555555555555556,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6,
+          "recoveredOnly": 4
+        },
+        "horizontalDown": {
+          "voxels": 6,
+          "recoveredOnly": 3
+        },
+        "vertical": {
+          "voxels": 18,
+          "recoveredOnly": 10
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1416371 · 33",
       "voxels": 12,
       "recoveredOnly": 10,
-      "recoveredOnlyShare": 0.8333333333333334
+      "recoveredOnlyShare": 0.8333333333333334,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 2,
+          "recoveredOnly": 2
+        },
+        "horizontalDown": {
+          "voxels": 2,
+          "recoveredOnly": 1
+        },
+        "vertical": {
+          "voxels": 12,
+          "recoveredOnly": 10
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Stairs Stringer Carriage 1",
       "voxels": 52,
       "recoveredOnly": 9,
-      "recoveredOnlyShare": 0.17307692307692307
+      "recoveredOnlyShare": 0.17307692307692307,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 6,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 52,
+          "recoveredOnly": 9
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 10429 · 18",
       "voxels": 15,
       "recoveredOnly": 8,
-      "recoveredOnlyShare": 0.5333333333333333
+      "recoveredOnlyShare": 0.5333333333333333,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 3,
+          "recoveredOnly": 2
+        },
+        "horizontalDown": {
+          "voxels": 3,
+          "recoveredOnly": 1
+        },
+        "vertical": {
+          "voxels": 15,
+          "recoveredOnly": 8
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 617544 · 29",
       "voxels": 20,
       "recoveredOnly": 8,
-      "recoveredOnlyShare": 0.4
+      "recoveredOnlyShare": 0.4,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 4,
+          "recoveredOnly": 2
+        },
+        "horizontalDown": {
+          "voxels": 4,
+          "recoveredOnly": 1
+        },
+        "vertical": {
+          "voxels": 20,
+          "recoveredOnly": 8
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1650845 · 37",
       "voxels": 15,
       "recoveredOnly": 8,
-      "recoveredOnlyShare": 0.5333333333333333
+      "recoveredOnlyShare": 0.5333333333333333,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 3,
+          "recoveredOnly": 2
+        },
+        "horizontalDown": {
+          "voxels": 3,
+          "recoveredOnly": 1
+        },
+        "vertical": {
+          "voxels": 15,
+          "recoveredOnly": 8
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1378520 · 41",
       "voxels": 12,
       "recoveredOnly": 6,
-      "recoveredOnlyShare": 0.5
+      "recoveredOnlyShare": 0.5,
+      "disposition": "retainedNativeGlazingShell",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6,
+          "recoveredOnly": 3
+        },
+        "horizontalDown": {
+          "voxels": 6,
+          "recoveredOnly": 3
+        },
+        "vertical": {
+          "voxels": 12,
+          "recoveredOnly": 6
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242080 · 27",
       "voxels": 12,
       "recoveredOnly": 5,
-      "recoveredOnlyShare": 0.4166666666666667
+      "recoveredOnlyShare": 0.4166666666666667,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 12,
+          "recoveredOnly": 5
+        },
+        "horizontalDown": {
+          "voxels": 12,
+          "recoveredOnly": 5
+        },
+        "vertical": {
+          "voxels": 12,
+          "recoveredOnly": 5
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242076 · 42",
       "voxels": 8,
       "recoveredOnly": 3,
-      "recoveredOnlyShare": 0.375
+      "recoveredOnlyShare": 0.375,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 8,
+          "recoveredOnly": 3
+        },
+        "horizontalDown": {
+          "voxels": 8,
+          "recoveredOnly": 3
+        },
+        "vertical": {
+          "voxels": 8,
+          "recoveredOnly": 3
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242151 · 36",
       "voxels": 5,
       "recoveredOnly": 1,
-      "recoveredOnlyShare": 0.2
+      "recoveredOnlyShare": 0.2,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 4,
+          "recoveredOnly": 1
+        },
+        "horizontalDown": {
+          "voxels": 3,
+          "recoveredOnly": 1
+        },
+        "vertical": {
+          "voxels": 5,
+          "recoveredOnly": 1
+        },
+        "obliqueUp": {
+          "voxels": 2,
+          "recoveredOnly": 1
+        },
+        "obliqueDown": {
+          "voxels": 2,
+          "recoveredOnly": 1
+        }
+      }
     },
     {
       "mesh": "Windows 1",
       "voxels": 247,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 72,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 72,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 247,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Roofs 1",
       "voxels": 4269,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 1851,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 1851,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 999,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Curtain Wall Panels 1",
       "voxels": 94,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 30,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 36,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 28,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Curtain Wall Panels 1",
       "voxels": 64,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 18,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 14,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 64,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 10,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Ceilings 1",
       "voxels": 176,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 176,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 176,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 50,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 423 · 1",
       "voxels": 237073,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 35887,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 34376,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 235936,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 243,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 138363 · 8",
       "voxels": 13975,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 1992,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 1913,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 13923,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 523 · 9",
       "voxels": 113963,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 312,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 106500,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 18803,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 422 · 10",
       "voxels": 106506,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 106499,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 271,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 220,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 863 · 11",
       "voxels": 5012,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 2160,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 60,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 721,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 2864,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 23 · 12",
       "voxels": 6754,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 6754,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 7,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 16,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 7247 · 13",
       "voxels": 6776,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 7,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 6753,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1564,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 138312 · 15",
       "voxels": 1161,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 129,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 129,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1161,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 272922 · 16",
       "voxels": 551,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 38,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 35,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 551,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 416 · 19",
       "voxels": 107,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 107,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242061 · 34",
       "voxels": 1,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1242067 · 35",
       "voxels": 1,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 1,
+          "recoveredOnly": 0
+        }
+      }
     },
     {
       "mesh": "Certified native BRep · Material 1763182 · 43",
       "voxels": 129,
       "recoveredOnly": 0,
-      "recoveredOnlyShare": 0
+      "recoveredOnlyShare": 0,
+      "disposition": "review",
+      "recoveredOnlyByOrientation": {
+        "horizontalUp": {
+          "voxels": 24,
+          "recoveredOnly": 0
+        },
+        "horizontalDown": {
+          "voxels": 24,
+          "recoveredOnly": 0
+        },
+        "vertical": {
+          "voxels": 127,
+          "recoveredOnly": 0
+        },
+        "obliqueUp": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        },
+        "obliqueDown": {
+          "voxels": 0,
+          "recoveredOnly": 0
+        }
+      }
     }
   ],
   "grid": {
@@ -865,5 +2187,9 @@
       755
     ],
     "occupiedIndicesOmitted": true
+  },
+  "reviewResidual": {
+    "recoveredOnly": 11218,
+    "recoveredCoverage": 0.9893245783075203
   }
 }

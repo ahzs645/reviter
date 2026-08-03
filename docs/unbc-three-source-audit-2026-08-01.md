@@ -102,6 +102,27 @@ closed stair tread/riser surfaces; ordinary wall proxies contribute under one
 percent of their sampled surface at both resolutions. This is evidence not to
 remove the curtain-wall cuts merely to improve wall AABBs.
 
+Those two populations are now classified without deleting them. At 0.5 m,
+**3,313** recovered-only cells are exclusively native transparent pane
+thickness/back/edge surfaces and **3,699** are exclusively closed stair-run
+surfaces (plus one mixed cell). The remaining **11,218** cells stay in the
+review layer. At 0.25 m the same conservative split is 50,977 glazing, 28,523
+stair, 10 mixed, and 132,556 review cells. A cell shared with any unclassified
+mesh remains review rather than being hidden by the retained-detail label.
+
+The face-orientation breakdown also rejects a blanket stair-underside removal:
+at 0.5 m the stair batch has 2,926 unmatched upward horizontal cells, 1,731
+downward horizontal cells, and 2,732 vertical cells (orientation cohorts can
+overlap at edges). The StairsRun record supplies a native 0.16 ft tread
+thickness and its riser end conditions but no monolithic/waist-slab flag.
+Deleting the horizontal bottoms would therefore create open geometry without
+resolving the top/riser residuals. The geometry remains closed.
+
+Recovered technical-mode glazing now uses depth-tested alpha hashing instead
+of Three.js transparent-object sorting. This preserves the decoded Revit alpha,
+the pane thickness, and double-sided visibility in interior Walk views while
+preventing the native front/back shell from swapping sort order during Orbit.
+
 The checked-in red/grey view deliberately contains only residual surfaces:
 red is recovered-only and grey is Autodesk-only. A selected curved stair looked
 as though it pierced a roof in the RVT view, but the selected-element overlay is
@@ -113,6 +134,9 @@ Evidence artifacts:
 - `generated/unbc-rvt-autodesk-surface-diff.json` and the stricter
   `generated/unbc-rvt-autodesk-surface-diff-0.25m.json`;
 - `generated/unbc-rvt-autodesk-surface-diff.svg` / `.png` (red/grey residuals);
+- `generated/unbc-rvt-autodesk-surface-diff-review.svg` / `.png` (the same
+  red/grey convention with the conservatively retained glazing/stair detail
+  filtered);
 - `generated/unbc-first-person-rvt-stair-1779476.jpg` and
   `generated/unbc-first-person-autodesk-stair-1779476.jpg` (preserved-camera
   Walk comparison).
@@ -128,7 +152,8 @@ exercises RVT → IFC → Autodesk GLB → RVT while preserving the Walk camera.
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc --json verification.json
 node --experimental-strip-types scripts/glb-statistics.ts autodesk-reference.glb --json glb-statistics.json
 node --experimental-strip-types scripts/glb-surface-diff.ts recovered.glb autodesk-reference.glb \
-  --cell 0.5 --json surface-diff.json --svg surface-diff.svg
+  --cell 0.5 --json surface-diff.json --svg surface-diff.svg \
+  --actionable-svg surface-diff-review.svg
 
 REVITER_BROWSER_HEADED=1 node scripts/browser-check.mjs \
   dist-pages model.rvt browser-check.png model.ifc autodesk-reference.glb

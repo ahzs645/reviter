@@ -143,6 +143,25 @@ test("a proxy with one persisted material uses its native material batch", () =>
     0.1,
     "the proxy keeps Revit's 90%-transparent glass instead of the 55%-opaque fallback",
   );
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).transparent,
+    false,
+    "technical glass does not enter Three's distance-sorted transparent queue",
+  );
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).alphaHash,
+    true,
+    "front and back pane surfaces use stable depth-tested alpha hashing",
+  );
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).depthWrite,
+    true,
+  );
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).side,
+    THREE.DoubleSide,
+    "glass remains visible from both exterior Orbit and interior Walk views",
+  );
 });
 
 test("a record with no decoded category contributes no glazing claim", () => {

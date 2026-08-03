@@ -23,7 +23,17 @@ type Accessor = {
   normalized?: boolean;
 };
 type BufferView = { buffer?: number; byteOffset?: number; byteLength: number; byteStride?: number };
-type Primitive = { attributes?: { POSITION?: number }; indices?: number; mode?: number };
+type Primitive = {
+  attributes?: { POSITION?: number };
+  indices?: number;
+  material?: number;
+  mode?: number;
+};
+type GlbMaterial = {
+  name?: string;
+  alphaMode?: string;
+  pbrMetallicRoughness?: { baseColorFactor?: number[] };
+};
 type Node = {
   name?: string;
   mesh?: number;
@@ -38,6 +48,7 @@ type GlbDocument = {
   scenes?: Array<{ nodes?: number[] }>;
   nodes?: Node[];
   meshes?: Array<{ name?: string; primitives?: Primitive[] }>;
+  materials?: GlbMaterial[];
   accessors?: Accessor[];
   bufferViews?: BufferView[];
 };
@@ -76,6 +87,11 @@ export type SurfaceOrientation =
   | "obliqueUp"
   | "obliqueDown";
 
+export type ResidualDisposition =
+  | "retainedNativeGlazingShell"
+  | "retainedClosedStairRun"
+  | "review";
+
 const SURFACE_ORIENTATIONS: readonly SurfaceOrientation[] = [
   "horizontalUp",
   "horizontalDown",
@@ -107,6 +123,26 @@ export function surfaceOrientation(
   if (up <= -0.9) return "horizontalDown";
   if (Math.abs(up) <= 0.1) return "vertical";
   return up > 0 ? "obliqueUp" : "obliqueDown";
+}
+
+/**
+ * Separate detail retained from the native RVT from geometry that still needs
+ * review. The visual-reference GLB is optimized and is not an authority for
+ * deleting a pane back face or the closure of a solid stair tread.
+ */
+export function residualDisposition(
+  meshLabel: string,
+  material?: GlbMaterial,
+): ResidualDisposition {
+  if (/^Stairs Runs(?:\s|$)/u.test(meshLabel)) return "retainedClosedStairRun";
+  const alpha = material?.pbrMetallicRoughness?.baseColorFactor?.[3] ?? 1;
+  if (
+    meshLabel.startsWith("Certified native BRep") &&
+    (material?.alphaMode === "BLEND" || alpha < 0.995)
+  ) {
+    return "retainedNativeGlazingShell";
+  }
+  return "review";
 }
 
 class VoxelBitmap implements VoxelCollection {
@@ -240,8 +276,14 @@ function sceneInstances(parsed: ParsedGlb): Array<{
   primitive: Primitive;
   matrix: THREE.Matrix4;
   label: string;
+  material?: GlbMaterial;
 }> {
-  const instances: Array<{ primitive: Primitive; matrix: THREE.Matrix4; label: string }> = [];
+  const instances: Array<{
+    primitive: Primitive;
+    matrix: THREE.Matrix4;
+    label: string;
+    material?: GlbMaterial;
+  }> = [];
   const nodes = parsed.document.nodes ?? [];
   const meshes = parsed.document.meshes ?? [];
   const roots = parsed.document.scenes?.[parsed.document.scene ?? 0]?.nodes ?? [];
@@ -259,6 +301,9 @@ function sceneInstances(parsed: ParsedGlb): Array<{
             primitive,
             matrix: world,
             label: mesh.name ?? node.name ?? `Mesh ${node.mesh + 1}`,
+            material: primitive.material == null
+              ? undefined
+              : parsed.document.materials?.[primitive.material],
           });
         }
       }
@@ -512,10 +557,17 @@ function recoveredResidualsByMesh(
   reference: VoxelCollection,
 ) {
   const length = grid.size[0] * grid.size[1] * grid.size[2];
-  return sceneInstances(parsed).map(({ primitive, matrix, label }) => {
+  const dispositionBits = new Uint8Array(length);
+  const dispositionMask: Record<ResidualDisposition, number> = {
+    retainedNativeGlazingShell: 1 << 0,
+    retainedClosedStairRun: 1 << 1,
+    review: 1 << 2,
+  };
+  const meshes = sceneInstances(parsed).map(({ primitive, matrix, label, material }) => {
     const voxels = new VoxelBitmap(length);
     const orientationBits = new Uint8Array(length);
     samplePrimitive(parsed, primitive, matrix, registration, grid, voxels, orientationBits);
+    const disposition = residualDisposition(label, material);
     let recoveredOnly = 0;
     const byOrientation = Object.fromEntries(SURFACE_ORIENTATIONS.map((orientation) => [
       orientation,
@@ -523,7 +575,10 @@ function recoveredResidualsByMesh(
     ])) as Record<SurfaceOrientation, { voxels: number; recoveredOnly: number }>;
     for (const index of voxels) {
       const isRecoveredOnly = !hasNeighbour(reference, grid, index);
-      if (isRecoveredOnly) recoveredOnly += 1;
+      if (isRecoveredOnly) {
+        recoveredOnly += 1;
+        dispositionBits[index] |= dispositionMask[disposition];
+      }
       const bits = orientationBits[index]!;
       for (const orientation of SURFACE_ORIENTATIONS) {
         if ((bits & ORIENTATION_MASK[orientation]) === 0) continue;
@@ -536,9 +591,35 @@ function recoveredResidualsByMesh(
       voxels: voxels.size,
       recoveredOnly,
       recoveredOnlyShare: voxels.size ? recoveredOnly / voxels.size : 0,
+      disposition,
       recoveredOnlyByOrientation: byOrientation,
     };
   }).sort((left, right) => right.recoveredOnly - left.recoveredOnly);
+  const summary = {
+    retainedNativeGlazingShell: 0,
+    retainedClosedStairRun: 0,
+    mixedRetainedDetail: 0,
+    review: 0,
+  };
+  const reviewRecoveredOnlyIndices: number[] = [];
+  for (let index = 0; index < dispositionBits.length; index += 1) {
+    const bits = dispositionBits[index]!;
+    if (!bits) continue;
+    if (bits & dispositionMask.review) {
+      summary.review += 1;
+      reviewRecoveredOnlyIndices.push(index);
+    } else if (
+      (bits & dispositionMask.retainedNativeGlazingShell) &&
+      (bits & dispositionMask.retainedClosedStairRun)
+    ) {
+      summary.mixedRetainedDetail += 1;
+    } else if (bits & dispositionMask.retainedNativeGlazingShell) {
+      summary.retainedNativeGlazingShell += 1;
+    } else if (bits & dispositionMask.retainedClosedStairRun) {
+      summary.retainedClosedStairRun += 1;
+    }
+  }
+  return { meshes, summary, reviewRecoveredOnlyIndices };
 }
 
 export function renderDiffSvg(diff: SurfaceDiff, grid: VoxelGrid): string {
@@ -605,7 +686,7 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
   };
   const referenceVoxels = sampleScene(reference, identity, grid);
   const diff = compareVoxels(recoveredVoxels, referenceVoxels, grid);
-  const recoveredOnlyByMesh = recoveredResidualsByMesh(
+  const recoveredResiduals = recoveredResidualsByMesh(
     recovered,
     registration,
     grid,
@@ -625,7 +706,19 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
       recoveredOnly: regions(diff.recoveredOnly, grid),
       referenceOnly: regions(diff.referenceOnly, grid),
     },
-    recoveredOnlyByMesh,
+    residualClassification: {
+      ...recoveredResiduals.summary,
+      meaning: {
+        retainedNativeGlazingShell:
+          "Native transparent pane thickness/back/edge surfaces absent from the optimized visual-reference GLB; retained.",
+        retainedClosedStairRun:
+          "Closed tread/riser surfaces reconstructed from native StairsRun evidence but simplified by the visual-reference GLB; retained.",
+        review:
+          "Recovered-only surface not explained by the two conservative retained-detail rules.",
+      },
+    },
+    recoveredOnlyByMesh: recoveredResiduals.meshes,
+    reviewRecoveredOnlyIndices: recoveredResiduals.reviewRecoveredOnlyIndices,
     grid,
   };
 }
@@ -633,24 +726,44 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const args = process.argv.slice(2);
   const positional = args.filter((argument, index) =>
-    !argument.startsWith("--") && !["--json", "--svg", "--cell"].includes(args[index - 1] ?? "")
+    !argument.startsWith("--") &&
+    !["--json", "--svg", "--actionable-svg", "--cell"].includes(args[index - 1] ?? "")
   );
   const [recoveredPath, referencePath] = positional;
   const jsonIndex = args.indexOf("--json");
   const svgIndex = args.indexOf("--svg");
+  const actionableSvgIndex = args.indexOf("--actionable-svg");
   const cellIndex = args.indexOf("--cell");
   if (!recoveredPath || !referencePath) {
-    throw new Error("usage: glb-surface-diff.ts recovered.glb reference.glb [--cell 0.5] [--json report.json] [--svg diff.svg]");
+    throw new Error("usage: glb-surface-diff.ts recovered.glb reference.glb [--cell 0.5] [--json report.json] [--svg diff.svg] [--actionable-svg review.svg]");
   }
   const cellMetres = cellIndex >= 0 ? Number(args[cellIndex + 1]) : 0.5;
   if (!Number.isFinite(cellMetres) || cellMetres <= 0) throw new Error("--cell must be positive.");
   const report = compareGlbs(readFileSync(recoveredPath), readFileSync(referencePath), cellMetres);
-  const json = `${JSON.stringify({ ...report, diff: {
+  const { reviewRecoveredOnlyIndices, ...serializableReport } = report;
+  const json = `${JSON.stringify({ ...serializableReport, diff: {
     ...report.diff,
     recoveredOnly: report.diff.recoveredOnly.length,
     referenceOnly: report.diff.referenceOnly.length,
+  }, reviewResidual: {
+    recoveredOnly: reviewRecoveredOnlyIndices.length,
+    recoveredCoverage: report.diff.recoveredVoxels
+      ? 1 - reviewRecoveredOnlyIndices.length / report.diff.recoveredVoxels
+      : 1,
   }, grid: { ...report.grid, occupiedIndicesOmitted: true } }, null, 2)}\n`;
   if (jsonIndex >= 0 && args[jsonIndex + 1]) writeFileSync(args[jsonIndex + 1]!, json);
   if (svgIndex >= 0 && args[svgIndex + 1]) writeFileSync(args[svgIndex + 1]!, renderDiffSvg(report.diff, report.grid));
+  if (actionableSvgIndex >= 0 && args[actionableSvgIndex + 1]) {
+    writeFileSync(args[actionableSvgIndex + 1]!, renderDiffSvg({
+      ...report.diff,
+      recoveredOnly: reviewRecoveredOnlyIndices,
+      recoveredCoverage: report.diff.recoveredVoxels
+        ? 1 - reviewRecoveredOnlyIndices.length / report.diff.recoveredVoxels
+        : 1,
+    }, report.grid).replace(
+      "Recovered RVT / Autodesk GLB surface difference",
+      "Recovered RVT / Autodesk GLB review residual",
+    ));
+  }
   console.log(json.trimEnd());
 }
