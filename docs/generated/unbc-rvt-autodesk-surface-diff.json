@@ -1,0 +1,869 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/glb-surface-diff.ts",
+  "cellMetres": 0.5,
+  "neighbourToleranceMetres": 0.8660254037844386,
+  "registration": {
+    "scale": 0.3047998300504542,
+    "sourceCenter": [
+      -3.87017822265625,
+      31.167979240417413,
+      0.240753173828125
+    ],
+    "referenceCenter": [
+      0.00010023512881218721,
+      0.0012043667126322433,
+      -0.000007097725145399636
+    ]
+  },
+  "recoveredBounds": {
+    "min": [
+      -361.31591796875,
+      -0.6561679840088993,
+      -615.1143188476564
+    ],
+    "max": [
+      353.5755615234375,
+      62.99212646484373,
+      615.5958251953126
+    ]
+  },
+  "alignedRecoveredBounds": {
+    "min": [
+      -108.94930049173944,
+      -9.698790298793142,
+      -187.5601284705586
+    ],
+    "max": [
+      108.94950096199706,
+      9.701199032218408,
+      187.56011427510833
+    ]
+  },
+  "referenceBounds": {
+    "min": [
+      -108.94930049173945,
+      -9.699262859292734,
+      -187.38316068449373
+    ],
+    "max": [
+      108.94950096199707,
+      9.701671592717998,
+      187.38314648904344
+    ]
+  },
+  "diff": {
+    "recoveredVoxels": 1050825,
+    "referenceVoxels": 1051434,
+    "recoveredOnly": 18231,
+    "referenceOnly": 226,
+    "recoveredCoverage": 0.9826507743915495,
+    "referenceCoverage": 0.9997850554575941
+  },
+  "regions": {
+    "recoveredOnly": [
+      {
+        "minMetres": [
+          10,
+          -10,
+          -120
+        ],
+        "maxMetres": [
+          20,
+          0,
+          -110
+        ],
+        "voxels": 554
+      },
+      {
+        "minMetres": [
+          10,
+          0,
+          140
+        ],
+        "maxMetres": [
+          20,
+          10,
+          150
+        ],
+        "voxels": 487
+      },
+      {
+        "minMetres": [
+          10,
+          0,
+          160
+        ],
+        "maxMetres": [
+          20,
+          10,
+          170
+        ],
+        "voxels": 476
+      },
+      {
+        "minMetres": [
+          10,
+          0,
+          150
+        ],
+        "maxMetres": [
+          20,
+          10,
+          160
+        ],
+        "voxels": 473
+      },
+      {
+        "minMetres": [
+          10,
+          -10,
+          -130
+        ],
+        "maxMetres": [
+          20,
+          0,
+          -120
+        ],
+        "voxels": 422
+      },
+      {
+        "minMetres": [
+          10,
+          0,
+          130
+        ],
+        "maxMetres": [
+          20,
+          10,
+          140
+        ],
+        "voxels": 404
+      },
+      {
+        "minMetres": [
+          10,
+          0,
+          170
+        ],
+        "maxMetres": [
+          20,
+          10,
+          180
+        ],
+        "voxels": 397
+      },
+      {
+        "minMetres": [
+          0,
+          -10,
+          80
+        ],
+        "maxMetres": [
+          10,
+          0,
+          90
+        ],
+        "voxels": 372
+      },
+      {
+        "minMetres": [
+          10,
+          -10,
+          -140
+        ],
+        "maxMetres": [
+          20,
+          0,
+          -130
+        ],
+        "voxels": 356
+      },
+      {
+        "minMetres": [
+          -30,
+          -10,
+          60
+        ],
+        "maxMetres": [
+          -20,
+          0,
+          70
+        ],
+        "voxels": 303
+      },
+      {
+        "minMetres": [
+          50,
+          -10,
+          40
+        ],
+        "maxMetres": [
+          60,
+          0,
+          50
+        ],
+        "voxels": 272
+      },
+      {
+        "minMetres": [
+          40,
+          -10,
+          40
+        ],
+        "maxMetres": [
+          50,
+          0,
+          50
+        ],
+        "voxels": 269
+      },
+      {
+        "minMetres": [
+          20,
+          0,
+          -60
+        ],
+        "maxMetres": [
+          30,
+          10,
+          -50
+        ],
+        "voxels": 232
+      },
+      {
+        "minMetres": [
+          40,
+          -10,
+          80
+        ],
+        "maxMetres": [
+          50,
+          0,
+          90
+        ],
+        "voxels": 188
+      },
+      {
+        "minMetres": [
+          -50,
+          -10,
+          100
+        ],
+        "maxMetres": [
+          -40,
+          0,
+          110
+        ],
+        "voxels": 178
+      },
+      {
+        "minMetres": [
+          30,
+          -10,
+          70
+        ],
+        "maxMetres": [
+          40,
+          0,
+          80
+        ],
+        "voxels": 175
+      },
+      {
+        "minMetres": [
+          -60,
+          -10,
+          100
+        ],
+        "maxMetres": [
+          -50,
+          0,
+          110
+        ],
+        "voxels": 171
+      },
+      {
+        "minMetres": [
+          50,
+          -10,
+          -160
+        ],
+        "maxMetres": [
+          60,
+          0,
+          -150
+        ],
+        "voxels": 170
+      },
+      {
+        "minMetres": [
+          0,
+          -10,
+          90
+        ],
+        "maxMetres": [
+          10,
+          0,
+          100
+        ],
+        "voxels": 168
+      },
+      {
+        "minMetres": [
+          10,
+          -10,
+          -150
+        ],
+        "maxMetres": [
+          20,
+          0,
+          -140
+        ],
+        "voxels": 167
+      }
+    ],
+    "referenceOnly": [
+      {
+        "minMetres": [
+          -60,
+          0,
+          110
+        ],
+        "maxMetres": [
+          -50,
+          10,
+          120
+        ],
+        "voxels": 36
+      },
+      {
+        "minMetres": [
+          -90,
+          0,
+          100
+        ],
+        "maxMetres": [
+          -80,
+          10,
+          110
+        ],
+        "voxels": 24
+      },
+      {
+        "minMetres": [
+          0,
+          0,
+          0
+        ],
+        "maxMetres": [
+          10,
+          10,
+          10
+        ],
+        "voxels": 22
+      },
+      {
+        "minMetres": [
+          -70,
+          0,
+          110
+        ],
+        "maxMetres": [
+          -60,
+          10,
+          120
+        ],
+        "voxels": 18
+      },
+      {
+        "minMetres": [
+          0,
+          -10,
+          0
+        ],
+        "maxMetres": [
+          10,
+          0,
+          10
+        ],
+        "voxels": 17
+      },
+      {
+        "minMetres": [
+          -10,
+          0,
+          0
+        ],
+        "maxMetres": [
+          0,
+          10,
+          10
+        ],
+        "voxels": 17
+      },
+      {
+        "minMetres": [
+          0,
+          0,
+          -10
+        ],
+        "maxMetres": [
+          10,
+          10,
+          0
+        ],
+        "voxels": 16
+      },
+      {
+        "minMetres": [
+          40,
+          0,
+          30
+        ],
+        "maxMetres": [
+          50,
+          10,
+          40
+        ],
+        "voxels": 16
+      },
+      {
+        "minMetres": [
+          0,
+          -10,
+          -10
+        ],
+        "maxMetres": [
+          10,
+          0,
+          0
+        ],
+        "voxels": 12
+      },
+      {
+        "minMetres": [
+          -10,
+          0,
+          -10
+        ],
+        "maxMetres": [
+          0,
+          10,
+          0
+        ],
+        "voxels": 12
+      },
+      {
+        "minMetres": [
+          -10,
+          -10,
+          0
+        ],
+        "maxMetres": [
+          0,
+          0,
+          10
+        ],
+        "voxels": 12
+      },
+      {
+        "minMetres": [
+          -70,
+          0,
+          100
+        ],
+        "maxMetres": [
+          -60,
+          10,
+          110
+        ],
+        "voxels": 12
+      },
+      {
+        "minMetres": [
+          -10,
+          -10,
+          -10
+        ],
+        "maxMetres": [
+          0,
+          0,
+          0
+        ],
+        "voxels": 8
+      },
+      {
+        "minMetres": [
+          60,
+          0,
+          -20
+        ],
+        "maxMetres": [
+          70,
+          10,
+          -10
+        ],
+        "voxels": 4
+      }
+    ]
+  },
+  "recoveredOnlyByMesh": [
+    {
+      "mesh": "Certified native BRep · Material 26 · 20",
+      "voxels": 70736,
+      "recoveredOnly": 9491,
+      "recoveredOnlyShare": 0.13417496041619542
+    },
+    {
+      "mesh": "Stairs Runs 1",
+      "voxels": 13595,
+      "recoveredOnly": 3899,
+      "recoveredOnlyShare": 0.28679661640308934
+    },
+    {
+      "mesh": "Certified native BRep 4",
+      "voxels": 43122,
+      "recoveredOnly": 3334,
+      "recoveredOnlyShare": 0.07731552339872919
+    },
+    {
+      "mesh": "Certified native BRep · Material 182549 · 22",
+      "voxels": 23626,
+      "recoveredOnly": 1626,
+      "recoveredOnlyShare": 0.06882248370439346
+    },
+    {
+      "mesh": "Certified native BRep · Material 182549 · 24",
+      "voxels": 13506,
+      "recoveredOnly": 1457,
+      "recoveredOnlyShare": 0.10787798015696727
+    },
+    {
+      "mesh": "Certified native BRep · Material 182549 · 23",
+      "voxels": 23464,
+      "recoveredOnly": 1392,
+      "recoveredOnlyShare": 0.05932492328673713
+    },
+    {
+      "mesh": "Certified native BRep · Material 24 · 3",
+      "voxels": 348526,
+      "recoveredOnly": 1184,
+      "recoveredOnlyShare": 0.0033971640566270523
+    },
+    {
+      "mesh": "Certified native BRep 6",
+      "voxels": 17292,
+      "recoveredOnly": 1059,
+      "recoveredOnlyShare": 0.061242192921582235
+    },
+    {
+      "mesh": "Certified native BRep 5",
+      "voxels": 10552,
+      "recoveredOnly": 496,
+      "recoveredOnlyShare": 0.04700530705079606
+    },
+    {
+      "mesh": "Railing Top Rail 1",
+      "voxels": 2764,
+      "recoveredOnly": 433,
+      "recoveredOnlyShare": 0.15665701881331404
+    },
+    {
+      "mesh": "Certified native BRep 7",
+      "voxels": 6209,
+      "recoveredOnly": 404,
+      "recoveredOnlyShare": 0.06506683846029956
+    },
+    {
+      "mesh": "Walls 1",
+      "voxels": 106928,
+      "recoveredOnly": 389,
+      "recoveredOnlyShare": 0.003637961993116864
+    },
+    {
+      "mesh": "Doors 1",
+      "voxels": 44363,
+      "recoveredOnly": 201,
+      "recoveredOnlyShare": 0.004530802695940311
+    },
+    {
+      "mesh": "Stairs 1",
+      "voxels": 802,
+      "recoveredOnly": 182,
+      "recoveredOnlyShare": 0.22693266832917705
+    },
+    {
+      "mesh": "Stairs Landings 1",
+      "voxels": 595,
+      "recoveredOnly": 143,
+      "recoveredOnlyShare": 0.24033613445378152
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242007 · 25",
+      "voxels": 220,
+      "recoveredOnly": 117,
+      "recoveredOnlyShare": 0.5318181818181819
+    },
+    {
+      "mesh": "Certified native BRep · Material 1378542 · 14",
+      "voxels": 1966,
+      "recoveredOnly": 113,
+      "recoveredOnlyShare": 0.05747711088504578
+    },
+    {
+      "mesh": "Certified native BRep · Material 1401447 · 39",
+      "voxels": 220,
+      "recoveredOnly": 111,
+      "recoveredOnlyShare": 0.5045454545454545
+    },
+    {
+      "mesh": "Ramps 1",
+      "voxels": 1787,
+      "recoveredOnly": 34,
+      "recoveredOnlyShare": 0.019026301063234472
+    },
+    {
+      "mesh": "Floors 1",
+      "voxels": 452527,
+      "recoveredOnly": 28,
+      "recoveredOnlyShare": 0.00006187476106398071
+    },
+    {
+      "mesh": "Certified native BRep · Material 617540 · 28",
+      "voxels": 34,
+      "recoveredOnly": 22,
+      "recoveredOnlyShare": 0.6470588235294118
+    },
+    {
+      "mesh": "Certified native BRep · Material 423 · 2",
+      "voxels": 123045,
+      "recoveredOnly": 21,
+      "recoveredOnlyShare": 0.00017066926734121663
+    },
+    {
+      "mesh": "Certified native BRep · Material 10988 · 21",
+      "voxels": 257,
+      "recoveredOnly": 21,
+      "recoveredOnlyShare": 0.08171206225680934
+    },
+    {
+      "mesh": "Certified native BRep · Material 30200 · 17",
+      "voxels": 40,
+      "recoveredOnly": 18,
+      "recoveredOnlyShare": 0.45
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242074 · 26",
+      "voxels": 43,
+      "recoveredOnly": 18,
+      "recoveredOnlyShare": 0.4186046511627907
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242009 · 31",
+      "voxels": 30,
+      "recoveredOnly": 18,
+      "recoveredOnlyShare": 0.6
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242075 · 30",
+      "voxels": 32,
+      "recoveredOnly": 15,
+      "recoveredOnlyShare": 0.46875
+    },
+    {
+      "mesh": "Certified native BRep · Material 1650844 · 38",
+      "voxels": 22,
+      "recoveredOnly": 12,
+      "recoveredOnlyShare": 0.5454545454545454
+    },
+    {
+      "mesh": "Certified native BRep · Material 1401451 · 40",
+      "voxels": 24,
+      "recoveredOnly": 12,
+      "recoveredOnlyShare": 0.5
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242120 · 32",
+      "voxels": 18,
+      "recoveredOnly": 10,
+      "recoveredOnlyShare": 0.5555555555555556
+    },
+    {
+      "mesh": "Certified native BRep · Material 1416371 · 33",
+      "voxels": 12,
+      "recoveredOnly": 10,
+      "recoveredOnlyShare": 0.8333333333333334
+    },
+    {
+      "mesh": "Stairs Stringer Carriage 1",
+      "voxels": 52,
+      "recoveredOnly": 9,
+      "recoveredOnlyShare": 0.17307692307692307
+    },
+    {
+      "mesh": "Certified native BRep · Material 10429 · 18",
+      "voxels": 15,
+      "recoveredOnly": 8,
+      "recoveredOnlyShare": 0.5333333333333333
+    },
+    {
+      "mesh": "Certified native BRep · Material 617544 · 29",
+      "voxels": 20,
+      "recoveredOnly": 8,
+      "recoveredOnlyShare": 0.4
+    },
+    {
+      "mesh": "Certified native BRep · Material 1650845 · 37",
+      "voxels": 15,
+      "recoveredOnly": 8,
+      "recoveredOnlyShare": 0.5333333333333333
+    },
+    {
+      "mesh": "Certified native BRep · Material 1378520 · 41",
+      "voxels": 12,
+      "recoveredOnly": 6,
+      "recoveredOnlyShare": 0.5
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242080 · 27",
+      "voxels": 12,
+      "recoveredOnly": 5,
+      "recoveredOnlyShare": 0.4166666666666667
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242076 · 42",
+      "voxels": 8,
+      "recoveredOnly": 3,
+      "recoveredOnlyShare": 0.375
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242151 · 36",
+      "voxels": 5,
+      "recoveredOnly": 1,
+      "recoveredOnlyShare": 0.2
+    },
+    {
+      "mesh": "Windows 1",
+      "voxels": 247,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Roofs 1",
+      "voxels": 4269,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Curtain Wall Panels 1",
+      "voxels": 94,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Curtain Wall Panels 1",
+      "voxels": 64,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Ceilings 1",
+      "voxels": 176,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 423 · 1",
+      "voxels": 237073,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 138363 · 8",
+      "voxels": 13975,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 523 · 9",
+      "voxels": 113963,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 422 · 10",
+      "voxels": 106506,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 863 · 11",
+      "voxels": 5012,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 23 · 12",
+      "voxels": 6754,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 7247 · 13",
+      "voxels": 6776,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 138312 · 15",
+      "voxels": 1161,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 272922 · 16",
+      "voxels": 551,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 416 · 19",
+      "voxels": 107,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242061 · 34",
+      "voxels": 1,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 1242067 · 35",
+      "voxels": 1,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    },
+    {
+      "mesh": "Certified native BRep · Material 1763182 · 43",
+      "voxels": 129,
+      "recoveredOnly": 0,
+      "recoveredOnlyShare": 0
+    }
+  ],
+  "grid": {
+    "cellMetres": 0.5,
+    "min": [
+      -109.5,
+      -10.5,
+      -188.5
+    ],
+    "size": [
+      439,
+      43,
+      755
+    ],
+    "occupiedIndicesOmitted": true
+  }
+}

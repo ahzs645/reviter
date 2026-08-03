@@ -9,18 +9,18 @@ three supplied UNBC sources. The inputs are pinned by SHA-256:
 
 | Source | Best use | Reproduced geometry | Material role |
 | --- | --- | ---: | --- |
-| RVT recovery | local inspection and BIM identity | 1,103,519 triangles | 69 decoded native definitions |
+| RVT recovery | local inspection and BIM identity | 968,606 triangles | 79 recovered/display materials |
 | IFC | semantic and geometric verification | 934,123 triangles | diagnostic comparison colours |
 | Autodesk GLB | visual reference and navigation | 616,185 stored / 616,185 scene-instantiated triangles | 22 optimized materials |
 
 ## Reproduced results
 
 `verify-pair.ts` passed all **21 of 21** current regression assertions. The
-current recovery emits **1,103,519 triangles** and the IFC oracle contains
+current recovery emits **968,606 triangles** and the IFC oracle contains
 **934,123 triangles**.
 
-The half-foot element overlay measured **36,142 matched elements**: **98.8% for
-centre**, **96.8% for size**, and **96.8% satisfying both tests**. (The printed
+The half-foot element overlay measured **36,142 matched elements**: **99.4% for
+centre**, **98.7% for size**, and **98.7% satisfying both tests**. (The printed
 per-class table contains 36,136 because it suppresses classes with fewer than
 ten matches.) The previous wording “98.8% for both centre and size” is therefore
 not supported. `overlay-diff.ts` now records exact all-element centre, size, and
@@ -30,22 +30,25 @@ rounded class marginals again.
 | IFC class | matched | centre within 0.5 ft | size within 0.5 ft |
 | --- | ---: | ---: | ---: |
 | `IfcMember` | 19,650 | 99.8% | 99.8% |
-| `IfcWallStandardCase` | 7,381 | 98.5% | 89.3% |
+| `IfcWallStandardCase` | 7,381 | 98.4% | 95.1% |
 | `IfcPlate` | 6,235 | 100.0% | 100.0% |
-| `IfcDoor` | 1,912 | 88.7% | 88.6% |
+| `IfcDoor` | 1,912 | 100.0% | 99.9% |
 | `IfcColumn` | 311 | 100.0% | 100.0% |
 | `IfcRailing` | 215 | 100.0% | 100.0% |
 | `IfcWall` | 140 | 87.1% | 79.3% |
-| `IfcStairFlight` | 108 | 60.2% | 52.8% |
+| `IfcStairFlight` | 108 | 75.0% | 75.0% |
 | `IfcSlab` | 107 | 96.3% | 96.3% |
 | `IfcCovering` | 46 | 100.0% | 100.0% |
 
-The next recovery work should therefore stay ordered by measured impact:
+The next envelope-recovery work should therefore stay ordered by measured impact:
 
-1. Stair flights (60.2% centre, 52.8% size).
-2. Doors (88.7% centre, 88.6% size).
-3. Standard-wall size, plus the smaller `IfcWall` population (87.1% centre,
-   79.3% size).
+1. The smaller `IfcWall` population (87.1% centre, 79.3% size).
+2. Stair flights (75.0% centre and size; 81.5% against the nearest product for
+   the 12 Tags the exporter split).
+3. The residual standard-wall size population (95.1%).
+
+Doors are no longer a leading envelope residual: reconstructed closed leaves
+now score 100.0% on centre and 99.9% on size.
 
 Stair and curtain-wall container counts must not be used alone as a geometry
 failure signal. Their visible children can carry the surface while a wrapper is
@@ -80,9 +83,39 @@ The material evidence remains supported by the pinned generated reports:
 
 ## Claims that remain visual or timing observations
 
-No saved screenshot, mask, or element-id list currently reproduces the
-localized right-wing red overlay. Treat it as a useful visual lead, not a
-regression result, until a camera pose plus diff artifact is checked in.
+The GLB comparison is now reproducible at the triangle-surface level rather
+than by dimensions or memory between source switches. `glb-surface-diff.ts`
+registers the recovered feet-based GLB to the Autodesk metre-based GLB, samples
+both into a common voxel grid, and reports both directional residuals.
+
+At 0.5 m cells (one-cell neighbourhood tolerance, 0.866 m diagonal):
+
+- recovered coverage against Autodesk: **98.27%**;
+- Autodesk coverage against recovered: **99.9785%**;
+- recovered-only cells: **18,231 of 1,050,825**;
+- Autodesk-only cells: **226 of 1,051,434**.
+
+A stricter 0.25 m run (0.433 m diagonal tolerance) still gives **99.8655%**
+Autodesk coverage. Its 6,450 Autodesk-only cells are localized rather than a
+building-scale hole. The recovered-only population is led by native glass and
+closed stair tread/riser surfaces; ordinary wall proxies contribute under one
+percent of their sampled surface at both resolutions. This is evidence not to
+remove the curtain-wall cuts merely to improve wall AABBs.
+
+The checked-in red/grey view deliberately contains only residual surfaces:
+red is recovered-only and grey is Autodesk-only. A selected curved stair looked
+as though it pierced a roof in the RVT view, but the selected-element overlay is
+intentionally visible through occluding geometry. Deselecting it restored the
+same continuous roof seen in IFC and Autodesk GLB; it was not a model hole.
+
+Evidence artifacts:
+
+- `generated/unbc-rvt-autodesk-surface-diff.json` and the stricter
+  `generated/unbc-rvt-autodesk-surface-diff-0.25m.json`;
+- `generated/unbc-rvt-autodesk-surface-diff.svg` / `.png` (red/grey residuals);
+- `generated/unbc-first-person-rvt-stair-1779476.jpg` and
+  `generated/unbc-first-person-autodesk-stair-1779476.jpg` (preserved-camera
+  Walk comparison).
 
 Likewise, the reported 5.9 s walk-surface and 5.3 s optional-collision builds
 were useful profiling observations but have no pinned trace. The viewer now
@@ -94,6 +127,8 @@ exercises RVT → IFC → Autodesk GLB → RVT while preserving the Walk camera.
 ```sh
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc --json verification.json
 node --experimental-strip-types scripts/glb-statistics.ts autodesk-reference.glb --json glb-statistics.json
+node --experimental-strip-types scripts/glb-surface-diff.ts recovered.glb autodesk-reference.glb \
+  --cell 0.5 --json surface-diff.json --svg surface-diff.svg
 
 REVITER_BROWSER_HEADED=1 node scripts/browser-check.mjs \
   dist-pages model.rvt browser-check.png model.ifc autodesk-reference.glb
