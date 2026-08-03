@@ -117,6 +117,40 @@ export function modelFeetToScenePoint(
   return pointFeet.map((value, axis) => value - originFeet[axis]!) as Point3Tuple;
 }
 
+/**
+ * Choose a stable First Person start on a selected reconstructed stair.
+ *
+ * A sky-down probe through a stair can hit the roof over it first. Native
+ * tread quads already carry the precise walkable elevations, so use the centre
+ * cell of the lowest tread band as a narrow fallback when no explicit
+ * double-click or “Walk from here” point was supplied.
+ */
+export function selectedStairWalkStart(
+  treads: readonly (readonly Point3Tuple[])[],
+  source: GeometrySource,
+  originFeet: Point3Tuple,
+): Point3Tuple | undefined {
+  const valid = treads.filter((tread) =>
+    tread.length >= 4 &&
+    tread.slice(0, 4).every((point) =>
+      point.length === 3 && point.every(Number.isFinite)),
+  );
+  if (!valid.length) return undefined;
+  const minimumElevation = Math.min(...valid.map((tread) => tread[0]![2]));
+  const lowest = valid.filter((tread) =>
+    Math.abs(tread[0]![2] - minimumElevation) <= 1e-4);
+  const tread = lowest[Math.floor(lowest.length / 2)]!;
+  const centre = tread.slice(0, 4).reduce<Point3Tuple>(
+    (sum, point) => [
+      sum[0] + point[0] / 4,
+      sum[1] + point[1] / 4,
+      sum[2] + point[2] / 4,
+    ],
+    [0, 0, 0],
+  );
+  return modelFeetToScenePoint(centre, source, originFeet);
+}
+
 export function navigationModeForTool(tool: NavigationTool): NavigationMode {
   return tool === "pan" || tool === "zoom" ? tool : "orbit";
 }

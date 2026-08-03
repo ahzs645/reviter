@@ -26,9 +26,11 @@ import { IfcAPI } from "web-ifc";
 
 import { convertModel } from "./audit-coverage.ts";
 import { framingBoundsOfRecords, solidBounds } from "../lib/reviter/bounds-records.ts";
+export { meshBoundsByElement } from "../lib/reviter/mesh-element-bounds.ts";
+import { meshBoundsByElement } from "../lib/reviter/mesh-element-bounds.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 
-import type { Bounds3, ConvertResult, ElementBoundsRecord, MeshData } from "../lib/reviter/types.ts";
+import type { Bounds3, ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 const FEET_PER_METRE = 3.280839895;
 
@@ -43,49 +45,6 @@ const CLOSE = 0.5;
 const HULL_SLACK_FEET = 1;
 
 export type Box = [number, number, number, number, number, number];
-
-/**
- * Measure the triangles that actually reached the viewer, grouped by their
- * native Revit id.
- *
- * A native mesh can be much tighter than the duplicated record envelope that
- * admitted it. Stair stringers in this file are the important case: their
- * native triangles occupy one tread-height band while the corroborating record
- * spans several storeys. Falling back to the record for those elements makes
- * the offline overlay report a box that the app never draws.
- */
-export function meshBoundsByElement(
-  meshes: readonly MeshData[],
-  origin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
-): Map<number, Box> {
-  const bounds = new Map<number, Box>();
-  for (const mesh of meshes) {
-    if (!mesh.elementIds?.length) continue;
-    const triangleCount = Math.min(mesh.elementIds.length, Math.floor(mesh.indices.length / 3));
-    for (let triangle = 0; triangle < triangleCount; triangle += 1) {
-      const elementId = mesh.elementIds[triangle]!;
-      let box = bounds.get(elementId);
-      if (!box) {
-        box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-        bounds.set(elementId, box);
-      }
-      for (let corner = 0; corner < 3; corner += 1) {
-        const vertex = mesh.indices[triangle * 3 + corner]! * 3;
-        const localX = mesh.positions[vertex];
-        const localY = mesh.positions[vertex + 1];
-        const localZ = mesh.positions[vertex + 2];
-        if (localX == null || localY == null || localZ == null) continue;
-        const x = localX + origin.x;
-        const y = localY + origin.y;
-        const z = localZ + origin.z;
-        box[0] = Math.min(box[0], x); box[3] = Math.max(box[3], x);
-        box[1] = Math.min(box[1], y); box[4] = Math.max(box[4], y);
-        box[2] = Math.min(box[2], z); box[5] = Math.max(box[5], z);
-      }
-    }
-  }
-  return bounds;
-}
 
 /** `#id=IFCTYPE(...)` products and their Revit element id, by express id. */
 function readProducts(text: string): Map<number, { type: string; tag: number }> {

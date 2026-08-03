@@ -86,6 +86,7 @@ import {
   formatMeasuredLength,
   measuredAngleDegrees,
   modelFeetToScenePoint,
+  selectedStairWalkStart,
   sceneUnitsPerPixel,
   scenePointToModelFeet,
   type MarkupStroke,
@@ -390,6 +391,7 @@ export function ModelCanvas({
   const walkSpeedRef = useRef<WalkSpeed>("normal");
   const walkGravityRef = useRef(true);
   const walkCollisionRef = useRef(false);
+  const selectedElementIdRef = useRef(selectedElementId);
   const matchedCameraRef = useRef<NormalizedCameraPose | null>(null);
   // A source rebuild while Walk owns the camera must resume from the eye, not
   // from OrbitControls' target in front of it. Ordinary Orbit -> Walk entry
@@ -403,6 +405,10 @@ export function ModelCanvas({
   const measureCalibrationRef = useRef(1);
   const measurementIdRef = useRef(1);
   const appliedWalkStartRequestRef = useRef(walkStartRequest.sequence);
+
+  useEffect(() => {
+    selectedElementIdRef.current = selectedElementId;
+  }, [selectedElementId]);
 
   useEffect(() => () => {
     sourceCache.clear();
@@ -1760,7 +1766,20 @@ export function ModelCanvas({
       if (hasRequestedStart) appliedWalkStartRequestRef.current = walkStartRequest.sequence;
       const pickedStart = hasRequestedStart
         ? new THREE.Vector3(...walkStartRequest.point!)
-        : runtime.walkStart?.point.clone() ?? null;
+        : runtime.walkStart?.point.clone() ?? (() => {
+            const selectedId = selectedElementIdRef.current;
+            if (selectedId == null) return null;
+            const selected = result.elementBounds.find(
+              (record) => record.elementId === selectedId,
+            );
+            if (!selected?.stairTreads?.length) return null;
+            const point = selectedStairWalkStart(
+              selected.stairTreads,
+              source,
+              [result.origin.x, result.origin.y, result.origin.z],
+            );
+            return point ? new THREE.Vector3(...point) : null;
+          })();
       runtime.walkStart = null;
       // OrbitControls' target describes the area the user is inspecting. Use it
       // as the default plan location instead of teleporting to the model centre;
@@ -1773,7 +1792,9 @@ export function ModelCanvas({
           : runtime.controls.target.clone());
       let nearbyFloor = pickedStart
         ? (runtime.up === "y" ? pickedStart.y : pickedStart.z)
-        : null;
+        : resumeFromMatchedEye
+          ? (runtime.up === "y" ? start.y : start.z) - eyeHeight
+          : null;
       if (nearbyFloor == null) {
         const targetProbe = start.clone();
         if (runtime.up === "y") targetProbe.y = runtime.bounds.max.y + eyeHeight;

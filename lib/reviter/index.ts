@@ -98,6 +98,7 @@ export {
 export type { DetectedBoundsRecord } from "./bounds-records";
 export { boxDifference, drawnBounds } from "./drawn-bounds";
 export type { Box } from "./drawn-bounds";
+export { meshBoundsByElement } from "./mesh-element-bounds";
 export {
   asBytes,
   gzipOffsets,
@@ -239,6 +240,7 @@ export {
   elementManifest,
   makeDxf,
   makeGlb,
+  makeIfc,
   makeIfcCenterlines,
   makeObj,
   makeFloorPlateSvg,

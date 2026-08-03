@@ -236,6 +236,37 @@ test("orders flattened profiles from the independently persisted bottom profile"
   assert.equal(recovered.treadDepthFeet, 1);
 });
 
+test("keeps duplicated rotated profiles in an exact-count flattened run", () => {
+  const curves: SketchCurve[] = [];
+  const profiles = [
+    line([0, 0, 2], [0, 10, 2]),
+    line([1, 0, 2], [1, 10, 2]),
+    line([2, 0, 2], [2.25, 10, 2]),
+    line([3, 0, 2], [3.5, 10, 2]),
+  ];
+  for (const profile of profiles) curves.push(profile, { ...profile });
+  // The duplicated base profile independently chooses the path endpoint.
+  curves.push(line([0, 0, 0], [0, 10, 0]));
+  // An exact-width drawing edge must not displace a complete duplicated
+  // profile cohort merely because the last two profiles rotate.
+  curves.push(line([0, 0, 2], [4, 0, 2]));
+
+  const recovered = recoverFlattenedProfileStairTreads(
+    curves,
+    {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 3.5, y: 10, z: 2 },
+    },
+    { actualRunWidthFeet: 4, maximumRiserCount: 4 },
+  );
+  assert.ok(recovered);
+  assert.equal(recovered.treads.length, 3);
+  assert.deepEqual(
+    recovered.treads.map((tread) => tread[0][2]),
+    [0.5, 1, 1.5],
+  );
+});
+
 test("the diagnostic scene draws every recovered tread instead of the run envelope", () => {
   const bounds = {
     min: { x: 0, y: 0, z: 10 },

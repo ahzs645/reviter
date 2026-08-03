@@ -12,5 +12,5 @@ export { floorPlateBounds, floorPlateLevels, floorPlateRecords, floorPlateSvgDat
 export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./export-svg.ts";
 export { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "./derived-rooms.ts";
 export type { DerivedRoom, DerivedRoomOptions, DerivedRoomResult } from "./derived-rooms.ts";
-export { makeIfcCenterlines } from "./export-ifc.ts";
+export { makeIfc, makeIfcCenterlines } from "./export-ifc.ts";
 export { elementManifest, makeReport } from "./export-report.ts";

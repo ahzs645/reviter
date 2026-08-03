@@ -1085,7 +1085,12 @@ export function recoverFlattenedProfileStairTreads(
     (left, right) => right[1] - left[1],
   )[0]?.[0];
   if (dominantDirection == null) return null;
-  const profiles = all.filter((profile) => {
+  const repeatedWideProfiles = all.filter((profile) =>
+    profile.count >= 2 &&
+    planLength(profile.curve.start, profile.curve.end) >=
+      options.actualRunWidthFeet - POINT_TOLERANCE_FEET
+  );
+  const dominantProfiles = all.filter((profile) => {
     const length = planLength(profile.curve.start, profile.curve.end);
     const dx = profile.curve.end[0] - profile.curve.start[0];
     const dy = profile.curve.end[1] - profile.curve.start[1];
@@ -1104,6 +1109,16 @@ export function recoverFlattenedProfileStairTreads(
     );
   });
   const riserCount = options.maximumRiserCount;
+  // Most flattened runs repeat one parallel cohort and retain rotated winder
+  // profiles only once at the exact native run width. Monumental and broad
+  // switchback runs can instead duplicate every cross-run profile, including
+  // the rotated transition profiles. Accept that second representation only
+  // when its independent profile count exactly equals the native riser count;
+  // the graph, bottom-elevation and rise checks below still have to prove one
+  // unbranched flight before any geometry is emitted.
+  const profiles = repeatedWideProfiles.length === riserCount
+    ? repeatedWideProfiles
+    : dominantProfiles;
   if (profiles.length !== riserCount || riserCount > MAX_TREADS) {
     if (profiles.length === riserCount && riserCount > MAX_TREADS) noteLimit("max-treads");
     return null;

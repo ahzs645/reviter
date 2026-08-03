@@ -9,7 +9,6 @@ import {
   DEFAULT_CAMERA_PRESET,
   cachedDerivedRoomsForLevel,
   downloadBlob,
-  drawnBounds,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
@@ -17,6 +16,7 @@ import {
   makeObj,
   makePlanSvg,
   makeReport,
+  meshBoundsByElement,
   outputName,
   parseBasicFileInfoProperties,
   revitVersionFromBasicFileInfo,
@@ -567,15 +567,10 @@ export default function ReviterStudio() {
     try {
       const buffer = await referenceFile.arrayBuffer();
       const worker = getIfcWorker();
-      const displayedIds = new Set(
-        result.meshes.flatMap((mesh) => mesh.elementIds ? [...mesh.elementIds] : []),
-      );
       const packedDisplayBounds: number[] = [];
-      for (const record of result.elementBounds) {
-        if (!displayedIds.has(record.elementId)) continue;
-        const bounds = drawnBounds(record);
+      for (const [elementId, bounds] of meshBoundsByElement(result.meshes, result.origin)) {
         if (!bounds.every(Number.isFinite)) continue;
-        packedDisplayBounds.push(record.elementId, ...bounds);
+        packedDisplayBounds.push(elementId, ...bounds);
       }
       const displayBounds = Float64Array.from(packedDisplayBounds);
       worker.onerror = (event) => {
@@ -1397,9 +1392,7 @@ export default function ReviterStudio() {
       {
         id: "IFC",
         format: "IFC",
-        detail: result.method === "partition-bounds-recovery"
-          ? "Solid proxies"
-          : result.method === "native-profile-recovery" ? "Profile proxies" : "Proxies",
+        detail: "IFC4 · elements, storeys, materials",
         run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(result), "application/x-step"),
       },
       {

@@ -12,6 +12,7 @@ import {
   navigationModeForTool,
   sceneUnitsPerPixel,
   scenePointToModelFeet,
+  selectedStairWalkStart,
   WALK_COMPARISON_SOURCES,
   walkComparisonSourceForCode,
 } from "../app/studio/viewer-tools.ts";
@@ -92,6 +93,28 @@ test("comment anchors register between RVT feet and IFC metres", () => {
     [101, 202, 303],
   );
   assert.equal(scenePointToModelFeet([1, 2, 3], "reference-model", origin), undefined);
+});
+
+test("a selected reconstructed stair starts Walk on its lowest native tread", () => {
+  const treads = [
+    [[0, 0, 11], [1, 0, 11], [1, 2, 11], [0, 2, 11]],
+    [[0, 0, 10], [1, 0, 10], [1, 1, 10], [0, 1, 10]],
+    [[0, 1, 10], [1, 1, 10], [1, 2, 10], [0, 2, 10]],
+    [[1, 0, 12], [2, 0, 12], [2, 2, 12], [1, 2, 12]],
+  ] as const;
+  assert.deepEqual(
+    selectedStairWalkStart(treads, "recovered", [100, 200, 5]),
+    [-99.5, -198.5, 5],
+  );
+  assert.deepEqual(
+    selectedStairWalkStart(treads, "reference", [100, 200, 5])
+      ?.map((value) => Number(value.toFixed(4))),
+    [0.1524, 0.4572, 3.048],
+  );
+  assert.equal(
+    selectedStairWalkStart(treads, "reference-model", [100, 200, 5]),
+    undefined,
+  );
 });
 
 test("section direction reverses axis clipping and boxes use six planes", () => {

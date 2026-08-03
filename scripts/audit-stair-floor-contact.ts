@@ -165,20 +165,20 @@ const result = convertModel(rvtPath);
 const truth = await readTruthBoxes(ifcPath);
 const recordById = new Map(result.elementBounds.map((record) => [record.elementId, record]));
 const stairRuns = result.elementBounds.filter((record) => record.categoryId === STAIRS_RUN_CATEGORY);
-const supportRecords = result.elementBounds.filter((record) =>
+const stairRunIds = new Set(stairRuns.map((record) => record.elementId));
+const expectedSupportRecords = result.elementBounds.filter((record) =>
   record.categoryId === FLOOR_CATEGORY ||
   record.categoryId === STAIRS_LANDING_CATEGORY ||
   record.categoryId === STAIRS_RUN_CATEGORY,
 );
-const supportIds = new Set(supportRecords.map((record) => record.elementId));
 const trianglesByElement = new Map<number, Triangle[]>();
+const verticesByStairRun = new Map<number, Point3[]>();
 
 for (const mesh of result.meshes) {
   if (!mesh.elementIds?.length) continue;
   const triangleCount = Math.min(mesh.elementIds.length, Math.floor(mesh.indices.length / 3));
   for (let face = 0; face < triangleCount; face += 1) {
     const elementId = mesh.elementIds[face]!;
-    if (!supportIds.has(elementId)) continue;
     const record = recordById.get(elementId);
     const points = [0, 1, 2].map((corner): Point3 => {
       const vertex = mesh.indices[face * 3 + corner]! * 3;
@@ -188,6 +188,23 @@ for (const mesh of result.meshes) {
         mesh.positions[vertex + 2]! + result.origin.z,
       ];
     });
+    if (stairRunIds.has(elementId)) {
+      const vertices = verticesByStairRun.get(elementId) ?? [];
+      vertices.push(...points);
+      verticesByStairRun.set(elementId, vertices);
+    }
+    const ab = subtract(points[1]!, points[0]!);
+    const ac = subtract(points[2]!, points[0]!);
+    const normal: Point3 = [
+      ab[1] * ac[2] - ab[2] * ac[1],
+      ab[2] * ac[0] - ab[0] * ac[2],
+      ab[0] * ac[1] - ab[1] * ac[0],
+    ];
+    const normalLength = Math.sqrt(dot(normal, normal));
+    // A stair can meet a floor, slab, foundation, roof terrace, or another
+    // tread. Keep any nearly horizontal scene face as physical support, then
+    // report the narrower floor/landing/flight result independently.
+    if (normalLength <= 1e-9 || Math.abs(normal[2]) / normalLength < 0.9) continue;
     const group = trianglesByElement.get(elementId) ?? [];
     group.push({
       elementId,
@@ -201,17 +218,49 @@ for (const mesh of result.meshes) {
   }
 }
 
-function measureEndpoint(stair: ElementBoundsRecord, endpoint: Endpoint) {
-  const center = endpoint.samples[Math.floor(endpoint.samples.length / 2)]!;
-  const candidates = supportRecords.filter((record) =>
-    record.elementId !== stair.elementId &&
-    planDistanceToBounds(center, record) <= CANDIDATE_PLAN_SLACK_FEET &&
-    verticalDistanceToBounds(center, record) <= CANDIDATE_VERTICAL_SLACK_FEET,
-  );
-  const candidateTriangles = candidates.flatMap((record) => trianglesByElement.get(record.elementId) ?? []);
-  const samples = endpoint.samples.map((point) => {
+function meshEndpoints(record: ElementBoundsRecord): { bottom: Endpoint; top: Endpoint } | null {
+  const vertices = verticesByStairRun.get(record.elementId) ?? [];
+  const unique = new Map<string, Point3>();
+  for (const point of vertices) {
+    unique.set(`${point[0].toFixed(5)},${point[1].toFixed(5)},${point[2].toFixed(5)}`, point);
+  }
+  const points = [...unique.values()];
+  const tolerance = 0.05;
+  const bottomSamples = points.filter((point) =>
+    Math.abs(point[2] - record.boundsFeet.min.z) <= tolerance);
+  const topSamples = points.filter((point) =>
+    Math.abs(point[2] - record.boundsFeet.max.z) <= tolerance);
+  if (!bottomSamples.length || !topSamples.length) return null;
+  return {
+    bottom: {
+      edge: [bottomSamples[0]!, bottomSamples.at(-1)!],
+      samples: bottomSamples,
+    },
+    top: {
+      edge: [topSamples[0]!, topSamples.at(-1)!],
+      samples: topSamples,
+    },
+  };
+}
+
+function candidateTriangles(
+  stair: ElementBoundsRecord,
+  center: Point3,
+  records: readonly ElementBoundsRecord[],
+): Triangle[] {
+  return records
+    .filter((record) =>
+      record.elementId !== stair.elementId &&
+      planDistanceToBounds(center, record) <= CANDIDATE_PLAN_SLACK_FEET &&
+      verticalDistanceToBounds(center, record) <= CANDIDATE_VERTICAL_SLACK_FEET,
+    )
+    .flatMap((record) => trianglesByElement.get(record.elementId) ?? []);
+}
+
+function nearestToSamples(samples: readonly Point3[], triangles: readonly Triangle[]) {
+  return samples.map((point) => {
     let nearest: { triangle: Triangle; point: Point3; distanceFeet: number } | null = null;
-    for (const triangle of candidateTriangles) {
+    for (const triangle of triangles) {
       const closest = closestPointOnTriangle(point, triangle);
       const distanceFeet = Math.sqrt(squaredDistance(point, closest));
       if (!nearest || distanceFeet < nearest.distanceFeet) {
@@ -229,11 +278,28 @@ function measureEndpoint(stair: ElementBoundsRecord, endpoint: Endpoint) {
       },
     };
   });
+}
+
+function measureEndpoint(stair: ElementBoundsRecord, endpoint: Endpoint) {
+  const center = endpoint.samples[Math.floor(endpoint.samples.length / 2)]!;
+  const samples = nearestToSamples(
+    endpoint.samples,
+    candidateTriangles(stair, center, result.elementBounds),
+  );
+  const expectedSupportSamples = nearestToSamples(
+    endpoint.samples,
+    candidateTriangles(stair, center, expectedSupportRecords),
+  );
   const distances = samples.flatMap((sample) => sample.distanceFeet == null ? [] : [sample.distanceFeet]);
   const nearestSample = samples
     .filter((sample) => sample.distanceFeet != null)
     .sort((left, right) => left.distanceFeet! - right.distanceFeet!)[0] ?? null;
   const sorted = [...distances].sort((left, right) => left - right);
+  const expectedSupportDistances = expectedSupportSamples.flatMap((sample) =>
+    sample.distanceFeet == null ? [] : [sample.distanceFeet]);
+  const expectedSupportNearest = expectedSupportSamples
+    .filter((sample) => sample.distanceFeet != null)
+    .sort((left, right) => left.distanceFeet! - right.distanceFeet!)[0] ?? null;
 
   const ifcCandidates = [...truth.entries()].filter(([elementId, entry]) =>
     elementId !== stair.elementId &&
@@ -254,6 +320,15 @@ function measureEndpoint(stair: ElementBoundsRecord, endpoint: Endpoint) {
     medianDistanceFeet: sorted[Math.floor(sorted.length / 2)] ?? null,
     maximumDistanceFeet: sorted.at(-1) ?? null,
     nearestRenderedSupport: nearestSample?.nearest ?? null,
+    expectedFloorLandingOrFlight: {
+      minimumDistanceFeet: expectedSupportDistances.length
+        ? Math.min(...expectedSupportDistances)
+        : null,
+      maximumDistanceFeet: expectedSupportDistances.length
+        ? Math.max(...expectedSupportDistances)
+        : null,
+      nearest: expectedSupportNearest?.nearest ?? null,
+    },
     nearestIfcSupport: nearestIfc,
     classification:
       !distances.length ? "unmeasurable" :
@@ -266,12 +341,14 @@ function measureEndpoint(stair: ElementBoundsRecord, endpoint: Endpoint) {
 }
 
 const runs = stairRuns.map((record) => {
-  const runEndpoints = endpoints(record);
+  const treadEndpoints = endpoints(record);
+  const runEndpoints = treadEndpoints ?? meshEndpoints(record);
   const ifc = truth.get(record.elementId);
   return {
     elementId: record.elementId,
     renderGeometryProvenance: record.renderGeometryProvenance ?? null,
     treadCount: record.stairTreads?.length ?? 0,
+    endpointSource: treadEndpoints ? "native-tread-chain" : runEndpoints ? "rendered-extreme-vertices" : null,
     beginWithRiser: record.stairBeginWithRiser ?? null,
     endWithRiser: record.stairEndWithRiser ?? null,
     bounds: record.boundsFeet,
@@ -306,7 +383,10 @@ const report = {
   measuredRuns: runs.filter((run) => run.bottom && run.top).length,
   unmeasuredRuns: runs.filter((run) => !run.bottom || !run.top).map((run) => run.elementId),
   endpointCounts: counts,
-  suspectedVisibleGaps: suspected.map(({ samples: _samples, ...endpoint }) => endpoint),
+  suspectedVisibleGaps: suspected.map(({ samples, ...endpoint }) => {
+    void samples;
+    return endpoint;
+  }),
   runs,
 };
 

@@ -139,6 +139,79 @@ if (glbFile) {
 }
 
 if (terminalPhase === "ready") {
+  // Preserve a visual artifact of the actual registered IFC overlay. Numeric
+  // parity catches missing identities and extents, but it cannot expose a
+  // local offset, reversed surface, depth artifact, or distracting material
+  // treatment. Keep this before the navigation mutations so every run uses
+  // the same fitted whole-building camera.
+  if (ifcFile) {
+    await page.getByRole("button", { name: "Overlay", exact: true }).first().click();
+    await page.waitForFunction(() =>
+      document.querySelector("canvas.model-canvas")?.dataset.activeSource === "overlay");
+    await page.waitForTimeout(1_000);
+    const overlayScreenshot = screenshot.replace(/(\.[^./]+)?$/u, "-ifc-overlay$1");
+    await page.screenshot({ path: overlayScreenshot });
+    console.log("IFC overlay screenshot", overlayScreenshot);
+
+    // Keep one repeatable close-up of the known difficult UNBC stair. This is
+    // intentionally optional so the browser check remains useful on unrelated
+    // models that do not contain that native element id.
+    await page.getByRole("button", { name: "RVT", exact: true }).first().click();
+    await page.waitForFunction(() =>
+      document.querySelector("canvas.model-canvas")?.dataset.activeSource === "recovered");
+    const objectFilter = page.getByPlaceholder("Filter by id, category, type");
+    if (await objectFilter.count()) {
+      await objectFilter.fill("1460781");
+      const stairRow = page.locator(".object-row").first();
+      if (await stairRow.count()) {
+        await stairRow.click();
+        const zoom = page.getByRole("button", { name: "Zoom to object", exact: true });
+        if (await zoom.count()) {
+          await zoom.click();
+          await page.waitForTimeout(300);
+          await page.getByRole("button", { name: "Overlay", exact: true }).first().click();
+          await page.waitForFunction(() =>
+            document.querySelector("canvas.model-canvas")?.dataset.activeSource === "overlay");
+          await page.waitForTimeout(600);
+          const stairScreenshot = screenshot.replace(/(\.[^./]+)?$/u, "-stair-1460781-ifc-overlay$1");
+          await page.screenshot({ path: stairScreenshot });
+          console.log("stair 1460781 IFC overlay screenshot", stairScreenshot);
+
+          // Also inspect the same location from the actual Walk camera. Orbit
+          // can hide a tread/floor gap behind the stair itself.
+          await page.getByRole("button", { name: "RVT", exact: true }).first().click();
+          await page.waitForFunction(() =>
+            document.querySelector("canvas.model-canvas")?.dataset.activeSource === "recovered");
+          await stairRow.click();
+          await page.getByRole("button", { name: "Walk", exact: true }).click();
+          await page.waitForFunction(() =>
+            document.querySelector("canvas.model-canvas")?.dataset.navigationState === "walk",
+          null, { timeout: 120_000 });
+          await page.getByRole("button", { name: "Overlay", exact: true }).first().click();
+          await page.waitForFunction(() => {
+            const canvas = document.querySelector("canvas.model-canvas");
+            return canvas?.dataset.activeSource === "overlay" &&
+              canvas.dataset.navigationState === "walk";
+          }, null, { timeout: 120_000 });
+          await page.waitForTimeout(600);
+          const stairWalkScreenshot = screenshot.replace(
+            /(\.[^./]+)?$/u,
+            "-stair-1460781-walk-ifc-overlay$1",
+          );
+          await page.screenshot({ path: stairWalkScreenshot });
+          console.log("stair 1460781 Walk IFC overlay screenshot", stairWalkScreenshot);
+          await page.getByRole("button", { name: "Orbit", exact: true }).click();
+          await page.waitForFunction(() =>
+            document.querySelector("canvas.model-canvas")?.dataset.navigationState === "orbit");
+        }
+      }
+      await page.getByRole("button", { name: "RVT", exact: true }).first().click();
+      await page.waitForFunction(() =>
+        document.querySelector("canvas.model-canvas")?.dataset.activeSource === "recovered");
+      await objectFilter.fill("");
+    }
+  }
+
   // Pairing intentionally opens the newly supplied source for inspection.
   // Navigation coverage starts on RVT so its collision controls and the final
   // RVT cache round trip have one unambiguous baseline.
