@@ -466,6 +466,8 @@ export type ConvertStats = {
    * extension Revit applies to a wall's body without moving its location line.
    */
   extendedSolids?: number;
+  /** Wall ends trimmed to a corroborating adjacent native wall face. */
+  recoveredWallJoinEnds?: number;
   /**
    * Rebuilt solids whose drawn box was shrunk into the element's own envelope,
    * where that envelope solves as this slab's own oriented rectangle. The
@@ -595,6 +597,16 @@ export type IfcReferenceManifest = {
   geometricAlignedElementCount?: number;
   /** Compared elements outside the geometric tolerance. */
   geometricDifferentElementCount?: number;
+  /** Bounds-aligned elements rejected because one body omitted material slopes. */
+  geometricShapeDifferentElementCount?: number;
+  /** Native Revit ids admitted by the conservative surface-orientation gate. */
+  geometricShapeDifferentElementIds?: Uint32Array;
+  /**
+   * Ramp ids whose tagged IfcRamp owns a direct body and is not itself an
+   * IfcRelAggregates parent. Reference-assisted recovery still requires tight
+   * six-face extent parity before replacing the RVT aggregate.
+   */
+  completeRampAggregateElementIds?: Uint32Array;
   geometryToleranceFeet?: number;
   boundsMetres: Bounds3;
   elementTypes: IfcElementTypeMatch[];
@@ -659,6 +671,11 @@ export type RvtRegressionInput = {
    * [elementId,minX,minY,minZ,maxX,maxY,maxZ], in feet.
    */
   displayBounds?: Float64Array;
+  /**
+   * Viewer surface orientation totals packed as
+   * [elementId,horizontalArea,verticalArea,slopedArea,triangleCount].
+   */
+  surfaceOrientationSignatures?: Float64Array;
 };
 
 export type ConvertResult = {
@@ -714,6 +731,10 @@ export type ConvertResult = {
   nativeHostRelations?: NativeHostRelation[];
   /** Elements whose display mesh was replaced by a tagged paired-IFC body. */
   referenceAssistedElementIds?: Uint32Array;
+  /** Ramp aggregates admitted by both IFC decomposition and extent-parity gates. */
+  referenceAssistedCompleteRampAggregateIds?: Uint32Array;
+  /** Ramp aggregates kept from RVT because the paired tag was incomplete or unverified. */
+  referenceAssistedRetainedRampAggregateIds?: Uint32Array;
   /** Persisted spatial relationships from Element.m_assocLevelId. */
   nativeAssociatedLevelRelations?: NativeAssociatedLevelRelation[];
 };

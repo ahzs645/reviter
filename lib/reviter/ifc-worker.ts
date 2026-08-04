@@ -27,6 +27,12 @@ context.onmessage = async (event: MessageEvent<IfcWorkerRequest>) => {
       transfers.push(mesh.positions.buffer, mesh.indices.buffer);
       if (mesh.elementIds) transfers.push(mesh.elementIds.buffer);
     }
+    if (result.reference.geometricShapeDifferentElementIds) {
+      transfers.push(result.reference.geometricShapeDifferentElementIds.buffer);
+    }
+    if (result.reference.completeRampAggregateElementIds) {
+      transfers.push(result.reference.completeRampAggregateElementIds.buffer);
+    }
     context.postMessage(
       { id: request.id, type: "result", result } satisfies IfcWorkerResponse,
       transfers,

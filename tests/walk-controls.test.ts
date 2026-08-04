@@ -141,6 +141,42 @@ test("surface drop uses the hit surface or the safe model baseline", () => {
   assert.equal(droppedEyeCoordinate(-20, 5.6, 5.6), 5.6);
 });
 
+test("Float preserves a camera below the model baseline during source handoff", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: Object.assign(new EventTarget(), { hidden: false }),
+  });
+
+  try {
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const start = new THREE.Vector3(12, -40, 8);
+    const controls = createWalkControls(camera, element, {
+      start,
+      lookAt: start.clone().add(new THREE.Vector3(1, 0, 0)),
+      floor: 5.6,
+      up: "y",
+      gravity: false,
+    });
+    controls.enable();
+    controls.update(0.1);
+    assert.equal(camera.position.y, -40);
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
 test("face travel uses a bounded ease-out animation", () => {
   assert.equal(easeTravelProgress(0), 0);
   assert.ok(easeTravelProgress(0.5) > 0.5);

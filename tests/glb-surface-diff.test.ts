@@ -6,6 +6,7 @@ import {
   deriveRegistration,
   makeVoxelGrid,
   renderDiffSvg,
+  residualVerticalBand,
   residualDisposition,
   surfaceOrientation,
 } from "../scripts/glb-surface-diff.ts";
@@ -70,13 +71,20 @@ test("classifies signed Y-up surface orientations", () => {
   );
 });
 
-test("retains native glazing shells and closed stairs without hiding other residuals", () => {
+test("retains certified native surfaces and closed stairs without hiding proxy residuals", () => {
   assert.equal(
     residualDisposition("Certified native BRep · Material 26 · 20", {
       alphaMode: "BLEND",
       pbrMetallicRoughness: { baseColorFactor: [0.1, 0.2, 0.3, 0.1] },
     }),
     "retainedNativeGlazingShell",
+  );
+  assert.equal(
+    residualDisposition("Certified native BRep 4", {
+      alphaMode: "OPAQUE",
+      pbrMetallicRoughness: { baseColorFactor: [0.4, 0.4, 0.4, 1] },
+    }),
+    "retainedCertifiedNativeSurface",
   );
   assert.equal(
     residualDisposition("Stairs Runs 1"),
@@ -86,4 +94,20 @@ test("retains native glazing shells and closed stairs without hiding other resid
     residualDisposition("Walls 1"),
     "review",
   );
+});
+
+test("distinguishes interior residuals from genuine top-edge residuals", () => {
+  const mesh: { min: [number, number, number]; max: [number, number, number] } = {
+    min: [0, 1, 0],
+    max: [4, 5, 4],
+  };
+  assert.equal(
+    residualVerticalBand(mesh, { min: [1, 2, 1], max: [3, 4, 3] }, 0.25),
+    "interior",
+  );
+  assert.equal(
+    residualVerticalBand(mesh, { min: [1, 4, 1], max: [3, 4.9, 3] }, 0.25),
+    "top-edge",
+  );
+  assert.equal(residualVerticalBand(mesh, null, 0.25), "none");
 });

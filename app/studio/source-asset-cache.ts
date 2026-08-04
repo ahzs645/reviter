@@ -15,7 +15,7 @@ export class SourceAssetCache<T> {
     capacity: number,
     dispose: (value: T) => void,
   ) {
-    this.capacity = capacity;
+    this.capacity = Math.max(1, Math.floor(capacity));
     this.dispose = dispose;
   }
 
@@ -36,15 +36,12 @@ export class SourceAssetCache<T> {
       this.dispose(cached.value);
     }
 
+    // Evict before constructing the replacement. A source root can contain a
+    // million triangles, so briefly holding capacity + 1 roots is a material
+    // memory spike even though the Map would be trimmed a line later.
+    while (this.entries.size >= this.capacity) this.evictOldest();
     const value = create();
     this.entries.set(key, { owners: [...owners], value });
-    while (this.entries.size > Math.max(1, this.capacity)) {
-      const oldestKey = this.entries.keys().next().value as string | undefined;
-      if (oldestKey == null) break;
-      const oldest = this.entries.get(oldestKey);
-      this.entries.delete(oldestKey);
-      if (oldest) this.dispose(oldest.value);
-    }
     return { value, hit: false };
   }
 
@@ -55,6 +52,14 @@ export class SourceAssetCache<T> {
   clear(): void {
     for (const entry of this.entries.values()) this.dispose(entry.value);
     this.entries.clear();
+  }
+
+  private evictOldest(): void {
+    const oldestKey = this.entries.keys().next().value as string | undefined;
+    if (oldestKey == null) return;
+    const oldest = this.entries.get(oldestKey);
+    this.entries.delete(oldestKey);
+    if (oldest) this.dispose(oldest.value);
   }
 }
 

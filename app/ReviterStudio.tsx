@@ -20,6 +20,7 @@ import {
   makeReport,
   meshBoundsByElement,
   outputName,
+  packMeshSurfaceOrientationSignatures,
   parseBasicFileInfoProperties,
   revitVersionFromBasicFileInfo,
   STANDARDS_READER_RANGE_LABEL,
@@ -42,6 +43,8 @@ import {
   formatBytes,
   formatNumber,
   matchesFilter,
+  propertyEvidenceLabel,
+  propertyGeometryLabel,
   propertyClipboardText,
   savedFileName,
 } from "./studio/format.ts";
@@ -275,7 +278,10 @@ export default function ReviterStudio() {
   const [comparison, setComparison] = useState<PairedRegressionResult | null>(null);
   const referenceAssistedResult = useMemo(
     () => result && comparison
-      ? applyIfcReferenceRepairs(result, comparison.referenceMeshes)
+      ? applyIfcReferenceRepairs(result, comparison.referenceMeshes, {
+          completeRampAggregateElementIds:
+            comparison.reference.completeRampAggregateElementIds,
+        })
       : null,
     [comparison, result],
   );
@@ -587,6 +593,7 @@ export default function ReviterStudio() {
         packedDisplayBounds.push(elementId, ...bounds);
       }
       const displayBounds = Float64Array.from(packedDisplayBounds);
+      const surfaceOrientationSignatures = packMeshSurfaceOrientationSignatures(result.meshes);
       worker.onerror = (event) => {
         if (requestId !== referenceRequestIdRef.current) return;
         setReferenceError(event.message || "The local IFC worker stopped unexpectedly.");
@@ -631,9 +638,14 @@ export default function ReviterStudio() {
           productionElements: result.readerDiagnostics?.productionElements ?? 0,
           typedElements: result.decoderCoverage.nativeCategorisedElements,
           displayBounds,
+          surfaceOrientationSignatures,
         },
       };
-      worker.postMessage(request, [buffer, displayBounds.buffer as ArrayBuffer]);
+      worker.postMessage(request, [
+        buffer,
+        displayBounds.buffer as ArrayBuffer,
+        surfaceOrientationSignatures.buffer as ArrayBuffer,
+      ]);
     } catch (caught) {
       if (requestId !== referenceRequestIdRef.current) return;
       setReferenceError(caught instanceof Error ? caught.message : String(caught));
@@ -717,17 +729,20 @@ export default function ReviterStudio() {
     return hidden;
   }, [hiddenCategories, isolateMapLevel, planLevelId, result]);
 
+  const activeGeometryResult = geometrySource === "reference-assisted"
+    ? referenceAssistedResult ?? result
+    : result;
   const selectedRecord = useMemo(
     () => selectedElementId == null
       ? null
-      : result?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
-    [result, selectedElementId],
+      : activeGeometryResult?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
+    [activeGeometryResult, selectedElementId],
   );
   const hoveredRecord = useMemo(
     () => hoveredElementId == null
       ? null
-      : result?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
-    [hoveredElementId, result],
+      : activeGeometryResult?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
+    [activeGeometryResult, hoveredElementId],
   );
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
 
@@ -750,38 +765,12 @@ export default function ReviterStudio() {
       {
         key: "geometry",
         label: "Geometry",
-        value: selectedRecord.renderGeometryProvenance === "native"
-          ? "Native RVT face mesh"
-          : selectedRecord.renderGeometryProvenance === "reconstructed"
-            ? selectedRecord.stairTreads?.length
-              ? "Reconstructed stair-run geometry"
-              : "Reconstructed RVT geometry"
-            : selectedRecord.renderGeometryProvenance === "boundary-clipped-proxy"
-              ? "Mullion-clipped panel proxy"
-              : selectedRecord.renderGeometryProvenance === "bounds-fallback"
-                ? "Bounds fallback"
-                : selectedRecord.renderGeometryProvenance === "not-rendered-helper"
-                  ? "Drawing aid—not rendered"
-                  : "Not classified",
+        value: propertyGeometryLabel(selectedRecord),
       },
       {
         key: "evidence",
         label: "Evidence",
-        value: selectedRecord.stairTreads?.length
-          ? selectedRecord.categorySource === "native-object"
-            ? "Native StairsRun sketch and aggregate"
-            : "Recovered stair tread sketch"
-          : selectedRecord.railPath
-            ? "Native railing path"
-            : selectedRecord.loops?.length
-              ? "Sketch boundary"
-              : selectedRecord.recordOffset >= 0
-                ? "Duplicated bounds record"
-                : selectedRecord.orientedBox
-                  ? "Placed family instance"
-                  : selectedRecord.solids?.length || selectedRecord.solid
-                    ? "Rebuilt from native surfaces"
-                    : "Native faces",
+        value: propertyEvidenceLabel(selectedRecord),
       },
       ...(selectedRecord.categoryId != null
         ? [{
@@ -1286,7 +1275,11 @@ export default function ReviterStudio() {
       {
         label: "IFC comparison",
         value: comparison
-          ? `${comparison.reference.matchedElementCount.toLocaleString()} matched · ${comparison.status}`
+          ? `${comparison.reference.matchedElementCount.toLocaleString()} matched · ${comparison.status}${
+            comparison.reference.geometricShapeDifferentElementCount
+              ? ` · ${comparison.reference.geometricShapeDifferentElementCount.toLocaleString()} shape differences`
+              : ""
+          }`
           : "Not paired",
         tone: comparison ? (comparison.status === "pass" ? "good" : "warn") : "off",
       },

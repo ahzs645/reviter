@@ -1,11 +1,43 @@
 /** Display formatting helpers for the studio shell. */
 
+import type { ElementBoundsRecord } from "../../lib/reviter/types.ts";
 import type { CanvasMenuRequest } from "./types.ts";
 
 export type PropertyTextRow = {
   label: string;
   value: string;
 };
+
+/** Describe the geometry that is actually active in the viewport. */
+export function propertyGeometryLabel(record: ElementBoundsRecord): string {
+  if (record.renderGeometryProvenance === "reference-assisted") return "Paired IFC geometry";
+  if (record.renderGeometryProvenance === "native") return "Native RVT face mesh";
+  if (record.renderGeometryProvenance === "reconstructed") {
+    return record.stairTreads?.length
+      ? "Reconstructed stair-run geometry"
+      : "Reconstructed RVT geometry";
+  }
+  if (record.renderGeometryProvenance === "boundary-clipped-proxy") return "Mullion-clipped panel proxy";
+  if (record.renderGeometryProvenance === "bounds-fallback") return "Bounds fallback";
+  if (record.renderGeometryProvenance === "not-rendered-helper") return "Drawing aid—not rendered";
+  return "Not classified";
+}
+
+/** State the strongest evidence behind the geometry currently being shown. */
+export function propertyEvidenceLabel(record: ElementBoundsRecord): string {
+  if (record.renderGeometryProvenance === "reference-assisted") return "Tagged paired IFC body";
+  if (record.stairTreads?.length) {
+    return record.categorySource === "native-object"
+      ? "Native StairsRun sketch and aggregate"
+      : "Recovered stair tread sketch";
+  }
+  if (record.railPath) return "Native railing path";
+  if (record.loops?.length) return "Sketch boundary";
+  if (record.recordOffset >= 0) return "Duplicated bounds record";
+  if (record.orientedBox) return "Placed family instance";
+  if (record.solids?.length || record.solid) return "Rebuilt from native surfaces";
+  return "Native faces";
+}
 
 /**
  * A plain-text version of the properties palette for pasting into an issue,

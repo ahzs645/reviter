@@ -72,9 +72,10 @@ export function displayMaterials(): MaterialData[] {
     // Reconstructed stair runs used to share the dark-blue railing slot. The
     // tread evidence is considerably stronger than a railing proxy, and the
     // Autodesk reference consistently presents these cast stair bodies as
-    // neutral concrete. Keep this at the end so every established fallback
-    // material index remains stable.
-    fallback("Stair display proxy", [0.46, 0.46, 0.46, 1], 0.92),
+    // dark neutral concrete. The measured UNBC value matches that appearance
+    // without borrowing geometry from the GLB. Keep this at the end so every
+    // established fallback material index remains stable.
+    fallback("Stair display proxy", [0.29, 0.29, 0.29, 1], 0.92),
   ];
 }
 
@@ -1099,15 +1100,23 @@ function solidGeometry(solid: WallSolid, origin: Vec3) {
   const ny = (dx / length) * solid.thickness * 0.5;
   const z0 = solid.baseElevation;
   const z1 = solid.topElevation;
+  const start = solid.startCorners ?? [
+    { x: solid.start.x + nx, y: solid.start.y + ny },
+    { x: solid.start.x - nx, y: solid.start.y - ny },
+  ];
+  const end = solid.endCorners ?? [
+    { x: solid.end.x + nx, y: solid.end.y + ny },
+    { x: solid.end.x - nx, y: solid.end.y - ny },
+  ];
   const points = [
-    [solid.start.x + nx, solid.start.y + ny, z0],
-    [solid.start.x - nx, solid.start.y - ny, z0],
-    [solid.end.x - nx, solid.end.y - ny, z0],
-    [solid.end.x + nx, solid.end.y + ny, z0],
-    [solid.start.x + nx, solid.start.y + ny, z1],
-    [solid.start.x - nx, solid.start.y - ny, z1],
-    [solid.end.x - nx, solid.end.y - ny, z1],
-    [solid.end.x + nx, solid.end.y + ny, z1],
+    [start[0].x, start[0].y, z0],
+    [start[1].x, start[1].y, z0],
+    [end[1].x, end[1].y, z0],
+    [end[0].x, end[0].y, z0],
+    [start[0].x, start[0].y, z1],
+    [start[1].x, start[1].y, z1],
+    [end[1].x, end[1].y, z1],
+    [end[0].x, end[0].y, z1],
   ];
   return {
     positions: points.flatMap(([x, y, z]) => [x! - origin.x, y! - origin.y, z! - origin.z]),
@@ -1237,6 +1246,10 @@ function cutSolidAroundWrappers(
       if (openingStart - cursor >= MIN_SOLID_SPAN_FEET) {
         cells.push({
           ...solid,
+          startCorners: cursor < MIN_SOLID_SPAN_FEET ? solid.startCorners : undefined,
+          endCorners: Math.abs(length - openingStart) < MIN_SOLID_SPAN_FEET
+            ? solid.endCorners
+            : undefined,
           start: {
             x: solid.start.x + ux * cursor,
             y: solid.start.y + uy * cursor,
@@ -1254,6 +1267,8 @@ function cutSolidAroundWrappers(
     if (length - cursor >= MIN_SOLID_SPAN_FEET) {
       cells.push({
         ...solid,
+        startCorners: cursor < MIN_SOLID_SPAN_FEET ? solid.startCorners : undefined,
+        endCorners: solid.endCorners,
         start: {
           x: solid.start.x + ux * cursor,
           y: solid.start.y + uy * cursor,

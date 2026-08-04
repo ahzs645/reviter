@@ -45,6 +45,18 @@ export type WallSolid = {
   baseElevation: number;
   topElevation: number;
   thickness: number;
+  /**
+   * Joined end corners, ordered as the +normal and -normal sides of the run.
+   *
+   * Revit keeps a wall's two long faces parallel but trims each end against the
+   * face of the wall it meets.  At a non-square join those two corners do not
+   * share one station along the location line, so a perpendicular-ended box
+   * cannot represent the native body.  These optional corners preserve that
+   * local trim while `start`/`end` remain the location line used for openings,
+   * picking, and properties.
+   */
+  startCorners?: [{ x: number; y: number }, { x: number; y: number }];
+  endCorners?: [{ x: number; y: number }, { x: number; y: number }];
 };
 
 function isVertical(plane: PlanePatch): boolean {

@@ -11,8 +11,29 @@ import {
   CANVAS_MENU_WIDTH,
   canvasMenuPosition,
   matchesFilter,
+  propertyEvidenceLabel,
+  propertyGeometryLabel,
   propertyClipboardText,
 } from "../app/studio/format.ts";
+
+import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
+
+const referenceAssistedRecord = {
+  elementId: 1420880,
+  stream: "Partitions/325",
+  chunkIndex: 0,
+  recordOffset: 0,
+  renderGeometryProvenance: "reference-assisted",
+  boundsFeet: {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 1, y: 1, z: 1 },
+  },
+} satisfies ElementBoundsRecord;
+
+test("properties identify tagged IFC geometry in reference-assisted mode", () => {
+  assert.equal(propertyGeometryLabel(referenceAssistedRecord), "Paired IFC geometry");
+  assert.equal(propertyEvidenceLabel(referenceAssistedRecord), "Tagged paired IFC body");
+});
 
 test("properties copy as a labelled, spreadsheet-friendly text block", () => {
   assert.equal(

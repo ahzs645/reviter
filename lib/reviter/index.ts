@@ -101,6 +101,10 @@ export { boxDifference, drawnBounds } from "./drawn-bounds";
 export type { Box } from "./drawn-bounds";
 export { meshBoundsByElement } from "./mesh-element-bounds";
 export {
+  packMeshSurfaceOrientationSignatures,
+  slopedSurfaceFraction,
+} from "./surface-orientation";
+export {
   asBytes,
   gzipOffsets,
   inflateRevitChunk,

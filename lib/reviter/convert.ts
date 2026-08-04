@@ -40,6 +40,7 @@ import {
   shrinkSolidIntoEnvelope,
   solidBelongsToEnvelope,
 } from "./solid-clip.ts";
+import { recoverWallJoinCorners } from "./wall-joins.ts";
 import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
 import { curvedWallArcFromSketch } from "./curved-wall-sketch.ts";
 import { collectTypeLinks } from "./element-types.ts";
@@ -1983,6 +1984,12 @@ export function convertRvtBytes(
             : longest);
       }
     }
+    // A non-square wall join cannot be represented by moving the location-line
+    // endpoints: its two long faces end at different stations.  Recover those
+    // two corners only where an adjacent native wall face and this wall's own
+    // real joined-body envelope independently agree.  The analytic rule is
+    // element-agnostic and leaves every centreline untouched.
+    const recoveredWallJoinEnds = recoverWallJoinCorners(elementBounds);
 
     /*
      * A stair run's own box, from the companion record filed beside it.
@@ -3055,6 +3062,7 @@ export function convertRvtBytes(
           adoptedStairBoxes,
           clippedSolids,
           extendedSolids,
+          recoveredWallJoinEnds,
           shrunkSolids,
           narrowedSolidBands,
           disownedSolids,

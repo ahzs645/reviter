@@ -112,5 +112,119 @@ test("keeps a complete RVT ramp when the IFC tag may name only its landing", () 
     matched: true,
     diffStatus: "different",
   };
-  assert.equal(applyIfcReferenceRepairs(original, [partialRamp]), original);
+  const retained = applyIfcReferenceRepairs(original, [partialRamp]);
+  assert.notEqual(retained, original);
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRampAggregateIds!], [1]);
+  assert.match(retained.warnings.at(-1) ?? "", /all six rendered aggregate extents/);
+});
+
+function tetrahedronRampModel(): ConvertResult {
+  const original = model();
+  original.meshes = [{
+    name: "complete RVT ramp aggregate",
+    positions: Float32Array.from([
+      0, 0, 0,
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+    ]),
+    indices: Uint32Array.from([
+      0, 2, 1,
+      0, 1, 3,
+      1, 2, 3,
+      2, 0, 3,
+    ]),
+    colors: Float32Array.from(Array(12).fill(1)),
+    materialIndex: 4,
+    elementIds: Uint32Array.from([1, 1, 1, 1]),
+    source: "display-proxy",
+  }];
+  original.elementBounds[0]!.categoryId = -2_000_180;
+  original.elementBounds[0]!.categoryName = "Ramps";
+  original.stats.triangleCount = 4;
+  return original;
+}
+
+function tetrahedronRampReference(xExtent = 1): ReferenceMeshData {
+  const feet = ([x, y, z]: [number, number, number]) => [
+    (10 + x) / 3.280839895,
+    (20 + y) / 3.280839895,
+    (30 + z) / 3.280839895,
+  ];
+  return {
+    name: "tagged direct IfcRamp body",
+    positions: Float32Array.from([
+      ...feet([0, 0, 0]),
+      ...feet([xExtent, 0, 0]),
+      ...feet([0, 1, 0]),
+      ...feet([0, 0, 1]),
+    ]),
+    indices: Uint32Array.from([
+      0, 2, 1,
+      0, 1, 3,
+      1, 2, 3,
+      2, 0, 3,
+    ]),
+    elementIds: Uint32Array.from([1, 1, 1, 1]),
+    color: [1, 0, 0],
+    matched: true,
+    diffStatus: "different",
+  };
+}
+
+test("replaces a direct IFC ramp body only after semantic and six-face extent parity", () => {
+  const repaired = applyIfcReferenceRepairs(
+    tetrahedronRampModel(),
+    [tetrahedronRampReference()],
+    { completeRampAggregateElementIds: Uint32Array.from([1]) },
+  );
+  assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedCompleteRampAggregateIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedRetainedRampAggregateIds!], []);
+  assert.equal(repaired.elementBounds[0]!.renderGeometryProvenance, "reference-assisted");
+  assert.match(repaired.warnings.at(-1) ?? "", /semantic completeness and six-face extent parity/);
+});
+
+test("retains a semantically direct ramp body when one aggregate extent is short", () => {
+  const retained = applyIfcReferenceRepairs(
+    tetrahedronRampModel(),
+    [tetrahedronRampReference(0.8)],
+    { completeRampAggregateElementIds: Uint32Array.from([1]) },
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRampAggregateIds!], [1]);
+});
+
+test("extent parity alone cannot certify an IFC ramp aggregate", () => {
+  const retained = applyIfcReferenceRepairs(
+    tetrahedronRampModel(),
+    [tetrahedronRampReference()],
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRampAggregateIds!], [1]);
+});
+
+test("reports a retained ramp aggregate when other IFC repairs are applied", () => {
+  const original = model();
+  original.elementBounds[1]!.categoryName = "Ramps";
+  const reference: ReferenceMeshData = {
+    name: "roof repair plus partial ramp",
+    positions: Float32Array.from([
+      11 / 3.280839895, 22 / 3.280839895, 33 / 3.280839895,
+      12 / 3.280839895, 22 / 3.280839895, 33 / 3.280839895,
+      11 / 3.280839895, 23 / 3.280839895, 33 / 3.280839895,
+      12 / 3.280839895, 22 / 3.280839895, 33 / 3.280839895,
+      13 / 3.280839895, 22 / 3.280839895, 33 / 3.280839895,
+      12 / 3.280839895, 23 / 3.280839895, 33 / 3.280839895,
+    ]),
+    indices: Uint32Array.from([0, 1, 2, 3, 4, 5]),
+    elementIds: Uint32Array.from([1, 2]),
+    color: [1, 0, 0],
+    matched: true,
+    diffStatus: "different",
+  };
+  const repaired = applyIfcReferenceRepairs(original, [reference]);
+  assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
+  assert.match(repaired.warnings.at(-1) ?? "", /ramp aggregate retained from RVT/);
 });

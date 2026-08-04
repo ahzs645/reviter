@@ -150,14 +150,24 @@ type ReferenceBounds = {
 type CachedSourceAssets = {
   root: THREE.Group;
   disposed: boolean;
+  referenceBounds: ReferenceBounds | null;
+  referenceState: ReferenceLoadState;
+  referenceLoad: Promise<void> | null;
+};
+
+/**
+ * Navigation data is a property of source geometry, not its visual style.
+ *
+ * Keeping it outside `CachedSourceAssets` means switching Technical/Shaded can
+ * replace materials and GPU roots without throwing away a several-second walk
+ * index over identical triangles.
+ */
+type CachedWalkAssets = {
   walkSurface: WalkSurfaceIndex | null;
   walkCollision: WalkCollisionIndex | null;
   walkIndexDirty: boolean;
   walkSurfaceBuildMs: number | null;
   walkCollisionBuildMs: number | null;
-  referenceBounds: ReferenceBounds | null;
-  referenceState: ReferenceLoadState;
-  referenceLoad: Promise<void> | null;
 };
 
 /** Convert a scene vector into the recovery's canonical z-up axes. */
@@ -309,6 +319,15 @@ export function ModelCanvas({
       disposeGroup(assets.root);
     }),
   );
+  const [walkAssetCache] = useState(() =>
+    // Four sources covers the fast RVT / RVT+IFC / IFC / GLB comparison loop.
+    // Overlay is less commonly walked and competes as the bounded LRU entry,
+    // rather than retaining every steep triangle from all five sources.
+    new SourceAssetCache<CachedWalkAssets>(4, () => {
+      // Walk indexes contain ordinary JS arrays/maps and no GPU resources.
+      // Releasing the last cache reference is sufficient disposal.
+    }),
+  );
   const runtimeRef = useRef<{
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -350,7 +369,11 @@ export function ModelCanvas({
   >(null);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
-  const [walkGravity, setWalkGravity] = useState(true);
+  const [walkGravity, setWalkGravity] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const parameters = new URLSearchParams(window.location.search);
+    return !(parameters.has("navigation-test") && parameters.has("walk-float"));
+  });
   // Off by default: the walkthrough is for reading the building, and gliding
   // through a closed door beats hunting for an opening. The paired reference
   // model walks this way too — it has no collision representation at all.
@@ -389,7 +412,7 @@ export function ModelCanvas({
   const markupSettingsRef = useRef(markupSettings);
   const createMarkupRef = useRef(onCreateMarkup);
   const walkSpeedRef = useRef<WalkSpeed>("normal");
-  const walkGravityRef = useRef(true);
+  const walkGravityRef = useRef(walkGravity);
   const walkCollisionRef = useRef(false);
   const selectedElementIdRef = useRef(selectedElementId);
   const matchedCameraRef = useRef<NormalizedCameraPose | null>(null);
@@ -412,7 +435,8 @@ export function ModelCanvas({
 
   useEffect(() => () => {
     sourceCache.clear();
-  }, [sourceCache]);
+    walkAssetCache.clear();
+  }, [sourceCache, walkAssetCache]);
 
   useEffect(() => {
     try {
@@ -485,6 +509,21 @@ export function ModelCanvas({
       : source === "reference-model"
         ? [result, referenceModelUrl]
         : [result, comparison];
+    const walkCacheOwners = source === "recovered" || source === "reference-assisted"
+      ? [result, hiddenElementIds]
+      : source === "reference-model"
+        ? [referenceModelUrl]
+        : source === "reference"
+          ? [comparison]
+          : [result, comparison];
+    const cachedWalkAssets = walkAssetCache.acquire(source, walkCacheOwners, () => ({
+      walkSurface: null,
+      walkCollision: null,
+      walkIndexDirty: false,
+      walkSurfaceBuildMs: null,
+      walkCollisionBuildMs: null,
+    }));
+    const walkAssets = cachedWalkAssets.value;
     const cachedSource = sourceCache.acquire(cacheKey, cacheOwners, () => ({
       root: isReferenceModel
         ? new THREE.Group()
@@ -499,11 +538,6 @@ export function ModelCanvas({
             ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
             : meshGroup(result, renderMode, hiddenElementIds, reverseDepthBuffer),
       disposed: false,
-      walkSurface: null,
-      walkCollision: null,
-      walkIndexDirty: false,
-      walkSurfaceBuildMs: null,
-      walkCollisionBuildMs: null,
       referenceBounds: null,
       referenceState: "idle",
       referenceLoad: null,
@@ -511,6 +545,7 @@ export function ModelCanvas({
     const sourceAssets = cachedSource.value;
     const root = sourceAssets.root;
     canvas.dataset.sceneCache = cachedSource.hit ? "hit" : "miss";
+    canvas.dataset.walkAssetCache = cachedWalkAssets.hit ? "hit" : "miss";
     if (isReferenceModel) referenceBoundsRef.current = sourceAssets.referenceBounds;
     // A paired reference's extent is measured when it arrives, not declared.
     // Until then the recovery's own bounds frame the empty scene, which is the
@@ -604,6 +639,10 @@ export function ModelCanvas({
     const applyMatchedCamera = (): boolean => {
       const matched = matchedCameraRef.current;
       if (!matched) return false;
+      if (navigationTest) {
+        canvas.dataset.cameraHandoffApplied = matched.position.toArray()
+          .map((value) => value.toFixed(7)).join(",");
+      }
       const position = sceneCameraVector(
         matched.position.clone().multiplyScalar(radius),
         up,
@@ -623,6 +662,38 @@ export function ModelCanvas({
     // already has trustworthy bounds, so a camera handed off from the GLB can
     // be placed immediately.
     if (!isReferenceModel) applyMatchedCamera();
+
+    // Visual navigation tests need to revisit a defect at an exact model
+    // coordinate, not approximate it with a sequence of viewport drags. Keep
+    // this hook behind the existing navigation-test flag and express the pose
+    // in model feet so the same URL remains meaningful as scene origins move.
+    if (navigationTest && !isReferenceModel && matchedCameraRef.current == null) {
+      const parameters = new URLSearchParams(window.location.search);
+      const parsePoint = (name: string): Point3Tuple | null => {
+        const values = parameters.get(name)?.split(",").map(Number);
+        return values?.length === 3 && values.every(Number.isFinite)
+          ? values as Point3Tuple
+          : null;
+      };
+      const modelPosition = parsePoint("camera-position-feet");
+      const modelTarget = parsePoint("camera-target-feet");
+      const scenePosition = modelPosition && modelFeetToScenePoint(
+        modelPosition,
+        source,
+        [result.origin.x, result.origin.y, result.origin.z],
+      );
+      const sceneTarget = modelTarget && modelFeetToScenePoint(
+        modelTarget,
+        source,
+        [result.origin.x, result.origin.y, result.origin.z],
+      );
+      if (scenePosition && sceneTarget) {
+        camera.position.set(...scenePosition);
+        controls.target.set(...sceneTarget);
+        camera.lookAt(controls.target);
+        controls.update();
+      }
+    }
 
     const raycaster = new THREE.Raycaster();
     const floorRaycaster = new THREE.Raycaster();
@@ -671,7 +742,7 @@ export function ModelCanvas({
     const downVector = upVector.clone().negate();
     let active = true;
     let referenceWalkSurface: WalkSurfaceIndex | null = isReferenceModel
-      ? sourceAssets.walkSurface
+      ? walkAssets.walkSurface
       : null;
     // Spatial indexes for first-person walking over recovered geometry; built
     // on walk entry, and rebuilt when something has moved the meshes since.
@@ -680,10 +751,10 @@ export function ModelCanvas({
     // which is where the first-person lag came from.
     let recoveredWalkSurface: WalkSurfaceIndex | null = isReferenceModel
       ? null
-      : sourceAssets.walkSurface;
+      : walkAssets.walkSurface;
     let recoveredWalkCollision: WalkCollisionIndex | null = isReferenceModel
       ? null
-      : sourceAssets.walkCollision;
+      : walkAssets.walkCollision;
     let walkIndexBuild: Promise<void> | null = null;
     let collisionIndexBuild: Promise<void> | null = null;
     let walkIndexBuildVersion = 0;
@@ -703,11 +774,11 @@ export function ModelCanvas({
       ? "ready"
       : recoveredWalkSurface || referenceWalkSurface ? "surface-ready" : "idle";
     if (!isReferenceModel) delete canvas.dataset.referenceCache;
-    if (sourceAssets.walkSurfaceBuildMs != null) {
-      canvas.dataset.walkIndexBuildMs = sourceAssets.walkSurfaceBuildMs.toFixed(1);
+    if (walkAssets.walkSurfaceBuildMs != null) {
+      canvas.dataset.walkIndexBuildMs = walkAssets.walkSurfaceBuildMs.toFixed(1);
     } else delete canvas.dataset.walkIndexBuildMs;
-    if (sourceAssets.walkCollisionBuildMs != null) {
-      canvas.dataset.walkCollisionBuildMs = sourceAssets.walkCollisionBuildMs.toFixed(1);
+    if (walkAssets.walkCollisionBuildMs != null) {
+      canvas.dataset.walkCollisionBuildMs = walkAssets.walkCollisionBuildMs.toFixed(1);
     } else delete canvas.dataset.walkCollisionBuildMs;
     const waitForIdleSlice = () => new Promise<void>((resolve) => {
       if (typeof window.requestIdleCallback === "function") {
@@ -754,7 +825,7 @@ export function ModelCanvas({
             if (!active
               || buildVersion !== walkIndexBuildVersion
               || collisionBuildVersion !== collisionIndexBuildVersion
-              || sourceAssets.walkIndexDirty) return;
+              || walkAssets.walkIndexDirty) return;
             collision.addGeometry(job.geometry, job.matrix, {
               startTriangle,
               triangleCount: Math.min(WALK_INDEX_CHUNK_TRIANGLES, job.triangleCount - startTriangle),
@@ -764,11 +835,11 @@ export function ModelCanvas({
         if (!active
           || buildVersion !== walkIndexBuildVersion
           || collisionBuildVersion !== collisionIndexBuildVersion
-          || sourceAssets.walkIndexDirty) return;
+          || walkAssets.walkIndexDirty) return;
         recoveredWalkCollision = collision;
-        sourceAssets.walkCollision = collision;
-        sourceAssets.walkCollisionBuildMs = performance.now() - collisionStartedAt;
-        canvas.dataset.walkCollisionBuildMs = sourceAssets.walkCollisionBuildMs.toFixed(1);
+        walkAssets.walkCollision = collision;
+        walkAssets.walkCollisionBuildMs = performance.now() - collisionStartedAt;
+        canvas.dataset.walkCollisionBuildMs = walkAssets.walkCollisionBuildMs.toFixed(1);
         canvas.dataset.walkCollisionCache = "ready";
         canvas.dataset.walkIndexState = "ready";
       })().catch(() => {
@@ -782,7 +853,7 @@ export function ModelCanvas({
     };
     const prepareWalkIndexes = (): Promise<void> => {
       if (isReferenceModel) return Promise.resolve();
-      if (recoveredWalkSurface && !sourceAssets.walkIndexDirty) {
+      if (recoveredWalkSurface && !walkAssets.walkIndexDirty) {
         canvas.dataset.walkSurfaceCache = "hit";
         canvas.dataset.walkIndexState = recoveredWalkCollision ? "ready" : "surface-ready";
         if (!recoveredWalkCollision && !collisionIndexBuild) {
@@ -800,9 +871,9 @@ export function ModelCanvas({
           const runtime = runtimeRef.current;
           if (!runtime) return;
           runtime.walkIndexDirty = false;
-          sourceAssets.walkIndexDirty = false;
+          walkAssets.walkIndexDirty = false;
           recoveredWalkCollision = null;
-          sourceAssets.walkCollision = null;
+          walkAssets.walkCollision = null;
           const jobs = walkGeometryJobs();
           const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
           const startedAt = performance.now();
@@ -823,11 +894,11 @@ export function ModelCanvas({
               surface.addGeometry(job.geometry, job.matrix, range);
             }
           }
-          if (runtime.walkIndexDirty || sourceAssets.walkIndexDirty) continue;
+          if (runtime.walkIndexDirty || walkAssets.walkIndexDirty) continue;
           recoveredWalkSurface = surface;
-          sourceAssets.walkSurface = surface;
-          sourceAssets.walkSurfaceBuildMs = performance.now() - startedAt;
-          canvas.dataset.walkIndexBuildMs = sourceAssets.walkSurfaceBuildMs.toFixed(1);
+          walkAssets.walkSurface = surface;
+          walkAssets.walkSurfaceBuildMs = performance.now() - startedAt;
+          canvas.dataset.walkIndexBuildMs = walkAssets.walkSurfaceBuildMs.toFixed(1);
           canvas.dataset.walkSurfaceCache = "ready";
           canvas.dataset.walkIndexState = "surface-ready";
           // Ghost is the default and needs only the floor index. Solid is beta,
@@ -1314,13 +1385,13 @@ export function ModelCanvas({
       surfaceFloorAt,
       resolveMovement: resolveWalkMovement,
       prepareWalkIndexes,
-      walkIndexDirty: sourceAssets.walkIndexDirty,
+      walkIndexDirty: walkAssets.walkIndexDirty,
       invalidateWalkIndexes: () => {
         const runtime = runtimeRef.current;
         if (runtime) runtime.walkIndexDirty = true;
-        sourceAssets.walkIndexDirty = true;
-        sourceAssets.walkSurface = null;
-        sourceAssets.walkCollision = null;
+        walkAssets.walkIndexDirty = true;
+        walkAssets.walkSurface = null;
+        walkAssets.walkCollision = null;
         recoveredWalkSurface = null;
         recoveredWalkCollision = null;
         collisionIndexBuildVersion += 1;
@@ -1391,7 +1462,7 @@ export function ModelCanvas({
         camera.updateProjectionMatrix();
         controls.target.copy(home.target);
         controls.update();
-        referenceWalkSurface = sourceAssets.walkSurface;
+        referenceWalkSurface = walkAssets.walkSurface;
         refreshInteractionMeshes();
         const runtime = runtimeRef.current;
         if (runtime) {
@@ -1425,7 +1496,7 @@ export function ModelCanvas({
             return;
           }
           sourceAssets.referenceBounds = measured;
-          sourceAssets.walkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
+          walkAssets.walkSurface = batchedScene.userData.walkSurface as WalkSurfaceIndex;
           sourceAssets.root.add(batchedScene);
           sourceAssets.referenceState = "ready";
         }).catch(() => {
@@ -1523,13 +1594,18 @@ export function ModelCanvas({
       // Carry a normalized camera between the feet/z-up recovery and the
       // metres/y-up GLB. First-person controls do not maintain OrbitControls'
       // target, so derive a target from the live look direction while walking.
-      const cameraTarget = walkRef.current
+      // The Walk effect can dispose its controller before this source-scene
+      // cleanup runs. `walkingRef` is the stable UI state; consulting only the
+      // controller ref in that race mistakes the stale Orbit target for the
+      // live look direction and sends the next source to another wing.
+      const walkingAtCleanup = walkingRef.current;
+      const cameraTarget = walkingAtCleanup
         ? camera.position.clone().addScaledVector(
             camera.getWorldDirection(new THREE.Vector3()),
             radius * 0.25,
           )
         : controls.target.clone();
-      walkCameraHandoffPendingRef.current = Boolean(walkRef.current);
+      walkCameraHandoffPendingRef.current = walkingAtCleanup;
       matchedCameraRef.current = {
         position: canonicalCameraVector(camera.position.clone().sub(center), up)
           .divideScalar(radius),
@@ -1537,6 +1613,10 @@ export function ModelCanvas({
           .divideScalar(radius),
         up: canonicalCameraVector(camera.up, up).normalize(),
       };
+      if (navigationTest) {
+        canvas.dataset.cameraHandoffCaptured = matchedCameraRef.current.position.toArray()
+          .map((value) => value.toFixed(7)).join(",");
+      }
       observer.disconnect();
       cancelAnimationFrame(resizeFrame);
       canvas.removeEventListener("pointerdown", handlePointerDown);
@@ -1559,7 +1639,7 @@ export function ModelCanvas({
         applyExplode(runtimeRef.current.explodeParts, 0);
         runtimeRef.current.invalidateWalkIndexes();
       }
-      sourceAssets.walkIndexDirty ||= runtimeRef.current?.walkIndexDirty ?? false;
+      walkAssets.walkIndexDirty ||= runtimeRef.current?.walkIndexDirty ?? false;
       root.removeFromParent();
       if (runtimeRef.current?.sectionHelper) disposeGroup(runtimeRef.current.sectionHelper);
       disposeMeasurementScene(scene, measurement);
@@ -1567,7 +1647,7 @@ export function ModelCanvas({
       runtimeRef.current = null;
       renderer.dispose();
     };
-  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, renderMode, result, source, sourceCache]);
+  }, [comparison, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, renderMode, result, source, sourceCache, walkAssetCache]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -1789,32 +1869,60 @@ export function ModelCanvas({
       // a double-click or “Walk from here” supplies an exact floor point.
       const resumeFromMatchedEye = walkCameraHandoffPendingRef.current;
       walkCameraHandoffPendingRef.current = false;
+      const navigationTestFloat = !pickedStart && !resumeFromMatchedEye &&
+        !walkGravityRef.current &&
+        new URLSearchParams(window.location.search).has("navigation-test") &&
+        new URLSearchParams(window.location.search).has("walk-float");
+      // Float is a free camera. A source change must preserve both its exact
+      // eye height and pitch; snapping to a floor and flattening the forward
+      // vector made an RVT -> GLB comparison land at a different elevation and
+      // look past the selected facade even though the normalized handoff pose
+      // itself was correct.
+      const preserveFloatingEye = !walkGravityRef.current &&
+        (resumeFromMatchedEye || navigationTestFloat);
       const start = pickedStart
         ?? (resumeFromMatchedEye
           ? runtime.camera.position.clone()
-          : runtime.controls.target.clone());
+          : navigationTestFloat
+            ? runtime.camera.position.clone()
+            : runtime.controls.target.clone());
+      if (new URLSearchParams(window.location.search).has("navigation-test")) {
+        canvas.dataset.walkStartMode = pickedStart
+          ? "picked"
+          : resumeFromMatchedEye
+            ? "matched-eye"
+            : navigationTestFloat
+              ? "test-float"
+              : "orbit-target";
+        canvas.dataset.walkStartPosition = start.toArray()
+          .map((value) => value.toFixed(7)).join(",");
+      }
       let nearbyFloor = pickedStart
         ? (runtime.up === "y" ? pickedStart.y : pickedStart.z)
         : resumeFromMatchedEye
           ? (runtime.up === "y" ? start.y : start.z) - eyeHeight
           : null;
-      if (nearbyFloor == null) {
+      if (!preserveFloatingEye && nearbyFloor == null) {
         const targetProbe = start.clone();
         if (runtime.up === "y") targetProbe.y = runtime.bounds.max.y + eyeHeight;
         else targetProbe.z = runtime.bounds.max.z + eyeHeight;
         nearbyFloor = runtime.surfaceFloorAt(targetProbe, runtime.radius * 4);
       }
-      if (nearbyFloor == null) {
+      if (!preserveFloatingEye && nearbyFloor == null) {
         const cameraProbe = runtime.camera.position.clone();
         nearbyFloor = runtime.surfaceFloorAt(cameraProbe, runtime.radius * 4);
         if (nearbyFloor != null) start.copy(cameraProbe);
       }
-      const eye = (nearbyFloor ?? runtime.floor) + eyeHeight;
-      if (runtime.up === "y") start.y = eye;
-      else start.z = eye;
+      if (!preserveFloatingEye) {
+        const eye = (nearbyFloor ?? runtime.floor) + eyeHeight;
+        if (runtime.up === "y") start.y = eye;
+        else start.z = eye;
+      }
       const forward = runtime.camera.getWorldDirection(new THREE.Vector3());
-      if (runtime.up === "y") forward.y = 0;
-      else forward.z = 0;
+      if (!preserveFloatingEye) {
+        if (runtime.up === "y") forward.y = 0;
+        else forward.z = 0;
+      }
       if (forward.lengthSq() < 1e-6) forward.set(1, 0, 0);
       const lookAt = start.clone().addScaledVector(forward.normalize(), runtime.radius * 0.25);
 

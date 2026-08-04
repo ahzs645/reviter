@@ -520,9 +520,11 @@ export function createWalkControls(
       velocity[up] = 0;
     }
 
-    // Keep the walker above the model baseline even when no surface was hit.
+    // Walk mode keeps an eye above the model baseline when no surface was hit.
+    // Float is deliberately unconstrained: source handoff and Q-down both need
+    // to preserve a viewpoint below another source's nominal floor.
     height = up === "y" ? camera.position.y : camera.position.z;
-    if (height < options.floor) {
+    if (gravity && height < options.floor) {
       if (up === "y") camera.position.y = options.floor;
       else camera.position.z = options.floor;
       if (velocity[up] < 0) velocity[up] = 0;

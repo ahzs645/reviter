@@ -80,6 +80,8 @@ type VoxelCollection = {
   [Symbol.iterator](): Iterator<number>;
 };
 
+type VoxelAccumulator = { add(index: number): void };
+
 export type SurfaceOrientation =
   | "horizontalUp"
   | "horizontalDown"
@@ -89,8 +91,16 @@ export type SurfaceOrientation =
 
 export type ResidualDisposition =
   | "retainedNativeGlazingShell"
+  | "retainedCertifiedNativeSurface"
   | "retainedClosedStairRun"
   | "review";
+
+export type ResidualVerticalBand =
+  | "none"
+  | "full-height"
+  | "top-edge"
+  | "bottom-edge"
+  | "interior";
 
 const SURFACE_ORIENTATIONS: readonly SurfaceOrientation[] = [
   "horizontalUp",
@@ -142,6 +152,9 @@ export function residualDisposition(
   ) {
     return "retainedNativeGlazingShell";
   }
+  if (meshLabel.startsWith("Certified native BRep")) {
+    return "retainedCertifiedNativeSurface";
+  }
   return "review";
 }
 
@@ -167,6 +180,26 @@ class VoxelBitmap implements VoxelCollection {
     for (let index = 0; index < this.bits.length; index += 1) {
       if (this.bits[index]) yield index;
     }
+  }
+}
+
+class SparseVoxelSet implements VoxelCollection {
+  readonly indices = new Set<number>();
+
+  get size() {
+    return this.indices.size;
+  }
+
+  add(index: number) {
+    this.indices.add(index);
+  }
+
+  has(index: number) {
+    return this.indices.has(index);
+  }
+
+  [Symbol.iterator](): Iterator<number> {
+    return this.indices.values();
   }
 }
 
@@ -417,7 +450,7 @@ function transformPosition(
 }
 
 function addTriangleSamples(
-  voxels: VoxelBitmap,
+  voxels: VoxelAccumulator,
   grid: VoxelGrid,
   a: THREE.Vector3,
   b: THREE.Vector3,
@@ -454,7 +487,7 @@ function samplePrimitive(
   matrix: THREE.Matrix4,
   registration: Registration,
   grid: VoxelGrid,
-  voxels: VoxelBitmap,
+  voxels: VoxelAccumulator,
   orientationBits?: Uint8Array,
 ) {
   const vertices = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] as const;
@@ -560,8 +593,9 @@ function recoveredResidualsByMesh(
   const dispositionBits = new Uint8Array(length);
   const dispositionMask: Record<ResidualDisposition, number> = {
     retainedNativeGlazingShell: 1 << 0,
-    retainedClosedStairRun: 1 << 1,
-    review: 1 << 2,
+    retainedCertifiedNativeSurface: 1 << 1,
+    retainedClosedStairRun: 1 << 2,
+    review: 1 << 3,
   };
   const meshes = sceneInstances(parsed).map(({ primitive, matrix, label, material }) => {
     const voxels = new VoxelBitmap(length);
@@ -597,6 +631,7 @@ function recoveredResidualsByMesh(
   }).sort((left, right) => right.recoveredOnly - left.recoveredOnly);
   const summary = {
     retainedNativeGlazingShell: 0,
+    retainedCertifiedNativeSurface: 0,
     retainedClosedStairRun: 0,
     mixedRetainedDetail: 0,
     review: 0,
@@ -608,18 +643,85 @@ function recoveredResidualsByMesh(
     if (bits & dispositionMask.review) {
       summary.review += 1;
       reviewRecoveredOnlyIndices.push(index);
-    } else if (
-      (bits & dispositionMask.retainedNativeGlazingShell) &&
-      (bits & dispositionMask.retainedClosedStairRun)
-    ) {
+    } else if ([
+      dispositionMask.retainedNativeGlazingShell,
+      dispositionMask.retainedCertifiedNativeSurface,
+      dispositionMask.retainedClosedStairRun,
+    ].filter((mask) => bits & mask).length > 1) {
       summary.mixedRetainedDetail += 1;
     } else if (bits & dispositionMask.retainedNativeGlazingShell) {
       summary.retainedNativeGlazingShell += 1;
+    } else if (bits & dispositionMask.retainedCertifiedNativeSurface) {
+      summary.retainedCertifiedNativeSurface += 1;
     } else if (bits & dispositionMask.retainedClosedStairRun) {
       summary.retainedClosedStairRun += 1;
     }
   }
   return { meshes, summary, reviewRecoveredOnlyIndices };
+}
+
+function referenceResidualsByMesh(
+  parsed: ParsedGlb,
+  registration: Registration,
+  grid: VoxelGrid,
+  recovered: VoxelCollection,
+) {
+  return sceneInstances(parsed).map(({ primitive, matrix, label, material }) => {
+    const voxels = new SparseVoxelSet();
+    samplePrimitive(parsed, primitive, matrix, registration, grid, voxels);
+    let referenceOnly = 0;
+    const sampledBounds: Bounds = {
+      min: [Infinity, Infinity, Infinity],
+      max: [-Infinity, -Infinity, -Infinity],
+    };
+    const bounds: Bounds = {
+      min: [Infinity, Infinity, Infinity],
+      max: [-Infinity, -Infinity, -Infinity],
+    };
+    for (const index of voxels) {
+      const [x, y, z] = voxelCenter(grid, index);
+      expand(sampledBounds, x, y, z);
+      const isReferenceOnly = !hasNeighbour(recovered, grid, index);
+      if (isReferenceOnly) {
+        referenceOnly += 1;
+        expand(bounds, x, y, z);
+      }
+    }
+    return {
+      mesh: label,
+      material: material?.name ?? null,
+      baseColorFactor: material?.pbrMetallicRoughness?.baseColorFactor ?? null,
+      voxels: voxels.size,
+      boundsMetres: voxels.size ? sampledBounds : null,
+      referenceOnly,
+      referenceOnlyShare: voxels.size ? referenceOnly / voxels.size : 0,
+      referenceOnlyBoundsMetres: referenceOnly ? bounds : null,
+      referenceOnlyVerticalBand: residualVerticalBand(
+        voxels.size ? sampledBounds : null,
+        referenceOnly ? bounds : null,
+        grid.cellMetres,
+      ),
+    };
+  }).sort((left, right) => right.referenceOnly - left.referenceOnly);
+}
+
+/**
+ * Describe where a reference-only residual sits in a Y-up mesh. This prevents
+ * an interior opening/join residual from being reported as a missing roof or
+ * parapet merely because it appears near a silhouette in one camera view.
+ */
+export function residualVerticalBand(
+  meshBounds: Bounds | null,
+  residualBounds: Bounds | null,
+  toleranceMetres = 0,
+): ResidualVerticalBand {
+  if (!meshBounds || !residualBounds) return "none";
+  const touchesBottom = residualBounds.min[1] <= meshBounds.min[1] + toleranceMetres;
+  const touchesTop = residualBounds.max[1] >= meshBounds.max[1] - toleranceMetres;
+  if (touchesBottom && touchesTop) return "full-height";
+  if (touchesTop) return "top-edge";
+  if (touchesBottom) return "bottom-edge";
+  return "interior";
 }
 
 export function renderDiffSvg(diff: SurfaceDiff, grid: VoxelGrid): string {
@@ -692,6 +794,12 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
     grid,
     referenceVoxels,
   );
+  const referenceResiduals = referenceResidualsByMesh(
+    reference,
+    identity,
+    grid,
+    recoveredVoxels,
+  );
   return {
     schemaVersion: 1,
     generatedBy: "scripts/glb-surface-diff.ts",
@@ -711,13 +819,16 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
       meaning: {
         retainedNativeGlazingShell:
           "Native transparent pane thickness/back/edge surfaces absent from the optimized visual-reference GLB; retained.",
+        retainedCertifiedNativeSurface:
+          "Certified native RVT BRep surface absent from the optimized visual-reference GLB; retained unless paired IFC evidence contradicts it.",
         retainedClosedStairRun:
           "Closed tread/riser surfaces reconstructed from native StairsRun evidence but simplified by the visual-reference GLB; retained.",
         review:
-          "Recovered-only surface not explained by the two conservative retained-detail rules.",
+          "Recovered-only surface not explained by the conservative retained-evidence rules.",
       },
     },
     recoveredOnlyByMesh: recoveredResiduals.meshes,
+    referenceOnlyByMesh: referenceResiduals,
     reviewRecoveredOnlyIndices: recoveredResiduals.reviewRecoveredOnlyIndices,
     grid,
   };

@@ -190,11 +190,17 @@ export function drawnBounds(record: ElementBoundsRecord): Box {
       const length = Math.hypot(dx, dy) || 1;
       const nx = (-dy / length) * solid.thickness * 0.5;
       const ny = (dx / length) * solid.thickness * 0.5;
-      for (const end of [solid.start, solid.end]) {
-        for (const sign of [1, -1]) {
-          add(end.x + nx * sign, end.y + ny * sign, solid.baseElevation);
-          add(end.x + nx * sign, end.y + ny * sign, solid.topElevation);
-        }
+      const start = solid.startCorners ?? [
+        { x: solid.start.x + nx, y: solid.start.y + ny },
+        { x: solid.start.x - nx, y: solid.start.y - ny },
+      ];
+      const end = solid.endCorners ?? [
+        { x: solid.end.x + nx, y: solid.end.y + ny },
+        { x: solid.end.x - nx, y: solid.end.y - ny },
+      ];
+      for (const corner of [...start, ...end]) {
+        add(corner.x, corner.y, solid.baseElevation);
+        add(corner.x, corner.y, solid.topElevation);
       }
     }
     return box;

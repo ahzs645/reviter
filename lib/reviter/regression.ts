@@ -92,12 +92,17 @@ export function compareRvtToIfc(
   const geometricAligned = reference.geometricAlignedElementCount ?? 0;
   if (geometricCompared > 0) {
     const geometricAgreement = geometricAligned / geometricCompared;
+    const shapeDifferences = reference.geometricShapeDifferentElementCount ?? 0;
+    const shapeDifferenceIds = [...(reference.geometricShapeDifferentElementIds ?? [])];
+    const shapeDifferenceEvidence = shapeDifferences
+      ? `; ${shapeDifferences.toLocaleString()} additional bounds-aligned element${shapeDifferences === 1 ? "" : "s"} contain a material slope difference${shapeDifferenceIds.length ? ` (${shapeDifferenceIds.join(", ")})` : ""}`
+      : "";
     gates.push({
       id: "geometry",
       label: "Visible geometry",
       status: geometricAgreement >= 0.9 ? "pass" : geometricAgreement >= 0.5 ? "warn" : "fail",
       value: percent(geometricAgreement),
-      detail: `${geometricAligned.toLocaleString()} of ${geometricCompared.toLocaleString()} matched elements agree within ${(reference.geometryToleranceFeet ?? 0.5).toFixed(1)} ft for both centre and size.`,
+      detail: `${geometricAligned.toLocaleString()} of ${geometricCompared.toLocaleString()} matched elements agree within ${(reference.geometryToleranceFeet ?? 0.5).toFixed(1)} ft for centre and size${shapeDifferenceEvidence}.`,
     });
   }
   const status = overallStatus(gates);

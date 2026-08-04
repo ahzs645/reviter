@@ -4,6 +4,13 @@ import { IfcAPI } from "web-ifc";
 
 import { boxDifference, type Box } from "./drawn-bounds";
 import { compareRvtToIfc } from "./regression";
+import {
+  addSurfaceTriangle,
+  emptySurfaceOrientationTotals,
+  hasMaterialSlopeDifference,
+  unpackSurfaceOrientationSignatures,
+  type SurfaceOrientationTotals,
+} from "./surface-orientation";
 import type {
   IfcElementTypeMatch,
   IfcMatchedElement,
@@ -128,6 +135,16 @@ function scalar(value: unknown): string {
   return value == null ? "" : String(value);
 }
 
+function expressReference(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const candidate of [record.value, record.expressID, record.expressId]) {
+    if (typeof candidate === "number" && Number.isSafeInteger(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function transformPoint(matrix: Array<number>, x: number, y: number, z: number): Vec3 {
   return {
     x: matrix[0]! * x + matrix[4]! * y + matrix[8]! * z + matrix[12]!,
@@ -196,6 +213,7 @@ export async function analyzeIfcReference(
     );
     const matchedExpressIds = new Set<number>();
     const revitIdByExpressId = new Map<number, number>();
+    const ifcTypeByExpressId = new Map<number, string>();
     const elementTypes: IfcElementTypeMatch[] = [];
     const matchedSamples: IfcMatchedElement[] = [];
     let elementCount = 0;
@@ -204,6 +222,18 @@ export async function analyzeIfcReference(
     let storeyCount = 0;
 
     const types = api.GetAllTypesOfModel(modelId);
+    const aggregateParentExpressIds = new Set<number>();
+    const aggregateRelationType = types.find(
+      (type) => type.typeName.toUpperCase() === "IFCRELAGGREGATES",
+    );
+    if (aggregateRelationType) {
+      const relationIds = api.GetLineIDsWithType(modelId, aggregateRelationType.typeID);
+      for (let index = 0; index < relationIds.size(); index += 1) {
+        const relation = api.GetLine(modelId, relationIds.get(index)) as Record<string, unknown>;
+        const parent = expressReference(relation.RelatingObject);
+        if (parent != null) aggregateParentExpressIds.add(parent);
+      }
+    }
     const storeyType = types.find((type) => type.typeName.toUpperCase() === "IFCBUILDINGSTOREY");
     if (storeyType) storeyCount = api.GetLineIDsWithType(modelId, storeyType.typeID).size();
 
@@ -219,6 +249,7 @@ export async function analyzeIfcReference(
       elementCount += ids.size();
       for (let index = 0; index < ids.size(); index += 1) {
         const expressId = ids.get(index);
+        ifcTypeByExpressId.set(expressId, type.typeName.toUpperCase());
         const line = api.GetLine(modelId, expressId) as Record<string, unknown>;
         const rawTag = scalar(line.Tag).trim();
         if (!/^\d+$/.test(rawTag)) continue;
@@ -283,6 +314,7 @@ export async function analyzeIfcReference(
     const max: Vec3 = { x: -Infinity, y: -Infinity, z: -Infinity };
     const geometryExpressIds = new Set<number>();
     const truthBoundsByElement = new Map<number, Box>();
+    const truthSurfaceOrientationsByElement = new Map<number, SurfaceOrientationTotals>();
     let geometryProducts = 0;
     let placedGeometries = 0;
     let vertexCount = 0;
@@ -291,6 +323,7 @@ export async function analyzeIfcReference(
     api.StreamAllMeshes(modelId, (mesh, index, total) => {
       geometryProducts += 1;
       geometryExpressIds.add(mesh.expressID);
+      const revitElementId = revitIdByExpressId.get(mesh.expressID);
       for (let placementIndex = 0; placementIndex < mesh.geometries.size(); placementIndex += 1) {
         const placed = mesh.geometries.get(placementIndex);
         const geometry = api.GetGeometry(modelId, placed.geometryExpressID);
@@ -299,6 +332,9 @@ export async function analyzeIfcReference(
         placedGeometries += 1;
         vertexCount += vertices.length / 6;
         triangleCount += indices.length / 3;
+        const displayPoints = revitElementId == null
+          ? null
+          : new Float64Array((vertices.length / 6) * 3);
         for (let vertex = 0; vertex + 2 < vertices.length; vertex += 6) {
           const point = transformPoint(
             placed.flatTransformation,
@@ -312,7 +348,6 @@ export async function analyzeIfcReference(
           max.x = Math.max(max.x, point.x);
           max.y = Math.max(max.y, point.y);
           max.z = Math.max(max.z, point.z);
-          const revitElementId = revitIdByExpressId.get(mesh.expressID);
           if (revitElementId != null) {
             let truthBox = truthBoundsByElement.get(revitElementId);
             if (!truthBox) {
@@ -326,7 +361,27 @@ export async function analyzeIfcReference(
               -point.z * FEET_PER_METRE,
               point.y * FEET_PER_METRE,
             );
+            const displayOffset = (vertex / 6) * 3;
+            displayPoints![displayOffset] = point.x * FEET_PER_METRE;
+            displayPoints![displayOffset + 1] = -point.z * FEET_PER_METRE;
+            displayPoints![displayOffset + 2] = point.y * FEET_PER_METRE;
           }
+        }
+        if (revitElementId != null && displayPoints) {
+          const totals = truthSurfaceOrientationsByElement.get(revitElementId)
+            ?? emptySurfaceOrientationTotals();
+          for (let triangle = 0; triangle + 2 < indices.length; triangle += 3) {
+            const a = indices[triangle]! * 3;
+            const b = indices[triangle + 1]! * 3;
+            const c = indices[triangle + 2]! * 3;
+            addSurfaceTriangle(
+              totals,
+              { x: displayPoints[a]!, y: displayPoints[a + 1]!, z: displayPoints[a + 2]! },
+              { x: displayPoints[b]!, y: displayPoints[b + 1]!, z: displayPoints[b + 2]! },
+              { x: displayPoints[c]!, y: displayPoints[c + 1]!, z: displayPoints[c + 2]! },
+            );
+          }
+          truthSurfaceOrientationsByElement.set(revitElementId, totals);
         }
         geometry.delete();
       }
@@ -340,10 +395,15 @@ export async function analyzeIfcReference(
     });
 
     const rvtDisplayBounds = displayBoundsByElement(rvt.displayBounds);
+    const rvtSurfaceOrientationsByElement = unpackSurfaceOrientationSignatures(
+      rvt.surfaceOrientationSignatures,
+    );
     const diffStatusByElement = new Map<number, ReferenceMeshData["diffStatus"]>();
     let geometricComparedElementCount = 0;
     let geometricAlignedElementCount = 0;
     let geometricDifferentElementCount = 0;
+    let geometricShapeDifferentElementCount = 0;
+    const geometricShapeDifferentElementIds: number[] = [];
     for (const [elementId, truthBox] of truthBoundsByElement) {
       geometricComparedElementCount += 1;
       const recoveredBox = rvtDisplayBounds.get(elementId);
@@ -353,12 +413,23 @@ export async function analyzeIfcReference(
         continue;
       }
       const difference = boxDifference(recoveredBox, truthBox);
-      const aligned =
+      const boundsAligned =
         difference.centreErrorFeet < GEOMETRY_TOLERANCE_FEET &&
         difference.sizeErrorFeet < GEOMETRY_TOLERANCE_FEET;
+      const shapeDifferent = boundsAligned && hasMaterialSlopeDifference(
+        rvtSurfaceOrientationsByElement.get(elementId),
+        truthSurfaceOrientationsByElement.get(elementId),
+      );
+      const aligned = boundsAligned && !shapeDifferent;
       diffStatusByElement.set(elementId, aligned ? "aligned" : "different");
       if (aligned) geometricAlignedElementCount += 1;
-      else geometricDifferentElementCount += 1;
+      else {
+        geometricDifferentElementCount += 1;
+        if (shapeDifferent) {
+          geometricShapeDifferentElementCount += 1;
+          geometricShapeDifferentElementIds.push(elementId);
+        }
+      }
     }
 
     const referenceMeshes: ReferenceMeshData[] = [];
@@ -409,6 +480,14 @@ export async function analyzeIfcReference(
 
     for (const sample of matchedSamples) sample.hasGeometry = geometryExpressIds.has(sample.expressId);
     const matchedGeometryProducts = [...matchedExpressIds].filter((id) => geometryExpressIds.has(id)).length;
+    const completeRampAggregateElementIds = [...new Set(
+      [...revitIdByExpressId]
+        .filter(([expressId]) =>
+          ifcTypeByExpressId.get(expressId) === "IFCRAMP" &&
+          geometryExpressIds.has(expressId) &&
+          !aggregateParentExpressIds.has(expressId))
+        .map(([, elementId]) => elementId),
+    )].sort((left, right) => left - right);
     const finiteBounds = Number.isFinite(min.x);
     const manifest: IfcReferenceManifest = {
       fileName,
@@ -427,6 +506,11 @@ export async function analyzeIfcReference(
       geometricComparedElementCount,
       geometricAlignedElementCount,
       geometricDifferentElementCount,
+      geometricShapeDifferentElementCount,
+      geometricShapeDifferentElementIds: Uint32Array.from(
+        geometricShapeDifferentElementIds.sort((left, right) => left - right),
+      ),
+      completeRampAggregateElementIds: Uint32Array.from(completeRampAggregateElementIds),
       geometryToleranceFeet: GEOMETRY_TOLERANCE_FEET,
       boundsMetres: finiteBounds
         ? { min, max }

@@ -14,15 +14,137 @@ import type {
 
 const FEET_PER_METRE = 3.280839895;
 const RAMP_CATEGORY_ID = -2_000_180;
+const RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET = 0.05;
+const MIN_COMPLETE_RAMP_SPAN_FEET = 0.1;
 
-function hasIncompleteAggregateReference(
+function isRampAggregate(
   record: ConvertResult["elementBounds"][number] | undefined,
 ): boolean {
-  // Autodesk can tag only a ramp landing while emitting its flights as
-  // separate untagged products. The paired GLB independently carries the full
-  // ramp, so replacing that RVT body with the tagged IFC fragment would delete
-  // valid geometry merely to improve an element-box score.
   return record?.categoryId === RAMP_CATEGORY_ID || record?.categoryName === "Ramps";
+}
+
+type ElementGeometrySummary = {
+  bounds: Bounds3;
+  triangles: number;
+};
+
+export type IfcReferenceRepairOptions = {
+  /**
+   * Ramp ids whose tagged IFC product owns a direct body and is not an
+   * IfcRelAggregates parent. Geometry parity is checked again before admission.
+   */
+  completeRampAggregateElementIds?: ArrayLike<number>;
+};
+
+function addPoint(bounds: Bounds3, x: number, y: number, z: number): void {
+  bounds.min.x = Math.min(bounds.min.x, x);
+  bounds.min.y = Math.min(bounds.min.y, y);
+  bounds.min.z = Math.min(bounds.min.z, z);
+  bounds.max.x = Math.max(bounds.max.x, x);
+  bounds.max.y = Math.max(bounds.max.y, y);
+  bounds.max.z = Math.max(bounds.max.z, z);
+}
+
+function summarizeRecoveredGeometry(
+  result: ConvertResult,
+  includedElementIds: ReadonlySet<number>,
+): Map<number, ElementGeometrySummary> {
+  const summaries = new Map<number, ElementGeometrySummary>();
+  for (const mesh of result.meshes) {
+    if (!mesh.elementIds?.length) continue;
+    const triangleCount = Math.min(mesh.elementIds.length, Math.floor(mesh.indices.length / 3));
+    for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+      const elementId = mesh.elementIds[triangle]!;
+      if (!includedElementIds.has(elementId)) continue;
+      const summary = summaries.get(elementId) ?? { bounds: emptyBounds(), triangles: 0 };
+      for (let corner = 0; corner < 3; corner += 1) {
+        const vertex = mesh.indices[triangle * 3 + corner]! * 3;
+        const x = mesh.positions[vertex];
+        const y = mesh.positions[vertex + 1];
+        const z = mesh.positions[vertex + 2];
+        if (x == null || y == null || z == null) continue;
+        addPoint(
+          summary.bounds,
+          x + result.origin.x,
+          y + result.origin.y,
+          z + result.origin.z,
+        );
+      }
+      summary.triangles += 1;
+      summaries.set(elementId, summary);
+    }
+  }
+  return summaries;
+}
+
+function summarizeReferenceGeometry(
+  references: readonly ReferenceMeshData[],
+  includedElementIds: ReadonlySet<number>,
+): Map<number, ElementGeometrySummary> {
+  const summaries = new Map<number, ElementGeometrySummary>();
+  for (const reference of references) {
+    if (reference.diffStatus !== "different" || !reference.elementIds?.length) continue;
+    const triangleCount = Math.min(
+      reference.elementIds.length,
+      Math.floor(reference.indices.length / 3),
+    );
+    for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+      const elementId = reference.elementIds[triangle]!;
+      if (!includedElementIds.has(elementId)) continue;
+      const summary = summaries.get(elementId) ?? { bounds: emptyBounds(), triangles: 0 };
+      for (let corner = 0; corner < 3; corner += 1) {
+        const vertex = reference.indices[triangle * 3 + corner]! * 3;
+        const x = reference.positions[vertex];
+        const y = reference.positions[vertex + 1];
+        const z = reference.positions[vertex + 2];
+        if (x == null || y == null || z == null) continue;
+        addPoint(
+          summary.bounds,
+          x * FEET_PER_METRE,
+          y * FEET_PER_METRE,
+          z * FEET_PER_METRE,
+        );
+      }
+      summary.triangles += 1;
+      summaries.set(elementId, summary);
+    }
+  }
+  return summaries;
+}
+
+/**
+ * Admit a decomposable ramp only when two independent facts agree:
+ *
+ * 1. IFC says the tagged product owns a direct body and is not an aggregate
+ *    parent; and
+ * 2. that body reaches the same six aggregate extents as the rendered RVT.
+ *
+ * The second clause is intentionally much tighter than the ordinary 0.5 ft
+ * comparison gate. It admits UNBC 2375155 (all faces agree within 0.00001 ft)
+ * while rejecting 1622190, whose tagged IfcSlab is only the landing and misses
+ * its untagged flights by roughly 20 ft in plan.
+ */
+export function hasCompleteRampAggregateReference(
+  recovered: ElementGeometrySummary | undefined,
+  reference: ElementGeometrySummary | undefined,
+  semanticallyComplete: boolean,
+  toleranceFeet = RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET,
+): boolean {
+  if (!semanticallyComplete || !recovered || !reference) return false;
+  if (recovered.triangles < 4 || reference.triangles < 4) return false;
+  for (const axis of ["x", "y", "z"] as const) {
+    const recoveredSpan = recovered.bounds.max[axis] - recovered.bounds.min[axis];
+    const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
+    if (
+      recoveredSpan < MIN_COMPLETE_RAMP_SPAN_FEET ||
+      referenceSpan < MIN_COMPLETE_RAMP_SPAN_FEET ||
+      Math.abs(recovered.bounds.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
+      Math.abs(recovered.bounds.max[axis] - reference.bounds.max[axis]) > toleranceFeet
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function dominantMaterials(meshes: readonly MeshData[]): Map<number, number> {
@@ -86,23 +208,57 @@ function emptyBounds(): Bounds3 {
 export function applyIfcReferenceRepairs(
   result: ConvertResult,
   references: readonly ReferenceMeshData[],
+  options: IfcReferenceRepairOptions = {},
 ): ConvertResult {
   const recordIds = new Set(result.elementBounds.map((record) => record.elementId));
   const recordById = new Map(result.elementBounds.map((record) => [record.elementId, record]));
+  const rampAggregateIds = new Set(
+    result.elementBounds.filter(isRampAggregate).map((record) => record.elementId),
+  );
+  const semanticallyCompleteRampIds = new Set<number>(
+    options.completeRampAggregateElementIds
+      ? Array.from(options.completeRampAggregateElementIds)
+      : [],
+  );
+  const recoveredGeometry = summarizeRecoveredGeometry(result, rampAggregateIds);
+  const referenceGeometry = summarizeReferenceGeometry(references, rampAggregateIds);
   const replacementIds = new Set<number>();
+  const retainedAggregateIds = new Set<number>();
+  const completeRampAggregateIds = new Set<number>();
   for (const reference of references) {
     if (reference.diffStatus !== "different") continue;
     for (const elementId of reference.elementIds ?? []) {
-      if (
-        elementId > 0 &&
-        recordIds.has(elementId) &&
-        !hasIncompleteAggregateReference(recordById.get(elementId))
-      ) {
-        replacementIds.add(elementId);
+      const record = recordById.get(elementId);
+      if (!(elementId > 0 && recordIds.has(elementId))) continue;
+      if (isRampAggregate(record)) {
+        if (hasCompleteRampAggregateReference(
+          recoveredGeometry.get(elementId),
+          referenceGeometry.get(elementId),
+          semanticallyCompleteRampIds.has(elementId),
+        )) {
+          completeRampAggregateIds.add(elementId);
+          replacementIds.add(elementId);
+        } else {
+          retainedAggregateIds.add(elementId);
+        }
+        continue;
       }
+      replacementIds.add(elementId);
     }
   }
-  if (!replacementIds.size) return result;
+  if (!replacementIds.size) {
+    if (!retainedAggregateIds.size) return result;
+    return {
+      ...result,
+      referenceAssistedRetainedRampAggregateIds: Uint32Array.from(
+        [...retainedAggregateIds].sort((left, right) => left - right),
+      ),
+      warnings: [
+        ...result.warnings,
+        `${retainedAggregateIds.size.toLocaleString()} ramp aggregate${retainedAggregateIds.size === 1 ? "" : "s"} retained from RVT because the tagged IFC body is decomposed, lacks a direct complete body, or does not match all six rendered aggregate extents within ${RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET.toFixed(2)} ft.`,
+      ],
+    };
+  }
 
   const materialByElement = dominantMaterials(result.meshes);
   const batches = new Map<number, RepairBatch>();
@@ -175,10 +331,22 @@ export function applyIfcReferenceRepairs(
     referenceAssistedElementIds: Uint32Array.from(
       [...replacementIds].sort((left, right) => left - right),
     ),
+    referenceAssistedCompleteRampAggregateIds: Uint32Array.from(
+      [...completeRampAggregateIds].sort((left, right) => left - right),
+    ),
+    referenceAssistedRetainedRampAggregateIds: Uint32Array.from(
+      [...retainedAggregateIds].sort((left, right) => left - right),
+    ),
     stats: { ...result.stats, triangleCount },
     warnings: [
       ...result.warnings,
       `${replacementIds.size.toLocaleString()} geometrically different elements use tagged geometry from the paired IFC; Revit identity, semantics and native material assignments are retained.`,
+      ...(completeRampAggregateIds.size
+        ? [`${completeRampAggregateIds.size.toLocaleString()} ramp aggregate${completeRampAggregateIds.size === 1 ? "" : "s"} uses its tagged direct IFC body after semantic completeness and six-face extent parity were both confirmed.`]
+        : []),
+      ...(retainedAggregateIds.size
+        ? [`${retainedAggregateIds.size.toLocaleString()} ramp aggregate${retainedAggregateIds.size === 1 ? "" : "s"} retained from RVT because the tagged IFC body is decomposed, lacks a direct complete body, or does not match all six rendered aggregate extents within ${RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET.toFixed(2)} ft.`]
+        : []),
     ],
   };
 }

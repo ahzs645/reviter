@@ -206,6 +206,68 @@ function recoveredDepthBias(
   return foreground ? 384 : 448;
 }
 
+/**
+ * Four long-axis profile lines for every placed curtain-wall mullion.
+ *
+ * The placed oriented box is independent RVT geometry evidence: its eight
+ * corners come from the mullion's shared 50 x 150 mm profile, rigid transform,
+ * and persisted swept length. Native BRep faces keep that solid for rendering,
+ * while these four lines make its slender outline legible through a translucent
+ * pane at building scale. Drawing only the four longitudinal edges avoids both
+ * inventing end caps and restoring the all-native wireframe that made Orbit
+ * redraw nearly a million noisy triangle edges.
+ */
+export function curtainFrameProfilePositions(
+  result: Pick<ConvertResult, "elementBounds" | "origin">,
+  hiddenElementIds: ReadonlySet<number> = new Set(),
+): Float32Array {
+  const roles = elementDisplayRoles(result.elementBounds);
+  const positions: number[] = [];
+  const edgeFamilies = [
+    [[0, 1], [3, 2], [4, 5], [7, 6]],
+    [[0, 3], [1, 2], [4, 7], [5, 6]],
+    [[0, 4], [1, 5], [2, 6], [3, 7]],
+  ] as const;
+
+  for (const record of result.elementBounds) {
+    if (
+      roles.get(record.elementId) !== "frame" ||
+      hiddenElementIds.has(record.elementId) ||
+      record.orientedBox?.length !== 8
+    ) {
+      continue;
+    }
+    const corners = record.orientedBox;
+    let longest = edgeFamilies[0];
+    let longestAverage = -Infinity;
+    for (const family of edgeFamilies) {
+      let total = 0;
+      for (const [from, to] of family) {
+        const a = corners[from]!;
+        const b = corners[to]!;
+        total += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      }
+      const average = total / family.length;
+      if (average > longestAverage) {
+        longest = family;
+        longestAverage = average;
+      }
+    }
+    if (!(longestAverage > 1e-6)) continue;
+    for (const [from, to] of longest) {
+      for (const cornerIndex of [from, to]) {
+        const corner = corners[cornerIndex]!;
+        positions.push(
+          corner[0] - result.origin.x,
+          corner[1] - result.origin.y,
+          corner[2] - result.origin.z,
+        );
+      }
+    }
+  }
+  return Float32Array.from(positions);
+}
+
 export function meshGroup(
   result: ConvertResult,
   renderMode: RenderMode,
@@ -282,13 +344,13 @@ export function meshGroup(
       // the category fallback for batches without a decoded material.
       const glazing = part.glazing || sourceOpacity < 0.995;
       // Recovered glass commonly contains both native pane faces plus its thin
-      // edge closure. Sorting that double-sided shell as transparent lets the
-      // front and back fragments exchange order while orbiting, which reads as
-      // material flicker. Alpha hashing keeps the decoded opacity, tests depth,
-      // and remains double-sided so a pane is still visible from an interior
-      // Walk view. X-ray mode continues to use its scene-wide transparency.
-      const alphaHashedGlazing = technical && glazing;
-      const transparent = !technical;
+      // edge closure. Alpha hashing avoided order-dependent blending, but its
+      // stipple is conspicuous across a large curtain wall and shimmers during
+      // Orbit. Draw technical glazing as a single blended, depth-writing pass:
+      // the nearest pane wins deterministically, back faces cannot trade places
+      // with it, and the surface remains visible from an interior Walk view.
+      const stableTechnicalGlazing = technical && glazing;
+      const transparent = !technical || stableTechnicalGlazing;
       const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);
       const opacity = technical
         ? (glazing
@@ -328,15 +390,15 @@ export function meshGroup(
         side: THREE.DoubleSide,
         transparent,
         opacity,
-        alphaHash: alphaHashedGlazing,
-        depthWrite: !transparent,
+        alphaHash: false,
+        depthWrite: stableTechnicalGlazing || !transparent,
         // The supplied RVT contains about 91k repeated native triangles, with
         // some host-wall faces also left beneath doors and facade children.
         // LessEqual lets coplanar triangles overwrite the same depth sample,
-        // producing the moving diagonal patches visible at eye height. Keep the
-        // first opaque fragment instead; genuinely nearer faces still pass,
-        // while glazing keeps the normal transparency path below.
-        depthFunc: technical && !transparent ? THREE.LessDepth : THREE.LessEqualDepth,
+        // producing the moving diagonal patches visible at eye height. In the
+        // technical view keep the first wall or pane fragment instead;
+        // genuinely nearer faces still pass. X-ray retains normal LessEqual.
+        depthFunc: technical ? THREE.LessDepth : THREE.LessEqualDepth,
         // In reverse-Z a negative polygon offset moves a lower-priority layer
         // away; the sign is the opposite for the conventional depth buffer.
         // Reverse-Z flips both parts of the offset; otherwise an oblique face
@@ -345,6 +407,7 @@ export function meshGroup(
         polygonOffsetFactor: depthBiasSign * depthSlopeBias,
         polygonOffsetUnits: depthBiasSign * depthBias,
       });
+      material.forceSinglePass = stableTechnicalGlazing;
       const mesh = new THREE.Mesh(geometry, material);
       mesh.name = part.glazing ? `${data.name} · glazing` : data.name;
       // Recovered BRep batches contain many unwelded, double-sided faces.
@@ -395,6 +458,39 @@ export function meshGroup(
         edges.renderOrder = 2;
         group.add(edges);
       }
+    }
+  }
+
+  // Curtain-wall frames are genuine native solids, but their 50 x 150 mm
+  // profiles become sub-pixel beside a depth-writing glass pane in a wide
+  // Orbit or First Person comparison. Reinforce only their four swept profile
+  // edges from the validated RVT oriented box. At four segments per mullion
+  // this is bounded and semantically selected; it does not bring back the
+  // expensive all-native triangle wireframe removed above.
+  if (isElementBounds) {
+    const frameProfilePositions = curtainFrameProfilePositions(
+      result,
+      hiddenElementIds,
+    );
+    if (frameProfilePositions.length) {
+      const frameGeometry = new THREE.BufferGeometry();
+      frameGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(frameProfilePositions, 3),
+      );
+      const frameProfiles = new THREE.LineSegments(
+        frameGeometry,
+        new THREE.LineBasicMaterial({
+          color: technical ? 0x4d555d : 0x9be7e3,
+          transparent: true,
+          opacity: technical ? 0.72 : 0.68,
+          depthWrite: false,
+          depthTest: true,
+        }),
+      );
+      frameProfiles.name = "Recovered curtain-wall frame profiles";
+      frameProfiles.renderOrder = 2;
+      group.add(frameProfiles);
     }
   }
 

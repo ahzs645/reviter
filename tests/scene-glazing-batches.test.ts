@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 
-import { meshGroup } from "../app/studio/three-scene.ts";
+import {
+  curtainFrameProfilePositions,
+  meshGroup,
+} from "../app/studio/three-scene.ts";
 import {
   anonymousWallDuplicateProxyIds,
   buildBoundsMeshes,
@@ -55,6 +58,58 @@ test("display roles are exposed per element, because a native batch mixes catego
   assert.equal(roles.get(3), "wall");
   assert.equal(roles.get(5), "railing");
   assert.equal(roles.get(7), "stair");
+});
+
+test("curtain frame profiles follow only the four long edges of a placed mullion", () => {
+  const mullion = record(1779946, -2000171);
+  mullion.orientedBox = [
+    [10, 20, 30], [11, 20, 30], [11, 21, 30], [10, 21, 30],
+    [10, 20, 38], [11, 20, 38], [11, 21, 38], [10, 21, 38],
+  ];
+  const panel = record(1779939, -2000170);
+  panel.orientedBox = mullion.orientedBox;
+  const result = {
+    origin: { x: 10, y: 20, z: 30 },
+    elementBounds: [mullion, panel],
+  } as Pick<ConvertResult, "origin" | "elementBounds">;
+
+  assert.deepEqual(
+    [...curtainFrameProfilePositions(result)],
+    [
+      0, 0, 0, 0, 0, 8,
+      1, 0, 0, 1, 0, 8,
+      1, 1, 0, 1, 1, 8,
+      0, 1, 0, 0, 1, 8,
+    ],
+    "the exact placed profile contributes four longitudinal edges, not triangle diagonals",
+  );
+  assert.equal(
+    curtainFrameProfilePositions(result, new Set([mullion.elementId])).length,
+    0,
+    "hiding the mullion also hides its profile treatment",
+  );
+
+  const group = meshGroup({
+    ...result,
+    fileName: "curtain-frame.rvt",
+    method: "partition-bounds-recovery",
+    materials: displayMaterials(),
+    meshes: [],
+  } as unknown as ConvertResult, "technical");
+  const profiles = group.children.find((child): child is THREE.LineSegments =>
+    child.name === "Recovered curtain-wall frame profiles" &&
+    (child as THREE.LineSegments).isLineSegments);
+  assert.ok(profiles, "the RVT viewer publishes the exact frame profile lines");
+  assert.equal(
+    (profiles.geometry.getAttribute("position") as THREE.BufferAttribute).count,
+    8,
+    "one mullion is four bounded line segments",
+  );
+  assert.equal(
+    (profiles.material as THREE.LineBasicMaterial).depthTest,
+    true,
+    "profiles remain occluded by nearer architecture instead of showing through walls",
+  );
 });
 
 test("anonymous wall-contained fallback bodies do not pierce the recovered host", () => {
@@ -147,17 +202,22 @@ test("a proxy with one persisted material uses its native material batch", () =>
   );
   assert.equal(
     (renderedNative.material as THREE.MeshStandardMaterial).transparent,
-    false,
-    "technical glass does not enter Three's distance-sorted transparent queue",
+    true,
+    "technical glass blends smoothly instead of exposing an alpha-hash stipple",
   );
   assert.equal(
     (renderedNative.material as THREE.MeshStandardMaterial).alphaHash,
-    true,
-    "front and back pane surfaces use stable depth-tested alpha hashing",
+    false,
+    "large curtain walls do not shimmer with a screen-space stipple",
   );
   assert.equal(
     (renderedNative.material as THREE.MeshStandardMaterial).depthWrite,
     true,
+  );
+  assert.equal(
+    (renderedNative.material as THREE.MeshStandardMaterial).forceSinglePass,
+    true,
+    "the nearest pane wins one deterministic double-sided pass",
   );
   assert.equal(
     (renderedNative.material as THREE.MeshStandardMaterial).side,
@@ -378,6 +438,7 @@ test("reconstructed stair runs use neutral concrete and stronger tread profiles"
   const stairMaterial = materials.find((material) => material.name === "Stair display proxy");
   assert.ok(stairMaterial);
   const [red, green, blue, alpha] = stairMaterial.baseColorLinear;
+  assert.equal(red, 0.29, "the stair proxy uses the measured dark concrete fallback");
   assert.equal(red, green);
   assert.ok(Math.abs(green - blue) <= 0.02);
   assert.equal(alpha, 1);
