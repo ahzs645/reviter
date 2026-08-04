@@ -2471,6 +2471,10 @@ export function convertRvtBytes(
               record.boundsFeet,
             ]),
           ),
+          // A certified owner without any decoded element-table record is a
+          // reusable definition, not evidence of a placed object. Zero-volume
+          // records remain known and may still use their exact native mesh.
+          knownElementIds: new Set(elementBounds.map((record) => record.elementId)),
         },
       );
       // A door family's complete native object can be the swept-open family
@@ -2600,7 +2604,15 @@ export function convertRvtBytes(
       // ElemTable can instead place a stairs container under its top rail, so
       // ownership alone misses containers whose run already replaced the box.
       for (const run of stairsRuns.values()) {
-        const child = displayRecordById.get(run.elementId);
+        // Native mesh admission is independent of the diagnostic display
+        // subset. In particular, UNBC stair 1280525 owns flight 1280585: the
+        // flight is admitted as a native BRep but its element record is not in
+        // `displayBounds`. Looking only in `displayRecordById` therefore kept
+        // the assembly's duplicated envelope and drew a large box over the
+        // valid flight. Resolve the aggregate against the complete element
+        // table; the native coverage checks below still ensure that an
+        // unresolved child can never make its parent disappear.
+        const child = elementRecordById.get(run.elementId);
         if (
           child &&
           (
@@ -2662,16 +2674,19 @@ export function convertRvtBytes(
           omittedCurtainAssemblyProxyCount += 1;
           continue;
         }
-        const canSuppressHelper =
-          record.categoryId !== -2000120 ||
+        const recoveredStairAssembly =
+          record.categoryId === -2000120 &&
           stairAssembliesWithRecoveredChildren.has(record.elementId);
         if (
-          canSuppressHelper &&
+          recoveredStairAssembly ||
           (
-            anonymousWallDuplicates.has(record.elementId) ||
-            isStairOrRailingHelperProxy(
-              record,
-              markerByElement.get(record.elementId),
+            record.categoryId !== -2000120 &&
+            (
+              anonymousWallDuplicates.has(record.elementId) ||
+              isStairOrRailingHelperProxy(
+                record,
+                markerByElement.get(record.elementId),
+              )
             )
           )
         ) {
@@ -2860,6 +2875,8 @@ export function convertRvtBytes(
           nativeMeshCarrierComposedOutsideEnvelope:
             nativeMeshScene.carrierComposedOutsideEnvelope,
           nativeMeshMissingBounds: nativeMeshScene.missingBounds,
+          nativeMeshUnrepresentedElements:
+            nativeMeshScene.unrepresentedElements,
           nativeMeshNestedDefinitions:
             nativeMeshCollection.nestedDefinitions,
           nativeMeshNestedLinks: nativeMeshCollection.nestedLinks,
@@ -3015,6 +3032,11 @@ export function convertRvtBytes(
           ...(nativeMeshScene.missingBounds
             ? [
                 `${nativeMeshScene.missingBounds.toLocaleString()} complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.`,
+              ]
+            : []),
+          ...(nativeMeshScene.unrepresentedElements
+            ? [
+                `${nativeMeshScene.unrepresentedElements.toLocaleString()} complete native definition items were not drawn because no placed RVT element record names them.`,
               ]
             : []),
           ...(inferredCurtainPanelCount

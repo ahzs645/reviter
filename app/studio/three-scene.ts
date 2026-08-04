@@ -58,6 +58,72 @@ type BatchPart = {
   foreground: boolean;
 };
 
+type ComparisonPart = BatchPart & {
+  comparisonAligned: boolean;
+};
+
+/**
+ * Separate IFC-aligned recovered triangles from the recovered side of a diff.
+ *
+ * The comparison overlay used to paint the complete recovered scene amber and
+ * rely on the IFC mesh to hide matching faces. Thin shells, back faces and
+ * ordinary depth precision then exposed amber patches on aligned elements —
+ * most visibly the wall through stair 1460781 — even though the legend called
+ * amber "RVT only". Splitting by the IFC element verdict makes the colour a
+ * property of the comparison evidence rather than an occlusion accident.
+ */
+function splitByComparisonAlignment(
+  part: BatchPart,
+  alignedElementIds: ReadonlySet<number>,
+): ComparisonPart[] {
+  const { indices, elementIds } = part;
+  if (!elementIds || !alignedElementIds.size) {
+    return [{ ...part, comparisonAligned: false }];
+  }
+  let alignedTriangles = 0;
+  for (const elementId of elementIds) {
+    if (alignedElementIds.has(elementId)) alignedTriangles += 1;
+  }
+  if (alignedTriangles === 0) return [{ ...part, comparisonAligned: false }];
+  if (alignedTriangles === elementIds.length) {
+    return [{ ...part, comparisonAligned: true }];
+  }
+
+  const aligned = {
+    indices: new Uint32Array(alignedTriangles * 3),
+    ids: new Uint32Array(alignedTriangles),
+    at: 0,
+  };
+  const remainder = {
+    indices: new Uint32Array((elementIds.length - alignedTriangles) * 3),
+    ids: new Uint32Array(elementIds.length - alignedTriangles),
+    at: 0,
+  };
+  for (let triangle = 0; triangle < elementIds.length; triangle += 1) {
+    const elementId = elementIds[triangle]!;
+    const into = alignedElementIds.has(elementId) ? aligned : remainder;
+    into.indices[into.at * 3] = indices[triangle * 3]!;
+    into.indices[into.at * 3 + 1] = indices[triangle * 3 + 1]!;
+    into.indices[into.at * 3 + 2] = indices[triangle * 3 + 2]!;
+    into.ids[into.at] = elementId;
+    into.at += 1;
+  }
+  return [
+    {
+      ...part,
+      indices: aligned.indices,
+      elementIds: aligned.ids,
+      comparisonAligned: true,
+    },
+    {
+      ...part,
+      indices: remainder.indices,
+      elementIds: remainder.ids,
+      comparisonAligned: false,
+    },
+  ];
+}
+
 /**
  * Split one batch's triangles into its glazing and non-glazing halves.
  *
@@ -274,6 +340,7 @@ export function meshGroup(
   renderMode: RenderMode,
   hiddenElementIds: ReadonlySet<number> = new Set(),
   reverseDepthBuffer = false,
+  comparisonAlignedElementIds: ReadonlySet<number> = new Set(),
 ): THREE.Group {
   const group = new THREE.Group();
   const isElementBounds = result.method === "partition-bounds-recovery";
@@ -328,7 +395,9 @@ export function meshGroup(
           foreground: false,
         }]
       : splitByGlazing(visible, glazingIds);
-    const parts = glazingParts.flatMap((part) => splitByForeground(part, foregroundIds));
+    const parts = glazingParts
+      .flatMap((part) => splitByForeground(part, foregroundIds))
+      .flatMap((part) => splitByComparisonAlignment(part, comparisonAlignedElementIds));
     for (const part of parts) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
@@ -352,6 +421,9 @@ export function meshGroup(
       // with it, and the surface remains visible from an interior Walk view.
       const stableTechnicalGlazing = technical && glazing;
       const transparent = !technical || stableTechnicalGlazing;
+      const reconstructedStair = data.source === "display-proxy" &&
+        (part.elementIds?.length ?? 0) > 0 &&
+        part.elementIds!.every((elementId) => stairIds.has(elementId));
       const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);
       const opacity = technical
         ? (glazing
@@ -377,18 +449,27 @@ export function meshGroup(
         : 0;
       const depthBiasSign = reverseDepthBuffer ? -1 : 1;
       const material = new THREE.MeshStandardMaterial({
-        color: sourceColor,
-        vertexColors: !technical,
-        roughness: technical ? 0.86 : sourceMaterial?.roughness ?? 0.74,
+        color: part.comparisonAligned ? new THREE.Color(0x7d8792) : sourceColor,
+        emissive: technical && reconstructedStair ? sourceColor : new THREE.Color(0x000000),
+        emissiveIntensity: technical && reconstructedStair ? 0.35 : 1,
+        vertexColors: !technical && !part.comparisonAligned,
+        roughness: technical
+          ? (reconstructedStair ? sourceMaterial?.roughness ?? 0.2 : 0.86)
+          : sourceMaterial?.roughness ?? 0.74,
         metalness: technical ? 0 : sourceMaterial?.metallic ?? 0.04,
-        flatShading: true,
+        flatShading: !reconstructedStair,
         // Recovered native faces are not guaranteed to form a closed,
         // consistently wound shell. Roof 1848155, for example, has only the
         // top-facing surface on this route; front-face culling therefore makes
         // it disappear from below. Keep recovered geometry visible from both
         // sides. Coplanar material competition is handled by the deterministic
         // depth ordering and bias above rather than by discarding back faces.
-        side: THREE.DoubleSide,
+        // Native BRep batches can be incomplete face sheets and must remain
+        // visible from both sides. Reconstructed stair cells are closed and
+        // deterministically wound, though: drawing their back faces exposes
+        // the underside/inside of the central curved landing as a solid wall
+        // that Autodesk's normal front-face rendering does not show.
+        side: reconstructedStair ? THREE.FrontSide : THREE.DoubleSide,
         transparent,
         opacity,
         alphaHash: false,
@@ -419,6 +500,7 @@ export function meshGroup(
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.userData.elementIds = part.elementIds;
+      mesh.userData.comparisonAligned = part.comparisonAligned;
       mesh.renderOrder = technical && !transparent && !glazing
         ? recoveredRenderOrder(data.source, sourceMaterial?.source, part.foreground)
         : 1;
@@ -438,26 +520,28 @@ export function meshGroup(
       // not index-welded, so almost every triangle edge reads as a boundary.
       // The overlay belongs on the proxies it was built for.
       if (isElementBounds && data.source === "display-proxy") {
-        // Stair runs are assembled from thin tread slabs. Their silhouette is
-        // correct without extra geometry, but the normal proxy line treatment
-        // lets adjacent noses merge into one broad band at eye level. The GLB
-        // reference retains a dark separator at every nose, so strengthen only
-        // batches made entirely from stair elements. This does not restore the
-        // million-edge native overlay that made Orbit lag and shimmer.
         const stairProfile = part.elementIds.length > 0 &&
           part.elementIds.every((elementId) => stairIds.has(elementId));
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geometry, 1),
-          new THREE.LineBasicMaterial({
-            color: technical ? (stairProfile ? 0x303033 : 0x263c55) : 0x9be7e3,
-            transparent: true,
-            opacity: technical ? (stairProfile ? 0.86 : 0.56) : 0.68,
-            depthWrite: false,
-          }),
-        );
-        edges.name = `${data.name} edges`;
-        edges.renderOrder = 2;
-        group.add(edges);
+        // Stair cells are intentionally unwelded. EdgesGeometry therefore
+        // outlines every internal curved-cell seam as if it were an opening;
+        // together with the dedicated nosing profile below, those double dark
+        // lines read as repeated gaps in object 1460781. The persisted nosing
+        // segments already provide the one useful line per tread, so reserve
+        // the generic proxy wireframe for non-stair envelopes.
+        if (!stairProfile) {
+          const edges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(geometry, 1),
+            new THREE.LineBasicMaterial({
+              color: technical ? 0x263c55 : 0x9be7e3,
+              transparent: true,
+              opacity: technical ? 0.56 : 0.68,
+              depthWrite: false,
+            }),
+          );
+          edges.name = `${data.name} edges`;
+          edges.renderOrder = 2;
+          group.add(edges);
+        }
       }
     }
   }
@@ -590,6 +674,10 @@ export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: Rend
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = data.name;
+    // IFC batches retain the numeric Revit Tag per triangle. Keeping that
+    // table on the render mesh lets a picked wall, post, or stair resolve to
+    // the same Properties record as its recovered RVT counterpart.
+    mesh.userData.elementIds = data.elementIds;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     mesh.renderOrder = data.diffStatus === "different" ? 3 : data.matched ? 2 : 1;
@@ -633,12 +721,27 @@ export function overlayMeshGroup(
   group.name = "Recovery over export";
   group.userData = { source: "overlay", fidelity: "comparison" };
 
-  const recovered = meshGroup(result, renderMode, new Set(), reverseDepthBuffer);
+  const alignedRecoveredElementIds = new Set<number>();
+  for (const data of meshes) {
+    if (data.diffStatus !== "aligned") continue;
+    for (const elementId of data.elementIds) {
+      if (elementId > 0) alignedRecoveredElementIds.add(elementId);
+    }
+  }
+  const recovered = meshGroup(
+    result,
+    renderMode,
+    new Set(),
+    reverseDepthBuffer,
+    alignedRecoveredElementIds,
+  );
   recovered.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
     const material = mesh.material as THREE.MeshStandardMaterial;
-    material.color = new THREE.Color(0xf2a93b);
+    material.color = new THREE.Color(
+      mesh.userData.comparisonAligned === true ? 0x7d8792 : 0xf2a93b,
+    );
     material.vertexColors = false;
     material.transparent = false;
     material.opacity = 1;
@@ -680,6 +783,7 @@ export function overlayMeshGroup(
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `${data.name} (${data.diffStatus})`;
+    mesh.userData.elementIds = data.elementIds;
     mesh.renderOrder = different ? 3 : context ? 2 : 1;
     reference.add(mesh);
   }

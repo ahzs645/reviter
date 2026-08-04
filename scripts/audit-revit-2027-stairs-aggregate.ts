@@ -592,6 +592,7 @@ const report = {
     .filter((run) => run.runProperties != null)
     .map((run) => ({
       elementId: run.elementId,
+      stairsId: run.stairsId,
       baseRiserIndex: run.baseRiserIndex,
       ...run.runProperties!,
     }))

@@ -11,14 +11,20 @@ import { convertModel } from "./audit-coverage.ts";
 import type { Bounds3, MeshData } from "../lib/reviter/types.ts";
 
 const positional = process.argv.slice(2).filter((argument, index, arguments_) =>
-  !argument.startsWith("--") && arguments_[index - 1] !== "--json"
+  !argument.startsWith("--") &&
+  arguments_[index - 1] !== "--json" &&
+  arguments_[index - 1] !== "--element"
 );
 const [rvtPath, ifcPath] = positional;
 const jsonIndex = process.argv.indexOf("--json");
 const jsonPath = jsonIndex >= 0 ? process.argv[jsonIndex + 1] : undefined;
+const focusElementIds = new Set(process.argv.flatMap((argument, index, arguments_) =>
+  arguments_[index - 1] === "--element" && /^\d+$/.test(argument)
+    ? [Number(argument)]
+    : []));
 if (!rvtPath) {
   throw new Error(
-    "usage: audit-wall-material-residuals.ts <model.rvt> [model.ifc] [--json report.json]",
+    "usage: audit-wall-material-residuals.ts <model.rvt> [model.ifc] [--element id] [--json report.json]",
   );
 }
 
@@ -137,27 +143,43 @@ for (const mesh of result.meshes) {
 }
 
 const candidates = [...walls].flatMap(([elementId, stats]) => {
+  const preferred = stats.preferred.bounds;
+  const generic = stats.generic.bounds;
+  const overhangFeet = stats.generic.triangles > 0
+    ? Math.max(
+        preferred.min.x - generic.min.x,
+        preferred.min.y - generic.min.y,
+        preferred.min.z - generic.min.z,
+        generic.max.x - preferred.max.x,
+        generic.max.y - preferred.max.y,
+        generic.max.z - preferred.max.z,
+      )
+    : Number.NEGATIVE_INFINITY;
+  const hasMixedSlopedBody =
+    stats.preferred.triangles >= 8 &&
+    stats.generic.triangles > 0 &&
+    stats.preferred.horizontal > 0 &&
+    stats.preferred.vertical > 0 &&
+    stats.preferred.sloped > 0;
+  const hasMixedRectangularOverfillBody =
+    stats.preferred.triangles >= 8 &&
+    stats.generic.triangles > 0 &&
+    stats.preferred.horizontal > 0 &&
+    stats.preferred.vertical > 0 &&
+    stats.preferred.sloped === 0 &&
+    preferred.min.z - generic.min.z < 0.5 &&
+    overhangFeet >= 0.5;
   if (
-    stats.preferred.triangles < 8 ||
-    stats.generic.triangles === 0 ||
-    stats.preferred.horizontal === 0 ||
-    stats.preferred.vertical === 0 ||
-    stats.preferred.sloped === 0
+    !hasMixedSlopedBody &&
+    !hasMixedRectangularOverfillBody &&
+    !focusElementIds.has(elementId)
   ) {
     return [];
   }
-  const preferred = stats.preferred.bounds;
-  const generic = stats.generic.bounds;
-  const overhangFeet = Math.max(
-    preferred.min.x - generic.min.x,
-    preferred.min.y - generic.min.y,
-    preferred.min.z - generic.min.z,
-    generic.max.x - preferred.max.x,
-    generic.max.y - preferred.max.y,
-    generic.max.z - preferred.max.z,
-  );
   return [{
     elementId,
+    hasMixedSlopedBody,
+    hasMixedRectangularOverfillBody,
     preferredTriangles: stats.preferred.triangles,
     genericTriangles: stats.generic.triangles,
     preferredMaterials: [...stats.preferred.materials].sort((a, b) => a - b),
@@ -280,7 +302,11 @@ const report = {
   schemaVersion: 1,
   generatedBy: "scripts/audit-wall-material-residuals.ts",
   nativeWallsWithMaterialFaces: walls.size,
-  remainingMixedSlopedBodies: candidates.length,
+  remainingMixedSlopedBodies: candidates.filter(({ hasMixedSlopedBody }) =>
+    hasMixedSlopedBody).length,
+  remainingMixedRectangularOverfillBodies: candidates.filter(
+    ({ hasMixedRectangularOverfillBody }) => hasMixedRectangularOverfillBody,
+  ).length,
   candidates: measuredCandidates,
 };
 console.log(JSON.stringify(report, null, 2));

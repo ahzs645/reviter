@@ -25,6 +25,16 @@ export function firstTriangleHit(
   });
 }
 
+/** Resolve a render triangle to a real Revit element id; zero marks IFC-only context. */
+export function elementIdAtIntersection(
+  hit: ViewerIntersection | undefined,
+): number | null {
+  if (hit?.faceIndex == null) return null;
+  const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
+  const elementId = elementIds?.[hit.faceIndex];
+  return elementId != null && elementId > 0 ? elementId : null;
+}
+
 function instanceMatrix(hit: InstanceReference): THREE.Matrix4 {
   const batch = hit.object as THREE.BatchedMesh;
   return batch.isBatchedMesh && hit.batchId != null
@@ -337,8 +347,10 @@ function createSelectionOverlay(
 
 /**
  * Draw the connected continuous surface around the picked render triangle.
- * Anonymous GLB/IFC fragments cannot populate the Revit properties panel, but
- * their triangulation should not leak into the selection interaction.
+ * Anonymous GLB fragments and IFC-only context cannot populate the Revit
+ * properties panel, but their triangulation should not leak into the
+ * selection interaction. Tagged IFC products use the element-id selection
+ * path instead.
  */
 /**
  * Highlight every triangle a recovered element actually draws.

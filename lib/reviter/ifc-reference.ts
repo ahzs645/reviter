@@ -3,6 +3,7 @@
 import { IfcAPI } from "web-ifc";
 
 import { boxDifference, type Box } from "./drawn-bounds";
+import { ifcGeometryDiffStatus } from "./geometry-diff-status.ts";
 import { compareRvtToIfc } from "./regression";
 import {
   addSurfaceTriangle,
@@ -398,6 +399,9 @@ export async function analyzeIfcReference(
     const rvtSurfaceOrientationsByElement = unpackSurfaceOrientationSignatures(
       rvt.surfaceOrientationSignatures,
     );
+    const incompleteStairTopologyIds = new Set(
+      rvt.incompleteStairTopologyIds ?? [],
+    );
     const diffStatusByElement = new Map<number, ReferenceMeshData["diffStatus"]>();
     let geometricComparedElementCount = 0;
     let geometricAlignedElementCount = 0;
@@ -416,12 +420,19 @@ export async function analyzeIfcReference(
       const boundsAligned =
         difference.centreErrorFeet < GEOMETRY_TOLERANCE_FEET &&
         difference.sizeErrorFeet < GEOMETRY_TOLERANCE_FEET;
-      const shapeDifferent = boundsAligned && hasMaterialSlopeDifference(
+      const materialSlopeDifferent = hasMaterialSlopeDifference(
         rvtSurfaceOrientationsByElement.get(elementId),
         truthSurfaceOrientationsByElement.get(elementId),
       );
-      const aligned = boundsAligned && !shapeDifferent;
-      diffStatusByElement.set(elementId, aligned ? "aligned" : "different");
+      const stairTopologyIncomplete = incompleteStairTopologyIds.has(elementId);
+      const diffStatus = ifcGeometryDiffStatus(
+        boundsAligned,
+        materialSlopeDifferent,
+        stairTopologyIncomplete,
+      );
+      const aligned = diffStatus === "aligned";
+      const shapeDifferent = boundsAligned && !aligned;
+      diffStatusByElement.set(elementId, diffStatus);
       if (aligned) geometricAlignedElementCount += 1;
       else {
         geometricDifferentElementCount += 1;

@@ -95,7 +95,7 @@ export function compareRvtToIfc(
     const shapeDifferences = reference.geometricShapeDifferentElementCount ?? 0;
     const shapeDifferenceIds = [...(reference.geometricShapeDifferentElementIds ?? [])];
     const shapeDifferenceEvidence = shapeDifferences
-      ? `; ${shapeDifferences.toLocaleString()} additional bounds-aligned element${shapeDifferences === 1 ? "" : "s"} contain a material slope difference${shapeDifferenceIds.length ? ` (${shapeDifferenceIds.join(", ")})` : ""}`
+      ? `; ${shapeDifferences.toLocaleString()} additional bounds-aligned element${shapeDifferences === 1 ? "" : "s"} contain a surface or expected-topology difference${shapeDifferenceIds.length ? ` (${shapeDifferenceIds.join(", ")})` : ""}`
       : "";
     gates.push({
       id: "geometry",

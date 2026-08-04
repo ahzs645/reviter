@@ -6,6 +6,7 @@ import {
   connectedSurfaceFaceIndices,
   createElementSelection,
   createFaceSelection,
+  elementIdAtIntersection,
   type ViewerIntersection,
 } from "../app/studio/viewer-picking.ts";
 import { batchReferenceScene } from "../app/studio/reference-scene.ts";
@@ -66,6 +67,14 @@ test("selection grows across a continuous face but stops at a hard edge", () => 
     (child): child is THREE.LineSegments => (child as THREE.LineSegments).isLineSegments,
   )!;
   assert.equal(outline.geometry.getAttribute("position").count, 8);
+});
+
+test("IFC triangle tags resolve to Revit ids while context zero stays anonymous", () => {
+  const mesh = new THREE.Mesh(floorAndWallGeometry(), new THREE.MeshBasicMaterial());
+  mesh.userData.elementIds = new Uint32Array([1845590, 0, 1460781, 318643]);
+  assert.equal(elementIdAtIntersection(intersection(mesh, 0)), 1845590);
+  assert.equal(elementIdAtIntersection(intersection(mesh, 1)), null);
+  assert.equal(elementIdAtIntersection(undefined), null);
 });
 
 test("batched selection stays inside the picked instance geometry range", () => {

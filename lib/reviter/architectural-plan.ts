@@ -8,6 +8,8 @@ const DOOR_CATEGORY_ID = -2_000_023;
 const WINDOW_CATEGORY_ID = -2_000_014;
 const COLUMN_CATEGORY_IDS = new Set([-2_000_100, -2_000_133]);
 const PLAN_CUT_HEIGHT_FEET = 4;
+const OPEN_END_FLOOR_SEARCH_FEET = 3;
+const OPEN_END_MINIMUM_WALL_LENGTH_FEET = 6;
 
 type Point2 = [number, number];
 type PlanBounds = { minX: number; minY: number; maxX: number; maxY: number };
@@ -293,6 +295,137 @@ function wallPolygon(solid: WallSolid): Point2[] {
   ];
 }
 
+type ExposedWallEnd = {
+  elementIds: number[];
+  end: "start" | "end";
+  point: Point2;
+  inward: Point2;
+  thickness: number;
+};
+
+function distanceBetween(left: Point2, right: Point2) {
+  return Math.hypot(left[0] - right[0], left[1] - right[1]);
+}
+
+function distanceToSegment(point: Point2, start: Point2, end: Point2) {
+  const dx = end[0] - start[0]; const dy = end[1] - start[1];
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= 1e-9) return distanceBetween(point, start);
+  const fraction = Math.max(0, Math.min(1,
+    ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared));
+  return distanceBetween(point, [start[0] + dx * fraction, start[1] + dy * fraction]);
+}
+
+function pointInLoop(point: Point2, loop: readonly Point3[]) {
+  let inside = false;
+  for (let index = 0, previous = loop.length - 1; index < loop.length; previous = index, index += 1) {
+    const [x, y] = loop[index]!; const [previousX, previousY] = loop[previous]!;
+    if (
+      (y > point[1]) !== (previousY > point[1]) &&
+      point[0] < (previousX - x) * (point[1] - y) / (previousY - y) + x
+    ) inside = !inside;
+  }
+  return inside;
+}
+
+function pointOnFloor(point: Point2, floors: readonly ElementBoundsRecord[]) {
+  return floors.some((record) => {
+    let inside = false;
+    for (const loop of record.loops ?? []) {
+      if (loop.length >= 3 && pointInLoop(point, loop)) inside = !inside;
+    }
+    return inside;
+  });
+}
+
+function floorNear(point: Point2, floors: readonly ElementBoundsRecord[]) {
+  if (pointOnFloor(point, floors)) return true;
+  for (const radius of [0.5, 1.5, OPEN_END_FLOOR_SEARCH_FEET]) {
+    for (let index = 0; index < 16; index += 1) {
+      const angle = index * Math.PI / 8;
+      if (pointOnFloor([
+        point[0] + Math.cos(angle) * radius,
+        point[1] + Math.sin(angle) * radius,
+      ], floors)) return true;
+    }
+  }
+  return false;
+}
+
+function wallSolids(records: readonly ElementBoundsRecord[]) {
+  return records.flatMap((record) => {
+    const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+    return solids.map((solid) => ({ elementId: record.elementId, solid }));
+  });
+}
+
+function joinedWallEnd(
+  point: Point2,
+  inward: Point2,
+  owner: WallSolid,
+  candidates: ReturnType<typeof wallSolids>,
+) {
+  for (const candidate of candidates) {
+    if (candidate.solid === owner) continue;
+    const start: Point2 = [candidate.solid.start.x, candidate.solid.start.y];
+    const end: Point2 = [candidate.solid.end.x, candidate.solid.end.y];
+    const tolerance = Math.max(0.45,
+      (owner.thickness + candidate.solid.thickness) / 2 + 0.15);
+    if (distanceToSegment(point, start, end) > tolerance) continue;
+
+    const startDistance = distanceBetween(point, start);
+    const endDistance = distanceBetween(point, end);
+    const nearestDistance = Math.min(startDistance, endDistance);
+    if (nearestDistance > tolerance) return true;
+    const other = startDistance <= endDistance ? end : start;
+    const length = distanceBetween(point, other);
+    if (length <= 1e-6) continue;
+    const away: Point2 = [(other[0] - point[0]) / length, (other[1] - point[1]) / length];
+    // A wall on another connected storey can occupy the same plan line and
+    // share the same endpoint. It is a vertical stack, not a 2D join. Ignore
+    // only that same-direction overlap; corners and outward continuations join.
+    if (inward[0] * away[0] + inward[1] * away[1] > 0.985) continue;
+    return true;
+  }
+  return false;
+}
+
+function exposedWallEnds(
+  records: readonly ElementBoundsRecord[],
+  floors: readonly ElementBoundsRecord[],
+): ExposedWallEnd[] {
+  const candidates = wallSolids(records);
+  const exposed: ExposedWallEnd[] = [];
+  for (const { elementId, solid } of candidates) {
+    const start: Point2 = [solid.start.x, solid.start.y];
+    const end: Point2 = [solid.end.x, solid.end.y];
+    const length = distanceBetween(start, end);
+    if (length < OPEN_END_MINIMUM_WALL_LENGTH_FEET) continue;
+    const direction: Point2 = [(end[0] - start[0]) / length, (end[1] - start[1]) / length];
+    for (const candidate of [
+      { end: "start" as const, point: start, inward: direction },
+      { end: "end" as const, point: end, inward: [-direction[0], -direction[1]] as Point2 },
+    ]) {
+      if (floorNear(candidate.point, floors)) continue;
+      if (joinedWallEnd(candidate.point, candidate.inward, solid, candidates)) continue;
+      const duplicate = exposed.find((item) => distanceBetween(item.point, candidate.point) <= 0.25);
+      if (duplicate) {
+        duplicate.elementIds.push(elementId);
+        duplicate.thickness = Math.max(duplicate.thickness, solid.thickness);
+        continue;
+      }
+      exposed.push({
+        elementIds: [elementId],
+        end: candidate.end,
+        point: candidate.point,
+        inward: candidate.inward,
+        thickness: solid.thickness,
+      });
+    }
+  }
+  return exposed;
+}
+
 function arcPoints(arc: WallArc): Point2[] {
   const sweep = arc.endAngle - arc.startAngle;
   const steps = Math.max(8, Math.ceil(Math.abs(sweep * arc.radius) / 1.5));
@@ -325,6 +458,32 @@ function principalFrame(points: readonly Point2[]) {
   return { center, u, v, halfWidth: (uExtent[1] - uExtent[0]) / 2, halfDepth: (vExtent[1] - vExtent[0]) / 2 };
 }
 
+/**
+ * Door leaves and swing arcs are diagrammatic geometry synthesized outside the
+ * persisted door envelope. Include their full radius in the drawing bounds so
+ * an outward-facing door at the edge of a plan can never be clipped.
+ */
+function boundsIncludingDoorSwings(bounds: PlanBounds, records: readonly ElementBoundsRecord[]): PlanBounds {
+  const expanded = { ...bounds };
+  for (const record of records) {
+    const points = distinctPlanPoints(record);
+    if (points.length < 3) continue;
+    const frame = principalFrame(points);
+    const width = Math.max(0.2, frame.halfWidth * 2);
+    const pivot: Point2 = [
+      frame.center[0] - frame.u[0] * frame.halfWidth,
+      frame.center[1] - frame.u[1] * frame.halfWidth,
+    ];
+    // The actual path is a quarter arc, but the complete radius box is cheap
+    // and robust to either handedness recovered from a door record.
+    expanded.minX = Math.min(expanded.minX, pivot[0] - width);
+    expanded.minY = Math.min(expanded.minY, pivot[1] - width);
+    expanded.maxX = Math.max(expanded.maxX, pivot[0] + width);
+    expanded.maxY = Math.max(expanded.maxY, pivot[1] + width);
+  }
+  return expanded;
+}
+
 function renderPoint(point: Point2, bounds: PlanBounds): Point2 {
   return [point[0] - bounds.minX, bounds.maxY - point[1]];
 }
@@ -352,6 +511,23 @@ function wallLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds) 
     ).join("");
     if (polygons || arcs) return `<g data-revit-element-id="${record.elementId}">${polygons}${arcs}</g>`;
     return `<path data-revit-element-id="${record.elementId}" d="${path(distinctPlanPoints(record), bounds)}"/>`;
+  }).join("");
+}
+
+function exposedWallEndLayer(ends: readonly ExposedWallEnd[], bounds: PlanBounds) {
+  return ends.map((item) => {
+    const outward: Point2 = [-item.inward[0], -item.inward[1]];
+    const normal: Point2 = [-item.inward[1], item.inward[0]];
+    const halfCap = Math.max(0.45, item.thickness * 0.85);
+    const stem = Math.max(0.35, item.thickness * 0.6);
+    const left: Point2 = [item.point[0] - normal[0] * halfCap, item.point[1] - normal[1] * halfCap];
+    const right: Point2 = [item.point[0] + normal[0] * halfCap, item.point[1] + normal[1] * halfCap];
+    const tip: Point2 = [item.point[0] + outward[0] * stem, item.point[1] + outward[1] * stem];
+    const [leftX, leftY] = renderPoint(left, bounds);
+    const [rightX, rightY] = renderPoint(right, bounds);
+    const [pointX, pointY] = renderPoint(item.point, bounds);
+    const [tipX, tipY] = renderPoint(tip, bounds);
+    return `<path class="confirmed-open-end" data-revit-element-ids="${item.elementIds.join(",")}" data-wall-end="${item.end}" d="M ${leftX} ${leftY} L ${rightX} ${rightY} M ${pointX} ${pointY} L ${tipX} ${tipY}"/>`;
   }).join("");
 }
 
@@ -427,14 +603,19 @@ export function makeArchitecturalFloorSvg(
   const cacheKey = derivedRooms ?? NO_DERIVED_REGIONS; const cached = variants.get(cacheKey); if (cached) return cached;
 
   const padding = 2.5;
-  const bounds = { minX: plan.bounds.minX - padding, minY: plan.bounds.minY - padding, maxX: plan.bounds.maxX + padding, maxY: plan.bounds.maxY + padding };
+  const renderedBounds = boundsIncludingDoorSwings(plan.bounds, plan.doorRecords);
+  const bounds = { minX: renderedBounds.minX - padding, minY: renderedBounds.minY - padding, maxX: renderedBounds.maxX + padding, maxY: renderedBounds.maxY + padding };
   const sourceWidth = Math.max(1, bounds.maxX - bounds.minX); const sourceHeight = Math.max(1, bounds.maxY - bounds.minY);
   const width = rotation % 2 ? sourceHeight : sourceWidth; const height = rotation % 2 ? sourceWidth : sourceHeight;
   const contentTransform = rotation === 1 ? `translate(${sourceHeight} 0) rotate(90)`
     : rotation === 2 ? `translate(${sourceWidth} ${sourceHeight}) rotate(180)`
       : rotation === 3 ? `translate(0 ${sourceWidth}) rotate(270)` : "";
-  const scale = Math.max(sourceWidth, sourceHeight); const fineStroke = Math.max(0.035, scale / 2_600);
+  // Non-scaling strokes retain this visual weight while the campus plan is
+  // fitted. Keep the base genuinely hairline; doors should read as symbols,
+  // not become the darkest geometry on a zoomed-out plan.
+  const scale = Math.max(sourceWidth, sourceHeight); const fineStroke = Math.max(0.025, scale / 4_200);
   const connected = plan.levelPlans.length > 1;
+  const openEnds = exposedWallEnds(plan.wallRecords, plan.floorRecords);
   const floorFills = ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"];
   const floorGroups = plan.levelPlans.map((part, index) =>
     `<g class="floors" data-source-revit-level-id="${part.levelId}" data-source-elevation-feet="${part.elevation}" style="--floor-fill:${floorFills[index % floorFills.length]}">${floorLayer(part.floorRecords, bounds)}</g>`,
@@ -443,32 +624,35 @@ export function makeArchitecturalFloorSvg(
     `<g data-source-revit-level-id="${part.levelId}">${stairLayer(part.stairRecords, bounds, part.elevation, part.nextElevation)}</g>`,
   ).join("");
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-revit-level-id="${levelId}" data-revit-level-ids="${plan.levelPlans.map((part) => part.levelId).join(",")}" data-connected-level-count="${plan.levelPlans.length}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-revit-level-id="${levelId}" data-revit-level-ids="${plan.levelPlans.map((part) => part.levelId).join(",")}" data-connected-level-count="${plan.levelPlans.length}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}" data-confirmed-open-end-count="${openEnds.length}">
   <title id="architectural-plan-title">${connected ? "Connected split-level architectural plan" : `Architectural floor map for Revit level ${levelId}`}</title>
-  <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. Door swings and uncategorized fallback footprints are approximate.</desc>
+  <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. T-shaped open-end marks identify long wall endpoints with no adjoining wall or nearby recovered floor. Door swings and uncategorized fallback footprints are approximate.</desc>
   <style>
-    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#76858a;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
-    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
+    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#76858a;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
+    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
     .rooms .near-closed{fill:#f3b36f;fill-opacity:.22;stroke:#d9823b;stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
     .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none}
-    .walls{fill:#e0e7e5;stroke:#344b50;stroke-width:${fineStroke * 0.8};stroke-linejoin:round;vector-effect:non-scaling-stroke}
+    .walls{fill:#e0e7e5;stroke:#344b50;stroke-width:${fineStroke * 0.7};stroke-linejoin:round;vector-effect:non-scaling-stroke}
     .walls path{vector-effect:non-scaling-stroke}
     .walls .arc-body{fill:none;stroke:#e0e7e5;vector-effect:none}
-    .walls .arc-centreline{fill:none;stroke:#344b50;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
-    .columns{fill:#52656a;stroke:#263f46;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
-    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${fineStroke * 2};vector-effect:non-scaling-stroke}
-    .doors .leaf{fill:none;stroke:#a35b35;stroke-width:${fineStroke * 1.5};vector-effect:non-scaling-stroke}
-    .doors .swing{fill:none;stroke:#a35b35;stroke-width:${fineStroke};stroke-dasharray:${fineStroke * 5} ${fineStroke * 3};vector-effect:non-scaling-stroke}
-    .windows path:not(.opening){fill:none;stroke:#2a7990;stroke-width:${fineStroke * 1.25};vector-effect:non-scaling-stroke}
-    .stairs{fill:none;stroke:#6e5a86;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
-    .stairs .tread-surface{fill:#f3eef6;stroke:none}.stairs .riser{stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
-    .stairs .landing{fill:#eee8f3;stroke:#6e5a86;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
+    .walls .arc-centreline{fill:none;stroke:#344b50;stroke-width:${fineStroke * 0.7};vector-effect:non-scaling-stroke}
+    .open-edges{fill:none;stroke:#8b6f52;stroke-width:${fineStroke * 0.55};stroke-linecap:round;opacity:.82;pointer-events:none}
+    .open-edges path{vector-effect:non-scaling-stroke}
+    .columns{fill:#52656a;stroke:#263f46;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
+    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${fineStroke * 1.2};vector-effect:non-scaling-stroke}
+    .doors .leaf{fill:none;stroke:#a35b35;stroke-width:${fineStroke * 0.85};vector-effect:non-scaling-stroke}
+    .doors .swing{fill:none;stroke:#a35b35;stroke-width:${fineStroke * 0.6};stroke-dasharray:${fineStroke * 4} ${fineStroke * 3};vector-effect:non-scaling-stroke}
+    .windows path:not(.opening){fill:none;stroke:#2a7990;stroke-width:${fineStroke * 0.85};vector-effect:non-scaling-stroke}
+    .stairs{fill:none;stroke:#6e5a86;stroke-width:${fineStroke * 0.65};vector-effect:non-scaling-stroke}
+    .stairs .tread-surface{fill:#f3eef6;stroke:none}.stairs .riser{stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
+    .stairs .landing{fill:#eee8f3;stroke:#6e5a86;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
   </style>
   <rect width="100%" height="100%" fill="#fffdf7"/>
   <g${contentTransform ? ` transform="${contentTransform}"` : ""}>
   <g fill-rule="evenodd">${floorGroups}</g>
   ${roomLayer(derivedRooms, bounds, scale)}
   <g class="walls">${wallLayer(plan.wallRecords, bounds)}</g>
+  <g class="open-edges" data-confirmed-open-end-count="${openEnds.length}">${exposedWallEndLayer(openEnds, bounds)}</g>
   <g class="columns">${plan.columnRecords.map((record) => `<path data-revit-element-id="${record.elementId}" d="${path(distinctPlanPoints(record), bounds)}"/>`).join("")}</g>
   <g class="windows">${openingLayer(plan.windowRecords, bounds, "window")}</g>
   <g class="doors">${openingLayer(plan.doorRecords, bounds, "door")}</g>

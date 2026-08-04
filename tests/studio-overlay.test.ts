@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 
-import { referenceMeshGroup } from "../app/studio/three-scene.ts";
+import { overlayMeshGroup, referenceMeshGroup } from "../app/studio/three-scene.ts";
+import type { ConvertResult } from "../lib/reviter/types.ts";
+import { ifcGeometryDiffStatus } from "../lib/reviter/geometry-diff-status.ts";
 
 import {
   CAMERA_PRESETS,
@@ -34,6 +36,12 @@ test("agrees with the offline overlay script's metre to foot factor", () => {
   // scripts/overlay-diff.ts measures the same comparison outside the browser;
   // if the two ever disagree the reported errors are unit noise, not recovery.
   assert.ok(Math.abs(FEET_PER_METRE - 1 / 0.3048) < 1e-9);
+});
+
+test("an incomplete stair is red in the overlay even when its outer box matches", () => {
+  assert.equal(ifcGeometryDiffStatus(true, false, false), "aligned");
+  assert.equal(ifcGeometryDiffStatus(true, false, true), "different");
+  assert.equal(ifcGeometryDiffStatus(false, false, false), "different");
 });
 
 test("names ten camera orientations and puts the camera outside the model for each", () => {
@@ -70,6 +78,7 @@ test("IFC X-ray reveals geometry behind aligned and context surfaces", () => {
   const triangle = {
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     indices: new Uint32Array([0, 1, 2]),
+    elementIds: new Uint32Array([1460781]),
     color: [0.2, 0.86, 0.76] as [number, number, number],
     matched: true,
   };
@@ -93,7 +102,63 @@ test("IFC X-ray reveals geometry behind aligned and context surfaces", () => {
     { ...triangle, name: "Aligned", diffStatus: "aligned" },
   ], "technical");
   const shadedMaterial = (shaded.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
+  assert.deepEqual(
+    [...((shaded.children[0] as THREE.Mesh).userData.elementIds as Uint32Array)],
+    [1460781],
+  );
   assert.equal(shadedMaterial.transparent, false);
   assert.equal(shadedMaterial.opacity, 1);
   assert.equal(shadedMaterial.depthWrite, true);
+});
+
+test("the overlay does not expose aligned RVT faces as amber", () => {
+  const result = {
+    ok: true,
+    fileName: "comparison.rvt",
+    method: "partition-bounds-recovery",
+    origin: { x: 0, y: 0, z: 0 },
+    meshes: [{
+      name: "Mixed recovered batch",
+      positions: new Float32Array([
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+        2, 0, 0, 3, 0, 0, 2, 1, 0,
+      ]),
+      colors: new Float32Array(18).fill(1),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+      elementIds: new Uint32Array([1, 2]),
+      materialIndex: 0,
+      source: "native-brep",
+    }],
+    materials: [{
+      name: "Native",
+      baseColorLinear: [0.8, 0.8, 0.8, 1],
+      metallic: 0,
+      roughness: 0.8,
+      doubleSided: true,
+      source: "rvt-material",
+      assignedElements: 2,
+    }],
+    elementBounds: [],
+  } as unknown as ConvertResult;
+  const reference = [{
+    name: "Aligned IFC",
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]),
+    elementIds: new Uint32Array([1]),
+    color: [0.5, 0.5, 0.5] as [number, number, number],
+    matched: true,
+    diffStatus: "aligned" as const,
+  }];
+
+  const overlay = overlayMeshGroup(result, reference, "technical");
+  const recovered = overlay.children[0]!;
+  const byElement = new Map<number, THREE.MeshStandardMaterial>();
+  recovered.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    const ids = mesh.userData.elementIds as Uint32Array | undefined;
+    if (!mesh.isMesh || !ids?.length) return;
+    byElement.set(ids[0]!, mesh.material as THREE.MeshStandardMaterial);
+  });
+  assert.equal(byElement.get(1)?.color.getHex(), 0x7d8792);
+  assert.equal(byElement.get(2)?.color.getHex(), 0xf2a93b);
 });

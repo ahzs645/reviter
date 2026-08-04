@@ -27,6 +27,7 @@ import {
   type ReviewedRoom,
   type RoomReviewState,
 } from "../../lib/reviter";
+import { FloorReferencePlan } from "./FloorReferencePlan.tsx";
 
 export function FloorBrowser({
   result,
@@ -348,34 +349,31 @@ export function FloorBrowser({
         <span className="sr-only" role="status" aria-live="polite">{downloadStatus}</span>
       </aside>
 
-      <figure className="floor-browser-preview">
-        <div className="floor-browser-preview-toolbar" role="group" aria-label="Floor map view controls">
+      <FloorReferencePlan
+        rvtFileName={result.fileName}
+        levelIds={selectedPlan?.levelIds ?? [selected.levelId]}
+        planImageUrl={imageUrl}
+        zoom={zoom}
+        planAlt={connected
+          ? `Connected architectural floor map from ${selectedPlan!.minElevation.toFixed(1)} to ${selectedPlan!.maxElevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`
+          : `Architectural floor map at ${selected.elevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`}
+        toolbar={<div className="floor-browser-preview-toolbar" role="group" aria-label="Floor map view controls">
           <button type="button" aria-label="Zoom floor map out" disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value / 1.5))}><Minus size={13} /></button>
           <button type="button" aria-label="Fit whole floor map" onClick={() => setZoom(1)}><Maximize2 size={13} /> Fit</button>
           <button type="button" aria-label="Zoom floor map in" disabled={zoom >= 6} onClick={() => setZoom((value) => Math.min(6, value * 1.5))}><Plus size={13} /></button>
           <button type="button" aria-label="Rotate floor map counter-clockwise" onClick={() => setRotationQuarterTurns((value) => (value + 3) % 4)}><RotateCcw size={13} /></button>
           <button type="button" aria-label="Rotate floor map clockwise" onClick={() => setRotationQuarterTurns((value) => (value + 1) % 4)}><RotateCw size={13} /></button>
           <span>{Math.round(zoom * 100)}% · {rotationQuarterTurns * 90}°</span>
-        </div>
-        <div className="floor-browser-plan-scroll">
-          {/* The data URL is generated entirely from bounded numeric RVT geometry. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageUrl}
-            style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
-            alt={connected
-              ? `Connected architectural floor map from ${selectedPlan!.minElevation.toFixed(1)} to ${selectedPlan!.maxElevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`
-              : `Architectural floor map at ${selected.elevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`}
-          />
-        </div>
-        <figcaption>
+        </div>}
+        caption={<>
           Architectural plan assembled from recovered RVT geometry. Door swings are indicative because the persisted opening does not always expose Revit&apos;s swing side.
           {connected ? " Adjoining split-level slabs are composed at their own local plan cuts; vertically stacked storeys remain separate." : ""}
           {selectedDerivedRooms
             ? " F-labels are approximate floor regions partitioned by recovered vertical barriers—not Revit Rooms."
             : " Turn on Derived floor regions to inspect approximate barrier partitions."}
-        </figcaption>
-      </figure>
+          {" Loaded references remain separate and do not alter the RVT."}
+        </>}
+      />
     </div>
   );
 }

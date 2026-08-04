@@ -1,5 +1,8 @@
 export { convertRvtBytes } from "./convert";
-export { applyIfcReferenceRepairs } from "./reference-assisted-recovery";
+export {
+  applyIfcReferenceRepairs,
+  incompleteExpectedStairTopologyIds,
+} from "./reference-assisted-recovery";
 export {
   parseBasicFileInfoProperties,
   redactBasicFileInfoProperties,
@@ -32,6 +35,8 @@ export type {
 } from "./transmission-data";
 export { scanPersistedDwgFileNames } from "./cad-files";
 export type { PersistedCadFileName } from "./cad-files";
+export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg } from "./floor-reference-catalog";
+export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog";
 export type {
   PartAtomDesignFile,
   PartAtomFeature,
@@ -253,6 +258,14 @@ export {
   architecturalPlanSummary,
   connectedFloorPlanGroup,
   connectedFloorPlanGroups,
+  IDENTITY_FLOOR_REFERENCE_TRANSFORM,
+  applyFloorReferenceTransform,
+  composeFloorReferenceTransform,
+  decomposeFloorReferenceTransform,
+  fitFloorReferenceTransform,
+  floorReferenceTransformAttribute,
+  makeFloorReferenceAlignment,
+  parseFloorReferenceAlignment,
   floorPlateBounds,
   floorPlateSvgDataUrl,
   makePlanSvg,
@@ -275,6 +288,12 @@ export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./ex
 export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports";
 export type { IfcExportOptions } from "./export-ifc";
 export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./exports";
+export type {
+  FloorReferenceAlignment,
+  FloorReferenceControlPair,
+  FloorReferencePoint,
+  FloorReferenceTransform,
+} from "./exports";
 export type {
   ConvertFailure,
   ConvertOptions,

@@ -1836,6 +1836,8 @@ export type Revit2027NativeMeshBuildOptions = {
   sharedOwnerIds?: ReadonlySet<number>;
   /** Independent element envelopes used to validate native coordinates. */
   expectedBoundsByElement?: ReadonlyMap<number, Bounds3>;
+  /** Every placed element decoded from the RVT, including zero-volume records. */
+  knownElementIds?: ReadonlySet<number>;
   boundsToleranceFeet?: number;
 };
 
@@ -1858,6 +1860,8 @@ export type Revit2027NativeMeshScene = {
   truncated: boolean;
   boundsMismatches: number;
   missingBounds: number;
+  /** Complete native owners declined because no placed RVT element names them. */
+  unrepresentedElements: number;
   /** Items admitted through the carrier-composition route, which skips the check. */
   carrierComposedItems: number;
   /** Of those, how many the envelope cross-check would have declined. */
@@ -1996,6 +2000,7 @@ export function buildRevit2027NativeMeshScene(
       truncated: collection.truncated,
       boundsMismatches: 0,
       missingBounds: 0,
+      unrepresentedElements: 0,
       carrierComposedItems: 0,
       carrierComposedOutsideEnvelope: 0,
       carrierComposedSamples: [],
@@ -2040,6 +2045,7 @@ export function buildRevit2027NativeMeshScene(
   let truncated = collection.truncated;
   let boundsMismatches = 0;
   let missingBounds = 0;
+  let unrepresentedElements = 0;
   let carrierComposedItems = 0;
   let carrierComposedOutsideEnvelope = 0;
   const boundsMismatchSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
@@ -2081,6 +2087,21 @@ export function buildRevit2027NativeMeshScene(
   };
 
   for (const item of items) {
+    // A complete GRep owner is not necessarily a placed model element. Revit
+    // also persists reusable family definitions and nested symbol components.
+    // Without an element-table record there is no placement/category/bounds to
+    // prove that an owner belongs in the scene, and it cannot be selected in
+    // the UI. Admitting those owners at their stored local coordinates piled
+    // thousands of definition meshes into the centre of the UNBC model — most
+    // visibly the posts and plates piercing stair 1460781.
+    //
+    // Keep known zero-volume records eligible: stair balusters often have a
+    // real element record but no usable AABB, and their certified face mesh is
+    // still stronger evidence than the degenerate envelope.
+    if (options.knownElementIds && !options.knownElementIds.has(item.elementId)) {
+      unrepresentedElements += 1;
+      continue;
+    }
     const exactCarrierComposition =
       item.placement == null &&
       collection.carrierComposedOwnerIds?.has(item.owner.ownerElementId) ===
@@ -2255,6 +2276,7 @@ export function buildRevit2027NativeMeshScene(
     truncated,
     boundsMismatches,
     missingBounds,
+    unrepresentedElements,
     carrierComposedItems,
     carrierComposedOutsideEnvelope,
     carrierComposedSamples,

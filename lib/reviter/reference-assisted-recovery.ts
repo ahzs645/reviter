@@ -55,7 +55,7 @@ export type IfcReferenceRepairOptions = {
   directRoofGeometryElementIds?: ArrayLike<number>;
   /** Numeric Revit ids whose IFC Tag resolves to a direct IfcStairFlight body. */
   directStairFlightGeometryElementIds?: ArrayLike<number>;
-  /** Bounds-aligned ids whose rendered RVT and IFC surface orientations differ. */
+  /** Bounds-aligned ids whose rendered surface or expected topology differs. */
   shapeDifferentElementIds?: ArrayLike<number>;
 };
 
@@ -219,7 +219,7 @@ export function hasCompleteRoofReference(
   return nativeRecordBounds ? extentsMatch(nativeRecordBounds) : false;
 }
 
-function hasIncompleteExpectedStairTopology(
+export function hasIncompleteExpectedStairTopology(
   record: ConvertResult["elementBounds"][number] | undefined,
 ): boolean {
   const expected = record?.stairExpectedRiserCount;
@@ -254,6 +254,16 @@ function hasIncompleteExpectedStairTopology(
     previous = elevation;
   }
   return distinctElevations < Math.max(1, expected - 1);
+}
+
+export function incompleteExpectedStairTopologyIds(
+  result: ConvertResult,
+): Uint32Array {
+  return Uint32Array.from(
+    result.elementBounds
+      .filter((record) => hasIncompleteExpectedStairTopology(record))
+      .map((record) => record.elementId),
+  );
 }
 
 /**

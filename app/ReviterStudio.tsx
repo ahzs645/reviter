@@ -12,6 +12,7 @@ import {
   downloadBlob,
   deriveRoomsForLevels,
   floorPlateLevels,
+  incompleteExpectedStairTopologyIds,
   makeDxf,
   makeGlb,
   makeIfcCenterlines,
@@ -670,6 +671,7 @@ export default function ReviterStudio() {
       }
       const displayBounds = Float64Array.from(packedDisplayBounds);
       const surfaceOrientationSignatures = packMeshSurfaceOrientationSignatures(result.meshes);
+      const incompleteStairTopologyIds = incompleteExpectedStairTopologyIds(result);
       worker.onerror = (event) => {
         if (requestId !== referenceRequestIdRef.current) return;
         setReferenceError(event.message || "The local IFC worker stopped unexpectedly.");
@@ -715,12 +717,14 @@ export default function ReviterStudio() {
           typedElements: result.decoderCoverage.nativeCategorisedElements,
           displayBounds,
           surfaceOrientationSignatures,
+          incompleteStairTopologyIds,
         },
       };
       worker.postMessage(request, [
         buffer,
         displayBounds.buffer as ArrayBuffer,
         surfaceOrientationSignatures.buffer as ArrayBuffer,
+        incompleteStairTopologyIds.buffer as ArrayBuffer,
       ]);
     } catch (caught) {
       if (requestId !== referenceRequestIdRef.current) return;
@@ -1384,7 +1388,7 @@ export default function ReviterStudio() {
         value: comparison
           ? `${comparison.reference.matchedElementCount.toLocaleString()} matched · ${comparison.status}${
             comparison.reference.geometricShapeDifferentElementCount
-              ? ` · ${comparison.reference.geometricShapeDifferentElementCount.toLocaleString()} shape differences`
+              ? ` · ${comparison.reference.geometricShapeDifferentElementCount.toLocaleString()} shape/topology differences`
               : ""
           }`
           : "Not paired",
@@ -1678,7 +1682,7 @@ export default function ReviterStudio() {
     : geometrySource === "overlay" && comparison
       ? [
         { tone: "matched", label: "Matched RVT + IFC" },
-        { tone: "amber", label: "RVT only" },
+        { tone: "amber", label: "RVT only / recovered difference" },
         { tone: "missing", label: "Geometry differs" },
         { tone: "context", label: "IFC only / context" },
       ]

@@ -250,9 +250,50 @@ test("composes a level-aware architectural map from recovered RVT elements", () 
   assert.doesNotMatch(svg, /\.walls\{fill:#263f46/u);
 
   const rotated = makeArchitecturalFloorSvg(result, 100, { rotationQuarterTurns: 1 });
-  assert.match(rotated, /viewBox="0 0 15 25"/u);
+  assert.match(rotated, /viewBox="0 0 15 26"/u);
   assert.match(rotated, /data-view-rotation-degrees="90"/u);
   assert.match(rotated, /transform="translate\(15 0\) rotate\(90\)"/u);
+});
+
+test("includes synthesized outward door swings in the SVG view box", () => {
+  const result = resultFixture();
+  const floor = roomTestFloor(10);
+  const door: ElementBoundsRecord = {
+    ...record(12, 0),
+    categoryId: -2_000_023,
+    categoryName: "Doors",
+    boundsFeet: { min: { x: 0, y: 3, z: 0 }, max: { x: 0.4, y: 6, z: 7 } },
+    orientedBox: [
+      [0, 3, 0], [0.4, 3, 0], [0.4, 6, 0], [0, 6, 0],
+      [0, 3, 7], [0.4, 3, 7], [0.4, 6, 7], [0, 6, 7],
+    ],
+  };
+  result.elementBounds.push(floor, door);
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: floor.elementId, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  const leaf = /class="leaf" d="M ([\d.e+-]+) ([\d.e+-]+) L ([\d.e+-]+) ([\d.e+-]+)"/u.exec(svg);
+  assert.ok(leaf);
+  assert.ok(Number(leaf[3]) >= 2.49, "the opened leaf endpoint keeps the plan padding");
+  const viewBox = /viewBox="0 0 ([\d.e+-]+) ([\d.e+-]+)"/u.exec(svg);
+  assert.ok(viewBox);
+  assert.ok(Number(viewBox[1]) > 25, "the view box expands beyond the persisted floor/door records");
+});
+
+test("marks a confirmed wall end beside open space without inventing a continuation", () => {
+  const result = resultFixture();
+  const floor = roomTestFloor(10);
+  const exposed = straightWall(11, [-9, 5], [-1, 5]);
+  result.elementBounds.push(floor, exposed);
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: floor.elementId, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  assert.match(svg, /data-confirmed-open-end-count="1"/u);
+  assert.match(svg, /class="confirmed-open-end" data-revit-element-ids="11" data-wall-end="start"/u);
+  assert.doesNotMatch(svg, /data-wall-end="end"/u);
 });
 
 test("omits an unresolved stair run rather than inventing treads", () => {

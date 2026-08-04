@@ -7,8 +7,9 @@
  * the orbit camera rather than replacing it.
  *
  * The scene is drawn in model feet with the model origin subtracted, so the
- * speeds and heights here are real building dimensions — a 5.6 ft eye height,
- * a walking pace of about 9 ft/s — and need no scaling.
+ * speeds and heights here are real building dimensions and need no scaling.
+ * They are Autodesk's own, converted from metres: a 1.8 m eye height and a
+ * 4 m/s default pace.
  *
  * Looking is a drag, and the cursor stays the reviewer's own: Autodesk's 1st
  * Person never takes the mouse, and neither does this. A click used to request
@@ -59,6 +60,19 @@ const RISE_SPEED = 2 * FEET_PER_METRE;
 const DAMPING = 12;
 
 /**
+ * Falling, on Autodesk's terms: `gravityAcceleration` 9.8 m/s² capped at
+ * `gravityTopFallSpeed` 10 m/s.
+ *
+ * Rising and falling used to share one eased lerp towards the floor, which is
+ * not a fall at all — it is proportional, so every drop landed in about half a
+ * second whatever its height, and a 60 ft one peaked at 720 ft/s on the way.
+ * Stepping up keeps the ease, because a stair should climb smoothly rather than
+ * snap a riser at a time; only the downward half is physics.
+ */
+const GRAVITY_ACCELERATION = 9.8 * FEET_PER_METRE;
+const TOP_FALL_SPEED = 10 * FEET_PER_METRE;
+
+/**
  * Radians of pitch either side of the horizon.
  *
  * Autodesk clamps the first-person look to `mouseTurnMinPitchLimit` 0.349 rad
@@ -82,12 +96,6 @@ const KEYBOARD_TURN_SPEED = 1.5;
  */
 const LOOK_SPEED = 0.0045;
 
-/**
- * Seconds over which a released look drag coasts to a stop — Autodesk's
- * `mouseTurnStopDuration`. Stopping dead on mouseup reads as the view catching
- * on something.
- */
-const LOOK_STOP_DURATION = 0.2;
 // The indexed floor query is plan-binned and cheap enough to run once per
 // rendered update. The former 100 ms interval moved the normal walker almost
 // one foot between probes and the fast walker 2.4 ft, so a roughly one-foot
@@ -244,10 +252,6 @@ export function createWalkControls(
   let enabled = false;
   let looking = false;
   let lookPointerId: number | null = null;
-  // Angular momentum from the last look move, so releasing coasts rather than
-  // stopping dead. Radians per second of yaw and pitch.
-  let lookVelocityYaw = 0;
-  let lookVelocityPitch = 0;
   let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
@@ -257,6 +261,8 @@ export function createWalkControls(
   );
   let floorProbeElapsed = floorProbeInterval;
   let trackedSurface: number | null = null;
+  /** Downward speed of a fall in progress, in scene units per second. */
+  let fallSpeed = 0;
   let travel: {
     from: THREE.Vector3;
     to: THREE.Vector3;
@@ -314,36 +320,26 @@ export function createWalkControls(
     travel = null;
   }
 
+  /**
+   * The view turns by exactly what the hand did, and stops when the hand stops.
+   *
+   * There was briefly a momentum tail here, on the strength of Autodesk's
+   * `mouseTurnStopDuration`. It was wrong twice over: it replayed the last
+   * move's delta on top of the one already applied, so every drag over-turned
+   * by one move's worth — 2.5 degrees on a ten-move drag — and the error was
+   * absolute, so it compounded. Twenty drags came out 50 degrees from where
+   * they were aimed. A smoothing filter has to be conservative in total travel;
+   * one that adds a fixed surcharge per gesture is a drift generator.
+   */
   function applyLookDelta(movementX: number, movementY: number): void {
     if (!looking) return;
-    const yawDelta = -movementX * LOOK_SPEED;
-    const pitchDelta = -movementY * LOOK_SPEED;
-    yaw += yawDelta;
-    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + pitchDelta));
-    // The coast after release follows the last move, so a flick carries and a
-    // careful nudge does not.
-    lookVelocityYaw = yawDelta / LOOK_STOP_DURATION;
-    lookVelocityPitch = pitchDelta / LOOK_STOP_DURATION;
+    yaw -= movementX * LOOK_SPEED;
+    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch - movementY * LOOK_SPEED));
     applyRotation();
   }
 
   function onPointerMove(event: PointerEvent): void {
     applyLookDelta(event.movementX, event.movementY);
-  }
-
-  /**
-   * Bleed the released drag's momentum away over `LOOK_STOP_DURATION`, which is
-   * what keeps a flick from stopping the instant the button comes up.
-   */
-  function coastLook(step: number): void {
-    if (!lookVelocityYaw && !lookVelocityPitch) return;
-    const decay = Math.max(0, 1 - step / LOOK_STOP_DURATION);
-    yaw += lookVelocityYaw * step;
-    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + lookVelocityPitch * step));
-    lookVelocityYaw *= decay;
-    lookVelocityPitch *= decay;
-    if (Math.abs(lookVelocityYaw) < 1e-4) lookVelocityYaw = 0;
-    if (Math.abs(lookVelocityPitch) < 1e-4) lookVelocityPitch = 0;
   }
 
   function reportLooking(next: boolean): void {
@@ -397,8 +393,6 @@ export function createWalkControls(
     // corner a stop-turn-start and is not how BIM Walk behaves.
     floorProbeElapsed = 0;
     lookPointerId = event.pointerId;
-    lookVelocityYaw = 0;
-    lookVelocityPitch = 0;
     reportLooking(true);
     // Capture, not lock: the drag keeps receiving moves past the canvas edge,
     // but the cursor stays visible and stays the reviewer's to move.
@@ -407,8 +401,6 @@ export function createWalkControls(
 
   function releaseInput(): void {
     pressed.clear();
-    lookVelocityYaw = 0;
-    lookVelocityPitch = 0;
     stopLooking();
   }
 
@@ -434,6 +426,7 @@ export function createWalkControls(
     setFacing(options.start, options.lookAt);
     applyRotation();
     velocity.set(0, 0, 0);
+    fallSpeed = 0;
     floorProbeElapsed = floorProbeInterval;
     trackedSurface = null;
     domElement.addEventListener("pointerdown", onPointerDown);
@@ -467,7 +460,6 @@ export function createWalkControls(
     // Looking steers; it does not stop the walker. Movement, gravity and the
     // floor probe all keep running under the drag, so a held W carries you
     // round the corner you are dragging towards.
-    if (!looking) coastLook(step);
     if (travel) {
       travel.elapsed += step;
       const progress = Math.min(1, travel.elapsed / travel.duration);
@@ -499,7 +491,6 @@ export function createWalkControls(
     const turnInput = turnDirection(pressed);
     if (turnInput) yaw += turnInput * KEYBOARD_TURN_SPEED * step;
     const floorTravelInput = floorTravelDirection(pressed);
-    const hasMovementIntent = forwardInput !== 0 || strafeInput !== 0 || floorTravelInput !== 0;
 
     // Movement stays in the horizontal plane whatever the camera is looking at,
     // so looking down at the floor does not drive the walker into it.
@@ -518,10 +509,14 @@ export function createWalkControls(
 
     let height = up === "y" ? camera.position.y : camera.position.z;
     floorProbeElapsed += step;
+    // The floor is probed whether or not a movement key is down. Gating this on
+    // movement meant a walker standing still never learned there was a floor
+    // below, so `trackedSurface` stayed null and gravity never ran: you could
+    // hover in mid-air indefinitely and only drop once you pressed W. Autodesk
+    // falls after ten updates without ground under it, asked or not.
     if (
       gravity &&
       !floorTravelInput &&
-      hasMovementIntent &&
       options.resolveFloor &&
       floorProbeElapsed >= floorProbeInterval
     ) {
@@ -538,10 +533,23 @@ export function createWalkControls(
     }
     if (gravity && !floorTravelInput && trackedSurface != null) {
       const targetEye = Math.max(options.floor, trackedSurface + eyeHeight);
-      height = THREE.MathUtils.lerp(height, targetEye, Math.min(1, DAMPING * step));
+      if (height <= targetEye) {
+        // Stepping up onto a tread. Eased, so a stair climbs smoothly.
+        fallSpeed = 0;
+        height = THREE.MathUtils.lerp(height, targetEye, Math.min(1, DAMPING * step));
+      } else {
+        fallSpeed = Math.min(
+          TOP_FALL_SPEED * sceneUnitsPerFoot,
+          fallSpeed + GRAVITY_ACCELERATION * sceneUnitsPerFoot * step,
+        );
+        height = Math.max(targetEye, height - fallSpeed * step);
+        if (height === targetEye) fallSpeed = 0;
+      }
       if (up === "y") camera.position.y = height;
       else camera.position.z = height;
       velocity[up] = 0;
+    } else {
+      fallSpeed = 0;
     }
 
     // Walk mode keeps an eye above the model baseline when no surface was hit.
@@ -566,6 +574,7 @@ export function createWalkControls(
     if (up === "y") camera.position.y = droppedEye;
     else camera.position.z = droppedEye;
     velocity.set(0, 0, 0);
+    fallSpeed = 0;
     gravity = true;
     floorProbeElapsed = 0;
     trackedSurface = surface;
@@ -608,6 +617,7 @@ export function createWalkControls(
       surface: destinationSurface,
     };
     velocity.set(0, 0, 0);
+    fallSpeed = 0;
     floorProbeElapsed = 0;
     trackedSurface = null;
   }
@@ -629,6 +639,7 @@ export function createWalkControls(
       gravity = enabled;
       cancelTravel();
       velocity[up] = 0;
+      fallSpeed = 0;
       floorProbeElapsed = floorProbeInterval;
       trackedSurface = null;
     },

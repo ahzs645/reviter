@@ -63,7 +63,7 @@ type GlbDocument = {
 };
 
 type ParsedGlb = { document: GlbDocument; binary: Uint8Array };
-type Bounds = { min: [number, number, number]; max: [number, number, number] };
+export type Bounds = { min: [number, number, number]; max: [number, number, number] };
 export type Registration = {
   scale: number;
   sourceCenter: [number, number, number];
@@ -90,6 +90,25 @@ type VoxelCollection = {
 };
 
 type VoxelAccumulator = { add(index: number): void };
+type OrientationAccumulator = Uint8Array | Map<number, number>;
+
+function addOrientation(
+  orientations: OrientationAccumulator,
+  index: number,
+  mask: number,
+) {
+  if (orientations instanceof Uint8Array) {
+    orientations[index] |= mask;
+  } else {
+    orientations.set(index, (orientations.get(index) ?? 0) | mask);
+  }
+}
+
+function orientationAt(orientations: OrientationAccumulator, index: number): number {
+  return orientations instanceof Uint8Array
+    ? orientations[index]!
+    : orientations.get(index) ?? 0;
+}
 
 export type SurfaceOrientation =
   | "horizontalUp"
@@ -128,27 +147,147 @@ const ORIENTATION_MASK: Record<SurfaceOrientation, number> = {
 };
 
 const MAX_RETAINED_STAIR_HORIZONTAL_UP_AREA_METRES2 = 5;
+const MIN_MISSING_STAIR_HORIZONTAL_UP_AREA_METRES2 = 0.25;
+const MAX_MISSING_STAIR_HORIZONTAL_UP_AREA_METRES2 = 5;
+const MIN_MISSING_STAIR_VERTICAL_AREA_METRES2 = 0.125;
+const MAX_MISSING_STAIR_VERTICAL_AREA_METRES2 = 3;
 
-/**
- * Return horizontal-up residual cells whose same-elevation connected component
- * is too large to be an optimized-away tread closure. Broad top surfaces are
- * architecture, not hidden solid backs; a missing reference match therefore
- * remains actionable. Keeping the walk on one Y voxel also prevents risers
- * from joining otherwise independent tread levels into one component.
- */
-export function oversizedHorizontalUpResiduals(
+function voxelCoordinates(
+  grid: VoxelGrid,
+  index: number,
+): [number, number, number] {
+  const ix = index % grid.size[0];
+  const yz = Math.floor(index / grid.size[0]);
+  const iy = yz % grid.size[1];
+  const iz = Math.floor(yz / grid.size[1]);
+  return [ix, iy, iz];
+}
+
+function faceConnectedComponents(
   indices: readonly number[],
   grid: VoxelGrid,
-  maximumAreaMetres2 = MAX_RETAINED_STAIR_HORIZONTAL_UP_AREA_METRES2,
-): Set<number> {
+): number[][] {
   const remaining = new Set(indices);
-  const oversized = new Set<number>();
-  const component: number[] = [];
+  const components: number[][] = [];
   while (remaining.size) {
     const first = remaining.values().next().value as number;
     remaining.delete(first);
     const queue = [first];
-    component.length = 0;
+    const component: number[] = [];
+    while (queue.length) {
+      const index = queue.pop()!;
+      component.push(index);
+      const [ix, iy, iz] = voxelCoordinates(grid, index);
+      for (const [dx, dy, dz] of [
+        [-1, 0, 0], [1, 0, 0], [0, -1, 0],
+        [0, 1, 0], [0, 0, -1], [0, 0, 1],
+      ] as const) {
+        const nx = ix + dx;
+        const ny = iy + dy;
+        const nz = iz + dz;
+        if (
+          nx < 0 || nx >= grid.size[0] ||
+          ny < 0 || ny >= grid.size[1] ||
+          nz < 0 || nz >= grid.size[2]
+        ) continue;
+        const neighbour = nx + grid.size[0] * (ny + grid.size[1] * nz);
+        if (!remaining.delete(neighbour)) continue;
+        queue.push(neighbour);
+      }
+    }
+    components.push(component);
+  }
+  return components;
+}
+
+export type ResidualElementBounds = {
+  elementId: number;
+  bounds: Bounds;
+};
+
+export type ResidualElementAssignment = {
+  elementId: number;
+  components: number;
+  indices: number[];
+};
+
+/**
+ * Register one per-element RVT box into the Y-up metre frame used by the
+ * Autodesk comparison. RVT mesh coordinates are Z-up feet; makeGlb applies a
+ * -90 degree X rotation before the whole-scene scale-and-centre registration.
+ */
+export function registeredRvtElementBounds(
+  box: readonly [number, number, number, number, number, number],
+  registration: Registration,
+): Bounds {
+  return registeredBounds({
+    min: [box[0], box[2], -box[4]],
+    max: [box[3], box[5], -box[1]],
+  }, registration);
+}
+
+/**
+ * Attribute complete residual components to exact rendered element bounds.
+ * A component that crosses an element boundary remains unassigned rather than
+ * being donated to the category-wide batch that happens to contain it.
+ */
+export function attributeResidualComponentsToElements(
+  indices: readonly number[],
+  grid: VoxelGrid,
+  elements: readonly ResidualElementBounds[],
+): { assignments: ResidualElementAssignment[]; unassignedIndices: number[] } {
+  const tolerance = grid.cellMetres * 0.51;
+  const volume = (bounds: Bounds) =>
+    Math.max(0, bounds.max[0] - bounds.min[0]) *
+    Math.max(0, bounds.max[1] - bounds.min[1]) *
+    Math.max(0, bounds.max[2] - bounds.min[2]);
+  const byElement = new Map<number, ResidualElementAssignment>();
+  const unassignedIndices: number[] = [];
+  for (const component of faceConnectedComponents([...new Set(indices)], grid)) {
+    const candidates = elements.filter(({ bounds }) =>
+      component.every((index) => {
+        const point = voxelCenter(grid, index);
+        return point.every((value, axis) =>
+          value >= bounds.min[axis]! - tolerance &&
+          value <= bounds.max[axis]! + tolerance
+        );
+      })
+    ).sort((left, right) =>
+      volume(left.bounds) - volume(right.bounds) || left.elementId - right.elementId
+    );
+    const owner = candidates[0];
+    if (!owner) {
+      unassignedIndices.push(...component);
+      continue;
+    }
+    const assignment = byElement.get(owner.elementId) ?? {
+      elementId: owner.elementId,
+      components: 0,
+      indices: [],
+    };
+    assignment.components += 1;
+    assignment.indices.push(...component);
+    byElement.set(owner.elementId, assignment);
+  }
+  return {
+    assignments: [...byElement.values()].sort((left, right) =>
+      right.indices.length - left.indices.length || left.elementId - right.elementId
+    ),
+    unassignedIndices,
+  };
+}
+
+function sameElevationComponents(
+  indices: readonly number[],
+  grid: VoxelGrid,
+): number[][] {
+  const remaining = new Set(indices);
+  const components: number[][] = [];
+  while (remaining.size) {
+    const first = remaining.values().next().value as number;
+    remaining.delete(first);
+    const queue = [first];
+    const component: number[] = [];
     while (queue.length) {
       const index = queue.pop()!;
       component.push(index);
@@ -165,11 +304,114 @@ export function oversizedHorizontalUpResiduals(
         queue.push(neighbour);
       }
     }
+    components.push(component);
+  }
+  return components;
+}
+
+/**
+ * Return horizontal-up residual cells whose same-elevation connected component
+ * is too large to be an optimized-away tread closure. Broad top surfaces are
+ * architecture, not hidden solid backs; a missing reference match therefore
+ * remains actionable. Keeping the walk on one Y voxel also prevents risers
+ * from joining otherwise independent tread levels into one component.
+ */
+export function oversizedHorizontalUpResiduals(
+  indices: readonly number[],
+  grid: VoxelGrid,
+  maximumAreaMetres2 = MAX_RETAINED_STAIR_HORIZONTAL_UP_AREA_METRES2,
+): Set<number> {
+  const oversized = new Set<number>();
+  for (const component of sameElevationComponents(indices, grid)) {
     if (component.length * grid.cellMetres ** 2 > maximumAreaMetres2) {
       for (const index of component) oversized.add(index);
     }
   }
   return oversized;
+}
+
+/**
+ * Identify plausible missing treads or landings in the visual-reference GLB.
+ *
+ * A matching outer AABB is not enough to prove a stair is complete. This gate
+ * deliberately looks in the opposite diff direction: a bounded, horizontal-up
+ * GLB-only component wholly inside one recovered stair-run envelope is a local
+ * hole even when the recovered run reaches all six faces of that envelope.
+ * Tiny sampling flecks and broad floor/roof surfaces are excluded by area.
+ */
+export function localizedMissingHorizontalStairResiduals(
+  indices: readonly number[],
+  grid: VoxelGrid,
+  recoveredStairBounds: readonly Bounds[],
+  minimumAreaMetres2 = MIN_MISSING_STAIR_HORIZONTAL_UP_AREA_METRES2,
+  maximumAreaMetres2 = MAX_MISSING_STAIR_HORIZONTAL_UP_AREA_METRES2,
+): Set<number> {
+  const missing = new Set<number>();
+  if (!recoveredStairBounds.length) return missing;
+  const tolerance = grid.cellMetres * 0.51;
+  for (const component of sameElevationComponents(indices, grid)) {
+    const area = component.length * grid.cellMetres ** 2;
+    if (area < minimumAreaMetres2 || area > maximumAreaMetres2) continue;
+    const liesInsideStair = recoveredStairBounds.some((bounds) =>
+      component.every((index) => {
+        const point = voxelCenter(grid, index);
+        return point.every((value, axis) =>
+          value >= bounds.min[axis]! - tolerance &&
+          value <= bounds.max[axis]! + tolerance
+        );
+      })
+    );
+    if (!liesInsideStair) continue;
+    for (const index of component) missing.add(index);
+  }
+  return missing;
+}
+
+/**
+ * Recover the stair-riser signal hidden by the ordinary ±1-cell diff
+ * tolerance. A reference cell qualifies only when its exact location is empty
+ * but nearby recovered geometry caused `compareVoxels` to call it matched.
+ * Candidate fragments are combined across subdivided reference primitives,
+ * then constrained to a thin vertical plane inside one recovered stair run.
+ */
+export function localizedMissingVerticalStairResiduals(
+  referenceVerticalIndices: readonly number[],
+  recovered: Pick<VoxelCollection, "has">,
+  grid: VoxelGrid,
+  recoveredStairBounds: readonly Bounds[],
+  minimumAreaMetres2 = MIN_MISSING_STAIR_VERTICAL_AREA_METRES2,
+  maximumAreaMetres2 = MAX_MISSING_STAIR_VERTICAL_AREA_METRES2,
+): Set<number> {
+  const missing = new Set<number>();
+  if (!recoveredStairBounds.length) return missing;
+  const toleranceHidden = [...new Set(referenceVerticalIndices)].filter((index) =>
+    !recovered.has(index) && hasNeighbour(recovered, grid, index)
+  );
+  const boundsTolerance = grid.cellMetres * 0.51;
+  for (const component of faceConnectedComponents(toleranceHidden, grid)) {
+    if (component.length < 2) continue;
+    const area = component.length * grid.cellMetres ** 2;
+    if (area < minimumAreaMetres2 || area > maximumAreaMetres2) continue;
+    const coordinates = component.map((index) => voxelCoordinates(grid, index));
+    const xValues = coordinates.map((point) => point[0]);
+    const zValues = coordinates.map((point) => point[2]);
+    const isThinVerticalPlane =
+      Math.max(...xValues) === Math.min(...xValues) ||
+      Math.max(...zValues) === Math.min(...zValues);
+    if (!isThinVerticalPlane) continue;
+    const liesInsideStair = recoveredStairBounds.some((bounds) =>
+      component.every((index) => {
+        const point = voxelCenter(grid, index);
+        return point.every((value, axis) =>
+          value >= bounds.min[axis]! - boundsTolerance &&
+          value <= bounds.max[axis]! + boundsTolerance
+        );
+      })
+    );
+    if (!liesInsideStair) continue;
+    for (const index of component) missing.add(index);
+  }
+  return missing;
 }
 
 /** Classify a Y-up GLB triangle by its signed face normal. */
@@ -582,7 +824,7 @@ function addTriangleSamples(
   b: THREE.Vector3,
   c: THREE.Vector3,
   spacing: number,
-  orientationBits?: Uint8Array,
+  orientationBits?: OrientationAccumulator,
   orientationMask = 0,
 ) {
   const divisions = Math.min(512, Math.max(1, Math.ceil(Math.max(
@@ -601,7 +843,7 @@ function addTriangleSamples(
       );
       if (index >= 0) {
         voxels.add(index);
-        if (orientationBits) orientationBits[index] |= orientationMask;
+        if (orientationBits) addOrientation(orientationBits, index, orientationMask);
       }
     }
   }
@@ -614,7 +856,7 @@ function samplePrimitive(
   registration: Registration,
   grid: VoxelGrid,
   voxels: VoxelAccumulator,
-  orientationBits?: Uint8Array,
+  orientationBits?: OrientationAccumulator,
 ) {
   const vertices = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] as const;
   const positions = accessorReader(parsed, primitive.attributes!.POSITION!);
@@ -656,7 +898,11 @@ function sampleScene(
   return voxels;
 }
 
-function hasNeighbour(voxels: VoxelCollection, grid: VoxelGrid, index: number): boolean {
+function hasNeighbour(
+  voxels: Pick<VoxelCollection, "has">,
+  grid: VoxelGrid,
+  index: number,
+): boolean {
   const ix = index % grid.size[0];
   const yz = Math.floor(index / grid.size[0]);
   const iy = yz % grid.size[1];
@@ -716,6 +962,7 @@ function recoveredResidualsByMesh(
   reference: VoxelCollection,
 ) {
   const length = grid.size[0] * grid.size[1] * grid.size[2];
+  const stairVoxels = new SparseVoxelSet();
   const dispositionBits = new Uint8Array(length);
   const dispositionMask: Record<ResidualDisposition, number> = {
     retainedNativeGlazingShell: 1 << 0,
@@ -752,7 +999,7 @@ function recoveredResidualsByMesh(
         recoveredOnlyIndices.push(index);
         expand(residualBounds, x, y, z);
       }
-      const bits = orientationBits[index]!;
+      const bits = orientationAt(orientationBits, index);
       if (isRecoveredOnly && (bits & ORIENTATION_MASK.horizontalUp)) {
         horizontalUpRecoveredOnlyIndices.push(index);
       }
@@ -765,6 +1012,9 @@ function recoveredResidualsByMesh(
     const oversizedStairTop = disposition === "retainedClosedStairRun"
       ? oversizedHorizontalUpResiduals(horizontalUpRecoveredOnlyIndices, grid)
       : new Set<number>();
+    if (disposition === "retainedClosedStairRun") {
+      for (const index of voxels) stairVoxels.add(index);
+    }
     for (const index of recoveredOnlyIndices) {
       dispositionBits[index] |= dispositionMask[
         oversizedStairTop.has(index) ? "review" : disposition
@@ -816,7 +1066,12 @@ function recoveredResidualsByMesh(
       summary.retainedClosedStairRun += 1;
     }
   }
-  return { meshes, summary, reviewRecoveredOnlyIndices };
+  const stairBounds = meshes.flatMap((mesh) =>
+    mesh.disposition === "retainedClosedStairRun" && mesh.boundsMetres
+      ? [mesh.boundsMetres]
+      : []
+  );
+  return { meshes, summary, reviewRecoveredOnlyIndices, stairBounds, stairVoxels };
 }
 
 function referenceResidualsByMesh(
@@ -824,11 +1079,17 @@ function referenceResidualsByMesh(
   registration: Registration,
   grid: VoxelGrid,
   recovered: VoxelCollection,
+  recoveredStairVoxels: VoxelCollection,
+  recoveredStairBounds: readonly Bounds[],
 ) {
-  return sceneInstances(parsed).map(({ primitive, matrix, label, material }) => {
+  const missingHorizontalStairSurfaceIndices = new Set<number>();
+  const rawMeshes = sceneInstances(parsed).map(({ primitive, matrix, label, material }) => {
     const voxels = new SparseVoxelSet();
-    samplePrimitive(parsed, primitive, matrix, registration, grid, voxels);
+    const orientationBits = new Map<number, number>();
+    samplePrimitive(parsed, primitive, matrix, registration, grid, voxels, orientationBits);
     let referenceOnly = 0;
+    const horizontalUpReferenceOnlyIndices: number[] = [];
+    const toleranceHiddenVerticalIndices: number[] = [];
     const sampledBounds: Bounds = {
       min: [Infinity, Infinity, Infinity],
       max: [-Infinity, -Infinity, -Infinity],
@@ -840,11 +1101,30 @@ function referenceResidualsByMesh(
     for (const index of voxels) {
       const [x, y, z] = voxelCenter(grid, index);
       expand(sampledBounds, x, y, z);
+      const orientation = orientationAt(orientationBits, index);
+      if (
+        (orientation & ORIENTATION_MASK.vertical) !== 0 &&
+        !recoveredStairVoxels.has(index) &&
+        hasNeighbour(recoveredStairVoxels, grid, index)
+      ) {
+        toleranceHiddenVerticalIndices.push(index);
+      }
       const isReferenceOnly = !hasNeighbour(recovered, grid, index);
       if (isReferenceOnly) {
         referenceOnly += 1;
         expand(bounds, x, y, z);
+        if (orientation & ORIENTATION_MASK.horizontalUp) {
+          horizontalUpReferenceOnlyIndices.push(index);
+        }
       }
+    }
+    const missingHorizontalStairSurface = localizedMissingHorizontalStairResiduals(
+      horizontalUpReferenceOnlyIndices,
+      grid,
+      recoveredStairBounds,
+    );
+    for (const index of missingHorizontalStairSurface) {
+      missingHorizontalStairSurfaceIndices.add(index);
     }
     return {
       mesh: label,
@@ -860,8 +1140,27 @@ function referenceResidualsByMesh(
         referenceOnly ? bounds : null,
         grid.cellMetres,
       ),
+      missingHorizontalStairSurfaceVoxels: missingHorizontalStairSurface.size,
+      toleranceHiddenVerticalIndices,
     };
-  }).sort((left, right) => right.referenceOnly - left.referenceOnly);
+  });
+  const missingVerticalStairRiser = localizedMissingVerticalStairResiduals(
+    rawMeshes.flatMap((mesh) => mesh.toleranceHiddenVerticalIndices),
+    recoveredStairVoxels,
+    grid,
+    recoveredStairBounds,
+  );
+  const meshes = rawMeshes.map(({ toleranceHiddenVerticalIndices, ...mesh }) => ({
+    ...mesh,
+    missingVerticalStairRiserVoxels: toleranceHiddenVerticalIndices.filter((index) =>
+      missingVerticalStairRiser.has(index)
+    ).length,
+  })).sort((left, right) => right.referenceOnly - left.referenceOnly);
+  return {
+    meshes,
+    missingHorizontalStairSurfaceIndices: [...missingHorizontalStairSurfaceIndices],
+    missingVerticalStairRiserIndices: [...missingVerticalStairRiser],
+  };
 }
 
 /**
@@ -958,6 +1257,8 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
     identity,
     grid,
     recoveredVoxels,
+    recoveredResiduals.stairVoxels,
+    recoveredResiduals.stairBounds,
   );
   return {
     schemaVersion: 1,
@@ -986,9 +1287,25 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
           "Recovered-only surface not explained by the conservative retained-evidence rules, including oversized stair top bands.",
       },
     },
+    referenceResidualClassification: {
+      missingHorizontalStairSurface:
+        referenceResiduals.missingHorizontalStairSurfaceIndices.length,
+      missingVerticalStairRiser:
+        referenceResiduals.missingVerticalStairRiserIndices.length,
+      meaning: {
+        missingHorizontalStairSurface:
+          "Bounded horizontal-up GLB-only component inside a recovered StairsRun envelope; a localized missing tread or landing remains actionable even when the outer bounds match.",
+        missingVerticalStairRiser:
+          "Thin vertical GLB-only component inside a recovered StairsRun envelope whose exact cell is empty but was hidden by the ordinary neighbour tolerance; a localized missing riser remains actionable.",
+      },
+    },
     recoveredOnlyByMesh: recoveredResiduals.meshes,
-    referenceOnlyByMesh: referenceResiduals,
+    referenceOnlyByMesh: referenceResiduals.meshes,
     reviewRecoveredOnlyIndices: recoveredResiduals.reviewRecoveredOnlyIndices,
+    missingHorizontalStairSurfaceIndices:
+      referenceResiduals.missingHorizontalStairSurfaceIndices,
+    missingVerticalStairRiserIndices:
+      referenceResiduals.missingVerticalStairRiserIndices,
     grid,
   };
 }
@@ -1010,7 +1327,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const cellMetres = cellIndex >= 0 ? Number(args[cellIndex + 1]) : 0.5;
   if (!Number.isFinite(cellMetres) || cellMetres <= 0) throw new Error("--cell must be positive.");
   const report = compareGlbs(readFileSync(recoveredPath), readFileSync(referencePath), cellMetres);
-  const { reviewRecoveredOnlyIndices, ...serializableReport } = report;
+  const {
+    reviewRecoveredOnlyIndices,
+    missingHorizontalStairSurfaceIndices,
+    missingVerticalStairRiserIndices,
+    ...serializableReport
+  } = report;
+  const actionableReferenceOnlyIndices = [...new Set([
+    ...report.diff.referenceOnly,
+    ...missingHorizontalStairSurfaceIndices,
+    ...missingVerticalStairRiserIndices,
+  ])];
   const json = `${JSON.stringify({ ...serializableReport, diff: {
     ...report.diff,
     recoveredOnly: report.diff.recoveredOnly.length,
@@ -1020,13 +1347,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     recoveredCoverage: report.diff.recoveredVoxels
       ? 1 - reviewRecoveredOnlyIndices.length / report.diff.recoveredVoxels
       : 1,
+  }, missingReferenceResidual: {
+    horizontalStairSurface: missingHorizontalStairSurfaceIndices.length,
+    verticalStairRiser: missingVerticalStairRiserIndices.length,
   }, grid: { ...report.grid, occupiedIndicesOmitted: true } }, null, 2)}\n`;
   if (jsonIndex >= 0 && args[jsonIndex + 1]) writeFileSync(args[jsonIndex + 1]!, json);
-  if (svgIndex >= 0 && args[svgIndex + 1]) writeFileSync(args[svgIndex + 1]!, renderDiffSvg(report.diff, report.grid));
+  if (svgIndex >= 0 && args[svgIndex + 1]) {
+    writeFileSync(args[svgIndex + 1]!, renderDiffSvg({
+      ...report.diff,
+      referenceOnly: actionableReferenceOnlyIndices,
+    }, report.grid));
+  }
   if (actionableSvgIndex >= 0 && args[actionableSvgIndex + 1]) {
     writeFileSync(args[actionableSvgIndex + 1]!, renderDiffSvg({
       ...report.diff,
       recoveredOnly: reviewRecoveredOnlyIndices,
+      referenceOnly: actionableReferenceOnlyIndices,
       recoveredCoverage: report.diff.recoveredVoxels
         ? 1 - reviewRecoveredOnlyIndices.length / report.diff.recoveredVoxels
         : 1,

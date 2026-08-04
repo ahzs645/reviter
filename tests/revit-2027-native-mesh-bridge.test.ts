@@ -491,6 +491,33 @@ test("nested owner faces compose root-local transforms before scene placement an
   assert.equal(scene.embeddedGeometryElements, 0);
   assert.deepEqual([...scene.meshes[0]!.positions.slice(0, 3)], [4, 4, 4]);
   assert.equal(scene.meshes[0]!.nativeMaterialElementId, 99);
+
+  const unrepresented = buildRevit2027NativeMeshScene(
+    collection,
+    [],
+    { x: 1, y: 2, z: 3 },
+    {
+      expectedBoundsByElement: new Map(),
+      knownElementIds: new Set(),
+    },
+  );
+  assert.equal(unrepresented.unrepresentedElements, 1);
+  assert.equal(unrepresented.meshes.length, 0);
+  assert.deepEqual([...unrepresented.coveredElementIds], []);
+
+  const knownWithoutUsableBounds = buildRevit2027NativeMeshScene(
+    collection,
+    [],
+    { x: 1, y: 2, z: 3 },
+    {
+      expectedBoundsByElement: new Map(),
+      knownElementIds: new Set([40]),
+    },
+  );
+  assert.equal(knownWithoutUsableBounds.unrepresentedElements, 0);
+  assert.equal(knownWithoutUsableBounds.missingBounds, 1);
+  assert.deepEqual([...knownWithoutUsableBounds.coveredElementIds], [40]);
+  assert.equal(knownWithoutUsableBounds.meshes.length, 1);
 });
 
 test("independent RVT bounds reject mismatched direct and placed coordinates without suppressing proxies", () => {

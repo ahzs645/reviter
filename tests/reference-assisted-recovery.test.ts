@@ -5,6 +5,7 @@ import {
   applyIfcReferenceRepairs,
   hasCompleteRoofReference,
   hasCompleteStairFlightReference,
+  incompleteExpectedStairTopologyIds,
 } from "../lib/reviter/reference-assisted-recovery.ts";
 import { elementManifest } from "../lib/reviter/export-report.ts";
 import type { ConvertResult, MeshData, ReferenceMeshData } from "../lib/reviter/types.ts";
@@ -456,6 +457,7 @@ test("a segmented 1821222-style sequence uses the validated IfcStairFlight", () 
       [10, 21, z],
     ] as [[number, number, number], [number, number, number], [number, number, number], [number, number, number]];
   });
+  assert.deepEqual([...incompleteExpectedStairTopologyIds(original)], [1]);
   const repaired = applyIfcReferenceRepairs(
     original,
     [{ ...tetrahedronRampReference(), diffStatus: "aligned" }],

@@ -69,13 +69,15 @@ export function displayMaterials(): MaterialData[] {
     fallback("Slab and roof display proxy", [0.86, 0.85, 0.82, 1], 0.95),
     fallback("Covering display proxy", [0.70, 0.72, 0.68, 1], 0.9),
     fallback("Glazing display proxy", [0.36, 0.66, 0.82, 0.55], 0.3),
-    // Reconstructed stair runs used to share the dark-blue railing slot. The
-    // tread evidence is considerably stronger than a railing proxy, and the
-    // Autodesk reference consistently presents these cast stair bodies as
-    // dark neutral concrete. The measured UNBC value matches that appearance
-    // without borrowing geometry from the GLB. Keep this at the end so every
-    // established fallback material index remains stable.
-    fallback("Stair display proxy", [0.29, 0.29, 0.29, 1], 0.92),
+    // Reconstructed stair runs used to share the dark-blue railing slot, then
+    // a 0.29 neutral fallback. That second value made vertical risers read as
+    // a single charcoal wall even where both IFC and Autodesk contain the same
+    // stair body. Autodesk's two meshes covering the supplied curved run use
+    // the exact neutral 127/255 palette entry; use that persisted visual
+    // reference value for the evidence-only proxy without borrowing geometry.
+    // Keep this at the end so every established fallback material index stays
+    // stable.
+    fallback("Stair display proxy", [127 / 255, 127 / 255, 127 / 255, 1], 0.2),
   ];
 }
 
@@ -1501,12 +1503,76 @@ function stairTreadGeometry(
     treadThicknessFeet >= MIN_PRISM_THICKNESS_FEET
       ? treadThicknessFeet
       : null;
+  const renderedTreads = treads.map((tread) =>
+    tread.map((point) => [...point] as Point3) as [Point3, Point3, Point3, Point3]);
+  if (treadThickness != null) {
+    const elevationKeys = [...new Set(renderedTreads.map((tread) =>
+      tread[0][2].toFixed(6)))].sort((left, right) => Number(left) - Number(right));
+    const rises = elevationKeys.slice(1).map((key, index) =>
+      Number(key) - Number(elevationKeys[index]!));
+    const orderedRises = rises.filter((rise) => rise > MIN_PRISM_THICKNESS_FEET)
+      .sort((left, right) => left - right);
+    const typicalRise = orderedRises[Math.floor(orderedRises.length / 2)] ?? 0;
+    const endExtension = Math.min(
+      0.35,
+      Math.max(0, typicalRise - treadThickness),
+    );
+    const planEdgeKey = (start: Point3, end: Point3) => {
+      const a = `${start[0].toFixed(6)},${start[1].toFixed(6)}`;
+      const b = `${end[0].toFixed(6)},${end[1].toFixed(6)}`;
+      return a < b ? `${a}|${b}` : `${b}|${a}`;
+    };
+    for (const elevationKey of elevationKeys) {
+      const group = renderedTreads.filter((tread) =>
+        tread[0][2].toFixed(6) === elevationKey);
+      // Four or more cells at one elevation prove a sampled curved profile.
+      // A single straight tread also has two free side edges, but widening it
+      // would be an unsupported change to the persisted stair width.
+      if (group.length < 4 || endExtension < MIN_PRISM_THICKNESS_FEET) continue;
+      const startKeys = new Set(group.map((tread) =>
+        planEdgeKey(tread[0], tread[1])));
+      const endKeys = new Set(group.map((tread) =>
+        planEdgeKey(tread[2], tread[3])));
+      const startCells = group.filter((tread) =>
+        !endKeys.has(planEdgeKey(tread[0], tread[1])));
+      const endCells = group.filter((tread) =>
+        !startKeys.has(planEdgeKey(tread[2], tread[3])));
+      // A closed circular landing has no terminals. Disconnected cells have
+      // more than one pair and stay unchanged rather than being joined by a
+      // width assumption.
+      if (startCells.length !== 1 || endCells.length !== 1) continue;
+      const extendSide = (
+        tread: [Point3, Point3, Point3, Point3],
+        corners: readonly [number, number],
+        direction: number,
+      ) => {
+        const startMidpoint = [
+          (tread[0][0] + tread[1][0]) / 2,
+          (tread[0][1] + tread[1][1]) / 2,
+        ];
+        const endMidpoint = [
+          (tread[2][0] + tread[3][0]) / 2,
+          (tread[2][1] + tread[3][1]) / 2,
+        ];
+        const dx = endMidpoint[0]! - startMidpoint[0]!;
+        const dy = endMidpoint[1]! - startMidpoint[1]!;
+        const length = Math.hypot(dx, dy);
+        if (length <= MIN_PRISM_THICKNESS_FEET) return;
+        for (const corner of corners) {
+          tread[corner]![0] += direction * endExtension * dx / length;
+          tread[corner]![1] += direction * endExtension * dy / length;
+        }
+      };
+      extendSide(startCells[0]!, [0, 1], -1);
+      extendSide(endCells[0]!, [2, 3], 1);
+    }
+  }
   const cells: Array<{
     points: number[][];
     tread: [Point3, Point3, Point3, Point3];
     topZ: number;
   }> = [];
-  for (const tread of treads) {
+  for (const tread of renderedTreads) {
     const topZ = tread[0][2];
     if (topZ - baseZ < MIN_PRISM_THICKNESS_FEET) continue;
     const bottomZ = treadThickness == null
@@ -1597,6 +1663,66 @@ function stairTreadGeometry(
     }
   }
 
+  const sidePoints = (side: Side) => {
+    const cell = cells[side.cellIndex]!;
+    return [
+      cell.tread[side.startCorner]!,
+      cell.tread[side.endCorner]!,
+    ] as const;
+  };
+  const sidesByElevationGroup = new Map<number, Side[]>();
+  for (const sides of sidesByEdge.values()) {
+    for (const side of sides) {
+      const group = sidesByElevationGroup.get(side.elevationGroup) ?? [];
+      group.push(side);
+      sidesByElevationGroup.set(side.elevationGroup, group);
+    }
+  }
+  const CURVED_RISER_EDGE_TOLERANCE_FEET = 0.35;
+  const pointToSideDistance = (point: Point3, side: Side) => {
+    const [start, end] = sidePoints(side);
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    const lengthSquared = dx * dx + dy * dy;
+    const parameter = lengthSquared <= 1e-12
+      ? 0
+      : Math.max(0, Math.min(1,
+        ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) /
+          lengthSquared));
+    return Math.hypot(
+      point[0] - (start[0] + dx * parameter),
+      point[1] - (start[1] + dy * parameter),
+    );
+  };
+  const nearSuccessorRearSide = (side: Side): Side | null => {
+    // A normal tread quad is ordered rear profile (3 -> 0), side, forward
+    // profile (1 -> 2), side. Curved profiles are sampled independently, so
+    // the forward edge of one tread and the rear edge of the next can differ
+    // by a few hundredths of a foot and miss the exact edge-key join above.
+    if (side.startCorner !== 1 || side.endCorner !== 2) return null;
+    const [start, end] = sidePoints(side);
+    const candidates = (sidesByElevationGroup.get(side.elevationGroup + 1) ?? [])
+      .filter((candidate) =>
+        candidate.startCorner === 3 && candidate.endCorner === 0);
+    if (!candidates.length) return null;
+    const midpoint: Point3 = [
+      (start[0] + end[0]) / 2,
+      (start[1] + end[1]) / 2,
+      side.topZ,
+    ];
+    // One native arc may be sampled into sixteen cells at one elevation and
+    // eighteen at the next. Compare the edge to the union of the complete
+    // successor profile instead of requiring both endpoints to land on one
+    // successor segment.
+    const profileDistance = Math.max(...[start, midpoint, end].map((point) =>
+      Math.min(...candidates.map((candidate) =>
+        pointToSideDistance(point, candidate)))));
+    if (profileDistance > CURVED_RISER_EDGE_TOLERANCE_FEET) return null;
+    return [...candidates].sort((left, right) =>
+      pointToSideDistance(midpoint, left) - pointToSideDistance(midpoint, right)
+    )[0]!;
+  };
+
   const emitSides = (sides: Side[]) => {
     const emitExtendedSide = (side: Side, bottomZ: number, capTopZ: number) => {
       if (capTopZ - bottomZ < MIN_PRISM_THICKNESS_FEET) return;
@@ -1638,6 +1764,35 @@ function stairTreadGeometry(
         );
       } else {
         emitIndependentSide(side);
+        const successor = nearSuccessorRearSide(side);
+        const closedRunSuccessorBottomZ =
+          successor == null &&
+          beginWithRiser &&
+          endWithRiser &&
+          side.startCorner === 1 &&
+          side.endCorner === 2
+            ? Math.min(
+                ...(sidesByElevationGroup.get(side.elevationGroup + 1) ?? [])
+                  .map((nextSide) => {
+                    const nextCell = cells[nextSide.cellIndex]!;
+                    return nextCell.points[nextSide.startCorner]![2]!;
+                  }),
+              )
+            : null;
+        const successorBottomZ = successor
+          ? cells[successor.cellIndex]!.points[successor.startCorner]![2]!
+          : closedRunSuccessorBottomZ;
+        if (successorBottomZ != null && Number.isFinite(successorBottomZ)) {
+          // Keep the tread slab's own side above, then close only the vertical
+          // air gap up to the following slab. UNBC stair 1460781 has a 0.412 ft
+          // rise and a 0.164 ft tread body; without this 0.248 ft closure the
+          // valid curved wall behind it reads as a body poking through the
+          // stair even though the Autodesk GLB shows a closed riser. When the
+          // next profile is a distant native transition, the run's persisted
+          // begin/end-riser flags certify the same closure without inventing
+          // it for an open or evidence-poor stair.
+          emitExtendedSide(side, side.topZ, successorBottomZ);
+        }
       }
       return;
     }
@@ -1721,6 +1876,236 @@ function stairTreadGeometry(
       cluster.push(side);
     }
     if (cluster.length) emitSides(cluster);
+  }
+
+  // Transition and winder polygons are triangulated independently. Their
+  // consecutive outer profiles can therefore describe the same native riser
+  // as several partial collinear edges rather than one byte-identical edge.
+  // The exact-key pass above correctly handles ordinary treads; close only the
+  // remaining overlap between boundary edges of consecutive elevations.
+  const boundarySidesByElevation = new Map<number, Side[]>();
+  for (const sides of sidesByEdge.values()) {
+    const byElevation = new Map<number, Side[]>();
+    for (const side of sides) {
+      const group = byElevation.get(side.elevationGroup) ?? [];
+      group.push(side);
+      byElevation.set(side.elevationGroup, group);
+    }
+    for (const [elevationGroup, sameElevation] of byElevation) {
+      // A triangulated interior edge occurs twice. Only a single occurrence is
+      // an exposed boundary that can provide independent riser evidence.
+      if (sameElevation.length !== 1) continue;
+      const boundary = boundarySidesByElevation.get(elevationGroup) ?? [];
+      boundary.push(sameElevation[0]!);
+      boundarySidesByElevation.set(elevationGroup, boundary);
+    }
+  }
+
+  const collinearOverlap = (
+    lower: Side,
+    upper: Side,
+  ): [Point3, Point3] | null => {
+    const [lowerStart, lowerEnd] = sidePoints(lower);
+    const [upperStart, upperEnd] = sidePoints(upper);
+    const dx = lowerEnd[0] - lowerStart[0];
+    const dy = lowerEnd[1] - lowerStart[1];
+    const length = Math.hypot(dx, dy);
+    const upperDx = upperEnd[0] - upperStart[0];
+    const upperDy = upperEnd[1] - upperStart[1];
+    const upperLength = Math.hypot(upperDx, upperDy);
+    if (
+      length < MIN_PRISM_THICKNESS_FEET ||
+      upperLength < MIN_PRISM_THICKNESS_FEET ||
+      Math.abs(dx * upperDy - dy * upperDx) >
+        1e-4 * length * upperLength
+    ) {
+      return null;
+    }
+    const nx = -dy / length;
+    const ny = dx / length;
+    if (
+      Math.abs(
+        (upperStart[0] - lowerStart[0]) * nx +
+        (upperStart[1] - lowerStart[1]) * ny,
+      ) > 1e-4 ||
+      Math.abs(
+        (upperEnd[0] - lowerStart[0]) * nx +
+        (upperEnd[1] - lowerStart[1]) * ny,
+      ) > 1e-4
+    ) {
+      return null;
+    }
+    const tx = dx / length;
+    const ty = dy / length;
+    const upperParameters = [upperStart, upperEnd].map((point) =>
+      (point[0] - lowerStart[0]) * tx +
+      (point[1] - lowerStart[1]) * ty
+    );
+    const overlapStart = Math.max(0, Math.min(...upperParameters));
+    const overlapEnd = Math.min(length, Math.max(...upperParameters));
+    if (overlapEnd - overlapStart < MIN_PRISM_THICKNESS_FEET) return null;
+    return [
+      [
+        lowerStart[0] + tx * overlapStart,
+        lowerStart[1] + ty * overlapStart,
+        lower.topZ,
+      ],
+      [
+        lowerStart[0] + tx * overlapEnd,
+        lowerStart[1] + ty * overlapEnd,
+        lower.topZ,
+      ],
+    ];
+  };
+
+  for (let elevationGroup = 0;
+    elevationGroup + 1 < elevationGroupByKey.size;
+    elevationGroup += 1) {
+    const lowerSides = boundarySidesByElevation.get(elevationGroup) ?? [];
+    const upperSides = boundarySidesByElevation.get(elevationGroup + 1) ?? [];
+    const candidates: Array<{
+      overlap: [Point3, Point3];
+      lower: Side;
+      upper: Side;
+    }> = [];
+    for (const lower of lowerSides) {
+      for (const upper of upperSides) {
+        const [lowerStart, lowerEnd] = sidePoints(lower);
+        const [upperStart, upperEnd] = sidePoints(upper);
+        if (edgeKey(lowerStart, lowerEnd) === edgeKey(upperStart, upperEnd)) {
+          continue;
+        }
+        const overlap = collinearOverlap(lower, upper);
+        if (!overlap) continue;
+        const upperCell = cells[upper.cellIndex]!;
+        if (
+          upperCell.points[upper.startCorner]![2]! - lower.topZ >=
+            MIN_PRISM_THICKNESS_FEET
+        ) {
+          candidates.push({ overlap, lower, upper });
+        }
+      }
+    }
+
+    const groups: typeof candidates[] = [];
+    for (const candidate of candidates) {
+      const existing = groups.find((group) => {
+        const reference = group[0]!.overlap;
+        const [candidateStart, candidateEnd] = candidate.overlap;
+        const referenceDx = reference[1][0] - reference[0][0];
+        const referenceDy = reference[1][1] - reference[0][1];
+        const candidateDx = candidateEnd[0] - candidateStart[0];
+        const candidateDy = candidateEnd[1] - candidateStart[1];
+        const referenceLength = Math.hypot(referenceDx, referenceDy);
+        const candidateLength = Math.hypot(candidateDx, candidateDy);
+        if (
+          Math.abs(referenceDx * candidateDy - referenceDy * candidateDx) >
+            1e-4 * referenceLength * candidateLength
+        ) {
+          return false;
+        }
+        const nx = -referenceDy / referenceLength;
+        const ny = referenceDx / referenceLength;
+        return (
+          Math.abs(
+            (candidateStart[0] - reference[0][0]) * nx +
+            (candidateStart[1] - reference[0][1]) * ny,
+          ) <= 1e-4
+        );
+      });
+      if (existing) existing.push(candidate);
+      else groups.push([candidate]);
+    }
+
+    const mergeIntervals = (intervals: Array<[number, number]>) => {
+      const ordered = intervals
+        .map(([start, end]) => [Math.min(start, end), Math.max(start, end)] as [number, number])
+        .sort((left, right) => left[0] - right[0]);
+      const merged: Array<[number, number]> = [];
+      for (const interval of ordered) {
+        const previous = merged.at(-1);
+        if (!previous || interval[0] - previous[1] > 1e-4) {
+          merged.push([...interval]);
+        } else {
+          previous[1] = Math.max(previous[1], interval[1]);
+        }
+      }
+      return merged;
+    };
+    for (const group of groups) {
+      const reference = group[0]!.overlap;
+      const dx = reference[1][0] - reference[0][0];
+      const dy = reference[1][1] - reference[0][1];
+      const length = Math.hypot(dx, dy);
+      const tx = dx / length;
+      const ty = dy / length;
+      const parameter = (point: Point3) =>
+        (point[0] - reference[0][0]) * tx +
+        (point[1] - reference[0][1]) * ty;
+      const onSupportingLine = (side: Side) => {
+        const [start, end] = sidePoints(side);
+        const nx = -ty;
+        const ny = tx;
+        return (
+          Math.abs(
+            (start[0] - reference[0][0]) * nx +
+            (start[1] - reference[0][1]) * ny,
+          ) <= 1e-4 &&
+          Math.abs(
+            (end[0] - reference[0][0]) * nx +
+            (end[1] - reference[0][1]) * ny,
+          ) <= 1e-4
+        );
+      };
+      const sideIntervals = (sides: Side[]) => mergeIntervals(
+        sides.filter(onSupportingLine).map((side) => {
+          const [start, end] = sidePoints(side);
+          return [parameter(start), parameter(end)];
+        }),
+      );
+      const overlapIntervals = mergeIntervals(group.map(({ overlap }) => [
+        parameter(overlap[0]),
+        parameter(overlap[1]),
+      ]));
+      if (overlapIntervals.length !== 1) continue;
+      const [overlapStart, overlapEnd] = overlapIntervals[0]!;
+      const coversCompleteChain = (intervals: Array<[number, number]>) =>
+        intervals.some(([start, end]) =>
+          Math.abs(start - overlapStart) <= 1e-4 &&
+          Math.abs(end - overlapEnd) <= 1e-4
+        );
+      if (
+        !coversCompleteChain(sideIntervals(lowerSides)) &&
+        !coversCompleteChain(sideIntervals(upperSides))
+      ) {
+        continue;
+      }
+      const bottomZ = group[0]!.lower.topZ;
+      const upper = group[0]!.upper;
+      const upperCell = cells[upper.cellIndex]!;
+      const capTopZ = upperCell.points[upper.startCorner]![2]!;
+      const start: Point3 = [
+        reference[0][0] + tx * overlapStart,
+        reference[0][1] + ty * overlapStart,
+        bottomZ,
+      ];
+      const end: Point3 = [
+        reference[0][0] + tx * overlapEnd,
+        reference[0][1] + ty * overlapEnd,
+        bottomZ,
+      ];
+      const base = positions.length / 3;
+      positions.push(
+        start[0] - origin.x, start[1] - origin.y, bottomZ - origin.z,
+        end[0] - origin.x, end[1] - origin.y, bottomZ - origin.z,
+        end[0] - origin.x, end[1] - origin.y, capTopZ - origin.z,
+        start[0] - origin.x, start[1] - origin.y, capTopZ - origin.z,
+      );
+      indices.push(
+        base, base + 1, base + 2,
+        base, base + 2, base + 3,
+      );
+    }
   }
 
   return [{ positions, indices }];

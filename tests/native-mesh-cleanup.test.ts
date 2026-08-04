@@ -77,6 +77,26 @@ function boxTriangles(
   };
 }
 
+function notchedWallPrism(
+  minX: number,
+  maxX: number,
+  profile: readonly [number, number][],
+): { positions: number[]; indices: number[] } {
+  const positions = [minX, maxX].flatMap((x) =>
+    profile.flatMap(([y, z]) => [x, y, z]));
+  const count = profile.length;
+  const indices: number[] = [];
+  for (let index = 1; index < count - 1; index += 1) {
+    indices.push(0, index + 1, index);
+    indices.push(count, count + index, count + index + 1);
+  }
+  for (let index = 0; index < count; index += 1) {
+    const next = (index + 1) % count;
+    indices.push(index, next, count + next, index, count + next, count + index);
+  }
+  return { positions, indices };
+}
+
 test("the complete generic face batch beside a certified sloped wall is removed", () => {
   const preferred = mesh(
     "Compound wall body",
@@ -168,7 +188,7 @@ test("an in-bounds generic fragment is removed without requiring AABB overhang",
   assert.equal(result.outputTriangles, 8);
 });
 
-test("the envelope gate does not alter non-wall or ordinary rectangular bodies", () => {
+test("an overfilled rectangular wall keeps its compound body and removes its generic shell", () => {
   const body = boxTriangles([0, 0, 0], [1, 10, 8]);
   const envelope = boxTriangles([0, -2, 0], [1, 12, 9]);
   const run = (wallElementIds: ReadonlySet<number>) => cleanNativeMeshScene([
@@ -180,10 +200,109 @@ test("the envelope gate does not alter non-wall or ordinary rectangular bodies",
   });
 
   assert.equal(run(new Set()).redundantWallShellTrianglesRemoved, 0);
+  const wall = run(new Set([900]));
+  assert.equal(wall.redundantWallShellElements, 1);
+  assert.equal(wall.redundantWallShellTrianglesRemoved, 12);
+  assert.equal(wall.outputTriangles, 12);
+});
+
+test("the rectangular wall gate preserves shells without material overfill", () => {
+  const body = boxTriangles([0, 0, 0], [1, 10, 8]);
+  const inset = boxTriangles([0.1, 0.1, 0.1], [0.9, 9.9, 7.9]);
+  const result = cleanNativeMeshScene([
+    mesh("Preferred rectangular body", body.positions, body.indices, Array(12).fill(901), 423),
+    mesh("In-bounds second material", inset.positions, inset.indices, Array(12).fill(901), 24),
+  ], {
+    preferredMaterialIdsByElement: new Map([[901, new Set([423])]]),
+    wallElementIds: new Set([901]),
+  });
+
+  assert.equal(result.redundantWallShellTrianglesRemoved, 0);
+  assert.equal(result.outputTriangles, 24);
   assert.equal(
-    run(new Set([900])).redundantWallShellTrianglesRemoved,
-    0,
-    "a body without a sloped face is not sufficient evidence",
+    result.meshes.some((entry) => entry.nativeMaterialElementId === 24),
+    true,
+  );
+});
+
+test("the rectangular wall gate preserves a generic lower continuation", () => {
+  const upperBody = boxTriangles([0, 0, 7], [1, 10, 14]);
+  const completeBody = boxTriangles([0, 0, 0], [1, 10, 14]);
+  const result = cleanNativeMeshScene([
+    mesh("Preferred upper compound body", upperBody.positions, upperBody.indices, Array(12).fill(902), 423),
+    mesh("Generic lower continuation", completeBody.positions, completeBody.indices, Array(12).fill(902), 24),
+  ], {
+    preferredMaterialIdsByElement: new Map([[902, new Set([423])]]),
+    wallElementIds: new Set([902]),
+  });
+
+  assert.equal(result.redundantWallShellTrianglesRemoved, 0);
+  assert.equal(result.outputTriangles, 22);
+  assert.equal(
+    result.meshes.some((entry) => entry.nativeMaterialElementId === 24),
+    true,
+  );
+});
+
+test("wall 883117 removes the half-thickness joined-end display shell", () => {
+  const preferred = notchedWallPrism(
+    -5.494807720184326,
+    -5.101106643676758,
+    [
+      [-138.1666717529297, 7.21784782409668],
+      [-132.14076232910156, 7.21784782409668],
+      [-132.14076232910156, 20.99737548828125],
+      [-133.38746643066406, 20.99737548828125],
+      [-133.38746643066406, 16.404197692871094],
+      [-138.1666717529297, 16.404197692871094],
+    ],
+  );
+  const genericBox = boxTriangles(
+    [-5.494807720184326, -138.363525390625, 7.21784782409668],
+    [-5.101106643676758, -132.45245361328125, 20.99737548828125],
+  );
+  // The source batch has 14 triangles. These two extra internal faces make the
+  // fixture reproduce that topology without changing its measured bounds.
+  const genericPositions = [
+    ...genericBox.positions,
+    -5.494807720184326, -137, 8,
+    -5.494807720184326, -136, 8,
+    -5.494807720184326, -136, 9,
+    -5.494807720184326, -137, 9,
+  ];
+  const genericIndices = [
+    ...genericBox.indices,
+    8, 9, 10,
+    8, 10, 11,
+  ];
+  const result = cleanNativeMeshScene([
+    mesh(
+      "Wall 883117 compound body",
+      preferred.positions,
+      preferred.indices,
+      Array(preferred.indices.length / 3).fill(883117),
+      423,
+    ),
+    mesh(
+      "Wall 883117 default joined-end shell",
+      genericPositions,
+      genericIndices,
+      Array(genericIndices.length / 3).fill(883117),
+      24,
+    ),
+  ], {
+    preferredMaterialIdsByElement: new Map([[883117, new Set([423])]]),
+    wallElementIds: new Set([883117]),
+  });
+
+  assert.equal(preferred.indices.length / 3, 20);
+  assert.equal(genericIndices.length / 3, 14);
+  assert.equal(result.redundantWallShellElements, 1);
+  assert.equal(result.redundantWallShellTrianglesRemoved, 14);
+  assert.equal(result.outputTriangles, 20);
+  assert.equal(
+    result.meshes.some((entry) => entry.nativeMaterialElementId === 24),
+    false,
   );
 });
 

@@ -14,7 +14,11 @@ import {
   glazingElementIds,
   selectDisplayBounds,
 } from "../lib/reviter/scene.ts";
-import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
+import type {
+  ConvertResult,
+  ElementBoundsRecord,
+  Point3,
+} from "../lib/reviter/types.ts";
 
 function record(elementId: number, categoryId: number): ElementBoundsRecord {
   return {
@@ -438,7 +442,7 @@ test("reconstructed stair runs use neutral concrete and stronger tread profiles"
   const stairMaterial = materials.find((material) => material.name === "Stair display proxy");
   assert.ok(stairMaterial);
   const [red, green, blue, alpha] = stairMaterial.baseColorLinear;
-  assert.equal(red, 0.29, "the stair proxy uses the measured dark concrete fallback");
+  assert.equal(red, 127 / 255, "the stair proxy matches the Autodesk neutral stair palette");
   assert.equal(red, green);
   assert.ok(Math.abs(green - blue) <= 0.02);
   assert.equal(alpha, 1);
@@ -463,9 +467,23 @@ test("reconstructed stair runs use neutral concrete and stronger tread profiles"
     (child as THREE.LineSegments).isLineSegments);
   assert.ok(rendered);
   assert.ok(profiles);
+  assert.deepEqual(
+    group.children
+      .filter((child): child is THREE.LineSegments =>
+        (child as THREE.LineSegments).isLineSegments)
+      .map((child) => child.name),
+    ["Recovered stair nosing profiles"],
+    "unwelded stair-cell seams are not drawn as apparent gaps",
+  );
   const renderedColor = (rendered.material as THREE.MeshStandardMaterial).color;
+  const renderedMaterial = rendered.material as THREE.MeshStandardMaterial;
   assert.ok(Math.abs(renderedColor.r - renderedColor.g) < 1e-6);
   assert.ok(Math.abs(renderedColor.g - renderedColor.b) < 0.03);
+  assert.equal(renderedMaterial.roughness, 0.2);
+  assert.equal(renderedMaterial.flatShading, false);
+  assert.equal(renderedMaterial.side, THREE.FrontSide);
+  assert.equal(renderedMaterial.emissiveIntensity, 0.35);
+  assert.ok(renderedMaterial.emissive.r > 0);
   assert.equal(
     (profiles.material as THREE.LineBasicMaterial).opacity,
     0.94,
@@ -483,6 +501,141 @@ test("reconstructed stair runs use neutral concrete and stronger tread profiles"
     false,
     "hiding a stair also hides its dedicated profile geometry",
   );
+});
+
+test("near-matching curved tread profiles close the riser gap between slabs", () => {
+  const stair = record(91, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 2, y: 1, z: 0.8 },
+  };
+  stair.stairTreadThicknessFeet = 0.164;
+  stair.stairTreads = [
+    [[0, 0, 0.4], [1, 0, 0.4], [1, 1, 0.4], [0, 1, 0.4]],
+    [[1.01, 0, 0.8], [2, 0, 0.8], [2, 1, 0.8], [1.01, 1, 0.8]],
+  ];
+
+  const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  assert.equal(
+    mesh.indices.length / 3,
+    26,
+    "two closed tread slabs gain one two-triangle closure across the rise",
+  );
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+  const rendered = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  rendered.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  ray.set(new THREE.Vector3(0, 0.5, 0.52), new THREE.Vector3(1, 0, 0));
+  assert.ok(
+    ray.intersectObject(rendered).some((hit) => Math.abs(hit.point.x - 1) < 0.02),
+    "the 0.236 ft air gap is now covered by a riser face",
+  );
+  geometry.dispose();
+  (rendered.material as THREE.Material).dispose();
+});
+
+test("separate stair flights are not bridged by the curved-riser tolerance", () => {
+  const stair = record(92, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 3, y: 1, z: 0.8 },
+  };
+  stair.stairTreadThicknessFeet = 0.164;
+  stair.stairTreads = [
+    [[0, 0, 0.4], [1, 0, 0.4], [1, 1, 0.4], [0, 1, 0.4]],
+    [[1.5, 0, 0.8], [2.5, 0, 0.8], [2.5, 1, 0.8], [1.5, 1, 0.8]],
+  ];
+
+  const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  assert.equal(mesh.indices.length / 3, 24);
+});
+
+test("a persisted closed-riser run closes a distant native transition", () => {
+  const stair = record(95, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 3, y: 1, z: 0.8 },
+  };
+  stair.stairTreadThicknessFeet = 0.164;
+  stair.stairBeginWithRiser = true;
+  stair.stairEndWithRiser = true;
+  stair.stairTreads = [
+    [[0, 0, 0.4], [1, 0, 0.4], [1, 1, 0.4], [0, 1, 0.4]],
+    [[1.5, 0, 0.8], [2.5, 0, 0.8], [2.5, 1, 0.8], [1.5, 1, 0.8]],
+  ];
+
+  const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  assert.equal(mesh.indices.length / 3, 26);
+});
+
+test("a subdivided successor profile still closes one continuous curved riser", () => {
+  const stair = record(93, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 2, y: 1, z: 0.8 },
+  };
+  stair.stairTreadThicknessFeet = 0.164;
+  stair.stairTreads = [
+    [[0, 0, 0.4], [1, 0, 0.4], [1, 1, 0.4], [0, 1, 0.4]],
+    [[1.01, 0, 0.8], [2, 0, 0.8], [2, 0.5, 0.8], [1.01, 0.5, 0.8]],
+    [[1.01, 0.5, 0.8], [2, 0.5, 0.8], [2, 1, 0.8], [1.01, 1, 0.8]],
+  ];
+
+  const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+  const rendered = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  rendered.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  ray.set(new THREE.Vector3(0, 0.75, 0.52), new THREE.Vector3(1, 0, 0));
+  assert.ok(
+    ray.intersectObject(rendered).some((hit) => Math.abs(hit.point.x - 1) < 0.02),
+  );
+  geometry.dispose();
+  (rendered.material as THREE.Material).dispose();
+});
+
+test("segmented curved tread bands extend their two certified end profiles", () => {
+  const stair = record(94, -2000919);
+  stair.categoryName = "Stairs Runs";
+  stair.boundsFeet = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 2, y: 4, z: 0.8 },
+  };
+  stair.stairTreadThicknessFeet = 0.164;
+  stair.stairTreads = [0.4, 0.8].flatMap((z, elevation) =>
+    [0, 1, 2, 3].map((y) => {
+      const x = elevation;
+      return [
+        [x, y, z], [x + 1, y, z],
+        [x + 1, y + 1, z], [x, y + 1, z],
+      ] as [Point3, Point3, Point3, Point3];
+    }));
+
+  const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  const ys = Array.from({ length: mesh.positions.length / 3 }, (_, index) =>
+    mesh.positions[index * 3 + 1]!);
+  assert.ok(Math.min(...ys) < -0.23);
+  assert.ok(Math.max(...ys) > 4.23);
 });
 
 test("opaque hosted inserts win coplanar depth ties with their host wall", () => {

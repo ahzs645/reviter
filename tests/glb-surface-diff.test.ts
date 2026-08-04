@@ -2,16 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  attributeResidualComponentsToElements,
   compareGlbs,
   compareVoxels,
   deriveRegistration,
+  localizedMissingHorizontalStairResiduals,
+  localizedMissingVerticalStairResiduals,
   makeVoxelGrid,
   oversizedHorizontalUpResiduals,
+  registeredRvtElementBounds,
   renderDiffSvg,
   residualVerticalBand,
   residualDisposition,
   surfaceOrientation,
 } from "../scripts/glb-surface-diff.ts";
+import { readIfcStairFlightCounts } from "../scripts/audit-stair-vertical-residuals.ts";
 import * as THREE from "three";
 
 function glb(
@@ -118,6 +123,7 @@ test("surface comparison expands EXT_mesh_gpu_instancing placements", () => {
   assert.equal(report.diff.referenceOnly.length, 0);
   assert.equal(report.diff.recoveredCoverage, 1);
   assert.equal(report.diff.referenceCoverage, 1);
+  assert.equal(report.referenceResidualClassification.missingVerticalStairRiser, 0);
   assert.ok(
     report.referenceOnlyByMesh.some((entry) => entry.mesh === "Mesh 1 · instance 2"),
     "per-instance labels keep residuals attributable after shared geometry is expanded",
@@ -200,6 +206,187 @@ test("oversized horizontal stair bands remain actionable diff residuals", () => 
   );
   assert.equal(oversizedHorizontalUpResiduals(ordinary, grid).size, 0);
   assert.equal(oversizedHorizontalUpResiduals(fan, grid).size, 81);
+});
+
+test("finds localized GLB-only stair holes even when the recovered outer bounds match", () => {
+  const grid = {
+    cellMetres: 0.25,
+    min: [0, 0, 0] as [number, number, number],
+    size: [24, 4, 24] as [number, number, number],
+  };
+  const index = (x: number, y: number, z: number) =>
+    x + grid.size[0] * (y + grid.size[1] * z);
+  const landing = Array.from({ length: 16 }, (_, value) =>
+    index(1 + value % 4, 1, 1 + Math.floor(value / 4))
+  );
+  const sameSizeButOutside = Array.from({ length: 16 }, (_, value) =>
+    index(16 + value % 4, 1, 16 + Math.floor(value / 4))
+  );
+  const matchingRecoveredStairEnvelope = [{
+    min: [0.25, 0.25, 0.25] as [number, number, number],
+    max: [1.25, 0.5, 1.25] as [number, number, number],
+  }];
+
+  const localized = localizedMissingHorizontalStairResiduals(
+    [...landing, ...sameSizeButOutside],
+    grid,
+    matchingRecoveredStairEnvelope,
+  );
+  assert.deepEqual([...localized].sort((a, b) => a - b), landing.sort((a, b) => a - b));
+
+  const samplingFleck = [index(2, 1, 2)];
+  const broadFloor = Array.from({ length: 100 }, (_, value) =>
+    index(1 + value % 10, 1, 1 + Math.floor(value / 10))
+  );
+  const broadEnvelope = [{
+    min: [0, 0, 0] as [number, number, number],
+    max: [6, 1, 6] as [number, number, number],
+  }];
+  assert.equal(
+    localizedMissingHorizontalStairResiduals(samplingFleck, grid, broadEnvelope).size,
+    0,
+    "a single sampling cell is not enough evidence for a hole",
+  );
+  assert.equal(
+    localizedMissingHorizontalStairResiduals(broadFloor, grid, broadEnvelope).size,
+    0,
+    "a broad floor or roof residual is not mislabelled as a stair landing",
+  );
+});
+
+test("finds subdivided riser slits hidden by the one-cell neighbour tolerance", () => {
+  const grid = {
+    cellMetres: 0.25,
+    min: [0, 0, 0] as [number, number, number],
+    size: [24, 12, 24] as [number, number, number],
+  };
+  const index = (x: number, y: number, z: number) =>
+    x + grid.size[0] * (y + grid.size[1] * z);
+  // The GLB riser is split across two primitives/partial edges. The recovered
+  // surface one cell behind it makes the ordinary ±1-cell audit call it equal.
+  const firstPartialEdge = [index(3, 2, 4), index(4, 2, 4)];
+  const secondPartialEdge = [index(5, 2, 4), index(6, 2, 4)];
+  const referenceRiser = [...firstPartialEdge, ...secondPartialEdge];
+  const recovered = new Set(referenceRiser.map((_, offset) => index(3 + offset, 2, 5)));
+  const ordinary = compareVoxels(recovered, new Set(referenceRiser), grid);
+  assert.equal(
+    ordinary.referenceOnly.length,
+    0,
+    "the existing neighbour tolerance intentionally hides the one-cell slit",
+  );
+
+  const stairEnvelope = [{
+    min: [0.5, 0.25, 0.75] as [number, number, number],
+    max: [2, 1, 1.5] as [number, number, number],
+  }];
+  const localized = localizedMissingVerticalStairResiduals(
+    referenceRiser,
+    recovered,
+    grid,
+    stairEnvelope,
+  );
+  assert.deepEqual(
+    [...localized].sort((a, b) => a - b),
+    [...referenceRiser].sort((a, b) => a - b),
+  );
+
+  const oneCellNoise = [index(10, 2, 4)];
+  const noiseNeighbour = new Set([index(10, 2, 5)]);
+  assert.equal(
+    localizedMissingVerticalStairResiduals(
+      oneCellNoise,
+      noiseNeighbour,
+      grid,
+      [{ min: [2, 0, 0.5], max: [3, 1, 1.5] }],
+    ).size,
+    0,
+    "isolated one-cell registration noise is ignored",
+  );
+
+  const broadWall = Array.from({ length: 64 }, (_, value) =>
+    index(2 + value % 8, 1 + Math.floor(value / 8), 12)
+  );
+  const broadWallNeighbours = new Set(broadWall.map((cell) => cell + grid.size[0] * grid.size[1]));
+  assert.equal(
+    localizedMissingVerticalStairResiduals(
+      broadWall,
+      broadWallNeighbours,
+      grid,
+      [{ min: [0, 0, 2.5], max: [4, 3, 3.5] }],
+    ).size,
+    0,
+    "broad wall residuals exceed the conservative riser area limit",
+  );
+
+  const floorPatch = [
+    index(2, 2, 2), index(3, 2, 2),
+    index(2, 2, 3), index(3, 2, 3),
+  ];
+  const floorNeighbours = new Set(floorPatch.map((cell) => cell + grid.size[0]));
+  assert.equal(
+    localizedMissingVerticalStairResiduals(
+      floorPatch,
+      floorNeighbours,
+      grid,
+      [{ min: [0, 0, 0], max: [2, 1, 2] }],
+    ).size,
+    0,
+    "a two-axis floor patch is not a thin vertical plane",
+  );
+});
+
+test("attributes stair residuals to exact RVT elements rather than a category batch", () => {
+  const registration = {
+    scale: 0.5,
+    sourceCenter: [0, 0, 0] as [number, number, number],
+    referenceCenter: [10, 20, 30] as [number, number, number],
+  };
+  assert.deepEqual(
+    registeredRvtElementBounds([2, 4, 6, 8, 10, 12], registration),
+    { min: [11, 23, 25], max: [14, 26, 28] },
+  );
+
+  const grid = {
+    cellMetres: 1,
+    min: [0, 0, 0] as [number, number, number],
+    size: [12, 4, 12] as [number, number, number],
+  };
+  const index = (x: number, y: number, z: number) =>
+    x + grid.size[0] * (y + grid.size[1] * z);
+  const first = [index(1, 1, 1), index(2, 1, 1)];
+  const second = [index(7, 1, 7), index(8, 1, 7)];
+  const crossing = [index(4, 1, 4), index(5, 1, 4)];
+  const attributed = attributeResidualComponentsToElements(
+    [...first, ...second, ...crossing],
+    grid,
+    [
+      { elementId: 101, bounds: { min: [0, 0, 0], max: [3, 2, 3] } },
+      { elementId: 202, bounds: { min: [7, 0, 7], max: [9, 2, 9] } },
+    ],
+  );
+  assert.deepEqual(
+    attributed.assignments.map(({ elementId, components, indices }) => ({
+      elementId,
+      components,
+      voxels: indices.length,
+    })),
+    [
+      { elementId: 101, components: 1, voxels: 2 },
+      { elementId: 202, components: 1, voxels: 2 },
+    ],
+  );
+  assert.deepEqual(attributed.unassignedIndices.sort((a, b) => a - b), crossing);
+});
+
+test("reads IFC stair-flight riser and tread counts by native Revit tag", () => {
+  const counts = readIfcStairFlightCounts([
+    "#10=IFCSTAIRFLIGHT('guid',#6,'Run',$,$,#1,#2,'1821222',32,31,0.45,0.98);",
+    "#11=IFCSTAIRFLIGHT('guid2',#6,'Run',$,$,#1,#2,'1801503',8,7,1.23,0.98);",
+    "#12=IFCWALL('guid3',#6,'Wall',$,$,#1,#2,'999');",
+  ].join("\n"));
+  assert.deepEqual(counts.get(1_821_222), { risers: 32, treads: 31 });
+  assert.deepEqual(counts.get(1_801_503), { risers: 8, treads: 7 });
+  assert.equal(counts.has(999), false);
 });
 
 test("distinguishes interior residuals from genuine top-edge residuals", () => {

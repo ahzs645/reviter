@@ -5,6 +5,12 @@ const OPENING_PADDING_FEET = 0.01;
 const AREA_EPSILON = 1e-12;
 const REF_STRIDE = 0x1_0000_0000;
 const WALL_BODY_MIN_SPAN_FEET = 0.05;
+const RECTANGULAR_WALL_SHELL_MIN_OVERHANG_FEET = 0.5;
+const NOTCHED_WALL_BODY_MIN_TRIANGLES = 16;
+const WALL_SHELL_BOUNDS_MATCH_TOLERANCE_FEET = 0.01;
+const WALL_JOIN_SHELL_MIN_OVERHANG_RATIO = 0.25;
+const WALL_JOIN_SHELL_MAX_OVERHANG_RATIO = 0.75;
+const WALL_JOIN_SHELL_MIN_LONGITUDINAL_OVERLAP = 0.9;
 const NORMAL_CLASSIFICATION_TOLERANCE = 0.05;
 
 type Vertex = {
@@ -355,6 +361,11 @@ type PreferredWallBody = {
   hasSlopedFace: boolean;
 };
 
+type WallMaterialBatch = {
+  bounds: Bounds3;
+  triangles: number;
+};
+
 function emptyBounds(): Bounds3 {
   return {
     min: { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY },
@@ -371,18 +382,109 @@ function expandBounds(bounds: Bounds3, vertex: Vertex): void {
   bounds.max.z = Math.max(bounds.max.z, vertex.z);
 }
 
+function maxBoundsOverhang(outer: Bounds3, inner: Bounds3): number {
+  return Math.max(
+    inner.min.x - outer.min.x,
+    inner.min.y - outer.min.y,
+    inner.min.z - outer.min.z,
+    outer.max.x - inner.max.x,
+    outer.max.y - inner.max.y,
+    outer.max.z - inner.max.z,
+  );
+}
+
+function axisSpan(bounds: Bounds3, axis: "x" | "y" | "z"): number {
+  return bounds.max[axis] - bounds.min[axis];
+}
+
+function boundsMatchOnAxis(
+  left: Bounds3,
+  right: Bounds3,
+  axis: "x" | "y" | "z",
+): boolean {
+  return Math.abs(left.min[axis] - right.min[axis]) <=
+      WALL_SHELL_BOUNDS_MATCH_TOLERANCE_FEET &&
+    Math.abs(left.max[axis] - right.max[axis]) <=
+      WALL_SHELL_BOUNDS_MATCH_TOLERANCE_FEET;
+}
+
+function overlapRatio(
+  left: Bounds3,
+  right: Bounds3,
+  axis: "x" | "y",
+): number {
+  const overlap = Math.max(
+    0,
+    Math.min(left.max[axis], right.max[axis]) -
+      Math.max(left.min[axis], right.min[axis]),
+  );
+  return overlap / Math.max(
+    WALL_BODY_MIN_SPAN_FEET,
+    Math.min(axisSpan(left, axis), axisSpan(right, axis)),
+  );
+}
+
+/**
+ * A second orthogonal wall signature occurs at joined ends. The persisted
+ * compound body is a closed, notched prism, while a default-material display
+ * batch repeats most of its length and escapes by exactly a fraction of the
+ * wall thickness. It is too small for the general 0.5 ft envelope gate.
+ *
+ * Object 883117 is the reference case: its 22-triangle gypsum body agrees with
+ * the IFC to 0.000007 ft, while the 14 default-material triangles extend by
+ * 0.19685 ft (half of the 120 mm wall thickness). Requiring a non-box body,
+ * matching thickness and elevation, strong longitudinal overlap, and a
+ * thickness-relative end escape keeps the rule independent of IFC while
+ * excluding genuine lower continuations and material layers.
+ */
+function isRedundantJoinedEndShell(
+  preferred: PreferredWallBody,
+  generic: WallMaterialBatch | undefined,
+): boolean {
+  if (
+    generic == null ||
+    preferred.hasSlopedFace ||
+    preferred.triangles < NOTCHED_WALL_BODY_MIN_TRIANGLES ||
+    generic.triangles <= 0 ||
+    generic.triangles >= preferred.triangles ||
+    !boundsMatchOnAxis(preferred.bounds, generic.bounds, "z")
+  ) {
+    return false;
+  }
+
+  const thicknessAxis: "x" | "y" =
+    axisSpan(preferred.bounds, "x") <= axisSpan(preferred.bounds, "y")
+      ? "x"
+      : "y";
+  const lengthAxis: "x" | "y" = thicknessAxis === "x" ? "y" : "x";
+  if (!boundsMatchOnAxis(preferred.bounds, generic.bounds, thicknessAxis)) {
+    return false;
+  }
+
+  const thickness = axisSpan(preferred.bounds, thicknessAxis);
+  const endOverhang = Math.max(
+    preferred.bounds.min[lengthAxis] - generic.bounds.min[lengthAxis],
+    generic.bounds.max[lengthAxis] - preferred.bounds.max[lengthAxis],
+  );
+  return thickness > WALL_BODY_MIN_SPAN_FEET &&
+    endOverhang >= thickness * WALL_JOIN_SHELL_MIN_OVERHANG_RATIO &&
+    endOverhang <= thickness * WALL_JOIN_SHELL_MAX_OVERHANG_RATIO &&
+    overlapRatio(preferred.bounds, generic.bounds, lengthAxis) >=
+      WALL_JOIN_SHELL_MIN_LONGITUDINAL_OVERLAP;
+}
+
 /**
  * Some native wall records contain two drawable face sets: the actual
  * compound-layer body and a generic, envelope-sized display shell. They are
  * not coincident, so ordinary triangle deduplication cannot see the error.
  *
  * Suppression is deliberately narrow. A wall's preferred-material faces must
- * independently prove a volumetric sloped body (horizontal, vertical and
- * sloped support and at least eight triangles). Once that independent body is
- * certified, the entire unpreferred batch is redundant: retaining in-bounds
- * fragments leaves stepped projections at raked wall tops, while small-offset
- * batches leave internal/coplanar faces that flicker despite not enlarging the
- * element's AABB.
+ * independently prove a volumetric body (horizontal and vertical support and
+ * at least eight triangles). Sloped bodies are intrinsically distinctive;
+ * rectangular bodies additionally require either a 0.5 ft overfill or the
+ * thickness-relative joined-end signature above. Once certified, the entire
+ * unpreferred batch is redundant: retaining in-bounds fragments leaves stepped
+ * projections, internal faces, and coplanar faces that flicker.
  */
 function discardRedundantWallBoundsTriangles(
   meshes: readonly MeshData[],
@@ -394,6 +496,7 @@ function discardRedundantWallBoundsTriangles(
   }
 
   const preferredBodies = new Map<number, PreferredWallBody>();
+  const unpreferredBatches = new Map<number, WallMaterialBatch>();
   const nativeBounds = new Map<number, Bounds3>();
   for (const mesh of meshes) {
     for (let triangleIndex = 0; triangleIndex < mesh.indices.length / 3; triangleIndex += 1) {
@@ -409,7 +512,16 @@ function discardRedundantWallBoundsTriangles(
       triangle.forEach((vertex) => expandBounds(allBounds, vertex));
       nativeBounds.set(elementId, allBounds);
 
-      if (materialPreference(mesh, elementId, preferred) !== 1) continue;
+      if (materialPreference(mesh, elementId, preferred) !== 1) {
+        const batch = unpreferredBatches.get(elementId) ?? {
+          bounds: emptyBounds(),
+          triangles: 0,
+        };
+        triangle.forEach((vertex) => expandBounds(batch.bounds, vertex));
+        batch.triangles += 1;
+        unpreferredBatches.set(elementId, batch);
+        continue;
+      }
       const body = preferredBodies.get(elementId) ?? {
         bounds: emptyBounds(),
         triangles: 0,
@@ -434,12 +546,24 @@ function discardRedundantWallBoundsTriangles(
 
   const certified = new Map<number, Bounds3>();
   for (const [elementId, body] of preferredBodies) {
+    const fullBounds = nativeBounds.get(elementId);
+    const hasRectangularOverfill =
+      fullBounds != null &&
+      !body.hasSlopedFace &&
+      body.bounds.min.z - fullBounds.min.z <
+        RECTANGULAR_WALL_SHELL_MIN_OVERHANG_FEET &&
+      maxBoundsOverhang(fullBounds, body.bounds) >=
+        RECTANGULAR_WALL_SHELL_MIN_OVERHANG_FEET;
+    const hasJoinedEndShell = isRedundantJoinedEndShell(
+      body,
+      unpreferredBatches.get(elementId),
+    );
     if (
-      !nativeBounds.has(elementId) ||
+      fullBounds == null ||
       body.triangles < 8 ||
       !body.hasHorizontalFace ||
       !body.hasVerticalFace ||
-      !body.hasSlopedFace ||
+      (!body.hasSlopedFace && !hasRectangularOverfill && !hasJoinedEndShell) ||
       body.bounds.max.x - body.bounds.min.x <= WALL_BODY_MIN_SPAN_FEET ||
       body.bounds.max.y - body.bounds.min.y <= WALL_BODY_MIN_SPAN_FEET ||
       body.bounds.max.z - body.bounds.min.z <= WALL_BODY_MIN_SPAN_FEET

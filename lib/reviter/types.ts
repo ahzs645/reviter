@@ -166,6 +166,7 @@ export type DecoderCoverage = {
   nativeMeshBoundsMismatches?: number;
   /** Complete native items lacking an independent display-envelope cross-check. */
   nativeMeshMissingBounds?: number;
+  nativeMeshUnrepresentedElements?: number;
   /** Framed GRep owner definitions retained for recursive symbol resolution. */
   nativeMeshNestedDefinitions?: number;
   /** Exact persisted GInstance/InstanceInfo links retained across pages. */
@@ -607,7 +608,7 @@ export type IfcReferenceManifest = {
   geometricAlignedElementCount?: number;
   /** Compared elements outside the geometric tolerance. */
   geometricDifferentElementCount?: number;
-  /** Bounds-aligned elements rejected because one body omitted material slopes. */
+  /** Bounds-aligned elements rejected for a surface or expected-topology difference. */
   geometricShapeDifferentElementCount?: number;
   /** Native Revit ids admitted by the conservative surface-orientation gate. */
   geometricShapeDifferentElementIds?: Uint32Array;
@@ -696,6 +697,8 @@ export type RvtRegressionInput = {
    * [elementId,horizontalArea,verticalArea,slopedArea,triangleCount].
    */
   surfaceOrientationSignatures?: Float64Array;
+  /** Stair-run ids whose expected native riser sequence has missing surfaces. */
+  incompleteStairTopologyIds?: Uint32Array;
 };
 
 export type ConvertResult = {

@@ -28,6 +28,17 @@ const stair1821222Fixture = JSON.parse(readFileSync(
   curves: SketchCurve[];
 };
 
+const stair2075102Fixture = JSON.parse(readFileSync(
+  new URL("./fixtures/stair-run-2075102.json", import.meta.url),
+  "utf8",
+)) as {
+  elementId: number;
+  bounds: ElementBoundsRecord["boundsFeet"];
+  options: { actualRunWidthFeet: number; maximumRiserCount: number };
+  profiles: Array<{ copies: number; start: Point3; end: Point3 }>;
+  guides: Array<{ start: Point3; end: Point3 }>;
+};
+
 function straightFlight(): SketchCurve[] {
   const curves: SketchCurve[] = [];
   // Four tread boundaries, each repeated as persisted face representations.
@@ -221,6 +232,101 @@ test("recovers repeated curved profiles from a complete rising guide chain", () 
     [...new Set(recovered.treads.map((tread) => tread[0][2]))],
     [0.5, 1, 1.5],
   );
+});
+
+test("a curved tread may exceed four feet only when its local guide validates it", () => {
+  const curves: SketchCurve[] = [];
+  const radii = [10, 14.4, 18.8, 23.2];
+  for (const radius of radii) {
+    const profile: SketchCurve = {
+      offset: 0,
+      owner: 1,
+      kind: "arc",
+      start: [radius, 0, 0],
+      end: [0, radius, 0],
+      interior: [[radius / Math.sqrt(2), radius / Math.sqrt(2), 0]],
+    };
+    curves.push(profile, { ...profile });
+  }
+  for (let index = 0; index + 1 < radii.length; index += 1) {
+    curves.push(line(
+      [radii[index]!, 0, 0.5 + index * 0.5],
+      [radii[index + 1]!, 0, 1 + index * 0.5],
+    ));
+  }
+  const recovered = recoverProfiledGuideStairTreads(
+    curves,
+    {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 23.2, y: 23.2, z: 2 },
+    },
+    { actualRunWidthFeet: 3.2, maximumRiserCount: 4 },
+  );
+  assert.ok(recovered);
+  assert.equal(recovered.treads.length, 6);
+  assert.deepEqual(
+    [...new Set(recovered.treads.map((tread) => tread[0][2]))],
+    [0.5, 1, 1.5],
+  );
+});
+
+test("curved tessellation density cannot hide an unvalidated missing tread band", () => {
+  const curves: SketchCurve[] = [];
+  const radii = [10, 11, 20, 21];
+  for (const radius of radii) {
+    const profile: SketchCurve = {
+      offset: 0,
+      owner: 1,
+      kind: "arc",
+      start: [radius, 0, 0],
+      end: [0, radius, 0],
+      interior: [[radius / Math.sqrt(2), radius / Math.sqrt(2), 0]],
+    };
+    curves.push(profile, { ...profile });
+  }
+  for (let index = 0; index + 1 < radii.length; index += 1) {
+    curves.push(line(
+      [radii[index]!, 0, 0.5 + index * 0.5],
+      [radii[index + 1]!, 0, 1 + index * 0.5],
+    ));
+  }
+  assert.equal(recoverProfiledGuideStairTreads(
+    curves,
+    {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 21, y: 21, z: 2 },
+    },
+    { actualRunWidthFeet: 4, maximumRiserCount: 4 },
+  ), null);
+});
+
+test("object 2075102 accepts only its independently validated broad tread depth", () => {
+  assert.equal(stair2075102Fixture.elementId, 2_075_102);
+  const curves = [
+    ...stair2075102Fixture.profiles.flatMap((profile) =>
+      Array.from(
+        { length: profile.copies },
+        () => line(profile.start, profile.end),
+      )
+    ),
+    ...stair2075102Fixture.guides.map((guide) =>
+      line(guide.start, guide.end)
+    ),
+  ];
+  const recovered = recoverProfiledGuideStairTreads(
+    curves,
+    stair2075102Fixture.bounds,
+    stair2075102Fixture.options,
+  );
+  assert.ok(recovered);
+  assert.equal(recovered.treads.length, 7);
+  assert.deepEqual(
+    [...new Set(recovered.treads.map((tread) => tread[0][2]))],
+    stair2075102Fixture.guides.map((guide) => guide.start[2]),
+  );
+  assert.ok(Math.abs(recovered.riserHeightFeet - 0.8202099737532809) < 1e-9);
+  assert.ok(recovered.treadDepthFeet > 4);
+  assert.ok(recovered.treadDepthFeet < 4.141);
 });
 
 test("does not bridge opposing curved profiles across a stair core", () => {
@@ -419,7 +525,7 @@ test("clips local flattened tread bands but leaves a long flight transition empt
   );
 });
 
-test("object 1821222 splits three long transitions without emitting the top fan", () => {
+test("object 1821222 recovers every independently closed native transition cell", () => {
   assert.equal(stair1821222Fixture.elementId, 1_821_222);
   const recovered = recoverFlattenedProfileStairTreads(
     stair1821222Fixture.curves,
@@ -441,11 +547,50 @@ test("object 1821222 splits three long transitions without emitting the top fan"
     byElevation.set(elevation, (byElevation.get(elevation) ?? 0) + area(tread));
   }
 
-  assert.equal(byElevation.size, 28);
-  assert.ok(!byElevation.has(7.21785));
-  assert.ok(!byElevation.has(7.66896));
-  assert.ok(!byElevation.has(11.72901));
-  assert.ok(Math.max(...byElevation.values()) < 33);
+  assert.equal(byElevation.size, 31);
+  assert.ok(
+    Math.abs(byElevation.get(7.21785)! - 32.75278) < 0.01,
+    "the native five-sided lower transition is recovered without IFC input",
+  );
+  assert.ok(
+    Math.abs(byElevation.get(7.66896)! - 101.48494) < 0.01,
+    "the large but independently closed landing is not rejected as a tread fan",
+  );
+  assert.ok(byElevation.has(11.729));
+  assert.ok(
+    Math.abs(byElevation.get(11.729)! - 34.33026) < 0.01,
+    "the native six-sided upper transition matches the tagged IFC surface area",
+  );
+  const upperWinderAreas = [
+    [12.18012, 21.47188],
+    [12.63123, 16.31151],
+    [13.08235, 18.17103],
+    [13.53346, 16.01854],
+    [13.98458, 16.37179],
+  ] as const;
+  for (const [elevation, expectedArea] of upperWinderAreas) {
+    assert.ok(
+      Math.abs(byElevation.get(elevation)! - expectedArea) < 0.001,
+      `the independently closed upper winder at ${elevation} ft is complete`,
+    );
+  }
+  assert.ok(
+    Math.abs(
+      upperWinderAreas.reduce(
+        (total, [elevation]) => total + byElevation.get(elevation)!,
+        0,
+      ) - 88.34474,
+    ) < 0.001,
+    "the five closed upper winders retain their complete native area",
+  );
+  assert.ok(
+    [...byElevation.entries()].every(
+      ([elevation, treadArea]) =>
+        treadArea < 40 ||
+        (elevation === 7.66896 && treadArea < 102),
+    ),
+    "only the exact closed landing may exceed the ordinary tread area limit",
+  );
   assert.ok(Math.abs(recovered.treadDepthFeet - 1.312335958) < 1e-6);
 });
 
@@ -553,6 +698,127 @@ test("a persisted tread thickness produces horizontal slabs instead of base-fill
       [0.84, 1], [0.84, 1],
     ],
   );
+});
+
+test("object 1821222 closes subdivided transition risers by native collinear overlap", () => {
+  const recovered = recoverFlattenedProfileStairTreads(
+    stair1821222Fixture.curves,
+    stair1821222Fixture.bounds,
+    stair1821222Fixture.options,
+  );
+  assert.ok(recovered);
+  const treadThicknessFeet = 0.164041995;
+  const record = {
+    elementId: stair1821222Fixture.elementId,
+    stream: "fixture",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    stairTreadThicknessFeet: treadThicknessFeet,
+    stairTreads: recovered.treads,
+    boundsFeet: stair1821222Fixture.bounds,
+  } satisfies ElementBoundsRecord;
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+
+  const rise =
+    (stair1821222Fixture.bounds.max.z - stair1821222Fixture.bounds.min.z) /
+    stair1821222Fixture.options.maximumRiserCount;
+  const verticalArea = (lowerZ: number, upperZ: number) => {
+    const upperBottomZ = upperZ - treadThicknessFeet;
+    let area = 0;
+    let triangles = 0;
+    for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+      const points = Array.from(
+        mesh.indices.slice(offset, offset + 3),
+        (index) => Array.from(
+          mesh.positions.slice(index * 3, index * 3 + 3),
+        ),
+      );
+      const minimumZ = Math.min(...points.map((point) => point[2]!));
+      const maximumZ = Math.max(...points.map((point) => point[2]!));
+      if (
+        Math.abs(minimumZ - lowerZ) > 1e-4 ||
+        Math.abs(maximumZ - upperBottomZ) > 1e-4
+      ) {
+        continue;
+      }
+      const [first, second, third] = points;
+      const ux = second![0]! - first![0]!;
+      const uy = second![1]! - first![1]!;
+      const uz = second![2]! - first![2]!;
+      const vx = third![0]! - first![0]!;
+      const vy = third![1]! - first![1]!;
+      const vz = third![2]! - first![2]!;
+      area += Math.hypot(
+        uy * vz - uz * vy,
+        uz * vx - ux * vz,
+        ux * vy - uy * vx,
+      ) / 2;
+      triangles += 1;
+    }
+    return {
+      triangles,
+      coveredLength: area / (upperBottomZ - lowerZ),
+    };
+  };
+
+  const spans = [
+    { lower: 15, upper: 16, triangles: 2, length: 24.95762 },
+    { lower: 17, upper: 18, triangles: 2, length: 13.55668 },
+    { lower: 25, upper: 26, triangles: 2, length: 13.55668 },
+  ] as const;
+  for (const span of spans) {
+    const closure = verticalArea(
+      stair1821222Fixture.bounds.min.z + rise * span.lower,
+      stair1821222Fixture.bounds.min.z + rise * span.upper,
+    );
+    assert.equal(closure.triangles, span.triangles);
+    assert.ok(
+      Math.abs(closure.coveredLength - span.length) < 0.001,
+      `the ${span.lower}->${span.upper} transition closes its complete native profile`,
+    );
+  }
+});
+
+test("a lone partial collinear overlap cannot create an incidental stair wall", () => {
+  const treadThicknessFeet = 0.16;
+  const record = {
+    elementId: 4,
+    stream: "fixture",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000919,
+    categoryName: "Stairs Runs",
+    stairTreadThicknessFeet: treadThicknessFeet,
+    stairTreads: [
+      [[0, 0, 0.5], [3, 0, 0.5], [3, 1, 0.5], [0, 1, 0.5]],
+      [[1, 0, 1], [4, 0, 1], [4, -1, 1], [1, -1, 1]],
+    ],
+    boundsFeet: {
+      min: { x: 0, y: -1, z: 0 },
+      max: { x: 4, y: 1, z: 1 },
+    },
+  } satisfies ElementBoundsRecord;
+  const [mesh] = buildBoundsMeshes([record], { x: 0, y: 0, z: 0 });
+  assert.ok(mesh);
+  let bridgingTriangles = 0;
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const elevations = Array.from(
+      mesh.indices.slice(offset, offset + 3),
+      (index) => mesh.positions[index * 3 + 2]!,
+    );
+    if (
+      Math.abs(Math.min(...elevations) - 0.5) < 1e-6 &&
+      Math.abs(Math.max(...elevations) - 0.84) < 1e-6
+    ) {
+      bridgingTriangles += 1;
+    }
+  }
+  assert.equal(bridgingTriangles, 0);
 });
 
 test("native run end conditions close the exposed first and last risers", () => {

@@ -797,6 +797,7 @@ function profileTreadQuads(
   first: ProfileCurve,
   second: ProfileCurve,
   topZ: number,
+  maximumBridgeDepthFeet = MAX_TREAD_DEPTH_FEET,
 ): [Point3, Point3, Point3, Point3][] {
   const sampleCount = Math.max(
     2,
@@ -834,8 +835,8 @@ function profileTreadQuads(
     // remain on the walking side. If both exceed the same 4 ft evidence limit
     // used by the guide decoders, this patch is a profile bridge, not a tread.
     if (
-      firstDepth > MAX_TREAD_DEPTH_FEET &&
-      secondDepth > MAX_TREAD_DEPTH_FEET
+      firstDepth > maximumBridgeDepthFeet + POINT_TOLERANCE_FEET &&
+      secondDepth > maximumBridgeDepthFeet + POINT_TOLERANCE_FEET
     ) {
       rejectedBridgeSegments += 1;
       continue;
@@ -1042,6 +1043,685 @@ function safeFlattenedTreadBand(
     return [];
   }
   return band;
+}
+
+type PlanarSketchEdge = {
+  start: Point3;
+  end: Point3;
+};
+
+const planarSketchCellCache = new WeakMap<
+  readonly SketchCurve[],
+  Point3[][]
+>();
+
+function segmentParameterPlan(
+  point: Point3,
+  start: Point3,
+  end: Point3,
+): number {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  return Math.abs(dx) >= Math.abs(dy)
+    ? (point[0] - start[0]) / dx
+    : (point[1] - start[1]) / dy;
+}
+
+function splitPlanarSketchEdges(
+  curves: readonly SketchCurve[],
+): PlanarSketchEdge[] {
+  const unique = new Map<string, PlanarSketchEdge>();
+  for (const curve of curves) {
+    if (
+      curve.kind !== "line" ||
+      Math.abs(curve.start[2] - curve.end[2]) > POINT_TOLERANCE_FEET ||
+      planLength(curve.start, curve.end) <= POINT_TOLERANCE_FEET
+    ) {
+      continue;
+    }
+    const key = undirectedPlanLineKey(curve.start, curve.end);
+    if (!unique.has(key)) unique.set(key, {
+      start: curve.start,
+      end: curve.end,
+    });
+  }
+  const lines = [...unique.values()];
+  const splitPoints = lines.map((line) => [line.start, line.end]);
+  const cross = (ax: number, ay: number, bx: number, by: number) =>
+    ax * by - ay * bx;
+  for (let firstIndex = 0; firstIndex < lines.length; firstIndex += 1) {
+    const first = lines[firstIndex]!;
+    const firstX = first.end[0] - first.start[0];
+    const firstY = first.end[1] - first.start[1];
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < lines.length;
+      secondIndex += 1
+    ) {
+      const second = lines[secondIndex]!;
+      const secondX = second.end[0] - second.start[0];
+      const secondY = second.end[1] - second.start[1];
+      const offsetX = second.start[0] - first.start[0];
+      const offsetY = second.start[1] - first.start[1];
+      const denominator = cross(firstX, firstY, secondX, secondY);
+      if (Math.abs(denominator) > POINT_TOLERANCE_FEET ** 2) {
+        const firstParameter =
+          cross(offsetX, offsetY, secondX, secondY) / denominator;
+        const secondParameter =
+          cross(offsetX, offsetY, firstX, firstY) / denominator;
+        if (
+          firstParameter >= -POINT_TOLERANCE_FEET &&
+          firstParameter <= 1 + POINT_TOLERANCE_FEET &&
+          secondParameter >= -POINT_TOLERANCE_FEET &&
+          secondParameter <= 1 + POINT_TOLERANCE_FEET
+        ) {
+          const intersection: Point3 = [
+            first.start[0] + firstParameter * firstX,
+            first.start[1] + firstParameter * firstY,
+            first.start[2],
+          ];
+          splitPoints[firstIndex]!.push(intersection);
+          splitPoints[secondIndex]!.push(intersection);
+        }
+        continue;
+      }
+      if (
+        Math.abs(cross(offsetX, offsetY, firstX, firstY)) >
+          POINT_TOLERANCE_FEET ** 2
+      ) {
+        continue;
+      }
+      for (const point of [first.start, first.end]) {
+        const parameter = segmentParameterPlan(point, second.start, second.end);
+        if (
+          parameter >= -POINT_TOLERANCE_FEET &&
+          parameter <= 1 + POINT_TOLERANCE_FEET
+        ) {
+          splitPoints[secondIndex]!.push(point);
+        }
+      }
+      for (const point of [second.start, second.end]) {
+        const parameter = segmentParameterPlan(point, first.start, first.end);
+        if (
+          parameter >= -POINT_TOLERANCE_FEET &&
+          parameter <= 1 + POINT_TOLERANCE_FEET
+        ) {
+          splitPoints[firstIndex]!.push(point);
+        }
+      }
+    }
+  }
+
+  const edges = new Map<string, PlanarSketchEdge>();
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]!;
+    const points = [...new Map(
+      splitPoints[lineIndex]!.map((point) => [planPointKey(point), point]),
+    ).values()].sort(
+      (left, right) =>
+        segmentParameterPlan(left, line.start, line.end) -
+        segmentParameterPlan(right, line.start, line.end),
+    );
+    for (let pointIndex = 0; pointIndex + 1 < points.length; pointIndex += 1) {
+      const start = points[pointIndex]!;
+      const end = points[pointIndex + 1]!;
+      if (planLength(start, end) <= POINT_TOLERANCE_FEET) continue;
+      edges.set(undirectedPlanLineKey(start, end), { start, end });
+    }
+  }
+  return [...edges.values()];
+}
+
+/** Extract the independently closed bounded cells of the native plan sketch. */
+function planarSketchCells(curves: readonly SketchCurve[]): Point3[][] {
+  const cached = planarSketchCellCache.get(curves);
+  if (cached) return cached;
+  const edges = splitPlanarSketchEdges(curves);
+  const points = new Map<string, Point3>();
+  const adjacency = new Map<string, string[]>();
+  for (const edge of edges) {
+    const startKey = planPointKey(edge.start);
+    const endKey = planPointKey(edge.end);
+    points.set(startKey, edge.start);
+    points.set(endKey, edge.end);
+    const startNeighbours = adjacency.get(startKey) ?? [];
+    const endNeighbours = adjacency.get(endKey) ?? [];
+    startNeighbours.push(endKey);
+    endNeighbours.push(startKey);
+    adjacency.set(startKey, startNeighbours);
+    adjacency.set(endKey, endNeighbours);
+  }
+  for (const [key, neighbours] of adjacency) {
+    const origin = points.get(key)!;
+    neighbours.sort((leftKey, rightKey) => {
+      const left = points.get(leftKey)!;
+      const right = points.get(rightKey)!;
+      return (
+        Math.atan2(left[1] - origin[1], left[0] - origin[0]) -
+        Math.atan2(right[1] - origin[1], right[0] - origin[0])
+      );
+    });
+  }
+
+  const visited = new Set<string>();
+  const cells: Point3[][] = [];
+  for (const [start, neighbours] of adjacency) {
+    for (const firstNext of neighbours) {
+      if (visited.has(`${start}>${firstNext}`)) continue;
+      const cell: Point3[] = [];
+      let previous = start;
+      let current = firstNext;
+      let closed = false;
+      for (let guard = 0; guard <= edges.length * 2; guard += 1) {
+        const directedKey = `${previous}>${current}`;
+        if (visited.has(directedKey)) break;
+        visited.add(directedKey);
+        cell.push(points.get(previous)!);
+        const currentNeighbours = adjacency.get(current)!;
+        const incoming = currentNeighbours.indexOf(previous);
+        const next = currentNeighbours[
+          (incoming - 1 + currentNeighbours.length) % currentNeighbours.length
+        ]!;
+        previous = current;
+        current = next;
+        if (previous === start && current === firstNext) {
+          closed = true;
+          break;
+        }
+      }
+      if (
+        closed &&
+        cell.length >= 3 &&
+        polygonAreaPlan(cell) > POINT_TOLERANCE_FEET ** 2
+      ) {
+        cells.push(cell);
+      }
+    }
+  }
+  planarSketchCellCache.set(curves, cells);
+  return cells;
+}
+
+function cellProfileCoverage(
+  cell: readonly Point3[],
+  profile: ProfileCurve,
+): number {
+  const start = profile.curve.start;
+  const end = profile.curve.end;
+  const intervals: Array<[number, number]> = [];
+  for (let index = 0; index < cell.length; index += 1) {
+    const first = cell[index]!;
+    const second = cell[(index + 1) % cell.length]!;
+    if (
+      distanceToSegmentPlan(first, start, end) > POINT_TOLERANCE_FEET ||
+      distanceToSegmentPlan(second, start, end) > POINT_TOLERANCE_FEET
+    ) {
+      continue;
+    }
+    intervals.push([
+      Math.max(0, Math.min(1, segmentParameterPlan(first, start, end))),
+      Math.max(0, Math.min(1, segmentParameterPlan(second, start, end))),
+    ].sort((left, right) => left - right) as [number, number]);
+  }
+  intervals.sort((left, right) => left[0] - right[0]);
+  let coverage = 0;
+  let coveredTo = 0;
+  for (const [intervalStart, intervalEnd] of intervals) {
+    if (intervalEnd <= coveredTo) continue;
+    coverage += intervalEnd - Math.max(coveredTo, intervalStart);
+    coveredTo = intervalEnd;
+  }
+  return coverage;
+}
+
+function triangulatedCell(
+  cell: readonly Point3[],
+  topZ: number,
+): [Point3, Point3, Point3, Point3][] {
+  const polygon = cell.map(([x, y]) => [x, y, topZ] as Point3);
+  const indices = triangulate(
+    polygon.map(([x, y]) => [x, y] as [number, number]),
+  );
+  if (indices.length !== (polygon.length - 2) * 3) return [];
+  const triangles: [Point3, Point3, Point3, Point3][] = [];
+  let area = 0;
+  for (let index = 0; index + 2 < indices.length; index += 3) {
+    const first = polygon[indices[index]!]!;
+    const second = polygon[indices[index + 1]!]!;
+    const third = polygon[indices[index + 2]!]!;
+    const triangleArea = Math.abs(polygonAreaPlan([first, second, third]));
+    if (triangleArea <= POINT_TOLERANCE_FEET ** 2) continue;
+    area += triangleArea;
+    triangles.push([first, second, third, first]);
+  }
+  return Math.abs(area - Math.abs(polygonAreaPlan(polygon))) <=
+      Math.max(POINT_TOLERANCE_FEET, area * 0.001)
+    ? triangles
+    : [];
+}
+
+function nativeClosedPlanarCellTreadQuads(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+  curves: readonly SketchCurve[],
+): [Point3, Point3, Point3, Point3][] {
+  const depth = profilePairDistance(first, second);
+  const maximumWidth = Math.max(
+    planLength(first.curve.start, first.curve.end),
+    planLength(second.curve.start, second.curve.end),
+  );
+  // A closed landing may be much deeper than a tread, but it still cannot be
+  // longer than the widest adjacent native profile or exceed its local cell
+  // envelope. This keeps unrelated rooms and the sketch's exterior face out.
+  if (depth > maximumWidth + POINT_TOLERANCE_FEET) return [];
+  const maximumArea = maximumWidth * depth * FLATTENED_BAND_AREA_MULTIPLIER;
+  const candidates = planarSketchCells(curves).flatMap((cell) => {
+    if (
+      cellProfileCoverage(cell, first) < 1 - POINT_TOLERANCE_FEET ||
+      cellProfileCoverage(cell, second) < 1 - POINT_TOLERANCE_FEET
+    ) {
+      return [];
+    }
+    const area = Math.abs(polygonAreaPlan(cell));
+    if (
+      area <= POINT_TOLERANCE_FEET ** 2 ||
+      area > maximumArea + POINT_TOLERANCE_FEET
+    ) {
+      return [];
+    }
+    const triangles = triangulatedCell(cell, topZ);
+    return triangles.length ? [{ area, triangles }] : [];
+  });
+  return candidates.sort((left, right) => left.area - right.area)[0]
+    ?.triangles ?? [];
+}
+
+function shortestNativeBoundaryPath(
+  edges: readonly PlanarSketchEdge[],
+  start: Point3,
+  end: Point3,
+  excludedProfiles: readonly ProfileCurve[],
+): Point3[] {
+  const points = new Map<string, Point3>();
+  const adjacency = new Map<string, Array<{ key: string; distance: number }>>();
+  const liesOnProfile = (edge: PlanarSketchEdge, profile: ProfileCurve) =>
+    distanceToSegmentPlan(
+      edge.start,
+      profile.curve.start,
+      profile.curve.end,
+    ) <= POINT_TOLERANCE_FEET &&
+    distanceToSegmentPlan(
+      edge.end,
+      profile.curve.start,
+      profile.curve.end,
+    ) <= POINT_TOLERANCE_FEET;
+  for (const edge of edges) {
+    if (excludedProfiles.some((profile) => liesOnProfile(edge, profile))) {
+      continue;
+    }
+    const startKey = planPointKey(edge.start);
+    const endKey = planPointKey(edge.end);
+    points.set(startKey, edge.start);
+    points.set(endKey, edge.end);
+    const distance = planLength(edge.start, edge.end);
+    adjacency.set(startKey, [
+      ...(adjacency.get(startKey) ?? []),
+      { key: endKey, distance },
+    ]);
+    adjacency.set(endKey, [
+      ...(adjacency.get(endKey) ?? []),
+      { key: startKey, distance },
+    ]);
+  }
+  const startKey = planPointKey(start);
+  const endKey = planPointKey(end);
+  points.set(startKey, start);
+  points.set(endKey, end);
+  if (!adjacency.has(startKey) || !adjacency.has(endKey)) return [];
+  const unsettled = new Set(adjacency.keys());
+  const distances = new Map<string, number>([[startKey, 0]]);
+  const previous = new Map<string, string>();
+  while (unsettled.size) {
+    let current: string | null = null;
+    let currentDistance = Infinity;
+    for (const candidate of unsettled) {
+      const distance = distances.get(candidate) ?? Infinity;
+      if (distance < currentDistance) {
+        current = candidate;
+        currentDistance = distance;
+      }
+    }
+    if (!current || !Number.isFinite(currentDistance)) break;
+    unsettled.delete(current);
+    if (current === endKey) break;
+    for (const neighbour of adjacency.get(current) ?? []) {
+      if (!unsettled.has(neighbour.key)) continue;
+      const candidateDistance = currentDistance + neighbour.distance;
+      if (candidateDistance < (distances.get(neighbour.key) ?? Infinity)) {
+        distances.set(neighbour.key, candidateDistance);
+        previous.set(neighbour.key, current);
+      }
+    }
+  }
+  if (!Number.isFinite(distances.get(endKey) ?? Infinity)) return [];
+  const reversed: Point3[] = [];
+  let current: string | undefined = endKey;
+  while (current) {
+    reversed.push(points.get(current)!);
+    if (current === startKey) break;
+    current = previous.get(current);
+  }
+  if (current !== startKey) return [];
+  return reversed.reverse();
+}
+
+function nativeClosedProfileBoundaryTreadQuads(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+  curves: readonly SketchCurve[],
+  profiles: readonly ProfileCurve[],
+): [Point3, Point3, Point3, Point3][] {
+  const depth = profilePairDistance(first, second);
+  const width = Math.max(
+    planLength(first.curve.start, first.curve.end),
+    planLength(second.curve.start, second.curve.end),
+  );
+  if (depth > width + POINT_TOLERANCE_FEET) return [];
+  const edges = splitPlanarSketchEdges(curves);
+  const candidates: Array<{
+    area: number;
+    triangles: [Point3, Point3, Point3, Point3][];
+  }> = [];
+  for (const alignedSecondEnds of [
+    [second.curve.start, second.curve.end] as const,
+    [second.curve.end, second.curve.start] as const,
+  ]) {
+    const firstPath = shortestNativeBoundaryPath(
+      edges,
+      first.curve.start,
+      alignedSecondEnds[0],
+      profiles,
+    );
+    const secondPath = shortestNativeBoundaryPath(
+      edges,
+      first.curve.end,
+      alignedSecondEnds[1],
+      profiles,
+    );
+    if (firstPath.length < 2 || secondPath.length < 2) continue;
+    const polygon = [
+      first.curve.start,
+      first.curve.end,
+      ...secondPath.slice(1),
+      ...firstPath.slice().reverse().slice(0, -1),
+    ];
+    if (new Set(polygon.map(planPointKey)).size !== polygon.length) continue;
+    const firstPathLength = firstPath.slice(0, -1).reduce(
+      (total, point, index) => total + planLength(point, firstPath[index + 1]!),
+      0,
+    );
+    const secondPathLength = secondPath.slice(0, -1).reduce(
+      (total, point, index) => total + planLength(point, secondPath[index + 1]!),
+      0,
+    );
+    const maximumArea =
+      width * Math.max(firstPathLength, secondPathLength) *
+      FLATTENED_BAND_AREA_MULTIPLIER;
+    const area = Math.abs(polygonAreaPlan(polygon));
+    if (
+      area <= POINT_TOLERANCE_FEET ** 2 ||
+      area > maximumArea + POINT_TOLERANCE_FEET
+    ) {
+      continue;
+    }
+    const triangles = triangulatedCell(polygon, topZ);
+    if (!triangles.length) continue;
+
+    // A shortest path may turn at the crossing of two persisted side lines,
+    // cutting the corner off a winder even though the adjacent native graph
+    // face closes that corner exactly. Fill only a unique bounded face that
+    // shares at least two of the cycle's split edges (an inward graph notch),
+    // and retain the ordinary local area limit for that supplemental face.
+    const polygonEdges = new Set(polygon.map((point, index) =>
+      undirectedPlanLineKey(point, polygon[(index + 1) % polygon.length]!)
+    ));
+    const firstPathEdges = new Set(firstPath.slice(0, -1).map((point, index) =>
+      undirectedPlanLineKey(point, firstPath[index + 1]!)
+    ));
+    const pointInside = (point: Point3) => {
+      let inside = false;
+      for (let index = 0, previous = polygon.length - 1;
+        index < polygon.length;
+        previous = index, index += 1) {
+        const currentPoint = polygon[index]!;
+        const previousPoint = polygon[previous]!;
+        if (
+          (currentPoint[1] > point[1]) !== (previousPoint[1] > point[1]) &&
+          point[0] <
+            (previousPoint[0] - currentPoint[0]) *
+              (point[1] - currentPoint[1]) /
+              (previousPoint[1] - currentPoint[1]) + currentPoint[0]
+        ) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    };
+    const firstCenter: Point3 = [
+      (first.curve.start[0] + first.curve.end[0]) / 2,
+      (first.curve.start[1] + first.curve.end[1]) / 2,
+      topZ,
+    ];
+    const secondCenter: Point3 = [
+      (second.curve.start[0] + second.curve.end[0]) / 2,
+      (second.curve.start[1] + second.curve.end[1]) / 2,
+      topZ,
+    ];
+    const progressionX = secondCenter[0] - firstCenter[0];
+    const progressionY = secondCenter[1] - firstCenter[1];
+    const progressionSquared =
+      progressionX * progressionX + progressionY * progressionY;
+    const supplemental = planarSketchCells(curves).flatMap((cell) => {
+      const sharedEdges = cell.reduce((count, point, index) =>
+        count + Number(polygonEdges.has(undirectedPlanLineKey(
+          point,
+          cell[(index + 1) % cell.length]!,
+        ))), 0);
+      const sharedFirstPathEdges = cell.reduce((count, point, index) =>
+        count + Number(firstPathEdges.has(undirectedPlanLineKey(
+          point,
+          cell[(index + 1) % cell.length]!,
+        ))), 0);
+      if (sharedEdges < 1 || sharedFirstPathEdges < 1) return [];
+      const centroid: Point3 = [
+        cell.reduce((sum, point) => sum + point[0], 0) / cell.length,
+        cell.reduce((sum, point) => sum + point[1], 0) / cell.length,
+        topZ,
+      ];
+      const cellArea = Math.abs(polygonAreaPlan(cell));
+      const progression = (
+        (centroid[0] - firstCenter[0]) * progressionX +
+        (centroid[1] - firstCenter[1]) * progressionY
+      ) / progressionSquared;
+      if (
+        pointInside(centroid) ||
+        cellArea > width * depth * FLATTENED_BAND_AREA_MULTIPLIER
+      ) {
+        return [];
+      }
+      const cellTriangles = triangulatedCell(cell, topZ);
+      return cellTriangles.length
+        ? [{ area: cellArea, cellTriangles, progression }]
+        : [];
+    });
+    // A genuine forward flare lies beyond the second profile by more than
+    // half an interval. Faces nearer the cycle are intersection slivers; faces
+    // behind it belong to the preceding tread. Requiring one unique forward
+    // cell prevents either neighbour from being absorbed into this winder.
+    const forwardSupplemental = supplemental.filter(
+      (item) => item.progression > 1.5,
+    );
+    if (forwardSupplemental.length > 1) continue;
+    candidates.push({
+      area: area + (forwardSupplemental[0]?.area ?? 0),
+      triangles: [
+        ...triangles,
+        ...(forwardSupplemental[0]?.cellTriangles ?? []),
+      ],
+    });
+  }
+  // Direct and crossed endpoint pairings must not produce competing cells.
+  // A unique native boundary cycle is required before it can outrank the
+  // conservative four-corner winder band.
+  if (candidates.length !== 1) return [];
+  return candidates[0]!.triangles;
+}
+
+/**
+ * Recover a long flight transition only when the native sketch closes it.
+ *
+ * A flattened multi-flight run can join a broad profile to a short rotated
+ * profile through two persisted side connectors. Their remote endpoints lie
+ * on the same two native boundary segments as the broad profile's endpoints.
+ * Together those six points describe the transition exactly. This is stronger
+ * evidence than filling the whole minimum-spanning-tree edge: object 1821222's
+ * upper transition is a 34.33 ft² hexagon. The adjacent 101.49 ft² footprint
+ * is a legitimate closed landing at its own elevation, but must not be reused
+ * as an inferred bridge for this transition.
+ */
+export function nativeClosedTransitionTreadQuads(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+  maximumLocalDepth: number,
+  curves: readonly SketchCurve[],
+): [Point3, Point3, Point3, Point3][] {
+  const closedCell = nativeClosedPlanarCellTreadQuads(
+    first,
+    second,
+    topZ,
+    curves,
+  );
+  if (closedCell.length) return closedCell;
+
+  const firstLength = planLength(first.curve.start, first.curve.end);
+  const secondLength = planLength(second.curve.start, second.curve.end);
+  const broad = firstLength >= secondLength ? first : second;
+  const short = broad === first ? second : first;
+  if (
+    planLength(broad.curve.start, broad.curve.end) <
+      planLength(short.curve.start, short.curve.end) * 1.5
+  ) {
+    return [];
+  }
+
+  const profileKeys = new Set([
+    undirectedPlanLineKey(first.curve.start, first.curve.end),
+    undirectedPlanLineKey(second.curve.start, second.curve.end),
+  ]);
+  const horizontalLines = curves.filter((curve) =>
+    curve.kind === "line" &&
+    Math.abs(curve.start[2] - curve.end[2]) <= POINT_TOLERANCE_FEET
+  );
+  const sharesPlanPoint = (left: Point3, right: Point3) =>
+    planLength(left, right) <= POINT_TOLERANCE_FEET;
+  const liesOnNativeBoundary = (firstPoint: Point3, secondPoint: Point3) =>
+    horizontalLines.some((curve) =>
+      !profileKeys.has(undirectedPlanLineKey(curve.start, curve.end)) &&
+      distanceToSegmentPlan(firstPoint, curve.start, curve.end) <=
+        POINT_TOLERANCE_FEET &&
+      distanceToSegmentPlan(secondPoint, curve.start, curve.end) <=
+        POINT_TOLERANCE_FEET
+    );
+  const connectorEnd = (
+    shortEnd: Point3,
+    broadEnd: Point3,
+  ): Point3 | null => {
+    const candidates = horizontalLines.flatMap((curve) => {
+      const key = undirectedPlanLineKey(curve.start, curve.end);
+      if (profileKeys.has(key)) return [];
+      const other = sharesPlanPoint(curve.start, shortEnd)
+        ? curve.end
+        : sharesPlanPoint(curve.end, shortEnd)
+          ? curve.start
+          : null;
+      if (!other || sharesPlanPoint(other, broadEnd)) return [];
+      const connectorLength = planLength(shortEnd, other);
+      if (
+        connectorLength >
+          profilePairDistance(first, second) * 1.5 + POINT_TOLERANCE_FEET ||
+        !liesOnNativeBoundary(broadEnd, other)
+      ) {
+        return [];
+      }
+      return [{ other, connectorLength }];
+    }).sort((left, right) => left.connectorLength - right.connectorLength);
+    return candidates[0]?.other ?? null;
+  };
+
+  const broadEnds = [broad.curve.start, broad.curve.end] as const;
+  const shortEnds = [short.curve.start, short.curve.end] as const;
+  const maximumArea =
+    planLength(broad.curve.start, broad.curve.end) *
+    maximumLocalDepth *
+    FLATTENED_BAND_AREA_MULTIPLIER;
+  const candidates: Array<{
+    area: number;
+    triangles: [Point3, Point3, Point3, Point3][];
+  }> = [];
+  // Endpoint proximity alone is ambiguous at a rotated transition. Try both
+  // orientations and let the two independently persisted side connectors plus
+  // boundary-collinearity evidence choose the valid one.
+  for (const alignedShortEnds of [
+    shortEnds,
+    [shortEnds[1], shortEnds[0]] as const,
+  ]) {
+    const connector0 = connectorEnd(alignedShortEnds[0], broadEnds[0]);
+    const connector1 = connectorEnd(alignedShortEnds[1], broadEnds[1]);
+    if (!connector0 || !connector1) continue;
+    const polygon: Point3[] = [
+      [broadEnds[0][0], broadEnds[0][1], topZ],
+      [broadEnds[1][0], broadEnds[1][1], topZ],
+      [connector1[0], connector1[1], topZ],
+      [alignedShortEnds[1][0], alignedShortEnds[1][1], topZ],
+      [alignedShortEnds[0][0], alignedShortEnds[0][1], topZ],
+      [connector0[0], connector0[1], topZ],
+    ];
+    const polygonArea = Math.abs(polygonAreaPlan(polygon));
+    if (
+      !Number.isFinite(polygonArea) ||
+      polygonArea <= POINT_TOLERANCE_FEET ** 2 ||
+      polygonArea > maximumArea + POINT_TOLERANCE_FEET
+    ) {
+      continue;
+    }
+    const indices = triangulate(
+      polygon.map(([x, y]) => [x, y] as [number, number]),
+    );
+    if (indices.length !== (polygon.length - 2) * 3) continue;
+    const triangles: [Point3, Point3, Point3, Point3][] = [];
+    let triangulatedArea = 0;
+    for (let index = 0; index + 2 < indices.length; index += 3) {
+      const a = polygon[indices[index]!]!;
+      const b = polygon[indices[index + 1]!]!;
+      const c = polygon[indices[index + 2]!]!;
+      const area = Math.abs(polygonAreaPlan([a, b, c]));
+      if (area <= POINT_TOLERANCE_FEET ** 2) continue;
+      triangulatedArea += area;
+      triangles.push([a, b, c, a]);
+    }
+    if (
+      Math.abs(triangulatedArea - polygonArea) >
+        Math.max(POINT_TOLERANCE_FEET, polygonArea * 0.001)
+    ) {
+      continue;
+    }
+    candidates.push({ area: polygonArea, triangles });
+  }
+  return candidates.sort((left, right) => left.area - right.area)[0]
+    ?.triangles ?? [];
 }
 
 function fullCircleLandingQuads(
@@ -1282,14 +1962,34 @@ export function recoverProfiledGuideStairTreads(
     ] as const);
   }
 
-  const treads = pairs.flatMap(([first, second], index) =>
-    profileTreadQuads(
+  const treadBands = pairs.map(([first, second], index) => {
+    const guide = chain[index]!;
+    const guideDepth = planLength(guide.low, guide.high);
+    // A native rising guide validates its own slightly broad tread interval.
+    // Keep that exception local to the corresponding band and bounded by the
+    // native run width. A full-diameter landing transition can be much longer
+    // than the run width and must still take the independently certified
+    // closed-circle route in profileTreadQuads.
+    const maximumBridgeDepthFeet = guideDepth <=
+        options.actualRunWidthFeet * 1.5 + POINT_TOLERANCE_FEET
+      ? Math.max(
+          MAX_TREAD_DEPTH_FEET,
+          guideDepth * (1 + RELATIVE_SIZE_TOLERANCE),
+        )
+      : MAX_TREAD_DEPTH_FEET;
+    return profileTreadQuads(
       profiles[first]!,
       profiles[second]!,
-      chain[index]!.low[2],
-    ),
-  );
-  if (treads.length < pairs.length) return null;
+      guide.low[2],
+      maximumBridgeDepthFeet,
+    );
+  });
+  // Counting triangles cannot prove that every riser interval is present:
+  // curved profiles often emit several quads per tread. Require one non-empty
+  // band for every guide interval so a missing transition cannot be hidden by
+  // neighbouring tessellation density.
+  if (treadBands.some((band) => band.length === 0)) return null;
+  const treads = treadBands.flat();
   return {
     treads,
     riserHeightFeet: rise,
@@ -1484,13 +2184,40 @@ export function recoverFlattenedProfileStairTreads(
     const first = profiles[profile]!;
     const second = profiles[ordered[index + 1]!]!;
     const topZ = bounds.min.z + rise * (index + 1);
-    return safeFlattenedTreadBand(
+    // Exact-width winder profiles occur once, unlike the duplicated parallel
+    // profiles of an ordinary flight. Their side edges may flare beyond the
+    // narrow four-corner profile band. Prefer the independently closed native
+    // graph cell so that clipping cannot silently discard those side regions.
+    const elementaryClosedWinderCell = first.count === 1 && second.count === 1
+      ? nativeClosedPlanarCellTreadQuads(first, second, topZ, curves)
+      : [];
+    const closedWinderCell = elementaryClosedWinderCell.length
+      ? elementaryClosedWinderCell
+      : first.count === 1 && second.count === 1
+        ? nativeClosedProfileBoundaryTreadQuads(
+            first,
+            second,
+            topZ,
+            curves,
+            profiles,
+          )
+        : [];
+    if (closedWinderCell.length) return closedWinderCell;
+    const ordinaryBand = safeFlattenedTreadBand(
       first,
       second,
       topZ,
       maximumLocalDepth,
       certifiedFootprint,
       footprintIndices,
+    );
+    if (ordinaryBand.length) return ordinaryBand;
+    return nativeClosedTransitionTreadQuads(
+      first,
+      second,
+      topZ,
+      maximumLocalDepth,
+      curves,
     );
   });
   const representedBands = treadBands.filter((band) => band.length > 0);

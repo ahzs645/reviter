@@ -87,6 +87,7 @@ import {
   createElementSelection,
   createFaceSelection,
   createRecoveredElementSelection,
+  elementIdAtIntersection,
   firstTriangleHit,
   hitWorldNormal,
   type ViewerIntersection,
@@ -517,11 +518,6 @@ export function ModelCanvas({
     controls.screenSpacePanning = true;
     applyNavigationMode(controls, "orbit");
     applyAutodeskNavigation(controls, canvas);
-    // The navigation parity script drives this canvas the same way the Autodesk
-    // measurements were taken, and needs the camera it is differencing.
-    if (navigationTest) {
-      (window as unknown as { __reviterNavigation?: unknown }).__reviterNavigation = { controls, camera };
-    }
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
     // The overlay is drawn in the recovered model's own frame, so it keeps that
@@ -1093,9 +1089,12 @@ export function ModelCanvas({
         runtime.selectionOverlay = null;
       }
       if (!hit || !runtime) return;
+      const pickedElementId = elementIdAtIntersection(hit);
       const selection = (isReferenceModel
         ? createElementSelection(hit, sceneUnitsPerFoot)
-        : null) ?? createFaceSelection(hit, camera, sceneUnitsPerFoot);
+        : useReference && pickedElementId != null
+          ? createRecoveredElementSelection(root, pickedElementId, sceneUnitsPerFoot)
+          : null) ?? createFaceSelection(hit, camera, sceneUnitsPerFoot);
       if (!selection) return;
       runtime.selectionOverlay = selection;
       runtime.scene.add(selection);
@@ -1256,8 +1255,7 @@ export function ModelCanvas({
         );
         // Recording what the pin landed on is what lets the Comments panel name
         // the object instead of quoting a coordinate back at the reviewer.
-        const hitElementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-        const elementId = hit.faceIndex == null ? undefined : hitElementIds?.[hit.faceIndex];
+        const elementId = elementIdAtIntersection(hit);
         const id = onCreateComment({
           source,
           scenePosition: tuple(hit.point),
@@ -1284,16 +1282,10 @@ export function ModelCanvas({
       lastSurfaceHitAt = performance.now();
       if (walkRef.current || useReference || isReferenceModel) {
         showSurfaceSelection(hit);
-        if (useReference || isReferenceModel) onSelectElement(null);
-        else if (hit?.faceIndex != null) {
-          const elementIds = hit.object.userData.elementIds as Uint32Array | undefined;
-          onSelectElement(elementIds?.[hit.faceIndex] ?? null);
-        }
+        onSelectElement(isReferenceModel ? null : elementIdAtIntersection(hit));
         return;
       }
-      onSelectElement(hit?.faceIndex == null
-        ? null
-        : (hit.object.userData.elementIds as Uint32Array | undefined)?.[hit.faceIndex] ?? null);
+      onSelectElement(elementIdAtIntersection(hit));
     };
     // A right-click asks about whatever is under it, so it runs the same hit
     // test as a left-click and picks the object too — the menu's "Zoom to
@@ -1304,10 +1296,7 @@ export function ModelCanvas({
       // must not also raise a menu under the cursor.
       if (walkRef.current || measuringRef.current || markupSettingsRef.current.tool) return;
       const hit = geometryHitAt(event.clientX, event.clientY);
-      const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
-      const elementId = useReference || isReferenceModel || hit?.faceIndex == null
-        ? null
-        : elementIds?.[hit.faceIndex] ?? null;
+      const elementId = isReferenceModel ? null : elementIdAtIntersection(hit);
       if (elementId != null) onSelectElement(elementId);
       const normal = hit ? hitWorldNormal(hit) : null;
       const walkable = normal && Math.abs(normal.dot(upVector)) >= 0.55;
@@ -1378,8 +1367,7 @@ export function ModelCanvas({
       if (navigationTest) canvas.dataset.hoverRaycasts = String(hoverRaycastCount);
       const hit = firstTriangleHit(raycaster, interactionMeshes, (intersection) =>
         intersection.object.userData.elementIds != null);
-      const elementIds = hit?.object.userData.elementIds as Uint32Array | undefined;
-      reportHover(hit?.faceIndex == null ? null : elementIds?.[hit.faceIndex] ?? null);
+      reportHover(elementIdAtIntersection(hit));
     };
     const handlePointerMove = (event: PointerEvent) => {
       if (markupPoints) {
@@ -1489,6 +1477,22 @@ export function ModelCanvas({
         needsRender = true;
       },
     };
+
+    // The parity scripts drive this canvas the same way the Autodesk readings
+    // were taken, and need the camera they are differencing. `probeFloor`
+    // answers the one question that decides whether a source can be walked at
+    // all: is there ground under this point?
+    if (navigationTest) {
+      (window as unknown as { __reviterNavigation?: unknown }).__reviterNavigation = {
+        controls,
+        camera,
+        source,
+        up,
+        sceneUnitsPerFoot,
+        probeFloor: (x: number, y: number, z: number, maxDrop?: number) =>
+          surfaceFloorAt(new THREE.Vector3(x, y, z), maxDrop),
+      };
+    }
 
     // The index is useful but not urgent while the user is orbiting. Start it
     // after the browser has painted the model; each triangle chunk yields back

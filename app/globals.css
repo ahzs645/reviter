@@ -1120,6 +1120,31 @@ button[data-reason]:focus-visible::after {
 .floor-browser-preview-toolbar button:disabled { opacity: .35; cursor: default; }
 .floor-browser-preview-toolbar span { margin-left: auto; color: var(--text-3); font: 9px var(--mono); }
 .floor-browser-preview figcaption { padding: 8px 10px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font-size: 11px; }
+.floor-reference-toolbar { min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 92%, #3f8f8b); }
+.floor-reference-toolbar button, .floor-reference-fine-tune button { min-height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); font: 9.5px var(--mono); cursor: pointer; }
+.floor-reference-toolbar button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.floor-reference-toolbar button:disabled, .floor-reference-fine-tune button:disabled { opacity: .35; cursor: default; }
+.floor-reference-section-picker { min-height: 32px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 7px; padding: 4px 7px; border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font: 9.5px var(--mono); }
+.floor-reference-section-picker > span, .floor-reference-section-picker > em { color: var(--text-3); font-style: normal; white-space: nowrap; }
+.floor-reference-section-picker select { min-width: 0; height: 24px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+.floor-reference-fine-tune { border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font: 9.5px var(--mono); }
+.floor-reference-fine-tune summary { padding: 6px 8px; cursor: pointer; }
+.floor-reference-fine-tune > div { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)) auto; gap: 6px; padding: 0 7px 7px; }
+.floor-reference-fine-tune label { min-width: 0; display: grid; grid-template-columns: auto minmax(45px, 1fr) auto; align-items: center; gap: 5px; }
+.floor-reference-fine-tune label > span { color: var(--text-3); }
+.floor-reference-fine-tune input { min-width: 0; height: 24px; padding: 2px 4px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+.floor-reference-fine-tune input[type="range"] { padding: 0; accent-color: var(--accent); }
+.floor-reference-fine-tune output { color: var(--text-3); }
+.floor-reference-status { min-height: 25px; padding: 5px 8px; border-bottom: 1px solid var(--line); background: #e9eeeb; color: #365158; font: 9.5px var(--mono); }
+.floor-reference-status.capturing { background: #fff0d9; color: #8b5b27; }
+.floor-reference-canvas { position: relative; min-width: 100%; min-height: 100%; overflow: hidden; background: #f4f1e9; }
+.floor-reference-canvas.capture { cursor: crosshair; }
+.floor-browser-preview .floor-reference-rvt { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; }
+.floor-reference-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; pointer-events: none; }
+.floor-reference-anchor circle { fill: #ff4f93; stroke: white; stroke-width: .004; vector-effect: non-scaling-stroke; }
+.floor-reference-anchor text { fill: #9d174d; stroke: white; stroke-width: .003; paint-order: stroke; font: 700 .035px var(--mono); }
+.floor-reference-rvt-anchors .floor-reference-anchor circle { fill: #00a8a0; }
+.floor-reference-rvt-anchors .floor-reference-anchor text { fill: #00645f; }
 .floor-browser-empty { min-height: 220px; display: grid; place-content: center; gap: 5px; color: var(--text-3); text-align: center; }
 .floor-browser-empty strong { color: var(--text); }
 
@@ -1151,6 +1176,12 @@ button[data-reason]:focus-visible::after {
   .floor-workspace-body .floor-browser { grid-template-columns: 1fr; overflow: auto; }
   .floor-workspace-body .floor-browser-sidebar { overflow: visible; }
   .floor-workspace-body .floor-browser-preview { min-height: 360px; }
+}
+
+@container (max-width: 900px) {
+  .floor-reference-fine-tune > div { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+  .floor-reference-section-picker { grid-template-columns: auto minmax(120px, 1fr); }
+  .floor-reference-section-picker > em { display: none; }
 }
 
 .floor-mini-map {

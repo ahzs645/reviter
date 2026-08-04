@@ -430,3 +430,232 @@ test("arrow turning rotates in place and pitch stops where Autodesk stops", () =
     else Reflect.deleteProperty(globalThis, "document");
   }
 });
+
+test("a look drag never moves the walker by itself", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture() {},
+      releasePointerCapture() {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    const controls = createWalkControls(camera, element, {
+      start: new THREE.Vector3(0, 0, WALK_EYE_HEIGHT),
+      lookAt: new THREE.Vector3(10, 0, WALK_EYE_HEIGHT),
+      floor: WALK_EYE_HEIGHT,
+      up: "z",
+      gravity: true,
+      resolveFloor: () => 0,
+    });
+    controls.enable();
+    // Let gravity finish settling onto the floor before measuring.
+    for (let frame = 0; frame < 60; frame += 1) controls.update(1 / 60);
+
+    const before = camera.position.clone();
+    const facing = camera.getWorldDirection(new THREE.Vector3());
+    element.dispatchEvent(Object.assign(new Event("pointerdown"), {
+      button: 0, pointerType: "mouse", pointerId: 1,
+    }));
+    for (let move = 0; move < 10; move += 1) {
+      element.dispatchEvent(Object.assign(new Event("pointermove"), {
+        pointerId: 1, movementX: 12, movementY: 4,
+      }));
+      controls.update(1 / 60);
+    }
+
+    // Standing still on a floor, a drag is pure rotation: it turns the head and
+    // moves nothing. Anything that does move under a drag has to come from a
+    // held key or a settle that was already owed, never from the drag itself.
+    assert.equal(
+      camera.position.distanceTo(before),
+      0,
+      "a look drag on settled ground must not translate the walker",
+    );
+    assert.ok(
+      facing.angleTo(camera.getWorldDirection(new THREE.Vector3())) > 0.1,
+      "but it must still turn the view",
+    );
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+test("repeated look drags do not accumulate any error", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture() {},
+      releasePointerCapture() {},
+      hasPointerCapture: () => false,
+    }) as unknown as HTMLElement;
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    const controls = createWalkControls(camera, element, {
+      start: new THREE.Vector3(0, 0, WALK_EYE_HEIGHT),
+      lookAt: new THREE.Vector3(10, 0, WALK_EYE_HEIGHT),
+      floor: WALK_EYE_HEIGHT,
+      up: "z",
+      gravity: true,
+      resolveFloor: () => 0,
+    });
+    controls.enable();
+    for (let frame = 0; frame < 90; frame += 1) controls.update(1 / 60);
+
+    const origin = camera.position.clone();
+    const MOVES = 10;
+    const PIXELS = 10;
+    const DRAGS = 20;
+    for (let round = 0; round < DRAGS; round += 1) {
+      element.dispatchEvent(Object.assign(new Event("pointerdown"), {
+        button: 0, pointerType: "mouse", pointerId: 1,
+      }));
+      for (let move = 0; move < MOVES; move += 1) {
+        element.dispatchEvent(Object.assign(new Event("pointermove"), {
+          pointerId: 1, movementX: PIXELS, movementY: 0,
+        }));
+        controls.update(1 / 60);
+      }
+      element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));
+      // The idle gap between one drag and the next, where a momentum tail would
+      // have kept turning after the hand stopped.
+      for (let frame = 0; frame < 40; frame += 1) controls.update(1 / 60);
+    }
+
+    const direction = camera.getWorldDirection(new THREE.Vector3());
+    const turned = (Math.atan2(direction.y, direction.x) * 180) / Math.PI;
+    const commanded = -DRAGS * MOVES * PIXELS * 0.0045 * (180 / Math.PI);
+    let error = turned - (((commanded % 360) + 540) % 360 - 180);
+    while (error > 180) error -= 360;
+    while (error < -180) error += 360;
+
+    // A momentum tail that replayed the last move's delta cost 2.5 degrees a
+    // drag, absolute rather than proportional, so twenty drags landed 50 degrees
+    // from where they were aimed. The view must go exactly where the hand put it.
+    assert.ok(
+      Math.abs(error) < 0.01,
+      `${DRAGS} drags drifted ${error.toFixed(3)} degrees from what the hand commanded`,
+    );
+    assert.equal(camera.position.distanceTo(origin), 0, "and must not have moved at all");
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+/** A walker standing on flat ground at `dropFeet` above it, gravity on. */
+function fallingWalker(dropFeet: number) {
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+  const element = Object.assign(new EventTarget(), {
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    hasPointerCapture: () => false,
+  }) as unknown as HTMLElement;
+  const controls = createWalkControls(camera, element, {
+    start: new THREE.Vector3(0, 0, WALK_EYE_HEIGHT + dropFeet),
+    lookAt: new THREE.Vector3(10, 0, WALK_EYE_HEIGHT + dropFeet),
+    floor: WALK_EYE_HEIGHT,
+    up: "z",
+    gravity: true,
+    resolveFloor: () => 0,
+  });
+  controls.enable();
+
+  let peakSpeed = 0;
+  let landedAfter: number | null = null;
+  let previous = camera.position.z;
+  for (let frame = 1; frame <= 600; frame += 1) {
+    controls.update(1 / 60);
+    peakSpeed = Math.max(peakSpeed, (previous - camera.position.z) * 60);
+    previous = camera.position.z;
+    if (landedAfter === null && Math.abs(camera.position.z - WALK_EYE_HEIGHT) < 0.01) {
+      landedAfter = frame / 60;
+    }
+  }
+  controls.dispose();
+  return { landedAfter, peakSpeed };
+}
+
+test("a walker falls without being asked to walk first", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: Object.assign(new EventTarget(), { hidden: false }),
+  });
+
+  try {
+    // The floor probe was gated on a movement key being down, so a walker who
+    // simply stood there never learned there was a floor beneath and hung in
+    // mid-air until something was pressed.
+    const { landedAfter } = fallingWalker(20);
+    assert.ok(landedAfter !== null, "standing still, the walker never reached the floor");
+    assert.ok(landedAfter < 2, `took ${landedAfter?.toFixed(2)}s to fall 20 ft`);
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+test("falling accelerates at Autodesk's gravity and caps at its terminal speed", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: Object.assign(new EventTarget(), { hidden: false }),
+  });
+
+  try {
+    const terminal = 10 * FEET_PER_METRE;
+    // Short drops are free fall: t = sqrt(2h/g), well under terminal speed.
+    for (const drop of [1, 5]) {
+      const { landedAfter, peakSpeed } = fallingWalker(drop);
+      const expected = Math.sqrt((2 * (drop / FEET_PER_METRE)) / 9.8);
+      assert.ok(
+        landedAfter !== null && Math.abs(landedAfter - expected) < 0.05,
+        `${drop} ft took ${landedAfter?.toFixed(3)}s, free fall is ${expected.toFixed(3)}s`,
+      );
+      assert.ok(peakSpeed <= terminal + 0.1, `${drop} ft peaked at ${peakSpeed.toFixed(1)} ft/s`);
+    }
+
+    // A long drop must not outrun `gravityTopFallSpeed`. The eased lerp this
+    // replaced was proportional, so a 60 ft fall peaked at 720 ft/s and landed
+    // in the same half second as a one-foot step down.
+    const long = fallingWalker(60);
+    assert.ok(
+      long.peakSpeed <= terminal + 0.1,
+      `60 ft fall peaked at ${long.peakSpeed.toFixed(1)} ft/s, terminal is ${terminal.toFixed(1)}`,
+    );
+    assert.ok(
+      long.landedAfter !== null && long.landedAfter > 2,
+      "a 60 ft fall must take longer than a short one, not the same half second",
+    );
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
