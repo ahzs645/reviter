@@ -12,10 +12,17 @@ function pagesBase(value) {
 }
 
 const base = pagesBase(process.env.PAGES_BASE_PATH);
+const packageJson = JSON.parse(await readFile(resolve(projectRoot, "package.json"), "utf8"));
+const buildVersion = process.env.REVITER_PARSER_VERSION?.trim()
+  || process.env.GITHUB_SHA?.trim()
+  || packageJson.version;
 const shared = {
   bundle: true,
   conditions: ["style"],
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    __REVITER_PAGES_BUILD_VERSION__: JSON.stringify(buildVersion),
+  },
   format: "esm",
   legalComments: "none",
   loader: { ".woff2": "file" },

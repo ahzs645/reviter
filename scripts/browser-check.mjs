@@ -60,9 +60,8 @@ const server = createServer(async (request, response) => {
 await new Promise((ready) => server.listen(4173, ready));
 
 let browser;
-// Pointer lock is deliberately unavailable in Chromium's legacy headless root
-// document. A headed run is therefore required for the complete navigation
-// contract; headless remains useful for conversion-only automation.
+// Walk no longer asks for pointer lock, so the navigation contract runs
+// headless too. A headed run is still the readable way to watch it.
 const headed = process.env.REVITER_BROWSER_HEADED === "1";
 try {
   browser = await chromium.launch({ headless: !headed, args: ["--no-sandbox"] });
@@ -524,12 +523,12 @@ if (terminalPhase === "ready") {
     });
   });
   await page.bringToFront();
-  // Desktop Walk captures the pointer on click. Measure only after capture so
-  // this assertion isolates mouse look from any preceding source handoff.
+  // Looking is a held drag, as it is in Autodesk's 1st Person: the pointer is
+  // captured but never locked, so the cursor stays the reviewer's throughout.
   await page.mouse.move(point.x, point.y);
-  await page.mouse.click(point.x, point.y);
+  await page.mouse.down();
   await page.waitForFunction(() =>
-    document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "true");
+    document.querySelector("canvas.model-canvas")?.dataset.walkLooking === "true");
   const lookBefore = await pose();
   await page.mouse.move(point.x + 130, point.y - 45, { steps: 6 });
   await page.waitForTimeout(100);
@@ -540,14 +539,14 @@ if (terminalPhase === "ready") {
   if (distance(vector(lookBefore.position), vector(lookAfter.position)) > 0.0001) {
     throw new Error("First-person look drag moved the camera instead of turning in place.");
   }
-  if (await canvas.getAttribute("data-pointer-locked") !== "true") {
-    throw new Error("Walk did not retain the desktop pointer after clicking the viewport.");
+  if (await page.evaluate(() => document.pointerLockElement !== null)) {
+    throw new Error("Walk locked the pointer; the cursor must stay free.");
   }
-  await page.keyboard.press("Escape");
+  await page.mouse.up();
   await page.waitForFunction(() =>
-    document.querySelector("canvas.model-canvas")?.dataset.pointerLocked === "false");
+    document.querySelector("canvas.model-canvas")?.dataset.walkLooking === "false");
   if (await canvas.getAttribute("data-navigation-state") !== "walk") {
-    throw new Error("The first Escape exited Walk instead of releasing mouse look.");
+    throw new Error("Releasing the look drag left Walk instead of just ending the drag.");
   }
 
   const moveBefore = await pose();

@@ -16,7 +16,8 @@
  * heuristic from competing with that stronger evidence.
  */
 import { noteLimit } from "./limit-census.ts";
-import type { SketchCurve, Point3 } from "./sketch-curves.ts";
+import { assembleRings, type SketchCurve, type Point3 } from "./sketch-curves.ts";
+import { triangulate } from "./polygon.ts";
 import type { Bounds3 } from "./types.ts";
 
 const POINT_TOLERANCE_FEET = 1e-4;
@@ -31,6 +32,7 @@ const MAX_TREAD_DEPTH_FEET = 4;
 const PARALLEL_COSINE = 0.995;
 const PERPENDICULAR_COSINE = 0.12;
 const RELATIVE_SIZE_TOLERANCE = 0.08;
+const MIN_FLATTENED_BAND_COVERAGE = 0.8;
 
 export type RecoveredStairTreads = {
   /** One four-corner horizontal tread, ordered around its perimeter. */
@@ -866,6 +868,136 @@ function profileTreadQuads(
   return quads;
 }
 
+function polygonAreaPlan(points: readonly Point3[]): number {
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!;
+    const next = points[(index + 1) % points.length]!;
+    twiceArea += point[0] * next[1] - next[0] * point[1];
+  }
+  return twiceArea / 2;
+}
+
+function profileCell(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+): Point3[] {
+  const direct =
+    planLength(first.curve.start, second.curve.start) +
+    planLength(first.curve.end, second.curve.end);
+  const crossed =
+    planLength(first.curve.start, second.curve.end) +
+    planLength(first.curve.end, second.curve.start);
+  const secondStart = direct <= crossed ? second.curve.start : second.curve.end;
+  const secondEnd = direct <= crossed ? second.curve.end : second.curve.start;
+  return [
+    [first.curve.start[0], first.curve.start[1], topZ],
+    [secondStart[0], secondStart[1], topZ],
+    [secondEnd[0], secondEnd[1], topZ],
+    [first.curve.end[0], first.curve.end[1], topZ],
+  ];
+}
+
+function clipPolygonToConvexCell(
+  subject: readonly Point3[],
+  cell: readonly Point3[],
+): Point3[] {
+  const winding = Math.sign(polygonAreaPlan(cell));
+  if (winding === 0) return [];
+  const cross = (a: Point3, b: Point3, c: Point3) =>
+    (b[0] - a[0]) * (c[1] - a[1]) -
+    (b[1] - a[1]) * (c[0] - a[0]);
+  // Every turn must agree with the cell winding. A bow-tie or a concave cell
+  // is not a safe clipping half-plane set.
+  if (cell.some((point, index) =>
+    cross(point, cell[(index + 1) % cell.length]!, cell[(index + 2) % cell.length]!) *
+      winding < -POINT_TOLERANCE_FEET
+  )) {
+    return [];
+  }
+
+  let output = [...subject];
+  for (let edgeIndex = 0; edgeIndex < cell.length; edgeIndex += 1) {
+    const clipStart = cell[edgeIndex]!;
+    const clipEnd = cell[(edgeIndex + 1) % cell.length]!;
+    const input = output;
+    output = [];
+    if (!input.length) break;
+    const inside = (point: Point3) =>
+      cross(clipStart, clipEnd, point) * winding >= -POINT_TOLERANCE_FEET;
+    const intersection = (start: Point3, end: Point3): Point3 => {
+      const runX = end[0] - start[0];
+      const runY = end[1] - start[1];
+      const clipX = clipEnd[0] - clipStart[0];
+      const clipY = clipEnd[1] - clipStart[1];
+      const denominator = runX * clipY - runY * clipX;
+      if (Math.abs(denominator) <= POINT_TOLERANCE_FEET ** 2) return end;
+      const t =
+        ((clipStart[0] - start[0]) * clipY -
+          (clipStart[1] - start[1]) * clipX) /
+        denominator;
+      return [
+        start[0] + runX * t,
+        start[1] + runY * t,
+        start[2],
+      ];
+    };
+    let previous = input.at(-1)!;
+    let previousInside = inside(previous);
+    for (const point of input) {
+      const pointInside = inside(point);
+      if (pointInside !== previousInside) {
+        output.push(intersection(previous, point));
+      }
+      if (pointInside) output.push(point);
+      previous = point;
+      previousInside = pointInside;
+    }
+  }
+  return output;
+}
+
+/**
+ * Clip one flattened tread band to the run's independently closed plan ring.
+ *
+ * A concave multi-flight run can persist one tread line across several arms of
+ * its footprint. Joining the line endpoints directly fills the void between
+ * those arms. Triangulating the native outer ring first makes every clipping
+ * subject convex and, importantly, keeps disconnected intersections as
+ * separate cells instead of inventing a bridge between them.
+ */
+function clippedProfileTreadQuads(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+  footprint: readonly Point3[],
+  footprintIndices: readonly number[],
+): [Point3, Point3, Point3, Point3][] {
+  const cell = profileCell(first, second, topZ);
+  if (!footprintIndices.length) return [];
+  const quads: [Point3, Point3, Point3, Point3][] = [];
+  for (let index = 0; index + 2 < footprintIndices.length; index += 3) {
+    const subject = [
+      footprint[footprintIndices[index]!]!,
+      footprint[footprintIndices[index + 1]!]!,
+      footprint[footprintIndices[index + 2]!]!,
+    ].map(([x, y]) => [x, y, topZ] as Point3);
+    const clipped = clipPolygonToConvexCell(subject, cell);
+    if (clipped.length < 3) continue;
+    for (let corner = 1; corner + 1 < clipped.length; corner += 1) {
+      const a = clipped[0]!;
+      const b = clipped[corner]!;
+      const c = clipped[corner + 1]!;
+      if (Math.abs(polygonAreaPlan([a, b, c])) <= POINT_TOLERANCE_FEET ** 2) {
+        continue;
+      }
+      quads.push([a, b, c, a]);
+    }
+  }
+  return quads;
+}
+
 function fullCircleLandingQuads(
   firstSamples: readonly Point3[],
   secondSamples: readonly Point3[],
@@ -1270,14 +1402,50 @@ export function recoverFlattenedProfileStairTreads(
   if (ordered.length !== profiles.length) return null;
   const rise = (bounds.max.z - bounds.min.z) / riserCount;
   if (rise < MIN_RISE_FEET || rise > MAX_RISE_FEET) return null;
-  const treads = ordered.slice(0, -1).flatMap((profile, index) =>
-    profileTreadQuads(
-      profiles[profile]!,
-      profiles[ordered[index + 1]!]!,
-      bounds.min.z + rise * (index + 1),
-    ),
-  );
-  if (treads.length < riserCount - 1) return null;
+  const footprint = assembleRings([...curves])[0];
+  const certifiedFootprint =
+    footprint?.length >= 3 &&
+    footprint.every(([x, y]) =>
+      x >= bounds.min.x - PLAN_TOLERANCE_FEET &&
+      x <= bounds.max.x + PLAN_TOLERANCE_FEET &&
+      y >= bounds.min.y - PLAN_TOLERANCE_FEET &&
+      y <= bounds.max.y + PLAN_TOLERANCE_FEET
+    )
+      ? footprint
+      : null;
+  const footprintIndices = certifiedFootprint
+    ? triangulate(certifiedFootprint.map(([x, y]) => [x, y] as [number, number]))
+    : [];
+  const treadBands = ordered.slice(0, -1).map((profile, index) => {
+    const first = profiles[profile]!;
+    const second = profiles[ordered[index + 1]!]!;
+    const topZ = bounds.min.z + rise * (index + 1);
+    if (certifiedFootprint) {
+      return clippedProfileTreadQuads(
+        first,
+        second,
+        topZ,
+        certifiedFootprint,
+        footprintIndices,
+      );
+    }
+    return profileTreadQuads(first, second, topZ);
+  });
+  const representedBands = treadBands.filter((band) => band.length > 0);
+  // A legacy/sketched multi-flight run can leave its landing transitions in a
+  // separate native object. In that representation the exact-count profile
+  // path is still strong evidence for the flight bands, while a few wide MST
+  // links correctly have no intersection with the run's own closed footprint.
+  // Keep the independently clipped flight cells when at least four fifths of
+  // the native riser intervals are present; a sparse or ambiguous profile set
+  // still declines to the ordinary fallback.
+  if (
+    representedBands.length < MIN_TREADS ||
+    representedBands.length / treadBands.length < MIN_FLATTENED_BAND_COVERAGE
+  ) {
+    return null;
+  }
+  const treads = representedBands.flat();
   return {
     treads,
     riserHeightFeet: rise,

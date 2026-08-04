@@ -372,6 +372,72 @@ test("keeps duplicated rotated profiles in an exact-count flattened run", () => 
   );
 });
 
+test("clips flattened tread bands to a concave native run footprint", () => {
+  const curves: SketchCurve[] = [];
+  const profiles = [0.5, 1.5, 8.5, 9.5].map((x) =>
+    line([x, 0, 2], [x, 3, 2]));
+  for (const profile of profiles) curves.push(profile, { ...profile });
+  curves.push(line([0.5, 0, 0], [0.5, 3, 0]));
+
+  // A U-shaped native plan ring. The middle profile pair crosses its open
+  // court in plan; only the one-foot-deep top connector belongs to the run.
+  const footprint: Point3[] = [
+    [0, 0, 2], [2, 0, 2], [2, 2, 2], [8, 2, 2],
+    [8, 0, 2], [10, 0, 2], [10, 3, 2], [0, 3, 2],
+  ];
+  for (let index = 0; index < footprint.length; index += 1) {
+    curves.push(line(footprint[index]!, footprint[(index + 1) % footprint.length]!));
+  }
+
+  const recovered = recoverFlattenedProfileStairTreads(
+    curves,
+    {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 10, y: 3, z: 2 },
+    },
+    { actualRunWidthFeet: 1.5, maximumRiserCount: 4 },
+  );
+  assert.ok(recovered);
+  assert.deepEqual(
+    [...new Set(recovered.treads.map((tread) => tread[0][2]))],
+    [0.5, 1, 1.5],
+  );
+  const middleBand = recovered.treads.filter(
+    (tread) => Math.abs(tread[0][2] - 1) < 1e-6,
+  );
+  assert.ok(middleBand.length > 1, "the disconnected native intersections remain separate");
+  for (const tread of middleBand) {
+    const centerX = (tread[0][0] + tread[1][0] + tread[2][0]) / 3;
+    const centerY = (tread[0][1] + tread[1][1] + tread[2][1]) / 3;
+    if (centerX > 2 + 1e-6 && centerX < 8 - 1e-6) {
+      assert.ok(centerY >= 2 - 1e-6, "no tread triangle spans the open court");
+    }
+  }
+});
+
+test("declines a flattened profile path mostly outside its native footprint", () => {
+  const curves: SketchCurve[] = [];
+  for (const x of [0.5, 1.5, 8.5, 9.5]) {
+    const profile = line([x, 0, 2], [x, 3, 2]);
+    curves.push(profile, { ...profile });
+  }
+  curves.push(line([0.5, 0, 0], [0.5, 3, 0]));
+  const footprint: Point3[] = [
+    [0, 0, 2], [2, 0, 2], [2, 3, 2], [0, 3, 2],
+  ];
+  for (let index = 0; index < footprint.length; index += 1) {
+    curves.push(line(footprint[index]!, footprint[(index + 1) % footprint.length]!));
+  }
+  assert.equal(recoverFlattenedProfileStairTreads(
+    curves,
+    {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 10, y: 3, z: 2 },
+    },
+    { actualRunWidthFeet: 1.5, maximumRiserCount: 4 },
+  ), null);
+});
+
 test("the diagnostic scene draws every recovered tread instead of the run envelope", () => {
   const bounds = {
     min: { x: 0, y: 0, z: 10 },

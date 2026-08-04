@@ -13,9 +13,42 @@ import {
   horizontalWalkDirection,
   stepWalkSpeed,
   travelDurationSeconds,
+  turnDirection,
+  WALK_EYE_HEIGHT,
   walkKeyboardEventUsesSystemShortcut,
   walkKeyboardTargetIsInteractive,
 } from "../app/studio/walk-controls.ts";
+
+/**
+ * Autodesk's BIM Walk configuration, in metres, as read from a live session on
+ * the UNBC model. Everything Reviter walks with is derived from these.
+ */
+const AUTODESK_WALK = {
+  minWalkSpeed: 2,
+  topWalkSpeed: 4,
+  maxWalkSpeed: 6,
+  cameraDistanceFromFloor: 1.8,
+  mouseTurnMinPitchLimit: 0.3490658503988659,
+} as const;
+const FEET_PER_METRE = 1 / 0.3048;
+
+test("walk speeds and eye height are Autodesk's, converted from metres", () => {
+  assert.ok(Math.abs(FIRST_PERSON_SPEEDS.slow - AUTODESK_WALK.minWalkSpeed * FEET_PER_METRE) < 1e-9);
+  assert.ok(Math.abs(FIRST_PERSON_SPEEDS.normal - AUTODESK_WALK.topWalkSpeed * FEET_PER_METRE) < 1e-9);
+  assert.ok(Math.abs(FIRST_PERSON_SPEEDS.fast - AUTODESK_WALK.maxWalkSpeed * FEET_PER_METRE) < 1e-9);
+  assert.ok(
+    Math.abs(WALK_EYE_HEIGHT - AUTODESK_WALK.cameraDistanceFromFloor * FEET_PER_METRE) < 1e-9,
+    "a reviewer must stand at the same height in both viewers",
+  );
+});
+
+test("the arrow keys turn where W A S D moves", () => {
+  assert.equal(turnDirection(new Set(["ArrowLeft"])), 1);
+  assert.equal(turnDirection(new Set(["ArrowRight"])), -1);
+  assert.equal(turnDirection(new Set(["ArrowLeft", "ArrowRight"])), 0);
+  assert.equal(turnDirection(new Set(["KeyA"])), 0, "A strafes, it does not turn");
+  assert.equal(turnDirection(new Set(["ArrowUp"])), 0);
+});
 
 test("fast Walk no longer uses the coarse interval that skipped UNBC stair treads", () => {
   const treadDepthFeet = 0.9842519685;
@@ -230,17 +263,13 @@ test("face travel preserves the first-person view direction", () => {
   }
 });
 
-test("desktop look locks the pointer, turns in place, and Escape releases before exiting", () => {
+test("desktop look drags without taking the pointer, turns in place, and Escape exits", () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const fakeWindow = new EventTarget();
   const fakeDocument = Object.assign(new EventTarget(), {
     hidden: false,
     pointerLockElement: null as HTMLElement | null,
-    exitPointerLock() {
-      this.pointerLockElement = null;
-      this.dispatchEvent(new Event("pointerlockchange"));
-    },
   });
   Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
   Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
@@ -251,10 +280,12 @@ test("desktop look locks the pointer, turns in place, and Escape releases before
     let pointerLockRequests = 0;
     let capturedPointer: number | null = null;
     const element = Object.assign(new EventTarget(), {
+      // Present, and required to stay untouched: Autodesk's 1st Person leaves
+      // the cursor alone, and a viewer that hides it cannot be used alongside
+      // the panels beside the viewport.
       requestPointerLock() {
         pointerLockRequests += 1;
         fakeDocument.pointerLockElement = element;
-        fakeDocument.dispatchEvent(new Event("pointerlockchange"));
       },
       setPointerCapture: (pointerId: number) => { capturedPointer = pointerId; },
       releasePointerCapture: (pointerId: number) => {
@@ -277,12 +308,13 @@ test("desktop look locks the pointer, turns in place, and Escape releases before
       pointerType: "mouse",
       pointerId: 1,
     }));
-    assert.equal(pointerLockRequests, 1);
-    assert.equal(controls.isPointerLocked(), true);
+    assert.equal(pointerLockRequests, 0, "walk must never request pointer lock");
+    assert.equal(fakeDocument.pointerLockElement, null);
     assert.equal(controls.isLooking(), true);
-    assert.equal(capturedPointer, null);
+    assert.equal(capturedPointer, 1, "the drag is held by pointer capture instead");
     const before = camera.getWorldDirection(new THREE.Vector3());
-    fakeDocument.dispatchEvent(Object.assign(new Event("mousemove"), {
+    element.dispatchEvent(Object.assign(new Event("pointermove"), {
+      pointerId: 1,
       movementX: 40,
       movementY: -10,
     }));
@@ -301,25 +333,96 @@ test("desktop look locks the pointer, turns in place, and Escape releases before
     );
 
     element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));
-    assert.equal(controls.isLooking(), true);
-    assert.equal(controls.isPointerLocked(), true);
-    assert.equal(capturedPointer, null);
+    assert.equal(controls.isLooking(), false, "releasing the button ends the look drag");
+    assert.equal(capturedPointer, null, "and hands the captured pointer back");
 
-    fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
-      code: "Escape",
-      repeat: false,
-    }));
-    assert.equal(controls.isPointerLocked(), false);
-    assert.equal(controls.isLooking(), false);
-    assert.equal(exitCount, 0);
     controls.update(0.1);
-    assert.ok(camera.position.distanceTo(positionWhileLooking) > 0, "movement resumes after pointer release");
+    assert.ok(camera.position.distanceTo(positionWhileLooking) > 0, "movement resumes after the drag");
 
+    // One press, one exit. Escape used to be swallowed by the pointer lock, so
+    // leaving Walk took two.
+    assert.equal(exitCount, 0);
     fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
       code: "Escape",
       repeat: false,
     }));
     assert.equal(exitCount, 1);
+    controls.dispose();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+test("arrow turning rotates in place and pitch stops where Autodesk stops", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const fakeWindow = new EventTarget();
+  const fakeDocument = Object.assign(new EventTarget(), { hidden: false });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: fakeWindow });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: fakeDocument });
+
+  try {
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1_000);
+    let capturedPointer: number | null = null;
+    const element = Object.assign(new EventTarget(), {
+      setPointerCapture: (pointerId: number) => { capturedPointer = pointerId; },
+      releasePointerCapture: (pointerId: number) => {
+        if (capturedPointer === pointerId) capturedPointer = null;
+      },
+      hasPointerCapture: (pointerId: number) => capturedPointer === pointerId,
+    }) as unknown as HTMLElement;
+    const controls = createWalkControls(camera, element, {
+      start: new THREE.Vector3(0, 5.9, 10),
+      lookAt: new THREE.Vector3(0, 5.9, 0),
+      floor: 5.9,
+      up: "y",
+      gravity: false,
+    });
+    controls.enable();
+
+    const startPosition = camera.position.clone();
+    const startDirection = camera.getWorldDirection(new THREE.Vector3());
+    fakeWindow.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "ArrowLeft",
+      repeat: false,
+    }));
+    for (let frame = 0; frame < 10; frame += 1) controls.update(0.05);
+    const turnedDirection = camera.getWorldDirection(new THREE.Vector3());
+
+    assert.ok(
+      startDirection.angleTo(turnedDirection) > 0.5,
+      "half a second on the left arrow should turn a noticeable amount",
+    );
+    assert.ok(
+      camera.position.distanceTo(startPosition) < 1e-9,
+      "turning is a look, not a step sideways",
+    );
+    fakeWindow.dispatchEvent(Object.assign(new Event("keyup"), { code: "ArrowLeft" }));
+
+    // Drag far past vertical. Autodesk clamps the first-person look 70 degrees
+    // either side of level, so straight up must stay out of reach.
+    element.dispatchEvent(Object.assign(new Event("pointerdown"), {
+      button: 0,
+      pointerType: "mouse",
+      pointerId: 1,
+    }));
+    for (let move = 0; move < 20; move += 1) {
+      element.dispatchEvent(Object.assign(new Event("pointermove"), {
+        pointerId: 1,
+        movementX: 0,
+        movementY: -200,
+      }));
+    }
+    const up = new THREE.Vector3(0, 1, 0);
+    const pitched = camera.getWorldDirection(new THREE.Vector3());
+    const degreesAboveHorizon = 90 - THREE.MathUtils.radToDeg(pitched.angleTo(up));
+    assert.ok(
+      Math.abs(degreesAboveHorizon - 70) < 0.5,
+      `pitch clamped at ${degreesAboveHorizon.toFixed(2)} degrees, expected 70`,
+    );
     controls.dispose();
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);

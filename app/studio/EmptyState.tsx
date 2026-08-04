@@ -4,9 +4,8 @@
  * The screen with no model on it.
  *
  * Two columns: the one thing to do, and the files you last did it to. The
- * recent list is a description of a file, not a handle to it — no browser this
- * runs in can be relied on to persist one — so a row re-opens the picker with
- * the file it is asking for named on the button.
+ * IndexedDB retains a local browser copy behind each new row, so a row can
+ * reopen the parsed model without asking for the source again.
  */
 import { Clock, Trash2, Upload } from "lucide-react";
 
@@ -17,12 +16,14 @@ export function EmptyState({
   recents,
   error,
   onOpen,
+  onOpenRecent,
   onRemoveRecent,
   onClearRecents,
 }: {
   recents: readonly RecentFile[];
   error: string | null;
   onOpen: () => void;
+  onOpenRecent: (file: RecentFile) => void;
   onRemoveRecent: (file: RecentFile) => void;
   onClearRecents: () => void;
 }) {
@@ -51,7 +52,7 @@ export function EmptyState({
             {recents.length > 0 && (
               <button
                 type="button"
-                title="Clear recent history (source files are not deleted)"
+                title="Clear recent history and browser-cached copies"
                 onClick={onClearRecents}
               >Clear all</button>
             )}
@@ -62,7 +63,7 @@ export function EmptyState({
                 type="button"
                 className="recent-open"
                 title={`Open ${file.name} again`}
-                onClick={onOpen}
+                onClick={() => onOpenRecent(file)}
               >
                 <span className="recent-thumb">{fileExtensionLabel(file.name)}</span>
                 <span>
@@ -78,15 +79,15 @@ export function EmptyState({
               <button
                 type="button"
                 className="recent-delete"
-                title="Remove from Recents (does not delete the source file)"
+                title="Remove from Recents and delete its browser-cached copy"
                 aria-label={`Remove ${file.name} from Recents`}
                 onClick={() => onRemoveRecent(file)}
               ><Trash2 size={14} aria-hidden /></button>
             </div>
           )) : (
             <p className="recent-empty">
-              Files you open are listed here. Only their name, size and release are kept — the
-              file itself is never stored.
+              Files you open are cached in this browser so they can be reopened without another
+              file picker. Nothing is uploaded.
             </p>
           )}
         </div>

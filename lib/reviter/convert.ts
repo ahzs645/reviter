@@ -1729,6 +1729,16 @@ export function convertRvtBytes(
       if (record.categoryId === STAIRS_RUN_CATEGORY || nativeStairsRun) {
         const curves = curvesByOwner.get(record.elementId) ?? [];
         const run = nativeStairsRun;
+        const expectedRiserCount = run?.runProperties
+          ? run.runProperties.topRiserIndex - run.baseRiserIndex
+          : undefined;
+        if (
+          expectedRiserCount != null &&
+          Number.isSafeInteger(expectedRiserCount) &&
+          expectedRiserCount > 0
+        ) {
+          record.stairExpectedRiserCount = expectedRiserCount;
+        }
         const stair =
           recoverStraightStairTreads(curves, record.boundsFeet) ??
           (run?.runProperties

@@ -36,6 +36,7 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   const main = await readFile(new URL("assets/index.js", output), "utf8");
   const css = await readFile(new URL("assets/index.css", output), "utf8");
   assert.match(main, /\.\/favicon\.png/);
+  assert.match(main, /__REVITER_BUILD_VERSION__="(?!development)[^"]+"/);
   assert.doesNotMatch(main, /[\"']\/favicon\.png[\"']/);
   assert.match(css, /font-family:Manrope/);
   assert.match(css, /font-family:IBM Plex Mono/);

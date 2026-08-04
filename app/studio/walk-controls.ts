@@ -10,46 +10,92 @@
  * speeds and heights here are real building dimensions — a 5.6 ft eye height,
  * a walking pace of about 9 ft/s — and need no scaling.
  *
- * A desktop click captures the pointer for continuous mouse look; Escape
- * releases it. Touch, pen, and markup interactions retain capture-drag.
- * Movement is WASD or the arrow keys, `Shift` to run, and Q/E to
- * descend/ascend between floors.
+ * Looking is a drag, and the cursor stays the reviewer's own: Autodesk's 1st
+ * Person never takes the mouse, and neither does this. A click used to request
+ * pointer lock, which hid the cursor, swallowed the next Escape, and stopped
+ * anyone reaching the panels beside the viewport without leaving walk first.
+ *
+ * Movement is WASD, `Shift` to run, and Q/E to descend/ascend between floors.
+ * The arrow keys are the second hand: up and down walk, left and right turn.
  */
 import * as THREE from "three";
 
-/** Eye height above the floor the walker is standing on, in feet. */
-const EYE_HEIGHT_FEET = 5.6;
+/** One metre in feet, for reading Autodesk's metric walk configuration across. */
+const FEET_PER_METRE = 1 / 0.3048;
+
+/**
+ * Eye height above the floor the walker is standing on, in feet.
+ *
+ * Autodesk's BIM Walk reports `cameraDistanceFromFloor: 1.8` metres. Standing
+ * six inches lower than the reference viewer is enough to change which way a
+ * head-height duct or a door transom reads, so the two now agree.
+ */
+const EYE_HEIGHT_FEET = 1.8 * FEET_PER_METRE;
 
 export type WalkSpeed = "slow" | "normal" | "fast";
 
-/** Autodesk-style speed steps, expressed in model feet per second. */
+/**
+ * The three speed steps, in model feet per second.
+ *
+ * Read off Autodesk's own walk configuration rather than estimated from it:
+ * `minWalkSpeed` 2 m/s, `topWalkSpeed` 4 m/s (its default) and `maxWalkSpeed`
+ * 6 m/s. Reviter's previous "normal" of 9 ft/s was about a third slower than
+ * the reference viewer's default pace.
+ */
 export const FIRST_PERSON_SPEEDS: Readonly<Record<WalkSpeed, number>> = {
-  slow: 3.5,
-  normal: 9,
-  fast: 24,
+  slow: 2 * FEET_PER_METRE,
+  normal: 4 * FEET_PER_METRE,
+  fast: 6 * FEET_PER_METRE,
 };
 
 const WALK_SPEED_ORDER: readonly WalkSpeed[] = ["slow", "normal", "fast"];
+/** Autodesk's `runMultiplier`. */
 const RUN_MULTIPLIER = 2;
 
-/** Vertical pace for rising and falling, in feet per second. */
-const RISE_SPEED = 7;
+/** Vertical pace for rising and falling: Autodesk's `topVerticalSpeed`, 2 m/s. */
+const RISE_SPEED = 2 * FEET_PER_METRE;
 
 /** How quickly velocity reaches the target pace; larger is snappier. */
 const DAMPING = 12;
 
-/** Radians of pitch either side of the horizon, kept just short of vertical. */
-const MAX_PITCH = Math.PI / 2 - 0.02;
+/**
+ * Radians of pitch either side of the horizon.
+ *
+ * Autodesk clamps the first-person look to `mouseTurnMinPitchLimit` 0.349 rad
+ * and `mouseTurnMaxPitchLimit` 2.793 rad measured from straight up — 70 degrees
+ * either side of level. Reviter used to allow very nearly straight up and down,
+ * which is a view a person standing in a room cannot take and which made the
+ * horizon hard to find again.
+ */
+const MAX_PITCH = Math.PI / 2 - 0.3490658503988659;
 
-/** Mouse sensitivity, radians per pixel. */
-const LOOK_SPEED = 0.0022;
+/** Autodesk's `keyboardTopTurnSpeed`, in radians per second. */
+const KEYBOARD_TURN_SPEED = 1.5;
+
+/**
+ * Mouse sensitivity, radians per pixel.
+ *
+ * Measured against Autodesk's 1st Person, where a 100 px drag turned about
+ * 25.9 degrees. It is roughly twice what Reviter used, which is what a drag
+ * bounded by the window edge needs: without pointer lock a quarter of the
+ * canvas has to be worth about a quarter turn.
+ */
+const LOOK_SPEED = 0.0045;
+
+/**
+ * Seconds over which a released look drag coasts to a stop — Autodesk's
+ * `mouseTurnStopDuration`. Stopping dead on mouseup reads as the view catching
+ * on something.
+ */
+const LOOK_STOP_DURATION = 0.2;
 // The indexed floor query is plan-binned and cheap enough to run once per
 // rendered update. The former 100 ms interval moved the normal walker almost
 // one foot between probes and the fast walker 2.4 ft, so a roughly one-foot
 // tread could be skipped and gravity would visibly snap over two or three
 // risers at once.
 export const DEFAULT_FLOOR_PROBE_INTERVAL = 0;
-export const WALK_MAX_STEP_UP = 1.5;
+/** Autodesk's `bigAllowedVerticalStep`, 0.6 m: a riser it will climb, a desk it will not. */
+export const WALK_MAX_STEP_UP = 0.6 * FEET_PER_METRE;
 
 export function stepWalkSpeed(speed: WalkSpeed, direction: -1 | 1): WalkSpeed {
   const index = WALK_SPEED_ORDER.indexOf(speed);
@@ -58,6 +104,18 @@ export function stepWalkSpeed(speed: WalkSpeed, direction: -1 | 1): WalkSpeed {
 
 export function floorTravelDirection(keys: ReadonlySet<string>): -1 | 0 | 1 {
   return ((keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0)) as -1 | 0 | 1;
+}
+
+/**
+ * Which way the arrow keys turn the walker, positive being to the left.
+ *
+ * Autodesk's BIM Walk splits the two keyboards: WASD strafes, the arrow keys
+ * turn. Left and right used to strafe here too, which meant a reviewer who
+ * learned the corridor walk in Autodesk Viewer sidled along the wall instead of
+ * looking down the branch.
+ */
+export function turnDirection(keys: ReadonlySet<string>): -1 | 0 | 1 {
+  return ((keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0)) as -1 | 0 | 1;
 }
 
 export function horizontalWalkDirection(
@@ -118,8 +176,6 @@ export type WalkControls = {
   update(deltaSeconds: number): void;
   /** True while a look drag is active. */
   isLooking(): boolean;
-  /** True while this viewport owns the desktop pointer. */
-  isPointerLocked(): boolean;
   /** Move the look drag to another mouse button, releasing any drag in flight. */
   setLookButton(button: number): void;
   /** Change the persistent movement speed without rebuilding the camera. */
@@ -188,7 +244,10 @@ export function createWalkControls(
   let enabled = false;
   let looking = false;
   let lookPointerId: number | null = null;
-  let pointerLockRequested = false;
+  // Angular momentum from the last look move, so releasing coasts rather than
+  // stopping dead. Radians per second of yaw and pitch.
+  let lookVelocityYaw = 0;
+  let lookVelocityPitch = 0;
   let lookButton = options.lookButton ?? 0;
   let speed = options.speed ?? "normal";
   let gravity = options.gravity ?? true;
@@ -257,20 +316,34 @@ export function createWalkControls(
 
   function applyLookDelta(movementX: number, movementY: number): void {
     if (!looking) return;
-    yaw -= movementX * LOOK_SPEED;
-    pitch -= movementY * LOOK_SPEED;
-    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
+    const yawDelta = -movementX * LOOK_SPEED;
+    const pitchDelta = -movementY * LOOK_SPEED;
+    yaw += yawDelta;
+    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + pitchDelta));
+    // The coast after release follows the last move, so a flick carries and a
+    // careful nudge does not.
+    lookVelocityYaw = yawDelta / LOOK_STOP_DURATION;
+    lookVelocityPitch = pitchDelta / LOOK_STOP_DURATION;
     applyRotation();
   }
 
   function onPointerMove(event: PointerEvent): void {
-    if (document.pointerLockElement === domElement) return;
     applyLookDelta(event.movementX, event.movementY);
   }
 
-  function onLockedMouseMove(event: MouseEvent): void {
-    if (document.pointerLockElement !== domElement) return;
-    applyLookDelta(event.movementX, event.movementY);
+  /**
+   * Bleed the released drag's momentum away over `LOOK_STOP_DURATION`, which is
+   * what keeps a flick from stopping the instant the button comes up.
+   */
+  function coastLook(step: number): void {
+    if (!lookVelocityYaw && !lookVelocityPitch) return;
+    const decay = Math.max(0, 1 - step / LOOK_STOP_DURATION);
+    yaw += lookVelocityYaw * step;
+    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + lookVelocityPitch * step));
+    lookVelocityYaw *= decay;
+    lookVelocityPitch *= decay;
+    if (Math.abs(lookVelocityYaw) < 1e-4) lookVelocityYaw = 0;
+    if (Math.abs(lookVelocityPitch) < 1e-4) lookVelocityPitch = 0;
   }
 
   function reportLooking(next: boolean): void {
@@ -284,13 +357,8 @@ export function createWalkControls(
     if (walkKeyboardTargetIsInteractive(event.target)) return;
     if (walkKeyboardEventUsesSystemShortcut(event)) return;
     if (event.code === "Escape") {
-      if (document.pointerLockElement === domElement || pointerLockRequested) {
-        pointerLockRequested = false;
-        document.exitPointerLock?.();
-        reportLooking(false);
-        event.preventDefault();
-        return;
-      }
+      // Nothing to hand back now that looking is an ordinary drag, so Escape
+      // means what it says the first time it is pressed.
       options.onExit?.();
       return;
     }
@@ -331,50 +399,18 @@ export function createWalkControls(
     trackedSurface = height - eyeHeight;
     floorProbeElapsed = 0;
     lookPointerId = event.pointerId;
+    lookVelocityYaw = 0;
+    lookVelocityPitch = 0;
     reportLooking(true);
-    const canLockDesktopPointer =
-      event.pointerType === "mouse" &&
-      lookButton === 0 &&
-      typeof domElement.requestPointerLock === "function";
-    if (canLockDesktopPointer) {
-      pointerLockRequested = true;
-      try {
-        const request = domElement.requestPointerLock();
-        if (request && typeof request.catch === "function") {
-          request.catch(() => {
-            pointerLockRequested = false;
-            reportLooking(false);
-          });
-        }
-      } catch {
-        pointerLockRequested = false;
-        reportLooking(false);
-      }
-      return;
-    }
+    // Capture, not lock: the drag keeps receiving moves past the canvas edge,
+    // but the cursor stays visible and stays the reviewer's to move.
     domElement.setPointerCapture(event.pointerId);
-  }
-
-  function onPointerLockChange(): void {
-    pointerLockRequested = false;
-    if (document.pointerLockElement === domElement) {
-      velocity.set(0, 0, 0);
-      reportLooking(true);
-      return;
-    }
-    lookPointerId = null;
-    reportLooking(false);
-  }
-
-  function onPointerLockError(): void {
-    if (!pointerLockRequested) return;
-    pointerLockRequested = false;
-    lookPointerId = null;
-    reportLooking(false);
   }
 
   function releaseInput(): void {
     pressed.clear();
+    lookVelocityYaw = 0;
+    lookVelocityPitch = 0;
     stopLooking();
   }
 
@@ -384,7 +420,6 @@ export function createWalkControls(
 
   function stopLooking(event?: PointerEvent): void {
     if (event && event.pointerId !== lookPointerId) return;
-    if (document.pointerLockElement === domElement || pointerLockRequested) return;
     if (!looking) return;
     const pointerId = lookPointerId;
     lookPointerId = null;
@@ -407,9 +442,6 @@ export function createWalkControls(
     domElement.addEventListener("pointermove", onPointerMove);
     domElement.addEventListener("pointerup", stopLooking);
     domElement.addEventListener("pointercancel", stopLooking);
-    document.addEventListener("mousemove", onLockedMouseMove);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
-    document.addEventListener("pointerlockerror", onPointerLockError);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", releaseInput);
@@ -425,15 +457,10 @@ export function createWalkControls(
     domElement.removeEventListener("pointermove", onPointerMove);
     domElement.removeEventListener("pointerup", stopLooking);
     domElement.removeEventListener("pointercancel", stopLooking);
-    document.removeEventListener("mousemove", onLockedMouseMove);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("pointerlockerror", onPointerLockError);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", releaseInput);
     document.removeEventListener("visibilitychange", onVisibilityChange);
-    pointerLockRequested = false;
-    if (document.pointerLockElement === domElement) document.exitPointerLock?.();
   }
 
   function update(deltaSeconds: number): void {
@@ -447,6 +474,7 @@ export function createWalkControls(
       return;
     }
     const step = Math.min(deltaSeconds, 0.1);
+    coastLook(step);
     if (travel) {
       travel.elapsed += step;
       const progress = Math.min(1, travel.elapsed / travel.duration);
@@ -472,8 +500,11 @@ export function createWalkControls(
 
     const forwardInput = (pressed.has("KeyW") || pressed.has("ArrowUp") ? 1 : 0)
       - (pressed.has("KeyS") || pressed.has("ArrowDown") ? 1 : 0);
-    const strafeInput = (pressed.has("KeyD") || pressed.has("ArrowRight") ? 1 : 0)
-      - (pressed.has("KeyA") || pressed.has("ArrowLeft") ? 1 : 0);
+    const strafeInput = (pressed.has("KeyD") ? 1 : 0) - (pressed.has("KeyA") ? 1 : 0);
+    // Turning is a look, not a move: it changes facing without asking the floor
+    // probe to reconsider, exactly as holding the arrow key does in BIM Walk.
+    const turnInput = turnDirection(pressed);
+    if (turnInput) yaw += turnInput * KEYBOARD_TURN_SPEED * step;
     const floorTravelInput = floorTravelDirection(pressed);
     const hasMovementIntent = forwardInput !== 0 || strafeInput !== 0 || floorTravelInput !== 0;
 
@@ -593,7 +624,6 @@ export function createWalkControls(
     disable,
     update,
     isLooking: () => looking,
-    isPointerLocked: () => document.pointerLockElement === domElement,
     setLookButton: (button) => {
       if (button === lookButton) return;
       lookButton = button;

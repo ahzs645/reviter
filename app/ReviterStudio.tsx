@@ -81,6 +81,14 @@ import {
   subscribeToRecentFiles,
   type RecentFile,
 } from "./studio/recents.ts";
+import {
+  cacheRecentModel,
+  cacheRecentSource,
+  clearCachedRecentModels,
+  deleteCachedRecentModel,
+  loadCachedRecentModel,
+  type CachedRecentModel,
+} from "./studio/recent-model-cache.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
 import { WorkspaceSwitcher } from "./studio/WorkspaceSwitcher.tsx";
 import { MarkupToolbar } from "./studio/MarkupToolbar.tsx";
@@ -283,6 +291,8 @@ export default function ReviterStudio() {
             comparison.reference.completeRampAggregateElementIds,
           directRoofGeometryElementIds:
             comparison.reference.directRoofGeometryElementIds,
+          directStairFlightGeometryElementIds:
+            comparison.reference.directStairFlightGeometryElementIds,
           shapeDifferentElementIds:
             comparison.reference.geometricShapeDifferentElementIds,
         })
@@ -348,15 +358,26 @@ export default function ReviterStudio() {
   const rememberFile = useCallback((
     name: string,
     size: number,
+    lastModified: number,
     revitVersion: string | null,
     status: RecentFile["status"],
   ) => {
-    recordRecentFile({ name, size, revitVersion, openedAt: Date.now(), status });
+    recordRecentFile({
+      name,
+      size,
+      lastModified,
+      revitVersion,
+      openedAt: Date.now(),
+      status,
+    });
   }, []);
 
   // --- Opening a file ----------------------------------------------------
 
-  const processFile = useCallback(async (nextFile: File) => {
+  const processFile = useCallback(async (
+    nextFile: File,
+    knownCache?: CachedRecentModel | null,
+  ) => {
     if (!/\.(rvt|rfa|rte|rft)$/i.test(nextFile.name)) {
       setError("Choose a Revit .rvt, .rfa, .rte, or .rft file.");
       setPhase("error");
@@ -408,14 +429,19 @@ export default function ReviterStudio() {
     setPhase("reading");
 
     try {
+      const cached = knownCache ?? await loadCachedRecentModel({
+        name: nextFile.name,
+        size: nextFile.size,
+        lastModified: nextFile.lastModified,
+      });
       const cfb = await openFile(nextFile);
       // Start the only full-file read and boot the conversion worker as soon as
       // the container directory is known to be valid. Metadata and the embedded
       // preview are small, independent CFB reads, so doing them while the file
       // buffer is prepared removes an avoidable serial wait — especially for a
       // cloud-backed File whose bytes are not warm on disk yet.
-      const bufferPromise = nextFile.arrayBuffer();
-      const worker = getWorker();
+      const bufferPromise = cached?.result ? null : nextFile.arrayBuffer();
+      const worker = cached?.result ? null : getWorker();
       const basicEntry = cfb.findEntry("BasicFileInfo");
       const basicDataPromise = basicEntry
         ? cfb.entryData(basicEntry)
@@ -462,14 +488,54 @@ export default function ReviterStudio() {
         return preview.ok ? URL.createObjectURL(preview.data) : null;
       });
       setPrivateFileInfo(basicData ? parseBasicFileInfoProperties(basicData) : null);
+
+      const acceptResult = (converted: ConvertResult) => {
+        setResult(converted);
+        setPlanLevelId(
+          converted.levels.find(
+            (level) => level.levelId != null && level.elevation >= -0.01,
+          )?.levelId
+            ?? converted.levels.find((level) => level.levelId != null)?.levelId
+            ?? null,
+        );
+        setModelComments(loadModelComments(converted));
+        setMarkup(loadModelMarkup(converted));
+        // Reviter's own recovery is what opening a model shows. Nothing about
+        // the file — not its name, not its document id — switches the viewer to
+        // a different converter's output behind the user's back.
+        setGeometrySource("recovered");
+        setProgress(1);
+        setPhase("ready");
+        rememberFile(
+          nextFile.name,
+          nextFile.size,
+          nextFile.lastModified,
+          info.version,
+          converted.stats.candidatesUsed >= converted.elementBounds.length ? "ready" : "partial",
+        );
+      };
+
+      if (cached?.result) {
+        acceptResult(cached.result);
+        return;
+      }
+
       setPhase("converting");
       setProgress(0.08);
 
       const fail = (message: string) => {
         setError(message);
         setPhase("error");
-        rememberFile(nextFile.name, nextFile.size, info.version, "partial");
+        rememberFile(
+          nextFile.name,
+          nextFile.size,
+          nextFile.lastModified,
+          info.version,
+          "partial",
+        );
+        void cacheRecentSource(nextFile);
       };
+      if (!worker || !buffer) throw new Error("The conversion worker could not be prepared.");
       worker.onerror = (event) => {
         if (requestId !== requestIdRef.current) return;
         fail(event.message || "The local conversion worker stopped unexpectedly.");
@@ -493,28 +559,10 @@ export default function ReviterStudio() {
           fail(message.result.error);
           return;
         }
-        setResult(message.result);
-        setPlanLevelId(
-          message.result.levels.find(
-            (level) => level.levelId != null && level.elevation >= -0.01,
-          )?.levelId
-            ?? message.result.levels.find((level) => level.levelId != null)?.levelId
-            ?? null,
-        );
-        setModelComments(loadModelComments(message.result));
-        setMarkup(loadModelMarkup(message.result));
-        // Reviter's own recovery is what opening a model shows. Nothing about
-        // the file — not its name, not its document id — switches the viewer to
-        // a different converter's output behind the user's back.
-        setGeometrySource("recovered");
-        setProgress(1);
-        setPhase("ready");
-        rememberFile(
-          nextFile.name,
-          nextFile.size,
-          info.version,
-          message.result.stats.candidatesUsed >= message.result.elementBounds.length ? "ready" : "partial",
-        );
+        acceptResult(message.result);
+        // IndexedDB failures (private mode, eviction, quota) must not turn a
+        // successful conversion into an application error.
+        void cacheRecentModel(nextFile, message.result);
       };
       const request: WorkerRequest = {
         id: requestId,
@@ -1588,6 +1636,25 @@ export default function ReviterStudio() {
   );
 
   const openPicker = useCallback(() => inputRef.current?.click(), []);
+  const openRecent = useCallback((recent: RecentFile) => {
+    void (async () => {
+      const cached = await loadCachedRecentModel(recent);
+      if (!cached) {
+        setError("This older Recent entry has no browser-cached copy. Choose the source file once to cache it.");
+        setPhase("error");
+        return;
+      }
+      await processFile(cached.file, cached);
+    })();
+  }, [processFile]);
+  const deleteRecent = useCallback((recent: RecentFile) => {
+    removeRecentFile(recent);
+    void deleteCachedRecentModel(recent);
+  }, []);
+  const deleteAllRecents = useCallback(() => {
+    clearRecentFiles();
+    void clearCachedRecentModels();
+  }, []);
 
   const canvas = result ? (
     <ModelCanvas
@@ -1680,8 +1747,9 @@ export default function ReviterStudio() {
       recents={recents}
       error={phase === "error" ? error : null}
       onOpen={openPicker}
-      onRemoveRecent={removeRecentFile}
-      onClearRecents={clearRecentFiles}
+      onOpenRecent={openRecent}
+      onRemoveRecent={deleteRecent}
+      onClearRecents={deleteAllRecents}
     />
   );
 

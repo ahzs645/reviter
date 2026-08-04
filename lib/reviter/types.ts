@@ -295,6 +295,12 @@ export type ElementBoundsRecord = {
    */
   stairTreads?: [Point3, Point3, Point3, Point3][];
   /**
+   * Riser count persisted by the native StairsRun aggregate. This remains
+   * useful when curve recovery fails: a positive count proves that an empty
+   * `stairTreads` array is missing topology rather than a genuinely flat run.
+   */
+  stairExpectedRiserCount?: number;
+  /**
    * Horizontal slab thickness used below each recovered stair tread.
    *
    * The supplied project's native StairsRun aggregate persists equal left/right
@@ -607,6 +613,11 @@ export type IfcReferenceManifest = {
    */
   directRoofGeometryElementIds?: Uint32Array;
   /**
+   * Revit ids whose numeric IFC Tag resolves directly to an IfcStairFlight
+   * product that owns tessellated geometry.
+   */
+  directStairFlightGeometryElementIds?: Uint32Array;
+  /**
    * Ramp ids whose tagged IfcRamp owns a direct body and is not itself an
    * IfcRelAggregates parent. Reference-assisted recovery still requires tight
    * six-face extent parity before replacing the RVT aggregate.
@@ -744,6 +755,10 @@ export type ConvertResult = {
   referenceAssistedCompleteRoofIds?: Uint32Array;
   /** Roofs kept from RVT because one of the strict paired-roof gates was not proved. */
   referenceAssistedRetainedRoofIds?: Uint32Array;
+  /** Native stair runs repaired from a direct, extent-matched IfcStairFlight. */
+  referenceAssistedCompleteStairRunIds?: Uint32Array;
+  /** Topologically incomplete stair runs that failed the strict IFC gate. */
+  referenceAssistedRetainedStairRunIds?: Uint32Array;
   /** Persisted spatial relationships from Element.m_assocLevelId. */
   nativeAssociatedLevelRelations?: NativeAssociatedLevelRelation[];
 };

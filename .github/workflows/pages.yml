@@ -34,6 +34,7 @@ jobs:
       - name: Build static application
         env:
           PAGES_BASE_PATH: /${{ github.event.repository.name }}/
+          REVITER_PARSER_VERSION: ${{ github.sha }}
         run: npm run build:pages
 
       - name: Verify Pages artifact

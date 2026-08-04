@@ -29,6 +29,7 @@ import {
   overlayMeshGroup,
   referenceMeshGroup,
 } from "./three-scene.ts";
+import { applyAutodeskButtonMap, applyAutodeskNavigation } from "./autodesk-navigation.ts";
 import {
   addPendingMeasurementPoint,
   applyClippingPlanes,
@@ -435,10 +436,17 @@ export function ModelCanvas({
   const measureCalibrationRef = useRef(1);
   const measurementIdRef = useRef(1);
   const appliedWalkStartRequestRef = useRef(walkStartRequest.sequence);
+  // The button map is decided per press, from the modifiers on that press, so
+  // the listener that decides it needs the current tool without re-subscribing.
+  const navigationModeRef = useRef(navigationMode);
 
   useEffect(() => {
     selectedElementIdRef.current = selectedElementId;
   }, [selectedElementId]);
+
+  useEffect(() => {
+    navigationModeRef.current = navigationMode;
+  }, [navigationMode]);
 
   useEffect(() => () => {
     sourceCache.clear();
@@ -503,6 +511,7 @@ export function ModelCanvas({
     controls.dampingFactor = 0.075;
     controls.screenSpacePanning = true;
     applyNavigationMode(controls, "orbit");
+    applyAutodeskNavigation(controls, canvas);
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
     // The overlay is drawn in the recovered model's own frame, so it keeps that
@@ -1400,6 +1409,17 @@ export function ModelCanvas({
       updateMeasurementPreview(measurement, null);
       reportHover(null);
     };
+    // Autodesk decides orbit/pan/dolly from the button *and* the modifiers held
+    // when the drag starts, which OrbitControls cannot express: it reads its
+    // `mouseButtons` map once, in its own pointerdown handler. Rewriting the map
+    // from a capture listener on `window` gets in ahead of it — a capture
+    // listener on the canvas itself would not, because listeners on the target
+    // element fire in registration order and OrbitControls registered first.
+    const handleNavigationButtons = (event: PointerEvent) => {
+      if (event.target !== canvas || walkRef.current) return;
+      applyAutodeskButtonMap(controls, navigationModeRef.current, event.button, event);
+    };
+    window.addEventListener("pointerdown", handleNavigationButtons, { capture: true });
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointerup", handlePointerUp);
     canvas.addEventListener("pointermove", handlePointerMove);
@@ -1622,7 +1642,7 @@ export function ModelCanvas({
         ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
         canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
           .normalize().toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.pointerLocked = String(walkRef.current?.isPointerLocked() ?? false);
+        canvas.dataset.walkLooking = String(walkRef.current?.isLooking() ?? false);
         canvas.dataset.walkGravity = String(walkGravityRef.current);
       }
       if (cameraChanged || needsRender) {
@@ -1667,6 +1687,7 @@ export function ModelCanvas({
       }
       observer.disconnect();
       cancelAnimationFrame(resizeFrame);
+      window.removeEventListener("pointerdown", handleNavigationButtons, { capture: true });
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
       canvas.removeEventListener("pointercancel", handlePointerUp);

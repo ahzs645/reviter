@@ -1,10 +1,9 @@
 /**
  * The recent-files list behind the empty state.
  *
- * Only a description of the file is kept — name, size, release, when it was
- * opened and how the recovery went. A File System Access handle cannot be
- * persisted in every browser this runs in, so a recent row re-opens the file
- * picker rather than pretending it can read the file again on its own.
+ * A small synchronous description is kept here — name, size, release, when it
+ * was opened and how the recovery went. The source and parsed model live in
+ * IndexedDB; separating the index keeps hydration synchronous and inexpensive.
  */
 
 export type RecentStatus = "ready" | "partial";
@@ -12,6 +11,8 @@ export type RecentStatus = "ready" | "partial";
 export type RecentFile = {
   name: string;
   size: number;
+  /** Part of the IndexedDB identity; null preserves pre-cache Recent rows. */
+  lastModified: number | null;
   revitVersion: string | null;
   openedAt: number;
   status: RecentStatus;
@@ -26,6 +27,7 @@ function isRecentFile(value: unknown): value is RecentFile {
   return typeof entry.name === "string"
     && typeof entry.size === "number"
     && Number.isFinite(entry.size)
+    && (entry.lastModified == null || (typeof entry.lastModified === "number" && Number.isFinite(entry.lastModified)))
     && (entry.revitVersion == null || typeof entry.revitVersion === "string")
     && typeof entry.openedAt === "number"
     && (entry.status === "ready" || entry.status === "partial");
@@ -38,7 +40,10 @@ export function loadRecentFiles(): RecentFile[] {
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isRecentFile).slice(0, LIMIT);
+    return parsed
+      .filter(isRecentFile)
+      .map((entry) => ({ ...entry, lastModified: entry.lastModified ?? null }))
+      .slice(0, LIMIT);
   } catch {
     return [];
   }
@@ -58,16 +63,28 @@ export function mergeRecentFile(
   current: readonly RecentFile[],
   entry: RecentFile,
 ): RecentFile[] {
-  const rest = current.filter((file) => !(file.name === entry.name && file.size === entry.size));
+  const rest = current.filter((file) => !(
+    file.name === entry.name
+    && file.size === entry.size
+    && (
+      file.lastModified === entry.lastModified
+      || file.lastModified == null
+      || entry.lastModified == null
+    )
+  ));
   return [entry, ...rest].slice(0, LIMIT);
 }
 
-/** Remove one row by the same name-and-size identity used when recording it. */
+/** Remove one row by the name, size, and modification stamp used when recording it. */
 export function withoutRecentFile(
   current: readonly RecentFile[],
-  entry: Pick<RecentFile, "name" | "size">,
+  entry: Pick<RecentFile, "name" | "size" | "lastModified">,
 ): RecentFile[] {
-  return current.filter((file) => !(file.name === entry.name && file.size === entry.size));
+  return current.filter((file) => !(
+    file.name === entry.name
+    && file.size === entry.size
+    && file.lastModified === entry.lastModified
+  ));
 }
 
 /**
@@ -103,7 +120,7 @@ export function recordRecentFile(entry: RecentFile): void {
   for (const listener of listeners) listener();
 }
 
-export function removeRecentFile(entry: Pick<RecentFile, "name" | "size">): void {
+export function removeRecentFile(entry: Pick<RecentFile, "name" | "size" | "lastModified">): void {
   cache = withoutRecentFile(recentFilesSnapshot(), entry);
   saveRecentFiles(cache);
   for (const listener of listeners) listener();

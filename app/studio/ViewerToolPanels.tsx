@@ -116,7 +116,7 @@ export function FirstPersonPanel({
         >
           Drop to nearest surface <kbd>Space</kbd>
         </button>
-        <small>WASD move · Q down / E up · Shift run · −/+ speed · 1/2/3 compare · double-click travel</small>
+        <small>WASD move · ← → turn · Q down / E up · Shift run · −/+ speed · 1/2/3 compare · double-click travel</small>
       </section>
       {guideOpen && (
         <section className="first-person-guide" role="dialog" aria-modal="true" aria-label="Navigate in first person">
@@ -125,11 +125,12 @@ export function FirstPersonPanel({
             <button onClick={() => onGuide(false)} aria-label="Close first person guide">×</button>
           </header>
           <div>
-            <article><b>Walk</b><kbd>↑ ↓ ← →</kbd><span>or</span><kbd>W A S D</kbd></article>
+            <article><b>Walk</b><kbd>W A S D</kbd><span>or</span><kbd>↑ ↓</kbd></article>
+            <article><b>Turn</b><kbd>← →</kbd><small>The arrow keys turn on the spot; A and D step sideways</small></article>
             <article><b>Float</b><kbd>Q ↓</kbd><kbd>E ↑</kbd><small>Switch to Float to move freely between levels</small></article>
             <article><b>Run</b><kbd>Shift</kbd><span>+</span><kbd>direction</kbd></article>
             <article><b>Travel</b><i>◎</i><small>Double-click a destination</small></article>
-            <article><b>Look around</b><i>↔</i><small>Click to capture the mouse, then move to look. Escape releases it. Touch and markup use drag.</small></article>
+            <article><b>Look around</b><i>↔</i><small>Hold and drag. The cursor stays yours — nothing is captured, and Escape leaves first person</small></article>
             <article><b>Comment here</b><i>▣</i><small>Arm Comment and click a surface: the pin and the viewpoint are saved where you stand</small></article>
             <article><b>Adjust speed</b><kbd>−</kbd><kbd>+</kbd></article>
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>

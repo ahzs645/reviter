@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   applyIfcReferenceRepairs,
   hasCompleteRoofReference,
+  hasCompleteStairFlightReference,
 } from "../lib/reviter/reference-assisted-recovery.ts";
 import { elementManifest } from "../lib/reviter/export-report.ts";
 import type { ConvertResult, MeshData, ReferenceMeshData } from "../lib/reviter/types.ts";
@@ -344,6 +345,118 @@ test("the strict roof gate rejects missing, degenerate, and mismatched evidence"
     summary.bounds,
   ), false);
   assert.equal(hasCompleteRoofReference(
+    summary,
+    {
+      bounds: {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 0.9, y: 1, z: 1 },
+      },
+      triangles: 4,
+    },
+    true,
+    true,
+  ), false);
+});
+
+function incompleteStairModel(): ConvertResult {
+  const original = tetrahedronRampModel();
+  original.meshes[0]!.name = "closed RVT stair proxy";
+  original.elementBounds[0]!.categoryId = -2_000_919;
+  original.elementBounds[0]!.categoryName = "Stairs Runs";
+  original.elementBounds[0]!.categorySource = "native-object";
+  original.elementBounds[0]!.stairExpectedRiserCount = 5;
+  original.elementBounds[0]!.stairTreads = undefined;
+  original.elementBounds[0]!.renderGeometryProvenance = "reconstructed";
+  return original;
+}
+
+test("repairs an aligned closed stair proxy from a tagged extent-matched IfcStairFlight", () => {
+  const original = incompleteStairModel();
+  const reference = { ...tetrahedronRampReference(), diffStatus: "aligned" as const };
+  const repaired = applyIfcReferenceRepairs(original, [reference], {
+    directStairFlightGeometryElementIds: Uint32Array.from([1]),
+  });
+
+  assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedCompleteStairRunIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedRetainedStairRunIds!], []);
+  assert.equal(repaired.elementBounds[0]!.categoryName, "Stairs Runs");
+  assert.equal(repaired.elementBounds[0]!.categorySource, "native-object");
+  assert.equal(repaired.elementBounds[0]!.stairExpectedRiserCount, 5);
+  assert.equal(repaired.elementBounds[0]!.renderGeometryProvenance, "reference-assisted");
+  const assisted = repaired.meshes.find((mesh) => mesh.source === "reference-ifc")!;
+  assert.equal(assisted.materialIndex, 4);
+  assert.match(repaired.warnings.at(-1) ?? "", /native riser-count evidence/);
+});
+
+test("a topologically incomplete stair requires direct tagged IfcStairFlight identity", () => {
+  const retained = applyIfcReferenceRepairs(
+    incompleteStairModel(),
+    [{ ...tetrahedronRampReference(), diffStatus: "aligned" }],
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedStairRunIds!], [1]);
+  assert.equal(retained.elementBounds[0]!.renderGeometryProvenance, "reconstructed");
+});
+
+test("a direct stair flight must match every recovered extent tightly", () => {
+  const retained = applyIfcReferenceRepairs(
+    incompleteStairModel(),
+    [{ ...tetrahedronRampReference(0.8), diffStatus: "aligned" }],
+    { directStairFlightGeometryElementIds: Uint32Array.from([1]) },
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedStairRunIds!], [1]);
+});
+
+test("an aligned stair with a complete recovered tread sequence stays native", () => {
+  const original = incompleteStairModel();
+  original.elementBounds[0]!.stairTreads = Array.from({ length: 4 }, (_, index) => {
+    const z = index * 0.2;
+    return [
+      [10, 20, z],
+      [11, 20, z],
+      [11, 21, z],
+      [10, 21, z],
+    ] as [[number, number, number], [number, number, number], [number, number, number], [number, number, number]];
+  });
+  const retained = applyIfcReferenceRepairs(
+    original,
+    [{ ...tetrahedronRampReference(), diffStatus: "aligned" }],
+    { directStairFlightGeometryElementIds: Uint32Array.from([1]) },
+  );
+  assert.equal(retained, original);
+});
+
+test("a full-length but duplicate tread sequence is still topologically incomplete", () => {
+  const original = incompleteStairModel();
+  original.elementBounds[0]!.stairTreads = Array.from({ length: 4 }, () => [
+    [10, 20, 0],
+    [11, 20, 0],
+    [11, 21, 0],
+    [10, 21, 0],
+  ] as [[number, number, number], [number, number, number], [number, number, number], [number, number, number]]);
+  const repaired = applyIfcReferenceRepairs(
+    original,
+    [{ ...tetrahedronRampReference(), diffStatus: "aligned" }],
+    { directStairFlightGeometryElementIds: Uint32Array.from([1]) },
+  );
+  assert.deepEqual([...repaired.referenceAssistedCompleteStairRunIds!], [1]);
+});
+
+test("the strict stair gate rejects missing identity, topology, geometry, and parity", () => {
+  const summary = {
+    bounds: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 1, y: 1, z: 1 },
+    },
+    triangles: 4,
+  };
+  assert.equal(hasCompleteStairFlightReference(summary, summary, true, true), true);
+  assert.equal(hasCompleteStairFlightReference(summary, summary, false, true), false);
+  assert.equal(hasCompleteStairFlightReference(summary, summary, true, false), false);
+  assert.equal(hasCompleteStairFlightReference(undefined, summary, true, true), false);
+  assert.equal(hasCompleteStairFlightReference(
     summary,
     {
       bounds: {

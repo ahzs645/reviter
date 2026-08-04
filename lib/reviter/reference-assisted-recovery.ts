@@ -2,8 +2,8 @@
  * Explicit paired-IFC repair of viewer geometry.
  *
  * This stays separate from RVT decoding. The paired export does not redefine
- * any RVT bytes; it replaces only tagged elements the comparison has already
- * proved geometrically different, and records that external provenance.
+ * any RVT bytes; it replaces only tagged elements that fail a geometric or
+ * topology gate, and records that external provenance.
  */
 import type {
   Bounds3,
@@ -15,8 +15,10 @@ import type {
 const FEET_PER_METRE = 3.280839895;
 const RAMP_CATEGORY_ID = -2_000_180;
 const ROOF_CATEGORY_ID = -2_000_035;
+const STAIRS_RUN_CATEGORY_ID = -2_000_919;
 const RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET = 0.05;
 const ROOF_EXTENT_TOLERANCE_FEET = 0.05;
+const STAIR_FLIGHT_EXTENT_TOLERANCE_FEET = 0.05;
 const MIN_COMPLETE_REFERENCE_SPAN_FEET = 0.1;
 
 function isRampAggregate(
@@ -29,6 +31,13 @@ function isRoof(
   record: ConvertResult["elementBounds"][number] | undefined,
 ): boolean {
   return record?.categoryId === ROOF_CATEGORY_ID || record?.categoryName === "Roofs";
+}
+
+function isStairsRun(
+  record: ConvertResult["elementBounds"][number] | undefined,
+): boolean {
+  return record?.categoryId === STAIRS_RUN_CATEGORY_ID ||
+    record?.categoryName === "Stairs Runs";
 }
 
 type ElementGeometrySummary = {
@@ -44,6 +53,8 @@ export type IfcReferenceRepairOptions = {
   completeRampAggregateElementIds?: ArrayLike<number>;
   /** Numeric Revit ids proved to own a direct, non-aggregate IfcRoof body. */
   directRoofGeometryElementIds?: ArrayLike<number>;
+  /** Numeric Revit ids whose IFC Tag resolves to a direct IfcStairFlight body. */
+  directStairFlightGeometryElementIds?: ArrayLike<number>;
   /** Bounds-aligned ids whose rendered RVT and IFC surface orientations differ. */
   shapeDifferentElementIds?: ArrayLike<number>;
 };
@@ -95,7 +106,7 @@ function summarizeReferenceGeometry(
 ): Map<number, ElementGeometrySummary> {
   const summaries = new Map<number, ElementGeometrySummary>();
   for (const reference of references) {
-    if (reference.diffStatus !== "different" || !reference.elementIds?.length) continue;
+    if (reference.diffStatus === "context" || !reference.elementIds?.length) continue;
     const triangleCount = Math.min(
       reference.elementIds.length,
       Math.floor(reference.indices.length / 3),
@@ -208,6 +219,75 @@ export function hasCompleteRoofReference(
   return nativeRecordBounds ? extentsMatch(nativeRecordBounds) : false;
 }
 
+function hasIncompleteExpectedStairTopology(
+  record: ConvertResult["elementBounds"][number] | undefined,
+): boolean {
+  const expected = record?.stairExpectedRiserCount;
+  if (!Number.isSafeInteger(expected) || expected == null || expected <= 0) return false;
+  const treads = record?.stairTreads;
+  // Native straight-flight readers accept N-1 horizontal surfaces when the
+  // upper landing supplies the final step. Use the same conservative floor.
+  if (!treads || treads.length < Math.max(1, expected - 1)) return true;
+  const invalidSurface = treads.some((tread) => {
+    if (tread.length !== 4) return true;
+    if (tread.some((point) =>
+      !Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !Number.isFinite(point[2]))) {
+      return true;
+    }
+    const twiceArea = Math.abs(tread.reduce((area, point, index) => {
+      const next = tread[(index + 1) % tread.length]!;
+      return area + point[0] * next[1] - next[0] * point[1];
+    }, 0));
+    const minZ = Math.min(...tread.map((point) => point[2]));
+    const maxZ = Math.max(...tread.map((point) => point[2]));
+    return twiceArea < 1e-4 || maxZ - minZ > 0.02;
+  });
+  if (invalidSurface) return true;
+  const elevations = treads
+    .map((tread) => tread.reduce((sum, point) => sum + point[2], 0) / tread.length)
+    .sort((left, right) => left - right);
+  let distinctElevations = 0;
+  let previous = -Infinity;
+  for (const elevation of elevations) {
+    if (elevation - previous <= 0.02) continue;
+    distinctElevations += 1;
+    previous = elevation;
+  }
+  return distinctElevations < Math.max(1, expected - 1);
+}
+
+/**
+ * Certify a paired stair-flight body only from three independent facts: the
+ * RVT aggregate expects real risers but did not yield usable treads, the numeric
+ * IFC Tag names an IfcStairFlight body, and every min/max face agrees tightly.
+ * Equal AABBs alone cannot trigger this path.
+ */
+export function hasCompleteStairFlightReference(
+  recovered: ElementGeometrySummary | undefined,
+  reference: ElementGeometrySummary | undefined,
+  directIfcStairFlightBody: boolean,
+  topologyIncomplete: boolean,
+  toleranceFeet = STAIR_FLIGHT_EXTENT_TOLERANCE_FEET,
+): boolean {
+  if (!directIfcStairFlightBody || !topologyIncomplete || !recovered || !reference) {
+    return false;
+  }
+  if (recovered.triangles < 4 || reference.triangles < 4) return false;
+  for (const axis of ["x", "y", "z"] as const) {
+    const recoveredSpan = recovered.bounds.max[axis] - recovered.bounds.min[axis];
+    const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
+    if (
+      recoveredSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+      referenceSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+      Math.abs(recovered.bounds.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
+      Math.abs(recovered.bounds.max[axis] - reference.bounds.max[axis]) > toleranceFeet
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function dominantMaterials(meshes: readonly MeshData[]): Map<number, number> {
   const counts = new Map<number, Map<number, number>>();
   for (const mesh of meshes) {
@@ -263,8 +343,9 @@ function emptyBounds(): Bounds3 {
 }
 
 /**
- * Replace geometrically different tagged elements with their paired IFC body.
- * Untagged IFC context and already aligned elements are never copied in.
+ * Replace gated tagged elements with their paired IFC body. Bounds-aligned
+ * elements are copied only for a native stair run whose expected risers prove
+ * that its recovered tread topology is incomplete.
  */
 export function applyIfcReferenceRepairs(
   result: ConvertResult,
@@ -279,7 +360,10 @@ export function applyIfcReferenceRepairs(
   const roofIds = new Set(
     result.elementBounds.filter(isRoof).map((record) => record.elementId),
   );
-  const geometryGateIds = new Set([...rampAggregateIds, ...roofIds]);
+  const stairRunIds = new Set(
+    result.elementBounds.filter(isStairsRun).map((record) => record.elementId),
+  );
+  const geometryGateIds = new Set([...rampAggregateIds, ...roofIds, ...stairRunIds]);
   const semanticallyCompleteRampIds = new Set<number>(
     options.completeRampAggregateElementIds
       ? Array.from(options.completeRampAggregateElementIds)
@@ -288,6 +372,11 @@ export function applyIfcReferenceRepairs(
   const directRoofGeometryIds = new Set<number>(
     options.directRoofGeometryElementIds
       ? Array.from(options.directRoofGeometryElementIds)
+      : [],
+  );
+  const directStairFlightGeometryIds = new Set<number>(
+    options.directStairFlightGeometryElementIds
+      ? Array.from(options.directStairFlightGeometryElementIds)
       : [],
   );
   const shapeDifferentIds = new Set<number>(
@@ -302,11 +391,29 @@ export function applyIfcReferenceRepairs(
   const completeRampAggregateIds = new Set<number>();
   const retainedRoofIds = new Set<number>();
   const completeRoofIds = new Set<number>();
+  const retainedStairRunIds = new Set<number>();
+  const completeStairRunIds = new Set<number>();
   for (const reference of references) {
-    if (reference.diffStatus !== "different") continue;
+    if (reference.diffStatus === "context") continue;
     for (const elementId of reference.elementIds ?? []) {
       const record = recordById.get(elementId);
       if (!(elementId > 0 && recordIds.has(elementId))) continue;
+      if (isStairsRun(record) && hasIncompleteExpectedStairTopology(record)) {
+        if (hasCompleteStairFlightReference(
+          recoveredGeometry.get(elementId),
+          referenceGeometry.get(elementId),
+          directStairFlightGeometryIds.has(elementId),
+          true,
+        )) {
+          retainedStairRunIds.delete(elementId);
+          completeStairRunIds.add(elementId);
+          replacementIds.add(elementId);
+        } else if (!replacementIds.has(elementId)) {
+          retainedStairRunIds.add(elementId);
+        }
+        continue;
+      }
+      if (reference.diffStatus !== "different") continue;
       if (isRoof(record)) {
         if (hasCompleteRoofReference(
           recoveredGeometry.get(elementId),
@@ -340,7 +447,9 @@ export function applyIfcReferenceRepairs(
     }
   }
   if (!replacementIds.size) {
-    if (!retainedAggregateIds.size && !retainedRoofIds.size) return result;
+    if (!retainedAggregateIds.size && !retainedRoofIds.size && !retainedStairRunIds.size) {
+      return result;
+    }
     return {
       ...result,
       referenceAssistedRetainedRampAggregateIds: Uint32Array.from(
@@ -348,6 +457,9 @@ export function applyIfcReferenceRepairs(
       ),
       referenceAssistedRetainedRoofIds: Uint32Array.from(
         [...retainedRoofIds].sort((left, right) => left - right),
+      ),
+      referenceAssistedRetainedStairRunIds: Uint32Array.from(
+        [...retainedStairRunIds].sort((left, right) => left - right),
       ),
       warnings: [
         ...result.warnings,
@@ -357,6 +469,9 @@ export function applyIfcReferenceRepairs(
         ...(retainedRoofIds.size
           ? [`${retainedRoofIds.size.toLocaleString()} roof${retainedRoofIds.size === 1 ? "" : "s"} retained from RVT because direct IfcRoof identity, a material surface-orientation difference, or six-face rendered/native-record extent parity within ${ROOF_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
           : []),
+        ...(retainedStairRunIds.size
+          ? [`${retainedStairRunIds.size.toLocaleString()} topologically incomplete stair run${retainedStairRunIds.size === 1 ? " was" : "s were"} retained from RVT because direct tagged IfcStairFlight identity or six-face extent parity within ${STAIR_FLIGHT_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
+          : []),
       ],
     };
   }
@@ -365,7 +480,7 @@ export function applyIfcReferenceRepairs(
   const batches = new Map<number, RepairBatch>();
   const boundsByElement = new Map<number, Bounds3>();
   for (const reference of references) {
-    if (reference.diffStatus !== "different" || !reference.elementIds) continue;
+    if (reference.diffStatus === "context" || !reference.elementIds) continue;
     const triangleCount = Math.min(
       reference.elementIds.length,
       Math.floor(reference.indices.length / 3),
@@ -444,10 +559,16 @@ export function applyIfcReferenceRepairs(
     referenceAssistedRetainedRoofIds: Uint32Array.from(
       [...retainedRoofIds].sort((left, right) => left - right),
     ),
+    referenceAssistedCompleteStairRunIds: Uint32Array.from(
+      [...completeStairRunIds].sort((left, right) => left - right),
+    ),
+    referenceAssistedRetainedStairRunIds: Uint32Array.from(
+      [...retainedStairRunIds].sort((left, right) => left - right),
+    ),
     stats: { ...result.stats, triangleCount },
     warnings: [
       ...result.warnings,
-      `${replacementIds.size.toLocaleString()} geometrically different elements use tagged geometry from the paired IFC; Revit identity, semantics and native material assignments are retained.`,
+      `${replacementIds.size.toLocaleString()} geometrically different or topology-incomplete elements use tagged geometry from the paired IFC; Revit identity, semantics and native material assignments are retained.`,
       ...(completeRampAggregateIds.size
         ? [`${completeRampAggregateIds.size.toLocaleString()} ramp aggregate${completeRampAggregateIds.size === 1 ? " uses its" : "s use their"} tagged direct IFC body after semantic completeness and six-face extent parity were both confirmed.`]
         : []),
@@ -459,6 +580,12 @@ export function applyIfcReferenceRepairs(
         : []),
       ...(retainedRoofIds.size
         ? [`${retainedRoofIds.size.toLocaleString()} roof${retainedRoofIds.size === 1 ? "" : "s"} retained from RVT because direct IfcRoof identity, a material surface-orientation difference, or six-face rendered/native-record extent parity within ${ROOF_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
+        : []),
+      ...(completeStairRunIds.size
+        ? [`${completeStairRunIds.size.toLocaleString()} topologically incomplete stair run${completeStairRunIds.size === 1 ? " uses its" : "s use their"} direct tagged IfcStairFlight body after native riser-count evidence and six-face extent parity were confirmed.`]
+        : []),
+      ...(retainedStairRunIds.size
+        ? [`${retainedStairRunIds.size.toLocaleString()} topologically incomplete stair run${retainedStairRunIds.size === 1 ? " was" : "s were"} retained from RVT because direct tagged IfcStairFlight identity or six-face extent parity within ${STAIR_FLIGHT_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
         : []),
     ],
   };

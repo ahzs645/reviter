@@ -16,6 +16,7 @@ import {
   type NavigationMode,
   type RenderMode,
 } from "../../lib/reviter/viewer.ts";
+import { autodeskDragAction, orbitControlsMouseButton } from "./autodesk-navigation.ts";
 
 /**
  * The triangles of one batch minus the ones belonging to a hidden element.
@@ -708,12 +709,14 @@ export function applyNavigationMode(controls: OrbitControls, mode: NavigationMod
   // OrbitControls defaults to moving the camera in the pointer's direction,
   // which makes the model under the cursor appear to move the other way.
   // Reviter treats an orbit drag as direct manipulation of the building: pull
-  // right/down and the building follows right/down.
+  // right/down and the building follows right/down. Autodesk Viewer does the
+  // same, so this sign is parity rather than preference; the per-pixel rate it
+  // multiplies is corrected in `applyAutodeskNavigation`.
   controls.rotateSpeed = -1;
-  controls.mouseButtons.LEFT = mode === "pan"
-    ? THREE.MOUSE.PAN
-    : mode === "zoom"
-      ? THREE.MOUSE.DOLLY
-      : THREE.MOUSE.ROTATE;
-  controls.mouseButtons.RIGHT = mode === "orbit" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  // The unmodified row of Autodesk's table. A held modifier changes the answer,
+  // and is applied per event by `applyAutodeskButtonMap` because OrbitControls
+  // only reads this map once, when the drag starts.
+  controls.mouseButtons.LEFT = orbitControlsMouseButton(autodeskDragAction(mode, 0) ?? "orbit");
+  controls.mouseButtons.MIDDLE = orbitControlsMouseButton(autodeskDragAction(mode, 1) ?? "pan");
+  controls.mouseButtons.RIGHT = orbitControlsMouseButton(autodeskDragAction(mode, 2) ?? "pan");
 }
