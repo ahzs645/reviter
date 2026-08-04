@@ -69,6 +69,7 @@ import {
   recoverConnectedStairTreads,
   recoverFlattenedProfileStairTreads,
   recoverGuideChainStairTreads,
+  recoverPairedGuideProfileStairTreads,
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
 } from "./stair-treads.ts";
@@ -175,6 +176,7 @@ import {
   levelsForBounds,
   levelsFromRelations,
   selectDisplayBounds,
+  stairAssembliesWithRecoveredNativeRuns,
 } from "./scene.ts";
 import {
   FAMILY_SEGMENT_SCALE,
@@ -1754,6 +1756,12 @@ export function convertRvtBytes(
                 maximumRiserCount:
                   run.runProperties.topRiserIndex - run.baseRiserIndex,
               }) ??
+              recoverPairedGuideProfileStairTreads(curves, record.boundsFeet, {
+                actualRunWidthFeet:
+                  run.runProperties.actualRunWidthFeet,
+                maximumRiserCount:
+                  run.runProperties.topRiserIndex - run.baseRiserIndex,
+              }) ??
               recoverProfiledGuideStairTreads(curves, record.boundsFeet, {
                 actualRunWidthFeet:
                   run.runProperties.actualRunWidthFeet,
@@ -2491,9 +2499,20 @@ export function convertRvtBytes(
           .filter((record) => record.doorLeafSource != null)
           .map((record) => record.elementId),
       );
+      // A curtain-wall assembly wrapper is held back only after decoded facade
+      // children are found inside it. Apply that same decision to native mesh
+      // admission: otherwise a complete BRep tagged to the parent puts the
+      // aggregate envelope straight back over its plate and mullions. UNBC
+      // object 2422391 is the concrete case — its 20 parent triangles span the
+      // full 10.57 × 8.33 × 13.78 ft wrapper while the IFC parent has no body;
+      // panel 2422392 and mullions 2422394–2422397 carry the real geometry.
+      const heldWrapperNativeMeshIds = new Set(
+        displaySelection.openingWrappers.map((record) => record.elementId),
+      );
       const excludedNativeMeshIds = new Set([
         ...nonSceneNativeMeshIds,
         ...reconstructedDoorLeafIds,
+        ...heldWrapperNativeMeshIds,
       ]);
       nativeMeshScene.meshes = excludeMeshElementIds(
         nativeMeshScene.meshes,
@@ -2599,31 +2618,15 @@ export function convertRvtBytes(
       const elementRecordById = new Map(
         elementBounds.map((record) => [record.elementId, record]),
       );
-      const stairAssembliesWithRecoveredChildren = new Set<number>();
-      // StairsRunAndLanding.m_stairsId is the direct native aggregate link.
-      // ElemTable can instead place a stairs container under its top rail, so
-      // ownership alone misses containers whose run already replaced the box.
-      for (const run of stairsRuns.values()) {
-        // Native mesh admission is independent of the diagnostic display
-        // subset. In particular, UNBC stair 1280525 owns flight 1280585: the
-        // flight is admitted as a native BRep but its element record is not in
-        // `displayBounds`. Looking only in `displayRecordById` therefore kept
-        // the assembly's duplicated envelope and drew a large box over the
-        // valid flight. Resolve the aggregate against the complete element
-        // table; the native coverage checks below still ensure that an
-        // unresolved child can never make its parent disappear.
-        const child = elementRecordById.get(run.elementId);
-        if (
-          child &&
-          (
-            nativeMeshScene.coveredElementIds.has(child.elementId) ||
-            nativeMeshScene.reconstructedElementIds.has(child.elementId) ||
-            child.stairTreads?.length
-          )
-        ) {
-          stairAssembliesWithRecoveredChildren.add(run.stairsId);
-        }
-      }
+      const stairAssembliesWithRecoveredChildren =
+        stairAssembliesWithRecoveredNativeRuns(
+          elementBounds,
+          stairsRuns.values(),
+          nativeMeshScene.coveredElementIds,
+          nativeMeshScene.reconstructedElementIds,
+        );
+      // The native run aggregate above is authoritative. ElemTable also covers
+      // legacy cases that place a stairs container beneath its top rail.
       for (const relation of elementOwnership?.relations ?? []) {
         const owner = elementRecordById.get(relation.ownerId);
         const child = displayRecordById.get(relation.elementId);

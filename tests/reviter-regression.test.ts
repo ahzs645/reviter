@@ -49,6 +49,7 @@ import {
   nonSceneNativeMeshHelperIds,
   isStairOrRailingHelperProxy,
   selectDisplayBounds,
+  stairAssembliesWithRecoveredNativeRuns,
 } from "../lib/reviter/scene.ts";
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 import { boxDifference } from "../lib/reviter/drawn-bounds.ts";
@@ -980,6 +981,11 @@ test("draws an envelope whose category did not decode instead of dropping it", (
   // The envelope came from the same validated signature as the wall's, so a
   // missing label must not turn into a missing building element.
   assert.deepEqual(drawn, [1, 2, 4, 5]);
+  assert.deepEqual(
+    selection.openingWrappers.map((record) => record.elementId),
+    [3],
+    "the same proven wrapper id must also be excluded from native mesh admission",
+  );
   assert.equal(selection.unclassifiedCount, 1);
   assert.equal(selection.omittedWrapperCount, 1);
   assert.equal(selection.omittedSheetCount, 0);
@@ -1303,6 +1309,53 @@ test("holds back an uncategorised record written under the no-class code", () =>
   const drawn = selectDisplayBounds([unnamed, wall]);
   assert.equal(drawn.records.length, 2);
   assert.equal(drawn.omittedSheetCount, 0);
+});
+
+test("suppresses a stair assembly whose native run is outside the display subset", () => {
+  const record = (
+    elementId: number,
+    extra: Partial<ElementBoundsRecord>,
+  ): ElementBoundsRecord => ({
+    elementId,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 16, y: 13, z: 10 },
+    },
+    ...extra,
+  });
+  const assemblies = stairAssembliesWithRecoveredNativeRuns(
+    [
+      record(1280525, {
+        categoryId: -2000120,
+        categoryName: "Stairs",
+        orientedBox: [
+          [0, 0, 0], [16, 0, 0], [16, 13, 0], [0, 13, 0],
+          [0, 0, 10], [16, 0, 10], [16, 13, 10], [0, 13, 10],
+        ],
+      }),
+      // Flight 1280585 is intentionally represented only by native admission;
+      // it need not be present in `displayBounds` for the aggregate to resolve.
+      record(1280585, { categoryId: -2000919, categoryName: "Stairs Runs" }),
+    ],
+    [{ elementId: 1280585, stairsId: 1280525 }],
+    new Set([1280585]),
+    new Set(),
+  );
+  assert.deepEqual([...assemblies], [1280525]);
+  assert.deepEqual(
+    [...stairAssembliesWithRecoveredNativeRuns(
+      [record(1280585, { categoryId: -2000919, categoryName: "Stairs Runs" })],
+      [{ elementId: 1280585, stairsId: 1280525 }],
+      new Set(),
+      new Set(),
+    )],
+    [],
+    "an unresolved child cannot erase its assembly fallback",
+  );
 });
 
 test("identifies only unresolved stair and railing drawing aids as proxy helpers", () => {

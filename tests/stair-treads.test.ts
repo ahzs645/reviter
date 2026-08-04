@@ -6,6 +6,7 @@ import {
   recoverConnectedStairTreads,
   recoverFlattenedProfileStairTreads,
   recoverGuideChainStairTreads,
+  recoverPairedGuideProfileStairTreads,
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
 } from "../lib/reviter/stair-treads.ts";
@@ -432,6 +433,91 @@ test("recovers complementary curved profiles as a certified circular landing", (
     return total + Math.abs(twice) / 2;
   }, 0);
   assert.ok(Math.abs(area - Math.PI * 9.5 ** 2) / area < 0.02);
+});
+
+test("object 1470909 recovers singleton widening profiles from paired native guides", () => {
+  const profileExtents = [
+    [-114.112460452448, 59.806328193506, 87.734414199814],
+    [-115.031090328739, 60.567510254028, 86.815771465150],
+    [-115.949720205031, 61.223678233031, 85.897128730141],
+    [-116.868350081323, 61.748041135617, 84.978502035569],
+    [-117.786980486868, 61.748041135617, 84.485009040453],
+    [-118.705615657471, 61.748041135617, 84.485009040453],
+    [-119.624250828075, 61.748041135617, 84.485009040453],
+    [-120.542885998679, 61.748041135617, 84.485009040453],
+    [-121.461521169282, 61.748041135617, 84.485009040453],
+    [-122.380156339886, 61.748041135617, 84.485009040453],
+    [-123.298791510490, 61.748041135617, 84.485009040453],
+    [-124.217426681093, 61.748041135617, 84.485009040453],
+  ] as const;
+  const elevations = [
+    10.225284339458, 10.608048993876, 10.990813648294,
+    11.373578302712, 11.756342957130, 12.139107611549,
+    12.521872265967, 12.904636920385, 13.287401574803,
+    13.670166229221, 14.052930883640, 14.435695538058,
+  ] as const;
+  const southGuide = [
+    [-114.112460452448, 65.516729110846],
+    [-115.031090328739, 66.317269910717],
+    [-115.949720205031, 67.039050149363],
+    [-116.868350081323, 67.661980590805],
+    [-117.786980486868, 67.432283111826],
+    [-118.705615657471, 67.432283111826],
+    [-119.624250828075, 67.432283111826],
+    [-120.542885998679, 67.432283111826],
+    [-121.461521169282, 67.432283111826],
+    [-122.380156339886, 67.432283111826],
+    [-123.298791510490, 67.432283111826],
+    [-124.217426681093, 67.432283111826],
+  ] as const;
+  const northGuide = [
+    [-114.112460452448, 82.449310203276],
+    [-115.031090328739, 81.491308729262],
+    [-115.949720205031, 80.507053734610],
+    [-116.868350081323, 79.489859501182],
+    [-117.786980486868, 78.800767064244],
+    [-118.705615657471, 78.800767064244],
+    [-119.624250828075, 78.800767064244],
+    [-120.542885998679, 78.800767064244],
+    [-121.461521169282, 78.800767064244],
+    [-122.380156339886, 78.800767064244],
+    [-123.298791510490, 78.800767064244],
+    [-124.217426681093, 78.800767064244],
+  ] as const;
+  const curves: SketchCurve[] = profileExtents.map(([x, lowY, highY]) =>
+    line([x, lowY, elevations.at(-1)!], [x, highY, elevations.at(-1)!])
+  );
+  for (const guide of [southGuide, northGuide]) {
+    for (let index = 0; index + 1 < guide.length; index += 1) {
+      curves.push(line(
+        [guide[index]![0], guide[index]![1], elevations[index]!],
+        [guide[index + 1]![0], guide[index + 1]![1], elevations[index + 1]!],
+      ));
+    }
+  }
+
+  const recovered = recoverPairedGuideProfileStairTreads(
+    curves,
+    {
+      min: { x: -124.258437179781, y: 59.806328193506, z: 9.842519685039 },
+      max: { x: -114.112460452448, y: 87.734414199814, z: 14.435695538058 },
+    },
+    { actualRunWidthFeet: 3.280839895013, maximumRiserCount: 12 },
+  );
+  assert.ok(recovered);
+  assert.equal(recovered.treads.length, 11);
+  assert.deepEqual(
+    recovered.treads.map((tread) => Number(tread[0][2].toFixed(6))),
+    elevations.slice(0, -1).map((elevation) => Number(elevation.toFixed(6))),
+  );
+  assert.ok(
+    recovered.treads.every((tread) => {
+      const width = Math.max(...tread.map((point) => point[1])) -
+        Math.min(...tread.map((point) => point[1]));
+      return width >= 22.7 && width <= 28;
+    }),
+    "every emitted tread is bounded by its two exact native profiles",
+  );
 });
 
 test("orders flattened profiles from the independently persisted bottom profile", () => {

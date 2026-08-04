@@ -1816,6 +1816,10 @@ function dominantRisingGuides(
 }
 
 function longestGuideChain(guides: readonly RisingGuide[]): RisingGuide[] {
+  return risingGuideChains(guides)[0] ?? [];
+}
+
+function risingGuideChains(guides: readonly RisingGuide[]): RisingGuide[][] {
   const byLow = new Map<string, RisingGuide>();
   const highKeys = new Set<string>();
   for (const guide of guides) {
@@ -1836,7 +1840,151 @@ function longestGuideChain(guides: readonly RisingGuide[]): RisingGuide[] {
     }
     return chain;
   });
-  return chains.sort((left, right) => right.length - left.length)[0] ?? [];
+  return chains.sort((left, right) => right.length - left.length);
+}
+
+/**
+ * Recover a broad sketched run from two complete native rising guide chains.
+ *
+ * Revit's monumental/sketched runs do not necessarily repeat every tread
+ * profile. Object 1470909 is the concrete counterexample: its eight straight
+ * profiles repeat, while the four widening lower profiles occur once. Two
+ * independent guide chains nevertheless land on each of the twelve exact
+ * profile lines at every native riser elevation. Requiring both chains to
+ * select the same unique profile makes those singletons just as strong as the
+ * repeated lines without using the nominal `actualRunWidth` (which is only the
+ * type default for this custom run).
+ */
+export function recoverPairedGuideProfileStairTreads(
+  curves: readonly SketchCurve[],
+  bounds: Bounds3,
+  options: RecoveredConnectedStairTreadOptions,
+): RecoveredStairTreads | null {
+  if (
+    !Number.isSafeInteger(options.maximumRiserCount) ||
+    options.maximumRiserCount < MIN_TREADS ||
+    options.maximumRiserCount > MAX_TREADS
+  ) {
+    return null;
+  }
+  const expectedGuideCount = options.maximumRiserCount - 1;
+  const guides = dominantRisingGuides(curves);
+  const chains = risingGuideChains(guides).filter(
+    (chain) => chain.length === expectedGuideCount,
+  );
+  if (chains.length < 2) return null;
+
+  const profiles = planProfiles(curves).filter(
+    (profile) =>
+      profile.curve.kind === "line" &&
+      planLength(profile.curve.start, profile.curve.end) >
+        POINT_TOLERANCE_FEET,
+  );
+  const candidates: RecoveredStairTreads[] = [];
+  for (let firstIndex = 0; firstIndex < chains.length; firstIndex += 1) {
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < chains.length;
+      secondIndex += 1
+    ) {
+      const first = chains[firstIndex]!;
+      const second = chains[secondIndex]!;
+      if (
+        first.some((guide, index) =>
+          Math.abs(guide.low[2] - second[index]!.low[2]) >
+            POINT_TOLERANCE_FEET ||
+          Math.abs(guide.high[2] - second[index]!.high[2]) >
+            POINT_TOLERANCE_FEET
+        )
+      ) {
+        continue;
+      }
+      const rise = median(first.map((guide) => guide.rise));
+      if (
+        rise < MIN_RISE_FEET ||
+        rise > MAX_RISE_FEET ||
+        first.some((guide) => !relativeAgreement(guide.rise, rise)) ||
+        second.some((guide) => !relativeAgreement(guide.rise, rise)) ||
+        !relativeAgreement(
+          bounds.max.z - bounds.min.z,
+          options.maximumRiserCount * rise,
+        )
+      ) {
+        continue;
+      }
+
+      const firstLevels = [first[0]!.low, ...first.map((guide) => guide.high)];
+      const secondLevels = [
+        second[0]!.low,
+        ...second.map((guide) => guide.high),
+      ];
+      const orderedProfiles: ProfileCurve[] = [];
+      let ambiguous = false;
+      for (let level = 0; level < firstLevels.length; level += 1) {
+        const firstPoint = firstLevels[level]!;
+        const secondPoint = secondLevels[level]!;
+        if (
+          planNear(firstPoint, secondPoint) ||
+          firstPoint[0] < bounds.min.x - PLAN_TOLERANCE_FEET ||
+          firstPoint[0] > bounds.max.x + PLAN_TOLERANCE_FEET ||
+          firstPoint[1] < bounds.min.y - PLAN_TOLERANCE_FEET ||
+          firstPoint[1] > bounds.max.y + PLAN_TOLERANCE_FEET ||
+          secondPoint[0] < bounds.min.x - PLAN_TOLERANCE_FEET ||
+          secondPoint[0] > bounds.max.x + PLAN_TOLERANCE_FEET ||
+          secondPoint[1] < bounds.min.y - PLAN_TOLERANCE_FEET ||
+          secondPoint[1] > bounds.max.y + PLAN_TOLERANCE_FEET
+        ) {
+          ambiguous = true;
+          break;
+        }
+        const matches = profiles.filter(
+          (profile) =>
+            distanceToProfilePlan(firstPoint, profile) <=
+              POINT_TOLERANCE_FEET &&
+            distanceToProfilePlan(secondPoint, profile) <=
+              POINT_TOLERANCE_FEET,
+        );
+        if (matches.length !== 1) {
+          ambiguous = true;
+          break;
+        }
+        orderedProfiles.push(matches[0]!);
+      }
+      if (
+        ambiguous ||
+        orderedProfiles.length !== options.maximumRiserCount ||
+        new Set(orderedProfiles).size !== orderedProfiles.length
+      ) {
+        continue;
+      }
+
+      const treadBands = orderedProfiles.slice(0, -1).map(
+        (profile, index) => safeFlattenedTreadBand(
+          profile,
+          orderedProfiles[index + 1]!,
+          first[index]!.low[2],
+          MAX_TREAD_DEPTH_FEET,
+          null,
+          [],
+        ),
+      );
+      if (treadBands.some((band) => band.length === 0)) continue;
+      candidates.push({
+        treads: treadBands.flat(),
+        riserHeightFeet: rise,
+        treadDepthFeet: median(
+          orderedProfiles.slice(0, -1).map((profile, index) =>
+            profilePairDistance(profile, orderedProfiles[index + 1]!),
+          ),
+        ),
+        source: "native-stair-sketch",
+      });
+    }
+  }
+
+  // More than one complete chain pairing would make the selected profile set
+  // ambiguous. Decline it instead of choosing a visually plausible staircase.
+  return candidates.length === 1 ? candidates[0]! : null;
 }
 
 /**

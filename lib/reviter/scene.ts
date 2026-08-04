@@ -555,6 +555,33 @@ export function isStairOrRailingHelperProxy(
   );
 }
 
+/** Stair assembly containers whose native run children already reach the scene. */
+export function stairAssembliesWithRecoveredNativeRuns(
+  records: readonly Pick<ElementBoundsRecord, "elementId" | "stairTreads">[],
+  runs: Iterable<Readonly<{ elementId: number; stairsId: number }>>,
+  coveredElementIds: ReadonlySet<number>,
+  reconstructedElementIds: ReadonlySet<number>,
+): Set<number> {
+  const treadElementIds = new Set(
+    records.flatMap((record) =>
+      record.stairTreads?.length ? [record.elementId] : []
+    ),
+  );
+  const assemblies = new Set<number>();
+  for (const run of runs) {
+    // Run admission is deliberately independent of the selected display
+    // subset. A natively covered child may have no display-proxy record at all.
+    if (
+      coveredElementIds.has(run.elementId) ||
+      reconstructedElementIds.has(run.elementId) ||
+      treadElementIds.has(run.elementId)
+    ) {
+      assemblies.add(run.stairsId);
+    }
+  }
+  return assemblies;
+}
+
 type PersistedOwnershipEdge = {
   ownerId: number;
   elementId: number;
