@@ -5,6 +5,7 @@ import { IfcAPI } from "web-ifc";
 
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
 import type { ConvertResult } from "../lib/reviter/types.ts";
+import type { ReviewedRoom } from "../lib/reviter/room-review.ts";
 
 function fixture(): ConvertResult {
   return {
@@ -215,6 +216,36 @@ test("exports a schema-readable IFC4 population with typed tessellated elements"
     api.CloseModel(model);
     api.Dispose();
   }
+});
+
+test("exports only approved room reviews as IfcSpace on their exact storey", () => {
+  const timestamp = "2026-08-04T12:00:00.000Z";
+  const room = (disposition: ReviewedRoom["disposition"], roomId: string): ReviewedRoom => ({
+    roomId,
+    candidateKey: `candidate-${roomId}`,
+    levelId: 30,
+    closure: "closed",
+    disposition,
+    geometry: {
+      areaSquareFeet: 12,
+      centroidFeet: [102, 202],
+      loopsFeet: [[[101, 201], [103, 201], [103, 203], [101, 203]]],
+    },
+    gapIds: [],
+    details: {
+      number: "101", name: "Seminar", longName: "Seminar room 101", description: "Reviewed room",
+      department: "Teaching", occupancyType: "Assembly", accessibility: "Accessible", notes: "", heightFeet: 9,
+    },
+    ifc: { export: true, predefinedType: "INTERNAL" },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  const source = makeIfc(fixture(), { rooms: [room("accepted", "accepted"), room("unreviewed", "pending")] });
+  assert.equal((source.match(/IFCSPACE\(/g) ?? []).length, 1);
+  assert.match(source, /IFCSPACE\([^\n]+Seminar/);
+  assert.match(source, /'Reviter_RoomReview'/);
+  assert.match(source, /IFCARBITRARYCLOSEDPROFILEDEF/);
+  assert.doesNotMatch(source, /candidate-pending/);
 });
 
 test("keeps element IFC GUIDs stable when the same native model is renamed", () => {

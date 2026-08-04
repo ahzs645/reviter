@@ -2,7 +2,7 @@
 
 import { Box } from "lucide-react";
 
-import type { ConvertResult, DerivedRoomResult } from "../../lib/reviter";
+import type { ConvertResult, DerivedRoomResult, RoomReviewState } from "../../lib/reviter";
 import { FloorBrowser } from "./FloorBrowser.tsx";
 
 /**
@@ -17,6 +17,8 @@ export function FloorWorkspace({
   showDerivedRooms,
   onShowDerivedRooms,
   derivedRooms,
+  roomReview,
+  onRoomReview,
   onModel,
   onOpenModelMap,
 }: {
@@ -26,6 +28,8 @@ export function FloorWorkspace({
   showDerivedRooms: boolean;
   onShowDerivedRooms: (visible: boolean) => void;
   derivedRooms: DerivedRoomResult | null;
+  roomReview: RoomReviewState;
+  onRoomReview: (review: RoomReviewState) => void;
   onModel: () => void;
   onOpenModelMap: () => void;
 }) {
@@ -52,6 +56,8 @@ export function FloorWorkspace({
           showDerivedRooms={showDerivedRooms}
           onShowDerivedRooms={onShowDerivedRooms}
           derivedRooms={derivedRooms}
+          roomReview={roomReview}
+          onRoomReview={onRoomReview}
           onOpenModelMap={onOpenModelMap}
         />
       </div>

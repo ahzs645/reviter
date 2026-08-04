@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
 
-import { deriveRoomsForLevel, type DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
+import { deriveRoomsForLevels, type DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { ConvertResult } from "../../lib/reviter/types.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 
-type Request = { id: number; levelId: number; result: ConvertResult };
+type Request = { id: number; levelIds: number[]; result: ConvertResult };
 type Response = { id: number; result?: DerivedRoomResult; error?: string };
 
 context.onmessage = (event: MessageEvent<Request>) => {
@@ -13,7 +13,7 @@ context.onmessage = (event: MessageEvent<Request>) => {
   try {
     context.postMessage({
       id: request.id,
-      result: deriveRoomsForLevel(request.result, request.levelId),
+      result: deriveRoomsForLevels(request.result, request.levelIds),
     } satisfies Response);
   } catch (error) {
     context.postMessage({

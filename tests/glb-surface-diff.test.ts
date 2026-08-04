@@ -6,6 +6,7 @@ import {
   compareVoxels,
   deriveRegistration,
   makeVoxelGrid,
+  oversizedHorizontalUpResiduals,
   renderDiffSvg,
   residualVerticalBand,
   residualDisposition,
@@ -182,6 +183,23 @@ test("retains certified native surfaces and closed stairs without hiding proxy r
     residualDisposition("Walls 1"),
     "review",
   );
+});
+
+test("oversized horizontal stair bands remain actionable diff residuals", () => {
+  const grid = {
+    cellMetres: 0.25,
+    min: [0, 0, 0] as [number, number, number],
+    size: [12, 2, 12] as [number, number, number],
+  };
+  const index = (x: number, z: number) => x + grid.size[0] * grid.size[1] * z;
+  const ordinary = Array.from({ length: 16 }, (_, value) =>
+    index(value % 4, Math.floor(value / 4))
+  );
+  const fan = Array.from({ length: 81 }, (_, value) =>
+    index(2 + value % 9, 2 + Math.floor(value / 9))
+  );
+  assert.equal(oversizedHorizontalUpResiduals(ordinary, grid).size, 0);
+  assert.equal(oversizedHorizontalUpResiduals(fan, grid).size, 81);
 });
 
 test("distinguishes interior residuals from genuine top-edge residuals", () => {

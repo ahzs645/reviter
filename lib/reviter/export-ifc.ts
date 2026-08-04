@@ -18,6 +18,7 @@ import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
 
 import type { ConvertResult, ElementBoundsRecord, MaterialData } from "./types";
+import type { ReviewedRoom } from "./room-review.ts";
 
 const METRES_PER_FOOT = 0.3048;
 const IFC_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -37,6 +38,11 @@ type IfcClass = {
   entity: string;
   typeEntity: string;
   predefinedType: string;
+};
+
+export type IfcExportOptions = {
+  /** Only accepted rooms with `ifc.export` enabled become IfcSpace entities. */
+  rooms?: readonly ReviewedRoom[];
 };
 
 class StepWriter {
@@ -346,6 +352,39 @@ function emitBoundsShape(
   return writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
 }
 
+function emitRoomShape(
+  writer: StepWriter,
+  context: number,
+  extrusionDirection: number,
+  room: ReviewedRoom,
+  baseElevation: number,
+  origin: ConvertResult["origin"],
+): number | null {
+  const height = room.details.heightFeet;
+  if (!(height != null && Number.isFinite(height) && height > 0.1)) return null;
+  const valid = room.geometry.loopsFeet.filter((loop) => loop.length >= 3);
+  if (!valid.length) return null;
+  const area = (loop: readonly [number, number][]) => Math.abs(loop.reduce((sum, point, index) => {
+    const next = loop[(index + 1) % loop.length]!;
+    return sum + point[0] * next[1] - next[0] * point[1];
+  }, 0) / 2);
+  const loops = [...valid].sort((left, right) => area(right) - area(left));
+  const polyline = (loop: readonly [number, number][]) => {
+    const points = loop.map(([x, y]) => writer.add(`IFCCARTESIANPOINT((${feet(x - origin.x)},${feet(y - origin.y)}))`));
+    points.push(points[0]!);
+    return writer.add(`IFCPOLYLINE(${writer.refs(points)})`);
+  };
+  const outer = polyline(loops[0]!);
+  const profile = loops.length === 1
+    ? writer.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${outer})`)
+    : writer.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${outer},${writer.refs(loops.slice(1).map(polyline))})`);
+  const location = writer.add(`IFCCARTESIANPOINT((0.,0.,${feet(baseElevation - origin.z)}))`);
+  const axis = writer.add(`IFCAXIS2PLACEMENT3D(#${location},$,$)`);
+  const solid = writer.add(`IFCEXTRUDEDAREASOLID(#${profile},#${axis},#${extrusionDirection},${feet(height)})`);
+  const representation = writer.add(`IFCSHAPEREPRESENTATION(#${context},'Body','SweptSolid',(#${solid}))`);
+  return writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
+}
+
 function emitProduct(
   writer: StepWriter,
   ifcClass: IfcClass,
@@ -495,7 +534,7 @@ function emitElementProperties(
  * The historical function name remains as a compatibility alias for the UI and
  * CLI. Its output is no longer limited to centerlines or bounding boxes.
  */
-export function makeIfcCenterlines(result: ConvertResult): string {
+export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOptions = {}): string {
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
   const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
@@ -731,6 +770,53 @@ export function makeIfcCenterlines(result: ConvertResult): string {
       contextProducts.push(product);
     });
     productsByStorey.set(contextStorey, contextProducts);
+  }
+
+  // Room recovery remains a review workflow, not an inference shortcut: only
+  // explicitly accepted, export-enabled records become authoritative IFC
+  // spaces. They stay under their exact raw Revit storey even when the floor
+  // workspace visually composes several split levels.
+  const spacesByStorey = new Map<number, number[]>();
+  for (const room of options.rooms ?? []) {
+    if (room.disposition !== "accepted" || !room.ifc.export) continue;
+    const storey = storeyByLevelId.get(room.levelId);
+    const level = result.levels.find((candidate) => candidate.levelId === room.levelId);
+    if (!storey || !level) continue;
+    const shape = emitRoomShape(writer, bodyContext, extrusionDirection, room, level.elevation, result.origin);
+    const name = room.details.number && room.details.name
+      ? `${room.details.number} · ${room.details.name}`
+      : room.details.name || room.details.number || `Reviewed room ${room.roomId}`;
+    const description = room.details.description || "Room boundary reviewed in Reviter";
+    const objectType = room.details.occupancyType || room.details.department || "Reviewed room";
+    const longName = room.details.longName || room.details.name || "$";
+    const predefined = room.ifc.predefinedType;
+    const space = writer.add(
+      `IFCSPACE(${quoted(guid("space", room.roomId))},#${ownerHistory},${quoted(name)},${quoted(description)},${quoted(objectType)},#${modelPlacement},${shape ? `#${shape}` : "$"},${longName === "$" ? "$" : quoted(longName)},.ELEMENT.,.${predefined}.,$)`,
+    );
+    const properties = [
+      textProperty(writer, "RoomId", room.roomId),
+      textProperty(writer, "CandidateKey", room.candidateKey),
+      textProperty(writer, "BoundaryClosure", room.closure),
+      realProperty(writer, "AreaSquareFeet", room.geometry.areaSquareFeet),
+      ...(room.details.number ? [textProperty(writer, "Number", room.details.number)] : []),
+      ...(room.details.department ? [textProperty(writer, "Department", room.details.department)] : []),
+      ...(room.details.occupancyType ? [textProperty(writer, "OccupancyType", room.details.occupancyType)] : []),
+      ...(room.details.accessibility ? [textProperty(writer, "Accessibility", room.details.accessibility)] : []),
+      ...(room.details.notes ? [textProperty(writer, "Notes", room.details.notes)] : []),
+      ...(room.details.heightFeet == null ? [] : [realProperty(writer, "ReviewedHeightFeet", room.details.heightFeet)]),
+      textProperty(writer, "GapIds", room.gapIds.join(",")),
+    ];
+    const propertySet = writer.add(
+      `IFCPROPERTYSET(${quoted(guid("pset-room-review", room.roomId))},#${ownerHistory},'Reviter_RoomReview','Reviewed room recovery, metadata, and inference provenance',${writer.refs(properties)})`,
+    );
+    writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-room-review", room.roomId))},#${ownerHistory},$,$,(#${space}),#${propertySet})`);
+    const spaces = spacesByStorey.get(storey) ?? [];
+    spaces.push(space);
+    spacesByStorey.set(storey, spaces);
+  }
+
+  for (const [storey, spaces] of spacesByStorey) {
+    writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate-spaces", storey))},#${ownerHistory},'Reviewed rooms',$,#${storey},${writer.refs(spaces)})`);
   }
 
   for (const [storey, products] of productsByStorey) {

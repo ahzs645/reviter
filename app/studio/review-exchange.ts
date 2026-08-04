@@ -6,7 +6,13 @@
  * different building by mistake. Annotation anchors are already stored in
  * canonical model feet, while comments additionally retain their viewpoint.
  */
-import type { ConvertResult } from "../../lib/reviter";
+import type { ConvertResult } from "../../lib/reviter/types.ts";
+import {
+  isReviewedGap,
+  isReviewedRoom,
+  type RoomReviewSidecar,
+  type RoomReviewState,
+} from "../../lib/reviter/room-review.ts";
 import { isModelComment } from "./model-comments.ts";
 import { isMarkupStroke } from "./model-markup.ts";
 import type { MarkupStroke, ModelComment } from "./viewer-tools.ts";
@@ -33,7 +39,22 @@ export type MarkupSidecar = {
   markup: MarkupStroke[];
 };
 
-export type ReviewSidecar = CommentsSidecar | MarkupSidecar;
+export type ReviewSidecar = CommentsSidecar | MarkupSidecar | RoomReviewSidecar;
+
+export function roomModelFingerprint(result: ConvertResult): string {
+  const identities = (result.nativeIdentity?.identities ?? [])
+    .map((identity) => identity.uniqueId)
+    .sort();
+  let hash = 0x811c9dc5;
+  const signature = identities.length
+    ? `${identities.length}:${identities[0]}:${identities.at(-1)}:${result.origin.x}:${result.origin.y}:${result.origin.z}`
+    : `${result.fileName}:${result.byteLength}:${result.elementBounds.length}:${result.origin.x}:${result.origin.y}:${result.origin.z}`;
+  for (let index = 0; index < signature.length; index += 1) {
+    hash ^= signature.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a32-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
 
 function modelIdentity(result: ReviewModelIdentity): ReviewModelIdentity {
   return { fileName: result.fileName, byteLength: result.byteLength };
@@ -67,6 +88,28 @@ export function makeMarkupSidecar(
     model: modelIdentity(result),
     coordinateSystem: "revit-model-feet",
     markup: [...markup],
+  };
+  return JSON.stringify(sidecar, null, 2);
+}
+
+export function makeRoomReviewSidecar(
+  result: ConvertResult,
+  review: RoomReviewState,
+  exportedAt = new Date().toISOString(),
+): string {
+  const sidecar: RoomReviewSidecar = {
+    format: "reviter-room-review",
+    version: REVIEW_VERSION,
+    algorithmVersion: 1,
+    exportedAt,
+    model: {
+      fileName: result.fileName,
+      byteLength: result.byteLength,
+      fingerprint: roomModelFingerprint(result),
+    },
+    coordinateSystem: "revit-model-feet",
+    rooms: review.rooms,
+    gaps: review.gaps,
   };
   return JSON.stringify(sidecar, null, 2);
 }
@@ -112,13 +155,30 @@ export function parseReviewSidecar(text: string): ReviewSidecar {
     }
     return sidecar as MarkupSidecar;
   }
-  throw new Error("This is not a Reviter comments or markup file.");
+  if (sidecar.format === "reviter-room-review") {
+    const candidate = sidecar as Partial<RoomReviewSidecar>;
+    if (candidate.algorithmVersion !== 1
+      || typeof candidate.model?.fingerprint !== "string"
+      || !Array.isArray(candidate.rooms) || candidate.rooms.length > 50_000 || !candidate.rooms.every(isReviewedRoom)
+      || !Array.isArray(candidate.gaps) || candidate.gaps.length > 100_000 || !candidate.gaps.every(isReviewedGap)) {
+      throw new Error("The room review file contains invalid or unsupported room data.");
+    }
+    return candidate as RoomReviewSidecar;
+  }
+  throw new Error("This is not a Reviter comments, markup, or room review file.");
 }
 
 export function assertSidecarMatchesModel(
   sidecar: ReviewSidecar,
-  result: ReviewModelIdentity,
+  result: ReviewModelIdentity | ConvertResult,
 ): void {
+  if (sidecar.format === "reviter-room-review") {
+    if (!("nativeIdentity" in result) || !("elementBounds" in result) || !("origin" in result)) {
+      throw new Error("The open model cannot be fingerprinted for room review import.");
+    }
+    if (sidecar.model.fingerprint === roomModelFingerprint(result)) return;
+    throw new Error(`This room review belongs to ${sidecar.model.fileName}, not the open ${result.fileName} source model.`);
+  }
   if (sidecar.model.byteLength === result.byteLength) return;
   throw new Error(
     `This review belongs to ${sidecar.model.fileName}, not the open ${result.fileName} source file.`,

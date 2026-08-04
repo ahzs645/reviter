@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -16,6 +17,16 @@ const line = (
   start: [number, number, number],
   end: [number, number, number],
 ): SketchCurve => ({ offset: 0, owner: 1, kind: "line", start, end, interior: [] });
+
+const stair1821222Fixture = JSON.parse(readFileSync(
+  new URL("./fixtures/stair-run-1821222.json", import.meta.url),
+  "utf8",
+)) as {
+  elementId: number;
+  bounds: ElementBoundsRecord["boundsFeet"];
+  options: { actualRunWidthFeet: number; maximumRiserCount: number };
+  curves: SketchCurve[];
+};
 
 function straightFlight(): SketchCurve[] {
   const curves: SketchCurve[] = [];
@@ -372,9 +383,9 @@ test("keeps duplicated rotated profiles in an exact-count flattened run", () => 
   );
 });
 
-test("clips flattened tread bands to a concave native run footprint", () => {
+test("clips local flattened tread bands but leaves a long flight transition empty", () => {
   const curves: SketchCurve[] = [];
-  const profiles = [0.5, 1.5, 8.5, 9.5].map((x) =>
+  const profiles = [0.5, 1.5, 2.5, 7.5, 8.5, 9.5].map((x) =>
     line([x, 0, 2], [x, 3, 2]));
   for (const profile of profiles) curves.push(profile, { ...profile });
   curves.push(line([0.5, 0, 0], [0.5, 3, 0]));
@@ -382,8 +393,8 @@ test("clips flattened tread bands to a concave native run footprint", () => {
   // A U-shaped native plan ring. The middle profile pair crosses its open
   // court in plan; only the one-foot-deep top connector belongs to the run.
   const footprint: Point3[] = [
-    [0, 0, 2], [2, 0, 2], [2, 2, 2], [8, 2, 2],
-    [8, 0, 2], [10, 0, 2], [10, 3, 2], [0, 3, 2],
+    [0, 0, 2], [3, 0, 2], [3, 2, 2], [7, 2, 2],
+    [7, 0, 2], [10, 0, 2], [10, 3, 2], [0, 3, 2],
   ];
   for (let index = 0; index < footprint.length; index += 1) {
     curves.push(line(footprint[index]!, footprint[(index + 1) % footprint.length]!));
@@ -395,24 +406,47 @@ test("clips flattened tread bands to a concave native run footprint", () => {
       min: { x: 0, y: 0, z: 0 },
       max: { x: 10, y: 3, z: 2 },
     },
-    { actualRunWidthFeet: 1.5, maximumRiserCount: 4 },
+    { actualRunWidthFeet: 1.5, maximumRiserCount: 6 },
   );
   assert.ok(recovered);
   assert.deepEqual(
-    [...new Set(recovered.treads.map((tread) => tread[0][2]))],
-    [0.5, 1, 1.5],
+    [...new Set(recovered.treads.map((tread) => Number(tread[0][2].toFixed(3))))],
+    [0.333, 0.667, 1.333, 1.667],
   );
-  const middleBand = recovered.treads.filter(
-    (tread) => Math.abs(tread[0][2] - 1) < 1e-6,
+  assert.ok(
+    recovered.treads.every((tread) => Math.abs(tread[0][2] - 1) > 1e-6),
+    "the uncertain inter-flight connector is omitted instead of filled",
   );
-  assert.ok(middleBand.length > 1, "the disconnected native intersections remain separate");
-  for (const tread of middleBand) {
-    const centerX = (tread[0][0] + tread[1][0] + tread[2][0]) / 3;
-    const centerY = (tread[0][1] + tread[1][1] + tread[2][1]) / 3;
-    if (centerX > 2 + 1e-6 && centerX < 8 - 1e-6) {
-      assert.ok(centerY >= 2 - 1e-6, "no tread triangle spans the open court");
-    }
+});
+
+test("object 1821222 splits three long transitions without emitting the top fan", () => {
+  assert.equal(stair1821222Fixture.elementId, 1_821_222);
+  const recovered = recoverFlattenedProfileStairTreads(
+    stair1821222Fixture.curves,
+    stair1821222Fixture.bounds,
+    stair1821222Fixture.options,
+  );
+  assert.ok(recovered);
+
+  const area = (tread: readonly Point3[]) => Math.abs(tread.reduce(
+    (sum, point, index) => {
+      const next = tread[(index + 1) % tread.length]!;
+      return sum + point[0] * next[1] - next[0] * point[1];
+    },
+    0,
+  )) / 2;
+  const byElevation = new Map<number, number>();
+  for (const tread of recovered.treads) {
+    const elevation = Number(tread[0][2].toFixed(5));
+    byElevation.set(elevation, (byElevation.get(elevation) ?? 0) + area(tread));
   }
+
+  assert.equal(byElevation.size, 28);
+  assert.ok(!byElevation.has(7.21785));
+  assert.ok(!byElevation.has(7.66896));
+  assert.ok(!byElevation.has(11.72901));
+  assert.ok(Math.max(...byElevation.values()) < 33);
+  assert.ok(Math.abs(recovered.treadDepthFeet - 1.312335958) < 1e-6);
 });
 
 test("declines a flattened profile path mostly outside its native footprint", () => {

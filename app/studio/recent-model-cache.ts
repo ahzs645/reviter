@@ -12,9 +12,16 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = "models";
 const CACHE_LIMIT = 5;
 // Increment whenever the serialized ConvertResult shape or recovery semantics
-// change. Development builds otherwise share the stable "development" build
-// id and can silently keep rendering geometry produced by an older parser.
+// change. This remains an explicit invalidation lever in addition to the build
+// or page-session version below.
 const PARSER_CACHE_SCHEMA = 2;
+// Hosts without an injected deployment id (notably the local dev server) get
+// one stable id for this JavaScript runtime. Recent opens in the same page can
+// reuse a parse, while a full refresh creates a new id and reparses from the
+// retained source Blob. A refresh is also what replaces an already-running
+// conversion worker after parser code changes.
+const runtimeNonce = Math.random().toString(36).slice(2) || "0";
+const UNSTAMPED_RUNTIME_VERSION = `session-${Date.now().toString(36)}-${runtimeNonce}`;
 
 type StoredRecentModel = {
   key: string;
@@ -36,12 +43,12 @@ export type CachedRecentModel = {
 
 declare global {
   // Set by the static GitHub Pages entry before React is mounted. Other hosts
-  // use the stable development fallback until they provide their own build id.
+  // use a page-session id until they provide their own build id.
   var __REVITER_BUILD_VERSION__: string | undefined;
 }
 
 export function currentParserCacheVersion(): string {
-  return `${PARSER_CACHE_SCHEMA}:${globalThis.__REVITER_BUILD_VERSION__ ?? "development"}`;
+  return `${PARSER_CACHE_SCHEMA}:${globalThis.__REVITER_BUILD_VERSION__ ?? UNSTAMPED_RUNTIME_VERSION}`;
 }
 
 export function recentModelCacheKey(

@@ -326,10 +326,9 @@ test("desktop look drags without taking the pointer, turns in place, and Escape 
       repeat: false,
     }));
     controls.update(0.1);
-    assert.deepEqual(
-      camera.position.toArray(),
-      positionWhileLooking.toArray(),
-      "look dragging must rotate in place even while a movement key is held",
+    assert.ok(
+      camera.position.distanceTo(positionWhileLooking) > 0,
+      "steering must not stop the walk: a held W keeps going through the drag",
     );
 
     element.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 }));

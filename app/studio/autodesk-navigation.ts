@@ -37,6 +37,25 @@ export const ORBIT_PITCH_RADIANS_PER_PIXEL = 1 / 253.41;
  */
 export const WHEEL_ZOOM_SPEED = 1.238;
 
+/** Fraction of the way to the point under the cursor covered by one detent. */
+export const WHEEL_APPROACH_PER_NOTCH = 0.0734;
+
+/** Wheel delta one detent reports. Trackpads send fractions of it. */
+export const WHEEL_NOTCH_DELTA = 120;
+
+/**
+ * How far a wheel gesture carries the camera, given what it has to travel to.
+ *
+ * Autodesk's zoom is multiplicative — each detent covers the same fraction of
+ * what is left — so five notches close 32% of the gap rather than 37%. Rolling
+ * back is the inverse, which is why retreating covers slightly more ground than
+ * advancing did (measured 7.66% out against 7.34% in).
+ */
+export function wheelTravel(deltaY: number, reach: number): number {
+  const notches = -deltaY / WHEEL_NOTCH_DELTA;
+  return reach * (1 - (1 - WHEEL_APPROACH_PER_NOTCH) ** notches);
+}
+
 /** What a drag does, independent of which button and modifier produced it. */
 export type DragAction = "orbit" | "pan" | "dolly";
 
@@ -142,9 +161,44 @@ export function autodeskRotationScale(radiansPerPixel: number, viewportHeight: n
 
 type RotatableControls = OrbitControls & {
   _sphericalDelta: { theta: number; phi: number };
+  _quat: THREE.Quaternion;
+  _quatInverse: THREE.Quaternion;
   _rotateLeft(angle: number): void;
   _rotateUp(angle: number): void;
 };
+
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Keep OrbitControls' idea of "up" in step with the camera's.
+ *
+ * OrbitControls derives the frame it orbits in from `object.up` exactly once,
+ * in its constructor, and never looks again. Reviter builds the control before
+ * the camera preset tells the camera that this scene stands on +Z, so it spent
+ * its life orbiting about +Y while the building stood on +Z: a horizontal drag
+ * swung the camera around the wrong axis, which is why the same drag that turns
+ * 11.19 degrees in Autodesk Viewer turned 3.5 here and drifted as it went.
+ *
+ * Rechecking on update costs one vector comparison a frame and survives every
+ * later reassignment of `camera.up` — source handoffs, camera presets and the
+ * y-up reference model all move it.
+ */
+function watchUpVector(controls: RotatableControls): void {
+  const known = controls.object.up.clone();
+  const syncFrame = () => {
+    controls._quat.setFromUnitVectors(controls.object.up, Y_AXIS);
+    controls._quatInverse.copy(controls._quat).invert();
+  };
+  syncFrame();
+  const inherited = controls.update.bind(controls);
+  controls.update = (deltaTime?: number | null) => {
+    if (!known.equals(controls.object.up)) {
+      known.copy(controls.object.up);
+      syncFrame();
+    }
+    return inherited(deltaTime ?? null);
+  };
+}
 
 /**
  * Give an OrbitControls instance Autodesk's orbit rates, wheel notch and
@@ -153,6 +207,7 @@ type RotatableControls = OrbitControls & {
  */
 export function applyAutodeskNavigation(controls: OrbitControls, viewport: HTMLElement): void {
   const rotatable = controls as RotatableControls;
+  watchUpVector(rotatable);
   // Instance properties shadow the prototype methods, and OrbitControls calls
   // them through `this`, so both the mouse and the two-finger touch path pick
   // these up.
@@ -165,8 +220,71 @@ export function applyAutodeskNavigation(controls: OrbitControls, viewport: HTMLE
       angle * autodeskRotationScale(ORBIT_PITCH_RADIANS_PER_PIXEL, viewport.clientHeight);
   };
   controls.zoomSpeed = WHEEL_ZOOM_SPEED;
-  // Autodesk dollies along the ray through the cursor, so the detail you point
-  // at is the detail you arrive at. Its `zoomTowardsPivot` preference is off,
-  // which is exactly this behaviour rather than zooming at the orbit centre.
   controls.zoomToCursor = true;
+  // No damping. This is the single biggest reason the two viewers used to feel
+  // unalike, and it is not a matter of taste: with `dampingFactor` at 0.075,
+  // OrbitControls applies 7.5% of the pending rotation per frame, so a 100 px
+  // drag had turned only 3.72 of its 11.19 degrees by the time the button came
+  // up and spent the next second and a half coasting through the rest. The
+  // building lagged the cursor on the way round and overshot on release.
+  // Autodesk's orbit is rigid — the same drag measured 11.19 degrees whether it
+  // arrived in ten steps or forty, which no damped control can do.
+  controls.enableDamping = false;
+}
+
+/**
+ * Replace OrbitControls' zoom with Autodesk's, which translates the whole
+ * camera rather than reeling the eye in towards a fixed target.
+ *
+ * The two are not variations on one idea. Measured against LMV, one detent
+ * moved the eye 24.4 units *and the target 24.4 units with it*, leaving the
+ * distance between them at 333 exactly as it was. OrbitControls moves the eye
+ * 114 and the target not at all, so every zoom silently rewrites the orbit
+ * radius: zoom in twice and a drag that used to swing you gently round the
+ * building now whips it across the viewport, because the sphere you are
+ * orbiting on has collapsed. Keeping the target a fixed distance ahead of the
+ * eye is what makes Autodesk's orbit feel the same before and after a zoom.
+ *
+ * `measureReach` should return the distance to whatever is under the cursor,
+ * so approaching a wall slows down the way it does in the reference viewer.
+ * Without it the eye-to-target distance stands in, which is the right shape but
+ * never decelerates.
+ */
+export function installAutodeskWheelDolly(
+  controls: OrbitControls,
+  viewport: HTMLElement,
+  measureReach?: (clientX: number, clientY: number) => number | null,
+): () => void {
+  // OrbitControls' own wheel handler would fight this one for the same event.
+  controls.enableZoom = false;
+  // `object` is typed as the base Object3D, but OrbitControls only ever drives a
+  // camera and `unproject` needs to see one.
+  const camera = controls.object as THREE.Camera & { position: THREE.Vector3 };
+  const cursor = new THREE.Vector3();
+  const along = new THREE.Vector3();
+
+  const onWheel = (event: WheelEvent) => {
+    if (!controls.enabled || event.ctrlKey) return;
+    event.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    cursor.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      1,
+    );
+    along.copy(cursor).unproject(camera).sub(camera.position);
+    if (along.lengthSq() < 1e-12) return;
+    along.normalize();
+    const reach = measureReach?.(event.clientX, event.clientY)
+      ?? camera.position.distanceTo(controls.target);
+    const travel = wheelTravel(event.deltaY, reach);
+    if (!Number.isFinite(travel) || travel === 0) return;
+    camera.position.addScaledVector(along, travel);
+    controls.target.addScaledVector(along, travel);
+    controls.update();
+  };
+
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  return () => viewport.removeEventListener("wheel", onWheel);
 }

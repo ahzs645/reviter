@@ -2515,6 +2515,11 @@ export function convertRvtBytes(
           hostedOpeningsByWall: relativeHostedOpeningsByWall,
           preferredMaterialIdsByElement:
             preferredWallMaterialIdsByElement,
+          wallElementIds: new Set(
+            elementBounds
+              .filter((record) => record.categoryId === -2_000_011)
+              .map((record) => record.elementId),
+          ),
         },
       );
       nativeMeshScene.meshes = nativeMeshCleanup.meshes;
@@ -2776,8 +2781,12 @@ export function convertRvtBytes(
               ? ["revit-2027-insertable-host-id-v1"]
               : []),
             ...(nativeMeshCleanup.duplicateTrianglesRemoved ||
-                nativeMeshCleanup.hostTrianglesClipped
+                nativeMeshCleanup.hostTrianglesClipped ||
+                nativeMeshCleanup.redundantWallShellTrianglesRemoved
               ? ["revit-2027-native-mesh-visibility-cleanup-v1"]
+              : []),
+            ...(nativeMeshCleanup.redundantWallShellTrianglesRemoved
+              ? ["revit-2027-redundant-wall-envelope-shell-v1"]
               : []),
             ...(nativeWallProxyReplacements.size
               ? ["revit-2027-wall-native-overfill-gate-v1"]
@@ -2836,6 +2845,10 @@ export function convertRvtBytes(
             nativeMeshCleanup.duplicateTrianglesRemoved,
           nativeMeshCrossMaterialDuplicateTrianglesRemoved:
             nativeMeshCleanup.crossMaterialDuplicateTrianglesRemoved,
+          nativeRedundantWallShellTrianglesRemoved:
+            nativeMeshCleanup.redundantWallShellTrianglesRemoved,
+          nativeRedundantWallShellElements:
+            nativeMeshCleanup.redundantWallShellElements,
           nativeHostOpeningWallTrianglesClipped:
             nativeMeshCleanup.hostTrianglesClipped,
           nativeHostOpeningWallTrianglesGenerated:
@@ -2956,6 +2969,9 @@ export function convertRvtBytes(
             : []),
           ...(nativeMeshCleanup.hostTrianglesClipped
             ? [`${nativeMeshCleanup.hostTrianglesClipped.toLocaleString()} native host-wall triangles were clipped around persisted door and window openings.`]
+            : []),
+          ...(nativeMeshCleanup.redundantWallShellTrianglesRemoved
+            ? [`${nativeMeshCleanup.redundantWallShellTrianglesRemoved.toLocaleString()} generic envelope-shell triangles were removed from ${nativeMeshCleanup.redundantWallShellElements.toLocaleString()} walls whose complete sloped compound-layer body was independently present.`]
             : []),
           ...(nativeWallProxyReplacements.size
             ? [`${nativeWallProxyReplacements.size.toLocaleString()} native wall meshes whose plan spans overfilled a centre-corroborating location-line solid were replaced by that tighter RVT reconstruction.`]

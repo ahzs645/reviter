@@ -444,6 +444,28 @@ test("a full-length but duplicate tread sequence is still topologically incomple
   assert.deepEqual([...repaired.referenceAssistedCompleteStairRunIds!], [1]);
 });
 
+test("a segmented 1821222-style sequence uses the validated IfcStairFlight", () => {
+  const original = incompleteStairModel();
+  original.elementBounds[0]!.stairExpectedRiserCount = 32;
+  original.elementBounds[0]!.stairTreads = Array.from({ length: 28 }, (_, index) => {
+    const z = index * 0.02;
+    return [
+      [10, 20, z],
+      [11, 20, z],
+      [11, 21, z],
+      [10, 21, z],
+    ] as [[number, number, number], [number, number, number], [number, number, number], [number, number, number]];
+  });
+  const repaired = applyIfcReferenceRepairs(
+    original,
+    [{ ...tetrahedronRampReference(), diffStatus: "aligned" }],
+    { directStairFlightGeometryElementIds: Uint32Array.from([1]) },
+  );
+  assert.deepEqual([...repaired.referenceAssistedCompleteStairRunIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
+  assert.equal(repaired.elementBounds[0]!.renderGeometryProvenance, "reference-assisted");
+});
+
 test("the strict stair gate rejects missing identity, topology, geometry, and parity", () => {
   const summary = {
     bounds: {
@@ -453,6 +475,28 @@ test("the strict stair gate rejects missing identity, topology, geometry, and pa
     triangles: 4,
   };
   assert.equal(hasCompleteStairFlightReference(summary, summary, true, true), true);
+  assert.equal(hasCompleteStairFlightReference(
+    undefined,
+    summary,
+    true,
+    true,
+    0.05,
+    summary.bounds,
+  ), true);
+  assert.equal(hasCompleteStairFlightReference(
+    {
+      bounds: {
+        min: { x: 0.2, y: 0, z: 0 },
+        max: { x: 1, y: 1, z: 1 },
+      },
+      triangles: 4,
+    },
+    summary,
+    true,
+    true,
+    0.05,
+    summary.bounds,
+  ), true);
   assert.equal(hasCompleteStairFlightReference(summary, summary, false, true), false);
   assert.equal(hasCompleteStairFlightReference(summary, summary, true, false), false);
   assert.equal(hasCompleteStairFlightReference(undefined, summary, true, true), false);

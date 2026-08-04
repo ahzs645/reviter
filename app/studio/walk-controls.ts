@@ -392,11 +392,9 @@ export function createWalkControls(
   function onPointerDown(event: PointerEvent): void {
     if (!enabled || event.button !== lookButton) return;
     cancelTravel();
-    // Looking is an in-place gesture. Stop any damped walking momentum now so
-    // the camera cannot coast or settle vertically underneath a mouse drag.
-    velocity.set(0, 0, 0);
-    const height = up === "y" ? camera.position.y : camera.position.z;
-    trackedSurface = height - eyeHeight;
+    // Turning a corner is one gesture: hold W, drag to steer, and keep going.
+    // Walking used to stop dead for the duration of the drag, which made every
+    // corner a stop-turn-start and is not how BIM Walk behaves.
     floorProbeElapsed = 0;
     lookPointerId = event.pointerId;
     lookVelocityYaw = 0;
@@ -465,16 +463,11 @@ export function createWalkControls(
 
   function update(deltaSeconds: number): void {
     if (!enabled) return;
-    // A look drag changes yaw and pitch only. In particular, do not continue a
-    // held movement key, residual velocity, gravity settling, or floor travel
-    // until the pointer is released.
-    if (looking) {
-      velocity.set(0, 0, 0);
-      applyRotation();
-      return;
-    }
     const step = Math.min(deltaSeconds, 0.1);
-    coastLook(step);
+    // Looking steers; it does not stop the walker. Movement, gravity and the
+    // floor probe all keep running under the drag, so a held W carries you
+    // round the corner you are dragging towards.
+    if (!looking) coastLook(step);
     if (travel) {
       travel.elapsed += step;
       const progress = Math.min(1, travel.elapsed / travel.duration);

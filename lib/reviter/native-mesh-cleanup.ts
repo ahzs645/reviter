@@ -4,6 +4,8 @@ const TRIANGLE_KEY_TOLERANCE_FEET = 1e-5;
 const OPENING_PADDING_FEET = 0.01;
 const AREA_EPSILON = 1e-12;
 const REF_STRIDE = 0x1_0000_0000;
+const WALL_BODY_MIN_SPAN_FEET = 0.05;
+const NORMAL_CLASSIFICATION_TOLERANCE = 0.05;
 
 type Vertex = {
   x: number;
@@ -19,6 +21,8 @@ export type NativeMeshCleanupOptions = {
   hostedOpeningsByWall?: ReadonlyMap<number, readonly Bounds3[]>;
   /** Compound-layer materials are stronger evidence than a default face style. */
   preferredMaterialIdsByElement?: ReadonlyMap<number, ReadonlySet<number>>;
+  /** Native wall ids eligible for the conservative duplicate-envelope gate. */
+  wallElementIds?: ReadonlySet<number>;
 };
 
 export type NativeMeshCleanupResult = {
@@ -27,6 +31,8 @@ export type NativeMeshCleanupResult = {
   outputTriangles: number;
   duplicateTrianglesRemoved: number;
   crossMaterialDuplicateTrianglesRemoved: number;
+  redundantWallShellTrianglesRemoved: number;
+  redundantWallShellElements: number;
   hostTrianglesClipped: number;
   hostTrianglesGenerated: number;
 };
@@ -132,6 +138,23 @@ function triangleArea(left: Vertex, middle: Vertex, right: Vertex): number {
   const cy = abz * acx - abx * acz;
   const cz = abx * acy - aby * acx;
   return Math.hypot(cx, cy, cz) * 0.5;
+}
+
+function triangleNormal(
+  left: Vertex,
+  middle: Vertex,
+  right: Vertex,
+): { x: number; y: number; z: number; length: number } {
+  const abx = middle.x - left.x;
+  const aby = middle.y - left.y;
+  const abz = middle.z - left.z;
+  const acx = right.x - left.x;
+  const acy = right.y - left.y;
+  const acz = right.z - left.z;
+  const x = aby * acz - abz * acy;
+  const y = abz * acx - abx * acz;
+  const z = abx * acy - aby * acx;
+  return { x, y, z, length: Math.hypot(x, y, z) };
 }
 
 function triangleBounds(triangle: readonly Vertex[]): Bounds3 {
@@ -324,6 +347,151 @@ function materialPreference(
     : 0;
 }
 
+type PreferredWallBody = {
+  bounds: Bounds3;
+  triangles: number;
+  hasHorizontalFace: boolean;
+  hasVerticalFace: boolean;
+  hasSlopedFace: boolean;
+};
+
+function emptyBounds(): Bounds3 {
+  return {
+    min: { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY },
+    max: { x: Number.NEGATIVE_INFINITY, y: Number.NEGATIVE_INFINITY, z: Number.NEGATIVE_INFINITY },
+  };
+}
+
+function expandBounds(bounds: Bounds3, vertex: Vertex): void {
+  bounds.min.x = Math.min(bounds.min.x, vertex.x);
+  bounds.min.y = Math.min(bounds.min.y, vertex.y);
+  bounds.min.z = Math.min(bounds.min.z, vertex.z);
+  bounds.max.x = Math.max(bounds.max.x, vertex.x);
+  bounds.max.y = Math.max(bounds.max.y, vertex.y);
+  bounds.max.z = Math.max(bounds.max.z, vertex.z);
+}
+
+/**
+ * Some native wall records contain two drawable face sets: the actual
+ * compound-layer body and a generic, envelope-sized display shell. They are
+ * not coincident, so ordinary triangle deduplication cannot see the error.
+ *
+ * Suppression is deliberately narrow. A wall's preferred-material faces must
+ * independently prove a volumetric sloped body (horizontal, vertical and
+ * sloped support and at least eight triangles). Once that independent body is
+ * certified, the entire unpreferred batch is redundant: retaining in-bounds
+ * fragments leaves stepped projections at raked wall tops, while small-offset
+ * batches leave internal/coplanar faces that flicker despite not enlarging the
+ * element's AABB.
+ */
+function discardRedundantWallBoundsTriangles(
+  meshes: readonly MeshData[],
+  wallElementIds: ReadonlySet<number> | undefined,
+  preferred: ReadonlyMap<number, ReadonlySet<number>> | undefined,
+): { meshes: MeshData[]; removed: number; elements: number } {
+  if (!wallElementIds?.size || !preferred?.size) {
+    return { meshes: [...meshes], removed: 0, elements: 0 };
+  }
+
+  const preferredBodies = new Map<number, PreferredWallBody>();
+  const nativeBounds = new Map<number, Bounds3>();
+  for (const mesh of meshes) {
+    for (let triangleIndex = 0; triangleIndex < mesh.indices.length / 3; triangleIndex += 1) {
+      const elementId = mesh.elementIds?.[triangleIndex];
+      if (elementId == null || !wallElementIds.has(elementId)) continue;
+      const offset = triangleIndex * 3;
+      const triangle = [
+        vertexAt(mesh, mesh.indices[offset]!),
+        vertexAt(mesh, mesh.indices[offset + 1]!),
+        vertexAt(mesh, mesh.indices[offset + 2]!),
+      ] as const;
+      const allBounds = nativeBounds.get(elementId) ?? emptyBounds();
+      triangle.forEach((vertex) => expandBounds(allBounds, vertex));
+      nativeBounds.set(elementId, allBounds);
+
+      if (materialPreference(mesh, elementId, preferred) !== 1) continue;
+      const body = preferredBodies.get(elementId) ?? {
+        bounds: emptyBounds(),
+        triangles: 0,
+        hasHorizontalFace: false,
+        hasVerticalFace: false,
+        hasSlopedFace: false,
+      };
+      triangle.forEach((vertex) => expandBounds(body.bounds, vertex));
+      body.triangles += 1;
+      const normal = triangleNormal(...triangle);
+      if (normal.length > AREA_EPSILON) {
+        const verticalComponent = Math.abs(normal.z) / normal.length;
+        body.hasHorizontalFace ||= verticalComponent >= 1 - NORMAL_CLASSIFICATION_TOLERANCE;
+        body.hasVerticalFace ||= verticalComponent <= NORMAL_CLASSIFICATION_TOLERANCE;
+        body.hasSlopedFace ||=
+          verticalComponent > NORMAL_CLASSIFICATION_TOLERANCE &&
+          verticalComponent < 1 - NORMAL_CLASSIFICATION_TOLERANCE;
+      }
+      preferredBodies.set(elementId, body);
+    }
+  }
+
+  const certified = new Map<number, Bounds3>();
+  for (const [elementId, body] of preferredBodies) {
+    if (
+      !nativeBounds.has(elementId) ||
+      body.triangles < 8 ||
+      !body.hasHorizontalFace ||
+      !body.hasVerticalFace ||
+      !body.hasSlopedFace ||
+      body.bounds.max.x - body.bounds.min.x <= WALL_BODY_MIN_SPAN_FEET ||
+      body.bounds.max.y - body.bounds.min.y <= WALL_BODY_MIN_SPAN_FEET ||
+      body.bounds.max.z - body.bounds.min.z <= WALL_BODY_MIN_SPAN_FEET
+    ) {
+      continue;
+    }
+    certified.set(elementId, body.bounds);
+  }
+  if (!certified.size) return { meshes: [...meshes], removed: 0, elements: 0 };
+
+  let removed = 0;
+  const affected = new Set<number>();
+  const result: MeshData[] = [];
+  for (const mesh of meshes) {
+    const indices: number[] = [];
+    const elementIds: number[] = [];
+    let changed = false;
+    for (let triangleIndex = 0; triangleIndex < mesh.indices.length / 3; triangleIndex += 1) {
+      const elementId = mesh.elementIds?.[triangleIndex];
+      const bounds = elementId == null ? undefined : certified.get(elementId);
+      const offset = triangleIndex * 3;
+      const sourceIndices = [
+        mesh.indices[offset]!,
+        mesh.indices[offset + 1]!,
+        mesh.indices[offset + 2]!,
+      ] as const;
+      const discard =
+        bounds != null &&
+        materialPreference(mesh, elementId!, preferred) === 0;
+      if (discard) {
+        changed = true;
+        removed += 1;
+        affected.add(elementId!);
+        continue;
+      }
+      indices.push(...sourceIndices);
+      if (mesh.elementIds && elementId != null) elementIds.push(elementId);
+    }
+    if (!changed) {
+      result.push(mesh);
+      continue;
+    }
+    if (!indices.length) continue;
+    result.push({
+      ...mesh,
+      indices: Uint32Array.from(indices),
+      ...(mesh.elementIds ? { elementIds: Uint32Array.from(elementIds) } : {}),
+    });
+  }
+  return { meshes: result, removed, elements: affected.size };
+}
+
 function deduplicateTriangles(
   meshes: readonly MeshData[],
   preferred: ReadonlyMap<number, ReadonlySet<number>> | undefined,
@@ -443,8 +611,13 @@ export function cleanNativeMeshScene(
     meshes,
     options.hostedOpeningsByWall ?? new Map(),
   );
-  const deduplicated = deduplicateTriangles(
+  const wallShells = discardRedundantWallBoundsTriangles(
     cut.meshes,
+    options.wallElementIds,
+    options.preferredMaterialIdsByElement,
+  );
+  const deduplicated = deduplicateTriangles(
+    wallShells.meshes,
     options.preferredMaterialIdsByElement,
   );
   const outputTriangles = deduplicated.meshes.reduce(
@@ -457,6 +630,8 @@ export function cleanNativeMeshScene(
     outputTriangles,
     duplicateTrianglesRemoved: deduplicated.removed,
     crossMaterialDuplicateTrianglesRemoved: deduplicated.crossMaterial,
+    redundantWallShellTrianglesRemoved: wallShells.removed,
+    redundantWallShellElements: wallShells.elements,
     hostTrianglesClipped: cut.clipped,
     hostTrianglesGenerated: cut.generated,
   };

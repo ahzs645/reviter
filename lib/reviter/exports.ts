@@ -12,7 +12,12 @@ export { floorPlateBounds, floorPlateLevels, floorPlateRecords, floorPlateSvgDat
 export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./export-svg.ts";
 export { architecturalPlanSummary, makeArchitecturalFloorSvg } from "./architectural-plan.ts";
 export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./architectural-plan.ts";
-export { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "./derived-rooms.ts";
-export type { DerivedRoom, DerivedRoomOptions, DerivedRoomResult } from "./derived-rooms.ts";
+export { connectedFloorPlanGroup, connectedFloorPlanGroups } from "./connected-floor-plans.ts";
+export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./connected-floor-plans.ts";
+export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms.ts";
+export type { DerivedRoom, DerivedRoomGap, DerivedRoomOptions, DerivedRoomResult } from "./derived-rooms.ts";
+export { isReviewedGap, isReviewedRoom, mergeRoomReview, reconcileRoomReview, ROOM_REVIEW_VERSION } from "./room-review.ts";
+export type { GapDisposition, ReviewedGap, ReviewedRoom, RoomDetails, RoomDisposition, RoomReviewSidecar, RoomReviewState } from "./room-review.ts";
 export { makeIfc, makeIfcCenterlines } from "./export-ifc.ts";
+export type { IfcExportOptions } from "./export-ifc.ts";
 export { elementManifest, makeReport } from "./export-report.ts";

@@ -259,7 +259,8 @@ function hasIncompleteExpectedStairTopology(
 /**
  * Certify a paired stair-flight body only from three independent facts: the
  * RVT aggregate expects real risers but did not yield usable treads, the numeric
- * IFC Tag names an IfcStairFlight body, and every min/max face agrees tightly.
+ * IFC Tag names an IfcStairFlight body, and every min/max face agrees tightly
+ * with either the rendered flight or its independently persisted native record.
  * Equal AABBs alone cannot trigger this path.
  */
 export function hasCompleteStairFlightReference(
@@ -268,24 +269,35 @@ export function hasCompleteStairFlightReference(
   directIfcStairFlightBody: boolean,
   topologyIncomplete: boolean,
   toleranceFeet = STAIR_FLIGHT_EXTENT_TOLERANCE_FEET,
+  nativeRecordBounds?: Bounds3,
 ): boolean {
-  if (!directIfcStairFlightBody || !topologyIncomplete || !recovered || !reference) {
+  if (!directIfcStairFlightBody || !topologyIncomplete || !reference) {
     return false;
   }
-  if (recovered.triangles < 4 || reference.triangles < 4) return false;
-  for (const axis of ["x", "y", "z"] as const) {
-    const recoveredSpan = recovered.bounds.max[axis] - recovered.bounds.min[axis];
-    const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
-    if (
-      recoveredSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
-      referenceSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
-      Math.abs(recovered.bounds.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
-      Math.abs(recovered.bounds.max[axis] - reference.bounds.max[axis]) > toleranceFeet
-    ) {
-      return false;
+  if (reference.triangles < 4) return false;
+  const extentsMatch = (candidate: Bounds3): boolean => {
+    for (const axis of ["x", "y", "z"] as const) {
+      const recoveredSpan = candidate.max[axis] - candidate.min[axis];
+      const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
+      if (
+        recoveredSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+        referenceSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+        Math.abs(candidate.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
+        Math.abs(candidate.max[axis] - reference.bounds.max[axis]) > toleranceFeet
+      ) {
+        return false;
+      }
     }
+    return true;
+  };
+  if (
+    recovered &&
+    recovered.triangles >= 4 &&
+    extentsMatch(recovered.bounds)
+  ) {
+    return true;
   }
-  return true;
+  return nativeRecordBounds ? extentsMatch(nativeRecordBounds) : false;
 }
 
 function dominantMaterials(meshes: readonly MeshData[]): Map<number, number> {
@@ -404,6 +416,8 @@ export function applyIfcReferenceRepairs(
           referenceGeometry.get(elementId),
           directStairFlightGeometryIds.has(elementId),
           true,
+          STAIR_FLIGHT_EXTENT_TOLERANCE_FEET,
+          record.boundsFeet,
         )) {
           retainedStairRunIds.delete(elementId);
           completeStairRunIds.add(elementId);

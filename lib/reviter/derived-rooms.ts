@@ -8,12 +8,19 @@ const MAX_CELL_SIZE_FEET = 1;
 const MAX_GRID_CELLS = 750_000;
 const DEFAULT_MIN_REGION_AREA_SQUARE_FEET = 25;
 const PLAN_CUT_HEIGHT_FEET = 4;
+const DEFAULT_MAX_GAP_FEET = 2;
 
 type Point2 = [number, number];
 type Segment2 = { start: Point2; end: Point2; thickness: number };
 
 export type DerivedRoom = {
   id: number;
+  levelId: number;
+  /** Deterministic geometry key; unlike `id`, this survives list reordering. */
+  key: string;
+  closure: "closed" | "near-closed";
+  /** Synthetic short closures required to reveal a near-room. */
+  gapIds: string[];
   areaSquareFeet: number;
   /** A label point guaranteed to be within the raster region. */
   centroid: Point2;
@@ -21,8 +28,18 @@ export type DerivedRoom = {
   loops: Point2[][];
 };
 
+export type DerivedRoomGap = {
+  id: string;
+  levelId: number;
+  endpoints: [Point2, Point2];
+  widthFeet: number;
+  orientation: "horizontal" | "vertical";
+  classification: "small-wall-gap" | "unknown-opening";
+};
+
 export type DerivedRoomResult = {
   levelId: number;
+  levelIds: number[];
   approximate: true;
   source: "vertical-barrier-grid";
   cellSizeFeet: number;
@@ -30,11 +47,14 @@ export type DerivedRoomResult = {
   barrierElementCount: number;
   /** @deprecated Kept for compatibility with earlier exports. */
   wallElementCount: number;
+  gaps: DerivedRoomGap[];
   rooms: DerivedRoom[];
 };
 
 export type DerivedRoomOptions = {
   minRoomAreaSquareFeet?: number;
+  /** Maximum short raster opening to test as a reversible near-room closure. */
+  maxGapFeet?: number;
 };
 
 const resultCache = new WeakMap<ConvertResult, Map<string, DerivedRoomResult>>();
@@ -201,8 +221,135 @@ function traceLoops(cells: readonly number[], columns: number, cellSize: number,
   return loops;
 }
 
+function hashText(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function canonicalRing(loop: readonly Point2[]) {
+  const points = loop.map(([x, y]) => `${Math.round(x * 10)},${Math.round(y * 10)}`);
+  if (!points.length) return "";
+  const rotations = (values: readonly string[]) => values.map((_, index) =>
+    [...values.slice(index), ...values.slice(0, index)].join(";"));
+  const forward = rotations(points);
+  const reverse = rotations([...points].reverse());
+  return [...forward, ...reverse].sort()[0]!;
+}
+
+function roomKey(levelId: number, closure: DerivedRoom["closure"], loops: readonly Point2[][]) {
+  const signature = loops.map(canonicalRing).sort().join("|");
+  return `room-${levelId}-${closure}-${hashText(signature)}`;
+}
+
+function floodExterior(blocked: Uint8Array, columns: number, rows: number) {
+  const exterior = new Uint8Array(columns * rows); const queue: number[] = [];
+  const seed = (index: number) => { if (!blocked[index] && !exterior[index]) { exterior[index] = 1; queue.push(index); } };
+  for (let column = 0; column < columns; column += 1) { seed(column); seed((rows - 1) * columns + column); }
+  for (let row = 1; row < rows - 1; row += 1) { seed(row * columns); seed(row * columns + columns - 1); }
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const cell = queue[cursor]!; const column = cell % columns; const row = Math.floor(cell / columns);
+    const neighbours = [row ? cell - columns : -1, column < columns - 1 ? cell + 1 : -1, row < rows - 1 ? cell + columns : -1, column ? cell - 1 : -1];
+    for (const neighbour of neighbours) if (neighbour >= 0 && !blocked[neighbour] && !exterior[neighbour]) { exterior[neighbour] = 1; queue.push(neighbour); }
+  }
+  return exterior;
+}
+
+type RoomCells = { cells: number[]; centroid: Point2; areaSquareFeet: number; loops: Point2[][] };
+
+function collectRooms(
+  inside: Uint8Array,
+  blocked: Uint8Array,
+  exterior: Uint8Array,
+  columns: number,
+  rows: number,
+  cellSize: number,
+  minX: number,
+  minY: number,
+  minimumArea: number,
+) {
+  const visited = new Uint8Array(columns * rows); const candidates: RoomCells[] = [];
+  for (let seedIndex = 0; seedIndex < inside.length; seedIndex += 1) {
+    if (!inside[seedIndex] || blocked[seedIndex] || exterior[seedIndex] || visited[seedIndex]) continue;
+    const component = [seedIndex]; const cells: number[] = []; visited[seedIndex] = 1; let sumX = 0; let sumY = 0;
+    for (let cursor = 0; cursor < component.length; cursor += 1) {
+      const cell = component[cursor]!; const column = cell % columns; const row = Math.floor(cell / columns);
+      cells.push(cell); sumX += minX + (column + 0.5) * cellSize; sumY += minY + (row + 0.5) * cellSize;
+      const neighbours = [row ? cell - columns : -1, column < columns - 1 ? cell + 1 : -1, row < rows - 1 ? cell + columns : -1, column ? cell - 1 : -1];
+      // Restrict traversal to floor cells. This keeps separate slab islands from
+      // becoming one room through enclosed, non-floor background cells.
+      for (const neighbour of neighbours) if (neighbour >= 0 && inside[neighbour] && !blocked[neighbour] && !exterior[neighbour] && !visited[neighbour]) { visited[neighbour] = 1; component.push(neighbour); }
+    }
+    const areaSquareFeet = cells.length * cellSize * cellSize; if (areaSquareFeet < minimumArea) continue;
+    const mean: Point2 = [sumX / cells.length, sumY / cells.length]; let labelCell = cells[0]!; let labelDistance = Infinity;
+    for (const cell of cells) { const column = cell % columns; const row = Math.floor(cell / columns); const x = minX + (column + 0.5) * cellSize; const y = minY + (row + 0.5) * cellSize; const distance = (x - mean[0]) ** 2 + (y - mean[1]) ** 2; if (distance < labelDistance) { labelDistance = distance; labelCell = cell; } }
+    const loops = traceLoops(cells, columns, cellSize, minX, minY);
+    if (loops.length) candidates.push({ cells, centroid: [minX + (labelCell % columns + 0.5) * cellSize, minY + (Math.floor(labelCell / columns) + 0.5) * cellSize], areaSquareFeet, loops });
+  }
+  candidates.sort((left, right) => right.centroid[1] - left.centroid[1] || left.centroid[0] - right.centroid[0]);
+  return candidates;
+}
+
+function proposedGapClosures(
+  blocked: Uint8Array,
+  inside: Uint8Array,
+  columns: number,
+  rows: number,
+  cellSize: number,
+  minX: number,
+  minY: number,
+  maxGapFeet: number,
+  levelId: number,
+) {
+  const sealed = blocked.slice(); const gaps: DerivedRoomGap[] = []; const bridgeCells = new Map<string, number[]>();
+  const maxCells = Math.max(0, Math.floor(maxGapFeet / cellSize));
+  if (!maxCells) return { sealed, gaps, bridgeCells };
+  const addGap = (cells: number[], orientation: DerivedRoomGap["orientation"]) => {
+    if (!cells.length || cells.some((cell) => !inside[cell])) return;
+    const first = cells[0]!; const last = cells.at(-1)!;
+    const firstColumn = first % columns; const firstRow = Math.floor(first / columns);
+    const lastColumn = last % columns; const lastRow = Math.floor(last / columns);
+    const endpoints: [Point2, Point2] = orientation === "horizontal"
+      ? [[minX + firstColumn * cellSize, minY + (firstRow + 0.5) * cellSize], [minX + (lastColumn + 1) * cellSize, minY + (lastRow + 0.5) * cellSize]]
+      : [[minX + (firstColumn + 0.5) * cellSize, minY + firstRow * cellSize], [minX + (lastColumn + 0.5) * cellSize, minY + (lastRow + 1) * cellSize]];
+    const widthFeet = cells.length * cellSize;
+    const id = `gap-${levelId}-${hashText(`${orientation}:${endpoints.flat().map((value) => Math.round(value * 10)).join(":")}`)}`;
+    if (bridgeCells.has(id)) return;
+    cells.forEach((cell) => { sealed[cell] = 1; });
+    bridgeCells.set(id, cells);
+    gaps.push({ id, levelId, endpoints, widthFeet, orientation, classification: widthFeet <= 0.25 ? "small-wall-gap" : "unknown-opening" });
+  };
+  // Test only finite straight runs between recovered barriers. These are
+  // hypotheses, never authoritative closures; the review UI persists whether
+  // each one is accepted or dismissed.
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 1; column < columns - 1; column += 1) {
+      const index = row * columns + column;
+      if (blocked[index]) continue;
+      let end = column;
+      while (end < columns - 1 && !blocked[row * columns + end] && end - column < maxCells) end += 1;
+      if (blocked[row * columns + column - 1] && blocked[row * columns + end] && end > column) addGap(Array.from({ length: end - column }, (_, offset) => row * columns + column + offset), "horizontal");
+      column = Math.max(column, end - 1);
+    }
+  }
+  for (let column = 0; column < columns; column += 1) {
+    for (let row = 1; row < rows - 1; row += 1) {
+      const index = row * columns + column;
+      if (blocked[index]) continue;
+      let end = row;
+      while (end < rows - 1 && !blocked[end * columns + column] && end - row < maxCells) end += 1;
+      if (blocked[(row - 1) * columns + column] && blocked[end * columns + column] && end > row) addGap(Array.from({ length: end - row }, (_, offset) => (row + offset) * columns + column), "vertical");
+      row = Math.max(row, end - 1);
+    }
+  }
+  return { sealed, gaps, bridgeCells };
+}
+
 function emptyResult(levelId: number, cut: number): DerivedRoomResult {
-  return { levelId, approximate: true, source: "vertical-barrier-grid", cellSizeFeet: MIN_CELL_SIZE_FEET, planCutElevationFeet: cut, barrierElementCount: 0, wallElementCount: 0, rooms: [] };
+  return { levelId, levelIds: [levelId], approximate: true, source: "vertical-barrier-grid", cellSizeFeet: MIN_CELL_SIZE_FEET, planCutElevationFeet: cut, barrierElementCount: 0, wallElementCount: 0, gaps: [], rooms: [] };
 }
 
 /**
@@ -219,7 +366,7 @@ export function deriveRoomsForLevel(result: ConvertResult, levelId: number, opti
   const bounds = floorBounds(floors); const width = Math.max(MIN_CELL_SIZE_FEET, bounds.maxX - bounds.minX); const height = Math.max(MIN_CELL_SIZE_FEET, bounds.maxY - bounds.minY);
   let cellSize = Math.min(MAX_CELL_SIZE_FEET, Math.max(MIN_CELL_SIZE_FEET, Math.max(width, height) / 900));
   let padding = cellSize * 3; let minX = bounds.minX - padding; let minY = bounds.minY - padding; let columns = Math.ceil((width + padding * 2) / cellSize); let rows = Math.ceil((height + padding * 2) / cellSize);
-  if (columns * rows > MAX_GRID_CELLS) { cellSize = Math.min(MAX_CELL_SIZE_FEET, Math.sqrt(((width + 6) * (height + 6)) / MAX_GRID_CELLS)); padding = cellSize * 3; minX = bounds.minX - padding; minY = bounds.minY - padding; columns = Math.ceil((width + padding * 2) / cellSize); rows = Math.ceil((height + padding * 2) / cellSize); }
+  if (columns * rows > MAX_GRID_CELLS) { cellSize = Math.max(MIN_CELL_SIZE_FEET, Math.sqrt(((width + 6) * (height + 6)) / MAX_GRID_CELLS)); padding = cellSize * 3; minX = bounds.minX - padding; minY = bounds.minY - padding; columns = Math.ceil((width + padding * 2) / cellSize); rows = Math.ceil((height + padding * 2) / cellSize); }
   const inside = new Uint8Array(columns * rows); const blocked = new Uint8Array(columns * rows);
   for (let row = 0; row < rows; row += 1) for (let column = 0; column < columns; column += 1) { const x = minX + (column + 0.5) * cellSize; const y = minY + (row + 0.5) * cellSize; if (pointInFloor(x, y, floors)) inside[row * columns + column] = 1; }
   const mark = ({ start, end, thickness }: Segment2) => {
@@ -233,30 +380,74 @@ export function deriveRoomsForLevel(result: ConvertResult, levelId: number, opti
     const fallback = fallbackSegment(barrier);
     if (fallback) { const fallbackLength = Math.hypot(fallback.end[0] - fallback.start[0], fallback.end[1] - fallback.start[1]); const exactSpan = exact.reduce((longest, segment) => Math.max(longest, Math.hypot(segment.end[0] - segment.start[0], segment.end[1] - segment.start[1])), 0); if (!exact.length || exactSpan < fallbackLength * 0.7) mark(fallback); }
   }
-  // Flood the padded exterior through every non-barrier cell. Only components
-  // not reached from that exterior can be classified as enclosed floor regions.
-  const exterior = new Uint8Array(columns * rows); const queue: number[] = [];
-  const seed = (index: number) => { if (!blocked[index] && !exterior[index]) { exterior[index] = 1; queue.push(index); } };
-  for (let column = 0; column < columns; column += 1) { seed(column); seed((rows - 1) * columns + column); }
-  for (let row = 1; row < rows - 1; row += 1) { seed(row * columns); seed(row * columns + columns - 1); }
-  for (let cursor = 0; cursor < queue.length; cursor += 1) { const cell = queue[cursor]!; const column = cell % columns; const row = Math.floor(cell / columns); const neighbours = [row ? cell - columns : -1, column < columns - 1 ? cell + 1 : -1, row < rows - 1 ? cell + columns : -1, column ? cell - 1 : -1]; for (const neighbour of neighbours) if (neighbour >= 0 && !blocked[neighbour] && !exterior[neighbour]) { exterior[neighbour] = 1; queue.push(neighbour); } }
-  const visited = new Uint8Array(columns * rows); const minimumArea = options.minRoomAreaSquareFeet ?? DEFAULT_MIN_REGION_AREA_SQUARE_FEET; const candidates: Array<{ cells: number[]; centroid: Point2; areaSquareFeet: number }> = [];
-  for (let seedIndex = 0; seedIndex < inside.length; seedIndex += 1) {
-    if (!inside[seedIndex] || blocked[seedIndex] || exterior[seedIndex] || visited[seedIndex]) continue;
-    const component = [seedIndex]; const cells: number[] = []; visited[seedIndex] = 1; let sumX = 0; let sumY = 0;
-    for (let cursor = 0; cursor < component.length; cursor += 1) { const cell = component[cursor]!; const column = cell % columns; const row = Math.floor(cell / columns); if (inside[cell]) { cells.push(cell); sumX += minX + (column + 0.5) * cellSize; sumY += minY + (row + 0.5) * cellSize; } const neighbours = [row ? cell - columns : -1, column < columns - 1 ? cell + 1 : -1, row < rows - 1 ? cell + columns : -1, column ? cell - 1 : -1]; for (const neighbour of neighbours) if (neighbour >= 0 && !blocked[neighbour] && !exterior[neighbour] && !visited[neighbour]) { visited[neighbour] = 1; component.push(neighbour); } }
-    const areaSquareFeet = cells.length * cellSize * cellSize; if (areaSquareFeet < minimumArea) continue;
-    const mean: Point2 = [sumX / cells.length, sumY / cells.length]; let labelCell = cells[0]!; let labelDistance = Infinity;
-    for (const cell of cells) { const column = cell % columns; const row = Math.floor(cell / columns); const x = minX + (column + 0.5) * cellSize; const y = minY + (row + 0.5) * cellSize; const distance = (x - mean[0]) ** 2 + (y - mean[1]) ** 2; if (distance < labelDistance) { labelDistance = distance; labelCell = cell; } }
-    candidates.push({ cells, centroid: [minX + (labelCell % columns + 0.5) * cellSize, minY + (Math.floor(labelCell / columns) + 0.5) * cellSize], areaSquareFeet });
-  }
-  candidates.sort((left, right) => right.centroid[1] - left.centroid[1] || left.centroid[0] - right.centroid[0]);
-  return { levelId, approximate: true, source: "vertical-barrier-grid", cellSizeFeet: cellSize, planCutElevationFeet: cut, barrierElementCount: barriers.length, wallElementCount: barriers.length, rooms: candidates.map((candidate, index) => ({ id: index + 1, areaSquareFeet: candidate.areaSquareFeet, centroid: candidate.centroid, loops: traceLoops(candidate.cells, columns, cellSize, minX, minY) })).filter((room) => room.loops.length) };
+  const minimumArea = options.minRoomAreaSquareFeet ?? DEFAULT_MIN_REGION_AREA_SQUARE_FEET;
+  const strict = collectRooms(inside, blocked, floodExterior(blocked, columns, rows), columns, rows, cellSize, minX, minY, minimumArea);
+  const strictCellKeys = new Set(strict.flatMap((room) => room.cells.map((cell) => cell)));
+  const proposed = proposedGapClosures(blocked, inside, columns, rows, cellSize, minX, minY, options.maxGapFeet ?? DEFAULT_MAX_GAP_FEET, levelId);
+  const tolerant = proposed.gaps.length
+    ? collectRooms(inside, proposed.sealed, floodExterior(proposed.sealed, columns, rows), columns, rows, cellSize, minX, minY, minimumArea)
+    : [];
+  const near = tolerant.filter((room) => room.cells.some((cell) => !strictCellKeys.has(cell)));
+  const associatedGapIds = (room: RoomCells) => {
+    const members = new Set(room.cells); const ids: string[] = [];
+    for (const [gapId, cells] of proposed.bridgeCells) {
+      if (cells.some((cell) => {
+        const column = cell % columns;
+        return members.has(cell - columns) || members.has(cell + columns) || (column > 0 && members.has(cell - 1)) || (column < columns - 1 && members.has(cell + 1));
+      })) ids.push(gapId);
+    }
+    return ids;
+  };
+  const all = [
+    ...strict.map((room) => ({ ...room, closure: "closed" as const, gapIds: [] })),
+    ...near.map((room) => ({ ...room, closure: "near-closed" as const, gapIds: associatedGapIds(room) })),
+  ].sort((left, right) => right.centroid[1] - left.centroid[1] || left.centroid[0] - right.centroid[0]);
+  const usedGapIds = new Set(all.flatMap((room) => room.gapIds));
+  return {
+    levelId,
+    levelIds: [levelId],
+    approximate: true,
+    source: "vertical-barrier-grid",
+    cellSizeFeet: cellSize,
+    planCutElevationFeet: cut,
+    barrierElementCount: barriers.length,
+    wallElementCount: barriers.length,
+    gaps: proposed.gaps.filter((gap) => usedGapIds.has(gap.id)),
+    rooms: all.map((room, index) => ({
+      id: index + 1,
+      levelId,
+      key: roomKey(levelId, room.closure, room.loops),
+      closure: room.closure,
+      gapIds: room.gapIds,
+      areaSquareFeet: room.areaSquareFeet,
+      centroid: room.centroid,
+      loops: room.loops,
+    })),
+  };
+}
+
+/** Analyze split-level members at their own local cuts, then compose the review result. */
+export function deriveRoomsForLevels(result: ConvertResult, levelIds: readonly number[], options: DerivedRoomOptions = {}): DerivedRoomResult {
+  const ids = [...new Set(levelIds)];
+  if (!ids.length) return emptyResult(-1, PLAN_CUT_HEIGHT_FEET);
+  const results = ids.map((levelId) => deriveRoomsForLevel(result, levelId, options));
+  return {
+    levelId: ids[0]!,
+    levelIds: ids,
+    approximate: true,
+    source: "vertical-barrier-grid",
+    cellSizeFeet: Math.max(...results.map((item) => item.cellSizeFeet)),
+    planCutElevationFeet: results[0]!.planCutElevationFeet,
+    barrierElementCount: results.reduce((sum, item) => sum + item.barrierElementCount, 0),
+    wallElementCount: results.reduce((sum, item) => sum + item.wallElementCount, 0),
+    gaps: results.flatMap((item) => item.gaps),
+    rooms: results.flatMap((item) => item.rooms).map((room, index) => ({ ...room, id: index + 1 })),
+  };
 }
 
 /** Cache immutable conversion results per level so Report and map share one analysis. */
 export function cachedDerivedRoomsForLevel(result: ConvertResult, levelId: number, options: DerivedRoomOptions = {}) {
-  const key = `${levelId}:${options.minRoomAreaSquareFeet ?? DEFAULT_MIN_REGION_AREA_SQUARE_FEET}`;
+  const key = `${levelId}:${options.minRoomAreaSquareFeet ?? DEFAULT_MIN_REGION_AREA_SQUARE_FEET}:${options.maxGapFeet ?? DEFAULT_MAX_GAP_FEET}`;
   let cache = resultCache.get(result); if (!cache) { cache = new Map(); resultCache.set(result, cache); }
   const cached = cache.get(key); if (cached) return cached;
   const derived = deriveRoomsForLevel(result, levelId, options); cache.set(key, derived); return derived;

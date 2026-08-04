@@ -5,11 +5,14 @@ import {
   assertSidecarMatchesModel,
   makeCommentsSidecar,
   makeMarkupSidecar,
+  makeRoomReviewSidecar,
   mergeComments,
   mergeMarkup,
   parseReviewSidecar,
 } from "../app/studio/review-exchange.ts";
 import type { MarkupStroke, ModelComment } from "../app/studio/viewer-tools.ts";
+import type { ConvertResult } from "../lib/reviter/types.ts";
+import type { RoomReviewState } from "../lib/reviter/room-review.ts";
 
 const model = { fileName: "School.rvt", byteLength: 42_000 };
 const comment: ModelComment = {
@@ -90,4 +93,30 @@ test("import merges review data without deleting local annotations", () => {
 
   const additionalStroke = { ...stroke, id: "markup-2" };
   assert.deepEqual(mergeMarkup([stroke], [stroke, additionalStroke]), [stroke, additionalStroke]);
+});
+
+test("room reviews round-trip with durable details, decisions, and a structural fingerprint", () => {
+  const source = {
+    ...model,
+    origin: { x: 0, y: 0, z: 0 },
+    elementBounds: [],
+    nativeIdentity: { identities: [{ uniqueId: "model-room-identity" }] },
+  } as unknown as ConvertResult;
+  const timestamp = "2026-08-04T12:00:00.000Z";
+  const review: RoomReviewState = {
+    rooms: [{
+      roomId: "room-101", candidateKey: "candidate-101", levelId: 100, closure: "near-closed", disposition: "accepted",
+      geometry: { areaSquareFeet: 100, centroidFeet: [5, 5], loopsFeet: [[[0, 0], [10, 0], [10, 10], [0, 10]]] },
+      gapIds: ["gap-1"],
+      details: { number: "101", name: "Classroom", longName: "", description: "", department: "Teaching", occupancyType: "Classroom", accessibility: "Accessible", notes: "", heightFeet: 9 },
+      ifc: { export: true, predefinedType: "INTERNAL" }, createdAt: timestamp, updatedAt: timestamp,
+    }],
+    gaps: [{ id: "gap-1", levelId: 100, endpoints: [[0, 0], [1, 0]], widthFeet: 1, orientation: "horizontal", classification: "unknown-opening", disposition: "treat-as-closed", note: "Reviewed", updatedAt: timestamp }],
+  };
+  const parsed = parseReviewSidecar(makeRoomReviewSidecar(source, review, timestamp));
+  assert.equal(parsed.format, "reviter-room-review");
+  assert.deepEqual(parsed.rooms, review.rooms);
+  assert.deepEqual(parsed.gaps, review.gaps);
+  assert.doesNotThrow(() => assertSidecarMatchesModel(parsed, source));
+  assert.match(parsed.model.fingerprint, /^fnv1a32-/);
 });

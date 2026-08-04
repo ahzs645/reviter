@@ -49,6 +49,144 @@ test("coincident wall triangles keep the persisted compound-layer material", () 
   assert.equal(result.meshes[0]!.nativeMaterialElementId, 423);
 });
 
+function boxTriangles(
+  min: [number, number, number],
+  max: [number, number, number],
+): { positions: number[]; indices: number[] } {
+  const [minX, minY, minZ] = min;
+  const [maxX, maxY, maxZ] = max;
+  return {
+    positions: [
+      minX, minY, minZ,
+      maxX, minY, minZ,
+      maxX, maxY, minZ,
+      minX, maxY, minZ,
+      minX, minY, maxZ,
+      maxX, minY, maxZ,
+      maxX, maxY, maxZ,
+      minX, maxY, maxZ,
+    ],
+    indices: [
+      0, 2, 1, 0, 3, 2,
+      4, 5, 6, 4, 6, 7,
+      0, 1, 5, 0, 5, 4,
+      1, 2, 6, 1, 6, 5,
+      2, 3, 7, 2, 7, 6,
+      3, 0, 4, 3, 4, 7,
+    ],
+  };
+}
+
+test("the complete generic face batch beside a certified sloped wall is removed", () => {
+  const preferred = mesh(
+    "Compound wall body",
+    [
+      0, 0, 0,
+      1, 0, 0,
+      0, 10, 0,
+      1, 10, 0,
+      0, 10, 8,
+      1, 10, 8,
+    ],
+    [
+      0, 2, 3, 0, 3, 1,
+      2, 4, 5, 2, 5, 3,
+      0, 4, 2,
+      1, 3, 5,
+      0, 1, 5, 0, 5, 4,
+    ],
+    Array(8).fill(1845205),
+    423,
+  );
+  const envelope = boxTriangles([0, -2, 0], [1, 12, 9]);
+  // The in-bounds generic face is part of the same redundant batch. Keeping it
+  // produces a stepped projection along the otherwise continuous raked top.
+  const generic = mesh(
+    "Default wall display faces",
+    [
+      ...envelope.positions,
+      0.5, 2, 0,
+      0.5, 5, 0,
+      0.5, 5, 3,
+    ],
+    [...envelope.indices, 8, 9, 10],
+    Array(13).fill(1845205),
+    24,
+  );
+  const result = cleanNativeMeshScene([preferred, generic], {
+    preferredMaterialIdsByElement: new Map([[1845205, new Set([423])]]),
+    wallElementIds: new Set([1845205]),
+  });
+
+  assert.equal(result.redundantWallShellElements, 1);
+  assert.equal(result.redundantWallShellTrianglesRemoved, 13);
+  assert.equal(result.outputTriangles, 8);
+  assert.equal(
+    result.meshes.some((entry) => entry.nativeMaterialElementId === 24),
+    false,
+  );
+});
+
+test("an in-bounds generic fragment is removed without requiring AABB overhang", () => {
+  const preferred = mesh(
+    "Compound raked wall",
+    [
+      0, 0, 0,
+      1, 0, 0,
+      0, 10, 0,
+      1, 10, 0,
+      0, 10, 8,
+      1, 10, 8,
+    ],
+    [
+      0, 2, 3, 0, 3, 1,
+      2, 4, 5, 2, 5, 3,
+      0, 4, 2,
+      1, 3, 5,
+      0, 1, 5, 0, 5, 4,
+    ],
+    Array(8).fill(2165915),
+    423,
+  );
+  const generic = mesh(
+    "Default internal display face",
+    [
+      0.5, 2, 0,
+      0.5, 5, 0,
+      0.5, 5, 3,
+    ],
+    [0, 1, 2],
+    [2165915],
+    24,
+  );
+
+  const result = cleanNativeMeshScene([preferred, generic], {
+    preferredMaterialIdsByElement: new Map([[2165915, new Set([423])]]),
+    wallElementIds: new Set([2165915]),
+  });
+  assert.equal(result.redundantWallShellTrianglesRemoved, 1);
+  assert.equal(result.outputTriangles, 8);
+});
+
+test("the envelope gate does not alter non-wall or ordinary rectangular bodies", () => {
+  const body = boxTriangles([0, 0, 0], [1, 10, 8]);
+  const envelope = boxTriangles([0, -2, 0], [1, 12, 9]);
+  const run = (wallElementIds: ReadonlySet<number>) => cleanNativeMeshScene([
+    mesh("Preferred rectangular body", body.positions, body.indices, Array(12).fill(900), 423),
+    mesh("Generic envelope", envelope.positions, envelope.indices, Array(12).fill(900), 24),
+  ], {
+    preferredMaterialIdsByElement: new Map([[900, new Set([423])]]),
+    wallElementIds,
+  });
+
+  assert.equal(run(new Set()).redundantWallShellTrianglesRemoved, 0);
+  assert.equal(
+    run(new Set([900])).redundantWallShellTrianglesRemoved,
+    0,
+    "a body without a sloped face is not sufficient evidence",
+  );
+});
+
 test("a persisted hosted opening cuts both faces of a native wall", () => {
   const wall = mesh(
     "Wall 804162",

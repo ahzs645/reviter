@@ -12,6 +12,7 @@ import {
   architecturalPlanSummary,
   makeArchitecturalFloorSvg,
 } from "../lib/reviter/architectural-plan.ts";
+import { connectedFloorPlanGroups } from "../lib/reviter/connected-floor-plans.ts";
 import { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "../lib/reviter/derived-rooms.ts";
 import type { ConvertResult, ElementBoundsRecord, Segment } from "../lib/reviter/types.ts";
 
@@ -154,6 +155,45 @@ test("draws actual Revit floor sketch loops and keeps openings", () => {
   assert.match(svg, /data-revit-element-id="4"/u);
   assert.match(svg, /fill-rule="evenodd"/u);
   assert.equal((svg.match(/ Z/gu) ?? []).length, 2);
+});
+
+test("composes adjoining split levels but keeps vertically stacked storeys separate", () => {
+  const result = resultFixture();
+  result.levels = [
+    { levelId: 100, elevation: 0, candidates: 1, source: "assoc-level-id" },
+    { levelId: 200, elevation: 3, candidates: 1, source: "assoc-level-id" },
+    { levelId: 300, elevation: 10, candidates: 1, source: "assoc-level-id" },
+  ];
+  const floorAt = (elementId: number, levelId: number, elevation: number, x: number) => {
+    const floor = roomTestFloor(elementId);
+    floor.loops = [[
+      [x, 0, elevation], [x + 10, 0, elevation],
+      [x + 10, 10, elevation], [x, 10, elevation],
+    ]];
+    floor.boundsFeet = {
+      min: { x, y: 0, z: elevation },
+      max: { x: x + 10, y: 10, z: elevation + 0.5 },
+    };
+    result.elementBounds.push(floor);
+    result.nativeAssociatedLevelRelations!.push(
+      { elementId, levelId } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+    );
+  };
+  floorAt(10, 100, 0, 0);
+  floorAt(20, 200, 3, 10.5);
+  floorAt(30, 300, 10, 0);
+
+  const groups = connectedFloorPlanGroups(result);
+  assert.deepEqual(groups.map((group) => group.levelIds), [[100, 200], [300]]);
+  assert.equal(groups[0]!.primaryLevelId, 100);
+  assert.equal(groups[0]!.connections.length, 1);
+
+  const summary = architecturalPlanSummary(result, 100, { connectedLevelIds: [100, 200] });
+  assert.equal(summary.floors, 2);
+  const svg = makeArchitecturalFloorSvg(result, 100, { connectedLevelIds: [100, 200] });
+  assert.match(svg, /data-revit-level-ids="100,200"/u);
+  assert.match(svg, /data-connected-level-count="2"/u);
+  assert.match(svg, /data-source-revit-level-id="200"/u);
 });
 
 test("composes a level-aware architectural map from recovered RVT elements", () => {
@@ -308,4 +348,23 @@ test("preserves diagonal oriented barrier fallbacks", () => {
   assert.ok(derived.rooms[0]!.areaSquareFeet > 50);
   assert.ok(derived.rooms[0]!.loops[0]!.length < 100, "grid contour points should be simplified");
   assert.equal(cachedDerivedRoomsForLevel(result, 100), cachedDerivedRoomsForLevel(result, 100));
+});
+
+test("surfaces a short leaking wall opening as a reviewable near-room", () => {
+  const result = resultFixture();
+  result.elementBounds.push(
+    roomTestFloor(10),
+    straightWall(12, [0, 0], [9.25, 0]),
+    straightWall(13, [10.75, 0], [20, 0]),
+    straightWall(14, [20, 0], [20, 10]),
+    straightWall(15, [20, 10], [0, 10]),
+    straightWall(16, [0, 10], [0, 0]),
+  );
+  result.nativeAssociatedLevelRelations!.push({ elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number]);
+  const derived = deriveRoomsForLevel(result, 100);
+  const candidate = derived.rooms.find((room) => room.closure === "near-closed");
+  assert.ok(candidate, "the leaky enclosure should remain visible for review");
+  assert.ok(candidate.gapIds.length > 0);
+  assert.ok(derived.gaps.some((gap) => candidate.gapIds.includes(gap.id) && gap.widthFeet <= 2));
+  assert.match(candidate.key, /^room-100-near-closed-/);
 });

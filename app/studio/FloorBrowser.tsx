@@ -11,10 +11,12 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  TriangleAlert,
 } from "lucide-react";
 
 import {
   architecturalPlanSummary,
+  connectedFloorPlanGroups,
   downloadBlob,
   floorPlateLevels,
   floorPlateSvgDataUrl,
@@ -22,6 +24,8 @@ import {
   outputName,
   type ConvertResult,
   type DerivedRoomResult,
+  type ReviewedRoom,
+  type RoomReviewState,
 } from "../../lib/reviter";
 
 export function FloorBrowser({
@@ -31,6 +35,8 @@ export function FloorBrowser({
   showDerivedRooms,
   onShowDerivedRooms,
   derivedRooms,
+  roomReview,
+  onRoomReview,
   onOpenModelMap,
 }: {
   result: ConvertResult;
@@ -39,23 +45,79 @@ export function FloorBrowser({
   showDerivedRooms: boolean;
   onShowDerivedRooms: (visible: boolean) => void;
   derivedRooms: DerivedRoomResult | null;
+  roomReview: RoomReviewState;
+  onRoomReview: (review: RoomReviewState) => void;
   onOpenModelMap: () => void;
 }) {
   const [downloadStatus, setDownloadStatus] = useState("");
   const [zoom, setZoom] = useState(1);
   const [rotationQuarterTurns, setRotationQuarterTurns] = useState(0);
+  const [combineConnectedLevels, setCombineConnectedLevels] = useState(true);
   const levels = useMemo(() => floorPlateLevels(result), [result]);
-  const selectedIndex = Math.max(0, levels.findIndex(
-    (level) => level.levelId === selectedLevelId,
+  const connectedPlans = useMemo(() => connectedFloorPlanGroups(result), [result]);
+  const rawPlans = useMemo(() => levels.map((level) => ({
+    primaryLevelId: level.levelId,
+    levelIds: [level.levelId],
+    levels: [level],
+    floorCount: level.floorCount,
+    minElevation: level.elevation,
+    maxElevation: level.elevation,
+    connections: [],
+  })), [levels]);
+  const plans = combineConnectedLevels ? connectedPlans : rawPlans;
+  const selectedIndex = Math.max(0, plans.findIndex(
+    (plan) => selectedLevelId != null && plan.levelIds.includes(selectedLevelId),
   ));
-  const selected = levels[selectedIndex] ?? null;
+  const selectedPlan = plans[selectedIndex] ?? null;
+  const selected = levels.find((level) => level.levelId === selectedPlan?.primaryLevelId) ?? null;
+  const connected = Boolean(combineConnectedLevels && selectedPlan && selectedPlan.levelIds.length > 1);
+  const maximumEdgeGap = connected
+    ? Math.max(...selectedPlan!.connections.map((item) => item.edgeGapFeet))
+    : 0;
+  const maximumStackedPercent = connected
+    ? Math.ceil(Math.max(...selectedPlan!.connections.map((item) => item.stackedFootprintRatio)) * 100)
+    : 0;
   const planSummary = useMemo(
-    () => selected ? architecturalPlanSummary(result, selected.levelId) : null,
-    [result, selected],
+    () => selected && selectedPlan ? architecturalPlanSummary(result, selected.levelId, {
+      connectedLevelIds: selectedPlan.levelIds,
+    }) : null,
+    [result, selected, selectedPlan],
   );
-  const selectedDerivedRooms = derivedRooms?.levelId === selected?.levelId
-    ? derivedRooms
-    : null;
+  const visibleRoomLevelIds = useMemo(
+    () => combineConnectedLevels ? selectedPlan?.levelIds ?? [] : selected ? [selected.levelId] : [],
+    [combineConnectedLevels, selected, selectedPlan],
+  );
+  const selectedDerivedRooms = useMemo(() => {
+    if (!derivedRooms || !selected || !derivedRooms.levelIds.includes(selected.levelId)) return null;
+    const ids = new Set(visibleRoomLevelIds);
+    return {
+      ...derivedRooms,
+      levelId: selected.levelId,
+      levelIds: visibleRoomLevelIds,
+      gaps: derivedRooms.gaps.filter((gap) => ids.has(gap.levelId)),
+      rooms: derivedRooms.rooms.filter((room) => ids.has(room.levelId)),
+    };
+  }, [derivedRooms, selected, visibleRoomLevelIds]);
+  const reviewedByCandidate = useMemo(
+    () => new Map(roomReview.rooms.filter((room) => visibleRoomLevelIds.includes(room.levelId)).map((room) => [room.candidateKey, room])),
+    [roomReview.rooms, visibleRoomLevelIds],
+  );
+  const updateRoom = (roomId: string, update: (room: ReviewedRoom) => ReviewedRoom) => {
+    onRoomReview({
+      ...roomReview,
+      rooms: roomReview.rooms.map((room) => room.roomId === roomId
+        ? { ...update(room), updatedAt: new Date().toISOString() }
+        : room),
+    });
+  };
+  const updateGap = (gapId: string, disposition: "unreviewed" | "treat-as-closed" | "dismissed") => {
+    onRoomReview({
+      ...roomReview,
+      gaps: roomReview.gaps.map((gap) => gap.id === gapId
+        ? { ...gap, disposition, updatedAt: new Date().toISOString() }
+        : gap),
+    });
+  };
   useEffect(() => {
     if (selected && selected.levelId !== selectedLevelId) {
       onSelectedLevelId(selected.levelId);
@@ -66,9 +128,10 @@ export function FloorBrowser({
       ? makeArchitecturalFloorSvg(result, selected.levelId, {
         derivedRooms: selectedDerivedRooms ?? false,
         rotationQuarterTurns,
+        connectedLevelIds: selectedPlan?.levelIds,
       })
       : null,
-    [result, rotationQuarterTurns, selected, selectedDerivedRooms],
+    [result, rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
   );
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
 
@@ -82,18 +145,18 @@ export function FloorBrowser({
   }
 
   const choose = (index: number) => {
-    const level = levels[index];
-    if (level) {
+    const plan = plans[index];
+    if (plan) {
       setZoom(1);
       setRotationQuarterTurns(0);
-      onSelectedLevelId(level.levelId);
+      onSelectedLevelId(plan.primaryLevelId);
     }
   };
   const download = () => downloadBlob(
     new Blob([svg], { type: "image/svg+xml" }),
     outputName(
       result.fileName,
-      `architectural-floor-${selected.levelId}${rotationQuarterTurns ? `-rotated-${rotationQuarterTurns * 90}` : ""}${showDerivedRooms ? "-derived-regions" : ""}.svg`,
+      `architectural-floor-${connected ? `connected-${selectedPlan!.levelIds.join("-")}` : selected.levelId}${rotationQuarterTurns ? `-rotated-${rotationQuarterTurns * 90}` : ""}${showDerivedRooms ? "-derived-regions" : ""}.svg`,
     ),
   );
 
@@ -103,7 +166,9 @@ export function FloorBrowser({
         <div className="floor-browser-heading">
           <span>
             <strong>Revit Floors</strong>
-            <small>{levels.length} levels with slab geometry</small>
+            <small>{combineConnectedLevels
+              ? `${plans.length} plans from ${levels.length} Revit elevations`
+              : `${levels.length} raw Revit elevations`}</small>
           </span>
           <div>
             <button
@@ -117,36 +182,41 @@ export function FloorBrowser({
               type="button"
               className="rv-icon-button"
               aria-label="Next Revit floor"
-              disabled={selectedIndex === levels.length - 1}
+              disabled={selectedIndex === plans.length - 1}
               onClick={() => choose(selectedIndex + 1)}
             ><ChevronRight size={15} aria-hidden /></button>
           </div>
         </div>
 
         <label>
-          <span>Floor elevation</span>
+          <span>{combineConnectedLevels ? "Architectural plan" : "Floor elevation"}</span>
           <select
             aria-label="Browse Revit floor level"
-            value={selected.levelId}
+            value={selectedPlan?.primaryLevelId}
             onChange={(event) => {
               setZoom(1);
               setRotationQuarterTurns(0);
               onSelectedLevelId(Number(event.target.value));
             }}
           >
-            {levels.map((level) => (
-              <option key={level.levelId} value={level.levelId}>
-                {level.elevation.toFixed(1)}′ · {level.floorCount} slab{level.floorCount === 1 ? "" : "s"}
+            {plans.map((plan) => (
+              <option key={plan.primaryLevelId} value={plan.primaryLevelId}>
+                {plan.minElevation === plan.maxElevation
+                  ? `${plan.minElevation.toFixed(1)}′`
+                  : `${plan.minElevation.toFixed(1)}′–${plan.maxElevation.toFixed(1)}′`}
+                {` · ${plan.floorCount} slab${plan.floorCount === 1 ? "" : "s"}`}
               </option>
             ))}
           </select>
         </label>
 
         <dl>
-          <div><dt>Revit level ID</dt><dd>{selected.levelId}</dd></div>
-          <div><dt>Elevation</dt><dd>{selected.elevation.toFixed(3)}′</dd></div>
-          <div><dt>Floor plates</dt><dd>{selected.floorCount}</dd></div>
-          <div><dt>Plan cut</dt><dd>{planSummary?.cutElevation.toFixed(1)}′</dd></div>
+          <div><dt>Revit level{connected ? "s" : " ID"}</dt><dd>{connected ? selectedPlan!.levelIds.join(", ") : selected.levelId}</dd></div>
+          <div><dt>Elevation{connected ? " range" : ""}</dt><dd>{connected
+            ? `${selectedPlan!.minElevation.toFixed(1)}′–${selectedPlan!.maxElevation.toFixed(1)}′`
+            : `${selected.elevation.toFixed(3)}′`}</dd></div>
+          <div><dt>Floor plates</dt><dd>{selectedPlan?.floorCount ?? selected.floorCount}</dd></div>
+          <div><dt>Plan cut{connected ? "s" : ""}</dt><dd>{connected ? `${selectedPlan!.levels.length} local` : `${planSummary?.cutElevation.toFixed(1)}′`}</dd></div>
           <div><dt>Walls</dt><dd>{planSummary?.walls.toLocaleString() ?? 0}</dd></div>
           <div><dt>Doors / windows</dt><dd>{planSummary?.doors.toLocaleString() ?? 0} / {planSummary?.windows.toLocaleString() ?? 0}</dd></div>
           <div><dt>Stairs / columns</dt><dd>{planSummary?.stairs.toLocaleString() ?? 0} / {planSummary?.columns.toLocaleString() ?? 0}</dd></div>
@@ -154,6 +224,7 @@ export function FloorBrowser({
           {selectedDerivedRooms && (
             <>
               <div><dt>Derived regions</dt><dd>{selectedDerivedRooms.rooms.length}</dd></div>
+              <div><dt>Near-room gaps</dt><dd>{selectedDerivedRooms.gaps.length}</dd></div>
               <div><dt>Barrier inputs</dt><dd>{selectedDerivedRooms.barrierElementCount}</dd></div>
               <div><dt>Plan cut</dt><dd>{selectedDerivedRooms.planCutElevationFeet.toFixed(1)}′</dd></div>
               <div><dt>Grid resolution</dt><dd>{selectedDerivedRooms.cellSizeFeet.toFixed(1)}′</dd></div>
@@ -167,6 +238,30 @@ export function FloorBrowser({
           <span><i className="window" />Windows</span>
           <span><i className="stair" />Stairs</span>
         </div>
+
+        <label className="floor-browser-room-toggle floor-browser-connected-toggle">
+          <span>
+            <input
+              type="checkbox"
+              checked={combineConnectedLevels}
+              onChange={(event) => {
+                setCombineConnectedLevels(event.target.checked);
+                setZoom(1);
+                setRotationQuarterTurns(0);
+              }}
+            />
+            Combine adjoining split levels
+          </span>
+          <em>Geometry</em>
+        </label>
+
+        {connected && (
+          <p className="floor-browser-room-note floor-browser-connected-note">
+            {selectedPlan!.levels.length} elevations form one plan because their slab edges meet within {maximumEdgeGap.toFixed(1)}′ and {maximumStackedPercent
+              ? `only ${maximumStackedPercent}% of the smaller footprints overlap vertically`
+              : "their footprints do not stack vertically"}. Turn this off to inspect each Revit level separately.
+          </p>
+        )}
 
         <label className="floor-browser-room-toggle">
           <span>
@@ -183,17 +278,58 @@ export function FloorBrowser({
         {selectedDerivedRooms && (
           <p className="floor-browser-room-note">
             {selectedDerivedRooms.rooms.length
-              ? `${selectedDerivedRooms.rooms.length} approximate floor region${selectedDerivedRooms.rooms.length === 1 ? "" : "s"} closed by recovered walls or curtain boundaries.`
+              ? `${selectedDerivedRooms.rooms.length} approximate floor region${selectedDerivedRooms.rooms.length === 1 ? "" : "s"}; ${selectedDerivedRooms.rooms.filter((room) => room.closure === "near-closed").length} require a proposed short-gap closure.`
               : "No regions are fully enclosed by recovered vertical barriers at the plan cut."}
           </p>
         )}
 
         {selectedDerivedRooms?.rooms.length ? (
-          <details className="floor-browser-region-list">
-            <summary>Region list</summary>
-            <ol>{selectedDerivedRooms.rooms.map((region) => (
-              <li key={region.id}><span>F{region.id}</span><span>{Math.round(region.areaSquareFeet).toLocaleString()} ft² approx.</span></li>
-            ))}</ol>
+          <details className="floor-browser-region-list floor-browser-room-review" open>
+            <summary>Room review</summary>
+            <ol>{selectedDerivedRooms.rooms.map((region) => {
+              const review = reviewedByCandidate.get(region.key);
+              const gaps = region.gapIds.map((gapId) => roomReview.gaps.find((gap) => gap.id === gapId)).filter(Boolean);
+              return (
+                <li key={region.key} className={`room-review-card ${region.closure}`}>
+                  <div className="room-review-card-heading">
+                    <span>F{region.id}</span>
+                    <span>{Math.round(region.areaSquareFeet).toLocaleString()} ft²</span>
+                    <em>{region.closure === "near-closed" ? "Near room" : "Closed"}</em>
+                  </div>
+                  {region.closure === "near-closed" && (
+                    <p><TriangleAlert size={13} aria-hidden /> This candidate appears only after testing {gaps.length} short opening{gaps.length === 1 ? "" : "s"}. Review each gap before accepting the room.</p>
+                  )}
+                  {review && (
+                    <>
+                      <div className="room-review-actions" role="group" aria-label={`Review floor region F${region.id}`}>
+                        <button type="button" className={review.disposition === "accepted" ? "active" : ""} onClick={() => updateRoom(review.roomId, (room) => ({ ...room, disposition: "accepted", ifc: { ...room.ifc, export: true } }))}>Accept room</button>
+                        <button type="button" className={review.disposition === "dismissed" ? "active" : ""} onClick={() => updateRoom(review.roomId, (room) => ({ ...room, disposition: "dismissed", ifc: { ...room.ifc, export: false } }))}>Dismiss</button>
+                        {review.disposition !== "unreviewed" && <button type="button" onClick={() => updateRoom(review.roomId, (room) => ({ ...room, disposition: "unreviewed", ifc: { ...room.ifc, export: false } }))}>Reset</button>}
+                      </div>
+                      {gaps.map((gap) => gap && (
+                        <div className="room-gap-review" key={gap.id}>
+                          <span>{gap.widthFeet.toFixed(1)}′ possible gap</span>
+                          <button type="button" className={gap.disposition === "treat-as-closed" ? "active" : ""} onClick={() => updateGap(gap.id, "treat-as-closed")}>Use boundary</button>
+                          <button type="button" className={gap.disposition === "dismissed" ? "active" : ""} onClick={() => updateGap(gap.id, "dismissed")}>Intentional</button>
+                        </div>
+                      ))}
+                      {review.disposition === "accepted" && (
+                        <div className="room-detail-fields">
+                          <label><span>Number</span><input value={review.details.number} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, number: event.target.value } }))} /></label>
+                          <label><span>Name</span><input value={review.details.name} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, name: event.target.value } }))} /></label>
+                          <label><span>Department</span><input value={review.details.department} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, department: event.target.value } }))} /></label>
+                          <label><span>Occupancy</span><input value={review.details.occupancyType} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, occupancyType: event.target.value } }))} /></label>
+                          <label><span>Accessibility</span><input value={review.details.accessibility} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, accessibility: event.target.value } }))} /></label>
+                          <label><span>Height (ft)</span><input type="number" min="0" step="0.1" value={review.details.heightFeet ?? ""} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, heightFeet: event.target.value === "" ? null : Number(event.target.value) } }))} /></label>
+                          <label className="room-detail-wide"><span>Description</span><textarea value={review.details.description} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, details: { ...room.details, description: event.target.value } }))} /></label>
+                          <label className="room-detail-export"><input type="checkbox" checked={review.ifc.export} onChange={(event) => updateRoom(review.roomId, (room) => ({ ...room, ifc: { ...room.ifc, export: event.target.checked } }))} /> Include as IfcSpace</label>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </li>
+              );
+            })}</ol>
           </details>
         ) : null}
 
@@ -227,11 +363,14 @@ export function FloorBrowser({
           <img
             src={imageUrl}
             style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
-            alt={`Architectural floor map at ${selected.elevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`}
+            alt={connected
+              ? `Connected architectural floor map from ${selectedPlan!.minElevation.toFixed(1)} to ${selectedPlan!.maxElevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`
+              : `Architectural floor map at ${selected.elevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`}
           />
         </div>
         <figcaption>
           Architectural plan assembled from recovered RVT geometry. Door swings are indicative because the persisted opening does not always expose Revit&apos;s swing side.
+          {connected ? " Adjoining split-level slabs are composed at their own local plan cuts; vertically stacked storeys remain separate." : ""}
           {selectedDerivedRooms
             ? " F-labels are approximate floor regions partitioned by recovered vertical barriers—not Revit Rooms."
             : " Turn on Derived floor regions to inspect approximate barrier partitions."}

@@ -29,7 +29,11 @@ import {
   overlayMeshGroup,
   referenceMeshGroup,
 } from "./three-scene.ts";
-import { applyAutodeskButtonMap, applyAutodeskNavigation } from "./autodesk-navigation.ts";
+import {
+  applyAutodeskButtonMap,
+  applyAutodeskNavigation,
+  installAutodeskWheelDolly,
+} from "./autodesk-navigation.ts";
 import {
   addPendingMeasurementPoint,
   applyClippingPlanes,
@@ -507,11 +511,17 @@ export function ModelCanvas({
     if (isReferenceModel && technical) renderer.setClearColor(0xffffff, 0);
 
     const controls = new OrbitControls(camera, canvas);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.075;
+    // Damping is set by applyAutodeskNavigation, which turns it off: the
+    // reference viewer's orbit is rigid, and a damped one reads as a different
+    // tool however well the rates are matched.
     controls.screenSpacePanning = true;
     applyNavigationMode(controls, "orbit");
     applyAutodeskNavigation(controls, canvas);
+    // The navigation parity script drives this canvas the same way the Autodesk
+    // measurements were taken, and needs the camera it is differencing.
+    if (navigationTest) {
+      (window as unknown as { __reviterNavigation?: unknown }).__reviterNavigation = { controls, camera };
+    }
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
     // The overlay is drawn in the recovered model's own frame, so it keeps that
@@ -1409,6 +1419,12 @@ export function ModelCanvas({
       updateMeasurementPreview(measurement, null);
       reportHover(null);
     };
+    // Zooming towards a wall should slow as it arrives, which needs the depth
+    // of whatever is under the cursor rather than the orbit radius.
+    const releaseWheelDolly = installAutodeskWheelDolly(controls, canvas, (clientX, clientY) => {
+      const hit = geometryHitAt(clientX, clientY);
+      return hit ? camera.position.distanceTo(hit.point) : null;
+    });
     // Autodesk decides orbit/pan/dolly from the button *and* the modifiers held
     // when the drag starts, which OrbitControls cannot express: it reads its
     // `mouseButtons` map once, in its own pointerdown handler. Rewriting the map
@@ -1687,6 +1703,7 @@ export function ModelCanvas({
       }
       observer.disconnect();
       cancelAnimationFrame(resizeFrame);
+      releaseWheelDolly();
       window.removeEventListener("pointerdown", handleNavigationButtons, { capture: true });
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);

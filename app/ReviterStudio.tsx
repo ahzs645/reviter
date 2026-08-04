@@ -7,9 +7,10 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import {
   applyIfcReferenceRepairs,
   boundsDimensions,
+  connectedFloorPlanGroup,
   DEFAULT_CAMERA_PRESET,
-  cachedDerivedRoomsForLevel,
   downloadBlob,
+  deriveRoomsForLevels,
   floorPlateLevels,
   makeDxf,
   makeGlb,
@@ -21,6 +22,8 @@ import {
   meshBoundsByElement,
   outputName,
   packMeshSurfaceOrientationSignatures,
+  mergeRoomReview,
+  reconcileRoomReview,
   parseBasicFileInfoProperties,
   revitVersionFromBasicFileInfo,
   STANDARDS_READER_RANGE_LABEL,
@@ -33,6 +36,7 @@ import {
   type IfcWorkerResponse,
   type PairedRegressionResult,
   type RenderMode,
+  type RoomReviewState,
   type WorkerRequest,
   type WorkerResponse,
 } from "../lib/reviter";
@@ -60,10 +64,12 @@ import {
   assertSidecarMatchesModel,
   makeCommentsSidecar,
   makeMarkupSidecar,
+  makeRoomReviewSidecar,
   mergeComments,
   mergeMarkup,
   parseReviewSidecar,
 } from "./studio/review-exchange.ts";
+import { loadRoomReview, saveRoomReview } from "./studio/room-review-storage.ts";
 import { PropertiesDock, type EvidenceRow } from "./studio/PropertiesDock.tsx";
 import { ToolButton } from "./studio/panels.tsx";
 import {
@@ -275,6 +281,7 @@ export default function ReviterStudio() {
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
   const [showDerivedRooms, setShowDerivedRooms] = useState(false);
+  const [roomReview, setRoomReview] = useState<RoomReviewState>({ rooms: [], gaps: [] });
   const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
 
   const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
@@ -313,6 +320,10 @@ export default function ReviterStudio() {
   const floorRegionCacheRef = useRef(new Map<number, DerivedRoomResult>());
   const requestIdRef = useRef(0);
   const referenceRequestIdRef = useRef(0);
+  // IndexedDB reads are asynchronous, so React may not have rendered the busy
+  // phase before a double-click arrives. This ref closes that small window.
+  const recentOpenInProgressRef = useRef(false);
+  const recentOpenAttemptRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const ifcInputRef = useRef<HTMLInputElement>(null);
   const referenceModelInputRef = useRef<HTMLInputElement>(null);
@@ -378,12 +389,20 @@ export default function ReviterStudio() {
     nextFile: File,
     knownCache?: CachedRecentModel | null,
   ) => {
+    // A picker/drop is an intentional replacement. Invalidate a pending
+    // IndexedDB lookup so it cannot finish later and replace the newer file.
+    if (knownCache === undefined) {
+      recentOpenAttemptRef.current += 1;
+      recentOpenInProgressRef.current = false;
+    }
     if (!/\.(rvt|rfa|rte|rft)$/i.test(nextFile.name)) {
+      recentOpenInProgressRef.current = false;
       setError("Choose a Revit .rvt, .rfa, .rte, or .rft file.");
       setPhase("error");
       return;
     }
     if (!nextFile.size) {
+      recentOpenInProgressRef.current = false;
       setError("The selected file is empty.");
       setPhase("error");
       return;
@@ -490,6 +509,7 @@ export default function ReviterStudio() {
       setPrivateFileInfo(basicData ? parseBasicFileInfoProperties(basicData) : null);
 
       const acceptResult = (converted: ConvertResult) => {
+        recentOpenInProgressRef.current = false;
         setResult(converted);
         setPlanLevelId(
           converted.levels.find(
@@ -524,6 +544,7 @@ export default function ReviterStudio() {
       setProgress(0.08);
 
       const fail = (message: string) => {
+        recentOpenInProgressRef.current = false;
         setError(message);
         setPhase("error");
         rememberFile(
@@ -582,12 +603,15 @@ export default function ReviterStudio() {
       worker.postMessage(request, [buffer]);
     } catch (caught) {
       if (requestId !== requestIdRef.current) return;
+      recentOpenInProgressRef.current = false;
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase("error");
     }
   }, [getWorker, rememberFile]);
 
   const closeModel = useCallback(() => {
+    recentOpenAttemptRef.current += 1;
+    recentOpenInProgressRef.current = false;
     requestIdRef.current += 1;
     setResult(null);
     setComparison(null);
@@ -1154,7 +1178,7 @@ export default function ReviterStudio() {
         setReviewImportMessage(
           `Imported ${sidecar.comments.length} comment${sidecar.comments.length === 1 ? "" : "s"} from ${reviewFile.name}.`,
         );
-      } else {
+      } else if (sidecar.format === "reviter-markup") {
         setMarkup((current) => {
           const next = mergeMarkup(current, sidecar.markup);
           saveModelMarkup(result, next);
@@ -1164,6 +1188,17 @@ export default function ReviterStudio() {
         setMarkupRedo([]);
         setReviewImportMessage(
           `Imported ${sidecar.markup.length} markup stroke${sidecar.markup.length === 1 ? "" : "s"} from ${reviewFile.name}.`,
+        );
+      } else {
+        setRoomReview((current) => {
+          const next = mergeRoomReview(current, { rooms: sidecar.rooms, gaps: sidecar.gaps });
+          saveRoomReview(result, next);
+          return next;
+        });
+        setShowDerivedRooms(true);
+        setWorkspace("floors");
+        setReviewImportMessage(
+          `Imported ${sidecar.rooms.length} room review${sidecar.rooms.length === 1 ? "" : "s"} and ${sidecar.gaps.length} gap decision${sidecar.gaps.length === 1 ? "" : "s"} from ${reviewFile.name}.`,
         );
       }
     } catch (caught) {
@@ -1223,6 +1258,9 @@ export default function ReviterStudio() {
 
   const [derivedFloorRooms, setDerivedFloorRooms] = useState<DerivedRoomResult | null>(null);
   useEffect(() => {
+    queueMicrotask(() => setRoomReview(result ? loadRoomReview(result) : { rooms: [], gaps: [] }));
+  }, [result]);
+  useEffect(() => {
     floorRegionCacheRef.current.clear();
     queueMicrotask(() => setDerivedFloorRooms(null));
   }, [result]);
@@ -1234,20 +1272,29 @@ export default function ReviterStudio() {
     const cached = floorRegionCacheRef.current.get(planLevelId);
     if (cached) { queueMicrotask(() => setDerivedFloorRooms(cached)); return; }
     const requestId = ++floorRegionRequestRef.current;
+    const analysisLevelIds = connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId];
     const worker = floorRegionWorkerRef.current ?? new Worker(
       new URL("./studio/floor-regions.worker.ts", import.meta.url),
       { type: "module" },
     );
     floorRegionWorkerRef.current = worker;
     const onMessage = (event: MessageEvent<{ id: number; result?: DerivedRoomResult; error?: string }>) => {
-      if (event.data.id !== floorRegionRequestRef.current || !event.data.result) return;
+      if (event.data.id !== floorRegionRequestRef.current) return;
+      if (event.data.error) {
+        const derived = deriveRoomsForLevels(result, analysisLevelIds);
+        floorRegionCacheRef.current.set(planLevelId, derived);
+        setDerivedFloorRooms(derived);
+        setReviewImportMessage(`Room worker fallback: ${event.data.error}`);
+        return;
+      }
+      if (!event.data.result) return;
       floorRegionCacheRef.current.set(event.data.result.levelId, event.data.result);
       setDerivedFloorRooms(event.data.result);
     };
     const onError = () => {
       if (requestId !== floorRegionRequestRef.current) return;
       // A strict fallback keeps the feature available if a browser blocks module workers.
-      const derived = cachedDerivedRoomsForLevel(result, planLevelId);
+      const derived = deriveRoomsForLevels(result, analysisLevelIds);
       floorRegionCacheRef.current.set(planLevelId, derived);
       setDerivedFloorRooms(derived);
     };
@@ -1272,12 +1319,20 @@ export default function ReviterStudio() {
         orientedBox: record.orientedBox,
       })),
     } as ConvertResult;
-    worker.postMessage({ id: requestId, levelId: planLevelId, result: compactResult });
+    worker.postMessage({ id: requestId, levelIds: analysisLevelIds, result: compactResult });
     return () => {
       worker.removeEventListener("message", onMessage);
       worker.removeEventListener("error", onError);
     };
   }, [planLevelId, result, showDerivedRooms]);
+  useEffect(() => {
+    if (!derivedFloorRooms || !result) return;
+    queueMicrotask(() => setRoomReview((current) => {
+        const next = reconcileRoomReview(current, derivedFloorRooms);
+        saveRoomReview(result, next);
+        return next;
+      }));
+  }, [derivedFloorRooms, result]);
   const selectedMapPoint = selectedRecord
     ? [
         (selectedRecord.boundsFeet.min.x + selectedRecord.boundsFeet.max.x) / 2,
@@ -1454,8 +1509,8 @@ export default function ReviterStudio() {
         format: "IFC",
         detail: referenceAssistedResult
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
-          : "IFC4 · elements, storeys, materials",
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult), "application/x-step"),
+          : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
+        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
       },
       {
         id: "JSON",
@@ -1480,6 +1535,17 @@ export default function ReviterStudio() {
         ),
       },
       {
+        id: "ROOMS",
+        format: "Rooms",
+        detail: `${roomReview.rooms.filter((room) => room.disposition === "accepted").length} accepted · ${roomReview.gaps.filter((gap) => gap.disposition !== "unreviewed").length} gap decisions · portable JSON`,
+        run: () => exportText(
+          "ROOMS",
+          "rooms.reviter.json",
+          () => makeRoomReviewSidecar(result, roomReview),
+          "application/vnd.reviter.rooms+json",
+        ),
+      },
+      {
         id: "MARKUP",
         format: "Markup",
         detail: `${markup.length} stroke${markup.length === 1 ? "" : "s"} · portable JSON`,
@@ -1491,7 +1557,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result]);
+  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1637,9 +1703,16 @@ export default function ReviterStudio() {
 
   const openPicker = useCallback(() => inputRef.current?.click(), []);
   const openRecent = useCallback((recent: RecentFile) => {
+    if (recentOpenInProgressRef.current) return;
+    recentOpenInProgressRef.current = true;
+    const attempt = ++recentOpenAttemptRef.current;
+    setError(null);
+    setPhase("reading");
     void (async () => {
       const cached = await loadCachedRecentModel(recent);
+      if (attempt !== recentOpenAttemptRef.current) return;
       if (!cached) {
+        recentOpenInProgressRef.current = false;
         setError("This older Recent entry has no browser-cached copy. Choose the source file once to cache it.");
         setPhase("error");
         return;
@@ -1745,6 +1818,7 @@ export default function ReviterStudio() {
   const emptyState = (
     <EmptyState
       recents={recents}
+      busy={busy}
       error={phase === "error" ? error : null}
       onOpen={openPicker}
       onOpenRecent={openRecent}
@@ -1904,6 +1978,11 @@ export default function ReviterStudio() {
               showDerivedRooms={showDerivedRooms}
               onShowDerivedRooms={setShowDerivedRooms}
               derivedRooms={derivedFloorRooms}
+              roomReview={roomReview}
+              onRoomReview={(next) => {
+                setRoomReview(next);
+                saveRoomReview(result, next);
+              }}
               onModel={() => setWorkspace("model")}
               onOpenModelMap={() => {
                 setWorkspace("model");

@@ -33,6 +33,8 @@ const PARALLEL_COSINE = 0.995;
 const PERPENDICULAR_COSINE = 0.12;
 const RELATIVE_SIZE_TOLERANCE = 0.08;
 const MIN_FLATTENED_BAND_COVERAGE = 0.8;
+const FLATTENED_FLIGHT_DEPTH_MULTIPLIER = 2.5;
+const FLATTENED_BAND_AREA_MULTIPLIER = 1.25;
 
 export type RecoveredStairTreads = {
   /** One four-corner horizontal tread, ordered around its perimeter. */
@@ -998,6 +1000,50 @@ function clippedProfileTreadQuads(
   return quads;
 }
 
+function safeFlattenedTreadBand(
+  first: ProfileCurve,
+  second: ProfileCurve,
+  topZ: number,
+  maximumLocalDepth: number,
+  footprint: readonly Point3[] | null,
+  footprintIndices: readonly number[],
+): [Point3, Point3, Point3, Point3][] {
+  const depth = profilePairDistance(first, second);
+  // A minimum-spanning path may connect separate flights so the persisted
+  // bottom profile can order the whole run. Such a link is not itself a tread.
+  if (depth > maximumLocalDepth + POINT_TOLERANCE_FEET) return [];
+
+  const band = footprint
+    ? clippedProfileTreadQuads(
+        first,
+        second,
+        topZ,
+        footprint,
+        footprintIndices,
+      )
+    : profileTreadQuads(first, second, topZ);
+  if (!band.length) return [];
+
+  const localWidth = (
+    planLength(first.curve.start, first.curve.end) +
+    planLength(second.curve.start, second.curve.end)
+  ) / 2;
+  const maximumArea =
+    localWidth * depth * FLATTENED_BAND_AREA_MULTIPLIER;
+  const area = band.reduce(
+    (total, tread) => total + Math.abs(polygonAreaPlan(tread)),
+    0,
+  );
+  if (
+    !Number.isFinite(area) ||
+    area <= POINT_TOLERANCE_FEET ** 2 ||
+    area > maximumArea + POINT_TOLERANCE_FEET
+  ) {
+    return [];
+  }
+  return band;
+}
+
 function fullCircleLandingQuads(
   firstSamples: readonly Point3[],
   secondSamples: readonly Point3[],
@@ -1402,6 +1448,24 @@ export function recoverFlattenedProfileStairTreads(
   if (ordered.length !== profiles.length) return null;
   const rise = (bounds.max.z - bounds.min.z) / riserCount;
   if (rise < MIN_RISE_FEET || rise > MAX_RISE_FEET) return null;
+  const orderedDistances = ordered.slice(0, -1).map((profile, index) =>
+    profilePairDistance(
+      profiles[profile]!,
+      profiles[ordered[index + 1]!]!,
+    )
+  );
+  const ordinaryDepths = orderedDistances.filter((depth) =>
+    depth >= MIN_TREAD_DEPTH_FEET && depth <= MAX_TREAD_DEPTH_FEET
+  );
+  if (ordinaryDepths.length < MIN_TREADS) return null;
+  const nominalLocalDepth = median(ordinaryDepths);
+  const maximumLocalDepth = Math.min(
+    MAX_TREAD_DEPTH_FEET,
+    Math.max(
+      nominalLocalDepth + POINT_TOLERANCE_FEET,
+      nominalLocalDepth * FLATTENED_FLIGHT_DEPTH_MULTIPLIER,
+    ),
+  );
   const footprint = assembleRings([...curves])[0];
   const certifiedFootprint =
     footprint?.length >= 3 &&
@@ -1420,16 +1484,14 @@ export function recoverFlattenedProfileStairTreads(
     const first = profiles[profile]!;
     const second = profiles[ordered[index + 1]!]!;
     const topZ = bounds.min.z + rise * (index + 1);
-    if (certifiedFootprint) {
-      return clippedProfileTreadQuads(
-        first,
-        second,
-        topZ,
-        certifiedFootprint,
-        footprintIndices,
-      );
-    }
-    return profileTreadQuads(first, second, topZ);
+    return safeFlattenedTreadBand(
+      first,
+      second,
+      topZ,
+      maximumLocalDepth,
+      certifiedFootprint,
+      footprintIndices,
+    );
   });
   const representedBands = treadBands.filter((band) => band.length > 0);
   // A legacy/sketched multi-flight run can leave its landing transitions in a
@@ -1450,12 +1512,7 @@ export function recoverFlattenedProfileStairTreads(
     treads,
     riserHeightFeet: rise,
     treadDepthFeet: median(
-      ordered.slice(0, -1).map((profile, index) =>
-        profilePairDistance(
-          profiles[profile]!,
-          profiles[ordered[index + 1]!]!,
-        )
-      ),
+      orderedDistances.filter((depth) => depth <= maximumLocalDepth),
     ),
     source: "native-stair-sketch",
   };

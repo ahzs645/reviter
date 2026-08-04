@@ -127,6 +127,51 @@ const ORIENTATION_MASK: Record<SurfaceOrientation, number> = {
   obliqueDown: 1 << 4,
 };
 
+const MAX_RETAINED_STAIR_HORIZONTAL_UP_AREA_METRES2 = 5;
+
+/**
+ * Return horizontal-up residual cells whose same-elevation connected component
+ * is too large to be an optimized-away tread closure. Broad top surfaces are
+ * architecture, not hidden solid backs; a missing reference match therefore
+ * remains actionable. Keeping the walk on one Y voxel also prevents risers
+ * from joining otherwise independent tread levels into one component.
+ */
+export function oversizedHorizontalUpResiduals(
+  indices: readonly number[],
+  grid: VoxelGrid,
+  maximumAreaMetres2 = MAX_RETAINED_STAIR_HORIZONTAL_UP_AREA_METRES2,
+): Set<number> {
+  const remaining = new Set(indices);
+  const oversized = new Set<number>();
+  const component: number[] = [];
+  while (remaining.size) {
+    const first = remaining.values().next().value as number;
+    remaining.delete(first);
+    const queue = [first];
+    component.length = 0;
+    while (queue.length) {
+      const index = queue.pop()!;
+      component.push(index);
+      const ix = index % grid.size[0];
+      const yz = Math.floor(index / grid.size[0]);
+      const iy = yz % grid.size[1];
+      const iz = Math.floor(yz / grid.size[1]);
+      for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        const nx = ix + dx;
+        const nz = iz + dz;
+        if (nx < 0 || nx >= grid.size[0] || nz < 0 || nz >= grid.size[2]) continue;
+        const neighbour = nx + grid.size[0] * (iy + grid.size[1] * nz);
+        if (!remaining.delete(neighbour)) continue;
+        queue.push(neighbour);
+      }
+    }
+    if (component.length * grid.cellMetres ** 2 > maximumAreaMetres2) {
+      for (const index of component) oversized.add(index);
+    }
+  }
+  return oversized;
+}
+
 /** Classify a Y-up GLB triangle by its signed face normal. */
 export function surfaceOrientation(
   a: THREE.Vector3,
@@ -685,6 +730,7 @@ function recoveredResidualsByMesh(
     const disposition = residualDisposition(label, material);
     let recoveredOnly = 0;
     const recoveredOnlyIndices: number[] = [];
+    const horizontalUpRecoveredOnlyIndices: number[] = [];
     const sampledBounds: Bounds = {
       min: [Infinity, Infinity, Infinity],
       max: [-Infinity, -Infinity, -Infinity],
@@ -705,14 +751,24 @@ function recoveredResidualsByMesh(
         recoveredOnly += 1;
         recoveredOnlyIndices.push(index);
         expand(residualBounds, x, y, z);
-        dispositionBits[index] |= dispositionMask[disposition];
       }
       const bits = orientationBits[index]!;
+      if (isRecoveredOnly && (bits & ORIENTATION_MASK.horizontalUp)) {
+        horizontalUpRecoveredOnlyIndices.push(index);
+      }
       for (const orientation of SURFACE_ORIENTATIONS) {
         if ((bits & ORIENTATION_MASK[orientation]) === 0) continue;
         byOrientation[orientation].voxels += 1;
         if (isRecoveredOnly) byOrientation[orientation].recoveredOnly += 1;
       }
+    }
+    const oversizedStairTop = disposition === "retainedClosedStairRun"
+      ? oversizedHorizontalUpResiduals(horizontalUpRecoveredOnlyIndices, grid)
+      : new Set<number>();
+    for (const index of recoveredOnlyIndices) {
+      dispositionBits[index] |= dispositionMask[
+        oversizedStairTop.has(index) ? "review" : disposition
+      ];
     }
     return {
       mesh: label,
@@ -728,6 +784,7 @@ function recoveredResidualsByMesh(
       ),
       recoveredOnlyRegions: regions(recoveredOnlyIndices, grid, 2),
       disposition,
+      oversizedHorizontalUpResidualVoxels: oversizedStairTop.size,
       recoveredOnlyByOrientation: byOrientation,
     };
   }).sort((left, right) => right.recoveredOnly - left.recoveredOnly);
@@ -924,9 +981,9 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
         retainedCertifiedNativeSurface:
           "Certified native RVT BRep surface absent from the optimized visual-reference GLB; retained unless paired IFC evidence contradicts it.",
         retainedClosedStairRun:
-          "Closed tread/riser surfaces reconstructed from native StairsRun evidence but simplified by the visual-reference GLB; retained.",
+          "Bounded closed tread/riser surfaces reconstructed from native StairsRun evidence but simplified by the visual-reference GLB; retained. Oversized horizontal-up components remain review residuals.",
         review:
-          "Recovered-only surface not explained by the conservative retained-evidence rules.",
+          "Recovered-only surface not explained by the conservative retained-evidence rules, including oversized stair top bands.",
       },
     },
     recoveredOnlyByMesh: recoveredResiduals.meshes,

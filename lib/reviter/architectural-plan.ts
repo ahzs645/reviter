@@ -17,6 +17,8 @@ export type ArchitecturalPlanSvgOptions = {
   derivedRooms?: boolean | DerivedRoomResult;
   /** Rotate the drawing view clockwise in 90-degree steps without moving RVT geometry. */
   rotationQuarterTurns?: number;
+  /** Nearby, adjoining split-level elevations to compose into the same map. */
+  connectedLevelIds?: readonly number[];
 };
 
 export type ArchitecturalPlanSummary = {
@@ -40,10 +42,18 @@ type ArchitecturalPlanRecords = ArchitecturalPlanSummary & {
   columnRecords: ElementBoundsRecord[];
   bounds: PlanBounds;
   nextElevation: number;
+  levelPlans: Array<{
+    levelId: number;
+    elevation: number;
+    nextElevation: number;
+    floorRecords: ElementBoundsRecord[];
+    stairRecords: ElementBoundsRecord[];
+  }>;
 };
 
 const planCache = new WeakMap<ConvertResult, Map<number, ArchitecturalPlanRecords>>();
-const svgCache = new WeakMap<ConvertResult, Map<number, Map<number, WeakMap<object, string>>>>();
+const connectedPlanCache = new WeakMap<ConvertResult, Map<string, ArchitecturalPlanRecords>>();
+const svgCache = new WeakMap<ConvertResult, Map<string, Map<number, WeakMap<object, string>>>>();
 const NO_DERIVED_REGIONS = {};
 
 function intersectsElevation(record: ElementBoundsRecord, elevation: number) {
@@ -162,16 +172,82 @@ function recordsForLevel(result: ConvertResult, levelId: number): ArchitecturalP
     columnRecords,
     bounds,
     nextElevation,
+    levelPlans: [{
+      levelId,
+      elevation: level.elevation,
+      nextElevation,
+      floorRecords: floors,
+      stairRecords,
+    }],
   };
   resultPlans.set(levelId, plan);
+  return plan;
+}
+
+function uniqueRecords(records: readonly ElementBoundsRecord[]) {
+  return [...new Map(records.map((record) => [record.elementId, record])).values()];
+}
+
+function recordsForPlan(
+  result: ConvertResult,
+  primaryLevelId: number,
+  connectedLevelIds: readonly number[] = [primaryLevelId],
+): ArchitecturalPlanRecords {
+  const elevations = new Map(result.levels.flatMap((level) =>
+    level.levelId == null ? [] : [[level.levelId, level.elevation] as const]));
+  const levelIds = [...new Set([primaryLevelId, ...connectedLevelIds])]
+    .filter((levelId) => elevations.has(levelId))
+    .sort((left, right) => elevations.get(left)! - elevations.get(right)!);
+  if (levelIds.length === 1) return recordsForLevel(result, primaryLevelId);
+  const key = `${primaryLevelId}:${levelIds.join(",")}`;
+  let resultPlans = connectedPlanCache.get(result);
+  if (!resultPlans) { resultPlans = new Map(); connectedPlanCache.set(result, resultPlans); }
+  const cached = resultPlans.get(key);
+  if (cached) return cached;
+  const parts = levelIds.map((levelId) => recordsForLevel(result, levelId));
+  const primary = parts.find((part) => part.levelId === primaryLevelId) ?? parts[0]!;
+  const floorRecords = uniqueRecords(parts.flatMap((part) => part.floorRecords));
+  const wallRecords = uniqueRecords(parts.flatMap((part) => part.wallRecords));
+  const doorRecords = uniqueRecords(parts.flatMap((part) => part.doorRecords));
+  const windowRecords = uniqueRecords(parts.flatMap((part) => part.windowRecords));
+  const stairRecords = uniqueRecords(parts.flatMap((part) => part.stairRecords));
+  const columnRecords = uniqueRecords(parts.flatMap((part) => part.columnRecords));
+  const bounds = parts.reduce<PlanBounds>((combined, part) => ({
+    minX: Math.min(combined.minX, part.bounds.minX),
+    minY: Math.min(combined.minY, part.bounds.minY),
+    maxX: Math.max(combined.maxX, part.bounds.maxX),
+    maxY: Math.max(combined.maxY, part.bounds.maxY),
+  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+  const plan: ArchitecturalPlanRecords = {
+    levelId: primary.levelId,
+    elevation: primary.elevation,
+    cutElevation: primary.cutElevation,
+    floors: floorRecords.length,
+    walls: wallRecords.length,
+    doors: doorRecords.length,
+    windows: windowRecords.length,
+    stairs: stairRecords.length,
+    columns: columnRecords.length,
+    floorRecords,
+    wallRecords,
+    doorRecords,
+    windowRecords,
+    stairRecords,
+    columnRecords,
+    bounds,
+    nextElevation: parts.at(-1)!.nextElevation,
+    levelPlans: parts.flatMap((part) => part.levelPlans),
+  };
+  resultPlans.set(key, plan);
   return plan;
 }
 
 export function architecturalPlanSummary(
   result: ConvertResult,
   levelId: number,
+  options: Pick<ArchitecturalPlanSvgOptions, "connectedLevelIds"> = {},
 ): ArchitecturalPlanSummary {
-  const plan = recordsForLevel(result, levelId);
+  const plan = recordsForPlan(result, levelId, options.connectedLevelIds);
   return {
     levelId: plan.levelId,
     elevation: plan.elevation,
@@ -327,7 +403,7 @@ function stairLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds,
 
 function roomLayer(rooms: DerivedRoomResult | null, bounds: PlanBounds, scale: number) {
   if (!rooms) return "";
-  const paths = rooms.rooms.map((room) => `<path data-derived-floor-region-id="${room.id}" d="${room.loops.map((loop) => path(loop, bounds)).join(" ")}"/>`).join("");
+  const paths = rooms.rooms.map((room) => `<path class="${room.closure}" data-derived-floor-region-id="${room.id}" data-derived-room-key="${room.key}" d="${room.loops.map((loop) => path(loop, bounds)).join(" ")}"/>`).join("");
   const labels = [...rooms.rooms].sort((a, b) => b.areaSquareFeet - a.areaSquareFeet).slice(0, 60)
     .map((room) => { const [x, y] = renderPoint(room.centroid, bounds); return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">F${room.id}</text>`; }).join("");
   return `<g class="rooms" fill-rule="evenodd">${paths}</g><g class="room-labels" font-size="${scale / 170}">${labels}</g>`;
@@ -339,13 +415,14 @@ export function makeArchitecturalFloorSvg(
   levelId: number,
   options: ArchitecturalPlanSvgOptions = {},
 ): string {
-  const plan = recordsForLevel(result, levelId);
+  const plan = recordsForPlan(result, levelId, options.connectedLevelIds);
   const rotation = ((Math.round(options.rotationQuarterTurns ?? 0) % 4) + 4) % 4;
   const derivedRooms = options.derivedRooms === true
     ? cachedDerivedRoomsForLevel(result, levelId)
     : options.derivedRooms || null;
+  const planKey = `${levelId}:${plan.levelPlans.map((part) => part.levelId).join(",")}`;
   let levelCache = svgCache.get(result); if (!levelCache) { levelCache = new Map(); svgCache.set(result, levelCache); }
-  let rotations = levelCache.get(levelId); if (!rotations) { rotations = new Map(); levelCache.set(levelId, rotations); }
+  let rotations = levelCache.get(planKey); if (!rotations) { rotations = new Map(); levelCache.set(planKey, rotations); }
   let variants = rotations.get(rotation); if (!variants) { variants = new WeakMap(); rotations.set(rotation, variants); }
   const cacheKey = derivedRooms ?? NO_DERIVED_REGIONS; const cached = variants.get(cacheKey); if (cached) return cached;
 
@@ -357,13 +434,22 @@ export function makeArchitecturalFloorSvg(
     : rotation === 2 ? `translate(${sourceWidth} ${sourceHeight}) rotate(180)`
       : rotation === 3 ? `translate(0 ${sourceWidth}) rotate(270)` : "";
   const scale = Math.max(sourceWidth, sourceHeight); const fineStroke = Math.max(0.035, scale / 2_600);
+  const connected = plan.levelPlans.length > 1;
+  const floorFills = ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"];
+  const floorGroups = plan.levelPlans.map((part, index) =>
+    `<g class="floors" data-source-revit-level-id="${part.levelId}" data-source-elevation-feet="${part.elevation}" style="--floor-fill:${floorFills[index % floorFills.length]}">${floorLayer(part.floorRecords, bounds)}</g>`,
+  ).join("");
+  const stairGroups = plan.levelPlans.map((part) =>
+    `<g data-source-revit-level-id="${part.levelId}">${stairLayer(part.stairRecords, bounds, part.elevation, part.nextElevation)}</g>`,
+  ).join("");
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-revit-level-id="${levelId}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}">
-  <title id="architectural-plan-title">Architectural floor map for Revit level ${levelId}</title>
-  <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns at ${plan.elevation.toFixed(3)} feet. Door swings and uncategorized fallback footprints are approximate.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-revit-level-id="${levelId}" data-revit-level-ids="${plan.levelPlans.map((part) => part.levelId).join(",")}" data-connected-level-count="${plan.levelPlans.length}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}">
+  <title id="architectural-plan-title">${connected ? "Connected split-level architectural plan" : `Architectural floor map for Revit level ${levelId}`}</title>
+  <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. Door swings and uncategorized fallback footprints are approximate.</desc>
   <style>
-    .floors{fill:#f6f3eb;stroke:#76858a;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
+    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#76858a;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
     .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${fineStroke};vector-effect:non-scaling-stroke}
+    .rooms .near-closed{fill:#f3b36f;fill-opacity:.22;stroke:#d9823b;stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
     .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none}
     .walls{fill:#e0e7e5;stroke:#344b50;stroke-width:${fineStroke * 0.8};stroke-linejoin:round;vector-effect:non-scaling-stroke}
     .walls path{vector-effect:non-scaling-stroke}
@@ -380,13 +466,13 @@ export function makeArchitecturalFloorSvg(
   </style>
   <rect width="100%" height="100%" fill="#fffdf7"/>
   <g${contentTransform ? ` transform="${contentTransform}"` : ""}>
-  <g class="floors" fill-rule="evenodd">${floorLayer(plan.floorRecords, bounds)}</g>
+  <g fill-rule="evenodd">${floorGroups}</g>
   ${roomLayer(derivedRooms, bounds, scale)}
   <g class="walls">${wallLayer(plan.wallRecords, bounds)}</g>
   <g class="columns">${plan.columnRecords.map((record) => `<path data-revit-element-id="${record.elementId}" d="${path(distinctPlanPoints(record), bounds)}"/>`).join("")}</g>
   <g class="windows">${openingLayer(plan.windowRecords, bounds, "window")}</g>
   <g class="doors">${openingLayer(plan.doorRecords, bounds, "door")}</g>
-  <g class="stairs">${stairLayer(plan.stairRecords, bounds, plan.elevation, plan.nextElevation)}</g>
+  <g class="stairs">${stairGroups}</g>
   </g>
 </svg>`;
   variants.set(cacheKey, svg); return svg;

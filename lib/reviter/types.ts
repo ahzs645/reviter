@@ -150,6 +150,10 @@ export type DecoderCoverage = {
   nativeMeshDuplicateTrianglesRemoved?: number;
   /** Suppressed duplicates whose two copies claimed different materials. */
   nativeMeshCrossMaterialDuplicateTrianglesRemoved?: number;
+  /** Generic envelope-shell triangles removed outside a complete sloped wall body. */
+  nativeRedundantWallShellTrianglesRemoved?: number;
+  /** Walls whose redundant generic envelope shell was suppressed. */
+  nativeRedundantWallShellElements?: number;
   /** Original wall triangles intersected by persisted door/window openings. */
   nativeHostOpeningWallTrianglesClipped?: number;
   /** Retained wall fragments emitted around those hosted openings. */

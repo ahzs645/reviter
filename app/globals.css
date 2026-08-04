@@ -1078,11 +1078,32 @@ button[data-reason]:focus-visible::after {
 .floor-browser-room-toggle > span { display: flex; align-items: center; gap: 7px; }
 .floor-browser-room-toggle input { accent-color: var(--accent); }
 .floor-browser-room-toggle em { padding: 2px 5px; border: 1px solid #bd6b2d; color: #d9823b; font-family: var(--mono); font-size: 8px; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
+.floor-browser-connected-toggle em { border-color: #388f89; color: #65bdb5; }
+.floor-browser-connected-note { padding-left: 9px; border-left: 2px solid #388f89; }
 .floor-browser-room-note { margin: -5px 1px 0; color: var(--text-2); font-size: 11px; line-height: 1.45; }
 .floor-browser-region-list { max-height: 140px; overflow: auto; color: var(--text-2); font-size: 10.5px; }
 .floor-browser-region-list summary { cursor: pointer; color: var(--text); }
 .floor-browser-region-list ol { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 22px; }
 .floor-browser-region-list li { display: flex; justify-content: space-between; gap: 8px; }
+.floor-browser-room-review { max-height: 460px; padding-right: 3px; }
+.floor-browser-room-review ol { padding-left: 0; list-style: none; }
+.floor-browser-room-review .room-review-card { display: block; padding: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.floor-browser-room-review .room-review-card.near-closed { border-color: color-mix(in srgb, #d9823b 55%, var(--line)); }
+.room-review-card-heading { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; }
+.room-review-card-heading > span:first-child { font-family: var(--mono); color: var(--text); }
+.room-review-card-heading > span:nth-child(2) { color: var(--text-2); }
+.room-review-card-heading em { padding: 2px 5px; border: 1px solid var(--line); color: var(--text-2); font-size: 8px; font-style: normal; text-transform: uppercase; }
+.room-review-card > p { display: flex; gap: 5px; margin: 7px 0; color: #d9823b; line-height: 1.35; }
+.room-review-actions, .room-gap-review { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 7px; }
+.room-review-actions button, .room-gap-review button { padding: 4px 6px; border: 1px solid var(--line); background: transparent; color: var(--text-2); font: inherit; cursor: pointer; }
+.room-review-actions button.active, .room-gap-review button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); }
+.room-gap-review > span { flex: 1 1 90px; color: #d9823b; }
+.room-detail-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.room-detail-fields label { display: grid; gap: 3px; color: var(--text-2); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+.room-detail-fields input:not([type="checkbox"]), .room-detail-fields textarea { min-width: 0; width: 100%; padding: 5px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: 10.5px var(--sans); text-transform: none; letter-spacing: 0; }
+.room-detail-fields textarea { min-height: 50px; resize: vertical; }
+.room-detail-fields .room-detail-wide, .room-detail-fields .room-detail-export { grid-column: 1 / -1; }
+.room-detail-fields .room-detail-export { display: flex; grid-template-columns: auto 1fr; align-items: center; text-transform: none; }
 .floor-plan-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 10px; padding: 9px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--text-2); font-size: 10px; }
 .floor-plan-legend span { display: flex; align-items: center; gap: 7px; }
 .floor-plan-legend i { width: 18px; height: 4px; display: block; background: #263f46; }
@@ -1428,6 +1449,9 @@ button[data-reason]:focus-visible::after {
   text-align: left;
 }
 .recent-row:hover { background: var(--hover); }
+.recent-open:disabled,
+.recent-delete:disabled,
+.recent-head button:disabled { cursor: wait; opacity: .5; }
 .recent-delete {
   position: absolute;
   top: 50%;

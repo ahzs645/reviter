@@ -86,14 +86,18 @@ for (let attempt = 0; attempt < 400; attempt += 1) {
 }
 
 const canvas = page.locator("canvas.model-canvas");
-const vector = (text) => (text ?? "").split(",").map(Number);
+// Read the live camera, not the canvas dataset. The dataset is written by the
+// render loop, and a headless tab throttles requestAnimationFrame hard enough
+// that a snapshot taken through it lags the camera it is meant to describe.
 const pose = async () => {
-  const raw = await canvas.evaluate((node) => ({
-    position: node.dataset.cameraPosition,
-    target: node.dataset.cameraTarget,
-  }));
-  const position = vector(raw.position);
-  const target = vector(raw.target);
+  const raw = await page.evaluate(() => {
+    const { camera, controls } = window.__reviterNavigation;
+    return {
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: [controls.target.x, controls.target.y, controls.target.z],
+    };
+  });
+  const { position, target } = raw;
   const offset = [position[0] - target[0], position[1] - target[1], position[2] - target[2]];
   const planar = Math.hypot(offset[0], offset[1]);
   return {
@@ -113,13 +117,68 @@ const centre = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box
 // Damping spreads one drag over about ninety frames; the total it applies is
 // exactly the angle that went in, so every measurement waits for the tail.
 const SETTLE_MS = 2_000;
+
+/**
+ * Drive the canvas with synthetic pointer events from inside the page.
+ *
+ * This is deliberately the same instrument that was used on Autodesk Viewer, so
+ * the two columns are comparable. It also avoids the driver's own input path,
+ * which in this environment silently drops events — a `page.mouse.wheel` never
+ * arrived at the canvas at all, and long drags lost their later moves.
+ */
 const drag = async (dx, dy, { button = "left", modifier } = {}) => {
-  await page.mouse.move(centre.x, centre.y);
-  if (modifier) await page.keyboard.down(modifier);
-  await page.mouse.down({ button });
-  await page.mouse.move(centre.x + dx, centre.y + dy, { steps: 10 });
-  await page.mouse.up({ button });
-  if (modifier) await page.keyboard.up(modifier);
+  await page.evaluate(({ dx, dy, button, modifier, x0, y0 }) => {
+    const node = document.querySelector("canvas.model-canvas");
+    const buttons = button === "left" ? 1 : button === "middle" ? 4 : 2;
+    const code = button === "left" ? 0 : button === "middle" ? 1 : 2;
+    const flags = {
+      shiftKey: modifier === "Shift",
+      ctrlKey: modifier === "Control",
+      metaKey: modifier === "Meta",
+      altKey: modifier === "Alt",
+    };
+    const make = (type, x, y, held) => new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+      clientX: x,
+      clientY: y,
+      button: code,
+      buttons: held,
+      ...flags,
+    });
+    node.dispatchEvent(make("pointerdown", x0, y0, buttons));
+    for (let step = 1; step <= 10; step += 1) {
+      const x = Math.round(x0 + (dx * step) / 10);
+      const y = Math.round(y0 + (dy * step) / 10);
+      node.dispatchEvent(make("pointermove", x, y, buttons));
+      document.dispatchEvent(make("pointermove", x, y, buttons));
+    }
+    node.dispatchEvent(make("pointerup", x0 + dx, y0 + dy, 0));
+    document.dispatchEvent(make("pointerup", x0 + dx, y0 + dy, 0));
+    // Damping spreads one drag over about ninety frames, and its total is
+    // exactly the angle that went in. Drain it here rather than waiting on
+    // requestAnimationFrame, which a headless tab throttles to almost nothing —
+    // that throttling, not the rotation, is what an unpumped run measures.
+    for (let tick = 0; tick < 300; tick += 1) window.__reviterNavigation.controls.update();
+  }, { dx, dy, button, modifier, x0: centre.x, y0: centre.y });
+  await page.waitForTimeout(SETTLE_MS);
+};
+
+const wheel = async (deltaY) => {
+  await page.evaluate(({ deltaY, x, y }) => {
+    document.querySelector("canvas.model-canvas").dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      deltaY,
+      deltaMode: 0,
+    }));
+    for (let tick = 0; tick < 300; tick += 1) window.__reviterNavigation.controls.update();
+  }, { deltaY, x: centre.x, y: centre.y });
   await page.waitForTimeout(SETTLE_MS);
 };
 
@@ -135,6 +194,137 @@ const record = (label, measured, expected, unit, tolerance) => {
   const pass = expected === null || Math.abs(measured - expected) <= tolerance;
   results.push({ label, measured, expected, unit, pass });
 };
+
+const geometry = await canvas.evaluate((node) => ({
+  clientWidth: node.clientWidth,
+  clientHeight: node.clientHeight,
+  bufferWidth: node.width,
+  bufferHeight: node.height,
+  devicePixelRatio: window.devicePixelRatio,
+}));
+console.log("\n  canvas", JSON.stringify(geometry), "box", JSON.stringify(box));
+
+const controlsState = await page.evaluate(() => {
+  const nav = window.__reviterNavigation;
+  if (!nav) return { missing: true };
+  const { controls } = nav;
+  // Feed a known angle straight into the rotate hooks and read what lands in
+  // the spherical delta: that isolates the per-pixel conversion from every
+  // question about how the drag reached the control.
+  const probe = (2 * Math.PI * 100) / controls.domElement.clientHeight;
+  const beforeTheta = controls._sphericalDelta.theta;
+  const beforePhi = controls._sphericalDelta.phi;
+  controls._rotateLeft(probe);
+  controls._rotateUp(probe);
+  const injectedTheta = controls._sphericalDelta.theta - beforeTheta;
+  const injectedPhi = controls._sphericalDelta.phi - beforePhi;
+  controls._sphericalDelta.theta = beforeTheta;
+  controls._sphericalDelta.phi = beforePhi;
+  return {
+    enabled: controls.enabled,
+    cameraIsPerspective: Boolean(nav.camera.isPerspectiveCamera),
+    rotateSpeed: controls.rotateSpeed,
+    zoomSpeed: controls.zoomSpeed,
+    zoomToCursor: controls.zoomToCursor,
+    enableZoom: controls.enableZoom,
+    enableRotate: controls.enableRotate,
+    enableDamping: controls.enableDamping,
+    dampingFactor: controls.dampingFactor,
+    minDistance: controls.minDistance,
+    maxDistance: controls.maxDistance,
+    maxTargetRadius: controls.maxTargetRadius,
+    mouseButtons: { ...controls.mouseButtons },
+    domElementIsCanvas: controls.domElement === document.querySelector("canvas.model-canvas"),
+    // Radians actually banked for 100 px of drag on each axis.
+    yawRadiansPer100px: Math.abs(injectedTheta),
+    pitchRadiansPer100px: Math.abs(injectedPhi),
+  };
+});
+console.log("  controls", JSON.stringify(controlsState, null, 2).replace(/\n/g, "\n  "));
+console.log(
+  `  injected yaw   ${controlsState.yawRadiansPer100px?.toFixed(6)} rad/100px (want 0.195313)\n` +
+  `  injected pitch ${controlsState.pitchRadiansPer100px?.toFixed(6)} rad/100px (want 0.394616)`,
+);
+
+const start = await pose();
+console.log(
+  `  start pose: elevation ${start.elevation.toFixed(2)} deg, azimuth ` +
+  `${start.azimuth.toFixed(2)} deg, distance ${start.distance.toFixed(1)}`,
+);
+
+// Does a dispatched drag actually reach the control? Compare it against the
+// same rotation driven straight through _rotateLeft, and count the calls.
+const delivery = await page.evaluate(({ x0, y0 }) => {
+  const { camera, controls } = window.__reviterNavigation;
+  const node = controls.domElement;
+  const height = node.clientHeight;
+  const azimuth = () => {
+    const dx = camera.position.x - controls.target.x;
+    const dy = camera.position.y - controls.target.y;
+    return (Math.atan2(dy, dx) * 180) / Math.PI;
+  };
+
+  const direct0 = azimuth();
+  for (let move = 0; move < 10; move += 1) {
+    controls._rotateLeft((2 * Math.PI * -10) / height);
+    controls.update();
+  }
+  const direct = Math.abs(azimuth() - direct0);
+  for (let move = 0; move < 10; move += 1) {
+    controls._rotateLeft((2 * Math.PI * 10) / height);
+    controls.update();
+  }
+
+  let calls = 0;
+  const original = controls._rotateLeft.bind(controls);
+  controls._rotateLeft = (angle) => { calls += 1; original(angle); };
+  const make = (type, x, y, buttons) => new PointerEvent(type, {
+    bubbles: true, cancelable: true, pointerId: 1, pointerType: "mouse",
+    isPrimary: true, clientX: x, clientY: y, button: 0, buttons,
+  });
+  const event0 = azimuth();
+  node.dispatchEvent(make("pointerdown", x0, y0, 1));
+  for (let step = 1; step <= 10; step += 1) {
+    const x = x0 + step * 10;
+    node.dispatchEvent(make("pointermove", x, y0, 1));
+    document.dispatchEvent(make("pointermove", x, y0, 1));
+  }
+  node.dispatchEvent(make("pointerup", x0 + 100, y0, 0));
+  document.dispatchEvent(make("pointerup", x0 + 100, y0, 0));
+  const viaEvents = Math.abs(azimuth() - event0);
+  controls._rotateLeft = original;
+
+  return { direct, viaEvents, rotateLeftCalls: calls, enableDamping: controls.enableDamping };
+}, { x0: centre.x, y0: centre.y });
+console.log(
+  `  100 px direct through _rotateLeft: ${delivery.direct.toFixed(4)} deg\n` +
+  `  100 px via dispatched events:      ${delivery.viaEvents.toFixed(4)} deg ` +
+  `(_rotateLeft called ${delivery.rotateLeftCalls}x, damping ${delivery.enableDamping})`,
+);
+// Sweep both axes so a constant factor is distinguishable from a bad curve.
+console.log("\n  per-pixel rates");
+for (const pixels of [50, 100, 200, 400]) {
+  const start = await pose();
+  await drag(pixels, 0);
+  const end = await pose();
+  const degrees = Math.abs(signedDelta(end.azimuth, start.azimuth));
+  console.log(
+    `    yaw   ${String(pixels).padStart(4)} px -> ${degrees.toFixed(4).padStart(9)} deg  ` +
+    `(${(degrees / pixels).toFixed(6)} deg/px, autodesk 0.111900)`,
+  );
+  await drag(-pixels, 0);
+}
+for (const pixels of [50, 100, 200]) {
+  const start = await pose();
+  await drag(0, pixels);
+  const end = await pose();
+  const degrees = Math.abs(end.elevation - start.elevation);
+  console.log(
+    `    pitch ${String(pixels).padStart(4)} px -> ${degrees.toFixed(4).padStart(9)} deg  ` +
+    `(${(degrees / pixels).toFixed(6)} deg/px, autodesk 0.226100)`,
+  );
+  await drag(0, -pixels);
+}
 
 // Yaw: 200 px of left drag.
 let before = await pose();
@@ -194,18 +384,48 @@ record(
 );
 await drag(-120, 80, { button: "right" });
 
-// One wheel notch should close about 7.34 percent of the gap to the cursor.
+// One wheel notch should carry the eye about 7.34 percent of the way to what
+// is under the cursor. Autodesk moves the target with it, so the distance
+// between them is not the thing to measure — the eye's travel is.
 before = await pose();
-await page.mouse.move(centre.x, centre.y);
-await page.mouse.wheel(0, -120);
-await page.waitForTimeout(SETTLE_MS);
+await wheel(-120);
 after = await pose();
+const travelled = Math.hypot(
+  after.position[0] - before.position[0],
+  after.position[1] - before.position[1],
+  after.position[2] - before.position[2],
+);
+console.log(
+  `\n  wheel: eye moved ${travelled.toFixed(3)} of ${before.distance.toFixed(3)} to target ` +
+  `(${(travelled / before.distance).toFixed(4)}), target moved ` +
+  `${Math.hypot(
+    after.target[0] - before.target[0],
+    after.target[1] - before.target[1],
+    after.target[2] - before.target[2],
+  ).toFixed(3)}`,
+);
+const targetTravelled = Math.hypot(
+  after.target[0] - before.target[0],
+  after.target[1] - before.target[1],
+  after.target[2] - before.target[2],
+);
 record(
-  "wheel notch, approach",
-  (before.distance - after.distance) / before.distance,
+  "wheel notch, eye approach",
+  travelled / before.distance,
   AUTODESK.wheelApproachPerNotch,
   "fraction",
-  0.015,
+  0.02,
+);
+// Autodesk moved the eye 24.4 and the target 24.4 with it. Reeling the eye in
+// towards a pinned target rewrites the orbit radius on every zoom, so the next
+// orbit drag behaves differently from the last.
+record("wheel, target follows eye", targetTravelled - travelled, 0, "units", 0.01);
+record(
+  "wheel, orbit radius held",
+  after.distance - before.distance,
+  0,
+  "units",
+  0.01,
 );
 
 console.log("\n  measurement                    reviter     autodesk   ");

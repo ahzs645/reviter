@@ -420,8 +420,23 @@ if (terminalPhase === "ready") {
   await page.waitForTimeout(350);
   const zoomAfter = await pose();
   const zoomAfterDistance = distance(vector(zoomAfter.position), vector(zoomAfter.target));
-  if (Math.abs(zoomBeforeDistance - zoomAfterDistance) < 0.001) {
-    throw new Error("Wheel zoom did not change the camera-to-pivot distance.");
+  // The wheel translates the whole camera along the cursor ray, as Autodesk's
+  // does: the eye advances and the target advances with it. Reeling the eye in
+  // towards a pinned target instead would rewrite the orbit radius on every
+  // zoom, so each orbit drag behaved differently from the one before it.
+  const eyeAdvanced = distance(vector(zoomBefore.position), vector(zoomAfter.position));
+  const targetAdvanced = distance(vector(zoomBefore.target), vector(zoomAfter.target));
+  if (eyeAdvanced < 0.001) {
+    throw new Error("Wheel zoom did not move the camera.");
+  }
+  if (Math.abs(eyeAdvanced - targetAdvanced) > 0.01) {
+    throw new Error(
+      `Wheel zoom moved the eye ${eyeAdvanced.toFixed(3)} but the target ${targetAdvanced.toFixed(3)}; ` +
+      "they must travel together.",
+    );
+  }
+  if (Math.abs(zoomBeforeDistance - zoomAfterDistance) > 0.01) {
+    throw new Error("Wheel zoom changed the orbit radius; it must survive a zoom.");
   }
 
   const pivotBefore = await pose();

@@ -251,6 +251,8 @@ export {
   makeFloorPlateSvg,
   makeArchitecturalFloorSvg,
   architecturalPlanSummary,
+  connectedFloorPlanGroup,
+  connectedFloorPlanGroups,
   floorPlateBounds,
   floorPlateSvgDataUrl,
   makePlanSvg,
@@ -260,14 +262,19 @@ export {
   makeReport,
   outputName,
 } from "./exports";
-export { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "./derived-rooms";
+export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms";
 export type {
   DerivedRoom,
+  DerivedRoomGap,
   DerivedRoomOptions,
   DerivedRoomResult,
 } from "./derived-rooms";
+export { isReviewedGap, isReviewedRoom, mergeRoomReview, reconcileRoomReview, ROOM_REVIEW_VERSION } from "./room-review";
+export type { GapDisposition, ReviewedGap, ReviewedRoom, RoomDetails, RoomDisposition, RoomReviewSidecar, RoomReviewState } from "./room-review";
 export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports";
 export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports";
+export type { IfcExportOptions } from "./export-ifc";
+export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./exports";
 export type {
   ConvertFailure,
   ConvertOptions,

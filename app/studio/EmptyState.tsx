@@ -14,6 +14,7 @@ import { fileExtensionLabel, relativeTime, type RecentFile } from "./recents.ts"
 
 export function EmptyState({
   recents,
+  busy,
   error,
   onOpen,
   onOpenRecent,
@@ -21,6 +22,7 @@ export function EmptyState({
   onClearRecents,
 }: {
   recents: readonly RecentFile[];
+  busy: boolean;
   error: string | null;
   onOpen: () => void;
   onOpenRecent: (file: RecentFile) => void;
@@ -37,7 +39,12 @@ export function EmptyState({
             Metadata is read directly from the file. Geometry is recovered separately, in a
             worker in this tab, and always labelled as such.
           </p>
-          <button type="button" className="rv-button rv-button-primary" onClick={onOpen}>
+          <button
+            type="button"
+            className="rv-button rv-button-primary"
+            disabled={busy}
+            onClick={onOpen}
+          >
             <Upload size={16} aria-hidden />
             Open a Revit file
           </button>
@@ -45,7 +52,7 @@ export function EmptyState({
           {error && <p className="empty-error" role="alert">{error}</p>}
         </div>
 
-        <div className="recent-card">
+        <div className="recent-card" aria-busy={busy}>
           <div className="recent-head">
             <Clock size={13} aria-hidden />
             <span>Recent</span>
@@ -53,16 +60,18 @@ export function EmptyState({
               <button
                 type="button"
                 title="Clear recent history and browser-cached copies"
+                disabled={busy}
                 onClick={onClearRecents}
               >Clear all</button>
             )}
           </div>
           {recents.length ? recents.map((file) => (
-            <div className="recent-row" key={`${file.name}:${file.size}`}>
+            <div className="recent-row" key={`${file.name}:${file.size}:${file.lastModified ?? 0}`}>
               <button
                 type="button"
                 className="recent-open"
-                title={`Open ${file.name} again`}
+                title={busy ? "A model is already opening" : `Open ${file.name} again`}
+                disabled={busy}
                 onClick={() => onOpenRecent(file)}
               >
                 <span className="recent-thumb">{fileExtensionLabel(file.name)}</span>
@@ -81,6 +90,7 @@ export function EmptyState({
                 className="recent-delete"
                 title="Remove from Recents and delete its browser-cached copy"
                 aria-label={`Remove ${file.name} from Recents`}
+                disabled={busy}
                 onClick={() => onRemoveRecent(file)}
               ><Trash2 size={14} aria-hidden /></button>
             </div>
