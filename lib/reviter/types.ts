@@ -602,6 +602,11 @@ export type IfcReferenceManifest = {
   /** Native Revit ids admitted by the conservative surface-orientation gate. */
   geometricShapeDifferentElementIds?: Uint32Array;
   /**
+   * Roof ids whose numeric Revit Tag resolves to a direct IfcRoof body which
+   * owns geometry and is not an IfcRelAggregates parent.
+   */
+  directRoofGeometryElementIds?: Uint32Array;
+  /**
    * Ramp ids whose tagged IfcRamp owns a direct body and is not itself an
    * IfcRelAggregates parent. Reference-assisted recovery still requires tight
    * six-face extent parity before replacing the RVT aggregate.
@@ -735,6 +740,10 @@ export type ConvertResult = {
   referenceAssistedCompleteRampAggregateIds?: Uint32Array;
   /** Ramp aggregates kept from RVT because the paired tag was incomplete or unverified. */
   referenceAssistedRetainedRampAggregateIds?: Uint32Array;
+  /** Roofs admitted by direct IfcRoof identity, shape difference, and tight extent parity. */
+  referenceAssistedCompleteRoofIds?: Uint32Array;
+  /** Roofs kept from RVT because one of the strict paired-roof gates was not proved. */
+  referenceAssistedRetainedRoofIds?: Uint32Array;
   /** Persisted spatial relationships from Element.m_assocLevelId. */
   nativeAssociatedLevelRelations?: NativeAssociatedLevelRelation[];
 };

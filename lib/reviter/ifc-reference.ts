@@ -488,6 +488,14 @@ export async function analyzeIfcReference(
           !aggregateParentExpressIds.has(expressId))
         .map(([, elementId]) => elementId),
     )].sort((left, right) => left - right);
+    const directRoofGeometryElementIds = [...new Set(
+      [...revitIdByExpressId]
+        .filter(([expressId]) =>
+          ifcTypeByExpressId.get(expressId) === "IFCROOF" &&
+          geometryExpressIds.has(expressId) &&
+          !aggregateParentExpressIds.has(expressId))
+        .map(([, elementId]) => elementId),
+    )].sort((left, right) => left - right);
     const finiteBounds = Number.isFinite(min.x);
     const manifest: IfcReferenceManifest = {
       fileName,
@@ -510,6 +518,7 @@ export async function analyzeIfcReference(
       geometricShapeDifferentElementIds: Uint32Array.from(
         geometricShapeDifferentElementIds.sort((left, right) => left - right),
       ),
+      directRoofGeometryElementIds: Uint32Array.from(directRoofGeometryElementIds),
       completeRampAggregateElementIds: Uint32Array.from(completeRampAggregateElementIds),
       geometryToleranceFeet: GEOMETRY_TOLERANCE_FEET,
       boundsMetres: finiteBounds

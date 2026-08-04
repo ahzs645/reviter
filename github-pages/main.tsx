@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import ReviterStudio from "../app/ReviterStudio";
+import "./fonts.css";
 import "../app/globals.css";
 
 globalThis.__REVITER_STATIC_WORKERS__ = {

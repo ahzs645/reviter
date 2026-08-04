@@ -88,6 +88,22 @@ deliberately generous slack, and each one's provenance is written out in the
 header comment of `verify-pair.ts`. They are a tripwire for a rule that has
 stopped working, not a pin on today's figures.
 
+### Reopening Reviter's own IFC export
+
+`verify-pair.ts` compares against the Autodesk IFC. The complementary
+round-trip gate exports Reviter's recovered scene, reopens that generated IFC4
+with `web-ifc`, and verifies that every tagged geometry element keeps its id,
+position, and size to 0.01 ft:
+
+```sh
+npm run audit:ifc-roundtrip -- model.rvt
+npm run audit:ifc-roundtrip -- model.rvt --out recovered.ifc --json roundtrip.json
+```
+
+The temporary IFC is deleted when `--out` is omitted. Anonymous display
+context is preserved by the exporter but is intentionally outside the tag
+identity gate because it has no Revit element id to assert.
+
 ### The control on the gate itself
 
 A gate that cannot fail is decoration. Shifting every `Tag` in the export past

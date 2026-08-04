@@ -21,11 +21,26 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   assert.ok(gltfLoader.size > 100_000, "glTF runtime loader was copied");
 
   const assets = await readdir(new URL("assets/", output));
+  assert.ok(
+    assets.some((name) => /^manrope-latin-400-normal-.*\.woff2$/.test(name)),
+    "Manrope was emitted for the static build",
+  );
+  assert.ok(
+    assets.some((name) => /^ibm-plex-mono-latin-400-normal-.*\.woff2$/.test(name)),
+    "IBM Plex Mono was emitted for the static build",
+  );
   assert.ok(assets.some((name) => /^worker-.*\.js$/.test(name)), "RVT worker was emitted");
   assert.ok(assets.some((name) => /^ifc-worker-.*\.js$/.test(name)), "IFC worker was emitted");
   assert.ok(assets.some((name) => /\.wasm$/.test(name)), "WASM decoders were emitted");
 
   const main = await readFile(new URL("assets/index.js", output), "utf8");
+  const css = await readFile(new URL("assets/index.css", output), "utf8");
+  assert.match(main, /\.\/favicon\.png/);
+  assert.doesNotMatch(main, /[\"']\/favicon\.png[\"']/);
+  assert.match(css, /font-family:Manrope/);
+  assert.match(css, /font-family:IBM Plex Mono/);
+  assert.match(css, /--font-manrope:\s*[\"']?Manrope/);
+  assert.match(css, /--font-plex-mono:\s*[\"']?IBM Plex Mono/);
   const chunks = await readdir(new URL("assets/chunks/", output));
   const legacyChunk = chunks.find((name) => /^legacy-revit-2021\.generated-.*\.js$/.test(name));
   assert.ok(legacyChunk, "legacy Revit 2021 compatibility data was emitted as a lazy chunk");

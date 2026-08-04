@@ -281,6 +281,10 @@ export default function ReviterStudio() {
       ? applyIfcReferenceRepairs(result, comparison.referenceMeshes, {
           completeRampAggregateElementIds:
             comparison.reference.completeRampAggregateElementIds,
+          directRoofGeometryElementIds:
+            comparison.reference.directRoofGeometryElementIds,
+          shapeDifferentElementIds:
+            comparison.reference.geometricShapeDifferentElementIds,
         })
       : null,
     [comparison, result],
@@ -1724,7 +1728,7 @@ export default function ReviterStudio() {
         <div className="titlebar-brand">
           {/* The logo is a static asset, not a Next.js image route. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.png" alt="" />
+          <img src="./favicon.png" alt="" />
           <span>Reviter</span>
         </div>
         {result && (

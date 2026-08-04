@@ -3,7 +3,11 @@ import type { Bounds3, ElementBoundsRecord, MeshData, Vec3 } from "./types.ts";
 
 const WALL_CATEGORY_ID = -2_000_011;
 const PLAN_SPAN_DISAGREEMENT_FEET = 0.5;
-const CENTRE_CORROBORATION_FEET = 0.1;
+// A quarter foot is still below the viewer/IFC parity gate and under a typical
+// wall half-thickness. On UNBC this admits 178 additional rendered wall proxies
+// after hosted-opening clipping, reducing >=0.5 ft wall mismatches from 343 to
+// 174 and raising joint centre-and-size agreement from 95.44% to 97.69%.
+const CENTRE_CORROBORATION_FEET = 0.25;
 const VERTICAL_SPAN_CORROBORATION_FEET = 0.25;
 
 function emptyBounds(): Bounds3 {
@@ -95,11 +99,12 @@ const centre = (bounds: Bounds3, axis: "x" | "y" | "z") =>
  * location-line solid while both readings still identify the same wall.
  *
  * The rule uses RVT evidence only. The paired UNBC IFC validates its scope:
- * 660 native meshes meet the broad span/centre gate, and selecting the smaller
- * recovered solid improves size agreement from 5.2% to 98.6%. Restricting the
- * decision to native *overfill* (not any disagreement) isolates the join/sweep
- * residual and avoids incomplete recovered solids that are smaller for the
- * wrong reason.
+ * The original 0.1 ft core improves size agreement from 5.2% to 98.6%. The
+ * broader 0.25 ft band is independently checked after hosted-opening clipping;
+ * on UNBC it admits 178 more walls and leaves 37 native span disagreements for
+ * review. Restricting the decision to native *overfill* (not any disagreement)
+ * isolates the join/sweep residual and avoids incomplete recovered solids that
+ * are smaller for the wrong reason.
  */
 export function nativeWallProxyReplacementIds(
   meshes: readonly MeshData[],

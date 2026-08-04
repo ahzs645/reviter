@@ -14,13 +14,21 @@ import type {
 
 const FEET_PER_METRE = 3.280839895;
 const RAMP_CATEGORY_ID = -2_000_180;
+const ROOF_CATEGORY_ID = -2_000_035;
 const RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET = 0.05;
-const MIN_COMPLETE_RAMP_SPAN_FEET = 0.1;
+const ROOF_EXTENT_TOLERANCE_FEET = 0.05;
+const MIN_COMPLETE_REFERENCE_SPAN_FEET = 0.1;
 
 function isRampAggregate(
   record: ConvertResult["elementBounds"][number] | undefined,
 ): boolean {
   return record?.categoryId === RAMP_CATEGORY_ID || record?.categoryName === "Ramps";
+}
+
+function isRoof(
+  record: ConvertResult["elementBounds"][number] | undefined,
+): boolean {
+  return record?.categoryId === ROOF_CATEGORY_ID || record?.categoryName === "Roofs";
 }
 
 type ElementGeometrySummary = {
@@ -34,6 +42,10 @@ export type IfcReferenceRepairOptions = {
    * IfcRelAggregates parent. Geometry parity is checked again before admission.
    */
   completeRampAggregateElementIds?: ArrayLike<number>;
+  /** Numeric Revit ids proved to own a direct, non-aggregate IfcRoof body. */
+  directRoofGeometryElementIds?: ArrayLike<number>;
+  /** Bounds-aligned ids whose rendered RVT and IFC surface orientations differ. */
+  shapeDifferentElementIds?: ArrayLike<number>;
 };
 
 function addPoint(bounds: Bounds3, x: number, y: number, z: number): void {
@@ -136,8 +148,8 @@ export function hasCompleteRampAggregateReference(
     const recoveredSpan = recovered.bounds.max[axis] - recovered.bounds.min[axis];
     const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
     if (
-      recoveredSpan < MIN_COMPLETE_RAMP_SPAN_FEET ||
-      referenceSpan < MIN_COMPLETE_RAMP_SPAN_FEET ||
+      recoveredSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+      referenceSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
       Math.abs(recovered.bounds.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
       Math.abs(recovered.bounds.max[axis] - reference.bounds.max[axis]) > toleranceFeet
     ) {
@@ -145,6 +157,55 @@ export function hasCompleteRampAggregateReference(
     }
   }
   return true;
+}
+
+/**
+ * Admit a roof replacement only when identity and geometry agree independently.
+ *
+ * A numeric tag alone is not enough: the IFC product must be a direct IfcRoof
+ * body, the rendered RVT must be bounds-aligned but materially different in
+ * surface orientation, and all six extents must agree within 0.05 ft. Rendered
+ * mesh extents are preferred; when that mesh is known to be incomplete, the
+ * independently persisted native element bounds may satisfy the same gate.
+ * This is the strict path used by UNBC roofs 1420880 and 1718794; ordinary
+ * RVT-only conversion remains untouched and keeps reconstructed provenance.
+ */
+export function hasCompleteRoofReference(
+  recovered: ElementGeometrySummary | undefined,
+  reference: ElementGeometrySummary | undefined,
+  directIfcRoofBody: boolean,
+  shapeDifferenceConfirmed: boolean,
+  toleranceFeet = ROOF_EXTENT_TOLERANCE_FEET,
+  nativeRecordBounds?: Bounds3,
+): boolean {
+  if (!directIfcRoofBody || !shapeDifferenceConfirmed || !reference) {
+    return false;
+  }
+  if (reference.triangles < 4) return false;
+  const extentsMatch = (candidate: Bounds3): boolean => {
+    for (const axis of ["x", "y", "z"] as const) {
+      const candidateSpan = candidate.max[axis] - candidate.min[axis];
+      const referenceSpan = reference.bounds.max[axis] - reference.bounds.min[axis];
+      if (
+        !Number.isFinite(candidateSpan) ||
+        !Number.isFinite(referenceSpan) ||
+        candidateSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+        referenceSpan < MIN_COMPLETE_REFERENCE_SPAN_FEET ||
+        Math.abs(candidate.min[axis] - reference.bounds.min[axis]) > toleranceFeet ||
+        Math.abs(candidate.max[axis] - reference.bounds.max[axis]) > toleranceFeet
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+  // Prefer the independently rendered mesh. An incomplete recovered roof may
+  // legitimately stop short of its persisted native record bounds, so accept
+  // that record only after the identity and slope gates above already passed.
+  if (recovered && recovered.triangles >= 4 && extentsMatch(recovered.bounds)) {
+    return true;
+  }
+  return nativeRecordBounds ? extentsMatch(nativeRecordBounds) : false;
 }
 
 function dominantMaterials(meshes: readonly MeshData[]): Map<number, number> {
@@ -215,21 +276,53 @@ export function applyIfcReferenceRepairs(
   const rampAggregateIds = new Set(
     result.elementBounds.filter(isRampAggregate).map((record) => record.elementId),
   );
+  const roofIds = new Set(
+    result.elementBounds.filter(isRoof).map((record) => record.elementId),
+  );
+  const geometryGateIds = new Set([...rampAggregateIds, ...roofIds]);
   const semanticallyCompleteRampIds = new Set<number>(
     options.completeRampAggregateElementIds
       ? Array.from(options.completeRampAggregateElementIds)
       : [],
   );
-  const recoveredGeometry = summarizeRecoveredGeometry(result, rampAggregateIds);
-  const referenceGeometry = summarizeReferenceGeometry(references, rampAggregateIds);
+  const directRoofGeometryIds = new Set<number>(
+    options.directRoofGeometryElementIds
+      ? Array.from(options.directRoofGeometryElementIds)
+      : [],
+  );
+  const shapeDifferentIds = new Set<number>(
+    options.shapeDifferentElementIds
+      ? Array.from(options.shapeDifferentElementIds)
+      : [],
+  );
+  const recoveredGeometry = summarizeRecoveredGeometry(result, geometryGateIds);
+  const referenceGeometry = summarizeReferenceGeometry(references, geometryGateIds);
   const replacementIds = new Set<number>();
   const retainedAggregateIds = new Set<number>();
   const completeRampAggregateIds = new Set<number>();
+  const retainedRoofIds = new Set<number>();
+  const completeRoofIds = new Set<number>();
   for (const reference of references) {
     if (reference.diffStatus !== "different") continue;
     for (const elementId of reference.elementIds ?? []) {
       const record = recordById.get(elementId);
       if (!(elementId > 0 && recordIds.has(elementId))) continue;
+      if (isRoof(record)) {
+        if (hasCompleteRoofReference(
+          recoveredGeometry.get(elementId),
+          referenceGeometry.get(elementId),
+          directRoofGeometryIds.has(elementId),
+          shapeDifferentIds.has(elementId),
+          ROOF_EXTENT_TOLERANCE_FEET,
+          record?.boundsFeet,
+        )) {
+          completeRoofIds.add(elementId);
+          replacementIds.add(elementId);
+        } else {
+          retainedRoofIds.add(elementId);
+        }
+        continue;
+      }
       if (isRampAggregate(record)) {
         if (hasCompleteRampAggregateReference(
           recoveredGeometry.get(elementId),
@@ -247,15 +340,23 @@ export function applyIfcReferenceRepairs(
     }
   }
   if (!replacementIds.size) {
-    if (!retainedAggregateIds.size) return result;
+    if (!retainedAggregateIds.size && !retainedRoofIds.size) return result;
     return {
       ...result,
       referenceAssistedRetainedRampAggregateIds: Uint32Array.from(
         [...retainedAggregateIds].sort((left, right) => left - right),
       ),
+      referenceAssistedRetainedRoofIds: Uint32Array.from(
+        [...retainedRoofIds].sort((left, right) => left - right),
+      ),
       warnings: [
         ...result.warnings,
-        `${retainedAggregateIds.size.toLocaleString()} ramp aggregate${retainedAggregateIds.size === 1 ? "" : "s"} retained from RVT because the tagged IFC body is decomposed, lacks a direct complete body, or does not match all six rendered aggregate extents within ${RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET.toFixed(2)} ft.`,
+        ...(retainedAggregateIds.size
+          ? [`${retainedAggregateIds.size.toLocaleString()} ramp aggregate${retainedAggregateIds.size === 1 ? "" : "s"} retained from RVT because the tagged IFC body is decomposed, lacks a direct complete body, or does not match all six rendered aggregate extents within ${RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET.toFixed(2)} ft.`]
+          : []),
+        ...(retainedRoofIds.size
+          ? [`${retainedRoofIds.size.toLocaleString()} roof${retainedRoofIds.size === 1 ? "" : "s"} retained from RVT because direct IfcRoof identity, a material surface-orientation difference, or six-face rendered/native-record extent parity within ${ROOF_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
+          : []),
       ],
     };
   }
@@ -337,15 +438,27 @@ export function applyIfcReferenceRepairs(
     referenceAssistedRetainedRampAggregateIds: Uint32Array.from(
       [...retainedAggregateIds].sort((left, right) => left - right),
     ),
+    referenceAssistedCompleteRoofIds: Uint32Array.from(
+      [...completeRoofIds].sort((left, right) => left - right),
+    ),
+    referenceAssistedRetainedRoofIds: Uint32Array.from(
+      [...retainedRoofIds].sort((left, right) => left - right),
+    ),
     stats: { ...result.stats, triangleCount },
     warnings: [
       ...result.warnings,
       `${replacementIds.size.toLocaleString()} geometrically different elements use tagged geometry from the paired IFC; Revit identity, semantics and native material assignments are retained.`,
       ...(completeRampAggregateIds.size
-        ? [`${completeRampAggregateIds.size.toLocaleString()} ramp aggregate${completeRampAggregateIds.size === 1 ? "" : "s"} uses its tagged direct IFC body after semantic completeness and six-face extent parity were both confirmed.`]
+        ? [`${completeRampAggregateIds.size.toLocaleString()} ramp aggregate${completeRampAggregateIds.size === 1 ? " uses its" : "s use their"} tagged direct IFC body after semantic completeness and six-face extent parity were both confirmed.`]
         : []),
       ...(retainedAggregateIds.size
         ? [`${retainedAggregateIds.size.toLocaleString()} ramp aggregate${retainedAggregateIds.size === 1 ? "" : "s"} retained from RVT because the tagged IFC body is decomposed, lacks a direct complete body, or does not match all six rendered aggregate extents within ${RAMP_AGGREGATE_EXTENT_TOLERANCE_FEET.toFixed(2)} ft.`]
+        : []),
+      ...(completeRoofIds.size
+        ? [`${completeRoofIds.size.toLocaleString()} roof${completeRoofIds.size === 1 ? " uses its" : "s use their"} direct tagged IfcRoof body after a material surface-orientation difference and six-face rendered/native-record extent parity were both confirmed.`]
+        : []),
+      ...(retainedRoofIds.size
+        ? [`${retainedRoofIds.size.toLocaleString()} roof${retainedRoofIds.size === 1 ? "" : "s"} retained from RVT because direct IfcRoof identity, a material surface-orientation difference, or six-face rendered/native-record extent parity within ${ROOF_EXTENT_TOLERANCE_FEET.toFixed(2)} ft was not confirmed.`]
         : []),
     ],
   };

@@ -148,7 +148,7 @@ export function MobileShell({
         <header className="mobile-header">
           {/* The logo is a static asset, not a Next.js image route. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.png" alt="" />
+          <img src="./favicon.png" alt="" />
           <div>
             <strong>Reviter</strong>
             <span>{statusLine}</span>
@@ -164,7 +164,7 @@ export function MobileShell({
     <div className="mobile">
       <header className="mobile-header">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/favicon.png" alt="" />
+        <img src="./favicon.png" alt="" />
         <div>
           <strong>{fileName}</strong>
           <span>{statusLine}</span>

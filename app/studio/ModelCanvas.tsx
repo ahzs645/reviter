@@ -60,6 +60,10 @@ import {
 } from "./walk-surface.ts";
 import { SourceAssetCache } from "./source-asset-cache.ts";
 import {
+  browserIndexSchedulerEnvironment,
+  CooperativeIndexScheduler,
+} from "./cooperative-index-scheduler.ts";
+import {
   ExplodeToolPanel,
   FirstPersonPanel,
   MeasureToolPanel,
@@ -106,7 +110,7 @@ function tuple(point: THREE.Vector3): Point3Tuple {
 
 // Large enough to amortize one idle callback without monopolizing a frame on
 // the million-triangle UNBC model (typically a few milliseconds of CPU work).
-const WALK_INDEX_CHUNK_TRIANGLES = 8_192;
+const WALK_INDEX_CHUNK_TRIANGLES = 1_024;
 
 /**
  * Native categories whose horizontal caps must not become gravity floors.
@@ -167,6 +171,9 @@ type CachedWalkAssets = {
   walkCollision: WalkCollisionIndex | null;
   walkIndexDirty: boolean;
   walkSurfaceBuildMs: number | null;
+  walkSurfaceCpuMs: number | null;
+  walkSurfaceMaxChunkMs: number | null;
+  walkSurfaceYieldCount: number | null;
   walkCollisionBuildMs: number | null;
 };
 
@@ -347,7 +354,7 @@ export function ModelCanvas({
      * recovered-geometry scene. Called on walk entry, so a session that never
      * walks never pays for it.
      */
-    prepareWalkIndexes: () => Promise<void>;
+    prepareWalkIndexes: (priority?: "idle" | "foreground") => Promise<void>;
     walkIndexDirty: boolean;
     invalidateWalkIndexes: () => void;
     /** Floor picked before entering Walk, consumed by the next walk session. */
@@ -521,6 +528,9 @@ export function ModelCanvas({
       walkCollision: null,
       walkIndexDirty: false,
       walkSurfaceBuildMs: null,
+      walkSurfaceCpuMs: null,
+      walkSurfaceMaxChunkMs: null,
+      walkSurfaceYieldCount: null,
       walkCollisionBuildMs: null,
     }));
     const walkAssets = cachedWalkAssets.value;
@@ -741,6 +751,11 @@ export function ModelCanvas({
     const upVector = up === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const downVector = upVector.clone().negate();
     let active = true;
+    const schedulerEnvironment = browserIndexSchedulerEnvironment();
+    const surfaceIndexScheduler = new CooperativeIndexScheduler(schedulerEnvironment);
+    // Solid collision is optional and deliberately never promoted by Walk.
+    // Surface following becomes urgent; collision keeps consuming idle slices.
+    const collisionIndexScheduler = new CooperativeIndexScheduler(schedulerEnvironment);
     let referenceWalkSurface: WalkSurfaceIndex | null = isReferenceModel
       ? walkAssets.walkSurface
       : null;
@@ -777,16 +792,18 @@ export function ModelCanvas({
     if (walkAssets.walkSurfaceBuildMs != null) {
       canvas.dataset.walkIndexBuildMs = walkAssets.walkSurfaceBuildMs.toFixed(1);
     } else delete canvas.dataset.walkIndexBuildMs;
+    if (walkAssets.walkSurfaceCpuMs != null) {
+      canvas.dataset.walkIndexCpuMs = walkAssets.walkSurfaceCpuMs.toFixed(1);
+    } else delete canvas.dataset.walkIndexCpuMs;
+    if (walkAssets.walkSurfaceMaxChunkMs != null) {
+      canvas.dataset.walkIndexMaxChunkMs = walkAssets.walkSurfaceMaxChunkMs.toFixed(1);
+    } else delete canvas.dataset.walkIndexMaxChunkMs;
+    if (walkAssets.walkSurfaceYieldCount != null) {
+      canvas.dataset.walkIndexYieldCount = String(walkAssets.walkSurfaceYieldCount);
+    } else delete canvas.dataset.walkIndexYieldCount;
     if (walkAssets.walkCollisionBuildMs != null) {
       canvas.dataset.walkCollisionBuildMs = walkAssets.walkCollisionBuildMs.toFixed(1);
     } else delete canvas.dataset.walkCollisionBuildMs;
-    const waitForIdleSlice = () => new Promise<void>((resolve) => {
-      if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(() => resolve(), { timeout: 50 });
-      } else {
-        window.setTimeout(resolve, 0);
-      }
-    });
     const walkGeometryJobs = () => {
       root.updateMatrixWorld(true);
       return interactionMeshes.map((object) => {
@@ -821,7 +838,7 @@ export function ModelCanvas({
             startTriangle < job.triangleCount;
             startTriangle += WALK_INDEX_CHUNK_TRIANGLES
           ) {
-            await waitForIdleSlice();
+            if (!await collisionIndexScheduler.yield()) return;
             if (!active
               || buildVersion !== walkIndexBuildVersion
               || collisionBuildVersion !== collisionIndexBuildVersion
@@ -851,10 +868,19 @@ export function ModelCanvas({
       });
       collisionIndexBuild = build;
     };
-    const prepareWalkIndexes = (): Promise<void> => {
+    const prepareWalkIndexes = (
+      priority: "idle" | "foreground" = "foreground",
+    ): Promise<void> => {
       if (isReferenceModel) return Promise.resolve();
+      if (priority === "foreground") {
+        surfaceIndexScheduler.promote();
+        canvas.dataset.walkIndexPriority = "foreground";
+      } else if (surfaceIndexScheduler.priority === "idle") {
+        canvas.dataset.walkIndexPriority = "idle";
+      }
       if (recoveredWalkSurface && !walkAssets.walkIndexDirty) {
         canvas.dataset.walkSurfaceCache = "hit";
+        canvas.dataset.walkPrewarmState = "cache-hit";
         canvas.dataset.walkIndexState = recoveredWalkCollision ? "ready" : "surface-ready";
         if (!recoveredWalkCollision && !collisionIndexBuild) {
           prepareCollisionIndex(walkGeometryJobs(), walkIndexBuildVersion);
@@ -877,13 +903,15 @@ export function ModelCanvas({
           const jobs = walkGeometryJobs();
           const surface = new WalkSurfaceIndex({ up, cellSize: 1.25 * sceneUnitsPerFoot });
           const startedAt = performance.now();
+          let cpuMs = 0;
+          let maxChunkMs = 0;
           for (const job of jobs) {
             for (
               let startTriangle = 0;
               startTriangle < job.triangleCount;
               startTriangle += WALK_INDEX_CHUNK_TRIANGLES
             ) {
-              await waitForIdleSlice();
+              if (!await surfaceIndexScheduler.yield()) return;
               if (!active || buildVersion !== walkIndexBuildVersion) return;
               const range = {
                 startTriangle,
@@ -891,16 +919,27 @@ export function ModelCanvas({
                 elementIds: job.elementIds,
                 excludedSurfaceElementIds: excludedWalkSurfaceElementIds,
               };
+              const chunkStartedAt = performance.now();
               surface.addGeometry(job.geometry, job.matrix, range);
+              const chunkMs = performance.now() - chunkStartedAt;
+              cpuMs += chunkMs;
+              maxChunkMs = Math.max(maxChunkMs, chunkMs);
             }
           }
           if (runtime.walkIndexDirty || walkAssets.walkIndexDirty) continue;
           recoveredWalkSurface = surface;
           walkAssets.walkSurface = surface;
           walkAssets.walkSurfaceBuildMs = performance.now() - startedAt;
+          walkAssets.walkSurfaceCpuMs = cpuMs;
+          walkAssets.walkSurfaceMaxChunkMs = maxChunkMs;
+          walkAssets.walkSurfaceYieldCount = surfaceIndexScheduler.yields;
           canvas.dataset.walkIndexBuildMs = walkAssets.walkSurfaceBuildMs.toFixed(1);
+          canvas.dataset.walkIndexCpuMs = cpuMs.toFixed(1);
+          canvas.dataset.walkIndexMaxChunkMs = maxChunkMs.toFixed(1);
+          canvas.dataset.walkIndexYieldCount = String(surfaceIndexScheduler.yields);
           canvas.dataset.walkSurfaceCache = "ready";
           canvas.dataset.walkIndexState = "surface-ready";
+          canvas.dataset.walkPrewarmState = "ready";
           // Ghost is the default and needs only the floor index. Solid is beta,
           // so prepare its steep-triangle collision index afterward without
           // making the common Walk entry wait for optional work.
@@ -909,6 +948,7 @@ export function ModelCanvas({
         }
       })();
       canvas.dataset.walkIndexState = "building";
+      canvas.dataset.walkPrewarmState = priority === "foreground" ? "foreground" : "prewarming";
       walkIndexBuild = build.catch(() => {
         // The existing raycast fallback keeps Walk usable if an unusually large
         // or malformed mesh cannot be indexed; do not strand the entry screen.
@@ -1392,6 +1432,11 @@ export function ModelCanvas({
         walkAssets.walkIndexDirty = true;
         walkAssets.walkSurface = null;
         walkAssets.walkCollision = null;
+        walkAssets.walkSurfaceBuildMs = null;
+        walkAssets.walkSurfaceCpuMs = null;
+        walkAssets.walkSurfaceMaxChunkMs = null;
+        walkAssets.walkSurfaceYieldCount = null;
+        walkAssets.walkCollisionBuildMs = null;
         recoveredWalkSurface = null;
         recoveredWalkCollision = null;
         collisionIndexBuildVersion += 1;
@@ -1413,14 +1458,15 @@ export function ModelCanvas({
     // after the browser has painted the model; each triangle chunk yields back
     // to the event loop, so even a campus-sized RVT stays interactive.
     if (!isReferenceModel) {
+      canvas.dataset.walkPrewarmState = recoveredWalkSurface ? "cache-hit" : "scheduled";
       if (typeof window.requestIdleCallback === "function") {
         const idleId = window.requestIdleCallback(() => {
-          if (active) void prepareWalkIndexes();
+          if (active) void prepareWalkIndexes("idle");
         }, { timeout: 1_500 });
         cancelWalkPrewarm = () => window.cancelIdleCallback(idleId);
       } else {
         const timeoutId = window.setTimeout(() => {
-          if (active) void prepareWalkIndexes();
+          if (active) void prepareWalkIndexes("idle");
         }, 250);
         cancelWalkPrewarm = () => window.clearTimeout(timeoutId);
       }
@@ -1589,6 +1635,8 @@ export function ModelCanvas({
     return () => {
       active = false;
       walkIndexBuildVersion += 1;
+      surfaceIndexScheduler.cancel();
+      collisionIndexScheduler.cancel();
       cancelWalkPrewarm();
       cancelAnimationFrame(frame);
       // Carry a normalized camera between the feet/z-up recovery and the
@@ -1840,8 +1888,12 @@ export function ModelCanvas({
       }
     });
 
-    void runtime.prepareWalkIndexes().then(() => {
+    const walkPrepareStartedAt = performance.now();
+    canvas.dataset.walkEntryState = "preparing";
+    void runtime.prepareWalkIndexes("foreground").then(() => {
       if (cancelled) return;
+      canvas.dataset.walkEntryWaitMs = (performance.now() - walkPrepareStartedAt).toFixed(1);
+      canvas.dataset.walkEntryState = "ready";
       setWalkPreparing(false);
       const eyeHeight = WALK_EYE_HEIGHT * runtime.sceneUnitsPerFoot;
       const hasRequestedStart = walkStartRequest.sequence !== appliedWalkStartRequestRef.current

@@ -91,3 +91,19 @@ test("checks the rendered proxy after hosted openings are cut", () => {
   );
   assert.deepEqual([...replacements], []);
 });
+
+test("accepts a sub-quarter-foot centre shift but rejects a larger ambiguous overfill", () => {
+  const mesh = boxMesh([
+    // 0.6 ft longer than the proxy with a 0.2 ft centre shift.
+    { elementId: 1, bounds: [-0.1, -0.5, 0, 10.5, 0.5, 10] },
+    // 0.8 ft longer, but the 0.3 ft shift no longer identifies the same body
+    // tightly enough to discard certified native faces.
+    { elementId: 2, bounds: [-0.1, -0.5, 0, 10.7, 0.5, 10] },
+  ]);
+  const replacements = nativeWallProxyReplacementIds(
+    [mesh],
+    { x: 0, y: 0, z: 0 },
+    [wall(1), wall(2)],
+  );
+  assert.deepEqual([...replacements], [1]);
+});

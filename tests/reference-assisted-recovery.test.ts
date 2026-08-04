@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applyIfcReferenceRepairs } from "../lib/reviter/reference-assisted-recovery.ts";
+import {
+  applyIfcReferenceRepairs,
+  hasCompleteRoofReference,
+} from "../lib/reviter/reference-assisted-recovery.ts";
+import { elementManifest } from "../lib/reviter/export-report.ts";
 import type { ConvertResult, MeshData, ReferenceMeshData } from "../lib/reviter/types.ts";
 
 function recoveredMesh(): MeshData {
@@ -227,4 +231,128 @@ test("reports a retained ramp aggregate when other IFC repairs are applied", () 
   const repaired = applyIfcReferenceRepairs(original, [reference]);
   assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
   assert.match(repaired.warnings.at(-1) ?? "", /ramp aggregate retained from RVT/);
+});
+
+function tetrahedronRoofModel(): ConvertResult {
+  const original = tetrahedronRampModel();
+  original.elementBounds[0]!.categoryId = -2_000_035;
+  original.elementBounds[0]!.categoryName = "Roofs";
+  return original;
+}
+
+test("replaces a roof only after direct IfcRoof identity, shape, and extent gates", () => {
+  const repaired = applyIfcReferenceRepairs(
+    tetrahedronRoofModel(),
+    [tetrahedronRampReference()],
+    {
+      directRoofGeometryElementIds: Uint32Array.from([1]),
+      shapeDifferentElementIds: Uint32Array.from([1]),
+    },
+  );
+  assert.deepEqual([...repaired.referenceAssistedElementIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedCompleteRoofIds!], [1]);
+  assert.deepEqual([...repaired.referenceAssistedRetainedRoofIds!], []);
+  assert.equal(repaired.elementBounds[0]!.renderGeometryProvenance, "reference-assisted");
+  assert.match(repaired.warnings.at(-1) ?? "", /direct tagged IfcRoof body/);
+
+  const exported = elementManifest(repaired).find(
+    (element) => element.elementId === 1,
+  )!;
+  assert.equal(exported.geometry.source, "paired-ifc-tessellation");
+  assert.equal(exported.geometry.finalProvenance, "reference-assisted");
+});
+
+test("a numeric roof tag without direct IfcRoof identity is retained", () => {
+  const retained = applyIfcReferenceRepairs(
+    tetrahedronRoofModel(),
+    [tetrahedronRampReference()],
+    { shapeDifferentElementIds: Uint32Array.from([1]) },
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRoofIds!], [1]);
+  assert.equal(retained.elementBounds[0]!.renderGeometryProvenance, undefined);
+});
+
+test("a direct bounds-aligned IfcRoof without a confirmed shape difference is retained", () => {
+  const retained = applyIfcReferenceRepairs(
+    tetrahedronRoofModel(),
+    [tetrahedronRampReference()],
+    { directRoofGeometryElementIds: Uint32Array.from([1]) },
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRoofIds!], [1]);
+});
+
+test("a direct shape-different IfcRoof outside tight six-face parity is retained", () => {
+  const retained = applyIfcReferenceRepairs(
+    tetrahedronRoofModel(),
+    [tetrahedronRampReference(0.8)],
+    {
+      directRoofGeometryElementIds: Uint32Array.from([1]),
+      shapeDifferentElementIds: Uint32Array.from([1]),
+    },
+  );
+  assert.equal(retained.referenceAssistedElementIds, undefined);
+  assert.deepEqual([...retained.referenceAssistedRetainedRoofIds!], [1]);
+});
+
+test("an incomplete rendered roof may use matching persisted native bounds", () => {
+  const original = tetrahedronRoofModel();
+  original.meshes[0]!.positions[3] = 0.8;
+  original.elementBounds[0]!.boundsFeet = {
+    min: { x: 10, y: 20, z: 30 },
+    max: { x: 11, y: 21, z: 31 },
+  };
+  const repaired = applyIfcReferenceRepairs(
+    original,
+    [tetrahedronRampReference()],
+    {
+      directRoofGeometryElementIds: Uint32Array.from([1]),
+      shapeDifferentElementIds: Uint32Array.from([1]),
+    },
+  );
+  assert.deepEqual([...repaired.referenceAssistedCompleteRoofIds!], [1]);
+  assert.equal(repaired.elementBounds[0]!.renderGeometryProvenance, "reference-assisted");
+});
+
+test("the strict roof gate rejects missing, degenerate, and mismatched evidence", () => {
+  const summary = {
+    bounds: {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 1, y: 1, z: 1 },
+    },
+    triangles: 4,
+  };
+  assert.equal(hasCompleteRoofReference(summary, summary, true, true), true);
+  assert.equal(hasCompleteRoofReference(summary, summary, false, true), false);
+  assert.equal(hasCompleteRoofReference(summary, summary, true, false), false);
+  assert.equal(hasCompleteRoofReference(undefined, summary, true, true), false);
+  assert.equal(hasCompleteRoofReference(
+    undefined,
+    summary,
+    true,
+    true,
+    0.05,
+    summary.bounds,
+  ), true);
+  assert.equal(hasCompleteRoofReference(
+    undefined,
+    summary,
+    false,
+    true,
+    0.05,
+    summary.bounds,
+  ), false);
+  assert.equal(hasCompleteRoofReference(
+    summary,
+    {
+      bounds: {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 0.9, y: 1, z: 1 },
+      },
+      triangles: 4,
+    },
+    true,
+    true,
+  ), false);
 });

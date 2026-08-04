@@ -15,8 +15,12 @@ import {
 const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
 const jsonIndex = process.argv.indexOf("--json");
 const jsonPath = jsonIndex >= 0 ? process.argv[jsonIndex + 1] : undefined;
+const focusElementIds = process.argv.flatMap((argument, index, arguments_) =>
+  arguments_[index - 1] === "--element" && /^\d+$/.test(argument) ? [Number(argument)] : []);
 if (!rvtPath || !ifcPath) {
-  throw new Error("usage: audit-wall-residuals.ts <model.rvt> <model.ifc> [--json report.json]");
+  throw new Error(
+    "usage: audit-wall-residuals.ts <model.rvt> <model.ifc> [--element id] [--json report.json]",
+  );
 }
 
 const result = convertModel(rvtPath);
@@ -192,6 +196,10 @@ const report = {
   })(),
   byIfcType: groups("ifcType"),
   byRoute: groups("route"),
+  focusElements: focusElementIds.flatMap((elementId) => {
+    const wall = walls.find((candidate) => candidate.elementId === elementId);
+    return wall ? [wall] : [];
+  }),
   mismatches: walls
     .filter((wall) => wall.centre >= 0.5 || wall.size >= 0.5)
     .sort((left, right) =>

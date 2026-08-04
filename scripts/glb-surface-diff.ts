@@ -42,6 +42,15 @@ type Node = {
   translation?: number[];
   rotation?: number[];
   scale?: number[];
+  extensions?: {
+    EXT_mesh_gpu_instancing?: {
+      attributes?: {
+        TRANSLATION?: number;
+        ROTATION?: number;
+        SCALE?: number;
+      };
+    };
+  };
 };
 type GlbDocument = {
   scene?: number;
@@ -251,6 +260,70 @@ function nodeMatrix(node: Node): THREE.Matrix4 {
   );
 }
 
+/**
+ * Decode EXT_mesh_gpu_instancing transforms in glTF's T * R * S order.
+ *
+ * Autodesk's UNBC GLB stores thousands of repeated doors, frames and fixtures
+ * this way. Treating an instancing node as one ordinary mesh silently samples
+ * its family definition at the origin and turns every real placement into a
+ * false visual residual.
+ */
+function gpuInstanceMatrices(parsed: ParsedGlb, node: Node): THREE.Matrix4[] {
+  const attributes = node.extensions?.EXT_mesh_gpu_instancing?.attributes;
+  if (!attributes) return [new THREE.Matrix4()];
+  const translation = attributes.TRANSLATION == null
+    ? null
+    : accessorReader(parsed, attributes.TRANSLATION);
+  const rotation = attributes.ROTATION == null
+    ? null
+    : accessorReader(parsed, attributes.ROTATION);
+  const scale = attributes.SCALE == null
+    ? null
+    : accessorReader(parsed, attributes.SCALE);
+  const readers = [translation, rotation, scale].filter(
+    (reader): reader is ReturnType<typeof accessorReader> => reader != null,
+  );
+  if (!readers.length) return [new THREE.Matrix4()];
+  const count = readers[0]!.count;
+  if (readers.some((reader) => reader.count !== count)) {
+    throw new Error("EXT_mesh_gpu_instancing accessors have different counts.");
+  }
+  if (translation && translation.components < 3) {
+    throw new Error("EXT_mesh_gpu_instancing TRANSLATION is not VEC3.");
+  }
+  if (rotation && rotation.components < 4) {
+    throw new Error("EXT_mesh_gpu_instancing ROTATION is not VEC4.");
+  }
+  if (scale && scale.components < 3) {
+    throw new Error("EXT_mesh_gpu_instancing SCALE is not VEC3.");
+  }
+  return Array.from({ length: count }, (_, index) => {
+    const position = translation
+      ? new THREE.Vector3(
+          translation.value(index, 0),
+          translation.value(index, 1),
+          translation.value(index, 2),
+        )
+      : new THREE.Vector3();
+    const quaternion = rotation
+      ? new THREE.Quaternion(
+          rotation.value(index, 0),
+          rotation.value(index, 1),
+          rotation.value(index, 2),
+          rotation.value(index, 3),
+        ).normalize()
+      : new THREE.Quaternion();
+    const instanceScale = scale
+      ? new THREE.Vector3(
+          scale.value(index, 0),
+          scale.value(index, 1),
+          scale.value(index, 2),
+        )
+      : new THREE.Vector3(1, 1, 1);
+    return new THREE.Matrix4().compose(position, quaternion, instanceScale);
+  });
+}
+
 function readComponent(view: DataView, offset: number, type: number): number {
   switch (type) {
     case 5120: return view.getInt8(offset);
@@ -328,16 +401,24 @@ function sceneInstances(parsed: ParsedGlb): Array<{
     if (node.mesh != null) {
       const mesh = meshes[node.mesh];
       if (!mesh) throw new Error(`Missing GLB mesh ${node.mesh}.`);
-      for (const primitive of mesh.primitives ?? []) {
-        if ((primitive.mode ?? 4) === 4 && primitive.attributes?.POSITION != null) {
-          instances.push({
-            primitive,
-            matrix: world,
-            label: mesh.name ?? node.name ?? `Mesh ${node.mesh + 1}`,
-            material: primitive.material == null
-              ? undefined
-              : parsed.document.materials?.[primitive.material],
-          });
+      const instanceMatrices = gpuInstanceMatrices(parsed, node);
+      const baseLabel = mesh.name ?? node.name ?? `Mesh ${node.mesh + 1}`;
+      for (let instance = 0; instance < instanceMatrices.length; instance += 1) {
+        const matrix = world.clone().multiply(instanceMatrices[instance]!);
+        const label = instanceMatrices.length > 1
+          ? `${baseLabel} · instance ${instance + 1}`
+          : baseLabel;
+        for (const primitive of mesh.primitives ?? []) {
+          if ((primitive.mode ?? 4) === 4 && primitive.attributes?.POSITION != null) {
+            instances.push({
+              primitive,
+              matrix,
+              label,
+              material: primitive.material == null
+                ? undefined
+                : parsed.document.materials?.[primitive.material],
+            });
+          }
         }
       }
     }
@@ -603,14 +684,27 @@ function recoveredResidualsByMesh(
     samplePrimitive(parsed, primitive, matrix, registration, grid, voxels, orientationBits);
     const disposition = residualDisposition(label, material);
     let recoveredOnly = 0;
+    const recoveredOnlyIndices: number[] = [];
+    const sampledBounds: Bounds = {
+      min: [Infinity, Infinity, Infinity],
+      max: [-Infinity, -Infinity, -Infinity],
+    };
+    const residualBounds: Bounds = {
+      min: [Infinity, Infinity, Infinity],
+      max: [-Infinity, -Infinity, -Infinity],
+    };
     const byOrientation = Object.fromEntries(SURFACE_ORIENTATIONS.map((orientation) => [
       orientation,
       { voxels: 0, recoveredOnly: 0 },
     ])) as Record<SurfaceOrientation, { voxels: number; recoveredOnly: number }>;
     for (const index of voxels) {
+      const [x, y, z] = voxelCenter(grid, index);
+      expand(sampledBounds, x, y, z);
       const isRecoveredOnly = !hasNeighbour(reference, grid, index);
       if (isRecoveredOnly) {
         recoveredOnly += 1;
+        recoveredOnlyIndices.push(index);
+        expand(residualBounds, x, y, z);
         dispositionBits[index] |= dispositionMask[disposition];
       }
       const bits = orientationBits[index]!;
@@ -625,6 +719,14 @@ function recoveredResidualsByMesh(
       voxels: voxels.size,
       recoveredOnly,
       recoveredOnlyShare: voxels.size ? recoveredOnly / voxels.size : 0,
+      boundsMetres: voxels.size ? sampledBounds : null,
+      recoveredOnlyBoundsMetres: recoveredOnly ? residualBounds : null,
+      recoveredOnlyVerticalBand: residualVerticalBand(
+        voxels.size ? sampledBounds : null,
+        recoveredOnly ? residualBounds : null,
+        grid.cellMetres,
+      ),
+      recoveredOnlyRegions: regions(recoveredOnlyIndices, grid, 2),
       disposition,
       recoveredOnlyByOrientation: byOrientation,
     };

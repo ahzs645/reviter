@@ -18,6 +18,7 @@ const shared = {
   define: { "process.env.NODE_ENV": '"production"' },
   format: "esm",
   legalComments: "none",
+  loader: { ".woff2": "file" },
   minify: true,
   platform: "browser",
   target: "es2022",

@@ -30,6 +30,9 @@ context.onmessage = async (event: MessageEvent<IfcWorkerRequest>) => {
     if (result.reference.geometricShapeDifferentElementIds) {
       transfers.push(result.reference.geometricShapeDifferentElementIds.buffer);
     }
+    if (result.reference.directRoofGeometryElementIds) {
+      transfers.push(result.reference.directRoofGeometryElementIds.buffer);
+    }
     if (result.reference.completeRampAggregateElementIds) {
       transfers.push(result.reference.completeRampAggregateElementIds.buffer);
     }
