@@ -9,6 +9,7 @@ import {
   recoverPairedGuideProfileStairTreads,
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
+  respaceStraightStairTreads,
 } from "../lib/reviter/stair-treads.ts";
 import { buildBoundsMeshes } from "../lib/reviter/scene.ts";
 import type { Point3, SketchCurve } from "../lib/reviter/sketch-curves.ts";
@@ -985,4 +986,53 @@ test("equal-height curved tread segments share one horizontal slab elevation", (
   assert.deepEqual(bottomZ(1), [0.34, 0.34, 0.34, 0.34]);
   assert.deepEqual(bottomZ(2), [0.84, 0.84, 0.84, 0.84]);
   assert.deepEqual(bottomZ(3), [0.84, 0.84, 0.84, 0.84]);
+});
+
+test("a drifting straight lattice is respaced across the run's own envelope", () => {
+  // Run 2075102 on the supplied model: 8 persisted risers over an envelope
+  // agreeing with the paired export to the hundredth of a foot, but sketch
+  // boundaries spaced 3.6-4.4 ft whose drift leaves the lattice 3.0 ft short.
+  const bounds = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 31.3, y: 10, z: 6.56 },
+  };
+  const stops = [0, 4.45, 8.06, 11.69, 15.81, 19.95, 24.09, 28.3];
+  const treads = stops.slice(0, -1).map((rear, index) => {
+    const front = stops[index + 1]!;
+    const z = 0.82 * (index + 1);
+    return [
+      [rear, 10, z],
+      [front, 10, z],
+      [front, 0, z],
+      [rear, 0, z],
+    ] as [Point3, Point3, Point3, Point3];
+  });
+  const respaced = respaceStraightStairTreads(treads, bounds, 8, true, true);
+  assert.ok(respaced);
+  const depth = 31.3 / 7;
+  for (const [index, tread] of respaced.entries()) {
+    assert.ok(Math.abs(tread[0][0] - index * depth) < 1e-9);
+    assert.ok(Math.abs(tread[1][0] - (index + 1) * depth) < 1e-9);
+    // Cross-run edges and elevations stay as recovered.
+    assert.equal(tread[0][1], 10);
+    assert.equal(tread[3][1], 0);
+    assert.equal(tread[0][2], 0.82 * (index + 1));
+  }
+
+  // A run without both certified end risers keeps the recovered lattice.
+  assert.equal(respaceStraightStairTreads(treads, bounds, 8, true, false), null);
+  // A tread count that disagrees with the persisted riser count declines.
+  assert.equal(respaceStraightStairTreads(treads, bounds, 9, true, true), null);
+  // An envelope a whole tread depth longer than the lattice is a different
+  // tread count, not drift.
+  const oversized = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 28.3 + 2 * (31.3 / 7), y: 10, z: 6.56 },
+  };
+  assert.equal(respaceStraightStairTreads(treads, oversized, 8, true, true), null);
+  // Multi-cell lattices (two cells at one elevation) are curved profiles and
+  // stay untouched.
+  const doubled = [...treads, treads[0]!.map((corner) =>
+    [corner[0], corner[1] + 12, corner[2]] as Point3) as [Point3, Point3, Point3, Point3]];
+  assert.equal(respaceStraightStairTreads(doubled, bounds, 9, true, true), null);
 });

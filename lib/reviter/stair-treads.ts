@@ -2392,3 +2392,119 @@ export function recoverFlattenedProfileStairTreads(
     source: "native-stair-sketch",
   };
 }
+
+/**
+ * Re-space a single-cell straight tread lattice uniformly across the run's
+ * own validated envelope.
+ *
+ * A Revit straight run has one tread depth by the stair rules, yet the plan
+ * lines the sketch readers pick up are not always the riser lines: run
+ * 2075102 on the supplied model recovers boundaries spaced 3.6-4.4 ft whose
+ * accumulated drift leaves the lattice 3.0 ft short of the run's far end,
+ * while the run's persisted envelope agrees with the paired export to the
+ * hundredth of a foot. With `beginWithRiser` and `endWithRiser` both set, a
+ * run of N risers spans exactly N-1 uniform tread depths between its first
+ * and last riser plane, so the envelope extent along the run direction and
+ * the persisted riser count determine every riser plane with no reading of
+ * the sketch at all. The recovered lattice keeps its cross-run edges and
+ * elevations; only the positions along the run direction move.
+ *
+ * Declines anything it cannot prove: multi-cell (curved or winder) lattices,
+ * runs missing either riser flag, a tread count that disagrees with the
+ * persisted riser count, non-parallel run directions, an envelope shorter
+ * than the lattice, or a correction larger than one tread depth.
+ */
+export function respaceStraightStairTreads(
+  treads: readonly [Point3, Point3, Point3, Point3][],
+  bounds: Bounds3,
+  riserCount: number,
+  beginWithRiser: boolean,
+  endWithRiser: boolean,
+): [Point3, Point3, Point3, Point3][] | null {
+  if (!beginWithRiser || !endWithRiser) return null;
+  if (!Number.isSafeInteger(riserCount) || riserCount < 2) return null;
+  if (treads.length !== riserCount - 1) return null;
+  const elevations = new Set(treads.map((tread) => tread[0][2].toFixed(6)));
+  if (elevations.size !== treads.length) return null;
+
+  // One shared run direction, rear midpoint to front midpoint per tread.
+  const midpoint = (a: Point3, b: Point3): [number, number] =>
+    [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  let directionX = 0;
+  let directionY = 0;
+  for (const tread of treads) {
+    const rear = midpoint(tread[3], tread[0]);
+    const front = midpoint(tread[1], tread[2]);
+    directionX += front[0] - rear[0];
+    directionY += front[1] - rear[1];
+  }
+  const directionLength = Math.hypot(directionX, directionY);
+  if (directionLength <= POINT_TOLERANCE_FEET) return null;
+  const direction: [number, number] = [
+    directionX / directionLength,
+    directionY / directionLength,
+  ];
+  for (const tread of treads) {
+    const rear = midpoint(tread[3], tread[0]);
+    const front = midpoint(tread[1], tread[2]);
+    const stepX = front[0] - rear[0];
+    const stepY = front[1] - rear[1];
+    const stepLength = Math.hypot(stepX, stepY);
+    if (stepLength <= POINT_TOLERANCE_FEET) return null;
+    const cosine = (stepX * direction[0] + stepY * direction[1]) / stepLength;
+    if (cosine < PARALLEL_COSINE) return null;
+  }
+
+  const project = (x: number, y: number) => x * direction[0] + y * direction[1];
+  const latticeStops = [...treads]
+    .sort((left, right) => left[0][2] - right[0][2])
+    .map((tread) => {
+      const rear = midpoint(tread[3], tread[0]);
+      return project(rear[0], rear[1]);
+    });
+  for (let index = 0; index + 1 < latticeStops.length; index += 1) {
+    if (latticeStops[index + 1]! <= latticeStops[index]!) return null;
+  }
+  const corners = [
+    [bounds.min.x, bounds.min.y],
+    [bounds.min.x, bounds.max.y],
+    [bounds.max.x, bounds.min.y],
+    [bounds.max.x, bounds.max.y],
+  ].map(([x, y]) => project(x!, y!));
+  const envelopeStart = Math.min(...corners);
+  const envelopeEnd = Math.max(...corners);
+  const treadDepth = (envelopeEnd - envelopeStart) / (riserCount - 1);
+  if (
+    treadDepth < MIN_TREAD_DEPTH_FEET ||
+    treadDepth > MAX_TREAD_DEPTH_FEET * FLATTENED_FLIGHT_DEPTH_MULTIPLIER
+  ) {
+    return null;
+  }
+  const latticeExtent = new Set(
+    treads.flatMap((tread) => tread.map((corner) => project(corner[0], corner[1]))),
+  );
+  const latticeSpan = Math.max(...latticeExtent) - Math.min(...latticeExtent);
+  if (envelopeEnd - envelopeStart < latticeSpan - POINT_TOLERANCE_FEET) return null;
+  // A whole-tread-depth disagreement is a different tread count, not drift.
+  if (envelopeEnd - envelopeStart - latticeSpan > treadDepth) return null;
+
+  const ordered = [...treads].sort((left, right) => left[0][2] - right[0][2]);
+  const moveTo = (corner: Point3, target: number): Point3 => {
+    const offset = target - project(corner[0], corner[1]);
+    return [
+      corner[0] + offset * direction[0],
+      corner[1] + offset * direction[1],
+      corner[2],
+    ];
+  };
+  return ordered.map((tread, index) => {
+    const rearStop = envelopeStart + index * treadDepth;
+    const frontStop = envelopeStart + (index + 1) * treadDepth;
+    return [
+      moveTo(tread[0], rearStop),
+      moveTo(tread[1], frontStop),
+      moveTo(tread[2], frontStop),
+      moveTo(tread[3], rearStop),
+    ] as [Point3, Point3, Point3, Point3];
+  });
+}

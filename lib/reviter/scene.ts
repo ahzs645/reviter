@@ -673,6 +673,25 @@ function planArea(record: ElementBoundsRecord): number {
   return (max.x - min.x) * (max.y - min.y);
 }
 
+/**
+ * Fraction of `a`'s plan box the intersection with `b`'s plan box covers.
+ * Measured on the supplied model's released top rails: parents cover 85-99%,
+ * unrelated railings at most 8%.
+ */
+const SUB_ELEMENT_PLAN_OVERLAP_SHARE = 0.75;
+
+function planOverlapShare(a: ElementBoundsRecord, b: ElementBoundsRecord): number {
+  const area = Math.max(
+    1e-6,
+    (a.boundsFeet.max.x - a.boundsFeet.min.x) * (a.boundsFeet.max.y - a.boundsFeet.min.y),
+  );
+  const overlapX = Math.min(a.boundsFeet.max.x, b.boundsFeet.max.x) -
+    Math.max(a.boundsFeet.min.x, b.boundsFeet.min.x);
+  const overlapY = Math.min(a.boundsFeet.max.y, b.boundsFeet.max.y) -
+    Math.max(a.boundsFeet.min.y, b.boundsFeet.min.y);
+  return Math.max(0, overlapX) * Math.max(0, overlapY) / area;
+}
+
 function planMatches(a: ElementBoundsRecord, b: ElementBoundsRecord): boolean {
   return (
     Math.abs(a.boundsFeet.min.x - b.boundsFeet.min.x) <= OWNER_SKETCH_TOLERANCE_FEET &&
@@ -824,7 +843,18 @@ function sheetReason(
     // thickness test would keep exactly the ones that hide the most. Requiring
     // a parent keeps a top rail whose railing was never recovered, which is
     // then the only trace of that railing in the scene.
-    return all.some((other) => other.categoryId === parentCategory && planMatches(record, other))
+    //
+    // A stair railing's envelope follows its sloped path, so the corner match
+    // can miss its own top rail by a few feet while the two plans still lie
+    // on top of each other. Of the 4 top rails the corner rule released on
+    // the supplied model, the two with a recovered railing overlap it by 85%
+    // and 99% of their plan area; the two genuinely orphaned ones reach 8%
+    // and 0%. Area coverage is therefore the same duplicate-footprint
+    // evidence, read in a drift-tolerant way.
+    return all.some((other) =>
+      other.categoryId === parentCategory &&
+      (planMatches(record, other) ||
+        planOverlapShare(record, other) >= SUB_ELEMENT_PLAN_OVERLAP_SHARE))
       ? "sub-element"
       : null;
   }

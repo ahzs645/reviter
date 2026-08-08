@@ -72,6 +72,7 @@ import {
   recoverPairedGuideProfileStairTreads,
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
+  respaceStraightStairTreads,
 } from "./stair-treads.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
@@ -1780,6 +1781,21 @@ export function convertRvtBytes(
           if (run?.runProperties) {
             record.stairBeginWithRiser = run.runProperties.beginWithRiser;
             record.stairEndWithRiser = run.runProperties.endWithRiser;
+            // The sketch lines a straight run's lattice is read from are not
+            // always the riser lines, and their drift accumulates along the
+            // run. The persisted riser count plus the record's own validated
+            // envelope determine the uniform spacing exactly, so prefer them
+            // when both riser flags certify the run's ends.
+            if (expectedRiserCount != null) {
+              const respaced = respaceStraightStairTreads(
+                stair.treads,
+                record.boundsFeet,
+                expectedRiserCount,
+                run.runProperties.beginWithRiser,
+                run.runProperties.endWithRiser,
+              );
+              if (respaced) record.stairTreads = respaced;
+            }
           }
           const left = run?.runProperties?.leftStringerWidthFeet;
           const right = run?.runProperties?.rightStringerWidthFeet;

@@ -46,16 +46,79 @@ const HULL_SLACK_FEET = 1;
 
 export type Box = [number, number, number, number, number, number];
 
-/** `#id=IFCTYPE(...)` products and their Revit element id, by express id. */
+/**
+ * `#id=IFCTYPE(...)` products and their Revit element id, by express id.
+ *
+ * **A tag can sit on a sibling rather than the product itself.** Ramp 1622190
+ * leaves the exporter as an `IfcRelAggregates` of one tagged `IfcSlab` (the
+ * landing) and two untagged `IfcRampFlight`s. Reading only directly-tagged
+ * products made the element's truth box the landing alone, and the recovery —
+ * corroborated against the RVT ring at 0.000 ft — measured 19.8 ft "past its
+ * own box". The box was wrong, not the drawing. Each untagged member of an
+ * aggregation component therefore inherits the component's tag, but only when
+ * the component carries exactly one distinct tag: a component with several
+ * tags is several elements, and guessing an owner would move the error into
+ * the join itself.
+ */
 function readProducts(text: string): Map<number, { type: string; tag: number }> {
   const products = new Map<number, { type: string; tag: number }>();
+  const untagged = new Map<number, string>();
+  const aggregateEdges: Array<[number, number[]]> = [];
   const entity = /^#(\d+) *= *(IFC[A-Z0-9]+)\(([\s\S]*?)\);\s*$/gm;
   for (let match = entity.exec(text); match; match = entity.exec(text)) {
+    const expressId = Number(match[1]!);
+    if (match[2] === "IFCRELAGGREGATES") {
+      // ...,#parent,(#child,#child,...) — the list is the final argument.
+      const list = /\((#\d+(?: *, *#\d+)*)\)\s*$/.exec(match[3]!);
+      const parent = /#(\d+) *, *\(/.exec(match[3]!);
+      if (list && parent) {
+        aggregateEdges.push([
+          Number(parent[1]!),
+          [...list[1]!.matchAll(/#(\d+)/g)].map((ref) => Number(ref[1]!)),
+        ]);
+      }
+      continue;
+    }
     let tag = 0;
     for (const quoted of match[3]!.matchAll(/'([^']*)'/g)) {
       if (/^\d+$/.test(quoted[1]!)) tag = Number(quoted[1]!);
     }
-    if (tag) products.set(Number(match[1]!), { type: match[2]!, tag });
+    if (tag) products.set(expressId, { type: match[2]!, tag });
+    else untagged.set(expressId, match[2]!);
+  }
+
+  // Connected components of the aggregation graph; a component is one element
+  // when the exporter tagged exactly one of its members.
+  const componentOf = new Map<number, number>();
+  const find = (id: number): number => {
+    let root = id;
+    while (componentOf.has(root) && componentOf.get(root) !== root) {
+      root = componentOf.get(root)!;
+    }
+    componentOf.set(id, root);
+    return root;
+  };
+  for (const [parent, children] of aggregateEdges) {
+    const parentRoot = find(parent);
+    for (const child of children) componentOf.set(find(child), parentRoot);
+  }
+  const members = new Map<number, number[]>();
+  for (const id of componentOf.keys()) {
+    const root = find(id);
+    const group = members.get(root) ?? [];
+    group.push(id);
+    members.set(root, group);
+  }
+  for (const group of members.values()) {
+    const tagged = group.filter((id) => products.has(id));
+    const tags = new Set(tagged.map((id) => products.get(id)!.tag));
+    if (tags.size !== 1) continue;
+    const owner = products.get(tagged[0]!)!;
+    for (const id of group) {
+      if (!products.has(id) && untagged.has(id)) {
+        products.set(id, { type: owner.type, tag: owner.tag });
+      }
+    }
   }
   return products;
 }

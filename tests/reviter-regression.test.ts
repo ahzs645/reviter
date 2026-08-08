@@ -1224,6 +1224,29 @@ test("holds back a railing's top rail when its railing is in the scene", () => {
   const orphan = selectDisplayBounds([topRail, rail(9, -2000032, 12)]);
   assert.equal(orphan.records.length, 2);
   assert.equal(orphan.omittedSheetCount, 0);
+
+  // A stair railing's envelope follows its sloped path, so the corner match
+  // can miss its own top rail by a few feet while the plans still lie on top
+  // of each other — top rail 2087621 on the supplied model misses its railing
+  // by 1.22 ft at the worst corner yet overlaps it by 99% of its plan area.
+  const drifted: ElementBoundsRecord = {
+    ...rail(1856525, -2000126, 13.6),
+    boundsFeet: { min: { x: -2, y: -2, z: 10 }, max: { x: 173, y: 134, z: 13.6 } },
+  };
+  const held = selectDisplayBounds([drifted, topRail]);
+  assert.deepEqual(held.records.map((record) => record.elementId), [1856525]);
+  assert.equal(held.omittedSheetCount, 1);
+
+  // A railing covering only a corner of the top rail's plan is a neighbour,
+  // not the parent: the two orphaned top rails on the supplied model overlap
+  // their nearest railing by at most 8%.
+  const neighbour: ElementBoundsRecord = {
+    ...rail(1856525, -2000126, 13.6),
+    boundsFeet: { min: { x: 140, y: 110, z: 10 }, max: { x: 260, y: 200, z: 13.6 } },
+  };
+  const kept = selectDisplayBounds([neighbour, topRail]);
+  assert.equal(kept.records.length, 2);
+  assert.equal(kept.omittedSheetCount, 0);
 });
 
 test("holds back a storey-sized plate that no category claims", () => {
