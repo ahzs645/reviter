@@ -11,6 +11,8 @@ import {
 import {
   architecturalPlanSummary,
   makeArchitecturalFloorSvg,
+  planDrawingFrame,
+  planWorldPoint,
 } from "../lib/reviter/architectural-plan.ts";
 import { connectedFloorPlanGroups } from "../lib/reviter/connected-floor-plans.ts";
 import { cachedDerivedRoomsForLevel, deriveRoomsForLevel } from "../lib/reviter/derived-rooms.ts";
@@ -414,4 +416,110 @@ test("surfaces a short leaking wall opening as a reviewable near-room", () => {
   assert.ok(candidate.gapIds.length > 0);
   assert.ok(derived.gaps.some((gap) => candidate.gapIds.includes(gap.id) && gap.widthFeet <= 2));
   assert.match(candidate.key, /^room-100-near-closed-/);
+});
+
+test("miters the pochè corner where exactly two walls meet", () => {
+  const result = resultFixture();
+  result.elementBounds.push(
+    roomTestFloor(10),
+    straightWall(11, [2, 5], [10, 5]),
+    straightWall(12, [10, 5], [10, 9]),
+  );
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  // Junction (10, 5), thickness 0.5: outer miter (9.75, 5.25), inner (10.25, 4.75)
+  // render to (12.25, 7.25) and (12.75, 7.75) under the padded drawing frame.
+  const wallPaths = [...svg.matchAll(/<g data-revit-element-id="1[12]"><path d="([^"]+)"/gu)].map((match) => match[1]!);
+  assert.equal(wallPaths.length, 2);
+  for (const wallPath of wallPaths) {
+    assert.ok(wallPath.includes("12.25 7.25"), `${wallPath} should contain the outer miter`);
+    assert.ok(wallPath.includes("12.75 7.75"), `${wallPath} should contain the inner miter`);
+  }
+});
+
+test("renders accepted Room-review names in place of F-numbers", () => {
+  const result = resultFixture();
+  result.elementBounds.push(roomTestFloor(10), dividingWall(11),
+    straightWall(12, [0, 0], [20, 0]), straightWall(13, [20, 0], [20, 10]),
+    straightWall(14, [20, 10], [0, 10]), straightWall(15, [0, 10], [0, 0]));
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const derived = deriveRoomsForLevel(result, 100);
+  assert.ok(derived.rooms.length >= 1);
+  const labelled = derived.rooms[0]!;
+  const svg = makeArchitecturalFloorSvg(result, 100, {
+    derivedRooms: derived,
+    roomLabels: { [labelled.key]: { name: "Study & Lab", number: "1.01" } },
+  });
+  assert.ok(svg.includes("STUDY &amp; LAB"), "accepted names render upper-case and XML-escaped");
+  assert.match(svg, /class="accepted"/u);
+  assert.match(svg, />1\.01</u);
+  const unlabelled = makeArchitecturalFloorSvg(result, 100, { derivedRooms: derived });
+  assert.match(unlabelled, new RegExp(`>F${labelled.id}<`, "u"));
+});
+
+test("document purpose renders paper pens, no non-scaling strokes, and an overall dimension", () => {
+  const result = resultFixture();
+  result.elementBounds.push(roomTestFloor(10), straightWall(11, [2, 5], [18, 5]));
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const screen = makeArchitecturalFloorSvg(result, 100);
+  const documentSvg = makeArchitecturalFloorSvg(result, 100, { purpose: "document" });
+  assert.match(screen, /vector-effect:non-scaling-stroke/u);
+  assert.doesNotMatch(documentSvg, /vector-effect:non-scaling-stroke/u);
+  assert.match(documentSvg, /class="plan-dimensions"/u);
+  assert.match(documentSvg, />\d+′-\d+[^<]*″</u, "overall width lettered as feet-and-inches");
+  assert.doesNotMatch(screen, /class="plan-dimensions"/u);
+  assert.notEqual(screen, documentSvg, "the two purposes cache separately");
+});
+
+test("plan drawing frame inverts image fractions to model feet across rotations", () => {
+  const result = resultFixture();
+  result.elementBounds.push(roomTestFloor(10));
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const plain = makeArchitecturalFloorSvg(result, 100);
+  const frame = planDrawingFrame(plain)!;
+  assert.ok(frame);
+  const topLeft = planWorldPoint(frame, 0, 0)!;
+  assert.ok(Math.abs(topLeft[0] - frame.minX) < 1e-9 && Math.abs(topLeft[1] - frame.maxY) < 1e-9);
+  assert.equal(planWorldPoint(frame, 0.5, 1), null, "footer clicks resolve to nothing");
+  const rotated = makeArchitecturalFloorSvg(result, 100, { rotationQuarterTurns: 1 });
+  const rotatedFrame = planDrawingFrame(rotated)!;
+  const corner = planWorldPoint(rotatedFrame, 1, 0)!;
+  assert.ok(Math.abs(corner[0] - frame.minX) < 1e-9 && Math.abs(corner[1] - frame.maxY) < 1e-9,
+    "under a quarter turn the same world corner moves to the top-right of the image");
+});
+
+test("doors whose decoded family name says double get a two-leaf symbol", () => {
+  const result = resultFixture();
+  const floor = roomTestFloor(10);
+  const door = (elementId: number, x: number, familyName?: string): ElementBoundsRecord => ({
+    ...record(elementId, x),
+    categoryId: -2_000_023,
+    categoryName: "Doors",
+    familyName,
+    orientedBox: [
+      [x, 4.8, 0], [x + 6, 4.8, 0], [x + 6, 5.2, 0], [x, 5.2, 0],
+      [x, 4.8, 7], [x + 6, 4.8, 7], [x + 6, 5.2, 7], [x, 5.2, 7],
+    ],
+    boundsFeet: { min: { x, y: 4.8, z: 0 }, max: { x: x + 6, y: 5.2, z: 7 } },
+  });
+  result.elementBounds.push(floor, door(12, 2, "Дверь-Двойная-Щитовая_Панель"), door(13, 10, "Одиночные-Щитовые"));
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const svg = makeArchitecturalFloorSvg(result, 100);
+  assert.match(svg, /data-revit-element-id="12" data-door-leaves="2"/u);
+  const doubleGroup = /<g data-revit-element-id="12"[^>]*>(.*?)<\/g>/u.exec(svg)![1]!;
+  assert.equal((doubleGroup.match(/class="leaf"/gu) ?? []).length, 2);
+  assert.equal((doubleGroup.match(/class="swing"/gu) ?? []).length, 2);
+  const singleGroup = /<g data-revit-element-id="13"[^>]*>(.*?)<\/g>/u.exec(svg)![1]!;
+  assert.equal((singleGroup.match(/class="leaf"/gu) ?? []).length, 1);
+  assert.doesNotMatch(svg, /data-revit-element-id="13" data-door-leaves/u);
 });

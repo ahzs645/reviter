@@ -185,3 +185,14 @@ test("indexes the real RFA with its thumbnail and searchable family properties",
   const serialized = JSON.stringify(serializableFamilyLibraryIndex(index));
   assert.doesNotMatch(serialized, /sourceFile|thumbnail/);
 });
+
+test("formats decimal feet as architectural feet-and-inches", async () => {
+  const { formatFeetInches } = await import("../lib/reviter/format-length.ts");
+  assert.equal(formatFeetInches(0), "0′-0″");
+  assert.equal(formatFeetInches(4), "4′-0″");
+  assert.equal(formatFeetInches(0.5), "0′-6″");
+  assert.equal(formatFeetInches(3.3), "3′-3 5/8″");
+  assert.equal(formatFeetInches(-7.2), "-7′-2 3/8″");
+  assert.equal(formatFeetInches(0.99999), "1′-0″", "rounding carries into whole feet");
+  assert.equal(formatFeetInches(Number.NaN), "—");
+});

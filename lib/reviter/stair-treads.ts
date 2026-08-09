@@ -2508,3 +2508,219 @@ export function respaceStraightStairTreads(
     ] as [Point3, Point3, Point3, Point3];
   });
 }
+
+/** Fitted monumental-terrace gate; see `isMonumentalTerracedRun`. */
+const MONUMENTAL_TREAD_DEPTH_FEET = 2.0;
+const MONUMENTAL_RISE_FEET = 0.75;
+
+/**
+ * Is a recovered tread lattice a monumental terraced run rather than an
+ * ordinary flight?
+ *
+ * **The assumption, stated for the next building.** The supplied RVT persists
+ * no monolithic/structure flag for any stair type — a whole-file census of
+ * the type-parameter tables finds one legacy flag (false) and none of the
+ * component-stair construction parameters — yet the paired Autodesk GLB and
+ * IFC export both model the campus's terraced runs as solid bodies: full
+ * blocks with riser faces down to the base, where ordinary flights stay thin
+ * treads. The only separating evidence available is the tread geometry
+ * itself, and on this model the two populations do not overlap: terraces
+ * tread 3.4-4.5 ft deep and rise 0.41-1.34 ft, ordinary flights tread
+ * ~0.9 ft and rise 0.5-0.6 ft (assembled stairs cannot legally exceed about
+ * 0.62 ft of rise, and no walkable stair treads 2 ft deep on stringers).
+ * The medians are the discriminator so a single winder cell cannot flip a
+ * run. Fires through the `monumental-solid-treads` census entry so a second
+ * building reports how often the fitted rule bound.
+ */
+export function isMonumentalTerracedRun(
+  treads: readonly [Point3, Point3, Point3, Point3][],
+): boolean {
+  if (treads.length < 2) return false;
+  const byElevation = new Map<string, Array<[Point3, Point3, Point3, Point3]>>();
+  for (const tread of treads) {
+    const key = tread[0][2].toFixed(6);
+    const group = byElevation.get(key) ?? [];
+    group.push(tread);
+    byElevation.set(key, group);
+  }
+  const keys = [...byElevation.keys()].sort((left, right) => Number(left) - Number(right));
+  if (keys.length < 2) return false;
+  const rises: number[] = [];
+  for (let index = 0; index + 1 < keys.length; index += 1) {
+    rises.push(Number(keys[index + 1]!) - Number(keys[index]!));
+  }
+  const depths: number[] = [];
+  for (const key of keys) {
+    for (const tread of byElevation.get(key)!) {
+      const rearX = (tread[3][0] + tread[0][0]) / 2;
+      const rearY = (tread[3][1] + tread[0][1]) / 2;
+      const frontX = (tread[1][0] + tread[2][0]) / 2;
+      const frontY = (tread[1][1] + tread[2][1]) / 2;
+      depths.push(Math.hypot(frontX - rearX, frontY - rearY));
+    }
+  }
+  const median = (values: number[]): number => {
+    const ordered = [...values].sort((left, right) => left - right);
+    return ordered[Math.floor(ordered.length / 2)]!;
+  };
+  return median(depths) >= MONUMENTAL_TREAD_DEPTH_FEET ||
+    median(rises) >= MONUMENTAL_RISE_FEET;
+}
+
+/**
+ * Snap a recovered tread lattice's boundaries onto the sketch's own repeated
+ * cross-run riser lines.
+ *
+ * The sketched monumental runs persist one repeated cross-run curve per riser
+ * — run 1801503 holds exactly 8 clusters of 6-7 coincident copies for its 8
+ * risers — but the profile-pairing readers can assemble the lattice one slot
+ * late with accumulating drift: recovered boundaries 5.28..29.07 ft along the
+ * advance direction against sketch lines at 1.33..25.85, overrunning the top
+ * landing by a tread. When the clusters match the boundaries one for one, the
+ * sketch lines are the riser planes and each boundary is translated rigidly
+ * onto its cluster, preserving the curved plan shape of every profile.
+ *
+ * Declines: non-parallel boundaries (a dog-leg's two legs project
+ * incoherently onto one advance axis — snapping run 1779476 that way moved
+ * its lattice up to 6 ft the wrong way), a cluster count different from the
+ * boundary count, non-monotonic stops on either side, or a correction beyond
+ * 1.6 tread depths.
+ */
+export function snapTreadsToSketchRiserLines(
+  treads: readonly [Point3, Point3, Point3, Point3][],
+  curves: readonly SketchCurve[],
+): [Point3, Point3, Point3, Point3][] | null {
+  if (treads.length < 2) return null;
+  let directionX = 0;
+  let directionY = 0;
+  for (const tread of treads) {
+    directionX += (tread[1][0] + tread[2][0]) / 2 - (tread[3][0] + tread[0][0]) / 2;
+    directionY += (tread[1][1] + tread[2][1]) / 2 - (tread[3][1] + tread[0][1]) / 2;
+  }
+  const directionLength = Math.hypot(directionX, directionY);
+  if (directionLength <= POINT_TOLERANCE_FEET) return null;
+  const advance: [number, number] = [
+    directionX / directionLength,
+    directionY / directionLength,
+  ];
+  const stopOf = (x: number, y: number) => x * advance[0] + y * advance[1];
+
+  const byElevation = new Map<string, number[]>();
+  for (const [index, tread] of treads.entries()) {
+    const key = tread[0][2].toFixed(6);
+    const group = byElevation.get(key) ?? [];
+    group.push(index);
+    byElevation.set(key, group);
+  }
+  const keys = [...byElevation.keys()].sort((left, right) => Number(left) - Number(right));
+  // A dog-leg's rotated legs project incoherently onto one advance axis, so
+  // require every boundary's MEAN direction to share one alignment. The mean
+  // is per elevation group, not per cell: a gently curved boundary's cells
+  // rotate along the arc while the group means of a single-leg run stay
+  // parallel within a couple of degrees.
+  const foldedEdge = (start: Point3, end: Point3): [number, number] => {
+    let dx = end[0] - start[0];
+    let dy = end[1] - start[1];
+    if (dx < 0 || (dx === 0 && dy < 0)) {
+      dx = -dx;
+      dy = -dy;
+    }
+    return [dx, dy];
+  };
+  const groupDirections: Array<[number, number]> = keys.map((key) => {
+    let dx = 0;
+    let dy = 0;
+    for (const treadIndex of byElevation.get(key)!) {
+      const tread = treads[treadIndex]!;
+      const [edgeX, edgeY] = foldedEdge(tread[3], tread[0]);
+      dx += edgeX;
+      dy += edgeY;
+    }
+    return [dx, dy];
+  });
+  let boundaryX = 0;
+  let boundaryY = 0;
+  for (const [dx, dy] of groupDirections) {
+    boundaryX += dx;
+    boundaryY += dy;
+  }
+  const boundaryLength = Math.hypot(boundaryX, boundaryY);
+  if (boundaryLength <= POINT_TOLERANCE_FEET) return null;
+  for (const [dx, dy] of groupDirections) {
+    const groupLength = Math.hypot(dx, dy);
+    if (groupLength <= POINT_TOLERANCE_FEET) return null;
+    const cosine = (dx * boundaryX + dy * boundaryY) / (groupLength * boundaryLength);
+    if (cosine < PARALLEL_COSINE) return null;
+  }
+  const boundaryStops: number[] = keys.map((key) => {
+    const group = byElevation.get(key)!;
+    return group.reduce((sum, treadIndex) => {
+      const tread = treads[treadIndex]!;
+      return sum + stopOf((tread[3][0] + tread[0][0]) / 2, (tread[3][1] + tread[0][1]) / 2);
+    }, 0) / group.length;
+  });
+  const topGroup = byElevation.get(keys.at(-1)!)!;
+  boundaryStops.push(topGroup.reduce((sum, treadIndex) => {
+    const tread = treads[treadIndex]!;
+    return sum + stopOf((tread[1][0] + tread[2][0]) / 2, (tread[1][1] + tread[2][1]) / 2);
+  }, 0) / topGroup.length);
+  for (let index = 0; index + 1 < boundaryStops.length; index += 1) {
+    if (boundaryStops[index + 1]! <= boundaryStops[index]!) return null;
+  }
+
+  // Repeated cross-run curves, clustered along the advance direction.
+  const clusters: Array<{ stop: number; count: number }> = [];
+  const sortedStops: number[] = [];
+  for (const curve of curves) {
+    if (curve.kind !== "line" && curve.kind !== "arc") continue;
+    const dx = curve.end[0] - curve.start[0];
+    const dy = curve.end[1] - curve.start[1];
+    const length = Math.hypot(dx, dy);
+    if (length < 0.5) continue;
+    if (Math.abs((dx * advance[0] + dy * advance[1]) / length) > 0.35) continue;
+    sortedStops.push(stopOf(
+      (curve.start[0] + curve.end[0]) / 2,
+      (curve.start[1] + curve.end[1]) / 2,
+    ));
+  }
+  sortedStops.sort((left, right) => left - right);
+  for (const value of sortedStops) {
+    const last = clusters.at(-1);
+    if (last && value - last.stop <= 0.5) {
+      last.stop = (last.stop * last.count + value) / (last.count + 1);
+      last.count += 1;
+    } else {
+      clusters.push({ stop: value, count: 1 });
+    }
+  }
+  const repeated = clusters.filter((cluster) => cluster.count >= MIN_REPEAT_COUNT - 1);
+  if (repeated.length !== boundaryStops.length) return null;
+
+  const spacings = boundaryStops.slice(1)
+    .map((value, index) => value - boundaryStops[index]!)
+    .sort((left, right) => left - right);
+  const medianDepth = spacings[Math.floor(spacings.length / 2)]!;
+  const deltas = boundaryStops.map((value, index) => repeated[index]!.stop - value);
+  if (Math.max(...deltas.map((delta) => Math.abs(delta))) > medianDepth * 1.6) return null;
+  for (let index = 0; index + 1 < repeated.length; index += 1) {
+    if (repeated[index + 1]!.stop - repeated[index]!.stop < MIN_TREAD_DEPTH_FEET) return null;
+  }
+  if (deltas.every((delta) => Math.abs(delta) < 0.05)) return null;
+
+  const snapped = treads.map((tread) =>
+    tread.map((corner) => [...corner] as Point3) as [Point3, Point3, Point3, Point3]);
+  for (const [groupIndex, key] of keys.entries()) {
+    for (const treadIndex of byElevation.get(key)!) {
+      const tread = snapped[treadIndex]!;
+      for (const corner of [3, 0]) {
+        tread[corner]![0] += deltas[groupIndex]! * advance[0];
+        tread[corner]![1] += deltas[groupIndex]! * advance[1];
+      }
+      for (const corner of [1, 2]) {
+        tread[corner]![0] += deltas[groupIndex + 1]! * advance[0];
+        tread[corner]![1] += deltas[groupIndex + 1]! * advance[1];
+      }
+    }
+  }
+  return snapped;
+}

@@ -66,6 +66,7 @@ import {
   type SketchCurve,
 } from "./sketch-curves.ts";
 import {
+  isMonumentalTerracedRun,
   recoverConnectedStairTreads,
   recoverFlattenedProfileStairTreads,
   recoverGuideChainStairTreads,
@@ -73,7 +74,9 @@ import {
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
   respaceStraightStairTreads,
+  snapTreadsToSketchRiserLines,
 } from "./stair-treads.ts";
+import { noteLimit } from "./limit-census.ts";
 import { parseElemTable } from "./elem-table.ts";
 import {
   decodeElementOwnership,
@@ -1781,12 +1784,22 @@ export function convertRvtBytes(
           if (run?.runProperties) {
             record.stairBeginWithRiser = run.runProperties.beginWithRiser;
             record.stairEndWithRiser = run.runProperties.endWithRiser;
-            // The sketch lines a straight run's lattice is read from are not
-            // always the riser lines, and their drift accumulates along the
-            // run. The persisted riser count plus the record's own validated
-            // envelope determine the uniform spacing exactly, so prefer them
-            // when both riser flags certify the run's ends.
-            if (expectedRiserCount != null) {
+            // The readers can assemble a sketched run's lattice one boundary
+            // slot away from the sketch's own repeated riser lines; when the
+            // line clusters match the boundaries one for one, they are the
+            // riser planes and the lattice snaps onto them. Otherwise, for a
+            // straight run, the persisted riser count plus the record's own
+            // validated envelope determine the uniform spacing exactly.
+            // The riser lines can live under the run's sketch companion one
+            // id below, the same pairing sketchLoopsFor follows; the snap's
+            // exact cluster-count gate keeps the merged set safe.
+            const snapped = snapTreadsToSketchRiserLines(record.stairTreads, [
+              ...curves,
+              ...(curvesByOwner.get(record.elementId - 1) ?? []),
+            ]);
+            if (snapped) {
+              record.stairTreads = snapped;
+            } else if (expectedRiserCount != null) {
               const respaced = respaceStraightStairTreads(
                 stair.treads,
                 record.boundsFeet,
@@ -1808,7 +1821,18 @@ export function convertRvtBytes(
             right > 0 &&
             Math.abs(left - right) <= 0.01
           ) {
-            record.stairTreadThicknessFeet = (left + right) / 2;
+            // A monumental terraced run is a solid mass in both the paired
+            // export and the Autodesk reference; leaving the thickness unset
+            // lets the scene extrude each tread to the run's base the way a
+            // thickness-less run already draws. The RVT itself persists no
+            // monolithic flag anywhere (measured), so the tread geometry is
+            // the gate — see isMonumentalTerracedRun.
+            if (isMonumentalTerracedRun(record.stairTreads)) {
+              record.stairMonumentalSolid = true;
+              noteLimit("monumental-solid-treads");
+            } else {
+              record.stairTreadThicknessFeet = (left + right) / 2;
+            }
           }
         }
       }

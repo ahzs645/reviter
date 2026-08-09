@@ -53,6 +53,7 @@ import {
 } from "./scene-tools.ts";
 import {
   createWalkControls,
+  flyToWalkStart,
   WALK_EYE_HEIGHT,
   WALK_MAX_STEP_UP,
   type WalkControls,
@@ -1923,6 +1924,7 @@ export function ModelCanvas({
     }
     let cancelled = false;
     let walk: WalkControls | null = null;
+    let cancelWalkFlight: (() => void) | null = null;
     queueMicrotask(() => {
       if (!cancelled) {
         setWalkPreparing(true);
@@ -2020,31 +2022,51 @@ export function ModelCanvas({
       if (forward.lengthSq() < 1e-6) forward.set(1, 0, 0);
       const lookAt = start.clone().addScaledVector(forward.normalize(), runtime.radius * 0.25);
 
-      walk = createWalkControls(runtime.camera, canvas, {
-        start,
-        lookAt,
-        floor: runtime.floor + eyeHeight,
-        eyeHeight,
-        sceneUnitsPerFoot: runtime.sceneUnitsPerFoot,
-        up: runtime.up,
-        speed: walkSpeedRef.current,
-        gravity: walkGravityRef.current,
-        floorProbeInterval: 1 / 30,
-        resolveFloor: runtime.surfaceFloorAt,
-        dropDistance: runtime.radius * 4,
-        resolveMovement: runtime.resolveMovement,
-        onLookChange: setWalkLooking,
-        onSpeedChange: setWalkSpeed,
-        onGravityChange: setWalkGravity,
-        onExit: () => onWalkingChange(false),
-      });
-      walk.enable();
-      walkRef.current = walk;
-      runtime.invalidate();
+      const engageWalk = () => {
+        if (cancelled) return;
+        walk = createWalkControls(runtime.camera, canvas, {
+          start,
+          lookAt,
+          floor: runtime.floor + eyeHeight,
+          eyeHeight,
+          sceneUnitsPerFoot: runtime.sceneUnitsPerFoot,
+          up: runtime.up,
+          speed: walkSpeedRef.current,
+          gravity: walkGravityRef.current,
+          floorProbeInterval: 1 / 30,
+          resolveFloor: runtime.surfaceFloorAt,
+          dropDistance: runtime.radius * 4,
+          resolveMovement: runtime.resolveMovement,
+          onLookChange: setWalkLooking,
+          onSpeedChange: setWalkSpeed,
+          onGravityChange: setWalkGravity,
+          onExit: () => onWalkingChange(false),
+        });
+        walk.enable();
+        walkRef.current = walk;
+        runtime.invalidate();
+      };
+      // An explicit teleport (map click, "Walk from here") flies down into the
+      // start pose instead of hard-cutting, so the viewer keeps their bearings
+      // through the transition; plain Walk-tool entry still engages instantly.
+      if (hasRequestedStart) {
+        cancelWalkFlight = flyToWalkStart({
+          camera: runtime.camera,
+          start,
+          lookAt,
+          up: runtime.up,
+          clearance: 30 * runtime.sceneUnitsPerFoot,
+          invalidate: () => runtime.invalidate(),
+          onDone: engageWalk,
+        });
+      } else {
+        engageWalk();
+      }
     });
 
     return () => {
       cancelled = true;
+      cancelWalkFlight?.();
       // Reference loading and source-scene changes can restart this effect
       // while Walk remains selected. Resume that replacement controller from
       // the live eye; a later intentional exit clears the flag above.

@@ -1553,6 +1553,7 @@ function stairTreadGeometry(
   treadThicknessFeet?: number,
   beginWithRiser = false,
   endWithRiser = false,
+  monumentalSolid = false,
 ) {
   const treadThickness =
     treadThicknessFeet != null &&
@@ -1624,6 +1625,21 @@ function stairTreadGeometry(
       extendSide(endCells[0]!, [2, 3], 1);
     }
   }
+  // A monumental terraced run is a stack of full-rise blocks — the Autodesk
+  // reference models these with a stepped soffit, not a mass poured to the
+  // base (extruding to the base added 308-587 voxels of skin the reference
+  // does not have). Each block's underside is the previous tread's top.
+  const previousElevation = new Map<string, number>();
+  if (monumentalSolid) {
+    const ordered = [...new Set(renderedTreads.map((tread) => tread[0][2]))]
+      .sort((left, right) => left - right);
+    for (const [index, elevation] of ordered.entries()) {
+      previousElevation.set(
+        elevation.toFixed(6),
+        index === 0 ? baseZ : ordered[index - 1]!,
+      );
+    }
+  }
   const cells: Array<{
     points: number[][];
     tread: [Point3, Point3, Point3, Point3];
@@ -1632,9 +1648,11 @@ function stairTreadGeometry(
   for (const tread of renderedTreads) {
     const topZ = tread[0][2];
     if (topZ - baseZ < MIN_PRISM_THICKNESS_FEET) continue;
-    const bottomZ = treadThickness == null
-      ? baseZ
-      : Math.max(baseZ, topZ - treadThickness);
+    const bottomZ = monumentalSolid
+      ? Math.max(baseZ, previousElevation.get(topZ.toFixed(6)) ?? baseZ)
+      : treadThickness == null
+        ? baseZ
+        : Math.max(baseZ, topZ - treadThickness);
     cells.push({
       tread,
       topZ,
@@ -2345,6 +2363,7 @@ export function buildBoundsMeshes(
               record.stairTreadThicknessFeet,
               record.stairBeginWithRiser,
               record.stairEndWithRiser,
+              record.stairMonumentalSolid,
             )
           : [];
         // Native faces used to outrank both the rebuilt solid and the

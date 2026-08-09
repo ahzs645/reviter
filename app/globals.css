@@ -1106,10 +1106,16 @@ button[data-reason]:focus-visible::after {
 .room-detail-fields .room-detail-export { display: flex; grid-template-columns: auto 1fr; align-items: center; text-transform: none; }
 .floor-plan-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 10px; padding: 9px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--text-2); font-size: 10px; }
 .floor-plan-legend span { display: flex; align-items: center; gap: 7px; }
-.floor-plan-legend i { width: 18px; height: 4px; display: block; background: #263f46; }
-.floor-plan-legend i.door { height: 2px; background: #a35b35; }
-.floor-plan-legend i.window { height: 2px; border-top: 1px solid #2a7990; border-bottom: 1px solid #2a7990; background: transparent; }
-.floor-plan-legend i.stair { height: 7px; background: repeating-linear-gradient(90deg, #6e5a86 0 1px, transparent 1px 4px); }
+.floor-plan-legend i { width: 18px; height: 5px; display: block; background: #1f2937; }
+.floor-plan-legend i.door { height: 2px; background: #374151; }
+.floor-plan-legend i.window { height: 2px; border-top: 1px solid #334155; border-bottom: 1px solid #334155; background: transparent; }
+.floor-plan-legend i.stair { height: 7px; background: repeating-linear-gradient(90deg, #1f2937 0 1px, transparent 1px 4px); }
+.floor-plan-legend i.column { width: 7px; height: 7px; background: #374151; }
+.floor-plan-legend i.open-end { height: 2px; background: #8b6f52; }
+.floor-plan-legend i.region { height: 7px; background: #e7c89c; border: 1px solid #c18a49; opacity: .6; }
+.floor-plan-legend em { font-style: italic; color: var(--text-3); }
+.floor-browser-sidebar dl.floor-browser-stale { opacity: .5; transition: opacity .15s ease; }
+.room-review-card.focused { outline: 2px solid var(--accent); outline-offset: 1px; }
 .floor-browser-side-map { justify-content: center; }
 .floor-browser-download { justify-content: center; margin-top: auto; }
 .floor-browser-preview { min-width: 0; min-height: 300px; display: flex; flex-direction: column; margin: 0; border: 1px solid var(--line); background: #f4f1e9; overflow: hidden; }

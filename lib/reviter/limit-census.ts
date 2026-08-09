@@ -33,7 +33,8 @@ export type ConversionLimit =
   | "max-curves-per-element"
   | "max-quad-span-feet"
   | "max-half-thickness-feet"
-  | "max-coordinate";
+  | "max-coordinate"
+  | "monumental-solid-treads";
 
 /** How each limit reads in a warning, and what it costs when it binds. */
 const LIMIT_DESCRIPTIONS: Record<ConversionLimit, string> = {
@@ -42,6 +43,8 @@ const LIMIT_DESCRIPTIONS: Record<ConversionLimit, string> = {
   "max-quad-span-feet": "planar faces wider than the accepted quad span",
   "max-half-thickness-feet": "plane pairs further apart than the accepted wall thickness",
   "max-coordinate": "curve coordinates outside the accepted model extent",
+  "monumental-solid-treads":
+    "stair runs drawn as solid terraces by the fitted monumental depth/rise rule",
 };
 
 const counts = new Map<ConversionLimit, number>();

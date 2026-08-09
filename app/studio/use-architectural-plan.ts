@@ -5,9 +5,11 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import {
   architecturalPlanSummary,
   makeArchitecturalFloorSvg,
+  type ArchitecturalPlanRoomLabel,
   type ArchitecturalPlanSummary,
 } from "../../lib/reviter/architectural-plan.ts";
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
+import type { RoomReviewState } from "../../lib/reviter/room-review.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../../lib/reviter/types.ts";
 import type {
   FloorPlanWorkerRequest,
@@ -39,6 +41,8 @@ function compactPlanResult(result: ConvertResult): ConvertResult {
       recordOffset: record.recordOffset,
       categoryId: record.categoryId,
       categoryName: record.categoryName,
+      familyName: record.familyName,
+      typeName: record.typeName,
       boundsFeet: record.boundsFeet,
       loops: record.loops,
       solid: record.solid,
@@ -99,6 +103,7 @@ function resolveSynchronously(engine: PlanEngine, key: string, request: PlanRequ
         connectedLevelIds: request.connectedLevelIds,
         rotationQuarterTurns: request.rotationQuarterTurns,
         derivedRooms: request.derivedRooms ?? false,
+        roomLabels: request.roomLabels ?? undefined,
       }),
       summary: architecturalPlanSummary(engine.result, request.levelId, {
         connectedLevelIds: request.connectedLevelIds,
@@ -116,19 +121,43 @@ type PlanRequestParts = {
   connectedLevelIds: readonly number[];
   rotationQuarterTurns: number;
   derivedRooms: DerivedRoomResult | null;
+  roomLabels?: Readonly<Record<string, ArchitecturalPlanRoomLabel>> | null;
 };
 
-const derivedRoomsIdentity = new WeakMap<DerivedRoomResult, number>();
-let derivedRoomsCounter = 0;
+const optionIdentity = new WeakMap<object, number>();
+let optionIdentityCounter = 0;
+
+function identityOf(value: object | null | undefined): number {
+  if (!value) return 0;
+  let id = optionIdentity.get(value);
+  if (id == null) { id = ++optionIdentityCounter; optionIdentity.set(value, id); }
+  return id;
+}
 
 function planKey(parts: PlanRequestParts): string {
-  let roomsKey = "none";
-  if (parts.derivedRooms) {
-    let id = derivedRoomsIdentity.get(parts.derivedRooms);
-    if (id == null) { id = ++derivedRoomsCounter; derivedRoomsIdentity.set(parts.derivedRooms, id); }
-    roomsKey = String(id);
+  return `${parts.levelId}|${[...parts.connectedLevelIds].join(",")}|${parts.rotationQuarterTurns}` +
+    `|${identityOf(parts.derivedRooms)}|${identityOf(parts.roomLabels)}`;
+}
+
+/**
+ * Accepted Room-review names/numbers for the visible derived regions, keyed by
+ * candidate key — the labels the plan renderer swaps in for F-numbers.
+ */
+export function acceptedRoomLabels(
+  derivedRooms: DerivedRoomResult | null,
+  roomReview: RoomReviewState | undefined,
+): Readonly<Record<string, ArchitecturalPlanRoomLabel>> | null {
+  if (!derivedRooms || !roomReview?.rooms.length) return null;
+  const byCandidate = new Map(roomReview.rooms.map((room) => [room.candidateKey, room]));
+  const labels: Record<string, ArchitecturalPlanRoomLabel> = {};
+  for (const room of derivedRooms.rooms) {
+    const review = byCandidate.get(room.key);
+    if (review?.disposition !== "accepted") continue;
+    const name = review.details.name.trim();
+    const number = review.details.number.trim();
+    if (name || number) labels[room.key] = { ...(name && { name }), ...(number && { number }) };
   }
-  return `${parts.levelId}|${[...parts.connectedLevelIds].join(",")}|${parts.rotationQuarterTurns}|${roomsKey}`;
+  return Object.keys(labels).length ? labels : null;
 }
 
 function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
@@ -175,6 +204,7 @@ function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
     connectedLevelIds: [...parts.connectedLevelIds],
     rotationQuarterTurns: parts.rotationQuarterTurns,
     derivedRooms: parts.derivedRooms,
+    roomLabels: parts.roomLabels ?? null,
   } satisfies FloorPlanWorkerRequest);
 }
 

@@ -19,14 +19,18 @@ import {
   downloadBlob,
   floorPlateLevels,
   floorPlateSvgDataUrl,
+  formatFeetInches,
+  makeArchitecturalFloorSvg,
   outputName,
+  planDrawingFrame,
+  planWorldPoint,
   type ConvertResult,
   type DerivedRoomResult,
   type ReviewedRoom,
   type RoomReviewState,
 } from "../../lib/reviter";
 import { FloorReferencePlan } from "./FloorReferencePlan.tsx";
-import { useArchitecturalPlan } from "./use-architectural-plan.ts";
+import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
 
 export function FloorBrowser({
   result,
@@ -50,6 +54,7 @@ export function FloorBrowser({
   onOpenModelMap: () => void;
 }) {
   const [downloadStatus, setDownloadStatus] = useState("");
+  const [focusedRegionKey, setFocusedRegionKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [rotationQuarterTurns, setRotationQuarterTurns] = useState(0);
   const [combineConnectedLevels, setCombineConnectedLevels] = useState(true);
@@ -117,14 +122,19 @@ export function FloorBrowser({
       onSelectedLevelId(selected.levelId);
     }
   }, [onSelectedLevelId, selected, selectedLevelId]);
+  const roomLabels = useMemo(
+    () => acceptedRoomLabels(selectedDerivedRooms, roomReview),
+    [roomReview, selectedDerivedRooms],
+  );
   const planParts = useMemo(
     () => selected ? {
       levelId: selected.levelId,
       connectedLevelIds: selectedPlan?.levelIds ?? [selected.levelId],
       rotationQuarterTurns,
       derivedRooms: selectedDerivedRooms,
+      roomLabels,
     } : null,
-    [rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
+    [roomLabels, rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
   );
   const prewarm = useMemo(
     () => [plans[selectedIndex + 1], plans[selectedIndex - 1]]
@@ -160,13 +170,54 @@ export function FloorBrowser({
       onSelectedLevelId(plan.primaryLevelId);
     }
   };
-  const download = () => downloadBlob(
-    new Blob([svg], { type: "image/svg+xml" }),
-    outputName(
-      result.fileName,
-      `architectural-floor-${connected ? `connected-${selectedPlan!.levelIds.join("-")}` : selected.levelId}${rotationQuarterTurns ? `-rotated-${rotationQuarterTurns * 90}` : ""}${showDerivedRooms ? "-derived-regions" : ""}.svg`,
-    ),
-  );
+  // A click on the plan image hit-tests the visible derived regions in model
+  // feet (even-odd across each region's loops, holes included) and focuses
+  // that region's review card — plan-to-review navigation without an inline
+  // SVG DOM.
+  const focusRegionAt = (fraction: { x: number; y: number }) => {
+    if (!svg || !selectedDerivedRooms?.rooms.length) return;
+    const frame = planDrawingFrame(svg);
+    const point = frame ? planWorldPoint(frame, fraction.x, fraction.y) : null;
+    if (!point) return;
+    const inRegion = (loops: readonly (readonly [number, number][])[]) => {
+      let inside = false;
+      for (const loop of loops) {
+        for (let index = 0, previous = loop.length - 1; index < loop.length; previous = index, index += 1) {
+          const [x, y] = loop[index]!; const [previousX, previousY] = loop[previous]!;
+          if ((y > point[1]) !== (previousY > point[1]) &&
+            point[0] < (previousX - x) * (point[1] - y) / (previousY - y) + x) inside = !inside;
+        }
+      }
+      return inside;
+    };
+    const hit = [...selectedDerivedRooms.rooms]
+      .sort((left, right) => left.areaSquareFeet - right.areaSquareFeet)
+      .find((room) => inRegion(room.loops));
+    if (!hit) return;
+    setFocusedRegionKey(hit.key);
+    document.querySelector(`[data-region-card="${CSS.escape(hit.key)}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  const download = () => {
+    // Downloads are for printing and records: render the paper-correct
+    // document variant (ISO pens, overall dimension) rather than the
+    // screen-optimised plan on display. Cached after the first click.
+    const documentSvg = makeArchitecturalFloorSvg(result, selected.levelId, {
+      connectedLevelIds: selectedPlan?.levelIds,
+      rotationQuarterTurns,
+      derivedRooms: selectedDerivedRooms ?? false,
+      roomLabels: roomLabels ?? undefined,
+      purpose: "document",
+    });
+    downloadBlob(
+      new Blob([documentSvg], { type: "image/svg+xml" }),
+      outputName(
+        result.fileName,
+        `architectural-floor-${connected ? `connected-${selectedPlan!.levelIds.join("-")}` : selected.levelId}${rotationQuarterTurns ? `-rotated-${rotationQuarterTurns * 90}` : ""}${showDerivedRooms ? "-derived-regions" : ""}.svg`,
+      ),
+    );
+  };
 
   return (
     <div className="floor-browser">
@@ -210,21 +261,21 @@ export function FloorBrowser({
             {plans.map((plan) => (
               <option key={plan.primaryLevelId} value={plan.primaryLevelId}>
                 {plan.minElevation === plan.maxElevation
-                  ? `${plan.minElevation.toFixed(1)}′`
-                  : `${plan.minElevation.toFixed(1)}′–${plan.maxElevation.toFixed(1)}′`}
+                  ? formatFeetInches(plan.minElevation)
+                  : `${formatFeetInches(plan.minElevation)}–${formatFeetInches(plan.maxElevation)}`}
                 {` · ${plan.floorCount} slab${plan.floorCount === 1 ? "" : "s"}`}
               </option>
             ))}
           </select>
         </label>
 
-        <dl>
+        <dl className={building ? "floor-browser-stale" : undefined}>
           <div><dt>Revit level{connected ? "s" : " ID"}</dt><dd>{connected ? selectedPlan!.levelIds.join(", ") : selected.levelId}</dd></div>
           <div><dt>Elevation{connected ? " range" : ""}</dt><dd>{connected
-            ? `${selectedPlan!.minElevation.toFixed(1)}′–${selectedPlan!.maxElevation.toFixed(1)}′`
-            : `${selected.elevation.toFixed(3)}′`}</dd></div>
+            ? `${formatFeetInches(selectedPlan!.minElevation)}–${formatFeetInches(selectedPlan!.maxElevation)}`
+            : formatFeetInches(selected.elevation)}</dd></div>
           <div><dt>Floor plates</dt><dd>{selectedPlan?.floorCount ?? selected.floorCount}</dd></div>
-          <div><dt>Plan cut{connected ? "s" : ""}</dt><dd>{connected ? `${selectedPlan!.levels.length} local` : `${planSummary?.cutElevation.toFixed(1)}′`}</dd></div>
+          <div><dt>Plan cut{connected ? "s" : ""}</dt><dd>{connected ? `${selectedPlan!.levels.length} local` : planSummary ? formatFeetInches(planSummary.cutElevation) : "—"}</dd></div>
           <div><dt>Walls</dt><dd>{planSummary?.walls.toLocaleString() ?? 0}</dd></div>
           <div><dt>Doors / windows</dt><dd>{planSummary?.doors.toLocaleString() ?? 0} / {planSummary?.windows.toLocaleString() ?? 0}</dd></div>
           <div><dt>Stairs / columns</dt><dd>{planSummary?.stairs.toLocaleString() ?? 0} / {planSummary?.columns.toLocaleString() ?? 0}</dd></div>
@@ -241,10 +292,13 @@ export function FloorBrowser({
         </dl>
 
         <div className="floor-plan-legend" aria-label="Architectural map legend">
-          <span><i className="wall" />Walls</span>
+          <span><i className="wall" />Walls (cut)</span>
           <span><i className="door" />Doors</span>
           <span><i className="window" />Windows</span>
           <span><i className="stair" />Stairs</span>
+          <span><i className="column" />Columns</span>
+          <span><i className="open-end" />Open wall end</span>
+          {showDerivedRooms && <span><i className="region" />Region <em>Inferred</em></span>}
         </div>
 
         <label className="floor-browser-room-toggle floor-browser-connected-toggle">
@@ -298,7 +352,7 @@ export function FloorBrowser({
               const review = reviewedByCandidate.get(region.key);
               const gaps = region.gapIds.map((gapId) => roomReview.gaps.find((gap) => gap.id === gapId)).filter(Boolean);
               return (
-                <li key={region.key} className={`room-review-card ${region.closure}`}>
+                <li key={region.key} data-region-card={region.key} className={`room-review-card ${region.closure}${focusedRegionKey === region.key ? " focused" : ""}`}>
                   <div className="room-review-card-heading">
                     <span>F{region.id}</span>
                     <span>{Math.round(region.areaSquareFeet).toLocaleString()} ft²</span>
@@ -361,6 +415,7 @@ export function FloorBrowser({
         levelIds={selectedPlan?.levelIds ?? [selected.levelId]}
         planImageUrl={imageUrl}
         zoom={zoom}
+        onPlanClick={showDerivedRooms ? focusRegionAt : undefined}
         planAlt={connected
           ? `Connected architectural floor map from ${selectedPlan!.minElevation.toFixed(1)} to ${selectedPlan!.maxElevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`
           : `Architectural floor map at ${selected.elevation.toFixed(1)} feet with recovered walls, doors, windows, stairs, and columns`}

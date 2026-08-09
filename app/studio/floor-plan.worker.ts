@@ -3,6 +3,7 @@
 import {
   architecturalPlanSummary,
   makeArchitecturalFloorSvg,
+  type ArchitecturalPlanRoomLabel,
   type ArchitecturalPlanSummary,
 } from "../../lib/reviter/architectural-plan.ts";
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
@@ -23,6 +24,7 @@ export type FloorPlanWorkerRequest = {
   connectedLevelIds: number[];
   rotationQuarterTurns: number;
   derivedRooms: DerivedRoomResult | null;
+  roomLabels: Readonly<Record<string, ArchitecturalPlanRoomLabel>> | null;
 };
 
 export type FloorPlanWorkerResponse = {
@@ -46,6 +48,7 @@ context.onmessage = (event: MessageEvent<FloorPlanWorkerInit | FloorPlanWorkerRe
       connectedLevelIds: request.connectedLevelIds,
       rotationQuarterTurns: request.rotationQuarterTurns,
       derivedRooms: request.derivedRooms ?? false,
+      roomLabels: request.roomLabels ?? undefined,
     };
     context.postMessage({
       id: request.id,

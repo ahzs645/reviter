@@ -651,3 +651,87 @@ export function createWalkControls(
 
 /** Eye height above a scene's floor, exported so callers can place the walker. */
 export const WALK_EYE_HEIGHT = EYE_HEIGHT_FEET;
+
+export type WalkFlightOptions = {
+  camera: THREE.PerspectiveCamera;
+  /** The walk start eye position the flight lands on. */
+  start: THREE.Vector3;
+  /** Where the walker will be looking when walk controls take over. */
+  lookAt: THREE.Vector3;
+  up: "y" | "z";
+  /** Extra height, in scene units, the arc keeps over the landing point. */
+  clearance: number;
+  durationMs?: number;
+  invalidate: () => void;
+  onDone: () => void;
+};
+
+/**
+ * Arc height and duration for a teleport flight, scaled to how far it travels.
+ * A hop a few feet along the same floor glides low and lands quickly; a jump
+ * across the campus rises to the full clearance and takes longer, with the
+ * growth square-rooted so even the longest teleport stays under 1.4 seconds.
+ * Distances and clearance share whatever unit the scene uses.
+ */
+export function walkFlightProfile(
+  distance: number,
+  clearance: number,
+): { arc: number; durationMs: number } {
+  const reach = distance / Math.max(clearance, 1e-6);
+  const arc = clearance * Math.min(1, 0.08 + reach * 0.3);
+  const durationMs = Math.round(Math.min(1_400, Math.max(380, 400 * (0.75 + Math.sqrt(reach)))));
+  return { arc, durationMs };
+}
+
+/**
+ * A short eased descent from the current camera pose into a walk start,
+ * instead of a hard cut. The path is a quadratic arc sized by the travel
+ * distance — low and quick for a same-floor hop, up to `clearance` above the
+ * landing spot for a cross-campus jump — so a map teleport reads as "flying
+ * down into the building", the way dollhouse-style viewers keep the viewer
+ * oriented. Honors reduced-motion preferences and returns a cancel function;
+ * cancelling never calls `onDone`.
+ */
+export function flyToWalkStart(options: WalkFlightOptions): () => void {
+  const { camera, start, lookAt, invalidate, onDone } = options;
+  const axis = options.up;
+  const from = camera.position.clone();
+  const reduceMotion = typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduceMotion || from.distanceTo(start) < options.clearance * 0.05) {
+    onDone();
+    return () => {};
+  }
+  const profile = walkFlightProfile(from.distanceTo(start), options.clearance);
+  const fromLook = from.clone().addScaledVector(
+    camera.getWorldDirection(new THREE.Vector3()),
+    Math.max(from.distanceTo(start), options.clearance),
+  );
+  const control = from.clone().lerp(start, 0.55);
+  control[axis] = Math.max(from[axis], start[axis] + profile.arc);
+  const duration = options.durationMs ?? profile.durationMs;
+  const startedAt = performance.now();
+  const position = new THREE.Vector3();
+  const look = new THREE.Vector3();
+  let frame = 0;
+  let finished = false;
+  const easeInOutCubic = (t: number) =>
+    t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
+  const tick = () => {
+    const t = Math.min(1, (performance.now() - startedAt) / duration);
+    const k = easeInOutCubic(t);
+    const inverse = 1 - k;
+    position.copy(from).multiplyScalar(inverse * inverse)
+      .addScaledVector(control, 2 * inverse * k)
+      .addScaledVector(start, k * k);
+    look.copy(fromLook).lerp(lookAt, k);
+    camera.position.copy(position);
+    camera.lookAt(look);
+    invalidate();
+    if (t >= 1) { finished = true; onDone(); return; }
+    frame = requestAnimationFrame(tick);
+  };
+  frame = requestAnimationFrame(tick);
+  return () => { if (!finished) cancelAnimationFrame(frame); };
+}

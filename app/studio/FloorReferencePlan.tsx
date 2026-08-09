@@ -64,6 +64,7 @@ export function FloorReferencePlan({
   zoom,
   toolbar,
   caption,
+  onPlanClick,
 }: {
   rvtFileName: string;
   levelIds: number[];
@@ -72,6 +73,8 @@ export function FloorReferencePlan({
   zoom: number;
   toolbar: ReactNode;
   caption: ReactNode;
+  /** Fraction of the plan image (0–1 both axes) a non-capture click landed on. */
+  onPlanClick?: (fraction: { x: number; y: number }) => void;
 }) {
   const referenceInput = useRef<HTMLInputElement>(null);
   const alignmentInput = useRef<HTMLInputElement>(null);
@@ -208,7 +211,24 @@ export function FloorReferencePlan({
   };
 
   const capturePoint = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!captureMode) return;
+    if (!captureMode) {
+      // Outside anchor capture, a click is a plan interaction: report where it
+      // landed as a fraction of the contained image so the owner can hit-test
+      // rooms in model space.
+      if (!onPlanClick) return;
+      const node = event.currentTarget;
+      const image = node.querySelector<HTMLImageElement>("img.floor-reference-rvt");
+      const rect = node.getBoundingClientRect();
+      if (!image?.naturalWidth || !image.naturalHeight || !rect.width || !rect.height) return;
+      const fitted = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+      const imageWidth = image.naturalWidth * fitted;
+      const imageHeight = image.naturalHeight * fitted;
+      const x = event.clientX - rect.left - (rect.width - imageWidth) / 2;
+      const y = event.clientY - rect.top - (rect.height - imageHeight) / 2;
+      if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return;
+      onPlanClick({ x: x / imageWidth, y: y / imageHeight });
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     if (!bounds.width) return;
     const point = {

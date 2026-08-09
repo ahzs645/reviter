@@ -1,6 +1,7 @@
 /** Architectural plan composition from persisted, level-aware RVT geometry. */
 import { cachedDerivedRoomsForLevel, type DerivedRoomResult } from "./derived-rooms.ts";
 import { floorPlateRecords } from "./export-svg.ts";
+import { formatFeetInches } from "./format-length.ts";
 import type { ConvertResult, ElementBoundsRecord, Point3, WallArc, WallSolid } from "./types.ts";
 
 const WALL_CATEGORY_IDS = new Set([-2_000_011, -2_000_170, -2_000_171]);
@@ -14,13 +15,28 @@ const OPEN_END_MINIMUM_WALL_LENGTH_FEET = 6;
 type Point2 = [number, number];
 type PlanBounds = { minX: number; minY: number; maxX: number; maxY: number };
 
+export type ArchitecturalPlanRoomLabel = { name?: string; number?: string };
+
 export type ArchitecturalPlanSvgOptions = {
   /** Overlay approximate, unnamed regions inferred from recovered barriers. */
   derivedRooms?: boolean | DerivedRoomResult;
+  /**
+   * User-accepted names/numbers from Room review, keyed by derived-room
+   * candidate key. Labelled regions read like plan rooms; the rest keep their
+   * F-numbers so reviewed and unreviewed regions stay distinguishable.
+   */
+  roomLabels?: Readonly<Record<string, ArchitecturalPlanRoomLabel>>;
   /** Rotate the drawing view clockwise in 90-degree steps without moving RVT geometry. */
   rotationQuarterTurns?: number;
   /** Nearby, adjoining split-level elevations to compose into the same map. */
   connectedLevelIds?: readonly number[];
+  /**
+   * `screen` (default) keeps cut linework pixel-crisp under zoom with
+   * non-scaling strokes. `document` renders paper-correct ISO pen widths for
+   * an implied print of the plan's long side at ~800 mm, with an overall
+   * dimension string — the variant to download and print.
+   */
+  purpose?: "screen" | "document";
 };
 
 export type ArchitecturalPlanSummary = {
@@ -55,8 +71,17 @@ type ArchitecturalPlanRecords = ArchitecturalPlanSummary & {
 
 const planCache = new WeakMap<ConvertResult, Map<number, ArchitecturalPlanRecords>>();
 const connectedPlanCache = new WeakMap<ConvertResult, Map<string, ArchitecturalPlanRecords>>();
-const svgCache = new WeakMap<ConvertResult, Map<string, Map<number, WeakMap<object, string>>>>();
-const NO_DERIVED_REGIONS = {};
+const svgCache = new WeakMap<ConvertResult, Map<string, string>>();
+// Option objects (derived rooms, room labels) are cache-keyed by identity, not
+// content: a rebuilt object simply misses the cache and re-renders.
+const optionIdentity = new WeakMap<object, number>();
+let optionIdentityCounter = 0;
+function identityOf(value: object | null | undefined): number {
+  if (!value) return 0;
+  let id = optionIdentity.get(value);
+  if (id == null) { id = ++optionIdentityCounter; optionIdentity.set(value, id); }
+  return id;
+}
 
 function intersectsElevation(record: ElementBoundsRecord, elevation: number) {
   const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
@@ -285,14 +310,99 @@ function convexHull(points: Point2[]): Point2[] {
   lower.pop(); upper.pop(); return [...lower, ...upper];
 }
 
-function wallPolygon(solid: WallSolid): Point2[] {
+type WallCornerOverrides = {
+  startLeft?: Point2; startRight?: Point2; endLeft?: Point2; endRight?: Point2;
+};
+
+function wallPolygon(solid: WallSolid, corners?: WallCornerOverrides): Point2[] {
   const dx = solid.end.x - solid.start.x; const dy = solid.end.y - solid.start.y;
   const length = Math.hypot(dx, dy) || 1; const px = -dy / length * solid.thickness / 2;
   const py = dx / length * solid.thickness / 2;
   return [
-    [solid.start.x + px, solid.start.y + py], [solid.end.x + px, solid.end.y + py],
-    [solid.end.x - px, solid.end.y - py], [solid.start.x - px, solid.start.y - py],
+    corners?.startLeft ?? [solid.start.x + px, solid.start.y + py],
+    corners?.endLeft ?? [solid.end.x + px, solid.end.y + py],
+    corners?.endRight ?? [solid.end.x - px, solid.end.y - py],
+    corners?.startRight ?? [solid.start.x - px, solid.start.y - py],
   ];
+}
+
+const MITER_JUNCTION_TOLERANCE_FEET = 0.25;
+const MITER_LIMIT = 10;
+
+function lineIntersection(pointA: Point2, dirA: Point2, pointB: Point2, dirB: Point2): Point2 | null {
+  const cross = dirA[0] * dirB[1] - dirA[1] * dirB[0];
+  if (Math.abs(cross) < 1e-6) return null;
+  const t = ((pointB[0] - pointA[0]) * dirB[1] - (pointB[1] - pointA[1]) * dirB[0]) / cross;
+  return [pointA[0] + dirA[0] * t, pointA[1] + dirA[1] * t];
+}
+
+/**
+ * Corner joints for the cut-wall poché. Where exactly two wall solids meet at
+ * a shared endpoint, their offset edges are extended to their intersection so
+ * the corner closes with a proper miter instead of two overlapping butt ends.
+ * Near-collinear pairs (miter spike), T-junctions, and walls shorter than the
+ * miter itself keep the plain rectangle — an over-eager miter reads worse than
+ * an honest butt joint on recovered geometry.
+ */
+function miteredWallCorners(
+  candidates: ReturnType<typeof wallSolids>,
+): Map<WallSolid, WallCornerOverrides> {
+  const junctions = new Map<string, Array<{ solid: WallSolid; end: "start" | "end" }>>();
+  for (const { solid } of candidates) {
+    const length = Math.hypot(solid.end.x - solid.start.x, solid.end.y - solid.start.y);
+    if (length < 1e-6) continue;
+    for (const end of ["start", "end"] as const) {
+      const point = solid[end];
+      const key = `${Math.round(point.x / MITER_JUNCTION_TOLERANCE_FEET)},${Math.round(point.y / MITER_JUNCTION_TOLERANCE_FEET)}`;
+      const members = junctions.get(key);
+      if (members) members.push({ solid, end }); else junctions.set(key, [{ solid, end }]);
+    }
+  }
+
+  const overrides = new Map<WallSolid, WallCornerOverrides>();
+  const cornerFor = (solid: WallSolid) => {
+    let value = overrides.get(solid);
+    if (!value) { value = {}; overrides.set(solid, value); }
+    return value;
+  };
+  const geometry = (member: { solid: WallSolid; end: "start" | "end" }) => {
+    const { solid, end } = member;
+    const dx = solid.end.x - solid.start.x; const dy = solid.end.y - solid.start.y;
+    const length = Math.hypot(dx, dy);
+    const direction: Point2 = [dx / length, dy / length];
+    const normal: Point2 = [-direction[1], direction[0]];
+    const half = solid.thickness / 2;
+    const junction = solid[end];
+    return {
+      direction, length, half,
+      junction: [junction.x, junction.y] as Point2,
+      corner: (side: 1 | -1): Point2 => [junction.x + normal[0] * half * side, junction.y + normal[1] * half * side],
+    };
+  };
+
+  for (const members of junctions.values()) {
+    if (members.length !== 2) continue;
+    const [a, b] = [members[0]!, members[1]!];
+    if (a.solid === b.solid) continue;
+    const wallA = geometry(a); const wallB = geometry(b);
+    // With both polygons wound start→end, matching sides pair left↔left when
+    // one wall ends where the other starts, and left↔right when both walls
+    // meet head-on or tail-on.
+    const flip = a.end === b.end;
+    for (const sideA of [1, -1] as const) {
+      const sideB = flip ? (-sideA as 1 | -1) : sideA;
+      const miter = lineIntersection(wallA.corner(sideA), wallA.direction, wallB.corner(sideB), wallB.direction);
+      if (!miter) continue;
+      const reach = distanceBetween(miter, wallA.junction);
+      const limit = MITER_LIMIT * Math.max(wallA.half, wallB.half);
+      if (reach > limit || reach > Math.min(wallA.length, wallB.length)) continue;
+      const keyA = a.end === "end" ? (sideA === 1 ? "endLeft" : "endRight") : (sideA === 1 ? "startLeft" : "startRight");
+      const keyB = b.end === "end" ? (sideB === 1 ? "endLeft" : "endRight") : (sideB === 1 ? "startLeft" : "startRight");
+      cornerFor(a.solid)[keyA] = miter;
+      cornerFor(b.solid)[keyB] = miter;
+    }
+  }
+  return overrides;
 }
 
 type ExposedWallEnd = {
@@ -569,9 +679,10 @@ function floorLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds)
 }
 
 function wallLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds) {
+  const miters = miteredWallCorners(wallSolids(records));
   return records.map((record) => {
     const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
-    const polygons = solids.map((solid) => `<path d="${path(wallPolygon(solid), bounds)}"/>`).join("");
+    const polygons = solids.map((solid) => `<path d="${path(wallPolygon(solid, miters.get(solid)), bounds)}"/>`).join("");
     const arcs = (record.arcs ?? []).map((arc) =>
       `<path class="arc-body" d="${path(arcPoints(arc), bounds, false)}" stroke-width="${Math.max(arc.thickness, 0.12)}"/><path class="arc-centreline" d="${path(arcPoints(arc), bounds, false)}"/>`,
     ).join("");
@@ -597,6 +708,17 @@ function exposedWallEndLayer(ends: readonly ExposedWallEnd[], bounds: PlanBounds
   }).join("");
 }
 
+/**
+ * Leaf count decoded from the door's own family/type name — "Дверь-Двойная"
+ * and "Double" both name a pair of leaves. Names are persisted data, so this
+ * stays a decode rather than a geometric guess; unrecognised names keep the
+ * single-leaf symbol.
+ */
+function doorLeafCount(record: ElementBoundsRecord): 1 | 2 {
+  const name = `${record.familyName ?? ""} ${record.typeName ?? ""}`.toLowerCase();
+  return /double|двойн/u.test(name) ? 2 : 1;
+}
+
 function openingLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds, kind: "door" | "window") {
   return records.map((record) => {
     const points = distinctPlanPoints(record); const frame = principalFrame(points);
@@ -610,10 +732,24 @@ function openingLayer(records: readonly ElementBoundsRecord[], bounds: PlanBound
       return `<g data-revit-element-id="${record.elementId}">${opening}<path d="${line(-1)}"/><path d="${line(1)}"/></g>`;
     }
     const width = Math.max(0.2, frame.halfWidth * 2);
-    const pivot: Point2 = [frame.center[0] - frame.u[0] * frame.halfWidth, frame.center[1] - frame.u[1] * frame.halfWidth];
-    const closed: Point2 = [frame.center[0] + frame.u[0] * frame.halfWidth, frame.center[1] + frame.u[1] * frame.halfWidth];
-    const opened: Point2 = [pivot[0] + frame.v[0] * width, pivot[1] + frame.v[1] * width];
-    const [pivotX, pivotY] = renderPoint(pivot, bounds); const [closedX, closedY] = renderPoint(closed, bounds);
+    const jambA: Point2 = [frame.center[0] - frame.u[0] * frame.halfWidth, frame.center[1] - frame.u[1] * frame.halfWidth];
+    const jambB: Point2 = [frame.center[0] + frame.u[0] * frame.halfWidth, frame.center[1] + frame.u[1] * frame.halfWidth];
+    if (doorLeafCount(record) === 2) {
+      // A pair of half-width leaves hinged at opposite jambs, meeting
+      // perpendicular at the centre of the opening — the standard double-door
+      // symbol. Both swing to the same side, like the recovered single doors.
+      const half = width / 2;
+      const leaf = (jamb: Point2, sweep: 0 | 1) => {
+        const opened: Point2 = [jamb[0] + frame.v[0] * half, jamb[1] + frame.v[1] * half];
+        const [jambX, jambY] = renderPoint(jamb, bounds);
+        const [openX, openY] = renderPoint(opened, bounds);
+        const [centreX, centreY] = renderPoint(frame.center, bounds);
+        return `<path class="leaf" d="M ${jambX} ${jambY} L ${openX} ${openY}"/><path class="swing" d="M ${centreX} ${centreY} A ${half} ${half} 0 0 ${sweep} ${openX} ${openY}"/>`;
+      };
+      return `<g data-revit-element-id="${record.elementId}" data-door-leaves="2">${opening}${leaf(jambA, 0)}${leaf(jambB, 1)}</g>`;
+    }
+    const opened: Point2 = [jambA[0] + frame.v[0] * width, jambA[1] + frame.v[1] * width];
+    const [pivotX, pivotY] = renderPoint(jambA, bounds); const [closedX, closedY] = renderPoint(jambB, bounds);
     const [openX, openY] = renderPoint(opened, bounds);
     return `<g data-revit-element-id="${record.elementId}">${opening}<path class="leaf" d="M ${pivotX} ${pivotY} L ${openX} ${openY}"/><path class="swing" d="M ${closedX} ${closedY} A ${width} ${width} 0 0 0 ${openX} ${openY}"/></g>`;
   }).join("");
@@ -709,12 +845,144 @@ function planAnnotationLayer(
   return `<g class="plan-annotations" aria-hidden="true"><g class="scale-bar">${segments}${barLabels}</g>${needle}</g>`;
 }
 
-function roomLayer(rooms: DerivedRoomResult | null, bounds: PlanBounds, scale: number) {
+function escapeXml(value: string) {
+  return value.replace(/[&<>"']/gu, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;",
+  }[character]!));
+}
+
+export type PlanDrawingFrame = {
+  minX: number; minY: number; maxX: number; maxY: number;
+  footerFeet: number;
+  rotationQuarterTurns: number;
+};
+
+/** The world-space drawing frame a plan SVG advertises on its root element. */
+export function planDrawingFrame(svg: string): PlanDrawingFrame | null {
+  const attr = (name: string) => {
+    const match = svg.match(new RegExp(`${name}="([^"]+)"`, "u"));
+    return match ? Number(match[1]) : Number.NaN;
+  };
+  const frame = {
+    minX: attr("data-plan-min-x-feet"), minY: attr("data-plan-min-y-feet"),
+    maxX: attr("data-plan-max-x-feet"), maxY: attr("data-plan-max-y-feet"),
+    footerFeet: attr("data-plan-footer-feet"),
+    rotationQuarterTurns: attr("data-view-rotation-degrees") / 90,
+  };
+  return Object.values(frame).every(Number.isFinite) ? frame : null;
+}
+
+/**
+ * Convert a fraction of the rendered plan image (0–1 across its full width
+ * and height, footer included) back to model feet, inverting the view
+ * rotation. Returns null for points in the sheet-furniture footer.
+ */
+export function planWorldPoint(
+  frame: PlanDrawingFrame,
+  u: number,
+  v: number,
+): Point2 | null {
+  const sourceWidth = frame.maxX - frame.minX;
+  const sourceHeight = frame.maxY - frame.minY;
+  const rotation = ((Math.round(frame.rotationQuarterTurns) % 4) + 4) % 4;
+  const viewWidth = rotation % 2 ? sourceHeight : sourceWidth;
+  const viewHeight = rotation % 2 ? sourceWidth : sourceHeight;
+  const viewX = u * viewWidth;
+  const viewY = v * (viewHeight + frame.footerFeet);
+  if (viewX < 0 || viewY < 0 || viewX > viewWidth || viewY > viewHeight) return null;
+  let contentX: number; let contentY: number;
+  if (rotation === 1) { contentX = viewY; contentY = sourceHeight - viewX; }
+  else if (rotation === 2) { contentX = sourceWidth - viewX; contentY = sourceHeight - viewY; }
+  else if (rotation === 3) { contentX = sourceWidth - viewY; contentY = viewX; }
+  else { contentX = viewX; contentY = viewY; }
+  return [frame.minX + contentX, frame.maxY - contentY];
+}
+
+/**
+ * A single overall dimension string across the drawing's content width, drawn
+ * with standard anatomy — witness lines with a start gap and overshoot, 45°
+ * architectural ticks, the value lettered above the line — for document
+ * output. One honest overall measure; interior chains would imply a precision
+ * recovered geometry does not have.
+ */
+function overallDimensionLayer(
+  content: PlanBounds,
+  frame: PlanBounds,
+  height: number,
+  footer: number,
+  mmToFeet: number,
+) {
+  const startX = content.minX - frame.minX;
+  const endX = content.maxX - frame.minX;
+  if (endX - startX < mmToFeet * 40) return "";
+  const gap = 1.5 * mmToFeet;
+  const overshoot = 1.2 * mmToFeet;
+  const tickHalf = 1.8 * mmToFeet * Math.SQRT1_2;
+  const lineY = height + footer * 0.24;
+  const fontSize = 3.5 * mmToFeet;
+  const tick = (x: number) =>
+    `<path d="M ${x - tickHalf} ${lineY + tickHalf} L ${x + tickHalf} ${lineY - tickHalf}"/>`;
+  return `<g class="plan-dimensions">` +
+    `<path d="M ${startX} ${height + gap} L ${startX} ${lineY + overshoot} M ${endX} ${height + gap} L ${endX} ${lineY + overshoot}"/>` +
+    `<path d="M ${startX} ${lineY} L ${endX} ${lineY}"/>` +
+    tick(startX) + tick(endX) +
+    `<text x="${(startX + endX) / 2}" y="${lineY - fontSize * 0.45}" text-anchor="middle" font-size="${fontSize}">${formatFeetInches(content.maxX - content.minX)}</text></g>`;
+}
+
+function roomLayer(
+  rooms: DerivedRoomResult | null,
+  bounds: PlanBounds,
+  scale: number,
+  roomLabels?: Readonly<Record<string, ArchitecturalPlanRoomLabel>>,
+) {
   if (!rooms) return "";
   const paths = rooms.rooms.map((room) => `<path class="${room.closure}" data-derived-floor-region-id="${room.id}" data-derived-room-key="${room.key}" d="${room.loops.map((loop) => path(loop, bounds)).join(" ")}"/>`).join("");
+  const fontSize = scale / 170;
+  // Labels are laid out with estimated text metrics (character width ≈ 0.62 ×
+  // font size, the usual UI-sans ratio), largest rooms first. A label that
+  // would sit on an already-placed one tries small vertical shifts; if every
+  // slot is taken it is dropped — on a drawing, a missing minor label reads
+  // better than two on top of each other.
+  const placed: Array<{ minX: number; minY: number; maxX: number; maxY: number }> = [];
+  const overlapsPlaced = (box: { minX: number; minY: number; maxX: number; maxY: number }) =>
+    placed.some((other) => box.maxX > other.minX && box.minX < other.maxX &&
+      box.maxY > other.minY && box.minY < other.maxY);
   const labels = [...rooms.rooms].sort((a, b) => b.areaSquareFeet - a.areaSquareFeet).slice(0, 60)
-    .map((room) => { const [x, y] = renderPoint(room.centroid, bounds); return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">F${room.id}</text>`; }).join("");
-  return `<g class="rooms" fill-rule="evenodd">${paths}</g><g class="room-labels" font-size="${scale / 170}">${labels}</g>`;
+    .map((room) => {
+      const [x, baseY] = renderPoint(room.centroid, bounds);
+      // Accepted Room-review names read like plan rooms (NAME over number);
+      // unreviewed regions keep their F-numbers so the two stay distinct.
+      const accepted = roomLabels?.[room.key];
+      const title = accepted?.name?.trim()
+        ? escapeXml(accepted.name.trim().toUpperCase())
+        : accepted?.number?.trim() ? escapeXml(accepted.number.trim()) : `F${room.id}`;
+      const hasNumberLine = Boolean(accepted?.name?.trim() && accepted?.number?.trim());
+      // Rooms large enough to hold another line also get their measured area,
+      // the way space labels read on a real plan. The value is derived, so it
+      // stays rounded rather than implying survey precision.
+      const hasAreaLine = room.areaSquareFeet >= 300;
+      const lineCount = 1 + (hasNumberLine ? 1 : 0) + (hasAreaLine ? 1 : 0);
+      const halfWidth = Math.max(title.length, 4) * fontSize * 0.62 / 2;
+      const halfHeight = (lineCount * fontSize * 1.15) / 2;
+      let y: number | null = null;
+      for (const shift of [0, 1.1, -1.1, 2.2, -2.2]) {
+        const candidateY = baseY + shift * halfHeight;
+        const box = {
+          minX: x - halfWidth, maxX: x + halfWidth,
+          minY: candidateY - halfHeight, maxY: candidateY + halfHeight,
+        };
+        if (!overlapsPlaced(box)) { placed.push(box); y = candidateY; break; }
+      }
+      if (y == null) return "";
+      const numberLine = hasNumberLine
+        ? `<tspan x="${x}" dy="${scale / 165}">${escapeXml(accepted!.number!.trim())}</tspan>`
+        : "";
+      const area = hasAreaLine
+        ? `<tspan x="${x}" dy="${scale / 150}" font-size="${scale / 260}">${Math.round(room.areaSquareFeet).toLocaleString("en-US")} ft²</tspan>`
+        : "";
+      return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central"${accepted ? ` class="accepted" data-derived-room-key="${room.key}"` : ""}>${title}${numberLine}${area}</text>`;
+    }).join("");
+  return `<g class="rooms" fill-rule="evenodd">${paths}</g><g class="room-labels" font-size="${fontSize}">${labels}</g>`;
 }
 
 /** Compose a readable architectural plan without inventing Revit Rooms or annotations. */
@@ -728,11 +996,10 @@ export function makeArchitecturalFloorSvg(
   const derivedRooms = options.derivedRooms === true
     ? cachedDerivedRoomsForLevel(result, levelId)
     : options.derivedRooms || null;
-  const planKey = `${levelId}:${plan.levelPlans.map((part) => part.levelId).join(",")}`;
-  let levelCache = svgCache.get(result); if (!levelCache) { levelCache = new Map(); svgCache.set(result, levelCache); }
-  let rotations = levelCache.get(planKey); if (!rotations) { rotations = new Map(); levelCache.set(planKey, rotations); }
-  let variants = rotations.get(rotation); if (!variants) { variants = new WeakMap(); rotations.set(rotation, variants); }
-  const cacheKey = derivedRooms ?? NO_DERIVED_REGIONS; const cached = variants.get(cacheKey); if (cached) return cached;
+  const cacheKey = `${levelId}:${plan.levelPlans.map((part) => part.levelId).join(",")}` +
+    `|${rotation}|${identityOf(derivedRooms)}|${identityOf(options.roomLabels)}|${options.purpose === "document" ? "doc" : "scr"}`;
+  let cacheStore = svgCache.get(result); if (!cacheStore) { cacheStore = new Map(); svgCache.set(result, cacheStore); }
+  const cached = cacheStore.get(cacheKey); if (cached) return cached;
 
   const padding = 2.5;
   const renderedBounds = boundsIncludingDoorSwings(plan.bounds, plan.doorRecords);
@@ -747,13 +1014,19 @@ export function makeArchitecturalFloorSvg(
   // drawn symbols medium, projections light. The cut-wall poché itself does
   // the tonal work, so strokes stay restrained even on a fitted campus plan.
   const scale = Math.max(sourceWidth, sourceHeight); const fineStroke = Math.max(0.025, scale / 4_200);
-  const cutStroke = 1.35; const projectionStroke = 0.8;
-  // Symbol linework (door leaves, swings, glazing, risers) scales with the
-  // drawing like ink on paper, so a fitted campus plan stays quiet and a
-  // zoomed room shows proper symbol weight. Cut structure stays pixel-crisp.
-  const leafPen = Math.max(0.12, fineStroke * 2.2);
-  const symbolPen = Math.max(0.08, fineStroke * 1.5);
+  const documentMode = options.purpose === "document";
+  // Document output is a paper model: the plan's long side prints at ~800 mm,
+  // so ISO 128 pen millimetres (0.5 cut / 0.35 medium / 0.25 symbol / 0.18
+  // fine) convert to drawing feet at this ratio and the whole sheet scales
+  // like ink. Screen mode instead pins cut linework to device pixels and
+  // gives symbols a legibility floor.
+  const mmToFeet = scale / 800;
+  const cutStroke = documentMode ? 0.5 * mmToFeet : 1.35;
+  const projectionStroke = documentMode ? 0.18 * mmToFeet : 0.8;
+  const leafPen = documentMode ? 0.35 * mmToFeet : Math.max(0.12, fineStroke * 2.2);
+  const symbolPen = documentMode ? 0.25 * mmToFeet : Math.max(0.08, fineStroke * 1.5);
   const swingDash = `${fineStroke * 5} ${fineStroke * 3.5}`;
+  const crisp = documentMode ? "" : ";vector-effect:non-scaling-stroke";
   const connected = plan.levelPlans.length > 1;
   const openEnds = exposedWallEnds(plan.wallRecords, plan.floorRecords);
   const floorFills = ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"];
@@ -771,17 +1044,18 @@ export function makeArchitecturalFloorSvg(
   <title id="architectural-plan-title">${connected ? "Connected split-level architectural plan" : `Architectural floor map for Revit level ${levelId}`}</title>
   <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. T-shaped open-end marks identify long wall endpoints with no adjoining wall or nearby recovered floor. Door swings and uncategorized fallback footprints are approximate.</desc>
   <style>
-    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#9aa4a6;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
-    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
+    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#9aa4a6;stroke-width:${projectionStroke}${crisp}}
+    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${projectionStroke}${crisp}}
     .rooms .near-closed{fill:#f3b36f;fill-opacity:.22;stroke:#d9823b;stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
     .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none;paint-order:stroke;stroke:#fffdf7;stroke-width:${scale / 850}}
-    .walls{fill:#1f2937;fill-opacity:.94;stroke:#111827;stroke-width:${cutStroke};stroke-linejoin:round;vector-effect:non-scaling-stroke}
-    .walls path{vector-effect:non-scaling-stroke}
+    .room-labels .accepted{fill:#1f2937}
+    .walls{fill:#1f2937;fill-opacity:.94;stroke:#111827;stroke-width:${cutStroke};stroke-linejoin:round${crisp}}
+    ${documentMode ? "" : ".walls path{vector-effect:non-scaling-stroke}"}
     .walls .arc-body{fill:none;stroke:#1f2937;stroke-opacity:.94;vector-effect:none}
-    .walls .arc-centreline{fill:none;stroke:#111827;stroke-width:${cutStroke * 0.7};vector-effect:non-scaling-stroke}
+    .walls .arc-centreline{fill:none;stroke:#111827;stroke-width:${cutStroke * 0.7}${crisp}}
     .open-edges{fill:none;stroke:#8b6f52;stroke-width:${symbolPen};stroke-linecap:round;opacity:.82;pointer-events:none}
-    .columns{fill:#374151;stroke:#111827;stroke-width:${cutStroke * 0.9};vector-effect:non-scaling-stroke}
-    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${cutStroke * 1.3};vector-effect:non-scaling-stroke}
+    .columns{fill:#374151;stroke:#111827;stroke-width:${cutStroke * 0.9}${crisp}}
+    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${cutStroke * 1.3}${crisp}}
     .doors .leaf{fill:none;stroke:#374151;stroke-width:${leafPen};stroke-linecap:round}
     .doors .swing{fill:none;stroke:#64748b;stroke-width:${symbolPen};stroke-dasharray:${swingDash};stroke-linecap:round}
     .windows path:not(.opening){fill:none;stroke:#334155;stroke-width:${symbolPen}}
@@ -793,14 +1067,16 @@ export function makeArchitecturalFloorSvg(
     .stairs .run-direction-label{fill:#111827;font:600 ${Math.max(2, scale / 240)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_100)};pointer-events:none}
     .plan-annotations{pointer-events:none}
     .plan-annotations text{fill:#111827;font:600 ${Math.max(2, scale / 220)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_000)}}
-    .plan-annotations .scale-bar rect{stroke:#111827;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
-    .plan-annotations .north circle{fill:#fffdf7;stroke:#111827;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
-    .plan-annotations .north path{stroke:#111827;stroke-width:${projectionStroke};stroke-linejoin:round;vector-effect:non-scaling-stroke}
+    .plan-annotations .scale-bar rect{stroke:#111827;stroke-width:${projectionStroke}${crisp}}
+    .plan-annotations .north circle{fill:#fffdf7;stroke:#111827;stroke-width:${projectionStroke}${crisp}}
+    .plan-annotations .north path{stroke:#111827;stroke-width:${projectionStroke};stroke-linejoin:round${crisp}}
+    .plan-dimensions{fill:none;stroke:#334155;stroke-width:${symbolPen}}
+    .plan-dimensions text{fill:#111827;stroke:none;font-family:ui-monospace,monospace;font-weight:500}
   </style>
   <rect width="100%" height="100%" fill="#fffdf7"/>
   <g${contentTransform ? ` transform="${contentTransform}"` : ""}>
   <g fill-rule="evenodd">${floorGroups}</g>
-  ${roomLayer(derivedRooms, bounds, scale)}
+  ${roomLayer(derivedRooms, bounds, scale, options.roomLabels)}
   <g class="walls">${wallLayer(plan.wallRecords, bounds)}</g>
   <g class="open-edges" data-confirmed-open-end-count="${openEnds.length}">${exposedWallEndLayer(openEnds, bounds)}</g>
   <g class="columns">${plan.columnRecords.map((record) => `<path data-revit-element-id="${record.elementId}" d="${path(distinctPlanPoints(record), bounds)}"/>`).join("")}</g>
@@ -809,6 +1085,7 @@ export function makeArchitecturalFloorSvg(
   <g class="stairs">${stairGroups}</g>
   </g>
   ${planAnnotationLayer(width, height, scale, rotation, footer)}
+  ${documentMode && rotation === 0 ? overallDimensionLayer(renderedBounds, bounds, height, footer, mmToFeet) : ""}
 </svg>`;
-  variants.set(cacheKey, svg); return svg;
+  cacheStore.set(cacheKey, svg); return svg;
 }

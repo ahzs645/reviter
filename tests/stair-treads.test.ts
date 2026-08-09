@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  isMonumentalTerracedRun,
   recoverConnectedStairTreads,
   recoverFlattenedProfileStairTreads,
   recoverGuideChainStairTreads,
@@ -10,6 +11,7 @@ import {
   recoverProfiledGuideStairTreads,
   recoverStraightStairTreads,
   respaceStraightStairTreads,
+  snapTreadsToSketchRiserLines,
 } from "../lib/reviter/stair-treads.ts";
 import { buildBoundsMeshes } from "../lib/reviter/scene.ts";
 import type { Point3, SketchCurve } from "../lib/reviter/sketch-curves.ts";
@@ -1035,4 +1037,65 @@ test("a drifting straight lattice is respaced across the run's own envelope", ()
   const doubled = [...treads, treads[0]!.map((corner) =>
     [corner[0], corner[1] + 12, corner[2]] as Point3) as [Point3, Point3, Point3, Point3]];
   assert.equal(respaceStraightStairTreads(doubled, bounds, 9, true, true), null);
+});
+
+test("the monumental gate separates terraces from ordinary flights by medians", () => {
+  const quad = (
+    rear: number,
+    front: number,
+    z: number,
+    width = 10,
+  ): [Point3, Point3, Point3, Point3] => [
+    [width, rear, z],
+    [width, front, z],
+    [0, front, z],
+    [0, rear, z],
+  ];
+  // Run 2075102's shape: 4.47 ft treads, 0.82 ft rises.
+  const terraces = Array.from({ length: 7 }, (_, step) =>
+    quad(step * 4.47, (step + 1) * 4.47, 0.82 * (step + 1)));
+  assert.equal(isMonumentalTerracedRun(terraces), true);
+  // The agora's shape: shallow 0.41 ft rises but 3.9 ft treads still qualify.
+  const agora = Array.from({ length: 7 }, (_, step) =>
+    quad(step * 3.9, (step + 1) * 3.9, 0.41 * (step + 1)));
+  assert.equal(isMonumentalTerracedRun(agora), true);
+  // An ordinary flight: 0.92 ft treads, 0.51 ft rises stays thin.
+  const flight = Array.from({ length: 7 }, (_, step) =>
+    quad(step * 0.92, (step + 1) * 0.92, 0.51 * (step + 1)));
+  assert.equal(isMonumentalTerracedRun(flight), false);
+  // A single winder cell cannot flip an ordinary run: medians decide.
+  const withWinder = [...flight, quad(7 * 0.92, 7 * 0.92 + 3.5, 0.51 * 8)];
+  assert.equal(isMonumentalTerracedRun(withWinder), false);
+});
+
+test("a lattice one slot off the sketch's repeated riser lines snaps onto them", () => {
+  // Run 1801503's shape: 8 repeated cross-run lines are the risers, but the
+  // recovered boundaries sit roughly one tread late and overrun the landing.
+  const lines = [1.33, 4.22, 7.12, 11.02, 14.82, 18.53, 22.01, 25.85];
+  const recovered = [5.28, 8.42, 11.57, 15.04, 18.51, 21.81, 25.72, 29.07];
+  const treads: [Point3, Point3, Point3, Point3][] = [];
+  for (let step = 0; step < 7; step += 1) {
+    treads.push([
+      [10, recovered[step]!, 1.23 * (step + 1)],
+      [10, recovered[step + 1]!, 1.23 * (step + 1)],
+      [0, recovered[step + 1]!, 1.23 * (step + 1)],
+      [0, recovered[step]!, 1.23 * (step + 1)],
+    ]);
+  }
+  const curves: SketchCurve[] = lines.flatMap((y) =>
+    Array.from({ length: 6 }, () => line([0, y, 0], [10, y, 0])));
+  const snapped = snapTreadsToSketchRiserLines(treads, curves);
+  assert.ok(snapped);
+  for (let step = 0; step < 7; step += 1) {
+    assert.ok(Math.abs(snapped[step]![0][1] - lines[step]!) < 1e-9);
+    assert.ok(Math.abs(snapped[step]![1][1] - lines[step + 1]!) < 1e-9);
+    assert.equal(snapped[step]![0][2], 1.23 * (step + 1));
+  }
+
+  // A cluster count that disagrees with the boundary count declines.
+  const extra = [...curves, ...Array.from({ length: 6 }, () =>
+    line([0, 28.5, 0], [10, 28.5, 0]))];
+  assert.equal(snapTreadsToSketchRiserLines(treads, extra), null);
+  // An already-aligned lattice is left alone.
+  assert.equal(snapTreadsToSketchRiserLines(snapped, curves), null);
 });

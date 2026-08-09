@@ -12,6 +12,7 @@ export type { BasicFileInfoProperties } from "./basic-file-info";
 export { decodeRevitTextBytes } from "./revit-text-encoding";
 export type { DecodedRevitText, RevitTextEncoding } from "./revit-text-encoding";
 export { dwgThumbnailBlob, extractDwgThumbnail } from "./dwg-thumbnail";
+export { formatFeetInches } from "./format-length";
 export type { DwgThumbnail } from "./dwg-thumbnail";
 export {
   indexFamilyLibraryFiles,
@@ -256,6 +257,8 @@ export {
   makeFloorPlateSvg,
   makeArchitecturalFloorSvg,
   architecturalPlanSummary,
+  planDrawingFrame,
+  planWorldPoint,
   connectedFloorPlanGroup,
   connectedFloorPlanGroups,
   IDENTITY_FLOOR_REFERENCE_TRANSFORM,

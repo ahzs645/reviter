@@ -317,6 +317,12 @@ export type ElementBoundsRecord = {
   stairBeginWithRiser?: boolean;
   stairEndWithRiser?: boolean;
   /**
+   * Draw the run as a solid terraced mass: each tread extruded to the run's
+   * base, with only the visible riser band emitted on shared cell edges. Set
+   * by the fitted monumental depth/rise rule; see isMonumentalTerracedRun.
+   */
+  stairMonumentalSolid?: boolean;
+  /**
    * A rectangular placed curtain-panel proxy clipped by the long axis of an
    * independently placed diagonal mullion. Present only for an unambiguous
    * larger-side cut; ordinary rectangular panels retain their oriented box.

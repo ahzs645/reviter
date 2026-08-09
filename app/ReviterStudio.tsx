@@ -1936,6 +1936,7 @@ export default function ReviterStudio() {
               showDerivedRooms={showDerivedRooms}
               onShowDerivedRooms={setShowDerivedRooms}
               derivedRooms={derivedFloorRooms}
+              roomReview={roomReview}
               isolateLevel={isolateMapLevel}
               onIsolateLevel={setIsolateMapLevel}
               selectedPoint={selectedMapPoint}
@@ -2032,6 +2033,7 @@ export default function ReviterStudio() {
                       showDerivedRooms={showDerivedRooms}
                       onShowDerivedRooms={setShowDerivedRooms}
                       derivedRooms={derivedFloorRooms}
+                      roomReview={roomReview}
                       isolateLevel={isolateMapLevel}
                       onIsolateLevel={setIsolateMapLevel}
                       selectedPoint={selectedMapPoint}

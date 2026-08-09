@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, LocateFixed, Minus, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Footprints, LocateFixed, Minus, Plus, X } from "lucide-react";
 
 import {
   floorPlateBounds,
   floorPlateLevels,
   floorPlateSvgDataUrl,
+  formatFeetInches,
   type ConvertResult,
   type DerivedRoomResult,
+  type RoomReviewState,
 } from "../../lib/reviter";
-import { useArchitecturalPlan } from "./use-architectural-plan.ts";
+import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
 
 type Point2 = [number, number];
 
@@ -22,7 +24,7 @@ function tuple(value: string | undefined): [number, number, number] | null {
 
 export function FloorMiniMap({
   result, selectedLevelId, onSelectedLevelId, showDerivedRooms, onShowDerivedRooms,
-  derivedRooms, onClose, isolateLevel = false, onIsolateLevel, selectedPoint,
+  derivedRooms, roomReview, onClose, isolateLevel = false, onIsolateLevel, selectedPoint,
   onWalkTo, embedded = false,
 }: {
   result: ConvertResult;
@@ -31,6 +33,7 @@ export function FloorMiniMap({
   showDerivedRooms: boolean;
   onShowDerivedRooms: (visible: boolean) => void;
   derivedRooms: DerivedRoomResult | null;
+  roomReview?: RoomReviewState;
   onClose: () => void;
   isolateLevel?: boolean;
   onIsolateLevel?: (isolated: boolean) => void;
@@ -42,12 +45,17 @@ export function FloorMiniMap({
   const selectedIndex = Math.max(0, levels.findIndex((level) => level.levelId === selectedLevelId));
   const selected = levels[selectedIndex] ?? null;
   const selectedDerivedRooms = derivedRooms?.levelId === selected?.levelId ? derivedRooms : null;
+  const roomLabels = useMemo(
+    () => acceptedRoomLabels(selectedDerivedRooms, roomReview),
+    [roomReview, selectedDerivedRooms],
+  );
   const planParts = useMemo(() => selected ? {
     levelId: selected.levelId,
     connectedLevelIds: [selected.levelId],
     rotationQuarterTurns: 0,
     derivedRooms: selectedDerivedRooms,
-  } : null, [selected, selectedDerivedRooms]);
+    roomLabels,
+  } : null, [roomLabels, selected, selectedDerivedRooms]);
   const prewarm = useMemo(
     () => [levels[selectedIndex + 1], levels[selectedIndex - 1]]
       .filter((level) => level != null)
@@ -84,6 +92,16 @@ export function FloorMiniMap({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [camera, setCamera] = useState<{ position: [number, number, number]; direction: [number, number, number]; walking: boolean } | null>(null);
+  const [followCamera, setFollowCamera] = useState(true);
+  // While walking, keep the map on the storey the camera is actually on, the
+  // way storey-view minimaps do; zoom and pan are left alone so the switch
+  // never yanks the view around.
+  const followCameraFloor = useEffectEvent((position: [number, number, number], walking: boolean) => {
+    if (!followCamera || !walking || !levels.length) return;
+    const nearest = levels.reduce((closest, level) =>
+      Math.abs(level.elevation - position[2]) < Math.abs(closest.elevation - position[2]) ? level : closest, levels[0]!);
+    if (nearest.levelId !== selectedLevelId) onSelectedLevelId(nearest.levelId);
+  });
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
@@ -104,6 +122,7 @@ export function FloorMiniMap({
       const position = tuple(canvas?.dataset.modelCameraPositionFeet);
       const direction = tuple(canvas?.dataset.modelCameraDirection);
       setCamera(position && direction ? { position, direction, walking: canvas?.dataset.navigationState === "walk" } : null);
+      if (position) followCameraFloor(position, canvas?.dataset.navigationState === "walk");
     };
     read(); const timer = window.setInterval(read, 160); return () => window.clearInterval(timer);
   }, []);
@@ -124,7 +143,21 @@ export function FloorMiniMap({
   const marker = camera ? { x: camera.position[0] - bounds.minX, y: bounds.maxY - camera.position[1], dx: camera.direction[0], dy: -camera.direction[1] } : null;
   const selectedMarker = selectedPoint ? { x: selectedPoint[0] - bounds.minX, y: bounds.maxY - selectedPoint[1] } : null;
   const choose = (index: number) => { const level = levels[index]; if (level) { onSelectedLevelId(level.levelId); setZoom(1); setPan({ x: 0, y: 0 }); } };
-  const setBoundedZoom = (value: number) => setZoom(Math.max(1, Math.min(8, value)));
+  // Zoom keeps the point under the cursor (or the viewport centre, for the
+  // buttons) fixed, instead of scaling about the map's top-left corner.
+  const applyZoom = (value: number, focus?: { x: number; y: number }) => {
+    const bounded = Math.max(1, Math.min(8, value));
+    if (bounded === zoom) return;
+    if (bounded === 1) { setZoom(1); setPan({ x: 0, y: 0 }); return; }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const focusX = focus?.x ?? (rect ? rect.width / 2 : 0);
+    const focusY = focus?.y ?? (rect ? rect.height / 2 : 0);
+    setPan({
+      x: focusX - ((focusX - pan.x) / zoom) * bounded,
+      y: focusY - ((focusY - pan.y) / zoom) * bounded,
+    });
+    setZoom(bounded);
+  };
   const mapPoint = (clientX: number, clientY: number): Point2 | null => {
     const node = canvasRef.current; if (!node) return null; const rect = node.getBoundingClientRect();
     const fitted = Math.min(rect.width / width, rect.height / height); const imageWidth = width * fitted; const imageHeight = height * fitted;
@@ -143,15 +176,15 @@ export function FloorMiniMap({
 
   return (
     <section ref={mapRef} id="floor-navigation-map" className={`floor-mini-map${embedded ? " embedded" : ""}`} aria-label="Floor navigation map">
-      <header><span><h2>Floor navigation map</h2><small>{selected.elevation.toFixed(1)}′ · camera {currentFloor ? `${currentFloor.elevation.toFixed(1)}′` : "unavailable"}</small></span><button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button></header>
+      <header><span><h2>Floor navigation map</h2><small>{formatFeetInches(selected.elevation)} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span><button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button></header>
       <div className="floor-mini-map-controls">
         <button type="button" className="rv-icon-button" aria-label="Previous map floor" disabled={selectedIndex === 0} onClick={() => choose(selectedIndex - 1)}><ChevronLeft size={14} aria-hidden /></button>
-        <select aria-label="Floor navigation map level" value={selected.levelId} onChange={(event) => choose(levels.findIndex((level) => level.levelId === Number(event.target.value)))}>{levels.map((level) => <option key={level.levelId} value={level.levelId}>{level.elevation.toFixed(1)}′ · {level.floorCount} slab{level.floorCount === 1 ? "" : "s"}</option>)}</select>
+        <select aria-label="Floor navigation map level" value={selected.levelId} onChange={(event) => choose(levels.findIndex((level) => level.levelId === Number(event.target.value)))}>{levels.map((level) => <option key={level.levelId} value={level.levelId}>{formatFeetInches(level.elevation)} · {level.floorCount} slab{level.floorCount === 1 ? "" : "s"}</option>)}</select>
         <button type="button" className="rv-icon-button" aria-label="Next map floor" disabled={selectedIndex === levels.length - 1} onClick={() => choose(selectedIndex + 1)}><ChevronRight size={14} aria-hidden /></button>
       </div>
-      <div className="floor-mini-map-zoom" role="group" aria-label="Map zoom"><button type="button" aria-label="Zoom map out" onClick={() => setBoundedZoom(zoom / 1.5)}><Minus size={13} /></button><button type="button" aria-label="Fit whole floor" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button><button type="button" aria-label="Zoom map in" onClick={() => setBoundedZoom(zoom * 1.5)}><Plus size={13} /></button><button type="button" aria-label="Locate camera on map" disabled={!marker} onClick={locateCamera}><LocateFixed size={13} /></button></div>
+      <div className="floor-mini-map-zoom" role="group" aria-label="Map zoom"><button type="button" aria-label="Zoom map out" onClick={() => applyZoom(zoom / 1.5)}><Minus size={13} /></button><button type="button" aria-label="Fit whole floor" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button><button type="button" aria-label="Zoom map in" onClick={() => applyZoom(zoom * 1.5)}><Plus size={13} /></button><button type="button" aria-label="Locate camera on map" disabled={!marker} onClick={locateCamera}><LocateFixed size={13} /></button><button type="button" aria-label="Walk to the selected object" disabled={!selectedMarker || !onWalkTo} onClick={() => { if (selectedPoint && onWalkTo) onWalkTo(selectedPoint, selected.elevation); }}><Footprints size={13} /></button></div>
       <figure aria-describedby="floor-map-caption">
-        <div ref={canvasRef} className="floor-mini-map-canvas" onWheel={(event) => { event.preventDefault(); setBoundedZoom(zoom * (event.deltaY < 0 ? 1.18 : 0.85)); }} onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; setPan({ x: drag.panX + dx, y: drag.panY + dy }); }} onPointerUp={(event) => { const drag = dragRef.current; dragRef.current = null; if (!drag?.moved && onWalkTo) { const point = mapPoint(event.clientX, event.clientY); if (point) onWalkTo(point, selected.elevation); } }}>
+        <div ref={canvasRef} className="floor-mini-map-canvas" onWheel={(event) => { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); applyZoom(zoom * (event.deltaY < 0 ? 1.18 : 0.85), { x: event.clientX - rect.left, y: event.clientY - rect.top }); }} onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; setPan({ x: drag.panX + dx, y: drag.panY + dy }); }} onPointerUp={(event) => { const drag = dragRef.current; dragRef.current = null; if (!drag?.moved && onWalkTo) { const point = mapPoint(event.clientX, event.clientY); if (point) onWalkTo(point, selected.elevation); } }}>
           <div className="floor-mini-map-content" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt="" />
@@ -162,7 +195,7 @@ export function FloorMiniMap({
         </div>
         <figcaption id="floor-map-caption" className="sr-only">Interactive architectural plan assembled from recovered Revit floors, walls, openings, windows, stairs, and columns. The teal arrow is the live camera and the pink marker is the selected object.</figcaption>
       </figure>
-      <footer><label><input type="checkbox" checked={showDerivedRooms} onChange={(event) => onShowDerivedRooms(event.target.checked)} />Derived floor regions</label>{onIsolateLevel && <label><input type="checkbox" checked={isolateLevel} onChange={(event) => onIsolateLevel(event.target.checked)} />Isolate 3D floor</label>}{showDerivedRooms && selectedDerivedRooms && <span>{selectedDerivedRooms.rooms.length} regions <em>Inferred</em></span>}</footer>
+      <footer><label><input type="checkbox" checked={showDerivedRooms} onChange={(event) => onShowDerivedRooms(event.target.checked)} />Derived floor regions</label><label><input type="checkbox" checked={followCamera} onChange={(event) => setFollowCamera(event.target.checked)} />Follow camera floor</label>{onIsolateLevel && <label><input type="checkbox" checked={isolateLevel} onChange={(event) => onIsolateLevel(event.target.checked)} />Isolate 3D floor</label>}{showDerivedRooms && selectedDerivedRooms && <span>{selectedDerivedRooms.rooms.length} regions <em>Inferred</em></span>}</footer>
       <span className="sr-only" role="status" aria-live="polite">Map level {selected.elevation.toFixed(1)} feet. {selectedDerivedRooms ? `${selectedDerivedRooms.rooms.length} inferred floor regions.` : ""}</span>
     </section>
   );

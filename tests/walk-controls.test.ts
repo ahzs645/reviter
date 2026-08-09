@@ -9,6 +9,8 @@ import {
   droppedEyeCoordinate,
   easeTravelProgress,
   FIRST_PERSON_SPEEDS,
+  flyToWalkStart,
+  walkFlightProfile,
   floorTravelDirection,
   horizontalWalkDirection,
   stepWalkSpeed,
@@ -658,4 +660,35 @@ test("falling accelerates at Autodesk's gravity and caps at its terminal speed",
     if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
     else Reflect.deleteProperty(globalThis, "document");
   }
+});
+
+test("teleport flight lands immediately when the camera is already at the start", () => {
+  const camera = new THREE.PerspectiveCamera();
+  const start = new THREE.Vector3(10, 4, 6);
+  camera.position.copy(start);
+  let engaged = 0;
+  const cancel = flyToWalkStart({
+    camera,
+    start,
+    lookAt: new THREE.Vector3(20, 4, 6),
+    up: "z",
+    clearance: 30,
+    invalidate: () => {},
+    onDone: () => { engaged += 1; },
+  });
+  assert.equal(engaged, 1, "a zero-length flight engages walk synchronously");
+  cancel();
+  assert.equal(engaged, 1, "cancel after completion never re-fires");
+});
+
+test("teleport flight profile glides low and quick for short hops, high and longer for far jumps", () => {
+  const clearance = 30;
+  const hop = walkFlightProfile(5, clearance);
+  const room = walkFlightProfile(30, clearance);
+  const campus = walkFlightProfile(600, clearance);
+  assert.ok(hop.arc < clearance * 0.2, "a few-foot hop stays close to the floor");
+  assert.ok(hop.durationMs < 550, "a short hop lands quickly");
+  assert.ok(room.arc > hop.arc && room.durationMs > hop.durationMs);
+  assert.equal(campus.arc, clearance, "long jumps rise to the full clearance");
+  assert.equal(campus.durationMs, 1_400, "duration caps for cross-campus teleports");
 });
