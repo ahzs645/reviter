@@ -217,6 +217,10 @@ test("composes a level-aware architectural map from recovered RVT elements", () 
   stair.boundsFeet.max.z = 10;
   stair.stairTreads = [[
     [13, 4, 1], [14, 4, 1], [14, 6, 1], [13, 6, 1],
+  ], [
+    [14, 4, 1.6], [15, 4, 1.6], [15, 6, 1.6], [14, 6, 1.6],
+  ], [
+    [15, 4, 2.2], [16, 4, 2.2], [16, 6, 2.2], [15, 6, 2.2],
   ]];
   const column = placed(15, -2_000_100, "Columns", 17);
   column.boundsFeet.max.x = 18;
@@ -246,11 +250,13 @@ test("composes a level-aware architectural map from recovered RVT elements", () 
   assert.match(svg, /class="riser"/u);
   assert.match(svg, /class="columns"/u);
   assert.doesNotMatch(svg, /data-revit-element-id="16"/u);
-  assert.match(svg, /\.walls\{fill:#e0e7e5;stroke:#344b50;stroke-width:/u);
+  assert.match(svg, /\.walls\{fill:#1f2937;fill-opacity:\.94;stroke:#111827;stroke-width:/u);
   assert.doesNotMatch(svg, /\.walls\{fill:#263f46/u);
+  assert.match(svg, /class="plan-annotations"/u);
+  assert.match(svg, /class="run-direction-label"[^>]*>UP</u);
 
   const rotated = makeArchitecturalFloorSvg(result, 100, { rotationQuarterTurns: 1 });
-  assert.match(rotated, /viewBox="0 0 15 26"/u);
+  assert.match(rotated, /viewBox="0 0 15 30"/u);
   assert.match(rotated, /data-view-rotation-degrees="90"/u);
   assert.match(rotated, /transform="translate\(15 0\) rotate\(90\)"/u);
 });

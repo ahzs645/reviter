@@ -328,17 +328,43 @@ function pointInLoop(point: Point2, loop: readonly Point3[]) {
   return inside;
 }
 
-function pointOnFloor(point: Point2, floors: readonly ElementBoundsRecord[]) {
+type IndexedFloorLoop = {
+  loop: readonly Point3[];
+  minX: number; minY: number; maxX: number; maxY: number;
+};
+type IndexedFloors = { loops: IndexedFloorLoop[] }[];
+
+const indexedFloorCache = new WeakMap<readonly ElementBoundsRecord[], IndexedFloors>();
+
+function indexedFloors(floors: readonly ElementBoundsRecord[]): IndexedFloors {
+  const cached = indexedFloorCache.get(floors);
+  if (cached) return cached;
+  const indexed = floors.map((record) => ({
+    loops: (record.loops ?? []).filter((loop) => loop.length >= 3).map((loop) => {
+      let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+      for (const [x, y] of loop) {
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
+      return { loop, minX, minY, maxX, maxY };
+    }),
+  }));
+  indexedFloorCache.set(floors, indexed);
+  return indexed;
+}
+
+function pointOnFloor(point: Point2, floors: IndexedFloors) {
   return floors.some((record) => {
     let inside = false;
-    for (const loop of record.loops ?? []) {
-      if (loop.length >= 3 && pointInLoop(point, loop)) inside = !inside;
+    for (const { loop, minX, minY, maxX, maxY } of record.loops) {
+      if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) continue;
+      if (pointInLoop(point, loop)) inside = !inside;
     }
     return inside;
   });
 }
 
-function floorNear(point: Point2, floors: readonly ElementBoundsRecord[]) {
+function floorNear(point: Point2, floors: IndexedFloors) {
   if (pointOnFloor(point, floors)) return true;
   for (const radius of [0.5, 1.5, OPEN_END_FLOOR_SEARCH_FEET]) {
     for (let index = 0; index < 16; index += 1) {
@@ -357,6 +383,44 @@ function wallSolids(records: readonly ElementBoundsRecord[]) {
     const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
     return solids.map((solid) => ({ elementId: record.elementId, solid }));
   });
+}
+
+/**
+ * Uniform grid over wall solids so an endpoint's join test only visits nearby
+ * segments instead of every wall on the plan. Each solid is inserted into all
+ * cells its join-tolerance-expanded segment box covers, so a single lookup at
+ * the query point's cell is exhaustive for that tolerance.
+ */
+type WallSolidGrid = {
+  cellSize: number;
+  cells: Map<string, ReturnType<typeof wallSolids>>;
+};
+
+function wallSolidGrid(candidates: ReturnType<typeof wallSolids>): WallSolidGrid {
+  const maxThickness = candidates.reduce(
+    (largest, candidate) => Math.max(largest, candidate.solid.thickness), 0);
+  const margin = Math.max(0.45, maxThickness + 0.15) + 0.05;
+  const cellSize = Math.max(8, margin * 2);
+  const cells = new Map<string, ReturnType<typeof wallSolids>>();
+  for (const candidate of candidates) {
+    const { start, end } = candidate.solid;
+    const minX = Math.min(start.x, end.x) - margin; const maxX = Math.max(start.x, end.x) + margin;
+    const minY = Math.min(start.y, end.y) - margin; const maxY = Math.max(start.y, end.y) + margin;
+    for (let cellX = Math.floor(minX / cellSize); cellX <= Math.floor(maxX / cellSize); cellX += 1) {
+      for (let cellY = Math.floor(minY / cellSize); cellY <= Math.floor(maxY / cellSize); cellY += 1) {
+        const key = `${cellX},${cellY}`;
+        const bucket = cells.get(key);
+        if (bucket) bucket.push(candidate); else cells.set(key, [candidate]);
+      }
+    }
+  }
+  return { cellSize, cells };
+}
+
+function nearbyWallSolids(grid: WallSolidGrid, point: Point2) {
+  return grid.cells.get(
+    `${Math.floor(point[0] / grid.cellSize)},${Math.floor(point[1] / grid.cellSize)}`,
+  ) ?? [];
 }
 
 function joinedWallEnd(
@@ -395,6 +459,8 @@ function exposedWallEnds(
   floors: readonly ElementBoundsRecord[],
 ): ExposedWallEnd[] {
   const candidates = wallSolids(records);
+  const grid = wallSolidGrid(candidates);
+  const floorIndex = indexedFloors(floors);
   const exposed: ExposedWallEnd[] = [];
   for (const { elementId, solid } of candidates) {
     const start: Point2 = [solid.start.x, solid.start.y];
@@ -406,8 +472,8 @@ function exposedWallEnds(
       { end: "start" as const, point: start, inward: direction },
       { end: "end" as const, point: end, inward: [-direction[0], -direction[1]] as Point2 },
     ]) {
-      if (floorNear(candidate.point, floors)) continue;
-      if (joinedWallEnd(candidate.point, candidate.inward, solid, candidates)) continue;
+      if (floorNear(candidate.point, floorIndex)) continue;
+      if (joinedWallEnd(candidate.point, candidate.inward, solid, nearbyWallSolids(grid, candidate.point))) continue;
       const duplicate = exposed.find((item) => distanceBetween(item.point, candidate.point) <= 0.25);
       if (duplicate) {
         duplicate.elementIds.push(elementId);
@@ -553,6 +619,35 @@ function openingLayer(records: readonly ElementBoundsRecord[], bounds: PlanBound
   }).join("");
 }
 
+/**
+ * Standard stair plan convention: a line up the centre of the run whose
+ * arrowhead points in the direction of ascent, labelled UP at the low end.
+ * Drawn only when enough treads survive to make the direction trustworthy.
+ */
+function runDirectionArrow(treads: readonly (readonly Point3[])[], bounds: PlanBounds) {
+  if (treads.length < 3) return "";
+  const centroid = (tread: readonly Point3[]): [Point2, number] => [[
+    tread.reduce((sum, point) => sum + point[0], 0) / tread.length,
+    tread.reduce((sum, point) => sum + point[1], 0) / tread.length,
+  ], tread.reduce((sum, point) => sum + point[2], 0) / tread.length];
+  const ordered = treads.map(centroid).sort((a, b) => a[1] - b[1]);
+  const from = ordered[0]![0]; const to = ordered.at(-1)![0];
+  const runLength = distanceBetween(from, to);
+  if (runLength < 2) return "";
+  const [fromX, fromY] = renderPoint(from, bounds);
+  const [toX, toY] = renderPoint(to, bounds);
+  const unitX = (toX - fromX) / runLength; const unitY = (toY - fromY) / runLength;
+  const barb = Math.min(1.3, runLength * 0.22);
+  const leftX = toX - unitX * barb - unitY * barb * 0.55;
+  const leftY = toY - unitY * barb + unitX * barb * 0.55;
+  const rightX = toX - unitX * barb + unitY * barb * 0.55;
+  const rightY = toY - unitY * barb - unitX * barb * 0.55;
+  const labelX = fromX - unitX * barb; const labelY = fromY - unitY * barb;
+  return `<path class="run-direction" d="M ${fromX} ${fromY} L ${toX} ${toY}"/>` +
+    `<path class="run-direction-head" d="M ${toX} ${toY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z"/>` +
+    `<text class="run-direction-label" x="${labelX}" y="${labelY}" text-anchor="middle" dominant-baseline="central">UP</text>`;
+}
+
 function stairLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds, low: number, high: number) {
   return records.map((record) => {
     const points = distinctPlanPoints(record);
@@ -571,10 +666,47 @@ function stairLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds,
       return `<g data-revit-element-id="${record.elementId}" data-recovered-tread-fragments="${treads.length}" data-plan-risers="${risers.size}">${treads.map((tread) => {
       const treadPath = path(tread.map(xy), bounds);
       return `<path class="tread-surface" d="${treadPath}"/>`;
-    }).join("")}${[...risers.values()].map(([start, end]) => `<path class="riser" d="${path([xy(start), xy(end)], bounds, false)}"/>`).join("")}</g>`;
+    }).join("")}${[...risers.values()].map(([start, end]) => `<path class="riser" d="${path([xy(start), xy(end)], bounds, false)}"/>`).join("")}${runDirectionArrow(treads, bounds)}</g>`;
     }
     return "";
   }).join("");
+}
+
+/**
+ * Sheet furniture: a north needle (red half points to project north, rotating
+ * with the view) and a graphic scale bar that stays truthful under any screen
+ * zoom, both drawn outside the rotated plan content.
+ */
+function planAnnotationLayer(
+  width: number,
+  height: number,
+  scale: number,
+  rotationQuarterTurns: number,
+  footer: number,
+) {
+  const margin = Math.max(2, scale * 0.02);
+  const roundLengths = [5, 10, 20, 25, 50, 100, 200, 500];
+  const target = scale * 0.16;
+  const barFeet = roundLengths.reduce((best, value) =>
+    Math.abs(value - target) < Math.abs(best - target) ? value : best, roundLengths[0]!);
+  const segment = barFeet / 4;
+  const barHeight = Math.max(0.7, scale * 0.007);
+  const barY = height + footer * 0.62;
+  const segments = Array.from({ length: 4 }, (_, index) =>
+    `<rect x="${margin + segment * index}" y="${barY}" width="${segment}" height="${barHeight}" fill="${index % 2 ? "#fffdf7" : "#111827"}"/>`).join("");
+  const barLabels = `<text x="${margin}" y="${barY - barHeight * 0.9}" text-anchor="start">0</text>` +
+    `<text x="${margin + barFeet}" y="${barY - barHeight * 0.9}" text-anchor="end">${barFeet}′</text>`;
+
+  const radius = Math.min(Math.max(1.6, scale * 0.015), footer * 0.38);
+  const northX = width - margin - radius; const northY = height + footer * 0.5;
+  const angle = rotationQuarterTurns * Math.PI / 2;
+  const letterX = northX + Math.sin(angle) * radius * 1.8;
+  const letterY = northY - Math.cos(angle) * radius * 1.8;
+  const needle = `<g class="north"><g transform="translate(${northX} ${northY}) rotate(${rotationQuarterTurns * 90})">` +
+    `<circle r="${radius}"/>` +
+    `<path d="M 0 ${-radius * 0.85} L ${radius * 0.34} ${radius * 0.4} L 0 ${radius * 0.14} L ${-radius * 0.34} ${radius * 0.4} Z" fill="#b91c1c"/>` +
+    `</g><text x="${letterX}" y="${letterY}" text-anchor="middle" dominant-baseline="central">N</text></g>`;
+  return `<g class="plan-annotations" aria-hidden="true"><g class="scale-bar">${segments}${barLabels}</g>${needle}</g>`;
 }
 
 function roomLayer(rooms: DerivedRoomResult | null, bounds: PlanBounds, scale: number) {
@@ -610,10 +742,18 @@ export function makeArchitecturalFloorSvg(
   const contentTransform = rotation === 1 ? `translate(${sourceHeight} 0) rotate(90)`
     : rotation === 2 ? `translate(${sourceWidth} ${sourceHeight}) rotate(180)`
       : rotation === 3 ? `translate(0 ${sourceWidth}) rotate(270)` : "";
-  // Non-scaling strokes retain this visual weight while the campus plan is
-  // fitted. Keep the base genuinely hairline; doors should read as symbols,
-  // not become the darkest geometry on a zoomed-out plan.
+  // Architectural line-weight hierarchy (ISO 128-style tiers, expressed in
+  // screen pixels under non-scaling strokes): cut elements read heaviest,
+  // drawn symbols medium, projections light. The cut-wall poché itself does
+  // the tonal work, so strokes stay restrained even on a fitted campus plan.
   const scale = Math.max(sourceWidth, sourceHeight); const fineStroke = Math.max(0.025, scale / 4_200);
+  const cutStroke = 1.35; const projectionStroke = 0.8;
+  // Symbol linework (door leaves, swings, glazing, risers) scales with the
+  // drawing like ink on paper, so a fitted campus plan stays quiet and a
+  // zoomed room shows proper symbol weight. Cut structure stays pixel-crisp.
+  const leafPen = Math.max(0.12, fineStroke * 2.2);
+  const symbolPen = Math.max(0.08, fineStroke * 1.5);
+  const swingDash = `${fineStroke * 5} ${fineStroke * 3.5}`;
   const connected = plan.levelPlans.length > 1;
   const openEnds = exposedWallEnds(plan.wallRecords, plan.floorRecords);
   const floorFills = ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"];
@@ -623,29 +763,39 @@ export function makeArchitecturalFloorSvg(
   const stairGroups = plan.levelPlans.map((part) =>
     `<g data-source-revit-level-id="${part.levelId}">${stairLayer(part.stairRecords, bounds, part.elevation, part.nextElevation)}</g>`,
   ).join("");
+  // A footer band below the drawing keeps sheet furniture (scale bar, north
+  // needle) clear of plan geometry that reaches the drawing edge.
+  const footer = Math.max(4, scale * 0.05);
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-revit-level-id="${levelId}" data-revit-level-ids="${plan.levelPlans.map((part) => part.levelId).join(",")}" data-connected-level-count="${plan.levelPlans.length}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}" data-confirmed-open-end-count="${openEnds.length}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height + footer}" role="img" aria-labelledby="architectural-plan-title architectural-plan-desc" data-plan-min-x-feet="${bounds.minX}" data-plan-min-y-feet="${bounds.minY}" data-plan-max-x-feet="${bounds.maxX}" data-plan-max-y-feet="${bounds.maxY}" data-plan-footer-feet="${footer}" data-revit-level-id="${levelId}" data-revit-level-ids="${plan.levelPlans.map((part) => part.levelId).join(",")}" data-connected-level-count="${plan.levelPlans.length}" data-view-rotation-degrees="${rotation * 90}" data-plan-cut-elevation-feet="${plan.cutElevation}" data-floor-count="${plan.floors}" data-wall-count="${plan.walls}" data-door-count="${plan.doors}" data-window-count="${plan.windows}" data-stair-count="${plan.stairs}" data-confirmed-open-end-count="${openEnds.length}">
   <title id="architectural-plan-title">${connected ? "Connected split-level architectural plan" : `Architectural floor map for Revit level ${levelId}`}</title>
   <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. T-shaped open-end marks identify long wall endpoints with no adjoining wall or nearby recovered floor. Door swings and uncategorized fallback footprints are approximate.</desc>
   <style>
-    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#76858a;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
-    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
+    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#9aa4a6;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
+    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
     .rooms .near-closed{fill:#f3b36f;fill-opacity:.22;stroke:#d9823b;stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
-    .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none}
-    .walls{fill:#e0e7e5;stroke:#344b50;stroke-width:${fineStroke * 0.7};stroke-linejoin:round;vector-effect:non-scaling-stroke}
+    .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none;paint-order:stroke;stroke:#fffdf7;stroke-width:${scale / 850}}
+    .walls{fill:#1f2937;fill-opacity:.94;stroke:#111827;stroke-width:${cutStroke};stroke-linejoin:round;vector-effect:non-scaling-stroke}
     .walls path{vector-effect:non-scaling-stroke}
-    .walls .arc-body{fill:none;stroke:#e0e7e5;vector-effect:none}
-    .walls .arc-centreline{fill:none;stroke:#344b50;stroke-width:${fineStroke * 0.7};vector-effect:non-scaling-stroke}
-    .open-edges{fill:none;stroke:#8b6f52;stroke-width:${fineStroke * 0.55};stroke-linecap:round;opacity:.82;pointer-events:none}
-    .open-edges path{vector-effect:non-scaling-stroke}
-    .columns{fill:#52656a;stroke:#263f46;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
-    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${fineStroke * 1.2};vector-effect:non-scaling-stroke}
-    .doors .leaf{fill:none;stroke:#a35b35;stroke-width:${fineStroke * 0.85};vector-effect:non-scaling-stroke}
-    .doors .swing{fill:none;stroke:#a35b35;stroke-width:${fineStroke * 0.6};stroke-dasharray:${fineStroke * 4} ${fineStroke * 3};vector-effect:non-scaling-stroke}
-    .windows path:not(.opening){fill:none;stroke:#2a7990;stroke-width:${fineStroke * 0.85};vector-effect:non-scaling-stroke}
-    .stairs{fill:none;stroke:#6e5a86;stroke-width:${fineStroke * 0.65};vector-effect:non-scaling-stroke}
-    .stairs .tread-surface{fill:#f3eef6;stroke:none}.stairs .riser{stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
-    .stairs .landing{fill:#eee8f3;stroke:#6e5a86;stroke-width:${fineStroke * 0.8};vector-effect:non-scaling-stroke}
+    .walls .arc-body{fill:none;stroke:#1f2937;stroke-opacity:.94;vector-effect:none}
+    .walls .arc-centreline{fill:none;stroke:#111827;stroke-width:${cutStroke * 0.7};vector-effect:non-scaling-stroke}
+    .open-edges{fill:none;stroke:#8b6f52;stroke-width:${symbolPen};stroke-linecap:round;opacity:.82;pointer-events:none}
+    .columns{fill:#374151;stroke:#111827;stroke-width:${cutStroke * 0.9};vector-effect:non-scaling-stroke}
+    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${cutStroke * 1.3};vector-effect:non-scaling-stroke}
+    .doors .leaf{fill:none;stroke:#374151;stroke-width:${leafPen};stroke-linecap:round}
+    .doors .swing{fill:none;stroke:#64748b;stroke-width:${symbolPen};stroke-dasharray:${swingDash};stroke-linecap:round}
+    .windows path:not(.opening){fill:none;stroke:#334155;stroke-width:${symbolPen}}
+    .stairs{fill:none;stroke:#1f2937;stroke-width:${symbolPen}}
+    .stairs .tread-surface{fill:#f8fafc;stroke:none}.stairs .riser{stroke-width:${symbolPen}}
+    .stairs .landing{fill:#f1f5f9;stroke:#1f2937;stroke-width:${symbolPen}}
+    .stairs .run-direction{fill:none;stroke:#111827;stroke-width:${leafPen};stroke-linecap:round}
+    .stairs .run-direction-head{fill:#111827;stroke:none}
+    .stairs .run-direction-label{fill:#111827;font:600 ${Math.max(2, scale / 240)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_100)};pointer-events:none}
+    .plan-annotations{pointer-events:none}
+    .plan-annotations text{fill:#111827;font:600 ${Math.max(2, scale / 220)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_000)}}
+    .plan-annotations .scale-bar rect{stroke:#111827;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
+    .plan-annotations .north circle{fill:#fffdf7;stroke:#111827;stroke-width:${projectionStroke};vector-effect:non-scaling-stroke}
+    .plan-annotations .north path{stroke:#111827;stroke-width:${projectionStroke};stroke-linejoin:round;vector-effect:non-scaling-stroke}
   </style>
   <rect width="100%" height="100%" fill="#fffdf7"/>
   <g${contentTransform ? ` transform="${contentTransform}"` : ""}>
@@ -658,6 +808,7 @@ export function makeArchitecturalFloorSvg(
   <g class="doors">${openingLayer(plan.doorRecords, bounds, "door")}</g>
   <g class="stairs">${stairGroups}</g>
   </g>
+  ${planAnnotationLayer(width, height, scale, rotation, footer)}
 </svg>`;
   variants.set(cacheKey, svg); return svg;
 }

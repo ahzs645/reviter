@@ -2377,9 +2377,17 @@ export function buildBoundsMeshes(
             ? [cornersGeometry(record.orientedBox, origin)]
             : solids.length
               ? solids.map((solid) => solidGeometry(solid, origin))
-              : arcs.length
-                ? arcs
-                : [boxGeometry(record.boundsFeet, origin)];
+              : recoveredSolids.length
+                // A wall whose every cell a wrapper consumed is all opening —
+                // walls 331585 and 530175 on the supplied model are thin
+                // diagonal storefront hosts fully covered by their curtain
+                // wrappers. Falling through to the envelope here redrew, as
+                // the axis-aligned box over the whole diagonal, exactly the
+                // volume the wrapper carved away.
+                ? []
+                : arcs.length
+                  ? arcs
+                  : [boxGeometry(record.boundsFeet, origin)];
         // Keep a little elevation shading so storeys stay legible, but let the
         // element's own category decide the hue.
         const elevation = Math.max(

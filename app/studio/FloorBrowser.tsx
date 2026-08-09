@@ -15,12 +15,10 @@ import {
 } from "lucide-react";
 
 import {
-  architecturalPlanSummary,
   connectedFloorPlanGroups,
   downloadBlob,
   floorPlateLevels,
   floorPlateSvgDataUrl,
-  makeArchitecturalFloorSvg,
   outputName,
   type ConvertResult,
   type DerivedRoomResult,
@@ -28,6 +26,7 @@ import {
   type RoomReviewState,
 } from "../../lib/reviter";
 import { FloorReferencePlan } from "./FloorReferencePlan.tsx";
+import { useArchitecturalPlan } from "./use-architectural-plan.ts";
 
 export function FloorBrowser({
   result,
@@ -78,12 +77,6 @@ export function FloorBrowser({
   const maximumStackedPercent = connected
     ? Math.ceil(Math.max(...selectedPlan!.connections.map((item) => item.stackedFootprintRatio)) * 100)
     : 0;
-  const planSummary = useMemo(
-    () => selected && selectedPlan ? architecturalPlanSummary(result, selected.levelId, {
-      connectedLevelIds: selectedPlan.levelIds,
-    }) : null,
-    [result, selected, selectedPlan],
-  );
   const visibleRoomLevelIds = useMemo(
     () => combineConnectedLevels ? selectedPlan?.levelIds ?? [] : selected ? [selected.levelId] : [],
     [combineConnectedLevels, selected, selectedPlan],
@@ -124,23 +117,37 @@ export function FloorBrowser({
       onSelectedLevelId(selected.levelId);
     }
   }, [onSelectedLevelId, selected, selectedLevelId]);
-  const svg = useMemo(
-    () => selected
-      ? makeArchitecturalFloorSvg(result, selected.levelId, {
-        derivedRooms: selectedDerivedRooms ?? false,
-        rotationQuarterTurns,
-        connectedLevelIds: selectedPlan?.levelIds,
-      })
-      : null,
-    [result, rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
+  const planParts = useMemo(
+    () => selected ? {
+      levelId: selected.levelId,
+      connectedLevelIds: selectedPlan?.levelIds ?? [selected.levelId],
+      rotationQuarterTurns,
+      derivedRooms: selectedDerivedRooms,
+    } : null,
+    [rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
   );
+  const prewarm = useMemo(
+    () => [plans[selectedIndex + 1], plans[selectedIndex - 1]]
+      .filter((plan) => plan != null)
+      .map((plan) => ({ levelId: plan.primaryLevelId, connectedLevelIds: plan.levelIds })),
+    [plans, selectedIndex],
+  );
+  const { svg, summary: planSummary, building } = useArchitecturalPlan(result, planParts, prewarm);
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
 
-  if (!selected || !svg || !imageUrl) {
+  if (!selected || (!building && (!svg || !imageUrl))) {
     return (
       <div className="floor-browser-empty">
         <strong>No recovered Revit floor plates</strong>
         <span>This model does not expose a `Floors` sketch on a persisted Revit level.</span>
+      </div>
+    );
+  }
+  if (!svg || !imageUrl) {
+    return (
+      <div className="floor-browser-empty" role="status" aria-live="polite">
+        <strong>Assembling floor plan</strong>
+        <span>Composing recovered walls, openings, and stairs off the main thread…</span>
       </div>
     );
   }
@@ -364,6 +371,7 @@ export function FloorBrowser({
           <button type="button" aria-label="Rotate floor map counter-clockwise" onClick={() => setRotationQuarterTurns((value) => (value + 3) % 4)}><RotateCcw size={13} /></button>
           <button type="button" aria-label="Rotate floor map clockwise" onClick={() => setRotationQuarterTurns((value) => (value + 1) % 4)}><RotateCw size={13} /></button>
           <span>{Math.round(zoom * 100)}% · {rotationQuarterTurns * 90}°</span>
+          {building && <span className="floor-plan-building" role="status">Assembling…</span>}
         </div>}
         caption={<>
           Architectural plan assembled from recovered RVT geometry. Door swings are indicative because the persisted opening does not always expose Revit&apos;s swing side.

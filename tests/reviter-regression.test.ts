@@ -1249,6 +1249,47 @@ test("holds back a railing's top rail when its railing is in the scene", () => {
   assert.equal(kept.omittedSheetCount, 0);
 });
 
+test("a wall whose wrapper consumes every cell is all opening, not an envelope", () => {
+  // Walls 331585 and 530175 on the supplied model are thin diagonal
+  // storefront hosts fully covered by their curtain wrappers. When
+  // cutSolidAroundWrappers returns no cells the wall must not fall through to
+  // its envelope box: that redraws, as the axis-aligned box over the whole
+  // diagonal, exactly the volume the wrapper carved away.
+  const wall: ElementBoundsRecord = {
+    elementId: 331585,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000011,
+    boundsFeet: { min: { x: 0, y: -0.33, z: 0 }, max: { x: 20, y: 0.33, z: 10 } },
+    solids: [{
+      elementId: 331585,
+      start: { x: 0, y: 0 },
+      end: { x: 20, y: 0 },
+      baseElevation: 0,
+      topElevation: 10,
+      thickness: 0.66,
+    }],
+  };
+  const wrapper: ElementBoundsRecord = {
+    elementId: 900001,
+    stream: "Partitions/325",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: -1, y: -1, z: -1 }, max: { x: 21, y: 1, z: 11 } },
+  };
+  const consumed = buildBoundsMeshes([wall], { x: 0, y: 0, z: 0 }, [wrapper]);
+  const triangles = consumed.reduce((total, mesh) => total + mesh.indices.length / 3, 0);
+  assert.equal(triangles, 0);
+
+  // Without the wrapper the same wall still draws its rebuilt solid.
+  const [kept] = buildBoundsMeshes([wall], { x: 0, y: 0, z: 0 });
+  assert.ok(kept);
+  assert.equal(kept.indices.length / 3, 12);
+});
+
 test("holds back a storey-sized plate that no category claims", () => {
   // Size alone proves nothing — real slabs are larger than these. Size with no
   // category is the discriminator, and it is what put 89 ft of sheet outside

@@ -496,11 +496,14 @@ function checkGeometryRulesFire(outcome: ConvertResult): void {
  * drawn **260.3 ft** from its own export box; dropping the misattributed solid
  * that caused it and narrowing the stair stringers' z band to their own facets
  * took the count 35 → 23 and the worst case to 19.8 ft. The budget is 26,
- * because the 23 that remain are *characterised* — 21 stringers that own no
+ * because the 23 that remained were *characterised* — 21 stringers that own no
  * facet at all, 401861 which has no second reading to check against, and
  * 1622190 where the exporter tags only a ramp's landing and writes its two
  * flights untagged — so a rise above them is a new defect rather than the
- * known residue.
+ * known residue. The count has since fallen to 0: the truth join now follows
+ * `IfcRelAggregates` so an untagged flight inherits its component's one tag,
+ * which dissolved 1622190's landing-only box, and the budget deliberately
+ * stays at 26 rather than being tightened to today's figure.
  */
 const MAX_ELEMENT_OVERHANG_FEET = 10;
 const MAX_ELEMENTS_OVER_OWN_BOX = 26;

@@ -7,10 +7,10 @@ import {
   floorPlateBounds,
   floorPlateLevels,
   floorPlateSvgDataUrl,
-  makeArchitecturalFloorSvg,
   type ConvertResult,
   type DerivedRoomResult,
 } from "../../lib/reviter";
+import { useArchitecturalPlan } from "./use-architectural-plan.ts";
 
 type Point2 = [number, number];
 
@@ -42,9 +42,39 @@ export function FloorMiniMap({
   const selectedIndex = Math.max(0, levels.findIndex((level) => level.levelId === selectedLevelId));
   const selected = levels[selectedIndex] ?? null;
   const selectedDerivedRooms = derivedRooms?.levelId === selected?.levelId ? derivedRooms : null;
-  const svg = useMemo(() => selected ? makeArchitecturalFloorSvg(result, selected.levelId, { derivedRooms: selectedDerivedRooms ?? false }) : null, [result, selected, selectedDerivedRooms]);
+  const planParts = useMemo(() => selected ? {
+    levelId: selected.levelId,
+    connectedLevelIds: [selected.levelId],
+    rotationQuarterTurns: 0,
+    derivedRooms: selectedDerivedRooms,
+  } : null, [selected, selectedDerivedRooms]);
+  const prewarm = useMemo(
+    () => [levels[selectedIndex + 1], levels[selectedIndex - 1]]
+      .filter((level) => level != null)
+      .map((level) => ({ levelId: level.levelId, connectedLevelIds: [level.levelId] })),
+    [levels, selectedIndex],
+  );
+  const { svg, building } = useArchitecturalPlan(result, planParts, prewarm);
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
-  const bounds = useMemo(() => selected ? floorPlateBounds(result, selected.levelId) : null, [result, selected]);
+  // The drawing frame the SVG actually rendered (plan bounds plus padding and
+  // the sheet-furniture footer), so map clicks and the camera marker land on
+  // exact world coordinates instead of assuming the raw floor-plate extents.
+  const bounds = useMemo(() => {
+    if (svg) {
+      const attr = (name: string) => {
+        const match = svg.match(new RegExp(`data-plan-${name}-feet="([^"]+)"`, "u"));
+        return match ? Number(match[1]) : Number.NaN;
+      };
+      const frame = {
+        minX: attr("min-x"), minY: attr("min-y"),
+        maxX: attr("max-x"), maxY: attr("max-y"),
+        footerFeet: attr("footer"),
+      };
+      if (Object.values(frame).every(Number.isFinite)) return frame;
+    }
+    const plate = selected ? floorPlateBounds(result, selected.levelId) : null;
+    return plate ? { ...plate, footerFeet: 0 } : null;
+  }, [result, selected, svg]);
   const mapRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -78,8 +108,18 @@ export function FloorMiniMap({
     read(); const timer = window.setInterval(read, 160); return () => window.clearInterval(timer);
   }, []);
 
-  if (!selected || !imageUrl || !bounds) return null;
-  const width = Math.max(1, bounds.maxX - bounds.minX); const height = Math.max(1, bounds.maxY - bounds.minY);
+  if (!selected || !bounds) return null;
+  if (!imageUrl) {
+    return (
+      <section ref={mapRef} id="floor-navigation-map" className={`floor-mini-map${embedded ? " embedded" : ""}`} aria-label="Floor navigation map">
+        <header><span><h2>Floor navigation map</h2><small role="status">Assembling floor plan…</small></span><button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button></header>
+      </section>
+    );
+  }
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  // The rendered image is taller than the plan by the sheet-furniture footer;
+  // all fit math must use the image's aspect, not the bare plan extents.
+  const height = Math.max(1, bounds.maxY - bounds.minY + bounds.footerFeet);
   const currentFloor = camera ? levels.reduce((nearest, level) => Math.abs(level.elevation - camera.position[2]) < Math.abs(nearest.elevation - camera.position[2]) ? level : nearest, levels[0]!) : null;
   const marker = camera ? { x: camera.position[0] - bounds.minX, y: bounds.maxY - camera.position[1], dx: camera.direction[0], dy: -camera.direction[1] } : null;
   const selectedMarker = selectedPoint ? { x: selectedPoint[0] - bounds.minX, y: bounds.maxY - selectedPoint[1] } : null;
@@ -91,6 +131,8 @@ export function FloorMiniMap({
     const localX = (clientX - rect.left - pan.x) / zoom; const localY = (clientY - rect.top - pan.y) / zoom;
     const x = localX - (rect.width - imageWidth) / 2; const y = localY - (rect.height - imageHeight) / 2;
     if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return null;
+    // Ignore clicks in the sheet-furniture footer below the plan content.
+    if (y / fitted > bounds.maxY - bounds.minY) return null;
     return [bounds.minX + x / fitted, bounds.maxY - y / fitted];
   };
   const locateCamera = () => {
@@ -116,7 +158,7 @@ export function FloorMiniMap({
             <svg viewBox={`0 0 ${width} ${height}`} aria-hidden preserveAspectRatio="xMidYMid meet">{marker && <g className={`map-camera-marker${camera?.walking ? " walking" : ""}`} transform={`translate(${marker.x} ${marker.y})`}><circle r={Math.max(width, height) / 95 / zoom} /><path d={`M 0 0 L ${marker.dx * Math.max(width, height) / 28 / zoom} ${marker.dy * Math.max(width, height) / 28 / zoom}`} /></g>}{selectedMarker && <circle className="map-selection-marker" cx={selectedMarker.x} cy={selectedMarker.y} r={Math.max(width, height) / 120 / zoom} />}</svg>
           </div>
           <span className="floor-map-north" aria-hidden>N ↑</span>
-          <span className="floor-map-hint">Drag/scroll · click to walk</span>
+          <span className="floor-map-hint">{building ? "Assembling floor plan…" : "Drag/scroll · click to walk"}</span>
         </div>
         <figcaption id="floor-map-caption" className="sr-only">Interactive architectural plan assembled from recovered Revit floors, walls, openings, windows, stairs, and columns. The teal arrow is the live camera and the pink marker is the selected object.</figcaption>
       </figure>
