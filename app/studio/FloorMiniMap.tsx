@@ -176,7 +176,7 @@ export function FloorMiniMap({
 
   return (
     <section ref={mapRef} id="floor-navigation-map" className={`floor-mini-map${embedded ? " embedded" : ""}`} aria-label="Floor navigation map">
-      <header><span><h2>Floor navigation map</h2><small>{formatFeetInches(selected.elevation)} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span><button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button></header>
+      <header><span><h2>Floor navigation map</h2><small>{formatFeetInches(selected.elevation)} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span>{!embedded && <button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button>}</header>
       <div className="floor-mini-map-controls">
         <button type="button" className="rv-icon-button" aria-label="Previous map floor" disabled={selectedIndex === 0} onClick={() => choose(selectedIndex - 1)}><ChevronLeft size={14} aria-hidden /></button>
         <select aria-label="Floor navigation map level" value={selected.levelId} onChange={(event) => choose(levels.findIndex((level) => level.levelId === Number(event.target.value)))}>{levels.map((level) => <option key={level.levelId} value={level.levelId}>{formatFeetInches(level.elevation)} · {level.floorCount} slab{level.floorCount === 1 ? "" : "s"}</option>)}</select>

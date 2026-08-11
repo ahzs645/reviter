@@ -9,6 +9,10 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   assert.match(html, /<div id="root"><\/div>/);
   assert.match(html, /\/reviter\/assets\/[^\"]+\.js/);
   assert.doesNotMatch(html, /(?:src|href)="\/assets\//);
+  // The stored theme has to be applied before the first paint, and the static
+  // template carries its own copy of that script rather than `app/layout.tsx`.
+  assert.match(html, /localStorage\.getItem\("reviter\.theme"\)/);
+  assert.match(html, /setAttribute\("data-theme"/);
   await stat(new URL("favicon.png", output));
   await stat(new URL("og.png", output));
   await stat(new URL("omniclass/OmniClassTaxonomy_Vanilla.txt", output));

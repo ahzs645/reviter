@@ -258,7 +258,11 @@ button[data-reason]:focus-visible::after {
 --------------------------------------------------------------------------- */
 
 .studio {
+  /* `dvh` because the shell is a fixed frame with its own bottom bar: under
+     `vh` a phone browser measures the tallest possible viewport, so the mobile
+     tab bar sits behind the collapsing URL bar until the page is scrolled. */
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -318,6 +322,7 @@ button[data-reason]:focus-visible::after {
 .toolbar {
   height: 46px;
   flex: 0 0 46px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -335,8 +340,29 @@ button[data-reason]:focus-visible::after {
   scrollbar-width: none;
 }
 .toolbar-scroll::-webkit-scrollbar { display: none; }
+/* The scrollbar is hidden to keep the 46px row clean, so the only sign that
+   the toolbar continues past an edge is this fade. It is drawn only on the
+   side that still has something on it. The right-hand one hangs off the
+   pinned group so it marks the end of the scrolling region, not the window. */
+.toolbar::before,
+.toolbar-pinned::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  opacity: 0;
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.toolbar::before { left: 0; background: linear-gradient(to right, var(--panel), transparent); }
+.toolbar-pinned::before { right: 100%; background: linear-gradient(to left, var(--panel), transparent); }
+.toolbar[data-overflow-start="true"]::before,
+.toolbar[data-overflow-end="true"] .toolbar-pinned::before { opacity: 1; }
 .toolbar-pinned {
   flex: 0 0 auto;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -421,15 +447,23 @@ button[data-reason]:focus-visible::after {
   align-items: stretch;
   gap: 2px;
   padding: 4px 6px;
+  /* The three labels plus their counts are wider than a narrowed dock, and a
+     centred flex item overflows both ways: without this the first tab's label
+     spilled out of the dock and was cut off by the window edge. */
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
 }
 .tabstrip button {
-  flex: 1;
+  /* `auto` basis, not `0`: an equal third is narrower than "Objects" plus a
+     six-figure count, so equal columns ellipsised the first label while the
+     other two still had room to spare. */
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  overflow: hidden;
   border: 0;
   background: transparent;
   color: var(--text-3);
@@ -439,7 +473,8 @@ button[data-reason]:focus-visible::after {
 }
 .tabstrip button:hover { color: var(--text-2); }
 .tabstrip button.active { background: var(--panel-3); color: var(--text); }
-.tabstrip button em { color: var(--text-3); font-family: var(--mono); font-size: 10px; font-style: normal; }
+.tabstrip button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabstrip button em { flex: 0 0 auto; color: var(--text-3); font-family: var(--mono); font-size: 10px; font-style: normal; }
 
 .dock-search { padding: 8px; border-bottom: 1px solid var(--line-soft); }
 .dock-footer { padding: 8px; border-top: 1px solid var(--line-soft); }
@@ -1245,7 +1280,12 @@ button[data-reason]:focus-visible::after {
   .floor-mini-map > footer { display: none; }
 }
 
-.floor-mini-map.embedded { position: relative; inset: auto; width: 100%; height: min(560px, 70vh); box-shadow: none; }
+/* Embedded means "inside the phone's Floors sheet", which already supplies the
+   frame, the title and a close button — so the map fills it rather than
+   floating in it at a fixed height, and drops its own duplicate title row. */
+.floor-mini-map.embedded { position: relative; inset: auto; width: 100%; height: 100%; border: 0; box-shadow: none; }
+.floor-mini-map.embedded > header { min-height: 0; padding: 7px 10px; }
+.floor-mini-map.embedded > header h2 { display: none; }
 
 .review-import {
   display: flex;
@@ -1602,20 +1642,27 @@ button[data-reason]:focus-visible::after {
 .mobile-selection b { display: block; font-size: 13px; font-weight: 700; }
 .mobile-selection small { display: block; margin-top: 2px; color: #8fbdbb; font-family: var(--mono); font-size: 10px; }
 
+/* One column per tab, taken from the number of tabs rather than a fixed count:
+   a hard `repeat(4, 1fr)` silently pushed the fifth tab onto a second row that
+   the shell's `overflow: hidden` then cut off, so Report was unreachable. */
 .mobile-tabs {
-  height: 64px;
-  flex: 0 0 64px;
+  flex: 0 0 auto;
   position: relative;
   z-index: 21;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
   padding: 6px;
+  /* The home indicator on a notched phone sits over the last few pixels of the
+     bar, so the inset is added to the padding rather than left to overlap. */
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
   background: var(--panel);
 }
 .mobile-tabs button {
   position: relative;
+  min-width: 0;
   min-height: 52px;
   display: flex;
   flex-direction: column;
@@ -1628,11 +1675,19 @@ button[data-reason]:focus-visible::after {
   cursor: pointer;
 }
 .mobile-tabs button.active { background: var(--accent-soft); color: var(--accent); }
-.mobile-tabs button span { font-size: 10.5px; font-weight: 600; }
+.mobile-tabs button span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mobile-tabs em {
   position: absolute;
   top: 6px;
-  right: 22px;
+  right: 50%;
+  translate: 20px 0;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -1699,6 +1754,7 @@ button[data-reason]:focus-visible::after {
 .mobile .comment-meta { margin-top: 6px; font-size: 10.5px; }
 .mobile .comment-editor { padding: 0 14px 14px 50px; }
 .mobile .comment-actions button { height: 44px; font-size: 12.5px; }
+.mobile .comment-actions .danger { width: 44px; }
 .mobile .property-row { min-height: 48px; padding: 10px 14px; grid-template-columns: 1fr 1.1fr; }
 .mobile .property-row dt { font-size: 12.5px; }
 .mobile .property-row dd { font-size: 12px; }
@@ -2057,6 +2113,10 @@ button[data-reason]:focus-visible::after {
   .left-dock { width: 248px; flex-basis: 248px; }
   .right-dock { width: 264px; flex-basis: 264px; }
   .file-chip span { display: none; }
+  /* Three labelled tabs and their counts in a 248px dock: buy the room back
+     from the padding before the labels start being ellipsised. */
+  .tabstrip { padding: 4px 2px; }
+  .tabstrip button { gap: 4px; font-size: 11px; }
 }
 
 @media (max-width: 980px) {
