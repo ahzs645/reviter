@@ -53,6 +53,16 @@ await Promise.all([
     entryPoints: [resolve(projectRoot, "lib/reviter/ifc-worker.ts")],
     outfile: resolve(assetsDirectory, "ifc-worker-runtime.js"),
   }),
+  // No companion .wasm is copied for this one. libredwg-web's published ESM entry
+  // carries its 4 MB binary inlined as a base64 data URI, so the bundle is
+  // self-contained at about 5.8 MB and the loose `wasm/libredwg-web.wasm` in the
+  // package is never fetched. Nothing downloads it until a DWG is opened, because
+  // that is the only thing that constructs this worker.
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "lib/reviter/dwg-worker.ts")],
+    outfile: resolve(assetsDirectory, "dwg-worker-runtime.js"),
+  }),
   cp(resolve(projectRoot, "public"), outputDirectory, { recursive: true }),
 ]);
 

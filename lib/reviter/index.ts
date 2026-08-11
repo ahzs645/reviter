@@ -36,7 +36,7 @@ export type {
 } from "./transmission-data";
 export { scanPersistedDwgFileNames } from "./cad-files";
 export type { PersistedCadFileName } from "./cad-files";
-export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg } from "./floor-reference-catalog";
+export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg, withFloorReferenceIntrinsicSize } from "./floor-reference-catalog";
 export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog";
 export type {
   PartAtomDesignFile,

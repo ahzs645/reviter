@@ -7,6 +7,7 @@ declare global {
     | {
         rvt?: string;
         ifc?: string;
+        dwg?: string;
       }
     | undefined;
 }
