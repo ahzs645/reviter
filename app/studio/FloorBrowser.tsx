@@ -431,14 +431,6 @@ export function FloorBrowser({
           <span>{Math.round(zoom * 100)}% · {rotationQuarterTurns * 90}°</span>
           {building && <span className="floor-plan-building" role="status">Assembling…</span>}
         </div>}
-        caption={<>
-          Architectural plan assembled from recovered RVT geometry. Door swings are indicative because the persisted opening does not always expose Revit&apos;s swing side.
-          {connected ? " Adjoining split-level slabs are composed at their own local plan cuts; vertically stacked storeys remain separate." : ""}
-          {selectedDerivedRooms
-            ? " F-labels are approximate floor regions partitioned by recovered vertical barriers—not Revit Rooms."
-            : " Turn on Derived floor regions to inspect approximate barrier partitions."}
-          {" Loaded references remain separate and do not alter the RVT."}
-        </>}
       />
     </div>
   );

@@ -1191,7 +1191,6 @@ button[data-reason]:focus-visible::after {
 .floor-browser-preview-toolbar span { margin-left: auto; color: var(--text-3); font: 9px var(--mono); }
 .floor-browser-preview-toolbar .floor-plan-building { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); animation: floor-plan-building-pulse 1.1s ease-in-out infinite; }
 @keyframes floor-plan-building-pulse { 50% { opacity: .45; } }
-.floor-browser-preview figcaption { padding: 8px 10px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font-size: 11px; }
 .floor-reference-toolbar { min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 92%, #3f8f8b); }
 .floor-reference-toolbar button, .floor-reference-fine-tune button { min-height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); font: 9.5px var(--mono); cursor: pointer; }
 .floor-reference-toolbar button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

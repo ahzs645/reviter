@@ -67,7 +67,6 @@ export function FloorReferencePlan({
   planAlt,
   zoom,
   toolbar,
-  caption,
   onPlanClick,
 }: {
   rvtFileName: string;
@@ -76,7 +75,6 @@ export function FloorReferencePlan({
   planAlt: string;
   zoom: number;
   toolbar: ReactNode;
-  caption: ReactNode;
   /** Fraction of the plan image (0–1 both axes) a non-capture click landed on. */
   onPlanClick?: (fraction: { x: number; y: number }) => void;
 }) {
@@ -543,7 +541,6 @@ export function FloorReferencePlan({
           ))}
         </div>
       )}
-      <figcaption>{caption}</figcaption>
     </figure>
   );
 }
