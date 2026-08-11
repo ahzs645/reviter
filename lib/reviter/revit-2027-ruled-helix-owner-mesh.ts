@@ -25,7 +25,6 @@ import {
   bindRevit2027FaceMaterial,
   type Revit2027MaterialDefinitions,
 } from "./revit-2027-face-material.ts";
-import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
   REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
   type Revit2027GCylindricalHelix,
@@ -35,7 +34,6 @@ import {
   type Revit2027GLine,
 } from "./revit-2027-gline.ts";
 import {
-  replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
@@ -796,20 +794,4 @@ export function meshRevit2027RuledHelixReplay(
     ok: true,
     value: { ownerElementId: replay.ownerElementId, replay, faceMeshes, issues },
   };
-}
-
-export function replayAndMeshRevit2027RuledHelixOwner(
-  data: Uint8Array,
-  root: Revit2027FramedGRepRoot,
-  options: Revit2027RuledHelixOwnerMeshOptions = {},
-): Revit2027RuledHelixOwnerMeshResult {
-  const replayed = replayRevit2027GRepFifo(
-    data,
-    root,
-    options.replayRegistry,
-    options.replayOptions,
-  );
-  return replayed.ok
-    ? meshRevit2027RuledHelixReplay(replayed.value, options)
-    : { ok: false, error: `Revit 2027 replay failed: ${replayed.error}` };
 }

@@ -1,8 +1,6 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
 import type { Revit2027FaceStatic } from "./revit-2027-face-static.ts";
-import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
-  replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
@@ -235,22 +233,4 @@ export function meshRevit2027CertifiedOwnerReplay(
       ],
     },
   };
-}
-
-/** Replay one framed owner once, then run every certified browser mesh path. */
-export function replayAndMeshRevit2027CertifiedOwner(
-  data: Uint8Array,
-  root: Revit2027FramedGRepRoot,
-  options: Revit2027CertifiedOwnerMeshOptions = {},
-): Revit2027CertifiedOwnerMeshResult {
-  const replayed = replayRevit2027GRepFifo(
-    data,
-    root,
-    options.replayRegistry,
-    options.replayOptions,
-  );
-  if (replayed.ok === false) {
-    return { ok: false, error: `Revit 2027 replay failed: ${replayed.error}` };
-  }
-  return meshRevit2027CertifiedOwnerReplay(replayed.value, options);
 }

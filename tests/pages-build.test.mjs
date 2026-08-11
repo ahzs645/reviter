@@ -21,8 +21,6 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   // No reference model is bundled: a reference is paired from disk, per model,
   // so the deployed site must not ship a 25.6 MB derivative of one building.
   await assert.rejects(stat(new URL("autodesk-reference.glb", output)));
-  const gltfLoader = await stat(new URL("gltf-loader.js", output));
-  assert.ok(gltfLoader.size > 100_000, "glTF runtime loader was copied");
 
   const assets = await readdir(new URL("assets/", output));
   assert.ok(

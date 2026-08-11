@@ -26,9 +26,7 @@ import {
   bindRevit2027FaceMaterial,
   type Revit2027MaterialDefinitions,
 } from "./revit-2027-face-material.ts";
-import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
-  replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
@@ -1266,22 +1264,4 @@ export function meshRevit2027CylinderSampledReplay(
       issues,
     },
   };
-}
-
-/** Complete one browser replay and mesh its certified Cylinder subset. */
-export function replayAndMeshRevit2027CylinderSampledOwner(
-  data: Uint8Array,
-  root: Revit2027FramedGRepRoot,
-  options: Revit2027CylinderOwnerMeshOptions = {},
-): Revit2027CylinderOwnerMeshResult {
-  const replayed = replayRevit2027GRepFifo(
-    data,
-    root,
-    options.replayRegistry,
-    options.replayOptions,
-  );
-  if (replayed.ok === false) {
-    return { ok: false, error: `Revit 2027 replay failed: ${replayed.error}` };
-  }
-  return meshRevit2027CylinderSampledReplay(replayed.value, options);
 }

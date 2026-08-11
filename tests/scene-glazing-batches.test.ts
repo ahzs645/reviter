@@ -197,7 +197,8 @@ test("a proxy with one persisted material uses its native material batch", () =>
   } as unknown as ConvertResult, "technical");
   const renderedNative = group.children.find((child): child is THREE.Mesh =>
     (child as THREE.Mesh).isMesh &&
-    (child.userData.elementIds as Uint32Array | undefined)?.includes(assigned.elementId));
+    (child.userData.elementIds as Uint32Array | undefined)
+      ?.includes(assigned.elementId) === true);
   assert.ok(renderedNative);
   assert.equal(
     (renderedNative.material as THREE.MeshStandardMaterial).opacity,
@@ -442,7 +443,16 @@ test("reconstructed stair runs use neutral concrete and stronger tread profiles"
   const stairMaterial = materials.find((material) => material.name === "Stair display proxy");
   assert.ok(stairMaterial);
   const [red, green, blue, alpha] = stairMaterial.baseColorLinear;
-  assert.equal(red, 127 / 255, "the stair proxy matches the Autodesk neutral stair palette");
+  // The proxy still tracks Autodesk's neutral 127/255 entry, but baseColorLinear
+  // is linear-sRGB, so the byte has to arrive through the transfer function.
+  // Restated here from IEC 61966-2-1 rather than imported, so a change to the
+  // library's own conversion is caught instead of echoed.
+  const channel = 127 / 255;
+  const expected = channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  assert.ok(
+    Math.abs(red - expected) <= 1e-12,
+    "the stair proxy matches the Autodesk neutral stair palette in linear-sRGB",
+  );
   assert.equal(red, green);
   assert.ok(Math.abs(green - blue) <= 0.02);
   assert.equal(alpha, 1);
