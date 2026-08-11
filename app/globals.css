@@ -1271,18 +1271,65 @@ button[data-reason]:focus-visible::after {
   box-shadow: var(--shadow);
   backdrop-filter: blur(8px);
 }
-.floor-mini-map > header { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px 7px 10px; border-bottom: 1px solid var(--line); }
-.floor-mini-map > header span { min-width: 0; }
-.floor-mini-map > header h2, .floor-mini-map > header small { display: block; }
-.floor-mini-map > header h2 { margin: 0; font-size: 11px; text-transform: uppercase; }
-.floor-mini-map > header small { margin-top: 2px; overflow: hidden; color: var(--text-2); font: 10px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.floor-mini-map-controls { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); }
+/* The map is the panel. The controls ride on top of the drawing rather than
+   stacking above it, so a panel small enough to sit over the model is mostly
+   plan instead of mostly chrome. */
+.floor-map-bar { position: absolute; z-index: 3; top: 6px; right: 6px; display: flex; gap: 4px; }
+.floor-map-bar .rv-icon-button { border-color: var(--plan-chip-line); background: var(--plan-chip); color: var(--plan-ink); backdrop-filter: blur(4px); }
+.floor-map-bar .rv-icon-button:hover { border-color: var(--accent); color: var(--accent); }
+
+.floor-map-menu {
+  position: absolute;
+  z-index: 4;
+  top: 40px;
+  right: 6px;
+  width: min(300px, calc(100% - 12px));
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.floor-map-menu h2 { margin: 0 0 2px; color: var(--text-3); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.floor-map-menu-toggles { display: grid; gap: 2px; }
+.floor-map-menu-toggles label { min-height: 30px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 11.5px; cursor: pointer; }
+.floor-map-menu-toggles input { accent-color: var(--accent); }
+.floor-map-menu p { margin: 0; color: var(--text-3); font: 10px var(--mono); }
+
+/* Which floor, and where you are on it: the two questions the map exists to
+   answer, so they stay on the map rather than behind the menu. */
+.floor-map-status {
+  position: absolute;
+  z-index: 3;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px;
+  border: 1px solid var(--plan-chip-line);
+  background: var(--plan-chip);
+  color: var(--plan-ink);
+  font: 10px var(--mono);
+  backdrop-filter: blur(4px);
+}
+.floor-map-status b { font-weight: 700; white-space: nowrap; }
+.floor-map-status i { padding: 1px 4px; border: 1px solid currentColor; font-size: 8px; font-style: normal; letter-spacing: .06em; opacity: .75; text-transform: uppercase; white-space: nowrap; }
+.floor-map-status span { min-width: 0; overflow: hidden; opacity: .8; text-overflow: ellipsis; white-space: nowrap; }
+.floor-map-status em { padding: 1px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 8px; font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+
+.floor-mini-map-controls { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; }
 .floor-mini-map-controls select { min-width: 0; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font: 10px var(--mono); }
 .floor-mini-map-controls .rv-icon-button:disabled { opacity: .35; cursor: default; }
-.floor-mini-map-zoom { display: flex; gap: 4px; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.floor-mini-map-zoom { display: flex; gap: 4px; }
 .floor-mini-map-zoom button { min-width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); }
 .floor-mini-map-zoom button:disabled { opacity: .4; }
 .floor-mini-map figure { flex: 1; min-height: 0; margin: 0; overflow: hidden; background: var(--plan-paper); }
+/* The hint chip sat bottom-right against the status chip's left; keep them off
+   each other on a narrow phone sheet. */
+.floor-map-hint { max-width: calc(100% - 12px); }
 .floor-mini-map-canvas { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; cursor: crosshair; }
 .floor-mini-map-content { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
 .floor-mini-map-content img, .floor-mini-map-content > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
@@ -1297,11 +1344,7 @@ button[data-reason]:focus-visible::after {
 .floor-map-north, .floor-map-hint { position: absolute; z-index: 2; padding: 3px 5px; border: 1px solid var(--plan-chip-line); background: var(--plan-chip); color: var(--plan-ink); font: 700 9px var(--mono); pointer-events: none; }
 .floor-map-north { top: 6px; left: 6px; }
 .floor-map-hint { right: 6px; bottom: 6px; font-weight: 500; }
-.floor-mini-map > footer { min-height: 38px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 10.5px; }
-.floor-mini-map > footer label { display: flex; align-items: center; gap: 6px; color: var(--text-2); cursor: pointer; }
-.floor-mini-map > footer input { accent-color: var(--accent); }
-.floor-mini-map > footer span { display: flex; align-items: center; gap: 5px; font-family: var(--mono); }
-.floor-mini-map > footer em { padding: 2px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 7px; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
+
 
 @container (max-width: 620px) {
   .floor-browser { grid-template-columns: 1fr; }
@@ -1310,7 +1353,6 @@ button[data-reason]:focus-visible::after {
 
 @media (max-height: 680px) and (min-width: 861px) {
   .floor-mini-map { width: min(300px, calc(100% - 28px)); height: min(290px, calc(100% - 70px)); }
-  .floor-mini-map > footer { display: none; }
 }
 
 /* Embedded means "inside the phone's Floors sheet", which already supplies the

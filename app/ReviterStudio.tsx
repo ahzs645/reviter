@@ -808,11 +808,33 @@ export default function ReviterStudio() {
       // Isolate the storey the map is drawing, not the one Revit level it is
       // keyed on: on a split level those are different, and isolating the key
       // level alone hid the wings the plan itself shows.
-      const storey = new Set(connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId]);
+      const group = connectedFloorPlanGroup(result, planLevelId);
+      const storey = new Set(group?.levelIds ?? [planLevelId]);
       const visible = new Set((result.nativeAssociatedLevelRelations ?? [])
         .filter((relation) => storey.has(relation.levelId))
         .map((relation) => relation.elementId));
-      for (const record of result.elementBounds) if (!visible.has(record.elementId)) hidden.add(record.elementId);
+      const associated = new Set((result.nativeAssociatedLevelRelations ?? [])
+        .map((relation) => relation.elementId));
+      // A level relation is the best evidence of which storey something is on,
+      // but the model does not always carry one: on the sample 3,171 elements
+      // have none, including the building's largest floor slab and nearly every
+      // stair and railing part. Isolating on relations alone therefore removed
+      // the floor from under the walls. Where there is no relation to go on,
+      // fall back to where the element actually sits.
+      const floor = (group?.minElevation ?? Number.NaN) - 2;
+      const head = (group?.maxElevation ?? Number.NaN) + 14;
+      const placeable = Number.isFinite(floor) && Number.isFinite(head);
+      for (const record of result.elementBounds) {
+        if (visible.has(record.elementId)) continue;
+        if (!associated.has(record.elementId) && placeable) {
+          // Judge by the base, the way a storey is assigned: a tall unassociated
+          // element belongs to the floor it stands on, not to every floor it
+          // passes through.
+          const base = record.boundsFeet.min.z;
+          if (base >= floor && base <= head) continue;
+        }
+        hidden.add(record.elementId);
+      }
     }
     return hidden;
   }, [hiddenCategories, isolateMapLevel, planLevelId, result]);
