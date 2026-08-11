@@ -33,6 +33,23 @@
 
   --ui: var(--font-manrope, Helvetica, Arial, sans-serif);
   --mono: var(--font-plex-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /* Plan drawings are their own surface. The SVG carries its own stylesheet —
+     page CSS cannot reach inside it — so these must stay in step with
+     PLAN_PALETTES in lib/reviter/architectural-plan.ts, which is what actually
+     paints the paper. Everything drawn *over* the plan reads against the paper,
+     not against the panel behind it. Dark first, like the rest of the file. */
+  --plan-paper: #0d1417;
+  --plan-ink: #cfe0e1;
+  --plan-chip: rgba(13, 20, 23, .84);
+  --plan-chip-line: rgba(160, 190, 194, .3);
+  --plan-marker: #58cfc8;
+  --plan-marker-halo: #06181b;
+  --plan-selection: #ff7ab0;
+  --notice: #16242a;
+  --notice-text: #9fbcc2;
+  --notice-busy: #2a2114;
+  --notice-busy-text: #e0b477;
 }
 
 :root[data-theme="light"] {
@@ -54,6 +71,18 @@
   --bad: #b04a42;
   --hover: rgba(11, 21, 24, .055);
   --shadow: 0 18px 40px rgba(20, 40, 45, .16);
+
+  --plan-paper: #f4f1e9;
+  --plan-ink: #143e46;
+  --plan-chip: rgba(244, 241, 233, .88);
+  --plan-chip-line: rgba(20, 62, 70, .28);
+  --plan-marker: #0c4f56;
+  --plan-marker-halo: #fff;
+  --plan-selection: #ff4f93;
+  --notice: #e9eeeb;
+  --notice-text: #365158;
+  --notice-busy: #fff0d9;
+  --notice-busy-text: #8b5b27;
 }
 
 * { box-sizing: border-box; }
@@ -258,7 +287,11 @@ button[data-reason]:focus-visible::after {
 --------------------------------------------------------------------------- */
 
 .studio {
+  /* `dvh` because the shell is a fixed frame with its own bottom bar: under
+     `vh` a phone browser measures the tallest possible viewport, so the mobile
+     tab bar sits behind the collapsing URL bar until the page is scrolled. */
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -318,6 +351,7 @@ button[data-reason]:focus-visible::after {
 .toolbar {
   height: 46px;
   flex: 0 0 46px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -335,8 +369,29 @@ button[data-reason]:focus-visible::after {
   scrollbar-width: none;
 }
 .toolbar-scroll::-webkit-scrollbar { display: none; }
+/* The scrollbar is hidden to keep the 46px row clean, so the only sign that
+   the toolbar continues past an edge is this fade. It is drawn only on the
+   side that still has something on it. The right-hand one hangs off the
+   pinned group so it marks the end of the scrolling region, not the window. */
+.toolbar::before,
+.toolbar-pinned::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  opacity: 0;
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.toolbar::before { left: 0; background: linear-gradient(to right, var(--panel), transparent); }
+.toolbar-pinned::before { right: 100%; background: linear-gradient(to left, var(--panel), transparent); }
+.toolbar[data-overflow-start="true"]::before,
+.toolbar[data-overflow-end="true"] .toolbar-pinned::before { opacity: 1; }
 .toolbar-pinned {
   flex: 0 0 auto;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -421,15 +476,23 @@ button[data-reason]:focus-visible::after {
   align-items: stretch;
   gap: 2px;
   padding: 4px 6px;
+  /* The three labels plus their counts are wider than a narrowed dock, and a
+     centred flex item overflows both ways: without this the first tab's label
+     spilled out of the dock and was cut off by the window edge. */
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
 }
 .tabstrip button {
-  flex: 1;
+  /* `auto` basis, not `0`: an equal third is narrower than "Objects" plus a
+     six-figure count, so equal columns ellipsised the first label while the
+     other two still had room to spare. */
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  overflow: hidden;
   border: 0;
   background: transparent;
   color: var(--text-3);
@@ -439,7 +502,8 @@ button[data-reason]:focus-visible::after {
 }
 .tabstrip button:hover { color: var(--text-2); }
 .tabstrip button.active { background: var(--panel-3); color: var(--text); }
-.tabstrip button em { color: var(--text-3); font-family: var(--mono); font-size: 10px; font-style: normal; }
+.tabstrip button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabstrip button em { flex: 0 0 auto; color: var(--text-3); font-family: var(--mono); font-size: 10px; font-style: normal; }
 
 .dock-search { padding: 8px; border-bottom: 1px solid var(--line-soft); }
 .dock-footer { padding: 8px; border-top: 1px solid var(--line-soft); }
@@ -1118,7 +1182,7 @@ button[data-reason]:focus-visible::after {
 .room-review-card.focused { outline: 2px solid var(--accent); outline-offset: 1px; }
 .floor-browser-side-map { justify-content: center; }
 .floor-browser-download { justify-content: center; margin-top: auto; }
-.floor-browser-preview { min-width: 0; min-height: 300px; display: flex; flex-direction: column; margin: 0; border: 1px solid var(--line); background: #f4f1e9; overflow: hidden; }
+.floor-browser-preview { min-width: 0; min-height: 300px; display: flex; flex-direction: column; margin: 0; border: 1px solid var(--line); background: var(--plan-paper); overflow: hidden; }
 .floor-browser-plan-scroll { flex: 1; min-height: 250px; overflow: auto; }
 .floor-browser-preview img { max-width: none; min-width: 100%; min-height: 100%; display: block; object-fit: contain; }
 .floor-browser-preview-toolbar { min-height: 34px; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
@@ -1127,7 +1191,6 @@ button[data-reason]:focus-visible::after {
 .floor-browser-preview-toolbar span { margin-left: auto; color: var(--text-3); font: 9px var(--mono); }
 .floor-browser-preview-toolbar .floor-plan-building { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); animation: floor-plan-building-pulse 1.1s ease-in-out infinite; }
 @keyframes floor-plan-building-pulse { 50% { opacity: .45; } }
-.floor-browser-preview figcaption { padding: 8px 10px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font-size: 11px; }
 .floor-reference-toolbar { min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 92%, #3f8f8b); }
 .floor-reference-toolbar button, .floor-reference-fine-tune button { min-height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text-2); font: 9.5px var(--mono); cursor: pointer; }
 .floor-reference-toolbar button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
@@ -1143,13 +1206,44 @@ button[data-reason]:focus-visible::after {
 .floor-reference-fine-tune input { min-width: 0; height: 24px; padding: 2px 4px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
 .floor-reference-fine-tune input[type="range"] { padding: 0; accent-color: var(--accent); }
 .floor-reference-fine-tune output { color: var(--text-3); }
-.floor-reference-status { min-height: 25px; padding: 5px 8px; border-bottom: 1px solid var(--line); background: #e9eeeb; color: #365158; font: 9.5px var(--mono); }
-.floor-reference-status.capturing { background: #fff0d9; color: #8b5b27; }
-.floor-reference-canvas { position: relative; min-width: 100%; min-height: 100%; overflow: hidden; background: #f4f1e9; }
+.floor-reference-status { min-height: 25px; padding: 5px 8px; border-bottom: 1px solid var(--line); background: var(--notice); color: var(--notice-text); font: 9.5px var(--mono); }
+.floor-reference-status.capturing { background: var(--notice-busy); color: var(--notice-busy-text); }
+.floor-reference-canvas { position: relative; min-width: 100%; min-height: 100%; overflow: hidden; background: var(--plan-paper); }
 .floor-reference-canvas.capture { cursor: crosshair; }
 .floor-browser-preview .floor-reference-rvt { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; }
 .floor-reference-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; pointer-events: none; }
-.floor-reference-anchor circle { fill: #ff4f93; stroke: white; stroke-width: .004; vector-effect: non-scaling-stroke; }
+/* The plans a DWG names, along the bottom edge like a drawing's own sheet tabs.
+   Fifty-four of them will not fit, so the strip scrolls sideways rather than
+   wrapping into a wall of buttons that pushes the drawing off screen. */
+.floor-reference-sheets {
+  display: flex;
+  gap: 3px;
+  padding: 4px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+  scrollbar-width: thin;
+}
+.floor-reference-sheets button {
+  min-height: 24px;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-bottom-color: transparent;
+  background: var(--panel);
+  color: var(--text-2);
+  font: 9.5px var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.floor-reference-sheets button:hover { color: var(--text); }
+.floor-reference-sheets button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.floor-reference-anchor circle { fill: var(--plan-selection); stroke: var(--plan-marker-halo); stroke-width: .004; vector-effect: non-scaling-stroke; }
 .floor-reference-anchor text { fill: #9d174d; stroke: white; stroke-width: .003; paint-order: stroke; font: 700 .035px var(--mono); }
 .floor-reference-rvt-anchors .floor-reference-anchor circle { fill: #00a8a0; }
 .floor-reference-rvt-anchors .floor-reference-anchor text { fill: #00645f; }
@@ -1207,33 +1301,80 @@ button[data-reason]:focus-visible::after {
   box-shadow: var(--shadow);
   backdrop-filter: blur(8px);
 }
-.floor-mini-map > header { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px 7px 10px; border-bottom: 1px solid var(--line); }
-.floor-mini-map > header span { min-width: 0; }
-.floor-mini-map > header h2, .floor-mini-map > header small { display: block; }
-.floor-mini-map > header h2 { margin: 0; font-size: 11px; text-transform: uppercase; }
-.floor-mini-map > header small { margin-top: 2px; color: var(--text-2); font: 10px var(--mono); }
-.floor-mini-map-controls { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); }
+/* The map is the panel. The controls ride on top of the drawing rather than
+   stacking above it, so a panel small enough to sit over the model is mostly
+   plan instead of mostly chrome. */
+.floor-map-bar { position: absolute; z-index: 3; top: 6px; right: 6px; display: flex; gap: 4px; }
+.floor-map-bar .rv-icon-button { border-color: var(--plan-chip-line); background: var(--plan-chip); color: var(--plan-ink); backdrop-filter: blur(4px); }
+.floor-map-bar .rv-icon-button:hover { border-color: var(--accent); color: var(--accent); }
+
+.floor-map-menu {
+  position: absolute;
+  z-index: 4;
+  top: 40px;
+  right: 6px;
+  width: min(300px, calc(100% - 12px));
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.floor-map-menu h2 { margin: 0 0 2px; color: var(--text-3); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.floor-map-menu-toggles { display: grid; gap: 2px; }
+.floor-map-menu-toggles label { min-height: 30px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 11.5px; cursor: pointer; }
+.floor-map-menu-toggles input { accent-color: var(--accent); }
+.floor-map-menu p { margin: 0; color: var(--text-3); font: 10px var(--mono); }
+
+/* Which floor, and where you are on it: the two questions the map exists to
+   answer, so they stay on the map rather than behind the menu. */
+.floor-map-status {
+  position: absolute;
+  z-index: 3;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  display: grid;
+  gap: 2px;
+  padding: 4px 7px;
+  border: 1px solid var(--plan-chip-line);
+  background: var(--plan-chip);
+  color: var(--plan-ink);
+  font: 10px var(--mono);
+  backdrop-filter: blur(4px);
+}
+.floor-map-status-floor { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.floor-map-status-floor b { min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.floor-map-status i { flex: 0 0 auto; padding: 1px 4px; border: 1px solid currentColor; font-size: 8px; font-style: normal; letter-spacing: .06em; opacity: .7; text-transform: uppercase; white-space: nowrap; }
+.floor-map-status em { flex: 0 0 auto; padding: 1px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 8px; font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+.floor-map-status-camera { min-width: 0; overflow: hidden; opacity: .78; text-overflow: ellipsis; white-space: nowrap; }
+
+.floor-mini-map-controls { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; }
 .floor-mini-map-controls select { min-width: 0; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font: 10px var(--mono); }
 .floor-mini-map-controls .rv-icon-button:disabled { opacity: .35; cursor: default; }
-.floor-mini-map-zoom { display: flex; gap: 4px; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.floor-mini-map-zoom { display: flex; gap: 4px; }
 .floor-mini-map-zoom button { min-width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); }
 .floor-mini-map-zoom button:disabled { opacity: .4; }
-.floor-mini-map figure { flex: 1; min-height: 0; margin: 0; overflow: hidden; background: #f4f1e9; }
+.floor-mini-map figure { flex: 1; min-height: 0; margin: 0; overflow: hidden; background: var(--plan-paper); }
+/* The hint chip sat bottom-right against the status chip's left; keep them off
+   each other on a narrow phone sheet. */
+.floor-map-hint { max-width: calc(100% - 12px); }
 .floor-mini-map-canvas { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; cursor: crosshair; }
 .floor-mini-map-content { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
 .floor-mini-map-content img, .floor-mini-map-content > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
-.map-camera-marker circle { fill: #0c4f56; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.map-camera-marker circle { fill: var(--plan-marker); stroke: var(--plan-marker-halo); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+/* Pinned to the frame because the point is off this floor: still says which
+   way the model is, without claiming you are standing there. */
+.map-camera-marker.off-plan { opacity: .5; }
+.map-camera-marker.off-plan circle { fill: none; stroke: var(--plan-marker); stroke-width: 2; }
 .map-camera-marker.walking circle { fill: #0bbeb7; }
-.map-camera-marker path { fill: none; stroke: #0c4f56; stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.map-selection-marker { fill: #ff4f93; stroke: white; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.floor-map-north, .floor-map-hint { position: absolute; z-index: 2; padding: 3px 5px; border: 1px solid rgba(20,62,70,.28); background: rgba(244,241,233,.88); color: #143e46; font: 700 9px var(--mono); pointer-events: none; }
+.map-camera-marker path { fill: none; stroke: var(--plan-marker); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.map-selection-marker { fill: var(--plan-selection); stroke: var(--plan-marker-halo); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.floor-map-north, .floor-map-hint { position: absolute; z-index: 2; padding: 3px 5px; border: 1px solid var(--plan-chip-line); background: var(--plan-chip); color: var(--plan-ink); font: 700 9px var(--mono); pointer-events: none; }
 .floor-map-north { top: 6px; left: 6px; }
 .floor-map-hint { right: 6px; bottom: 6px; font-weight: 500; }
-.floor-mini-map > footer { min-height: 38px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 10.5px; }
-.floor-mini-map > footer label { display: flex; align-items: center; gap: 6px; color: var(--text-2); cursor: pointer; }
-.floor-mini-map > footer input { accent-color: var(--accent); }
-.floor-mini-map > footer span { display: flex; align-items: center; gap: 5px; font-family: var(--mono); }
-.floor-mini-map > footer em { padding: 2px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 7px; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
+
 
 @container (max-width: 620px) {
   .floor-browser { grid-template-columns: 1fr; }
@@ -1242,10 +1383,14 @@ button[data-reason]:focus-visible::after {
 
 @media (max-height: 680px) and (min-width: 861px) {
   .floor-mini-map { width: min(300px, calc(100% - 28px)); height: min(290px, calc(100% - 70px)); }
-  .floor-mini-map > footer { display: none; }
 }
 
-.floor-mini-map.embedded { position: relative; inset: auto; width: 100%; height: min(560px, 70vh); box-shadow: none; }
+/* Embedded means "inside the phone's Floors sheet", which already supplies the
+   frame, the title and a close button — so the map fills it rather than
+   floating in it at a fixed height, and drops its own duplicate title row. */
+.floor-mini-map.embedded { position: relative; inset: auto; width: 100%; height: 100%; border: 0; box-shadow: none; }
+.floor-mini-map.embedded > header { min-height: 0; padding: 7px 10px; }
+.floor-mini-map.embedded > header h2 { display: none; }
 
 .review-import {
   display: flex;
@@ -1602,20 +1747,27 @@ button[data-reason]:focus-visible::after {
 .mobile-selection b { display: block; font-size: 13px; font-weight: 700; }
 .mobile-selection small { display: block; margin-top: 2px; color: #8fbdbb; font-family: var(--mono); font-size: 10px; }
 
+/* One column per tab, taken from the number of tabs rather than a fixed count:
+   a hard `repeat(4, 1fr)` silently pushed the fifth tab onto a second row that
+   the shell's `overflow: hidden` then cut off, so Report was unreachable. */
 .mobile-tabs {
-  height: 64px;
-  flex: 0 0 64px;
+  flex: 0 0 auto;
   position: relative;
   z-index: 21;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
   padding: 6px;
+  /* The home indicator on a notched phone sits over the last few pixels of the
+     bar, so the inset is added to the padding rather than left to overlap. */
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
   background: var(--panel);
 }
 .mobile-tabs button {
   position: relative;
+  min-width: 0;
   min-height: 52px;
   display: flex;
   flex-direction: column;
@@ -1628,11 +1780,19 @@ button[data-reason]:focus-visible::after {
   cursor: pointer;
 }
 .mobile-tabs button.active { background: var(--accent-soft); color: var(--accent); }
-.mobile-tabs button span { font-size: 10.5px; font-weight: 600; }
+.mobile-tabs button span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mobile-tabs em {
   position: absolute;
   top: 6px;
-  right: 22px;
+  right: 50%;
+  translate: 20px 0;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -1699,6 +1859,7 @@ button[data-reason]:focus-visible::after {
 .mobile .comment-meta { margin-top: 6px; font-size: 10.5px; }
 .mobile .comment-editor { padding: 0 14px 14px 50px; }
 .mobile .comment-actions button { height: 44px; font-size: 12.5px; }
+.mobile .comment-actions .danger { width: 44px; }
 .mobile .property-row { min-height: 48px; padding: 10px 14px; grid-template-columns: 1fr 1.1fr; }
 .mobile .property-row dt { font-size: 12.5px; }
 .mobile .property-row dd { font-size: 12px; }
@@ -2057,6 +2218,10 @@ button[data-reason]:focus-visible::after {
   .left-dock { width: 248px; flex-basis: 248px; }
   .right-dock { width: 264px; flex-basis: 264px; }
   .file-chip span { display: none; }
+  /* Three labelled tabs and their counts in a 248px dock: buy the room back
+     from the padding before the labels start being ellipsised. */
+  .tabstrip { padding: 4px 2px; }
+  .tabstrip button { gap: 4px; font-size: 11px; }
 }
 
 @media (max-width: 980px) {

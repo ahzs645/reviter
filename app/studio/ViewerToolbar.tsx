@@ -109,6 +109,30 @@ export function ViewerToolbar({
 }) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Which ends still have toolbar left on them. The row scrolls once the window
+  // is narrow enough — around 1100px with every group present — and its
+  // scrollbar is hidden, so without this the camera menu and the visual style
+  // toggle simply looked absent instead of scrolled past.
+  const [overflow, setOverflow] = useState({ start: false, end: false });
+
+  useEffect(() => {
+    const row = scrollRef.current;
+    if (!row) return;
+    const measure = () => {
+      const slack = row.scrollWidth - row.clientWidth;
+      setOverflow({ start: row.scrollLeft > 1, end: slack - row.scrollLeft > 1 });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    for (const child of row.children) observer.observe(child);
+    row.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      row.removeEventListener("scroll", measure);
+    };
+  }, [sources.length]);
 
   // The same dismissal contract as the canvas menu: the next press outside, or
   // Escape. Containment is tested so a press on an entry still fires its click.
@@ -131,8 +155,20 @@ export function ViewerToolbar({
   const presetLabel = CAMERA_PRESETS.find((entry) => entry.preset === cameraPreset)?.label ?? "View";
 
   return (
-    <div className="toolbar">
-      <div className="toolbar-scroll">
+    <div className="toolbar" data-overflow-start={overflow.start} data-overflow-end={overflow.end}>
+      <div
+        className="toolbar-scroll"
+        ref={scrollRef}
+        // A vertical wheel over a horizontal scroller does nothing in Chrome
+        // unless Shift is held, which left mouse-only users with no way at all
+        // to reach the scrolled-past groups.
+        onWheel={(event) => {
+          const row = scrollRef.current;
+          if (!row || row.scrollWidth <= row.clientWidth) return;
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+          row.scrollLeft += event.deltaY;
+        }}
+      >
         <button type="button" className="rv-button" onClick={onOpen}>
           <FolderOpen size={15} aria-hidden />
           Open

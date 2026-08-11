@@ -123,16 +123,18 @@ export function CommentsPanel({
                   </span>
                 </span>
               </button>
+              {/* The editor and the delete button are on the phone too. A new
+                  comment is created carrying placeholder text, so a sheet
+                  without them could pin a comment but never say what it was
+                  for, and never take it back. */}
               {active && (
                 <div className="comment-editor">
-                  {!mobile && (
-                    <textarea
-                      value={comment.text}
-                      onChange={(event) => onEdit(comment.id, event.target.value)}
-                      aria-label={`Comment ${number} text`}
-                      placeholder="Describe the issue or review note"
-                    />
-                  )}
+                  <textarea
+                    value={comment.text}
+                    onChange={(event) => onEdit(comment.id, event.target.value)}
+                    aria-label={`Comment ${number} text`}
+                    placeholder="Describe the issue or review note"
+                  />
                   <div className="comment-actions">
                     <button type="button" className="grow" onClick={() => onViewpoint(comment.id)}>
                       <Video size={13} aria-hidden />
@@ -141,15 +143,13 @@ export function CommentsPanel({
                     <button type="button" className="resolve" onClick={() => onResolve(comment.id)}>
                       {resolved ? "Reopen" : "Resolve"}
                     </button>
-                    {!mobile && (
-                      <button
-                        type="button"
-                        className="danger"
-                        title="Delete comment"
-                        aria-label={`Delete comment ${number}`}
-                        onClick={() => onDelete(comment.id)}
-                      ><Trash2 size={13} aria-hidden /></button>
-                    )}
+                    <button
+                      type="button"
+                      className="danger"
+                      title="Delete comment"
+                      aria-label={`Delete comment ${number}`}
+                      onClick={() => onDelete(comment.id)}
+                    ><Trash2 size={13} aria-hidden /></button>
                   </div>
                 </div>
               )}

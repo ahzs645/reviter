@@ -92,7 +92,7 @@ export function BrowserDock({
             aria-selected={tab === entry.id}
             className={tab === entry.id ? "active" : ""}
             onClick={() => onTab(entry.id)}
-          >{entry.label}<em>{entry.count.toLocaleString()}</em></button>
+          ><span>{entry.label}</span><em>{entry.count.toLocaleString()}</em></button>
         ))}
       </div>
 

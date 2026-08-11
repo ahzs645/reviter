@@ -477,6 +477,38 @@ test("document purpose renders paper pens, no non-scaling strokes, and an overal
   assert.notEqual(screen, documentSvg, "the two purposes cache separately");
 });
 
+test("the dark plan keeps the tonal hierarchy rather than inverting the drawing", () => {
+  const result = resultFixture();
+  result.elementBounds.push(roomTestFloor(10), straightWall(11, [2, 5], [18, 5]));
+  result.nativeAssociatedLevelRelations!.push(
+    { elementId: 10, levelId: 100 } as NonNullable<ConvertResult["nativeAssociatedLevelRelations"]>[number],
+  );
+  const light = makeArchitecturalFloorSvg(result, 100);
+  const dark = makeArchitecturalFloorSvg(result, 100, { theme: "dark" });
+
+  // Default stays the paper drawing, so nothing that already asked for a plan
+  // gets a different one.
+  assert.equal(light, makeArchitecturalFloorSvg(result, 100, { theme: "light" }));
+  assert.match(light, /<rect width="100%" height="100%" fill="#fffdf7" data-plan-paper="light"\/>/u);
+  assert.match(dark, /<rect width="100%" height="100%" fill="#0d1417" data-plan-paper="dark"\/>/u);
+  assert.notEqual(light, dark, "the two inks cache separately");
+
+  // Cut walls are the heaviest thing on either sheet: near-black on paper,
+  // near-white on the dark one. An inversion would have made them mid-grey.
+  assert.match(light, /\.walls\{fill:#1f2937;/u);
+  assert.match(dark, /\.walls\{fill:#dde6e7;/u);
+  // A door opening is painted in the paper colour so the wall reads as broken;
+  // that has to follow the paper, not stay cream on a dark sheet.
+  assert.match(dark, /\.doors \.opening,\.windows \.opening\{fill:#0d1417;stroke:#0d1417;/u);
+  assert.doesNotMatch(dark, /#fffdf7/u, "no paper-only ink survives into the dark sheet");
+
+  // A printed sheet is paper whatever the screen was set to.
+  assert.equal(
+    makeArchitecturalFloorSvg(result, 100, { purpose: "document", theme: "dark" }),
+    makeArchitecturalFloorSvg(result, 100, { purpose: "document" }),
+  );
+});
+
 test("plan drawing frame inverts image fractions to model feet across rotations", () => {
   const result = resultFixture();
   result.elementBounds.push(roomTestFloor(10));

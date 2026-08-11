@@ -30,7 +30,7 @@ export type {
   FloorReferencePoint,
   FloorReferenceTransform,
 } from "./floor-reference-overlay.ts";
-export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg } from "./floor-reference-catalog.ts";
+export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg, withFloorReferenceIntrinsicSize } from "./floor-reference-catalog.ts";
 export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog.ts";
 export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms.ts";
 export type { DerivedRoom, DerivedRoomGap, DerivedRoomOptions, DerivedRoomResult } from "./derived-rooms.ts";

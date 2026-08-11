@@ -17,11 +17,13 @@ import {
   outputName,
   parseFloorReferenceCatalogSvg,
   parseFloorReferenceAlignment,
+  withFloorReferenceIntrinsicSize,
   type FloorReferenceCatalogSection,
   type FloorReferenceControlPair,
   type FloorReferencePoint,
   type FloorReferenceTransform,
 } from "../../lib/reviter";
+import { decodeDwg, type DecodedDwg, type DecodedDwgSheet } from "./decode-dwg.ts";
 
 type ReferenceAsset = {
   fileName: string;
@@ -29,6 +31,8 @@ type ReferenceAsset = {
   sha256: string | null;
   svgText: string | null;
   sections: FloorReferenceCatalogSection[];
+  /** Named plans a DWG carried in its own layouts; empty for every other input. */
+  sheets: DecodedDwgSheet[];
   url: string;
 };
 
@@ -63,7 +67,6 @@ export function FloorReferencePlan({
   planAlt,
   zoom,
   toolbar,
-  caption,
   onPlanClick,
 }: {
   rvtFileName: string;
@@ -72,7 +75,6 @@ export function FloorReferencePlan({
   planAlt: string;
   zoom: number;
   toolbar: ReactNode;
-  caption: ReactNode;
   /** Fraction of the plan image (0–1 both axes) a non-capture click landed on. */
   onPlanClick?: (fraction: { x: number; y: number }) => void;
 }) {
@@ -82,13 +84,19 @@ export function FloorReferencePlan({
   const previousUrl = useRef<string | null>(null);
   const [asset, setAsset] = useState<ReferenceAsset | null>(null);
   const [sectionId, setSectionId] = useState("");
+  /** Which named sheet is shown; null is the whole drawing. */
+  const [sheetId, setSheetId] = useState<number | null>(null);
   const [visible, setVisible] = useState(true);
   const [opacity, setOpacity] = useState(0.48);
   const [transform, setTransform] = useState<FloorReferenceTransform>(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
   const [referencePoints, setReferencePoints] = useState<FloorReferencePoint[]>([]);
   const [rvtPoints, setRvtPoints] = useState<FloorReferencePoint[]>([]);
   const [captureMode, setCaptureMode] = useState<CaptureMode>(null);
-  const [status, setStatus] = useState("Load a DWG-derived SVG or image to begin.");
+  const [status, setStatus] = useState("Load a DWG, or an SVG or image made from one, to begin.");
+  /** Decoding a survey DWG takes seconds; the picker is disabled while it runs. */
+  const [busy, setBusy] = useState(false);
+  /** Reference width ÷ height, measured once it decodes. */
+  const [referenceAspect, setReferenceAspect] = useState<number | null>(null);
   const [canvasAspect, setCanvasAspect] = useState(1);
 
   useEffect(() => {
@@ -115,13 +123,73 @@ export function FloorReferencePlan({
 
   const sectionUrl = useMemo(() => asset?.svgText && selectedSection
     ? URL.createObjectURL(new Blob([
-      cropFloorReferenceCatalogSvg(asset.svgText, selectedSection.bounds),
+      withFloorReferenceIntrinsicSize(
+        cropFloorReferenceCatalogSvg(asset.svgText, selectedSection.bounds)),
     ], { type: "image/svg+xml" }))
     : null, [asset, selectedSection]);
 
   useEffect(() => () => {
     if (sectionUrl) URL.revokeObjectURL(sectionUrl);
   }, [sectionUrl]);
+
+  const selectedSheet = useMemo(
+    () => asset?.sheets.find((sheet) => sheet.id === sheetId) ?? null,
+    [asset, sheetId],
+  );
+
+  // Every sheet was drawn during the decode, so switching between them is a new
+  // Blob URL over a string already in hand rather than another pass over the
+  // drawing. Only the shown one is ever given a URL.
+  const sheetUrl = useMemo(() => selectedSheet
+    ? URL.createObjectURL(new Blob([selectedSheet.svg], { type: "image/svg+xml" }))
+    : null, [selectedSheet]);
+
+  useEffect(() => () => {
+    if (sheetUrl) URL.revokeObjectURL(sheetUrl);
+  }, [sheetUrl]);
+
+  const referenceUrl = sheetUrl ?? sectionUrl ?? asset?.url ?? null;
+
+  // The reference's own proportions, measured rather than assumed, because the
+  // `<image>` below has to be fitted by hand — see `fittedReference`. Choosing a
+  // reference or a section clears the previous measurement, so this only ever
+  // records one, never resets one.
+  useEffect(() => {
+    if (!referenceUrl) return;
+    let cancelled = false;
+    const probe = new Image();
+    probe.onload = () => {
+      if (!cancelled && probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+        setReferenceAspect(probe.naturalWidth / probe.naturalHeight);
+      }
+    };
+    probe.src = referenceUrl;
+    return () => { cancelled = true; };
+  }, [referenceUrl]);
+
+  /**
+   * What `preserveAspectRatio="xMidYMid meet"` would have given, computed here.
+   *
+   * Chromium never paints an `<image>` set to `meet` when it points at a large
+   * SVG: the fitted box needs the intrinsic size, which is not known until the
+   * document finishes decoding, and the layout is not redone once it is. The
+   * reference then silently shows nothing — which is what every SVG reference
+   * did before, DWG or hand-exported. Sizing the box ourselves and asking for
+   * `none` puts the decision in code that runs after the size is known, and is
+   * identical geometry: an exactly-proportioned box makes `none` and `meet`
+   * agree, so the fitted alignment transform still means what it meant.
+   */
+  const fittedReference = useMemo(() => {
+    const full = { x: 0, y: 0, width: 1, height: canvasAspect };
+    if (!referenceAspect || !Number.isFinite(referenceAspect)) return full;
+    const boxAspect = 1 / canvasAspect;
+    if (referenceAspect >= boxAspect) {
+      const height = 1 / referenceAspect;
+      return { x: 0, y: (canvasAspect - height) / 2, width: 1, height };
+    }
+    const width = canvasAspect * referenceAspect;
+    return { x: (1 - width) / 2, y: 0, width, height: canvasAspect };
+  }, [canvasAspect, referenceAspect]);
 
   const controlPairs = useMemo(() => referencePoints
     .slice(0, Math.min(referencePoints.length, rvtPoints.length))
@@ -149,31 +217,68 @@ export function FloorReferencePlan({
   };
 
   const loadReference = async (file: File) => {
-    if (!file.type.startsWith("image/") && !/\.(svg|png|jpe?g|webp)$/iu.test(file.name)) {
-      setStatus("Load an SVG/PNG/JPEG/WebP produced from the DWG; original DWG parsing remains outside the browser bundle.");
+    const isDwg = /\.dwg$/iu.test(file.name);
+    if (!isDwg && !file.type.startsWith("image/") && !/\.(svg|png|jpe?g|webp)$/iu.test(file.name)) {
+      setStatus("Load a DWG, or an SVG/PNG/JPEG/WebP produced from one.");
       return;
     }
     if (previousUrl.current) URL.revokeObjectURL(previousUrl.current);
-    const svgText = /\.svg$/iu.test(file.name) || file.type === "image/svg+xml" ? await file.text() : null;
-    const catalog = svgText ? parseFloorReferenceCatalogSvg(svgText) : null;
-    const url = URL.createObjectURL(file);
+
+    // A DWG is decoded to plan linework first; everything downstream then sees
+    // the same SVG it would have seen from a hand-exported one.
+    let decoded: DecodedDwg | null = null;
+    let svgText: string | null = null;
+    let url: string;
+    if (isDwg) {
+      setBusy(true);
+      setStatus("Reading the drawing…");
+      try {
+        decoded = await decodeDwg(await file.arrayBuffer(), (stage) => setStatus(`${stage}…`));
+      } catch (error) {
+        setBusy(false);
+        setStatus(error instanceof Error ? error.message : "This DWG could not be read.");
+        return;
+      }
+      setBusy(false);
+      svgText = decoded.svg;
+      url = URL.createObjectURL(new Blob([decoded.svg], { type: "image/svg+xml" }));
+    } else {
+      svgText = /\.svg$/iu.test(file.name) || file.type === "image/svg+xml" ? await file.text() : null;
+      // An SVG is re-blobbed rather than used as-is so it can be given the
+      // intrinsic size an <image> needs; anything raster already has one.
+      url = svgText
+        ? URL.createObjectURL(new Blob([withFloorReferenceIntrinsicSize(svgText)],
+          { type: "image/svg+xml" }))
+        : URL.createObjectURL(file);
+    }
+    const catalog = svgText && !isDwg ? parseFloorReferenceCatalogSvg(svgText) : null;
     previousUrl.current = url;
     setAsset({
       fileName: file.name,
-      mediaType: file.type || "application/octet-stream",
+      mediaType: isDwg ? "image/svg+xml" : (file.type || "application/octet-stream"),
       sha256: null,
       svgText,
       sections: catalog?.sections ?? [],
+      sheets: decoded?.sheets ?? [],
       url,
     });
     setSectionId("");
+    setSheetId(null);
+    setReferenceAspect(null);
     setTransform(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
     setReferencePoints([]);
     setRvtPoints([]);
     setVisible(true);
-    setStatus(catalog?.sections.length
-      ? `${catalog.sections.length} independent plan sections detected. Choose one section before aligning it to the RVT.`
-      : "Reference loaded. Mark two recognizable points on it, then the same two points on the RVT.");
+    setStatus(decoded
+      ? `${decoded.entityCount.toLocaleString()} entities on ${decoded.layerNames.length} layers` +
+        `${decoded.sheets.length ? ` · ${decoded.sheets.length} named plans, listed below` : ""}` +
+        `${decoded.feetPerUnit == null ? " · the drawing declares no units, so scale comes from your control points" : ""}` +
+        `. ${decoded.sheets.length
+          ? "Pick a plan, then mark two points on it and the same two on the RVT."
+          : "Mark two recognizable points on it, then the same two on the RVT."}`
+      : catalog?.sections.length
+        ? `${catalog.sections.length} independent plan sections detected. Choose one section before aligning it to the RVT.`
+        : "Reference loaded. Mark two recognizable points on it, then the same two points on the RVT.");
     const hash = await sha256(file);
     setAsset((current) => current?.url === url ? { ...current, sha256: hash } : current);
   };
@@ -260,8 +365,26 @@ export function FloorReferencePlan({
     setStatus(`Mark two well-separated landmarks on the ${mode === "reference" ? "reference" : "RVT"}, in matching order.`);
   };
 
+  const chooseSheet = (nextId: number | null) => {
+    if (nextId === sheetId) return;
+    setSheetId(nextId);
+    setReferenceAspect(null);
+    // A registration is between one drawing and one floor, so switching plans
+    // has to drop it rather than carry a fit from a different building.
+    setTransform(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
+    setReferencePoints([]);
+    setRvtPoints([]);
+    setCaptureMode(null);
+    setVisible(true);
+    const sheet = asset?.sheets.find((item) => item.id === nextId);
+    setStatus(sheet
+      ? `${sheet.name} · ${sheet.entityCount.toLocaleString()} entities. Mark two recognizable points on it, then the same two on the RVT.`
+      : `Whole sheet · ${asset?.sheets.length ?? 0} plans. Pick one below, or align the sheet as it is.`);
+  };
+
   const chooseSection = (nextId: string) => {
     setSectionId(nextId);
+    setReferenceAspect(null);
     setTransform(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
     setReferencePoints([]);
     setRvtPoints([]);
@@ -319,7 +442,7 @@ export function FloorReferencePlan({
           ref={referenceInput}
           className="visually-hidden"
           type="file"
-          accept=".svg,.png,.jpg,.jpeg,.webp,image/svg+xml,image/png,image/jpeg,image/webp"
+          accept=".dwg,.svg,.png,.jpg,.jpeg,.webp,image/vnd.dwg,image/svg+xml,image/png,image/jpeg,image/webp"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void loadReference(file);
@@ -337,26 +460,28 @@ export function FloorReferencePlan({
             event.currentTarget.value = "";
           }}
         />
-        <button type="button" onClick={() => referenceInput.current?.click()}><Upload size={13} /> {asset ? "Replace reference" : "Add reference"}</button>
+        <button type="button" disabled={busy} onClick={() => referenceInput.current?.click()}><Upload size={13} /> {busy ? "Reading DWG…" : asset ? "Replace reference" : "Add reference"}</button>
         <button type="button" disabled={!asset} onClick={() => setVisible((value) => !value)}>{visible ? <Eye size={13} /> : <EyeOff size={13} />} {visible ? "Reference on" : "Reference off"}</button>
         <button type="button" disabled={!asset} className={captureMode === "reference" ? "active" : ""} onClick={() => beginCapture("reference")}><Crosshair size={13} /> 1 · Reference points</button>
         <button type="button" disabled={!asset} className={captureMode === "rvt" ? "active" : ""} onClick={() => beginCapture("rvt")}><Crosshair size={13} /> 2 · RVT points</button>
         <button type="button" onClick={() => alignmentInput.current?.click()}><FileUp size={13} /> Load alignment</button>
         <button type="button" disabled={!asset || controlPairs.length < 2} onClick={downloadAlignment}><Download size={13} /> Save alignment</button>
       </div>
-      {asset && (
+      {/* Sections come from frames drawn in an exported SVG; a DWG names its own
+          plans instead, and those are the tab strip under the drawing. */}
+      {asset && asset.sections.length > 0 && (
         <label className="floor-reference-section-picker">
           <span>Reference section</span>
           <select value={sectionId} onChange={(event) => chooseSection(event.target.value)}>
             <option value="">Whole drawing</option>
             {asset.sections.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
           </select>
-          <em>{asset.sections.length ? `${asset.sections.length} detected` : "No section frames detected"}</em>
+          <em>{asset.sections.length} detected</em>
         </label>
       )}
       {asset && (
         <details className="floor-reference-fine-tune">
-          <summary>Fine alignment · {selectedSection?.label ?? asset.fileName}</summary>
+          <summary>Fine alignment · {selectedSheet?.name ?? selectedSection?.label ?? asset.fileName}</summary>
           <div>
             <label><span>Opacity</span><input type="range" min="0" max="1" step="0.01" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /><output>{Math.round(opacity * 100)}%</output></label>
             <label><span>Scale</span><input type="number" min="0.001" step="0.01" value={(decomposed.scale * 100).toFixed(2)} onChange={(event) => updateDecomposed({ scale: Number(event.target.value) / 100 })} /><output>%</output></label>
@@ -379,7 +504,7 @@ export function FloorReferencePlan({
           <img className="floor-reference-rvt" src={planImageUrl} alt={planAlt} style={{ opacity: referenceOnly ? 0.08 : 1 }} />
           {asset && visible && !rvtOnly && (
             <svg className="floor-reference-layer" viewBox={`0 0 1 ${canvasAspect}`} preserveAspectRatio="none" aria-label={`Reference overlay ${asset.fileName}`}>
-              <image href={sectionUrl ?? asset.url} width="1" height={canvasAspect} preserveAspectRatio="xMidYMid meet" transform={referenceTransform} opacity={referenceOnly ? 1 : opacity} />
+              <image href={referenceUrl ?? asset.url} x={fittedReference.x} y={fittedReference.y} width={fittedReference.width} height={fittedReference.height} preserveAspectRatio="none" transform={referenceTransform} opacity={referenceOnly ? 1 : opacity} />
               {displayedReferencePoints.map((point, index) => <g key={`reference-${index}`} className="floor-reference-anchor"><circle cx={point.x} cy={point.y} r="0.012" /><text x={point.x + 0.015} y={point.y - 0.015}>{index + 1}</text></g>)}
             </svg>
           )}
@@ -390,7 +515,32 @@ export function FloorReferencePlan({
           )}
         </div>
       </div>
-      <figcaption>{caption}</figcaption>
+      {asset && asset.sheets.length > 0 && (
+        <div className="floor-reference-sheets" role="tablist" aria-label="Plans in this drawing">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sheetId === null}
+            className={sheetId === null ? "active" : ""}
+            onClick={() => chooseSheet(null)}
+          >
+            Full sheet
+          </button>
+          {asset.sheets.map((sheet) => (
+            <button
+              key={sheet.id}
+              type="button"
+              role="tab"
+              aria-selected={sheetId === sheet.id}
+              className={sheetId === sheet.id ? "active" : ""}
+              title={`${sheet.name} · ${sheet.entityCount.toLocaleString()} entities`}
+              onClick={() => chooseSheet(sheet.id)}
+            >
+              {sheet.name}
+            </button>
+          ))}
+        </div>
+      )}
     </figure>
   );
 }

@@ -53,6 +53,30 @@ await Promise.all([
     entryPoints: [resolve(projectRoot, "lib/reviter/ifc-worker.ts")],
     outfile: resolve(assetsDirectory, "ifc-worker-runtime.js"),
   }),
+  // No companion .wasm is copied for this one. libredwg-web's published ESM entry
+  // carries its 4 MB binary inlined as a base64 data URI, so the bundle is
+  // self-contained at about 5.8 MB and the loose `wasm/libredwg-web.wasm` in the
+  // package is never fetched. Nothing downloads it until a DWG is opened, because
+  // that is the only thing that constructs this worker.
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "lib/reviter/dwg-worker.ts")],
+    outfile: resolve(assetsDirectory, "dwg-worker-runtime.js"),
+  }),
+  // Both of these are constructed with `new URL("./x.worker.ts", import.meta.url)`,
+  // which the bundler leaves pointing at a TypeScript file that is not deployed.
+  // They 404'd here, and the studio quietly fell back to assembling plans and
+  // deriving rooms on the main thread — correct output, blocked UI.
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "app/studio/floor-plan.worker.ts")],
+    outfile: resolve(assetsDirectory, "floor-plan-worker-runtime.js"),
+  }),
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "app/studio/floor-regions.worker.ts")],
+    outfile: resolve(assetsDirectory, "floor-regions-worker-runtime.js"),
+  }),
   cp(resolve(projectRoot, "public"), outputDirectory, { recursive: true }),
 ]);
 

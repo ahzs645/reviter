@@ -17,6 +17,17 @@
     <meta property="og:image" content="./og.png" />
     <link rel="icon" href="./favicon.png" />
     <title>Reviter — Browser-only Revit converter</title>
+    <!--
+      The same pre-paint theme restore `app/layout.tsx` runs. Without it the
+      static build wrote the chosen theme to localStorage and never read it
+      back, so the deployed site reset to dark on every load.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem("reviter.theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

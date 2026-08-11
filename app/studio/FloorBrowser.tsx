@@ -31,6 +31,7 @@ import {
 } from "../../lib/reviter";
 import { FloorReferencePlan } from "./FloorReferencePlan.tsx";
 import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
+import { useTheme } from "./use-theme.ts";
 
 export function FloorBrowser({
   result,
@@ -58,6 +59,7 @@ export function FloorBrowser({
   const [zoom, setZoom] = useState(1);
   const [rotationQuarterTurns, setRotationQuarterTurns] = useState(0);
   const [combineConnectedLevels, setCombineConnectedLevels] = useState(true);
+  const theme = useTheme();
   const levels = useMemo(() => floorPlateLevels(result), [result]);
   const connectedPlans = useMemo(() => connectedFloorPlanGroups(result), [result]);
   const rawPlans = useMemo(() => levels.map((level) => ({
@@ -133,14 +135,15 @@ export function FloorBrowser({
       rotationQuarterTurns,
       derivedRooms: selectedDerivedRooms,
       roomLabels,
+      theme,
     } : null,
-    [roomLabels, rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan],
+    [roomLabels, rotationQuarterTurns, selected, selectedDerivedRooms, selectedPlan, theme],
   );
   const prewarm = useMemo(
     () => [plans[selectedIndex + 1], plans[selectedIndex - 1]]
       .filter((plan) => plan != null)
-      .map((plan) => ({ levelId: plan.primaryLevelId, connectedLevelIds: plan.levelIds })),
-    [plans, selectedIndex],
+      .map((plan) => ({ levelId: plan.primaryLevelId, connectedLevelIds: plan.levelIds, theme })),
+    [plans, selectedIndex, theme],
   );
   const { svg, summary: planSummary, building } = useArchitecturalPlan(result, planParts, prewarm);
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
@@ -428,14 +431,6 @@ export function FloorBrowser({
           <span>{Math.round(zoom * 100)}% · {rotationQuarterTurns * 90}°</span>
           {building && <span className="floor-plan-building" role="status">Assembling…</span>}
         </div>}
-        caption={<>
-          Architectural plan assembled from recovered RVT geometry. Door swings are indicative because the persisted opening does not always expose Revit&apos;s swing side.
-          {connected ? " Adjoining split-level slabs are composed at their own local plan cuts; vertically stacked storeys remain separate." : ""}
-          {selectedDerivedRooms
-            ? " F-labels are approximate floor regions partitioned by recovered vertical barriers—not Revit Rooms."
-            : " Turn on Derived floor regions to inspect approximate barrier partitions."}
-          {" Loaded references remain separate and do not alter the RVT."}
-        </>}
       />
     </div>
   );

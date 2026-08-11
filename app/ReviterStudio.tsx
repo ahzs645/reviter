@@ -7,6 +7,7 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import {
   applyIfcReferenceRepairs,
   boundsDimensions,
+  type Bounds3,
   connectedFloorPlanGroup,
   DEFAULT_CAMERA_PRESET,
   downloadBlob,
@@ -281,6 +282,9 @@ export default function ReviterStudio() {
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
+  const [storeyFocus, setStoreyFocus] = useState<{ boundsFeet: Bounds3 | null; sequence: number }>(
+    { boundsFeet: null, sequence: 0 },
+  );
   const [showDerivedRooms, setShowDerivedRooms] = useState(false);
   const [roomReview, setRoomReview] = useState<RoomReviewState>({ rooms: [], gaps: [] });
   const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
@@ -801,10 +805,36 @@ export default function ReviterStudio() {
       if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
     }
     if (isolateMapLevel && planLevelId != null) {
+      // Isolate the storey the map is drawing, not the one Revit level it is
+      // keyed on: on a split level those are different, and isolating the key
+      // level alone hid the wings the plan itself shows.
+      const group = connectedFloorPlanGroup(result, planLevelId);
+      const storey = new Set(group?.levelIds ?? [planLevelId]);
       const visible = new Set((result.nativeAssociatedLevelRelations ?? [])
-        .filter((relation) => relation.levelId === planLevelId)
+        .filter((relation) => storey.has(relation.levelId))
         .map((relation) => relation.elementId));
-      for (const record of result.elementBounds) if (!visible.has(record.elementId)) hidden.add(record.elementId);
+      const associated = new Set((result.nativeAssociatedLevelRelations ?? [])
+        .map((relation) => relation.elementId));
+      // A level relation is the best evidence of which storey something is on,
+      // but the model does not always carry one: on the sample 3,171 elements
+      // have none, including the building's largest floor slab and nearly every
+      // stair and railing part. Isolating on relations alone therefore removed
+      // the floor from under the walls. Where there is no relation to go on,
+      // fall back to where the element actually sits.
+      const floor = (group?.minElevation ?? Number.NaN) - 2;
+      const head = (group?.maxElevation ?? Number.NaN) + 14;
+      const placeable = Number.isFinite(floor) && Number.isFinite(head);
+      for (const record of result.elementBounds) {
+        if (visible.has(record.elementId)) continue;
+        if (!associated.has(record.elementId) && placeable) {
+          // Judge by the base, the way a storey is assigned: a tall unassociated
+          // element belongs to the floor it stands on, not to every floor it
+          // passes through.
+          const base = record.boundsFeet.min.z;
+          if (base >= floor && base <= head) continue;
+        }
+        hidden.add(record.elementId);
+      }
     }
     return hidden;
   }, [hiddenCategories, isolateMapLevel, planLevelId, result]);
@@ -1278,7 +1308,8 @@ export default function ReviterStudio() {
     const requestId = ++floorRegionRequestRef.current;
     const analysisLevelIds = connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId];
     const worker = floorRegionWorkerRef.current ?? new Worker(
-      new URL("./studio/floor-regions.worker.ts", import.meta.url),
+      staticWorkerUrl("regions")
+        ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
       { type: "module" },
     );
     floorRegionWorkerRef.current = worker;
@@ -1768,6 +1799,7 @@ export default function ReviterStudio() {
       onHoverElement={setHoveredElementId}
       onCanvasMenu={setCanvasMenu}
       focusRequest={focusRequest}
+      storeyFocusRequest={storeyFocus}
     />
   ) : null;
 
@@ -1830,6 +1862,51 @@ export default function ReviterStudio() {
       onClearRecents={deleteAllRecents}
     />
   );
+
+  /**
+   * Put the 3D camera on the storey the map is showing. The bounds come from
+   * the elements on that storey rather than its slabs alone, so the framing
+   * includes the walls standing on it instead of just the floor plate.
+   */
+  const focusStoreyInModel = useCallback(() => {
+    if (!result || planLevelId == null) return;
+    const group = connectedFloorPlanGroup(result, planLevelId);
+    const storey = new Set(group?.levelIds ?? [planLevelId]);
+    const onStorey = new Set((result.nativeAssociatedLevelRelations ?? [])
+      .filter((relation) => storey.has(relation.levelId))
+      .map((relation) => relation.elementId));
+    let boundsFeet: Bounds3 | null = null;
+    for (const record of result.elementBounds) {
+      if (!onStorey.has(record.elementId)) continue;
+      boundsFeet = boundsFeet ? {
+        min: {
+          x: Math.min(boundsFeet.min.x, record.boundsFeet.min.x),
+          y: Math.min(boundsFeet.min.y, record.boundsFeet.min.y),
+          z: Math.min(boundsFeet.min.z, record.boundsFeet.min.z),
+        },
+        max: {
+          x: Math.max(boundsFeet.max.x, record.boundsFeet.max.x),
+          y: Math.max(boundsFeet.max.y, record.boundsFeet.max.y),
+          z: Math.max(boundsFeet.max.z, record.boundsFeet.max.z),
+        },
+      } : { min: { ...record.boundsFeet.min }, max: { ...record.boundsFeet.max } };
+    }
+    if (!boundsFeet) return;
+    // Clamp the framing to the storey's own band. A curtain wall or column
+    // spanning several floors is filed on the level it starts from, and letting
+    // it into the vertical extent aimed the camera storeys above the floor you
+    // asked for. The plan extent is left alone: that is what sets the distance.
+    if (group) {
+      const floor = group.minElevation - 2;
+      const ceiling = group.maxElevation + 16;
+      boundsFeet = {
+        min: { ...boundsFeet.min, z: Math.max(boundsFeet.min.z, floor) },
+        max: { ...boundsFeet.max, z: Math.min(Math.max(boundsFeet.max.z, floor + 8), ceiling) },
+      };
+    }
+    setWorkspace("model");
+    setStoreyFocus((current) => ({ boundsFeet, sequence: current.sequence + 1 }));
+  }, [planLevelId, result]);
 
   const commentPanelProps = {
     comments: modelComments,
@@ -1941,6 +2018,7 @@ export default function ReviterStudio() {
               onIsolateLevel={setIsolateMapLevel}
               selectedPoint={selectedMapPoint}
               onWalkTo={walkFromMap}
+              onFocusStorey={focusStoreyInModel}
               onClose={() => setSheet(null)}
             />
           ) : null}
@@ -2038,6 +2116,7 @@ export default function ReviterStudio() {
                       onIsolateLevel={setIsolateMapLevel}
                       selectedPoint={selectedMapPoint}
                       onWalkTo={walkFromMap}
+                      onFocusStorey={focusStoreyInModel}
                       onClose={() => setFloorSideMapOpen(false)}
                     />
                   )}

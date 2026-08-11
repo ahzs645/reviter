@@ -9,6 +9,7 @@ import {
   boundsDimensions,
   cameraPoseForPreset,
   DEFAULT_CAMERA_PRESET,
+  type Bounds3,
   type ConvertResult,
   type NavigationMode,
   type PairedRegressionResult,
@@ -280,6 +281,7 @@ export function ModelCanvas({
   onHoverElement,
   onCanvasMenu,
   focusRequest,
+  storeyFocusRequest,
   referenceModelUrl,
 }: {
   result: ConvertResult;
@@ -321,6 +323,12 @@ export function ModelCanvas({
   onHoverElement: (elementId: number | null) => void;
   onCanvasMenu: (request: CanvasMenuRequest | null) => void;
   focusRequest: { elementId: number | null; sequence: number };
+  /**
+   * Frame a whole storey, in model feet. Same direction-preserving move as
+   * `focusRequest`, but the subject is the floor the map is showing rather
+   * than one picked object.
+   */
+  storeyFocusRequest: { boundsFeet: Bounds3 | null; sequence: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [sourceCache] = useState(() =>
@@ -1649,6 +1657,17 @@ export function ModelCanvas({
         delete canvas.dataset.modelCameraPositionFeet;
         delete canvas.dataset.modelCameraDirection;
       }
+      // Where the camera is looking, not where it is. In Orbit the eye sits
+      // outside the building — plotting it on a floor plan puts the marker off
+      // the sheet — so the map needs the target to say what you are looking at.
+      const modelTarget = scenePointToModelFeet(
+        tuple(liveTarget), source, [result.origin.x, result.origin.y, result.origin.z],
+      );
+      if (modelTarget) {
+        canvas.dataset.modelCameraTargetFeet = modelTarget.map((value) => value.toFixed(5)).join(",");
+      } else {
+        delete canvas.dataset.modelCameraTargetFeet;
+      }
       if (navigationTest) {
         canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
         canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
@@ -1849,6 +1868,38 @@ export function ModelCanvas({
     runtime.controls.update();
     runtime.invalidate();
   }, [focusRequest, referenceLoadState, result, source]);
+
+  // Frame a storey the same way, so choosing a floor on the map puts the 3D
+  // camera on that floor without changing which way you are facing. A storey is
+  // wide and flat, so the distance comes from its plan extent rather than its
+  // largest dimension — framing on height alone would sit inside the slab.
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (walkingRef.current || !runtime || !storeyFocusRequest.sequence) return;
+    const bounds = storeyFocusRequest.boundsFeet;
+    if (!bounds) return;
+    if (source === "reference-model" && referenceLoadState !== "ready") return;
+    const centreFeet: Point3Tuple = [
+      (bounds.min.x + bounds.max.x) / 2,
+      (bounds.min.y + bounds.max.y) / 2,
+      (bounds.min.z + bounds.max.z) / 2,
+    ];
+    const registered = modelFeetToScenePoint(
+      centreFeet, source, [result.origin.x, result.origin.y, result.origin.z],
+    );
+    if (!registered) return;
+    const target = new THREE.Vector3(...registered);
+    const plan = Math.max(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, 25);
+    const direction = runtime.camera.position.clone().sub(runtime.controls.target);
+    if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
+    direction.normalize().multiplyScalar(plan * runtime.sceneUnitsPerFoot * 0.95);
+    runtime.controls.target.copy(target);
+    runtime.camera.position.copy(target).add(direction);
+    runtime.camera.lookAt(target);
+    runtime.camera.updateProjectionMatrix();
+    runtime.controls.update();
+    runtime.invalidate();
+  }, [referenceLoadState, result, source, storeyFocusRequest]);
 
   useEffect(() => {
     const controls = runtimeRef.current?.controls;

@@ -129,6 +129,39 @@ export function parseFloorReferenceCatalogSvg(svg: string): FloorReferenceCatalo
   return { viewBox, sections };
 }
 
+/**
+ * Give an SVG an absolute intrinsic size, taken from its viewBox.
+ *
+ * An SVG referenced by an `<image>` element is loaded as an image, and Chromium
+ * draws nothing at all for an image with no intrinsic size — a bare `viewBox`,
+ * or `width="100%"`, both count as none. That silently blanked every SVG
+ * reference: the architectural plan this application exports carries only a
+ * viewBox, and LibreDWG's own SVG writes percentages. Sizes already stated in
+ * absolute units are left alone, and an SVG with no viewBox to measure is
+ * returned untouched rather than guessed at.
+ */
+export function withFloorReferenceIntrinsicSize(svg: string) {
+  const tag = svg.match(/<svg\b[^>]*>/iu)?.[0];
+  if (!tag) return svg;
+  const declared = (name: string) => {
+    const value = attribute(tag, name);
+    return value != null && /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*(?:px)?\s*$/iu.test(value);
+  };
+  if (declared("width") && declared("height")) return svg;
+
+  const viewBox = attribute(tag, "viewBox");
+  if (!viewBox) return svg;
+  const values = numbers(viewBox);
+  if (values.length < 4) return svg;
+  const [, , width, height] = values as [number, number, number, number];
+  if (!(width > 0) || !(height > 0)) return svg;
+
+  const stripped = tag
+    .replace(/(?:^|\s)width=["'][^"']*["']/iu, "")
+    .replace(/(?:^|\s)height=["'][^"']*["']/iu, "");
+  return svg.replace(tag, `${stripped.slice(0, 4)} width="${width}" height="${height}"${stripped.slice(4)}`);
+}
+
 /** Return the original decoded SVG with its viewport cropped to one panel. */
 export function cropFloorReferenceCatalogSvg(
   svg: string,
@@ -145,5 +178,13 @@ export function cropFloorReferenceCatalogSvg(
   if (!/<svg\b[^>]*\bviewBox=["'][^"']+["']/iu.test(svg)) {
     throw new Error("The decoded SVG does not have a viewBox to crop.");
   }
-  return svg.replace(/(<svg\b[^>]*\bviewBox=)["'][^"']+["']/iu, `$1"${viewBox}"`);
+  const cropped = svg.replace(/(<svg\b[^>]*\bviewBox=)["'][^"']+["']/iu, `$1"${viewBox}"`);
+  // A crop is a new viewport, so any size inherited from the whole drawing now
+  // describes the wrong shape and would show the section stretched. Dropping it
+  // lets the size be remeasured from the viewBox that was just written.
+  const tag = cropped.match(/<svg\b[^>]*>/iu)![0];
+  const unsized = tag
+    .replace(/(?:^|\s)width=["'][^"']*["']/iu, "")
+    .replace(/(?:^|\s)height=["'][^"']*["']/iu, "");
+  return withFloorReferenceIntrinsicSize(cropped.replace(tag, unsized));
 }
