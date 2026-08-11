@@ -23,7 +23,7 @@ import {
   type FloorReferencePoint,
   type FloorReferenceTransform,
 } from "../../lib/reviter";
-import { decodeDwg, type DecodedDwg } from "./decode-dwg.ts";
+import { decodeDwg, type DecodedDwg, type DecodedDwgSheet } from "./decode-dwg.ts";
 
 type ReferenceAsset = {
   fileName: string;
@@ -31,6 +31,8 @@ type ReferenceAsset = {
   sha256: string | null;
   svgText: string | null;
   sections: FloorReferenceCatalogSection[];
+  /** Named plans a DWG carried in its own layouts; empty for every other input. */
+  sheets: DecodedDwgSheet[];
   url: string;
 };
 
@@ -84,6 +86,8 @@ export function FloorReferencePlan({
   const previousUrl = useRef<string | null>(null);
   const [asset, setAsset] = useState<ReferenceAsset | null>(null);
   const [sectionId, setSectionId] = useState("");
+  /** Which named sheet is shown; null is the whole drawing. */
+  const [sheetId, setSheetId] = useState<number | null>(null);
   const [visible, setVisible] = useState(true);
   const [opacity, setOpacity] = useState(0.48);
   const [transform, setTransform] = useState<FloorReferenceTransform>(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
@@ -130,7 +134,23 @@ export function FloorReferencePlan({
     if (sectionUrl) URL.revokeObjectURL(sectionUrl);
   }, [sectionUrl]);
 
-  const referenceUrl = sectionUrl ?? asset?.url ?? null;
+  const selectedSheet = useMemo(
+    () => asset?.sheets.find((sheet) => sheet.id === sheetId) ?? null,
+    [asset, sheetId],
+  );
+
+  // Every sheet was drawn during the decode, so switching between them is a new
+  // Blob URL over a string already in hand rather than another pass over the
+  // drawing. Only the shown one is ever given a URL.
+  const sheetUrl = useMemo(() => selectedSheet
+    ? URL.createObjectURL(new Blob([selectedSheet.svg], { type: "image/svg+xml" }))
+    : null, [selectedSheet]);
+
+  useEffect(() => () => {
+    if (sheetUrl) URL.revokeObjectURL(sheetUrl);
+  }, [sheetUrl]);
+
+  const referenceUrl = sheetUrl ?? sectionUrl ?? asset?.url ?? null;
 
   // The reference's own proportions, measured rather than assumed, because the
   // `<image>` below has to be fitted by hand — see `fittedReference`. Choosing a
@@ -241,9 +261,11 @@ export function FloorReferencePlan({
       sha256: null,
       svgText,
       sections: catalog?.sections ?? [],
+      sheets: decoded?.sheets ?? [],
       url,
     });
     setSectionId("");
+    setSheetId(null);
     setReferenceAspect(null);
     setTransform(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
     setReferencePoints([]);
@@ -251,9 +273,11 @@ export function FloorReferencePlan({
     setVisible(true);
     setStatus(decoded
       ? `${decoded.entityCount.toLocaleString()} entities on ${decoded.layerNames.length} layers` +
-        `${decoded.sectionCount > 1 ? `, ${decoded.sectionCount} plans on the sheet` : ""}` +
+        `${decoded.sheets.length ? ` · ${decoded.sheets.length} named plans, listed below` : ""}` +
         `${decoded.feetPerUnit == null ? " · the drawing declares no units, so scale comes from your control points" : ""}` +
-        ". Mark two recognizable points on it, then the same two on the RVT."
+        `. ${decoded.sheets.length
+          ? "Pick a plan, then mark two points on it and the same two on the RVT."
+          : "Mark two recognizable points on it, then the same two on the RVT."}`
       : catalog?.sections.length
         ? `${catalog.sections.length} independent plan sections detected. Choose one section before aligning it to the RVT.`
         : "Reference loaded. Mark two recognizable points on it, then the same two points on the RVT.");
@@ -343,6 +367,23 @@ export function FloorReferencePlan({
     setStatus(`Mark two well-separated landmarks on the ${mode === "reference" ? "reference" : "RVT"}, in matching order.`);
   };
 
+  const chooseSheet = (nextId: number | null) => {
+    if (nextId === sheetId) return;
+    setSheetId(nextId);
+    setReferenceAspect(null);
+    // A registration is between one drawing and one floor, so switching plans
+    // has to drop it rather than carry a fit from a different building.
+    setTransform(IDENTITY_FLOOR_REFERENCE_TRANSFORM);
+    setReferencePoints([]);
+    setRvtPoints([]);
+    setCaptureMode(null);
+    setVisible(true);
+    const sheet = asset?.sheets.find((item) => item.id === nextId);
+    setStatus(sheet
+      ? `${sheet.name} · ${sheet.entityCount.toLocaleString()} entities. Mark two recognizable points on it, then the same two on the RVT.`
+      : `Whole sheet · ${asset?.sheets.length ?? 0} plans. Pick one below, or align the sheet as it is.`);
+  };
+
   const chooseSection = (nextId: string) => {
     setSectionId(nextId);
     setReferenceAspect(null);
@@ -428,19 +469,21 @@ export function FloorReferencePlan({
         <button type="button" onClick={() => alignmentInput.current?.click()}><FileUp size={13} /> Load alignment</button>
         <button type="button" disabled={!asset || controlPairs.length < 2} onClick={downloadAlignment}><Download size={13} /> Save alignment</button>
       </div>
-      {asset && (
+      {/* Sections come from frames drawn in an exported SVG; a DWG names its own
+          plans instead, and those are the tab strip under the drawing. */}
+      {asset && asset.sections.length > 0 && (
         <label className="floor-reference-section-picker">
           <span>Reference section</span>
           <select value={sectionId} onChange={(event) => chooseSection(event.target.value)}>
             <option value="">Whole drawing</option>
             {asset.sections.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
           </select>
-          <em>{asset.sections.length ? `${asset.sections.length} detected` : "No section frames detected"}</em>
+          <em>{asset.sections.length} detected</em>
         </label>
       )}
       {asset && (
         <details className="floor-reference-fine-tune">
-          <summary>Fine alignment · {selectedSection?.label ?? asset.fileName}</summary>
+          <summary>Fine alignment · {selectedSheet?.name ?? selectedSection?.label ?? asset.fileName}</summary>
           <div>
             <label><span>Opacity</span><input type="range" min="0" max="1" step="0.01" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /><output>{Math.round(opacity * 100)}%</output></label>
             <label><span>Scale</span><input type="number" min="0.001" step="0.01" value={(decomposed.scale * 100).toFixed(2)} onChange={(event) => updateDecomposed({ scale: Number(event.target.value) / 100 })} /><output>%</output></label>
@@ -474,6 +517,32 @@ export function FloorReferencePlan({
           )}
         </div>
       </div>
+      {asset && asset.sheets.length > 0 && (
+        <div className="floor-reference-sheets" role="tablist" aria-label="Plans in this drawing">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sheetId === null}
+            className={sheetId === null ? "active" : ""}
+            onClick={() => chooseSheet(null)}
+          >
+            Full sheet
+          </button>
+          {asset.sheets.map((sheet) => (
+            <button
+              key={sheet.id}
+              type="button"
+              role="tab"
+              aria-selected={sheetId === sheet.id}
+              className={sheetId === sheet.id ? "active" : ""}
+              title={`${sheet.name} · ${sheet.entityCount.toLocaleString()} entities`}
+              onClick={() => chooseSheet(sheet.id)}
+            >
+              {sheet.name}
+            </button>
+          ))}
+        </div>
+      )}
       <figcaption>{caption}</figcaption>
     </figure>
   );

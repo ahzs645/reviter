@@ -240,18 +240,168 @@ export function convertDwgEntity(raw: RawEntity): DwgEntity | null {
       return { ...base, centre, text: value, height: number(raw.height ?? raw.textHeight) };
     }
     default:
-      // POINT, INSERT, HATCH, VIEWPORT, DIMENSION and the rest are dropped
-      // rather than approximated: a plan reference wants linework it can be
-      // aligned against, not a crosshair standing in for a block.
+      // POINT, HATCH, VIEWPORT, DIMENSION and the rest are dropped rather than
+      // approximated: a plan reference wants linework it can be aligned
+      // against, not a crosshair standing in for a block. INSERT is not dropped
+      // — it is expanded before this point, by `convertDwgEntities`.
       return null;
   }
 }
 
+/** A 2D affine placement: scale, then rotate, then translate. */
+type Placement = {
+  originX: number; originY: number;
+  scaleX: number; scaleY: number;
+  cos: number; sin: number;
+};
+
+const IDENTITY: Placement = { originX: 0, originY: 0, scaleX: 1, scaleY: 1, cos: 1, sin: 0 };
+
+function place(placement: Placement, x: number, y: number): [number, number] {
+  const sx = x * placement.scaleX;
+  const sy = y * placement.scaleY;
+  return [
+    placement.originX + sx * placement.cos - sy * placement.sin,
+    placement.originY + sx * placement.sin + sy * placement.cos,
+  ];
+}
+
+function compose(outer: Placement, inner: Placement): Placement {
+  const [originX, originY] = place(outer, inner.originX, inner.originY);
+  const angle = Math.atan2(outer.sin, outer.cos) + Math.atan2(inner.sin, inner.cos);
+  return {
+    originX, originY,
+    scaleX: outer.scaleX * inner.scaleX,
+    scaleY: outer.scaleY * inner.scaleY,
+    cos: Math.cos(angle), sin: Math.sin(angle),
+  };
+}
+
+/** Move an already-converted entity into the space a block reference puts it. */
+function placeEntity(entity: DwgEntity, placement: Placement): DwgEntity | null {
+  const uniform = Math.abs(placement.scaleX) === Math.abs(placement.scaleY)
+    ? Math.abs(placement.scaleX) : null;
+  const moved: DwgEntity = { ...entity };
+  if (entity.points) moved.points = entity.points.map(([x, y]) => place(placement, x, y));
+  if (entity.centre) {
+    moved.centre = place(placement, entity.centre[0], entity.centre[1]);
+    if (entity.radius != null) {
+      // A circle under a non-uniform scale is an ellipse, which this shape
+      // cannot hold. Rather than draw a wrong-shaped arc, the entity is
+      // dropped; blocks scaled unevenly are rare and a missing symbol is
+      // easier to see past than a misleading one.
+      if (uniform == null) return null;
+      moved.radius = entity.radius * uniform;
+    }
+    if (entity.height != null && uniform != null) moved.height = entity.height * uniform;
+  }
+  if (entity.startAngle != null && entity.endAngle != null) {
+    const turn = Math.atan2(placement.sin, placement.cos);
+    // A mirrored placement reverses the sweep; both ends flip and swap.
+    const flipped = placement.scaleX * placement.scaleY < 0;
+    const start = flipped ? -entity.endAngle : entity.startAngle;
+    const end = flipped ? -entity.startAngle : entity.endAngle;
+    moved.startAngle = start + turn;
+    moved.endAngle = end + turn;
+  }
+  return moved;
+}
+
+function placementOf(raw: RawEntity): Placement {
+  const origin = point(raw.insertionPoint ?? raw.position) ?? [0, 0];
+  return {
+    originX: origin[0], originY: origin[1],
+    scaleX: number(raw.xScale) ?? 1,
+    scaleY: number(raw.yScale) ?? 1,
+    cos: Math.cos(radians(raw.rotation) ?? 0),
+    sin: Math.sin(radians(raw.rotation) ?? 0),
+  };
+}
+
+/** Blocks may reference blocks; this bounds a cycle rather than trusting files. */
+const MAX_BLOCK_DEPTH = 8;
+
+function expandInsert(
+  raw: RawEntity,
+  blocks: ReadonlyMap<string, readonly RawEntity[]>,
+  outer: Placement,
+  depth: number,
+  out: DwgEntity[],
+) {
+  if (depth >= MAX_BLOCK_DEPTH) return;
+  const name = typeof raw.name === "string" ? raw.name : null;
+  const contents = name == null ? undefined : blocks.get(name);
+  if (!contents?.length) return;
+
+  const own = placementOf(raw);
+  // A single INSERT can stamp a grid of copies; the counts default to one.
+  const columns = Math.max(1, Math.round(number(raw.columnCount) ?? 1));
+  const rows = Math.max(1, Math.round(number(raw.rowCount) ?? 1));
+  const columnSpacing = number(raw.columnSpacing) ?? 0;
+  const rowSpacing = number(raw.rowSpacing) ?? 0;
+
+  for (let column = 0; column < columns; column += 1) {
+    for (let row = 0; row < rows; row += 1) {
+      // Array offsets are along the reference's own rotated axes.
+      const stepped: Placement = column === 0 && row === 0 ? own : {
+        ...own,
+        originX: own.originX + column * columnSpacing * own.cos - row * rowSpacing * own.sin,
+        originY: own.originY + column * columnSpacing * own.sin + row * rowSpacing * own.cos,
+      };
+      const placement = compose(outer, stepped);
+      for (const inner of contents) {
+        if (inner.isVisible === false) continue;
+        if (inner.type === "INSERT") {
+          expandInsert(inner, blocks, placement, depth + 1, out);
+          continue;
+        }
+        // ATTDEF is the blank the block leaves for a value; the filled-in ATTRIB
+        // is a sibling of the INSERT, so drawing both would print the prompt.
+        if (inner.type === "ATTDEF") continue;
+        const converted = convertDwgEntity(inner);
+        if (!converted) continue;
+        const moved = placeEntity(converted, placement);
+        if (moved) out.push(moved);
+      }
+    }
+  }
+}
+
+/**
+ * Block definitions by name, from LibreDWG's block-record table.
+ *
+ * A block's contents hang off its `BLOCK_RECORD` entry, not off the database's
+ * entity list — the entity list holds only what is in model and paper space. On
+ * the sample survey drawing that is 16,377 entities behind 2,330 references:
+ * window mullions, curtain walls and door leaves, which is exactly the detail
+ * somebody aligns a floor against.
+ */
+export function dwgBlockDefinitions(database: unknown): Map<string, RawEntity[]> {
+  const entries = (database as {
+    tables?: { BLOCK_RECORD?: { entries?: unknown[] } };
+  })?.tables?.BLOCK_RECORD?.entries ?? [];
+  const blocks = new Map<string, RawEntity[]>();
+  for (const entry of entries) {
+    const record = entry as { name?: unknown; entities?: unknown };
+    if (typeof record.name !== "string") continue;
+    // Model and paper space are block records too, and are already drawn.
+    if (/^\*(model|paper)_space/iu.test(record.name)) continue;
+    if (!Array.isArray(record.entities) || !record.entities.length) continue;
+    blocks.set(record.name, record.entities as RawEntity[]);
+  }
+  return blocks;
+}
+
 export function convertDwgEntities(
   raw: readonly unknown[],
-  options: { ownerHandle?: string | null } = {},
+  options: {
+    ownerHandle?: string | null;
+    /** Block contents by name; without them, block references draw nothing. */
+    blocks?: ReadonlyMap<string, readonly RawEntity[]>;
+  } = {},
 ): DwgEntity[] {
   const owner = options.ownerHandle;
+  const blocks = options.blocks;
   const out: DwgEntity[] = [];
   for (const entry of raw) {
     const entity = entry as RawEntity;
@@ -260,6 +410,10 @@ export function convertDwgEntities(
       if (entityOwner != null && String(entityOwner) !== owner) continue;
     }
     if (entity.isVisible === false) continue;
+    if (entity.type === "INSERT") {
+      if (blocks) expandInsert(entity, blocks, IDENTITY, 0, out);
+      continue;
+    }
     const converted = convertDwgEntity(entity);
     if (converted) out.push(converted);
   }

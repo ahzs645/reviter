@@ -9,8 +9,14 @@
  * only imported inside the worker, so nothing about LibreDWG is fetched until a
  * DWG is actually chosen.
  */
-import type { DwgWorkerRequest, DwgWorkerResponse } from "../../lib/reviter/dwg-worker.ts";
+import type {
+  DwgWorkerRequest,
+  DwgWorkerResponse,
+  DwgWorkerSheet,
+} from "../../lib/reviter/dwg-worker.ts";
 import { staticWorkerUrl } from "./reference-model.ts";
+
+export type DecodedDwgSheet = DwgWorkerSheet;
 
 export type DecodedDwg = {
   svg: string;
@@ -18,6 +24,8 @@ export type DecodedDwg = {
   droppedCount: number;
   layerNames: string[];
   sectionCount: number;
+  /** Named plans read off the drawing's own layouts; empty when it has none. */
+  sheets: DecodedDwgSheet[];
   feetPerUnit: number | null;
   insunits: number | null;
 };
@@ -51,6 +59,7 @@ export function decodeDwg(
         droppedCount: message.droppedCount,
         layerNames: message.layerNames,
         sectionCount: message.sections.length,
+        sheets: message.sheets,
         feetPerUnit: message.feetPerUnit,
         insunits: message.insunits,
       }));
