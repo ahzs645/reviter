@@ -15,11 +15,13 @@
     "build:pages": "node scripts/build-pages.mjs",
     "preview:pages": "vite preview --config vite.pages.config.ts",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs && node --experimental-strip-types --test tests/reviter-regression.test.ts tests/studio-overlay.test.ts tests/coverage-split.test.ts tests/curtain-panel-boundary.test.ts tests/door-leaf.test.ts tests/tail-placement.test.ts tests/studio-controls.test.ts tests/walk-controls.test.ts tests/walk-surface.test.ts tests/source-asset-cache.test.ts tests/cooperative-index-scheduler.test.ts tests/solid-clip.test.ts tests/wall-joins.test.ts tests/wall-native-admission.test.ts tests/native-mesh-cleanup.test.ts tests/surface-orientation.test.ts tests/door-shape-leaf.test.ts tests/window-continuation.test.ts tests/holdout.test.ts tests/curved-wall.test.ts tests/footprint-audit.test.ts tests/window-shape.test.ts tests/facet-band.test.ts tests/recovered-extents.test.ts tests/stair-run-sketch.test.ts tests/stair-treads.test.ts tests/marker-classes.test.ts tests/basic-file-info.test.ts tests/scene-container-levels.test.ts tests/scene-glazing-batches.test.ts tests/limit-census.test.ts tests/part-atom.test.ts tests/revit-text-formats.test.ts tests/legacy-revit-2021.test.ts tests/toolkit-utilities.test.ts tests/viewer-tools.test.ts tests/autodesk-navigation.test.ts tests/model-markup.test.ts tests/review-exchange.test.ts tests/recents.test.ts tests/recent-model-cache.test.ts tests/overlay-diff-mesh-bounds.test.ts tests/reference-assisted-recovery.test.ts tests/glb-statistics.test.ts tests/glb-surface-diff.test.ts tests/cad-files.test.ts tests/dwg-plan.test.ts tests/dwg-layouts.test.ts tests/dwg-blocks.test.ts tests/export-svg.test.ts tests/floor-reference-overlay.test.ts tests/export-ifc.test.ts",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test:unit",
     "test:ifc": "node --experimental-strip-types --test tests/export-ifc.test.ts",
     "audit:ifc-roundtrip": "node --experimental-strip-types scripts/audit-ifc-export-roundtrip.ts",
     "test:pages": "PAGES_BASE_PATH=/reviter/ npm run build:pages && node --test tests/pages-build.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern dist-pages --ignore-pattern .next --ignore-pattern .vinext --ignore-pattern .output --ignore-pattern lib/rvt-wasm"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern dist-pages --ignore-pattern .next --ignore-pattern .vinext --ignore-pattern .output --ignore-pattern lib/rvt-wasm",
+    "test:unit": "node --experimental-strip-types --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

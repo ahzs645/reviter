@@ -414,6 +414,11 @@ export default function ReviterStudio() {
     }
 
     requestIdRef.current += 1;
+    // An IFC pairing still in flight was measured against the outgoing model.
+    // Retire its request id alongside the conversion's, or its late result
+    // passes the worker guard and `referenceAssistedResult` grafts the previous
+    // file's reference meshes onto this one wherever the element ids collide.
+    referenceRequestIdRef.current += 1;
     const requestId = requestIdRef.current;
     setFile(nextFile);
     setResult(null);
@@ -618,6 +623,10 @@ export default function ReviterStudio() {
     recentOpenAttemptRef.current += 1;
     recentOpenInProgressRef.current = false;
     requestIdRef.current += 1;
+    // Closing is as much a replacement as opening. Without this an IFC pairing
+    // that resolves after the close reinstates a comparison — and a
+    // "reference-assisted" geometry source — for a model that is no longer here.
+    referenceRequestIdRef.current += 1;
     setResult(null);
     setComparison(null);
     setFile(null);
@@ -1307,6 +1316,18 @@ export default function ReviterStudio() {
     if (cached) { queueMicrotask(() => setDerivedFloorRooms(cached)); return; }
     const requestId = ++floorRegionRequestRef.current;
     const analysisLevelIds = connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId];
+    // The cache is read by the level the plan is showing, but a derivation
+    // covers the whole connected group and reports the group's *lowest* level
+    // as its own `levelId`. Filing it under that reported id left every upper
+    // member of a split-level group unable to find its entry, re-deriving the
+    // identical group analysis on each revisit. Write the requested key first —
+    // the one the read above uses — then the rest of the group, which the same
+    // analysis equally answers for. Membership only changes when `result` does,
+    // and that clears the cache.
+    const cacheDerived = (derived: DerivedRoomResult) => {
+      floorRegionCacheRef.current.set(planLevelId, derived);
+      for (const levelId of analysisLevelIds) floorRegionCacheRef.current.set(levelId, derived);
+    };
     const worker = floorRegionWorkerRef.current ?? new Worker(
       staticWorkerUrl("regions")
         ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
@@ -1317,20 +1338,20 @@ export default function ReviterStudio() {
       if (event.data.id !== floorRegionRequestRef.current) return;
       if (event.data.error) {
         const derived = deriveRoomsForLevels(result, analysisLevelIds);
-        floorRegionCacheRef.current.set(planLevelId, derived);
+        cacheDerived(derived);
         setDerivedFloorRooms(derived);
         setReviewImportMessage(`Room worker fallback: ${event.data.error}`);
         return;
       }
       if (!event.data.result) return;
-      floorRegionCacheRef.current.set(event.data.result.levelId, event.data.result);
+      cacheDerived(event.data.result);
       setDerivedFloorRooms(event.data.result);
     };
     const onError = () => {
       if (requestId !== floorRegionRequestRef.current) return;
       // A strict fallback keeps the feature available if a browser blocks module workers.
       const derived = deriveRoomsForLevels(result, analysisLevelIds);
-      floorRegionCacheRef.current.set(planLevelId, derived);
+      cacheDerived(derived);
       setDerivedFloorRooms(derived);
     };
     worker.addEventListener("message", onMessage);

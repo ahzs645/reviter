@@ -29,5 +29,10 @@ export function loadRoomReview(result: ConvertResult): RoomReviewState {
 
 export function saveRoomReview(result: ConvertResult, review: RoomReviewState) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key(result), JSON.stringify(review));
+  try {
+    localStorage.setItem(key(result), JSON.stringify(review));
+  } catch {
+    // Review decisions remain available for this session when storage is full
+    // or unavailable; the portable sidecar remains the way to carry them out.
+  }
 }
