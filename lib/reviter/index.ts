@@ -316,6 +316,7 @@ export type {
   LevelBand,
   MaterialData,
   MeshData,
+  MeshGeometrySource,
   NativeCategoryCodeConsensus,
   NativeCategoryCount,
   NativeCategorySource,

@@ -81,7 +81,7 @@ for (const elementId of focusIds) {
     }
     const angle = boundaries[segment.start]!.angle * Math.PI / 180;
     const normal: [number, number] = [-Math.sin(angle), Math.cos(angle)];
-    const stops = [];
+    const stops: number[] = [];
     for (let index = segment.start; index <= segment.end; index += 1) {
       const [cx, cy] = boundaries[index]!.centroid;
       stops.push(cx * normal[0] + cy * normal[1]);

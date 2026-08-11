@@ -190,7 +190,7 @@ export function framingBoundsOfRecords(records: ElementBoundsRecord[]): Bounds3 
   return axes.every((axis) => max[axis] > min[axis]) ? { min, max } : boundsOfRecords(records);
 }
 
-export function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
+export function boundsOfRecords(records: readonly ElementBoundsRecord[]): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
   for (const record of records) {

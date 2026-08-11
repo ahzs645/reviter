@@ -15,6 +15,7 @@ import {
   selectedStairWalkStart,
   WALK_COMPARISON_SOURCES,
   walkComparisonSourceForCode,
+  type Point3Tuple,
 } from "../app/studio/viewer-tools.ts";
 
 test("viewer tools only change the camera navigation mode when appropriate", () => {
@@ -96,12 +97,15 @@ test("comment anchors register between RVT feet and IFC metres", () => {
 });
 
 test("a selected reconstructed stair starts Walk on its lowest native tread", () => {
-  const treads = [
+  // `as const` would make every corner a readonly literal tuple, which is not a
+  // `Point3Tuple`; the fixture only needs to be shaped like the treads a record
+  // actually carries.
+  const treads: readonly (readonly Point3Tuple[])[] = [
     [[0, 0, 11], [1, 0, 11], [1, 2, 11], [0, 2, 11]],
     [[0, 0, 10], [1, 0, 10], [1, 1, 10], [0, 1, 10]],
     [[0, 1, 10], [1, 1, 10], [1, 2, 10], [0, 2, 10]],
     [[1, 0, 12], [2, 0, 12], [2, 2, 12], [1, 2, 12]],
-  ] as const;
+  ];
   assert.deepEqual(
     selectedStairWalkStart(treads, "recovered", [100, 200, 5]),
     [-99.5, -198.5, 5],

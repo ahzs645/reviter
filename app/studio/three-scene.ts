@@ -9,6 +9,7 @@ import {
 } from "../../lib/reviter/scene.ts";
 import type {
   ConvertResult,
+  MeshGeometrySource,
   ReferenceMeshData,
 } from "../../lib/reviter/types.ts";
 import {
@@ -233,7 +234,7 @@ function splitByForeground(
 }
 
 function recoveredRenderOrder(
-  source: "native-brep" | "display-proxy" | undefined,
+  source: MeshGeometrySource | undefined,
   materialSource: "rvt-material" | "display-fallback" | undefined,
   foreground: boolean,
 ): number {
@@ -241,6 +242,13 @@ function recoveredRenderOrder(
   // this is also their deterministic priority when two fragments are exactly
   // coplanar: hosted native inserts first, then resolved native materials,
   // unresolved native material, and finally display proxies.
+  //
+  // The test is "is this an envelope proxy?", not "is this native?", so a
+  // `reference-ifc` batch takes the real-geometry ordering alongside native
+  // BRep. That is not a fallthrough: paired-IFC repair *replaces* the RVT
+  // geometry for the elements it covers — `withoutElements` strips them from
+  // every retained batch — so a repaired element never has a native fragment
+  // left to compete with, and it needs no priority band of its own.
   if (source !== "display-proxy") {
     if (foreground) return 0;
     return materialSource === "rvt-material" ? 1 : 2;
@@ -257,9 +265,13 @@ function recoveredRenderOrder(
  * wall, producing the fine horizontal/diagonal bands. Hosted inserts remain
  * unbiased; resolved native materials follow their stable palette order, then
  * unresolved native faces and display proxies sit progressively farther away.
+ *
+ * Paired-IFC repair geometry shares the native bands for the reason given on
+ * `recoveredRenderOrder`: it is real surface geometry and it is the only
+ * geometry its elements have.
  */
 function recoveredDepthBias(
-  source: "native-brep" | "display-proxy" | undefined,
+  source: MeshGeometrySource | undefined,
   materialSource: "rvt-material" | "display-fallback" | undefined,
   materialIndex: number,
   foreground: boolean,
@@ -305,7 +317,9 @@ export function curtainFrameProfilePositions(
       continue;
     }
     const corners = record.orientedBox;
-    let longest = edgeFamilies[0];
+    // `edgeFamilies[0]` alone would fix the variable to the first family's own
+    // literal tuple type, so assigning either of the other two below fails.
+    let longest: (typeof edgeFamilies)[number] = edgeFamilies[0];
     let longestAverage = -Infinity;
     for (const family of edgeFamilies) {
       let total = 0;
@@ -421,9 +435,17 @@ export function meshGroup(
       // with it, and the surface remains visible from an interior Walk view.
       const stableTechnicalGlazing = technical && glazing;
       const transparent = !technical || stableTechnicalGlazing;
+      // A batch only carries a per-triangle owner table when the converter
+      // could attribute its triangles; anonymous recovered context has none.
+      // Bind it so the test narrows instead of asserting — this is the table
+      // picking reads, and a `!` here would trade a wrong click for a thrown
+      // scene build. `data.source` stays first so a native batch of nearly a
+      // million triangles is never scanned.
+      const partElementIds = part.elementIds;
       const reconstructedStair = data.source === "display-proxy" &&
-        (part.elementIds?.length ?? 0) > 0 &&
-        part.elementIds!.every((elementId) => stairIds.has(elementId));
+        partElementIds != null &&
+        partElementIds.length > 0 &&
+        partElementIds.every((elementId) => stairIds.has(elementId));
       const glazingOpacity = Math.min(sourceOpacity, GLAZING_DISPLAY_ALPHA);
       const opacity = technical
         ? (glazing
@@ -520,8 +542,11 @@ export function meshGroup(
       // not index-welded, so almost every triangle edge reads as a boundary.
       // The overlay belongs on the proxies it was built for.
       if (isElementBounds && data.source === "display-proxy") {
-        const stairProfile = part.elementIds.length > 0 &&
-          part.elementIds.every((elementId) => stairIds.has(elementId));
+        // The batch is already known to be a display proxy here, so this is
+        // exactly the "every triangle is owned by a stair" verdict computed
+        // above. A proxy batch with no owner table cannot be shown to be all
+        // stairs and keeps the generic wireframe it was built for.
+        const stairProfile = reconstructedStair;
         // Stair cells are intentionally unwelded. EdgesGeometry therefore
         // outlines every internal curved-cell seam as if it were an opening;
         // together with the dedicated nosing profile below, those double dark
@@ -723,7 +748,10 @@ export function overlayMeshGroup(
 
   const alignedRecoveredElementIds = new Set<number>();
   for (const data of meshes) {
-    if (data.diffStatus !== "aligned") continue;
+    // `elementIds` is the matched-owner table; an IFC batch that matched no
+    // Revit element carries none at all. Such a batch contributes nothing to
+    // the aligned set, and iterating it would throw rather than skip it.
+    if (data.diffStatus !== "aligned" || !data.elementIds) continue;
     for (const elementId of data.elementIds) {
       if (elementId > 0) alignedRecoveredElementIds.add(elementId);
     }

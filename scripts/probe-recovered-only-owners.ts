@@ -55,7 +55,7 @@ const rows = attributed.assignments
       ? "native"
       : record.stairTreads?.length
         ? "stair-treads"
-        : record.railPath?.length
+        : record.railPath?.polylines.length
           ? "rail-path"
           : record.arcs?.length
             ? "arc"

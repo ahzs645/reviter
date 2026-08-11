@@ -45,6 +45,24 @@ export type Segment = {
   z1: number;
 };
 
+/**
+ * How a render batch's triangles were produced.
+ *
+ * Named rather than written inline at each use, because it has already drifted
+ * once: `"reference-ifc"` was added to the producer while three consumers kept
+ * their own copy of the two-member union and silently classified paired-IFC
+ * bodies as reconstructed proxies.
+ *
+ * - `native-brep` — tessellated from the RVT's own persisted BRep faces.
+ * - `display-proxy` — a synthesised envelope (typically a twelve-triangle box).
+ * - `reference-ifc` — an exact tessellated body lifted from the paired IFC
+ *   export by {@link ../reference-assisted-recovery}, replacing the RVT
+ *   geometry for an element that failed a shape or topology gate. It is real
+ *   surface geometry, not an envelope, and the element's
+ *   `renderGeometryProvenance` becomes `"reference-assisted"` to match.
+ */
+export type MeshGeometrySource = "native-brep" | "display-proxy" | "reference-ifc";
+
 export type MeshData = {
   name: string;
   positions: Float32Array;
@@ -72,7 +90,7 @@ export type MeshData = {
    * treatment: a wireframe overlay makes a box proxy legible and turns 912,044
    * triangles of native geometry into moiré.
    */
-  source?: "native-brep" | "display-proxy" | "reference-ifc";
+  source?: MeshGeometrySource;
 };
 
 export type MaterialData = {

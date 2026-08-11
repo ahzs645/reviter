@@ -17,7 +17,12 @@
 import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
 
-import type { ConvertResult, ElementBoundsRecord, MaterialData } from "./types";
+import type {
+  ConvertResult,
+  ElementBoundsRecord,
+  MaterialData,
+  MeshGeometrySource,
+} from "./types";
 import type { ReviewedRoom } from "./room-review.ts";
 
 const METRES_PER_FOOT = 0.3048;
@@ -31,7 +36,7 @@ type GeometryFragment = {
   positions: number[];
   indices: number[];
   materialIndex: number;
-  source: "native-brep" | "display-proxy" | undefined;
+  source: MeshGeometrySource | undefined;
 };
 
 type IfcClass = {
@@ -484,6 +489,27 @@ function booleanProperty(writer: StepWriter, name: string, value: boolean): numb
   return writer.add(`IFCPROPERTYSINGLEVALUE(${quoted(name)},$,IFCBOOLEAN(${value ? ".T." : ".F."}),$)`);
 }
 
+/**
+ * Fidelity of a body assembled from render fragments alone.
+ *
+ * Elements that reached `elementManifest` report `renderGeometryProvenance`
+ * directly; the triangle-owned bodies below have no such record, so their
+ * verdict has to come from the batches their triangles arrived in. It uses the
+ * same vocabulary and the same definition of exactness as
+ * `emitElementProperties`: a paired-IFC body is an exact tessellated surface,
+ * not an envelope, so it reports `reference-assisted` and `GeometryExact` true
+ * rather than being lumped in with reconstructed proxies.
+ */
+function fragmentGeometryFidelity(
+  fragments: readonly GeometryFragment[],
+): { provenance: string; exact: boolean } {
+  const exact = fragments.every((fragment) =>
+    fragment.source === "native-brep" || fragment.source === "reference-ifc");
+  if (!exact) return { provenance: "reconstructed", exact: false };
+  const referenced = fragments.some((fragment) => fragment.source === "reference-ifc");
+  return { provenance: referenced ? "reference-assisted" : "native", exact: true };
+}
+
 function emitElementProperties(
   writer: StepWriter,
   namespace: string,
@@ -740,11 +766,12 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const products = productsByStorey.get(storey) ?? [];
     products.push(product);
     productsByStorey.set(storey, products);
+    const fidelity = fragmentGeometryFidelity(fragments);
     const recoveryProperties = [
       integerProperty(writer, "RevitElementId", elementId),
       textProperty(writer, "GeometrySource", "triangle-owned-without-semantic-record"),
-      textProperty(writer, "GeometryProvenance", fragments.every((fragment) => fragment.source === "native-brep") ? "native" : "reconstructed"),
-      booleanProperty(writer, "GeometryExact", fragments.every((fragment) => fragment.source === "native-brep")),
+      textProperty(writer, "GeometryProvenance", fidelity.provenance),
+      booleanProperty(writer, "GeometryExact", fidelity.exact),
     ];
     const propertySet = writer.add(
       `IFCPROPERTYSET(${quoted(guid("pset-recovery", elementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,

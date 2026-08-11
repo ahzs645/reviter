@@ -13,13 +13,13 @@ import { readFileSync } from "node:fs";
 import * as CFB from "cfb";
 
 import {
+  asBytes,
   gzipOffsets,
   inflateRevitChunk,
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import { summariseSchema } from "../lib/reviter/schema.ts";
 import {
-  decodeSchemaClassAt,
   findSchemaClassDefinition,
   flattenSchemaFields,
 } from "../lib/reviter/schema-fields.ts";
@@ -32,14 +32,11 @@ const item = cfb.FileIndex
   .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
   .find(({ entry, path }) => entry.size > 0 && /\/Formats\/Latest$/i.test(path));
 if (!item) throw new Error("no Formats/Latest stream");
-const raw = stripRevitPageChecksums(
-  item.entry.content instanceof Uint8Array
-    ? item.entry.content
-    : new Uint8Array(item.entry.content as ArrayBuffer),
-);
+const raw = stripRevitPageChecksums(asBytes(item.entry.content));
 const offset = gzipOffsets(raw, 1)[0];
 if (offset == null) throw new Error("no gzip member");
 const schemaBytes = inflateRevitChunk(raw, offset);
+if (!schemaBytes) throw new Error("Formats/Latest gzip member did not inflate");
 const summary = summariseSchema(schemaBytes);
 
 const interesting = /stair|riser|tread|monolith|runtype/i;
@@ -65,19 +62,17 @@ const candidates = [
   "StairsAttributes",
 ];
 for (const name of candidates) {
-  const entry = { name };
-  const definition = findSchemaClassDefinition(schemaBytes, entry.name);
+  // `findSchemaClassDefinition` already returns the decoded layer; it used to
+  // hand back an offset to decode separately, and this loop was still reading
+  // `definition.offset` — undefined on the success branch — so every candidate
+  // reported "layer decode failed" instead of printing its fields.
+  const definition = findSchemaClassDefinition(schemaBytes, name);
   if (!definition.ok) {
-    console.log(`\n${entry.name}: field decode failed: ${definition.error}`);
+    console.log(`\n${name}: field decode failed: ${definition.error}`);
     continue;
   }
-  const decoded = decodeSchemaClassAt(schemaBytes, definition.offset);
-  if (!decoded.ok) {
-    console.log(`\n${entry.name}: layer decode failed: ${decoded.error}`);
-    continue;
-  }
-  const fields = flattenSchemaFields(decoded.layer);
-  console.log(`\n${entry.name} classId=${decoded.layer.classId} fields=${fields.length}:`);
+  const fields = flattenSchemaFields(definition.layer);
+  console.log(`\n${name} classId=${definition.layer.classId} fields=${fields.length}:`);
   for (const field of fields) {
     console.log(`    ${field.name} type=0x${field.typeCode.toString(16)}` +
       ` mode=0x${field.mode.toString(16)}` +

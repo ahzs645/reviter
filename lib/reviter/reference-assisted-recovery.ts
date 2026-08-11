@@ -374,7 +374,6 @@ export function applyIfcReferenceRepairs(
   references: readonly ReferenceMeshData[],
   options: IfcReferenceRepairOptions = {},
 ): ConvertResult {
-  const recordIds = new Set(result.elementBounds.map((record) => record.elementId));
   const recordById = new Map(result.elementBounds.map((record) => [record.elementId, record]));
   const rampAggregateIds = new Set(
     result.elementBounds.filter(isRampAggregate).map((record) => record.elementId),
@@ -418,8 +417,12 @@ export function applyIfcReferenceRepairs(
   for (const reference of references) {
     if (reference.diffStatus === "context") continue;
     for (const elementId of reference.elementIds ?? []) {
+      // The membership test used to run against a parallel `Set` of the same
+      // ids, which left `record` optional for the rest of the loop even though
+      // the two were built from one array. Gating on the lookup itself is the
+      // same test and narrows the record for every gate below it.
       const record = recordById.get(elementId);
-      if (!(elementId > 0 && recordIds.has(elementId))) continue;
+      if (!(elementId > 0) || !record) continue;
       if (isStairsRun(record) && hasIncompleteExpectedStairTopology(record)) {
         if (hasCompleteStairFlightReference(
           recoveredGeometry.get(elementId),
@@ -445,7 +448,7 @@ export function applyIfcReferenceRepairs(
           directRoofGeometryIds.has(elementId),
           shapeDifferentIds.has(elementId),
           ROOF_EXTENT_TOLERANCE_FEET,
-          record?.boundsFeet,
+          record.boundsFeet,
         )) {
           completeRoofIds.add(elementId);
           replacementIds.add(elementId);
