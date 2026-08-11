@@ -116,6 +116,13 @@ function tuple(point: THREE.Vector3): Point3Tuple {
   return [point.x, point.y, point.z];
 }
 
+// The render loop's camera readout needs a look direction and a walk target.
+// Allocating them per frame handed the collector two Vector3s a frame for the
+// life of the viewport; both are consumed inside the same synchronous frame
+// callback, so one shared pair is enough.
+const cameraDirectionScratch = new THREE.Vector3();
+const walkTargetScratch = new THREE.Vector3();
+
 // Large enough to amortize one idle callback without monopolizing a frame on
 // the million-triangle UNBC model (typically a few milliseconds of CPU work).
 const WALK_INDEX_CHUNK_TRIANGLES = 1_024;
@@ -389,6 +396,11 @@ export function ModelCanvas({
   const referenceBoundsRef = useRef<
     { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null
   >(null);
+  // Bumped once per scene build. The Walk effect binds its controller to the
+  // camera the scene effect creates, but the two do not share a dependency
+  // list — and copying that list here would only track the rebuild causes we
+  // happen to know about today. Counting actual builds is the fact Walk needs.
+  const [sceneEpoch, setSceneEpoch] = useState(0);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
   const [walkGravity, setWalkGravity] = useState(() => {
@@ -1486,6 +1498,11 @@ export function ModelCanvas({
         needsRender = true;
       },
     };
+    // A fresh camera and fresh orbit controls exist now. Announce the build so
+    // the Walk effect rebinds its controller; without this a rebuild triggered
+    // by a dependency Walk does not track (a mini-map level change moving
+    // `hiddenElementIds`, say) leaves the walker driving the discarded camera.
+    queueMicrotask(() => active && setSceneEpoch((epoch) => epoch + 1));
 
     // The parity scripts drive this canvas the same way the Autodesk readings
     // were taken, and need the camera they are differencing. `probeFloor`
@@ -1643,49 +1660,62 @@ export function ModelCanvas({
       } else {
         cameraChanged = controls.update();
       }
-      const liveDirection = camera.getWorldDirection(new THREE.Vector3());
-      const liveTarget = walkRef.current ? camera.position.clone().add(liveDirection) : controls.target;
-      canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
-      const modelPosition = scenePointToModelFeet(
-        tuple(camera.position), source, [result.origin.x, result.origin.y, result.origin.z],
-      );
-      if (modelPosition) {
-        canvas.dataset.modelCameraPositionFeet = modelPosition.map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.modelCameraDirection = canonicalCameraVector(liveDirection, up)
-          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
-      } else {
-        delete canvas.dataset.modelCameraPositionFeet;
-        delete canvas.dataset.modelCameraDirection;
-      }
-      // Where the camera is looking, not where it is. In Orbit the eye sits
-      // outside the building — plotting it on a floor plan puts the marker off
-      // the sheet — so the map needs the target to say what you are looking at.
-      const modelTarget = scenePointToModelFeet(
-        tuple(liveTarget), source, [result.origin.x, result.origin.y, result.origin.z],
-      );
-      if (modelTarget) {
-        canvas.dataset.modelCameraTargetFeet = modelTarget.map((value) => value.toFixed(5)).join(",");
-      } else {
-        delete canvas.dataset.modelCameraTargetFeet;
-      }
-      if (navigationTest) {
-        canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraDirection = liveDirection.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
-          camera.position.clone().sub(center),
-          up,
-        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.canonicalCameraTarget = canonicalCameraVector(
-          liveTarget.clone().sub(center),
-          up,
-        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
-          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.walkLooking = String(walkRef.current?.isLooking() ?? false);
-        canvas.dataset.walkGravity = String(walkGravityRef.current);
-      }
+      // The dataset readout describes the frame that is about to be drawn, so
+      // it is written on exactly the frames that are drawn. Recomputing it on
+      // an idle orbit camera republished last frame's values sixty times a
+      // second — two allocations, six toFixed calls and three DOM writes for
+      // nothing. FloorMiniMap polls these attributes and needs them current
+      // whenever the view moves; anything that moves the camera either reports
+      // it through `cameraChanged` or invalidates through `needsRender`, which
+      // is the same condition that decides whether a frame is worth drawing.
       if (cameraChanged || needsRender) {
+        const liveDirection = camera.getWorldDirection(cameraDirectionScratch);
+        // Not `controls.target` while walking — the walker does not maintain
+        // one. Never mutate the orbit branch: that is the live control's own
+        // target, not a copy.
+        const liveTarget = walkRef.current
+          ? walkTargetScratch.copy(camera.position).add(liveDirection)
+          : controls.target;
+        canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
+        const modelPosition = scenePointToModelFeet(
+          tuple(camera.position), source, [result.origin.x, result.origin.y, result.origin.z],
+        );
+        if (modelPosition) {
+          canvas.dataset.modelCameraPositionFeet = modelPosition.map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.modelCameraDirection = canonicalCameraVector(liveDirection, up)
+            .normalize().toArray().map((value) => value.toFixed(7)).join(",");
+        } else {
+          delete canvas.dataset.modelCameraPositionFeet;
+          delete canvas.dataset.modelCameraDirection;
+        }
+        // Where the camera is looking, not where it is. In Orbit the eye sits
+        // outside the building — plotting it on a floor plan puts the marker off
+        // the sheet — so the map needs the target to say what you are looking at.
+        const modelTarget = scenePointToModelFeet(
+          tuple(liveTarget), source, [result.origin.x, result.origin.y, result.origin.z],
+        );
+        if (modelTarget) {
+          canvas.dataset.modelCameraTargetFeet = modelTarget.map((value) => value.toFixed(5)).join(",");
+        } else {
+          delete canvas.dataset.modelCameraTargetFeet;
+        }
+        if (navigationTest) {
+          canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.cameraDirection = liveDirection.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
+            camera.position.clone().sub(center),
+            up,
+          ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.canonicalCameraTarget = canonicalCameraVector(
+            liveTarget.clone().sub(center),
+            up,
+          ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
+            .normalize().toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.walkLooking = String(walkRef.current?.isLooking() ?? false);
+          canvas.dataset.walkGravity = String(walkGravityRef.current);
+        }
         renderer.render(scene, camera);
         needsRender = false;
       }
@@ -1742,6 +1772,15 @@ export function ModelCanvas({
       controls.removeEventListener("start", handleControlsStart);
       controls.removeEventListener("end", handleControlsEnd);
       controls.dispose();
+      // The walker holds `camera`, so it cannot outlive this effect either.
+      // The Walk effect does not track every dependency that rebuilds a scene,
+      // so leaving `walkRef` set here let the next render loop steer a
+      // discarded camera — and, because a live walker suppresses
+      // `controls.update()`, stop steering the real one. Disowning the camera
+      // where the camera dies holds for every rebuild cause, known or not;
+      // `sceneEpoch` then asks Walk for a controller on the new camera.
+      walkRef.current?.dispose();
+      walkRef.current = null;
       // Cached roots must be stored in their canonical geometry pose. The next
       // source effect will reapply the current explode amount; retaining moved
       // parts here would make that displacement compound on every revisit.
@@ -1754,6 +1793,13 @@ export function ModelCanvas({
       if (runtimeRef.current?.sectionHelper) disposeGroup(runtimeRef.current.sectionHelper);
       disposeMeasurementScene(scene, measurement);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
+      // The grid is built per scene rather than cached, and three.js frees no
+      // GPU buffer on garbage collection: dropping the reference leaked a
+      // grid's vertex buffer and its material on every source, render-mode or
+      // visibility rebuild. Technical mode hands it an array material.
+      grid.geometry.dispose();
+      if (Array.isArray(grid.material)) for (const material of grid.material) material.dispose();
+      else grid.material.dispose();
       runtimeRef.current = null;
       renderer.dispose();
     };
@@ -2129,7 +2175,10 @@ export function ModelCanvas({
       for (const object of hiddenEdgeOverlays) object.visible = true;
       runtime.invalidate();
     };
-  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, source, walking, walkStartRequest]);
+    // `sceneEpoch` stands in for "the scene effect built a new camera". The
+    // controller above is bound to that camera, so every rebuild has to reach
+    // this effect — including the ones the rest of this list does not name.
+  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, sceneEpoch, source, walking, walkStartRequest]);
 
   useEffect(() => {
     walkSpeedRef.current = walkSpeed;
