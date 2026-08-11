@@ -37,6 +37,114 @@ export type ArchitecturalPlanSvgOptions = {
    * dimension string — the variant to download and print.
    */
   purpose?: "screen" | "document";
+  /**
+   * Which ink the drawing is in. `light` is the paper drawing; `dark` keeps the
+   * same line-weight hierarchy but inverts the tonal order, so cut walls stay
+   * the heaviest thing on the sheet by being the lightest. `document` output
+   * ignores this and always prints on paper.
+   */
+  theme?: PlanTheme;
+};
+
+export type PlanTheme = "light" | "dark";
+
+/**
+ * The drawing's ink. Two sets, one vocabulary — every colour the plan uses is
+ * named here so a themed plan is a palette swap rather than a second renderer.
+ *
+ * The dark set is not an inversion. A plan reads by tonal hierarchy: cut
+ * elements heaviest, drawn symbols medium, projections lightest. On paper that
+ * means near-black poché on cream; on a dark sheet it means near-white poché on
+ * near-black, with the mid-tones re-spaced so the ordering survives.
+ */
+type PlanPalette = {
+  paper: string;
+  floorFills: readonly string[];
+  floorStroke: string;
+  wallFill: string;
+  wallStroke: string;
+  columnFill: string;
+  columnStroke: string;
+  /** Fills the wall gap a door or window sits in, so the wall reads as broken. */
+  opening: string;
+  leaf: string;
+  swing: string;
+  window: string;
+  stairStroke: string;
+  treadSurface: string;
+  landing: string;
+  runDirection: string;
+  openEdge: string;
+  roomFill: string;
+  roomStroke: string;
+  nearClosedFill: string;
+  nearClosedStroke: string;
+  roomLabel: string;
+  acceptedRoomLabel: string;
+  annotation: string;
+  /** Halo behind annotation text and the scale bar's light segments. */
+  annotationHalo: string;
+  dimension: string;
+  north: string;
+};
+
+const PLAN_PALETTES: Record<PlanTheme, PlanPalette> = {
+  light: {
+    paper: "#fffdf7",
+    floorFills: ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"],
+    floorStroke: "#9aa4a6",
+    wallFill: "#1f2937",
+    wallStroke: "#111827",
+    columnFill: "#374151",
+    columnStroke: "#111827",
+    opening: "#fffdf7",
+    leaf: "#374151",
+    swing: "#64748b",
+    window: "#334155",
+    stairStroke: "#1f2937",
+    treadSurface: "#f8fafc",
+    landing: "#f1f5f9",
+    runDirection: "#111827",
+    openEdge: "#8b6f52",
+    roomFill: "#e7c89c",
+    roomStroke: "#c18a49",
+    nearClosedFill: "#f3b36f",
+    nearClosedStroke: "#d9823b",
+    roomLabel: "#875623",
+    acceptedRoomLabel: "#1f2937",
+    annotation: "#111827",
+    annotationHalo: "#fffdf7",
+    dimension: "#334155",
+    north: "#b91c1c",
+  },
+  dark: {
+    paper: "#0d1417",
+    floorFills: ["#1a2326", "#182423", "#1d2523", "#172227"],
+    floorStroke: "#46585c",
+    wallFill: "#dde6e7",
+    wallStroke: "#f1f7f7",
+    columnFill: "#c4d1d3",
+    columnStroke: "#eef4f4",
+    opening: "#0d1417",
+    leaf: "#a4b7ba",
+    swing: "#71868a",
+    window: "#9fb4b8",
+    stairStroke: "#d5e0e1",
+    treadSurface: "#1b2529",
+    landing: "#222d31",
+    runDirection: "#eef4f4",
+    openEdge: "#b08a63",
+    roomFill: "#8a6a33",
+    roomStroke: "#c18a49",
+    nearClosedFill: "#a4712f",
+    nearClosedStroke: "#d9823b",
+    roomLabel: "#f0d9b0",
+    acceptedRoomLabel: "#e7eeef",
+    annotation: "#e3ecec",
+    annotationHalo: "#0d1417",
+    dimension: "#9fb4b8",
+    north: "#e2685e",
+  },
 };
 
 export type ArchitecturalPlanSummary = {
@@ -819,6 +927,7 @@ function planAnnotationLayer(
   scale: number,
   rotationQuarterTurns: number,
   footer: number,
+  palette: PlanPalette,
 ) {
   const margin = Math.max(2, scale * 0.02);
   const roundLengths = [5, 10, 20, 25, 50, 100, 200, 500];
@@ -829,7 +938,7 @@ function planAnnotationLayer(
   const barHeight = Math.max(0.7, scale * 0.007);
   const barY = height + footer * 0.62;
   const segments = Array.from({ length: 4 }, (_, index) =>
-    `<rect x="${margin + segment * index}" y="${barY}" width="${segment}" height="${barHeight}" fill="${index % 2 ? "#fffdf7" : "#111827"}"/>`).join("");
+    `<rect x="${margin + segment * index}" y="${barY}" width="${segment}" height="${barHeight}" fill="${index % 2 ? palette.annotationHalo : palette.annotation}"/>`).join("");
   const barLabels = `<text x="${margin}" y="${barY - barHeight * 0.9}" text-anchor="start">0</text>` +
     `<text x="${margin + barFeet}" y="${barY - barHeight * 0.9}" text-anchor="end">${barFeet}′</text>`;
 
@@ -840,7 +949,7 @@ function planAnnotationLayer(
   const letterY = northY - Math.cos(angle) * radius * 1.8;
   const needle = `<g class="north"><g transform="translate(${northX} ${northY}) rotate(${rotationQuarterTurns * 90})">` +
     `<circle r="${radius}"/>` +
-    `<path d="M 0 ${-radius * 0.85} L ${radius * 0.34} ${radius * 0.4} L 0 ${radius * 0.14} L ${-radius * 0.34} ${radius * 0.4} Z" fill="#b91c1c"/>` +
+    `<path d="M 0 ${-radius * 0.85} L ${radius * 0.34} ${radius * 0.4} L 0 ${radius * 0.14} L ${-radius * 0.34} ${radius * 0.4} Z" fill="${palette.north}"/>` +
     `</g><text x="${letterX}" y="${letterY}" text-anchor="middle" dominant-baseline="central">N</text></g>`;
   return `<g class="plan-annotations" aria-hidden="true"><g class="scale-bar">${segments}${barLabels}</g>${needle}</g>`;
 }
@@ -996,8 +1105,14 @@ export function makeArchitecturalFloorSvg(
   const derivedRooms = options.derivedRooms === true
     ? cachedDerivedRoomsForLevel(result, levelId)
     : options.derivedRooms || null;
+  // Paper is the only ink a printed sheet has, so document output pins the
+  // palette rather than following the screen the request came from.
+  const theme: PlanTheme = options.purpose === "document"
+    ? "light"
+    : options.theme === "dark" ? "dark" : "light";
+  const palette = PLAN_PALETTES[theme];
   const cacheKey = `${levelId}:${plan.levelPlans.map((part) => part.levelId).join(",")}` +
-    `|${rotation}|${identityOf(derivedRooms)}|${identityOf(options.roomLabels)}|${options.purpose === "document" ? "doc" : "scr"}`;
+    `|${rotation}|${identityOf(derivedRooms)}|${identityOf(options.roomLabels)}|${options.purpose === "document" ? "doc" : "scr"}|${theme}`;
   let cacheStore = svgCache.get(result); if (!cacheStore) { cacheStore = new Map(); svgCache.set(result, cacheStore); }
   const cached = cacheStore.get(cacheKey); if (cached) return cached;
 
@@ -1029,7 +1144,7 @@ export function makeArchitecturalFloorSvg(
   const crisp = documentMode ? "" : ";vector-effect:non-scaling-stroke";
   const connected = plan.levelPlans.length > 1;
   const openEnds = exposedWallEnds(plan.wallRecords, plan.floorRecords);
-  const floorFills = ["#f6f3eb", "#edf2ed", "#f2eee5", "#eaf0f2"];
+  const floorFills = palette.floorFills;
   const floorGroups = plan.levelPlans.map((part, index) =>
     `<g class="floors" data-source-revit-level-id="${part.levelId}" data-source-elevation-feet="${part.elevation}" style="--floor-fill:${floorFills[index % floorFills.length]}">${floorLayer(part.floorRecords, bounds)}</g>`,
   ).join("");
@@ -1044,36 +1159,36 @@ export function makeArchitecturalFloorSvg(
   <title id="architectural-plan-title">${connected ? "Connected split-level architectural plan" : `Architectural floor map for Revit level ${levelId}`}</title>
   <desc id="architectural-plan-desc">Recovered floor outlines, walls, doors, windows, stairs and columns ${connected ? `across ${plan.levelPlans.length} adjoining elevations from ${plan.levelPlans[0]!.elevation.toFixed(3)} to ${plan.levelPlans.at(-1)!.elevation.toFixed(3)} feet` : `at ${plan.elevation.toFixed(3)} feet`}. T-shaped open-end marks identify long wall endpoints with no adjoining wall or nearby recovered floor. Door swings and uncategorized fallback footprints are approximate.</desc>
   <style>
-    .floors{fill:var(--floor-fill,#f6f3eb);stroke:#9aa4a6;stroke-width:${projectionStroke}${crisp}}
-    .rooms{fill:#e7c89c;fill-opacity:.34;stroke:#c18a49;stroke-width:${projectionStroke}${crisp}}
-    .rooms .near-closed{fill:#f3b36f;fill-opacity:.22;stroke:#d9823b;stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
-    .room-labels{fill:#875623;font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none;paint-order:stroke;stroke:#fffdf7;stroke-width:${scale / 850}}
-    .room-labels .accepted{fill:#1f2937}
-    .walls{fill:#1f2937;fill-opacity:.94;stroke:#111827;stroke-width:${cutStroke};stroke-linejoin:round${crisp}}
+    .floors{fill:var(--floor-fill,${palette.floorFills[0]});stroke:${palette.floorStroke};stroke-width:${projectionStroke}${crisp}}
+    .rooms{fill:${palette.roomFill};fill-opacity:.34;stroke:${palette.roomStroke};stroke-width:${projectionStroke}${crisp}}
+    .rooms .near-closed{fill:${palette.nearClosedFill};fill-opacity:.22;stroke:${palette.nearClosedStroke};stroke-dasharray:${fineStroke * 5} ${fineStroke * 3}}
+    .room-labels{fill:${palette.roomLabel};font:700 ${scale / 170}px system-ui,sans-serif;pointer-events:none;paint-order:stroke;stroke:${palette.annotationHalo};stroke-width:${scale / 850}}
+    .room-labels .accepted{fill:${palette.acceptedRoomLabel}}
+    .walls{fill:${palette.wallFill};fill-opacity:.94;stroke:${palette.wallStroke};stroke-width:${cutStroke};stroke-linejoin:round${crisp}}
     ${documentMode ? "" : ".walls path{vector-effect:non-scaling-stroke}"}
-    .walls .arc-body{fill:none;stroke:#1f2937;stroke-opacity:.94;vector-effect:none}
-    .walls .arc-centreline{fill:none;stroke:#111827;stroke-width:${cutStroke * 0.7}${crisp}}
-    .open-edges{fill:none;stroke:#8b6f52;stroke-width:${symbolPen};stroke-linecap:round;opacity:.82;pointer-events:none}
-    .columns{fill:#374151;stroke:#111827;stroke-width:${cutStroke * 0.9}${crisp}}
-    .doors .opening,.windows .opening{fill:#fffdf7;stroke:#fffdf7;stroke-width:${cutStroke * 1.3}${crisp}}
-    .doors .leaf{fill:none;stroke:#374151;stroke-width:${leafPen};stroke-linecap:round}
-    .doors .swing{fill:none;stroke:#64748b;stroke-width:${symbolPen};stroke-dasharray:${swingDash};stroke-linecap:round}
-    .windows path:not(.opening){fill:none;stroke:#334155;stroke-width:${symbolPen}}
-    .stairs{fill:none;stroke:#1f2937;stroke-width:${symbolPen}}
-    .stairs .tread-surface{fill:#f8fafc;stroke:none}.stairs .riser{stroke-width:${symbolPen}}
-    .stairs .landing{fill:#f1f5f9;stroke:#1f2937;stroke-width:${symbolPen}}
-    .stairs .run-direction{fill:none;stroke:#111827;stroke-width:${leafPen};stroke-linecap:round}
-    .stairs .run-direction-head{fill:#111827;stroke:none}
-    .stairs .run-direction-label{fill:#111827;font:600 ${Math.max(2, scale / 240)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_100)};pointer-events:none}
+    .walls .arc-body{fill:none;stroke:${palette.wallFill};stroke-opacity:.94;vector-effect:none}
+    .walls .arc-centreline{fill:none;stroke:${palette.wallStroke};stroke-width:${cutStroke * 0.7}${crisp}}
+    .open-edges{fill:none;stroke:${palette.openEdge};stroke-width:${symbolPen};stroke-linecap:round;opacity:.82;pointer-events:none}
+    .columns{fill:${palette.columnFill};stroke:${palette.columnStroke};stroke-width:${cutStroke * 0.9}${crisp}}
+    .doors .opening,.windows .opening{fill:${palette.opening};stroke:${palette.opening};stroke-width:${cutStroke * 1.3}${crisp}}
+    .doors .leaf{fill:none;stroke:${palette.leaf};stroke-width:${leafPen};stroke-linecap:round}
+    .doors .swing{fill:none;stroke:${palette.swing};stroke-width:${symbolPen};stroke-dasharray:${swingDash};stroke-linecap:round}
+    .windows path:not(.opening){fill:none;stroke:${palette.window};stroke-width:${symbolPen}}
+    .stairs{fill:none;stroke:${palette.stairStroke};stroke-width:${symbolPen}}
+    .stairs .tread-surface{fill:${palette.treadSurface};stroke:none}.stairs .riser{stroke-width:${symbolPen}}
+    .stairs .landing{fill:${palette.landing};stroke:${palette.stairStroke};stroke-width:${symbolPen}}
+    .stairs .run-direction{fill:none;stroke:${palette.runDirection};stroke-width:${leafPen};stroke-linecap:round}
+    .stairs .run-direction-head{fill:${palette.runDirection};stroke:none}
+    .stairs .run-direction-label{fill:${palette.annotation};font:600 ${Math.max(2, scale / 240)}px system-ui,sans-serif;paint-order:stroke;stroke:${palette.annotationHalo};stroke-width:${Math.max(0.5, scale / 1_100)};pointer-events:none}
     .plan-annotations{pointer-events:none}
-    .plan-annotations text{fill:#111827;font:600 ${Math.max(2, scale / 220)}px system-ui,sans-serif;paint-order:stroke;stroke:#fffdf7;stroke-width:${Math.max(0.5, scale / 1_000)}}
-    .plan-annotations .scale-bar rect{stroke:#111827;stroke-width:${projectionStroke}${crisp}}
-    .plan-annotations .north circle{fill:#fffdf7;stroke:#111827;stroke-width:${projectionStroke}${crisp}}
-    .plan-annotations .north path{stroke:#111827;stroke-width:${projectionStroke};stroke-linejoin:round${crisp}}
-    .plan-dimensions{fill:none;stroke:#334155;stroke-width:${symbolPen}}
-    .plan-dimensions text{fill:#111827;stroke:none;font-family:ui-monospace,monospace;font-weight:500}
+    .plan-annotations text{fill:${palette.annotation};font:600 ${Math.max(2, scale / 220)}px system-ui,sans-serif;paint-order:stroke;stroke:${palette.annotationHalo};stroke-width:${Math.max(0.5, scale / 1_000)}}
+    .plan-annotations .scale-bar rect{stroke:${palette.annotation};stroke-width:${projectionStroke}${crisp}}
+    .plan-annotations .north circle{fill:${palette.annotationHalo};stroke:${palette.annotation};stroke-width:${projectionStroke}${crisp}}
+    .plan-annotations .north path{stroke:${palette.annotation};stroke-width:${projectionStroke};stroke-linejoin:round${crisp}}
+    .plan-dimensions{fill:none;stroke:${palette.dimension};stroke-width:${symbolPen}}
+    .plan-dimensions text{fill:${palette.annotation};stroke:none;font-family:ui-monospace,monospace;font-weight:500}
   </style>
-  <rect width="100%" height="100%" fill="#fffdf7"/>
+  <rect width="100%" height="100%" fill="${palette.paper}" data-plan-paper="${theme}"/>
   <g${contentTransform ? ` transform="${contentTransform}"` : ""}>
   <g fill-rule="evenodd">${floorGroups}</g>
   ${roomLayer(derivedRooms, bounds, scale, options.roomLabels)}
@@ -1084,7 +1199,7 @@ export function makeArchitecturalFloorSvg(
   <g class="doors">${openingLayer(plan.doorRecords, bounds, "door")}</g>
   <g class="stairs">${stairGroups}</g>
   </g>
-  ${planAnnotationLayer(width, height, scale, rotation, footer)}
+  ${planAnnotationLayer(width, height, scale, rotation, footer, palette)}
   ${documentMode && rotation === 0 ? overallDimensionLayer(renderedBounds, bounds, height, footer, mmToFeet) : ""}
 </svg>`;
   cacheStore.set(cacheKey, svg); return svg;

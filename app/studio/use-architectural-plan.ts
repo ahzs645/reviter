@@ -7,6 +7,7 @@ import {
   makeArchitecturalFloorSvg,
   type ArchitecturalPlanRoomLabel,
   type ArchitecturalPlanSummary,
+  type PlanTheme,
 } from "../../lib/reviter/architectural-plan.ts";
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { RoomReviewState } from "../../lib/reviter/room-review.ts";
@@ -104,6 +105,7 @@ function resolveSynchronously(engine: PlanEngine, key: string, request: PlanRequ
         rotationQuarterTurns: request.rotationQuarterTurns,
         derivedRooms: request.derivedRooms ?? false,
         roomLabels: request.roomLabels ?? undefined,
+        theme: request.theme,
       }),
       summary: architecturalPlanSummary(engine.result, request.levelId, {
         connectedLevelIds: request.connectedLevelIds,
@@ -122,6 +124,8 @@ type PlanRequestParts = {
   rotationQuarterTurns: number;
   derivedRooms: DerivedRoomResult | null;
   roomLabels?: Readonly<Record<string, ArchitecturalPlanRoomLabel>> | null;
+  /** The ink the plan is drawn in; part of the cache key, not a CSS concern. */
+  theme: PlanTheme;
 };
 
 const optionIdentity = new WeakMap<object, number>();
@@ -136,7 +140,7 @@ function identityOf(value: object | null | undefined): number {
 
 function planKey(parts: PlanRequestParts): string {
   return `${parts.levelId}|${[...parts.connectedLevelIds].join(",")}|${parts.rotationQuarterTurns}` +
-    `|${identityOf(parts.derivedRooms)}|${identityOf(parts.roomLabels)}`;
+    `|${identityOf(parts.derivedRooms)}|${identityOf(parts.roomLabels)}|${parts.theme}`;
 }
 
 /**
@@ -205,6 +209,7 @@ function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
     rotationQuarterTurns: parts.rotationQuarterTurns,
     derivedRooms: parts.derivedRooms,
     roomLabels: parts.roomLabels ?? null,
+    theme: parts.theme,
   } satisfies FloorPlanWorkerRequest);
 }
 
@@ -225,7 +230,7 @@ export type ArchitecturalPlanState = {
 export function useArchitecturalPlan(
   result: ConvertResult,
   parts: PlanRequestParts | null,
-  prewarm: readonly { levelId: number; connectedLevelIds: readonly number[] }[] = [],
+  prewarm: readonly { levelId: number; connectedLevelIds: readonly number[]; theme: PlanTheme }[] = [],
 ): ArchitecturalPlanState {
   const engine = engineFor(result);
   const key = parts ? planKey(parts) : null;

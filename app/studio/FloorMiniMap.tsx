@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Footprints, LocateFixed, Minus, Plus, X } from "lucide-react";
 
 import {
+  connectedFloorPlanGroups,
   floorPlateBounds,
   floorPlateLevels,
   floorPlateSvgDataUrl,
@@ -13,6 +14,7 @@ import {
   type RoomReviewState,
 } from "../../lib/reviter";
 import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
+import { useTheme } from "./use-theme.ts";
 
 type Point2 = [number, number];
 
@@ -41,26 +43,61 @@ export function FloorMiniMap({
   onWalkTo?: (point: Point2, elevation: number) => void;
   embedded?: boolean;
 }) {
+  const theme = useTheme();
   const levels = useMemo(() => floorPlateLevels(result), [result]);
-  const selectedIndex = Math.max(0, levels.findIndex((level) => level.levelId === selectedLevelId));
-  const selected = levels[selectedIndex] ?? null;
-  const selectedDerivedRooms = derivedRooms?.levelId === selected?.levelId ? derivedRooms : null;
+  /**
+   * A storey, not a Revit level. Asking for one level id drew only the slabs
+   * filed under it, so a split-level building — a wing half a flight up, a
+   * ramped entry, a mezzanine edge — lost the rest of its floor off the side
+   * of the drawing. The Floors workspace already composed these; the map now
+   * uses the same groups, so both surfaces answer "what is this floor" alike.
+   */
+  const plans = useMemo(() => {
+    const groups = connectedFloorPlanGroups(result);
+    return groups.length
+      ? [...groups].sort((left, right) => left.minElevation - right.minElevation)
+      : levels.map((level) => ({
+        primaryLevelId: level.levelId,
+        levelIds: [level.levelId],
+        levels: [level],
+        floorCount: level.floorCount,
+        minElevation: level.elevation,
+        maxElevation: level.elevation,
+        connections: [],
+      }));
+  }, [levels, result]);
+  const selectedIndex = Math.max(0, plans.findIndex(
+    (plan) => selectedLevelId != null && plan.levelIds.includes(selectedLevelId),
+  ));
+  const selectedPlan = plans[selectedIndex] ?? null;
+  const selected = useMemo(
+    () => levels.find((level) => level.levelId === selectedPlan?.primaryLevelId) ?? null,
+    [levels, selectedPlan],
+  );
+  const planLevelIds = useMemo(
+    () => selectedPlan?.levelIds ?? (selected ? [selected.levelId] : []),
+    [selected, selectedPlan],
+  );
+  const selectedDerivedRooms = derivedRooms && planLevelIds.includes(derivedRooms.levelId)
+    ? derivedRooms
+    : null;
   const roomLabels = useMemo(
     () => acceptedRoomLabels(selectedDerivedRooms, roomReview),
     [roomReview, selectedDerivedRooms],
   );
   const planParts = useMemo(() => selected ? {
     levelId: selected.levelId,
-    connectedLevelIds: [selected.levelId],
+    connectedLevelIds: planLevelIds,
     rotationQuarterTurns: 0,
     derivedRooms: selectedDerivedRooms,
     roomLabels,
-  } : null, [roomLabels, selected, selectedDerivedRooms]);
+    theme,
+  } : null, [planLevelIds, roomLabels, selected, selectedDerivedRooms, theme]);
   const prewarm = useMemo(
-    () => [levels[selectedIndex + 1], levels[selectedIndex - 1]]
-      .filter((level) => level != null)
-      .map((level) => ({ levelId: level.levelId, connectedLevelIds: [level.levelId] })),
-    [levels, selectedIndex],
+    () => [plans[selectedIndex + 1], plans[selectedIndex - 1]]
+      .filter((plan) => plan != null)
+      .map((plan) => ({ levelId: plan.primaryLevelId, connectedLevelIds: plan.levelIds, theme })),
+    [plans, selectedIndex, theme],
   );
   const { svg, building } = useArchitecturalPlan(result, planParts, prewarm);
   const imageUrl = svg == null ? null : floorPlateSvgDataUrl(svg);
@@ -142,7 +179,11 @@ export function FloorMiniMap({
   const currentFloor = camera ? levels.reduce((nearest, level) => Math.abs(level.elevation - camera.position[2]) < Math.abs(nearest.elevation - camera.position[2]) ? level : nearest, levels[0]!) : null;
   const marker = camera ? { x: camera.position[0] - bounds.minX, y: bounds.maxY - camera.position[1], dx: camera.direction[0], dy: -camera.direction[1] } : null;
   const selectedMarker = selectedPoint ? { x: selectedPoint[0] - bounds.minX, y: bounds.maxY - selectedPoint[1] } : null;
-  const choose = (index: number) => { const level = levels[index]; if (level) { onSelectedLevelId(level.levelId); setZoom(1); setPan({ x: 0, y: 0 }); } };
+  const choose = (index: number) => { const plan = plans[index]; if (plan) { onSelectedLevelId(plan.primaryLevelId); setZoom(1); setPan({ x: 0, y: 0 }); } };
+  /** "0'-0"" for one elevation, "0'-0"–4'-6"" for a composed split level. */
+  const planLabel = (plan: typeof plans[number]) => plan.minElevation === plan.maxElevation
+    ? formatFeetInches(plan.minElevation)
+    : `${formatFeetInches(plan.minElevation)}–${formatFeetInches(plan.maxElevation)}`;
   // Zoom keeps the point under the cursor (or the viewport centre, for the
   // buttons) fixed, instead of scaling about the map's top-left corner.
   const applyZoom = (value: number, focus?: { x: number; y: number }) => {
@@ -176,11 +217,11 @@ export function FloorMiniMap({
 
   return (
     <section ref={mapRef} id="floor-navigation-map" className={`floor-mini-map${embedded ? " embedded" : ""}`} aria-label="Floor navigation map">
-      <header><span><h2>Floor navigation map</h2><small>{formatFeetInches(selected.elevation)} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span>{!embedded && <button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button>}</header>
+      <header><span><h2>Floor navigation map</h2><small>{selectedPlan ? planLabel(selectedPlan) : formatFeetInches(selected.elevation)}{selectedPlan && selectedPlan.levelIds.length > 1 ? ` · ${selectedPlan.levelIds.length} elevations` : ""} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span>{!embedded && <button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button>}</header>
       <div className="floor-mini-map-controls">
         <button type="button" className="rv-icon-button" aria-label="Previous map floor" disabled={selectedIndex === 0} onClick={() => choose(selectedIndex - 1)}><ChevronLeft size={14} aria-hidden /></button>
-        <select aria-label="Floor navigation map level" value={selected.levelId} onChange={(event) => choose(levels.findIndex((level) => level.levelId === Number(event.target.value)))}>{levels.map((level) => <option key={level.levelId} value={level.levelId}>{formatFeetInches(level.elevation)} · {level.floorCount} slab{level.floorCount === 1 ? "" : "s"}</option>)}</select>
-        <button type="button" className="rv-icon-button" aria-label="Next map floor" disabled={selectedIndex === levels.length - 1} onClick={() => choose(selectedIndex + 1)}><ChevronRight size={14} aria-hidden /></button>
+        <select aria-label="Floor navigation map level" value={selectedPlan?.primaryLevelId ?? selected.levelId} onChange={(event) => choose(plans.findIndex((plan) => plan.primaryLevelId === Number(event.target.value)))}>{plans.map((plan) => <option key={plan.primaryLevelId} value={plan.primaryLevelId}>{planLabel(plan)} · {plan.floorCount} slab{plan.floorCount === 1 ? "" : "s"}{plan.levelIds.length > 1 ? ` · ${plan.levelIds.length} elevations` : ""}</option>)}</select>
+        <button type="button" className="rv-icon-button" aria-label="Next map floor" disabled={selectedIndex === plans.length - 1} onClick={() => choose(selectedIndex + 1)}><ChevronRight size={14} aria-hidden /></button>
       </div>
       <div className="floor-mini-map-zoom" role="group" aria-label="Map zoom"><button type="button" aria-label="Zoom map out" onClick={() => applyZoom(zoom / 1.5)}><Minus size={13} /></button><button type="button" aria-label="Fit whole floor" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button><button type="button" aria-label="Zoom map in" onClick={() => applyZoom(zoom * 1.5)}><Plus size={13} /></button><button type="button" aria-label="Locate camera on map" disabled={!marker} onClick={locateCamera}><LocateFixed size={13} /></button><button type="button" aria-label="Walk to the selected object" disabled={!selectedMarker || !onWalkTo} onClick={() => { if (selectedPoint && onWalkTo) onWalkTo(selectedPoint, selected.elevation); }}><Footprints size={13} /></button></div>
       <figure aria-describedby="floor-map-caption">

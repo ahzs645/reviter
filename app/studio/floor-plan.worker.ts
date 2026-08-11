@@ -5,6 +5,7 @@ import {
   makeArchitecturalFloorSvg,
   type ArchitecturalPlanRoomLabel,
   type ArchitecturalPlanSummary,
+  type PlanTheme,
 } from "../../lib/reviter/architectural-plan.ts";
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { ConvertResult } from "../../lib/reviter/types.ts";
@@ -25,6 +26,8 @@ export type FloorPlanWorkerRequest = {
   rotationQuarterTurns: number;
   derivedRooms: DerivedRoomResult | null;
   roomLabels: Readonly<Record<string, ArchitecturalPlanRoomLabel>> | null;
+  /** Which ink to draw in; the SVG carries its own stylesheet. */
+  theme: PlanTheme;
 };
 
 export type FloorPlanWorkerResponse = {
@@ -49,6 +52,7 @@ context.onmessage = (event: MessageEvent<FloorPlanWorkerInit | FloorPlanWorkerRe
       rotationQuarterTurns: request.rotationQuarterTurns,
       derivedRooms: request.derivedRooms ?? false,
       roomLabels: request.roomLabels ?? undefined,
+      theme: request.theme,
     };
     context.postMessage({
       id: request.id,

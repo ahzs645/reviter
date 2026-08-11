@@ -801,8 +801,12 @@ export default function ReviterStudio() {
       if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
     }
     if (isolateMapLevel && planLevelId != null) {
+      // Isolate the storey the map is drawing, not the one Revit level it is
+      // keyed on: on a split level those are different, and isolating the key
+      // level alone hid the wings the plan itself shows.
+      const storey = new Set(connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId]);
       const visible = new Set((result.nativeAssociatedLevelRelations ?? [])
-        .filter((relation) => relation.levelId === planLevelId)
+        .filter((relation) => storey.has(relation.levelId))
         .map((relation) => relation.elementId));
       for (const record of result.elementBounds) if (!visible.has(record.elementId)) hidden.add(record.elementId);
     }
