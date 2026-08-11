@@ -369,10 +369,12 @@ export function FloorMiniMap({
         <figcaption id="floor-map-caption" className="sr-only">Interactive architectural plan assembled from recovered Revit floors, walls, openings, windows, stairs, and columns. The teal arrow is the live camera and the pink marker is the selected object.</figcaption>
       </figure>
       <div className="floor-map-status">
-        <b>{selectedPlan ? planLabel(selectedPlan) : formatFeetInches(selected.elevation)}</b>
-        {selectedPlan && selectedPlan.levelIds.length > 1 ? <i>{selectedPlan.levelIds.length} elevations</i> : null}
-        <span>{cameraReadout}</span>
-        {isolateLevel && <em>Isolated</em>}
+        <span className="floor-map-status-floor">
+          <b>{selectedPlan ? planLabel(selectedPlan) : formatFeetInches(selected.elevation)}</b>
+          {selectedPlan && selectedPlan.levelIds.length > 1 ? <i>{selectedPlan.levelIds.length} elev</i> : null}
+          {isolateLevel && <em>Isolated</em>}
+        </span>
+        <span className="floor-map-status-camera">{cameraReadout}</span>
       </div>
       <span className="sr-only" role="status" aria-live="polite">Map level {selected.elevation.toFixed(1)} feet. {selectedDerivedRooms ? `${selectedDerivedRooms.rooms.length} inferred floor regions.` : ""}</span>
     </section>

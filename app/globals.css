@@ -1305,9 +1305,8 @@ button[data-reason]:focus-visible::after {
   left: 6px;
   bottom: 6px;
   max-width: calc(100% - 12px);
-  display: flex;
-  align-items: center;
-  gap: 7px;
+  display: grid;
+  gap: 2px;
   padding: 4px 7px;
   border: 1px solid var(--plan-chip-line);
   background: var(--plan-chip);
@@ -1315,10 +1314,11 @@ button[data-reason]:focus-visible::after {
   font: 10px var(--mono);
   backdrop-filter: blur(4px);
 }
-.floor-map-status b { font-weight: 700; white-space: nowrap; }
-.floor-map-status i { padding: 1px 4px; border: 1px solid currentColor; font-size: 8px; font-style: normal; letter-spacing: .06em; opacity: .75; text-transform: uppercase; white-space: nowrap; }
-.floor-map-status span { min-width: 0; overflow: hidden; opacity: .8; text-overflow: ellipsis; white-space: nowrap; }
-.floor-map-status em { padding: 1px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 8px; font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+.floor-map-status-floor { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.floor-map-status-floor b { min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.floor-map-status i { flex: 0 0 auto; padding: 1px 4px; border: 1px solid currentColor; font-size: 8px; font-style: normal; letter-spacing: .06em; opacity: .7; text-transform: uppercase; white-space: nowrap; }
+.floor-map-status em { flex: 0 0 auto; padding: 1px 4px; border: 1px solid #bd6b2d; color: #d9823b; font-size: 8px; font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+.floor-map-status-camera { min-width: 0; overflow: hidden; opacity: .78; text-overflow: ellipsis; white-space: nowrap; }
 
 .floor-mini-map-controls { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; }
 .floor-mini-map-controls select { min-width: 0; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); font: 10px var(--mono); }
