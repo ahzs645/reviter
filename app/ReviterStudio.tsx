@@ -7,6 +7,7 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import {
   applyIfcReferenceRepairs,
   boundsDimensions,
+  type Bounds3,
   connectedFloorPlanGroup,
   DEFAULT_CAMERA_PRESET,
   downloadBlob,
@@ -281,6 +282,9 @@ export default function ReviterStudio() {
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
+  const [storeyFocus, setStoreyFocus] = useState<{ boundsFeet: Bounds3 | null; sequence: number }>(
+    { boundsFeet: null, sequence: 0 },
+  );
   const [showDerivedRooms, setShowDerivedRooms] = useState(false);
   const [roomReview, setRoomReview] = useState<RoomReviewState>({ rooms: [], gaps: [] });
   const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
@@ -1772,6 +1776,7 @@ export default function ReviterStudio() {
       onHoverElement={setHoveredElementId}
       onCanvasMenu={setCanvasMenu}
       focusRequest={focusRequest}
+      storeyFocusRequest={storeyFocus}
     />
   ) : null;
 
@@ -1834,6 +1839,51 @@ export default function ReviterStudio() {
       onClearRecents={deleteAllRecents}
     />
   );
+
+  /**
+   * Put the 3D camera on the storey the map is showing. The bounds come from
+   * the elements on that storey rather than its slabs alone, so the framing
+   * includes the walls standing on it instead of just the floor plate.
+   */
+  const focusStoreyInModel = useCallback(() => {
+    if (!result || planLevelId == null) return;
+    const group = connectedFloorPlanGroup(result, planLevelId);
+    const storey = new Set(group?.levelIds ?? [planLevelId]);
+    const onStorey = new Set((result.nativeAssociatedLevelRelations ?? [])
+      .filter((relation) => storey.has(relation.levelId))
+      .map((relation) => relation.elementId));
+    let boundsFeet: Bounds3 | null = null;
+    for (const record of result.elementBounds) {
+      if (!onStorey.has(record.elementId)) continue;
+      boundsFeet = boundsFeet ? {
+        min: {
+          x: Math.min(boundsFeet.min.x, record.boundsFeet.min.x),
+          y: Math.min(boundsFeet.min.y, record.boundsFeet.min.y),
+          z: Math.min(boundsFeet.min.z, record.boundsFeet.min.z),
+        },
+        max: {
+          x: Math.max(boundsFeet.max.x, record.boundsFeet.max.x),
+          y: Math.max(boundsFeet.max.y, record.boundsFeet.max.y),
+          z: Math.max(boundsFeet.max.z, record.boundsFeet.max.z),
+        },
+      } : { min: { ...record.boundsFeet.min }, max: { ...record.boundsFeet.max } };
+    }
+    if (!boundsFeet) return;
+    // Clamp the framing to the storey's own band. A curtain wall or column
+    // spanning several floors is filed on the level it starts from, and letting
+    // it into the vertical extent aimed the camera storeys above the floor you
+    // asked for. The plan extent is left alone: that is what sets the distance.
+    if (group) {
+      const floor = group.minElevation - 2;
+      const ceiling = group.maxElevation + 16;
+      boundsFeet = {
+        min: { ...boundsFeet.min, z: Math.max(boundsFeet.min.z, floor) },
+        max: { ...boundsFeet.max, z: Math.min(Math.max(boundsFeet.max.z, floor + 8), ceiling) },
+      };
+    }
+    setWorkspace("model");
+    setStoreyFocus((current) => ({ boundsFeet, sequence: current.sequence + 1 }));
+  }, [planLevelId, result]);
 
   const commentPanelProps = {
     comments: modelComments,
@@ -1945,6 +1995,7 @@ export default function ReviterStudio() {
               onIsolateLevel={setIsolateMapLevel}
               selectedPoint={selectedMapPoint}
               onWalkTo={walkFromMap}
+              onFocusStorey={focusStoreyInModel}
               onClose={() => setSheet(null)}
             />
           ) : null}
@@ -2042,6 +2093,7 @@ export default function ReviterStudio() {
                       onIsolateLevel={setIsolateMapLevel}
                       selectedPoint={selectedMapPoint}
                       onWalkTo={walkFromMap}
+                      onFocusStorey={focusStoreyInModel}
                       onClose={() => setFloorSideMapOpen(false)}
                     />
                   )}

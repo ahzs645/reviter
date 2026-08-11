@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Footprints, LocateFixed, Minus, Plus, X } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Footprints, LocateFixed, Minus, Plus, X } from "lucide-react";
 
 import {
   connectedFloorPlanGroups,
@@ -18,6 +18,12 @@ import { useTheme } from "./use-theme.ts";
 
 type Point2 = [number, number];
 
+/**
+ * Head height above a storey's top slab. Anything under this is still that
+ * floor — a normal floor-to-floor is about ten feet, and an eye is six up.
+ */
+const STOREY_HEAD_FEET = 14;
+
 function tuple(value: string | undefined): [number, number, number] | null {
   if (!value) return null;
   const parts = value.split(",").map(Number);
@@ -27,7 +33,7 @@ function tuple(value: string | undefined): [number, number, number] | null {
 export function FloorMiniMap({
   result, selectedLevelId, onSelectedLevelId, showDerivedRooms, onShowDerivedRooms,
   derivedRooms, roomReview, onClose, isolateLevel = false, onIsolateLevel, selectedPoint,
-  onWalkTo, embedded = false,
+  onWalkTo, onFocusStorey, embedded = false,
 }: {
   result: ConvertResult;
   selectedLevelId: number | null;
@@ -41,6 +47,8 @@ export function FloorMiniMap({
   onIsolateLevel?: (isolated: boolean) => void;
   selectedPoint?: Point2 | null;
   onWalkTo?: (point: Point2, elevation: number) => void;
+  /** Put the 3D camera on the storey this map is showing. */
+  onFocusStorey?: () => void;
   embedded?: boolean;
 }) {
   const theme = useTheme();
@@ -128,7 +136,13 @@ export function FloorMiniMap({
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [camera, setCamera] = useState<{ position: [number, number, number]; direction: [number, number, number]; walking: boolean } | null>(null);
+  const [camera, setCamera] = useState<{
+    position: [number, number, number];
+    direction: [number, number, number];
+    /** What the orbit camera is looking at; absent when it cannot be mapped. */
+    target: [number, number, number] | null;
+    walking: boolean;
+  } | null>(null);
   const [followCamera, setFollowCamera] = useState(true);
   // While walking, keep the map on the storey the camera is actually on, the
   // way storey-view minimaps do; zoom and pan are left alone so the switch
@@ -158,8 +172,14 @@ export function FloorMiniMap({
       const canvas = document.querySelector<HTMLCanvasElement>("canvas.model-canvas");
       const position = tuple(canvas?.dataset.modelCameraPositionFeet);
       const direction = tuple(canvas?.dataset.modelCameraDirection);
-      setCamera(position && direction ? { position, direction, walking: canvas?.dataset.navigationState === "walk" } : null);
-      if (position) followCameraFloor(position, canvas?.dataset.navigationState === "walk");
+      const target = tuple(canvas?.dataset.modelCameraTargetFeet);
+      const walking = canvas?.dataset.navigationState === "walk";
+      setCamera(position && direction ? { position, direction, target, walking } : null);
+      // Follow the floor you are standing on while walking, and the floor you
+      // are looking at while orbiting — in Orbit the eye is outside the
+      // building, so its own height says nothing about which storey is in view.
+      const floorPoint = walking ? position : target ?? position;
+      if (floorPoint) followCameraFloor(floorPoint, walking);
     };
     read(); const timer = window.setInterval(read, 160); return () => window.clearInterval(timer);
   }, []);
@@ -177,7 +197,53 @@ export function FloorMiniMap({
   // all fit math must use the image's aspect, not the bare plan extents.
   const height = Math.max(1, bounds.maxY - bounds.minY + bounds.footerFeet);
   const currentFloor = camera ? levels.reduce((nearest, level) => Math.abs(level.elevation - camera.position[2]) < Math.abs(nearest.elevation - camera.position[2]) ? level : nearest, levels[0]!) : null;
-  const marker = camera ? { x: camera.position[0] - bounds.minX, y: bounds.maxY - camera.position[1], dx: camera.direction[0], dy: -camera.direction[1] } : null;
+  /**
+   * Where you are on this floor.
+   *
+   * Walking, that is the eye: you are standing in the building and the arrow is
+   * the way you face. Orbiting, the eye is outside and usually well off the
+   * sheet, so the useful point is what the camera is looking *at* — the middle
+   * of your view — with the arrow pointing back the way you are looking from.
+   * A point that still falls outside the drawing is pinned to the frame edge
+   * rather than dropped, so the map keeps saying which way the model is.
+   */
+  const markerPointFeet = camera
+    ? (camera.walking ? camera.position : camera.target ?? camera.position)
+    : null;
+  const marker = (() => {
+    if (!camera || !markerPointFeet) return null;
+    const rawX = markerPointFeet[0] - bounds.minX;
+    const rawY = bounds.maxY - markerPointFeet[1];
+    const planHeight = bounds.maxY - bounds.minY;
+    const inset = Math.max(width, planHeight) / 60;
+    const x = Math.min(Math.max(rawX, inset), width - inset);
+    const y = Math.min(Math.max(rawY, inset), planHeight - inset);
+    return {
+      x, y,
+      // Orbiting, the arrow shows the direction you are looking from, so it
+      // reads as a view cone rather than a heading.
+      dx: camera.walking ? camera.direction[0] : -camera.direction[0],
+      dy: camera.walking ? -camera.direction[1] : camera.direction[1],
+      offPlan: Math.abs(x - rawX) > 0.01 || Math.abs(y - rawY) > 0.01,
+    };
+  })();
+  /**
+   * How far outside this storey the camera is, and zero when it is inside it.
+   *
+   * Measured against the storey's whole band rather than its lowest slab: a
+   * composed split level spans several feet on its own, and standing on it puts
+   * your eye a further five or six up, which read as "nine feet above" the
+   * floor you were plainly standing on.
+   */
+  const cameraStoreyOffsetFeet = camera && selectedPlan
+    ? (() => {
+      const z = (camera.walking ? camera.position : camera.target ?? camera.position)[2];
+      const floor = selectedPlan.minElevation - 2;
+      const head = selectedPlan.maxElevation + STOREY_HEAD_FEET;
+      if (z >= floor && z <= head) return 0;
+      return z > head ? z - head : z - floor;
+    })()
+    : null;
   const selectedMarker = selectedPoint ? { x: selectedPoint[0] - bounds.minX, y: bounds.maxY - selectedPoint[1] } : null;
   const choose = (index: number) => { const plan = plans[index]; if (plan) { onSelectedLevelId(plan.primaryLevelId); setZoom(1); setPan({ x: 0, y: 0 }); } };
   /** "0'-0"" for one elevation, "0'-0"–4'-6"" for a composed split level. */
@@ -209,6 +275,20 @@ export function FloorMiniMap({
     if (y / fitted > bounds.maxY - bounds.minY) return null;
     return [bounds.minX + x / fitted, bounds.maxY - y / fitted];
   };
+  const cameraReadout = (() => {
+    if (!camera) return "camera unavailable";
+    if (camera.walking) {
+      if (!cameraStoreyOffsetFeet) return "you are on this floor";
+      return `you are ${formatFeetInches(Math.abs(cameraStoreyOffsetFeet))} ${cameraStoreyOffsetFeet > 0 ? "above" : "below"}`;
+    }
+    if (!camera.target) return `camera ${currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}`;
+    // With Follow camera floor off, the map can be showing one storey while the
+    // camera looks at another; say so rather than claiming the view is here.
+    if (cameraStoreyOffsetFeet) {
+      return `looking ${formatFeetInches(Math.abs(cameraStoreyOffsetFeet))} ${cameraStoreyOffsetFeet > 0 ? "above" : "below"}`;
+    }
+    return marker?.offPlan ? "looking off this floor" : "viewing here";
+  })();
   const locateCamera = () => {
     if (!marker || !canvasRef.current) return; const rect = canvasRef.current.getBoundingClientRect(); const fitted = Math.min(rect.width / width, rect.height / height); const nextZoom = 3;
     const x = (rect.width - width * fitted) / 2 + marker.x * fitted; const y = (rect.height - height * fitted) / 2 + marker.y * fitted;
@@ -217,19 +297,19 @@ export function FloorMiniMap({
 
   return (
     <section ref={mapRef} id="floor-navigation-map" className={`floor-mini-map${embedded ? " embedded" : ""}`} aria-label="Floor navigation map">
-      <header><span><h2>Floor navigation map</h2><small>{selectedPlan ? planLabel(selectedPlan) : formatFeetInches(selected.elevation)}{selectedPlan && selectedPlan.levelIds.length > 1 ? ` · ${selectedPlan.levelIds.length} elevations` : ""} · camera {currentFloor ? formatFeetInches(currentFloor.elevation) : "unavailable"}</small></span>{!embedded && <button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button>}</header>
+      <header><span><h2>Floor navigation map</h2><small>{selectedPlan ? planLabel(selectedPlan) : formatFeetInches(selected.elevation)}{selectedPlan && selectedPlan.levelIds.length > 1 ? ` · ${selectedPlan.levelIds.length} elevations` : ""} · {cameraReadout}</small></span>{!embedded && <button ref={closeRef} type="button" className="rv-icon-button" aria-label="Close floor navigation map" onClick={onClose}><X size={14} aria-hidden /></button>}</header>
       <div className="floor-mini-map-controls">
         <button type="button" className="rv-icon-button" aria-label="Previous map floor" disabled={selectedIndex === 0} onClick={() => choose(selectedIndex - 1)}><ChevronLeft size={14} aria-hidden /></button>
         <select aria-label="Floor navigation map level" value={selectedPlan?.primaryLevelId ?? selected.levelId} onChange={(event) => choose(plans.findIndex((plan) => plan.primaryLevelId === Number(event.target.value)))}>{plans.map((plan) => <option key={plan.primaryLevelId} value={plan.primaryLevelId}>{planLabel(plan)} · {plan.floorCount} slab{plan.floorCount === 1 ? "" : "s"}{plan.levelIds.length > 1 ? ` · ${plan.levelIds.length} elevations` : ""}</option>)}</select>
         <button type="button" className="rv-icon-button" aria-label="Next map floor" disabled={selectedIndex === plans.length - 1} onClick={() => choose(selectedIndex + 1)}><ChevronRight size={14} aria-hidden /></button>
       </div>
-      <div className="floor-mini-map-zoom" role="group" aria-label="Map zoom"><button type="button" aria-label="Zoom map out" onClick={() => applyZoom(zoom / 1.5)}><Minus size={13} /></button><button type="button" aria-label="Fit whole floor" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button><button type="button" aria-label="Zoom map in" onClick={() => applyZoom(zoom * 1.5)}><Plus size={13} /></button><button type="button" aria-label="Locate camera on map" disabled={!marker} onClick={locateCamera}><LocateFixed size={13} /></button><button type="button" aria-label="Walk to the selected object" disabled={!selectedMarker || !onWalkTo} onClick={() => { if (selectedPoint && onWalkTo) onWalkTo(selectedPoint, selected.elevation); }}><Footprints size={13} /></button></div>
+      <div className="floor-mini-map-zoom" role="group" aria-label="Map zoom"><button type="button" aria-label="Zoom map out" onClick={() => applyZoom(zoom / 1.5)}><Minus size={13} /></button><button type="button" aria-label="Fit whole floor" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button><button type="button" aria-label="Zoom map in" onClick={() => applyZoom(zoom * 1.5)}><Plus size={13} /></button><button type="button" aria-label="Locate camera on map" disabled={!marker} onClick={locateCamera}><LocateFixed size={13} /></button><button type="button" aria-label="Focus this floor in the 3D view" title="Focus this floor in the 3D view" disabled={!onFocusStorey} onClick={() => onFocusStorey?.()}><Box size={13} /></button><button type="button" aria-label="Walk to the selected object" disabled={!selectedMarker || !onWalkTo} onClick={() => { if (selectedPoint && onWalkTo) onWalkTo(selectedPoint, selected.elevation); }}><Footprints size={13} /></button></div>
       <figure aria-describedby="floor-map-caption">
         <div ref={canvasRef} className="floor-mini-map-canvas" onWheel={(event) => { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); applyZoom(zoom * (event.deltaY < 0 ? 1.18 : 0.85), { x: event.clientX - rect.left, y: event.clientY - rect.top }); }} onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; setPan({ x: drag.panX + dx, y: drag.panY + dy }); }} onPointerUp={(event) => { const drag = dragRef.current; dragRef.current = null; if (!drag?.moved && onWalkTo) { const point = mapPoint(event.clientX, event.clientY); if (point) onWalkTo(point, selected.elevation); } }}>
           <div className="floor-mini-map-content" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt="" />
-            <svg viewBox={`0 0 ${width} ${height}`} aria-hidden preserveAspectRatio="xMidYMid meet">{marker && <g className={`map-camera-marker${camera?.walking ? " walking" : ""}`} transform={`translate(${marker.x} ${marker.y})`}><circle r={Math.max(width, height) / 95 / zoom} /><path d={`M 0 0 L ${marker.dx * Math.max(width, height) / 28 / zoom} ${marker.dy * Math.max(width, height) / 28 / zoom}`} /></g>}{selectedMarker && <circle className="map-selection-marker" cx={selectedMarker.x} cy={selectedMarker.y} r={Math.max(width, height) / 120 / zoom} />}</svg>
+            <svg viewBox={`0 0 ${width} ${height}`} aria-hidden preserveAspectRatio="xMidYMid meet">{marker && <g className={`map-camera-marker${camera?.walking ? " walking" : ""}${marker.offPlan ? " off-plan" : ""}`} transform={`translate(${marker.x} ${marker.y})`}><circle r={Math.max(width, height) / 95 / zoom} /><path d={`M 0 0 L ${marker.dx * Math.max(width, height) / 28 / zoom} ${marker.dy * Math.max(width, height) / 28 / zoom}`} /></g>}{selectedMarker && <circle className="map-selection-marker" cx={selectedMarker.x} cy={selectedMarker.y} r={Math.max(width, height) / 120 / zoom} />}</svg>
           </div>
           <span className="floor-map-north" aria-hidden>N ↑</span>
           <span className="floor-map-hint">{building ? "Assembling floor plan…" : "Drag/scroll · click to walk"}</span>

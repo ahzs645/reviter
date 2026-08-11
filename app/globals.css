@@ -1287,6 +1287,10 @@ button[data-reason]:focus-visible::after {
 .floor-mini-map-content { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
 .floor-mini-map-content img, .floor-mini-map-content > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
 .map-camera-marker circle { fill: var(--plan-marker); stroke: var(--plan-marker-halo); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+/* Pinned to the frame because the point is off this floor: still says which
+   way the model is, without claiming you are standing there. */
+.map-camera-marker.off-plan { opacity: .5; }
+.map-camera-marker.off-plan circle { fill: none; stroke: var(--plan-marker); stroke-width: 2; }
 .map-camera-marker.walking circle { fill: #0bbeb7; }
 .map-camera-marker path { fill: none; stroke: var(--plan-marker); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .map-selection-marker { fill: var(--plan-selection); stroke: var(--plan-marker-halo); stroke-width: 2; vector-effect: non-scaling-stroke; }

@@ -298,6 +298,7 @@ export type {
   FloorReferenceTransform,
 } from "./exports";
 export type {
+  Bounds3,
   ConvertFailure,
   ConvertOptions,
   ConvertOutcome,
