@@ -16,6 +16,7 @@ import type {
   FloorPlanWorkerRequest,
   FloorPlanWorkerResponse,
 } from "./floor-plan.worker.ts";
+import { staticWorkerUrl } from "./reference-model.ts";
 
 const PLAN_CATEGORY_IDS = new Set([
   -2_000_032, // Floors
@@ -171,7 +172,7 @@ function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
   if (!engine.worker) {
     try {
       const worker = new Worker(
-        new URL("./floor-plan.worker.ts", import.meta.url),
+        staticWorkerUrl("plan") ?? new URL("./floor-plan.worker.ts", import.meta.url),
         { type: "module" },
       );
       worker.addEventListener("message", (event: MessageEvent<FloorPlanWorkerResponse>) => {

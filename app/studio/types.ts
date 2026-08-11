@@ -32,7 +32,13 @@ export type WalkStartRequest = {
 };
 export type ReferenceLoadState = "idle" | "loading" | "ready" | "error";
 export type ReviterGlobal = typeof globalThis & {
-  __REVITER_STATIC_WORKERS__?: { rvt?: string; ifc?: string; dwg?: string };
+  __REVITER_STATIC_WORKERS__?: {
+    rvt?: string;
+    ifc?: string;
+    dwg?: string;
+    plan?: string;
+    regions?: string;
+  };
 };
 
 /** Dark is the default; the choice is written to <html data-theme> and stored. */

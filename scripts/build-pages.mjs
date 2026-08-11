@@ -63,6 +63,20 @@ await Promise.all([
     entryPoints: [resolve(projectRoot, "lib/reviter/dwg-worker.ts")],
     outfile: resolve(assetsDirectory, "dwg-worker-runtime.js"),
   }),
+  // Both of these are constructed with `new URL("./x.worker.ts", import.meta.url)`,
+  // which the bundler leaves pointing at a TypeScript file that is not deployed.
+  // They 404'd here, and the studio quietly fell back to assembling plans and
+  // deriving rooms on the main thread — correct output, blocked UI.
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "app/studio/floor-plan.worker.ts")],
+    outfile: resolve(assetsDirectory, "floor-plan-worker-runtime.js"),
+  }),
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "app/studio/floor-regions.worker.ts")],
+    outfile: resolve(assetsDirectory, "floor-regions-worker-runtime.js"),
+  }),
   cp(resolve(projectRoot, "public"), outputDirectory, { recursive: true }),
 ]);
 

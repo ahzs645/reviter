@@ -1308,7 +1308,8 @@ export default function ReviterStudio() {
     const requestId = ++floorRegionRequestRef.current;
     const analysisLevelIds = connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId];
     const worker = floorRegionWorkerRef.current ?? new Worker(
-      new URL("./studio/floor-regions.worker.ts", import.meta.url),
+      staticWorkerUrl("regions")
+        ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
       { type: "module" },
     );
     floorRegionWorkerRef.current = worker;

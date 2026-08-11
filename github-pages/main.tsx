@@ -11,6 +11,8 @@ globalThis.__REVITER_STATIC_WORKERS__ = {
   rvt: new URL("./assets/worker-runtime.js", document.baseURI).href,
   ifc: new URL("./assets/ifc-worker-runtime.js", document.baseURI).href,
   dwg: new URL("./assets/dwg-worker-runtime.js", document.baseURI).href,
+  plan: new URL("./assets/floor-plan-worker-runtime.js", document.baseURI).href,
+  regions: new URL("./assets/floor-regions-worker-runtime.js", document.baseURI).href,
 };
 
 const root = document.getElementById("root");
