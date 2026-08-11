@@ -15,13 +15,42 @@ export type NativeMaterialPaletteEntry = {
 };
 
 /**
+ * Convert an 8-bit sRGB triple — the space RVT persists its packed render
+ * colour in — to the linear-sRGB factors `MaterialData.baseColorLinear` holds.
+ *
+ * This is the single definition of the transfer function for that field. It
+ * belongs here rather than beside either producer's unpacking code because both
+ * of them, the record-scanner palette below and `decodeRvtMaterialDefinitions`
+ * in `native-decoder.ts`, feed the same `ConvertResult.materials` array and so
+ * must agree to the bit. The curve is the IEC 61966-2-1 sRGB EOTF.
+ */
+export function srgbBytesToLinear(
+  rgb: readonly [number, number, number],
+): [number, number, number] {
+  return rgb.map((byte) => {
+    const channel = Math.min(1, Math.max(0, byte / 255));
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+}
+
+/**
  * Convert independently decoded RVT packed colours into renderer materials.
  *
- * The channel values stay as byte/255 factors because that is exactly how the
- * supplied Autodesk derivative encodes the same palette in glTF. Where the
- * persisted `MaterialId.m_transparency` was decoded its complement becomes the
- * alpha channel, and the raw value is carried so a consumer can tell decoded
- * opacity apart from the opaque default a record without the field keeps.
+ * The persisted channels are sRGB bytes, so they go through `srgbBytesToLinear`
+ * before they land in `baseColorLinear`: every consumer of that field reads it
+ * as linear — `THREE.Color.setRGB` defaults to the linear-sRGB working space,
+ * and glTF defines `baseColorFactor` as linear. The supplied Autodesk
+ * derivative does write the raw byte/255 factor into its glTF, which is how
+ * `scripts/audit-rvt-glb-material-palette.ts` byte-matched the two palettes;
+ * that is a property of Autodesk's translator, not a colour space this field
+ * may adopt, and copying it rendered every native material far too bright.
+ *
+ * Where the persisted `MaterialId.m_transparency` was decoded its complement
+ * becomes the alpha channel, and the raw value is carried so a consumer can
+ * tell decoded opacity apart from the opaque default a record without the
+ * field keeps. Alpha carries no transfer function.
  */
 export function buildNativeMaterialPalette(
   definitions: readonly LocatedNativeMaterialDefinition[],
@@ -37,16 +66,16 @@ export function buildNativeMaterialPalette(
   return definitions.flatMap((definition) => {
     const appearance = definition.appearance;
     if (!appearance) return [];
-    const [red, green, blue] = appearance.baseColorSrgb;
+    const [red, green, blue] = srgbBytesToLinear(appearance.baseColorSrgb);
     const transparency = appearance.transparency;
     return [{
       materialElementId: definition.elementId,
       material: {
         name: definition.name,
         baseColorLinear: [
-          red / 255,
-          green / 255,
-          blue / 255,
+          red,
+          green,
+          blue,
           transparency != null ? Math.min(1, Math.max(0, 1 - transparency)) : 1,
         ],
         // The Autodesk derivative palette is entirely non-metallic and uses

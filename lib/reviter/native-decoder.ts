@@ -1,3 +1,4 @@
+import { srgbBytesToLinear } from "./material-palette.ts";
 import type { Bounds3, MaterialData } from "./types";
 
 const ARC_WALL_2023_TAG = 0x0191;
@@ -29,24 +30,24 @@ export type RvtMaterialRecord = {
   transparency?: number | null;
 };
 
-function srgbToLinear(value: number): number {
-  return value <= 0.04045
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-/** Convert typed rvt-rs Material fields into glTF-compatible linear PBR data. */
+/**
+ * Convert typed rvt-rs Material fields into glTF-compatible linear PBR data.
+ *
+ * `color_packed` is an sRGB triple with red in the low byte; it shares both the
+ * layout and the colour space of the record-scanner palette, so it shares that
+ * palette's single `srgbBytesToLinear` definition too.
+ */
 export function decodeRvtMaterialDefinitions(source: RvtMaterialRecord[]): MaterialData[] {
   return source.flatMap((material) => {
     if (!material.name) return [];
     const packed = material.color_packed;
     const rgb = packed == null
       ? [0.522, 0.522, 0.522]
-      : [
-          srgbToLinear((packed & 0xff) / 255),
-          srgbToLinear(((packed >> 8) & 0xff) / 255),
-          srgbToLinear(((packed >> 16) & 0xff) / 255),
-        ];
+      : srgbBytesToLinear([
+          packed & 0xff,
+          (packed >> 8) & 0xff,
+          (packed >> 16) & 0xff,
+        ]);
     return [{
       name: material.name,
       baseColorLinear: [
