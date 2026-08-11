@@ -147,6 +147,12 @@ export function FloorMiniMap({
   // While walking, keep the map on the storey the camera is actually on, the
   // way storey-view minimaps do; zoom and pan are left alone so the switch
   // never yanks the view around.
+  //
+  // Deliberately Walk only. Orbiting is how you look at a building from
+  // outside, and switching storey under every drag would take away holding the
+  // map on one floor while you circle the whole model. Orbit says where it is
+  // looking in the header instead — "looking 8'-2" below" — rather than moving
+  // the map out from under you.
   const followCameraFloor = useEffectEvent((position: [number, number, number], walking: boolean) => {
     if (!followCamera || !walking || !levels.length) return;
     const nearest = levels.reduce((closest, level) =>
@@ -175,9 +181,10 @@ export function FloorMiniMap({
       const target = tuple(canvas?.dataset.modelCameraTargetFeet);
       const walking = canvas?.dataset.navigationState === "walk";
       setCamera(position && direction ? { position, direction, target, walking } : null);
-      // Follow the floor you are standing on while walking, and the floor you
-      // are looking at while orbiting — in Orbit the eye is outside the
-      // building, so its own height says nothing about which storey is in view.
+      // The point that means something: your feet while walking, and what you
+      // are looking at while orbiting, because in Orbit the eye is outside the
+      // building and its own height says nothing about the storey in view.
+      // Only Walk acts on it — see followCameraFloor.
       const floorPoint = walking ? position : target ?? position;
       if (floorPoint) followCameraFloor(floorPoint, walking);
     };
