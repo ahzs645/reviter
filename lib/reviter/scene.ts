@@ -29,7 +29,7 @@ import type {
   MeshData,
   Segment,
   Vec3,
-} from "./types";
+} from "./types.ts";
 
 const MESH_BATCH_SIZE = 2_000;
 

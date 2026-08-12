@@ -8,7 +8,7 @@
  * what makes the signature strict enough to trust: a false positive would have
  * to reproduce 48 bytes exactly.
  */
-import type { Bounds3, ElementBoundsRecord } from "./types";
+import type { Bounds3, ElementBoundsRecord } from "./types.ts";
 
 const BOUNDS_DUPLICATE_BYTES = 48;
 

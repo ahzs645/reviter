@@ -7,7 +7,7 @@
  * evidence of coordinate-like data, not a decoded Revit element model, and every
  * caller labels it that way.
  */
-import type { ConvertOptions, LevelBand, Segment, Vec3 } from "./types";
+import type { ConvertOptions, LevelBand, Segment, Vec3 } from "./types.ts";
 
 /**
  * Coordinate windows for the diagnostic segment scanner, in feet.

@@ -1,5 +1,5 @@
 /** JSON audit report: what was decoded, from what evidence, and what was not. */
-import type { ConvertResult, ElementBoundsRecord } from "./types";
+import type { ConvertResult, ElementBoundsRecord } from "./types.ts";
 import {
   bimSemanticFidelity,
   modelTreeFidelity,

@@ -1,13 +1,13 @@
 /// <reference lib="webworker" />
 
-import { convertRvtBytes } from "./convert";
-import { decodeRvtMaterialDefinitions } from "./native-decoder";
-import { partAtomMetadataFromSummary } from "./part-atom";
+import { convertRvtBytes } from "./convert.ts";
+import { decodeRvtMaterialDefinitions } from "./native-decoder.ts";
+import { partAtomMetadataFromSummary } from "./part-atom.ts";
 import {
   STANDARDS_READER_RANGE_LABEL,
   standardsReaderSupports,
-} from "./reader-support";
-import type { MaterialData, ReaderDiagnostics, WorkerRequest, WorkerResponse } from "./types";
+} from "./reader-support.ts";
+import type { MaterialData, ReaderDiagnostics, WorkerRequest, WorkerResponse } from "./types.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 

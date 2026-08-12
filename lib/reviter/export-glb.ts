@@ -1,5 +1,5 @@
 /** glTF 2.0 binary export of the recovered scene. */
-import type { ConvertResult } from "./types";
+import type { ConvertResult } from "./types.ts";
 
 function vectorExtents(values: Float32Array): { min: number[]; max: number[] } {
   const min = [Infinity, Infinity, Infinity];

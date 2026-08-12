@@ -23,7 +23,7 @@ import type {
   ElementBoundsRecord,
   MaterialData,
   MeshGeometrySource,
-} from "./types";
+} from "./types.ts";
 import type { ReviewedRoom } from "./room-review.ts";
 
 const METRES_PER_FOOT = 0.3048;

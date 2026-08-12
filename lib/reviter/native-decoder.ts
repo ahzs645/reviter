@@ -1,5 +1,5 @@
 import { srgbBytesToLinear } from "./material-palette.ts";
-import type { Bounds3, MaterialData } from "./types";
+import type { Bounds3, MaterialData } from "./types.ts";
 
 const ARC_WALL_2023_TAG = 0x0191;
 const ARC_WALL_2023_VARIANT = 0x07fa;

@@ -1,5 +1,5 @@
 /** Plan-view SVG of the recovered model or one persisted Revit level. */
-import type { ConvertResult, ElementBoundsRecord, LevelBand, Segment } from "./types";
+import type { ConvertResult, ElementBoundsRecord, LevelBand, Segment } from "./types.ts";
 import { cachedDerivedRoomsForLevel, type DerivedRoomResult } from "./derived-rooms.ts";
 
 export type PlanSvgOptions = {

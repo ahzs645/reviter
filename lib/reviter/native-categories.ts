@@ -27,7 +27,7 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 
-import type { ElementBoundsRecord, NativeCategorySummary } from "./types";
+import type { ElementBoundsRecord, NativeCategorySummary } from "./types.ts";
 
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
 const CATEGORY_ID_MIN = -2_100_000;
