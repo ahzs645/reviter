@@ -1093,7 +1093,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
 }
 
 /** The gate that held a record out of the scene, as named in the sources above. */
-export type HoldBackReason =
+type HoldBackReason =
   | "wrapper"
   | "face-hull-only"
   | "stair-companion"

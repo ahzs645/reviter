@@ -106,12 +106,6 @@ export type SketchCurve = {
   interior: Point3[];
 };
 
-/** A closed boundary loop, as world-space vertices in ring order. */
-export type BoundaryLoop = {
-  elementId: number;
-  vertices: Point3[];
-};
-
 function coordinateLike(value: number): boolean {
   if (!Number.isFinite(value)) return false;
   // Only a finite value that overshoots is worth reporting. A NaN or an

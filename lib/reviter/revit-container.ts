@@ -317,7 +317,7 @@ export function revitStoredPageOffset(payloadOffset: number): number {
  * flag bits are set removes every false signature observed in the corpus, and
  * the optional-field scans are bounded so a surviving one stays cheap.
  */
-export function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
+function gzipHeaderLength(data: Uint8Array, offset: number): number | null {
   if (
     offset + 10 > data.length ||
     data[offset] !== GZIP_MAGIC[0] ||

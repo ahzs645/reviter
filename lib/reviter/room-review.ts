@@ -1,5 +1,6 @@
 import type { DerivedRoom, DerivedRoomGap, DerivedRoomResult } from "./derived-rooms.ts";
 
+/** Sidecar format version. Named because it appears in the exported shape. */
 export const ROOM_REVIEW_VERSION = 1 as const;
 
 export type RoomDisposition = "unreviewed" | "accepted" | "dismissed";
@@ -17,11 +18,11 @@ export type GapDisposition = "unreviewed" | "treat-as-closed" | "dismissed";
  * permitted set, not a formatting hint, because the value reaches STEP as a
  * bare `.ENUM.` token that no escaping function can make safe.
  */
-export const SPACE_PREDEFINED_TYPES = ["INTERNAL", "EXTERNAL", "NOTDEFINED"] as const;
+const SPACE_PREDEFINED_TYPES = ["INTERNAL", "EXTERNAL", "NOTDEFINED"] as const;
 
 export type SpacePredefinedType = (typeof SPACE_PREDEFINED_TYPES)[number];
 
-export function isSpacePredefinedType(value: unknown): value is SpacePredefinedType {
+function isSpacePredefinedType(value: unknown): value is SpacePredefinedType {
   return SPACE_PREDEFINED_TYPES.includes(value as SpacePredefinedType);
 }
 

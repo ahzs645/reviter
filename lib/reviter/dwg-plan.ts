@@ -419,7 +419,7 @@ function escapeXml(value: string) {
 }
 
 /** AutoCAD `$INSUNITS`, for the few files that declare one. */
-export const DWG_UNIT_FEET: Readonly<Record<number, number>> = {
+const DWG_UNIT_FEET: Readonly<Record<number, number>> = {
   1: 1 / 12,       // inches
   2: 1,            // feet
   4: 1 / 304.8,    // millimetres

@@ -7,7 +7,7 @@
  *
  * Addresses are ELF-relative virtual addresses (RVAs), not process addresses.
  */
-export type Revit2026SourceRepresentationTarget = {
+type Revit2026SourceRepresentationTarget = {
   sourceSlot: number;
   targetClass: string;
   registrationRva: number;

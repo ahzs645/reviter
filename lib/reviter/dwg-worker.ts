@@ -60,7 +60,7 @@ export type DwgWorkerResult = {
   insunits: number | null;
 };
 
-export type DwgWorkerResponse = WorkerEnvelope<DwgWorkerResult>;
+type DwgWorkerResponse = WorkerEnvelope<DwgWorkerResult>;
 
 /**
  * The decoder's stages, in the order it enters them.

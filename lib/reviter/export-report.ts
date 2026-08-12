@@ -6,7 +6,7 @@ import {
   modelTreeReport,
 } from "./ownership-report.ts";
 
-export type ElementManifestGeometrySource =
+type ElementManifestGeometrySource =
   | "paired-ifc-tessellation"
   | "analytic-plane-solid"
   | "analytic-cylinder-arc"

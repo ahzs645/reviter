@@ -6,7 +6,7 @@ import {
 export const REVIT_2026_GNODE_SOURCE_CLASS = 1399;
 export const REVIT_2026_GINFO_SOURCE_CLASS = 1400;
 export const REVIT_2026_GPOLYMESH_SOURCE_CLASS = 2237;
-export const REVIT_2026_GPOLYMESH_TOPOLOGY_PROPERTY =
+const REVIT_2026_GPOLYMESH_TOPOLOGY_PROPERTY =
   "OdBmGPolyMesh.m_pFacetedTopology";
 
 export type Revit2026GInfoStatic = {

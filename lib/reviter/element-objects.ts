@@ -97,7 +97,7 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
  * Measured per file elsewhere; here it is only a starting guess that every
  * candidate is then made to justify through the length echo.
  */
-export const DEFAULT_OBJECT_MARKER = 0x08c6;
+const DEFAULT_OBJECT_MARKER = 0x08c6;
 
 /**
  * Which markers head verified objects on this page, and how many each heads.

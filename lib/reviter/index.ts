@@ -1,48 +1,101 @@
+/**
+ * The library's public surface.
+ *
+ * Everything re-exported here is a name some consumer imports as
+ * `from "@/lib/reviter"`, plus the types those names carry in their
+ * signatures. Nothing else belongs on this list: the modules underneath are
+ * deep-importable by path, which is how the tests, the audit scripts and the
+ * library's own internals reach the parts that are not public API. A name that
+ * appears here is a commitment; a name that only ever had one caller inside
+ * `lib/reviter/` is not one.
+ *
+ * One statement per module, grouped by what the module is for. The order below
+ * follows the pipeline: read the file, understand what is in it, recover
+ * geometry and relations, then draw, review and export.
+ */
+
+// ─── Conversion ──────────────────────────────────────────────────────────────
+// The entry point and the vocabulary its result is written in.
+
 export { convertRvtBytes } from "./convert.ts";
-export {
-  applyIfcReferenceRepairs,
-  incompleteExpectedStairTopologyIds,
-} from "./reference-assisted-recovery.ts";
+export type {
+  Bounds3,
+  ConvertFailure,
+  ConvertOptions,
+  ConvertOutcome,
+  ConvertResult,
+  ConvertStats,
+  CoverageSummary,
+  DecoderCoverage,
+  ElemTableLayout,
+  ElementBoundsRecord,
+  ElementParameter,
+  GateStatus,
+  IfcElementTypeMatch,
+  IfcMatchedElement,
+  IfcReferenceManifest,
+  IfcWorkerRequest,
+  LevelBand,
+  MaterialData,
+  MeshData,
+  MeshGeometrySource,
+  NativeCategoryCodeConsensus,
+  NativeCategoryCount,
+  NativeCategorySource,
+  NativeCategorySummary,
+  NativeProfileLocator,
+  PairedRegressionResult,
+  PartitionName,
+  PartitionRecordLocator,
+  Point3,
+  ProgressUpdate,
+  ReaderDiagnostics,
+  ReferenceMeshData,
+  RegressionGate,
+  RvtElementIndex,
+  RvtRegressionInput,
+  SchemaClass,
+  SchemaReference,
+  SchemaSummary,
+  Segment,
+  StreamCoverage,
+  StreamDecoder,
+  Vec3,
+  WorkerRequest,
+} from "./types.ts";
+
+// ─── Source-file identity and metadata ───────────────────────────────────────
+// What the file says about itself before any geometry is decoded.
+
 export {
   parseBasicFileInfoProperties,
-  redactBasicFileInfoProperties,
   revitVersionFromBasicFileInfo,
+  type BasicFileInfoProperties,
 } from "./basic-file-info.ts";
-export type { BasicFileInfoProperties } from "./basic-file-info.ts";
-export { decodeRevitTextBytes } from "./revit-text-encoding.ts";
 export type { DecodedRevitText, RevitTextEncoding } from "./revit-text-encoding.ts";
-export { dwgThumbnailBlob, extractDwgThumbnail } from "./dwg-thumbnail.ts";
-export { formatFeetInches } from "./format-length.ts";
-export type { DwgThumbnail } from "./dwg-thumbnail.ts";
+export type { RevitExternalFileReference, RevitTransmissionData } from "./transmission-data.ts";
+export type { PersistedCadFileName } from "./cad-files.ts";
+export { STANDARDS_READER_RANGE_LABEL, standardsReaderSupports } from "./reader-support.ts";
+export { classCoverage, type ClassCoverage } from "./coverage.ts";
+
+// ─── Revit content libraries ─────────────────────────────────────────────────
+// Standalone Autodesk formats that travel beside an RVT: family libraries,
+// shared parameters, type catalogues, classification taxonomies, and the
+// optional Revit 2021 vocabulary for reading old files.
+
 export {
   indexFamilyLibraryFiles,
   searchFamilyLibrary,
-  serializableFamilyLibraryIndex,
+  type FamilyLibraryEntry,
+  type FamilyLibraryError,
+  type FamilyLibraryIndex,
+  type FamilyLibraryProgress,
 } from "./family-library.ts";
-export type {
-  FamilyLibraryEntry,
-  FamilyLibraryError,
-  FamilyLibraryIndex,
-  FamilyLibraryProgress,
-} from "./family-library.ts";
-export { partAtomMetadataFromSummary } from "./part-atom.ts";
-export { parsePartAtomXml } from "./part-atom.ts";
-export { parseProjectInformationArchive } from "./project-information.ts";
-export { parseRevitTransmissionData } from "./transmission-data.ts";
-export type {
-  RevitExternalFileReference,
-  RevitTransmissionData,
-  RevitTransmissionDataOptions,
-} from "./transmission-data.ts";
-export { scanPersistedDwgFileNames } from "./cad-files.ts";
-export type { PersistedCadFileName } from "./cad-files.ts";
-export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg, withFloorReferenceIntrinsicSize } from "./floor-reference-catalog.ts";
-export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog.ts";
 export type {
   PartAtomDesignFile,
+  PartAtomFamilyType,
   PartAtomFeature,
   PartAtomFeatureGroup,
-  PartAtomFamilyType,
   PartAtomLink,
   PartAtomMetadata,
   PartAtomParameter,
@@ -50,115 +103,43 @@ export type {
 } from "./part-atom.ts";
 export {
   compareSharedParameterDocuments,
-  deduplicateSharedParameterDocument,
   mergeSharedParameterDocuments,
   parseSharedParameterBytes,
-  parseSharedParameterFile,
-  regroupSharedParameters,
   validateSharedParameterDocument,
   writeSharedParameterFile,
+  type DecodedSharedParameterDocument,
+  type SharedParameterComparison,
+  type SharedParameterDefinition,
+  type SharedParameterDifference,
+  type SharedParameterDocument,
+  type SharedParameterGroup,
+  type SharedParameterIssue,
 } from "./shared-parameters.ts";
-export type {
-  DecodedSharedParameterDocument,
-  SharedParameterComparison,
-  SharedParameterDefinition,
-  SharedParameterDifference,
-  SharedParameterDocument,
-  SharedParameterGroup,
-  SharedParameterIssue,
-} from "./shared-parameters.ts";
-export { parseTypeCatalog, parseTypeCatalogBytes, writeTypeCatalog } from "./type-catalog.ts";
-export type {
-  DecodedTypeCatalog,
-  TypeCatalog,
-  TypeCatalogParameter,
-  TypeCatalogType,
-} from "./type-catalog.ts";
+export type { TypeCatalog, TypeCatalogParameter, TypeCatalogType } from "./type-catalog.ts";
 export {
   loadBundledOmniClassTaxonomy,
-  mergeOmniClassTaxonomies,
-  omniClassForPartAtom,
-  parseOmniClassTaxonomy,
   searchOmniClassTaxonomy,
-  writeOmniClassTaxonomy,
+  type BundledOmniClassEdition,
+  type OmniClassItem,
 } from "./omniclass.ts";
-export type { BundledOmniClassEdition, OmniClassItem } from "./omniclass.ts";
-export { loadLegacyRevit2021Api } from "./legacy-revit-2021.ts";
-export type {
-  LegacyCategoryInfo,
-  LegacyDisplayUnitInfo,
-  LegacyNamedValue,
-  LegacyParameterTypeInfo,
-  LegacyRevit2021Api,
-  LegacyRevit2021EnumName,
-  LegacyRevit2021MapName,
-  LegacySearchResult,
-  LegacyUnitSymbolInfo,
-  LegacyUnitTypeInfo,
+export {
+  loadLegacyRevit2021Api,
+  type LegacyCategoryInfo,
+  type LegacyDisplayUnitInfo,
+  type LegacyNamedValue,
+  type LegacyParameterTypeInfo,
+  type LegacyRevit2021Api,
+  type LegacyRevit2021EnumName,
+  type LegacyRevit2021MapName,
+  type LegacySearchResult,
+  type LegacyUnitSymbolInfo,
+  type LegacyUnitTypeInfo,
 } from "./legacy-revit-2021.ts";
-export {
-  boundsOfRecords,
-  detectDuplicatedBoundsRecord,
-  detectDuplicatedBoundsRecords,
-  solidBounds,
-} from "./bounds-records.ts";
-export type { DetectedBoundsRecord } from "./bounds-records.ts";
-export { boxDifference, drawnBounds } from "./drawn-bounds.ts";
-export type { Box } from "./drawn-bounds.ts";
-export { meshBoundsByElement } from "./mesh-element-bounds.ts";
-export {
-  packMeshSurfaceOrientationSignatures,
-  slopedSurfaceFraction,
-} from "./surface-orientation.ts";
-export {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  isRevitChecksumPagedStream,
-  REVIT_PAGE_CHECKSUM_BYTES,
-  REVIT_PAGE_PAYLOAD_BYTES,
-  REVIT_STORED_PAGE_BYTES,
-  REVIT_WINDOW_BYTES,
-  revitStoredPageOffset,
-  revitWindowTail,
-  stripRevitPageChecksums,
-} from "./revit-container.ts";
-export {
-  buildBoundsMeshes,
-  boundsPlanSegments,
-  displayMaterials,
-  displayRole,
-  elementDisplayRoles,
-  glazingElementIds,
-  levelsForBounds,
-  levelsFromRelations,
-  selectDisplayBounds,
-} from "./scene.ts";
-export type { DisplayRole, DisplaySelection } from "./scene.ts";
-export { scanSegments, segmentScaleFor } from "./segment-scan.ts";
-export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories.ts";
-export { builtInParameterName, parameterDisplayName } from "./built-in-parameters.ts";
-export { chainElementObjects, dominantMarker } from "./element-objects.ts";
-export { collectElementParameters } from "./element-parameters.ts";
-export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces.ts";
-export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry.ts";
-export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry.ts";
-export type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
-export {
-  resolveFamilySymbolRelations,
-  resolveGeometryMaterialAssignments,
-  scanPersistedRelationshipCandidates,
-} from "./family-material-relations.ts";
-export { resolveHostRelations, scanHostRelationCandidates } from "./host-relations.ts";
-export type {
-  HostRelationCandidate,
-  NativeHostRelation,
-} from "./host-relations.ts";
-export {
-  resolveAssociatedLevelRelations,
-  REVIT_2027_LEVEL_MARKER,
-  scanAssociatedLevelRelationCandidates,
-} from "./level-relations.ts";
+
+// ─── Recovered native relations ──────────────────────────────────────────────
+// Element-to-element evidence lifted out of the partition streams.
+
+export type { HostRelationCandidate, NativeHostRelation } from "./host-relations.ts";
 export type {
   AssociatedLevelFieldOffset,
   AssociatedLevelRelationCandidate,
@@ -169,177 +150,113 @@ export type {
   GeometryMaterialCandidate,
   NativeFamilySymbolRelation,
   NativeGeometryMaterialAssignment,
-  PersistedRelationshipScan,
 } from "./family-material-relations.ts";
-export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves.ts";
-export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
-export { tessellateNeutralBrep, tessellatePlanarBrep } from "./brep-tessellator.ts";
-export type {
-  BrepCylinderSurface,
-  BrepMatrix4,
-  BrepParamPoint2,
-  BrepPlaneSurface,
-  BrepPoint3,
-  BrepProvenance,
-  BrepSurface,
-  BrepTessellationIssue,
-  BrepTessellationIssueCode,
-  BrepTessellationOptions,
-  BrepTessellationResult,
-  BrepTrimCurve,
-  BrepTrimLoop,
-  NeutralBrep,
-  NeutralBrepFace,
-  NeutralFaceMesh,
-  NeutralMeshFaceGroup,
-} from "./brep-tessellator.ts";
-export { ringArea, triangulate } from "./polygon.ts";
-export type { Point2 } from "./polygon.ts";
-export { collectTypeLinks } from "./element-types.ts";
-export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
-export type { ElementObject } from "./element-objects.ts";
-export { parseSchemaTags, summariseSchema } from "./schema.ts";
-export { parsePartitionNames } from "./partition-names.ts";
-export { measureStream, summariseCoverage } from "./stream-coverage.ts";
-export type { SegmentScale } from "./segment-scan.ts";
+
+// ─── Geometry and the 3-D viewer ─────────────────────────────────────────────
+
+export type { Box } from "./drawn-bounds.ts";
+export { meshBoundsByElement } from "./mesh-element-bounds.ts";
+export { packMeshSurfaceOrientationSignatures } from "./surface-orientation.ts";
 export {
-  decodeArcWall2023Record,
-  decodeRvtMaterialDefinitions,
-  decoderPlanForVersion,
-  scanArcWall2023Records,
-} from "./native-decoder.ts";
-export { detectElemTableLayout, parseElemTable } from "./elem-table.ts";
-export {
-  decodeRevitDocumentHistory,
-  decodeRevitNativeIdentities,
-  formatNativeRevitUniqueId,
-  formatRevitGuid,
-} from "./native-identity.ts";
-export {
-  applyNativeCategories,
-  categoryDisplayName,
-  collectCategoryTokens,
-  deriveRecordCodeCategories,
-  isNamedCategory,
-  recordCodeKey,
-  resolveElementCategories,
-} from "./native-categories.ts";
-export { classCoverage } from "./coverage.ts";
-export { doorLeafCorners } from "./door-leaf.ts";
-export type { WallRun } from "./door-leaf.ts";
-export type { ClassCoverage } from "./coverage.ts";
-export { compareRvtToIfc } from "./regression.ts";
-export {
-  STANDARDS_READER_MAX_VERSION,
-  STANDARDS_READER_MIN_VERSION,
-  STANDARDS_READER_RANGE_LABEL,
-  standardsReaderSupports,
-} from "./reader-support.ts";
-export { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes.ts";
-export {
-  boundsDimensions,
   CAMERA_PRESETS,
-  cameraPoseForPreset,
   DEFAULT_CAMERA_PRESET,
-  FEET_PER_METRE,
-  isPlanPreset,
-  referenceRegistration,
-  solidElementBounds,
+  boundsDimensions,
+  cameraPoseForPreset,
+  type CameraPose,
+  type CameraPreset,
+  type NavigationMode,
+  type RenderMode,
 } from "./viewer.ts";
+
+// ─── Rooms and review ────────────────────────────────────────────────────────
+// Regions inferred from recovered barriers, and the human dispositions that
+// promote them to named rooms.
+
 export {
-  downloadBlob,
-  elementManifest,
-  makeDxf,
-  makeGlb,
-  makeIfc,
-  makeIfcCenterlines,
-  makeObj,
-  makeFloorPlateSvg,
-  makeArchitecturalFloorSvg,
-  architecturalPlanSummary,
-  planDrawingFrame,
-  planWorldPoint,
-  connectedFloorPlanGroup,
-  connectedFloorPlanGroups,
+  deriveRoomsForLevels,
+  type DerivedRoom,
+  type DerivedRoomGap,
+  type DerivedRoomOptions,
+  type DerivedRoomResult,
+} from "./derived-rooms.ts";
+export {
+  mergeRoomReview,
+  reconcileRoomReview,
+  type GapDisposition,
+  type ReviewedGap,
+  type ReviewedRoom,
+  type RoomDetails,
+  type RoomDisposition,
+  type RoomReviewState,
+} from "./room-review.ts";
+
+// ─── Paired-IFC reference analysis ───────────────────────────────────────────
+
+export {
+  applyIfcReferenceRepairs,
+  incompleteExpectedStairTopologyIds,
+  type IfcReferenceRepairOptions,
+} from "./reference-assisted-recovery.ts";
+
+// ─── Drawings and open-format exports ────────────────────────────────────────
+// One module per output format behind `./exports.ts`; import a single format
+// directly from its module when bundle size matters.
+
+export {
   IDENTITY_FLOOR_REFERENCE_TRANSFORM,
   applyFloorReferenceTransform,
   composeFloorReferenceTransform,
+  connectedFloorPlanGroup,
+  connectedFloorPlanGroups,
   decomposeFloorReferenceTransform,
+  downloadBlob,
   fitFloorReferenceTransform,
-  floorReferenceTransformAttribute,
-  makeFloorReferenceAlignment,
-  parseFloorReferenceAlignment,
   floorPlateBounds,
-  floorPlateSvgDataUrl,
-  makePlanSvg,
   floorPlateLevels,
-  floorPlateRecords,
-  planSegments,
+  floorPlateSvgDataUrl,
+  floorReferenceTransformAttribute,
+  makeArchitecturalFloorSvg,
+  makeDxf,
+  makeFloorPlateSvg,
+  makeFloorReferenceAlignment,
+  makeGlb,
+  makeIfcCenterlines,
+  makeObj,
+  makePlanSvg,
   makeReport,
   outputName,
+  parseFloorReferenceAlignment,
+  planDrawingFrame,
+  planWorldPoint,
+  type ArchitecturalPlanRoomLabel,
+  type ArchitecturalPlanSvgOptions,
+  type ConnectedFloorPlanConnection,
+  type ConnectedFloorPlanGroup,
+  type FloorPlateLevel,
+  type FloorPlateSvgOptions,
+  type FloorReferenceAlignment,
+  type FloorReferenceControlPair,
+  type FloorReferencePoint,
+  type FloorReferenceTransform,
+  type PlanDrawingFrame,
+  type PlanSvgOptions,
+  type PlanTheme,
 } from "./exports.ts";
-export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms.ts";
-export type {
-  DerivedRoom,
-  DerivedRoomGap,
-  DerivedRoomOptions,
-  DerivedRoomResult,
-} from "./derived-rooms.ts";
-export { isReviewedGap, isReviewedRoom, mergeRoomReview, reconcileRoomReview, ROOM_REVIEW_VERSION } from "./room-review.ts";
-export type { GapDisposition, ReviewedGap, ReviewedRoom, RoomDetails, RoomDisposition, RoomReviewSidecar, RoomReviewState } from "./room-review.ts";
-export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports.ts";
-export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports.ts";
 export type { IfcExportOptions } from "./export-ifc.ts";
-export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./exports.ts";
-export type {
-  FloorReferenceAlignment,
-  FloorReferenceControlPair,
-  FloorReferencePoint,
-  FloorReferenceTransform,
-} from "./exports.ts";
-export type {
-  Bounds3,
-  ConvertFailure,
-  ConvertOptions,
-  ConvertOutcome,
-  ConvertResult,
-  ConvertStats,
-  DecoderCoverage,
-  ElemTableLayout,
-  ElementBoundsRecord,
-  GateStatus,
-  IfcElementTypeMatch,
-  IfcMatchedElement,
-  IfcReferenceManifest,
-  IfcWorkerRequest,
-  IfcWorkerResponse,
-  LevelBand,
-  MaterialData,
-  MeshData,
-  MeshGeometrySource,
-  NativeCategoryCodeConsensus,
-  NativeCategoryCount,
-  NativeCategorySource,
-  NativeCategorySummary,
-  NativeProfileLocator,
-  SchemaClass,
-  SchemaReference,
-  SchemaSummary,
-  CoverageSummary,
-  PartitionName,
-  StreamCoverage,
-  StreamDecoder,
-  ProgressUpdate,
-  ReaderDiagnostics,
-  ReferenceMeshData,
-  RegressionGate,
-  RvtElementIndex,
-  RvtRegressionInput,
-  PairedRegressionResult,
-  PartitionRecordLocator,
-  Segment,
-  Vec3,
-  WorkerRequest,
-  WorkerResponse,
-} from "./types.ts";
-export type { CameraPose, CameraPreset, NavigationMode, RenderMode } from "./viewer.ts";
+
+// ─── Reference drawings ──────────────────────────────────────────────────────
+// Supplied CAD floor plans registered against the recovered model.
+
+export {
+  cropFloorReferenceCatalogSvg,
+  parseFloorReferenceCatalogSvg,
+  withFloorReferenceIntrinsicSize,
+  type FloorReferenceCatalog,
+  type FloorReferenceCatalogBounds,
+  type FloorReferenceCatalogSection,
+} from "./floor-reference-catalog.ts";
+export { dwgThumbnailBlob, extractDwgThumbnail, type DwgThumbnail } from "./dwg-thumbnail.ts";
+
+// ─── Presentation helpers ────────────────────────────────────────────────────
+
+export { formatFeetInches } from "./format-length.ts";

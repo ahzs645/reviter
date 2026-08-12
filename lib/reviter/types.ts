@@ -32,7 +32,7 @@ export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.t
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
 export type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
-export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
+export type { Point3, SketchCurve } from "./sketch-curves.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };

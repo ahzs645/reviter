@@ -22,10 +22,10 @@
  */
 
 /** Oldest release the vendored standards-aware reader classifies. */
-export const STANDARDS_READER_MIN_VERSION = 2016;
+const STANDARDS_READER_MIN_VERSION = 2016;
 
 /** Newest release the vendored standards-aware reader classifies. */
-export const STANDARDS_READER_MAX_VERSION = 2026;
+const STANDARDS_READER_MAX_VERSION = 2026;
 
 /** Human-readable form of the supported range, for user-facing text. */
 export const STANDARDS_READER_RANGE_LABEL =

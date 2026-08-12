@@ -25,7 +25,7 @@ export type SegmentScale = {
   minMagnitude: number;
 };
 
-export const PROJECT_SEGMENT_SCALE: SegmentScale = {
+const PROJECT_SEGMENT_SCALE: SegmentScale = {
   minLength: 2,
   maxLength: 400,
   minZ: -50,

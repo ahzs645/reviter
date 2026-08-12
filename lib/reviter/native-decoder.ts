@@ -142,19 +142,3 @@ export function decodeArcWall2023Record(
     confidence: "bounds-hypothesis",
   };
 }
-
-export function scanArcWall2023Records(
-  data: Uint8Array,
-  revitVersion?: number,
-): ArcWall2023BoundsRecord[] {
-  if (revitVersion !== 2023 || data.length < ARC_WALL_2023_RECORD_BYTES) return [];
-  const records: ArcWall2023BoundsRecord[] = [];
-  for (let offset = 0; offset <= data.length - ARC_WALL_2023_RECORD_BYTES; offset += 1) {
-    if (data[offset] !== 0x91 || data[offset + 1] !== 0x01) continue;
-    const record = decodeArcWall2023Record(data, offset, revitVersion);
-    if (!record) continue;
-    records.push(record);
-    offset += ARC_WALL_2023_RECORD_BYTES - 1;
-  }
-  return records;
-}

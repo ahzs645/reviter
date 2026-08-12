@@ -81,11 +81,6 @@ export function categoryDisplayName(categoryId: number): string {
   return name ? humaniseCategoryName(name) : `Revit category ${categoryId}`;
 }
 
-/** True when the category id resolves to a published Revit category name. */
-export function isNamedCategory(categoryId: number): boolean {
-  return builtInCategoryName(categoryId) != null;
-}
-
 /** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
 const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
 
@@ -215,7 +210,7 @@ export function resolveElementCategories(
   return resolved;
 }
 
-export type ResolvedCategoriesWithEvidence = {
+type ResolvedCategoriesWithEvidence = {
   /** Majority category per element, exactly as `resolveElementCategories`. */
   resolved: Map<number, number>;
   /**
@@ -244,7 +239,7 @@ export type ResolvedCategoriesWithEvidence = {
  * the caller override a donated-only label only where stronger evidence — the
  * element's own record-code cluster — actively disagrees.
  */
-export function resolveElementCategoriesWithEvidence(
+function resolveElementCategoriesWithEvidence(
   tokens: CategoryToken[],
   knownElementIds: Set<number>,
   realElementIds: Set<number>,

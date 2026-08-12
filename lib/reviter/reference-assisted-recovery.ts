@@ -147,7 +147,7 @@ function summarizeReferenceGeometry(
  * while rejecting 1622190, whose tagged IfcSlab is only the landing and misses
  * its untagged flights by roughly 20 ft in plan.
  */
-export function hasCompleteRampAggregateReference(
+function hasCompleteRampAggregateReference(
   recovered: ElementGeometrySummary | undefined,
   reference: ElementGeometrySummary | undefined,
   semanticallyComplete: boolean,
@@ -219,7 +219,7 @@ export function hasCompleteRoofReference(
   return nativeRecordBounds ? extentsMatch(nativeRecordBounds) : false;
 }
 
-export function hasIncompleteExpectedStairTopology(
+function hasIncompleteExpectedStairTopology(
   record: ConvertResult["elementBounds"][number] | undefined,
 ): boolean {
   const expected = record?.stairExpectedRiserCount;
