@@ -1,4 +1,4 @@
-import type { Bounds3, ElementBoundsRecord, Vec3 } from "./types";
+import type { Bounds3, ElementBoundsRecord, Vec3 } from "./types.ts";
 
 /**
  * The orientations a CAD user already has names for.

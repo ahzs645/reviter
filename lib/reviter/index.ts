@@ -1,43 +1,43 @@
-export { convertRvtBytes } from "./convert";
+export { convertRvtBytes } from "./convert.ts";
 export {
   applyIfcReferenceRepairs,
   incompleteExpectedStairTopologyIds,
-} from "./reference-assisted-recovery";
+} from "./reference-assisted-recovery.ts";
 export {
   parseBasicFileInfoProperties,
   redactBasicFileInfoProperties,
   revitVersionFromBasicFileInfo,
-} from "./basic-file-info";
-export type { BasicFileInfoProperties } from "./basic-file-info";
-export { decodeRevitTextBytes } from "./revit-text-encoding";
-export type { DecodedRevitText, RevitTextEncoding } from "./revit-text-encoding";
-export { dwgThumbnailBlob, extractDwgThumbnail } from "./dwg-thumbnail";
-export { formatFeetInches } from "./format-length";
-export type { DwgThumbnail } from "./dwg-thumbnail";
+} from "./basic-file-info.ts";
+export type { BasicFileInfoProperties } from "./basic-file-info.ts";
+export { decodeRevitTextBytes } from "./revit-text-encoding.ts";
+export type { DecodedRevitText, RevitTextEncoding } from "./revit-text-encoding.ts";
+export { dwgThumbnailBlob, extractDwgThumbnail } from "./dwg-thumbnail.ts";
+export { formatFeetInches } from "./format-length.ts";
+export type { DwgThumbnail } from "./dwg-thumbnail.ts";
 export {
   indexFamilyLibraryFiles,
   searchFamilyLibrary,
   serializableFamilyLibraryIndex,
-} from "./family-library";
+} from "./family-library.ts";
 export type {
   FamilyLibraryEntry,
   FamilyLibraryError,
   FamilyLibraryIndex,
   FamilyLibraryProgress,
-} from "./family-library";
-export { partAtomMetadataFromSummary } from "./part-atom";
-export { parsePartAtomXml } from "./part-atom";
-export { parseProjectInformationArchive } from "./project-information";
-export { parseRevitTransmissionData } from "./transmission-data";
+} from "./family-library.ts";
+export { partAtomMetadataFromSummary } from "./part-atom.ts";
+export { parsePartAtomXml } from "./part-atom.ts";
+export { parseProjectInformationArchive } from "./project-information.ts";
+export { parseRevitTransmissionData } from "./transmission-data.ts";
 export type {
   RevitExternalFileReference,
   RevitTransmissionData,
   RevitTransmissionDataOptions,
-} from "./transmission-data";
-export { scanPersistedDwgFileNames } from "./cad-files";
-export type { PersistedCadFileName } from "./cad-files";
-export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg, withFloorReferenceIntrinsicSize } from "./floor-reference-catalog";
-export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog";
+} from "./transmission-data.ts";
+export { scanPersistedDwgFileNames } from "./cad-files.ts";
+export type { PersistedCadFileName } from "./cad-files.ts";
+export { cropFloorReferenceCatalogSvg, parseFloorReferenceCatalogSvg, withFloorReferenceIntrinsicSize } from "./floor-reference-catalog.ts";
+export type { FloorReferenceCatalog, FloorReferenceCatalogBounds, FloorReferenceCatalogSection } from "./floor-reference-catalog.ts";
 export type {
   PartAtomDesignFile,
   PartAtomFeature,
@@ -47,7 +47,7 @@ export type {
   PartAtomMetadata,
   PartAtomParameter,
   PartAtomTerm,
-} from "./part-atom";
+} from "./part-atom.ts";
 export {
   compareSharedParameterDocuments,
   deduplicateSharedParameterDocument,
@@ -57,7 +57,7 @@ export {
   regroupSharedParameters,
   validateSharedParameterDocument,
   writeSharedParameterFile,
-} from "./shared-parameters";
+} from "./shared-parameters.ts";
 export type {
   DecodedSharedParameterDocument,
   SharedParameterComparison,
@@ -66,14 +66,14 @@ export type {
   SharedParameterDocument,
   SharedParameterGroup,
   SharedParameterIssue,
-} from "./shared-parameters";
-export { parseTypeCatalog, parseTypeCatalogBytes, writeTypeCatalog } from "./type-catalog";
+} from "./shared-parameters.ts";
+export { parseTypeCatalog, parseTypeCatalogBytes, writeTypeCatalog } from "./type-catalog.ts";
 export type {
   DecodedTypeCatalog,
   TypeCatalog,
   TypeCatalogParameter,
   TypeCatalogType,
-} from "./type-catalog";
+} from "./type-catalog.ts";
 export {
   loadBundledOmniClassTaxonomy,
   mergeOmniClassTaxonomies,
@@ -81,9 +81,9 @@ export {
   parseOmniClassTaxonomy,
   searchOmniClassTaxonomy,
   writeOmniClassTaxonomy,
-} from "./omniclass";
-export type { BundledOmniClassEdition, OmniClassItem } from "./omniclass";
-export { loadLegacyRevit2021Api } from "./legacy-revit-2021";
+} from "./omniclass.ts";
+export type { BundledOmniClassEdition, OmniClassItem } from "./omniclass.ts";
+export { loadLegacyRevit2021Api } from "./legacy-revit-2021.ts";
 export type {
   LegacyCategoryInfo,
   LegacyDisplayUnitInfo,
@@ -95,21 +95,21 @@ export type {
   LegacySearchResult,
   LegacyUnitSymbolInfo,
   LegacyUnitTypeInfo,
-} from "./legacy-revit-2021";
+} from "./legacy-revit-2021.ts";
 export {
   boundsOfRecords,
   detectDuplicatedBoundsRecord,
   detectDuplicatedBoundsRecords,
   solidBounds,
-} from "./bounds-records";
-export type { DetectedBoundsRecord } from "./bounds-records";
-export { boxDifference, drawnBounds } from "./drawn-bounds";
-export type { Box } from "./drawn-bounds";
-export { meshBoundsByElement } from "./mesh-element-bounds";
+} from "./bounds-records.ts";
+export type { DetectedBoundsRecord } from "./bounds-records.ts";
+export { boxDifference, drawnBounds } from "./drawn-bounds.ts";
+export type { Box } from "./drawn-bounds.ts";
+export { meshBoundsByElement } from "./mesh-element-bounds.ts";
 export {
   packMeshSurfaceOrientationSignatures,
   slopedSurfaceFraction,
-} from "./surface-orientation";
+} from "./surface-orientation.ts";
 export {
   asBytes,
   gzipOffsets,
@@ -122,7 +122,7 @@ export {
   revitStoredPageOffset,
   revitWindowTail,
   stripRevitPageChecksums,
-} from "./revit-container";
+} from "./revit-container.ts";
 export {
   buildBoundsMeshes,
   boundsPlanSegments,
@@ -133,47 +133,47 @@ export {
   levelsForBounds,
   levelsFromRelations,
   selectDisplayBounds,
-} from "./scene";
-export type { DisplayRole, DisplaySelection } from "./scene";
-export { scanSegments, segmentScaleFor } from "./segment-scan";
-export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories";
-export { builtInParameterName, parameterDisplayName } from "./built-in-parameters";
-export { chainElementObjects, dominantMarker } from "./element-objects";
-export { collectElementParameters } from "./element-parameters";
-export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces";
-export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry";
-export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry";
-export type { InstancePlacement, LocalBounds } from "./instanced-geometry";
+} from "./scene.ts";
+export type { DisplayRole, DisplaySelection } from "./scene.ts";
+export { scanSegments, segmentScaleFor } from "./segment-scan.ts";
+export { builtInCategoryName, humaniseCategoryName } from "./built-in-categories.ts";
+export { builtInParameterName, parameterDisplayName } from "./built-in-parameters.ts";
+export { chainElementObjects, dominantMarker } from "./element-objects.ts";
+export { collectElementParameters } from "./element-parameters.ts";
+export { collectOwnedSurfaces, collectSurfaces, summariseSurfaces } from "./surfaces.ts";
+export { surfaceQuadsFor, wallArcs, wallArcsFor, wallSolids, wallSolidsFor } from "./native-geometry.ts";
+export { instanceCorners, readInstancePlacement, readLocalBounds } from "./instanced-geometry.ts";
+export type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 export {
   resolveFamilySymbolRelations,
   resolveGeometryMaterialAssignments,
   scanPersistedRelationshipCandidates,
-} from "./family-material-relations";
-export { resolveHostRelations, scanHostRelationCandidates } from "./host-relations";
+} from "./family-material-relations.ts";
+export { resolveHostRelations, scanHostRelationCandidates } from "./host-relations.ts";
 export type {
   HostRelationCandidate,
   NativeHostRelation,
-} from "./host-relations";
+} from "./host-relations.ts";
 export {
   resolveAssociatedLevelRelations,
   REVIT_2027_LEVEL_MARKER,
   scanAssociatedLevelRelationCandidates,
-} from "./level-relations";
+} from "./level-relations.ts";
 export type {
   AssociatedLevelFieldOffset,
   AssociatedLevelRelationCandidate,
   NativeAssociatedLevelRelation,
-} from "./level-relations";
+} from "./level-relations.ts";
 export type {
   FamilySymbolCandidate,
   GeometryMaterialCandidate,
   NativeFamilySymbolRelation,
   NativeGeometryMaterialAssignment,
   PersistedRelationshipScan,
-} from "./family-material-relations";
-export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves";
-export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves";
-export { tessellateNeutralBrep, tessellatePlanarBrep } from "./brep-tessellator";
+} from "./family-material-relations.ts";
+export { assembleRings, boundaryLoopsFor, collectSketchCurves } from "./sketch-curves.ts";
+export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
+export { tessellateNeutralBrep, tessellatePlanarBrep } from "./brep-tessellator.ts";
 export type {
   BrepCylinderSurface,
   BrepMatrix4,
@@ -192,29 +192,29 @@ export type {
   NeutralBrepFace,
   NeutralFaceMesh,
   NeutralMeshFaceGroup,
-} from "./brep-tessellator";
-export { ringArea, triangulate } from "./polygon";
-export type { Point2 } from "./polygon";
-export { collectTypeLinks } from "./element-types";
-export type { ElementParameter, ElementParameterTable } from "./element-parameters";
-export type { ElementObject } from "./element-objects";
-export { parseSchemaTags, summariseSchema } from "./schema";
-export { parsePartitionNames } from "./partition-names";
-export { measureStream, summariseCoverage } from "./stream-coverage";
-export type { SegmentScale } from "./segment-scan";
+} from "./brep-tessellator.ts";
+export { ringArea, triangulate } from "./polygon.ts";
+export type { Point2 } from "./polygon.ts";
+export { collectTypeLinks } from "./element-types.ts";
+export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
+export type { ElementObject } from "./element-objects.ts";
+export { parseSchemaTags, summariseSchema } from "./schema.ts";
+export { parsePartitionNames } from "./partition-names.ts";
+export { measureStream, summariseCoverage } from "./stream-coverage.ts";
+export type { SegmentScale } from "./segment-scan.ts";
 export {
   decodeArcWall2023Record,
   decodeRvtMaterialDefinitions,
   decoderPlanForVersion,
   scanArcWall2023Records,
-} from "./native-decoder";
-export { detectElemTableLayout, parseElemTable } from "./elem-table";
+} from "./native-decoder.ts";
+export { detectElemTableLayout, parseElemTable } from "./elem-table.ts";
 export {
   decodeRevitDocumentHistory,
   decodeRevitNativeIdentities,
   formatNativeRevitUniqueId,
   formatRevitGuid,
-} from "./native-identity";
+} from "./native-identity.ts";
 export {
   applyNativeCategories,
   categoryDisplayName,
@@ -223,19 +223,19 @@ export {
   isNamedCategory,
   recordCodeKey,
   resolveElementCategories,
-} from "./native-categories";
-export { classCoverage } from "./coverage";
-export { doorLeafCorners } from "./door-leaf";
-export type { WallRun } from "./door-leaf";
-export type { ClassCoverage } from "./coverage";
-export { compareRvtToIfc } from "./regression";
+} from "./native-categories.ts";
+export { classCoverage } from "./coverage.ts";
+export { doorLeafCorners } from "./door-leaf.ts";
+export type { WallRun } from "./door-leaf.ts";
+export type { ClassCoverage } from "./coverage.ts";
+export { compareRvtToIfc } from "./regression.ts";
 export {
   STANDARDS_READER_MAX_VERSION,
   STANDARDS_READER_MIN_VERSION,
   STANDARDS_READER_RANGE_LABEL,
   standardsReaderSupports,
-} from "./reader-support";
-export { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes";
+} from "./reader-support.ts";
+export { NO_CLASS_RECORD_CODE, STAIR_COMPANION_CODE } from "./record-codes.ts";
 export {
   boundsDimensions,
   CAMERA_PRESETS,
@@ -245,7 +245,7 @@ export {
   isPlanPreset,
   referenceRegistration,
   solidElementBounds,
-} from "./viewer";
+} from "./viewer.ts";
 export {
   downloadBlob,
   elementManifest,
@@ -277,26 +277,26 @@ export {
   planSegments,
   makeReport,
   outputName,
-} from "./exports";
-export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms";
+} from "./exports.ts";
+export { cachedDerivedRoomsForLevel, deriveRoomsForLevel, deriveRoomsForLevels } from "./derived-rooms.ts";
 export type {
   DerivedRoom,
   DerivedRoomGap,
   DerivedRoomOptions,
   DerivedRoomResult,
-} from "./derived-rooms";
-export { isReviewedGap, isReviewedRoom, mergeRoomReview, reconcileRoomReview, ROOM_REVIEW_VERSION } from "./room-review";
-export type { GapDisposition, ReviewedGap, ReviewedRoom, RoomDetails, RoomDisposition, RoomReviewSidecar, RoomReviewState } from "./room-review";
-export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports";
-export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports";
-export type { IfcExportOptions } from "./export-ifc";
-export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./exports";
+} from "./derived-rooms.ts";
+export { isReviewedGap, isReviewedRoom, mergeRoomReview, reconcileRoomReview, ROOM_REVIEW_VERSION } from "./room-review.ts";
+export type { GapDisposition, ReviewedGap, ReviewedRoom, RoomDetails, RoomDisposition, RoomReviewSidecar, RoomReviewState } from "./room-review.ts";
+export type { FloorPlateLevel, FloorPlateSvgOptions, PlanSvgOptions } from "./exports.ts";
+export type { ArchitecturalPlanSummary, ArchitecturalPlanSvgOptions } from "./exports.ts";
+export type { IfcExportOptions } from "./export-ifc.ts";
+export type { ConnectedFloorPlanConnection, ConnectedFloorPlanGroup } from "./exports.ts";
 export type {
   FloorReferenceAlignment,
   FloorReferenceControlPair,
   FloorReferencePoint,
   FloorReferenceTransform,
-} from "./exports";
+} from "./exports.ts";
 export type {
   Bounds3,
   ConvertFailure,
@@ -341,5 +341,5 @@ export type {
   Vec3,
   WorkerRequest,
   WorkerResponse,
-} from "./types";
-export type { CameraPose, CameraPreset, NavigationMode, RenderMode } from "./viewer";
+} from "./types.ts";
+export type { CameraPose, CameraPreset, NavigationMode, RenderMode } from "./viewer.ts";
