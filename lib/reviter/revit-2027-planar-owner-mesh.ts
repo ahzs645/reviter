@@ -1,33 +1,33 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
 import { tessellatePlanarBrep } from "./brep-tessellator.ts";
 import {
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
-  type Revit2027EdgeLoopStatic,
-  type Revit2027EdgeLoopWithChainEnvelopesStatic,
-} from "./revit-2027-edge-loop-static.ts";
-import {
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
   revit2027GEdgeNativeCurveKind,
-  revit2027GEdgeLoopDirection,
-  revit2027GEdgeLoopNextReference,
-  revit2027GEdgeLoopPreviousReference,
   type Revit2027GEdgeStatic,
 } from "./revit-2027-edge-1423.ts";
-import {
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "./revit-2027-face-static.ts";
-import {
-  bindRevit2027FaceMaterial,
-  type Revit2027MaterialDefinitions,
-} from "./revit-2027-face-material.ts";
+import type { Revit2027FaceStatic } from "./revit-2027-face-static.ts";
+import type { Revit2027MaterialDefinitions } from "./revit-2027-face-material.ts";
 import {
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
-  type Revit2027GRepReplaySpan,
 } from "./revit-2027-grep-replay.ts";
+import {
+  revit2027OwnerMeshIndex,
+  revit2027OwnerSurface,
+  type Revit2027OwnerLoopRecord,
+} from "./revit-2027-owner-mesh-index.ts";
+import {
+  correctedUvRingRoles,
+  createUvRingMatcher,
+  linkRevit2027DirectedLoopEndpoints,
+  revit2027FaceUv,
+  revit2027OwnerFaceMaterialId,
+  revit2027OwnerUvTolerance,
+  revit2027SampledUvRing,
+  uvDistance,
+  walkRevit2027DirectedLoopEdges,
+  type Revit2027FaceUv,
+} from "./revit-2027-owner-mesh-trim.ts";
 import {
   adaptRevit2027PlanarSampledBrep,
   type Revit2027PlanarSampledEdgeUse,
@@ -44,7 +44,6 @@ import {
   type Revit2027PlaneSurface,
 } from "./revit-2027-surfaces.ts";
 
-const DEFAULT_UV_TOLERANCE = 1e-9;
 /**
  * `checkCoedgeLoop` in the audited native BRep filler evaluates adjacent
  * p-curve endpoints in model space and permits an intersection/retiming repair
@@ -116,76 +115,20 @@ export type Revit2027PlanarOwnerMeshOptions = {
   ) => string | number | null | undefined;
 };
 
-type LoopRecord = {
-  token: number;
-  loop: Revit2027EdgeLoopStatic;
-};
-
 type UvMatch = {
   currentEndpoint: 0 | 1;
   nextEndpoint: 0 | 1;
 };
 
-type OrderedEdge = {
-  token: number;
-  edge: Revit2027GEdgeStatic;
-  side: 0 | 1;
-};
-
-function value<T>(span: Revit2027GRepReplaySpan): T {
-  return span.value as T;
-}
-
-function faceMaterialId(
-  faceToken: number,
-  face: Revit2027FaceStatic,
-  options: Revit2027PlanarOwnerMeshOptions,
-  issues: Revit2027PlanarOwnerMeshIssue[],
-): string | number | null {
-  const supplied = options.materialForFace?.(faceToken, face);
-  if (supplied !== undefined) return supplied;
-  if (!options.materialDefinitions) return null;
-  const binding = bindRevit2027FaceMaterial(
-    face.renderStyleElementId,
-    options.materialDefinitions,
-  );
-  if (binding.status === "exact-material") {
-    return binding.materialElementId;
-  }
-  if (binding.status === "unresolved-positive-id") {
-    issues.push({
-      code: "material-unresolved",
-      faceToken,
-      detail:
-        `${binding.renderStyleElementId}: ${binding.reason}`,
-    });
-  }
-  return null;
-}
-
-function edgeSide(edge: Revit2027GEdgeStatic, faceToken: number): 0 | 1 | null {
-  const first = edge.faceReferences[0] === faceToken;
-  const second = edge.faceReferences[1] === faceToken;
-  if (first === second) return null;
-  return first ? 0 : 1;
-}
-
-function uv(
+function endpointUv(
   edge: Revit2027GEdgeStatic,
   endpoint: 0 | 1,
   side: 0 | 1,
-): readonly [number, number] {
-  const point = edge.firstAndLastEdgePoints[endpoint];
-  return side === 0 ? point.firstFaceUv : point.secondFaceUv;
+): Revit2027FaceUv {
+  return revit2027FaceUv(edge.firstAndLastEdgePoints[endpoint], side);
 }
 
-function distance(
-  left: readonly [number, number],
-  right: readonly [number, number],
-): number {
-  return Math.hypot(left[0] - right[0], left[1] - right[1]);
-}
-
+/** Every endpoint pairing this join could have been meant to close. */
 function matches(
   current: Revit2027GEdgeStatic,
   currentSide: 0 | 1,
@@ -197,9 +140,9 @@ function matches(
   for (const currentEndpoint of [0, 1] as const) {
     for (const nextEndpoint of [0, 1] as const) {
       if (
-        distance(
-          uv(current, currentEndpoint, currentSide),
-          uv(next, nextEndpoint, nextSide),
+        uvDistance(
+          endpointUv(current, currentEndpoint, currentSide),
+          endpointUv(next, nextEndpoint, nextSide),
         ) <= tolerance
       ) {
         result.push({ currentEndpoint, nextEndpoint });
@@ -317,9 +260,26 @@ function repairedPlanarLineJoin(
     : null;
 }
 
+function edgeUseUvs(
+  edgeUse: Revit2027PlanarSampledEdgeUse,
+): Point2[] {
+  if (edgeUse.trimUvs) {
+    return edgeUse.trimUvs.map((point) => [point[0], point[1]]);
+  }
+  const points = [
+    edgeUse.edge.firstAndLastEdgePoints[0],
+    ...edgeUse.edge.interiorEdgePoints,
+    edgeUse.edge.firstAndLastEdgePoints[1],
+  ].map((point) => {
+    const uv = revit2027FaceUv(point, edgeUse.faceSide);
+    return [uv[0], uv[1]] as Point2;
+  });
+  return edgeUse.direction === 1 ? points : points.reverse();
+}
+
 function directedEdgeUses(
   faceToken: number,
-  loop: LoopRecord,
+  loop: Revit2027OwnerLoopRecord,
   edges: ReadonlyMap<number, Revit2027GEdgeStatic>,
   surface: Revit2027PlaneSurface,
   tolerance: number,
@@ -329,110 +289,49 @@ function directedEdgeUses(
       ok: false;
       issue: Revit2027PlanarOwnerMeshIssue;
     } {
-  const ordered: OrderedEdge[] = [];
-  const visited = new Set<number>();
-  let token = loop.loop.nextEdgeReference;
-  while (token !== loop.token) {
-    if (token <= 0 || visited.has(token)) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-cycle",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: token,
-        },
-      };
-    }
-    const edge = edges.get(token);
-    if (!edge) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: token,
-        },
-      };
-    }
-    const side = edgeSide(edge, faceToken);
-    if (side == null) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-face-mismatch",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: token,
-        },
-      };
-    }
-    visited.add(token);
-    ordered.push({ token, edge, side });
-    token = revit2027GEdgeLoopNextReference(edge, side);
-    if (ordered.length > edges.size) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-cycle",
-          faceToken,
-          loopToken: loop.token,
-        },
-      };
-    }
-  }
-  if (
-    ordered.length < 2 ||
-    ordered.at(-1)?.token !== loop.loop.previousEdgeReference ||
-    revit2027GEdgeLoopPreviousReference(
-      ordered[0]!.edge,
-      ordered[0]!.side,
-    ) !== loop.token
-  ) {
-    return {
-      ok: false,
-      issue: {
-        code: "edge-link-mismatch",
-        faceToken,
-        loopToken: loop.token,
-      },
-    };
-  }
+  const walked = walkRevit2027DirectedLoopEdges({
+    faceToken,
+    loop,
+    edges,
+    loopArity: "open",
+  });
+  if (walked.ok === false) return { ok: false, issue: walked.issue };
+  const ordered = walked.edges;
 
   const edgeUses: Revit2027PlanarSampledEdgeUse[] = ordered.map((record) => ({
     edgeToken: record.token,
     edge: record.edge,
     faceSide: record.side,
-    direction: revit2027GEdgeLoopDirection(record.edge, record.side),
+    direction: record.direction,
   }));
   const directedUvs = edgeUses.map((edgeUse) => edgeUseUvs(edgeUse));
   const repaired = new Set<number>();
-  for (let index = 0; index < ordered.length; index += 1) {
-    const current = ordered[index]!;
-    const next = ordered[(index + 1) % ordered.length]!;
-    const currentUvs = directedUvs[index]!;
-    const nextIndex = (index + 1) % edgeUses.length;
-    const nextUvs = directedUvs[nextIndex]!;
-    const nativeJoinDistance = distance(
-      currentUvs.at(-1)!,
-      nextUvs[0]!,
-    );
-    if (nativeJoinDistance <= tolerance) continue;
-    const intersection = repairedPlanarLineJoin(
-      edgeUses[index]!,
-      currentUvs,
-      edgeUses[nextIndex]!,
-      nextUvs,
-      surface,
-    );
-    if (intersection) {
+  const linked = linkRevit2027DirectedLoopEndpoints(ordered, tolerance, {
+    continuous: (current, next) => uvDistance(current, next) <= tolerance,
+    // A native line/line join is retimed onto its exact intersection, which
+    // rewrites the two facing samples in place. Only the pair being joined is
+    // read or written, so an earlier repair never disturbs a later join.
+    repairJoin: (join) => {
+      const currentUvs = directedUvs[join.index]!;
+      const nextUvs = directedUvs[join.nextIndex]!;
+      const intersection = repairedPlanarLineJoin(
+        edgeUses[join.index]!,
+        currentUvs,
+        edgeUses[join.nextIndex]!,
+        nextUvs,
+        surface,
+      );
+      if (!intersection) return null;
       currentUvs[currentUvs.length - 1] = intersection;
       nextUvs[0] = intersection;
-      repaired.add(index);
-      repaired.add(nextIndex);
-      continue;
-    }
+      repaired.add(join.index);
+      repaired.add(join.nextIndex);
+      return intersection;
+    },
+  });
+  if (linked.ok === false) {
+    const current = linked.join.current;
+    const next = linked.join.next;
     const candidates = matches(
       current.edge,
       current.side,
@@ -443,9 +342,9 @@ function directedEdgeUses(
     const endpointDistances = ([0, 1] as const).flatMap(
       (currentEndpoint) =>
         ([0, 1] as const).map((nextEndpoint) =>
-          distance(
-            uv(current.edge, currentEndpoint, current.side),
-            uv(next.edge, nextEndpoint, next.side),
+          uvDistance(
+            endpointUv(current.edge, currentEndpoint, current.side),
+            endpointUv(next.edge, nextEndpoint, next.side),
           )
         ),
     );
@@ -458,7 +357,8 @@ function directedEdgeUses(
         edgeToken: current.token,
         detail:
           `native directed join distance: ${
-            nativeJoinDistance.toPrecision(8)
+            uvDistance(linked.join.currentUv, linked.join.nextUv)
+              .toPrecision(8)
           }; candidate endpoint matches: ${candidates.length}; ` +
           `loop edges: ${ordered.length}; ` +
           `next edge: ${next.token}; distances: ${
@@ -480,75 +380,6 @@ function directedEdgeUses(
   return { ok: true, edgeUses };
 }
 
-function edgeUseUvs(
-  edgeUse: Revit2027PlanarSampledEdgeUse,
-): Point2[] {
-  if (edgeUse.trimUvs) {
-    return edgeUse.trimUvs.map((point) => [point[0], point[1]]);
-  }
-  const points = [
-    edgeUse.edge.firstAndLastEdgePoints[0],
-    ...edgeUse.edge.interiorEdgePoints,
-    edgeUse.edge.firstAndLastEdgePoints[1],
-  ].map((point) => {
-    const uv = edgeUse.faceSide === 0
-      ? point.firstFaceUv
-      : point.secondFaceUv;
-    return [uv[0], uv[1]] as Point2;
-  });
-  return edgeUse.direction === 1 ? points : points.reverse();
-}
-
-function sampledUvRing(
-  edgeUses: readonly Revit2027PlanarSampledEdgeUse[],
-  tolerance: number,
-): Point2[] | null {
-  const ring: Point2[] = [];
-  for (const edgeUse of edgeUses) {
-    const points = edgeUseUvs(edgeUse);
-    for (let index = 0; index < points.length; index += 1) {
-      if (ring.length > 0 && index === 0) continue;
-      ring.push(points[index]!);
-    }
-  }
-  if (
-    ring.length > 1 &&
-    distance(ring[0]!, ring.at(-1)!) <= tolerance
-  ) {
-    ring.pop();
-  }
-  return (
-      ring.length >= 3 &&
-      ring.every((point) => point.every(Number.isFinite))
-    )
-    ? ring
-    : null;
-}
-
-function signedUvRingArea(ring: readonly Point2[]): number {
-  let twiceArea = 0;
-  for (let index = 0; index < ring.length; index += 1) {
-    const point = ring[index]!;
-    const next = ring[(index + 1) % ring.length]!;
-    twiceArea += point[0] * next[1] - next[0] * point[1];
-  }
-  return twiceArea / 2;
-}
-
-function sameUvRing(
-  left: readonly Point2[],
-  right: readonly Point2[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (point, index) =>
-        point[0] === right[index]![0] &&
-        point[1] === right[index]![1],
-    )
-  );
-}
-
 type ClassifiedPlanarLoopRegions = {
   roles: readonly ("outer" | "hole")[];
   /** Each region starts with its outer loop followed by its direct holes. */
@@ -568,7 +399,7 @@ function classifyPlanarLoopRegions(
   }
   const rings: Point2[][] = [];
   for (const edgeUses of edgeUsesByLoop) {
-    const ring = sampledUvRing(edgeUses, tolerance);
+    const ring = revit2027SampledUvRing(edgeUses.map(edgeUseUvs), tolerance);
     if (!ring) return null;
     rings.push(ring);
   }
@@ -579,15 +410,13 @@ function classifyPlanarLoopRegions(
   // audit then requires corrected-positive loops at even (filled) depth and
   // corrected-negative loops at odd (hole) depth. Preserve that exact rule
   // before the independent strict geometric validation below.
-  const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
-  const roles: ("outer" | "hole")[] = [];
-  for (const ring of rings) {
-    const rawArea = signedUvRingArea(ring);
-    const correctedArea =
-      normalFlipped === surfaceOrientFlag ? -rawArea : rawArea;
-    if (Math.abs(correctedArea) <= areaTolerance) return null;
-    roles.push(correctedArea > 0 ? "outer" : "hole");
-  }
+  const roles = correctedUvRingRoles(
+    rings,
+    normalFlipped,
+    surfaceOrientFlag,
+    tolerance,
+  );
+  if (!roles) return null;
   const outerIndexes = roles
     .map((role, index) => role === "outer" ? index : -1)
     .filter((index) => index >= 0);
@@ -595,29 +424,20 @@ function classifyPlanarLoopRegions(
 
   const groups = groupRings(rings);
   if (groups.length !== outerIndexes.length) return null;
-  const used = new Set<number>();
-  const matchingRingIndex = (target: readonly Point2[]): number | null => {
-    const candidates = rings
-      .map((ring, index) => ({ ring, index }))
-      .filter(({ ring, index }) => !used.has(index) && sameUvRing(ring, target));
-    if (candidates.length !== 1) return null;
-    const index = candidates[0]!.index;
-    used.add(index);
-    return index;
-  };
+  const matcher = createUvRingMatcher(rings);
   const regions: number[][] = [];
   for (const group of groups) {
-    const outerIndex = matchingRingIndex(group.outer);
+    const outerIndex = matcher.match(group.outer);
     if (outerIndex == null || roles[outerIndex] !== "outer") return null;
     const region = [outerIndex];
     for (const hole of group.holes) {
-      const holeIndex = matchingRingIndex(hole);
+      const holeIndex = matcher.match(hole);
       if (holeIndex == null || roles[holeIndex] !== "hole") return null;
       region.push(holeIndex);
     }
     regions.push(region);
   }
-  if (used.size !== rings.length) return null;
+  if (matcher.used.size !== rings.length) return null;
   return { roles, regions };
 }
 
@@ -630,52 +450,11 @@ export function meshRevit2027PlanarSampledReplay(
   replay: Revit2027GRepReplay,
   options: Revit2027PlanarOwnerMeshOptions = {},
 ): Revit2027PlanarOwnerMeshResult {
-  const tolerance = options.uvTolerance ?? DEFAULT_UV_TOLERANCE;
-  if (!Number.isFinite(tolerance) || tolerance <= 0) {
-    return { ok: false, error: "uvTolerance must be positive and finite" };
-  }
+  const resolved = revit2027OwnerUvTolerance(options.uvTolerance);
+  if (!resolved.ok) return resolved;
+  const tolerance = resolved.tolerance;
 
-  const faces = new Map<number, Revit2027FaceStatic>();
-  const faceSpanIndexes = new Map<number, number>();
-  const edges = new Map<number, Revit2027GEdgeStatic>();
-  const loops = new Map<number, LoopRecord>();
-  const planesByFace = new Map<number, Revit2027PlaneSurface>();
-  for (const span of replay.spans) {
-    if (span.propertyToken <= 0) continue;
-    if (span.propertySourceClassSlot === REVIT_2027_FACE_SOURCE_CLASS_SLOT) {
-      faces.set(span.propertyToken, value<Revit2027FaceStatic>(span));
-      faceSpanIndexes.set(span.replayIndex, span.propertyToken);
-    } else if (
-      span.propertySourceClassSlot === REVIT_2027_GEDGE_SOURCE_CLASS_SLOT
-    ) {
-      edges.set(span.propertyToken, value<Revit2027GEdgeStatic>(span));
-    } else if (
-      span.propertySourceClassSlot === REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT
-    ) {
-      loops.set(span.propertyToken, {
-        token: span.propertyToken,
-        loop: value<Revit2027EdgeLoopStatic>(span),
-      });
-    } else if (
-      span.propertySourceClassSlot ===
-      REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT
-    ) {
-      loops.set(span.propertyToken, {
-        token: span.propertyToken,
-        loop: value<Revit2027EdgeLoopWithChainEnvelopesStatic>(span).loop,
-      });
-    } else if (
-      span.propertySourceClassSlot ===
-        REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT &&
-      span.parentReplayIndex != null
-    ) {
-      const faceToken = faceSpanIndexes.get(span.parentReplayIndex);
-      if (faceToken != null) {
-        planesByFace.set(faceToken, value<Revit2027PlaneSurface>(span));
-      }
-    }
-  }
-
+  const index = revit2027OwnerMeshIndex(replay);
   const issues: Revit2027PlanarOwnerMeshIssue[] = [];
   const faceMeshes: Revit2027PlanarOwnerFaceMesh[] = [];
   const elementId = Number(replay.ownerElementId);
@@ -683,7 +462,7 @@ export function meshRevit2027PlanarSampledReplay(
     decoderId: "revit-2027-planar-owner-mesh",
     elementId: Number.isSafeInteger(elementId) ? elementId : undefined,
   };
-  for (const [faceToken, face] of faces) {
+  for (const [faceToken, face] of index.faces) {
     if (face.surface.token === 0) {
       issues.push({ code: "surface-unresolved", faceToken });
       continue;
@@ -695,7 +474,11 @@ export function meshRevit2027PlanarSampledReplay(
       issues.push({ code: "unsupported-surface", faceToken });
       continue;
     }
-    const surface = planesByFace.get(faceToken);
+    const surface = revit2027OwnerSurface<Revit2027PlaneSurface>(
+      index,
+      REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
+      faceToken,
+    );
     if (!surface) {
       issues.push({ code: "surface-unresolved", faceToken });
       continue;
@@ -704,7 +487,7 @@ export function meshRevit2027PlanarSampledReplay(
       issues.push({ code: "loop-unresolved", faceToken });
       continue;
     }
-    const loopChain: LoopRecord[] = [];
+    const loopChain: Revit2027OwnerLoopRecord[] = [];
     const seenLoopTokens = new Set<number>();
     let loopToken = face.firstLoop.token;
     let loopFailure = false;
@@ -718,7 +501,7 @@ export function meshRevit2027PlanarSampledReplay(
         loopFailure = true;
         break;
       }
-      const loop = loops.get(loopToken);
+      const loop = index.loops.get(loopToken);
       if (!loop) {
         issues.push({
           code: "loop-unresolved",
@@ -740,7 +523,7 @@ export function meshRevit2027PlanarSampledReplay(
       seenLoopTokens.add(loopToken);
       loopChain.push(loop);
       loopToken = loop.loop.nextLoop.token;
-      if (loopChain.length > loops.size) {
+      if (loopChain.length > index.loops.size) {
         issues.push({
           code: "loop-cycle",
           faceToken,
@@ -757,7 +540,7 @@ export function meshRevit2027PlanarSampledReplay(
       const directed = directedEdgeUses(
         faceToken,
         loop,
-        edges,
+        index.edges,
         surface,
         tolerance,
       );
@@ -786,7 +569,12 @@ export function meshRevit2027PlanarSampledReplay(
       continue;
     }
     const outerLoop = loopChain[classified.regions[0]![0]!]!;
-    const materialId = faceMaterialId(faceToken, face, options, issues);
+    const materialId = revit2027OwnerFaceMaterialId(
+      faceToken,
+      face,
+      options,
+      (detail) => issues.push({ code: "material-unresolved", faceToken, detail }),
+    );
     const adapted = adaptRevit2027PlanarSampledBrep({
       id: `revit-2027-owner-${replay.ownerElementId}-face-${faceToken}`,
       provenance,
