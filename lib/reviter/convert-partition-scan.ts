@@ -9,9 +9,17 @@
  * element id.
  *
  * **Why one pass rather than one pass per decoder.** A partition stream is
- * megabytes of gzip chunks and inflating one is the expensive part; the model
- * inflated here is 3,300 pages. Every additional walk would re-inflate all of
+ * megabytes of gzip chunks, and every additional walk would re-inflate all of
  * them, so the scanners share the page while it is in hand.
+ *
+ * **Why the framing is shared too.** Inflating is not in fact the expensive
+ * part: over the supplied project the 3,666 pages cost 3.3 s to inflate and
+ * 55 s to read. Eight of the decoders below read the *same* framed-object
+ * envelope, so the page is framed once by `indexPageFrames` and they are
+ * offered the result — the class evidence and the instance placements are
+ * derived from it outright, and a decoder whose records all carry one object
+ * marker is skipped entirely on a page where no frame carries it. See
+ * `page-frame-index.ts` for why that gate is exact.
  *
  * Two things in the loop are subtler than they look and are commented where
  * they happen: the sliding window a chunk with back-references past its own
@@ -25,17 +33,23 @@
  */
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
-import { resolveCompoundStructureDefinitions, scanCompoundStructureCandidates } from "./compound-structure-materials.ts";
 import {
-  chainElementObjects,
-  markerObjectSeeds,
-  scanFramedObjectClassEvidence,
-} from "./element-objects.ts";
+  REVIT_2027_BASIC_WALL_TYPE_MARKER,
+  resolveCompoundStructureDefinitions,
+  scanCompoundStructureCandidates,
+} from "./compound-structure-materials.ts";
+import { chainElementObjects, markerObjectSeeds } from "./element-objects.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
-import { scanFamilySymbolMaterialPage } from "./family-symbol-materials.ts";
-import { scanHostRelationCandidates } from "./host-relations.ts";
+import {
+  REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER,
+  scanFamilySymbolMaterialPage,
+} from "./family-symbol-materials.ts";
+import {
+  REVIT_2027_INSERTABLE_INSTANCE_MARKER,
+  scanHostRelationCandidates,
+} from "./host-relations.ts";
 import {
   readInstancePlacement,
   readLocalBounds,
@@ -43,8 +57,12 @@ import {
   SHAPE_OBJECT_MARKERS,
 } from "./instanced-geometry.ts";
 import { scanAssociatedLevelRelationCandidates } from "./level-relations.ts";
-import { scanMaterialElementRecords } from "./material-records.ts";
+import {
+  REVIT_2027_MATERIAL_ELEMENT_MARKER,
+  scanMaterialElementRecords,
+} from "./material-records.ts";
 import { collectCategoryTokens } from "./native-categories.ts";
+import { framedObjectClassEvidence, indexPageFrames } from "./page-frame-index.ts";
 import {
   asBytes,
   gzipOffsets,
@@ -76,6 +94,7 @@ import type { HostRelationCandidate } from "./host-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { AssociatedLevelRelationCandidate } from "./level-relations.ts";
 import type { CategoryToken } from "./native-categories.ts";
+import type { PageConsumer } from "./page-frame-index.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
 import type { Revit2027NativeMeshCollector } from "./revit-2027-native-mesh-bridge.ts";
 import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
@@ -192,6 +211,28 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       decoderPlan.revitVersion,
       maxNativeMeshBytes,
     );
+  // The three release collectors are all "hand me every page of this partition
+  // in order", spelled three different ways. They are adapted to one protocol
+  // here so the loop drives them alike; see `PageConsumer`.
+  const pageConsumers: PageConsumer[] = [
+    {
+      // The mesh collector's definitions are keyed by element and are meant to
+      // outlive a partition boundary, so it alone has nothing to reset.
+      pushPage: (page) => nativeMeshCollector.scanPage(page),
+      finishPartition: () => {},
+    },
+    {
+      // A frame this collector completes spans pages the ordinary scan could
+      // not have framed, so it is fed straight back to the mesh collector.
+      pushPage: (page) => {
+        for (const frame of splitAlternateFrameCollector.pushPage(page)) {
+          nativeMeshCollector.scanAlternateFrame(frame);
+        }
+      },
+      finishPartition: () => splitAlternateFrameCollector.finishPartition(),
+    },
+    stairsRunCollector,
+  ];
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
   const elementBounds: ElementBoundsRecord[] = [];
@@ -278,26 +319,37 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           message: `Scanning partition ${partitionIndex + 1}/${partitions.length} · page ${index + 1}/${offsets.length} · ${elementBounds.length.toLocaleString()} exact bounds`,
         });
       }
-      nativeMeshCollector.scanPage(inflated);
-      for (const splitFrame of
-        splitAlternateFrameCollector.pushPage(inflated)) {
-        nativeMeshCollector.scanAlternateFrame(splitFrame);
-      }
-      stairsRunCollector.pushPage(inflated);
+      for (const consumer of pageConsumers) consumer.pushPage(inflated);
+      // Every decoder below reads the same framed-object envelope, so the page
+      // is framed once here and they read the result instead of the bytes. The
+      // index is built exactly when the release has a bounds decoder, which is
+      // the same condition under which any of them can produce a record.
+      const pageFrames = decoderPlan.elementBoundsDecoder
+        ? indexPageFrames(inflated)
+        : null;
+      // Permissive when there is no index: the decoders keep their own release
+      // gates and return nothing, exactly as they did before.
+      const mayHoldMarker = (marker: number): boolean =>
+        pageFrames == null || pageFrames.hasMarker(marker);
       if (decoderPlan.revitVersion != null) {
-        const materialScan = scanMaterialElementRecords(
-          inflated,
-          decoderPlan.revitVersion,
-        );
-        for (const definition of materialScan.definitions) {
-          if (nativeMaterialDefinitionMap.has(definition.elementId)) continue;
-          nativeMaterialDefinitionMap.set(definition.elementId, {
-            ...definition,
-            stream: partition.path.replace(/^Root Entry\//, ""),
-            chunkIndex: index,
-            storedOffset: revitStoredPageOffset(offsets[index]!),
-          });
+        if (mayHoldMarker(REVIT_2027_MATERIAL_ELEMENT_MARKER)) {
+          const materialScan = scanMaterialElementRecords(
+            inflated,
+            decoderPlan.revitVersion,
+          );
+          for (const definition of materialScan.definitions) {
+            if (nativeMaterialDefinitionMap.has(definition.elementId)) continue;
+            nativeMaterialDefinitionMap.set(definition.elementId, {
+              ...definition,
+              stream: partition.path.replace(/^Root Entry\//, ""),
+              chunkIndex: index,
+              storedOffset: revitStoredPageOffset(offsets[index]!),
+            });
+          }
         }
+        // Not gated: its records are headed by the dominant object marker, so
+        // the gate would fire on almost no page, and the markers it reads for
+        // geometry materials are internal to that decoder.
         const relationships = scanPersistedRelationshipCandidates(
           inflated,
           decoderPlan.revitVersion,
@@ -313,25 +365,48 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           ...relationships.familySymbolReferenceSets,
         );
         geometryMaterialCandidates.push(...relationships.geometryMaterialCandidates);
-        compoundStructureCandidates.push(
-          ...scanCompoundStructureCandidates(
+        if (mayHoldMarker(REVIT_2027_BASIC_WALL_TYPE_MARKER)) {
+          compoundStructureCandidates.push(
+            ...scanCompoundStructureCandidates(
+              inflated,
+              decoderPlan.revitVersion,
+            ),
+          );
+        }
+        // Half of this decoder is marker-gated and half is not: it reads a
+        // reference set out of FamilySymbol frames, but an instance placement
+        // out of every frame. On a page with no FamilySymbol the placements are
+        // all it would return, and they are read off the shared index instead.
+        if (
+          pageFrames == null ||
+          pageFrames.hasMarker(REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER)
+        ) {
+          const familySymbolMaterialScan = scanFamilySymbolMaterialPage(
             inflated,
             decoderPlan.revitVersion,
-          ),
-        );
-        const familySymbolMaterialScan = scanFamilySymbolMaterialPage(
-          inflated,
-          decoderPlan.revitVersion,
-        );
-        familySymbolMaterialReferenceSets.push(
-          ...familySymbolMaterialScan.referenceSets,
-        );
-        familySymbolMaterialPlacements.push(
-          ...familySymbolMaterialScan.placements,
-        );
-        hostRelationCandidates.push(
-          ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
-        );
+          );
+          familySymbolMaterialReferenceSets.push(
+            ...familySymbolMaterialScan.referenceSets,
+          );
+          familySymbolMaterialPlacements.push(
+            ...familySymbolMaterialScan.placements,
+          );
+        } else if (decoderPlan.revitVersion === 2027) {
+          for (const frame of pageFrames.frames) {
+            const placement = readInstancePlacement(inflated, frame);
+            if (placement) familySymbolMaterialPlacements.push(placement);
+          }
+        }
+        if (mayHoldMarker(REVIT_2027_INSERTABLE_INSTANCE_MARKER)) {
+          hostRelationCandidates.push(
+            ...scanHostRelationCandidates(inflated, decoderPlan.revitVersion),
+          );
+        }
+        // Not gated: an associated level is read out of every framed object,
+        // whatever its class, so no marker can rule a page out. It is also the
+        // cheapest of these walks by an order of magnitude — 0.4 s against the
+        // 1.8-2.8 s the others cost — because it alone steps over a frame it
+        // has decoded instead of resuming at the next byte.
         associatedLevelRelationCandidates.push(
           ...scanAssociatedLevelRelationCandidates(
             inflated,
@@ -401,13 +476,14 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
         ? detectDuplicatedBoundsRecords(inflated)
         : [];
-      // This full-page framing pass also collects the offsets used to seed
-      // the object chain. Previously each of as many as fifteen markers ran
-      // its own `indexOf` walk over the same page; on the UNBC model those
-      // redundant walks were the single largest CPU sample in the loader.
-      const classEvidence = decoderPlan.elementBoundsDecoder
-        ? scanFramedObjectClassEvidence(
-            inflated,
+      // The class of every framed object, and the offsets used to seed the
+      // object chain. Each of as many as fifteen markers once ran its own
+      // `indexOf` walk over the same page; then one framing pass replaced
+      // them, and now that pass is the shared page index rather than a walk of
+      // its own.
+      const classEvidence = pageFrames
+        ? framedObjectClassEvidence(
+            pageFrames,
             NATIVE_OBJECT_EVIDENCE_MARKERS,
             objectSeedMarkers,
           )
@@ -516,8 +592,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
         });
       }
     }
-    stairsRunCollector.finishPartition();
-    splitAlternateFrameCollector.finishPartition();
+    for (const consumer of pageConsumers) consumer.finishPartition();
   }
   const stairsRuns = stairsRunCollector.snapshot();
   const persistedCadFileNames = finalisePersistedCadFileNames(
