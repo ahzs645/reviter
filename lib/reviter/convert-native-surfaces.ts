@@ -82,9 +82,9 @@ export function reconstructNativeSurfaces(
   // the instance its true orientation instead of an axis-aligned envelope.
   const orientedBoxes = new Map<number, [number, number, number][]>();
   // Elements whose box was read from the bounding faces of their own B-rep.
-  // The agreement check further down assumes the box and the element's own
-  // bounds record are readings of the same thing, and for a casement window
-  // they are not — see `LocalBounds.faceRead`.
+  // The agreement check in `convert-element-geometry.ts` assumes the box and
+  // the element's own bounds record are readings of the same thing, and for a
+  // casement window they are not — see `LocalBounds.faceRead`.
   const faceReadBoxes = new Set<number>();
   for (const [elementId, placement] of instancePlacements) {
     const shape = localBounds.get(placement.geometryId);

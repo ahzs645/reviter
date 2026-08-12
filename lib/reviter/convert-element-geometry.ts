@@ -38,11 +38,9 @@ import {
   categoryDisplayName,
   categoryFromNativeObjectEvidence,
 } from "./native-categories.ts";
-/**
- * Record code of the companion record holding a stair run's own elevations.
- * The value lives in `record-codes.ts`, shared with `scene.ts` so a
- * re-measurement cannot correct one copy and miss the other.
- */
+// `STAIR_COMPANION_CODE` is the record code of the companion record holding a
+// stair run's own elevations. It lives in `record-codes.ts`, shared with
+// `scene.ts`, so a re-measurement cannot correct one copy and miss the other.
 import { STAIR_COMPANION_CODE } from "./record-codes.ts";
 import {
   clipPolylinesToBand,

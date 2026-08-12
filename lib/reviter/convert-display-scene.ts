@@ -22,13 +22,17 @@
  * `inferredCurtainPanelGeometry` — because the same record objects are what the
  * result publishes as `elementBounds`.
  */
-import { framingBoundsOfRecords } from "./bounds-records.ts";
+import { framingBoundsOfRecords, solidBounds } from "./bounds-records.ts";
 import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
 import { applyNativeMaterialIndices } from "./material-palette.ts";
 import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
 import { buildRevit2027NativeMeshScene } from "./revit-2027-native-mesh-bridge.ts";
+import { residualDatumPileElementIds } from "./datum-pile.ts";
+import { removeRecordsInPlace } from "./convert-synthesised-records.ts";
 import {
   anonymousWallDuplicateProxyIds,
+  isNonSceneObjectDefinition,
+  nonSceneNativeMeshHelperIds,
   boundsPlanSegments,
   buildBoundsMeshes,
   curtainAssemblyHelperProxyIds,
@@ -55,6 +59,90 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
+
+export type DrawableRecordsInput = {
+  /** Every recovered record. Unplaced ones are removed, in place. */
+  elementBounds: ElementBoundsRecord[];
+  markersByElement: Map<number, Set<number>>;
+  instancePlacements: Map<number, InstancePlacement>;
+  nativeAssociatedLevelRelations: NativeAssociatedLevelRelation[];
+};
+
+export type DrawableRecords = {
+  /** Records worth drawing, and the population the scene is framed on. */
+  boundedSolids: ElementBoundsRecord[];
+  /** Records that must not be drawn, as a proxy or as a native mesh. */
+  nonSceneNativeMeshIds: Set<number>;
+  /** How many records were dropped as never placed. */
+  unplacedRecords: number;
+};
+
+/**
+ * Decide which records reach the scene at all.
+ *
+ * Three separate judgements, and they are different in kind. A record left on
+ * the project datum is **removed**: it is a reading in the wrong frame, and no
+ * later stage should see it. A helper or a reusable definition is **kept but
+ * marked**, because it is a real element that simply is not drawn — the audit
+ * and IFC outputs still name it. And a record with no volume, ring or tread set
+ * has nothing to draw, so it is simply not in the drawable population.
+ */
+export function selectDrawableRecords(
+  input: DrawableRecordsInput,
+): DrawableRecords {
+  const {
+    elementBounds,
+    markersByElement,
+    instancePlacements,
+    nativeAssociatedLevelRelations,
+  } = input;
+  let unplacedRecords = 0;
+  const residualDatumPileIds = residualDatumPileElementIds(
+    elementBounds,
+    new Set(instancePlacements.keys()),
+    new Set(nativeAssociatedLevelRelations.map((relation) => relation.elementId)),
+  );
+  if (residualDatumPileIds.size) {
+    unplacedRecords += removeRecordsInPlace(elementBounds, (record) =>
+      residualDatumPileIds.has(record.elementId));
+  }
+  const nonSceneObjectDefinitionIds = new Set(
+    elementBounds
+      .filter((record) =>
+        isNonSceneObjectDefinition(
+          record,
+          markersByElement.get(record.elementId),
+          instancePlacements.has(record.elementId),
+        ),
+      )
+      .map((record) => record.elementId),
+  );
+  const nonSceneNativeMeshIds = nonSceneNativeMeshHelperIds(elementBounds);
+  for (const elementId of nonSceneObjectDefinitionIds) {
+    nonSceneNativeMeshIds.add(elementId);
+  }
+  for (const record of elementBounds) {
+    if (nonSceneNativeMeshIds.has(record.elementId)) {
+      record.renderGeometryProvenance = "not-rendered-helper";
+    }
+  }
+  // An element needs a volume to be worth drawing, with one exception: a
+  // sketch-bounded element is a plan boundary plus a thickness, and Revit can
+  // record that thickness as zero. `prismGeometry` already substitutes a
+  // minimum depth for exactly that case, so gating on a three-axis extent
+  // beforehand only threw away flat ceilings and ramp landings that had a
+  // perfectly good recovered outline.
+  const boundedSolids = elementBounds.filter(
+    (record) =>
+      !nonSceneNativeMeshIds.has(record.elementId) &&
+      (
+        solidBounds(record) ||
+        (record.loops?.length ?? 0) > 0 ||
+        (record.stairTreads?.length ?? 0) > 0
+      ),
+  );
+  return { boundedSolids, nonSceneNativeMeshIds, unplacedRecords };
+}
 
 export type DisplaySceneInput = {
   /** Records worth drawing: a volume, a boundary ring, or a tread set. */
