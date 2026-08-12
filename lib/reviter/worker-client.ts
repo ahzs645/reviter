@@ -178,10 +178,11 @@ export class WorkerClient<Request extends WorkerRequestEnvelope, Result> {
       return null;
     }
     worker.addEventListener("message", (event: MessageEvent<WorkerEnvelope<Result>>) => {
-      // The only stale guard in the app: an id nobody is waiting for is a reply
-      // to a request that has since been superseded, cancelled, or answered.
       if (this.#worker !== worker) return;
       const message = event.data;
+      // The whole stale guard, in one line: an id nobody is waiting for belongs
+      // to a request that has been superseded, cancelled, or already answered —
+      // or to no request of ours at all.
       const handlers = message && this.#pending.get(message.id);
       if (!handlers) return;
       if (message.type === "progress") {
