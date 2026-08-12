@@ -765,6 +765,66 @@ function readStreamSummary<T>(
   return inflated ? decode(inflated) : undefined;
 }
 
+/**
+ * Drop every record `shouldRemove` selects, in a single pass, **in place**.
+ *
+ * The array object itself has to survive: `elementBounds` is built once and then
+ * read through dozens of later closures and helper calls, so a rebuild-and-
+ * reassign would risk one of them holding the pre-removal array. Compacting the
+ * survivors down and truncating gives every existing reference the same view
+ * `splice` gave it, without the array identity ever changing.
+ *
+ * Removing one at a time with `splice` shifts on average half the array per
+ * removal. The cached-shape and datum-pile passes drop thousands of records from
+ * a ~74,000-element array, which is hundreds of millions of element moves for
+ * work one filter pass does.
+ *
+ * Order among the survivors is unchanged, which matters: the reverse-index
+ * `splice` loops this replaces preserved it too, and later passes read these
+ * records in order.
+ *
+ * @returns how many records were removed.
+ */
+function removeRecordsInPlace(
+  records: ElementBoundsRecord[],
+  shouldRemove: (record: ElementBoundsRecord) => boolean,
+): number {
+  let write = 0;
+  for (let read = 0; read < records.length; read += 1) {
+    const record = records[read]!;
+    if (shouldRemove(record)) continue;
+    records[write] = record;
+    write += 1;
+  }
+  const removed = records.length - write;
+  records.length = write;
+  return removed;
+}
+
+/**
+ * The axis-aligned hull over a run of points.
+ *
+ * `Math.min(...points)` reads better but passes one argument per point, and the
+ * engine's argument limit is a hard ceiling in the low hundreds of thousands —
+ * a facet hull is taken over four corners per plane patch and nothing caps how
+ * many patches one element may own, so the spread form is a latent
+ * `RangeError`, not merely a slow path. Empty input still yields the
+ * `Infinity`/`-Infinity` pair `Math.min()`/`Math.max()` return, and a `NaN`
+ * coordinate still poisons its axis exactly as the spread form did.
+ */
+function boundsOfCornerPoints(
+  points: Iterable<readonly [number, number, number]>,
+): Bounds3 {
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const [x, y, z] of points) {
+    min.x = Math.min(min.x, x); max.x = Math.max(max.x, x);
+    min.y = Math.min(min.y, y); max.y = Math.max(max.y, y);
+    min.z = Math.min(min.z, z); max.z = Math.max(max.z, z);
+  }
+  return { min, max };
+}
+
 export function convertRvtBytes(
   input: ArrayBuffer | Uint8Array,
   fileName = "model.rvt",
@@ -1582,11 +1642,8 @@ export function convertRvtBytes(
     );
     let cachedShapeRecords = 0;
     if (sharedGeometryIds.size) {
-      for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
-        if (!sharedGeometryIds.has(elementBounds[index]!.elementId)) continue;
-        elementBounds.splice(index, 1);
-        cachedShapeRecords += 1;
-      }
+      cachedShapeRecords = removeRecordsInPlace(elementBounds, (record) =>
+        sharedGeometryIds.has(record.elementId));
     }
 
     // Elements whose envelope was never placed.
@@ -1606,13 +1663,15 @@ export function convertRvtBytes(
       // A component-scale file legitimately sits on its own origin; a building
       // does not.
       if (wide > DATUM_PILE_MIN_MODEL_SPAN_FEET) {
-        for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
-          const { min, max } = elementBounds[index]!.boundsFeet;
-          if (Math.abs((min.x + max.x) / 2) > DATUM_PILE_RADIUS_FEET) continue;
-          if (Math.abs((min.y + max.y) / 2) > DATUM_PILE_RADIUS_FEET) continue;
-          elementBounds.splice(index, 1);
-          unplacedRecords += 1;
-        }
+        // The two guards keep their original sense — a record whose centre is
+        // not *outside* the radius is removed — so a non-finite centre is
+        // removed here exactly as it was before.
+        unplacedRecords += removeRecordsInPlace(elementBounds, ({ boundsFeet }) => {
+          const { min, max } = boundsFeet;
+          if (Math.abs((min.x + max.x) / 2) > DATUM_PILE_RADIUS_FEET) return false;
+          if (Math.abs((min.y + max.y) / 2) > DATUM_PILE_RADIUS_FEET) return false;
+          return true;
+        });
       }
     }
 
@@ -2378,11 +2437,8 @@ export function convertRvtBytes(
       new Set(nativeAssociatedLevelRelations.map((relation) => relation.elementId)),
     );
     if (residualDatumPileIds.size) {
-      for (let index = elementBounds.length - 1; index >= 0; index -= 1) {
-        if (!residualDatumPileIds.has(elementBounds[index]!.elementId)) continue;
-        elementBounds.splice(index, 1);
-        unplacedRecords += 1;
-      }
+      unplacedRecords += removeRecordsInPlace(elementBounds, (record) =>
+        residualDatumPileIds.has(record.elementId));
     }
     const nonSceneObjectDefinitionIds = new Set(
       elementBounds

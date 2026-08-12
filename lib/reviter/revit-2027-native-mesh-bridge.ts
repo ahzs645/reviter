@@ -47,6 +47,7 @@ import {
 import {
   replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
+  type Revit2027GRepReplaySpan,
 } from "./revit-2027-grep-replay.ts";
 import { meshRevit2027SpiralStairReplay } from "./revit-2027-spiral-stair-mesh.ts";
 import { meshRevit2027MeasuredSquareTopRailRuns } from "./revit-2027-top-rail-mesh.ts";
@@ -300,14 +301,55 @@ function isNonNullCondInt16Token(token: number | undefined): boolean {
   return token === -1 || (token != null && token > 0);
 }
 
-function drawableFaceTokens(
-  spans: readonly {
-    propertyToken: number;
-    propertySourceClassSlot: number;
-    value?: unknown;
-  }[],
-): Set<number> {
-  const tokens = new Set<number>();
+/** The minimum a replay span must expose to be classified as a Face. */
+type FaceClassificationSpan = {
+  propertyToken: number;
+  propertySourceClassSlot: number;
+  value?: unknown;
+};
+
+/**
+ * Everything the Face consumers need from one pass over a replay's spans.
+ *
+ * A positive-token Face span carrying a non-null surface is either drawable
+ * (it also carries a loop or a face region) or an excluded reference face
+ * (it carries neither); the two counts partition those spans. `spansByToken`
+ * additionally indexes every positive-token Face span, drawable or not.
+ */
+type Revit2027FaceSpanClassification<Span extends FaceClassificationSpan> = {
+  /** Distinct tokens of faces with a surface and at least one loop/region. */
+  drawableTokens: ReadonlySet<number>;
+  /** Spans with a surface but no loop: reference faces, never meshed. */
+  excludedNonTopologicalFaces: number;
+  /** Every positive-token Face span by token; the first occurrence wins. */
+  spansByToken: ReadonlyMap<number, Span>;
+  /** The first token claimed by two Face spans, if any. */
+  duplicateToken: number | null;
+};
+
+function hasTopologicalLoop(face: Partial<Revit2027FaceStatic>): boolean {
+  if (isNonNullCondInt16Token(face.firstLoop?.token)) return true;
+  const entries = face.faceRegions?.entries;
+  if (entries == null) return false;
+  for (const entry of entries) {
+    if (isNonNullCondInt16Token(entry.token)) return true;
+  }
+  return false;
+}
+
+/**
+ * Classify a replay's Face spans once, for every consumer of that predicate.
+ *
+ * The scan runs per framed owner over every replayed span, so it deliberately
+ * allocates nothing per face beyond the two collections it returns.
+ */
+function classifyRevit2027FaceSpans<Span extends FaceClassificationSpan>(
+  spans: readonly Span[],
+): Revit2027FaceSpanClassification<Span> {
+  const drawableTokens = new Set<number>();
+  const spansByToken = new Map<number, Span>();
+  let excludedNonTopologicalFaces = 0;
+  let duplicateToken: number | null = null;
   for (const span of spans) {
     if (
       span.propertyToken <= 0 ||
@@ -315,18 +357,26 @@ function drawableFaceTokens(
     ) {
       continue;
     }
+    if (spansByToken.has(span.propertyToken)) {
+      duplicateToken ??= span.propertyToken;
+    } else {
+      spansByToken.set(span.propertyToken, span);
+    }
     const face = span.value as Partial<Revit2027FaceStatic> | undefined;
     if (!face || typeof face !== "object") continue;
-    const hasLoop =
-      isNonNullCondInt16Token(face.firstLoop?.token) ||
-      (face.faceRegions?.entries ?? []).some((entry) =>
-        isNonNullCondInt16Token(entry.token)
-      );
-    if (isNonNullCondInt16Token(face.surface?.token) && hasLoop) {
-      tokens.add(span.propertyToken);
+    if (!isNonNullCondInt16Token(face.surface?.token)) continue;
+    if (hasTopologicalLoop(face)) {
+      drawableTokens.add(span.propertyToken);
+    } else {
+      excludedNonTopologicalFaces += 1;
     }
   }
-  return tokens;
+  return {
+    drawableTokens,
+    excludedNonTopologicalFaces,
+    spansByToken,
+    duplicateToken,
+  };
 }
 
 export type Revit2027DrawableFaceCoverage = {
@@ -336,33 +386,6 @@ export type Revit2027DrawableFaceCoverage = {
   missingFaceTokens: readonly number[];
   code: "complete" | "no-drawable-faces" | "incomplete-drawable-faces";
 };
-
-function countExcludedNonTopologicalFaces(
-  spans: readonly {
-    propertyToken: number;
-    propertySourceClassSlot: number;
-    value?: unknown;
-  }[],
-): number {
-  let count = 0;
-  for (const span of spans) {
-    if (
-      span.propertyToken <= 0 ||
-      span.propertySourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT
-    ) {
-      continue;
-    }
-    const face = span.value as Partial<Revit2027FaceStatic> | undefined;
-    if (!face || !isNonNullCondInt16Token(face.surface?.token)) continue;
-    const hasLoop =
-      isNonNullCondInt16Token(face.firstLoop?.token) ||
-      (face.faceRegions?.entries ?? []).some((entry) =>
-        isNonNullCondInt16Token(entry.token)
-      );
-    if (!hasLoop) count += 1;
-  }
-  return count;
-}
 
 /**
  * Recognize the schema-complete conditioned carrier used by Revit for two
@@ -458,17 +481,27 @@ export function readRevit2027ConditionalStateCarrier(
  * has a mesh. Reference faces with no loop are deliberately excluded.
  */
 export function certifyRevit2027DrawableFaceCoverage(
-  spans: readonly {
-    propertyToken: number;
-    propertySourceClassSlot: number;
-    value?: unknown;
-  }[],
+  spans: readonly FaceClassificationSpan[],
   faceMeshes: readonly { faceToken: number }[],
   issues: readonly {
     issue: { code: string; faceToken?: number };
   }[] = [],
 ): Revit2027DrawableFaceCoverage {
-  const expected = drawableFaceTokens(spans);
+  return drawableFaceCoverage(
+    classifyRevit2027FaceSpans(spans).drawableTokens,
+    faceMeshes,
+    issues,
+  );
+}
+
+/** Certify coverage against an already classified drawable-token set. */
+function drawableFaceCoverage(
+  expected: ReadonlySet<number>,
+  faceMeshes: readonly { faceToken: number }[],
+  issues: readonly {
+    issue: { code: string; faceToken?: number };
+  }[],
+): Revit2027DrawableFaceCoverage {
   const meshed = new Set(faceMeshes.map((face) => face.faceToken));
   const blocked = new Set(
     issues
@@ -510,29 +543,19 @@ type CompactFacesResult =
 
 function compactFaces(
   faces: readonly Revit2027CertifiedOwnerFaceMesh[],
-  replay: Revit2027GRepReplay,
+  faceSpans: Revit2027FaceSpanClassification<Revit2027GRepReplaySpan>,
   bindings: readonly Revit2027GInstanceBinding[],
 ): CompactFacesResult {
-  const faceSpans = new Map<number, Revit2027GRepReplay["spans"][number]>();
-  for (const span of replay.spans) {
-    if (
-      span.propertyToken <= 0 ||
-      span.propertySourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT
-    ) {
-      continue;
-    }
-    if (faceSpans.has(span.propertyToken)) {
-      return {
-        ok: false,
-        error: `duplicate replay Face token ${span.propertyToken}`,
-      };
-    }
-    faceSpans.set(span.propertyToken, span);
+  if (faceSpans.duplicateToken != null) {
+    return {
+      ok: false,
+      error: `duplicate replay Face token ${faceSpans.duplicateToken}`,
+    };
   }
 
   const compact: Revit2027CompactOwnerMesh["faces"][number][] = [];
   for (const { faceToken, mesh } of faces) {
-    const span = faceSpans.get(faceToken);
+    const span = faceSpans.spansByToken.get(faceToken);
     if (!span) {
       return {
         ok: false,
@@ -1677,23 +1700,23 @@ export function createRevit2027NativeMeshCollector(
           continue;
         }
 
-        const coverage = certifyRevit2027DrawableFaceCoverage(
-          replayed.value.spans,
+        const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+        const coverage = drawableFaceCoverage(
+          faceSpans.drawableTokens,
           meshed.value.faceMeshes,
           meshed.value.issues,
         );
         if (directRoot) {
           state.excludedNonTopologicalFaces +=
-            countExcludedNonTopologicalFaces(replayed.value.spans);
+            faceSpans.excludedNonTopologicalFaces;
         }
 
-        const expected = drawableFaceTokens(replayed.value.spans);
         const compacted = coverage.complete
           ? compactFaces(
               meshed.value.faceMeshes.filter((face) =>
-                expected.has(face.faceToken),
+                faceSpans.drawableTokens.has(face.faceToken),
               ),
-              replayed.value,
+              faceSpans,
               bindings.value,
             )
           : { ok: true as const, value: [] };
