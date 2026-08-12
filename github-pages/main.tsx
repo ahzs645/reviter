@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import ReviterStudio from "../app/ReviterStudio";
+import { ErrorBoundary } from "../app/studio/ErrorBoundary.tsx";
 import "./fonts.css";
 import "../app/globals.css";
 
@@ -22,6 +23,8 @@ if (!root) throw new Error("Reviter root element was not found.");
 // reference is paired from disk, per model — so there is nothing to preview.
 createRoot(root).render(
   <StrictMode>
-    <ReviterStudio />
+    <ErrorBoundary>
+      <ReviterStudio />
+    </ErrorBoundary>
   </StrictMode>,
 );

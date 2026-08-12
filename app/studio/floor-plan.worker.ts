@@ -9,6 +9,7 @@ import {
 } from "../../lib/reviter/architectural-plan.ts";
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { ConvertResult } from "../../lib/reviter/types.ts";
+import type { WorkerEnvelope } from "../../lib/reviter/worker-client.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -30,21 +31,24 @@ export type FloorPlanWorkerRequest = {
   theme: PlanTheme;
 };
 
-export type FloorPlanWorkerResponse = {
-  id: number;
-  svg?: string;
-  summary?: ArchitecturalPlanSummary;
-  error?: string;
+/** One drawn plan: the SVG and the summary measured from the same options. */
+export type FloorPlanResult = {
+  svg: string;
+  summary: ArchitecturalPlanSummary;
 };
+
+export type FloorPlanWorkerResponse = WorkerEnvelope<FloorPlanResult>;
 
 let model: ConvertResult | null = null;
 
 context.onmessage = (event: MessageEvent<FloorPlanWorkerInit | FloorPlanWorkerRequest>) => {
   const request = event.data;
+  if (!request) return;
   if (request.type === "init") {
     model = request.result;
     return;
   }
+  if (request.type !== "plan") return;
   try {
     if (!model) throw new Error("The floor plan worker has no model yet.");
     const options = {
@@ -56,12 +60,16 @@ context.onmessage = (event: MessageEvent<FloorPlanWorkerInit | FloorPlanWorkerRe
     };
     context.postMessage({
       id: request.id,
-      svg: makeArchitecturalFloorSvg(model, request.levelId, options),
-      summary: architecturalPlanSummary(model, request.levelId, options),
+      type: "result",
+      result: {
+        svg: makeArchitecturalFloorSvg(model, request.levelId, options),
+        summary: architecturalPlanSummary(model, request.levelId, options),
+      },
     } satisfies FloorPlanWorkerResponse);
   } catch (error) {
     context.postMessage({
       id: request.id,
+      type: "error",
       error: error instanceof Error ? error.message : String(error),
     } satisfies FloorPlanWorkerResponse);
   }

@@ -1,4 +1,4 @@
-import type { Bounds3, ElementBoundsRecord, Vec3 } from "./types";
+import type { Bounds3, Vec3 } from "./types.ts";
 
 /**
  * The orientations a CAD user already has names for.
@@ -73,12 +73,6 @@ export function cameraPoseForPreset(
     // the convention every plan view uses.
     up: isPlanPreset(preset) ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 },
   };
-}
-
-export function solidElementBounds(records: ElementBoundsRecord[]): ElementBoundsRecord[] {
-  return records.filter(({ boundsFeet: { min, max } }) =>
-    max.x - min.x > 0.001 && max.y - min.y > 0.001 && max.z - min.z > 0.001,
-  );
 }
 
 export function boundsDimensions(bounds: Bounds3): Vec3 {

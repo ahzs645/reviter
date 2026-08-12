@@ -9,10 +9,17 @@
  * fetched once somebody actually opens a DWG — most sessions never do.
  */
 import { convertDwgEntities, dwgBlockDefinitions, modelSpaceHandle } from "./dwg-entities.ts";
-import { dwgFeetPerUnit, dwgSectionSvg, dwgSections, entitiesWithin } from "./dwg-plan.ts";
+import {
+  dwgDrawingBounds,
+  dwgFeetPerUnit,
+  dwgSectionSvg,
+  dwgSections,
+  entitiesWithin,
+} from "./dwg-plan.ts";
 import type { DwgBounds, DwgEntity } from "./dwg-plan.ts";
 import { dwgLayoutSheets } from "./dwg-layouts.ts";
 import type { DwgLayoutRecord, DwgViewportRecord } from "./dwg-layouts.ts";
+import type { WorkerEnvelope } from "./worker-client.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -40,23 +47,41 @@ export type DwgWorkerSheet = {
   bounds: DwgBounds;
 };
 
-export type DwgWorkerResponse =
-  | { id: number; type: "progress"; stage: string }
-  | {
-    id: number;
-    type: "result";
-    svg: string;
-    entityCount: number;
-    droppedCount: number;
-    layerNames: string[];
-    sections: DwgWorkerSection[];
-    /** Named plans from the drawing's own layouts; empty when it has none. */
-    sheets: DwgWorkerSheet[];
-    /** Feet per drawing unit when `$INSUNITS` says; null when the file does not. */
-    feetPerUnit: number | null;
-    insunits: number | null;
-  }
-  | { id: number; type: "error"; error: string };
+export type DwgWorkerResult = {
+  svg: string;
+  entityCount: number;
+  droppedCount: number;
+  layerNames: string[];
+  sections: DwgWorkerSection[];
+  /** Named plans from the drawing's own layouts; empty when it has none. */
+  sheets: DwgWorkerSheet[];
+  /** Feet per drawing unit when `$INSUNITS` says; null when the file does not. */
+  feetPerUnit: number | null;
+  insunits: number | null;
+};
+
+type DwgWorkerResponse = WorkerEnvelope<DwgWorkerResult>;
+
+/**
+ * The decoder's stages, in the order it enters them.
+ *
+ * The shared envelope asks every worker for a ratio, and this one cannot
+ * measure its own input: LibreDWG returns when it returns. What it can report
+ * truthfully is where it is in this fixed sequence, so the ratio is the
+ * fraction of stages entered — monotonic, and nothing more. It is not a
+ * fraction of the time: "Decoding entities" alone holds most of the nine
+ * seconds a 9 MB survey drawing takes.
+ */
+const DWG_STAGES = [
+  "Loading the CAD decoder",
+  "Reading the drawing",
+  "Decoding entities",
+  "Building the plan",
+  "Reading the sheets",
+  "Drawing the plan",
+] as const;
+
+type DwgStage = (typeof DWG_STAGES)[number];
 
 type LibreDwgModule = {
   LibreDwg: { create(): Promise<LibreDwgInstance> };
@@ -117,8 +142,13 @@ function libreDwg(): Promise<LibreDwgInstance> {
 context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
   const request = event.data;
   if (!request || request.type !== "dwg") return;
-  const progress = (stage: string) =>
-    context.postMessage({ id: request.id, type: "progress", stage } satisfies DwgWorkerResponse);
+  const progress = (stage: DwgStage) =>
+    context.postMessage({
+      id: request.id,
+      type: "progress",
+      ratio: DWG_STAGES.indexOf(stage) / DWG_STAGES.length,
+      message: stage,
+    } satisfies DwgWorkerResponse);
 
   try {
     progress("Loading the CAD decoder");
@@ -153,23 +183,16 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
 
     progress("Drawing the plan");
     const sections = dwgSections(entities);
-    // One drawing per sheet is the common case; a sheet of many plans keeps its
-    // whole extent so nothing is silently cropped away from the reference.
-    const bounds = sections.length === 1
-      ? sections[0]!.bounds
-      : { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-    if (sections.length !== 1) {
-      for (const section of sections) {
-        bounds.minX = Math.min(bounds.minX, section.bounds.minX);
-        bounds.minY = Math.min(bounds.minY, section.bounds.minY);
-        bounds.maxX = Math.max(bounds.maxX, section.bounds.maxX);
-        bounds.maxY = Math.max(bounds.maxY, section.bounds.maxY);
-      }
+    // A drawing too small or too scattered to yield sections still has an
+    // extent, and it is the entities' own. Falling back to a unit square while
+    // emitting real coordinates drew every line outside the viewBox and
+    // returned a blank image reported as a successful decode.
+    const bounds = dwgDrawingBounds(entities, sections);
+    if (!bounds) {
+      throw new Error("No drawable linework was found in this drawing.");
     }
-    const drawn = Number.isFinite(bounds.minX) ? entitiesWithin(entities, bounds) : entities;
-    const svg = dwgSectionSvg(drawn, Number.isFinite(bounds.minX) ? bounds : {
-      minX: 0, minY: 0, maxX: 1, maxY: 1,
-    });
+    const drawn = entitiesWithin(entities, bounds);
+    const svg = dwgSectionSvg(drawn, bounds);
 
     const insunits = typeof database.header?.INSUNITS === "number"
       ? database.header.INSUNITS as number
@@ -177,22 +200,24 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
     context.postMessage({
       id: request.id,
       type: "result",
-      svg,
-      entityCount: drawn.length,
-      droppedCount: raw.length - entities.length,
-      layerNames: (database.tables?.LAYER?.entries ?? [])
-        .map((layer) => (typeof layer?.name === "string" ? layer.name : ""))
-        .filter(Boolean),
-      sections: sections.map((section) => ({
-        id: section.id,
-        bounds: section.bounds,
-        entityCount: section.entityCount,
-        widthUnits: section.widthUnits,
-        heightUnits: section.heightUnits,
-      })),
-      sheets,
-      feetPerUnit: dwgFeetPerUnit(insunits ?? undefined),
-      insunits,
+      result: {
+        svg,
+        entityCount: drawn.length,
+        droppedCount: raw.length - entities.length,
+        layerNames: (database.tables?.LAYER?.entries ?? [])
+          .map((layer) => (typeof layer?.name === "string" ? layer.name : ""))
+          .filter(Boolean),
+        sections: sections.map((section) => ({
+          id: section.id,
+          bounds: section.bounds,
+          entityCount: section.entityCount,
+          widthUnits: section.widthUnits,
+          heightUnits: section.heightUnits,
+        })),
+        sheets,
+        feetPerUnit: dwgFeetPerUnit(insunits ?? undefined),
+        insunits,
+      },
     } satisfies DwgWorkerResponse);
   } catch (error) {
     context.postMessage({

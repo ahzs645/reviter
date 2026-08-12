@@ -8,6 +8,7 @@ import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
 import type { RevitTransmissionData } from "./transmission-data.ts";
+import type { WorkerEnvelope, WorkerProgress } from "./worker-client.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
@@ -31,7 +32,7 @@ export type { TypeLinks, TypeNameRecord, TypeReference } from "./element-types.t
 export type { PartitionName } from "./partition-names.ts";
 export type { CylinderPatch, OwnedSurface, PlanePatch, SurfacePatch, SurfaceSummary } from "./surfaces.ts";
 export type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
-export type { BoundaryLoop, Point3, SketchCurve } from "./sketch-curves.ts";
+export type { Point3, SketchCurve } from "./sketch-curves.ts";
 export type { CoverageSummary, StreamCoverage, StreamDecoder } from "./stream-coverage.ts";
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -44,6 +45,24 @@ export type Segment = {
   y1: number;
   z1: number;
 };
+
+/**
+ * How a render batch's triangles were produced.
+ *
+ * Named rather than written inline at each use, because it has already drifted
+ * once: `"reference-ifc"` was added to the producer while three consumers kept
+ * their own copy of the two-member union and silently classified paired-IFC
+ * bodies as reconstructed proxies.
+ *
+ * - `native-brep` — tessellated from the RVT's own persisted BRep faces.
+ * - `display-proxy` — a synthesised envelope (typically a twelve-triangle box).
+ * - `reference-ifc` — an exact tessellated body lifted from the paired IFC
+ *   export by {@link ../reference-assisted-recovery}, replacing the RVT
+ *   geometry for an element that failed a shape or topology gate. It is real
+ *   surface geometry, not an envelope, and the element's
+ *   `renderGeometryProvenance` becomes `"reference-assisted"` to match.
+ */
+export type MeshGeometrySource = "native-brep" | "display-proxy" | "reference-ifc";
 
 export type MeshData = {
   name: string;
@@ -72,7 +91,7 @@ export type MeshData = {
    * treatment: a wireframe overlay makes a box proxy legible and turns 912,044
    * triangles of native geometry into moiré.
    */
-  source?: "native-brep" | "display-proxy" | "reference-ifc";
+  source?: MeshGeometrySource;
 };
 
 export type MaterialData = {
@@ -803,10 +822,8 @@ export type ConvertOptions = {
   geometryScale?: "auto" | "project" | "family";
 };
 
-export type ProgressUpdate = {
-  ratio: number;
-  message: string;
-};
+/** What a converter reports as it works, and what a worker forwards verbatim. */
+export type ProgressUpdate = WorkerProgress;
 
 export type WorkerRequest = {
   id: number;
@@ -816,10 +833,7 @@ export type WorkerRequest = {
   options?: ConvertOptions;
 };
 
-export type WorkerResponse =
-  | ({ id: number; type: "progress" } & ProgressUpdate)
-  | { id: number; type: "result"; result: ConvertOutcome }
-  | { id: number; type: "error"; error: string };
+export type WorkerResponse = WorkerEnvelope<ConvertOutcome>;
 
 export type IfcWorkerRequest = {
   id: number;
@@ -829,7 +843,4 @@ export type IfcWorkerRequest = {
   rvt: RvtRegressionInput;
 };
 
-export type IfcWorkerResponse =
-  | ({ id: number; type: "progress" } & ProgressUpdate)
-  | { id: number; type: "result"; result: PairedRegressionResult }
-  | { id: number; type: "error"; error: string };
+export type IfcWorkerResponse = WorkerEnvelope<PairedRegressionResult>;

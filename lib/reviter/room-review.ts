@@ -1,9 +1,35 @@
 import type { DerivedRoom, DerivedRoomGap, DerivedRoomResult } from "./derived-rooms.ts";
 
+/** Sidecar format version. Named because it appears in the exported shape. */
 export const ROOM_REVIEW_VERSION = 1 as const;
 
 export type RoomDisposition = "unreviewed" | "accepted" | "dismissed";
 export type GapDisposition = "unreviewed" | "treat-as-closed" | "dismissed";
+
+/**
+ * The `IfcSpace.PredefinedType` values a reviewed room may carry.
+ *
+ * The IFC exporter's header declares `FILE_SCHEMA(('IFC4'))`, and in IFC4 that
+ * attribute is an `IfcSpaceTypeEnum` — SPACE, PARKING, GFA, INTERNAL, EXTERNAL,
+ * USERDEFINED, NOTDEFINED. It is not the `IfcInternalOrExternalEnum` that held
+ * IFC2x3's `IfcSpace.InteriorOrExteriorSpace`, so the EXTERNAL_EARTH /
+ * EXTERNAL_WATER / EXTERNAL_FIRE items of that other enum would be rejected by
+ * an IFC4 schema check. Reviter offers the three items below; the list is the
+ * permitted set, not a formatting hint, because the value reaches STEP as a
+ * bare `.ENUM.` token that no escaping function can make safe.
+ */
+const SPACE_PREDEFINED_TYPES = ["INTERNAL", "EXTERNAL", "NOTDEFINED"] as const;
+
+export type SpacePredefinedType = (typeof SPACE_PREDEFINED_TYPES)[number];
+
+function isSpacePredefinedType(value: unknown): value is SpacePredefinedType {
+  return SPACE_PREDEFINED_TYPES.includes(value as SpacePredefinedType);
+}
+
+/** The permitted enum item for a value of unproven origin, defaulting to NOTDEFINED. */
+export function spacePredefinedType(value: unknown): SpacePredefinedType {
+  return isSpacePredefinedType(value) ? value : "NOTDEFINED";
+}
 
 export type RoomDetails = {
   number: string;
@@ -30,7 +56,7 @@ export type ReviewedRoom = {
   };
   gapIds: string[];
   details: RoomDetails;
-  ifc: { export: boolean; predefinedType: "INTERNAL" | "EXTERNAL" | "NOTDEFINED" };
+  ifc: { export: boolean; predefinedType: SpacePredefinedType };
   createdAt: string;
   updatedAt: string;
 };
@@ -163,6 +189,7 @@ export function isReviewedRoom(value: unknown): value is ReviewedRoom {
     && Array.isArray(room.gapIds) && room.gapIds.every((id) => typeof id === "string")
     && Boolean(room.details) && typeof room.details.name === "string"
     && Boolean(room.ifc) && typeof room.ifc.export === "boolean"
+    && isSpacePredefinedType(room.ifc.predefinedType)
     && typeof room.createdAt === "string" && typeof room.updatedAt === "string";
 }
 

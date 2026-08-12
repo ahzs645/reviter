@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 /* ---------------------------------------------------------------------------
    Design tokens.
 
@@ -19,7 +17,12 @@
   --line-soft: #1a2528;
   --text: #e7eeef;
   --text-2: #94a5a8;
-  --text-3: #67797d;
+  /* The third rank carries real prose — timestamps, reasons, counts, the whole
+     status bar — not decoration, so it has to clear 4.5:1 on every surface it
+     is printed on, --panel-3 included. The old #67797d reached 3.39 there.
+     Lightening it costs some of the step down from --text-2 (66.5 to 59.2 in
+     L*, where it used to be 66.5 to 49.5), which is still a rank you can see. */
+  --text-3: #7e9296;
   --accent: #62d7d1;
   --accent-deep: #0d4f59;
   --accent-fg: #04191d;
@@ -60,14 +63,21 @@
   --line: #d3dad8;
   --line-soft: #e3e8e6;
   --text: #0b1518;
-  --text-2: #5b6c6f;
-  --text-3: #7f9094;
+  /* Light paper leaves far less room below --text than dark does: the old
+     --text-2 already sat at 4.63:1 on --bg, so there was no legible rank left
+     underneath it. Both ranks step down together — --text-2 to 6.48:1 and
+     --text-3 to 4.86:1 — which restores the same visible gap the dark theme
+     has (L* 35.3 to 43.0) instead of collapsing the two into one grey. */
+  --text-2: #455659;
+  --text-3: #56696d;
   --accent: #0d4f59;
   --accent-deep: #0d4f59;
   --accent-fg: #eafffa;
   --accent-soft: rgba(13, 79, 89, .10);
-  --good: #4f7a2a;
-  --warn: #a3701c;
+  --good: #4c7528;
+  /* Amber is the hardest tone to keep legible on paper; #a3701c read 4.10:1 on
+     --panel while naming partial recoveries in prose. */
+  --warn: #8a5d13;
   --bad: #b04a42;
   --hover: rgba(11, 21, 24, .055);
   --shadow: 0 18px 40px rgba(20, 40, 45, .16);
@@ -547,6 +557,11 @@ button[data-reason]:focus-visible::after {
   background: var(--text-3);
 }
 .object-row.selected i { background: var(--accent); }
+/* The selected row tints its ground with --accent-soft, which lifts it enough
+   that the secondary text rank no longer clears AA against it. Step those two
+   up a rank while selected rather than darkening --text-3 everywhere, which
+   would collapse the gap to --text-2 that the hierarchy depends on. */
+.object-row.selected em, .object-row.selected small { color: var(--text-2); }
 .object-row b {
   overflow: hidden;
   font-size: 12px;
@@ -740,6 +755,9 @@ button[data-reason]:focus-visible::after {
 }
 .model-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .model-canvas:active { cursor: grabbing; }
+/* The viewport takes focus so it can be orbited, panned and zoomed from the
+   keyboard; inset so the ring is not clipped by the viewport's own overflow. */
+.model-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .model-canvas.nav-pan { cursor: move; }
 .model-canvas.nav-zoom { cursor: ns-resize; }
 .model-canvas.comment-pick-mode { cursor: copy; }

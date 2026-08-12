@@ -8,7 +8,7 @@
  * what makes the signature strict enough to trust: a false positive would have
  * to reproduce 48 bytes exactly.
  */
-import type { Bounds3, ElementBoundsRecord } from "./types";
+import type { Bounds3, ElementBoundsRecord } from "./types.ts";
 
 const BOUNDS_DUPLICATE_BYTES = 48;
 
@@ -190,7 +190,7 @@ export function framingBoundsOfRecords(records: ElementBoundsRecord[]): Bounds3 
   return axes.every((axis) => max[axis] > min[axis]) ? { min, max } : boundsOfRecords(records);
 }
 
-export function boundsOfRecords(records: ElementBoundsRecord[]): Bounds3 {
+export function boundsOfRecords(records: readonly ElementBoundsRecord[]): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
   for (const record of records) {

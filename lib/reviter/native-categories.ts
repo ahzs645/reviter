@@ -27,7 +27,7 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 
-import type { ElementBoundsRecord, NativeCategorySummary } from "./types";
+import type { ElementBoundsRecord, NativeCategorySummary } from "./types.ts";
 
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
 const CATEGORY_ID_MIN = -2_100_000;
@@ -79,11 +79,6 @@ function clearsConsensusFloor(support: number, purity: number): boolean {
 export function categoryDisplayName(categoryId: number): string {
   const name = builtInCategoryName(categoryId);
   return name ? humaniseCategoryName(name) : `Revit category ${categoryId}`;
-}
-
-/** True when the category id resolves to a published Revit category name. */
-export function isNamedCategory(categoryId: number): boolean {
-  return builtInCategoryName(categoryId) != null;
 }
 
 /** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
@@ -215,7 +210,7 @@ export function resolveElementCategories(
   return resolved;
 }
 
-export type ResolvedCategoriesWithEvidence = {
+type ResolvedCategoriesWithEvidence = {
   /** Majority category per element, exactly as `resolveElementCategories`. */
   resolved: Map<number, number>;
   /**
@@ -244,7 +239,7 @@ export type ResolvedCategoriesWithEvidence = {
  * the caller override a donated-only label only where stronger evidence — the
  * element's own record-code cluster — actively disagrees.
  */
-export function resolveElementCategoriesWithEvidence(
+function resolveElementCategoriesWithEvidence(
   tokens: CategoryToken[],
   knownElementIds: Set<number>,
   realElementIds: Set<number>,

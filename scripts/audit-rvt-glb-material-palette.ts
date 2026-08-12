@@ -13,9 +13,14 @@
  *     --rvt model.rvt --glb reference.glb --json report.json
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
+
+import {
+  declareUsage,
+  requirePath,
+} from "./lib/rvt-harness.ts";
 
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
 import {
@@ -27,18 +32,14 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 
-const argv = process.argv.slice(2);
-
-function option(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}. Run with --rvt, --glb, and --json.`);
-}
+declareUsage(
+  "audit-rvt-glb-material-palette.ts --rvt model.rvt --glb reference.glb --json report.json",
+);
 
 const paths = {
-  rvt: option("--rvt"),
-  glb: option("--glb"),
-  json: option("--json"),
+  rvt: requirePath("--rvt"),
+  glb: requirePath("--glb"),
+  json: requirePath("--json"),
 };
 
 type PaletteColor = {

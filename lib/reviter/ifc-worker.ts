@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { analyzeIfcReference } from "./ifc-reference";
-import type { IfcWorkerRequest, IfcWorkerResponse } from "./types";
+import { analyzeIfcReference } from "./ifc-reference.ts";
+import type { IfcWorkerRequest, IfcWorkerResponse } from "./types.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 

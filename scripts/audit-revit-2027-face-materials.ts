@@ -14,6 +14,12 @@ import { readFileSync } from "node:fs";
 
 import CFB from "cfb";
 
+import {
+  countsByKey,
+  decodeIfcString,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
@@ -31,43 +37,21 @@ import {
 } from "../lib/reviter/revit-2027-face-material.ts";
 import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  decodeRevit2027FramedGRepRoot,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027FaceStatic,
+  Revit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
 import {
   isRevit2027DirectGeometryRoot,
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-  type Revit2027GeometryStatic,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import {
   replayRevit2027GRepFifo,
   type Revit2027GRepReplaySpan,
 } from "../lib/reviter/revit-2027-grep-replay.ts";
-
-function increment<K>(map: Map<K, number>, key: K, amount = 1): void {
-  map.set(key, (map.get(key) ?? 0) + amount);
-}
-
-function decodeIfcString(source: string): string {
-  return source
-    .replace(/\\X2\\([0-9A-F]+)\\X0\\/gi, (_match, hex: string) => {
-      let decoded = "";
-      for (let index = 0; index + 3 < hex.length; index += 4) {
-        decoded += String.fromCharCode(
-          Number.parseInt(hex.slice(index, index + 4), 16),
-        );
-      }
-      return decoded;
-    })
-    .replace(/\\X\\([0-9A-F]{2})/gi, (_match, hex: string) =>
-      String.fromCharCode(Number.parseInt(hex, 16)))
-    .replaceAll("''", "'");
-}
 
 function ifcMaterialNames(text: string): Set<string> {
   const names = new Set<string>();
@@ -76,17 +60,6 @@ function ifcMaterialNames(text: string): Set<string> {
     names.add(decodeIfcString(match[1]!));
   }
   return names;
-}
-
-function sortedRecord<K extends string | number | bigint>(
-  map: ReadonlyMap<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map]
-      .sort(([left], [right]) =>
-        String(left).localeCompare(String(right), undefined, { numeric: true }))
-      .map(([key, count]) => [String(key), count]),
-  );
 }
 
 const rvtPath = process.argv[2];
@@ -246,20 +219,20 @@ console.log(JSON.stringify({
   geometryOwners,
   decodedFaces,
   facesWithoutGeometryParent,
-  failures: sortedRecord(failures),
+  failures: countsByKey(failures),
   materialDefinitions: materialDefinitions.size,
   faceRenderStyleIds: {
     distinct: faceIds.size,
-    counts: sortedRecord(faceIds),
+    counts: countsByKey(faceIds),
   },
   bindings: {
-    counts: sortedRecord(bindingCounts),
+    counts: countsByKey(bindingCounts),
     exactDistinctMaterialElements: exactMaterialFaces.size,
-    exactMaterialFaces: sortedRecord(exactMaterialFaces),
-    unresolvedPositiveIds: sortedRecord(unresolvedPositiveIds),
-    negativeSystemIds: sortedRecord(negativeSystemIds),
-    nonExplicitFaceGStyleIds: sortedRecord(nonExplicitFaceGStyleIds),
-    nonExplicitGeometryGStyleIds: sortedRecord(nonExplicitGeometryGStyleIds),
+    exactMaterialFaces: countsByKey(exactMaterialFaces),
+    unresolvedPositiveIds: countsByKey(unresolvedPositiveIds),
+    negativeSystemIds: countsByKey(negativeSystemIds),
+    nonExplicitFaceGStyleIds: countsByKey(nonExplicitFaceGStyleIds),
+    nonExplicitGeometryGStyleIds: countsByKey(nonExplicitGeometryGStyleIds),
   },
   ifcOracle: {
     distinctIfcMaterialNames: ifcNames.size,

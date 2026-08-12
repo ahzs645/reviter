@@ -21,8 +21,6 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   // No reference model is bundled: a reference is paired from disk, per model,
   // so the deployed site must not ship a 25.6 MB derivative of one building.
   await assert.rejects(stat(new URL("autodesk-reference.glb", output)));
-  const gltfLoader = await stat(new URL("gltf-loader.js", output));
-  assert.ok(gltfLoader.size > 100_000, "glTF runtime loader was copied");
 
   const assets = await readdir(new URL("assets/", output));
   assert.ok(
@@ -47,9 +45,9 @@ test("builds a repository-subpath-safe GitHub Pages application", async () => {
   assert.match(css, /--font-manrope:\s*[\"']?Manrope/);
   assert.match(css, /--font-plex-mono:\s*[\"']?IBM Plex Mono/);
   const chunks = await readdir(new URL("assets/chunks/", output));
-  const legacyChunk = chunks.find((name) => /^legacy-revit-2021\.generated-.*\.js$/.test(name));
+  const legacyChunk = chunks.find((name) => /^legacy-revit-2021\.data-.*\.js$/.test(name));
   assert.ok(legacyChunk, "legacy Revit 2021 compatibility data was emitted as a lazy chunk");
-  assert.match(main, /import\("\.\/chunks\/legacy-revit-2021\.generated-/);
+  assert.match(main, /import\("\.\/chunks\/legacy-revit-2021\.data-/);
   assert.doesNotMatch(main, /OST_StackedWalls_Obsolete_IdInWrongRange/);
   assert.match(
     await readFile(new URL(`assets/chunks/${legacyChunk}`, output), "utf8"),

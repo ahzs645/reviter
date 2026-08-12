@@ -243,25 +243,6 @@ export function validateSharedParameterDocument(
   return issues;
 }
 
-export function deduplicateSharedParameterDocument(
-  document: SharedParameterDocument,
-): SharedParameterDocument {
-  const seenGroups = new Set<number>();
-  const groups = document.groups.filter((group) => {
-    if (seenGroups.has(group.id)) return false;
-    seenGroups.add(group.id);
-    return true;
-  });
-  const seenGuids = new Set<string>();
-  const parameters = document.parameters.filter((parameter) => {
-    const guid = parameter.guid.toLowerCase();
-    if (seenGuids.has(guid)) return false;
-    seenGuids.add(guid);
-    return true;
-  });
-  return { ...document, groups, parameters, warnings: [...document.warnings] };
-}
-
 export function mergeSharedParameterDocuments(
   documents: readonly SharedParameterDocument[],
 ): SharedParameterDocument {
@@ -343,18 +324,6 @@ export function compareSharedParameterDocuments(
     if (!leftByGuid.has(guid)) result.added.push({ guid, right: rightParameter });
   }
   return result;
-}
-
-export function regroupSharedParameters(
-  document: SharedParameterDocument,
-  groupByGuid: Readonly<Record<string, number>>,
-): SharedParameterDocument {
-  const knownGroups = new Set(document.groups.map((group) => group.id));
-  const parameters = document.parameters.map((parameter) => {
-    const groupId = groupByGuid[parameter.guid.toLowerCase()];
-    return groupId != null && knownGroups.has(groupId) ? { ...parameter, groupId } : parameter;
-  });
-  return { ...document, parameters, warnings: [...document.warnings] };
 }
 
 export function writeSharedParameterFile(document: SharedParameterDocument): string {

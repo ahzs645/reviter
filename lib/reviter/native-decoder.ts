@@ -1,4 +1,5 @@
-import type { Bounds3, MaterialData } from "./types";
+import { srgbBytesToLinear } from "./material-palette.ts";
+import type { Bounds3, MaterialData } from "./types.ts";
 
 const ARC_WALL_2023_TAG = 0x0191;
 const ARC_WALL_2023_VARIANT = 0x07fa;
@@ -29,24 +30,24 @@ export type RvtMaterialRecord = {
   transparency?: number | null;
 };
 
-function srgbToLinear(value: number): number {
-  return value <= 0.04045
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-/** Convert typed rvt-rs Material fields into glTF-compatible linear PBR data. */
+/**
+ * Convert typed rvt-rs Material fields into glTF-compatible linear PBR data.
+ *
+ * `color_packed` is an sRGB triple with red in the low byte; it shares both the
+ * layout and the colour space of the record-scanner palette, so it shares that
+ * palette's single `srgbBytesToLinear` definition too.
+ */
 export function decodeRvtMaterialDefinitions(source: RvtMaterialRecord[]): MaterialData[] {
   return source.flatMap((material) => {
     if (!material.name) return [];
     const packed = material.color_packed;
     const rgb = packed == null
       ? [0.522, 0.522, 0.522]
-      : [
-          srgbToLinear((packed & 0xff) / 255),
-          srgbToLinear(((packed >> 8) & 0xff) / 255),
-          srgbToLinear(((packed >> 16) & 0xff) / 255),
-        ];
+      : srgbBytesToLinear([
+          packed & 0xff,
+          (packed >> 8) & 0xff,
+          (packed >> 16) & 0xff,
+        ]);
     return [{
       name: material.name,
       baseColorLinear: [
@@ -140,20 +141,4 @@ export function decodeArcWall2023Record(
     duplicateMatches: primary.every((value, index) => value === duplicate[index]),
     confidence: "bounds-hypothesis",
   };
-}
-
-export function scanArcWall2023Records(
-  data: Uint8Array,
-  revitVersion?: number,
-): ArcWall2023BoundsRecord[] {
-  if (revitVersion !== 2023 || data.length < ARC_WALL_2023_RECORD_BYTES) return [];
-  const records: ArcWall2023BoundsRecord[] = [];
-  for (let offset = 0; offset <= data.length - ARC_WALL_2023_RECORD_BYTES; offset += 1) {
-    if (data[offset] !== 0x91 || data[offset + 1] !== 0x01) continue;
-    const record = decodeArcWall2023Record(data, offset, revitVersion);
-    if (!record) continue;
-    records.push(record);
-    offset += ARC_WALL_2023_RECORD_BYTES - 1;
-  }
-  return records;
 }

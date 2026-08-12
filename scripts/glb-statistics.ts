@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
 /** Reproducible topology and world-extent statistics for a GLB. */
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import * as THREE from "three";
+
+import {
+  isEntryPoint,
+  optionValue,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 
 type Accessor = {
   componentType: number;
@@ -140,16 +145,14 @@ export function analyzeGlbDocument(document: GlbDocument): GlbStatistics {
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const args = process.argv.slice(2);
-  const glbPath = args.find((argument, index) => !argument.startsWith("--") && args[index - 1] !== "--json");
-  const jsonIndex = args.indexOf("--json");
-  const jsonPath = jsonIndex >= 0 ? args[jsonIndex + 1] : undefined;
+if (isEntryPoint(import.meta.url)) {
+  const [glbPath] = positionals("--json");
+  const jsonPath = optionValue("--json");
   if (!glbPath) {
     console.error("usage: glb-statistics.ts <model.glb> [--json <report.json>]");
     process.exit(2);
   }
-  const output = `${JSON.stringify(analyzeGlbDocument(readGlbDocument(readFileSync(glbPath))), null, 2)}\n`;
-  if (jsonPath) writeFileSync(jsonPath, output);
-  console.log(output.trimEnd());
+  const report = analyzeGlbDocument(readGlbDocument(readFileSync(glbPath)));
+  if (jsonPath) writeJsonReport(jsonPath, report);
+  console.log(JSON.stringify(report, null, 2));
 }

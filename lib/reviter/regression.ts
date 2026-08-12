@@ -4,7 +4,7 @@ import type {
   PairedRegressionResult,
   RegressionGate,
   RvtRegressionInput,
-} from "./types";
+} from "./types.ts";
 
 const FEET_TO_METRES = 0.3048;
 

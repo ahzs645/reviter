@@ -151,7 +151,12 @@ export function MobileShell({
           <img src="./favicon.png" alt="" />
           <div>
             <strong>Reviter</strong>
-            <span>{statusLine}</span>
+            {/* The phone has no status bar and no progress track: this one line
+                is the whole account of a conversion that can run for half a
+                minute, so it has to speak as well as show. The live region is
+                the line alone, not the header — the file name beside it must
+                not be re-read every time the percentage moves. */}
+            <span role="status">{statusLine}</span>
           </div>
           <button type="button" aria-label="Toggle theme" onClick={onTheme}>{themeIcons}</button>
         </header>
@@ -167,7 +172,7 @@ export function MobileShell({
         <img src="./favicon.png" alt="" />
         <div>
           <strong>{fileName}</strong>
-          <span>{statusLine}</span>
+          <span role="status">{statusLine}</span>
         </div>
         <button type="button" aria-label="Toggle theme" onClick={onTheme}>{themeIcons}</button>
       </header>

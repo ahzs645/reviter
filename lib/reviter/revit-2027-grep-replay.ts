@@ -118,7 +118,7 @@ import {
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
 } from "./revit-2027-surfaces.ts";
 
-export const REVIT_2027_GREP_INITIAL_TOKEN_COUNT = 3;
+const REVIT_2027_GREP_INITIAL_TOKEN_COUNT = 3;
 
 const DEFAULT_MAX_REPLAY_ENTRIES = 1_000_000;
 const DEFAULT_MAX_DESCRIPTORS = 4_000_000;
@@ -824,6 +824,17 @@ export function createRevit2027GRepReplayRegistry(): Map<
   return new Map(BUILTIN_READERS);
 }
 
+/**
+ * The single certified reader table used when a caller supplies no registry.
+ *
+ * This instance is module-private and read-only: `replayRevit2027GRepFifo`
+ * only ever reads from a registry, and a caller that wants to extend the
+ * certified set still gets an independent mutable copy from
+ * `createRevit2027GRepReplayRegistry`. Nothing hands this map out, so no
+ * caller can register into it and change what a later replay decodes.
+ */
+const CERTIFIED_READERS: Revit2027GRepReplayRegistry = new Map(BUILTIN_READERS);
+
 function validLimit(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
 }
@@ -842,8 +853,7 @@ function validLimit(value: number): boolean {
 export function replayRevit2027GRepFifo(
   data: Uint8Array,
   root: Revit2027FramedGRepRoot,
-  registry: Revit2027GRepReplayRegistry =
-    createRevit2027GRepReplayRegistry(),
+  registry: Revit2027GRepReplayRegistry = CERTIFIED_READERS,
   options: Revit2027GRepReplayOptions = {},
 ): Revit2027GRepReplayResult {
   const maxReplayEntries =

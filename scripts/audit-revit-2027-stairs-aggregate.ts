@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
+
+import {
+  ifcScalar,
+  sha256,
+  stepReferences,
+} from "./lib/rvt-harness.ts";
 
 import {
   decodeRevit2027BaseRailingStairsRelation,
@@ -45,10 +50,6 @@ const paths = {
   semantic: option("--semantic")!,
   json: option("--json", false),
 };
-
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
 
 type Frame = {
   objectOffset: number;
@@ -202,10 +203,6 @@ function splitStepArguments(source: string): string[] {
   return result;
 }
 
-function references(source = ""): number[] {
-  return [...source.matchAll(/#(\d+)/gu)].map((match) => Number(match[1]));
-}
-
 type IfcRelation = {
   kind: "aggregation" | "containment";
   parent: number;
@@ -223,21 +220,15 @@ function parseTreeRelations(text: string): IfcRelation[] {
         match[2] === "IFCRELAGGREGATES" ? "aggregation" : "containment",
       parent:
         match[2] === "IFCRELAGGREGATES"
-          ? (references(fields[4])[0] ?? 0)
-          : (references(fields[5])[0] ?? 0),
+          ? (stepReferences(fields[4])[0] ?? 0)
+          : (stepReferences(fields[5])[0] ?? 0),
       related:
         match[2] === "IFCRELAGGREGATES"
-          ? references(fields[5])
-          : references(fields[4]),
+          ? stepReferences(fields[5])
+          : stepReferences(fields[4]),
     });
   }
   return relations;
-}
-
-function scalar(value: unknown): unknown {
-  return value != null && typeof value === "object" && "value" in value
-    ? (value as { value: unknown }).value
-    : value;
 }
 
 type IfcElement = {
@@ -274,7 +265,7 @@ for (const typeCode of api.GetIfcEntityList(model)) {
     const line = api.GetLine(model, expressId, false) as {
       Tag?: unknown;
     };
-    const rawTag = scalar(line.Tag);
+    const rawTag = ifcScalar(line.Tag);
     const tag =
       typeof rawTag === "string" && /^\d+$/u.test(rawTag)
         ? Number(rawTag)

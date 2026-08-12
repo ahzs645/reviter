@@ -93,20 +93,48 @@ function transactionDone(transaction: IDBTransaction): Promise<boolean> {
   });
 }
 
-async function pruneCache(database: IDBDatabase): Promise<void> {
+/**
+ * Keep storage bounded by the same number of rows shown in Recent, dropping the
+ * least recently opened first. Ordering is by cachedAt rather than by key, so
+ * reopening a model refreshes its place in the LRU set.
+ *
+ * `incomingKey` is the row that is about to be written: a slot is reserved for
+ * it, because a store that is already at the limit has to give something up
+ * before the next put can fit rather than after.
+ */
+async function pruneCache(database: IDBDatabase, incomingKey?: string): Promise<void> {
   const read = database.transaction(STORE_NAME, "readonly");
   const readDone = transactionDone(read);
-  const all = await requestResult(read.objectStore(STORE_NAME).getAll());
+  const store = read.objectStore(STORE_NAME);
+  // Both requests are issued before either is awaited, so the read transaction
+  // is never asked to stay alive across a turn of the event loop.
+  const valuesPending = requestResult(store.getAll());
+  const keysPending = requestResult(store.getAllKeys());
   await readDone;
-  if (!Array.isArray(all) || all.length <= CACHE_LIMIT) return;
-  const stale = all
-    .filter(isStoredRecentModel)
-    .sort((a, b) => b.cachedAt - a.cachedAt)
-    .slice(CACHE_LIMIT);
-  if (!stale.length) return;
+  const values = await valuesPending;
+  const keys = await keysPending;
+  if (!Array.isArray(values) || !Array.isArray(keys) || values.length !== keys.length) return;
+
+  const doomed: IDBValidKey[] = [];
+  const live: { key: IDBValidKey; cachedAt: number }[] = [];
+  for (const [index, value] of values.entries()) {
+    const key = keys[index]!;
+    // A row that no longer parses can never be served, so it is deleted on
+    // sight instead of counting against the budget. Counting them was enough
+    // to let a handful of corrupt rows occupy the cache permanently.
+    if (isStoredRecentModel(value)) live.push({ key, cachedAt: value.cachedAt });
+    else doomed.push(key);
+  }
+  const budget = CACHE_LIMIT - (incomingKey == null ? 0 : 1);
+  const others = live
+    .filter((row) => row.key !== incomingKey)
+    .sort((a, b) => b.cachedAt - a.cachedAt);
+  for (const row of others.slice(budget)) doomed.push(row.key);
+
+  if (!doomed.length) return;
   const remove = database.transaction(STORE_NAME, "readwrite");
   const removeDone = transactionDone(remove);
-  for (const entry of stale) remove.objectStore(STORE_NAME).delete(entry.key);
+  for (const key of doomed) remove.objectStore(STORE_NAME).delete(key);
   await removeDone;
 }
 
@@ -159,9 +187,6 @@ async function storeRecentModel(
   const database = await openDatabase();
   if (!database) return false;
   try {
-    const transaction = database.transaction(STORE_NAME, "readwrite");
-    const done = transactionDone(transaction);
-    const store = transaction.objectStore(STORE_NAME);
     const record: StoredRecentModel = {
       key: recentModelCacheKey({
         name: file.name,
@@ -177,13 +202,15 @@ async function storeRecentModel(
       parserVersion: currentParserCacheVersion(),
       cachedAt: Date.now(),
     };
-    store.put(record);
-    const saved = await done;
-    // Keep storage bounded by the same number of rows shown in Recent. This is
-    // based on cachedAt rather than key ordering, so reopening a model refreshes
-    // its place in the LRU set.
-    if (saved) await pruneCache(database);
-    return saved;
+    // Prune before the write, never after it. A full store rejects the put with
+    // a QuotaExceededError, which aborts the transaction — so eviction gated on
+    // that write is starved by exactly the condition it exists to relieve, and
+    // the cache stays wedged full until the browser evicts the whole origin.
+    await pruneCache(database, record.key);
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    const done = transactionDone(transaction);
+    transaction.objectStore(STORE_NAME).put(record);
+    return await done;
   } catch {
     return false;
   } finally {

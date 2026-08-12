@@ -6,7 +6,7 @@
  * shorter one is not a guess. See the block comment at the call site in
  * `convert.ts` for the measurements and the controls.
  */
-import type { Bounds3 } from "./types";
+import type { Bounds3 } from "./types.ts";
 import type { WallSolid } from "./native-geometry.ts";
 
 /** Below this a clipped run is degenerate, and the solid is left alone. */

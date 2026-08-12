@@ -9,77 +9,58 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-cylinder-cone-trims.ts model.rvt
  */
-import { readFileSync } from "node:fs";
+import {
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+} from "./lib/rvt-harness.ts";
 
-import CFB from "cfb";
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
 
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { tessellateNeutralBrep } from "../lib/reviter/brep-tessellator.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
-import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
 import {
   adaptRevit2027CylinderSampledBrep,
   type Revit2027CylinderSampledEdgeUse,
 } from "../lib/reviter/revit-2027-cylinder-sampled-brep.ts";
 import {
-  decodeRevit2027EdgeLoopStatic,
-  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
-  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-  type Revit2027EdgeLoopStatic,
-} from "../lib/reviter/revit-2027-edge-loop-static.ts";
-import {
-  decodeRevit2027GEdgeStatic,
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
-  type Revit2027EdgePoint,
-  type Revit2027GEdgeStatic,
-} from "../lib/reviter/revit-2027-edge-1423.ts";
-import {
-  decodeRevit2027FaceStatic,
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FillPatternData,
-  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-pattern-data.ts";
-import {
-  decodeRevit2027FillGrid,
-  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-grid.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GFilling,
-  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-gfilling.ts";
-import {
-  decodeRevit2027GArc,
-  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-garc.ts";
-import {
-  decodeRevit2027GeometryStatic,
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import {
-  decodeRevit2027AnalyticSurface,
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
-  type Revit2027AnalyticSurface,
-} from "../lib/reviter/revit-2027-surfaces.ts";
-
+  decodeRevit2027AnalyticSurface,
+  decodeRevit2027EdgeLoopStatic,
+  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
+  decodeRevit2027FaceStatic,
+  decodeRevit2027FillGrid,
+  decodeRevit2027FillPatternData,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArc,
+  decodeRevit2027GEdgeStatic,
+  decodeRevit2027GFilling,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027AnalyticSurface,
+  Revit2027EdgeLoopStatic,
+  Revit2027EdgePoint,
+  Revit2027FaceStatic,
+  Revit2027GEdgeStatic,
+} from "./lib/revit-2027-decoders.ts";
 const MAX_OWNER_QUEUE = 1_000_000;
 const UV_TOLERANCE = 1e-9;
 const SURFACE_SLOTS = new Set([
@@ -182,19 +163,6 @@ type ConeAuditDetail = {
     samples: readonly (readonly [number, number])[];
   }[];
 };
-
-function increment(map: Map<string, number>, key: string): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function sortedEntries(map: Map<string, number>): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] || left[0].localeCompare(right[0]),
-    ),
-  );
-}
 
 function requireTokens(
   entries: readonly CondInt16QueueEntry[],
@@ -1019,24 +987,10 @@ if (!modelPath) {
       "scripts/audit-revit-2027-cylinder-cone-trims.ts model.rvt",
   );
 }
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
-);
-if (release !== 2027) {
-  throw new Error(`audit requires Revit 2027, received ${release ?? "unknown"}`);
-}
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 let chunks = 0;
 let failedChunks = 0;
 let directOwners = 0;
@@ -1044,64 +998,44 @@ let completedOwners = 0;
 const faceAudits: FaceAudit[] = [];
 const coneDetails: ConeAuditDetail[] = [];
 const ownerIds = new Set<number>();
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
-    );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+    const root = decodeRevit2027FramedGRepRoot(inflated, frame, release);
+    if (!root.ok) continue;
+    if (
+      root.value.children.length !== 1 ||
+      root.value.children[0]?.sourceClassSlot !==
+        REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+    ) {
       continue;
     }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
-      const root = decodeRevit2027FramedGRepRoot(inflated, frame, release);
-      if (!root.ok) continue;
-      if (
-        root.value.children.length !== 1 ||
-        root.value.children[0]?.sourceClassSlot !==
-          REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
-      ) {
-        continue;
-      }
-      directOwners += 1;
-      const owner = replayOwner(inflated, root.value, release);
-      if (!owner) continue;
-      completedOwners += 1;
-      for (const [faceToken, surface] of owner.surfacesByFace) {
-        if (surface.kind !== "cylinder" && surface.kind !== "cone") continue;
-        const face = owner.faces.get(faceToken);
-        if (!face) throw new Error(`owner lacks Face token ${faceToken}`);
-        ownerIds.add(frame.elementId);
-        if (surface.kind === "cone") {
-          coneDetails.push(
-            coneDetail(frame.elementId, owner, faceToken, face, surface),
-          );
-        }
-        faceAudits.push(
-          auditFace(frame.elementId, owner, faceToken, face, surface),
+    directOwners += 1;
+    const owner = replayOwner(inflated, root.value, release);
+    if (!owner) continue;
+    completedOwners += 1;
+    for (const [faceToken, surface] of owner.surfacesByFace) {
+      if (surface.kind !== "cylinder" && surface.kind !== "cone") continue;
+      const face = owner.faces.get(faceToken);
+      if (!face) throw new Error(`owner lacks Face token ${faceToken}`);
+      ownerIds.add(frame.elementId);
+      if (surface.kind === "cone") {
+        coneDetails.push(
+          coneDetail(frame.elementId, owner, faceToken, face, surface),
         );
       }
+      faceAudits.push(
+        auditFace(frame.elementId, owner, faceToken, face, surface),
+      );
     }
   }
-}
 
+}
 const classifications = new Map<string, number>();
 for (const face of faceAudits) increment(classifications, face.classification);
 const cylinderFaces = faceAudits.filter(
@@ -1141,10 +1075,10 @@ console.log(JSON.stringify({
     cylinderFaces: cylinderFaces.length,
     coneFaces: coneFaces.length,
   },
-  classification: sortedEntries(classifications),
+  classification: countsByFrequency(classifications),
   classificationBySurface: {
-    cylinder: sortedEntries(cylinderClassifications),
-    cone: sortedEntries(coneClassifications),
+    cylinder: countsByFrequency(cylinderClassifications),
+    cone: countsByFrequency(coneClassifications),
   },
   coverage: {
     neutralCylinderFaces: tessellated.length,

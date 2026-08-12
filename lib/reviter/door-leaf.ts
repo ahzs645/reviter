@@ -2,7 +2,7 @@
  * Cutting a door leaf out of the opening its record describes.
  */
 import { instanceCorners, type InstancePlacement, type LocalBounds } from "./instanced-geometry.ts";
-import type { ElementBoundsRecord } from "./types";
+import type { ElementBoundsRecord } from "./types.ts";
 
 /** How far outside a wall's height band a door may sit and still be its door. */
 const DOOR_HOST_HEIGHT_SLACK_FEET = 1;

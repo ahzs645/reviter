@@ -1,5 +1,10 @@
 import ReviterStudio from "./ReviterStudio";
+import { ErrorBoundary } from "./studio/ErrorBoundary.tsx";
 
 export default function Home() {
-  return <ReviterStudio />;
+  return (
+    <ErrorBoundary>
+      <ReviterStudio />
+    </ErrorBoundary>
+  );
 }

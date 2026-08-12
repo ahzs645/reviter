@@ -2,16 +2,16 @@
 
 import { IfcAPI } from "web-ifc";
 
-import { boxDifference, type Box } from "./drawn-bounds";
+import { boxDifference, type Box } from "./drawn-bounds.ts";
 import { ifcGeometryDiffStatus } from "./geometry-diff-status.ts";
-import { compareRvtToIfc } from "./regression";
+import { compareRvtToIfc } from "./regression.ts";
 import {
   addSurfaceTriangle,
   emptySurfaceOrientationTotals,
   hasMaterialSlopeDifference,
   unpackSurfaceOrientationSignatures,
   type SurfaceOrientationTotals,
-} from "./surface-orientation";
+} from "./surface-orientation.ts";
 import type {
   IfcElementTypeMatch,
   IfcMatchedElement,
@@ -21,7 +21,7 @@ import type {
   ReferenceMeshData,
   RvtRegressionInput,
   Vec3,
-} from "./types";
+} from "./types.ts";
 
 /**
  * Where `web-ifc.wasm` lives depends on how this module was bundled.

@@ -1,5 +1,5 @@
 /** Plain-text geometry exports: Wavefront OBJ and DXF polylines. */
-import type { ConvertResult } from "./types";
+import type { ConvertResult } from "./types.ts";
 
 export function makeObj(result: ConvertResult): string {
   const lines = [

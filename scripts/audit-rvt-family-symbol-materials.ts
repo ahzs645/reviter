@@ -6,12 +6,21 @@
  * The decoder reads only RVT data. IFC is loaded separately as an audit oracle
  * for element population and exact material-name comparison.
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
+
+import {
+  declareUsage,
+  ifcScalar,
+  optionalPath,
+  requirePath,
+  sha256,
+  splitStepArgs,
+  stepReferences,
+} from "./lib/rvt-harness.ts";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -35,55 +44,15 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 
-const argv = process.argv.slice(2);
-
-function requiredOption(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}. Run with --rvt and --ifc.`);
-}
-
-function optionalOption(name: string): string | null {
-  const index = argv.indexOf(name);
-  return index >= 0 && argv[index + 1] ? resolve(argv[index + 1]!) : null;
-}
+declareUsage(
+  "audit-rvt-family-symbol-materials.ts --rvt model.rvt --ifc model.ifc [--json report.json]",
+);
 
 const paths = {
-  rvt: requiredOption("--rvt"),
-  ifc: requiredOption("--ifc"),
-  json: optionalOption("--json"),
+  rvt: requirePath("--rvt"),
+  ifc: requirePath("--ifc"),
+  json: optionalPath("--json"),
 };
-
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function splitStepArgs(source: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quotedValue = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "'") {
-      if (quotedValue && source[index + 1] === "'") index += 1;
-      else quotedValue = !quotedValue;
-    } else if (!quotedValue) {
-      if (char === "(") depth += 1;
-      else if (char === ")") depth -= 1;
-      else if (char === "," && depth === 0) {
-        result.push(source.slice(start, index).trim());
-        start = index + 1;
-      }
-    }
-  }
-  result.push(source.slice(start).trim());
-  return result;
-}
-
-function references(source = ""): number[] {
-  return [...source.matchAll(/#(\d+)/g)].map((match) => Number(match[1]));
-}
 
 function quoted(source = ""): string | null {
   const match = /^'((?:''|[^'])*)'$/.exec(source.trim());
@@ -101,13 +70,6 @@ function quoted(source = ""): string | null {
     .replace(/\\X\\([0-9A-F]{2})/gi, (_match, hex: string) =>
       String.fromCharCode(Number.parseInt(hex, 16)))
     .replaceAll("''", "'");
-}
-
-function scalar(value: unknown): unknown {
-  if (value != null && typeof value === "object" && "value" in value) {
-    return (value as { value: unknown }).value;
-  }
-  return value;
 }
 
 type IfcOracle = {
@@ -136,17 +98,17 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
     if (type.startsWith("IFCMATERIAL")) {
       materialNodes.set(id, {
         name: type === "IFCMATERIAL" ? quoted(fields[0]) : null,
-        references: references(match[3]!),
+        references: stepReferences(match[3]!),
       });
     } else if (type === "IFCRELASSOCIATESMATERIAL") {
       materialRelations.push({
-        related: references(fields[4]),
-        material: references(fields[5])[0] ?? 0,
+        related: stepReferences(fields[4]),
+        material: stepReferences(fields[5])[0] ?? 0,
       });
     } else if (type === "IFCRELDEFINESBYTYPE") {
       typeRelations += 1;
-      const typeObject = references(fields[5])[0] ?? 0;
-      for (const elementId of references(fields[4])) {
+      const typeObject = stepReferences(fields[5])[0] ?? 0;
+      for (const elementId of stepReferences(fields[4])) {
         typeByElement.set(elementId, typeObject);
       }
     }
@@ -201,7 +163,7 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
       for (const name of directNames.get(typeObject ?? 0) ?? []) names.add(name);
       if (!names.size) continue;
       materialAssignedIfcElements += 1;
-      const tag = scalar(api.GetLine(model, elementId, false)?.Tag);
+      const tag = ifcScalar(api.GetLine(model, elementId, false)?.Tag);
       if (typeof tag !== "string" || !/^\d+$/u.test(tag)) continue;
       materialAssignedTaggedRows += 1;
       const numericTag = Number(tag);

@@ -186,9 +186,12 @@ export function FloorMiniMap({
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      const mapTrigger = document.querySelector<HTMLElement>('[aria-controls="floor-navigation-map"]')
-        ?? document.querySelector<HTMLElement>('.workspace-switcher button[aria-pressed="true"]');
-      (mapTrigger ?? restoreFocusRef.current)?.focus?.();
+      // Back to whatever opened the map. Hunting the page for a trigger instead
+      // matched nothing — no element declares `aria-controls` for this map —
+      // and fell through to the workspace switcher, a status-bar control that
+      // never opened it and is not where the reviewer was.
+      const opener = restoreFocusRef.current;
+      if (opener?.isConnected) opener.focus();
     };
   }, []);
 

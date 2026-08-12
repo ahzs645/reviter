@@ -8,12 +8,19 @@
  * relationship, frame, and bounds relation is decoded independently from the
  * RVT before the two domains are joined by the numeric Revit Tag.
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
+
+import {
+  declareUsage,
+  ifcScalar,
+  increment,
+  requirePath,
+  sha256,
+} from "./lib/rvt-harness.ts";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -42,21 +49,18 @@ import {
   type Revit2027CompactOwnerMesh,
 } from "../lib/reviter/revit-2027-native-mesh-bridge.ts";
 
-const argv = process.argv.slice(2);
 const FEET_PER_METRE = 3.280839895;
 const SAMPLE_LIMIT_PER_CLASS = 12;
 
-function option(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}`);
-}
+declareUsage(
+  "audit-revit-2027-missing-owner-routes.ts --rvt model.rvt --ifc model.ifc --rvt-audit audit.json --json report.json",
+);
 
 const paths = {
-  rvt: option("--rvt"),
-  ifc: option("--ifc"),
-  rvtAudit: option("--rvt-audit"),
-  json: option("--json"),
+  rvt: requirePath("--rvt"),
+  ifc: requirePath("--ifc"),
+  rvtAudit: requirePath("--rvt-audit"),
+  json: requirePath("--json"),
 };
 
 type Bounds = {
@@ -127,16 +131,6 @@ type TargetRow = {
   carriers: string[];
 };
 
-function sha256(bytes: Uint8Array | string): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function scalar(value: unknown): unknown {
-  return value != null && typeof value === "object" && "value" in value
-    ? (value as { value: unknown }).value
-    : value;
-}
-
 function emptyBounds(): Bounds {
   return {
     minimum: [Infinity, Infinity, Infinity],
@@ -203,10 +197,6 @@ function markerName(marker: number): string {
     return "InsertableInstance";
   }
   return `0x${marker.toString(16).padStart(4, "0")}`;
-}
-
-function increment<K>(map: Map<K, number>, key: K, amount = 1): void {
-  map.set(key, (map.get(key) ?? 0) + amount);
 }
 
 function counts<K extends string | number>(
@@ -383,7 +373,7 @@ for (const typeCode of api.GetIfcEntityList(ifcModel)) {
   const ids = api.GetLineIDsWithType(ifcModel, typeCode, false);
   for (let index = 0; index < ids.size(); index += 1) {
     const expressId = ids.get(index);
-    const rawTag = scalar(api.GetLine(ifcModel, expressId, false)?.Tag);
+    const rawTag = ifcScalar(api.GetLine(ifcModel, expressId, false)?.Tag);
     classAndTagByExpressId.set(expressId, {
       className,
       numericTag:

@@ -1157,7 +1157,7 @@ const PACKED_PARAMETERS = [
 let parameterNames: Map<number, string> | undefined;
 
 /** Display label for a `BuiltInParameter` id, or `undefined` if unpublished. */
-export function builtInParameterName(parameterId: number): string | undefined {
+function builtInParameterName(parameterId: number): string | undefined {
   if (!parameterNames) {
     parameterNames = new Map();
     for (const entry of PACKED_PARAMETERS.split("|")) {

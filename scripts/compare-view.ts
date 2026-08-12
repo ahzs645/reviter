@@ -38,6 +38,7 @@
 import { writeFileSync } from "node:fs";
 
 import { convertModel } from "./audit-coverage.ts";
+import { hasFlag, isEntryPoint, positionals } from "./lib/rvt-harness.ts";
 import { streamTruthVertices, type Point2 } from "./footprint-audit.ts";
 import { drawnBounds } from "./overlay-diff.ts";
 
@@ -265,15 +266,9 @@ ${label("Overlay", PANEL * 2, `${n(counts.missing)} in the export and not recove
 `;
 }
 
-function isEntryPoint(): boolean {
-  const invoked = process.argv[1] ?? "";
-  return invoked.endsWith("compare-view.ts") || invoked.endsWith("compare-view.js");
-}
-
-if (isEntryPoint()) {
-  const args = process.argv.slice(2);
-  const matchedOnly = args.includes("--matched-only");
-  const [rvtPath, ifcPath, outPath] = args.filter((arg) => !arg.startsWith("--"));
+if (isEntryPoint(import.meta.url)) {
+  const matchedOnly = hasFlag("--matched-only");
+  const [rvtPath, ifcPath, outPath] = positionals();
   if (!rvtPath || !ifcPath || !outPath) {
     console.error("usage: compare-view.ts <model.rvt> <model.ifc> <out.svg> [--matched-only]");
     process.exit(2);

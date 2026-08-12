@@ -12,6 +12,7 @@
  * Everything here is pure and takes plain entities, so it is testable without
  * loading a 4 MB WASM decoder; `dwg-worker.ts` supplies the entities.
  */
+import { noteLimit } from "./limit-census.ts";
 
 /** The entity subset the plan renderer understands, flattened from LibreDWG. */
 export type DwgEntity = {
@@ -70,6 +71,33 @@ export function entityBounds(entity: DwgEntity): DwgBounds | null {
   }
   for (const point of entity.points ?? []) grow(bounds, point[0], point[1]);
   return Number.isFinite(bounds.minX) ? bounds : null;
+}
+
+/**
+ * Whether every number an entity carries is a finite coordinate.
+ *
+ * `grow` above drops non-finite values as it widens a box, which is right for
+ * bounds and actively misleading everywhere else: an entity whose radius came
+ * out `Infinity` still contributes a plausible extent through its other fields,
+ * so the drawing looks measured while its path data is unparseable. SVG has no
+ * such tolerance — one `Infinity` in a `d` attribute makes the browser reject
+ * the entire document, and every other layer's linework goes with it. So the
+ * entity is refused whole rather than drawn with the bad number filtered out:
+ * a partly-drawn arc is a wrong drawing, and a missing one is a reported gap.
+ */
+export function dwgEntityIsFinite(entity: DwgEntity): boolean {
+  for (const value of [
+    entity.radius, entity.startAngle, entity.endAngle, entity.height, entity.axisRatio,
+  ]) {
+    if (value != null && !Number.isFinite(value)) return false;
+  }
+  for (const pair of [entity.centre, entity.majorAxis]) {
+    if (pair && !(Number.isFinite(pair[0]) && Number.isFinite(pair[1]))) return false;
+  }
+  for (const point of entity.points ?? []) {
+    if (!(Number.isFinite(point[0]) && Number.isFinite(point[1]))) return false;
+  }
+  return true;
 }
 
 export function unionBounds(all: readonly DwgBounds[]): DwgBounds | null {
@@ -194,8 +222,18 @@ export function dwgSections(
     found.push({ bounds, count: region.length });
   }
 
-  return found
-    .filter((section) => section.count >= minimumEntities)
+  /*
+   * `minimumEntities` is a scrap filter, and a scrap is only a scrap next to a
+   * plan. When the split found exactly one region there is nothing for it to be
+   * a scrap of — it is the drawing, whatever its size — and dropping it returns
+   * no sections at all for a file that decoded perfectly well. A twenty-entity
+   * site plan is a real drawing; it is just a small one.
+   */
+  const kept = found.length === 1
+    ? found
+    : found.filter((section) => section.count >= minimumEntities);
+
+  return kept
     // Largest first: the plan someone wants is rarely the smallest scrap.
     .sort((left, right) => right.count - left.count)
     .map((section, index) => ({
@@ -205,6 +243,37 @@ export function dwgSections(
       widthUnits: section.bounds.maxX - section.bounds.minX,
       heightUnits: section.bounds.maxY - section.bounds.minY,
     }));
+}
+
+/**
+ * The extent to draw a whole drawing at, or null when it has no geometry.
+ *
+ * A drawing can decode perfectly and still yield no sections: several scraps,
+ * none of them big enough to be a plan. The caller then has real coordinates
+ * and no box to put them in, and the box it used to fall back on was the unit
+ * square — which puts every line outside the viewBox and hands back a blank
+ * white image, reported as a successful decode. Nothing about that is honest,
+ * and nothing about it was necessary: the extent of a drawing with no sections
+ * is simply the extent of its entities.
+ *
+ * Sections are still preferred where there are any, because they are what
+ * crops sheet furniture and stray linework out of the reference.
+ */
+export function dwgDrawingBounds(
+  entities: readonly DwgEntity[],
+  sections: readonly DwgSection[],
+): DwgBounds | null {
+  // One drawing per sheet is the common case; a sheet of many plans keeps its
+  // whole extent so nothing is silently cropped away from the reference.
+  if (sections.length === 1) return sections[0]!.bounds;
+  const fromSections = unionBounds(sections.map((section) => section.bounds));
+  if (fromSections) return fromSections;
+  const boxes: DwgBounds[] = [];
+  for (const entity of entities) {
+    const box = entityBounds(entity);
+    if (box) boxes.push(box);
+  }
+  return unionBounds(boxes);
 }
 
 export function entitiesWithin(
@@ -260,9 +329,18 @@ function arcPath(
  */
 export function dwgSectionSvg(
   entities: readonly DwgEntity[],
-  bounds: DwgBounds,
+  box: DwgBounds,
   options: { strokeUnits?: number; includeText?: boolean } = {},
 ): string {
+  // A viewBox is as fatal as a path: `viewBox="Infinity …"` is rejected before
+  // any of the linework is read. Callers that derive a box from `unionBounds`
+  // cannot produce one, but the empty box that function starts from is all
+  // infinities, so a caller that forwards it unchecked must not take the
+  // document down with it.
+  const finite = [box.minX, box.minY, box.maxX, box.maxY].every((value) =>
+    Number.isFinite(value));
+  if (!finite) noteLimit("non-finite-drawing-geometry");
+  const bounds = finite ? box : { minX: 0, minY: 0, maxX: 1, maxY: 1 };
   const width = Math.max(1e-6, bounds.maxX - bounds.minX);
   const height = Math.max(1e-6, bounds.maxY - bounds.minY);
   const stroke = options.strokeUnits ?? Math.max(width, height) / 2_000;
@@ -275,6 +353,14 @@ export function dwgSectionSvg(
   };
 
   for (const entity of entities) {
+    // The producers in `dwg-entities.ts` refuse non-finite geometry where it is
+    // computed, which is where the cause is still visible. This is the backstop
+    // for entities that reached the renderer some other way, and it is the last
+    // point at which one bad number can still be contained to one entity.
+    if (!dwgEntityIsFinite(entity)) {
+      noteLimit("non-finite-drawing-geometry");
+      continue;
+    }
     const layer = entity.layer || "0";
     if (entity.points?.length) {
       const [first, ...rest] = entity.points;
@@ -333,7 +419,7 @@ function escapeXml(value: string) {
 }
 
 /** AutoCAD `$INSUNITS`, for the few files that declare one. */
-export const DWG_UNIT_FEET: Readonly<Record<number, number>> = {
+const DWG_UNIT_FEET: Readonly<Record<number, number>> = {
   1: 1 / 12,       // inches
   2: 1,            // feet
   4: 1 / 304.8,    // millimetres

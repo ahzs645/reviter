@@ -25,15 +25,12 @@ import {
   summarizeAgreement,
   type Box,
 } from "./overlay-diff.ts";
+import { optionValue, positionals, writeJsonReport } from "./lib/rvt-harness.ts";
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
 
-const argumentsWithoutFlags = process.argv.slice(2).filter((argument, index, arguments_) =>
-  !argument.startsWith("--") && (index === 0 || !arguments_[index - 1]!.startsWith("--")));
-const rvtPath = argumentsWithoutFlags[0];
-const outIndex = process.argv.indexOf("--out");
-const requestedOutput = outIndex >= 0 ? process.argv[outIndex + 1] : undefined;
-const jsonIndex = process.argv.indexOf("--json");
-const jsonPath = jsonIndex >= 0 ? process.argv[jsonIndex + 1] : undefined;
+const [rvtPath] = positionals("--out", "--json");
+const requestedOutput = optionValue("--out");
+const jsonPath = optionValue("--json");
 if (!rvtPath) {
   throw new Error(
     "usage: audit-ifc-export-roundtrip.ts <model.rvt> [--out recovered.ifc] [--json report.json]",
@@ -110,7 +107,7 @@ try {
   };
 
   console.log(JSON.stringify(report, null, 2));
-  if (jsonPath) writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
+  if (jsonPath) writeJsonReport(jsonPath, report);
 
   // A generated IFC that cannot reproduce the source scene to one hundredth
   // of a foot is not ready for delivery. Anonymous context has no Revit tag and

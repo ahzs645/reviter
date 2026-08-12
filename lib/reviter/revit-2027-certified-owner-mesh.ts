@@ -1,8 +1,6 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
 import type { Revit2027FaceStatic } from "./revit-2027-face-static.ts";
-import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
 import {
-  replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
@@ -133,10 +131,29 @@ export type Revit2027CertifiedOwnerMeshOptions = {
   ) => string | number | null | undefined;
 };
 
+/** Tag one path's face meshes with the certified kind that produced them. */
+function tagged<Kind extends string, Face>(
+  kind: Kind,
+  faces: readonly Face[],
+): ({ kind: Kind } & Face)[] {
+  return faces.map((face) => ({ kind, ...face }));
+}
+
+/** Tag one path's issues with the certified path that reported them. */
+function pathed<Path extends string, Issue>(
+  path: Path,
+  issues: readonly Issue[],
+): { path: Path; issue: Issue }[] {
+  return issues.map((issue) => ({ path, issue }));
+}
+
 /**
  * Convert every independently certified face subset in one completed Revit
  * 2027 replay. Unsupported faces remain structured issues from their owning
  * path and never produce partial geometry.
+ *
+ * Each path indexes the replay through the shared owner mesh index, which is
+ * memoized per replay, so running all six here walks `replay.spans` once.
  */
 export function meshRevit2027CertifiedOwnerReplay(
   replay: Revit2027GRepReplay,
@@ -159,6 +176,9 @@ export function meshRevit2027CertifiedOwnerReplay(
   if (ruledHelix.ok === false) return ruledHelix;
   const hermite = meshRevit2027HermiteReplay(replay, shared);
   if (hermite.ok === false) return hermite;
+  // A curved face is not a planar failure. Each path reports independently,
+  // so the planar path cannot know a curved path already claimed the face and
+  // its `unsupported-surface` note is dropped only for the faces that were.
   const certifiedCurvedFaceTokens = new Set(
     [
       ...surfRev.value.faceMeshes,
@@ -182,75 +202,21 @@ export function meshRevit2027CertifiedOwnerReplay(
       ownerElementId: replay.ownerElementId,
       replay,
       faceMeshes: [
-        ...planar.value.faceMeshes.map((face) => ({
-          kind: "planar-sampled" as const,
-          ...face,
-        })),
-        ...surfRev.value.faceMeshes.map((face) => ({
-          kind: "arc-surfrev" as const,
-          ...face,
-        })),
-        ...cylinder.value.faceMeshes.map((face) => ({
-          kind: "cylinder-sampled" as const,
-          ...face,
-        })),
-        ...cone.value.faceMeshes.map((face) => ({
-          kind: "cone-apex-sector" as const,
-          ...face,
-        })),
-        ...ruledHelix.value.faceMeshes.map((face) => ({
-          kind: "ruled-helix" as const,
-          ...face,
-        })),
-        ...hermite.value.faceMeshes.map((face) => ({
-          kind: "hermite-sampled" as const,
-          ...face,
-        })),
+        ...tagged("planar-sampled", planar.value.faceMeshes),
+        ...tagged("arc-surfrev", surfRev.value.faceMeshes),
+        ...tagged("cylinder-sampled", cylinder.value.faceMeshes),
+        ...tagged("cone-apex-sector", cone.value.faceMeshes),
+        ...tagged("ruled-helix", ruledHelix.value.faceMeshes),
+        ...tagged("hermite-sampled", hermite.value.faceMeshes),
       ],
       issues: [
-        ...planarIssues.map((issue) => ({
-          path: "planar-sampled" as const,
-          issue,
-        })),
-        ...surfRev.value.issues.map((issue) => ({
-          path: "arc-surfrev" as const,
-          issue,
-        })),
-        ...cylinder.value.issues.map((issue) => ({
-          path: "cylinder-sampled" as const,
-          issue,
-        })),
-        ...cone.value.issues.map((issue) => ({
-          path: "cone-apex-sector" as const,
-          issue,
-        })),
-        ...ruledHelix.value.issues.map((issue) => ({
-          path: "ruled-helix" as const,
-          issue,
-        })),
-        ...hermite.value.issues.map((issue) => ({
-          path: "hermite-sampled" as const,
-          issue,
-        })),
+        ...pathed("planar-sampled", planarIssues),
+        ...pathed("arc-surfrev", surfRev.value.issues),
+        ...pathed("cylinder-sampled", cylinder.value.issues),
+        ...pathed("cone-apex-sector", cone.value.issues),
+        ...pathed("ruled-helix", ruledHelix.value.issues),
+        ...pathed("hermite-sampled", hermite.value.issues),
       ],
     },
   };
-}
-
-/** Replay one framed owner once, then run every certified browser mesh path. */
-export function replayAndMeshRevit2027CertifiedOwner(
-  data: Uint8Array,
-  root: Revit2027FramedGRepRoot,
-  options: Revit2027CertifiedOwnerMeshOptions = {},
-): Revit2027CertifiedOwnerMeshResult {
-  const replayed = replayRevit2027GRepFifo(
-    data,
-    root,
-    options.replayRegistry,
-    options.replayOptions,
-  );
-  if (replayed.ok === false) {
-    return { ok: false, error: `Revit 2027 replay failed: ${replayed.error}` };
-  }
-  return meshRevit2027CertifiedOwnerReplay(replayed.value, options);
 }

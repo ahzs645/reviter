@@ -22,6 +22,7 @@ const referenceAssistedRecord = {
   elementId: 1420880,
   stream: "Partitions/325",
   chunkIndex: 0,
+  rawOffset: 0,
   recordOffset: 0,
   renderGeometryProvenance: "reference-assisted",
   boundsFeet: {

@@ -12,6 +12,13 @@ import { fileURLToPath } from "node:url";
 
 import CFB from "cfb";
 
+import {
+  countsByFrequency,
+  decodeSchemaFields,
+  increment,
+  requireNameOffset,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -24,47 +31,32 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
-  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
-  decodeRevit2027EdgeLoopStatic,
-  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-edge-loop-static.ts";
-import {
-  decodeRevit2027FaceStatic,
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import { REVIT_2027_GFILLING_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gfilling.ts";
-import { decodeRevit2027GFilling } from "../lib/reviter/revit-2027-gfilling.ts";
-import {
-  decodeRevit2027FillPatternData,
-  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-pattern-data.ts";
-import {
-  decodeRevit2027FillGrid,
-  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-grid.ts";
-import {
-  decodeRevit2027GEdgeStatic,
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-edge-1423.ts";
-import {
-  decodeRevit2027GeometryStatic,
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import { decodeRevit2027GGroupStatic } from "../lib/reviter/revit-2027-ggroup-fifo.ts";
-import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-grep-prefixes.ts";
-import {
-  decodeRevit2027AnalyticSurface,
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
+  REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-surfaces.ts";
-
+  decodeRevit2027AnalyticSurface,
+  decodeRevit2027EdgeLoopStatic,
+  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
+  decodeRevit2027FaceStatic,
+  decodeRevit2027FillGrid,
+  decodeRevit2027FillPatternData,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GEdgeStatic,
+  decodeRevit2027GFilling,
+  decodeRevit2027GGroupStatic,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
 const modelPath = process.argv[2];
 if (!modelPath) {
   throw new Error("usage: audit-revit-2027-gfilling.ts model.rvt");
@@ -96,18 +88,6 @@ function firstInflatedSchema(
   const inflated = inflateRevitChunk(stored, offset);
   if (!inflated) throw new Error("Formats/Latest gzip member did not inflate");
   return inflated;
-}
-
-function increment<K>(map: Map<K, number>, key: K): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort((left, right) => right[1] - left[1]),
-  );
 }
 
 function requireTokens(
@@ -143,78 +123,11 @@ function numberedPropertyCount(
   );
 }
 
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
-function findName(
-  data: Uint8Array,
-  name: string,
-  firstOffset = 0,
-): number {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let offset = firstOffset;
-    offset <= data.byteLength - name.length - 2;
-    offset += 1
-  ) {
-    if (
-      view.getUint16(offset, true) === name.length &&
-      matchesAscii(data, offset + 2, name)
-    ) {
-      return offset;
-    }
-  }
-  throw new Error(`Formats/Latest does not contain ${name}`);
-}
-
-function decodeFields(
-  data: Uint8Array,
-  byteOffset: number,
-  expected: readonly (readonly [string, readonly number[]])[],
-) {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let cursor = byteOffset;
-  return expected.map(([name, descriptor]) => {
-    if (
-      cursor > data.byteLength - 4 ||
-      view.getUint32(cursor, true) !== name.length ||
-      !matchesAscii(data, cursor + 4, name)
-    ) {
-      throw new Error(`schema field ${name} is not in declared order`);
-    }
-    const offset = cursor;
-    cursor += 4 + name.length;
-    if (
-      cursor > data.byteLength - descriptor.length ||
-      descriptor.some((value, index) => data[cursor + index] !== value)
-    ) {
-      throw new Error(`schema descriptor ${name} changed`);
-    }
-    cursor += descriptor.length;
-    return {
-      name,
-      offset,
-      descriptor: descriptor
-        .map((value) => value.toString(16).padStart(2, "0"))
-        .join(" "),
-    };
-  });
-}
-
 const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
 const schema = firstInflatedSchema(cfb);
 let ladderCursor = 0;
 const sourceLadder = SOURCE_LADDER.map(([sourceClassSlot, name]) => {
-  const offset = findName(schema, name, ladderCursor);
+  const offset = requireNameOffset(schema, name, ladderCursor);
   ladderCursor = offset + 2 + name.length;
   return { sourceClassSlot, name, offset };
 });
@@ -229,7 +142,7 @@ const rawGNodeClassId = view.getUint16(cursor, true);
 const version = view.getUint32(cursor + 2, true);
 const fieldCount = view.getUint32(cursor + 6, true);
 cursor += 10;
-const gFillingFields = decodeFields(schema, cursor, [
+const gFillingFields = decodeSchemaFields(schema, cursor, [
   ["m_pGFace", [0x0e, 0x03, 0x00, 0x00]],
   ["m_placer", [0x0e, 0x00, 0x00, 0x00, 0x2d, 0x08]],
   ["m_data", [0x0e, 0x01, 0x00, 0x00]],
@@ -238,13 +151,13 @@ const gFillingFields = decodeFields(schema, cursor, [
   ["m_flags", [0x04, 0x00, 0x00, 0x00]],
 ]);
 
-const placerOffset = findName(schema, "FillPatternPlacer");
+const placerOffset = requireNameOffset(schema, "FillPatternPlacer");
 let placerCursor = placerOffset + 2 + "FillPatternPlacer".length;
 const placerRawClassId = view.getUint16(placerCursor, true);
 const placerVersion = view.getUint32(placerCursor + 2, true);
 const placerFieldCount = view.getUint32(placerCursor + 6, true);
 placerCursor += 10;
-const placerFields = decodeFields(schema, placerCursor, [
+const placerFields = decodeSchemaFields(schema, placerCursor, [
   ["m_scale", [0x07, 0x00, 0x00, 0x00]],
   ["m_origin", [0x07, 0x10, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]],
   ["m_dir", [0x07, 0x10, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]],
@@ -1078,15 +991,15 @@ if (!exactBodyCounts) {
       decodedSurfaces,
       decodedFillPatternData,
       decodedFillGrids,
-      fillPatternDataBodyBytes: entries(fillPatternDataBodyBytes),
-      fillPatternDataGridCounts: entries(fillPatternDataGridCounts),
-      fillPatternGridSlots: entries(fillPatternGridSlots),
-      fillPatternGridTokenKinds: entries(fillPatternGridTokenKinds),
+      fillPatternDataBodyBytes: countsByFrequency(fillPatternDataBodyBytes),
+      fillPatternDataGridCounts: countsByFrequency(fillPatternDataGridCounts),
+      fillPatternGridSlots: countsByFrequency(fillPatternGridSlots),
+      fillPatternGridTokenKinds: countsByFrequency(fillPatternGridTokenKinds),
       fillPatternScalarRanges,
-      fillGridBodyBytes: entries(fillGridBodyBytes),
-      fillGridSegmentCounts: entries(fillGridSegmentCounts),
+      fillGridBodyBytes: countsByFrequency(fillGridBodyBytes),
+      fillGridSegmentCounts: countsByFrequency(fillGridSegmentCounts),
       fillGridScalarRanges,
-      replayFailures: entries(replayFailures),
+      replayFailures: countsByFrequency(replayFailures),
       failureSamples,
     })}`,
   );
@@ -1137,24 +1050,24 @@ console.log(
         decodedFaces,
         decodedEdges,
         decodedPrimaryChildren,
-        primaryChildSlots: entries(primaryChildSlots),
+        primaryChildSlots: countsByFrequency(primaryChildSlots),
         decodedLoops,
         decodedFillings,
         decodedSurfaces,
         decodedFillPatternData,
         decodedFillGrids,
-        fillPatternDataBodyBytes: entries(fillPatternDataBodyBytes),
-        fillPatternDataGridCounts: entries(fillPatternDataGridCounts),
-        fillPatternGridSlots: entries(fillPatternGridSlots),
-        fillPatternGridTokenKinds: entries(fillPatternGridTokenKinds),
+        fillPatternDataBodyBytes: countsByFrequency(fillPatternDataBodyBytes),
+        fillPatternDataGridCounts: countsByFrequency(fillPatternDataGridCounts),
+        fillPatternGridSlots: countsByFrequency(fillPatternGridSlots),
+        fillPatternGridTokenKinds: countsByFrequency(fillPatternGridTokenKinds),
         fillPatternScalarRanges,
-        fillGridBodyBytes: entries(fillGridBodyBytes),
-        fillGridSegmentCounts: entries(fillGridSegmentCounts),
+        fillGridBodyBytes: countsByFrequency(fillGridBodyBytes),
+        fillGridSegmentCounts: countsByFrequency(fillGridSegmentCounts),
         fillGridScalarRanges,
-        bodyBytes: entries(bodyBytes),
+        bodyBytes: countsByFrequency(bodyBytes),
         nextGenerationDescriptors,
-        nextGenerationSlots: entries(nextGenerationSlots),
-        nextGenerationTokenKinds: entries(nextGenerationTokenKinds),
+        nextGenerationSlots: countsByFrequency(nextGenerationSlots),
+        nextGenerationTokenKinds: countsByFrequency(nextGenerationTokenKinds),
         failureSamples,
       },
       fillingValues: {
@@ -1162,13 +1075,13 @@ console.log(
           "102": bodyBytes.get(102) ?? 0,
           "104": bodyBytes.get(104) ?? 0,
         },
-        dataSourceClassSlots: entries(dataSlots),
-        dataTokenKinds: entries(dataTokenKinds),
-        patternElementIds: entries(patternElementIds),
-        fillColors: entries(fillColors),
-        flags: entries(fillingFlags),
-        faceIdReferences: entries(faceIdReferences),
-        placerFlags: entries(placerFlags),
+        dataSourceClassSlots: countsByFrequency(dataSlots),
+        dataTokenKinds: countsByFrequency(dataTokenKinds),
+        patternElementIds: countsByFrequency(patternElementIds),
+        fillColors: countsByFrequency(fillColors),
+        flags: countsByFrequency(fillingFlags),
+        faceIdReferences: countsByFrequency(faceIdReferences),
+        placerFlags: countsByFrequency(placerFlags),
         placerScale: {
           minimum: minimumPlacerScale,
           maximum: maximumPlacerScale,
@@ -1191,7 +1104,7 @@ console.log(
       },
       failures: {
         descriptorAudit: faceReport.failures,
-        exactBodyReplay: entries(replayFailures),
+        exactBodyReplay: countsByFrequency(replayFailures),
       },
       stopBoundary:
         "after every first-generation Face child; queued next loops, " +

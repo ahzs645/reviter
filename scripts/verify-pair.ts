@@ -128,7 +128,11 @@
  * around 2.5 minutes in a constrained container for the 67 MB supplied project.
  * Both tables come out of that one conversion.
  */
-import { writeFileSync } from "node:fs";
+import {
+  optionValue,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 
 import {
   computeCoverage,
@@ -659,22 +663,11 @@ function checkRulesFire(coverage: CoverageResult): void {
 
 // --- run ---------------------------------------------------------------------
 
-// `--json` takes a value, so the argument after it is consumed rather than
-// filtered by name — filtering by name would drop a model whose path happened
-// to match the report path.
-const positional: string[] = [];
-let jsonPath: string | undefined;
-for (let index = 2; index < process.argv.length; index += 1) {
-  const argument = process.argv[index]!;
-  if (argument === "--json") {
-    jsonPath = process.argv[index + 1];
-    index += 1;
-    continue;
-  }
-  if (argument.startsWith("--")) continue;
-  positional.push(argument);
-}
-const [rvtPath, ifcPath] = positional;
+// `positionals("--json")` consumes the argument after `--json` rather than filtering
+// by name — filtering by name would drop a model whose path happened to match
+// the report path.
+const jsonPath = optionValue("--json");
+const [rvtPath, ifcPath] = positionals("--json");
 if (!rvtPath || !ifcPath) {
   console.error("usage: verify-pair.ts <model.rvt> <model.ifc> [--json <path>]");
   process.exit(2);
@@ -727,40 +720,33 @@ if (failed.length) {
 }
 
 if (jsonPath) {
-  writeFileSync(
-    jsonPath,
-    `${JSON.stringify(
-      {
-        rvt: rvtPath.split("/").pop(),
-        ifc: ifcPath.split("/").pop(),
-        verdict,
-        assertions,
-        coverage: {
-          rows: coverage.rows,
-          totals: coverage.totals,
-          recordCount: coverage.recordCount,
-          withVolumeCount: coverage.withVolumeCount,
-          drawnCount: coverage.drawnCount,
-          unclassifiedCount: coverage.unclassifiedCount,
-          omittedSheetCount: coverage.omittedSheetCount,
-          omittedWrapperCount: coverage.omittedWrapperCount,
-        },
-        overlay: {
-          truthCount: overlay.truthCount,
-          agreement: overlay.agreement,
-          buildingBox: overlay.buildingBox,
-          framingErrorFeet: overlay.framingErrorFeet,
-          escapedCount: overlay.escaped.length,
-          worstOverhangFeet: overlay.worstOverhangFeet,
-          escaped: overlay.escaped.slice(0, 50),
-          byClass: overlay.byClass,
-        },
-        stats: coverage.stats,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  writeJsonReport(jsonPath, {
+    rvt: rvtPath.split("/").pop(),
+    ifc: ifcPath.split("/").pop(),
+    verdict,
+    assertions,
+    coverage: {
+      rows: coverage.rows,
+      totals: coverage.totals,
+      recordCount: coverage.recordCount,
+      withVolumeCount: coverage.withVolumeCount,
+      drawnCount: coverage.drawnCount,
+      unclassifiedCount: coverage.unclassifiedCount,
+      omittedSheetCount: coverage.omittedSheetCount,
+      omittedWrapperCount: coverage.omittedWrapperCount,
+    },
+    overlay: {
+      truthCount: overlay.truthCount,
+      agreement: overlay.agreement,
+      buildingBox: overlay.buildingBox,
+      framingErrorFeet: overlay.framingErrorFeet,
+      escapedCount: overlay.escaped.length,
+      worstOverhangFeet: overlay.worstOverhangFeet,
+      escaped: overlay.escaped.slice(0, 50),
+      byClass: overlay.byClass,
+    },
+    stats: coverage.stats,
+  });
   console.log(`machine-readable report written to ${jsonPath}`);
 }
 

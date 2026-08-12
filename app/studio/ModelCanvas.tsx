@@ -1,7 +1,7 @@
 "use client";
 
 /** The WebGL viewport: scene assembly, camera presets, picking, and disposal. */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -34,6 +34,10 @@ import {
   applyAutodeskButtonMap,
   applyAutodeskNavigation,
   installAutodeskWheelDolly,
+  ORBIT_PITCH_RADIANS_PER_PIXEL,
+  ORBIT_YAW_RADIANS_PER_PIXEL,
+  wheelTravel,
+  WHEEL_NOTCH_DELTA,
 } from "./autodesk-navigation.ts";
 import {
   addPendingMeasurementPoint,
@@ -116,9 +120,29 @@ function tuple(point: THREE.Vector3): Point3Tuple {
   return [point.x, point.y, point.z];
 }
 
+// The render loop's camera readout needs a look direction and a walk target.
+// Allocating them per frame handed the collector two Vector3s a frame for the
+// life of the viewport; both are consumed inside the same synchronous frame
+// callback, so one shared pair is enough.
+const cameraDirectionScratch = new THREE.Vector3();
+const walkTargetScratch = new THREE.Vector3();
+
 // Large enough to amortize one idle callback without monopolizing a frame on
 // the million-triangle UNBC model (typically a few milliseconds of CPU work).
 const WALK_INDEX_CHUNK_TRIANGLES = 1_024;
+
+/**
+ * What one arrow press is worth, in pixels of the equivalent drag.
+ *
+ * Keyboard navigation is measured in the same units as the mouse rather than in
+ * degrees of its own, so a reviewer who alternates between them is driving one
+ * camera. Twenty-four pixels is about 2.7 degrees of yaw: small enough to aim
+ * with, large enough that a held key crosses the building.
+ */
+const KEY_DRAG_PIXELS = 24;
+
+/** One pan press, as a fraction of the height framed at the orbit target. */
+const KEY_PAN_FRACTION = 0.16;
 
 /**
  * Native categories whose horizontal caps must not become gravity floors.
@@ -389,6 +413,11 @@ export function ModelCanvas({
   const referenceBoundsRef = useRef<
     { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null
   >(null);
+  // Bumped once per scene build. The Walk effect binds its controller to the
+  // camera the scene effect creates, but the two do not share a dependency
+  // list — and copying that list here would only track the rebuild causes we
+  // happen to know about today. Counting actual builds is the fact Walk needs.
+  const [sceneEpoch, setSceneEpoch] = useState(0);
   const [referenceLoadState, setReferenceLoadState] = useState<ReferenceLoadState>("idle");
   const [walkSpeed, setWalkSpeed] = useState<WalkSpeed>("normal");
   const [walkGravity, setWalkGravity] = useState(() => {
@@ -1486,6 +1515,11 @@ export function ModelCanvas({
         needsRender = true;
       },
     };
+    // A fresh camera and fresh orbit controls exist now. Announce the build so
+    // the Walk effect rebinds its controller; without this a rebuild triggered
+    // by a dependency Walk does not track (a mini-map level change moving
+    // `hiddenElementIds`, say) leaves the walker driving the discarded camera.
+    queueMicrotask(() => active && setSceneEpoch((epoch) => epoch + 1));
 
     // The parity scripts drive this canvas the same way the Autodesk readings
     // were taken, and need the camera they are differencing. `probeFloor`
@@ -1643,49 +1677,62 @@ export function ModelCanvas({
       } else {
         cameraChanged = controls.update();
       }
-      const liveDirection = camera.getWorldDirection(new THREE.Vector3());
-      const liveTarget = walkRef.current ? camera.position.clone().add(liveDirection) : controls.target;
-      canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
-      const modelPosition = scenePointToModelFeet(
-        tuple(camera.position), source, [result.origin.x, result.origin.y, result.origin.z],
-      );
-      if (modelPosition) {
-        canvas.dataset.modelCameraPositionFeet = modelPosition.map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.modelCameraDirection = canonicalCameraVector(liveDirection, up)
-          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
-      } else {
-        delete canvas.dataset.modelCameraPositionFeet;
-        delete canvas.dataset.modelCameraDirection;
-      }
-      // Where the camera is looking, not where it is. In Orbit the eye sits
-      // outside the building — plotting it on a floor plan puts the marker off
-      // the sheet — so the map needs the target to say what you are looking at.
-      const modelTarget = scenePointToModelFeet(
-        tuple(liveTarget), source, [result.origin.x, result.origin.y, result.origin.z],
-      );
-      if (modelTarget) {
-        canvas.dataset.modelCameraTargetFeet = modelTarget.map((value) => value.toFixed(5)).join(",");
-      } else {
-        delete canvas.dataset.modelCameraTargetFeet;
-      }
-      if (navigationTest) {
-        canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.cameraDirection = liveDirection.toArray().map((value) => value.toFixed(5)).join(",");
-        canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
-          camera.position.clone().sub(center),
-          up,
-        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.canonicalCameraTarget = canonicalCameraVector(
-          liveTarget.clone().sub(center),
-          up,
-        ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
-          .normalize().toArray().map((value) => value.toFixed(7)).join(",");
-        canvas.dataset.walkLooking = String(walkRef.current?.isLooking() ?? false);
-        canvas.dataset.walkGravity = String(walkGravityRef.current);
-      }
+      // The dataset readout describes the frame that is about to be drawn, so
+      // it is written on exactly the frames that are drawn. Recomputing it on
+      // an idle orbit camera republished last frame's values sixty times a
+      // second — two allocations, six toFixed calls and three DOM writes for
+      // nothing. FloorMiniMap polls these attributes and needs them current
+      // whenever the view moves; anything that moves the camera either reports
+      // it through `cameraChanged` or invalidates through `needsRender`, which
+      // is the same condition that decides whether a frame is worth drawing.
       if (cameraChanged || needsRender) {
+        const liveDirection = camera.getWorldDirection(cameraDirectionScratch);
+        // Not `controls.target` while walking — the walker does not maintain
+        // one. Never mutate the orbit branch: that is the live control's own
+        // target, not a copy.
+        const liveTarget = walkRef.current
+          ? walkTargetScratch.copy(camera.position).add(liveDirection)
+          : controls.target;
+        canvas.dataset.navigationState = walkRef.current ? "walk" : "orbit";
+        const modelPosition = scenePointToModelFeet(
+          tuple(camera.position), source, [result.origin.x, result.origin.y, result.origin.z],
+        );
+        if (modelPosition) {
+          canvas.dataset.modelCameraPositionFeet = modelPosition.map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.modelCameraDirection = canonicalCameraVector(liveDirection, up)
+            .normalize().toArray().map((value) => value.toFixed(7)).join(",");
+        } else {
+          delete canvas.dataset.modelCameraPositionFeet;
+          delete canvas.dataset.modelCameraDirection;
+        }
+        // Where the camera is looking, not where it is. In Orbit the eye sits
+        // outside the building — plotting it on a floor plan puts the marker off
+        // the sheet — so the map needs the target to say what you are looking at.
+        const modelTarget = scenePointToModelFeet(
+          tuple(liveTarget), source, [result.origin.x, result.origin.y, result.origin.z],
+        );
+        if (modelTarget) {
+          canvas.dataset.modelCameraTargetFeet = modelTarget.map((value) => value.toFixed(5)).join(",");
+        } else {
+          delete canvas.dataset.modelCameraTargetFeet;
+        }
+        if (navigationTest) {
+          canvas.dataset.cameraPosition = camera.position.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.cameraTarget = liveTarget.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.cameraDirection = liveDirection.toArray().map((value) => value.toFixed(5)).join(",");
+          canvas.dataset.canonicalCameraPosition = canonicalCameraVector(
+            camera.position.clone().sub(center),
+            up,
+          ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.canonicalCameraTarget = canonicalCameraVector(
+            liveTarget.clone().sub(center),
+            up,
+          ).divideScalar(radius).toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.canonicalCameraDirection = canonicalCameraVector(liveDirection, up)
+            .normalize().toArray().map((value) => value.toFixed(7)).join(",");
+          canvas.dataset.walkLooking = String(walkRef.current?.isLooking() ?? false);
+          canvas.dataset.walkGravity = String(walkGravityRef.current);
+        }
         renderer.render(scene, camera);
         needsRender = false;
       }
@@ -1742,6 +1789,15 @@ export function ModelCanvas({
       controls.removeEventListener("start", handleControlsStart);
       controls.removeEventListener("end", handleControlsEnd);
       controls.dispose();
+      // The walker holds `camera`, so it cannot outlive this effect either.
+      // The Walk effect does not track every dependency that rebuilds a scene,
+      // so leaving `walkRef` set here let the next render loop steer a
+      // discarded camera — and, because a live walker suppresses
+      // `controls.update()`, stop steering the real one. Disowning the camera
+      // where the camera dies holds for every rebuild cause, known or not;
+      // `sceneEpoch` then asks Walk for a controller on the new camera.
+      walkRef.current?.dispose();
+      walkRef.current = null;
       // Cached roots must be stored in their canonical geometry pose. The next
       // source effect will reapply the current explode amount; retaining moved
       // parts here would make that displacement compound on every revisit.
@@ -1754,6 +1810,13 @@ export function ModelCanvas({
       if (runtimeRef.current?.sectionHelper) disposeGroup(runtimeRef.current.sectionHelper);
       disposeMeasurementScene(scene, measurement);
       if (runtimeRef.current?.selectionOverlay) disposeGroup(runtimeRef.current.selectionOverlay);
+      // The grid is built per scene rather than cached, and three.js frees no
+      // GPU buffer on garbage collection: dropping the reference leaked a
+      // grid's vertex buffer and its material on every source, render-mode or
+      // visibility rebuild. Technical mode hands it an array material.
+      grid.geometry.dispose();
+      if (Array.isArray(grid.material)) for (const material of grid.material) material.dispose();
+      else grid.material.dispose();
       runtimeRef.current = null;
       renderer.dispose();
     };
@@ -2129,7 +2192,10 @@ export function ModelCanvas({
       for (const object of hiddenEdgeOverlays) object.visible = true;
       runtime.invalidate();
     };
-  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, source, walking, walkStartRequest]);
+    // `sceneEpoch` stands in for "the scene effect built a new camera". The
+    // controller above is bound to that camera, so every rebuild has to reach
+    // this effect — including the ones the rest of this list does not name.
+  }, [comparison, onWalkingChange, referenceLoadState, renderMode, result, sceneEpoch, source, walking, walkStartRequest]);
 
   useEffect(() => {
     walkSpeedRef.current = walkSpeed;
@@ -2282,6 +2348,119 @@ export function ModelCanvas({
     runtime.invalidate();
   }, [comparison, renderMode, result, selectedElementId, source]);
 
+  /**
+   * The keyboard's copy of the pointer's navigation.
+   *
+   * Every camera move in this viewport used to arrive as a pointer event, which
+   * left a reviewer who cannot use a mouse with a picture they could not turn.
+   * The arithmetic below is deliberately the same arithmetic the drag and the
+   * wheel use — the measured Autodesk rates in `autodesk-navigation.ts` — so a
+   * keyed orbit and a dragged orbit cover the same ground and the viewport does
+   * not feel like two different tools.
+   *
+   * Walk owns the keyboard whenever it is enabled: it listens on the window and
+   * already claims the arrows, WASD, Space and Escape, so this handler stands
+   * down rather than driving the orbit camera out from under the walker.
+   */
+  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLCanvasElement>) => {
+    if (walkRef.current) return;
+    // Browser and operating-system shortcuts win, exactly as they do in Walk.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Shift+F10 and the Menu key are the platform's "open the context menu on
+    // whatever has focus". Replaying it as a real contextmenu event at the
+    // centre of the viewport runs the same hit test, selection and placement
+    // the right button does, rather than a second, keyboard-only menu path.
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }));
+      return;
+    }
+
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    const { camera, controls } = runtime;
+
+    // One press is worth a short drag. Yaw and pitch keep their measured 1:2.02
+    // ratio, so holding a key traces the arc a held drag would.
+    const orbit = (yaw: number, pitch: number) => {
+      const offset = camera.position.clone().sub(controls.target);
+      const up = camera.up.clone().normalize();
+      offset.applyAxisAngle(up, yaw * KEY_DRAG_PIXELS * ORBIT_YAW_RADIANS_PER_PIXEL);
+      const right = new THREE.Vector3().crossVectors(offset, up);
+      if (right.lengthSq() > 1e-12) {
+        right.normalize();
+        // Stopping short of the pole is what keeps the model from flipping over
+        // when the eye is driven straight up, the same clamp OrbitControls uses.
+        const polar = offset.angleTo(up);
+        const next = THREE.MathUtils.clamp(
+          polar - pitch * KEY_DRAG_PIXELS * ORBIT_PITCH_RADIANS_PER_PIXEL,
+          0.02,
+          Math.PI - 0.02,
+        );
+        offset.applyAxisAngle(right, polar - next);
+      }
+      camera.position.copy(controls.target).add(offset);
+    };
+
+    // Panning moves the eye and what it is looking at together, so the framing
+    // survives the move and the next orbit still turns about the same point.
+    const pan = (x: number, y: number) => {
+      const reach = camera.position.distanceTo(controls.target);
+      const step = reach * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * KEY_PAN_FRACTION;
+      const move = new THREE.Vector3()
+        .setFromMatrixColumn(camera.matrix, 0).multiplyScalar(x * step)
+        .addScaledVector(new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1), y * step);
+      camera.position.add(move);
+      controls.target.add(move);
+    };
+
+    // One key press is one wheel detent, carrying the target with it the way
+    // `installAutodeskWheelDolly` does — a zoom that collapsed the orbit radius
+    // would leave the next arrow press whipping the model across the viewport.
+    const dolly = (notches: number) => {
+      const forward = controls.target.clone().sub(camera.position);
+      const reach = forward.length();
+      if (reach < 1e-9) return;
+      forward.divideScalar(reach);
+      const travel = wheelTravel(-notches * WHEEL_NOTCH_DELTA, reach);
+      if (!Number.isFinite(travel) || travel === 0) return;
+      camera.position.addScaledVector(forward, travel);
+      controls.target.addScaledVector(forward, travel);
+    };
+
+    // Both arrow gestures move the eye the way the arrow points, which is how
+    // Walk already reads its arrows — a drag instead pulls the model after the
+    // cursor, and one viewport cannot answer to both conventions at once.
+    const arrow = (x: number, y: number) => {
+      if (event.shiftKey) pan(x, y);
+      else orbit(x, y);
+    };
+
+    switch (event.key) {
+      case "ArrowLeft": arrow(-1, 0); break;
+      case "ArrowRight": arrow(1, 0); break;
+      case "ArrowUp": arrow(0, 1); break;
+      case "ArrowDown": arrow(0, -1); break;
+      // "+" is Shift+Equal on most layouts, so the unshifted key is read too.
+      case "+": case "=": dolly(1); break;
+      case "-": case "_": dolly(-1); break;
+      default: return;
+    }
+    // The arrows would otherwise scroll the shell out from under the viewport.
+    event.preventDefault();
+    controls.update();
+    runtime.invalidate();
+  }, []);
+
   const clearAllMeasurements = () => {
     const runtime = runtimeRef.current;
     if (runtime) clearMeasurements(runtime.measurement);
@@ -2404,13 +2583,30 @@ export function ModelCanvas({
 
   return (
     <>
+      {/* A bare <canvas> has no implicit role, so its aria-label is not
+          reliably surfaced; "application" both names it and tells assistive
+          technology to hand the keys below straight to the viewport. The
+          element's own children are its fallback content, which is what a
+          reader falls back to when there is no picture to describe. */}
       <canvas
         ref={canvasRef}
         className={`model-canvas nav-${navigationMode}${commenting ? " comment-pick-mode" : ""}${
           markupSettings.tool && markupSettings.tool !== "delete" ? " markup-draw-mode" : ""
         }`}
-        aria-label="Interactive Revit geometry"
-      />
+        tabIndex={0}
+        role="application"
+        aria-label="3D model viewport — interactive Revit geometry"
+        aria-describedby="model-canvas-keys"
+        onKeyDown={handleCanvasKeyDown}
+      >
+        Interactive Revit geometry, drawn with WebGL. The model browser lists
+        every recovered object as text.
+      </canvas>
+      <p id="model-canvas-keys" className="visually-hidden">
+        {walking
+          ? "First person: W A S D to move, arrow keys to turn, Q and E for down and up, Space to drop to the nearest surface, minus and plus for speed, Escape to leave."
+          : "Arrow keys orbit, Shift with an arrow key pans, plus and minus zoom, and Shift+F10 or the Menu key opens the viewport menu for the object at the centre."}
+      </p>
       <MarkupLayer
         strokes={markup}
         draft={markupDraft}

@@ -9,10 +9,15 @@
  * grey is reference-only surface.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import * as THREE from "three";
+
+import {
+  isEntryPoint,
+  numberOption,
+  optionValue,
+  positionals,
+} from "./lib/rvt-harness.ts";
 
 type Accessor = {
   bufferView?: number;
@@ -1310,22 +1315,16 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const args = process.argv.slice(2);
-  const positional = args.filter((argument, index) =>
-    !argument.startsWith("--") &&
-    !["--json", "--svg", "--actionable-svg", "--cell"].includes(args[index - 1] ?? "")
-  );
-  const [recoveredPath, referencePath] = positional;
-  const jsonIndex = args.indexOf("--json");
-  const svgIndex = args.indexOf("--svg");
-  const actionableSvgIndex = args.indexOf("--actionable-svg");
-  const cellIndex = args.indexOf("--cell");
+if (isEntryPoint(import.meta.url)) {
+  const [recoveredPath, referencePath] = positionals("--cell", "--json", "--svg", "--actionable-svg");
+  const jsonPath = optionValue("--json");
+  const svgPath = optionValue("--svg");
+  const actionableSvgPath = optionValue("--actionable-svg");
   if (!recoveredPath || !referencePath) {
     throw new Error("usage: glb-surface-diff.ts recovered.glb reference.glb [--cell 0.5] [--json report.json] [--svg diff.svg] [--actionable-svg review.svg]");
   }
-  const cellMetres = cellIndex >= 0 ? Number(args[cellIndex + 1]) : 0.5;
-  if (!Number.isFinite(cellMetres) || cellMetres <= 0) throw new Error("--cell must be positive.");
+  const cellMetres = numberOption("--cell", 0.5);
+  if (cellMetres <= 0) throw new Error("--cell must be positive.");
   const report = compareGlbs(readFileSync(recoveredPath), readFileSync(referencePath), cellMetres);
   const {
     reviewRecoveredOnlyIndices,
@@ -1351,15 +1350,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     horizontalStairSurface: missingHorizontalStairSurfaceIndices.length,
     verticalStairRiser: missingVerticalStairRiserIndices.length,
   }, grid: { ...report.grid, occupiedIndicesOmitted: true } }, null, 2)}\n`;
-  if (jsonIndex >= 0 && args[jsonIndex + 1]) writeFileSync(args[jsonIndex + 1]!, json);
-  if (svgIndex >= 0 && args[svgIndex + 1]) {
-    writeFileSync(args[svgIndex + 1]!, renderDiffSvg({
+  if (jsonPath) writeFileSync(jsonPath, json);
+  if (svgPath) {
+    writeFileSync(svgPath, renderDiffSvg({
       ...report.diff,
       referenceOnly: actionableReferenceOnlyIndices,
     }, report.grid));
   }
-  if (actionableSvgIndex >= 0 && args[actionableSvgIndex + 1]) {
-    writeFileSync(args[actionableSvgIndex + 1]!, renderDiffSvg({
+  if (actionableSvgPath) {
+    writeFileSync(actionableSvgPath, renderDiffSvg({
       ...report.diff,
       recoveredOnly: reviewRecoveredOnlyIndices,
       referenceOnly: actionableReferenceOnlyIndices,

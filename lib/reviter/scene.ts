@@ -6,6 +6,7 @@
  * shaded, and the display materials that stand in for undecoded Revit materials.
  */
 import { MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
+import { srgbBytesToLinear } from "./material-palette.ts";
 import { REVIT_2027_FAMILY_SYMBOL_MARKER } from "./family-material-relations.ts";
 import type { WallArc, WallSolid } from "./native-geometry.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
@@ -28,7 +29,7 @@ import type {
   MeshData,
   Segment,
   Vec3,
-} from "./types";
+} from "./types.ts";
 
 const MESH_BATCH_SIZE = 2_000;
 
@@ -75,9 +76,13 @@ export function displayMaterials(): MaterialData[] {
     // stair body. Autodesk's two meshes covering the supplied curved run use
     // the exact neutral 127/255 palette entry; use that persisted visual
     // reference value for the evidence-only proxy without borrowing geometry.
+    // 127 is an sRGB byte and this field is linear, so it goes through the same
+    // transfer function the native palette applies — writing 127/255 directly
+    // would land on sRGB byte 187 and show a different grey from any native
+    // material carrying the very entry this is meant to match.
     // Keep this at the end so every established fallback material index stays
     // stable.
-    fallback("Stair display proxy", [127 / 255, 127 / 255, 127 / 255, 1], 0.2),
+    fallback("Stair display proxy", [...srgbBytesToLinear([127, 127, 127]), 1], 0.2),
   ];
 }
 
@@ -1088,7 +1093,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
 }
 
 /** The gate that held a record out of the scene, as named in the sources above. */
-export type HoldBackReason =
+type HoldBackReason =
   | "wrapper"
   | "face-hull-only"
   | "stair-companion"
@@ -1097,49 +1102,6 @@ export type HoldBackReason =
   | "unnamed-plate"
   | "floor-sketch"
   | "dominant-container";
-
-/**
- * Why each record `selectDisplayBounds` drops was dropped — diagnosis only.
- *
- * Nothing in the conversion calls this; it exists so a census can ask which
- * *gate* costs an element rather than which class the element belongs to. It
- * walks the same rules in the same order as `selectDisplayBounds`, so its keys
- * are exactly that function's complement over the records handed to it. Pass it
- * the same list the audit passes — the drawable-extent filter runs first there,
- * and running the wrapper rule over a different population changes the occupancy
- * counts it decides on.
- */
-export function explainHoldBack(records: ElementBoundsRecord[]): Map<number, HoldBackReason> {
-  const reasons = new Map<number, HoldBackReason>();
-  const held = heldBackWrappers(records);
-  const withoutWrappers: ElementBoundsRecord[] = [];
-  for (const record of records) {
-    if (held.has(record)) reasons.set(record.elementId, "wrapper");
-    else withoutWrappers.push(record);
-  }
-  const byId = new Map(records.map((record) => [record.elementId, record]));
-  const classified: ElementBoundsRecord[] = [];
-  for (const record of withoutWrappers) {
-    const reason = sheetReason(record, byId, withoutWrappers);
-    if (reason) reasons.set(record.elementId, reason);
-    else classified.push(record);
-  }
-  if (classified.length < 2) return reasons;
-  const byFootprint = classified
-    .map((record) => {
-      const { min, max } = record.boundsFeet;
-      const dx = max.x - min.x;
-      const dy = max.y - min.y;
-      return { record, footprint: dx * dy, longestSide: Math.max(dx, dy) };
-    })
-    .sort((a, b) => b.footprint - a.footprint);
-  const largest = byFootprint[0]!;
-  const runnerUp = byFootprint[1]!;
-  if (largest.longestSide > 500 && largest.footprint > runnerUp.footprint * 2.5) {
-    reasons.set(largest.record.elementId, "dominant-container");
-  }
-  return reasons;
-}
 
 const BOX_INDICES = [
   0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,

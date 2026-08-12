@@ -129,12 +129,17 @@
  * populations are small enough that they could easily not have.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import CFB from "cfb";
 
 import { computeCoverage, convertModel } from "./audit-coverage.ts";
+import {
+  hasFlag,
+  isEntryPoint,
+  openRvt,
+  optionValue,
+  PARTITION_STREAM_PATTERN,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 import { drawnBounds, readTruthBoxes, type Box } from "./overlay-diff.ts";
 
 import { solidBounds } from "../lib/reviter/bounds-records.ts";
@@ -152,7 +157,6 @@ import {
   type LocalBounds,
 } from "../lib/reviter/instanced-geometry.ts";
 import {
-  asBytes,
   gzipOffsets,
   inflateRevitChunk,
   revitWindowTail,
@@ -537,13 +541,7 @@ export type RescanResult = {
  * word of records the decoder dropped, and where a placement basis really sits.
  */
 export function rescanPartitions(rvtPath: string): RescanResult {
-  const bytes = readFileSync(rvtPath);
-  const cfb = CFB.read(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), {
-    type: "buffer",
-  });
-  const partitions = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .filter(({ entry, path }) => entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path));
+  const partitions = openRvt(rvtPath).streamsMatching(PARTITION_STREAM_PATTERN);
 
   const records = new Map<number, RelaxedRecord>();
   const tailHits = new Map<number, TailHit>();
@@ -551,7 +549,7 @@ export function rescanPartitions(rvtPath: string): RescanResult {
   let pagesRead = 0;
 
   for (const partition of partitions) {
-    const data = stripRevitPageChecksums(asBytes(partition.entry.content));
+    const data = stripRevitPageChecksums(partition.bytes);
     const offsets = gzipOffsets(data);
 
     // Markers are measured from the file exactly as `convert.ts` measures them,
@@ -1683,31 +1681,11 @@ type Cached = {
 
 // --- run ---------------------------------------------------------------------
 
-/** True when this module is the process entry point rather than an import. */
-function isEntryPoint(): boolean {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === resolve(entry);
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
-  const positional: string[] = [];
-  let jsonPath: string | undefined;
-  let cachePath: string | undefined;
-  let strict = false;
-  for (let index = 2; index < process.argv.length; index += 1) {
-    const argument = process.argv[index]!;
-    if (argument === "--json") { jsonPath = process.argv[index + 1]; index += 1; continue; }
-    if (argument === "--cache") { cachePath = process.argv[index + 1]; index += 1; continue; }
-    if (argument === "--strict") { strict = true; continue; }
-    if (argument.startsWith("--")) continue;
-    positional.push(argument);
-  }
-  const [rvtPath, ifcPath] = positional;
+if (isEntryPoint(import.meta.url)) {
+  const jsonPath = optionValue("--json");
+  const cachePath = optionValue("--cache");
+  const strict = hasFlag("--strict");
+  const [rvtPath, ifcPath] = positionals("--json", "--cache");
   if (!rvtPath || !ifcPath) {
     console.error("usage: holdout.ts <model.rvt> <model.ifc> [--json <path>] [--cache <path>] [--strict]");
     process.exit(2);
@@ -1856,27 +1834,20 @@ if (isEntryPoint()) {
   }
 
   if (jsonPath) {
-    writeFileSync(
-      jsonPath,
-      `${JSON.stringify(
-        {
-          rvt: rvtName,
-          ifc: ifcName,
-          caveat:
-            "Partitions of one building. Every partition shares its release, exporter, " +
-            "families and modelling conventions. This is not a second-model check.",
-          partitions: {
-            storeys: storeyModel.storeys,
-            wings: partitioner.wingNames,
-            bandFallbacks: partitioner.bandFallbacks.size,
-          },
-          rules: reports,
-          verdict: silent.length || (strict && split.length) ? "FAIL" : "PASS",
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    writeJsonReport(jsonPath, {
+      rvt: rvtName,
+      ifc: ifcName,
+      caveat:
+        "Partitions of one building. Every partition shares its release, exporter, " +
+        "families and modelling conventions. This is not a second-model check.",
+      partitions: {
+        storeys: storeyModel.storeys,
+        wings: partitioner.wingNames,
+        bandFallbacks: partitioner.bandFallbacks.size,
+      },
+      rules: reports,
+      verdict: silent.length || (strict && split.length) ? "FAIL" : "PASS",
+    });
     console.log(`machine-readable report written to ${jsonPath}`);
   }
 

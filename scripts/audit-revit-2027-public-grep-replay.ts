@@ -10,6 +10,11 @@ import { readFileSync } from "node:fs";
 
 import CFB from "cfb";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
@@ -57,24 +62,6 @@ import {
   collectRevit2027PlacementGeometryTargetIds,
   selectRevit2027PlacementGeometry,
 } from "./revit-2027-placement-owner-selection.ts";
-
-function increment<K>(map: Map<K, number>, key: K, count = 1): void {
-  map.set(key, (map.get(key) ?? 0) + count);
-}
-
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] ||
-        String(left[0]).localeCompare(String(right[0]), "en", {
-          numeric: true,
-        }),
-    ),
-  );
-}
 
 function drawableBlockingIssues(
   mesh: Revit2027CertifiedOwnerMesh,
@@ -903,7 +890,7 @@ function composeOwnerElement(
         (left, right) => left - right,
       ),
       sourceIssueCount,
-      sourceIssues: entries(sourceIssues),
+      sourceIssues: countsByFrequency(sourceIssues),
       complete: sourceIssueCount === 0,
       faces,
       facesByKind,
@@ -1007,7 +994,7 @@ const certifiedInstances = [...instancePlacements.values()]
         "planarMultiLoopFaces" in geometry
           ? geometry.planarMultiLoopFaces
           : 0,
-      facesByKind: entries(geometry.facesByKind),
+      facesByKind: countsByFrequency(geometry.facesByKind),
       positions: geometry.positions,
       triangles: geometry.triangles,
       minimum,
@@ -1083,20 +1070,20 @@ console.log(JSON.stringify({
   eligibleOwners,
   completedOwners,
   descriptors,
-  descriptorStates: entries(descriptorStates),
+  descriptorStates: countsByFrequency(descriptorStates),
   spans,
-  spansBySlot: entries(spansBySlot),
-  bodyBytesBySlot: entries(bodyBytesBySlot),
+  spansBySlot: countsByFrequency(spansBySlot),
+  bodyBytesBySlot: countsByFrequency(bodyBytesBySlot),
   sampledPlanarMesh: {
     faceMeshes: planarFaceMeshes,
     positions: planarPositions,
     triangles: planarTriangles,
-    issues: entries(planarIssues),
+    issues: countsByFrequency(planarIssues),
     multiLoopIssueSamples: planarMultiLoopIssueSamples,
     uvLinkIssueSamples: planarUvLinkIssueSamples,
   },
   certifiedBrowserMesh: {
-    faceMeshesByKind: entries(certifiedFacesByKind),
+    faceMeshesByKind: countsByFrequency(certifiedFacesByKind),
     positions: certifiedPositions,
     triangles: certifiedTriangles,
     planarMultiLoopFaces: certifiedPlanarMultiLoopFaces,
@@ -1105,7 +1092,7 @@ console.log(JSON.stringify({
     planarHoleLoops: certifiedPlanarHoleLoops,
     planarMultiLoopTriangles: certifiedPlanarMultiLoopTriangles,
     cylinderBridgedJoins: certifiedCylinderBridgedJoins,
-    issues: entries(certifiedIssues),
+    issues: countsByFrequency(certifiedIssues),
     issueRecords: certifiedIssueRecords,
     ownerElements: certifiedOwnerElements.size,
     decodedInstancePlacements: instancePlacements.size,
@@ -1120,7 +1107,7 @@ console.log(JSON.stringify({
         elementId,
         faces: value.faces,
         planarMultiLoopFaces: value.planarMultiLoopFaces,
-        facesByKind: entries(value.facesByKind),
+        facesByKind: countsByFrequency(value.facesByKind),
         positions: value.positions,
         triangles: value.triangles,
         minimum: value.minimum,
@@ -1135,10 +1122,10 @@ console.log(JSON.stringify({
         (total, instances) => total + instances.length,
         0,
       ),
-      gRepIds: entries(nestedGRepIds),
-      cdaValues: entries(nestedCdaValues),
-      hasScale: entries(nestedHasScale),
-      resolveSymbolInView: entries(nestedResolveSymbolInView),
+      gRepIds: countsByFrequency(nestedGRepIds),
+      cdaValues: countsByFrequency(nestedCdaValues),
+      hasScale: countsByFrequency(nestedHasScale),
+      resolveSymbolInView: countsByFrequency(nestedResolveSymbolInView),
       composedOwners: composedNestedOwnerElements.length,
       completeOwners: composedNestedOwnerElements.filter(
         (element) => element.complete,
@@ -1146,19 +1133,19 @@ console.log(JSON.stringify({
       partialOwners: composedNestedOwnerElements.filter(
         (element) => !element.complete,
       ).length,
-      partialSourceIssues: entries(nestedPartialSourceIssues),
+      partialSourceIssues: countsByFrequency(nestedPartialSourceIssues),
       triangles: composedNestedOwnerElements.reduce(
         (total, element) => total + element.triangles,
         0,
       ),
-      failures: entries(nestedCompositionFailures),
+      failures: countsByFrequency(nestedCompositionFailures),
       symbolTargets: {
         scanClosurePasses: referencedGeometryTargetPasses,
         ...referencedTargetAudit(nestedSymbolTargetIds, true),
       },
       elements: composedNestedOwnerElements.map((element) => ({
         ...element,
-        facesByKind: entries(element.facesByKind),
+        facesByKind: countsByFrequency(element.facesByKind),
       })),
       links: [...nestedInstancesByOwner.values()]
         .flat()
@@ -1188,7 +1175,7 @@ console.log(JSON.stringify({
       partialOwners: composedPlacementGeometryOwners.filter(
         (element) => !element.complete,
       ).length,
-      partialSourceIssues: entries(placementPartialSourceIssues),
+      partialSourceIssues: countsByFrequency(placementPartialSourceIssues),
       triangles: composedPlacementGeometryOwners.reduce(
         (total, element) => total + element.triangles,
         0,
@@ -1205,16 +1192,16 @@ console.log(JSON.stringify({
           (total, element) => total + element.triangles,
           0,
         ),
-      failures: entries(placementGeometryCompositionFailures),
+      failures: countsByFrequency(placementGeometryCompositionFailures),
       elements: composedPlacementGeometryOwners.map((element) => ({
         ...element,
-        facesByKind: entries(element.facesByKind),
+        facesByKind: countsByFrequency(element.facesByKind),
       })),
     },
     referencedGeometryTargets: {
       scanClosurePasses: referencedGeometryTargetPasses,
       ...referencedTargetAudit(referencedGeometryTargetIds),
-      meshFailures: entries(nestedTargetMeshFailures),
+      meshFailures: countsByFrequency(nestedTargetMeshFailures),
     },
   },
   topologyInventory: {
@@ -1228,7 +1215,7 @@ console.log(JSON.stringify({
       }))
       .sort((left, right) => left.elementId - right.elementId),
   },
-  failures: entries(failures),
+  failures: countsByFrequency(failures),
   readerCorpusValid,
 }, null, 2));
 

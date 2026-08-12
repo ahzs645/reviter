@@ -12,11 +12,23 @@ import {
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { RoomReviewState } from "../../lib/reviter/room-review.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../../lib/reviter/types.ts";
+import { WorkerClient } from "../../lib/reviter/worker-client.ts";
 import type {
+  FloorPlanResult,
+  FloorPlanWorkerInit,
   FloorPlanWorkerRequest,
-  FloorPlanWorkerResponse,
 } from "./floor-plan.worker.ts";
-import { staticWorkerUrl } from "./reference-model.ts";
+import type { ReviterGlobal } from "./types.ts";
+
+/**
+ * The prebuilt plan worker a static host injects, if there is one. Read here
+ * rather than through reference-model's accessor so that assembling a plan does
+ * not depend on the viewer's module graph — which is also what lets the engine
+ * below be exercised outside a browser.
+ */
+function staticPlanWorkerUrl(): string | undefined {
+  return (globalThis as ReviterGlobal).__REVITER_STATIC_WORKERS__?.plan;
+}
 
 const PLAN_CATEGORY_IDS = new Set([
   -2_000_032, // Floors
@@ -58,13 +70,29 @@ function compactPlanResult(result: ConvertResult): ConvertResult {
 
 type PlanEntry = { svg: string; summary: ArchitecturalPlanSummary };
 
-type PlanEngine = {
+/**
+ * A plan this model cannot draw — most often a level with no floor plate. Kept
+ * as one shared constant so it is a stable `useSyncExternalStore` snapshot.
+ */
+const PLAN_FAILED = { failed: true } as const;
+type PlanSnapshot = PlanEntry | typeof PLAN_FAILED | null;
+
+function isPlanEntry(snapshot: PlanSnapshot): snapshot is PlanEntry {
+  return snapshot != null && snapshot !== PLAN_FAILED;
+}
+
+type PlanClient = WorkerClient<FloorPlanWorkerRequest, FloorPlanResult>;
+
+export type PlanEngine = {
   result: ConvertResult;
-  worker: Worker | null;
+  /** Built on the first request that needs it; see `planClient`. */
+  client: PlanClient | null;
   workerFailed: boolean;
   cache: Map<string, PlanEntry>;
-  pending: Map<number, string>;
-  nextId: number;
+  /** Keys that neither the worker nor the main thread can draw. */
+  failed: Set<string>;
+  /** Keys in flight in the worker — several at once, and all of them wanted. */
+  inFlight: Set<string>;
   listeners: Set<() => void>;
 };
 
@@ -75,21 +103,56 @@ type PlanEngine = {
  */
 const engines = new WeakMap<ConvertResult, PlanEngine>();
 
-function engineFor(result: ConvertResult): PlanEngine {
+/** The engine backing every plan surface for one model. Exported for tests. */
+export function engineFor(result: ConvertResult): PlanEngine {
   let engine = engines.get(result);
   if (!engine) {
     engine = {
       result,
-      worker: null,
+      client: null,
       workerFailed: false,
       cache: new Map(),
-      pending: new Map(),
-      nextId: 0,
+      failed: new Set(),
+      inFlight: new Set(),
       listeners: new Set(),
     };
     engines.set(result, engine);
   }
   return engine;
+}
+
+/**
+ * The worker client for one model, built on demand.
+ *
+ * Unlike the other four clients this one keeps several requests in flight at
+ * once and wants every answer: the visible floor and its prewarmed neighbours
+ * are all being drawn together, so nothing here supersedes anything.
+ */
+function planClient(engine: PlanEngine): PlanClient {
+  engine.client ??= new WorkerClient<FloorPlanWorkerRequest, FloorPlanResult>({
+    spawn: () => {
+      const worker = new Worker(
+        staticPlanWorkerUrl() ?? new URL("./floor-plan.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+      // The model belongs to the worker rather than to any one request, so it
+      // is primed here — which also means a replacement worker re-primes itself
+      // instead of answering every request with "no model yet".
+      worker.postMessage(
+        { type: "init", result: compactPlanResult(engine.result) } satisfies FloorPlanWorkerInit,
+      );
+      return worker;
+    },
+    startFailureMessage: "This browser blocked the floor plan worker.",
+    deathMessage: "The floor plan worker stopped unexpectedly.",
+    onWorkerFailure: () => {
+      // The worker is not tried again for this model. Every request it was
+      // serving is failed individually right after this, and each of those is
+      // redrawn on the main thread by its own handler.
+      engine.workerFailed = true;
+    },
+  });
+  return engine.client;
 }
 
 function notify(engine: PlanEngine) {
@@ -98,7 +161,9 @@ function notify(engine: PlanEngine) {
 
 function resolveSynchronously(engine: PlanEngine, key: string, request: PlanRequestParts) {
   // A browser that blocks module workers still gets the feature, at the cost
-  // of the old synchronous pause.
+  // of the old synchronous pause. This is also the retry for a plan the worker
+  // reported an error for: the worker only holds the category-filtered clone,
+  // so a request that failed there can still succeed against the full result.
   try {
     const entry = {
       svg: makeArchitecturalFloorSvg(engine.result, request.levelId, {
@@ -113,9 +178,15 @@ function resolveSynchronously(engine: PlanEngine, key: string, request: PlanRequ
       }),
     };
     engine.cache.set(key, entry);
+    engine.failed.delete(key);
     notify(engine);
   } catch {
-    // Levels without floor plates surface as the empty state downstream.
+    // Levels without floor plates throw here. Record that so the surfaces stop
+    // waiting on a plan that is never coming: an unrecorded failure leaves
+    // `building` true forever, pinning the previous floor's drawing on screen
+    // and, with it, the previous floor's coordinate frame.
+    engine.failed.add(key);
+    notify(engine);
   }
 }
 
@@ -165,53 +236,37 @@ export function acceptedRoomLabels(
   return Object.keys(labels).length ? labels : null;
 }
 
-function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
-  if (engine.cache.has(key)) return;
-  for (const pendingKey of engine.pending.values()) if (pendingKey === key) return;
+/** Queue one plan, in the worker when there is one. Exported for tests. */
+export function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
+  // A key that failed on both threads is deterministic — the same inputs throw
+  // again — so it is left alone rather than re-posted on every effect run.
+  if (engine.cache.has(key) || engine.failed.has(key) || engine.inFlight.has(key)) return;
   if (engine.workerFailed) { resolveSynchronously(engine, key, parts); return; }
-  if (!engine.worker) {
-    try {
-      const worker = new Worker(
-        staticWorkerUrl("plan") ?? new URL("./floor-plan.worker.ts", import.meta.url),
-        { type: "module" },
-      );
-      worker.addEventListener("message", (event: MessageEvent<FloorPlanWorkerResponse>) => {
-        if (engine.worker !== worker) return;
-        const pendingKey = engine.pending.get(event.data.id);
-        if (pendingKey == null) return;
-        engine.pending.delete(event.data.id);
-        if (event.data.error || !event.data.svg || !event.data.summary) return;
-        engine.cache.set(pendingKey, { svg: event.data.svg, summary: event.data.summary });
-        notify(engine);
-      });
-      worker.addEventListener("error", () => {
-        if (engine.worker !== worker) return;
-        worker.terminate();
-        engine.worker = null;
-        engine.workerFailed = true;
-        engine.pending.clear();
-        resolveSynchronously(engine, key, parts);
-      });
-      worker.postMessage({ type: "init", result: compactPlanResult(engine.result) });
-      engine.worker = worker;
-    } catch {
-      engine.workerFailed = true;
-      resolveSynchronously(engine, key, parts);
-      return;
-    }
-  }
-  const id = engine.nextId++;
-  engine.pending.set(id, key);
-  engine.worker.postMessage({
+  engine.inFlight.add(key);
+  planClient(engine).send({
     type: "plan",
-    id,
     levelId: parts.levelId,
     connectedLevelIds: [...parts.connectedLevelIds],
     rotationQuarterTurns: parts.rotationQuarterTurns,
     derivedRooms: parts.derivedRooms,
     roomLabels: parts.roomLabels ?? null,
     theme: parts.theme,
-  } satisfies FloorPlanWorkerRequest);
+  }, {
+    onResult: (plan) => {
+      engine.inFlight.delete(key);
+      engine.cache.set(key, plan);
+      engine.failed.delete(key);
+      notify(engine);
+    },
+    onError: () => {
+      // The same treatment whether the worker reported the error, died, or
+      // never started. Dropping the request instead left the entry null with
+      // nothing in flight, and the effect cannot retry because neither the key
+      // nor the parts changed.
+      engine.inFlight.delete(key);
+      resolveSynchronously(engine, key, parts);
+    },
+  });
 }
 
 export type ArchitecturalPlanState = {
@@ -221,6 +276,30 @@ export type ArchitecturalPlanState = {
   /** True while the requested plan is still assembling off the main thread. */
   building: boolean;
 };
+
+/** What the engine currently knows about one key: drawn, undrawable, or neither. */
+export function planSnapshot(engine: PlanEngine, key: string | null): PlanSnapshot {
+  if (!key) return null;
+  return engine.cache.get(key) ?? (engine.failed.has(key) ? PLAN_FAILED : null);
+}
+
+/**
+ * Derive what the surfaces render. The previous plan is held over only while
+ * the next one is still coming: once a key is known to be undrawable there is
+ * nothing to wait for, and holding another floor's drawing over would also
+ * hold over the bounds that drawing is measured in — which is how a click
+ * meant for one storey used to be resolved in another storey's frame.
+ */
+export function planStateFor(
+  snapshot: PlanSnapshot,
+  previous: PlanEntry | null,
+  key: string | null,
+): ArchitecturalPlanState {
+  const entry = isPlanEntry(snapshot) ? snapshot : null;
+  const building = Boolean(key) && snapshot == null;
+  const shown = entry ?? (building ? previous : null);
+  return { svg: shown?.svg ?? null, summary: shown?.summary ?? null, building };
+}
 
 /**
  * Assemble architectural plan SVGs in a dedicated worker so switching floors
@@ -242,17 +321,18 @@ export function useArchitecturalPlan(
       engine.listeners.delete(listener);
       if (!engine.listeners.size) {
         // Last plan surface closed: stop the worker, keep the resolved cache.
-        engine.worker?.terminate();
-        engine.worker = null;
-        engine.pending.clear();
+        // The client stays and spawns a fresh worker if a surface reopens.
+        engine.client?.terminate();
+        engine.inFlight.clear();
       }
     };
   }, [engine]);
-  const entry = useSyncExternalStore(
+  const snapshot = useSyncExternalStore(
     subscribe,
-    () => (key ? engine.cache.get(key) ?? null : null),
+    () => planSnapshot(engine, key),
     () => null,
   );
+  const entry = isPlanEntry(snapshot) ? snapshot : null;
 
   useEffect(() => {
     if (!parts || !key) return;
@@ -274,9 +354,8 @@ export function useArchitecturalPlan(
     setPrevious({ key, entry });
   }
 
-  return useMemo(() => ({
-    svg: entry?.svg ?? previous?.entry.svg ?? null,
-    summary: entry?.summary ?? previous?.entry.summary ?? null,
-    building: Boolean(key && !entry),
-  }), [entry, key, previous]);
+  return useMemo(
+    () => planStateFor(snapshot, previous?.entry ?? null, key),
+    [key, previous, snapshot],
+  );
 }

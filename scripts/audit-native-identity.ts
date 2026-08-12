@@ -7,12 +7,18 @@
  *   node --experimental-strip-types scripts/audit-native-identity.ts \
  *     --rvt model.rvt --ifc reference.ifc --json report.json
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
+
+import {
+  declareUsage,
+  ifcScalar,
+  requirePath,
+  sha256,
+} from "./lib/rvt-harness.ts";
 
 import {
   decodeRevitDocumentHistory,
@@ -25,31 +31,15 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 
-const argv = process.argv.slice(2);
-
-function option(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}. Run with --rvt, --ifc, and --json.`);
-}
+declareUsage(
+  "audit-native-identity.ts --rvt model.rvt --ifc model.ifc --json report.json",
+);
 
 const paths = {
-  rvt: option("--rvt"),
-  ifc: option("--ifc"),
-  json: option("--json"),
+  rvt: requirePath("--rvt"),
+  ifc: requirePath("--ifc"),
+  json: requirePath("--json"),
 };
-
-function sha256(data: Uint8Array | string): string {
-  return createHash("sha256").update(data).digest("hex");
-}
-
-function scalar(value: unknown): unknown {
-  if (value == null) return null;
-  if (typeof value === "object" && "value" in value) {
-    return (value as { value: unknown }).value;
-  }
-  return value;
-}
 
 function inflateNamedStream(
   cfb: ReturnType<typeof CFB.read>,
@@ -130,12 +120,12 @@ for (const typeCode of api.GetIfcEntityList(model)) {
   for (let index = 0; index < ids.size(); index += 1) {
     const line = api.GetLine(model, ids.get(index), false);
     ifcElements += 1;
-    const globalId = scalar(line.GlobalId);
+    const globalId = ifcScalar(line.GlobalId);
     if (typeof globalId === "string" && globalId) {
       ifcGlobalIds += 1;
       if (uniqueIdSet.has(globalId)) directGlobalIdToNativeUniqueIdMatches += 1;
     }
-    const tag = scalar(line.Tag);
+    const tag = ifcScalar(line.Tag);
     if (typeof tag !== "string" || !/^\d+$/u.test(tag)) continue;
     const numericTag = Number(tag);
     numericTags.add(numericTag);

@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
 /** Attribute tolerance-hidden Autodesk stair-riser residuals to native RVT ids. */
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import { meshBoundsByElement } from "../lib/reviter/mesh-element-bounds.ts";
 import { convertModel } from "./audit-coverage.ts";
+import {
+  isEntryPoint,
+  numberOption,
+  optionValue,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 import {
   attributeResidualComponentsToElements,
   compareGlbs,
@@ -102,34 +107,24 @@ export function auditStairVerticalResiduals(
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const args = process.argv.slice(2);
-  const positional = args.filter((argument, index) =>
-    !argument.startsWith("--") &&
-    !["--cell", "--json", "--ifc"].includes(args[index - 1] ?? "")
-  );
-  const [rvtPath, recoveredGlbPath, referenceGlbPath] = positional;
-  const cellIndex = args.indexOf("--cell");
-  const jsonIndex = args.indexOf("--json");
-  const ifcIndex = args.indexOf("--ifc");
+if (isEntryPoint(import.meta.url)) {
+  const [rvtPath, recoveredGlbPath, referenceGlbPath] = positionals("--cell", "--ifc", "--json");
   if (!rvtPath || !recoveredGlbPath || !referenceGlbPath) {
     throw new Error(
       "usage: audit-stair-vertical-residuals.ts model.rvt recovered.glb reference.glb " +
       "[--cell 0.25] [--ifc model.ifc] [--json report.json]",
     );
   }
-  const cellMetres = cellIndex >= 0 ? Number(args[cellIndex + 1]) : 0.25;
-  if (!Number.isFinite(cellMetres) || cellMetres <= 0) {
-    throw new Error("--cell must be positive.");
-  }
+  const cellMetres = numberOption("--cell", 0.25);
+  if (cellMetres <= 0) throw new Error("--cell must be positive.");
   const report = auditStairVerticalResiduals(
     rvtPath,
     recoveredGlbPath,
     referenceGlbPath,
     cellMetres,
-    ifcIndex >= 0 ? args[ifcIndex + 1] : undefined,
+    optionValue("--ifc") ?? undefined,
   );
-  const json = `${JSON.stringify(report, null, 2)}\n`;
-  if (jsonIndex >= 0 && args[jsonIndex + 1]) writeFileSync(args[jsonIndex + 1]!, json);
-  process.stdout.write(json);
+  const jsonPath = optionValue("--json");
+  if (jsonPath) writeJsonReport(jsonPath, report);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

@@ -10,14 +10,15 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import CFB from "cfb";
+import {
+  openRvt,
+} from "./lib/rvt-harness.ts";
 
 import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
+  matchesAscii,
+  requireNameOffset,
+} from "./lib/rvt-harness.ts";
+
 import {
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
@@ -43,54 +44,6 @@ type FieldEvidence = {
   offset: number;
   descriptor: string;
 };
-
-function firstInflatedSchema(
-  cfb: ReturnType<typeof CFB.read>,
-): Uint8Array {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(({ entry, path }) => entry.size > 0 && /\/Formats\/Latest$/i.test(path));
-  if (!item) throw new Error("RVT has no readable Formats/Latest stream");
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  if (offset == null) throw new Error("Formats/Latest has no gzip member");
-  const inflated = inflateRevitChunk(stored, offset);
-  if (!inflated) throw new Error("Formats/Latest gzip member did not inflate");
-  return inflated;
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
-function findName(
-  data: Uint8Array,
-  name: string,
-  firstOffset = 0,
-): number {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let offset = firstOffset;
-    offset <= data.byteLength - name.length - 2;
-    offset += 1
-  ) {
-    if (
-      view.getUint16(offset, true) === name.length &&
-      matchesAscii(data, offset + 2, name)
-    ) {
-      return offset;
-    }
-  }
-  throw new Error(`Formats/Latest does not contain ${name}`);
-}
 
 function sourceNameAtSlot(data: Uint8Array, sourceClassSlot: number) {
   const candidates: { name: string; offset: number }[] = [];
@@ -169,8 +122,8 @@ function certifyClass(
   expectedHeader: readonly number[],
   fields: readonly (readonly [string, readonly number[]])[],
 ) {
-  const offset = findName(schema, name);
-  const endOffset = findName(schema, nextName, offset + 2 + name.length);
+  const offset = requireNameOffset(schema, name);
+  const endOffset = requireNameOffset(schema, nextName, offset + 2 + name.length);
   const headerOffset = offset + 2 + name.length;
   if (
     expectedHeader.some(
@@ -194,8 +147,8 @@ function certifyClass(
   return { name, offset, endOffset, fields: fieldEvidence };
 }
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const schema = firstInflatedSchema(cfb);
+const model = openRvt(modelPath);
+const schema = model.requireSchema();
 const sourceLadder = [2213, 4282, 4283, 4284].map((sourceClassSlot) =>
   sourceNameAtSlot(schema, sourceClassSlot),
 );

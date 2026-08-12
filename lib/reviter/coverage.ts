@@ -8,7 +8,7 @@
  * matched by id and 0% drawn. The three columns have different fixes behind
  * them, which is the whole reason for keeping them apart.
  */
-import type { PairedRegressionResult } from "./types";
+import type { PairedRegressionResult } from "./types.ts";
 
 export type ClassCoverage = {
   /** Export class name with the `IFC` prefix stripped, for display. */

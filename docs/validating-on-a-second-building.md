@@ -1,6 +1,9 @@
 # Validating on a second building
 
-Every defect found in the audit recorded in the README traces to the same root:
+Every defect found in the 2026-07/08 audit — recorded in the README until
+2026-08-12, and now in [the entries this directory
+indexes](README.md#the-2026-0708-audit-of-the-supplied-revit-2027-project) — traces
+to the same root:
 each rule was measured on one building, applied without a check, and broke
 silently when something else changed. None of them were careless. Each was
 correct for the model it was fitted on. That is what makes the pattern worth
@@ -23,11 +26,21 @@ The point of the table is the last column: none of these announced themselves.
 | `tail-placements-read` | share of `instanceOnlyElements` | Measured how little other evidence exists, so it fell from 3,901 to 21 as the decoder improved, and failed for being *better* |
 | Carrier composition | source must share the state displacement | Selects a selector stub rather than the sibling owning the faces, translating a 12-triangle box into a stringer's place |
 
-Two more are still standing and are recorded in the README rather than fixed:
-`no-element-past-its-own-box` bounds the overhang count at 26 and the model
-produces 27, and element `447970` carries a `Curtain Wall Mullions` token at
-72,315 sq ft because category-token ownership resolves to the nearest preceding
-element id.
+Two more were still standing when this was written and were recorded in the
+audit record rather than fixed: `no-element-past-its-own-box` bounds the overhang
+count at 26 and the model produced 27, and element `447970` carried a
+`Curtain Wall Mullions` token at 72,315 sq ft because category-token ownership
+resolves to the nearest preceding element id.
+
+> **Both have since been closed, 2026-08-12.** The overhang count is 0 —
+> `readProducts` in `scripts/overlay-diff.ts` now lets an untagged member of an
+> `IfcRelAggregates` component inherit the component's single tag, which
+> dissolved the landing-only truth box that produced the worst case; the budget
+> deliberately stays at 26. `447970` is resolved by checking token-ownership
+> candidates against the persisted `Global/ElemTable` id set and letting a
+> donated-only label yield to the element's own record-code cluster. Both are
+> examples of the pattern this document is about, so they are kept rather than
+> deleted — but neither is a live defect.
 
 ## The harness that now exists
 
@@ -244,7 +257,8 @@ schema read would accept.
 ## What not to do
 
 Do not move `MAX_ELEMENTS_OVER_OWN_BOX` from 26 to 27 to get a green run. The
-assertion is naming a real gap, the gap is characterised in the README, and a
+assertion is naming a real gap, the gap is characterised in [the coverage
+measurements](unbc-coverage-measurements-2026-07-30.md), and a
 bound raised to match the number it was supposed to constrain measures nothing.
 The same applies to every threshold here: the value of a fitted number is that
 it fails when the fit stops holding.

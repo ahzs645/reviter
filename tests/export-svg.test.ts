@@ -311,7 +311,7 @@ test("omits an unresolved stair run rather than inventing treads", () => {
   unresolved.categoryId = -2_000_121;
   unresolved.categoryName = "Stairs Runs";
   unresolved.boundsFeet = { min: { x: 4, y: 2, z: 0 }, max: { x: 16, y: 8, z: 10 } };
-  const otherStorey = { ...unresolved, elementId: 21, stairTreads: [[
+  const otherStorey: ElementBoundsRecord = { ...unresolved, elementId: 21, stairTreads: [[
     [5, 3, 20], [6, 3, 20], [6, 4, 20], [5, 4, 20],
   ]] };
   result.elementBounds.push(floor, unresolved, otherStorey);

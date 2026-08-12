@@ -1,39 +1,36 @@
 import {
   tessellateNeutralBrep,
-  type BrepProvenance,
   type NeutralFaceMesh,
-  type NeutralMeshFaceGroup,
 } from "./brep-tessellator.ts";
+import type { Revit2027EdgeLoopStatic } from "./revit-2027-edge-loop-static.ts";
+import type { Revit2027FaceStatic } from "./revit-2027-face-static.ts";
+import type { Revit2027MaterialDefinitions } from "./revit-2027-face-material.ts";
 import {
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
-  type Revit2027EdgeLoopStatic,
-  type Revit2027EdgeLoopWithChainEnvelopesStatic,
-} from "./revit-2027-edge-loop-static.ts";
-import {
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
-  revit2027GEdgeLoopDirection,
-  revit2027GEdgeLoopNextReference,
-  revit2027GEdgeLoopPreviousReference,
-  type Revit2027EdgePoint,
-  type Revit2027GEdgeStatic,
-} from "./revit-2027-edge-1423.ts";
-import {
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "./revit-2027-face-static.ts";
-import {
-  bindRevit2027FaceMaterial,
-  type Revit2027MaterialDefinitions,
-} from "./revit-2027-face-material.ts";
-import type { Revit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
-import {
-  replayRevit2027GRepFifo,
   type Revit2027GRepReplay,
   type Revit2027GRepReplayOptions,
   type Revit2027GRepReplayRegistry,
-  type Revit2027GRepReplaySpan,
 } from "./revit-2027-grep-replay.ts";
+import {
+  revit2027OwnerMeshIndex,
+  revit2027OwnerSurface,
+  type Revit2027OwnerLoopRecord,
+} from "./revit-2027-owner-mesh-index.ts";
+import { revit2027OwnerFaceMesh } from "./revit-2027-owner-mesh-grid.ts";
+import {
+  correctedUvRingRoles,
+  createUvRingMatcher,
+  linkRevit2027DirectedLoopEndpoints,
+  revit2027DirectedEdgeUvs,
+  revit2027OwnerFaceMaterialId,
+  revit2027OwnerUvTolerance,
+  revit2027SampledUvRing,
+  uvDistance,
+  walkRevit2027DirectedLoopEdges,
+  type Revit2027DirectedEdge,
+  type Revit2027FaceUv,
+  type Revit2027LoopJoin,
+  type Revit2027TrimBoundary,
+} from "./revit-2027-owner-mesh-trim.ts";
 import {
   adaptRevit2027CylinderSampledBrep,
   type Revit2027CylinderSampledEdgeUse,
@@ -48,13 +45,6 @@ import {
 } from "./revit-2027-surfaces.ts";
 import { groupRings, triangulate, type Point2 } from "./polygon.ts";
 
-const DEFAULT_UV_TOLERANCE = 1e-9;
-const IDENTITY = [
-  1, 0, 0, 0,
-  0, 1, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 1,
-] as const;
 /**
  * `OdBrepBuilderFillerHelper::checkCoedgeLoop` evaluates adjacent p-curve
  * endpoints in 3D. `PointsDists::areEndsIntersecting` admits the closest pair
@@ -122,93 +112,25 @@ export type Revit2027CylinderOwnerMeshOptions = {
   ) => string | number | null | undefined;
 };
 
-type LoopRecord = {
-  token: number;
-  loop: Revit2027EdgeLoopStatic;
-};
-
-type DirectedEdge = {
-  token: number;
-  edge: Revit2027GEdgeStatic;
-  side: 0 | 1;
-  direction: 1 | -1;
-};
-
-type Boundary = "u-min" | "u-max" | "v-min" | "v-max";
-
-function spanValue<T>(span: Revit2027GRepReplaySpan): T {
-  return span.value as T;
-}
-
-function faceMaterialId(
-  faceToken: number,
-  face: Revit2027FaceStatic,
-  options: Revit2027CylinderOwnerMeshOptions,
-  issues: Revit2027CylinderOwnerMeshIssue[],
-): string | number | null {
-  const supplied = options.materialForFace?.(faceToken, face);
-  if (supplied !== undefined) return supplied;
-  if (!options.materialDefinitions) return null;
-  const binding = bindRevit2027FaceMaterial(
-    face.renderStyleElementId,
-    options.materialDefinitions,
-  );
-  if (binding.status === "exact-material") return binding.materialElementId;
-  if (binding.status === "unresolved-positive-id") {
-    issues.push({
-      code: "material-unresolved",
-      faceToken,
-      detail: `${binding.renderStyleElementId}: ${binding.reason}`,
-    });
-  }
-  return null;
-}
-
-function distance(
-  left: readonly [number, number],
-  right: readonly [number, number],
-): number {
-  return Math.hypot(left[0] - right[0], left[1] - right[1]);
-}
-
-function faceUv(
-  point: Revit2027EdgePoint,
-  side: 0 | 1,
-): readonly [number, number] {
-  return side === 0 ? point.firstFaceUv : point.secondFaceUv;
-}
-
-function edgeSide(
-  edge: Revit2027GEdgeStatic,
-  faceToken: number,
-): 0 | 1 | null {
-  const first = edge.faceReferences[0] === faceToken;
-  const second = edge.faceReferences[1] === faceToken;
-  return first === second ? null : first ? 0 : 1;
-}
-
+/**
+ * Admit one native endpoint join that moves along exactly one parameter.
+ *
+ * The filler repairs a coedge gap whose model-space distance is inside its
+ * own endpoint tolerance. An angular step past half a turn is an ambiguous
+ * wrap and is never bridged.
+ */
 function nativeOrthogonalJoinBridge(
-  current: DirectedEdge,
-  next: DirectedEdge,
+  join: Revit2027LoopJoin,
   surface: Revit2027CylinderSurface,
   tolerance: number,
 ): Revit2027CylinderSampledJoinBridge | null {
-  const currentEnd: 0 | 1 = current.direction === 1 ? 1 : 0;
-  const nextStart: 0 | 1 = next.direction === 1 ? 0 : 1;
-  const start = faceUv(
-    current.edge.firstAndLastEdgePoints[currentEnd],
-    current.side,
-  );
-  const end = faceUv(
-    next.edge.firstAndLastEdgePoints[nextStart],
-    next.side,
-  );
+  const start = join.currentUv;
+  const end = join.nextUv;
   const changesAngle = Math.abs(start[0] - end[0]) > tolerance;
   const changesAxial = Math.abs(start[1] - end[1]) > tolerance;
   if (
     changesAngle === changesAxial ||
-    (changesAngle &&
-      Math.abs(start[0] - end[0]) > Math.PI + tolerance)
+    (changesAngle && Math.abs(start[0] - end[0]) > Math.PI + tolerance)
   ) {
     return null;
   }
@@ -227,149 +149,10 @@ function nativeOrthogonalJoinBridge(
     return null;
   }
   return {
-    afterEdgeToken: current.token,
+    afterEdgeToken: join.current.token,
     start,
     end,
   };
-}
-
-function directedLoopEdges(
-  faceToken: number,
-  loop: LoopRecord,
-  edges: ReadonlyMap<number, Revit2027GEdgeStatic>,
-  surface: Revit2027CylinderSurface,
-  tolerance: number,
-):
-  | {
-      ok: true;
-      edges: DirectedEdge[];
-      joinBridges: Revit2027CylinderSampledJoinBridge[];
-    }
-  | { ok: false; issue: Revit2027CylinderOwnerMeshIssue } {
-  const ordered: DirectedEdge[] = [];
-  const visited = new Set<number>();
-  let edgeToken = loop.loop.nextEdgeReference;
-  while (edgeToken !== loop.token) {
-    if (edgeToken <= 0 || visited.has(edgeToken)) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-cycle",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken,
-        },
-      };
-    }
-    const edge = edges.get(edgeToken);
-    if (!edge) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken,
-        },
-      };
-    }
-    const side = edgeSide(edge, faceToken);
-    if (side == null) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-face-mismatch",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken,
-        },
-      };
-    }
-    visited.add(edgeToken);
-    ordered.push({
-      token: edgeToken,
-      edge,
-      side,
-      direction: revit2027GEdgeLoopDirection(edge, side),
-    });
-    edgeToken = revit2027GEdgeLoopNextReference(edge, side);
-    if (ordered.length > edges.size) {
-      return {
-        ok: false,
-        issue: {
-          code: "edge-cycle",
-          faceToken,
-          loopToken: loop.token,
-        },
-      };
-    }
-  }
-  if (
-    ordered.length < 2 ||
-    ordered.at(-1)?.token !== loop.loop.previousEdgeReference ||
-    ordered[0] &&
-      revit2027GEdgeLoopPreviousReference(
-        ordered[0].edge,
-        ordered[0].side,
-      ) !== loop.token
-  ) {
-    return {
-      ok: false,
-      issue: {
-        code: "edge-link-mismatch",
-        faceToken,
-        loopToken: loop.token,
-      },
-    };
-  }
-
-  const joinBridges: Revit2027CylinderSampledJoinBridge[] = [];
-  for (let index = 0; index < ordered.length; index += 1) {
-    const current = ordered[index]!;
-    const next = ordered[(index + 1) % ordered.length]!;
-    const currentEnd: 0 | 1 = current.direction === 1 ? 1 : 0;
-    const nextStart: 0 | 1 = next.direction === 1 ? 0 : 1;
-    const joinDistance = distance(
-      faceUv(current.edge.firstAndLastEdgePoints[currentEnd], current.side),
-      faceUv(next.edge.firstAndLastEdgePoints[nextStart], next.side),
-    );
-    if (joinDistance > tolerance) {
-      const bridge = nativeOrthogonalJoinBridge(
-        current,
-        next,
-        surface,
-        tolerance,
-      );
-      if (bridge) {
-        joinBridges.push(bridge);
-        continue;
-      }
-      return {
-        ok: false,
-        issue: {
-          code: "uv-link-unresolved",
-          faceToken,
-          loopToken: loop.token,
-          edgeToken: current.token,
-          detail: `native directed join distance: ${joinDistance}`,
-        },
-      };
-    }
-  }
-  return { ok: true, edges: ordered, joinBridges };
-}
-
-function directedUvs(
-  edge: DirectedEdge,
-): readonly (readonly [number, number])[] {
-  const points = [
-    faceUv(edge.edge.firstAndLastEdgePoints[0], edge.side),
-    ...edge.edge.interiorEdgePoints.map((point) =>
-      faceUv(point, edge.side)
-    ),
-    faceUv(edge.edge.firstAndLastEdgePoints[1], edge.side),
-  ];
-  return edge.direction === 1 ? points : points.reverse();
 }
 
 function envelopeMatches(
@@ -378,15 +161,26 @@ function envelopeMatches(
   tolerance: number,
 ): boolean {
   return (
-    distance(loop.minimum, surface.firstCorner) <= tolerance &&
-    distance(loop.maximum, surface.secondCorner) <= tolerance
+    uvDistance(loop.minimum, surface.firstCorner) <= tolerance &&
+    uvDistance(loop.maximum, surface.secondCorner) <= tolerance
   );
 }
 
+function edgeUsesOf(
+  edges: readonly Revit2027DirectedEdge[],
+): Revit2027CylinderSampledEdgeUse[] {
+  return edges.map((edge) => ({
+    edgeToken: edge.token,
+    edge: edge.edge,
+    faceSide: edge.side,
+    direction: edge.direction,
+  }));
+}
+
 function classifyRectangle(
-  edges: readonly DirectedEdge[],
-  minimum: readonly [number, number],
-  maximum: readonly [number, number],
+  edges: readonly Revit2027DirectedEdge[],
+  minimum: Revit2027FaceUv,
+  maximum: Revit2027FaceUv,
   tolerance: number,
 ):
   | {
@@ -408,12 +202,12 @@ function classifyRectangle(
       detail: `edge count: ${edges.length}`,
     };
   }
-  const sideCounts = new Map<Boundary, number>();
+  const sideCounts = new Map<Revit2027TrimBoundary, number>();
   for (const edge of edges) {
-    const points = directedUvs(edge);
+    const points = revit2027DirectedEdgeUvs(edge);
     const allNear = (axis: 0 | 1, value: number): boolean =>
       points.every((point) => Math.abs(point[axis] - value) <= tolerance);
-    const boundary: Boundary | null =
+    const boundary: Revit2027TrimBoundary | null =
       allNear(0, minimum[0])
         ? "u-min"
         : allNear(0, maximum[0])
@@ -445,17 +239,12 @@ function classifyRectangle(
     ok: true,
     angularSegments: sideCounts.get("v-min")!,
     axialSegments: sideCounts.get("u-min")!,
-    edgeUses: edges.map((edge) => ({
-      edgeToken: edge.token,
-      edge: edge.edge,
-      faceSide: edge.side,
-      direction: edge.direction,
-    })),
+    edgeUses: edgeUsesOf(edges),
   };
 }
 
 function classifyOrthogonalSampledTrim(
-  edges: readonly DirectedEdge[],
+  edges: readonly Revit2027DirectedEdge[],
   tolerance: number,
 ):
   | {
@@ -480,7 +269,7 @@ function classifyOrthogonalSampledTrim(
   }
   let maximumAngularSampleStep = 0;
   for (const edge of edges) {
-    const points = directedUvs(edge);
+    const points = revit2027DirectedEdgeUvs(edge);
     const constantAngle = points.every(
       (point) => Math.abs(point[0] - points[0]![0]) <= tolerance,
     );
@@ -532,17 +321,12 @@ function classifyOrthogonalSampledTrim(
   return {
     ok: true,
     maximumAngularSampleStep,
-    edgeUses: edges.map((edge) => ({
-      edgeToken: edge.token,
-      edge: edge.edge,
-      faceSide: edge.side,
-      direction: edge.direction,
-    })),
+    edgeUses: edgeUsesOf(edges),
   };
 }
 
 function classifySingleDiagonalSampledTrim(
-  edges: readonly DirectedEdge[],
+  edges: readonly Revit2027DirectedEdge[],
   tolerance: number,
 ):
   | {
@@ -566,7 +350,7 @@ function classifySingleDiagonalSampledTrim(
   let diagonalEdgeCount = 0;
   let maximumAngularSampleStep = 0;
   for (const edge of edges) {
-    const points = directedUvs(edge);
+    const points = revit2027DirectedEdgeUvs(edge);
     const constantAngle = points.every(
       (point) => Math.abs(point[0] - points[0]![0]) <= tolerance,
     );
@@ -631,63 +415,8 @@ function classifySingleDiagonalSampledTrim(
   return {
     ok: true,
     maximumAngularSampleStep,
-    edgeUses: edges.map((edge) => ({
-      edgeToken: edge.token,
-      edge: edge.edge,
-      faceSide: edge.side,
-      direction: edge.direction,
-    })),
+    edgeUses: edgeUsesOf(edges),
   };
-}
-
-function sampledUvRing(
-  edges: readonly DirectedEdge[],
-  tolerance: number,
-): Point2[] | null {
-  const ring: Point2[] = [];
-  for (const edge of edges) {
-    const points = directedUvs(edge);
-    for (let index = 0; index < points.length; index += 1) {
-      if (ring.length > 0 && index === 0) continue;
-      ring.push([points[index]![0], points[index]![1]]);
-    }
-  }
-  if (
-    ring.length > 1 &&
-    distance(ring[0]!, ring.at(-1)!) <= tolerance
-  ) {
-    ring.pop();
-  }
-  return (
-      ring.length >= 3 &&
-      ring.every((point) => point.every(Number.isFinite))
-    )
-    ? ring
-    : null;
-}
-
-function signedUvRingArea(ring: readonly Point2[]): number {
-  let twiceArea = 0;
-  for (let index = 0; index < ring.length; index += 1) {
-    const point = ring[index]!;
-    const next = ring[(index + 1) % ring.length]!;
-    twiceArea += point[0] * next[1] - next[0] * point[1];
-  }
-  return twiceArea / 2;
-}
-
-function sameUvRing(
-  left: readonly Point2[],
-  right: readonly Point2[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (point, index) =>
-        point[0] === right[index]![0] &&
-        point[1] === right[index]![1],
-    )
-  );
 }
 
 function directSampledCylinderMesh(
@@ -776,34 +505,20 @@ function directSampledCylinderMesh(
       indices[index + 2] = swap;
     }
   }
-  const elementId = Number(ownerElementId);
-  const provenance: BrepProvenance = {
+  return revit2027OwnerFaceMesh({
+    ownerElementId,
+    faceToken,
     decoderId: "revit-2027-cylinder-owner-mesh",
-    elementId: Number.isSafeInteger(elementId) ? elementId : undefined,
-  };
-  const faceId = `revit-2027-owner-${ownerElementId}-face-${faceToken}`;
-  const group: NeutralMeshFaceGroup = {
-    faceId,
-    indexOffset: 0,
-    indexCount: indices.length,
-    vertexOffset: 0,
-    vertexCount: ring.length,
+    brepSuffix: "sampled-cylinder",
     materialId,
-    sourceTransform: IDENTITY,
-    brepProvenance: provenance,
-    faceProvenance: provenance,
-  };
-  return {
-    brepId: `revit-2027-owner-${ownerElementId}-sampled-cylinder`,
     positions,
     normals,
     indices,
-    groups: [group],
-  };
+  });
 }
 
 function classifyNativeLoopRoles(
-  directedByLoop: readonly (readonly DirectedEdge[])[],
+  directedByLoop: readonly (readonly Revit2027DirectedEdge[])[],
   normalFlipped: boolean,
   surfaceOrientFlag: boolean,
   tolerance: number,
@@ -811,7 +526,10 @@ function classifyNativeLoopRoles(
   if (directedByLoop.length === 1) return ["outer"];
   const rings: Point2[][] = [];
   for (const directed of directedByLoop) {
-    const ring = sampledUvRing(directed, tolerance);
+    const ring = revit2027SampledUvRing(
+      directed.map(revit2027DirectedEdgeUvs),
+      tolerance,
+    );
     if (!ring) return null;
     rings.push(ring);
   }
@@ -819,15 +537,13 @@ function classifyNativeLoopRoles(
   // TB_Geometry's OdBmEdgeLoopImpl::isCCW corrects directed UV winding when
   // the persisted Face normal-flip bit equals Surface.orientFlag. Its
   // containment result must independently agree before roles are admitted.
-  const areaTolerance = Math.max(tolerance * tolerance, Number.EPSILON);
-  const roles: ("outer" | "hole")[] = [];
-  for (const ring of rings) {
-    const rawArea = signedUvRingArea(ring);
-    const correctedArea =
-      normalFlipped === surfaceOrientFlag ? -rawArea : rawArea;
-    if (Math.abs(correctedArea) <= areaTolerance) return null;
-    roles.push(correctedArea > 0 ? "outer" : "hole");
-  }
+  const roles = correctedUvRingRoles(
+    rings,
+    normalFlipped,
+    surfaceOrientFlag,
+    tolerance,
+  );
+  if (!roles) return null;
   const groups = groupRings(rings);
   if (
     groups.length !== 1 ||
@@ -835,25 +551,14 @@ function classifyNativeLoopRoles(
   ) {
     return null;
   }
-  const used = new Set<number>();
-  const matchingRingIndex = (target: readonly Point2[]): number | null => {
-    const matches = rings
-      .map((ring, index) => ({ ring, index }))
-      .filter(
-        ({ ring, index }) =>
-          !used.has(index) && sameUvRing(ring, target),
-      );
-    if (matches.length !== 1) return null;
-    used.add(matches[0]!.index);
-    return matches[0]!.index;
-  };
-  const outerIndex = matchingRingIndex(groups[0]!.outer);
+  const matcher = createUvRingMatcher(rings);
+  const outerIndex = matcher.match(groups[0]!.outer);
   if (outerIndex == null || roles[outerIndex] !== "outer") return null;
   for (const hole of groups[0]!.holes) {
-    const holeIndex = matchingRingIndex(hole);
+    const holeIndex = matcher.match(hole);
     if (holeIndex == null || roles[holeIndex] !== "hole") return null;
   }
-  return used.size === rings.length ? roles : null;
+  return matcher.used.size === rings.length ? roles : null;
 }
 
 /**
@@ -869,60 +574,11 @@ export function meshRevit2027CylinderSampledReplay(
   replay: Revit2027GRepReplay,
   options: Revit2027CylinderOwnerMeshOptions = {},
 ): Revit2027CylinderOwnerMeshResult {
-  const tolerance = options.uvTolerance ?? DEFAULT_UV_TOLERANCE;
-  if (!Number.isFinite(tolerance) || tolerance <= 0) {
-    return { ok: false, error: "uvTolerance must be positive and finite" };
-  }
+  const resolved = revit2027OwnerUvTolerance(options.uvTolerance);
+  if (!resolved.ok) return resolved;
+  const tolerance = resolved.tolerance;
 
-  const faces = new Map<number, Revit2027FaceStatic>();
-  const faceTokenByReplayIndex = new Map<number, number>();
-  const edges = new Map<number, Revit2027GEdgeStatic>();
-  const loops = new Map<number, LoopRecord>();
-  const cylindersByFace = new Map<number, Revit2027CylinderSurface>();
-  for (const span of replay.spans) {
-    if (
-      span.propertySourceClassSlot === REVIT_2027_FACE_SOURCE_CLASS_SLOT &&
-      span.propertyToken > 0
-    ) {
-      faces.set(span.propertyToken, spanValue<Revit2027FaceStatic>(span));
-      faceTokenByReplayIndex.set(span.replayIndex, span.propertyToken);
-    } else if (
-      span.propertySourceClassSlot === REVIT_2027_GEDGE_SOURCE_CLASS_SLOT &&
-      span.propertyToken > 0
-    ) {
-      edges.set(span.propertyToken, spanValue<Revit2027GEdgeStatic>(span));
-    } else if (
-      span.propertySourceClassSlot === REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT &&
-      span.propertyToken > 0
-    ) {
-      loops.set(span.propertyToken, {
-        token: span.propertyToken,
-        loop: spanValue<Revit2027EdgeLoopStatic>(span),
-      });
-    } else if (
-      span.propertySourceClassSlot ===
-        REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT &&
-      span.propertyToken > 0
-    ) {
-      loops.set(span.propertyToken, {
-        token: span.propertyToken,
-        loop: spanValue<Revit2027EdgeLoopWithChainEnvelopesStatic>(span).loop,
-      });
-    } else if (
-      span.propertySourceClassSlot ===
-        REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT &&
-      span.parentReplayIndex != null
-    ) {
-      const faceToken = faceTokenByReplayIndex.get(span.parentReplayIndex);
-      if (faceToken != null) {
-        cylindersByFace.set(
-          faceToken,
-          spanValue<Revit2027CylinderSurface>(span),
-        );
-      }
-    }
-  }
-
+  const index = revit2027OwnerMeshIndex(replay);
   const issues: Revit2027CylinderOwnerMeshIssue[] = [];
   const faceMeshes: Revit2027CylinderOwnerFaceMesh[] = [];
   const elementId = Number(replay.ownerElementId);
@@ -930,14 +586,18 @@ export function meshRevit2027CylinderSampledReplay(
     decoderId: "revit-2027-cylinder-owner-mesh",
     elementId: Number.isSafeInteger(elementId) ? elementId : undefined,
   };
-  for (const [faceToken, face] of faces) {
+  for (const [faceToken, face] of index.faces) {
     if (
       face.surface.sourceClassSlot !==
       REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT
     ) {
       continue;
     }
-    const surface = cylindersByFace.get(faceToken);
+    const surface = revit2027OwnerSurface<Revit2027CylinderSurface>(
+      index,
+      REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+      faceToken,
+    );
     if (!surface) {
       issues.push({ code: "surface-unresolved", faceToken });
       continue;
@@ -946,7 +606,7 @@ export function meshRevit2027CylinderSampledReplay(
       issues.push({ code: "loop-unresolved", faceToken });
       continue;
     }
-    const loopChain: LoopRecord[] = [];
+    const loopChain: Revit2027OwnerLoopRecord[] = [];
     const seenLoopTokens = new Set<number>();
     let loopToken = face.firstLoop.token;
     let loopFailure = false;
@@ -956,7 +616,7 @@ export function meshRevit2027CylinderSampledReplay(
         loopFailure = true;
         break;
       }
-      const loop = loops.get(loopToken);
+      const loop = index.loops.get(loopToken);
       if (!loop) {
         issues.push({ code: "loop-unresolved", faceToken, loopToken });
         loopFailure = true;
@@ -974,7 +634,7 @@ export function meshRevit2027CylinderSampledReplay(
       seenLoopTokens.add(loopToken);
       loopChain.push(loop);
       loopToken = loop.loop.nextLoop.token;
-      if (loopChain.length > loops.size) {
+      if (loopChain.length > index.loops.size) {
         issues.push({ code: "loop-cycle", faceToken, loopToken });
         loopFailure = true;
         break;
@@ -982,23 +642,44 @@ export function meshRevit2027CylinderSampledReplay(
     }
     if (loopFailure) continue;
 
-    const directedByLoop: DirectedEdge[][] = [];
+    const directedByLoop: Revit2027DirectedEdge[][] = [];
     const joinBridgesByLoop: Revit2027CylinderSampledJoinBridge[][] = [];
     for (const loop of loopChain) {
-      const directed = directedLoopEdges(
+      const directed = walkRevit2027DirectedLoopEdges({
         faceToken,
         loop,
-        edges,
-        surface,
-        tolerance,
-      );
+        edges: index.edges,
+        loopArity: "open",
+      });
       if (directed.ok === false) {
         issues.push(directed.issue);
         loopFailure = true;
         break;
       }
+      const linked = linkRevit2027DirectedLoopEndpoints(
+        directed.edges,
+        tolerance,
+        {
+          continuous: (current, next) => uvDistance(current, next) <= tolerance,
+          repairJoin: (join) =>
+            nativeOrthogonalJoinBridge(join, surface, tolerance),
+        },
+      );
+      if (linked.ok === false) {
+        issues.push({
+          code: "uv-link-unresolved",
+          faceToken,
+          loopToken: loop.token,
+          edgeToken: linked.join.current.token,
+          detail: `native directed join distance: ${
+            uvDistance(linked.join.currentUv, linked.join.nextUv)
+          }`,
+        });
+        loopFailure = true;
+        break;
+      }
       directedByLoop.push(directed.edges);
-      joinBridgesByLoop.push(directed.joinBridges);
+      joinBridgesByLoop.push(linked.repairs);
     }
     if (loopFailure) continue;
     if (
@@ -1159,9 +840,17 @@ export function meshRevit2027CylinderSampledReplay(
           ),
         );
     const axialSegments = 1;
-    const materialId = faceMaterialId(faceToken, face, options, issues);
+    const materialId = revit2027OwnerFaceMaterialId(
+      faceToken,
+      face,
+      options,
+      (detail) => issues.push({ code: "material-unresolved", faceToken, detail }),
+    );
     if (loopChain.length === 1 && directSampledContour) {
-      const ring = sampledUvRing(directedByLoop[0]!, tolerance);
+      const ring = revit2027SampledUvRing(
+        directedByLoop[0]!.map(revit2027DirectedEdgeUvs),
+        tolerance,
+      );
       const mesh = ring
         ? directSampledCylinderMesh(
             replay.ownerElementId,
@@ -1266,22 +955,4 @@ export function meshRevit2027CylinderSampledReplay(
       issues,
     },
   };
-}
-
-/** Complete one browser replay and mesh its certified Cylinder subset. */
-export function replayAndMeshRevit2027CylinderSampledOwner(
-  data: Uint8Array,
-  root: Revit2027FramedGRepRoot,
-  options: Revit2027CylinderOwnerMeshOptions = {},
-): Revit2027CylinderOwnerMeshResult {
-  const replayed = replayRevit2027GRepFifo(
-    data,
-    root,
-    options.replayRegistry,
-    options.replayOptions,
-  );
-  if (replayed.ok === false) {
-    return { ok: false, error: `Revit 2027 replay failed: ${replayed.error}` };
-  }
-  return meshRevit2027CylinderSampledReplay(replayed.value, options);
 }

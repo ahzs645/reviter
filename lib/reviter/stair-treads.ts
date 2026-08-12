@@ -1591,7 +1591,7 @@ function nativeClosedProfileBoundaryTreadQuads(
  * is a legitimate closed landing at its own elevation, but must not be reused
  * as an inferred bridge for this transition.
  */
-export function nativeClosedTransitionTreadQuads(
+function nativeClosedTransitionTreadQuads(
   first: ProfileCurve,
   second: ProfileCurve,
   topZ: number,

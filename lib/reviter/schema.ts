@@ -131,7 +131,7 @@ function nameCandidates(data: Uint8Array, view: DataView): NameCandidate[] {
  * when a well-formed parent-class name begins exactly `PARENT_NAME_GAP` bytes
  * after it, which is what separates real records from compressed noise.
  */
-export function parseSchemaTags(data: Uint8Array): SchemaClass[] {
+function parseSchemaTags(data: Uint8Array): SchemaClass[] {
   const classes: SchemaClass[] = [];
   if (data.byteLength < 8) return classes;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);

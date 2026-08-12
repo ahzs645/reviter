@@ -34,7 +34,12 @@ export type ConversionLimit =
   | "max-quad-span-feet"
   | "max-half-thickness-feet"
   | "max-coordinate"
-  | "monumental-solid-treads";
+  | "monumental-solid-treads"
+  | "max-block-array-copies"
+  | "max-drawing-entities"
+  | "non-finite-drawing-geometry"
+  | "max-inflated-chunk-bytes"
+  | "max-inflated-stream-bytes";
 
 /** How each limit reads in a warning, and what it costs when it binds. */
 const LIMIT_DESCRIPTIONS: Record<ConversionLimit, string> = {
@@ -45,6 +50,15 @@ const LIMIT_DESCRIPTIONS: Record<ConversionLimit, string> = {
   "max-coordinate": "curve coordinates outside the accepted model extent",
   "monumental-solid-treads":
     "stair runs drawn as solid terraces by the fitted monumental depth/rise rule",
+  "max-block-array-copies":
+    "DWG block references stamping a wider array grid than one reference may expand to",
+  "max-drawing-entities": "DWG entities past the budget one drawing may expand to",
+  "non-finite-drawing-geometry":
+    "DWG curves whose computed radius or centre was not a finite coordinate",
+  "max-inflated-chunk-bytes":
+    "compressed chunks inflating past the ceiling one chunk may produce",
+  "max-inflated-stream-bytes":
+    "compressed streams inflating past the ceiling one stream may produce",
 };
 
 const counts = new Map<ConversionLimit, number>();

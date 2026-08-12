@@ -1,4 +1,4 @@
-import type { ElemTableLayout, RvtElementIndex } from "./types";
+import type { ElemTableLayout, RvtElementIndex } from "./types.ts";
 
 function u16(data: Uint8Array, offset: number): number {
   return (data[offset] ?? 0) | ((data[offset + 1] ?? 0) << 8);
