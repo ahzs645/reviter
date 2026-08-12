@@ -32,18 +32,23 @@ import {
   standardsReaderSupports,
   type CameraPreset,
   type BasicFileInfoProperties,
+  type ConvertOutcome,
   type ConvertResult,
   type DerivedRoomResult,
   type IfcWorkerRequest,
-  type IfcWorkerResponse,
   type PairedRegressionResult,
   type RenderMode,
   type RoomReviewState,
   type WorkerRequest,
-  type WorkerResponse,
 } from "../lib/reviter";
+import {
+  WorkerClient,
+  type WorkerClientOptions,
+  type WorkerRequestEnvelope,
+} from "../lib/reviter/worker-client.ts";
 
 import { staticWorkerUrl } from "./studio/reference-model.ts";
+import type { FloorRegionsRequest } from "./studio/floor-regions.worker.ts";
 import {
   canvasMenuPosition,
   formatBytes,
@@ -152,6 +157,21 @@ function breakpointSnapshot(): boolean {
  */
 function breakpointServerSnapshot(): boolean {
   return false;
+}
+
+/**
+ * One worker client for the life of the studio. The client is cheap and holds
+ * no worker until something is sent, so it is built on the first render and
+ * torn down on unmount; `options` is read once, at that first build.
+ */
+function useWorkerClient<Request extends WorkerRequestEnvelope, Result>(
+  options: () => WorkerClientOptions,
+): WorkerClient<Request, Result> {
+  // State rather than a ref: the instance has to be built exactly once and read
+  // during render, which is what a lazy state initialiser is for. Nothing ever
+  // sets it — the client is mutable on the inside and never re-renders anyone.
+  const [client] = useState(() => new WorkerClient<Request, Result>(options()));
+  return client;
 }
 
 async function writeClipboardText(text: string): Promise<void> {
@@ -318,10 +338,41 @@ export default function ReviterStudio() {
     setNavTool(enabled ? "firstPerson" : "orbit");
   }, []);
 
-  const workerRef = useRef<Worker | null>(null);
-  const ifcWorkerRef = useRef<Worker | null>(null);
-  const floorRegionWorkerRef = useRef<Worker | null>(null);
-  const floorRegionRequestRef = useRef(0);
+  const rvtClient = useWorkerClient<WorkerRequest, ConvertOutcome>(() => ({
+    spawn: () => new Worker(
+      staticWorkerUrl("rvt") ?? new URL("../lib/reviter/worker.ts", import.meta.url),
+      { type: "module" },
+    ),
+    startFailureMessage: "The conversion worker could not be prepared.",
+    deathMessage: "The local conversion worker stopped unexpectedly.",
+    unreadableMessage: "The local conversion worker returned an unreadable result.",
+    // One model is being opened at a time. A conversion the user has moved on
+    // from is retired here rather than at each place that reads its reply.
+    latestOnly: true,
+  }));
+  const ifcClient = useWorkerClient<IfcWorkerRequest, PairedRegressionResult>(() => ({
+    spawn: () => new Worker(
+      staticWorkerUrl("ifc") ?? new URL("../lib/reviter/ifc-worker.ts", import.meta.url),
+      { type: "module" },
+    ),
+    startFailureMessage: "The local IFC worker could not be started.",
+    deathMessage: "The local IFC worker stopped unexpectedly.",
+    unreadableMessage: "The local IFC worker returned an unreadable result.",
+    // One pairing at a time, measured against the model on screen.
+    latestOnly: true,
+  }));
+  const floorRegionClient = useWorkerClient<FloorRegionsRequest, DerivedRoomResult>(() => ({
+    spawn: () => new Worker(
+      staticWorkerUrl("regions") ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
+      { type: "module" },
+    ),
+    startFailureMessage: "This browser blocked the room worker.",
+    deathMessage: "The room worker stopped unexpectedly.",
+    // Only the floor on screen is worth deriving. An earlier floor's answer is
+    // dropped rather than applied, and rapid switching no longer leaves a queue
+    // of derivations whose results all land in turn.
+    latestOnly: true,
+  }));
   const floorRegionCacheRef = useRef(new Map<number, DerivedRoomResult>());
   const requestIdRef = useRef(0);
   const referenceRequestIdRef = useRef(0);
@@ -338,16 +389,13 @@ export default function ReviterStudio() {
   // Tear the workers down when the studio unmounts, and only then. This was
   // keyed on the thumbnail, so opening a second file — which sets a new
   // thumbnail — terminated the worker that was about to convert it, left the
-  // dead worker in the ref for `getWorker` to hand back, and hung the progress
-  // bar at 8% with no error and no timeout.
+  // dead worker in place to be handed back to the next conversion, and hung the
+  // progress bar at 8% with no error and no timeout.
   useEffect(() => () => {
-    workerRef.current?.terminate();
-    workerRef.current = null;
-    ifcWorkerRef.current?.terminate();
-    ifcWorkerRef.current = null;
-    floorRegionWorkerRef.current?.terminate();
-    floorRegionWorkerRef.current = null;
-  }, []);
+    rvtClient.terminate();
+    ifcClient.terminate();
+    floorRegionClient.terminate();
+  }, [floorRegionClient, ifcClient, rvtClient]);
 
   // The object URL outlives a render, so it is released when the studio goes
   // away rather than leaking the file for the life of the tab.
@@ -355,21 +403,36 @@ export default function ReviterStudio() {
     if (referenceModelUrl) URL.revokeObjectURL(referenceModelUrl);
   }, [referenceModelUrl]);
 
-  const getWorker = useCallback(() => {
-    if (!workerRef.current) {
-      const url = staticWorkerUrl("rvt") ?? new URL("../lib/reviter/worker.ts", import.meta.url);
-      workerRef.current = new Worker(url, { type: "module" });
-    }
-    return workerRef.current;
-  }, []);
+  /**
+   * Retire the conversion in flight and open a new attempt.
+   *
+   * The id is what tells the asynchronous file reads below whether they are
+   * still working for the attempt that started them; the client drops the
+   * worker's reply for the retired one. Both retirements happen here so they
+   * cannot drift apart — the conversion itself keeps running inside the worker
+   * either way, and only its answer is discarded.
+   */
+  const beginConversionAttempt = useCallback(() => {
+    rvtClient.cancel();
+    requestIdRef.current += 1;
+    return requestIdRef.current;
+  }, [rvtClient]);
 
-  const getIfcWorker = useCallback(() => {
-    if (!ifcWorkerRef.current) {
-      const url = staticWorkerUrl("ifc") ?? new URL("../lib/reviter/ifc-worker.ts", import.meta.url);
-      ifcWorkerRef.current = new Worker(url, { type: "module" });
-    }
-    return ifcWorkerRef.current;
-  }, []);
+  /**
+   * Retire the IFC pairing in flight and open a new attempt.
+   *
+   * A pairing is measured against one model, so opening another or closing this
+   * one has to retire it: its late result would otherwise be applied to the
+   * model now on screen, and `referenceAssistedResult` would graft the previous
+   * file's reference meshes onto it wherever the element ids collide. The
+   * client drops the worker's reply; the id retires the file read that would
+   * have posted one.
+   */
+  const retireReferencePairing = useCallback(() => {
+    ifcClient.cancel();
+    referenceRequestIdRef.current += 1;
+    return referenceRequestIdRef.current;
+  }, [ifcClient]);
 
   const rememberFile = useCallback((
     name: string,
@@ -413,13 +476,9 @@ export default function ReviterStudio() {
       return;
     }
 
-    requestIdRef.current += 1;
+    const requestId = beginConversionAttempt();
     // An IFC pairing still in flight was measured against the outgoing model.
-    // Retire its request id alongside the conversion's, or its late result
-    // passes the worker guard and `referenceAssistedResult` grafts the previous
-    // file's reference meshes onto this one wherever the element ids collide.
-    referenceRequestIdRef.current += 1;
-    const requestId = requestIdRef.current;
+    retireReferencePairing();
     setFile(nextFile);
     setResult(null);
     setPlanLevelId(null);
@@ -470,7 +529,7 @@ export default function ReviterStudio() {
       // buffer is prepared removes an avoidable serial wait — especially for a
       // cloud-backed File whose bytes are not warm on disk yet.
       const bufferPromise = cached?.result ? null : nextFile.arrayBuffer();
-      const worker = cached?.result ? null : getWorker();
+      const workerStarted = cached?.result ? false : rvtClient.start();
       const basicEntry = cfb.findEntry("BasicFileInfo");
       const basicDataPromise = basicEntry
         ? cfb.entryData(basicEntry)
@@ -566,37 +625,10 @@ export default function ReviterStudio() {
         );
         void cacheRecentSource(nextFile);
       };
-      if (!worker || !buffer) throw new Error("The conversion worker could not be prepared.");
-      worker.onerror = (event) => {
-        if (requestId !== requestIdRef.current) return;
-        fail(event.message || "The local conversion worker stopped unexpectedly.");
-      };
-      worker.onmessageerror = () => {
-        if (requestId !== requestIdRef.current) return;
-        fail("The local conversion worker returned an unreadable result.");
-      };
-      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        const message = event.data;
-        if (message.id !== requestId || requestId !== requestIdRef.current) return;
-        if (message.type === "progress") {
-          setProgress(message.ratio);
-          return;
-        }
-        if (message.type === "error") {
-          fail(message.error);
-          return;
-        }
-        if (!message.result.ok) {
-          fail(message.result.error);
-          return;
-        }
-        acceptResult(message.result);
-        // IndexedDB failures (private mode, eviction, quota) must not turn a
-        // successful conversion into an application error.
-        void cacheRecentModel(nextFile, message.result);
-      };
-      const request: WorkerRequest = {
-        id: requestId,
+      if (!workerStarted || !buffer) {
+        throw new Error("The conversion worker could not be prepared.");
+      }
+      rvtClient.send({
         type: "convert",
         fileName: nextFile.name,
         buffer,
@@ -609,24 +641,36 @@ export default function ReviterStudio() {
           // own bounded default remains the browser-safety backstop.
           revitVersion: Number.parseInt(info.version, 10),
         },
-      };
-      worker.postMessage(request, [buffer]);
+      }, {
+        onProgress: (progress) => setProgress(progress.ratio),
+        onResult: (outcome) => {
+          if (!outcome.ok) {
+            fail(outcome.error);
+            return;
+          }
+          acceptResult(outcome);
+          // IndexedDB failures (private mode, eviction, quota) must not turn a
+          // successful conversion into an application error.
+          void cacheRecentModel(nextFile, outcome);
+        },
+        onError: fail,
+      }, [buffer]);
     } catch (caught) {
       if (requestId !== requestIdRef.current) return;
       recentOpenInProgressRef.current = false;
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase("error");
     }
-  }, [getWorker, rememberFile]);
+  }, [beginConversionAttempt, rememberFile, retireReferencePairing, rvtClient]);
 
   const closeModel = useCallback(() => {
     recentOpenAttemptRef.current += 1;
     recentOpenInProgressRef.current = false;
-    requestIdRef.current += 1;
+    beginConversionAttempt();
     // Closing is as much a replacement as opening. Without this an IFC pairing
     // that resolves after the close reinstates a comparison — and a
     // "reference-assisted" geometry source — for a model that is no longer here.
-    referenceRequestIdRef.current += 1;
+    retireReferencePairing();
     setResult(null);
     setComparison(null);
     setFile(null);
@@ -654,7 +698,7 @@ export default function ReviterStudio() {
     setReviewImportMessage(null);
     setPhase("idle");
     setProgress(0);
-  }, []);
+  }, [beginConversionAttempt, retireReferencePairing]);
 
   const processIfcFile = useCallback(async (referenceFile: File) => {
     if (!result?.elementIndex) {
@@ -667,8 +711,7 @@ export default function ReviterStudio() {
       setReferencePhase("error");
       return;
     }
-    referenceRequestIdRef.current += 1;
-    const requestId = referenceRequestIdRef.current;
+    const requestId = retireReferencePairing();
     setComparison(null);
     setReferenceError(null);
     setReferencePhase("reading");
@@ -676,7 +719,6 @@ export default function ReviterStudio() {
     setReferenceMessage("Reading IFC reference in this browser");
     try {
       const buffer = await referenceFile.arrayBuffer();
-      const worker = getIfcWorker();
       const packedDisplayBounds: number[] = [];
       for (const [elementId, bounds] of meshBoundsByElement(result.meshes, result.origin)) {
         if (!bounds.every(Number.isFinite)) continue;
@@ -685,37 +727,7 @@ export default function ReviterStudio() {
       const displayBounds = Float64Array.from(packedDisplayBounds);
       const surfaceOrientationSignatures = packMeshSurfaceOrientationSignatures(result.meshes);
       const incompleteStairTopologyIds = incompleteExpectedStairTopologyIds(result);
-      worker.onerror = (event) => {
-        if (requestId !== referenceRequestIdRef.current) return;
-        setReferenceError(event.message || "The local IFC worker stopped unexpectedly.");
-        setReferencePhase("error");
-      };
-      worker.onmessageerror = () => {
-        if (requestId !== referenceRequestIdRef.current) return;
-        setReferenceError("The local IFC worker returned an unreadable result.");
-        setReferencePhase("error");
-      };
-      worker.onmessage = (event: MessageEvent<IfcWorkerResponse>) => {
-        const message = event.data;
-        if (message.id !== requestId || requestId !== referenceRequestIdRef.current) return;
-        if (message.type === "progress") {
-          setReferenceProgress(message.ratio);
-          setReferenceMessage(message.message);
-          return;
-        }
-        if (message.type === "error") {
-          setReferenceError(message.error);
-          setReferencePhase("error");
-          return;
-        }
-        setComparison(message.result);
-        setGeometrySource("reference-assisted");
-        setReferenceProgress(1);
-        setReferenceMessage("Paired regression complete");
-        setReferencePhase("ready");
-      };
-      const request: IfcWorkerRequest = {
-        id: requestId,
+      ifcClient.send({
         type: "analyze-ifc",
         fileName: referenceFile.name,
         buffer,
@@ -732,8 +744,23 @@ export default function ReviterStudio() {
           surfaceOrientationSignatures,
           incompleteStairTopologyIds,
         },
-      };
-      worker.postMessage(request, [
+      }, {
+        onProgress: (progress) => {
+          setReferenceProgress(progress.ratio);
+          setReferenceMessage(progress.message);
+        },
+        onResult: (paired) => {
+          setComparison(paired);
+          setGeometrySource("reference-assisted");
+          setReferenceProgress(1);
+          setReferenceMessage("Paired regression complete");
+          setReferencePhase("ready");
+        },
+        onError: (message) => {
+          setReferenceError(message);
+          setReferencePhase("error");
+        },
+      }, [
         buffer,
         displayBounds.buffer as ArrayBuffer,
         surfaceOrientationSignatures.buffer as ArrayBuffer,
@@ -744,7 +771,7 @@ export default function ReviterStudio() {
       setReferenceError(caught instanceof Error ? caught.message : String(caught));
       setReferencePhase("error");
     }
-  }, [getIfcWorker, result]);
+  }, [ifcClient, result, retireReferencePairing]);
 
   /**
    * Pair a reference conversion of the same building from disk.
@@ -1321,7 +1348,6 @@ export default function ReviterStudio() {
     }
     const cached = floorRegionCacheRef.current.get(planLevelId);
     if (cached) { queueMicrotask(() => setDerivedFloorRooms(cached)); return; }
-    const requestId = ++floorRegionRequestRef.current;
     const analysisLevelIds = connectedFloorPlanGroup(result, planLevelId)?.levelIds ?? [planLevelId];
     // The cache is read by the level the plan is showing, but a derivation
     // covers the whole connected group and reports the group's *lowest* level
@@ -1335,34 +1361,10 @@ export default function ReviterStudio() {
       floorRegionCacheRef.current.set(planLevelId, derived);
       for (const levelId of analysisLevelIds) floorRegionCacheRef.current.set(levelId, derived);
     };
-    const worker = floorRegionWorkerRef.current ?? new Worker(
-      staticWorkerUrl("regions")
-        ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
-      { type: "module" },
-    );
-    floorRegionWorkerRef.current = worker;
-    const onMessage = (event: MessageEvent<{ id: number; result?: DerivedRoomResult; error?: string }>) => {
-      if (event.data.id !== floorRegionRequestRef.current) return;
-      if (event.data.error) {
-        const derived = deriveRoomsForLevels(result, analysisLevelIds);
-        cacheDerived(derived);
-        setDerivedFloorRooms(derived);
-        setReviewImportMessage(`Room worker fallback: ${event.data.error}`);
-        return;
-      }
-      if (!event.data.result) return;
-      cacheDerived(event.data.result);
-      setDerivedFloorRooms(event.data.result);
-    };
-    const onError = () => {
-      if (requestId !== floorRegionRequestRef.current) return;
-      // A strict fallback keeps the feature available if a browser blocks module workers.
-      const derived = deriveRoomsForLevels(result, analysisLevelIds);
+    const accept = (derived: DerivedRoomResult) => {
       cacheDerived(derived);
       setDerivedFloorRooms(derived);
     };
-    worker.addEventListener("message", onMessage);
-    worker.addEventListener("error", onError);
     const categories = new Set([-2_000_032, -2_000_011, -2_000_170, -2_000_171]);
     const compactResult = {
       levels: result.levels,
@@ -1382,12 +1384,25 @@ export default function ReviterStudio() {
         orientedBox: record.orientedBox,
       })),
     } as ConvertResult;
-    worker.postMessage({ id: requestId, levelIds: analysisLevelIds, result: compactResult });
-    return () => {
-      worker.removeEventListener("message", onMessage);
-      worker.removeEventListener("error", onError);
-    };
-  }, [planLevelId, result, showDerivedRooms]);
+    floorRegionClient.send(
+      { type: "floor-regions", levelIds: analysisLevelIds, result: compactResult },
+      {
+        onResult: accept,
+        onError: (message) => {
+          // A strict fallback keeps the feature available if a browser blocks
+          // module workers, and is the retry for a derivation the worker could
+          // not finish. It costs the pause the worker exists to avoid, so the
+          // reason is reported rather than swallowed.
+          accept(deriveRoomsForLevels(result, analysisLevelIds));
+          setReviewImportMessage(`Room worker fallback: ${message}`);
+        },
+      },
+    );
+    // Leaving this floor retires the derivation with it. The work already
+    // running in the worker cannot be stopped, but its answer no longer arrives
+    // for a floor that is no longer on screen.
+    return () => floorRegionClient.cancel();
+  }, [floorRegionClient, planLevelId, result, showDerivedRooms]);
   useEffect(() => {
     if (!derivedFloorRooms || !result) return;
     queueMicrotask(() => setRoomReview((current) => {

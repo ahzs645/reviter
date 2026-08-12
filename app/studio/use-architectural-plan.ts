@@ -12,9 +12,11 @@ import {
 import type { DerivedRoomResult } from "../../lib/reviter/derived-rooms.ts";
 import type { RoomReviewState } from "../../lib/reviter/room-review.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../../lib/reviter/types.ts";
+import { WorkerClient } from "../../lib/reviter/worker-client.ts";
 import type {
+  FloorPlanResult,
+  FloorPlanWorkerInit,
   FloorPlanWorkerRequest,
-  FloorPlanWorkerResponse,
 } from "./floor-plan.worker.ts";
 import type { ReviterGlobal } from "./types.ts";
 
@@ -79,18 +81,18 @@ function isPlanEntry(snapshot: PlanSnapshot): snapshot is PlanEntry {
   return snapshot != null && snapshot !== PLAN_FAILED;
 }
 
-/** A request in flight in the worker, with the parts needed to redo it here. */
-type PendingPlan = { key: string; parts: PlanRequestParts };
+type PlanClient = WorkerClient<FloorPlanWorkerRequest, FloorPlanResult>;
 
 export type PlanEngine = {
   result: ConvertResult;
-  worker: Worker | null;
+  /** Built on the first request that needs it; see `planClient`. */
+  client: PlanClient | null;
   workerFailed: boolean;
   cache: Map<string, PlanEntry>;
   /** Keys that neither the worker nor the main thread can draw. */
   failed: Set<string>;
-  pending: Map<number, PendingPlan>;
-  nextId: number;
+  /** Keys in flight in the worker — several at once, and all of them wanted. */
+  inFlight: Set<string>;
   listeners: Set<() => void>;
 };
 
@@ -107,17 +109,50 @@ export function engineFor(result: ConvertResult): PlanEngine {
   if (!engine) {
     engine = {
       result,
-      worker: null,
+      client: null,
       workerFailed: false,
       cache: new Map(),
       failed: new Set(),
-      pending: new Map(),
-      nextId: 0,
+      inFlight: new Set(),
       listeners: new Set(),
     };
     engines.set(result, engine);
   }
   return engine;
+}
+
+/**
+ * The worker client for one model, built on demand.
+ *
+ * Unlike the other four clients this one keeps several requests in flight at
+ * once and wants every answer: the visible floor and its prewarmed neighbours
+ * are all being drawn together, so nothing here supersedes anything.
+ */
+function planClient(engine: PlanEngine): PlanClient {
+  engine.client ??= new WorkerClient<FloorPlanWorkerRequest, FloorPlanResult>({
+    spawn: () => {
+      const worker = new Worker(
+        staticPlanWorkerUrl() ?? new URL("./floor-plan.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+      // The model belongs to the worker rather than to any one request, so it
+      // is primed here — which also means a replacement worker re-primes itself
+      // instead of answering every request with "no model yet".
+      worker.postMessage(
+        { type: "init", result: compactPlanResult(engine.result) } satisfies FloorPlanWorkerInit,
+      );
+      return worker;
+    },
+    startFailureMessage: "This browser blocked the floor plan worker.",
+    deathMessage: "The floor plan worker stopped unexpectedly.",
+    onWorkerFailure: () => {
+      // The worker is not tried again for this model. Every request it was
+      // serving is failed individually right after this, and each of those is
+      // redrawn on the main thread by its own handler.
+      engine.workerFailed = true;
+    },
+  });
+  return engine.client;
 }
 
 function notify(engine: PlanEngine) {
@@ -205,64 +240,33 @@ export function acceptedRoomLabels(
 export function requestPlan(engine: PlanEngine, key: string, parts: PlanRequestParts) {
   // A key that failed on both threads is deterministic — the same inputs throw
   // again — so it is left alone rather than re-posted on every effect run.
-  if (engine.cache.has(key) || engine.failed.has(key)) return;
-  for (const pending of engine.pending.values()) if (pending.key === key) return;
+  if (engine.cache.has(key) || engine.failed.has(key) || engine.inFlight.has(key)) return;
   if (engine.workerFailed) { resolveSynchronously(engine, key, parts); return; }
-  if (!engine.worker) {
-    try {
-      const worker = new Worker(
-        staticPlanWorkerUrl() ?? new URL("./floor-plan.worker.ts", import.meta.url),
-        { type: "module" },
-      );
-      worker.addEventListener("message", (event: MessageEvent<FloorPlanWorkerResponse>) => {
-        if (engine.worker !== worker) return;
-        const pending = engine.pending.get(event.data.id);
-        if (!pending) return;
-        engine.pending.delete(event.data.id);
-        if (event.data.error || !event.data.svg || !event.data.summary) {
-          // Same treatment as the `error` event below. Dropping the request
-          // here instead left the entry null with nothing pending, and the
-          // effect cannot retry because neither the key nor the parts changed.
-          resolveSynchronously(engine, pending.key, pending.parts);
-          return;
-        }
-        engine.cache.set(pending.key, { svg: event.data.svg, summary: event.data.summary });
-        engine.failed.delete(pending.key);
-        notify(engine);
-      });
-      worker.addEventListener("error", () => {
-        if (engine.worker !== worker) return;
-        worker.terminate();
-        engine.worker = null;
-        engine.workerFailed = true;
-        // Every request in flight died with the worker, not just the one that
-        // happened to create it.
-        const stranded = [...engine.pending.values()];
-        engine.pending.clear();
-        for (const request of stranded) {
-          resolveSynchronously(engine, request.key, request.parts);
-        }
-      });
-      worker.postMessage({ type: "init", result: compactPlanResult(engine.result) });
-      engine.worker = worker;
-    } catch {
-      engine.workerFailed = true;
-      resolveSynchronously(engine, key, parts);
-      return;
-    }
-  }
-  const id = engine.nextId++;
-  engine.pending.set(id, { key, parts });
-  engine.worker.postMessage({
+  engine.inFlight.add(key);
+  planClient(engine).send({
     type: "plan",
-    id,
     levelId: parts.levelId,
     connectedLevelIds: [...parts.connectedLevelIds],
     rotationQuarterTurns: parts.rotationQuarterTurns,
     derivedRooms: parts.derivedRooms,
     roomLabels: parts.roomLabels ?? null,
     theme: parts.theme,
-  } satisfies FloorPlanWorkerRequest);
+  }, {
+    onResult: (plan) => {
+      engine.inFlight.delete(key);
+      engine.cache.set(key, plan);
+      engine.failed.delete(key);
+      notify(engine);
+    },
+    onError: () => {
+      // The same treatment whether the worker reported the error, died, or
+      // never started. Dropping the request instead left the entry null with
+      // nothing in flight, and the effect cannot retry because neither the key
+      // nor the parts changed.
+      engine.inFlight.delete(key);
+      resolveSynchronously(engine, key, parts);
+    },
+  });
 }
 
 export type ArchitecturalPlanState = {
@@ -317,9 +321,9 @@ export function useArchitecturalPlan(
       engine.listeners.delete(listener);
       if (!engine.listeners.size) {
         // Last plan surface closed: stop the worker, keep the resolved cache.
-        engine.worker?.terminate();
-        engine.worker = null;
-        engine.pending.clear();
+        // The client stays and spawns a fresh worker if a surface reopens.
+        engine.client?.terminate();
+        engine.inFlight.clear();
       }
     };
   }, [engine]);

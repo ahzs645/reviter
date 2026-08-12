@@ -128,16 +128,17 @@ test("a plan the worker cannot draw ends the wait instead of hanging on it", () 
     requestPlan(engine, "level-7", partsFor(7));
     const worker = FakeWorker.instances[0]!;
     assert.equal(worker.planRequests().length, 1);
-    assert.equal(engine.pending.size, 1);
+    assert.equal(engine.inFlight.size, 1);
     assert.equal(planStateFor(planSnapshot(engine, "level-7"), null, "level-7").building, true);
 
     // What the worker posts for a level with no floor plate.
     worker.emitMessage({
       id: worker.planRequests()[0]!.id,
+      type: "error",
       error: "Revit level 7 contains no recovered Floors sketch boundaries.",
     });
 
-    assert.equal(engine.pending.size, 0, "the request is no longer in flight");
+    assert.equal(engine.inFlight.size, 0, "the request is no longer in flight");
     assert.equal(engine.cache.has("level-7"), false, "there is no plan to cache");
     assert.equal(engine.failed.has("level-7"), true, "but the failure is recorded");
     assert.ok(notifications() > 0, "the surfaces are told the wait is over");
@@ -153,12 +154,12 @@ test("a failed plan is not re-posted to the worker on every effect run", () => {
     const engine = engineFor(undrawableModel());
     requestPlan(engine, "level-7", partsFor(7));
     const worker = FakeWorker.instances[0]!;
-    worker.emitMessage({ id: worker.planRequests()[0]!.id, error: "no floor plate" });
+    worker.emitMessage({ id: worker.planRequests()[0]!.id, type: "error", error: "no floor plate" });
 
     requestPlan(engine, "level-7", partsFor(7));
     requestPlan(engine, "level-7", partsFor(7));
     assert.equal(worker.planRequests().length, 1, "the same throw would only be repeated");
-    assert.equal(engine.pending.size, 0);
+    assert.equal(engine.inFlight.size, 0);
   });
 });
 
@@ -170,19 +171,19 @@ test("an error message and an error event are handled the same way", () => {
     requestPlan(eventEngine, "level-7", partsFor(7));
     requestPlan(eventEngine, "level-8", partsFor(8));
     const worker = FakeWorker.instances[0]!;
-    assert.equal(eventEngine.pending.size, 2);
+    assert.equal(eventEngine.inFlight.size, 2);
     worker.emitError();
 
     assert.equal(worker.terminated, true);
     assert.equal(eventEngine.workerFailed, true);
-    assert.equal(eventEngine.pending.size, 0);
+    assert.equal(eventEngine.inFlight.size, 0);
     assert.deepEqual([...eventEngine.failed].sort(), ["level-7", "level-8"]);
 
     // Error message: the same outcome for the surface that is waiting.
     const messageEngine = engineFor(undrawableModel());
     requestPlan(messageEngine, "level-7", partsFor(7));
     const second = FakeWorker.instances[1]!;
-    second.emitMessage({ id: second.planRequests()[0]!.id, error: "no floor plate" });
+    second.emitMessage({ id: second.planRequests()[0]!.id, type: "error", error: "no floor plate" });
 
     assert.deepEqual(
       planStateFor(planSnapshot(messageEngine, "level-7"), null, "level-7"),
@@ -199,7 +200,11 @@ test("a plan the worker returns is cached and ends the wait", () => {
     const worker = FakeWorker.instances[0]!;
     const summary = { levelId: 7, floors: 1 };
 
-    worker.emitMessage({ id: worker.planRequests()[0]!.id, svg: "<svg data-plan/>", summary });
+    worker.emitMessage({
+      id: worker.planRequests()[0]!.id,
+      type: "result",
+      result: { svg: "<svg data-plan/>", summary },
+    });
 
     assert.equal(engine.failed.has("level-7"), false);
     assert.equal(notifications(), 1);
@@ -219,7 +224,11 @@ test("a request the worker failed is retried against the full model", () => {
     requestPlan(engine, "level-2", partsFor(2));
     const worker = FakeWorker.instances[0]!;
 
-    worker.emitMessage({ id: worker.planRequests()[0]!.id, error: "the worker lost the floors" });
+    worker.emitMessage({
+      id: worker.planRequests()[0]!.id,
+      type: "error",
+      error: "the worker lost the floors",
+    });
 
     assert.equal(engine.failed.has("level-2"), false, "the main thread could draw it");
     const state = planStateFor(planSnapshot(engine, "level-2"), null, "level-2");
@@ -246,7 +255,7 @@ test("the previous floor is held over while assembling, and dropped once there i
     // would be resolved in the previous floor's frame.
     requestPlan(engine, "level-7", partsFor(7));
     const worker = FakeWorker.instances[0]!;
-    worker.emitMessage({ id: worker.planRequests()[0]!.id, error: "no floor plate" });
+    worker.emitMessage({ id: worker.planRequests()[0]!.id, type: "error", error: "no floor plate" });
     const settled = planStateFor(planSnapshot(engine, "level-7"), previous, "level-7");
     assert.equal(settled.svg, null);
     assert.equal(settled.summary, null);

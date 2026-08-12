@@ -8,6 +8,7 @@ import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
 import type { RevitTransmissionData } from "./transmission-data.ts";
+import type { WorkerEnvelope, WorkerProgress } from "./worker-client.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
@@ -821,10 +822,8 @@ export type ConvertOptions = {
   geometryScale?: "auto" | "project" | "family";
 };
 
-export type ProgressUpdate = {
-  ratio: number;
-  message: string;
-};
+/** What a converter reports as it works, and what a worker forwards verbatim. */
+export type ProgressUpdate = WorkerProgress;
 
 export type WorkerRequest = {
   id: number;
@@ -834,10 +833,7 @@ export type WorkerRequest = {
   options?: ConvertOptions;
 };
 
-export type WorkerResponse =
-  | ({ id: number; type: "progress" } & ProgressUpdate)
-  | { id: number; type: "result"; result: ConvertOutcome }
-  | { id: number; type: "error"; error: string };
+export type WorkerResponse = WorkerEnvelope<ConvertOutcome>;
 
 export type IfcWorkerRequest = {
   id: number;
@@ -847,7 +843,4 @@ export type IfcWorkerRequest = {
   rvt: RvtRegressionInput;
 };
 
-export type IfcWorkerResponse =
-  | ({ id: number; type: "progress" } & ProgressUpdate)
-  | { id: number; type: "result"; result: PairedRegressionResult }
-  | { id: number; type: "error"; error: string };
+export type IfcWorkerResponse = WorkerEnvelope<PairedRegressionResult>;
