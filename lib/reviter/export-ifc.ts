@@ -16,6 +16,7 @@
  */
 import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
+import { spacePredefinedType } from "./room-review.ts";
 
 import type {
   ConvertResult,
@@ -144,12 +145,35 @@ function quoted(value: string): string {
   return `'${ifcText(value)}'`;
 }
 
+/**
+ * A conforming ISO 10303-21 REAL literal.
+ *
+ * The STEP grammar is `[SIGN] DIGIT {DIGIT} "." {DIGIT} [ "E" [SIGN] DIGIT
+ * {DIGIT} ]`. The decimal point is mandatory and the exponent is optional, so
+ * exponent notation stays available for magnitudes that genuinely need it —
+ * provided the mantissa still carries the point. JavaScript's `String` switches
+ * to exponent form below 1e-6 and at or above 1e21, and normalises the mantissa
+ * to a single leading digit, so it hands back `1e-9` and `1e+21`: no point, and
+ * therefore not a REAL at all. Both are reachable here, from coordinates that
+ * land just off the local origin after the `-origin` subtraction and from raw
+ * Revit parameter doubles, which `realProperty` emits unfiltered.
+ *
+ * `web-ifc` accepts the malformed forms, so a round-trip cannot be the only
+ * check on this; the exported text itself has to be conforming.
+ */
 function ifcNumber(value: number): string {
+  // A NaN or infinite measure has no STEP spelling. Zero is the honest stand-in
+  // for a value the recovery could not establish, and it keeps the literal
+  // parseable rather than emitting a token that halts a reader mid-file.
   if (!Number.isFinite(value)) return "0.";
-  const rounded = Math.abs(value) < 5e-12 ? 0 : Number(value.toPrecision(12));
-  const text = String(rounded);
-  if (/[.Ee]/.test(text)) return text.replace("e", "E");
-  return `${text}.`;
+  // Denormals, negative zero and sub-picometre coordinate noise collapse to a
+  // plain zero instead of riding out as an exponent nobody downstream wants.
+  if (Math.abs(value) < 5e-12) return "0.";
+  const text = String(Number(value.toPrecision(12)));
+  const exponent = text.indexOf("e");
+  if (exponent < 0) return text.includes(".") ? text : `${text}.`;
+  const mantissa = text.slice(0, exponent);
+  return `${mantissa.includes(".") ? mantissa : `${mantissa}.`}E${text.slice(exponent + 1)}`;
 }
 
 function feet(value: number): string {
@@ -329,7 +353,6 @@ function emitTessellatedShape(
 function emitBoundsShape(
   writer: StepWriter,
   context: number,
-  worldAxis: number,
   extrusionDirection: number,
   element: ManifestElement,
   origin: ConvertResult["origin"],
@@ -580,8 +603,17 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const ownerHistory = writer.add(
     `IFCOWNERHISTORY(#${personOrg},#${application},$,.ADDED.,0,#${personOrg},#${application},0)`,
   );
+  // IfcProject's units have to cover length, area, volume and plane angle: a
+  // reader that meets an area or an angle with no declared unit has nothing to
+  // interpret it against, whether or not this particular export happens to
+  // write one.
   const metre = writer.add("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)");
-  const units = writer.add(`IFCUNITASSIGNMENT((#${metre}))`);
+  const squareMetre = writer.add("IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.)");
+  const cubicMetre = writer.add("IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.)");
+  const radian = writer.add("IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)");
+  const units = writer.add(
+    `IFCUNITASSIGNMENT((#${metre},#${squareMetre},#${cubicMetre},#${radian}))`,
+  );
   const worldPoint = writer.add("IFCCARTESIANPOINT((0.,0.,0.))");
   const worldAxis = writer.add(`IFCAXIS2PLACEMENT3D(#${worldPoint},$,$)`);
   const context = writer.add(
@@ -692,7 +724,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const shape = fragments.length
       ? emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial)
       : noMeshScene
-        ? emitBoundsShape(writer, bodyContext, worldAxis, extrusionDirection, element, result.origin)
+        ? emitBoundsShape(writer, bodyContext, extrusionDirection, element, result.origin)
         : null;
     const identity = identityByElement.get(element.elementId) ?? element.uniqueId ?? element.elementId;
     const product = emitProduct(
@@ -720,14 +752,19 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     );
 
     if (element.type) {
-      const typeKey = [
+      // A recovered family or type name can itself contain the separator, and
+      // every id in this tuple is nullable, so joining on `:` lets two distinct
+      // types spell one key — collapsing them onto a single IfcTypeObject under
+      // a single GUID. JSON encoding of the tuple is injective, so distinct
+      // types stay distinct.
+      const typeKey = JSON.stringify([
         ifcClass.typeEntity,
-        element.type.elementId ?? "",
-        element.type.symbolId ?? "",
-        element.type.familyId ?? "",
-        element.type.familyName ?? "",
-        element.type.name ?? "",
-      ].join(":");
+        element.type.elementId ?? null,
+        element.type.symbolId ?? null,
+        element.type.familyId ?? null,
+        element.type.familyName ?? null,
+        element.type.name ?? null,
+      ]);
       let group = typeGroups.get(typeKey);
       if (!group) {
         group = {
@@ -816,7 +853,13 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const description = room.details.description || "Room boundary reviewed in Reviter";
     const objectType = room.details.occupancyType || room.details.department || "Reviewed room";
     const longName = room.details.longName || room.details.name || "$";
-    const predefined = room.ifc.predefinedType;
+    // Every other string in this file reaches STEP through `quoted`, which
+    // escapes it. An enum cannot be escaped — it is a bare `.ITEM.` token — so
+    // it is checked against the permitted set instead. `isReviewedRoom` already
+    // rejects an imported sidecar carrying anything else, and this second pass
+    // covers rooms that reach the exporter by some other road: an older
+    // localStorage record, or a direct caller of `options.rooms`.
+    const predefined = spacePredefinedType(room.ifc.predefinedType);
     const space = writer.add(
       `IFCSPACE(${quoted(guid("space", room.roomId))},#${ownerHistory},${quoted(name)},${quoted(description)},${quoted(objectType)},#${modelPlacement},${shape ? `#${shape}` : "$"},${longName === "$" ? "$" : quoted(longName)},.ELEMENT.,.${predefined}.,$)`,
     );
