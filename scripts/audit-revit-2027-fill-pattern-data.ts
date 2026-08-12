@@ -13,76 +13,16 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  decodeSchemaFields,
+  requireNameOffset,
+} from "./lib/rvt-harness.ts";
+
 import { REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-fill-pattern-data.ts";
 
 const modelPath = requireModelPath(
   "audit-revit-2027-fill-pattern-data.ts model.rvt",
 );
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
-function findName(data: Uint8Array, name: string): number {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let offset = 0;
-    offset <= data.byteLength - name.length - 2;
-    offset += 1
-  ) {
-    if (
-      view.getUint16(offset, true) === name.length &&
-      matchesAscii(data, offset + 2, name)
-    ) {
-      return offset;
-    }
-  }
-  throw new Error(`Formats/Latest does not contain ${name}`);
-}
-
-function decodeFields(
-  data: Uint8Array,
-  byteOffset: number,
-  expected: readonly (readonly [string, readonly number[]])[],
-) {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let cursor = byteOffset;
-  return expected.map(([name, descriptor]) => {
-    if (
-      cursor > data.byteLength - 4 ||
-      view.getUint32(cursor, true) !== name.length ||
-      !matchesAscii(data, cursor + 4, name)
-    ) {
-      throw new Error(`schema field ${name} is not in declared order`);
-    }
-    const offset = cursor;
-    cursor += 4 + name.length;
-    if (
-      cursor > data.byteLength - descriptor.length ||
-      descriptor.some((value, index) => data[cursor + index] !== value)
-    ) {
-      throw new Error(`schema descriptor ${name} changed`);
-    }
-    cursor += descriptor.length;
-    return {
-      name,
-      offset,
-      descriptor: descriptor
-        .map((value) => value.toString(16).padStart(2, "0"))
-        .join(" "),
-    };
-  });
-}
 
 type ReplayEvidence = {
   decodedFillPatternData: number;
@@ -121,14 +61,14 @@ function replayEvidence(): ReplayEvidence {
 
 const model = openRvt(modelPath);
 const schema = model.requireSchema();
-const schemaOffset = findName(schema, "FillPatternData");
+const schemaOffset = requireNameOffset(schema, "FillPatternData");
 const view = new DataView(schema.buffer, schema.byteOffset, schema.byteLength);
 let cursor = schemaOffset + 2 + "FillPatternData".length;
 const rawClassId = view.getUint16(cursor, true);
 const version = view.getUint32(cursor + 2, true);
 const fieldCount = view.getUint32(cursor + 6, true);
 cursor += 10;
-const fields = decodeFields(schema, cursor, [
+const fields = decodeSchemaFields(schema, cursor, [
   ["m_windowSize", [0x07, 0x00, 0x00, 0x00]],
   ["m_lengthPerArea", [0x07, 0x00, 0x00, 0x00]],
   ["m_strokesPerArea", [0x07, 0x00, 0x00, 0x00]],

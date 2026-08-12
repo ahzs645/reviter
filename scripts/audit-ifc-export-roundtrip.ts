@@ -28,7 +28,7 @@ import {
 import { optionValue, positionals, writeJsonReport } from "./lib/rvt-harness.ts";
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
 
-const [rvtPath] = positionals();
+const [rvtPath] = positionals("--out", "--json");
 const requestedOutput = optionValue("--out");
 const jsonPath = optionValue("--json");
 if (!rvtPath) {

@@ -1685,7 +1685,7 @@ if (isEntryPoint(import.meta.url)) {
   const jsonPath = optionValue("--json");
   const cachePath = optionValue("--cache");
   const strict = hasFlag("--strict");
-  const [rvtPath, ifcPath] = positionals();
+  const [rvtPath, ifcPath] = positionals("--json", "--cache");
   if (!rvtPath || !ifcPath) {
     console.error("usage: holdout.ts <model.rvt> <model.ifc> [--json <path>] [--cache <path>] [--strict]");
     process.exit(2);

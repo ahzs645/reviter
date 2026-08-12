@@ -108,7 +108,7 @@ export function auditStairVerticalResiduals(
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [rvtPath, recoveredGlbPath, referenceGlbPath] = positionals();
+  const [rvtPath, recoveredGlbPath, referenceGlbPath] = positionals("--cell", "--ifc", "--json");
   if (!rvtPath || !recoveredGlbPath || !referenceGlbPath) {
     throw new Error(
       "usage: audit-stair-vertical-residuals.ts model.rvt recovered.glb reference.glb " +

@@ -13,6 +13,12 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+  matchesAscii,
+} from "./lib/rvt-harness.ts";
+
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
@@ -101,25 +107,6 @@ const SOURCE_LADDER = [
   [2342, "GeometricAssemblyComponentDescriptor"],
   [2343, "Geometry"],
 ] as const;
-
-function increment(
-  map: Map<string | number, number>,
-  key: string | number,
-): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  offset: number,
-  value: string,
-): boolean {
-  if (offset < 0 || offset > data.byteLength - value.length) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[offset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
 
 function findSchemaName(
   data: Uint8Array,
@@ -580,14 +567,6 @@ for (const { data: inflated } of iterateInflatedChunks(model, {
   }
 
 }
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort((left, right) => right[1] - left[1]),
-  );
-}
-
 function topEntries<K extends string | number>(
   map: Map<K, number>,
   limit = 20,
@@ -701,12 +680,12 @@ console.log(
         maximum: bodyBytes.size ? Math.max(...bodyBytes.keys()) : null,
         modes: topEntries(bodyBytes, 10).values,
       },
-      queuedSourceClassSlots: entries(queuedSlots),
-      geometryFlags: entries(geometryFlags),
-      tessControllers: entries(tessControllers),
+      queuedSourceClassSlots: countsByFrequency(queuedSlots),
+      geometryFlags: countsByFrequency(geometryFlags),
+      tessControllers: countsByFrequency(tessControllers),
       rootShapes: topEntries(rootShapes),
-      failures: entries(failures),
-      nestedRouteFailures: entries(nestedRouteFailures),
+      failures: countsByFrequency(failures),
+      nestedRouteFailures: countsByFrequency(nestedRouteFailures),
     },
     null,
     2,

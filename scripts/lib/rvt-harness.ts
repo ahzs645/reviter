@@ -133,16 +133,22 @@ export function numberOption(
 /**
  * Arguments that are neither a flag nor a flag's value.
  *
- * `--json out.json model.rvt` and `model.rvt --json out.json` both yield
- * `["model.rvt"]`, which is what a caller taking a positional model path wants.
+ * `valueFlags` names the flags that consume the argument after them, so
+ * `positionals("--json")` reads `--json out.json model.rvt` and
+ * `model.rvt --json out.json` alike as `["model.rvt"]`.
+ *
+ * **Naming them is not optional.** Inferring "a flag eats the next token
+ * unless that token is also a flag" looks equivalent and is not: it silently
+ * eats the model path out of `holdout.ts --strict model.rvt model.ifc`,
+ * because `--strict` takes nothing. A flag that takes a value has to say so.
  */
-export function positionals(from: readonly string[] = argv): string[] {
+export function positionals(...valueFlags: string[]): string[] {
+  const takesValue = new Set(valueFlags);
   const result: string[] = [];
-  for (let index = 0; index < from.length; index += 1) {
-    const value = from[index]!;
-    if (value.startsWith("--")) {
-      const next = from[index + 1];
-      if (next != null && !next.startsWith("--")) index += 1;
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index]!;
+    if (value.startsWith("-")) {
+      if (takesValue.has(value)) index += 1;
       continue;
     }
     result.push(value);
@@ -179,10 +185,10 @@ export function usageText(): string {
  */
 export function requireModelPath(
   usage: string,
-  from: readonly string[] = argv,
+  ...valueFlags: string[]
 ): string {
   declareUsage(usage);
-  const [first] = positionals(from);
+  const [first] = positionals(...valueFlags);
   if (!first) throw new Error(`usage: ${usage}`);
   return resolve(first);
 }

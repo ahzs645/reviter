@@ -13,6 +13,11 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
   REVIT_2027_GARRAY_BODY_BYTES,
@@ -28,10 +33,6 @@ import {
   decodeRevit2027GLine,
   decodeRevit2027GPolyLine,
 } from "./lib/revit-2027-decoders.ts";
-function increment<Key>(map: Map<Key, number>, key: Key): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
 function record<Key extends string | number | bigint>(
   map: Map<Key, number>,
 ): Record<string, number> {
@@ -42,22 +43,6 @@ function record<Key extends string | number | bigint>(
           right[1] - left[1] ||
           String(left[0]).localeCompare(String(right[0])),
       )
-      .map(([key, count]) => [String(key), count]),
-  );
-}
-
-function topRecord<Key extends string | number | bigint>(
-  map: Map<Key, number>,
-  limit = 20,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map]
-      .sort(
-        (left, right) =>
-          right[1] - left[1] ||
-          String(left[0]).localeCompare(String(right[0])),
-      )
-      .slice(0, limit)
       .map(([key, count]) => [String(key), count]),
   );
 }
@@ -327,7 +312,7 @@ console.log(JSON.stringify({
         (sum, [tag, count]) => sum + (tag > 0 ? count : 0),
         0,
       ),
-    topValues: topRecord(gInfoTags),
+    topValues: countsByFrequency(gInfoTags),
   },
   stopSlots: record(stopSlots),
   failures: record(failures),

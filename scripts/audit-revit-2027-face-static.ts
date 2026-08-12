@@ -14,6 +14,12 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+  matchesAscii,
+} from "./lib/rvt-harness.ts";
+
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
@@ -54,24 +60,6 @@ type SchemaField = {
   name: string;
   descriptor: string;
 };
-
-function increment<K>(map: Map<K, number>, key: K): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
 
 function findSchemaName(
   data: Uint8Array,
@@ -271,14 +259,6 @@ function recordFace(
       `${entry.sourceClassSlot}:${entry.token === -1 ? "sentinel" : "numbered"}`,
     );
   }
-}
-
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort((left, right) => right[1] - left[1]),
-  );
 }
 
 const modelPath = requireModelPath(
@@ -492,15 +472,15 @@ console.log(
           declaredFaces === 0
             ? 100
             : Number(((decodedFaces * 100) / declaredFaces).toFixed(4)),
-        bodyBytes: entries(bodyBytes),
-        faceRegionCounts: entries(regionCounts),
-        cutTypes: entries(cutTypes),
-        faceFlags: entries(faceFlags),
-        optionalPresence: entries(optionalPresence),
+        bodyBytes: countsByFrequency(bodyBytes),
+        faceRegionCounts: countsByFrequency(regionCounts),
+        cutTypes: countsByFrequency(cutTypes),
+        faceFlags: countsByFrequency(faceFlags),
+        optionalPresence: countsByFrequency(optionalPresence),
       },
       queueOwnership: {
-        childSourceClassSlots: entries(childSlots),
-        childTokenKinds: entries(childTokenKinds),
+        childSourceClassSlots: countsByFrequency(childSlots),
+        childTokenKinds: countsByFrequency(childTokenKinds),
         appendedChildDescriptors: [...childSlots.values()].reduce(
           (sum, count) => sum + count,
           0,
@@ -514,7 +494,7 @@ console.log(
             .slice(0, 20),
         ),
       },
-      failures: entries(failures),
+      failures: countsByFrequency(failures),
       stopBoundary:
         "after the final owned Face static body and before Geometry edge bodies; queued loops, regions, fillings, surfaces, edges, BRep assembly, and triangles are not decoded",
     },

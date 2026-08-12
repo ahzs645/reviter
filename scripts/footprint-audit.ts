@@ -475,7 +475,7 @@ export products with a footprint    ${audit.truthCount.toLocaleString()}
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [rvtPath, ifcPath] = positionals();
+  const [rvtPath, ifcPath] = positionals("--json");
   const jsonPath = optionValue("--json");
   if (!rvtPath || !ifcPath) {
     console.error("usage: footprint-audit.ts <model.rvt> <model.ifc> [--json <path>]");

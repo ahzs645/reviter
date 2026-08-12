@@ -16,6 +16,11 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { tessellatePlanarBrep } from "../lib/reviter/brep-tessellator.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -182,10 +187,6 @@ type TokenNamespaceState = {
   propertySourceSlots: Map<number, number>;
 };
 
-function increment<K>(map: Map<K, number>, key: K, count = 1): void {
-  map.set(key, (map.get(key) ?? 0) + count);
-}
-
 function requireTokens(
   entries: readonly CondInt16QueueEntry[],
   state: TokenNamespaceState,
@@ -263,20 +264,6 @@ function reserveStaticTokens(
   for (const token of tokens) {
     if (token > 0) state.reservedStaticTokens.add(token);
   }
-}
-
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] ||
-        String(left[0]).localeCompare(String(right[0]), "en", {
-          numeric: true,
-        }),
-    ),
-  );
 }
 
 function descriptorItemsForFace(
@@ -1450,29 +1437,29 @@ console.log(JSON.stringify({
     completedQueues: audit.completedQueues,
   },
   tokenRegistry: {
-    declaredPositiveObjectsBySlot: entries(audit.declared),
-    decodedPositiveObjectsBySlot: entries(audit.decoded),
-    duplicateTokenFailures: entries(audit.duplicateTokenFailures),
+    declaredPositiveObjectsBySlot: countsByFrequency(audit.declared),
+    decodedPositiveObjectsBySlot: countsByFrequency(audit.decoded),
+    duplicateTokenFailures: countsByFrequency(audit.duplicateTokenFailures),
   },
-  referenceResolution: entries(audit.references),
+  referenceResolution: countsByFrequency(audit.references),
   loopTopology: {
-    firstLoopDescriptors: entries(audit.firstLoopDescriptors),
-    slot1437ChainCounts: entries(audit.slot1437ChainCounts),
-    persistedOpenFlag: entries(audit.persistedOpen),
-    graphResults: entries(audit.loopGraphs),
+    firstLoopDescriptors: countsByFrequency(audit.firstLoopDescriptors),
+    slot1437ChainCounts: countsByFrequency(audit.slot1437ChainCounts),
+    persistedOpenFlag: countsByFrequency(audit.persistedOpen),
+    graphResults: countsByFrequency(audit.loopGraphs),
     reciprocityFailures:
       audit.loopGraphs.get("non-reciprocal-next-previous-link") ?? 0,
-    edgeCounts: entries(audit.loopEdgeCounts),
-    uvLinkOrientation: entries(audit.uvLinks),
+    edgeCounts: countsByFrequency(audit.loopEdgeCounts),
+    uvLinkOrientation: countsByFrequency(audit.uvLinks),
     uvTolerance: UV_TOLERANCE,
   },
   planarFaces: {
     decodedPlaneSurfaceBodies: audit.planarSurfaceBodies,
-    eligibility: entries(audit.planarEligibility),
-    resolvedLoopCounts: entries(audit.faceLoopCounts),
+    eligibility: countsByFrequency(audit.planarEligibility),
+    resolvedLoopCounts: countsByFrequency(audit.faceLoopCounts),
     topologicalExtraLoopCandidates: audit.topologicalExtraLoops,
     extraLoopWindingRelativeToFirst:
-      entries(audit.extraLoopWinding),
+      countsByFrequency(audit.extraLoopWinding),
     geometricallyCertifiedHoles: audit.geometricallyCertifiedHoles,
     holeBoundary:
       "extra linked loops are counted, but holes require decoded curve geometry and containment; none are asserted",
@@ -1490,8 +1477,8 @@ console.log(JSON.stringify({
       (total, instance) => total + instance.triangles,
       0,
     ),
-    adaptationIssues: entries(audit.sampledMesh.adaptationIssues),
-    tessellationIssues: entries(audit.sampledMesh.tessellationIssues),
+    adaptationIssues: countsByFrequency(audit.sampledMesh.adaptationIssues),
+    tessellationIssues: countsByFrequency(audit.sampledMesh.tessellationIssues),
     elements: [...audit.sampledMesh.elements]
       .sort((left, right) => left[0] - right[0])
       .map(([elementId, value]) => ({
@@ -1505,10 +1492,10 @@ console.log(JSON.stringify({
       "this is RVT-side sampled planar output; element-level IFC joins and triangle/bounds parity are reported separately",
   },
   replayFrontier: {
-    blockers: entries(audit.blockerClasses),
-    readerFailures: entries(audit.readerFailures),
-    tokenFailures: entries(audit.tokenFailures),
-    boundaryFailures: entries(audit.boundaryFailures),
+    blockers: countsByFrequency(audit.blockerClasses),
+    readerFailures: countsByFrequency(audit.readerFailures),
+    tokenFailures: countsByFrequency(audit.tokenFailures),
+    boundaryFailures: countsByFrequency(audit.boundaryFailures),
   },
   stopBoundary:
     "unknown FIFO descendants and failed certified readers stop their owner; no body is skipped, scanned, or assigned an inferred width",

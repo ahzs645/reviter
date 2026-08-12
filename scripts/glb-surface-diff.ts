@@ -1316,7 +1316,7 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [recoveredPath, referencePath] = positionals();
+  const [recoveredPath, referencePath] = positionals("--cell", "--json", "--svg", "--actionable-svg");
   const jsonPath = optionValue("--json");
   const svgPath = optionValue("--svg");
   const actionableSvgPath = optionValue("--actionable-svg");

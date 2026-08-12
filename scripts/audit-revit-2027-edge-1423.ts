@@ -18,6 +18,12 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+  matchesAscii,
+} from "./lib/rvt-harness.ts";
+
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
@@ -44,24 +50,6 @@ import type {
   Revit2027FaceStatic,
   Revit2027GeometryStatic,
 } from "./lib/revit-2027-decoders.ts";
-function increment<K>(map: Map<K, number>, key: K, count = 1): void {
-  map.set(key, (map.get(key) ?? 0) + count);
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
 function findName16(
   data: Uint8Array,
   name: string,
@@ -874,20 +862,6 @@ for (const { data: inflated } of iterateInflatedChunks(model, {
   }
 
 }
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] ||
-        String(left[0]).localeCompare(String(right[0]), "en", {
-          numeric: true,
-        }),
-    ),
-  );
-}
-
 function scalarSummary(stats: ScalarStats) {
   return {
     total: stats.total,
@@ -909,7 +883,7 @@ function scalarSummary(stats: ScalarStats) {
       stats.finite === 0
         ? null
         : { min: stats.minFinite, max: stats.maxFinite },
-    extremeFiniteSentinelCandidates: entries(
+    extremeFiniteSentinelCandidates: countsByFrequency(
       stats.extremeFiniteValues,
     ),
   };
@@ -967,9 +941,9 @@ console.log(JSON.stringify({
     bodiesWithEdgesButNoFaces:
       census.geometryBodiesWithEdgesButNoFaces,
     faceDescriptors: census.faceDescriptors,
-    faceSourceSlots: entries(census.faceSlots),
+    faceSourceSlots: countsByFrequency(census.faceSlots),
     edgeDescriptors: census.edgeDescriptors,
-    edgeSourceSlots: entries(census.edgeSlots),
+    edgeSourceSlots: countsByFrequency(census.edgeSlots),
   },
   edgeReplay: {
     certifiedOwnerScopes: {
@@ -990,10 +964,10 @@ console.log(JSON.stringify({
                 exactReplay.declaredFaces
               ).toFixed(4),
             ),
-      bodyBytes: entries(exactReplay.faceBodyBytes),
-      regionCounts: entries(exactReplay.faceRegionCounts),
-      appendedChildSourceSlots: entries(exactReplay.faceChildSlots),
-      appendedChildTokenKinds: entries(exactReplay.faceChildTokenKinds),
+      bodyBytes: countsByFrequency(exactReplay.faceBodyBytes),
+      regionCounts: countsByFrequency(exactReplay.faceRegionCounts),
+      appendedChildSourceSlots: countsByFrequency(exactReplay.faceChildSlots),
+      appendedChildTokenKinds: countsByFrequency(exactReplay.faceChildTokenKinds),
     },
     edges: {
       declaredBodies: exactReplay.declaredEdges,
@@ -1017,10 +991,10 @@ console.log(JSON.stringify({
                 exactReplay.declaredEdges
               ).toFixed(4),
             ),
-      bodyBytes: entries(exactReplay.edgeBodyBytes),
-      interiorPointCounts: entries(exactReplay.edgeInteriorPointCounts),
-      flags: entries(exactReplay.edgeFlags),
-      nativeCurveKinds: entries(exactReplay.edgeNativeCurveKinds),
+      bodyBytes: countsByFrequency(exactReplay.edgeBodyBytes),
+      interiorPointCounts: countsByFrequency(exactReplay.edgeInteriorPointCounts),
+      flags: countsByFrequency(exactReplay.edgeFlags),
+      nativeCurveKinds: countsByFrequency(exactReplay.edgeNativeCurveKinds),
       uvScalars: scalarSummary(exactReplay.edgeUvScalars),
       references: {
         face: referenceSummary(exactReplay.edgeFaceReferences),
@@ -1032,10 +1006,10 @@ console.log(JSON.stringify({
       appendedChildSourceSlots: {},
       appendedChildDescriptors: 0,
     },
-    failures: entries(exactReplay.failures),
+    failures: countsByFrequency(exactReplay.failures),
     stoppedBeforeUncertifiedQueuedBodies: true,
     stopBoundary:
       "after Geometry-owned GEdge bodies and before shared-surface-info or Face-owned child bodies",
   },
-  routeFailures: entries(routeFailures),
+  routeFailures: countsByFrequency(routeFailures),
 }, null, 2));

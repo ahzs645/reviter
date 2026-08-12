@@ -11,6 +11,11 @@ import { readFileSync } from "node:fs";
 
 import CFB from "cfb";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -23,56 +28,39 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
-  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
-  decodeRevit2027EdgeLoopStatic,
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
-  type Revit2027EdgeLoopStatic,
-} from "../lib/reviter/revit-2027-edge-loop-static.ts";
-import {
-  decodeRevit2027GEdgeStatic,
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-edge-1423.ts";
-import {
-  decodeRevit2027FaceStatic,
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FillPatternData,
-  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-pattern-data.ts";
-import {
-  decodeRevit2027FillGrid,
-  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-grid.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GFilling,
-  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
-  type Revit2027GFilling,
-} from "../lib/reviter/revit-2027-gfilling.ts";
-import {
-  decodeRevit2027GArc,
-  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-garc.ts";
-import {
-  decodeRevit2027GeometryStatic,
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import { decodeRevit2027GGroupStatic } from "../lib/reviter/revit-2027-ggroup-fifo.ts";
-import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-grep-prefixes.ts";
-import {
-  decodeRevit2027AnalyticSurface,
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT,
+  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
+  REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
-  type Revit2027AnalyticSurface,
-} from "../lib/reviter/revit-2027-surfaces.ts";
-
+  decodeRevit2027AnalyticSurface,
+  decodeRevit2027EdgeLoopStatic,
+  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
+  decodeRevit2027FaceStatic,
+  decodeRevit2027FillGrid,
+  decodeRevit2027FillPatternData,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArc,
+  decodeRevit2027GEdgeStatic,
+  decodeRevit2027GFilling,
+  decodeRevit2027GGroupStatic,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027AnalyticSurface,
+  Revit2027EdgeLoopStatic,
+  Revit2027GFilling,
+} from "./lib/revit-2027-decoders.ts";
 const MAX_OWNER_QUEUE = 1_000_000;
 const INITIAL_CHILD_SLOTS = new Set([
   REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
@@ -208,10 +196,6 @@ type ReplayStats = {
   reusedPropertySlots: Map<number, number>;
   materializedReservedTokens: number;
 };
-
-function increment<K>(map: Map<K, number>, key: K, count = 1): void {
-  map.set(key, (map.get(key) ?? 0) + count);
-}
 
 function numberStats(): NumberStats {
   return {
@@ -968,20 +952,6 @@ function replaySingleGeometryRoot(
   replay.completedOwners += 1;
 }
 
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] ||
-        String(left[0]).localeCompare(String(right[0]), "en", {
-          numeric: true,
-        }),
-    ),
-  );
-}
-
 function numberSummary(stats: NumberStats) {
   return {
     count: stats.count,
@@ -1004,9 +974,9 @@ function sourceSummary(source: Map<number, SourceStats>) {
           decoded: stats.decoded,
           initialFaceChildren: stats.initialFaceChildren,
           descendants: stats.descendants,
-          bodyBytes: entries(stats.bodyBytes),
-          appendedChildSlots: entries(stats.childSlots),
-          appendedChildTokenKinds: entries(stats.childTokenKinds),
+          bodyBytes: countsByFrequency(stats.bodyBytes),
+          appendedChildSlots: countsByFrequency(stats.childSlots),
+          appendedChildTokenKinds: countsByFrequency(stats.childTokenKinds),
         },
       ]),
   );
@@ -1179,9 +1149,9 @@ console.log(
         ),
         acceptedSparseGaps: replay.acceptedSparseTokenGaps,
         acceptedSparseIndices: replay.acceptedSparseTokenIndices,
-        gapWidths: entries(replay.acceptedSparseTokenGapWidths),
+        gapWidths: countsByFrequency(replay.acceptedSparseTokenGapWidths),
         reusedPropertyReferences: replay.reusedPropertyReferences,
-        reusedPropertySourceSlots: entries(replay.reusedPropertySlots),
+        reusedPropertySourceSlots: countsByFrequency(replay.reusedPropertySlots),
         materializedReservedTokens: replay.materializedReservedTokens,
       },
       sourceSlots: sourceSummary(replay.source),
@@ -1189,10 +1159,10 @@ console.log(
         edgeLoop: {
           envelopeScalars: numberSummary(replay.loopEnvelopeScalars),
           referenceTokens: numberSummary(replay.loopReferences),
-          open: entries(replay.loopOpen),
+          open: countsByFrequency(replay.loopOpen),
         },
         edgeLoopWithChainEnvelopes: {
-          chainCounts: entries(replay.loopWithChainCounts),
+          chainCounts: countsByFrequency(replay.loopWithChainCounts),
           startEdgeReferences: numberSummary(
             replay.loopChainStartReferences,
           ),
@@ -1204,29 +1174,29 @@ console.log(
           placerScalars: numberSummary(replay.fillingScalars),
           faceIdReferences: numberSummary(replay.fillingFaceReferences),
           distinctPatternElementIds: replay.fillingPatternIds.size,
-          patternElementIds: entries(replay.fillingPatternIds),
-          fillColors: entries(replay.fillingColors),
-          flags: entries(replay.fillingFlags),
-          placerBooleanPairs: entries(replay.fillingBooleanPairs),
+          patternElementIds: countsByFrequency(replay.fillingPatternIds),
+          fillColors: countsByFrequency(replay.fillingColors),
+          flags: countsByFrequency(replay.fillingFlags),
+          placerBooleanPairs: countsByFrequency(replay.fillingBooleanPairs),
         },
         surfaces: Object.fromEntries(
           [...replay.surfaceScalars]
             .sort((left, right) => left[0] - right[0])
             .map(([slot, stats]) => [slot, numberSummary(stats)]),
         ),
-        surfaceOrientation: entries(replay.surfaceOrient),
+        surfaceOrientation: countsByFrequency(replay.surfaceOrient),
       },
       firstUncertifiedDescendants: {
-        sourceSlots: entries(replay.firstBlockerSlots),
-        parentToChild: entries(replay.firstBlockerParents),
-        tokenKinds: entries(replay.firstBlockerTokens),
+        sourceSlots: countsByFrequency(replay.firstBlockerSlots),
+        parentToChild: countsByFrequency(replay.firstBlockerParents),
+        tokenKinds: countsByFrequency(replay.firstBlockerTokens),
         bytesDecodedAfterGeometryBeforeBlocker:
-          entries(replay.bytesBeforeFirstBlocker),
+          countsByFrequency(replay.bytesBeforeFirstBlocker),
       },
       failures: {
-        readers: entries(replay.readerFailures),
-        routes: entries(replay.routeFailures),
-        boundaries: entries(replay.boundaryFailures),
+        readers: countsByFrequency(replay.readerFailures),
+        routes: countsByFrequency(replay.routeFailures),
+        boundaries: countsByFrequency(replay.boundaryFailures),
         samples: replay.failureSamples,
       },
       readerCorpusValid,

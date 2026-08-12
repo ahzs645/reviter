@@ -663,11 +663,11 @@ function checkRulesFire(coverage: CoverageResult): void {
 
 // --- run ---------------------------------------------------------------------
 
-// `positionals()` consumes the argument after `--json` rather than filtering
+// `positionals("--json")` consumes the argument after `--json` rather than filtering
 // by name — filtering by name would drop a model whose path happened to match
 // the report path.
 const jsonPath = optionValue("--json");
-const [rvtPath, ifcPath] = positionals();
+const [rvtPath, ifcPath] = positionals("--json");
 if (!rvtPath || !ifcPath) {
   console.error("usage: verify-pair.ts <model.rvt> <model.ifc> [--json <path>]");
   process.exit(2);

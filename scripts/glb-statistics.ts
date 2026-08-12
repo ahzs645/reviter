@@ -146,7 +146,7 @@ export function analyzeGlbDocument(document: GlbDocument): GlbStatistics {
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [glbPath] = positionals();
+  const [glbPath] = positionals("--json");
   const jsonPath = optionValue("--json");
   if (!glbPath) {
     console.error("usage: glb-statistics.ts <model.glb> [--json <report.json>]");

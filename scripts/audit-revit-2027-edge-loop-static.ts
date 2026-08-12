@@ -15,6 +15,12 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+  matchesAscii,
+} from "./lib/rvt-harness.ts";
+
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
@@ -45,32 +51,6 @@ const GEDGE_LOOP_FIELDS = [
   ["m_Envelope", [0x0e, 0x00, 0x00, 0x00, 0x7c, 0x02]],
   ["m_open", [0x01, 0x00, 0x00, 0x00]],
 ] as const;
-
-function increment<K>(map: Map<K, number>, key: K): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function entries<K extends string | number>(
-  map: Map<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort((left, right) => right[1] - left[1]),
-  );
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
 
 function findName16(
   data: Uint8Array,
@@ -462,14 +442,14 @@ console.log(
         firstLoopNull,
       },
       firstLoopQueue: {
-        sourceClassSlots: entries(firstLoopSlots),
+        sourceClassSlots: countsByFrequency(firstLoopSlots),
         numbered: firstLoopNumbered,
         sentinelMinusOne: firstLoopSentinel,
         exactUnbcCountsCertified: exactCounts,
       },
       tokenSemantics:
         "token 0 is null; token -1 is queued without advancing the positive namespace; tokens below -1 fail closed",
-      failures: entries(failures),
+      failures: countsByFrequency(failures),
       stopBoundary:
         "queue descriptors certified only; loop bodies remain behind Geometry edges and interleaved Face children, so this audit does not scan forward or claim body replay",
     },

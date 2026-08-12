@@ -15,6 +15,11 @@ import {
   openRvt,
 } from "./lib/rvt-harness.ts";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { tessellateNeutralBrep } from "../lib/reviter/brep-tessellator.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -158,19 +163,6 @@ type ConeAuditDetail = {
     samples: readonly (readonly [number, number])[];
   }[];
 };
-
-function increment(map: Map<string, number>, key: string): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function sortedEntries(map: Map<string, number>): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] || left[0].localeCompare(right[0]),
-    ),
-  );
-}
 
 function requireTokens(
   entries: readonly CondInt16QueueEntry[],
@@ -1083,10 +1075,10 @@ console.log(JSON.stringify({
     cylinderFaces: cylinderFaces.length,
     coneFaces: coneFaces.length,
   },
-  classification: sortedEntries(classifications),
+  classification: countsByFrequency(classifications),
   classificationBySurface: {
-    cylinder: sortedEntries(cylinderClassifications),
-    cone: sortedEntries(coneClassifications),
+    cylinder: countsByFrequency(cylinderClassifications),
+    cone: countsByFrequency(coneClassifications),
   },
   coverage: {
     neutralCylinderFaces: tessellated.length,

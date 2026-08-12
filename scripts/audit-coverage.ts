@@ -300,7 +300,7 @@ conversion took          ${(stats.durationMs / 1000).toFixed(1)}s
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [rvtPath, ifcPath] = positionals();
+  const [rvtPath, ifcPath] = positionals("--json");
   if (!rvtPath || !ifcPath) {
     console.error("usage: audit-coverage.ts <model.rvt> <model.ifc> [--json <path>]");
     process.exit(2);

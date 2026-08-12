@@ -9,6 +9,11 @@
 import { readFileSync } from "node:fs";
 
 import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
+import {
   tessellateRevit2027ConeApexSectors,
   tessellateRevit2027SampledConeFaces,
   type Revit2027ConeApexSectorFace,
@@ -43,19 +48,6 @@ type ConeTrimAudit = {
   release: number;
   coneDetails: ConeDetail[];
 };
-
-function increment(map: Map<string, number>, key: string): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function sortedEntries(map: Map<string, number>): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] || left[0].localeCompare(right[0]),
-    ),
-  );
-}
 
 const inputPath = process.argv[2];
 if (!inputPath) {
@@ -194,7 +186,7 @@ console.log(JSON.stringify({
         ? null
         : acceptedFaces / audit.coneDetails.length,
   },
-  classification: sortedEntries(classifications),
+  classification: countsByFrequency(classifications),
   mesh: {
     triangles,
     vertices,

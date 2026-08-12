@@ -12,6 +12,10 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
   decodeRevit2027FramedGRepRoot,
@@ -25,10 +29,6 @@ import {
 const modelPath = requireModelPath(
   "audit-revit-2027-gpolyline.ts model.rvt",
 );
-
-function increment<Key>(map: Map<Key, number>, key: Key): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
 
 function numericRecord(map: Map<number, number>): Record<string, number> {
   return Object.fromEntries(

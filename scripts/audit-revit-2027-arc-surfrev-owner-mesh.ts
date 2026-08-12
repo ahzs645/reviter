@@ -9,6 +9,11 @@ import { readFileSync } from "node:fs";
 
 import CFB from "cfb";
 
+import {
+  countsByFrequency,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
@@ -30,19 +35,6 @@ import {
 import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-geometry.ts";
-
-function increment(map: Map<string, number>, key: string): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function entries(map: Map<string, number>): Record<string, number> {
-  return Object.fromEntries(
-    [...map].sort(
-      (left, right) =>
-        right[1] - left[1] || left[0].localeCompare(right[0]),
-    ),
-  );
-}
 
 const modelPath = process.argv[2];
 if (!modelPath) {
@@ -227,9 +219,9 @@ console.log(JSON.stringify({
   positions,
   triangles,
   materialDefinitions: materialDefinitions.size,
-  materialIds: entries(materialIds),
-  issues: entries(issues),
-  replayFailures: entries(replayFailures),
+  materialIds: countsByFrequency(materialIds),
+  issues: countsByFrequency(issues),
+  replayFailures: countsByFrequency(replayFailures),
   faces,
   boundary:
     "only circular-profile SurfRev faces with one exact rectangular envelope-side trim are emitted",

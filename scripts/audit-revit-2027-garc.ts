@@ -15,6 +15,12 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  decodeSchemaFields,
+  requireNameOffset,
+  sourceNameAtSlot,
+} from "./lib/rvt-harness.ts";
+
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
   gzipOffsets,
@@ -41,110 +47,6 @@ const modelPath = requireModelPath(
 
 const EXACT_OWNER_ELEMENT_ID = 245_109;
 const EXACT_BYTES_BEFORE_FIRST_GARC = 9_866;
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
-function findName(
-  data: Uint8Array,
-  name: string,
-  firstOffset = 0,
-): number {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let offset = firstOffset;
-    offset <= data.byteLength - name.length - 2;
-    offset += 1
-  ) {
-    if (
-      view.getUint16(offset, true) === name.length &&
-      matchesAscii(data, offset + 2, name)
-    ) {
-      return offset;
-    }
-  }
-  throw new Error(`Formats/Latest does not contain ${name}`);
-}
-
-function sourceNameAtSlot(
-  data: Uint8Array,
-  sourceClassSlot: number,
-): { name: string; offset: number } {
-  const candidates: { name: string; offset: number }[] = [];
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let offset = 0; offset <= data.byteLength - 4; offset += 1) {
-    const length = view.getUint16(offset, true);
-    if (length < 2 || length > 100 || offset > data.byteLength - length - 2) {
-      continue;
-    }
-    let ascii = true;
-    for (let index = 0; index < length; index += 1) {
-      const value = data[offset + 2 + index]!;
-      if (value < 0x20 || value > 0x7e) {
-        ascii = false;
-        break;
-      }
-    }
-    if (ascii) {
-      candidates.push({
-        name: new TextDecoder("ascii").decode(
-          data.subarray(offset + 2, offset + 2 + length),
-        ),
-        offset,
-      });
-    }
-  }
-  const candidate = candidates[sourceClassSlot - 12];
-  if (!candidate) {
-    throw new Error(`Formats/Latest source slot ${sourceClassSlot} is missing`);
-  }
-  return candidate;
-}
-
-function decodeFields(
-  data: Uint8Array,
-  byteOffset: number,
-  expected: readonly (readonly [string, readonly number[]])[],
-) {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let cursor = byteOffset;
-  return expected.map(([name, descriptor]) => {
-    if (
-      cursor > data.byteLength - 4 ||
-      view.getUint32(cursor, true) !== name.length ||
-      !matchesAscii(data, cursor + 4, name)
-    ) {
-      throw new Error(`schema field ${name} is not in declared order`);
-    }
-    const offset = cursor;
-    cursor += 4 + name.length;
-    if (
-      cursor > data.byteLength - descriptor.length ||
-      descriptor.some((value, index) => data[cursor + index] !== value)
-    ) {
-      throw new Error(`schema descriptor ${name} changed`);
-    }
-    cursor += descriptor.length;
-    return {
-      name,
-      offset,
-      descriptor: descriptor
-        .map((value) => value.toString(16).padStart(2, "0"))
-        .join(" "),
-    };
-  });
-}
 
 type FaceReplayReport = {
   release: number;
@@ -226,24 +128,24 @@ function arcSummary(arc: Revit2027GArc) {
 const model = openRvt(modelPath);
 const schema = model.requireSchema();
 const view = new DataView(schema.buffer, schema.byteOffset, schema.byteLength);
-const gCurveOffset = findName(schema, "GCurve");
+const gCurveOffset = requireNameOffset(schema, "GCurve");
 let cursor = gCurveOffset + 2 + "GCurve".length;
 const gCurveRawClassId = view.getUint16(cursor, true);
 const gCurveVersion = view.getUint32(cursor + 2, true);
 const gCurveFieldCount = view.getUint32(cursor + 6, true);
 cursor += 10;
-const gCurveFields = decodeFields(schema, cursor, [
+const gCurveFields = decodeSchemaFields(schema, cursor, [
   ["m_endParams", [0x07, 0x10, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]],
 ]);
 
-const gArcOffset = findName(schema, "GArc");
+const gArcOffset = requireNameOffset(schema, "GArc");
 cursor = gArcOffset + 2 + "GArc".length;
 const gArcRawClassId = view.getUint16(cursor, true);
 const gArcVersion = view.getUint32(cursor + 2, true);
 const gArcFieldCount = view.getUint32(cursor + 6, true);
 cursor += 10;
 const vector3 = [0x07, 0x10, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00];
-const gArcFields = decodeFields(schema, cursor, [
+const gArcFields = decodeSchemaFields(schema, cursor, [
   ["m_xVec", vector3],
   ["m_yVec", vector3],
   ["m_radius", [0x07, 0x00, 0x00, 0x00]],

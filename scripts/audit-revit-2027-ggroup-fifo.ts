@@ -13,6 +13,11 @@ import {
   requireModelPath,
 } from "./lib/rvt-harness.ts";
 
+import {
+  increment,
+  matchesAscii,
+} from "./lib/rvt-harness.ts";
+
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
   REVIT_2027_GELEMENT_OBJECT_MARKER,
@@ -21,25 +26,6 @@ import {
   decodeRevit2027GGroupStatic,
   locateRevit2027FirstGGroupNestedFifo,
 } from "./lib/revit-2027-decoders.ts";
-function increment(
-  map: Map<string | number, number>,
-  key: string | number,
-): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function matchesAscii(
-  data: Uint8Array,
-  offset: number,
-  value: string,
-): boolean {
-  if (offset < 0 || offset > data.byteLength - value.length) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[offset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
 /**
  * Certify the recursive 2027 schema layer:
  * GElement -> GRep -> GGroup(version 1, one m_subNodes field) -> GRep fields.

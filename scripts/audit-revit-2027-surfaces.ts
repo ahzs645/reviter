@@ -15,6 +15,11 @@ import {
 } from "./lib/rvt-harness.ts";
 
 import {
+  matchesAscii,
+  requireNameOffset,
+} from "./lib/rvt-harness.ts";
+
+import {
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
@@ -39,39 +44,6 @@ type FieldEvidence = {
   offset: number;
   descriptor: string;
 };
-
-function matchesAscii(
-  data: Uint8Array,
-  byteOffset: number,
-  value: string,
-): boolean {
-  if (byteOffset < 0 || byteOffset > data.byteLength - value.length) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    if (data[byteOffset + index] !== value.charCodeAt(index)) return false;
-  }
-  return true;
-}
-
-function findName(
-  data: Uint8Array,
-  name: string,
-  firstOffset = 0,
-): number {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (
-    let offset = firstOffset;
-    offset <= data.byteLength - name.length - 2;
-    offset += 1
-  ) {
-    if (
-      view.getUint16(offset, true) === name.length &&
-      matchesAscii(data, offset + 2, name)
-    ) {
-      return offset;
-    }
-  }
-  throw new Error(`Formats/Latest does not contain ${name}`);
-}
 
 function sourceNameAtSlot(data: Uint8Array, sourceClassSlot: number) {
   const candidates: { name: string; offset: number }[] = [];
@@ -150,8 +122,8 @@ function certifyClass(
   expectedHeader: readonly number[],
   fields: readonly (readonly [string, readonly number[]])[],
 ) {
-  const offset = findName(schema, name);
-  const endOffset = findName(schema, nextName, offset + 2 + name.length);
+  const offset = requireNameOffset(schema, name);
+  const endOffset = requireNameOffset(schema, nextName, offset + 2 + name.length);
   const headerOffset = offset + 2 + name.length;
   if (
     expectedHeader.some(
