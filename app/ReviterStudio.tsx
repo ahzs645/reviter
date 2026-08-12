@@ -1255,6 +1255,10 @@ export default function ReviterStudio() {
   // before its own click could fire.
   useEffect(() => {
     if (!canvasMenu) return;
+    // Shift+F10 raises this menu over the viewport, so its commands are only
+    // reachable if focus follows it in and comes back to the viewport after.
+    const opener = document.activeElement as HTMLElement | null;
+    canvasMenuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
     const dismiss = (event: PointerEvent) => {
       if (!canvasMenuRef.current?.contains(event.target as Node)) setCanvasMenu(null);
     };
@@ -1266,6 +1270,9 @@ export default function ReviterStudio() {
     return () => {
       window.removeEventListener("pointerdown", dismiss);
       window.removeEventListener("keydown", dismissOnEscape);
+      // The menu is already off the page here, so focus has fallen to the body
+      // unless one of its commands moved it somewhere deliberate.
+      if (document.activeElement === document.body && opener?.isConnected) opener.focus();
     };
   }, [canvasMenu]);
 
@@ -1824,11 +1831,22 @@ export default function ReviterStudio() {
     />
   ) : null;
 
+  /**
+   * The pickers themselves. Every one of them is opened by a named button
+   * elsewhere — Open, Pair IFC, Pair reference model, Import review — which is
+   * the control a reviewer is meant to find. `visually-hidden` clips these but
+   * does not take them out of the tab order, so a keyboard user used to walk
+   * through four more stops that announced only "Choose file" and had nothing
+   * to say about which file. They are the button's mechanism, not four extra
+   * controls, so they leave the tab order and the accessibility tree with it.
+   */
   const fileInputs = (
     <>
       <input
         ref={inputRef}
         className="visually-hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         type="file"
         accept=".rvt,.rfa,.rte,.rft"
         onChange={(event) => {
@@ -1840,6 +1858,8 @@ export default function ReviterStudio() {
       <input
         ref={ifcInputRef}
         className="visually-hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         type="file"
         accept=".ifc"
         onChange={(event) => {
@@ -1851,6 +1871,8 @@ export default function ReviterStudio() {
       <input
         ref={referenceModelInputRef}
         className="visually-hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         type="file"
         accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
         onChange={(event) => {
@@ -1861,6 +1883,8 @@ export default function ReviterStudio() {
       <input
         ref={reviewInputRef}
         className="visually-hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         type="file"
         accept=".json,application/json,application/vnd.reviter.comments+json,application/vnd.reviter.markup+json"
         onChange={(event) => {
@@ -2329,15 +2353,26 @@ export default function ReviterStudio() {
           </div>
           )}
 
-          <footer className="statusbar" aria-live="polite">
+          {/* The live region is the phase, not the bar and not the whole
+              footer. Announcing the footer re-read the workspace switcher and
+              the triangle counts on every percentage tick; the percentage
+              itself belongs to a progressbar, which a reader reports on demand
+              instead of interrupting with a hundred times. */}
+          <footer className="statusbar">
             <div className="statusbar-state">
               <span>
                 <span className={`status-dot ${statusTone}`} />
-                <b>{statusText}</b>
+                <b role="status">{statusText}</b>
               </span>
               {busy && (
                 <span className="status-progress">
-                  <span><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>
+                  <span
+                    role="progressbar"
+                    aria-label="Conversion progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progress * 100)}
+                  ><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>
                   <em>{Math.round(progress * 100)}%</em>
                 </span>
               )}

@@ -1,9 +1,14 @@
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+
 import type { WalkSpeed } from "./walk-controls.ts";
 import {
   type MeasureMode,
   type MeasureUnit,
   type SectionMode,
 } from "./viewer-tools.ts";
+
+/** Everything inside a container that a Tab press can land on. */
+const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 export function FirstPersonPanel({
   looking,
@@ -39,6 +44,48 @@ export function FirstPersonPanel({
   onNeverShow: () => void;
   onExit: () => void;
 }) {
+  const guideRef = useRef<HTMLElement>(null);
+  const guideAcceptRef = useRef<HTMLButtonElement>(null);
+  const guideRestoreRef = useRef<HTMLElement | null>(null);
+
+  /**
+   * The guide says `aria-modal`, so it has to mean it.
+   *
+   * Declaring a modal hides the rest of the page from assistive technology; a
+   * reviewer whose focus is still outside it is then reading a page that is not
+   * there. Focus moves in when the guide opens, is held inside while it is up,
+   * and goes back to whatever raised it when it closes.
+   */
+  useEffect(() => {
+    if (!guideOpen) return;
+    guideRestoreRef.current = document.activeElement as HTMLElement | null;
+    guideAcceptRef.current?.focus();
+    return () => {
+      const restore = guideRestoreRef.current;
+      if (restore?.isConnected) restore.focus();
+    };
+  }, [guideOpen]);
+
+  const onGuideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      // Walk listens for Escape on the window and would leave first person
+      // altogether. Here Escape means the one thing it can mean: close the
+      // guide and carry on walking.
+      event.stopPropagation();
+      onGuide(false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const stops = guideRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+    if (!stops?.length) return;
+    const first = stops[0]!;
+    const last = stops[stops.length - 1]!;
+    // Only the two ends need help; the browser handles everything between them.
+    if (event.shiftKey ? document.activeElement !== first : document.activeElement !== last) return;
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  };
+
   return (
     <>
       <div className={`first-person-reticle${looking ? " active" : ""}`} aria-hidden="true" />
@@ -119,7 +166,14 @@ export function FirstPersonPanel({
         <small>WASD move · ← → turn · Q down / E up · Shift run · −/+ speed · 1/2/3 compare · double-click travel</small>
       </section>
       {guideOpen && (
-        <section className="first-person-guide" role="dialog" aria-modal="true" aria-label="Navigate in first person">
+        <section
+          ref={guideRef}
+          className="first-person-guide"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigate in first person"
+          onKeyDown={onGuideKeyDown}
+        >
           <header>
             <strong>Navigate in first person</strong>
             <button onClick={() => onGuide(false)} aria-label="Close first person guide">×</button>
@@ -136,7 +190,7 @@ export function FirstPersonPanel({
             <article><b>Drop to surface</b><kbd>Space</kbd><small>Find the nearest surface below and resume Walk mode</small></article>
             <article><b>Compare sources</b><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><small>RVT · IFC · Autodesk GLB, with the camera kept in place</small></article>
           </div>
-          <button className="first-person-guide-accept" onClick={() => onGuide(false)}>OK, got it</button>
+          <button ref={guideAcceptRef} className="first-person-guide-accept" onClick={() => onGuide(false)}>OK, got it</button>
           <button className="first-person-guide-dismiss" onClick={onNeverShow}>Don&apos;t remind me again</button>
         </section>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 /** The WebGL viewport: scene assembly, camera presets, picking, and disposal. */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -34,6 +34,10 @@ import {
   applyAutodeskButtonMap,
   applyAutodeskNavigation,
   installAutodeskWheelDolly,
+  ORBIT_PITCH_RADIANS_PER_PIXEL,
+  ORBIT_YAW_RADIANS_PER_PIXEL,
+  wheelTravel,
+  WHEEL_NOTCH_DELTA,
 } from "./autodesk-navigation.ts";
 import {
   addPendingMeasurementPoint,
@@ -126,6 +130,19 @@ const walkTargetScratch = new THREE.Vector3();
 // Large enough to amortize one idle callback without monopolizing a frame on
 // the million-triangle UNBC model (typically a few milliseconds of CPU work).
 const WALK_INDEX_CHUNK_TRIANGLES = 1_024;
+
+/**
+ * What one arrow press is worth, in pixels of the equivalent drag.
+ *
+ * Keyboard navigation is measured in the same units as the mouse rather than in
+ * degrees of its own, so a reviewer who alternates between them is driving one
+ * camera. Twenty-four pixels is about 2.7 degrees of yaw: small enough to aim
+ * with, large enough that a held key crosses the building.
+ */
+const KEY_DRAG_PIXELS = 24;
+
+/** One pan press, as a fraction of the height framed at the orbit target. */
+const KEY_PAN_FRACTION = 0.16;
 
 /**
  * Native categories whose horizontal caps must not become gravity floors.
@@ -2331,6 +2348,119 @@ export function ModelCanvas({
     runtime.invalidate();
   }, [comparison, renderMode, result, selectedElementId, source]);
 
+  /**
+   * The keyboard's copy of the pointer's navigation.
+   *
+   * Every camera move in this viewport used to arrive as a pointer event, which
+   * left a reviewer who cannot use a mouse with a picture they could not turn.
+   * The arithmetic below is deliberately the same arithmetic the drag and the
+   * wheel use — the measured Autodesk rates in `autodesk-navigation.ts` — so a
+   * keyed orbit and a dragged orbit cover the same ground and the viewport does
+   * not feel like two different tools.
+   *
+   * Walk owns the keyboard whenever it is enabled: it listens on the window and
+   * already claims the arrows, WASD, Space and Escape, so this handler stands
+   * down rather than driving the orbit camera out from under the walker.
+   */
+  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLCanvasElement>) => {
+    if (walkRef.current) return;
+    // Browser and operating-system shortcuts win, exactly as they do in Walk.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Shift+F10 and the Menu key are the platform's "open the context menu on
+    // whatever has focus". Replaying it as a real contextmenu event at the
+    // centre of the viewport runs the same hit test, selection and placement
+    // the right button does, rather than a second, keyboard-only menu path.
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }));
+      return;
+    }
+
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    const { camera, controls } = runtime;
+
+    // One press is worth a short drag. Yaw and pitch keep their measured 1:2.02
+    // ratio, so holding a key traces the arc a held drag would.
+    const orbit = (yaw: number, pitch: number) => {
+      const offset = camera.position.clone().sub(controls.target);
+      const up = camera.up.clone().normalize();
+      offset.applyAxisAngle(up, yaw * KEY_DRAG_PIXELS * ORBIT_YAW_RADIANS_PER_PIXEL);
+      const right = new THREE.Vector3().crossVectors(offset, up);
+      if (right.lengthSq() > 1e-12) {
+        right.normalize();
+        // Stopping short of the pole is what keeps the model from flipping over
+        // when the eye is driven straight up, the same clamp OrbitControls uses.
+        const polar = offset.angleTo(up);
+        const next = THREE.MathUtils.clamp(
+          polar - pitch * KEY_DRAG_PIXELS * ORBIT_PITCH_RADIANS_PER_PIXEL,
+          0.02,
+          Math.PI - 0.02,
+        );
+        offset.applyAxisAngle(right, polar - next);
+      }
+      camera.position.copy(controls.target).add(offset);
+    };
+
+    // Panning moves the eye and what it is looking at together, so the framing
+    // survives the move and the next orbit still turns about the same point.
+    const pan = (x: number, y: number) => {
+      const reach = camera.position.distanceTo(controls.target);
+      const step = reach * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * KEY_PAN_FRACTION;
+      const move = new THREE.Vector3()
+        .setFromMatrixColumn(camera.matrix, 0).multiplyScalar(x * step)
+        .addScaledVector(new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1), y * step);
+      camera.position.add(move);
+      controls.target.add(move);
+    };
+
+    // One key press is one wheel detent, carrying the target with it the way
+    // `installAutodeskWheelDolly` does — a zoom that collapsed the orbit radius
+    // would leave the next arrow press whipping the model across the viewport.
+    const dolly = (notches: number) => {
+      const forward = controls.target.clone().sub(camera.position);
+      const reach = forward.length();
+      if (reach < 1e-9) return;
+      forward.divideScalar(reach);
+      const travel = wheelTravel(-notches * WHEEL_NOTCH_DELTA, reach);
+      if (!Number.isFinite(travel) || travel === 0) return;
+      camera.position.addScaledVector(forward, travel);
+      controls.target.addScaledVector(forward, travel);
+    };
+
+    // Both arrow gestures move the eye the way the arrow points, which is how
+    // Walk already reads its arrows — a drag instead pulls the model after the
+    // cursor, and one viewport cannot answer to both conventions at once.
+    const arrow = (x: number, y: number) => {
+      if (event.shiftKey) pan(x, y);
+      else orbit(x, y);
+    };
+
+    switch (event.key) {
+      case "ArrowLeft": arrow(-1, 0); break;
+      case "ArrowRight": arrow(1, 0); break;
+      case "ArrowUp": arrow(0, 1); break;
+      case "ArrowDown": arrow(0, -1); break;
+      // "+" is Shift+Equal on most layouts, so the unshifted key is read too.
+      case "+": case "=": dolly(1); break;
+      case "-": case "_": dolly(-1); break;
+      default: return;
+    }
+    // The arrows would otherwise scroll the shell out from under the viewport.
+    event.preventDefault();
+    controls.update();
+    runtime.invalidate();
+  }, []);
+
   const clearAllMeasurements = () => {
     const runtime = runtimeRef.current;
     if (runtime) clearMeasurements(runtime.measurement);
@@ -2453,13 +2583,30 @@ export function ModelCanvas({
 
   return (
     <>
+      {/* A bare <canvas> has no implicit role, so its aria-label is not
+          reliably surfaced; "application" both names it and tells assistive
+          technology to hand the keys below straight to the viewport. The
+          element's own children are its fallback content, which is what a
+          reader falls back to when there is no picture to describe. */}
       <canvas
         ref={canvasRef}
         className={`model-canvas nav-${navigationMode}${commenting ? " comment-pick-mode" : ""}${
           markupSettings.tool && markupSettings.tool !== "delete" ? " markup-draw-mode" : ""
         }`}
-        aria-label="Interactive Revit geometry"
-      />
+        tabIndex={0}
+        role="application"
+        aria-label="3D model viewport — interactive Revit geometry"
+        aria-describedby="model-canvas-keys"
+        onKeyDown={handleCanvasKeyDown}
+      >
+        Interactive Revit geometry, drawn with WebGL. The model browser lists
+        every recovered object as text.
+      </canvas>
+      <p id="model-canvas-keys" className="visually-hidden">
+        {walking
+          ? "First person: W A S D to move, arrow keys to turn, Q and E for down and up, Space to drop to the nearest surface, minus and plus for speed, Escape to leave."
+          : "Arrow keys orbit, Shift with an arrow key pans, plus and minus zoom, and Shift+F10 or the Menu key opens the viewport menu for the object at the centre."}
+      </p>
       <MarkupLayer
         strokes={markup}
         draft={markupDraft}

@@ -438,9 +438,14 @@ export function FloorReferencePlan({
     <figure className="floor-browser-preview">
       {toolbar}
       <div className="floor-reference-toolbar" role="group" aria-label="Reference overlay controls">
+        {/* Both pickers are opened by the named buttons below them, so they are
+            those buttons' mechanism rather than two more controls. Clipping
+            them alone left two tab stops that announced only "Choose file". */}
         <input
           ref={referenceInput}
           className="visually-hidden"
+          tabIndex={-1}
+          aria-hidden="true"
           type="file"
           accept=".dwg,.svg,.png,.jpg,.jpeg,.webp,image/vnd.dwg,image/svg+xml,image/png,image/jpeg,image/webp"
           onChange={(event) => {
@@ -452,6 +457,8 @@ export function FloorReferencePlan({
         <input
           ref={alignmentInput}
           className="visually-hidden"
+          tabIndex={-1}
+          aria-hidden="true"
           type="file"
           accept=".json,application/json"
           onChange={(event) => {
