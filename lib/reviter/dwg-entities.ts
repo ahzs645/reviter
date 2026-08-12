@@ -473,7 +473,7 @@ function expandInsert(
   // A single INSERT can stamp a grid of copies; the counts default to one.
   const declaredColumns = Math.max(1, Math.round(number(raw.columnCount) ?? 1));
   const declaredRows = Math.max(1, Math.round(number(raw.rowCount) ?? 1));
-  let columns = Math.min(declaredColumns, MAX_BLOCK_ARRAY_SPAN);
+  const columns = Math.min(declaredColumns, MAX_BLOCK_ARRAY_SPAN);
   let rows = Math.min(declaredRows, MAX_BLOCK_ARRAY_SPAN);
   if (columns * rows > MAX_BLOCK_ARRAY_COPIES) {
     // Keep the grid's leading direction rather than truncating both axes to a

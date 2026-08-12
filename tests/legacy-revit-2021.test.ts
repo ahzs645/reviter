@@ -2,13 +2,39 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { loadLegacyRevit2021Api } from "../lib/reviter/legacy-revit-2021.ts";
+import {
+  LEGACY_REVIT_2021_ENUMS,
+  LEGACY_REVIT_2021_MAPS,
+} from "../lib/reviter/legacy-revit-2021.data.ts";
 
-test("loads the generated Revit 2021 compatibility data on demand", async () => {
+test("loads the Revit 2021 compatibility data on demand", async () => {
   const api = await loadLegacyRevit2021Api();
   assert.equal(api.enumNames.length, 11);
   assert.equal(api.enumMembers("BuiltInCategory").length, 1_078);
   assert.equal(api.enumMembers("BuiltInParameter").length, 3_339);
   assert.equal(api.enumValue("MEPSystemClassification", "SupplyAir"), 1);
+});
+
+/**
+ * The payload's own size, asserted.
+ *
+ * `legacy-revit-2021.data.ts` cannot be regenerated — its `src/Decompiled`
+ * input is not in this repository — so nothing recomputes it and nothing else
+ * would notice rows going missing. The spot checks below prove the *shape* of
+ * the data survives; this proves the *whole* of it does. The counts are what
+ * the file has held since it was committed, and they are what the compact
+ * re-emission on 2026-08-12 was verified against by deep-comparing the parsed
+ * data before and after.
+ */
+test("carries the whole payload: 8,075 rows across 11 enums and 12 maps", () => {
+  const rows = (table: Record<string, readonly unknown[]>) =>
+    Object.values(table).reduce((sum, entries) => sum + entries.length, 0);
+
+  assert.equal(Object.keys(LEGACY_REVIT_2021_ENUMS).length, 11);
+  assert.equal(Object.keys(LEGACY_REVIT_2021_MAPS).length, 12);
+  assert.equal(rows(LEGACY_REVIT_2021_ENUMS), 5_426);
+  assert.equal(rows(LEGACY_REVIT_2021_MAPS), 2_649);
+  assert.equal(rows(LEGACY_REVIT_2021_ENUMS) + rows(LEGACY_REVIT_2021_MAPS), 8_075);
 });
 
 test("resolves legacy categories, parameters, and parameter groups", async () => {

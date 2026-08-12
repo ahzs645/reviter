@@ -1,13 +1,30 @@
 /**
- * Generate Reviter's optional Revit 2021 compatibility tables from the local
- * Revitless toolkit checkout.
+ * How `lib/reviter/legacy-revit-2021.data.ts` was produced — and the reason it
+ * cannot be produced again here.
  *
- * This is intentionally a mechanical data translation. It does not execute or
- * ship the C# sources, and the generated module remains isolated from Reviter's
- * clean geometry decoder.
+ * **This script cannot run against this repository.** It reads a
+ * `src/Decompiled` tree of C# from a Revitless toolkit checkout passed as its
+ * one argument, and no such tree is committed: there are zero `.cs` files and
+ * zero `Decompiled` directories in this repo. Run it with no argument and it
+ * throws on the missing argument; run it with any path that exists here and it
+ * throws on the missing directory. It had an `npm run generate:legacy-revit-api`
+ * alias until 2026-08-12; that alias was removed, because an npm script is a
+ * list of things a reader can run and this is not one of them.
  *
- * Usage:
- *   npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master
+ * It is kept, unrun, as the precise record of the transposition — which files
+ * were read, which `enum` and `Dictionary` declarations were extracted, and how
+ * each was parsed. That is provenance the data file cannot carry on its own,
+ * and it is what a future maintainer would re-execute if the input tree ever
+ * came back. The input is decompiled Autodesk assembly source; it was never
+ * committed and is not this repository's to redistribute.
+ *
+ * If you do hold that checkout:
+ *   node --experimental-strip-types scripts/generate-legacy-revit-api.ts \
+ *     /path/to/revitless-toolkit-master
+ *
+ * The translation is mechanical. It does not execute or ship the C# sources,
+ * and the emitted module is isolated from Reviter's clean-room geometry
+ * decoder — it is compatibility vocabulary, never evidence.
  */
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -20,8 +37,9 @@ type MapRows = Array<[key: string, value: MapValue]>;
 const toolkitRoot = process.argv[2];
 if (!toolkitRoot) {
   throw new Error(
-    "Pass the Revitless toolkit root: " +
-      "npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master",
+    "Pass the Revitless toolkit root, which this repository does not contain: " +
+      "node --experimental-strip-types scripts/generate-legacy-revit-api.ts " +
+      "/path/to/revitless-toolkit-master",
   );
 }
 
@@ -32,7 +50,7 @@ const outputPath = resolve(
   "..",
   "lib",
   "reviter",
-  "legacy-revit-2021.generated.ts",
+  "legacy-revit-2021.data.ts",
 );
 
 function source(path: string): string {
@@ -188,26 +206,38 @@ for (const [outputName, fileName, assignment] of mapSpecs) {
   maps[outputName] = dictionaryRows(source(join(extensionsRoot, fileName)), assignment);
 }
 
+// Emitted without an indentation argument, deliberately. The same data
+// pretty-printed ran to 34,732 lines of one scalar each, which is a diff no
+// reviewer reads and a file no reader scrolls; compact JSON is 57 lines and
+// the identical parse. Re-emitting it compactly was verified by parsing both
+// forms and deep-comparing them.
 const generated = `/**
- * GENERATED FILE — do not edit by hand.
+ * Revit 2021 compatibility vocabulary — the artifact of record.
  *
- * Personal/internal Revit 2021 compatibility data mechanically transposed
- * from revitless-toolkit-master/src/Decompiled. The upstream files identify
- * Autodesk RevitAPI.dll 21.0 as their source. This optional data module is not
- * used as evidence by Reviter's clean RVT geometry decoder.
+ * Machine-written by \`scripts/generate-legacy-revit-api.ts\` from a local
+ * Revitless toolkit checkout: the C# under
+ * \`revitless-toolkit-master/src/Decompiled\`, whose upstream files name
+ * Autodesk \`RevitAPI.dll\` 21.0 as their source.
  *
- * Regenerate with:
- *   npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master
+ * **That input tree is not in this repository**, so for every reader of this
+ * repository the generator throws and this file is the only copy of the data
+ * that exists. Read the generator's own header before assuming it can be
+ * re-run; it records what the input was and why it is absent.
+ *
+ * This is optional compatibility vocabulary. It is never used as evidence by
+ * Reviter's clean-room RVT geometry decoder, and it is reached only through
+ * \`loadLegacyRevit2021Api()\`, which imports it dynamically so the table stays
+ * out of the initial viewer bundle.
  */
 
 export type LegacyEnumRows = Array<[name: string, value: number]>;
 export type LegacyMapRows = Array<[key: string, value: string | string[]]>;
 
 export const LEGACY_REVIT_2021_ENUMS: Record<string, LegacyEnumRows> =
-${JSON.stringify(enums, null, 2)};
+${JSON.stringify(enums)};
 
 export const LEGACY_REVIT_2021_MAPS: Record<string, LegacyMapRows> =
-${JSON.stringify(maps, null, 2)};
+${JSON.stringify(maps)};
 `;
 
 writeFileSync(outputPath, generated);

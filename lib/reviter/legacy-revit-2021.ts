@@ -1,9 +1,12 @@
 /**
  * Lazy browser API over the optional Revit 2021 compatibility data.
  *
- * Importing this small module does not pull the generated 0.5 MB table into
- * the initial viewer bundle. Call `loadLegacyRevit2021Api()` only when an
- * internal inspection or migration tool needs the old API vocabulary.
+ * Importing this small module does not pull the 0.3 MB table in
+ * `legacy-revit-2021.data.ts` into the initial viewer bundle — the dynamic
+ * `import()` at the foot of this file is what makes it a separate chunk, and
+ * `tests/pages-build.test.mjs` asserts that the split survives a real build.
+ * Call `loadLegacyRevit2021Api()` only when an internal inspection or migration
+ * tool needs the old API vocabulary.
  */
 
 export type LegacyRevit2021EnumName =
@@ -86,9 +89,9 @@ export type LegacyRevit2021Api = {
   unitType(valueOrName: number | string): LegacyUnitTypeInfo | undefined;
 };
 
-type GeneratedModule = typeof import("./legacy-revit-2021.generated.ts");
+type LegacyDataModule = typeof import("./legacy-revit-2021.data.ts");
 
-function createApi(data: GeneratedModule): LegacyRevit2021Api {
+function createApi(data: LegacyDataModule): LegacyRevit2021Api {
   const nameToValue = new Map<string, Map<string, number>>();
   const valueToNames = new Map<string, Map<number, string[]>>();
   const relations = new Map<string, Map<string, string | string[]>>();
@@ -283,6 +286,6 @@ function createApi(data: GeneratedModule): LegacyRevit2021Api {
 let apiPromise: Promise<LegacyRevit2021Api> | undefined;
 
 export function loadLegacyRevit2021Api(): Promise<LegacyRevit2021Api> {
-  apiPromise ??= import("./legacy-revit-2021.generated.ts").then(createApi);
+  apiPromise ??= import("./legacy-revit-2021.data.ts").then(createApi);
   return apiPromise;
 }

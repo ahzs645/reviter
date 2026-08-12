@@ -10,7 +10,6 @@
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "extract": "node --experimental-strip-types scripts/extract-geometry.ts",
-    "generate:legacy-revit-api": "node --experimental-strip-types scripts/generate-legacy-revit-api.ts",
     "build:sites": "npm run build && node scripts/prepare-sites-build.mjs",
     "build:pages": "node scripts/build-pages.mjs",
     "preview:pages": "vite preview --config vite.pages.config.ts",
