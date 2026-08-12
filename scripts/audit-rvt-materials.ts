@@ -7,11 +7,17 @@
  *   node --experimental-strip-types scripts/audit-rvt-materials.ts \
  *     --rvt model.rvt --ifc reference.ifc --json report.json
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
+
+import {
+  declareUsage,
+  decodeIfcString,
+  requirePath,
+  sha256,
+} from "./lib/rvt-harness.ts";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
@@ -30,37 +36,15 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 
-const argv = process.argv.slice(2);
-
-function option(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}. Run with --rvt, --ifc, and --json.`);
-}
+declareUsage(
+  "audit-rvt-materials.ts --rvt model.rvt --ifc model.ifc --json report.json",
+);
 
 const paths = {
-  rvt: option("--rvt"),
-  ifc: option("--ifc"),
-  json: option("--json"),
+  rvt: requirePath("--rvt"),
+  ifc: requirePath("--ifc"),
+  json: requirePath("--json"),
 };
-
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function decodeIfcString(source: string): string {
-  return source
-    .replace(/\\X2\\([0-9A-F]+)\\X0\\/gi, (_match, hex: string) => {
-      let decoded = "";
-      for (let index = 0; index + 3 < hex.length; index += 4) {
-        decoded += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
-      }
-      return decoded;
-    })
-    .replace(/\\X\\([0-9A-F]{2})/gi, (_match, hex: string) =>
-      String.fromCharCode(Number.parseInt(hex, 16)))
-    .replaceAll("''", "'");
-}
 
 function readIfcMaterialNames(text: string): string[] {
   const names: string[] = [];

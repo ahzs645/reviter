@@ -5,42 +5,18 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-fill-grid.ts model.rvt
  */
-import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import CFB from "cfb";
+import {
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
 import { REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-fill-grid.ts";
-import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
-
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error("usage: audit-revit-2027-fill-grid.ts model.rvt");
-}
-
-function firstInflatedSchema(
-  cfb: ReturnType<typeof CFB.read>,
-): Uint8Array {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(
-      ({ entry, path }) =>
-        entry.size > 0 && /\/Formats\/Latest$/i.test(path),
-    );
-  if (!item) throw new Error("RVT has no readable Formats/Latest stream");
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  if (offset == null) throw new Error("Formats/Latest has no gzip member");
-  const inflated = inflateRevitChunk(stored, offset);
-  if (!inflated) throw new Error("Formats/Latest gzip member did not inflate");
-  return inflated;
-}
+const modelPath = requireModelPath(
+  "audit-revit-2027-fill-grid.ts model.rvt",
+);
 
 function matchesAscii(
   data: Uint8Array,
@@ -142,8 +118,8 @@ function replayEvidence(): ReplayEvidence {
   ) as ReplayEvidence;
 }
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const schema = firstInflatedSchema(cfb);
+const model = openRvt(modelPath);
+const schema = model.requireSchema();
 const schemaOffset = findName(schema, "FillGrid");
 const view = new DataView(schema.buffer, schema.byteOffset, schema.byteLength);
 let cursor = schemaOffset + 2 + "FillGrid".length;

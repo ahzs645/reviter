@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 
+import { hasFlag, isEntryPoint, optionValue } from "./lib/rvt-harness.ts";
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { makeGlb } from "../lib/reviter/export-glb.ts";
 import { makeIfcCenterlines } from "../lib/reviter/export-ifc.ts";
@@ -29,20 +30,15 @@ export type ExtractArguments = {
 
 const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json"]);
 
-function valueAfter(arguments_: string[], flag: string): string | undefined {
-  const index = arguments_.indexOf(flag);
-  return index >= 0 ? arguments_[index + 1] : undefined;
-}
-
 export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   const input = arguments_[0];
-  const output = valueAfter(arguments_, "--out");
+  const output = optionValue("--out", arguments_);
   if (!input || input.startsWith("-") || !output) {
     throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates]");
   }
 
   const extension = extname(output).slice(1).toLowerCase();
-  const requestedFormat = (valueAfter(arguments_, "--format") ?? extension) as Format;
+  const requestedFormat = (optionValue("--format", arguments_) ?? extension) as Format;
   if (!FORMATS.has(requestedFormat)) {
     throw new Error(
       `Unsupported output format "${requestedFormat || "(none)"}". ` +
@@ -50,7 +46,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     );
   }
 
-  const rawVersion = valueAfter(arguments_, "--revit-version");
+  const rawVersion = optionValue("--revit-version", arguments_);
   const revitVersion = rawVersion == null ? undefined : Number(rawVersion);
   if (
     rawVersion != null &&
@@ -59,7 +55,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     throw new Error(`Invalid Revit version "${rawVersion}".`);
   }
 
-  const rawLevelId = valueAfter(arguments_, "--level-id");
+  const rawLevelId = optionValue("--level-id", arguments_);
   const planLevelId = rawLevelId == null ? undefined : Number(rawLevelId);
   if (
     rawLevelId != null &&
@@ -70,7 +66,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   if (planLevelId != null && requestedFormat !== "svg") {
     throw new Error("--level-id is available only for SVG floor-plan exports.");
   }
-  const floorPlates = arguments_.includes("--floor-plates");
+  const floorPlates = hasFlag("--floor-plates", arguments_);
   if (floorPlates && (requestedFormat !== "svg" || planLevelId == null)) {
     throw new Error("--floor-plates requires an SVG output and --level-id.");
   }
@@ -123,8 +119,7 @@ export function extractGeometry(arguments_: string[]): void {
   for (const warning of outcome.warnings.slice(0, 3)) console.log(`warning: ${warning}`);
 }
 
-const invoked = process.argv[1] ?? "";
-if (invoked.endsWith("extract-geometry.ts")) {
+if (isEntryPoint(import.meta.url)) {
   try {
     extractGeometry(process.argv.slice(2));
   } catch (error) {

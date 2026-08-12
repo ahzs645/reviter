@@ -6,37 +6,29 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-face-static.ts model.rvt
  */
-import { readFileSync } from "node:fs";
+import {
+  FORMATS_LATEST_PATTERN,
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
-import CFB from "cfb";
-
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
-import {
-  decodeRevit2027FaceStatic,
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GeometryStatic,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import { decodeRevit2027GGroupStatic } from "../lib/reviter/revit-2027-ggroup-fifo.ts";
-import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-grep-prefixes.ts";
-
+  REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
+  decodeRevit2027FaceStatic,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GGroupStatic,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027FaceStatic,
+} from "./lib/revit-2027-decoders.ts";
 const SOURCE_LADDER = [
   [1822, "FabricationSettings"],
   [1823, "FabricationSettingsElement"],
@@ -65,19 +57,6 @@ type SchemaField = {
 
 function increment<K>(map: Map<K, number>, key: K): void {
   map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function firstInflatedStream(
-  cfb: ReturnType<typeof CFB.read>,
-  pattern: RegExp,
-): Uint8Array | null {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(({ entry, path }) => entry.size > 0 && pattern.test(path));
-  if (!item) return null;
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  return offset == null ? null : inflateRevitChunk(stored, offset);
 }
 
 function matchesAscii(
@@ -302,39 +281,20 @@ function entries<K extends string | number>(
   );
 }
 
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error(
-    "usage: node --experimental-strip-types scripts/audit-revit-2027-face-static.ts model.rvt",
-  );
-}
-
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
+const modelPath = requireModelPath(
+  "audit-revit-2027-face-static.ts model.rvt",
 );
-if (release !== 2027) {
-  throw new Error(
-    `audit requires a Revit 2027 file, received ${release ?? "unknown"}`,
-  );
-}
-const schema = firstInflatedStream(cfb, /\/Formats\/Latest$/i);
+
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
+const schema = model.firstInflatedStream(FORMATS_LATEST_PATTERN);
 if (!schema) throw new Error("RVT has no readable Formats/Latest stream");
 const schemaEvidence = certifySchema(schema);
 if (!schemaEvidence.ok) {
   throw new Error("Formats/Latest does not certify source slot 1825 Face");
 }
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 
 let chunks = 0;
 let failedChunks = 0;
@@ -355,180 +315,160 @@ const cutTypes = new Map<number, number>();
 const faceFlags = new Map<number, number>();
 const optionalPresence = new Map<string, number>();
 
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+    const decodedRoot = decodeRevit2027FramedGRepRoot(
+      inflated,
+      frame,
+      release,
     );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
-      continue;
-    }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
+    if (!decodedRoot.ok) continue;
+    const root = decodedRoot.value;
 
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
-      const decodedRoot = decodeRevit2027FramedGRepRoot(
-        inflated,
-        frame,
-        release,
-      );
-      if (!decodedRoot.ok) continue;
-      const root = decodedRoot.value;
-
-      let geometryOffset: number | null = null;
-      let firstGeometryAppendToken = 0;
-      if (
-        root.children.length === 1 &&
-        root.children[0]?.sourceClassSlot ===
-          REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
-      ) {
-        directGeometryRoots += 1;
-        const rootTokenError = requireTokens(root.children, 3);
-        if (rootTokenError) {
-          increment(failures, `direct root: ${rootTokenError}`);
-          continue;
-        }
-        geometryOffset = root.dynamicPayloadOffset;
-        firstGeometryAppendToken = 4;
-      } else if (
-        root.children.length === 1 &&
-        root.children[0]?.sourceClassSlot ===
-          REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
-      ) {
-        const rootTokenError = requireTokens(root.children, 3);
-        if (rootTokenError) {
-          increment(failures, `single group root: ${rootTokenError}`);
-          continue;
-        }
-        const group = decodeRevit2027GGroupStatic(
-          inflated,
-          root.dynamicPayloadOffset,
-          root.dynamicPayloadEndOffset,
-          release,
-        );
-        if (
-          !group.ok ||
-          group.value.children.length !== 1 ||
-          group.value.children[0]?.sourceClassSlot !==
-            REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
-        ) {
-          continue;
-        }
-        singleGroupGeometryRoots += 1;
-        const groupTokenError = requireTokens(group.value.children, 4);
-        if (groupTokenError) {
-          increment(failures, `single group child: ${groupTokenError}`);
-          continue;
-        }
-        geometryOffset = group.value.endOffset;
-        firstGeometryAppendToken = 5;
+    let geometryOffset: number | null = null;
+    let firstGeometryAppendToken = 0;
+    if (
+      root.children.length === 1 &&
+      root.children[0]?.sourceClassSlot ===
+        REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+    ) {
+      directGeometryRoots += 1;
+      const rootTokenError = requireTokens(root.children, 3);
+      if (rootTokenError) {
+        increment(failures, `direct root: ${rootTokenError}`);
+        continue;
       }
-      if (geometryOffset == null) continue;
-
-      const geometry = decodeRevit2027GeometryStatic(
+      geometryOffset = root.dynamicPayloadOffset;
+      firstGeometryAppendToken = 4;
+    } else if (
+      root.children.length === 1 &&
+      root.children[0]?.sourceClassSlot ===
+        REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
+    ) {
+      const rootTokenError = requireTokens(root.children, 3);
+      if (rootTokenError) {
+        increment(failures, `single group root: ${rootTokenError}`);
+        continue;
+      }
+      const group = decodeRevit2027GGroupStatic(
         inflated,
-        geometryOffset,
+        root.dynamicPayloadOffset,
         root.dynamicPayloadEndOffset,
         release,
       );
-      if (!geometry.ok) {
-        increment(failures, geometry.error);
-        continue;
-      }
-      const geometryTokenError = requireTokens(
-        geometry.value.queuedProperties,
-        firstGeometryAppendToken,
-      );
-      if (geometryTokenError) {
-        increment(failures, geometryTokenError);
-        continue;
-      }
       if (
-        geometry.value.faces.entries.some(
-          (entry) =>
-            entry.sourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-        )
+        !group.ok ||
+        group.value.children.length !== 1 ||
+        group.value.children[0]?.sourceClassSlot !==
+          REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
       ) {
-        increment(failures, "Geometry face descriptor is not source slot 1825");
         continue;
       }
+      singleGroupGeometryRoots += 1;
+      const groupTokenError = requireTokens(group.value.children, 4);
+      if (groupTokenError) {
+        increment(failures, `single group child: ${groupTokenError}`);
+        continue;
+      }
+      geometryOffset = group.value.endOffset;
+      firstGeometryAppendToken = 5;
+    }
+    if (geometryOffset == null) continue;
 
-      decodedGeometryOwners += 1;
-      declaredFaces += geometry.value.faces.count;
-      if (geometry.value.faces.count === 0) {
-        ownersWithoutFaces += 1;
-      } else {
-        ownersWithFaces += 1;
+    const geometry = decodeRevit2027GeometryStatic(
+      inflated,
+      geometryOffset,
+      root.dynamicPayloadEndOffset,
+      release,
+    );
+    if (!geometry.ok) {
+      increment(failures, geometry.error);
+      continue;
+    }
+    const geometryTokenError = requireTokens(
+      geometry.value.queuedProperties,
+      firstGeometryAppendToken,
+    );
+    if (geometryTokenError) {
+      increment(failures, geometryTokenError);
+      continue;
+    }
+    if (
+      geometry.value.faces.entries.some(
+        (entry) =>
+          entry.sourceClassSlot !== REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+      )
+    ) {
+      increment(failures, "Geometry face descriptor is not source slot 1825");
+      continue;
+    }
+
+    decodedGeometryOwners += 1;
+    declaredFaces += geometry.value.faces.count;
+    if (geometry.value.faces.count === 0) {
+      ownersWithoutFaces += 1;
+    } else {
+      ownersWithFaces += 1;
+    }
+    let cursor = geometry.value.endOffset;
+    let nextAppendToken =
+      firstGeometryAppendToken +
+      numberedPropertyCount(geometry.value.queuedProperties);
+    let ownerFailure: string | null = null;
+    const ownerFaces: Revit2027FaceStatic[] = [];
+    for (let index = 0; index < geometry.value.faces.count; index += 1) {
+      const face = decodeRevit2027FaceStatic(
+        inflated,
+        cursor,
+        root.dynamicPayloadEndOffset,
+        release,
+      );
+      if (!face.ok) {
+        ownerFailure = face.error;
+        break;
       }
-      let cursor = geometry.value.endOffset;
-      let nextAppendToken =
-        firstGeometryAppendToken +
-        numberedPropertyCount(geometry.value.queuedProperties);
-      let ownerFailure: string | null = null;
-      const ownerFaces: Revit2027FaceStatic[] = [];
-      for (let index = 0; index < geometry.value.faces.count; index += 1) {
-        const face = decodeRevit2027FaceStatic(
-          inflated,
-          cursor,
-          root.dynamicPayloadEndOffset,
-          release,
-        );
-        if (!face.ok) {
-          ownerFailure = face.error;
-          break;
-        }
-        const faceTokenError = requireTokens(
-          face.value.queuedProperties,
-          nextAppendToken,
-        );
-        if (faceTokenError) {
-          ownerFailure = faceTokenError;
-          break;
-        }
-        nextAppendToken += numberedPropertyCount(
-          face.value.queuedProperties,
-        );
-        cursor = face.value.endOffset;
-        ownerFaces.push(face.value);
+      const faceTokenError = requireTokens(
+        face.value.queuedProperties,
+        nextAppendToken,
+      );
+      if (faceTokenError) {
+        ownerFailure = faceTokenError;
+        break;
       }
-      if (ownerFailure) {
-        increment(failures, ownerFailure);
-        continue;
-      }
-      decodedFaces += ownerFaces.length;
-      for (const face of ownerFaces) {
-        recordFace(
-          face,
-          bodyBytes,
-          regionCounts,
-          childSlots,
-          childTokenKinds,
-          renderStyleIds,
-          cutTypes,
-          faceFlags,
-          optionalPresence,
-        );
-      }
+      nextAppendToken += numberedPropertyCount(
+        face.value.queuedProperties,
+      );
+      cursor = face.value.endOffset;
+      ownerFaces.push(face.value);
+    }
+    if (ownerFailure) {
+      increment(failures, ownerFailure);
+      continue;
+    }
+    decodedFaces += ownerFaces.length;
+    for (const face of ownerFaces) {
+      recordFace(
+        face,
+        bodyBytes,
+        regionCounts,
+        childSlots,
+        childTokenKinds,
+        renderStyleIds,
+        cutTypes,
+        faceFlags,
+        optionalPresence,
+      );
     }
   }
-}
 
+}
 console.log(
   JSON.stringify(
     {

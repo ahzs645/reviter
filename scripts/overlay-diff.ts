@@ -19,12 +19,11 @@
  * against one conversion rather than decoding the model twice.
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { IfcAPI } from "web-ifc";
 
 import { convertModel } from "./audit-coverage.ts";
+import { isEntryPoint, positionals } from "./lib/rvt-harness.ts";
 import { framingBoundsOfRecords, solidBounds } from "../lib/reviter/bounds-records.ts";
 export { meshBoundsByElement } from "../lib/reviter/mesh-element-bounds.ts";
 import { meshBoundsByElement } from "../lib/reviter/mesh-element-bounds.ts";
@@ -651,19 +650,8 @@ export function printOverlay(result: OverlayResult): void {
   );
 }
 
-/** True when this module is the process entry point rather than an import. */
-function isEntryPoint(): boolean {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === resolve(entry);
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
-  const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
+if (isEntryPoint(import.meta.url)) {
+  const [rvtPath, ifcPath] = positionals();
   if (!rvtPath || !ifcPath) {
     console.error("usage: overlay-diff.ts <model.rvt> <model.ifc>");
     process.exit(2);

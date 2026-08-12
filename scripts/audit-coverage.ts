@@ -21,10 +21,14 @@
  * single conversion instead of paying for the decode twice and risking two
  * subtly different answers to the same question.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
+import {
+  isEntryPoint,
+  optionValue,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 import { solidBounds } from "../lib/reviter/bounds-records.ts";
@@ -295,25 +299,13 @@ conversion took          ${(stats.durationMs / 1000).toFixed(1)}s
 `);
 }
 
-/** True when this module is the process entry point rather than an import. */
-function isEntryPoint(): boolean {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === resolve(entry);
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
-  const [rvtPath, ifcPath] = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
+if (isEntryPoint(import.meta.url)) {
+  const [rvtPath, ifcPath] = positionals();
   if (!rvtPath || !ifcPath) {
     console.error("usage: audit-coverage.ts <model.rvt> <model.ifc> [--json <path>]");
     process.exit(2);
   }
-  const jsonFlag = process.argv.indexOf("--json");
-  const jsonPath = jsonFlag >= 0 ? process.argv[jsonFlag + 1] : undefined;
+  const jsonPath = optionValue("--json");
 
   const outcome = convertModel(rvtPath);
   const result = computeCoverage(outcome, ifcPath);
@@ -323,19 +315,12 @@ if (isEntryPoint()) {
   printLedger(result);
 
   if (jsonPath) {
-    writeFileSync(
-      jsonPath,
-      `${JSON.stringify(
-        {
-          rows: result.rows,
-          totals: result.totals,
-          stats: result.stats,
-          categories: outcome.nativeCategories?.categories,
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    writeJsonReport(jsonPath, {
+      rows: result.rows,
+      totals: result.totals,
+      stats: result.stats,
+      categories: outcome.nativeCategories?.categories,
+    });
     console.log(`per-type detail written to ${jsonPath}`);
   }
 }

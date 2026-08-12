@@ -5,42 +5,29 @@
  * Usage:
  *   node --experimental-strip-types scripts/audit-revit-2027-gline.ts model.rvt
  */
-import { readFileSync } from "node:fs";
-import CFB from "cfb";
+import {
+  FORMATS_LATEST_PATTERN,
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GLine,
-  REVIT_2027_GLINE_BODY_BYTES,
-  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-gline.ts";
-import {
-  decodeRevit2027GGroupStatic,
-} from "../lib/reviter/revit-2027-ggroup-fifo.ts";
-import {
-  decodeRevit2027GPolyLine,
-  REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-gpolyline.ts";
-import {
-  decodeRevit2027GArray,
   REVIT_2027_GARRAY_BODY_BYTES,
   REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-grep-prefixes.ts";
-
+  REVIT_2027_GLINE_BODY_BYTES,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArray,
+  decodeRevit2027GGroupStatic,
+  decodeRevit2027GLine,
+  decodeRevit2027GPolyLine,
+} from "./lib/revit-2027-decoders.ts";
 function increment<Key>(map: Map<Key, number>, key: Key): void {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
@@ -73,19 +60,6 @@ function topRecord<Key extends string | number | bigint>(
       .slice(0, limit)
       .map(([key, count]) => [String(key), count]),
   );
-}
-
-function firstInflatedStream(
-  cfb: ReturnType<typeof CFB.read>,
-  pattern: RegExp,
-): Uint8Array | null {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(({ entry, path }) => entry.size > 0 && pattern.test(path));
-  if (!item) return null;
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  return offset == null ? null : inflateRevitChunk(stored, offset);
 }
 
 function asciiAt(data: Uint8Array, offset: number, text: string): boolean {
@@ -195,37 +169,20 @@ function certifyGLineSchema(data: Uint8Array): {
   return { ok: false, offset: -1 };
 }
 
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error(
-    "usage: node --experimental-strip-types scripts/audit-revit-2027-gline.ts model.rvt",
-  );
-}
-
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
+const modelPath = requireModelPath(
+  "audit-revit-2027-gline.ts model.rvt",
 );
-if (release !== 2027) {
-  throw new Error(`audit requires a Revit 2027 file, received ${release ?? "unknown"}`);
-}
-const schema = firstInflatedStream(cfb, /\/Formats\/Latest$/i);
+
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
+const schema = model.firstInflatedStream(FORMATS_LATEST_PATTERN);
 if (!schema) throw new Error("RVT has no readable Formats/Latest stream");
 const schemaEvidence = certifyGLineSchema(schema);
 if (!schemaEvidence.ok) {
   throw new Error("Formats/Latest does not certify the expected GLine layers");
 }
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 
 let chunks = 0;
 let failedChunks = 0;
@@ -239,127 +196,107 @@ const gInfoTags = new Map<number, number>();
 const stopSlots = new Map<number, number>();
 const failures = new Map<string, number>();
 
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+    const decodedRoot = decodeRevit2027FramedGRepRoot(
+      inflated,
+      frame,
+      release,
     );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
-      continue;
+    if (!decodedRoot.ok) continue;
+    const root = decodedRoot.value;
+    const lineDescriptors = root.children.filter(
+      (child) => child.sourceClassSlot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+    ).length;
+    if (lineDescriptors === 0) continue;
+    rootsContainingGLine += 1;
+    outerGLineDescriptors += lineDescriptors;
+
+    let offset = root.dynamicPayloadOffset;
+    for (const child of root.children) {
+      const slot = child.sourceClassSlot;
+      if (slot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT) {
+        const decoded = decodeRevit2027GLine(
+          inflated,
+          offset,
+          offset + REVIT_2027_GLINE_BODY_BYTES,
+          release,
+        );
+        if (!decoded.ok) {
+          increment(failures, decoded.error);
+          break;
+        }
+        reachableInitialGLineBodies += 1;
+        offset = decoded.value.endOffset;
+        increment(gInfoStyles, decoded.value.gInfo.gStyleElementId);
+        increment(gInfoTags, decoded.value.gInfo.tag);
+        const norm = Math.hypot(...decoded.value.direction);
+        if (Math.abs(norm - 1) <= 1e-9) unitDirections += 1;
+        continue;
+      }
+      if (slot === REVIT_2027_GGROUP_SOURCE_CLASS_SLOT) {
+        const decoded = decodeRevit2027GGroupStatic(
+          inflated,
+          offset,
+          root.dynamicPayloadEndOffset,
+          release,
+        );
+        if (!decoded.ok) {
+          increment(failures, decoded.error);
+          break;
+        }
+        offset = decoded.value.endOffset;
+        continue;
+      }
+      if (slot === REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT) {
+        const decoded = decodeRevit2027GPolyLine(
+          inflated,
+          offset,
+          root.dynamicPayloadEndOffset,
+          release,
+        );
+        if (!decoded.ok) {
+          increment(failures, decoded.error);
+          break;
+        }
+        offset = decoded.value.endOffset;
+        continue;
+      }
+      if (slot === REVIT_2027_GARRAY_SOURCE_CLASS_SLOT) {
+        const decoded = decodeRevit2027GArray(
+          inflated,
+          offset,
+          offset + REVIT_2027_GARRAY_BODY_BYTES,
+          release,
+        );
+        if (!decoded.ok) {
+          increment(failures, decoded.error);
+          break;
+        }
+        offset = decoded.value.endOffset;
+        continue;
+      }
+      if (slot != null) increment(stopSlots, slot);
+      break;
     }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
-
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
-      const decodedRoot = decodeRevit2027FramedGRepRoot(
-        inflated,
-        frame,
-        release,
-      );
-      if (!decodedRoot.ok) continue;
-      const root = decodedRoot.value;
-      const lineDescriptors = root.children.filter(
-        (child) => child.sourceClassSlot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
-      ).length;
-      if (lineDescriptors === 0) continue;
-      rootsContainingGLine += 1;
-      outerGLineDescriptors += lineDescriptors;
-
-      let offset = root.dynamicPayloadOffset;
-      for (const child of root.children) {
-        const slot = child.sourceClassSlot;
-        if (slot === REVIT_2027_GLINE_SOURCE_CLASS_SLOT) {
-          const decoded = decodeRevit2027GLine(
-            inflated,
-            offset,
-            offset + REVIT_2027_GLINE_BODY_BYTES,
-            release,
-          );
-          if (!decoded.ok) {
-            increment(failures, decoded.error);
-            break;
-          }
-          reachableInitialGLineBodies += 1;
-          offset = decoded.value.endOffset;
-          increment(gInfoStyles, decoded.value.gInfo.gStyleElementId);
-          increment(gInfoTags, decoded.value.gInfo.tag);
-          const norm = Math.hypot(...decoded.value.direction);
-          if (Math.abs(norm - 1) <= 1e-9) unitDirections += 1;
-          continue;
-        }
-        if (slot === REVIT_2027_GGROUP_SOURCE_CLASS_SLOT) {
-          const decoded = decodeRevit2027GGroupStatic(
-            inflated,
-            offset,
-            root.dynamicPayloadEndOffset,
-            release,
-          );
-          if (!decoded.ok) {
-            increment(failures, decoded.error);
-            break;
-          }
-          offset = decoded.value.endOffset;
-          continue;
-        }
-        if (slot === REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT) {
-          const decoded = decodeRevit2027GPolyLine(
-            inflated,
-            offset,
-            root.dynamicPayloadEndOffset,
-            release,
-          );
-          if (!decoded.ok) {
-            increment(failures, decoded.error);
-            break;
-          }
-          offset = decoded.value.endOffset;
-          continue;
-        }
-        if (slot === REVIT_2027_GARRAY_SOURCE_CLASS_SLOT) {
-          const decoded = decodeRevit2027GArray(
-            inflated,
-            offset,
-            offset + REVIT_2027_GARRAY_BODY_BYTES,
-            release,
-          );
-          if (!decoded.ok) {
-            increment(failures, decoded.error);
-            break;
-          }
-          offset = decoded.value.endOffset;
-          continue;
-        }
-        if (slot != null) increment(stopSlots, slot);
-        break;
-      }
-      if (
-        root.children.length === 1 &&
-        root.children[0]?.sourceClassSlot ===
-          REVIT_2027_GLINE_SOURCE_CLASS_SLOT &&
-        offset === root.dynamicPayloadEndOffset
-      ) {
-        exactSingleChildBodies += 1;
-      }
+    if (
+      root.children.length === 1 &&
+      root.children[0]?.sourceClassSlot ===
+        REVIT_2027_GLINE_SOURCE_CLASS_SLOT &&
+      offset === root.dynamicPayloadEndOffset
+    ) {
+      exactSingleChildBodies += 1;
     }
   }
-}
 
+}
 console.log(JSON.stringify({
   modelPath,
   release,

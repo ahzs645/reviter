@@ -6,15 +6,17 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-garc.ts model.rvt
  */
-import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import CFB from "cfb";
+import {
+  PARTITION_STREAM_PATTERN,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
-  asBytes,
   gzipOffsets,
   inflateRevitChunk,
   revitWindowTail,
@@ -22,45 +24,23 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GArc,
   REVIT_2027_GARC_BODY_BYTES,
   REVIT_2027_GARC_SOURCE_CLASS_SLOT,
-  type Revit2027GArc,
-} from "../lib/reviter/revit-2027-garc.ts";
-import {
-  decodeRevit2027GeometryStatic,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error("usage: audit-revit-2027-garc.ts model.rvt");
-}
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArc,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027GArc,
+} from "./lib/revit-2027-decoders.ts";
+const modelPath = requireModelPath(
+  "audit-revit-2027-garc.ts model.rvt",
+);
 
 const EXACT_OWNER_ELEMENT_ID = 245_109;
 const EXACT_BYTES_BEFORE_FIRST_GARC = 9_866;
-
-function firstInflatedSchema(
-  cfb: ReturnType<typeof CFB.read>,
-): Uint8Array {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(
-      ({ entry, path }) =>
-        entry.size > 0 && /\/Formats\/Latest$/i.test(path),
-    );
-  if (!item) throw new Error("RVT has no readable Formats/Latest stream");
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  if (offset == null) throw new Error("Formats/Latest has no gzip member");
-  const inflated = inflateRevitChunk(stored, offset);
-  if (!inflated) throw new Error("Formats/Latest gzip member did not inflate");
-  return inflated;
-}
 
 function matchesAscii(
   data: Uint8Array,
@@ -243,8 +223,8 @@ function arcSummary(arc: Revit2027GArc) {
   };
 }
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const schema = firstInflatedSchema(cfb);
+const model = openRvt(modelPath);
+const schema = model.requireSchema();
 const view = new DataView(schema.buffer, schema.byteOffset, schema.byteLength);
 const gCurveOffset = findName(schema, "GCurve");
 let cursor = gCurveOffset + 2 + "GCurve".length;
@@ -338,14 +318,9 @@ let exactBodies:
     }
   | null = null;
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 scan: for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
+  const stored = stripRevitPageChecksums(partition.bytes);
   const offsets = gzipOffsets(stored);
   let dictionary: Uint8Array | null = null;
   for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {

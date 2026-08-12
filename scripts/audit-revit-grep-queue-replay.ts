@@ -4,18 +4,14 @@
  * Usage:
  *   node --experimental-strip-types scripts/audit-revit-grep-queue-replay.ts model.rvt
  */
-import { readFileSync } from "node:fs";
-import CFB from "cfb";
+import {
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
-import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
 import {
   certifyRevitGRepInitialQueue,
   GREP_QUEUE_INITIAL_TOKEN_COUNT,
@@ -40,20 +36,12 @@ function percentiles(values: number[]): Record<string, number> {
   };
 }
 
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error(
-    "usage: node --experimental-strip-types scripts/audit-revit-grep-queue-replay.ts model.rvt",
-  );
-}
+const modelPath = requireModelPath(
+  "audit-revit-grep-queue-replay.ts model.rvt",
+);
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const model = openRvt(modelPath);
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 
 let chunks = 0;
 let failedChunks = 0;
@@ -73,85 +61,65 @@ const childCountHistogram = new Map<number, number>();
 const sourceSlotSequenceCounts = new Map<string, number>();
 const failures = new Map<string, number>();
 
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
-    );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER) continue;
+    const planned = certifyRevitGRepInitialQueue(inflated, frame);
+    if (!planned.ok) {
+      failures.set(planned.error, (failures.get(planned.error) ?? 0) + 1);
+      if (/append-only/.test(planned.error)) nonSequentialTokenPlans += 1;
       continue;
     }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
+    decodedPlans += 1;
+    const plan = planned.value;
+    const childCount = plan.entries.length;
+    childCountHistogram.set(
+      childCount,
+      (childCountHistogram.get(childCount) ?? 0) + 1,
+    );
+    const payloadBytes = plan.replayEndOffset - plan.replayOffset;
+    if (childCount === 1) {
+      oneEntryPlans += 1;
+      oneEntryPayloadBytes.push(payloadBytes);
+    } else {
+      multiEntryPlans += 1;
+      multiEntryPayloadBytes.push(payloadBytes);
+    }
 
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER) continue;
-      const planned = certifyRevitGRepInitialQueue(inflated, frame);
-      if (!planned.ok) {
-        failures.set(planned.error, (failures.get(planned.error) ?? 0) + 1);
-        if (/append-only/.test(planned.error)) nonSequentialTokenPlans += 1;
-        continue;
-      }
-      decodedPlans += 1;
-      const plan = planned.value;
-      const childCount = plan.entries.length;
-      childCountHistogram.set(
-        childCount,
-        (childCountHistogram.get(childCount) ?? 0) + 1,
-      );
-      const payloadBytes = plan.replayEndOffset - plan.replayOffset;
-      if (childCount === 1) {
-        oneEntryPlans += 1;
-        oneEntryPayloadBytes.push(payloadBytes);
-      } else {
-        multiEntryPlans += 1;
-        multiEntryPayloadBytes.push(payloadBytes);
-      }
-
-      const seenTokens = new Set<number>();
-      for (const entry of plan.entries) {
-        if (seenTokens.has(entry.propertyToken)) duplicateTokens += 1;
-        seenTokens.add(entry.propertyToken);
-        if (entry.propertyToken < 0) negativeTokens += 1;
-        if (entry.propertyToken === 0 || entry.propertyToken === 1) {
-          zeroOrOneTokens += 1;
-        }
-      }
-
-      const sourceSequence = plan.entries
-        .map((entry) => entry.propertySourceClassSlot)
-        .join(",");
-      sourceSlotSequenceCounts.set(
-        sourceSequence,
-        (sourceSlotSequenceCounts.get(sourceSequence) ?? 0) + 1,
-      );
-      const numericCoincidence = plan.entries.every((entry) =>
-        NUMERIC_COINCIDENCE_SLOTS.has(entry.propertySourceClassSlot)
-      );
-      if (numericCoincidence) {
-        numericCoincidencePlans += 1;
-        if (childCount === 1) numericCoincidenceOneEntryPlans += 1;
-        else numericCoincidenceMultiEntryPlans += 1;
+    const seenTokens = new Set<number>();
+    for (const entry of plan.entries) {
+      if (seenTokens.has(entry.propertyToken)) duplicateTokens += 1;
+      seenTokens.add(entry.propertyToken);
+      if (entry.propertyToken < 0) negativeTokens += 1;
+      if (entry.propertyToken === 0 || entry.propertyToken === 1) {
+        zeroOrOneTokens += 1;
       }
     }
-  }
-}
 
+    const sourceSequence = plan.entries
+      .map((entry) => entry.propertySourceClassSlot)
+      .join(",");
+    sourceSlotSequenceCounts.set(
+      sourceSequence,
+      (sourceSlotSequenceCounts.get(sourceSequence) ?? 0) + 1,
+    );
+    const numericCoincidence = plan.entries.every((entry) =>
+      NUMERIC_COINCIDENCE_SLOTS.has(entry.propertySourceClassSlot)
+    );
+    if (numericCoincidence) {
+      numericCoincidencePlans += 1;
+      if (childCount === 1) numericCoincidenceOneEntryPlans += 1;
+      else numericCoincidenceMultiEntryPlans += 1;
+    }
+  }
+
+}
 console.log(JSON.stringify({
   modelPath,
   partitions: partitions.length,

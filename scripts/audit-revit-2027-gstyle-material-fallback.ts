@@ -14,6 +14,12 @@ import { readFileSync } from "node:fs";
 
 import CFB from "cfb";
 
+import {
+  countsByKey,
+  decodeIfcString,
+  increment,
+} from "./lib/rvt-harness.ts";
+
 import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
@@ -30,16 +36,14 @@ import {
 } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-  type Revit2027GeometryStatic,
-} from "../lib/reviter/revit-2027-geometry.ts";
+  decodeRevit2027FramedGRepRoot,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027FaceStatic,
+  Revit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
 import {
   replayRevit2027GRepFifo,
   type Revit2027GRepReplaySpan,
@@ -57,44 +61,11 @@ type FallbackFace = {
   geometryGStyleElementId: bigint;
 };
 
-function increment<K>(map: Map<K, number>, key: K, amount = 1): void {
-  map.set(key, (map.get(key) ?? 0) + amount);
-}
-
 function mergeCounts(
   target: Map<string, number>,
   source: ReadonlyMap<string, number>,
 ): void {
   for (const [key, count] of source) increment(target, key, count);
-}
-
-function sortedRecord<K extends string | number | bigint>(
-  map: ReadonlyMap<K, number>,
-): Record<string, number> {
-  return Object.fromEntries(
-    [...map]
-      .sort(([left], [right]) =>
-        String(left).localeCompare(String(right), undefined, {
-          numeric: true,
-        }))
-      .map(([key, count]) => [String(key), count]),
-  );
-}
-
-function decodeIfcString(source: string): string {
-  return source
-    .replace(/\\X2\\([0-9A-F]+)\\X0\\/gi, (_match, hex: string) => {
-      let decoded = "";
-      for (let index = 0; index + 3 < hex.length; index += 4) {
-        decoded += String.fromCharCode(
-          Number.parseInt(hex.slice(index, index + 4), 16),
-        );
-      }
-      return decoded;
-    })
-    .replace(/\\X\\([0-9A-F]{2})/gi, (_match, hex: string) =>
-      String.fromCharCode(Number.parseInt(hex, 16)))
-    .replaceAll("''", "'");
 }
 
 function ifcMaterialNames(text: string): Set<string> {
@@ -313,29 +284,29 @@ console.log(JSON.stringify({
   geometryOwners,
   decodedFaces,
   facesWithoutGeometryParent,
-  replayFailures: sortedRecord(replayFailures),
+  replayFailures: countsByKey(replayFailures),
   persistedDefinitions: {
     namedMaterialElements: materialDefinitions.size,
     framedStyleElements,
     decodedStyleElements,
     rejectedStyleElements: framedStyleElements - decodedStyleElements,
-    styleDecodeFailures: sortedRecord(styleFailures),
-    decodedStyleMaterialIds: sortedRecord(styleMaterialIds),
+    styleDecodeFailures: countsByKey(styleFailures),
+    decodedStyleMaterialIds: countsByKey(styleMaterialIds),
     exactNamedStyleMaterialIds:
-      sortedRecord(exactPersistedStyleMaterials),
+      countsByKey(exactPersistedStyleMaterials),
     unresolvedPositiveStyleMaterialIds:
-      sortedRecord(unresolvedPersistedStyleMaterials),
+      countsByKey(unresolvedPersistedStyleMaterials),
   },
   fallbackFaces: {
     total: fallbackFaces.length,
-    renderStyleIds: sortedRecord(renderStyleIds),
-    statusCounts: sortedRecord(statusCounts),
-    reasonCounts: sortedRecord(reasonCounts),
-    selectedSources: sortedRecord(selectedSources),
-    selectedStyleIds: sortedRecord(selectedStyleIds),
+    renderStyleIds: countsByKey(renderStyleIds),
+    statusCounts: countsByKey(statusCounts),
+    reasonCounts: countsByKey(reasonCounts),
+    selectedSources: countsByKey(selectedSources),
+    selectedStyleIds: countsByKey(selectedStyleIds),
     newlyExactFaces: [...exactMaterialFaces.values()]
       .reduce((sum, count) => sum + count, 0),
-    exactMaterialFaces: sortedRecord(exactMaterialFaces),
+    exactMaterialFaces: countsByKey(exactMaterialFaces),
   },
   ifcOracle: {
     distinctIfcMaterialNames: ifcNames.size,

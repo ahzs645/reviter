@@ -41,9 +41,15 @@
  * Reporting one number for both would have hidden that, and did: the visible
  * complaint was about curves and the measurable defect is nearly all diagonals.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 import { convertModel } from "./audit-coverage.ts";
+import {
+  isEntryPoint,
+  optionValue,
+  positionals,
+  writeJsonReport,
+} from "./lib/rvt-harness.ts";
 import { drawnBounds } from "./overlay-diff.ts";
 
 import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
@@ -468,15 +474,9 @@ export products with a footprint    ${audit.truthCount.toLocaleString()}
   }
 }
 
-/** True when this module was run directly rather than imported. */
-function isEntryPoint(): boolean {
-  const invoked = process.argv[1] ?? "";
-  return invoked.endsWith("footprint-audit.ts") || invoked.endsWith("footprint-audit.js");
-}
-
-if (isEntryPoint()) {
-  const [rvtPath, ifcPath] = process.argv.slice(2);
-  const jsonIndex = process.argv.indexOf("--json");
+if (isEntryPoint(import.meta.url)) {
+  const [rvtPath, ifcPath] = positionals();
+  const jsonPath = optionValue("--json");
   if (!rvtPath || !ifcPath) {
     console.error("usage: footprint-audit.ts <model.rvt> <model.ifc> [--json <path>]");
     process.exit(2);
@@ -488,7 +488,5 @@ if (isEntryPoint()) {
   const audit = auditFootprints(outcome.elementBounds, truth);
   console.log(`\n${rvtPath.split("/").pop()} against ${ifcPath.split("/").pop()}`);
   printFootprintAudit(audit);
-  if (jsonIndex >= 0 && process.argv[jsonIndex + 1]) {
-    writeFileSync(process.argv[jsonIndex + 1]!, `${JSON.stringify(audit, null, 2)}\n`);
-  }
+  if (jsonPath) writeJsonReport(jsonPath, audit);
 }

@@ -12,12 +12,20 @@
  *     scripts/audit-rvt-identity-tree-material-gaps.ts \
  *     --rvt model.rvt --ifc reference.ifc --json report.json
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname } from "node:path";
 
 import CFB from "cfb";
 import { IfcAPI } from "web-ifc";
+
+import {
+  declareUsage,
+  increment,
+  requirePath,
+  sha256,
+  splitStepArgs,
+  stepReferences,
+} from "./lib/rvt-harness.ts";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
@@ -36,20 +44,16 @@ import {
 import { isRevit2027DirectGeometryRoot } from "../lib/reviter/revit-2027-direct-geometry-root.ts";
 import {
   REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-  type Revit2027GeometryStatic,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
   REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-ginstance.ts";
+  decodeRevit2027FramedGRepRoot,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027FaceStatic,
+  Revit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
 import {
   replayRevit2027GRepFifo,
   type Revit2027GRepReplaySpan,
@@ -60,27 +64,15 @@ import {
   type Revit2027GStyleElementRecord,
 } from "../lib/reviter/revit-2027-gstyle-material.ts";
 
-const argv = process.argv.slice(2);
-
-function requiredOption(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}. Run with --rvt, --ifc, and --json.`);
-}
+declareUsage(
+  "audit-rvt-identity-tree-material-gaps.ts --rvt model.rvt --ifc model.ifc --json report.json",
+);
 
 const paths = {
-  rvt: requiredOption("--rvt"),
-  ifc: requiredOption("--ifc"),
-  json: requiredOption("--json"),
+  rvt: requirePath("--rvt"),
+  ifc: requirePath("--ifc"),
+  json: requirePath("--json"),
 };
-
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function increment<K>(map: Map<K, number>, key: K, amount = 1): void {
-  map.set(key, (map.get(key) ?? 0) + amount);
-}
 
 function sortedCounts<K extends string | number | bigint>(
   map: ReadonlyMap<K, number>,
@@ -91,33 +83,6 @@ function sortedCounts<K extends string | number | bigint>(
         String(left).localeCompare(String(right), undefined, { numeric: true }))
       .map(([key, count]) => [String(key), count]),
   );
-}
-
-function splitStepArgs(source: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quotedValue = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "'") {
-      if (quotedValue && source[index + 1] === "'") index += 1;
-      else quotedValue = !quotedValue;
-    } else if (!quotedValue) {
-      if (char === "(") depth += 1;
-      else if (char === ")") depth -= 1;
-      else if (char === "," && depth === 0) {
-        result.push(source.slice(start, index).trim());
-        start = index + 1;
-      }
-    }
-  }
-  result.push(source.slice(start).trim());
-  return result;
-}
-
-function references(source = ""): number[] {
-  return [...source.matchAll(/#(\d+)/g)].map((match) => Number(match[1]));
 }
 
 function quoted(source = ""): string | null {
@@ -218,9 +183,9 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
 
   for (const [lineId, entity] of entities) {
     if (entity.type === "IFCRELDEFINESBYTYPE") {
-      const typeLine = references(entity.fields[5])[0] ?? 0;
+      const typeLine = stepReferences(entity.fields[5])[0] ?? 0;
       const typeTag = tag(typeLine);
-      for (const childLine of references(entity.fields[4])) {
+      for (const childLine of stepReferences(entity.fields[4])) {
         typeLineByElementLine.set(childLine, typeLine);
         const childTag = tag(childLine);
         if (childTag != null && typeTag != null) {
@@ -228,9 +193,9 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
         }
       }
     } else if (entity.type === "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
-      const storeyLine = references(entity.fields[5])[0] ?? 0;
+      const storeyLine = stepReferences(entity.fields[5])[0] ?? 0;
       if (!storeyLine) continue;
-      for (const childLine of references(entity.fields[4])) {
+      for (const childLine of stepReferences(entity.fields[4])) {
         const childTag = tag(childLine);
         if (childTag != null) {
           containmentStoreyByTag.set(childTag, storeyLine);
@@ -240,18 +205,18 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
       entity.type === "IFCRELAGGREGATES" ||
       entity.type === "IFCRELNESTS"
     ) {
-      const ownerTag = tag(references(entity.fields[4])[0] ?? 0);
+      const ownerTag = tag(stepReferences(entity.fields[4])[0] ?? 0);
       if (ownerTag == null) continue;
-      for (const childLine of references(entity.fields[5])) {
+      for (const childLine of stepReferences(entity.fields[5])) {
         const childTag = tag(childLine);
         if (childTag != null) aggregatePairs.add(`${childTag}:${ownerTag}`);
       }
     } else if (entity.type === "IFCRELVOIDSELEMENT") {
-      const hostLine = references(entity.fields[4])[0] ?? 0;
-      const openingLine = references(entity.fields[5])[0] ?? 0;
+      const hostLine = stepReferences(entity.fields[4])[0] ?? 0;
+      const openingLine = stepReferences(entity.fields[5])[0] ?? 0;
       if (hostLine && openingLine) voidHostByOpening.set(openingLine, hostLine);
     } else if (entity.type === "IFCRELASSOCIATESMATERIAL") {
-      for (const target of references(entity.fields[4])) {
+      for (const target of stepReferences(entity.fields[4])) {
         materialTargetLines.add(target);
       }
     }
@@ -260,7 +225,7 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
         name: entity.type === "IFCMATERIAL"
           ? quoted(entity.fields[0])
           : null,
-        references: references(entity.source),
+        references: stepReferences(entity.source),
       });
     }
   }
@@ -268,8 +233,8 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
   const hostPairs = new Set<string>();
   for (const entity of entities.values()) {
     if (entity.type !== "IFCRELFILLSELEMENT") continue;
-    const openingLine = references(entity.fields[4])[0] ?? 0;
-    const fillingLine = references(entity.fields[5])[0] ?? 0;
+    const openingLine = stepReferences(entity.fields[4])[0] ?? 0;
+    const fillingLine = stepReferences(entity.fields[5])[0] ?? 0;
     const hostLine = voidHostByOpening.get(openingLine) ?? 0;
     const fillingTag = tag(fillingLine);
     const hostTag = tag(hostLine);
@@ -300,9 +265,9 @@ async function readIfcOracle(bytes: Uint8Array): Promise<IfcOracle> {
   const namesByTargetLine = new Map<number, Set<string>>();
   for (const entity of entities.values()) {
     if (entity.type !== "IFCRELASSOCIATESMATERIAL") continue;
-    const materialLine = references(entity.fields[5])[0] ?? 0;
+    const materialLine = stepReferences(entity.fields[5])[0] ?? 0;
     const names = materialNames(materialLine);
-    for (const targetLine of references(entity.fields[4])) {
+    for (const targetLine of stepReferences(entity.fields[4])) {
       const values = namesByTargetLine.get(targetLine) ?? new Set<string>();
       for (const name of names) values.add(name);
       namesByTargetLine.set(targetLine, values);

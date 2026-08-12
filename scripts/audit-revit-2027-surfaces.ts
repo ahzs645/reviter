@@ -10,14 +10,10 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import CFB from "cfb";
-
 import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
+  openRvt,
+} from "./lib/rvt-harness.ts";
+
 import {
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
@@ -43,21 +39,6 @@ type FieldEvidence = {
   offset: number;
   descriptor: string;
 };
-
-function firstInflatedSchema(
-  cfb: ReturnType<typeof CFB.read>,
-): Uint8Array {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(({ entry, path }) => entry.size > 0 && /\/Formats\/Latest$/i.test(path));
-  if (!item) throw new Error("RVT has no readable Formats/Latest stream");
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  if (offset == null) throw new Error("Formats/Latest has no gzip member");
-  const inflated = inflateRevitChunk(stored, offset);
-  if (!inflated) throw new Error("Formats/Latest gzip member did not inflate");
-  return inflated;
-}
 
 function matchesAscii(
   data: Uint8Array,
@@ -194,8 +175,8 @@ function certifyClass(
   return { name, offset, endOffset, fields: fieldEvidence };
 }
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const schema = firstInflatedSchema(cfb);
+const model = openRvt(modelPath);
+const schema = model.requireSchema();
 const sourceLadder = [2213, 4282, 4283, 4284].map((sourceClassSlot) =>
   sourceNameAtSlot(schema, sourceClassSlot),
 );

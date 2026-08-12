@@ -5,19 +5,14 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-gpolyline.ts model.rvt
  */
-import { readFileSync } from "node:fs";
-import CFB from "cfb";
+import {
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
-import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
 import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
@@ -27,12 +22,9 @@ import {
   REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-gpolyline.ts";
 
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error(
-    "usage: node --experimental-strip-types scripts/audit-revit-2027-gpolyline.ts model.rvt",
-  );
-}
+const modelPath = requireModelPath(
+  "audit-revit-2027-gpolyline.ts model.rvt",
+);
 
 function increment<Key>(map: Map<Key, number>, key: Key): void {
   map.set(key, (map.get(key) ?? 0) + 1);
@@ -54,24 +46,10 @@ function countRecord<Key extends string | number | bigint>(
   );
 }
 
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
-);
-if (release !== 2027) {
-  throw new Error(`audit requires a Revit 2027 file, received ${release ?? "unknown"}`);
-}
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 
 let chunks = 0;
 let failedChunks = 0;
@@ -90,91 +68,71 @@ const styles = new Map<bigint, number>();
 const tags = new Map<number, number>();
 const failures = new Map<string, number>();
 
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+    const decodedRoot = decodeRevit2027FramedGRepRoot(
+      inflated,
+      frame,
+      release,
     );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
+    if (!decodedRoot.ok) continue;
+    const root = decodedRoot.value;
+    const matchingChildren = root.children.filter(
+      (child) =>
+        child.sourceClassSlot === REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
+    );
+    outerDescriptors += matchingChildren.length;
+    if (matchingChildren.length === 0) continue;
+
+    increment(
+      childShapes,
+      root.children
+        .map((child) => child.sourceClassSlot ?? 0)
+        .join(","),
+    );
+    if (
+      root.children[0]?.sourceClassSlot !==
+      REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT
+    ) {
+      increment(failures, "GPolyLine is not the first queued child");
       continue;
     }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
+    firstChildCandidates += 1;
 
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
-      const decodedRoot = decodeRevit2027FramedGRepRoot(
-        inflated,
-        frame,
-        release,
-      );
-      if (!decodedRoot.ok) continue;
-      const root = decodedRoot.value;
-      const matchingChildren = root.children.filter(
-        (child) =>
-          child.sourceClassSlot === REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT,
-      );
-      outerDescriptors += matchingChildren.length;
-      if (matchingChildren.length === 0) continue;
-
-      increment(
-        childShapes,
-        root.children
-          .map((child) => child.sourceClassSlot ?? 0)
-          .join(","),
-      );
-      if (
-        root.children[0]?.sourceClassSlot !==
-        REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT
-      ) {
-        increment(failures, "GPolyLine is not the first queued child");
-        continue;
-      }
-      firstChildCandidates += 1;
-
-      const decoded = decodeRevit2027GPolyLine(
-        inflated,
-        root.dynamicPayloadOffset,
-        root.dynamicPayloadEndOffset,
-        release,
-      );
-      if (!decoded.ok) {
-        increment(failures, decoded.error);
-        continue;
-      }
-      decodedBodies += 1;
-      const polyline = decoded.value;
-      increment(pointCounts, polyline.coordinates.length);
-      increment(bodyByteLengths, polyline.endOffset - polyline.byteOffset);
-      increment(
-        trailingPayloadBytes,
-        root.dynamicPayloadEndOffset - polyline.endOffset,
-      );
-      increment(styles, polyline.gInfo.gStyleElementId);
-      increment(tags, polyline.gInfo.tag);
-      if (polyline.closed) closedBodies += 1;
-      if (polyline.filled) filledBodies += 1;
-      if (polyline.extentsMatchCoordinates) exactCoordinateExtents += 1;
-      lineSegments += Math.max(0, polyline.coordinates.length - 1);
+    const decoded = decodeRevit2027GPolyLine(
+      inflated,
+      root.dynamicPayloadOffset,
+      root.dynamicPayloadEndOffset,
+      release,
+    );
+    if (!decoded.ok) {
+      increment(failures, decoded.error);
+      continue;
     }
+    decodedBodies += 1;
+    const polyline = decoded.value;
+    increment(pointCounts, polyline.coordinates.length);
+    increment(bodyByteLengths, polyline.endOffset - polyline.byteOffset);
+    increment(
+      trailingPayloadBytes,
+      root.dynamicPayloadEndOffset - polyline.endOffset,
+    );
+    increment(styles, polyline.gInfo.gStyleElementId);
+    increment(tags, polyline.gInfo.tag);
+    if (polyline.closed) closedBodies += 1;
+    if (polyline.filled) filledBodies += 1;
+    if (polyline.extentsMatchCoordinates) exactCoordinateExtents += 1;
+    lineSegments += Math.max(0, polyline.coordinates.length - 1);
   }
-}
 
+}
 console.log(JSON.stringify({
   modelPath,
   release,

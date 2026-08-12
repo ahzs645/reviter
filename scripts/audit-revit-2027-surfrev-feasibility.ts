@@ -10,17 +10,16 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-surfrev-feasibility.ts model.rvt
  */
-import { readFileSync } from "node:fs";
+import {
+  PARTITION_STREAM_PATTERN,
+  openRvt,
+} from "./lib/rvt-harness.ts";
 
-import CFB from "cfb";
-
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import { readInstancePlacement } from "../lib/reviter/instanced-geometry.ts";
 import { tessellateRevit2027ArcSurfRev } from "../lib/reviter/revit-2027-arc-surfrev.ts";
 import {
-  asBytes,
   gzipOffsets,
   inflateRevitChunk,
   revitWindowTail,
@@ -28,58 +27,41 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
-  decodeRevit2027EdgeLoopStatic,
-  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
-  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
-  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
-  type Revit2027EdgeLoopStatic,
-} from "../lib/reviter/revit-2027-edge-loop-static.ts";
-import {
-  decodeRevit2027GEdgeStatic,
-  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
-  type Revit2027EdgePoint,
-  type Revit2027GEdgeStatic,
-} from "../lib/reviter/revit-2027-edge-1423.ts";
-import {
-  decodeRevit2027FaceStatic,
-  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
-  type Revit2027FaceStatic,
-} from "../lib/reviter/revit-2027-face-static.ts";
-import {
-  decodeRevit2027FillPatternData,
-  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-pattern-data.ts";
-import {
-  decodeRevit2027FillGrid,
-  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-fill-grid.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GFilling,
-  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-gfilling.ts";
-import {
-  decodeRevit2027GArc,
-  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
-  type Revit2027GArc,
-} from "../lib/reviter/revit-2027-garc.ts";
-import {
-  decodeRevit2027GeometryStatic,
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import {
-  decodeRevit2027AnalyticSurface,
   REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT,
+  REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_FACE_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT,
+  REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+  REVIT_2027_GEDGE_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GFILLING_SOURCE_CLASS_SLOT,
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
-  type Revit2027AnalyticSurface,
-  type Revit2027SurfaceOfRevolution,
-} from "../lib/reviter/revit-2027-surfaces.ts";
-
+  decodeRevit2027AnalyticSurface,
+  decodeRevit2027EdgeLoopStatic,
+  decodeRevit2027EdgeLoopWithChainEnvelopesStatic,
+  decodeRevit2027FaceStatic,
+  decodeRevit2027FillGrid,
+  decodeRevit2027FillPatternData,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArc,
+  decodeRevit2027GEdgeStatic,
+  decodeRevit2027GFilling,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027AnalyticSurface,
+  Revit2027EdgeLoopStatic,
+  Revit2027EdgePoint,
+  Revit2027FaceStatic,
+  Revit2027GArc,
+  Revit2027GEdgeStatic,
+  Revit2027SurfaceOfRevolution,
+} from "./lib/revit-2027-decoders.ts";
 const TARGET_ELEMENT_ID = 245109;
 const MAX_OWNER_QUEUE = 1_000_000;
 const SURFACE_SLOTS = new Set([
@@ -813,28 +795,14 @@ if (!modelPath) {
       "scripts/audit-revit-2027-surfrev-feasibility.ts model.rvt",
   );
 }
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
-);
-if (release !== 2027) {
-  throw new Error(`audit requires Revit 2027, received ${release ?? "unknown"}`);
-}
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
 
 let result: object | null = null;
 const targetPlacements = [];
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 for (const [partitionIndex, partition] of partitions.entries()) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
+  const stored = stripRevitPageChecksums(partition.bytes);
   const offsets = gzipOffsets(stored);
   let dictionary: Uint8Array | null = null;
   for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {

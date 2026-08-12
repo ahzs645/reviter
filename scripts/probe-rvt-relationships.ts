@@ -17,6 +17,11 @@ import { resolve } from "node:path";
 
 import CFB from "cfb";
 
+import {
+  splitStepArgs,
+  stepReferences,
+} from "./lib/rvt-harness.ts";
+
 import { scanMaterialElementRecords } from "../lib/reviter/material-records.ts";
 import {
   resolveFamilySymbolRelations,
@@ -80,33 +85,6 @@ function add<K>(map: Map<K, number>, key: K, count = 1): void {
   map.set(key, (map.get(key) ?? 0) + count);
 }
 
-function splitStepArgs(source: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quoted = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "'") {
-      if (quoted && source[index + 1] === "'") index += 1;
-      else quoted = !quoted;
-    } else if (!quoted) {
-      if (char === "(") depth += 1;
-      if (char === ")") depth -= 1;
-      if (char === "," && depth === 0) {
-        result.push(source.slice(start, index).trim());
-        start = index + 1;
-      }
-    }
-  }
-  result.push(source.slice(start).trim());
-  return result;
-}
-
-function references(source = ""): number[] {
-  return [...source.matchAll(/#(\d+)/g)].map((match) => Number(match[1]));
-}
-
 function quoted(source = ""): string | null {
   const match = /^'((?:''|[^'])*)'$/.exec(source.trim());
   if (!match) return null;
@@ -143,18 +121,18 @@ function readIfcReference(path: string | null): {
     entities.set(id, { type, fields });
     if (type === "IFCRELDEFINESBYTYPE") {
       relations.push({
-        related: references(fields[4]),
-        typeObject: references(fields[5])[0] ?? 0,
+        related: stepReferences(fields[4]),
+        typeObject: stepReferences(fields[5])[0] ?? 0,
       });
     } else if (type.startsWith("IFCMATERIAL")) {
       materialNodes.set(id, {
         name: type === "IFCMATERIAL" ? quoted(fields[0]) : null,
-        refs: references(match[3]),
+        refs: stepReferences(match[3]),
       });
     } else if (type === "IFCRELASSOCIATESMATERIAL") {
       materialRelations.push({
-        related: references(fields[4]),
-        material: references(fields[5])[0] ?? 0,
+        related: stepReferences(fields[4]),
+        material: stepReferences(fields[5])[0] ?? 0,
       });
     }
   }

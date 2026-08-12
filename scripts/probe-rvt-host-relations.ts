@@ -12,9 +12,14 @@
  *     --rvt model.rvt --ifc reference.ifc
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import CFB from "cfb";
+
+import {
+  declareUsage,
+  requirePath,
+  splitStepArgs,
+  stepReferences,
+} from "./lib/rvt-harness.ts";
 
 import {
   asBytes,
@@ -26,40 +31,11 @@ import {
 } from "../lib/reviter/revit-container.ts";
 import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 
-const argv = process.argv.slice(2);
-function option(name: string): string {
-  const index = argv.indexOf(name);
-  if (index >= 0 && argv[index + 1]) return resolve(argv[index + 1]!);
-  throw new Error(`Missing ${name}`);
-}
-const paths = { rvt: option("--rvt"), ifc: option("--ifc") };
+declareUsage(
+  "probe-rvt-host-relations.ts --rvt model.rvt --ifc model.ifc",
+);
 
-function splitStepArgs(source: string): string[] {
-  const result: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quoted = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "'") {
-      if (quoted && source[index + 1] === "'") index += 1;
-      else quoted = !quoted;
-    } else if (!quoted) {
-      if (char === "(") depth += 1;
-      if (char === ")") depth -= 1;
-      if (char === "," && depth === 0) {
-        result.push(source.slice(start, index).trim());
-        start = index + 1;
-      }
-    }
-  }
-  result.push(source.slice(start).trim());
-  return result;
-}
-
-function references(source = ""): number[] {
-  return [...source.matchAll(/#(\d+)/g)].map((match) => Number(match[1]));
-}
+const paths = { rvt: requirePath("--rvt"), ifc: requirePath("--ifc") };
 
 function numericTag(fields: readonly string[]): number | null {
   // IfcElement.Tag is the eighth inherited argument. Door/window subtypes add
@@ -89,17 +65,17 @@ function readIfcHostOracle(text: string): {
       classes.set(tag, type);
     }
     if (type === "IFCRELVOIDSELEMENT") {
-      const host = references(fields[4])[0];
-      const opening = references(fields[5])[0];
+      const host = stepReferences(fields[4])[0];
+      const opening = stepReferences(fields[5])[0];
       if (host && opening) voidHostByOpening.set(opening, host);
     } else if (type === "IFCRELFILLSELEMENT") {
-      const opening = references(fields[4])[0];
-      const element = references(fields[5])[0];
+      const opening = stepReferences(fields[4])[0];
+      const element = stepReferences(fields[5])[0];
       if (opening && element) fills.push({ opening, element });
     } else if (type === "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
-      treeMembers.push(...references(fields[4]));
+      treeMembers.push(...stepReferences(fields[4]));
     } else if (type === "IFCRELAGGREGATES") {
-      treeMembers.push(...references(fields[5]));
+      treeMembers.push(...stepReferences(fields[5]));
     }
   }
   const expectedHostByElement = new Map<number, number>();

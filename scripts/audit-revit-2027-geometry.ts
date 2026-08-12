@@ -5,43 +5,33 @@
  *   node --experimental-strip-types \
  *     scripts/audit-revit-2027-geometry.ts model.rvt
  */
-import { readFileSync } from "node:fs";
+import {
+  FORMATS_LATEST_PATTERN,
+  PARTITION_STREAM_PATTERN,
+  iterateInflatedChunks,
+  openRvt,
+  requireModelPath,
+} from "./lib/rvt-harness.ts";
 
-import CFB from "cfb";
-
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
 import type { CondInt16QueueEntry } from "../lib/reviter/dynamic-geometry-queue.ts";
 import { scanFramedElementObjects } from "../lib/reviter/element-objects.ts";
 import {
-  asBytes,
-  gzipOffsets,
-  inflateRevitChunk,
-  revitWindowTail,
-  salvageRevitChunk,
-  stripRevitPageChecksums,
-} from "../lib/reviter/revit-container.ts";
-import {
-  decodeRevit2027FramedGRepRoot,
-  REVIT_2027_GELEMENT_OBJECT_MARKER,
-} from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import {
-  decodeRevit2027GeometryStatic,
-  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-  type Revit2027GeometryStatic,
-} from "../lib/reviter/revit-2027-geometry.ts";
-import { decodeRevit2027GGroupStatic } from "../lib/reviter/revit-2027-ggroup-fifo.ts";
-import {
-  decodeRevit2027GLine,
-  REVIT_2027_GLINE_BODY_BYTES,
-  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-gline.ts";
-import {
-  decodeRevit2027GArray,
   REVIT_2027_GARRAY_BODY_BYTES,
   REVIT_2027_GARRAY_SOURCE_CLASS_SLOT,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
-} from "../lib/reviter/revit-2027-grep-prefixes.ts";
-
+  REVIT_2027_GLINE_BODY_BYTES,
+  REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+  decodeRevit2027FramedGRepRoot,
+  decodeRevit2027GArray,
+  decodeRevit2027GGroupStatic,
+  decodeRevit2027GLine,
+  decodeRevit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
+import type {
+  Revit2027GeometryStatic,
+} from "./lib/revit-2027-decoders.ts";
 const SOURCE_LADDER = [
   [2277, "GPolyMesh"],
   [2278, "GRenderSettings"],
@@ -117,19 +107,6 @@ function increment(
   key: string | number,
 ): void {
   map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function firstInflatedStream(
-  cfb: ReturnType<typeof CFB.read>,
-  pattern: RegExp,
-): Uint8Array | null {
-  const item = cfb.FileIndex
-    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-    .find(({ entry, path }) => entry.size > 0 && pattern.test(path));
-  if (!item) return null;
-  const stored = stripRevitPageChecksums(asBytes(item.entry.content));
-  const offset = gzipOffsets(stored, 1)[0];
-  return offset == null ? null : inflateRevitChunk(stored, offset);
 }
 
 function matchesAscii(
@@ -306,39 +283,20 @@ function recordGeometry(
   }
 }
 
-const modelPath = process.argv[2];
-if (!modelPath) {
-  throw new Error(
-    "usage: node --experimental-strip-types scripts/audit-revit-2027-geometry.ts model.rvt",
-  );
-}
-
-const cfb = CFB.read(readFileSync(modelPath), { type: "buffer" });
-const basicFileInfo = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-if (!basicFileInfo) throw new Error("RVT has no BasicFileInfo stream");
-const release = revitVersionFromBasicFileInfo(
-  asBytes(basicFileInfo.entry.content),
+const modelPath = requireModelPath(
+  "audit-revit-2027-geometry.ts model.rvt",
 );
-if (release !== 2027) {
-  throw new Error(
-    `audit requires a Revit 2027 file, received ${release ?? "unknown"}`,
-  );
-}
-const schema = firstInflatedStream(cfb, /\/Formats\/Latest$/i);
+
+const model = openRvt(modelPath);
+const release = model.requireRelease(2027);
+const schema = model.firstInflatedStream(FORMATS_LATEST_PATTERN);
 if (!schema) throw new Error("RVT has no readable Formats/Latest stream");
 const schemaEvidence = certifySchema(schema);
 if (!schemaEvidence.ok) {
   throw new Error("Formats/Latest does not certify source slot 2343 Geometry");
 }
 
-const partitions = cfb.FileIndex
-  .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-  .filter(
-    ({ entry, path }) =>
-      entry.size > 0 && /\/Partitions\/[^/]+$/i.test(path),
-  );
+const partitions = model.streamsMatching(PARTITION_STREAM_PATTERN);
 
 let chunks = 0;
 let failedChunks = 0;
@@ -356,292 +314,272 @@ const queuedSlots = new Map<number, number>();
 const geometryFlags = new Map<number, number>();
 const tessControllers = new Map<string, number>();
 
-for (const partition of partitions) {
-  const stored = stripRevitPageChecksums(asBytes(partition.entry.content));
-  const offsets = gzipOffsets(stored);
-  let dictionary: Uint8Array | null = null;
-  for (let chunkIndex = 0; chunkIndex < offsets.length; chunkIndex += 1) {
-    const read = inflateRevitChunk(
-      stored,
-      offsets[chunkIndex]!,
-      offsets[chunkIndex + 1],
-      dictionary,
+for (const { data: inflated } of iterateInflatedChunks(model, {
+  onFailure: () => {
+    failedChunks += 1;
+  },
+})) {
+  chunks += 1;
+
+  for (const frame of scanFramedElementObjects(inflated)) {
+    if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
+    const decodedRoot = decodeRevit2027FramedGRepRoot(
+      inflated,
+      frame,
+      release,
     );
-    const inflated =
-      read ??
-      salvageRevitChunk(
-        stored,
-        offsets[chunkIndex]!,
-        offsets[chunkIndex + 1],
-        dictionary,
-      );
-    if (!inflated) {
-      failedChunks += 1;
-      continue;
-    }
-    if (read) dictionary = revitWindowTail(read);
-    chunks += 1;
+    if (!decodedRoot.ok) continue;
+    const root = decodedRoot.value;
 
-    for (const frame of scanFramedElementObjects(inflated)) {
-      if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) continue;
-      const decodedRoot = decodeRevit2027FramedGRepRoot(
-        inflated,
-        frame,
-        release,
-      );
-      if (!decodedRoot.ok) continue;
-      const root = decodedRoot.value;
-
-      if (
-        root.children[0]?.sourceClassSlot ===
-        REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
-      ) {
-        const rootTokenError = requireTokens(root.children, 3);
-        if (rootTokenError) {
-          increment(nestedRouteFailures, rootTokenError);
-        } else {
-          let routeOffset = root.dynamicPayloadOffset;
-          let routeNextToken = 3 + root.children.length;
-          let routeFailure: string | null = null;
-          let isGeometryCandidate = false;
-
-          for (
-            let queueIndex = 0;
-            queueIndex < root.children.length;
-            queueIndex += 1
-          ) {
-            const entry = root.children[queueIndex]!;
-            if (
-              entry.sourceClassSlot ===
-              REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
-            ) {
-              const group = decodeRevit2027GGroupStatic(
-                inflated,
-                routeOffset,
-                root.dynamicPayloadEndOffset,
-                release,
-              );
-              if (!group.ok) {
-                routeFailure = group.error;
-                break;
-              }
-              if (queueIndex === 0) {
-                isGeometryCandidate =
-                  group.value.children[0]?.sourceClassSlot ===
-                  REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT;
-                if (isGeometryCandidate) {
-                  firstNestedGeometryCandidates += 1;
-                }
-              }
-              const tokenError = requireTokens(
-                group.value.children,
-                routeNextToken,
-              );
-              if (tokenError) {
-                routeFailure = tokenError;
-                break;
-              }
-              routeNextToken += group.value.children.length;
-              routeOffset = group.value.endOffset;
-            } else if (
-              entry.sourceClassSlot ===
-              REVIT_2027_GARRAY_SOURCE_CLASS_SLOT
-            ) {
-              const endOffset = routeOffset + REVIT_2027_GARRAY_BODY_BYTES;
-              const array = decodeRevit2027GArray(
-                inflated,
-                routeOffset,
-                endOffset,
-                release,
-              );
-              if (!array.ok || endOffset > root.dynamicPayloadEndOffset) {
-                routeFailure = array.ok
-                  ? "GArray exceeds the Geometry replay boundary"
-                  : array.error;
-                break;
-              }
-              routeOffset = array.value.endOffset;
-            } else if (
-              entry.sourceClassSlot ===
-              REVIT_2027_GLINE_SOURCE_CLASS_SLOT
-            ) {
-              const endOffset = routeOffset + REVIT_2027_GLINE_BODY_BYTES;
-              if (endOffset > root.dynamicPayloadEndOffset) {
-                routeFailure = "GLine exceeds the Geometry replay boundary";
-                break;
-              }
-              const line = decodeRevit2027GLine(
-                inflated,
-                routeOffset,
-                endOffset,
-                release,
-              );
-              if (!line.ok) {
-                routeFailure = line.error;
-                break;
-              }
-              routeOffset = line.value.endOffset;
-            } else if (
-              entry.sourceClassSlot ===
-              REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
-            ) {
-              const geometry = decodeRevit2027GeometryStatic(
-                inflated,
-                routeOffset,
-                root.dynamicPayloadEndOffset,
-                release,
-              );
-              if (!geometry.ok) {
-                routeFailure = geometry.error;
-                break;
-              }
-              const tokenError = requireTokens(
-                geometry.value.queuedProperties,
-                routeNextToken,
-              );
-              if (tokenError) {
-                routeFailure = tokenError;
-                break;
-              }
-              routeNextToken += geometry.value.queuedProperties.length;
-              routeOffset = geometry.value.endOffset;
-            } else {
-              routeFailure =
-                `no certified initial-sibling reader for source slot ` +
-                `${entry.sourceClassSlot}`;
-              break;
-            }
-          }
-
-          if (isGeometryCandidate) {
-            if (routeFailure) {
-              increment(nestedRouteFailures, routeFailure);
-            } else {
-              positionedFirstNestedGeometry += 1;
-              const nested = decodeRevit2027GeometryStatic(
-                inflated,
-                routeOffset,
-                root.dynamicPayloadEndOffset,
-                release,
-              );
-              if (!nested.ok) {
-                increment(nestedRouteFailures, nested.error);
-              } else {
-                const tokenError = requireTokens(
-                  nested.value.queuedProperties,
-                  routeNextToken,
-                );
-                if (tokenError) {
-                  increment(nestedRouteFailures, tokenError);
-                } else {
-                  decodedFirstNestedGeometry += 1;
-                  recordGeometry(
-                    nested.value,
-                    "nested",
-                    collectionCounts,
-                    bodyBytes,
-                    queuedSlots,
-                    geometryFlags,
-                    tessControllers,
-                  );
-                }
-              }
-            }
-          }
-        }
-      }
-
-      const geometryIndex = root.children.findIndex(
-        (entry) =>
-          entry.sourceClassSlot === REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
-      );
-      if (geometryIndex < 0) continue;
-      rootsWithInitialGeometry += 1;
-      increment(
-        rootShapes,
-        root.children.map((entry) => entry.sourceClassSlot ?? 0).join(","),
-      );
-
-      if (
-        geometryIndex !== root.children.length - 1 ||
-        root.children
-          .slice(0, geometryIndex)
-          .some(
-            (entry) =>
-              entry.sourceClassSlot !== REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
-          )
-      ) {
-        increment(failures, "unsupported entries before/after initial Geometry");
-        continue;
-      }
+    if (
+      root.children[0]?.sourceClassSlot ===
+      REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
+    ) {
       const rootTokenError = requireTokens(root.children, 3);
       if (rootTokenError) {
-        increment(failures, rootTokenError);
-        continue;
-      }
+        increment(nestedRouteFailures, rootTokenError);
+      } else {
+        let routeOffset = root.dynamicPayloadOffset;
+        let routeNextToken = 3 + root.children.length;
+        let routeFailure: string | null = null;
+        let isGeometryCandidate = false;
 
-      let offset = root.dynamicPayloadOffset;
-      let nextAppendToken = 3 + root.children.length;
-      let groupFailure: string | null = null;
-      for (let index = 0; index < geometryIndex; index += 1) {
-        const group = decodeRevit2027GGroupStatic(
-          inflated,
-          offset,
-          root.dynamicPayloadEndOffset,
-          release,
-        );
-        if (!group.ok) {
-          groupFailure = group.error;
-          break;
+        for (
+          let queueIndex = 0;
+          queueIndex < root.children.length;
+          queueIndex += 1
+        ) {
+          const entry = root.children[queueIndex]!;
+          if (
+            entry.sourceClassSlot ===
+            REVIT_2027_GGROUP_SOURCE_CLASS_SLOT
+          ) {
+            const group = decodeRevit2027GGroupStatic(
+              inflated,
+              routeOffset,
+              root.dynamicPayloadEndOffset,
+              release,
+            );
+            if (!group.ok) {
+              routeFailure = group.error;
+              break;
+            }
+            if (queueIndex === 0) {
+              isGeometryCandidate =
+                group.value.children[0]?.sourceClassSlot ===
+                REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT;
+              if (isGeometryCandidate) {
+                firstNestedGeometryCandidates += 1;
+              }
+            }
+            const tokenError = requireTokens(
+              group.value.children,
+              routeNextToken,
+            );
+            if (tokenError) {
+              routeFailure = tokenError;
+              break;
+            }
+            routeNextToken += group.value.children.length;
+            routeOffset = group.value.endOffset;
+          } else if (
+            entry.sourceClassSlot ===
+            REVIT_2027_GARRAY_SOURCE_CLASS_SLOT
+          ) {
+            const endOffset = routeOffset + REVIT_2027_GARRAY_BODY_BYTES;
+            const array = decodeRevit2027GArray(
+              inflated,
+              routeOffset,
+              endOffset,
+              release,
+            );
+            if (!array.ok || endOffset > root.dynamicPayloadEndOffset) {
+              routeFailure = array.ok
+                ? "GArray exceeds the Geometry replay boundary"
+                : array.error;
+              break;
+            }
+            routeOffset = array.value.endOffset;
+          } else if (
+            entry.sourceClassSlot ===
+            REVIT_2027_GLINE_SOURCE_CLASS_SLOT
+          ) {
+            const endOffset = routeOffset + REVIT_2027_GLINE_BODY_BYTES;
+            if (endOffset > root.dynamicPayloadEndOffset) {
+              routeFailure = "GLine exceeds the Geometry replay boundary";
+              break;
+            }
+            const line = decodeRevit2027GLine(
+              inflated,
+              routeOffset,
+              endOffset,
+              release,
+            );
+            if (!line.ok) {
+              routeFailure = line.error;
+              break;
+            }
+            routeOffset = line.value.endOffset;
+          } else if (
+            entry.sourceClassSlot ===
+            REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT
+          ) {
+            const geometry = decodeRevit2027GeometryStatic(
+              inflated,
+              routeOffset,
+              root.dynamicPayloadEndOffset,
+              release,
+            );
+            if (!geometry.ok) {
+              routeFailure = geometry.error;
+              break;
+            }
+            const tokenError = requireTokens(
+              geometry.value.queuedProperties,
+              routeNextToken,
+            );
+            if (tokenError) {
+              routeFailure = tokenError;
+              break;
+            }
+            routeNextToken += geometry.value.queuedProperties.length;
+            routeOffset = geometry.value.endOffset;
+          } else {
+            routeFailure =
+              `no certified initial-sibling reader for source slot ` +
+              `${entry.sourceClassSlot}`;
+            break;
+          }
         }
-        const tokenError = requireTokens(
-          group.value.children,
-          nextAppendToken,
-        );
-        if (tokenError) {
-          groupFailure = tokenError;
-          break;
-        }
-        nextAppendToken += group.value.children.length;
-        offset = group.value.endOffset;
-      }
-      if (groupFailure) {
-        increment(failures, groupFailure);
-        continue;
-      }
 
-      const geometry = decodeRevit2027GeometryStatic(
+        if (isGeometryCandidate) {
+          if (routeFailure) {
+            increment(nestedRouteFailures, routeFailure);
+          } else {
+            positionedFirstNestedGeometry += 1;
+            const nested = decodeRevit2027GeometryStatic(
+              inflated,
+              routeOffset,
+              root.dynamicPayloadEndOffset,
+              release,
+            );
+            if (!nested.ok) {
+              increment(nestedRouteFailures, nested.error);
+            } else {
+              const tokenError = requireTokens(
+                nested.value.queuedProperties,
+                routeNextToken,
+              );
+              if (tokenError) {
+                increment(nestedRouteFailures, tokenError);
+              } else {
+                decodedFirstNestedGeometry += 1;
+                recordGeometry(
+                  nested.value,
+                  "nested",
+                  collectionCounts,
+                  bodyBytes,
+                  queuedSlots,
+                  geometryFlags,
+                  tessControllers,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const geometryIndex = root.children.findIndex(
+      (entry) =>
+        entry.sourceClassSlot === REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+    );
+    if (geometryIndex < 0) continue;
+    rootsWithInitialGeometry += 1;
+    increment(
+      rootShapes,
+      root.children.map((entry) => entry.sourceClassSlot ?? 0).join(","),
+    );
+
+    if (
+      geometryIndex !== root.children.length - 1 ||
+      root.children
+        .slice(0, geometryIndex)
+        .some(
+          (entry) =>
+            entry.sourceClassSlot !== REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
+        )
+    ) {
+      increment(failures, "unsupported entries before/after initial Geometry");
+      continue;
+    }
+    const rootTokenError = requireTokens(root.children, 3);
+    if (rootTokenError) {
+      increment(failures, rootTokenError);
+      continue;
+    }
+
+    let offset = root.dynamicPayloadOffset;
+    let nextAppendToken = 3 + root.children.length;
+    let groupFailure: string | null = null;
+    for (let index = 0; index < geometryIndex; index += 1) {
+      const group = decodeRevit2027GGroupStatic(
         inflated,
         offset,
         root.dynamicPayloadEndOffset,
         release,
       );
-      if (!geometry.ok) {
-        increment(failures, geometry.error);
-        continue;
+      if (!group.ok) {
+        groupFailure = group.error;
+        break;
       }
-      const geometryTokenError = requireTokens(
-        geometry.value.queuedProperties,
+      const tokenError = requireTokens(
+        group.value.children,
         nextAppendToken,
       );
-      if (geometryTokenError) {
-        increment(failures, geometryTokenError);
-        continue;
+      if (tokenError) {
+        groupFailure = tokenError;
+        break;
       }
-      decodedInitialGeometry += 1;
-      recordGeometry(
-        geometry.value,
-        "initial",
-        collectionCounts,
-        bodyBytes,
-        queuedSlots,
-        geometryFlags,
-        tessControllers,
-      );
+      nextAppendToken += group.value.children.length;
+      offset = group.value.endOffset;
     }
-  }
-}
+    if (groupFailure) {
+      increment(failures, groupFailure);
+      continue;
+    }
 
+    const geometry = decodeRevit2027GeometryStatic(
+      inflated,
+      offset,
+      root.dynamicPayloadEndOffset,
+      release,
+    );
+    if (!geometry.ok) {
+      increment(failures, geometry.error);
+      continue;
+    }
+    const geometryTokenError = requireTokens(
+      geometry.value.queuedProperties,
+      nextAppendToken,
+    );
+    if (geometryTokenError) {
+      increment(failures, geometryTokenError);
+      continue;
+    }
+    decodedInitialGeometry += 1;
+    recordGeometry(
+      geometry.value,
+      "initial",
+      collectionCounts,
+      bodyBytes,
+      queuedSlots,
+      geometryFlags,
+      tessControllers,
+    );
+  }
+
+}
 function entries<K extends string | number>(
   map: Map<K, number>,
 ): Record<string, number> {
