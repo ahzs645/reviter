@@ -9,7 +9,13 @@
  * fetched once somebody actually opens a DWG — most sessions never do.
  */
 import { convertDwgEntities, dwgBlockDefinitions, modelSpaceHandle } from "./dwg-entities.ts";
-import { dwgFeetPerUnit, dwgSectionSvg, dwgSections, entitiesWithin } from "./dwg-plan.ts";
+import {
+  dwgDrawingBounds,
+  dwgFeetPerUnit,
+  dwgSectionSvg,
+  dwgSections,
+  entitiesWithin,
+} from "./dwg-plan.ts";
 import type { DwgBounds, DwgEntity } from "./dwg-plan.ts";
 import { dwgLayoutSheets } from "./dwg-layouts.ts";
 import type { DwgLayoutRecord, DwgViewportRecord } from "./dwg-layouts.ts";
@@ -153,23 +159,16 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
 
     progress("Drawing the plan");
     const sections = dwgSections(entities);
-    // One drawing per sheet is the common case; a sheet of many plans keeps its
-    // whole extent so nothing is silently cropped away from the reference.
-    const bounds = sections.length === 1
-      ? sections[0]!.bounds
-      : { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-    if (sections.length !== 1) {
-      for (const section of sections) {
-        bounds.minX = Math.min(bounds.minX, section.bounds.minX);
-        bounds.minY = Math.min(bounds.minY, section.bounds.minY);
-        bounds.maxX = Math.max(bounds.maxX, section.bounds.maxX);
-        bounds.maxY = Math.max(bounds.maxY, section.bounds.maxY);
-      }
+    // A drawing too small or too scattered to yield sections still has an
+    // extent, and it is the entities' own. Falling back to a unit square while
+    // emitting real coordinates drew every line outside the viewBox and
+    // returned a blank image reported as a successful decode.
+    const bounds = dwgDrawingBounds(entities, sections);
+    if (!bounds) {
+      throw new Error("No drawable linework was found in this drawing.");
     }
-    const drawn = Number.isFinite(bounds.minX) ? entitiesWithin(entities, bounds) : entities;
-    const svg = dwgSectionSvg(drawn, Number.isFinite(bounds.minX) ? bounds : {
-      minX: 0, minY: 0, maxX: 1, maxY: 1,
-    });
+    const drawn = entitiesWithin(entities, bounds);
+    const svg = dwgSectionSvg(drawn, bounds);
 
     const insunits = typeof database.header?.INSUNITS === "number"
       ? database.header.INSUNITS as number

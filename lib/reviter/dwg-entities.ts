@@ -7,7 +7,9 @@
  * drawing. Field names are read defensively because LibreDWG's naming varies by
  * entity and by file.
  */
+import { dwgEntityIsFinite } from "./dwg-plan.ts";
 import type { DwgEntity } from "./dwg-plan.ts";
+import { noteLimit } from "./limit-census.ts";
 
 /** LibreDWG hands back plain objects whose fields differ per entity type. */
 type RawEntity = Record<string, unknown> & { type?: string; layer?: string };
@@ -83,10 +85,30 @@ function expandBulges(
     const normalY = (to[0] - from[0]) / chord;
     const centreX = midX + normalX * height;
     const centreY = midY + normalY * height;
+    /*
+     * A bulge near a full turn takes `sin(|included| / 2)` to zero, and the
+     * radius — and with it the centre this places — runs off to infinity. The
+     * bulge is read straight from the file, so that is a two-byte edit away in
+     * any drawing. The chord is real linework whatever the bulge says, so the
+     * segment stays straight rather than the polyline being dropped: what is
+     * lost is the curvature, which was never recoverable from these numbers.
+     */
+    if (!(Number.isFinite(radius) && Number.isFinite(centreX) && Number.isFinite(centreY))) {
+      noteLimit("non-finite-drawing-geometry");
+      continue;
+    }
     const startAngle = Math.atan2(from[1] - centreY, from[0] - centreX);
     for (let step = 1; step < steps; step += 1) {
       const angle = startAngle + (included * step) / steps;
-      out.push([centreX + radius * Math.cos(angle), centreY + radius * Math.sin(angle)]);
+      const x = centreX + radius * Math.cos(angle);
+      const y = centreY + radius * Math.sin(angle);
+      // A finite radius on a finite centre can still overflow when both are
+      // near the top of the double range; one note per arc, not per sample.
+      if (!(Number.isFinite(x) && Number.isFinite(y))) {
+        noteLimit("non-finite-drawing-geometry");
+        break;
+      }
+      out.push([x, y]);
     }
   }
   if (!closed) out.push(vertices.at(-1)!);
@@ -154,7 +176,55 @@ export function modelSpaceHandle(database: unknown): string | null {
   return null;
 }
 
+/**
+ * One entity, or null when the file's fields do not describe a drawable one.
+ *
+ * Non-finite geometry is refused here, where it is produced, rather than where
+ * it is drawn. `entityBounds` filters non-finite coordinates as it grows a box,
+ * so an infinite radius still yields a plausible-looking extent and the only
+ * symptom downstream is an SVG the browser will not parse — a blank reference
+ * with nothing to say why. Refusing at the source makes the loss countable.
+ */
 export function convertDwgEntity(raw: RawEntity): DwgEntity | null {
+  const entity = readDwgEntity(raw);
+  if (!entity) return null;
+  if (!dwgEntityIsFinite(entity)) {
+    noteLimit("non-finite-drawing-geometry");
+    return null;
+  }
+  return entity;
+}
+
+/**
+ * Whether a polyline closes back on its first vertex.
+ *
+ * LibreDWG emits neither `closed` nor `isClosed` for any polyline — the bit is
+ * in `flag`, and it is not the same bit on both shapes. The package's own SVG
+ * converter is the authority for what it hands back: `svgConverter.js` reads
+ * `lwpolyline.flag & 0x200` for LWPOLYLINE, which is the DWG-native bitfield
+ * and not DXF group code 70, while the POLYLINE family keeps the DXF meaning of
+ * bit 1 — `polyline.d.ts` documents it as "1: This is a closed polyline", and
+ * `svgConverter.js` reads `polyline.flag & 0x1`. Reading 1 on an LWPOLYLINE
+ * would pick up `plinegen` instead, which has nothing to do with closure.
+ *
+ * Getting this wrong is not subtle in the drawing: every closed room, wall
+ * outline and column loses the segment back to its first vertex, and a closed
+ * bulge polyline loses the arc that wraps.
+ *
+ * The explicit booleans are kept ahead of the flag as a fallback, in case a
+ * producer other than LibreDWG sets them.
+ */
+const LWPOLYLINE_CLOSED_BIT = 0x200;
+const POLYLINE_CLOSED_BIT = 0x1;
+
+function polylineIsClosed(raw: RawEntity, type: string): boolean {
+  if (raw.closed === true || raw.isClosed === true) return true;
+  const flag = number(raw.flag);
+  if (flag == null) return false;
+  return (flag & (type === "LWPOLYLINE" ? LWPOLYLINE_CLOSED_BIT : POLYLINE_CLOSED_BIT)) !== 0;
+}
+
+function readDwgEntity(raw: RawEntity): DwgEntity | null {
   const layer = typeof raw.layer === "string" ? raw.layer : "0";
   const type = typeof raw.type === "string" ? raw.type : "";
   const base: Pick<DwgEntity, "type" | "layer"> = { type, layer };
@@ -174,7 +244,7 @@ export function convertDwgEntity(raw: RawEntity): DwgEntity | null {
       const bulges = Array.isArray(raw.bulges)
         ? (raw.bulges as unknown[]).map((bulge) => number(bulge) ?? 0)
         : (raw.vertices as { bulge?: unknown }[] | undefined)?.map((vertex) => number(vertex?.bulge) ?? 0) ?? [];
-      const closed = raw.closed === true || raw.isClosed === true;
+      const closed = polylineIsClosed(raw, type);
       return { ...base, points: expandBulges(vertices, bulges, closed), closed };
     }
     case "CIRCLE": {
@@ -304,6 +374,12 @@ function placeEntity(entity: DwgEntity, placement: Placement): DwgEntity | null 
     moved.startAngle = start + turn;
     moved.endAngle = end + turn;
   }
+  // The scales and the insertion point come from the file too, so a finite
+  // entity under a validly-shaped transform can still land on infinity.
+  if (!dwgEntityIsFinite(moved)) {
+    noteLimit("non-finite-drawing-geometry");
+    return null;
+  }
   return moved;
 }
 
@@ -321,12 +397,72 @@ function placementOf(raw: RawEntity): Placement {
 /** Blocks may reference blocks; this bounds a cycle rather than trusting files. */
 const MAX_BLOCK_DEPTH = 8;
 
+/**
+ * How wide a single block reference may stamp its array.
+ *
+ * `MAX_BLOCK_DEPTH` bounds how deep references nest but says nothing about how
+ * wide one of them spreads: `columnCount` and `rowCount` are read straight out
+ * of the file and multiplied, so a reference hand-edited to 3,000 x 3,000 asks
+ * for nine million copies of a block. Measured, that is 9,000,000 entities in
+ * 21 seconds — long past the point the tab stops answering, and the drawing has
+ * not been rendered yet.
+ *
+ * Both a per-axis span and a total are needed, because 1 x 9,000,000 costs
+ * exactly what 3,000 x 3,000 costs. A MINSERT grid in real drafting is a
+ * paving, ceiling-tile or parking-bay pattern — tens to low hundreds of copies;
+ * every reference in the 2,330-reference survey drawing carries the default
+ * 1 x 1. 512 per axis and 4,096 in total leave one to two orders of magnitude
+ * of headroom over anything a drafter stamps, and still bound the worst case to
+ * a few thousand copies of one block rather than nine million.
+ */
+const MAX_BLOCK_ARRAY_SPAN = 512;
+const MAX_BLOCK_ARRAY_COPIES = 4_096;
+
+/**
+ * How many entities one drawing may expand to in total.
+ *
+ * The array caps bound one reference and `MAX_BLOCK_DEPTH` bounds nesting, but
+ * eight levels of 4,096 still multiplies, and a file can simply declare a very
+ * long entity list. This is the budget that does not depend on guessing which
+ * of those a hostile file will use.
+ *
+ * The largest drawing in the corpus holds 202,501 model-space entities, laid
+ * out as 54 plans on one sheet, before its 2,330 block references expand. A
+ * million is roughly five times that, still renders, and is reached in about
+ * two seconds — so a file that means it gets a truncated drawing and a warning,
+ * where before it got a dead tab.
+ */
+export const MAX_DRAWING_ENTITIES = 1_000_000;
+
+/**
+ * The remaining entity allowance for one `convertDwgEntities` call.
+ *
+ * `noted` keeps the census honest: the budget is reached once per drawing, and
+ * counting every entity it then refuses would report millions of rejections for
+ * a single truncation.
+ */
+type EntityBudget = { remaining: number; noted: boolean };
+
+/** Claim one entity's place in the budget, reporting the first refusal. */
+function takeEntitySlot(budget: EntityBudget): boolean {
+  if (budget.remaining > 0) {
+    budget.remaining -= 1;
+    return true;
+  }
+  if (!budget.noted) {
+    budget.noted = true;
+    noteLimit("max-drawing-entities");
+  }
+  return false;
+}
+
 function expandInsert(
   raw: RawEntity,
   blocks: ReadonlyMap<string, readonly RawEntity[]>,
   outer: Placement,
   depth: number,
   out: DwgEntity[],
+  budget: EntityBudget,
 ) {
   if (depth >= MAX_BLOCK_DEPTH) return;
   const name = typeof raw.name === "string" ? raw.name : null;
@@ -335,8 +471,18 @@ function expandInsert(
 
   const own = placementOf(raw);
   // A single INSERT can stamp a grid of copies; the counts default to one.
-  const columns = Math.max(1, Math.round(number(raw.columnCount) ?? 1));
-  const rows = Math.max(1, Math.round(number(raw.rowCount) ?? 1));
+  const declaredColumns = Math.max(1, Math.round(number(raw.columnCount) ?? 1));
+  const declaredRows = Math.max(1, Math.round(number(raw.rowCount) ?? 1));
+  let columns = Math.min(declaredColumns, MAX_BLOCK_ARRAY_SPAN);
+  let rows = Math.min(declaredRows, MAX_BLOCK_ARRAY_SPAN);
+  if (columns * rows > MAX_BLOCK_ARRAY_COPIES) {
+    // Keep the grid's leading direction rather than truncating both axes to a
+    // square: a clipped run of the pattern reads as a pattern, a square does not.
+    rows = Math.max(1, Math.floor(MAX_BLOCK_ARRAY_COPIES / columns));
+  }
+  if (columns !== declaredColumns || rows !== declaredRows) {
+    noteLimit("max-block-array-copies");
+  }
   const columnSpacing = number(raw.columnSpacing) ?? 0;
   const rowSpacing = number(raw.rowSpacing) ?? 0;
 
@@ -352,7 +498,14 @@ function expandInsert(
       for (const inner of contents) {
         if (inner.isVisible === false) continue;
         if (inner.type === "INSERT") {
-          expandInsert(inner, blocks, placement, depth + 1, out);
+          expandInsert(inner, blocks, placement, depth + 1, out, budget);
+          // A nested reference that used the budget up leaves nothing for the
+          // copies still queued here. Reporting through the same claim keeps a
+          // drawing that stops exactly on the budget from stopping silently.
+          if (budget.remaining <= 0) {
+            takeEntitySlot(budget);
+            return;
+          }
           continue;
         }
         // ATTDEF is the blank the block leaves for a value; the filled-in ATTRIB
@@ -361,7 +514,9 @@ function expandInsert(
         const converted = convertDwgEntity(inner);
         if (!converted) continue;
         const moved = placeEntity(converted, placement);
-        if (moved) out.push(moved);
+        if (!moved) continue;
+        if (!takeEntitySlot(budget)) return;
+        out.push(moved);
       }
     }
   }
@@ -398,11 +553,21 @@ export function convertDwgEntities(
     ownerHandle?: string | null;
     /** Block contents by name; without them, block references draw nothing. */
     blocks?: ReadonlyMap<string, readonly RawEntity[]>;
+    /**
+     * How many entities this drawing may expand to, defaulting to
+     * `MAX_DRAWING_ENTITIES`. A caller that knows it is working on something
+     * smaller than a campus survey can say so.
+     */
+    maxEntities?: number;
   } = {},
 ): DwgEntity[] {
   const owner = options.ownerHandle;
   const blocks = options.blocks;
   const out: DwgEntity[] = [];
+  const budget: EntityBudget = {
+    remaining: options.maxEntities ?? MAX_DRAWING_ENTITIES,
+    noted: false,
+  };
   for (const entry of raw) {
     const entity = entry as RawEntity;
     if (owner != null) {
@@ -411,11 +576,17 @@ export function convertDwgEntities(
     }
     if (entity.isVisible === false) continue;
     if (entity.type === "INSERT") {
-      if (blocks) expandInsert(entity, blocks, IDENTITY, 0, out);
+      if (blocks) expandInsert(entity, blocks, IDENTITY, 0, out, budget);
+      if (budget.remaining <= 0) {
+        takeEntitySlot(budget);
+        break;
+      }
       continue;
     }
     const converted = convertDwgEntity(entity);
-    if (converted) out.push(converted);
+    if (!converted) continue;
+    if (!takeEntitySlot(budget)) break;
+    out.push(converted);
   }
   return out;
 }
