@@ -31,19 +31,27 @@ shared-parameter files, four type catalogs, the Revit 2014 family, and three
 DWGs exercising both preview encodings. These fixtures verify multilingual and
 large-file behavior rather than only synthetic happy paths.
 
-## Regenerating the personal Revit 2021 compatibility data
+## The personal Revit 2021 compatibility data, and why it cannot be regenerated
 
-The optional legacy API chunk is mechanically generated from the Revitless
-toolkit's `src/Decompiled` folder:
+`lib/reviter/legacy-revit-2021.data.ts` is the artifact of record for the
+optional legacy API vocabulary — 8,075 rows across 11 enums and 12 maps. It was
+written once by `generate-legacy-revit-api.ts` from a Revitless toolkit
+checkout's `src/Decompiled` C#.
 
-```sh
-npm run generate:legacy-revit-api -- /path/to/revitless-toolkit-master
-```
+**That checkout is not in this repository, so the generator cannot be run
+here.** There are no `.cs` files and no `Decompiled` directory; the script
+throws on the missing argument, or on the missing directory if given a path
+that does exist. Its `npm run generate:legacy-revit-api` alias was removed on
+2026-08-12 for that reason — an npm script is a list of things a reader can
+run. The script itself is kept, unrun, because it is the precise record of
+which declarations were extracted and how, and its header states what input
+would be needed.
 
-This produces `lib/reviter/legacy-revit-2021.generated.ts`. Browser code loads
-it only through `loadLegacyRevit2021Api()`, keeping it out of the initial
-viewer chunk. The generated tables are compatibility vocabulary and are not
-used as evidence for native RVT geometry.
+Browser code loads the data only through `loadLegacyRevit2021Api()`, which
+imports it dynamically and keeps it out of the initial viewer chunk;
+`tests/pages-build.test.mjs` asserts that split survives a real build. The
+tables are compatibility vocabulary and are not used as evidence for native RVT
+geometry.
 
 ## Checking a model against its own IFC export
 
