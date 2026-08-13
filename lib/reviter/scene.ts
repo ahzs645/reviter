@@ -1525,6 +1525,24 @@ function stairTreadGeometry(
       : null;
   const renderedTreads = treads.map((tread) =>
     tread.map((point) => [...point] as Point3) as [Point3, Point3, Point3, Point3]);
+  // Every winding below — the two caps, the side walls, the risers between two
+  // cells — is read off each cell's own corner order, so the cells have to
+  // agree on one. They do not. The readers that recover a curved run emit
+  // clockwise quads and counter-clockwise triangles, 521 and 36 of them on run
+  // 1460781, and a clockwise cell's cap and walls all come out facing into the
+  // stair. Reversing to 3-2-1-0 flips only the orientation: it leaves the 3→0
+  // and 1→2 corner pairs on the same physical profile edges that the riser and
+  // cap rules below identify them by, and a triangle cell's repeated corner
+  // stays repeated.
+  for (const tread of renderedTreads) {
+    let doubleArea = 0;
+    for (let corner = 0; corner < 4; corner += 1) {
+      const start = tread[corner]!;
+      const end = tread[(corner + 1) % 4]!;
+      doubleArea += start[0] * end[1] - end[0] * start[1];
+    }
+    if (doubleArea < 0) tread.reverse();
+  }
   if (treadThickness != null) {
     const elevationKeys = [...new Set(renderedTreads.map((tread) =>
       tread[0][2].toFixed(6)))].sort((left, right) => Number(left) - Number(right));
@@ -1885,13 +1903,35 @@ function stairTreadGeometry(
       .filter((stop, index, orderedStops) =>
         index === 0 ||
         stop.z - orderedStops[index - 1]!.z >= MIN_PRISM_THICKNESS_FEET);
+    // Which way a riser slice looks changes along its own height, so one
+    // winding for the whole riser cannot be right. Both cells order their plan
+    // corners counter-clockwise, so this quad's two windings face out of the
+    // lower cell and out of the upper one. Below the shared elevation the
+    // lower body is the material behind the wall; above it the upper body is,
+    // and an open riser's air gap is seen from the front like the upper body's.
+    // Emitting the lower orientation throughout turned every exposed riser
+    // inside out. A reconstructed stair is the one thing drawn front-face only
+    // (see `three-scene.ts`), so those faces did not read as a wrong-facing
+    // surface — they vanished, and object 1821222's 32 risers left a 55.81 ft
+    // run of floating treads with the building visible through every step.
+    const lowerBottomZ = lowerCell.points[lowerStartCorner]![2]!;
     for (let index = 0; index + 1 < riserStops.length; index += 1) {
       const bottom = riserStops[index]!;
       const top = riserStops[index + 1]!;
-      indices.push(
-        bottom.start, top.start, top.end,
-        bottom.start, top.end, bottom.end,
-      );
+      const middleZ = (bottom.z + top.z) / 2;
+      const backedByLowerCell =
+        middleZ > lowerBottomZ && middleZ < lower.topZ;
+      if (backedByLowerCell) {
+        indices.push(
+          bottom.start, top.start, top.end,
+          bottom.start, top.end, bottom.end,
+        );
+      } else {
+        indices.push(
+          bottom.start, top.end, top.start,
+          bottom.start, bottom.end, top.end,
+        );
+      }
     }
   };
 
