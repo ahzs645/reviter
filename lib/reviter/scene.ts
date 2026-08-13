@@ -1848,6 +1848,34 @@ function stairTreadGeometry(
           // it for an open or evidence-poor stair.
           emitExtendedSide(side, side.topZ, successorBottomZ);
         }
+        // The mirror case, and the more common one. Independently sampled
+        // profiles leave the tread above's rear edge unmatched as readily as
+        // the tread below's forward edge — 201.7 ft of it against 234.1 ft on
+        // run 1460781 — and the rule above can only close upward from an edge
+        // that exists. Under an unmatched rear edge nothing does: the slab's
+        // own side stops at the slab, so the run keeps an open slot at every
+        // step whose two profiles were not sampled onto the same line. Closing
+        // downward to the tread below rests on the same persisted closed-riser
+        // evidence, and is inert on a terraced run, where the slab already
+        // reaches that tread.
+        if (
+          beginWithRiser &&
+          endWithRiser &&
+          side.startCorner === 3 &&
+          side.endCorner === 0
+        ) {
+          const cell = cells[side.cellIndex]!;
+          const precedingTopZ = Math.max(
+            baseZ,
+            ...(sidesByElevationGroup.get(side.elevationGroup - 1) ?? [])
+              .map((precedingSide) => precedingSide.topZ),
+          );
+          emitExtendedSide(
+            side,
+            precedingTopZ,
+            cell.points[side.startCorner]![2]!,
+          );
+        }
       }
       return;
     }
@@ -1904,32 +1932,44 @@ function stairTreadGeometry(
         index === 0 ||
         stop.z - orderedStops[index - 1]!.z >= MIN_PRISM_THICKNESS_FEET);
     // Which way a riser slice looks changes along its own height, so one
-    // winding for the whole riser cannot be right. Both cells order their plan
-    // corners counter-clockwise, so this quad's two windings face out of the
-    // lower cell and out of the upper one. Below the shared elevation the
-    // lower body is the material behind the wall; above it the upper body is,
-    // and an open riser's air gap is seen from the front like the upper body's.
-    // Emitting the lower orientation throughout turned every exposed riser
+    // winding for the whole riser cannot be right: below the shared elevation
+    // the lower body is the material behind the wall, above it the upper body
+    // is, and an open riser's air gap is seen from the same side as the tread
+    // above it. Emitting one orientation throughout turned every exposed riser
     // inside out. A reconstructed stair is the one thing drawn front-face only
     // (see `three-scene.ts`), so those faces did not read as a wrong-facing
     // surface — they vanished, and object 1821222's 32 risers left a 55.81 ft
     // run of floating treads with the building visible through every step.
+    //
+    // Knowing the body is not yet knowing the side. Cells wind anticlockwise,
+    // so a cell's material lies left of the direction it traverses this edge
+    // in — and that is the whole answer, without assuming the two cells face
+    // each other across the edge. They usually do; at a switchback's turn they
+    // do not, because the tread above folds back over the ground the turn
+    // covers and both bodies end up on the same side of one shared edge.
+    // Reading the side rather than the role is what keeps that turn's riser
+    // out of the 14 runs it used to leave a hole in.
     const lowerBottomZ = lowerCell.points[lowerStartCorner]![2]!;
+    // Every stop runs start → end along the upper cell's own traversal, so the
+    // upper body is always on the left; the lower body is only when its own
+    // corner order happens to agree.
+    const lowerFollowsEdge = lowerStartCorner === lower.startCorner;
     for (let index = 0; index + 1 < riserStops.length; index += 1) {
       const bottom = riserStops[index]!;
       const top = riserStops[index + 1]!;
       const middleZ = (bottom.z + top.z) / 2;
       const backedByLowerCell =
         middleZ > lowerBottomZ && middleZ < lower.topZ;
-      if (backedByLowerCell) {
-        indices.push(
-          bottom.start, top.start, top.end,
-          bottom.start, top.end, bottom.end,
-        );
-      } else {
+      const materialOnLeft = backedByLowerCell ? lowerFollowsEdge : true;
+      if (materialOnLeft) {
         indices.push(
           bottom.start, top.end, top.start,
           bottom.start, bottom.end, top.end,
+        );
+      } else {
+        indices.push(
+          bottom.start, top.start, top.end,
+          bottom.start, top.end, bottom.end,
         );
       }
     }

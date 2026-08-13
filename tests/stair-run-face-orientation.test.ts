@@ -138,6 +138,51 @@ function straightRun(
   });
 }
 
+/**
+ * A tread whose 3→0 edge is its rear profile and 1→2 its forward one, which is
+ * the ordering the riser and cap rules read corner roles from.
+ */
+function profiledTread(
+  y0: number, y1: number, z: number, { x0 = 0, x1 = 6 } = {},
+): [Point3, Point3, Point3, Point3] {
+  return [[x0, y0, z], [x0, y1, z], [x1, y1, z], [x1, y0, z]];
+}
+
+/** Vertical surface the mesh draws on one plan line, within a height band. */
+function verticalSurfaceAt(
+  record: ElementBoundsRecord,
+  y: number,
+  zLow: number,
+  zHigh: number,
+): number {
+  let area = 0;
+  for (const mesh of buildBoundsMeshes([record], { x: 0, y: 0, z: 0 })) {
+    const { positions, indices } = mesh;
+    for (let triangle = 0; triangle < indices.length; triangle += 3) {
+      const corners = [0, 1, 2].map((offset) => {
+        const vertex = indices[triangle + offset]!;
+        return [
+          positions[vertex * 3]!,
+          positions[vertex * 3 + 1]!,
+          positions[vertex * 3 + 2]!,
+        ] as Point3;
+      });
+      if (!corners.every((corner) => Math.abs(corner[1] - y) < 1e-6)) continue;
+      if (!corners.every((corner) =>
+        corner[2] >= zLow - 1e-6 && corner[2] <= zHigh + 1e-6)) continue;
+      const [a, b, c] = corners as [Point3, Point3, Point3];
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      area += Math.hypot(
+        u[1]! * v[2]! - u[2]! * v[1]!,
+        u[2]! * v[0]! - u[0]! * v[2]!,
+        u[0]! * v[1]! - u[1]! * v[0]!,
+      ) / 2;
+    }
+  }
+  return area;
+}
+
 test("a terraced run's risers face out of the stair, not into it", () => {
   // Run 1821222 in the supplied model: a 32-riser monumental flight whose
   // treads tile the plan, so consecutive cells share their riser edge exactly
@@ -187,4 +232,98 @@ test("clockwise tread cells are drawn the same way round as anticlockwise ones",
     [...clockwiseMesh!.positions].sort((left, right) => left - right),
     [...anticlockwiseMesh!.positions].sort((left, right) => left - right),
   );
+});
+
+test("a switchback's turn does not put its riser inside out", () => {
+  // Two cells that share a plan edge normally sit on opposite sides of it, and
+  // the rule above leans on that to decide which way the wall looks. A turn
+  // breaks it: the tread above folds back over the ground the turn covers, so
+  // both bodies end up on the same side and the wall faces away from both.
+  // These three cells are run 2156103's 14th, 15th and 16th, translated to the
+  // origin — a rectangle, the turn, and the rectangle that folds back over it.
+  // The turn left one riser inverted on each of 14 runs in the supplied model.
+  const depth = 0.9187;
+  const treads: [Point3, Point3, Point3, Point3][] = [
+    [[0, 0, 0.45], [0, depth, 0.45], [-4.5932, depth, 0.45], [-4.5932, 0, 0.45]],
+    [[0, depth, 0.90], [-5.5774, 2 * depth, 0.90],
+     [-10.1706, 2 * depth, 0.90], [-4.5932, depth, 0.90]],
+    [[-10.1706, 2 * depth, 1.35], [-10.1706, depth, 1.35],
+     [-5.5774, depth, 1.35], [-5.5774, 2 * depth, 1.35]],
+  ];
+  const record = runRecord(treads, {
+    elementId: 2_156_103,
+    stairTreadThicknessFeet: 0.164,
+    stairBeginWithRiser: true,
+    stairEndWithRiser: true,
+  });
+  // The turn is a real shared edge, so it must still be walled — just the
+  // right way round.
+  assert.ok(verticalSurfaceAt(record, 2 * depth, 0.45, 1.35) > 0);
+  assert.equal(invertedFaces(record), 0);
+});
+
+test("a slab run closes the riser under a rear profile it does not share", () => {
+  // Independently sampled profiles leave the tread above's rear edge unmatched
+  // as readily as the tread below's forward edge — 201.7 ft against 234.1 ft on
+  // run 1460781 — and only the forward one used to be closed. Under an
+  // unmatched rear edge the slab's own side stops at the slab, so the run kept
+  // an open slot at every step whose profiles were not sampled onto one line.
+  const rise = 0.45;
+  const thickness = 0.164;
+  const gap = 0.05;
+  const treads = Array.from({ length: 5 }, (_unused, step) =>
+    profiledTread(step + gap, step + 1 - gap, (step + 1) * rise));
+  const record = runRecord(treads, {
+    elementId: 1_460_781,
+    stairTreadThicknessFeet: thickness,
+    stairBeginWithRiser: true,
+    stairEndWithRiser: true,
+  });
+
+  // Tread 2 sits at z 0.90 with its underside at 0.736, and its rear edge at
+  // y 1.05 shares no line with tread 1's forward edge at y 0.95. The air below
+  // that edge, down to tread 1 at z 0.45, is the slot.
+  const closure = verticalSurfaceAt(record, 1 + gap, rise, 2 * rise - thickness);
+  assert.ok(
+    closure > 6 * (rise - thickness) * 0.99,
+    `expected the rear edge to be walled across the run, got ${closure} ft²`,
+  );
+  // The forward edge of the tread below keeps its own closure over the same
+  // band, one plan line away.
+  assert.ok(verticalSurfaceAt(record, 1 - gap, rise, 2 * rise - thickness) > 0);
+  assert.equal(invertedFaces(record), 0);
+});
+
+test("the rear-profile closure stays out of a terraced run", () => {
+  // A terraced block already reaches the tread below, so there is no air to
+  // close and the rule must add nothing rather than a zero-height sliver.
+  const treads = Array.from({ length: 5 }, (_unused, step) =>
+    profiledTread(step + 0.05, step + 0.95, (step + 1) * 0.45));
+  const terraced = runRecord(treads, {
+    stairMonumentalSolid: true,
+    stairBeginWithRiser: true,
+    stairEndWithRiser: true,
+  });
+  const [mesh] = buildBoundsMeshes([terraced], { x: 0, y: 0, z: 0 });
+  let degenerate = 0;
+  for (let triangle = 0; triangle < mesh!.indices.length; triangle += 3) {
+    const corners = [0, 1, 2].map((offset) => {
+      const vertex = mesh!.indices[triangle + offset]!;
+      return [
+        mesh!.positions[vertex * 3]!,
+        mesh!.positions[vertex * 3 + 1]!,
+        mesh!.positions[vertex * 3 + 2]!,
+      ] as Point3;
+    });
+    const [a, b, c] = corners as [Point3, Point3, Point3];
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    if (Math.hypot(
+      u[1]! * v[2]! - u[2]! * v[1]!,
+      u[2]! * v[0]! - u[0]! * v[2]!,
+      u[0]! * v[1]! - u[1]! * v[0]!,
+    ) < 1e-9) degenerate += 1;
+  }
+  assert.equal(degenerate, 0);
+  assert.equal(invertedFaces(terraced), 0);
 });

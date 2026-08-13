@@ -587,7 +587,38 @@ test("a persisted closed-riser run closes a distant native transition", () => {
 
   const [mesh] = buildBoundsMeshes([stair], { x: 0, y: 0, z: 0 });
   assert.ok(mesh);
-  assert.equal(mesh.indices.length / 3, 26);
+  // 24 for the two slabs, then a closure quad at each side of the transition:
+  // the lower tread's forward edge at x 1 closing upward, and the upper
+  // tread's rear edge at x 1.5 closing downward. Closing only the forward one
+  // leaves the upper slab's own rear edge open, which is the slot run 1460781
+  // kept at every step whose profiles were not sampled onto the same line.
+  assert.equal(mesh.indices.length / 3, 28);
+  // The slabs' own sides span 0.236–0.4 and 0.636–0.8, so surface outside
+  // those bands on a transition edge is the closure and nothing else.
+  const verticalSpanAt = (x: number) => {
+    let low = Infinity;
+    let high = -Infinity;
+    for (let triangle = 0; triangle < mesh.indices.length; triangle += 3) {
+      const corners = [0, 1, 2].map((offset) => {
+        const vertex = mesh.indices[triangle + offset]!;
+        return [mesh.positions[vertex * 3]!, mesh.positions[vertex * 3 + 2]!];
+      });
+      if (!corners.every((corner) => Math.abs(corner[0]! - x) < 1e-6)) continue;
+      for (const corner of corners) {
+        low = Math.min(low, corner[1]!);
+        high = Math.max(high, corner[1]!);
+      }
+    }
+    return { low, high };
+  };
+  assert.ok(
+    verticalSpanAt(1).high > 0.63,
+    "the lower tread's forward edge is closed up to the upper slab",
+  );
+  assert.ok(
+    verticalSpanAt(1.5).low < 0.41,
+    "the upper tread's rear edge is closed down to the lower tread",
+  );
 });
 
 test("a subdivided successor profile still closes one continuous curved riser", () => {
