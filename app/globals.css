@@ -428,7 +428,7 @@ button[data-reason]:focus-visible::after {
   white-space: nowrap;
 }
 .view-menu-button:hover { color: var(--text); }
-.view-menu-list {
+.view-menu-panel {
   position: absolute;
   z-index: 30;
   top: 36px;
@@ -441,6 +441,27 @@ button[data-reason]:focus-visible::after {
   background: var(--panel-2);
   box-shadow: var(--shadow);
 }
+.view-menu-list {
+  display: flex;
+  flex-direction: column;
+}
+.view-menu-section {
+  margin-top: 4px;
+  padding: 7px 9px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+}
+.view-menu-label {
+  color: var(--text-3, var(--text-2));
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.view-menu-section .rv-segmented { align-self: stretch; }
+.view-menu-section .rv-segmented button { flex: 1; }
 .view-menu-list button {
   height: 28px;
   padding: 0 9px;

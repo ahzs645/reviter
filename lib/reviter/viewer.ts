@@ -15,6 +15,17 @@ export type CameraPreset =
 export type NavigationMode = "orbit" | "pan" | "zoom";
 export type RenderMode = "technical" | "xray";
 
+/**
+ * Which end of an orbit drag the reviewer is holding.
+ *
+ * `model` is Autodesk Viewer's convention and the default: drag right and the
+ * building follows right, as though the hand were on it. `camera` is the other
+ * reading of the same gesture — the hand is on the head, so the building goes
+ * the other way — which is what OrbitControls and most game cameras do. There
+ * is no correct answer, only which tool the reviewer arrived from.
+ */
+export type OrbitDragConvention = "model" | "camera";
+
 /** Menu order and labels, so the studio and the menu cannot disagree. */
 export const CAMERA_PRESETS: { preset: CameraPreset; label: string }[] = [
   { preset: "top", label: "Top" },

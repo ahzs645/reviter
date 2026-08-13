@@ -26,6 +26,8 @@ import {
   type DragAction,
   type DragModifiers,
 } from "../app/studio/autodesk-navigation.ts";
+import { applyNavigationMode } from "../app/studio/three-scene.ts";
+import type { OrbitDragConvention } from "../lib/reviter";
 
 /** Autodesk turned 11.1906 degrees for a 100 px horizontal drag. */
 const AUTODESK_YAW_100PX_DEGREES = 11.1906;
@@ -327,4 +329,39 @@ test("the wheel carries the target with the eye, holding the orbit radius", () =
     camera.position.distanceTo(before.eye) - eyeMoved < 1e-6,
     "releasing must detach the listener",
   );
+});
+
+test("the orbit drag convention is a sign, and only a sign", () => {
+  // `model` is Autodesk's: pull right and the building follows right. `camera`
+  // is the other reading of the same gesture, and the reviewer picks between
+  // them — so the two have to be mirror images, not two different rates.
+  const turnFor = (drag: OrbitDragConvention) => {
+    const { camera, controls, element, clientHeight } = orbitRig();
+    applyNavigationMode(controls, "orbit", drag);
+    // `applyNavigationMode` runs before `applyAutodeskNavigation` in the studio
+    // too; the rate scaling reads `rotateSpeed` off the control at drag time.
+    applyAutodeskNavigation(controls, element);
+    const rotatable = controls as unknown as { _rotateLeft(angle: number): void };
+    const before = azimuthDegrees(camera, controls.target);
+    rotatable._rotateLeft((2 * Math.PI * 100 * controls.rotateSpeed) / clientHeight);
+    controls.update();
+    return azimuthDegrees(camera, controls.target) - before;
+  };
+  const model = turnFor("model");
+  const cameraDrag = turnFor("camera");
+  assert.ok(Math.abs(model) > 1, `expected a real turn, got ${model} degrees`);
+  assert.ok(
+    model * cameraDrag < 0,
+    `the two conventions must turn opposite ways, got ${model} and ${cameraDrag}`,
+  );
+  assert.ok(
+    Math.abs(Math.abs(model) - Math.abs(cameraDrag)) < 1e-9,
+    `same gesture, same arc: ${model} against ${cameraDrag}`,
+  );
+  // The default is Autodesk's, so an unconfigured viewer keeps parity.
+  const controls = orbitRig().controls;
+  applyNavigationMode(controls, "orbit");
+  assert.equal(controls.rotateSpeed, -1);
+  applyNavigationMode(controls, "orbit", "camera");
+  assert.equal(controls.rotateSpeed, 1);
 });

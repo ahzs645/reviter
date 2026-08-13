@@ -165,6 +165,7 @@ export {
   type CameraPose,
   type CameraPreset,
   type NavigationMode,
+  type OrbitDragConvention,
   type RenderMode,
 } from "./viewer.ts";
 

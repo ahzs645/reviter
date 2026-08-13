@@ -473,6 +473,7 @@ if (terminalPhase === "ready") {
     throw new Error("Solid collision is not labelled beta.");
   }
 
+
   if (ifcFile && glbFile) {
     const sourceGroup = page.getByRole("group", { name: "Geometry source" });
     await sourceGroup.waitFor({ state: "visible" });
@@ -538,6 +539,15 @@ if (terminalPhase === "ready") {
     });
   });
   await page.bringToFront();
+  // Take the pointer off the canvas and bring it back before looking. Orbit is
+  // switched off for the whole of first person, and `pointerleave` used to
+  // switch it back on without asking whether the walker still had the drag —
+  // after which the look drag below turned the view *and* swung the camera
+  // around the orbit target. The two assertions that follow already say a look
+  // must turn in place; they simply never met the state that broke it.
+  const canvasBox = await canvas.boundingBox();
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, Math.max(0, canvasBox.y - 6));
+  await page.waitForTimeout(80);
   // Looking is a held drag, as it is in Autodesk's 1st Person: the pointer is
   // captured but never locked, so the cursor stays the reviewer's throughout.
   await page.mouse.move(point.x, point.y);
