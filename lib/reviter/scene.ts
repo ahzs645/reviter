@@ -1019,19 +1019,21 @@ export function elementDisplayRoles(
  * Element ids the file's own categories say are glazing.
  *
  * Named separately from `elementDisplayRoles` because transparency is the one
- * display decision that cannot be carried by a batch's material: Revit's
- * persisted material transparency is not decoded yet, so every native material
- * arrives opaque — including the one this model names `Стекло`, which is
- * *glass*, and which carries 74,968 of the model's 76,314 glazing triangles.
- * Every window in the model rendered as a solid blue plate because of it.
+ * display decision a batch's material cannot always carry. This began as the
+ * only rule: every native material arrived opaque — including the one this
+ * model names `Стекло`, which is *glass*, and which carries 74,968 of the
+ * model's 76,314 glazing triangles — so every window rendered as a solid blue
+ * plate. The category is decoded evidence, and it is the same evidence the
+ * proxy path uses to pick the translucent glazing display material, so
+ * extending it to native geometry introduced no new rule.
  *
- * The category is decoded evidence, and it is the same evidence the proxy path
- * already uses to pick the translucent glazing display material. This extends
- * it to native geometry rather than introducing a new rule. The limitation is
- * real and worth stating: Revit models a solid spandrel panel as a curtain wall
- * panel too, so a spandrel is drawn translucent here. Until the persisted
- * transparency field is decoded, the choice is between glazing that reads as
- * glass and spandrels that read as opaque; this takes the first.
+ * `MaterialId.m_transparency` is decoded now (see `material-records.ts`), and
+ * `three-scene.ts` prefers it: where a batch's material framed the field the
+ * material decides, so glass reads translucent at Revit's own 0.9 and a
+ * spandrel panel reads solid at its 0. This is the fallback for the batches
+ * whose material never framed it, and it keeps the limitation those batches
+ * have always had — Revit models a solid spandrel as a curtain wall panel too,
+ * so a spandrel with no decoded transparency is still drawn as glass.
  */
 export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
   const ids = new Set<number>();
