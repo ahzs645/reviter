@@ -12,6 +12,7 @@ import {
   type Bounds3,
   type ConvertResult,
   type NavigationMode,
+  type OrbitDragConvention,
   type PairedRegressionResult,
   type RenderMode,
 } from "../../lib/reviter";
@@ -280,6 +281,7 @@ export function ModelCanvas({
   source,
   renderMode,
   navigationMode,
+  orbitDrag,
   cameraRequest,
   measuring,
   sectioning,
@@ -315,6 +317,8 @@ export function ModelCanvas({
   referenceModelUrl: string | null;
   renderMode: RenderMode;
   navigationMode: NavigationMode;
+  /** Which end of an orbit drag the reviewer is holding. */
+  orbitDrag: OrbitDragConvention;
   cameraRequest: CameraRequest;
   measuring: boolean;
   sectioning: boolean;
@@ -482,6 +486,9 @@ export function ModelCanvas({
   // The button map is decided per press, from the modifiers on that press, so
   // the listener that decides it needs the current tool without re-subscribing.
   const navigationModeRef = useRef(navigationMode);
+  // The scene is rebuilt from a ref rather than a dependency so that flipping
+  // the drag convention does not tear the whole viewport down.
+  const orbitDragRef = useRef(orbitDrag);
 
   useEffect(() => {
     selectedElementIdRef.current = selectedElementId;
@@ -490,6 +497,10 @@ export function ModelCanvas({
   useEffect(() => {
     navigationModeRef.current = navigationMode;
   }, [navigationMode]);
+
+  useEffect(() => {
+    orbitDragRef.current = orbitDrag;
+  }, [orbitDrag]);
 
   useEffect(() => () => {
     sourceCache.clear();
@@ -554,7 +565,7 @@ export function ModelCanvas({
     // reference viewer's orbit is rigid, and a damped one reads as a different
     // tool however well the rates are matched.
     controls.screenSpacePanning = true;
-    applyNavigationMode(controls, "orbit");
+    applyNavigationMode(controls, "orbit", orbitDragRef.current);
     applyAutodeskNavigation(controls, canvas);
 
     const useReference = source === "reference" && comparison?.referenceMeshes.length;
@@ -1150,6 +1161,19 @@ export function ModelCanvas({
      */
     const markupPlane = new THREE.Plane();
     const markupRay = new THREE.Ray();
+    /**
+     * Hand the drag back to Orbit — unless the walker has it.
+     *
+     * Orbit is switched off for the duration of a markup stroke and for the
+     * whole of first person, and those two suspensions used to be lifted by the
+     * same unguarded `enabled = true`. Drawing while walking, or simply moving
+     * the pointer off the canvas, therefore turned Orbit back on underneath the
+     * walker: the next look drag rotated the view *and* swung the camera around
+     * the orbit target, so looking around a room walked you across it.
+     */
+    const restoreOrbit = () => {
+      if (!walkRef.current) controls.enabled = true;
+    };
     let markupPoints: THREE.Vector3[] | null = null;
     let markupWorldWeight = 0;
     let markupSpacing = 0;
@@ -1243,7 +1267,7 @@ export function ModelCanvas({
       markupPoints = null;
       markupDraftRef.current = null;
       setMarkupDraft(null);
-      controls.enabled = true;
+      restoreOrbit();
       if (points.length > 1 && settings.tool && settings.tool !== "delete" && settings.tool !== "text") {
         createMarkupRef.current({
           source,
@@ -1440,7 +1464,7 @@ export function ModelCanvas({
       markupPoints = null;
       markupDraftRef.current = null;
       setMarkupDraft(null);
-      controls.enabled = true;
+      restoreOrbit();
       measurementPreviewEvent = null;
       updateMeasurementPreview(measurement, null);
       reportHover(null);
@@ -1967,8 +1991,8 @@ export function ModelCanvas({
   useEffect(() => {
     const controls = runtimeRef.current?.controls;
     if (!controls) return;
-    applyNavigationMode(controls, navigationMode);
-  }, [comparison, navigationMode, renderMode, result, source]);
+    applyNavigationMode(controls, navigationMode, orbitDragRef.current);
+  }, [comparison, navigationMode, orbitDrag, renderMode, result, source]);
 
   /**
    * Walk mode. Orbiting is how you look at a building from outside; walking is

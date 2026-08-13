@@ -1019,19 +1019,21 @@ export function elementDisplayRoles(
  * Element ids the file's own categories say are glazing.
  *
  * Named separately from `elementDisplayRoles` because transparency is the one
- * display decision that cannot be carried by a batch's material: Revit's
- * persisted material transparency is not decoded yet, so every native material
- * arrives opaque — including the one this model names `Стекло`, which is
- * *glass*, and which carries 74,968 of the model's 76,314 glazing triangles.
- * Every window in the model rendered as a solid blue plate because of it.
+ * display decision a batch's material cannot always carry. This began as the
+ * only rule: every native material arrived opaque — including the one this
+ * model names `Стекло`, which is *glass*, and which carries 74,968 of the
+ * model's 76,314 glazing triangles — so every window rendered as a solid blue
+ * plate. The category is decoded evidence, and it is the same evidence the
+ * proxy path uses to pick the translucent glazing display material, so
+ * extending it to native geometry introduced no new rule.
  *
- * The category is decoded evidence, and it is the same evidence the proxy path
- * already uses to pick the translucent glazing display material. This extends
- * it to native geometry rather than introducing a new rule. The limitation is
- * real and worth stating: Revit models a solid spandrel panel as a curtain wall
- * panel too, so a spandrel is drawn translucent here. Until the persisted
- * transparency field is decoded, the choice is between glazing that reads as
- * glass and spandrels that read as opaque; this takes the first.
+ * `MaterialId.m_transparency` is decoded now (see `material-records.ts`), and
+ * `three-scene.ts` prefers it: where a batch's material framed the field the
+ * material decides, so glass reads translucent at Revit's own 0.9 and a
+ * spandrel panel reads solid at its 0. This is the fallback for the batches
+ * whose material never framed it, and it keeps the limitation those batches
+ * have always had — Revit models a solid spandrel as a curtain wall panel too,
+ * so a spandrel with no decoded transparency is still drawn as glass.
  */
 export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
   const ids = new Set<number>();
@@ -1525,6 +1527,24 @@ function stairTreadGeometry(
       : null;
   const renderedTreads = treads.map((tread) =>
     tread.map((point) => [...point] as Point3) as [Point3, Point3, Point3, Point3]);
+  // Every winding below — the two caps, the side walls, the risers between two
+  // cells — is read off each cell's own corner order, so the cells have to
+  // agree on one. They do not. The readers that recover a curved run emit
+  // clockwise quads and counter-clockwise triangles, 521 and 36 of them on run
+  // 1460781, and a clockwise cell's cap and walls all come out facing into the
+  // stair. Reversing to 3-2-1-0 flips only the orientation: it leaves the 3→0
+  // and 1→2 corner pairs on the same physical profile edges that the riser and
+  // cap rules below identify them by, and a triangle cell's repeated corner
+  // stays repeated.
+  for (const tread of renderedTreads) {
+    let doubleArea = 0;
+    for (let corner = 0; corner < 4; corner += 1) {
+      const start = tread[corner]!;
+      const end = tread[(corner + 1) % 4]!;
+      doubleArea += start[0] * end[1] - end[0] * start[1];
+    }
+    if (doubleArea < 0) tread.reverse();
+  }
   if (treadThickness != null) {
     const elevationKeys = [...new Set(renderedTreads.map((tread) =>
       tread[0][2].toFixed(6)))].sort((left, right) => Number(left) - Number(right));
@@ -1830,6 +1850,34 @@ function stairTreadGeometry(
           // it for an open or evidence-poor stair.
           emitExtendedSide(side, side.topZ, successorBottomZ);
         }
+        // The mirror case, and the more common one. Independently sampled
+        // profiles leave the tread above's rear edge unmatched as readily as
+        // the tread below's forward edge — 201.7 ft of it against 234.1 ft on
+        // run 1460781 — and the rule above can only close upward from an edge
+        // that exists. Under an unmatched rear edge nothing does: the slab's
+        // own side stops at the slab, so the run keeps an open slot at every
+        // step whose two profiles were not sampled onto the same line. Closing
+        // downward to the tread below rests on the same persisted closed-riser
+        // evidence, and is inert on a terraced run, where the slab already
+        // reaches that tread.
+        if (
+          beginWithRiser &&
+          endWithRiser &&
+          side.startCorner === 3 &&
+          side.endCorner === 0
+        ) {
+          const cell = cells[side.cellIndex]!;
+          const precedingTopZ = Math.max(
+            baseZ,
+            ...(sidesByElevationGroup.get(side.elevationGroup - 1) ?? [])
+              .map((precedingSide) => precedingSide.topZ),
+          );
+          emitExtendedSide(
+            side,
+            precedingTopZ,
+            cell.points[side.startCorner]![2]!,
+          );
+        }
       }
       return;
     }
@@ -1885,13 +1933,47 @@ function stairTreadGeometry(
       .filter((stop, index, orderedStops) =>
         index === 0 ||
         stop.z - orderedStops[index - 1]!.z >= MIN_PRISM_THICKNESS_FEET);
+    // Which way a riser slice looks changes along its own height, so one
+    // winding for the whole riser cannot be right: below the shared elevation
+    // the lower body is the material behind the wall, above it the upper body
+    // is, and an open riser's air gap is seen from the same side as the tread
+    // above it. Emitting one orientation throughout turned every exposed riser
+    // inside out. A reconstructed stair is the one thing drawn front-face only
+    // (see `three-scene.ts`), so those faces did not read as a wrong-facing
+    // surface — they vanished, and object 1821222's 32 risers left a 55.81 ft
+    // run of floating treads with the building visible through every step.
+    //
+    // Knowing the body is not yet knowing the side. Cells wind anticlockwise,
+    // so a cell's material lies left of the direction it traverses this edge
+    // in — and that is the whole answer, without assuming the two cells face
+    // each other across the edge. They usually do; at a switchback's turn they
+    // do not, because the tread above folds back over the ground the turn
+    // covers and both bodies end up on the same side of one shared edge.
+    // Reading the side rather than the role is what keeps that turn's riser
+    // out of the 14 runs it used to leave a hole in.
+    const lowerBottomZ = lowerCell.points[lowerStartCorner]![2]!;
+    // Every stop runs start → end along the upper cell's own traversal, so the
+    // upper body is always on the left; the lower body is only when its own
+    // corner order happens to agree.
+    const lowerFollowsEdge = lowerStartCorner === lower.startCorner;
     for (let index = 0; index + 1 < riserStops.length; index += 1) {
       const bottom = riserStops[index]!;
       const top = riserStops[index + 1]!;
-      indices.push(
-        bottom.start, top.start, top.end,
-        bottom.start, top.end, bottom.end,
-      );
+      const middleZ = (bottom.z + top.z) / 2;
+      const backedByLowerCell =
+        middleZ > lowerBottomZ && middleZ < lower.topZ;
+      const materialOnLeft = backedByLowerCell ? lowerFollowsEdge : true;
+      if (materialOnLeft) {
+        indices.push(
+          bottom.start, top.end, top.start,
+          bottom.start, bottom.end, top.end,
+        );
+      } else {
+        indices.push(
+          bottom.start, top.start, top.end,
+          bottom.start, top.end, bottom.end,
+        );
+      }
     }
   };
 

@@ -36,6 +36,7 @@ import {
   type ConvertResult,
   type DerivedRoomResult,
   type IfcWorkerRequest,
+  type OrbitDragConvention,
   type PairedRegressionResult,
   type RenderMode,
   type RoomReviewState,
@@ -94,6 +95,7 @@ import {
   subscribeToRecentFiles,
   type RecentFile,
 } from "./studio/recents.ts";
+import { readOrbitDrag, writeOrbitDrag } from "./studio/viewer-preferences.ts";
 import {
   cacheRecentModel,
   cacheRecentSource,
@@ -252,6 +254,11 @@ export default function ReviterStudio() {
   // a review can be conducted from inside the building rather than having to
   // leave first person to say anything about it.
   const [navTool, setNavTool] = useState<NavigationTool>("orbit");
+  const [orbitDrag, setOrbitDrag] = useState<OrbitDragConvention>(readOrbitDrag);
+  const changeOrbitDrag = useCallback((value: OrbitDragConvention) => {
+    setOrbitDrag(value);
+    writeOrbitDrag(value);
+  }, []);
   const [actionTool, setActionTool] = useState<ActionTool | null>(null);
   const [markupTool, setMarkupTool] = useState<MarkupTool>("pencil");
   const [markupColor, setMarkupColor] = useState("#ef3f45");
@@ -1817,6 +1824,7 @@ export default function ReviterStudio() {
       referenceModelUrl={referenceModelUrl}
       renderMode={renderMode}
       navigationMode={navigationMode}
+      orbitDrag={orbitDrag}
       cameraRequest={cameraRequest}
       measuring={actionTool === "measure"}
       sectioning={actionTool === "section"}
@@ -2098,6 +2106,8 @@ export default function ReviterStudio() {
               onTool={selectViewerTool}
               cameraPreset={cameraRequest.preset}
               onCameraPreset={requestCamera}
+              orbitDrag={orbitDrag}
+              onOrbitDrag={changeOrbitDrag}
               renderMode={renderMode}
               onRenderMode={setRenderMode}
               leftOpen={leftOpen}

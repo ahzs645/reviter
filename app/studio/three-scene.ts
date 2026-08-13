@@ -15,6 +15,7 @@ import type {
 import {
   referenceRegistration,
   type NavigationMode,
+  type OrbitDragConvention,
   type RenderMode,
 } from "../../lib/reviter/viewer.ts";
 import { autodeskDragAction, orbitControlsMouseButton } from "./autodesk-navigation.ts";
@@ -837,14 +838,23 @@ export function disposeGroup(group: THREE.Object3D) {
   });
 }
 
-export function applyNavigationMode(controls: OrbitControls, mode: NavigationMode) {
+export function applyNavigationMode(
+  controls: OrbitControls,
+  mode: NavigationMode,
+  drag: OrbitDragConvention = "model",
+) {
   // OrbitControls defaults to moving the camera in the pointer's direction,
   // which makes the model under the cursor appear to move the other way.
   // Reviter treats an orbit drag as direct manipulation of the building: pull
   // right/down and the building follows right/down. Autodesk Viewer does the
-  // same, so this sign is parity rather than preference; the per-pixel rate it
-  // multiplies is corrected in `applyAutodeskNavigation`.
-  controls.rotateSpeed = -1;
+  // same, so `model` is parity rather than preference and stays the default;
+  // the per-pixel rate this sign multiplies is corrected in
+  // `applyAutodeskNavigation`.
+  //
+  // Which way round that should feel is genuinely a matter of which tool the
+  // reviewer came from — a turntable and a head both exist — so `camera` is
+  // offered rather than argued with. It is only ever the sign.
+  controls.rotateSpeed = drag === "camera" ? 1 : -1;
   // The unmodified row of Autodesk's table. A held modifier changes the answer,
   // and is applied per event by `applyAutodeskButtonMap` because OrbitControls
   // only reads this map once, when the drag starts.

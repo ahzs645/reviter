@@ -28,7 +28,12 @@ import {
   ZoomIn,
 } from "lucide-react";
 
-import { CAMERA_PRESETS, type CameraPreset, type RenderMode } from "../../lib/reviter";
+import {
+  CAMERA_PRESETS,
+  type CameraPreset,
+  type OrbitDragConvention,
+  type RenderMode,
+} from "../../lib/reviter";
 import { ToolButton } from "./panels.tsx";
 import type { GeometrySource } from "./types.ts";
 import { isNavigationTool, type ActionTool, type NavigationTool, type ViewerTool } from "./viewer-tools.ts";
@@ -71,6 +76,8 @@ export function ViewerToolbar({
   onTool,
   cameraPreset,
   onCameraPreset,
+  orbitDrag,
+  onOrbitDrag,
   renderMode,
   onRenderMode,
   leftOpen,
@@ -94,6 +101,9 @@ export function ViewerToolbar({
   onTool: (tool: ViewerTool) => void;
   cameraPreset: CameraPreset;
   onCameraPreset: (preset: CameraPreset) => void;
+  /** Which end of an orbit drag the reviewer is holding. */
+  orbitDrag: OrbitDragConvention;
+  onOrbitDrag: (drag: OrbitDragConvention) => void;
   renderMode: RenderMode;
   onRenderMode: (mode: RenderMode) => void;
   leftOpen: boolean;
@@ -242,20 +252,46 @@ export function ViewerToolbar({
             <ChevronDown size={13} aria-hidden />
           </button>
           {viewMenuOpen && (
-            <div className="view-menu-list" role="listbox" aria-label="Camera orientation">
-              {CAMERA_PRESETS.map((entry) => (
-                <button
-                  key={entry.preset}
-                  type="button"
-                  role="option"
-                  aria-selected={cameraPreset === entry.preset}
-                  className={cameraPreset === entry.preset ? "selected" : ""}
-                  onClick={() => {
-                    onCameraPreset(entry.preset);
-                    setViewMenuOpen(false);
-                  }}
-                >{entry.label}</button>
-              ))}
+            <div className="view-menu-panel">
+              <div className="view-menu-list" role="listbox" aria-label="Camera orientation">
+                {CAMERA_PRESETS.map((entry) => (
+                  <button
+                    key={entry.preset}
+                    type="button"
+                    role="option"
+                    aria-selected={cameraPreset === entry.preset}
+                    className={cameraPreset === entry.preset ? "selected" : ""}
+                    onClick={() => {
+                      onCameraPreset(entry.preset);
+                      setViewMenuOpen(false);
+                    }}
+                  >{entry.label}</button>
+                ))}
+              </div>
+              {/*
+                Which way a drag turns the model is a preference, not a preset,
+                so it sits outside the listbox rather than becoming an option
+                that is not a camera orientation.
+              */}
+              <div className="view-menu-section">
+                <span className="view-menu-label">Drag to orbit</span>
+                <div className="rv-segmented" role="group" aria-label="Drag to orbit">
+                  <button
+                    type="button"
+                    className={orbitDrag === "model" ? "active" : ""}
+                    aria-pressed={orbitDrag === "model"}
+                    onClick={() => onOrbitDrag("model")}
+                    title="Drag right and the building follows right"
+                  >Model</button>
+                  <button
+                    type="button"
+                    className={orbitDrag === "camera" ? "active" : ""}
+                    aria-pressed={orbitDrag === "camera"}
+                    onClick={() => onOrbitDrag("camera")}
+                    title="Drag right and the camera swings right, so the building goes left"
+                  >Camera</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
