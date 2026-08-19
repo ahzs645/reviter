@@ -88,6 +88,7 @@ surface classes it reaches, and the ownership rules that attribute them.
 Dated audits, each one run against one model on one day.
 
 [IFC parity baseline](unbc-ifc-parity-baseline.md) ·
+[independent-reader verification, 2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) ·
 [GLB registration and the stair waist, 2026-08-13](unbc-glb-registration-and-stair-waist-2026-08-13.md) ·
 [RVT to IFC export, 2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) ·
 [three-source audit, 2026-08-01](unbc-three-source-audit-2026-08-01.md) ·
