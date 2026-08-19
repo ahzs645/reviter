@@ -158,16 +158,42 @@ above.
 
 ## What is worth taking, in order
 
-**1. IFClite as an independent verifier of `makeIfc`, in CI.** Highest value,
-lowest cost, no runtime bundle impact — a devDependency and a test. Today
-`export-ifc.test.ts` checks Reviter's output with `web-ifc`, the same reader the
-viewer uses; a second, independently implemented reader turns "our reader accepts
-it" into "two unrelated readers accept it". Probe 1 is that test, already
-working. Pair it with an IDS document asserting the invariants
-`export-ifc.ts` promises (every product carries `Reviter_Recovery`,
-`GeometryExact` is present and boolean, every element sits under a storey) and
-`docs/validating-on-a-second-building.md` gains a gate that is not fitted to the
-UNBC model.
+**1. IFClite as an independent verifier of `makeIfc`, in CI. — done, 2026-08-19.**
+Highest value, lowest cost, no runtime bundle impact: `@ifc-lite/parser` and
+`@ifc-lite/ids` are devDependencies, nothing in `lib/` or `app/` imports them,
+and the shipped bundle is unchanged.
+
+- `tests/export-ifc-independent-reader.test.ts` re-reads the fixture export with
+  the second reader and asserts the products, GUIDs, names, geometry flags and
+  both `Reviter_Recovery` and `Reviter_RevitInstanceParameters` property sets.
+- `tests/fixtures/reviter-recovery.ids` states the exporter's promises as five
+  IDS specifications, and the test fails a specification that matches nothing as
+  well as one that fails — a vacuous pass is the failure mode a requirements
+  document is most prone to.
+- `scripts/audit-ifc-export-independent.ts` is the building-scale run, taking an
+  RVT or an already-exported IFC.
+
+`export-ifc.test.ts` already checked the output with `web-ifc` — the same reader
+the viewer uses — so this turns "our reader accepts it" into "two unrelated
+readers accept it".
+
+One thing this does **not** add, contrary to the first draft of this entry:
+independent validation as such. [The 2026-08-02 export audit](unbc-rvt-to-ifc-export-2026-08-02.md)
+already ran `python -m ifcopenshell.validate --rules` over the full model and
+reported no violations. What did not exist is a validator wired into `npm test`:
+IfcOpenShell needs Python and a model that is not in this repository, so it runs
+when someone remembers to run it. The new test runs on every commit against a
+fixture that is checked in.
+
+Two defects surfaced while wiring it up, both in the new code rather than in the
+exporter. The first product filter counted `IfcSIUnit` and
+`IfcMaterialLayerSetUsage` as products; it now asks the reader's IFC4 schema
+registry for the `IfcProduct` inheritance chain. The second run then flagged
+`Opening for 11` as a product missing recovery evidence, which is correct
+behaviour counted as a defect — an `IfcOpeningElement` written for a persisted
+host relation describes a relationship between two recovered elements, not a
+third recovered element, so `IfcFeatureElement` and `IfcSpatialElement` are both
+excluded from the evidence gate.
 
 **2. BCF export for comments and markup.** `review-exchange.ts` invents
 `reviter-comments` and `reviter-markup` JSON. Those sidecars are fine for
@@ -209,16 +235,47 @@ fidelity, keep `web-ifc`.
 - **`@ifc-lite/clash`, `merge`, `collab`, the server, the CLI.** Federation and
   multi-model workflows are outside what Reviter claims to do.
 
-## Reproducing the probes
+## Running it
 
-Nothing above is checked in. To re-run:
+The fixture path needs nothing but the repository:
+
+```sh
+npm test                                     # includes the independent-reader test
+node --experimental-strip-types --test tests/export-ifc-independent-reader.test.ts
+```
+
+The building-scale path needs a model, which this repository does not contain:
+
+```sh
+# Convert an RVT, export IFC, re-read it with the second reader, check the IDS
+node --experimental-strip-types scripts/audit-ifc-export-independent.ts model.rvt \
+  --out /tmp/recovered.ifc --json /tmp/independent.json
+
+# Or check an IFC that was already exported
+node --experimental-strip-types scripts/audit-ifc-export-independent.ts \
+  --ifc /tmp/recovered.ifc
+```
+
+It prints a JSON report — entity count, product counts by IFC class, recovery
+evidence coverage, geometry provenance and category evidence histograms, and the
+per-specification IDS result — and exits non-zero if a specification fails, if a
+specification matched nothing, or if any product reached the file without
+recovery evidence.
+
+This is the check that is meaningful on a **second building**. Every other gate
+in this repository carries a threshold measured on the supplied Revit 2027
+project; `reviter-recovery.ids` states what the exporter promises about any
+model, so it is as applicable to a file nobody here has seen.
+
+## Probes 2 and 4, not wired up
+
+The geometry kernel and the BCF writer were only measured, not adopted. Their
+probes are reproducible from a scratch directory:
 
 ```sh
 mkdir ifclite-probe && cd ifclite-probe && npm init -y
-npm install @ifc-lite/parser @ifc-lite/geometry @ifc-lite/ids @ifc-lite/bcf
+npm install @ifc-lite/geometry @ifc-lite/bcf
 ```
 
-then generate the fixture IFC with `makeIfc(fixture())` — the `fixture()` in
-`tests/export-ifc.test.ts` — and feed it to `IfcParser.parseColumnar`,
-`GeometryProcessor.processAdaptive`, `validateIDS` and `writeBCF` respectively.
-Probe 1 and probe 3 are the two worth promoting into `tests/`.
+then feed a Reviter IFC to `GeometryProcessor.processAdaptive` and a Reviter
+comment sidecar to `createViewpoint` / `writeBCF`.

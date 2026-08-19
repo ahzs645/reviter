@@ -216,8 +216,64 @@ needs one thing: overrides applied on top of `ElementBoundsRecord`, and a
 `Reviter_Recovery` property recording that a human, not a decoder, produced the
 value.
 
+## What would tell us which fields actually need overriding
+
+An override UI is only worth building where the decode is actually wrong, and
+this repository cannot currently say where that is. The largest known exposure
+is stated in the README: in a 2026-07-28 run, **23,462 of the 39,159 categorised
+elements — 60% — inherited their category from a record-code consensus rather
+than reading their own token.** The consensus is internally decisive (curtain
+panels 98.7%, walls 97.6%) and the paired Autodesk IFC corroborates the counts,
+but IFC product type is a lossy projection of a Revit category: `IfcPlate` does
+not distinguish a curtain panel from a plate, and a category that maps to
+`IfcBuildingElementProxy` is not corroborated at all.
+
+`BmJsonExportEx` is the oracle that would close that. Its contract is already
+recovered in [the static analysis](bm-json-export-static-analysis.md): per
+element handle it writes `name` assembled from category/family/type, `externalId`
+= `OdBmElement::getUniqueId()`, and `properties` as parameter groups of
+caption/value pairs. It exports **no geometry** — the undefined-symbol list for
+`TB_JsonExport.tx` contains no `getGeometry`, `brep` or `getFaceMesh` call — and
+that is precisely why it fits here. The fields it does export are exactly the
+fields an override UI would let a user change: category, family, type, parameter
+values, and the identity to join them on.
+
+What exists today is a static inventory. The
+[recursive ledger](generated/isolated-tree-inventory.md) accounts for all 823
+entries and 930,737,531 bytes, and it says so explicitly: *"a static inventory
+only: no native binary, decoded sample, or vendored dependency is executed."*
+Running it is a different act, and it would turn "the category consensus is
+97.6% pure by internal agreement" into "the category is right or wrong on this
+element, against an independent read of the same file".
+
+Three constraints on doing that, and the first is not negotiable:
+
+- **Acceptance oracle only.** This repository's doctrine for the paired IFC is
+  already written down — *"a post-decode acceptance oracle only: it is never read
+  by conversion, used to locate an RVT record, or used to synthesize a mesh"*
+  ([geometry-gap inventory](revit-2027-ifc-geometry-gap.md)). An ODA-derived
+  semantic JSON must be held to the same rule, and more strictly, because
+  Reviter's clean-room claim is that its decoders are derived from measurements
+  of Revit files rather than from Autodesk source or runtime assemblies. Using
+  ODA output to *score* a decode preserves that. Using it to *drive* one does not.
+- **It is a native runtime, not a library.** 46 unstripped x86-64 Linux ELF
+  objects, 409 MB, gated behind `libOdTrial.so` trial activation. It runs on a
+  Linux host; it cannot be imported by the browser or compiled to WebAssembly,
+  which is the boundary the static analysis established in the first place.
+- **The comparison harness does not exist yet.** `verify-pair.ts` compares a
+  recovery against a paired IFC. A semantic-JSON oracle needs its own join —
+  `externalId` against `nativeIdentity.uniqueId`, then category, family, type and
+  parameter agreement per element. That is a new script, and it is small,
+  because both sides already carry the identity to join on.
+
+The order that follows is: measure first, then build the overlay for the fields
+that turn out to be wrong. Building an editor for a field the decoder gets right
+99.9% of the time is work spent on a problem nobody has.
+
 ## Staged plan
 
+0. **Measure the decode against a semantic oracle** — the section above. What
+   the overlay is for depends on which fields are actually wrong.
 1. **Widen `PropertyRow`** with provenance and editability. Nothing is editable
    yet; the dock just stops pretending every row is the same kind of fact.
 2. **`editEnabled` pill** in `ViewerToolbar` + the forced-tool-reset discipline.
