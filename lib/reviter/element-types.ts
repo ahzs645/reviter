@@ -34,6 +34,18 @@
  * partition. Loadable families — mullions, columns, furniture — keep their type
  * names inside family-document blobs elsewhere, and are not decoded here.
  *
+ * That limit is structural rather than a matter of searching harder. A "field
+ * slot" is how the format writes a pointer: `ff ff ff ff` is the handle `-1`,
+ * and the `u16` behind it is the schema class index of what it points at. Read
+ * against the file's own `Formats/Latest`, the three constants below name
+ * classes — `0x0c93` is `ParamValueSetDouble`, `0x116f` is `VWallDriver`, and
+ * `0x1104` is `TaperableWallTypeWidthAtParametersCell`. The two slots this
+ * decoder keys on are wall classes, and the discriminator only says the record
+ * has a double parameter set. So the decoder is not looking for a type
+ * reference in general; it is looking for the one walls write, which is why
+ * widening the window cannot reach a loadable family. Doing that would be a new
+ * decoder keyed on those families' own classes, with its own validation.
+ *
  * **Why the slots are indexed first.** Both slots open with the same
  * `ff ff ff ff` marker that heads a record, so searching for one *from* a record
  * head means walking a 1,200-byte window a byte at a time — and on a real model
@@ -46,7 +58,12 @@
  * head then reads its slot from that index rather than searching for it.
  */
 
-/** Discriminator B of the records whose type reference this decoder reads. */
+/**
+ * Discriminator B of the records whose type reference this decoder reads.
+ *
+ * A pointer at `ParamValueSetDouble`, so it marks a record that carries a
+ * double parameter set rather than a kind of element.
+ */
 const TYPED_RECORD_DISCRIMINATOR = 0x0c93;
 
 /** The `ff ff ff ff` that heads a record's null-field marker and every slot. */
@@ -61,10 +78,13 @@ const SLOT_BYTES = 6;
  */
 const FIELD_ID_HIGH_BYTE = 0x11;
 
-/** Field id whose slot precedes the type reference. */
+/** Field id whose slot precedes the type reference: the class `VWallDriver`. */
 const TYPE_REFERENCE_FIELD = 0x116f;
 
-/** Field id whose slot precedes a type record's name string. */
+/**
+ * Field id whose slot precedes a type record's name string: the class
+ * `TaperableWallTypeWidthAtParametersCell`.
+ */
 const TYPE_NAME_FIELD = 0x1104;
 
 /** Bytes of a record searched for the type-reference slot. */

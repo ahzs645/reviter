@@ -16,6 +16,11 @@ import {
 
 export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
 
+/**
+ * The pointer to a wall type's layer structure: handle `-1`, then the schema
+ * class index `0x11ab`, which the file's own `Formats/Latest` names
+ * `VerticalRegionsStructure`.
+ */
 const LAYERS_FIELD = [0xff, 0xff, 0xff, 0xff, 0xab, 0x11] as const;
 const LAYERS_FIELD_BYTES = LAYERS_FIELD.length;
 const LAYER_BYTES = 41;
