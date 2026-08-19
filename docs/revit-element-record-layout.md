@@ -97,7 +97,7 @@ therefore undetectable from their contents.
 
 ## What is not established
 
-The transient bit is empirical. ODA's own reader reads that word and discards
+The transient bit is empirical. The reference reader reads that word and discards
 it, so this build would mis-decode a 2027 `GeomTable`; the bit is absent from
 the 2014 and family-file schemas. Masking `0x02` scores 100% against 1.7% for
 any other bit, which is as strong as an ablation gets, but the mechanism is

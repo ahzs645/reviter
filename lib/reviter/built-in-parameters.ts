@@ -28,10 +28,10 @@
  */
 
 import {
-  odaParameterLabel,
+  revitParameterLabel,
   parameterEnumName,
   parameterTypeName,
-} from "./oda-label-resource.ts";
+} from "./revit-enum-tables.ts";
 
 /** `id:Label` pairs joined by `|`. */
 const PACKED_PARAMETERS = [
@@ -1187,7 +1187,7 @@ function builtInParameterName(parameterId: number): string | undefined {
 }
 
 export function parameterDisplayName(parameterId: number): string {
-  return odaParameterLabel(parameterId)
+  return revitParameterLabel(parameterId)
     ?? builtInParameterName(parameterId)
     ?? parameterTypeName(parameterId)
     ?? `Parameter ${parameterId}`;
@@ -1200,7 +1200,7 @@ export function parameterDisplayName(parameterId: number): string {
  * Revit install, so an audit consumer joining on parameters should read this
  * rather than the display label.
  *
- * Only the ODA label resource carries enumerators, so this is `undefined` both
+ * Only the recovered label resource carries enumerators, so this is `undefined` both
  * for ids neither source names and for the 12 ids the transcribed table names
  * but that resource omits — `-1002102` "Surface fill pattern" and `-1114137`
  * "ASHRAE Table" among them. A missing enumerator is not evidence that an id is

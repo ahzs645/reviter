@@ -24,8 +24,8 @@
  * `NN` is a save counter, not a type code: it is the document-increment index
  * the partition was written at, one less than `BasicFileInfo`'s "Unique
  * Document Increments". The supplied 2027 project is `Partitions/325` and
- * reports 326 increments; the same holds on all 28 Revit 2026 templates ODA
- * ships. Nothing should be read from the number itself.
+ * reports 326 increments; the same holds on all 28 Revit 2026 templates a
+ * third-party interoperability SDK ships. Nothing should be read from the number itself.
  *
  * The parent name is what makes the record trustworthy. A name-and-tag pattern
  * alone also matches compressed noise — scanning for it loosely over the

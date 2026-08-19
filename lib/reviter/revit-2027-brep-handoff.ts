@@ -3,7 +3,7 @@
  * a browser-side BRep/tessellation implementation.
  *
  * This is a clean-room semantic contract. It does not model, load, or call the
- * native ODA ABI. The stages mirror only observable exported interfaces:
+ * native ABI. The stages mirror only observable exported interfaces:
  *
  *   face(surface, direction) -> loop(face) -> edge(curve3d)
  *   -> coedge(loop, edge, direction, pcurve?) -> finish -> face mesh

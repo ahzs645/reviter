@@ -48,7 +48,7 @@
  * worth nothing on the supplied project: all 1,823 of its values are `-1`.
  *
  * Every value is checked against the storage type Autodesk declares for that
- * parameter in `oda-parameter-descriptors.json`, which is a table from a
+ * parameter in `revit-parameter-descriptors.json`, which is a table from a
  * different binary than any of this. On the supplied project all 67,228 double
  * values, all 114 integer values and all 44 text values agree with it.
  *
@@ -139,7 +139,7 @@ export type ElementParameter = {
   name: string;
   /**
    * `BuiltInParameter` enumerator, such as `WALL_USER_HEIGHT_PARAM`. Absent for
-   * ids the ODA label resource does not carry, which includes 12 that the
+   * ids the recovered label resource does not carry, which includes 12 that the
    * transcribed table does name, so its absence says nothing about the id.
    */
   enumName?: string;

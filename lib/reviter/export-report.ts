@@ -62,7 +62,8 @@ function evidenceRank(record: ElementBoundsRecord): number {
 /**
  * One client-side semantic record per recovered Revit element.
  *
- * The ODA sample prompted this shape of export, but none of its code or schema
+ * A reference implementation's sample prompted this shape of export, but none
+ * of its code or schema
  * is used here. Every field below already exists in Reviter's own decoded
  * evidence. Persisted model ownership is exported separately because
  * `Global/ElemTable` covers many valid non-geometric records too.

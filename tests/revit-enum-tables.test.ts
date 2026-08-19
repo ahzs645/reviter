@@ -15,10 +15,10 @@ import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
 import {
   isAmbiguousCategoryLabel,
-  odaCategoryEnumName,
-  odaCategoryLabel,
+  revitCategoryEnumName,
+  revitCategoryLabel,
   parameterEnumName,
-} from "../lib/reviter/oda-label-resource.ts";
+} from "../lib/reviter/revit-enum-tables.ts";
 import { parameterObjectBytes, writeParameterObject } from "./rich-rvt-fixture.ts";
 
 type ExtractedRow = { id: number; enumName: string; label: string | null };
@@ -33,7 +33,7 @@ let descriptorCache: Descriptors | undefined;
 /** The committed `g_Parameters` extraction. */
 function parameterDescriptors(): Descriptors {
   descriptorCache ??= JSON.parse(
-    readFileSync(new URL("../docs/generated/oda-parameter-descriptors.json", import.meta.url), "utf8"),
+    readFileSync(new URL("../docs/generated/revit-parameter-descriptors.json", import.meta.url), "utf8"),
   ) as Descriptors;
   return descriptorCache;
 }
@@ -41,7 +41,7 @@ function parameterDescriptors(): Descriptors {
 /** The committed extraction the generated module is built from. */
 function extractedTables(): ExtractedTables {
   tableCache ??= JSON.parse(
-    readFileSync(new URL("../docs/generated/oda-label-resource-tables.json", import.meta.url), "utf8"),
+    readFileSync(new URL("../docs/generated/revit-enum-tables.json", import.meta.url), "utf8"),
   ) as ExtractedTables;
   return tableCache;
 }
@@ -75,7 +75,7 @@ test("a label that collides with another category's enumerator is not adopted", 
   // Revit calls `OST_StairsRailing` "Railings", but `OST_Railings` is a
   // different id whose enumerator already reads that way. Adopting the label
   // would put two categories under one name, so the enumerator name stands.
-  assert.equal(odaCategoryLabel(-2_000_126), "Railings");
+  assert.equal(revitCategoryLabel(-2_000_126), "Railings");
   assert.equal(categoryDisplayName(-2_000_175), "Railings");
   assert.ok(isAmbiguousCategoryLabel(-2_000_126));
   assert.equal(categoryDisplayName(-2_000_126), "Stairs Railing");
@@ -97,8 +97,8 @@ test("categories whose label already matches the enumerator are unchanged", () =
 test("a label shared between sibling categories does not name either of them", () => {
   // `OST_AdaptivePoints_Lines` and `OST_AnalyticalNodes_Lines` are both "Lines"
   // in Revit, shown nested under different parents.
-  assert.equal(odaCategoryLabel(-2_000_903), "Lines");
-  assert.equal(odaCategoryLabel(-2_009_648), "Lines");
+  assert.equal(revitCategoryLabel(-2_000_903), "Lines");
+  assert.equal(revitCategoryLabel(-2_009_648), "Lines");
   assert.ok(isAmbiguousCategoryLabel(-2_000_903));
   assert.equal(builtInCategoryLabel(-2_000_903), undefined);
   assert.equal(categoryDisplayName(-2_000_903), "Adaptive Points Lines");
@@ -190,7 +190,7 @@ test("every known category id maps to a distinct display name", () => {
 });
 
 test("the generated module still agrees with the committed extraction", () => {
-  // `oda-label-resource.ts` is generated from this JSON and says "do not edit".
+  // `revit-enum-tables.ts` is generated from this JSON and says "do not edit".
   // Without this, an edit to either one drifts silently: the extraction needs a
   // binary that is not in the repository, so no other check compares them.
   const tables = extractedTables();
@@ -198,13 +198,13 @@ test("the generated module still agrees with the committed extraction", () => {
   let parameterEnums = 0;
 
   for (const row of tables.families.BuiltInCategory) {
-    assert.equal(odaCategoryEnumName(row.id) ?? builtInCategoryName(row.id),
+    assert.equal(revitCategoryEnumName(row.id) ?? builtInCategoryName(row.id),
       row.enumName.replace(/^OST_/, ""), `enumerator for category ${row.id}`);
     if (row.label === null) {
-      assert.equal(odaCategoryLabel(row.id), undefined, `category ${row.id} has no label`);
+      assert.equal(revitCategoryLabel(row.id), undefined, `category ${row.id} has no label`);
       continue;
     }
-    assert.equal(odaCategoryLabel(row.id), row.label, `label for category ${row.id}`);
+    assert.equal(revitCategoryLabel(row.id), row.label, `label for category ${row.id}`);
     categoryLabels += 1;
   }
 

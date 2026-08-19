@@ -1,10 +1,10 @@
-# The ODA label and parameter tables
+# Revit's embedded enumeration tables
 
 Two of the isolated `BmJsonExportEx` binaries carry embedded enumeration data.
 `TB_ExLabelUtils.tx` holds a CSV-derived label resource, and `TB_Base.tx` holds
 a binary parameter descriptor table, `g_Parameters`, which is read for the ids
 the labels do not reach. Both are extracted by
-`scripts/extract-oda-label-tables.mjs`.
+`scripts/extract-revit-enum-tables.mjs`.
 
 The label resource's rows are plain ASCII:
 
@@ -20,13 +20,13 @@ for it. That is the same kind of fact already transcribed into
 published Revit 2026 API documentation, recovered here from a second and
 independently produced source.
 
-No ODA code, algorithm, or binary is reproduced, and nothing here needs the
-runtime to execute. `scripts/extract-oda-label-tables.mjs` scans the module for
+No third-party code, algorithm, or binary is reproduced, and nothing here needs the
+runtime to execute. `scripts/extract-revit-enum-tables.mjs` scans the module for
 printable-ASCII runs — the same thing `strings` does, done in-process so the
 extraction has no binutils dependency — and keeps the rows that match the shape
 above. The full result is committed as
-[`generated/oda-label-resource-tables.json`](generated/oda-label-resource-tables.json),
-summarised in [`generated/oda-label-resource-tables.md`](generated/oda-label-resource-tables.md).
+[`generated/revit-enum-tables.json`](generated/revit-enum-tables.json),
+summarised in [`generated/revit-enum-tables.md`](generated/revit-enum-tables.md).
 
 ## What is in it
 
@@ -189,7 +189,7 @@ recorded in this repository, so that cannot be closed here.
 
 ## Cost
 
-[`oda-label-resource.ts`](../lib/reviter/oda-label-resource.ts) is generated, and
+[`revit-enum-tables.ts`](../lib/reviter/revit-enum-tables.ts) is generated, and
 carries only what the transcribed tables do not already have: 1,075 category
 labels, 3,703 parameter enumerators, the 352-id ambiguous-label list, the 18
 Forge names, and the 13 category and 25 parameter entries that fill gaps. It is
@@ -203,7 +203,7 @@ shipped twice.
 `g_Parameters` also carries, for all 3,723 parameters, a storage type — 1,401
 Double, 1,205 Integer, 532 String, 466 ElementId, 119 None — a measurement spec
 across 116 kinds, and a parameter group across 111. The whole table is committed
-as [`generated/oda-parameter-descriptors.json`](generated/oda-parameter-descriptors.json).
+as [`generated/revit-parameter-descriptors.json`](generated/revit-parameter-descriptors.json).
 
 None of it is shipped, because nothing consumes it yet. It is the answer to a
 question `element-parameters.ts` currently states without explaining, though:
@@ -228,9 +228,9 @@ ordinal.
 
 `TB_LoaderBase.tx` exports 139 `<Class>ComposeForLoad<startYear><endYear>`
 routines across 87 classes, committed as
-[`generated/oda-release-composition-ranges.json`](generated/oda-release-composition-ranges.json).
+[`generated/revit-release-composition-ranges.json`](generated/revit-release-composition-ranges.json).
 
-These are not layouts — ODA composes a class from the file's own schema, which is
+These are not layouts — the reader composes a class from the file's own schema, which is
 why no module carries a hardcoded Revit class list. What they are is a map of
 where a class's composition is release-dependent, which is the standing risk in
 a decoder fitted to one building on one release:
@@ -262,7 +262,7 @@ needed to locate `g_Parameters`; without it the label tables still extract and
 the descriptor step is skipped with a warning.
 
 ```sh
-node scripts/extract-oda-label-tables.mjs /path/to/BmJsonExportEx-isolated --write-lib
+node scripts/extract-revit-enum-tables.mjs /path/to/BmJsonExportEx-isolated --write-lib
 ```
 
 Without `--write-lib` it writes only the two `docs/generated` artifacts. The run
@@ -285,7 +285,7 @@ document-increment index the partition was written at, which is one less than
 | `default.rte` | 515 | 516 |
 
 `NNN == increments - 1` holds on the supplied project and on all 28 Revit 2026
-`.rte`/`.rft` templates embedded in `TB_Base.tx`, with no exceptions. ODA's own
+`.rte`/`.rft` templates embedded in `TB_Base.tx`, with no exceptions. The SDK's own
 writer agrees from the other side: `OdBmFileLoader::writePartitions` formats the
 key with `%d`, `readPartitions` parses it back with `wcstol`, and
 `updateCompressedPartitions` sets that key from the local increment table's

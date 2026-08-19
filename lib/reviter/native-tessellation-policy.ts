@@ -1,5 +1,5 @@
 /**
- * Browser-safe subset of the native ODA/Revit tessellation policy.
+ * Browser-safe subset of the native Revit tessellation policy.
  *
  * The formulas in this file are recovered from the supplied native geometry
  * stack. They do not load or call the native binaries, which keeps the parser
@@ -177,7 +177,7 @@ export function nativeCylinderMaximumParamSteps(
 /**
  * Exact analytic cone step limits from `wrCone::calculateMaxStepUV`.
  *
- * These are the ODA cone chart's native U/V limits after Revit's cone has been
+ * These are the reference cone chart's native U/V limits after Revit's cone has been
  * converted to an `OdGeCone`: U is its first, base-radius-scaled parameter and
  * V is angle in radians. `baseRadius` is therefore the radius of that converted
  * cone's centred base, not an arbitrary radius sampled elsewhere on the cone.

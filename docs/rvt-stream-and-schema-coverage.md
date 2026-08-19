@@ -89,7 +89,7 @@ identified as the *parent's* type reference rather than the class's own index. A
 class is registered before the parent it defines inline, so its index is one
 below that word; `0x1c3` in the 2027 project is `VWall`, not `ArcWall`. `NN` is
 unrelated — it is a save counter, not a type code, and is documented in
-[the ODA note](oda-label-resource-tables.md#what-partitionsnnn-counts).
+[the enumeration-tables note](revit-enumeration-tables.md#what-partitionsnnn-counts).
 
 **The parent name is what makes the record trustworthy.** A name-and-tag pattern
 alone also matches compressed noise: scanning for it loosely over the supplied

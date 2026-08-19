@@ -16,15 +16,15 @@
  * instead of building a 1,211-property object at module load.
  *
  * The names here are enumerators. The label Revit actually prints for a category
- * comes from the ODA label resource in `oda-label-resource.ts`; see
+ * comes from the recovered label resource in `revit-enum-tables.ts`; see
  * `builtInCategoryLabel`.
  */
 
 import {
   isAmbiguousCategoryLabel,
-  odaCategoryEnumName,
-  odaCategoryLabel,
-} from "./oda-label-resource.ts";
+  revitCategoryEnumName,
+  revitCategoryLabel,
+} from "./revit-enum-tables.ts";
 
 /** `id:Name` pairs, `OST_` prefix stripped, joined by `|`. */
 const PACKED_CATEGORIES = [
@@ -461,12 +461,12 @@ function categoryTable(): Map<number, string> {
 /**
  * `OST_` name for a category id, without the prefix, or `undefined`.
  *
- * The transcribed table answers first. The ODA label resource covers 13 further
+ * The transcribed table answers first. The recovered label resource covers 13 further
  * ids that the published documentation omits, all of them deprecated or removed
  * categories, so it is consulted as a fallback rather than an override.
  */
 export function builtInCategoryName(categoryId: number): string | undefined {
-  return categoryTable().get(categoryId) ?? odaCategoryEnumName(categoryId);
+  return categoryTable().get(categoryId) ?? revitCategoryEnumName(categoryId);
 }
 
 /**
@@ -492,7 +492,7 @@ export function builtInCategoryName(categoryId: number): string | undefined {
  */
 export function builtInCategoryLabel(categoryId: number): string | undefined {
   if (isAmbiguousCategoryLabel(categoryId)) return undefined;
-  return odaCategoryLabel(categoryId);
+  return revitCategoryLabel(categoryId);
 }
 
 /**

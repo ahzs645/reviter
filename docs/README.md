@@ -48,7 +48,7 @@ Read in this order they are roughly the order the work happened.
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
-| [The ODA label and parameter tables](oda-label-resource-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
+| [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
 
 ## Revit 2027 geometry replay
 

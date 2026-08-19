@@ -6,7 +6,8 @@
  * right, and deliberately stops at the declared field count: no framing it
  * tried closed cleanly across the corpus, and a field graph that is probably
  * wrong would be worse than none. This module is the missing framing. It is a
- * recursive descent over the grammar ODA's `TB_Loader` reader implements, and
+ * recursive descent over the grammar an independent reference reader
+ * implements, and
  * it either tiles the whole stream or reports the offset where it stopped —
  * there is no scanning, no name pattern, no ASCII test, and no length guess
  * anywhere in it.

@@ -1,6 +1,6 @@
-# ODA label resource tables
+# Revit enumeration tables
 
-Extracted from `TB_ExLabelUtils.tx` by `scripts/extract-oda-label-tables.mjs`.
+Extracted from `TB_ExLabelUtils.tx` by `scripts/extract-revit-enum-tables.mjs`.
 5597 rows across 19 enumerations.
 
 | Enumeration | Rows | With label | Label-less |
