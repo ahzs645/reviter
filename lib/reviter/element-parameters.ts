@@ -36,9 +36,18 @@
  * Gating on the element's own `m_pParamValueSetDouble` pointer leaves the
  * remaining 9,485 tables byte-identical and drops the rest.
  *
- * Only f64 values appear in these tables. Type parameters use a different
- * mechanism — positional, schema-tagged fields inside the type record — and are
- * not decoded here.
+ * `Element` declares four value sets, not one: doubles, integers, strings and
+ * element ids. The double and integer tables are read here. "Only f64 values
+ * appear" was true of the table this decoder used to find, not of the record —
+ * the integer table holds every boolean and enumerated instance parameter, and
+ * it is a separate object the element points at.
+ *
+ * The string and element-id tables are not read. On the supplied project the
+ * element-id set is worth nothing — all 1,823 of its values are `-1` — and the
+ * string set needs a value type this one does not have.
+ *
+ * Type parameters use a different mechanism again: positional, schema-tagged
+ * fields inside the type record, not decoded here.
  *
  * Each decoded parameter also carries its `BuiltInParameter` enumerator where a
  * published source names it, so a consumer can join on `WALL_USER_HEIGHT_PARAM`
@@ -69,8 +78,16 @@ const ANCHOR_LENGTH = ANCHOR.length;
  */
 const LEADING_POINTER_FIELDS = 6;
 
-/** Index of `m_pParamValueSetDouble` among those pointers. */
+/** Positions of the four parameter value sets among those pointers. */
 const DOUBLE_SET_POINTER = 0;
+const INTEGER_SET_POINTER = 1;
+
+/**
+ * Bytes from the anchor to the end of `Element`'s own fields: `m_cellList` and
+ * `m_docAccess` (the anchor itself), `m_id`, the seven element ids from
+ * `m_assocLevelId` to `m_designOptionId`, and three flags.
+ */
+const BASE_FIELDS_AFTER_ANCHOR = 10 + 8 + 7 * 8 + 3;
 
 /** Bytes from an object's start to its first field: the 18-byte frame header. */
 const OBJECT_BODY_OFFSET = 18;
@@ -125,11 +142,16 @@ export type ElementParameterTable = {
   parameters: ElementParameter[];
 };
 
-function readTableAt(view: DataView, offset: number, byteLength: number): ElementParameter[] | null {
+function readTableAt(
+  view: DataView,
+  offset: number,
+  byteLength: number,
+): { parameters: ElementParameter[]; end: number } | null {
   if (offset + 4 > byteLength) return null;
   const count = view.getUint32(offset, true);
   if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
-  if (offset + 4 + count * 16 > byteLength) return null;
+  const end = offset + 4 + count * 16;
+  if (end > byteLength) return null;
 
   const parameters: ElementParameter[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -149,7 +171,76 @@ function readTableAt(view: DataView, offset: number, byteLength: number): Elemen
       value,
     });
   }
-  return parameters;
+  return { parameters, end };
+}
+
+/**
+ * One `ParamValueSetInt` table: the same framing as the double one, with a
+ * four-byte value.
+ *
+ * Revit stores every integer, boolean and enumerated instance parameter here.
+ * Nothing separates them from the double table by content — the parameter ids
+ * come from one enumeration — so the two are told apart by which of `Element`'s
+ * pointers is live, and by both tables parsing back to back when both are.
+ */
+function readIntegerTableAt(
+  view: DataView,
+  offset: number,
+  byteLength: number,
+): { parameters: ElementParameter[]; end: number } | null {
+  if (offset + 4 > byteLength) return null;
+  const count = view.getUint32(offset, true);
+  if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
+  const end = offset + 4 + count * 12;
+  if (end > byteLength) return null;
+
+  const parameters: ElementParameter[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const entry = offset + 4 + index * 12;
+    if (view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
+    const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
+    if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
+    const enumName = builtInParameterEnumName(parameterId);
+    parameters.push({
+      parameterId,
+      name: parameterDisplayName(parameterId),
+      ...(enumName ? { enumName } : {}),
+      value: view.getInt32(entry + 8, true),
+    });
+  }
+  return { parameters, end };
+}
+
+/**
+ * The value sets an element declares, read from where they are written.
+ *
+ * A pointer field defers its target, and the deferred objects follow the
+ * owner's own fields in the order the fields appear — so the value sets a
+ * record has are the first things after it, contiguous and in declaration
+ * order. Requiring every declared set to parse from one offset, back to back,
+ * is what makes the position trustworthy: a lone table can be matched almost
+ * anywhere, two of different shapes in sequence essentially cannot.
+ */
+function readParameterSets(
+  view: DataView,
+  offset: number,
+  byteLength: number,
+  sets: { double: boolean; integer: boolean },
+): ElementParameter[] | null {
+  let cursor = offset;
+  const parameters: ElementParameter[] = [];
+  if (sets.double) {
+    const table = readTableAt(view, cursor, byteLength);
+    if (!table) return null;
+    parameters.push(...table.parameters);
+    cursor = table.end;
+  }
+  if (sets.integer) {
+    const table = readIntegerTableAt(view, cursor, byteLength);
+    if (!table) return null;
+    parameters.push(...table.parameters);
+  }
+  return parameters.length ? parameters : null;
 }
 
 /**
@@ -172,11 +263,11 @@ function readTableAt(view: DataView, offset: number, byteLength: number): Elemen
  *
  * Returns `null` when no frame explains the anchor.
  */
-function ownsDoubleParameterSet(
+function ownedParameterSets(
   view: DataView,
   anchorOffset: number,
   elementId: number,
-): boolean | null {
+): { double: boolean; integer: boolean } | null {
   for (
     let distance = MIN_ANCHOR_DISTANCE;
     distance <= MAX_ANCHOR_DISTANCE;
@@ -196,13 +287,15 @@ function ownsDoubleParameterSet(
     if (echo + 4 <= view.byteLength && view.getUint32(echo, true) !== objectLength) continue;
 
     let cursor = start + OBJECT_BODY_OFFSET;
-    let live: boolean | null = null;
+    let double = false;
+    let integer = false;
     let walked = true;
     for (let field = 0; field < LEADING_POINTER_FIELDS; field += 1) {
       if (cursor + 4 > anchorOffset) { walked = false; break; }
       const handle = view.getInt32(cursor, true);
       cursor += handle === 0 ? 4 : 6;
-      if (field === DOUBLE_SET_POINTER) live = handle !== 0;
+      if (field === DOUBLE_SET_POINTER) double = handle !== 0;
+      if (field === INTEGER_SET_POINTER) integer = handle !== 0;
     }
     if (!walked || cursor + 4 > anchorOffset) continue;
     // `m_constrInfo`, a counted collection of the same pointers.
@@ -213,7 +306,7 @@ function ownsDoubleParameterSet(
       cursor += handle === 0 ? 4 : 6;
     }
     if (cursor !== anchorOffset) continue;
-    return live ?? false;
+    return { double, integer };
   }
   return null;
 }
@@ -248,16 +341,20 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
     const elementId = view.getUint32(idOffset, true);
     if (!elementId) continue;
 
-    // An element with no double parameter set has no table to find, and
-    // searching for one only borrows a neighbour's.
-    if (ownsDoubleParameterSet(view, offset, elementId) !== true) {
+    // An element that declares no value set has no table to find, and searching
+    // for one only borrows a neighbour's.
+    const sets = ownedParameterSets(view, offset, elementId);
+    if (!sets || (!sets.double && !sets.integer)) {
       offset += ANCHOR_LENGTH - 1;
       continue;
     }
 
-    const limit = Math.min(data.byteLength, idOffset + 8 + TABLE_SEARCH_BYTES);
-    for (let cursor = idOffset + 8; cursor + 20 <= limit; cursor += 1) {
-      const parameters = readTableAt(view, cursor, data.byteLength);
+    // The sets are the first objects deferred by this record, so they begin
+    // after its own fields rather than at some distance from the anchor.
+    const from = offset + BASE_FIELDS_AFTER_ANCHOR;
+    const limit = Math.min(data.byteLength, from + TABLE_SEARCH_BYTES);
+    for (let cursor = from; cursor + 12 <= limit; cursor += 1) {
+      const parameters = readParameterSets(view, cursor, data.byteLength, sets);
       if (!parameters) continue;
       tables.push({ elementId, parameters });
       break;

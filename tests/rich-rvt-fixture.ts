@@ -613,8 +613,15 @@ export function parameterObjectBytes(parameterCount: number): number {
   return PARAMETER_TABLE_OFFSET + 4 + parameterCount * 16 + 4;
 }
 
-/** Offset of the table within the object, once the leading fields are written. */
-const PARAMETER_TABLE_OFFSET = 66;
+/**
+ * Offset of the value sets within the object.
+ *
+ * They are the first objects the record defers, so they begin after all of
+ * `Element`'s own fields: the frame header, the seven leading pointers, the
+ * anchor, `m_id`, the seven element ids from `m_assocLevelId` to
+ * `m_designOptionId`, and three flags.
+ */
+const PARAMETER_TABLE_OFFSET = 125;
 
 /**
  * One element object carrying a parameter table, framed as the file writes it.
@@ -648,6 +655,11 @@ export function writeParameterObject(
   // `m_id`, the element restating its own id.
   view.setUint32(start + 58, table.elementId, true);
   view.setUint32(start + 62, 0, true);
+  // `m_assocLevelId` through `m_designOptionId`, all unset, then three flags.
+  for (let field = 0; field < 7; field += 1) {
+    view.setInt32(start + 66 + field * 8, -1, true);
+    view.setInt32(start + 70 + field * 8, -1, true);
+  }
   const at = start + PARAMETER_TABLE_OFFSET;
   view.setUint32(at, table.parameters.length, true);
   for (const [index, [id, value]] of table.parameters.entries()) {
