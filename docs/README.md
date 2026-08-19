@@ -50,6 +50,7 @@ Read in this order they are roughly the order the work happened.
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
+| [IFClite evaluation, 2026-08-19](ifc-lite-evaluation-2026-08-19.md) | What an external client-side IFC toolkit has that Reviter does not, four probes against Reviter's own IFC output, and what is worth taking |
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
 | [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
 | [Exporting to Pascal](pascal-scene-export.md) | Why the Pascal export writes that editor's own building nodes instead of going through IFC, the coordinate and storey-stacking mapping, what crosses and what does not |
