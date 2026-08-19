@@ -643,7 +643,9 @@ test("the auxiliary container streams reach the result", () => {
   assert.deepEqual(result.schema?.taggedClasses, [
     {
       name: "Wall",
-      tag: 1_234,
+      // The fixture writes 1,234 as the parent's type reference; the class's
+      // own tag is one below it.
+      tag: 1_233,
       parent: "Element",
       version: 7,
       declaredFieldCount: 3,

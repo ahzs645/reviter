@@ -565,9 +565,12 @@ test("inventories tagged classes only when a parent record corroborates them", (
   const dword = (value: number) => {
     bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
   };
-  const declare = (className: string, tag: number, parent: string, version: number, fields: number) => {
+  // The word after a class name is the *parent's* type reference, and the
+  // reader registers a class before the parent it defines inline, so the
+  // class's own tag is one below the word written here.
+  const declare = (className: string, parentRef: number, parent: string, version: number, fields: number) => {
     name(className);
-    word(tag | 0x8000);
+    word(parentRef | 0x8000);
     word(0);
     name(parent);
     word(0);
@@ -588,8 +591,8 @@ test("inventories tagged classes only when a parent record corroborates them", (
   assert.deepEqual(
     summary.taggedClasses.map(({ name: className, tag, parent, version }) => ({ className, tag, parent, version })),
     [
-      { className: "HostObjAttr", tag: 0x006f, parent: "Symbol", version: 3 },
-      { className: "ArcWall", tag: 0x01c3, parent: "VWall", version: 2 },
+      { className: "HostObjAttr", tag: 0x006e, parent: "Symbol", version: 3 },
+      { className: "ArcWall", tag: 0x01c2, parent: "VWall", version: 2 },
     ],
   );
   assert.equal(summary.rejectedCandidates, 1);

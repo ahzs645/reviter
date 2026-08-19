@@ -79,10 +79,17 @@ written as:
 [u16 flag] [u32 version] [u32 declared field count]
 ```
 
-The tag is what identifies the class in `Partitions/NN` records, and it drifts
+The class's index is what identifies it in `Partitions/NN` records, and it drifts
 between releases as Autodesk inserts classes into the ordering — in the local
-corpus `ArcWall` moves `0x14f` → `0x1b8` → `0x1c3` across 2020, 2026, and 2027
+corpus `ArcWall` moves `0x14e` → `0x1b7` → `0x1c2` across 2020, 2026, and 2027
 while its parent stays `VWall`.
+
+Those figures were each one too high until the word after a class name was
+identified as the *parent's* type reference rather than the class's own index. A
+class is registered before the parent it defines inline, so its index is one
+below that word; `0x1c3` in the 2027 project is `VWall`, not `ArcWall`. `NN` is
+unrelated — it is a save counter, not a type code, and is documented in
+[the ODA note](oda-label-resource-tables.md#what-partitionsnnn-counts).
 
 **The parent name is what makes the record trustworthy.** A name-and-tag pattern
 alone also matches compressed noise: scanning for it loosely over the supplied
@@ -93,10 +100,15 @@ the class name removes every one of those and leaves 184 classes, each with its
 base class — `ArcWall` → `VWall`, `HostObjAttr` → `Symbol`, `Cell` →
 `CellInterface`, `GeomStep` → `GeomGenerator`.
 
-The inventory is corroborated against an independent source: across the Revit
-2020, 2023, and 2026 family files it reproduces all 218 checkable class-to-tag
-pairs in the tag-drift dataset published by `rvt-rs`, with no disagreements —
-before and after the parent-name filter, so the filter costs no true positives.
+The inventory used to be described as corroborated against an independent source:
+across the Revit 2020, 2023, and 2026 family files it reproduces all 218
+checkable class-to-tag pairs in the tag-drift dataset published by `rvt-rs`, with
+no disagreements. It still does, and that is now a caution rather than a
+comfort — `rvt-rs` reads the same word the same way, so the agreement was between
+two readers of one field, not about what the field means. The check that settled
+it came from the other direction: the class index carried by element records in
+`Partitions/*`, which this repository had already measured as `0x08c6` for
+`GElement` while the schema reader published `0x08c7`.
 
 The field *list* is deliberately not walked. The declared count and schema
 version are read because they sit at a fixed offset after the parent name, but

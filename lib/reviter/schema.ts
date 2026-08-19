@@ -6,12 +6,20 @@
  * A class that is serializable at the top level is written as
  *
  * ```text
- * [u16 nameLen] [name] [u16 tag | 0x8000] [u16 pad]
+ * [u16 nameLen] [name] [u16 parentRef | 0x8000] [u16 pad]
  * [u16 parentLen] [parent name]
  * [u16 flag] [u32 version] [u32 declared field count]
  * ```
  *
- * and the tag is what identifies the class in `Partitions/NN` records.
+ * and the class's index is what identifies it in `Partitions/NN` records.
+ *
+ * The word after the name is the *parent's* type reference, not the class's own
+ * index. A class is registered before the parent it defines inline, so the
+ * class's index is one below that word. Reading the word as the class's own tag
+ * published every tag one too high, and the file itself settles which reading is
+ * right: elements in `Partitions/*` carry the class index `0x08c6`, measured
+ * independently in `element-objects.ts`, and the word beside `GElement` here is
+ * `0x08c7`.
  *
  * `NN` is a save counter, not a type code: it is the document-increment index
  * the partition was written at, one less than `BasicFileInfo`'s "Unique
@@ -27,10 +35,13 @@
  * four bytes after the class name removes every one of those without losing a
  * single corroborated class.
  *
- * Corroboration: across the Revit 2020, 2023, and 2026 family files this parser
- * reproduces all 218 checkable class-to-tag pairs in the independently produced
- * tag-drift dataset published by the Apache-2.0 `rvt-rs` project, with no
- * disagreements, both before and after the parent-name filter.
+ * The parser used to reproduce all 218 checkable class-to-tag pairs in the
+ * tag-drift dataset published by the Apache-2.0 `rvt-rs` project. That agreement
+ * is now evidence of a shared off-by-one rather than of correctness: `rvt-rs`
+ * reads the same word the same way. Agreement between two readers of one field
+ * is not corroboration of what the field means, and the check that settles it —
+ * a class index measured from element records rather than from the schema — was
+ * already in this repository, disagreeing.
  *
  * The field *list* is deliberately not walked. The declared field count is read
  * because it sits at a fixed offset, but the field records that follow contain
@@ -164,7 +175,15 @@ function parseSchemaTags(data: Uint8Array): SchemaClass[] {
     seen.add(candidate.name);
     classes.push({
       name: candidate.name,
-      tag: candidate.word & 0x7fff,
+      // The `u16` after the name is the *parent's* type reference, not this
+      // class's own. The reader registers a class before the parent it defines
+      // inline, so the parent's index is one above the child's. Reading the
+      // word as the class's own tag published every tag one too high.
+      //
+      // The file itself settles it: elements in `Partitions/*` carry the class
+      // index `0x08c6`, which `element-objects.ts` measured independently, and
+      // the word beside `GElement` here is `0x08c7`.
+      tag: (candidate.word & 0x7fff) - 1,
       parent: parent.name,
       version,
       declaredFieldCount,
@@ -188,7 +207,12 @@ export function summariseSchema(data: Uint8Array): SchemaSummary {
   const tagged = candidates.filter((candidate) => candidate.word & 0x8000).length;
   const taggedClasses = parseSchemaTags(data).sort((a, b) => a.tag - b.tag);
 
-  const definedTags = new Set(taggedClasses.map((entry) => entry.tag));
+  // A definition record names two classes: the one being defined, at `tag`, and
+  // the parent it defines inline, at `tag + 1`. A later plain reference can
+  // point at either, so both indices are defined for the purpose of resolving
+  // one. Only the child is inventoried, because only the child's own record was
+  // read; the parent is known by name and index alone.
+  const definedTags = new Set(taggedClasses.flatMap((entry) => [entry.tag, entry.tag + 1]));
   const definedNames = new Set(taggedClasses.map((entry) => entry.name));
   const referencedClasses: SchemaReference[] = [];
   const seenReferences = new Set<string>();
