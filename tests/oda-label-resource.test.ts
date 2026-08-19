@@ -224,27 +224,38 @@ test("the generated module still agrees with the committed extraction", () => {
   assert.equal(parameterEnums, 3_703);
 });
 
-test("the ambiguous set is exactly the ids whose label cannot stand alone", () => {
+test("a label is withheld only when adopting it would collide", () => {
+  // Checked as a property of the result rather than by reimplementing the
+  // generator's fixpoint: an adopted label must be the id's display name, and
+  // a withheld one must be a name some other category already answers to.
   const tables = extractedTables();
   const labelled = tables.families.BuiltInCategory.filter((row) => row.label !== null);
-  const labelOwners = new Map<string, number>();
-  for (const row of labelled) labelOwners.set(row.label!, (labelOwners.get(row.label!) ?? 0) + 1);
+  const displayed = new Map<string, number>();
+  for (const id of knownCategoryIds()) displayed.set(categoryDisplayName(id), id);
+  const sharedLabels = new Map<string, number>();
+  for (const row of labelled) sharedLabels.set(row.label!, (sharedLabels.get(row.label!) ?? 0) + 1);
 
-  const fallbackOwners = new Map<string, number[]>();
-  for (const id of knownCategoryIds()) {
-    const name = builtInCategoryName(id);
-    if (!name) continue;
-    const display = humaniseCategoryName(name);
-    const seen = fallbackOwners.get(display);
-    if (seen) seen.push(id);
-    else fallbackOwners.set(display, [id]);
-  }
-
+  let adopted = 0;
+  let withheld = 0;
   for (const row of labelled) {
-    const shared = labelOwners.get(row.label!)! > 1;
-    const collides = (fallbackOwners.get(row.label!) ?? []).some((other) => other !== row.id);
-    assert.equal(isAmbiguousCategoryLabel(row.id), shared || collides, `ambiguity of ${row.id}`);
+    if (isAmbiguousCategoryLabel(row.id)) {
+      // Either several categories carry this label — in which case they all
+      // withdraw and nothing displays it — or one other category already
+      // answers to it under its enumerator-derived name.
+      const claimant = displayed.get(row.label!);
+      assert.ok(
+        sharedLabels.get(row.label!)! > 1 || (claimant !== undefined && claimant !== row.id),
+        `${row.id} withholds "${row.label}" but adopting it would not have collided`,
+      );
+      assert.equal(categoryDisplayName(row.id), humaniseCategoryName(builtInCategoryName(row.id)!));
+      withheld += 1;
+      continue;
+    }
+    assert.equal(categoryDisplayName(row.id), row.label, `adopted label for ${row.id}`);
+    adopted += 1;
   }
+  assert.equal(adopted, 723);
+  assert.equal(withheld, 352);
 });
 
 test("no packed value can be corrupted by the table separator", () => {

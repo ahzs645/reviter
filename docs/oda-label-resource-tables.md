@@ -115,16 +115,22 @@ are left as they were rather than rewritten.
 A label is only adopted when it names one category and nothing else. Revit
 reuses one label across sibling sub-categories, because it shows them nested
 under a parent: `Lines` names 5 categories and `<Hidden Lines>` names 65, and
-351 of the 1,075 ids have a label shared that way. Two more collide with the
-enumerator-derived name that a category adopting no label keeps —
+351 of the 1,075 ids have a label shared that way. One more collides with the
+enumerator-derived name that a category adopting no label keeps:
 `OST_StairsRailing` is "Railings" in Revit, but `OST_Railings` is a different id
-that already reads that way, and `OST_CurtainSystems` collides with
-`OST_Curtain_Systems`. Judging uniqueness inside the label table alone misses
-that second kind and puts two categories under one name, so the test is the
-whole display-name space. 353 ids fail it, keep their enumerator-derived name —
+that already reads that way and has no label of its own to take instead.
+
+Judging uniqueness inside the label table alone misses that second kind and puts
+two categories under one name. Testing every label against every other id's
+enumerator name is too strict in the other direction, because most ids never use
+theirs: `OST_Curtain_Systems` would read "Curtain Systems", but it has its own
+label, "Ruled Curtain System", so it never contends for the name. The test is
+against the names actually displayed, which is a fixpoint — withdrawing an
+adoption can only resolve collisions, never create them, so it converges, here
+after one pass. 352 ids fail it and keep their enumerator-derived name —
 `OST_AdaptivePoints_Lines` stays "Adaptive Points Lines" rather than collapsing
-to "Lines" — and return `undefined` from `builtInCategoryLabel`. The remaining
-722 use their label, and all 1,224 known ids still map to 1,224 distinct names.
+to "Lines" — returning `undefined` from `builtInCategoryLabel`. The remaining
+723 use their label, and all 1,224 known ids map to 1,224 distinct names.
 
 The resource also names 13 categories the published documentation omits, all of
 them deprecated or removed.
@@ -185,7 +191,7 @@ recorded in this repository, so that cannot be closed here.
 
 [`oda-label-resource.ts`](../lib/reviter/oda-label-resource.ts) is generated, and
 carries only what the transcribed tables do not already have: 1,075 category
-labels, 3,703 parameter enumerators, the 353-id ambiguous-label list, the 18
+labels, 3,703 parameter enumerators, the 352-id ambiguous-label list, the 18
 Forge names, and the 13 category and 25 parameter entries that fill gaps. It is
 183 KiB of source, 45 KiB gzipped, next to the 140 KiB the two transcribed tables
 already cost. The 3,688
@@ -205,6 +211,18 @@ question `element-parameters.ts` currently states without explaining, though:
 reads one of several value sets, and this table says which 1,401 parameters are
 doubles and which 2,322 are not. The spec would also give unit-aware formatting a
 basis it does not have.
+
+`TB_ExLabelUtils.tx` carries one further table, `g_ParameterValues`, that looked
+like a straightforward win and is not. It gives the enumerated values behind 427
+parameters — `FUNCTION_PARAM` is Interior/Exterior/Foundation/Retaining/Soffit/
+Coreshaft, `WALL_STRUCTURAL_USAGE_PARAM` is Non-bearing/Bearing/Shear/Combined —
+so a decoded number could read as a word. It is not shipped because **none of
+those 427 parameters is stored as a double**: 385 are Integer, 37 ElementId, 5
+String. The parameters Reviter can currently read and the parameters that have
+enumerated values are disjoint sets, and they will stay disjoint until one of the
+other three value sets in `Element` is decoded. Nine of its value rows are also
+keyed by shared-parameter GUID rather than an integer, so the table is not purely
+ordinal.
 
 ## Regenerating
 

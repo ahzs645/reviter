@@ -484,11 +484,12 @@ export function builtInCategoryName(categoryId: number): string | undefined {
  * A label is only adopted when it names one category and nothing else. Revit
  * reuses one label across sibling sub-categories, each shown nested under a
  * different parent: `Lines` names 5 categories and `<Hidden Lines>` names 65.
- * Two further labels collide with the enumerator-derived name that a category
+ * One further label collides with the enumerator-derived name that a category
  * adopting no label keeps — `OST_StairsRailing` is "Railings" in Revit, but
- * `OST_Railings` is a different id that already reads that way. Uniqueness is
- * therefore judged across the whole display-name space, not just the labels;
- * 353 ids fail it, return `undefined` here, and keep their enumerator name.
+ * `OST_Railings` is a different id that already reads that way and has no label
+ * of its own to take instead. Uniqueness is therefore judged across the names
+ * actually displayed, not just the labels; 352 ids fail it, return `undefined`
+ * here, and keep their enumerator name.
  */
 export function builtInCategoryLabel(categoryId: number): string | undefined {
   if (isAmbiguousCategoryLabel(categoryId)) return undefined;

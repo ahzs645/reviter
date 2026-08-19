@@ -364,27 +364,49 @@ for (const [, row] of categories) {
 // A label also has to be unique against the names the ids that adopt no label
 // keep. `OST_StairsRailing` is "Railings" in Revit, but `OST_Railings` is a
 // different id whose enumerator already reads "Railings", so adopting the label
-// would put two categories under one name. Judging uniqueness inside the label
-// table alone misses that; the test is the whole display-name space.
-const fallbackOwners = new Map();
-for (const [id, name] of transcribedCategories) {
-  const display = humaniseCategoryName(name);
-  if (!fallbackOwners.has(display)) fallbackOwners.set(display, []);
-  fallbackOwners.get(display).push(id);
+// would put two categories under one name.
+//
+// Testing a label against every other id's *fallback* is too strict, because
+// most ids never use their fallback: `OST_Curtain_Systems` would read "Curtain
+// Systems", but it has its own label, "Ruled Curtain System", so it never
+// collides with `OST_CurtainSystems`. The test has to be against the names
+// actually displayed, which is a fixpoint — withdrawing one adoption can only
+// ever resolve collisions, never create them, so it converges.
+const everyCategoryId = new Set([...transcribedCategories.keys(), ...categories.keys()]);
+const fallbackName = new Map();
+for (const id of everyCategoryId) {
+  const enumName = transcribedCategories.get(id)
+    ?? categories.get(id).enumName.replace(/^OST_/, "");
+  fallbackName.set(id, humaniseCategoryName(enumName));
 }
-for (const [id, row] of categories) {
-  if (transcribedCategories.has(id)) continue;
-  const display = humaniseCategoryName(row.enumName.replace(/^OST_/, ""));
-  if (!fallbackOwners.has(display)) fallbackOwners.set(display, []);
-  fallbackOwners.get(display).push(id);
+
+const adopted = new Set(
+  [...categories.entries()]
+    .filter(([, row]) => row.label !== null && labelOwners.get(row.label) === 1)
+    .map(([id]) => id),
+);
+const displayName = (id) => (adopted.has(id) ? categories.get(id).label : fallbackName.get(id));
+
+for (;;) {
+  const owners = new Map();
+  for (const id of everyCategoryId) {
+    const name = displayName(id);
+    if (!owners.has(name)) owners.set(name, []);
+    owners.get(name).push(id);
+  }
+  const collisions = [...owners.values()].filter((sharing) => sharing.length > 1);
+  if (collisions.length === 0) break;
+  let withdrawn = 0;
+  for (const sharing of collisions) {
+    for (const id of sharing) if (adopted.delete(id)) withdrawn += 1;
+  }
+  if (withdrawn === 0) {
+    throw new Error("display names collide with no adoption left to withdraw");
+  }
 }
 
 const ambiguousIds = [...categories.entries()]
-  .filter(([id, row]) => {
-    if (row.label === null) return false;
-    if (labelOwners.get(row.label) > 1) return true;
-    return (fallbackOwners.get(row.label) ?? []).some((other) => other !== id);
-  })
+  .filter(([id, row]) => row.label !== null && !adopted.has(id))
   .map(([id]) => id)
   .sort((a, b) => a - b);
 
@@ -474,10 +496,10 @@ ${packLines(categoryEnumPairs)}
  * Categories whose label cannot name them on its own.
  *
  * Most are labels Revit shows nested under a parent and reuses across siblings:
- * \`Lines\` alone names 5 categories and \`<Hidden Lines>\` names 65. Two more are
- * labels that collide with the enumerator-derived name another category keeps —
- * \`OST_StairsRailing\` is "Railings" in Revit but \`OST_Railings\` already reads
- * that way, and \`OST_CurtainSystems\` likewise against \`OST_Curtain_Systems\`.
+ * \`Lines\` alone names 5 categories and \`<Hidden Lines>\` names 65. One is a label
+ * that collides with the enumerator-derived name another category keeps —
+ * \`OST_StairsRailing\` is "Railings" in Revit, but \`OST_Railings\` is a different
+ * id that already reads that way and has no label of its own to take instead.
  */
 const AMBIGUOUS_CATEGORY_LABEL_IDS = [
 ${packLines(ambiguousIds.map(String))}
