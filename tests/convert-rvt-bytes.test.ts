@@ -64,6 +64,7 @@ import CFB from "cfb";
 import { deflateSync } from "fflate";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
+import { formatsLatest } from "./rich-rvt-fixture.ts";
 import {
   gzipOffsets,
   inflateRevitChunk,
@@ -243,29 +244,6 @@ function partitionTable(names: readonly string[]): Uint8Array {
   return data;
 }
 
-/**
- * `Formats/Latest`: one tagged class as `[u16 len][name][u16 0x8000|tag]`,
- * whose parent name begins exactly four bytes after that tag word, followed by
- * the class version and declared field count `schema.ts` reads past the parent.
- * The parent's own word references the defined tag, which makes it a schema
- * reference as well.
- */
-function formatsLatest(name: string, tag: number, parent: string): Uint8Array {
-  const parentOffset = 2 + name.length + 4;
-  const parentEnd = parentOffset + 2 + parent.length;
-  const data = new Uint8Array(parentEnd + 10);
-  const view = new DataView(data.buffer);
-  view.setUint16(0, name.length, true);
-  data.set(new Uint8Array(Buffer.from(name, "ascii")), 2);
-  view.setUint16(2 + name.length, 0x8000 | tag, true);
-  view.setUint16(parentOffset, parent.length, true);
-  data.set(new Uint8Array(Buffer.from(parent, "ascii")), parentOffset + 2);
-  view.setUint16(parentEnd, tag, true);
-  view.setUint32(parentEnd + 2, 7, true); // class version
-  view.setUint32(parentEnd + 6, 3, true); // declared field count
-  return data;
-}
-
 const SHEET_0 = "Partitions/Sheet0";
 const SHEET_1 = "Partitions/Sheet1";
 
@@ -379,7 +357,7 @@ function syntheticModel(): Uint8Array {
       path: "/Global/PartitionTable",
       bytes: gzipChunk(partitionTable(["Workset1", "Shared Levels and Grids"])),
     },
-    { path: "/Formats/Latest", bytes: gzipChunk(formatsLatest("Wall", 1_234, "Element")) },
+    { path: "/Formats/Latest", bytes: gzipChunk(formatsLatest("Wall", "Element", "Floor")) },
     { path: `/${SHEET_0}`, bytes: withPageChecksums(firstPartitionPayload()) },
     { path: `/${SHEET_1}`, bytes: gzipChunk(partitionPage(SECOND_PARTITION_ELEMENTS)) },
   ]);
@@ -640,19 +618,23 @@ test("the auxiliary container streams reach the result", () => {
     "Shared Levels and Grids",
   ]);
 
+  // Indices run from 12 in creation order and the class is written before the
+  // parent it defines inline, so `Wall` is 12 and `Element` is 13. The version
+  // and field count the inventory reports are read from behind the parent name
+  // and are that parent's.
   assert.deepEqual(result.schema?.taggedClasses, [
     {
       name: "Wall",
-      // The fixture writes 1,234 as the parent's type reference; the class's
-      // own tag is one below it.
-      tag: 1_233,
+      tag: 12,
       parent: "Element",
-      version: 7,
+      version: 3,
       declaredFieldCount: 3,
-      offset: 0,
+      offset: 2,
     },
   ]);
-  assert.deepEqual(result.schema?.referencedClasses.map((entry) => entry.name), ["Element"]);
+  // `Floor` names its parent by index rather than defining it, which is what a
+  // reference is; `Element` is a definition and so is not one.
+  assert.deepEqual(result.schema?.referencedClasses.map((entry) => entry.name), ["Floor"]);
 
   // `Global/ElemTable` is read twice, once as an index and once as a graph.
   assert.equal(result.elementIndex?.recordCount, ALL_ELEMENTS.length + 1);

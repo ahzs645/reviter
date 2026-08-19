@@ -50,6 +50,7 @@ import {
   REVIT_PAGE_CHECKSUM_BYTES,
   REVIT_PAGE_PAYLOAD_BYTES,
 } from "../lib/reviter/revit-container.ts";
+import { INITIAL_SCHEMA_CLASS_INDEX } from "../lib/reviter/schema-reader.ts";
 
 /** Revit's canonical chunk header: gzip magic, no flags, no optional fields. */
 const GZIP_HEADER = [0x1f, 0x8b, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0x0b] as const;
@@ -905,23 +906,70 @@ export function partitionTable(names: readonly string[]): Uint8Array {
   return data;
 }
 
-/** `Formats/Latest`: one tagged class and the parent it references. */
-export function formatsLatest(name: string, tag: number, parent: string): Uint8Array {
-  const parentOffset = 2 + name.length + 4;
-  const parentEnd = parentOffset + 2 + parent.length;
-  const data = new Uint8Array(parentEnd + 10);
-  const view = new DataView(data.buffer);
-  view.setUint16(0, name.length, true);
-  for (let index = 0; index < name.length; index += 1) data[2 + index] = name.charCodeAt(index);
-  view.setUint16(2 + name.length, 0x8000 | tag, true);
-  view.setUint16(parentOffset, parent.length, true);
-  for (let index = 0; index < parent.length; index += 1) {
-    data[parentOffset + 2 + index] = parent.charCodeAt(index);
+/**
+ * `Formats/Latest`: a class whose parent is defined inline, and a sibling whose
+ * parent is a back-reference to it.
+ *
+ * Written to the stream's own grammar rather than to the shape the inventory
+ * scanner looks for, so both readers accept it: a class is `[i16][u16 nameLen]
+ * [name][TypeRef parent][i32 version][i32 propertyCount][properties]
+ * [i32 guidCount]`, a `TypeRef` with the high bit set introduces a definition
+ * inline, and eight zero bytes close the stream. Indices are handed out in
+ * creation order from {@link INITIAL_SCHEMA_CLASS_INDEX}, so the class takes 12
+ * and the parent it defines takes 13.
+ *
+ * The scanner reads the same bytes because the parent definition's own leading
+ * word is the padding it expects, and the version and field count it takes from
+ * behind the parent name are that parent's.
+ */
+export function formatsLatest(
+  name: string,
+  parent: string,
+  sibling: string,
+  parentFields = 3,
+): Uint8Array {
+  const bytes: number[] = [];
+  const u16 = (value: number) => bytes.push(value & 0xff, (value >> 8) & 0xff);
+  const i32 = (value: number) =>
+    bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
+  const ascii = (text: string) => {
+    for (const character of text) bytes.push(character.charCodeAt(0));
+  };
+  const parentIndex = INITIAL_SCHEMA_CLASS_INDEX + 1;
+
+  u16(0);
+  u16(name.length);
+  ascii(name);
+  u16(0x8000 | parentIndex);
+  u16(0);
+  u16(parent.length);
+  ascii(parent);
+  u16(0);
+  i32(3);
+  i32(parentFields);
+  for (let field = 0; field < parentFields; field += 1) {
+    const fieldName = `m_f${field}`;
+    i32(fieldName.length);
+    ascii(fieldName);
+    // An `int32` member with no loading or item mode, and the unknown word.
+    bytes.push(0x04, 0x00);
+    u16(0);
   }
-  view.setUint16(parentEnd, tag, true);
-  view.setUint32(parentEnd + 2, 7, true);
-  view.setUint32(parentEnd + 6, 3, true);
-  return data;
+  i32(0);
+  i32(7);
+  i32(0);
+  i32(0);
+
+  u16(0);
+  u16(sibling.length);
+  ascii(sibling);
+  u16(parentIndex);
+  i32(5);
+  i32(0);
+  i32(0);
+
+  for (let index = 0; index < 8; index += 1) bytes.push(0);
+  return Uint8Array.from(bytes);
 }
 
 export function container(
@@ -1037,7 +1085,7 @@ export function buildModel(spec: ModelSpec): Uint8Array {
   if (spec.includeSchema) {
     streams.push({
       path: "/Formats/Latest",
-      bytes: gzipChunk(formatsLatest("Wall", 1_234, "Element")),
+      bytes: gzipChunk(formatsLatest("Wall", "Element", "Floor")),
     });
   }
   streams.push({

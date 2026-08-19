@@ -22,6 +22,7 @@ import CFB from "cfb";
 
 import { REVIT_2027_LEVEL_MARKER } from "../lib/reviter/level-relations.ts";
 import { REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gelement.ts";
+import { formatsLatest } from "./rich-rvt-fixture.ts";
 import {
   asBytes,
   gzipOffsets,
@@ -401,4 +402,31 @@ test("hostile input fails closed rather than crashing or running away", () => {
   const garbage = readSchema(noise);
   assert.equal(garbage.ok, false);
   if (!garbage.ok) assert.ok(garbage.offset >= 0 && garbage.offset <= noise.length);
+});
+
+test("the synthetic fixture is a stream both readers accept", () => {
+  // The pipeline's `Formats/Latest` fixture used to be written to the shape the
+  // inventory scanner looks for rather than to the stream's grammar, so the
+  // strict reader rejected it outright. Swapping one reader for the other is
+  // only possible while a fixture satisfies both, and nothing else checks it.
+  const result = readSchema(formatsLatest("Wall", "Element", "Floor"));
+  assert.ok(result.ok, `fixture did not tile: ${result.ok ? "" : result.error}`);
+  if (!result.ok) return;
+
+  assert.equal(result.schema.trailingBytes, 0);
+  assert.deepEqual(
+    result.schema.classes.map(({ index, name }) => ({ index, name })),
+    [
+      { index: INITIAL_SCHEMA_CLASS_INDEX, name: "Wall" },
+      { index: INITIAL_SCHEMA_CLASS_INDEX + 1, name: "Element" },
+      { index: INITIAL_SCHEMA_CLASS_INDEX + 2, name: "Floor" },
+    ],
+  );
+  // The class is written before the parent it defines, and the sibling names
+  // that parent by index rather than defining it again.
+  assert.equal(result.schema.classes[0]?.parent.kind, "inline");
+  assert.equal(result.schema.classes[1]?.parent.kind, "none");
+  assert.equal(result.schema.classes[2]?.parent.kind, "reference");
+  assert.deepEqual(result.schema.unresolvedReferences, []);
+  assert.deepEqual(result.schema.inlineIndexMismatches, []);
 });
