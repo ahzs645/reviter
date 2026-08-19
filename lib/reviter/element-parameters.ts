@@ -37,14 +37,20 @@
  * remaining 9,485 tables byte-identical and drops the rest.
  *
  * `Element` declares four value sets, not one: doubles, integers, strings and
- * element ids. The double and integer tables are read here. "Only f64 values
- * appear" was true of the table this decoder used to find, not of the record —
- * the integer table holds every boolean and enumerated instance parameter, and
- * it is a separate object the element points at.
+ * element ids. Three of them are read here. "Only f64 values appear" was true
+ * of the table this decoder used to find, not of the record — the integer table
+ * holds every boolean and enumerated instance parameter, and the string table
+ * holds `Mark`, `Type Mark`, `Description`, `Comments` and `Keynote`, which a
+ * model has no other source for. Each is a separate object the element points
+ * at.
  *
- * The string and element-id tables are not read. On the supplied project the
- * element-id set is worth nothing — all 1,823 of its values are `-1` — and the
- * string set needs a value type this one does not have.
+ * The element-id set is not read. It locates as reliably as the others and is
+ * worth nothing on the supplied project: all 1,823 of its values are `-1`.
+ *
+ * Every value is checked against the storage type Autodesk declares for that
+ * parameter in `oda-parameter-descriptors.json`, which is a table from a
+ * different binary than any of this. On the supplied project all 67,228 double
+ * values, all 114 integer values and all 44 text values agree with it.
  *
  * Type parameters use a different mechanism again: positional, schema-tagged
  * fields inside the type record, not decoded here.
@@ -81,6 +87,7 @@ const LEADING_POINTER_FIELDS = 6;
 /** Positions of the four parameter value sets among those pointers. */
 const DOUBLE_SET_POINTER = 0;
 const INTEGER_SET_POINTER = 1;
+const STRING_SET_POINTER = 2;
 
 /**
  * Bytes from the anchor to the end of `Element`'s own fields: `m_cellList` and
@@ -123,6 +130,9 @@ const MAX_PARAMETERS = 256;
 /** Model coordinates and dimensions in feet stay well inside this bound. */
 const MAX_PARAMETER_VALUE = 1e7;
 
+/** Characters one text parameter can hold. Revit's own limit is far lower. */
+const MAX_PARAMETER_TEXT = 4_096;
+
 export type ElementParameter = {
   parameterId: number;
   /** Published parameter label, or `Parameter <id>` when Autodesk omits it. */
@@ -133,8 +143,11 @@ export type ElementParameter = {
    * transcribed table does name, so its absence says nothing about the id.
    */
   enumName?: string;
-  /** Value in Revit's internal units — feet for lengths. */
-  value: number;
+  /**
+   * Value in Revit's internal units — feet for lengths — or the text, for the
+   * parameters Revit stores in its string value set.
+   */
+  value: number | string;
 };
 
 export type ElementParameterTable = {
@@ -212,6 +225,50 @@ function readIntegerTableAt(
 }
 
 /**
+ * One `ParamValueSetAString` table.
+ *
+ * The entries are variable width — a parameter id, a character count, then that
+ * many UTF-16LE code units — so this walks rather than indexes. These are the
+ * parameters that carry identity a model has no other source for: `Mark`,
+ * `Type Mark`, `Description`, `Comments`, `Keynote`.
+ */
+function readStringTableAt(
+  view: DataView,
+  data: Uint8Array,
+  offset: number,
+  byteLength: number,
+): { parameters: ElementParameter[]; end: number } | null {
+  if (offset + 4 > byteLength) return null;
+  const count = view.getUint32(offset, true);
+  if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
+
+  const parameters: ElementParameter[] = [];
+  let cursor = offset + 4;
+  for (let index = 0; index < count; index += 1) {
+    if (cursor + 12 > byteLength) return null;
+    if (view.getUint32(cursor + 4, true) !== 0xffff_ffff) return null;
+    const parameterId = view.getUint32(cursor, true) - 0x1_0000_0000;
+    if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
+    const characters = view.getUint32(cursor + 8, true);
+    if (characters > MAX_PARAMETER_TEXT) return null;
+    const textEnd = cursor + 12 + characters * 2;
+    if (textEnd > byteLength) return null;
+    const text = new TextDecoder("utf-16le").decode(data.subarray(cursor + 12, textEnd));
+    // A control character means the walk is reading something else.
+    if (/[\u0000-\u0008\u000e-\u001f\ufffd]/.test(text)) return null;
+    const enumName = builtInParameterEnumName(parameterId);
+    parameters.push({
+      parameterId,
+      name: parameterDisplayName(parameterId),
+      ...(enumName ? { enumName } : {}),
+      value: text,
+    });
+    cursor = textEnd;
+  }
+  return { parameters, end: cursor };
+}
+
+/**
  * The value sets an element declares, read from where they are written.
  *
  * A pointer field defers its target, and the deferred objects follow the
@@ -225,7 +282,8 @@ function readParameterSets(
   view: DataView,
   offset: number,
   byteLength: number,
-  sets: { double: boolean; integer: boolean },
+  sets: { double: boolean; integer: boolean; text: boolean },
+  data: Uint8Array,
 ): ElementParameter[] | null {
   let cursor = offset;
   const parameters: ElementParameter[] = [];
@@ -237,6 +295,12 @@ function readParameterSets(
   }
   if (sets.integer) {
     const table = readIntegerTableAt(view, cursor, byteLength);
+    if (!table) return null;
+    parameters.push(...table.parameters);
+    cursor = table.end;
+  }
+  if (sets.text) {
+    const table = readStringTableAt(view, data, cursor, byteLength);
     if (!table) return null;
     parameters.push(...table.parameters);
   }
@@ -267,7 +331,7 @@ function ownedParameterSets(
   view: DataView,
   anchorOffset: number,
   elementId: number,
-): { double: boolean; integer: boolean } | null {
+): { double: boolean; integer: boolean; text: boolean } | null {
   for (
     let distance = MIN_ANCHOR_DISTANCE;
     distance <= MAX_ANCHOR_DISTANCE;
@@ -289,6 +353,7 @@ function ownedParameterSets(
     let cursor = start + OBJECT_BODY_OFFSET;
     let double = false;
     let integer = false;
+    let text = false;
     let walked = true;
     for (let field = 0; field < LEADING_POINTER_FIELDS; field += 1) {
       if (cursor + 4 > anchorOffset) { walked = false; break; }
@@ -296,6 +361,7 @@ function ownedParameterSets(
       cursor += handle === 0 ? 4 : 6;
       if (field === DOUBLE_SET_POINTER) double = handle !== 0;
       if (field === INTEGER_SET_POINTER) integer = handle !== 0;
+      if (field === STRING_SET_POINTER) text = handle !== 0;
     }
     if (!walked || cursor + 4 > anchorOffset) continue;
     // `m_constrInfo`, a counted collection of the same pointers.
@@ -306,7 +372,7 @@ function ownedParameterSets(
       cursor += handle === 0 ? 4 : 6;
     }
     if (cursor !== anchorOffset) continue;
-    return { double, integer };
+    return { double, integer, text };
   }
   return null;
 }
@@ -344,7 +410,7 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
     // An element that declares no value set has no table to find, and searching
     // for one only borrows a neighbour's.
     const sets = ownedParameterSets(view, offset, elementId);
-    if (!sets || (!sets.double && !sets.integer)) {
+    if (!sets || (!sets.double && !sets.integer && !sets.text)) {
       offset += ANCHOR_LENGTH - 1;
       continue;
     }
@@ -354,7 +420,7 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
     const from = offset + BASE_FIELDS_AFTER_ANCHOR;
     const limit = Math.min(data.byteLength, from + TABLE_SEARCH_BYTES);
     for (let cursor = from; cursor + 12 <= limit; cursor += 1) {
-      const parameters = readParameterSets(view, cursor, data.byteLength, sets);
+      const parameters = readParameterSets(view, cursor, data.byteLength, sets, data);
       if (!parameters) continue;
       tables.push({ elementId, parameters });
       break;

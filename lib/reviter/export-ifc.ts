@@ -576,8 +576,12 @@ function emitElementProperties(
   );
 
   if (!element.parameters.length) return;
+  // Revit stores a parameter as a double, an integer or a string depending on
+  // which of its value sets holds it, so the property follows the value.
   const parameterProperties = element.parameters.map((parameter) =>
-    realProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value));
+    typeof parameter.value === "string"
+      ? textProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value)
+      : realProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value));
   const parameterSet = writer.add(
     `IFCPROPERTYSET(${quoted(guidFor(namespace, "pset-parameters", element.elementId))},#${ownerHistory},'Reviter_RevitInstanceParameters','Raw Revit internal values; dimensional values are stored in feet',${writer.refs(parameterProperties)})`,
   );
