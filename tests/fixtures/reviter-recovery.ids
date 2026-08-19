@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What a Reviter IFC export promises about every product it emits.
+
+  These are the exporter's own invariants restated in a standard, model-neutral
+  form: no byte offset, no record code, no threshold fitted to one building.
+  The same document therefore applies to the checked-in fixture and to a real
+  recovered model, which is the point — every other gate in this repository was
+  fitted on the supplied Revit 2027 project and cannot say anything about a
+  second file.
+
+  `export-ifc.ts` writes `Reviter_Recovery` on every natively tagged occurrence.
+  A recovered element that reaches an IFC without its recovery evidence is
+  indistinguishable from an authored one, which is the failure this document
+  exists to catch.
+-->
+<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Reviter recovery evidence</title>
+    <description>Every recovered product states its Revit identity, its category evidence, and whether its body is exact.</description>
+    <author>ahzs645@gmail.com</author>
+  </info>
+  <specifications>
+
+    <specification name="Walls carry Revit identity" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCINTEGER">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>RevitElementId</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Walls state whether the body is exact" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>GeometryExact</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Walls name the evidence behind their category" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>CategoryEvidence</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Doors carry Revit identity" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCINTEGER">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>RevitElementId</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Doors state whether the body is exact" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>GeometryExact</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+  </specifications>
+</ids>
