@@ -50,7 +50,7 @@
  *   measured from `Partitions/*` records rather than from the schema; `Level`
  *   comes out at `0x0a19`, which is `REVIT_2027_LEVEL_MARKER` in
  *   `level-relations.ts`. And the `FacetedTopology0` fixture in
- *   `tests/schema-fields.test.ts`, whose descriptor reader was derived
+ *   `tests/counted-arrays.test.ts`, whose descriptor reader was derived
  *   separately from geometry, is reproduced field for field: its `[1:u32][0x20]`
  *   "argument count" is this grammar's nested tuple element, a property whose
  *   name is the single space that the extra-word rule above is about.
@@ -150,7 +150,7 @@ export type SchemaFieldVariant = {
  * One entry disagrees with the description this grammar was handed. `0x06` is
  * given there as a second spelling of `double`, eight bytes wide, but this
  * repository already reads it as a four-byte float and does so against real
- * geometry: `schema-fields.ts` decodes the `m_pointsArr` of a class literally
+ * geometry: `faceted-topology.ts` reads the `m_pointsArr` of a class literally
  * named `FloatFacetedTopology` — element type `0x06`, tuple width 3 — with
  * `getFloat32`, and the meshes come out at the right coordinates. The width is
  * not observable from the schema stream itself, so the reader that consumes

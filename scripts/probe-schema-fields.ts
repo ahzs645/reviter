@@ -21,12 +21,14 @@ import {
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
 import {
-  findSchemaClassDefinition,
-  flattenSchemaFields,
   locateCountedTupleArray,
   readClassSelector,
-  type DecodedSchemaLayer,
-} from "../lib/reviter/schema-fields.ts";
+} from "../lib/reviter/counted-arrays.ts";
+import {
+  readSchema,
+  schemaAncestorChain,
+  schemaClassesByName,
+} from "../lib/reviter/schema-reader.ts";
 
 const TARGET_CLASSES = [
   "DoubleFacetedTopology",
@@ -100,32 +102,40 @@ function firstInflatedStream(
   return offset == null ? null : inflateRevitChunk(data, offset);
 }
 
-function layerNames(layer: DecodedSchemaLayer): string[] {
-  return [...(layer.parent ? layerNames(layer.parent) : []), layer.name];
-}
-
 function classProbes(schemaBytes: Uint8Array): ClassProbe[] {
+  const parsed = readSchema(schemaBytes);
+  if (!parsed.ok) {
+    return TARGET_CLASSES.map((name) => ({
+      name,
+      decoded: false,
+      error: parsed.error,
+      errorOffset: parsed.offset,
+    }));
+  }
+  const { schema } = parsed;
+  const byName = schemaClassesByName(schema);
   return TARGET_CLASSES.map((name) => {
-    const result = findSchemaClassDefinition(schemaBytes, name);
-    if (!result.ok) {
-      return {
-        name,
-        decoded: false,
-        error: result.error,
-        errorOffset: result.offset,
-      };
+    const definition = byName.get(name);
+    if (!definition) {
+      return { name, decoded: false, error: "not declared by this file", errorOffset: 0 };
     }
+    // Base first, which is the order an instance writes its fields in.
+    const chain = schemaAncestorChain(schema, definition.index);
     return {
       name,
       decoded: true,
-      classId: result.layer.classId,
-      layers: layerNames(result.layer),
-      fields: flattenSchemaFields(result.layer).map((field) => ({
-        name: field.name,
-        typeCode: field.typeCode,
-        mode: field.mode,
-        arrayElement: field.arrayElement,
-      })),
+      classId: definition.index,
+      layers: chain.map((entry) => entry.name),
+      fields: chain.flatMap((entry) =>
+        entry.properties.map((property) => ({
+          name: `${entry.name}.${property.name}`,
+          typeCode: property.fieldType,
+          mode: property.loadingMode | (property.itemMode << 4),
+          arrayElement: property.element
+            ? { typeCode: property.element.fieldType, tupleWidth: property.size ?? 0 }
+            : undefined,
+        })),
+      ),
     };
   });
 }

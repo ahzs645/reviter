@@ -27,7 +27,7 @@ import {
   salvageRevitChunk,
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
-import { locateCountedTupleArray } from "../lib/reviter/schema-fields.ts";
+import { locateCountedTupleArray } from "../lib/reviter/counted-arrays.ts";
 
 const MAX_VERTICES = 200_000;
 const MAX_FACETS = 400_000;
