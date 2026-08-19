@@ -2,7 +2,7 @@
  * Browser-safe Revit 2027 BasicWallType compound-structure material reader.
  *
  * `Formats/Latest` identifies BasicWallType as tag 625, written in partition
- * object headers as tag - 1 (`0x0270`). Its inherited HostObjAttr owns
+ * object headers as `0x0270`, which is the class's own index. Its inherited HostObjAttr owns
  * `m_pCompoundStructure`; the nested CompoundStructure field `m_layers` is
  * selected by `ff ff ff ff ab 11`.
  *

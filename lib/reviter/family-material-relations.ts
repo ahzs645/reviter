@@ -5,7 +5,7 @@
  * length/echo-framed Revit 2027 objects and were accepted only after the
  * embedded schema and the paired IFC independently agreed:
  *
- * - `FamilySymbol` (schema tag 2065, object marker `tag - 1 = 0x0810`)
+ * - `FamilySymbol` (class index 2064 = `0x0810`, which is the object marker)
  *   carries `m_familyId` at `+449`;
  * - the referenced `Family` has schema tag 2010 / object marker `0x07d9`;
  * - three shared-geometry layouts carry MaterialElem ids at the offsets below.

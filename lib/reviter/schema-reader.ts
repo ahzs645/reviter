@@ -632,3 +632,58 @@ export function readSchema(data: Uint8Array, options: SchemaReadOptions = {}): S
     },
   };
 }
+
+/**
+ * Every class in the stream by name.
+ *
+ * Names are unique: 4,757 classes carry 4,757 distinct names in the supplied
+ * 2027 project, and 3,619 carry 3,619 in the 2014 family file. That uniqueness
+ * is what lets a decoder ask for a class by name instead of pinning the index
+ * it happened to have in one release — and the indices move a long way. Of the
+ * 3,508 class names the two files share, 25 keep the same index; `ArcWall`
+ * moves 330 places and `SysMullionFamSym` 1,055, and the shift is not a
+ * constant, so nothing short of a lookup survives a release change.
+ */
+export function schemaClassesByName(schema: SchemaStream): Map<string, SchemaStreamClass> {
+  const byName = new Map<string, SchemaStreamClass>();
+  for (const entry of schema.classes) if (!byName.has(entry.name)) byName.set(entry.name, entry);
+  return byName;
+}
+
+/**
+ * Index of a named class, or `-1`.
+ *
+ * `-1` rather than `undefined` because these values are compared against class
+ * markers read out of a file, and a marker of `0` occurs — on frames that are
+ * not objects at all. A sentinel that could match one would turn a class this
+ * release does not have into a silent false positive.
+ */
+export function schemaClassIndex(
+  classesByName: Map<string, SchemaStreamClass>,
+  name: string,
+): number {
+  return classesByName.get(name)?.index ?? -1;
+}
+
+/**
+ * A class and its ancestors, base first, which is the order their fields are
+ * written in: an instance carries `Element`'s fields, then `DatumPlane`'s, then
+ * `Level`'s. Stops at a reference the stream never defined, and cannot loop —
+ * a parent is always a lower index than the class that names it.
+ */
+export function schemaAncestorChain(
+  schema: SchemaStream,
+  index: number,
+): SchemaStreamClass[] {
+  const chain: SchemaStreamClass[] = [];
+  let current = schema.classesByIndex.get(index);
+  const seen = new Set<number>();
+  while (current && !seen.has(current.index)) {
+    seen.add(current.index);
+    chain.push(current);
+    const parent = current.parent;
+    if (parent.kind !== "inline" && parent.kind !== "reference") break;
+    current = schema.classesByIndex.get(parent.index);
+  }
+  return chain.reverse();
+}
