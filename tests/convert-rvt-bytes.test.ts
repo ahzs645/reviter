@@ -90,12 +90,12 @@ const CATEGORY_TOKEN_BYTES = 18;
 const ELEMENT_PAGE_BYTES = BOUNDS_RECORD_BYTES + CATEGORY_TOKEN_BYTES;
 
 /**
- * Non-empty CFB entries the writer contributes on its own: the root storage,
- * whose size is the mini-stream it holds, and the default stream `cfb_new`
- * seeds every container with. `stats.streamCount` counts non-empty entries, so
- * both land in it alongside the fixture's own streams.
+ * Non-empty CFB *streams* the writer contributes on its own: the default stream
+ * `cfb_new` seeds every container with. The root storage also reports a
+ * non-zero size — the mini-stream it holds — but it is a storage, not a stream,
+ * and is no longer counted.
  */
-const CONTAINER_OWN_STREAMS = 2;
+const CONTAINER_OWN_STREAMS = 1;
 
 type Box = { min: readonly [number, number, number]; max: readonly [number, number, number] };
 

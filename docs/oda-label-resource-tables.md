@@ -79,8 +79,8 @@ The transcribed table stores enumerators and
 [`humaniseCategoryName`](../lib/reviter/built-in-categories.ts) reconstructs a
 display name from one. That is close, and for most categories it is exactly
 right, but it is a reconstruction: 758 of the 1,075 labelled categories are not
-the humanised enumerator. One of them, `OST_StairsRailingBaluster`, is the third
-largest category recovered from the supplied 2027 project at 3,166 elements.
+the humanised enumerator. One of them, `OST_CurtainWallPanels`, is the third
+largest category recovered from the supplied 2027 project, at 6,248 elements.
 
 | Id | Enumerator | Was shown | Revit's label |
 | --- | --- | --- | --- |
@@ -268,3 +268,39 @@ node scripts/extract-oda-label-tables.mjs /path/to/BmJsonExportEx-isolated --wri
 Without `--write-lib` it writes only the two `docs/generated` artifacts. The run
 is deterministic: the same input reproduces both files and the generated module
 byte for byte.
+
+## What `Partitions/NNN` counts
+
+The stream a Revit file keeps its elements in is named `Partitions/` followed by
+a number — `Partitions/325` in the supplied 2027 project — and the repository
+has carried that number as an unexplained one. It is a **save counter**: the
+document-increment index the partition was written at, which is one less than
+`BasicFileInfo`'s "Unique Document Increments".
+
+| File | `NNN` | Unique Document Increments |
+| --- | ---: | ---: |
+| supplied 2027 project | 325 | 326 |
+| `DefaultMetric.rte` | 65 | 66 |
+| `Structural Analysis-DefaultMetric.rte` | 477 | 478 |
+| `default.rte` | 515 | 516 |
+
+`NNN == increments - 1` holds on the supplied project and on all 28 Revit 2026
+`.rte`/`.rft` templates embedded in `TB_Base.tx`, with no exceptions. ODA's own
+writer agrees from the other side: `OdBmFileLoader::writePartitions` formats the
+key with `%d`, `readPartitions` parses it back with `wcstol`, and
+`updateCompressedPartitions` sets that key from the local increment table's
+length. The increment table's own inflated size regresses on the increment count
+at 226 bytes per record with an R² of 0.999982 — one record per increment, and
+exactly `NNN + 1` of them.
+
+Three observations rule out a type code directly. The same template in metric and
+imperial gets different numbers (`Metric Generic Model.rft` is 58, `Generic
+Model.rft` is 60); different templates collide on one number (floor-based is also
+58); and every one of the 28 files carries exactly one partition stream, so the
+number cannot be an index within the file either.
+
+Nothing should be read from the value. It is not a partition *type* —
+`OdBm::PartitionType` runs 0-178 plus 1001-1002 and 325 is not in it — and it is
+not a key into `Global/PartitionTable`, whose records are worksets
+(`Workset1`, `Project Standards`, `Family : <category> : <type>`) in a different
+id space.

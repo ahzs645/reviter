@@ -386,7 +386,7 @@ export function convertRvtBytes(
         ...decodedRelations,
         warnings: buildWarnings(basis, scene.report),
         stats: {
-          streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
+          streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
           gzipChunks,
           inflatedBytes,
@@ -489,7 +489,7 @@ export function convertRvtBytes(
       ...decodedRelations,
       warnings: buildWarnings(basis, coordinateReport),
       stats: {
-        streamCount: cfb.FileIndex.filter((entry) => entry.size > 0).length,
+        streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
         partitionStreams: partitions.length,
         gzipChunks,
         inflatedBytes,

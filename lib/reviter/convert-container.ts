@@ -202,7 +202,11 @@ export function openRevitContainer(
   const coverage = summariseCoverage(
     cfb.FileIndex
       .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-      .filter(({ entry }) => entry.size > 0)
+      // Streams only. A CFB storage reports the size of the mini-stream it
+      // holds, so the root passes a size test, strips to an empty path, matches
+      // no rule, and lands in the coverage table as a blank "Not recognised"
+      // row — a stream the file does not have, graded as undecoded.
+      .filter(({ entry }) => entry.type === 2 && entry.size > 0)
       .map(({ entry, path }) =>
         measureStream(path.replace(/^Root Entry\//, ""), asBytes(entry.content)),
       ),

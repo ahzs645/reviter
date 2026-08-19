@@ -8,9 +8,8 @@
  * independently against the paired IFC export agrees exactly — `-2000011`
  * Walls, `-2000170` CurtainWallPanels, `-2000171` CurtainWallMullions,
  * `-2000126` StairsRailing, `-2000032` Floors, `-2000038` Ceilings, `-2000180`
- * Ramps. Names the IFC could not corroborate are now resolved too: `-2000127`,
- * the third largest category in the model at 3,166 elements, is
- * `OST_StairsRailingBaluster`.
+ * Ramps. Names the IFC could not corroborate are now resolved too: `-2000127`
+ * is `OST_StairsRailingBaluster`, 79 elements in the supplied project.
  *
  * Stored as a packed string rather than an object literal: 1,211 entries cost
  * about 34 KB either way in source, but the packed form parses once into a Map
@@ -477,8 +476,8 @@ export function builtInCategoryName(categoryId: number): string | undefined {
  * `humaniseCategoryName` reconstructs a display name from the enumerator, which
  * is close but not always what Revit prints: `OST_CurtainWallPanels` is "Curtain
  * Panels", `OST_StairsRailing` is "Railings", and `OST_StairsRailingBaluster` is
- * "Balusters" — the third largest category recovered from the supplied 2027
- * project. 758 of the 1,075 labelled categories differ this way, so the
+ * "Balusters". 758 of the 1,075 labelled categories differ this way, and the
+ * three largest categories in the supplied project are among them, so the
  * difference is visible on every object list and every export.
  *
  * A label is only adopted when it names one category and nothing else. Revit

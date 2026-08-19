@@ -13,6 +13,12 @@
  *
  * and the tag is what identifies the class in `Partitions/NN` records.
  *
+ * `NN` is a save counter, not a type code: it is the document-increment index
+ * the partition was written at, one less than `BasicFileInfo`'s "Unique
+ * Document Increments". The supplied 2027 project is `Partitions/325` and
+ * reports 326 increments; the same holds on all 28 Revit 2026 templates ODA
+ * ships. Nothing should be read from the number itself.
+ *
  * The parent name is what makes the record trustworthy. A name-and-tag pattern
  * alone also matches compressed noise — scanning for it loosely over the
  * supplied 2027 project yields 232 candidates, 48 of which are mangled strings
