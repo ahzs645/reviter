@@ -224,6 +224,37 @@ other three value sets in `Element` is decoded. Nine of its value rows are also
 keyed by shared-parameter GUID rather than an integer, so the table is not purely
 ordinal.
 
+## Where a release boundary is
+
+`TB_LoaderBase.tx` exports 139 `<Class>ComposeForLoad<startYear><endYear>`
+routines across 87 classes, committed as
+[`generated/oda-release-composition-ranges.json`](generated/oda-release-composition-ranges.json).
+
+These are not layouts — ODA composes a class from the file's own schema, which is
+why no module carries a hardcoded Revit class list. What they are is a map of
+where a class's composition is release-dependent, which is the standing risk in
+a decoder fitted to one building on one release:
+
+| Class | Ranges |
+| --- | --- |
+| `Element` | 2011-2013, 2014-2014, 2015-2019, 2019-2025 |
+| `FamilyInstance` | 2011-2013, 2014-2017, 2018-2022 |
+| `ArcWall` | 2011-2019 |
+| `GElement` | 2011-2019 |
+| `Floor` | 2011-2023 |
+| `MaterialElem` | 2011-2020, 2019-2019 |
+
+`Element` is composed one way from 2019 on and differently for 2015-2019, so a
+rule fitted to the supplied 2027 model is unproven below 2019 and there is a
+named boundary to test at. That is worth knowing for
+[`legacy-revit-2021.test.ts`](../tests/legacy-revit-2021.test.ts) and for
+[validating on a second building](validating-on-a-second-building.md).
+
+Read it as a boundary map and nothing more. A class with one range is not
+evidence that it is absent elsewhere — a composition that never changed needs no
+second routine — so `ArcWall` stopping at 2019 is suggestive of why the 2023
+six-coordinate reading was never provable, not proof of it.
+
 ## Regenerating
 
 The binaries are not in this repository and are not redistributable. `nm` is

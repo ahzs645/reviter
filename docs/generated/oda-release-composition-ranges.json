@@ -1,0 +1,582 @@
+{
+  "source": "TB_LoaderBase.tx",
+  "symbol": "<Class>ComposeForLoad<startYear><endYear>",
+  "classes": 87,
+  "ranges": 139,
+  "composition": [
+    {
+      "class": "AbsLayoutAppInfo",
+      "ranges": [
+        "2011-2016"
+      ]
+    },
+    {
+      "class": "ADocument",
+      "ranges": [
+        "2011-2017"
+      ]
+    },
+    {
+      "class": "Alignment",
+      "ranges": [
+        "2013-2014",
+        "2015-2019"
+      ]
+    },
+    {
+      "class": "AllProjectPhases",
+      "ranges": [
+        "2011-2019"
+      ]
+    },
+    {
+      "class": "AllProjectRevisions",
+      "ranges": [
+        "2011-2021"
+      ]
+    },
+    {
+      "class": "AppInfoManager",
+      "ranges": [
+        "2011-2016",
+        "2011-2025",
+        "2017-2017",
+        "2018-2022",
+        "2022-2022",
+        "2023-2023",
+        "2024-2024"
+      ]
+    },
+    {
+      "class": "ArcWall",
+      "ranges": [
+        "2011-2019"
+      ]
+    },
+    {
+      "class": "AreaPlanTopologiesInterface",
+      "ranges": [
+        "2011-2022"
+      ]
+    },
+    {
+      "class": "AUnits",
+      "ranges": [
+        "2011-2011",
+        "2012-2012",
+        "2013-2013",
+        "2014-2016",
+        "2017-2019",
+        "2020-2020",
+        "2021-2021",
+        "2022-2022",
+        "2023-2023"
+      ]
+    },
+    {
+      "class": "BaseRailingAttr",
+      "ranges": [
+        "2011-2018"
+      ]
+    },
+    {
+      "class": "BrowserOrganizationTracking",
+      "ranges": [
+        "2011-2025",
+        "2018-2025"
+      ]
+    },
+    {
+      "class": "CategoryTracking",
+      "ranges": [
+        "2015-2025"
+      ]
+    },
+    {
+      "class": "CellList",
+      "ranges": [
+        "2011-2025"
+      ]
+    },
+    {
+      "class": "ColorFillData",
+      "ranges": [
+        "2011-2021"
+      ]
+    },
+    {
+      "class": "ConnectorElemDomainCableTrayConduit",
+      "ranges": [
+        "2011-2013"
+      ]
+    },
+    {
+      "class": "ConnectorElemDomainHvac",
+      "ranges": [
+        "2011-2013"
+      ]
+    },
+    {
+      "class": "ConnectorElemDomainPiping",
+      "ranges": [
+        "2011-2013"
+      ]
+    },
+    {
+      "class": "CreateAssemblyViewsInfo",
+      "ranges": [
+        "2014-2016",
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "DBView",
+      "ranges": [
+        "2011-2023"
+      ]
+    },
+    {
+      "class": "DBView3d",
+      "ranges": [
+        "2011-2018"
+      ]
+    },
+    {
+      "class": "DBViewDrafting",
+      "ranges": [
+        "2015-2025"
+      ]
+    },
+    {
+      "class": "DBViewSchedule",
+      "ranges": [
+        "2011-2021",
+        "2011-2022",
+        "2011-2025",
+        "2015-2023"
+      ]
+    },
+    {
+      "class": "Dimension",
+      "ranges": [
+        "2013-2014",
+        "2015-2019"
+      ]
+    },
+    {
+      "class": "ElectricalFamInstDesignPropertyManager",
+      "ranges": [
+        "2011-2025"
+      ]
+    },
+    {
+      "class": "Element",
+      "ranges": [
+        "2011-2013",
+        "2014-2014",
+        "2015-2019",
+        "2019-2025"
+      ]
+    },
+    {
+      "class": "ElementHeader",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "EnergyDataSettings",
+      "ranges": [
+        "2016-2017"
+      ]
+    },
+    {
+      "class": "ExtentElem",
+      "ranges": [
+        "2015-2015"
+      ]
+    },
+    {
+      "class": "ExternalResourceReferenceCell",
+      "ranges": [
+        "2015-2015",
+        "2015-2023",
+        "2017-2017"
+      ]
+    },
+    {
+      "class": "FamilyBase",
+      "ranges": [
+        "2011-2013",
+        "2011-2022"
+      ]
+    },
+    {
+      "class": "FamilyInstance",
+      "ranges": [
+        "2011-2013",
+        "2014-2017",
+        "2018-2022"
+      ]
+    },
+    {
+      "class": "FamilySymbol",
+      "ranges": [
+        "2017-2019"
+      ]
+    },
+    {
+      "class": "FilledRegionAttributes",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "Floor",
+      "ranges": [
+        "2011-2023"
+      ]
+    },
+    {
+      "class": "GElement",
+      "ranges": [
+        "2011-2019"
+      ]
+    },
+    {
+      "class": "GeomStepList",
+      "ranges": [
+        "2011-2014"
+      ]
+    },
+    {
+      "class": "GFilling",
+      "ranges": [
+        "2011-2012",
+        "2012-2012",
+        "2013-2024"
+      ]
+    },
+    {
+      "class": "GlobalParamTracking",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "GRenderSettings",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "GStyleElem",
+      "ranges": [
+        "2019-2019"
+      ]
+    },
+    {
+      "class": "ImageInfo",
+      "ranges": [
+        "2011-2019"
+      ]
+    },
+    {
+      "class": "ImageSymbol",
+      "ranges": [
+        "2015-2019"
+      ]
+    },
+    {
+      "class": "IndependentTag",
+      "ranges": [
+        "2011-2021",
+        "2011-2022",
+        "2011-2023",
+        "2022-2024",
+        "2023-2024"
+      ]
+    },
+    {
+      "class": "LineLoad",
+      "ranges": [
+        "2011-2023"
+      ]
+    },
+    {
+      "class": "LoadCaseElem",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "LoadNatureElem",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "MasterImportSymbol",
+      "ranges": [
+        "2015-2017",
+        "2018-2019"
+      ]
+    },
+    {
+      "class": "Material",
+      "ranges": [
+        "2011-2011"
+      ]
+    },
+    {
+      "class": "MaterialElem",
+      "ranges": [
+        "2011-2020",
+        "2019-2019"
+      ]
+    },
+    {
+      "class": "MEPComponentTracker",
+      "ranges": [
+        "2015-2025"
+      ]
+    },
+    {
+      "class": "NumberingAppInfo",
+      "ranges": [
+        "2015-2025"
+      ]
+    },
+    {
+      "class": "NumberingSchema",
+      "ranges": [
+        "2015-2025"
+      ]
+    },
+    {
+      "class": "PanelScheduleView",
+      "ranges": [
+        "2011-2025"
+      ]
+    },
+    {
+      "class": "ParameterFilterElement",
+      "ranges": [
+        "2011-2018"
+      ]
+    },
+    {
+      "class": "PhysicalParamSet",
+      "ranges": [
+        "2011-2011"
+      ]
+    },
+    {
+      "class": "PipeDomainDesignPropertyManager",
+      "ranges": [
+        "2012-2025"
+      ]
+    },
+    {
+      "class": "ProjectRevision",
+      "ranges": [
+        "2015-2021"
+      ]
+    },
+    {
+      "class": "PropagationFilterData",
+      "ranges": [
+        "2016-2019"
+      ]
+    },
+    {
+      "class": "RailStructure",
+      "ranges": [
+        "2011-2018"
+      ]
+    },
+    {
+      "class": "RbsCurve",
+      "ranges": [
+        "2011-2022"
+      ]
+    },
+    {
+      "class": "RbsDuctSettingsElem",
+      "ranges": [
+        "2013-2024"
+      ]
+    },
+    {
+      "class": "RbsElectricalSystem",
+      "ranges": [
+        "2011-2011",
+        "2011-2025",
+        "2012-2019",
+        "2012-2025",
+        "2017-2025",
+        "2020-2020",
+        "2021-2021"
+      ]
+    },
+    {
+      "class": "RbsPipeSettingsElem",
+      "ranges": [
+        "2015-2017"
+      ]
+    },
+    {
+      "class": "RbsPipingSystemType",
+      "ranges": [
+        "2012-2025"
+      ]
+    },
+    {
+      "class": "RbsSwitchSystem",
+      "ranges": [
+        "2011-2011"
+      ]
+    },
+    {
+      "class": "RbsWireSizesElem",
+      "ranges": [
+        "2011-2025"
+      ]
+    },
+    {
+      "class": "RbsWireType",
+      "ranges": [
+        "2011-2025"
+      ]
+    },
+    {
+      "class": "Rebar",
+      "ranges": [
+        "2013-2022"
+      ]
+    },
+    {
+      "class": "RebarBarType",
+      "ranges": [
+        "2011-2021"
+      ]
+    },
+    {
+      "class": "RebarDescriptionForNumbering",
+      "ranges": [
+        "2015-2025",
+        "2017-2025",
+        "2021-2025"
+      ]
+    },
+    {
+      "class": "RebarInstance",
+      "ranges": [
+        "2013-2017",
+        "2018-2025"
+      ]
+    },
+    {
+      "class": "RebarInstBase",
+      "ranges": [
+        "2018-2021",
+        "2022-2023"
+      ]
+    },
+    {
+      "class": "RebarInstFreeForm",
+      "ranges": [
+        "2018-2018",
+        "2018-2020"
+      ]
+    },
+    {
+      "class": "RebarInSystem",
+      "ranges": [
+        "2013-2022"
+      ]
+    },
+    {
+      "class": "RebarShape",
+      "ranges": [
+        "2011-2011"
+      ]
+    },
+    {
+      "class": "RebarShapeVertex",
+      "ranges": [
+        "2011-2012"
+      ]
+    },
+    {
+      "class": "RebarSystemBase",
+      "ranges": [
+        "2013-2021"
+      ]
+    },
+    {
+      "class": "RefPlane",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "RegenSplitterCell",
+      "ranges": [
+        "2011-2012"
+      ]
+    },
+    {
+      "class": "ReinforcementSettings",
+      "ranges": [
+        "2017-2025"
+      ]
+    },
+    {
+      "class": "RoomElem",
+      "ranges": [
+        "2011-2020"
+      ]
+    },
+    {
+      "class": "RoomTag",
+      "ranges": [
+        "2011-2021"
+      ]
+    },
+    {
+      "class": "StairsRailingAttr",
+      "ranges": [
+        "2011-2018"
+      ]
+    },
+    {
+      "class": "StructSettingsElem",
+      "ranges": [
+        "2011-2015"
+      ]
+    },
+    {
+      "class": "SymbolIdMgr",
+      "ranges": [
+        "2011-2014",
+        "2012-2014",
+        "2013-2014",
+        "2014-2014"
+      ]
+    },
+    {
+      "class": "ViewDisplayFog",
+      "ranges": [
+        "2016-2016"
+      ]
+    },
+    {
+      "class": "ViewDisplayMgr",
+      "ranges": [
+        "2011-2013",
+        "2013-2013"
+      ]
+    }
+  ]
+}

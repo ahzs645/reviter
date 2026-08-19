@@ -30,6 +30,7 @@ const BINARY = "TB_ExLabelUtils.tx";
 const DESCRIPTOR_BINARY = "TB_Base.tx";
 const OUTPUT_JSON = resolve("docs/generated/oda-label-resource-tables.json");
 const OUTPUT_DESCRIPTORS = resolve("docs/generated/oda-parameter-descriptors.json");
+const OUTPUT_COMPOSITION = resolve("docs/generated/oda-release-composition-ranges.json");
 const OUTPUT_MARKDOWN = resolve("docs/generated/oda-label-resource-tables.md");
 const OUTPUT_MODULE = resolve("lib/reviter/oda-label-resource.ts");
 
@@ -266,6 +267,51 @@ if (!descriptorExtent) {
     parameters: descriptors,
   }, null, 2)}\n`);
   console.log(`${OUTPUT_DESCRIPTORS}: ${descriptors.length} parameter descriptors`);
+}
+
+/**
+ * `<Class>ComposeForLoad<startYear><endYear>` in `TB_LoaderBase.tx`.
+ *
+ * ODA composes a class from the file's own schema, so these are not layouts.
+ * What they are is a map of where a class's composition is release-dependent:
+ * `Element` is composed one way for 2011-2013, again for 2014, again for
+ * 2015-2019, and again for 2019-2025. A rule fitted to one release holds across
+ * its own range and is unproven outside it.
+ *
+ * Read as a boundary map only. A class with a single range is not evidence that
+ * it is absent from other releases — an unchanged class needs no second
+ * routine — so absence is not decodable from this alone.
+ */
+const COMPOSE_FOR_LOAD = /\b([A-Za-z_][A-Za-z0-9_]*)ComposeForLoad(\d{4})(\d{4})\b/g;
+
+function readCompositionRanges(path) {
+  const listing = spawnSync("nm", ["-D", "-C", path], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  }).stdout ?? "";
+  const byClass = new Map();
+  for (const [, className, from, to] of listing.matchAll(COMPOSE_FOR_LOAD)) {
+    if (!byClass.has(className)) byClass.set(className, new Set());
+    byClass.get(className).add(`${from}-${to}`);
+  }
+  return [...byClass.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([className, ranges]) => ({ class: className, ranges: [...ranges].sort() }));
+}
+
+const compositionRanges = readCompositionRanges(resolve(sourceRoot, "TB_LoaderBase.tx"));
+if (compositionRanges.length > 0) {
+  await writeFile(OUTPUT_COMPOSITION, `${JSON.stringify({
+    source: "TB_LoaderBase.tx",
+    symbol: "<Class>ComposeForLoad<startYear><endYear>",
+    classes: compositionRanges.length,
+    ranges: compositionRanges.reduce((n, row) => n + row.ranges.length, 0),
+    composition: compositionRanges,
+  }, null, 2)}\n`);
+  console.log(`${OUTPUT_COMPOSITION}: ${compositionRanges.length} classes, ${
+    compositionRanges.reduce((n, row) => n + row.ranges.length, 0)} ranges`);
+} else {
+  console.warn("skipping TB_LoaderBase.tx: no ComposeForLoad symbols (is nm available?)");
 }
 
 if (!writeLib) {
