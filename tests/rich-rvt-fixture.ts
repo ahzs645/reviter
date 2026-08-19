@@ -744,9 +744,11 @@ export type FramedObjectSpec = {
  * frame and a few named fields.
  *
  * This is what the persisted relationship scanners read: an associated-level id
- * sits at a fixed offset inside a `0x0f3b` frame, and the level it names is
- * recognised by its own object's marker. Both are field reads within a proven
- * frame, so the frame is all this has to supply.
+ * sits inside a `0x0f3b` frame at a position the record's own pointer fields
+ * determine, and the level it names is recognised by its own object's marker.
+ * These objects carry no live pointers, so `m_assocLevelId` is at its narrowest
+ * offset, 62. Both are field reads within a proven frame, so the frame is all
+ * this has to supply.
  */
 export function framedObjectsPage(
   objects: readonly FramedObjectSpec[],
@@ -1440,12 +1442,12 @@ export function richSpec(): ModelSpec {
       // element — which is also what puts the relations path, rather than the
       // z-histogram fallback, in charge of `levels`.
       { elementId: 47_000, objectLength: 96, marker: 0x0a19 },
-      { elementId: 46_000, objectLength: 120, marker: 0x0f3b, fields: [[70, 47_000]] },
+      { elementId: 46_000, objectLength: 120, marker: 0x0f3b, fields: [[62, 47_000]] },
       ...Array.from({ length: 24 }, (_, index) => ({
         elementId: 100_000 + index,
         objectLength: 120,
         marker: 0x0f3b,
-        fields: [[70, 47_000]] as const,
+        fields: [[62, 47_000]] as const,
       })),
     ],
     extraTokens: [{ elementId: 58_000, categoryId: CATEGORY.floors }],
