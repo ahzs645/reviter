@@ -48,6 +48,7 @@ Read in this order they are roughly the order the work happened.
 | [Reading Revit 2024 and 2025 files, 2026-09-25](older-release-decoding-2026-09-25.md) | Why the 2027 decoders failed on older files (class indices move between releases), the name-based translation, each element's own `ElementHeader`, materials, levels, the per-element geometry fixes, and what is still not right |
 | [What a voxel consumer needs from the export](voxel-consumer-requirements.md) | A downstream tool that fails on a missing *relationship* rather than a malformed one: the facts it reads, where the export stands against each, and the three changes that would close the gaps |
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
+| [Running `BmJsonExportEx`, 2026-08-19](bm-json-export-execution-2026-08-19.md) | The first execution of the isolated runtime: the reconstructed contract confirmed, and the trial-activation gate that stops it being a semantic oracle |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
 | [IFClite evaluation, 2026-08-19](ifc-lite-evaluation-2026-08-19.md) | What an external client-side IFC toolkit has that Reviter does not, four probes against Reviter's own IFC output, and what is worth taking |
