@@ -71,7 +71,7 @@ type StreamRule = {
 const STREAM_RULES: StreamRule[] = [
   { pattern: /(^|\/)BasicFileInfo$/i, decoder: "metadata", depth: "full", note: "Revit release, build, locale, and document identity" },
   { pattern: /(^|\/)RevitPreview/i, decoder: "thumbnail", depth: "full", note: "Embedded preview image" },
-  { pattern: /(^|\/)Formats\/Latest$/i, decoder: "schema", depth: "partial", note: "Serializable class inventory with tags and base classes; `schema-reader.ts` walks the whole grammar, field declarations included, but the pipeline still reads the inventory" },
+  { pattern: /(^|\/)Formats\/Latest$/i, decoder: "schema", depth: "full", note: "Every class the stream declares, with its index, base class, version and field declarations, read by walking the grammar to the stream's last byte" },
   { pattern: /(^|\/)Global\/ElemTable$/i, decoder: "element-index", depth: "partial", note: "Native element-ID index and persisted OwningElementId graph; pointer fields remain outside this decoder" },
   { pattern: /(^|\/)Global\/PartitionTable$/i, decoder: "partition-names", depth: "partial", note: "Workset or family partition names" },
   { pattern: /(^|\/)Partitions\/[^/]+$/i, decoder: "element-records", depth: "partial", note: "Element bounds records and BuiltInCategory tokens; element shapes, materials, and parameters are not decoded" },

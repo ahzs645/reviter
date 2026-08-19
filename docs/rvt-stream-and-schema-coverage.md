@@ -19,7 +19,7 @@ checkable at any time by reading that file, and it changes only when a decoder
 changes.
 
 The rule table recognises 14 stream classes and grades them
-**5 full, 5 partial, and 4 not decoded**:
+**6 full, 4 partial, and 4 not decoded**:
 
 | Stream | Depth | Decoder | What is read |
 | --- | --- | --- | --- |
@@ -44,7 +44,7 @@ Anything the table does not match is reported as `Not recognised` at depth
 **A headline count is per file, not per rule.** `summariseCoverage` counts the
 streams a given file actually carries, so the figure a report prints depends on
 what is in the file. `PartAtom` is a family-file stream: a project file that
-carries the other thirteen and nothing else grades **4 full, 5 partial, 4 not
+carries the other thirteen and nothing else grades **5 full, 4 partial, 4 not
 decoded**. A file carrying several `Partitions/NN` streams counts each of them.
 
 > **Correction, 2026-08-12.** The README carried "2 streams read fully, 4 read

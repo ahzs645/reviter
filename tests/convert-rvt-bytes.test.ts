@@ -618,23 +618,19 @@ test("the auxiliary container streams reach the result", () => {
     "Shared Levels and Grids",
   ]);
 
-  // Indices run from 12 in creation order and the class is written before the
-  // parent it defines inline, so `Wall` is 12 and `Element` is 13. The version
-  // and field count the inventory reports are read from behind the parent name
-  // and are that parent's.
+  // Every class the stream declares, not the ones a pattern matched: indices run
+  // from 12 in creation order and a class is written before the parent it
+  // defines inline, so `Wall` is 12, the `Element` it defines is 13, and the
+  // sibling naming that parent by index is 14. Each field count is the class's
+  // own.
   assert.deepEqual(result.schema?.taggedClasses, [
-    {
-      name: "Wall",
-      tag: 12,
-      parent: "Element",
-      version: 3,
-      declaredFieldCount: 3,
-      offset: 2,
-    },
+    { name: "Wall", tag: 12, parent: "Element", version: 7, declaredFieldCount: 0, offset: 0 },
+    { name: "Element", tag: 13, parent: "", version: 3, declaredFieldCount: 3, offset: 10 },
+    { name: "Floor", tag: 14, parent: "Element", version: 5, declaredFieldCount: 0, offset: 83 },
   ]);
-  // `Floor` names its parent by index rather than defining it, which is what a
-  // reference is; `Element` is a definition and so is not one.
-  assert.deepEqual(result.schema?.referencedClasses.map((entry) => entry.name), ["Floor"]);
+  // Nothing is left referenced-only once the whole stream is read: every name
+  // in it carries a definition.
+  assert.deepEqual(result.schema?.referencedClasses, []);
 
   // `Global/ElemTable` is read twice, once as an index and once as a graph.
   assert.equal(result.elementIndex?.recordCount, ALL_ELEMENTS.length + 1);

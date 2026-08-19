@@ -52,6 +52,8 @@
  */
 
 /** Class names are C++ identifiers, including templates such as `std::pair<>`. */
+import type { SchemaStream } from "./schema-reader.ts";
+
 const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_:<>, ()[\]*&~]*$/;
 
 const MIN_NAME_LENGTH = 3;
@@ -191,6 +193,34 @@ function parseSchemaTags(data: Uint8Array): SchemaClass[] {
     });
   }
   return classes;
+}
+
+/**
+ * The inventory this module produces, read from the whole stream instead.
+ *
+ * `readSchema` walks the grammar, so every class it finds carries a definition
+ * and there is nothing left that is only referenced: `referencedClasses` is
+ * empty by construction rather than by omission, and no candidate is rejected
+ * because none is guessed at. The counts move a long way — 4,757 classes rather
+ * than 416 on the supplied project — and `declaredFieldCount` becomes the
+ * class's own, where the scanner read the one behind its parent's name.
+ */
+export function summariseSchemaStream(stream: SchemaStream): SchemaSummary {
+  return {
+    byteLength: stream.byteLength,
+    taggedClasses: stream.classes.map((entry) => ({
+      name: entry.name,
+      tag: entry.index,
+      parent: entry.parent.kind === "inline" || entry.parent.kind === "reference"
+        ? entry.parent.name
+        : "",
+      ...(entry.version == null ? {} : { version: entry.version }),
+      declaredFieldCount: entry.propertyCount,
+      offset: entry.offset,
+    })),
+    referencedClasses: [],
+    rejectedCandidates: 0,
+  };
 }
 
 export function summariseSchema(data: Uint8Array): SchemaSummary {

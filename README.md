@@ -197,7 +197,7 @@ Each stage of the pipeline is its own module, so a decoder change cannot reach i
 | `lib/reviter/export-*.ts` | one module per output format, re-exported by `exports.ts` |
 | `lib/reviter/worker.ts`, `ifc-worker.ts` | the Web Worker entry points |
 | `lib/reviter/ifc-reference.ts`, `regression.ts` | paired IFC analysis and the regression gates |
-| `lib/reviter/schema.ts` | the embedded `Formats/Latest` serializable-class inventory |
+| `lib/reviter/schema-reader.ts` | the embedded `Formats/Latest` schema, walked to its last byte: every class the file declares, with its index, base class and field declarations |
 | `lib/reviter/partition-names.ts` | workset / family partition names from `Global/PartitionTable` |
 | `lib/reviter/types.ts` | the shared public types |
 

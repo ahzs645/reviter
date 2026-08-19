@@ -306,7 +306,7 @@ export function ReportDock({
             {result.schema && result.schema.taggedClasses.length > 0 && (
               <div className="report-block">
                 <p className="report-heading">
-                  Embedded schema · Formats/Latest · {result.schema.taggedClasses.length} tagged classes
+                  Embedded schema · Formats/Latest · {result.schema.taggedClasses.length} classes
                   {result.schema.rejectedCandidates ? ` · ${result.schema.rejectedCandidates} rejected` : ""}
                 </p>
                 <label className="rv-search" style={{ margin: "0 0 10px", maxWidth: 320 }}>
@@ -341,9 +341,10 @@ export function ReportDock({
                   </table>
                 </div>
                 <p className="report-disclaimer">
-                  Class names, serialization tags, and base classes are decoded from the file. Field
-                  lists are declared but not walked — their layout does not close across the corpus,
-                  so they are counted, not invented.
+                  Class names, indices, base classes and field counts are read from the file&apos;s own
+                  schema, which is walked to its last byte rather than searched. An index identifies
+                  the class in the element records, and it moves between releases, so it is only
+                  meaningful alongside the release this file was written by.
                 </p>
               </div>
             )}

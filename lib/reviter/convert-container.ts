@@ -35,9 +35,11 @@ import {
   asBytes,
   gzipOffsets,
   inflateRevitChunk,
+  revitWindowTail,
   stripRevitPageChecksums,
 } from "./revit-container.ts";
-import { summariseSchema } from "./schema.ts";
+import { summariseSchema, summariseSchemaStream } from "./schema.ts";
+import { readSchema } from "./schema-reader.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parseRevitTransmissionData } from "./transmission-data.ts";
 
@@ -60,9 +62,15 @@ const MARKER_MIN_SUPPORT = 24;
 const MAX_OBJECT_MARKERS = 12;
 
 /**
- * Inflate the first chunk of a named stream and hand it to `decode`. Returns
- * `undefined` when the stream is absent or does not decompress, so an optional
- * stream never fails the conversion.
+ * Inflate a named stream and hand it to `decode`. Returns `undefined` when the
+ * stream is absent or does not decompress, so an optional stream never fails
+ * the conversion.
+ *
+ * Every chunk is inflated, carrying each one's tail as the next one's window.
+ * Both streams read this way fit in one chunk in the files here, but a reader
+ * that either tiles its input or refuses it cannot be handed two thirds of a
+ * stream: the difference between a partial inventory and no inventory is
+ * invisible to a scanner and fatal to a grammar.
  */
 function readStreamSummary<T>(
   cfb: ReturnType<typeof CFB.read>,
@@ -74,9 +82,28 @@ function readStreamSummary<T>(
     .find(({ entry: candidate, path }) => candidate.size > 0 && pattern.test(path));
   if (!entry) return undefined;
   const bytes = stripRevitPageChecksums(asBytes(entry.entry.content));
-  const offset = gzipOffsets(bytes, 1)[0];
-  const inflated = offset == null ? null : inflateRevitChunk(bytes, offset);
-  return inflated ? decode(inflated) : undefined;
+  const offsets = gzipOffsets(bytes);
+  if (offsets.length === 0) return undefined;
+
+  const chunks: Uint8Array[] = [];
+  let window: Uint8Array | undefined;
+  for (const [index, offset] of offsets.entries()) {
+    const inflated = inflateRevitChunk(bytes, offset, offsets[index + 1], window);
+    if (!inflated) break;
+    chunks.push(inflated);
+    window = revitWindowTail(inflated);
+  }
+  if (chunks.length === 0) return undefined;
+  if (chunks.length === 1) return decode(chunks[0]!);
+
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return decode(joined);
 }
 
 /** One CFB entry paired with the full path it is stored under. */
@@ -212,7 +239,15 @@ export function openRevitContainer(
       ),
   );
 
-  const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, summariseSchema);
+  // The grammar reader first: it recovers every class the stream declares
+  // rather than the ones a pattern matches, and its field counts are the
+  // classes' own. A stream it cannot tile is evidence about the stream, not a
+  // partial schema, so the scanner still answers for one — losing the panel
+  // entirely would be a worse failure than an incomplete inventory.
+  const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
+    const strict = readSchema(data);
+    return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
+  });
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
   const partitions = cfb.FileIndex
