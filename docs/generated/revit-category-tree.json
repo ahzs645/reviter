@@ -1,0 +1,7353 @@
+{
+  "source": "TB_Base.tx",
+  "symbol": "g_Categories",
+  "rows": 1224,
+  "withParent": 569,
+  "labelled": 1224,
+  "categories": [
+    {
+      "id": -20034100,
+      "label": "OST_StackedWalls_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20034005,
+      "label": "OST_MassTags_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20034004,
+      "label": "OST_MassSurface_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20034003,
+      "label": "OST_MassFloor_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20034000,
+      "label": "OST_Mass_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20000896,
+      "label": "OST_WallRefPlanes_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20000828,
+      "label": "OST_StickSymbols_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -20000827,
+      "label": "OST_RemovedGridSeg_Obsolete_IdInWrongRange",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2010001,
+      "label": "Point Clouds",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009667,
+      "label": "Local Coordinate System",
+      "parent": -2009664,
+      "categoryType": 5
+    },
+    {
+      "id": -2009666,
+      "label": "Local Coordinate System",
+      "parent": -2009662,
+      "categoryType": 5
+    },
+    {
+      "id": -2009665,
+      "label": "Analytical Openings",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009664,
+      "label": "Analytical Panels",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009663,
+      "label": "Analytical Member Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009662,
+      "label": "Analytical Members",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009661,
+      "label": "Lines",
+      "parent": -2009658,
+      "categoryType": 2
+    },
+    {
+      "id": -2009660,
+      "label": "Planes",
+      "parent": -2009658,
+      "categoryType": 2
+    },
+    {
+      "id": -2009659,
+      "label": "Points",
+      "parent": -2009658,
+      "categoryType": 2
+    },
+    {
+      "id": -2009658,
+      "label": "Assembly Origins",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009657,
+      "label": "Analytical Links",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009656,
+      "label": "Analytical Slab Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009655,
+      "label": "Analytical Wall Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009654,
+      "label": "Analytical Isolated Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009653,
+      "label": "Analytical Wall Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009652,
+      "label": "Analytical Floor Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009651,
+      "label": "Analytical Column Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009650,
+      "label": "Analytical Brace Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009649,
+      "label": "Analytical Beam Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009648,
+      "label": "Lines",
+      "parent": -2009645,
+      "categoryType": 5
+    },
+    {
+      "id": -2009647,
+      "label": "Planes",
+      "parent": -2009645,
+      "categoryType": 5
+    },
+    {
+      "id": -2009646,
+      "label": "Points",
+      "parent": -2009645,
+      "categoryType": 5
+    },
+    {
+      "id": -2009645,
+      "label": "Analytical Nodes",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009644,
+      "label": "Rigid Links",
+      "parent": -2009630,
+      "categoryType": 5
+    },
+    {
+      "id": -2009643,
+      "label": "Analytical Foundation Slabs",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009642,
+      "label": "Analytical Wall Foundations",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009641,
+      "label": "Analytical Isolated Foundations",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009640,
+      "label": "Analytical Walls",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009639,
+      "label": "Analytical Floors",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009638,
+      "label": "Top Segment",
+      "parent": -2009636,
+      "categoryType": 5
+    },
+    {
+      "id": -2009637,
+      "label": "Base Segment",
+      "parent": -2009636,
+      "categoryType": 5
+    },
+    {
+      "id": -2009636,
+      "label": "Analytical Columns",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009635,
+      "label": "End Segment",
+      "parent": -2009633,
+      "categoryType": 5
+    },
+    {
+      "id": -2009634,
+      "label": "Start Segment",
+      "parent": -2009633,
+      "categoryType": 5
+    },
+    {
+      "id": -2009633,
+      "label": "Analytical Braces",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009632,
+      "label": "End Segment",
+      "parent": -2009630,
+      "categoryType": 5
+    },
+    {
+      "id": -2009631,
+      "label": "Start Segment",
+      "parent": -2009630,
+      "categoryType": 5
+    },
+    {
+      "id": -2009630,
+      "label": "Analytical Beams",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2009624,
+      "label": "Sun text",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009623,
+      "label": "Sun text",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009622,
+      "label": "Compass",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009621,
+      "label": "None",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009620,
+      "label": "None",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009619,
+      "label": "None",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009618,
+      "label": "None",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009617,
+      "label": "Sun text",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009616,
+      "label": "Compass",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009615,
+      "label": "Compass",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009614,
+      "label": "Sun text",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009613,
+      "label": "Compass",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009612,
+      "label": "Path2",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009611,
+      "label": "Path1",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009610,
+      "label": "Sun",
+      "parent": -2009609,
+      "categoryType": 1
+    },
+    {
+      "id": -2009609,
+      "label": "Sun Path",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009608,
+      "label": "Stick Symbols",
+      "parent": -2001336,
+      "categoryType": 2
+    },
+    {
+      "id": -2009607,
+      "label": "OST_StructuralTrussHiddenLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009606,
+      "label": "Chord",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2009605,
+      "label": "Web",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2009604,
+      "label": "Bottom Chord",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009603,
+      "label": "Top Chord",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009602,
+      "label": "Web",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009601,
+      "label": "Web",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009600,
+      "label": "Structural Trusses",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009551,
+      "label": "<Hidden Lines>",
+      "parent": -2008234,
+      "categoryType": 1
+    },
+    {
+      "id": -2009550,
+      "label": "<Hidden Lines>",
+      "parent": -2008232,
+      "categoryType": 1
+    },
+    {
+      "id": -2009549,
+      "label": "OST_RailingSystemTransitionHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009548,
+      "label": "OST_RailingSystemTerminationHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009547,
+      "label": "OST_RailingSystemRailHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009546,
+      "label": "OST_RailingSystemTopRailHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009545,
+      "label": "OST_RailingSystemHandRailBracketHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009544,
+      "label": "OST_RailingSystemHandRailHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009543,
+      "label": "OST_RailingSystemPanelBracketHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009542,
+      "label": "OST_RailingSystemPanelHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009541,
+      "label": "OST_RailingSystemBalusterHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009540,
+      "label": "OST_RailingSystemPostHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009539,
+      "label": "OST_RailingSystemSegmentHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009538,
+      "label": "OST_RailingSystemHiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009537,
+      "label": "OST_StairStringer2012HiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009536,
+      "label": "OST_StairTread2012HiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009535,
+      "label": "OST_StairLanding2012HiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009534,
+      "label": "OST_StairRun2012HiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009533,
+      "label": "OST_Stairs2012HiddenLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009532,
+      "label": "<Hidden Lines>",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2009531,
+      "label": "<Hidden Lines>",
+      "parent": -2000340,
+      "categoryType": 1
+    },
+    {
+      "id": -2009530,
+      "label": "OST_OBSOLETE_ElemArrayHiddenLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009529,
+      "label": "<Hidden Lines>",
+      "parent": -2001370,
+      "categoryType": 1
+    },
+    {
+      "id": -2009528,
+      "label": "<Hidden Lines>",
+      "parent": -2001360,
+      "categoryType": 1
+    },
+    {
+      "id": -2009527,
+      "label": "<Hidden Lines>",
+      "parent": -2001350,
+      "categoryType": 1
+    },
+    {
+      "id": -2009526,
+      "label": "<Hidden Lines>",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2009525,
+      "label": "OST_StructuralFramingSystemHiddenLines_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009524,
+      "label": "<Hidden Lines>",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2009523,
+      "label": "<Hidden Lines>",
+      "parent": -2001220,
+      "categoryType": 1
+    },
+    {
+      "id": -2009522,
+      "label": "<Hidden Lines>",
+      "parent": -2001180,
+      "categoryType": 1
+    },
+    {
+      "id": -2009521,
+      "label": "<Hidden Lines>",
+      "parent": -2001160,
+      "categoryType": 1
+    },
+    {
+      "id": -2009520,
+      "label": "<Hidden Lines>",
+      "parent": -2001140,
+      "categoryType": 1
+    },
+    {
+      "id": -2009519,
+      "label": "<Hidden Lines>",
+      "parent": -2001120,
+      "categoryType": 1
+    },
+    {
+      "id": -2009518,
+      "label": "<Hidden Lines>",
+      "parent": -2001100,
+      "categoryType": 1
+    },
+    {
+      "id": -2009517,
+      "label": "<Hidden Lines>",
+      "parent": -2001060,
+      "categoryType": 1
+    },
+    {
+      "id": -2009516,
+      "label": "<Hidden Lines>",
+      "parent": -2001040,
+      "categoryType": 1
+    },
+    {
+      "id": -2009515,
+      "label": "<Hidden Lines>",
+      "parent": -2001000,
+      "categoryType": 1
+    },
+    {
+      "id": -2009514,
+      "label": "<Hidden Lines>",
+      "parent": -2002000,
+      "categoryType": 1
+    },
+    {
+      "id": -2009513,
+      "label": "<Hidden Lines>",
+      "parent": -2000996,
+      "categoryType": 1
+    },
+    {
+      "id": -2009512,
+      "label": "<Hidden Lines>",
+      "parent": -2000151,
+      "categoryType": 1
+    },
+    {
+      "id": -2009511,
+      "label": "<Hidden Lines>",
+      "parent": -2000171,
+      "categoryType": 1
+    },
+    {
+      "id": -2009510,
+      "label": "<Hidden Lines>",
+      "parent": -2000170,
+      "categoryType": 1
+    },
+    {
+      "id": -2009509,
+      "label": "<Hidden Lines>",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2009508,
+      "label": "<Hidden Lines>",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2009507,
+      "label": "<Hidden Lines>",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2009506,
+      "label": "<Hidden Lines>",
+      "parent": -2000100,
+      "categoryType": 1
+    },
+    {
+      "id": -2009505,
+      "label": "<Hidden Lines>",
+      "parent": -2000080,
+      "categoryType": 1
+    },
+    {
+      "id": -2009504,
+      "label": "<Hidden Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2009503,
+      "label": "<Hidden Lines>",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2009502,
+      "label": "<Hidden Lines>",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2009501,
+      "label": "<Hidden Lines>",
+      "parent": -2000023,
+      "categoryType": 1
+    },
+    {
+      "id": -2009500,
+      "label": "<Hidden Lines>",
+      "parent": -2000014,
+      "categoryType": 1
+    },
+    {
+      "id": -2009064,
+      "label": "Profile Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009063,
+      "label": "Hole Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009062,
+      "label": "<Hidden Lines>",
+      "parent": -2009060,
+      "categoryType": 1
+    },
+    {
+      "id": -2009061,
+      "label": "Structural Rebar Coupler Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009060,
+      "label": "Structural Rebar Couplers",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009059,
+      "label": "Weld Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009058,
+      "label": "Shear Stud Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009057,
+      "label": "Anchor Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009056,
+      "label": "Bolt Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009055,
+      "label": "Plate Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009050,
+      "label": "<Hidden Lines>",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2009049,
+      "label": "Sub-Connections",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009048,
+      "label": "OST_SteelElementStale",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2009047,
+      "label": "Modifiers",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009046,
+      "label": "Welds",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009045,
+      "label": "Holes",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009044,
+      "label": "Shear Studs",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009043,
+      "label": "Structural Connections",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009042,
+      "label": "Others",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009041,
+      "label": "Bolts",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009040,
+      "label": "Structural Connection Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009039,
+      "label": "Anchors",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009038,
+      "label": "Plates",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009037,
+      "label": "Profiles",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009036,
+      "label": "Reference",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009035,
+      "label": "Structural Connections",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009034,
+      "label": "Structural Connections",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009033,
+      "label": "Symbol",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009032,
+      "label": "<Hidden Lines>",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009031,
+      "label": "Welding Lines",
+      "parent": -2009030,
+      "categoryType": 1
+    },
+    {
+      "id": -2009030,
+      "label": "Structural Connections",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009029,
+      "label": "Boundary",
+      "parent": -2009017,
+      "categoryType": 1
+    },
+    {
+      "id": -2009028,
+      "label": "Structural Fabric Reinforcement Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009027,
+      "label": "Fabric Wire",
+      "parent": -2009016,
+      "categoryType": 1
+    },
+    {
+      "id": -2009026,
+      "label": "Boundary",
+      "parent": -2009016,
+      "categoryType": 1
+    },
+    {
+      "id": -2009025,
+      "label": "Rebar Set Toggle",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009023,
+      "label": "Structural Fabric Area Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009022,
+      "label": "Structural Fabric Reinforcement Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009021,
+      "label": "Structural Area Reinforcement Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009020,
+      "label": "Structural Rebar Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009019,
+      "label": "<Fabric Sheets>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2009018,
+      "label": "<Fabric Envelope>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2009017,
+      "label": "Structural Fabric Areas",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009016,
+      "label": "Structural Fabric Reinforcement",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009015,
+      "label": "Rebar Cover References",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009014,
+      "label": "Cover Type",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009013,
+      "label": "Rebar Shape",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009012,
+      "label": "Boundary",
+      "parent": -2009009,
+      "categoryType": 1
+    },
+    {
+      "id": -2009011,
+      "label": "Structural Path Reinforcement Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009010,
+      "label": "Structural Path Reinforcement Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009009,
+      "label": "Structural Path Reinforcement",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009008,
+      "label": "Structural Reinforcement Cages",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009007,
+      "label": "Lower Value Prefix",
+      "parent": -2009003,
+      "categoryType": 1
+    },
+    {
+      "id": -2009006,
+      "label": "Boundary",
+      "parent": -2009003,
+      "categoryType": 1
+    },
+    {
+      "id": -2009005,
+      "label": "Structural Area Reinforcement Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2009004,
+      "label": "Area Reinforcement Overridden Curves",
+      "parent": -2009003,
+      "categoryType": 1
+    },
+    {
+      "id": -2009003,
+      "label": "Structural Area Reinforcement",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2009002,
+      "label": "Default Rebar",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2009001,
+      "label": "Rebar Sketch Lines",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2009000,
+      "label": "Structural Rebar",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008236,
+      "label": "MEP Ancillary Framing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008235,
+      "label": "Plumbing Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008234,
+      "label": "Plumbing Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008233,
+      "label": "Mechanical Control Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008232,
+      "label": "Mechanical Control Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008231,
+      "label": "MEP Ancillary Framing",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008230,
+      "label": "OST_MEPAncillaries_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008229,
+      "label": "MEP Fabrication Ductwork Stiffener Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008228,
+      "label": "MEP Fabrication Ductwork Stiffeners",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008227,
+      "label": "Reference Lines",
+      "parent": -2001020,
+      "categoryType": 5
+    },
+    {
+      "id": -2008226,
+      "label": "Interior Fill",
+      "parent": -2001020,
+      "categoryType": 5
+    },
+    {
+      "id": -2008225,
+      "label": "OST_ELECTRICAL_AreaBasedLoads_ColorFill_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008224,
+      "label": "Reference Lines",
+      "parent": -2001020,
+      "categoryType": 5
+    },
+    {
+      "id": -2008223,
+      "label": "Interior Fill",
+      "parent": -2001020,
+      "categoryType": 5
+    },
+    {
+      "id": -2008222,
+      "label": "Boundary",
+      "parent": -2001020,
+      "categoryType": 5
+    },
+    {
+      "id": -2008221,
+      "label": "Insulation",
+      "parent": -2008208,
+      "categoryType": 1
+    },
+    {
+      "id": -2008220,
+      "label": "Lining",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008219,
+      "label": "Drop",
+      "parent": -2008212,
+      "categoryType": 1
+    },
+    {
+      "id": -2008218,
+      "label": "Rise",
+      "parent": -2008212,
+      "categoryType": 1
+    },
+    {
+      "id": -2008217,
+      "label": "Drop",
+      "parent": -2008208,
+      "categoryType": 1
+    },
+    {
+      "id": -2008216,
+      "label": "Rise",
+      "parent": -2008208,
+      "categoryType": 1
+    },
+    {
+      "id": -2008215,
+      "label": "Symbology",
+      "parent": -2008212,
+      "categoryType": 1
+    },
+    {
+      "id": -2008214,
+      "label": "Center Line",
+      "parent": -2008212,
+      "categoryType": 1
+    },
+    {
+      "id": -2008213,
+      "label": "MEP Fabrication Containment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008212,
+      "label": "MEP Fabrication Containment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008211,
+      "label": "Symbology",
+      "parent": -2008208,
+      "categoryType": 1
+    },
+    {
+      "id": -2008210,
+      "label": "Center Line",
+      "parent": -2008208,
+      "categoryType": 1
+    },
+    {
+      "id": -2008209,
+      "label": "MEP Fabrication Pipework Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008208,
+      "label": "MEP Fabrication Pipework",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008207,
+      "label": "Symbology",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008206,
+      "label": "Drop",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008205,
+      "label": "Rise",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008204,
+      "label": "MEP Fabrication Hanger Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008203,
+      "label": "MEP Fabrication Hangers",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008202,
+      "label": "Fabrication Parts drop temp graphic display while dragging",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008201,
+      "label": "Fabrication Parts rise temp graphic display while dragging",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008200,
+      "label": "Fabrication Parts drop temp graphic display",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008199,
+      "label": "Fabrication Parts rise temp graphic display",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008198,
+      "label": "Insulation",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008197,
+      "label": "Layout Nodes",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008196,
+      "label": "Center Line",
+      "parent": -2008193,
+      "categoryType": 1
+    },
+    {
+      "id": -2008195,
+      "label": "OST_FabricationServiceElements",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008194,
+      "label": "MEP Fabrication Ductwork Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008193,
+      "label": "MEP Fabrication Ductwork",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008192,
+      "label": "Layout Path Base - Pipings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008191,
+      "label": "OST_NumberingSchemas",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008190,
+      "label": "Division Rules",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008187,
+      "label": "Shades",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008186,
+      "label": "Analytical Surfaces",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2008185,
+      "label": "Analytical Spaces",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2008184,
+      "label": "Air Openings",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008183,
+      "label": "Non-sliding Doors",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008182,
+      "label": "Sliding Doors",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008181,
+      "label": "Operable Skylights",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008180,
+      "label": "Fixed Skylights",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008179,
+      "label": "Operable Windows",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008178,
+      "label": "Fixed Windows",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008177,
+      "label": "Underground Ceilings",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008176,
+      "label": "Underground Slabs",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008175,
+      "label": "Underground Walls",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008174,
+      "label": "Air Surfaces",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008173,
+      "label": "Ceilings",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008172,
+      "label": "Interior Floors",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008171,
+      "label": "Interior Walls",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008170,
+      "label": "Slabs on Grade",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008169,
+      "label": "Raised Floors",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008168,
+      "label": "Roofs",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008167,
+      "label": "Exterior Walls",
+      "parent": -2008186,
+      "categoryType": 5
+    },
+    {
+      "id": -2008165,
+      "label": "Division Profiles",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008164,
+      "label": "OST_SplitterProfile",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008163,
+      "label": "Pipe Segments",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008162,
+      "label": "This element has an open connector",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008161,
+      "label": "Pipe Placeholders",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008160,
+      "label": "Duct Placeholders",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008159,
+      "label": "Reference Lines",
+      "parent": -2008043,
+      "categoryType": 1
+    },
+    {
+      "id": -2008158,
+      "label": "Reference Lines",
+      "parent": -2008043,
+      "categoryType": 1
+    },
+    {
+      "id": -2008157,
+      "label": "Reference Lines",
+      "parent": -2008015,
+      "categoryType": 1
+    },
+    {
+      "id": -2008156,
+      "label": "Reference Lines",
+      "parent": -2008015,
+      "categoryType": 1
+    },
+    {
+      "id": -2008155,
+      "label": "Pipe Insulation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008154,
+      "label": "Duct Lining Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008153,
+      "label": "Duct Insulation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008152,
+      "label": "Electrical Spare/Space Circuits",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008151,
+      "label": "Panel Schedule Graphics",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008150,
+      "label": "Cable Tray Runs",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008149,
+      "label": "Conduit Runs",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008148,
+      "label": "Electrical Load Classification Parameter Element",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008147,
+      "label": "Panel Schedule Templates - Data Panel",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008146,
+      "label": "Panel Schedule Templates - Switchboard",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008145,
+      "label": "Panel Schedule Templates - Branch Panel",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008144,
+      "label": "Conduit Standards",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008143,
+      "label": "Electrical Load Classifications",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008142,
+      "label": "Electrical Demand Factor Definitions",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008141,
+      "label": "Center line",
+      "parent": -2008128,
+      "categoryType": 1
+    },
+    {
+      "id": -2008140,
+      "label": "Center line",
+      "parent": -2008126,
+      "categoryType": 1
+    },
+    {
+      "id": -2008139,
+      "label": "Center line",
+      "parent": -2008132,
+      "categoryType": 1
+    },
+    {
+      "id": -2008138,
+      "label": "Drop",
+      "parent": -2008132,
+      "categoryType": 1
+    },
+    {
+      "id": -2008137,
+      "label": "Rise",
+      "parent": -2008132,
+      "categoryType": 1
+    },
+    {
+      "id": -2008136,
+      "label": "Center line",
+      "parent": -2008130,
+      "categoryType": 1
+    },
+    {
+      "id": -2008135,
+      "label": "Drop",
+      "parent": -2008130,
+      "categoryType": 1
+    },
+    {
+      "id": -2008134,
+      "label": "Rise",
+      "parent": -2008130,
+      "categoryType": 1
+    },
+    {
+      "id": -2008133,
+      "label": "Conduit Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008132,
+      "label": "Conduits",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008131,
+      "label": "Cable Tray Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008130,
+      "label": "Cable Trays",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008129,
+      "label": "Conduit Fitting Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008128,
+      "label": "Conduit Fittings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008127,
+      "label": "Cable Tray Fitting Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008126,
+      "label": "Cable Tray Fittings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008125,
+      "label": "Routing Preferences",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008124,
+      "label": "Duct Linings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008123,
+      "label": "Duct Insulations",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008122,
+      "label": "Pipe Insulations",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008121,
+      "label": "HVAC Load Schedules",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008120,
+      "label": "Building Type Settings",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008119,
+      "label": "Space Type Settings",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2008118,
+      "label": "Reference Lines",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008117,
+      "label": "Interior Fill",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008116,
+      "label": "Color Fill",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008115,
+      "label": "Zone Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008114,
+      "label": "Layout Path Bases",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008113,
+      "label": "Wire Temperature Ratings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008112,
+      "label": "Wire Insulations",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008111,
+      "label": "Wire Materials",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008110,
+      "label": "Reference Lines",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008109,
+      "label": "Interior Fill",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008108,
+      "label": "Boundary",
+      "parent": -2008107,
+      "categoryType": 1
+    },
+    {
+      "id": -2008107,
+      "label": "HVAC Zones",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008106,
+      "label": "Fluids",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008105,
+      "label": "Pipe Schedules",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008104,
+      "label": "Pipe Materials",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008103,
+      "label": "Pipe Connections",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008102,
+      "label": "Constructions",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008101,
+      "label": "Switch System",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008100,
+      "label": "Sprinkler Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008099,
+      "label": "Sprinklers",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008098,
+      "label": "Route Curve",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008097,
+      "label": "Route Curve",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008096,
+      "label": "Route Curve",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008095,
+      "label": "Opening",
+      "parent": -2008090,
+      "categoryType": 5
+    },
+    {
+      "id": -2008094,
+      "label": "Underground",
+      "parent": -2008090,
+      "categoryType": 5
+    },
+    {
+      "id": -2008093,
+      "label": "Shades",
+      "parent": -2008090,
+      "categoryType": 5
+    },
+    {
+      "id": -2008092,
+      "label": "Exterior",
+      "parent": -2008090,
+      "categoryType": 5
+    },
+    {
+      "id": -2008091,
+      "label": "Interior",
+      "parent": -2008090,
+      "categoryType": 5
+    },
+    {
+      "id": -2008090,
+      "label": "Analytical Surfaces",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2008089,
+      "label": "Home Run Arrows",
+      "parent": -2008039,
+      "categoryType": 1
+    },
+    {
+      "id": -2008088,
+      "label": "Lighting Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008087,
+      "label": "Lighting Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008086,
+      "label": "Fire Alarm Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008085,
+      "label": "Fire Alarm Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008084,
+      "label": "Data Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008083,
+      "label": "Data Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008082,
+      "label": "Communication Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008081,
+      "label": "Communication Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008080,
+      "label": "Security Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008079,
+      "label": "Security Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008078,
+      "label": "Nurse Call Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008077,
+      "label": "Nurse Call Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008076,
+      "label": "Telephone Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008075,
+      "label": "Telephone Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008074,
+      "label": "Wire Tick Marks",
+      "parent": -2008039,
+      "categoryType": 2
+    },
+    {
+      "id": -2008073,
+      "label": "Insulation",
+      "parent": -2008049,
+      "categoryType": 1
+    },
+    {
+      "id": -2008072,
+      "label": "Center line",
+      "parent": -2008049,
+      "categoryType": 1
+    },
+    {
+      "id": -2008071,
+      "label": "Insulation",
+      "parent": -2008050,
+      "categoryType": 1
+    },
+    {
+      "id": -2008070,
+      "label": "Insulation",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2008069,
+      "label": "Drop",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2008068,
+      "label": "Lining",
+      "parent": -2008010,
+      "categoryType": 1
+    },
+    {
+      "id": -2008067,
+      "label": "Insulation",
+      "parent": -2008010,
+      "categoryType": 1
+    },
+    {
+      "id": -2008066,
+      "label": "Center line",
+      "parent": -2008010,
+      "categoryType": 1
+    },
+    {
+      "id": -2008065,
+      "label": "Insulation",
+      "parent": -2008020,
+      "categoryType": 1
+    },
+    {
+      "id": -2008064,
+      "label": "Lining",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008063,
+      "label": "Insulation",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008062,
+      "label": "Drop",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008061,
+      "label": "Duct Fitting Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008060,
+      "label": "Pipe Fitting Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008059,
+      "label": "Pipe Color Fill",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008058,
+      "label": "Pipe Color Fill Legends",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008057,
+      "label": "Wire Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008056,
+      "label": "Pipe Accessory Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008055,
+      "label": "Pipe Accessories",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008054,
+      "label": "Rise",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2008053,
+      "label": "Pattern",
+      "parent": -2008050,
+      "categoryType": 1
+    },
+    {
+      "id": -2008052,
+      "label": "Contour",
+      "parent": -2008050,
+      "categoryType": 1
+    },
+    {
+      "id": -2008051,
+      "label": "Center Line",
+      "parent": -2008050,
+      "categoryType": 1
+    },
+    {
+      "id": -2008050,
+      "label": "Flex Pipes",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008049,
+      "label": "Pipe Fittings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008048,
+      "label": "Flex Pipe Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008047,
+      "label": "Pipe Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008046,
+      "label": "Contour",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2008045,
+      "label": "Center Line",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2008044,
+      "label": "Pipes",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008043,
+      "label": "Piping Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008042,
+      "label": "Demand Factors",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008041,
+      "label": "Distribution Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008040,
+      "label": "Voltages",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008039,
+      "label": "Wires",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008038,
+      "label": "OST_ElectricalCircuitTags",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2008037,
+      "label": "Electrical Circuits",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008036,
+      "label": "Rise",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008023,
+      "label": "Pattern",
+      "parent": -2008020,
+      "categoryType": 1
+    },
+    {
+      "id": -2008022,
+      "label": "Contour",
+      "parent": -2008020,
+      "categoryType": 1
+    },
+    {
+      "id": -2008021,
+      "label": "Center line",
+      "parent": -2008020,
+      "categoryType": 1
+    },
+    {
+      "id": -2008020,
+      "label": "Flex Ducts",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008017,
+      "label": "Duct Accessory Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008016,
+      "label": "Duct Accessories",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008015,
+      "label": "Duct Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008014,
+      "label": "Air Terminal Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008013,
+      "label": "Air Terminals",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008010,
+      "label": "Duct Fittings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2008005,
+      "label": "Duct Color Fill",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008004,
+      "label": "Flex Duct Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008003,
+      "label": "Duct Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2008002,
+      "label": "Contour",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008001,
+      "label": "Center line",
+      "parent": -2008000,
+      "categoryType": 1
+    },
+    {
+      "id": -2008000,
+      "label": "Ducts",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2007004,
+      "label": "Duct Color Fill Legends",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2007003,
+      "label": "Z Axis",
+      "parent": -2007000,
+      "categoryType": 1
+    },
+    {
+      "id": -2007002,
+      "label": "Y Axis",
+      "parent": -2007000,
+      "categoryType": 1
+    },
+    {
+      "id": -2007001,
+      "label": "X Axis",
+      "parent": -2007000,
+      "categoryType": 1
+    },
+    {
+      "id": -2007000,
+      "label": "Connector Element",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006282,
+      "label": "Vibration Management Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006281,
+      "label": "Bridge Truss Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006279,
+      "label": "Bridge Diaphragm Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006278,
+      "label": "Bridge Cross Bracing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006276,
+      "label": "Structural Tendon Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006275,
+      "label": "<Hidden Lines>",
+      "parent": -2006274,
+      "categoryType": 1
+    },
+    {
+      "id": -2006274,
+      "label": "Structural Tendons",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006273,
+      "label": "Expansion Joint Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006272,
+      "label": "<Hidden Lines>",
+      "parent": -2006271,
+      "categoryType": 1
+    },
+    {
+      "id": -2006271,
+      "label": "Expansion Joints",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006266,
+      "label": "Vibration Isolator Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006265,
+      "label": "Vibration Isolators",
+      "parent": -2006261,
+      "categoryType": 1
+    },
+    {
+      "id": -2006264,
+      "label": "Vibration Damper Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006263,
+      "label": "Vibration Dampers",
+      "parent": -2006261,
+      "categoryType": 1
+    },
+    {
+      "id": -2006262,
+      "label": "<Hidden Lines>",
+      "parent": -2006261,
+      "categoryType": 1
+    },
+    {
+      "id": -2006261,
+      "label": "Vibration Management",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006248,
+      "label": "Trusses",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006246,
+      "label": "Diaphragms",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006245,
+      "label": "Cross Bracing",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006243,
+      "label": "Bridge Framing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006242,
+      "label": "<Hidden Lines>",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006241,
+      "label": "Bridge Framing",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006230,
+      "label": "Pier Wall Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006229,
+      "label": "Pier Walls",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006226,
+      "label": "Pier Pile Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006225,
+      "label": "Pier Piles",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006222,
+      "label": "Pier Column Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006221,
+      "label": "Pier Columns",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006220,
+      "label": "Pier Cap Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006219,
+      "label": "Pier Caps",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006211,
+      "label": "Approach Slab Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006210,
+      "label": "Abutment Wall Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006209,
+      "label": "Abutment Pile Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006208,
+      "label": "Abutment Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006205,
+      "label": "Approach Slabs",
+      "parent": -2006130,
+      "categoryType": 1
+    },
+    {
+      "id": -2006204,
+      "label": "Abutment Walls",
+      "parent": -2006130,
+      "categoryType": 1
+    },
+    {
+      "id": -2006203,
+      "label": "Abutment Piles",
+      "parent": -2006130,
+      "categoryType": 1
+    },
+    {
+      "id": -2006202,
+      "label": "Abutment Foundations",
+      "parent": -2006130,
+      "categoryType": 1
+    },
+    {
+      "id": -2006178,
+      "label": "Bearing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006177,
+      "label": "Bridge Girder Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006176,
+      "label": "Pier Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006175,
+      "label": "Bridge Deck Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006174,
+      "label": "Bridge Arch Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006173,
+      "label": "Bridge Cable Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006172,
+      "label": "Pier Tower Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006171,
+      "label": "Pier Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006170,
+      "label": "Abutment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006158,
+      "label": "<Hidden Lines>",
+      "parent": -2006138,
+      "categoryType": 1
+    },
+    {
+      "id": -2006157,
+      "label": "<Hidden Lines>",
+      "parent": -2006137,
+      "categoryType": 1
+    },
+    {
+      "id": -2006156,
+      "label": "<Hidden Lines>",
+      "parent": -2006136,
+      "categoryType": 1
+    },
+    {
+      "id": -2006155,
+      "label": "<Hidden Lines>",
+      "parent": -2006135,
+      "categoryType": 1
+    },
+    {
+      "id": -2006154,
+      "label": "<Hidden Lines>",
+      "parent": -2006134,
+      "categoryType": 1
+    },
+    {
+      "id": -2006153,
+      "label": "<Hidden Lines>",
+      "parent": -2006133,
+      "categoryType": 1
+    },
+    {
+      "id": -2006152,
+      "label": "<Hidden Lines>",
+      "parent": -2006132,
+      "categoryType": 1
+    },
+    {
+      "id": -2006151,
+      "label": "<Hidden Lines>",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006150,
+      "label": "<Hidden Lines>",
+      "parent": -2006130,
+      "categoryType": 1
+    },
+    {
+      "id": -2006138,
+      "label": "Bearings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006137,
+      "label": "Girders",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006136,
+      "label": "Pier Foundations",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006135,
+      "label": "Bridge Decks",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006134,
+      "label": "Arches",
+      "parent": -2006241,
+      "categoryType": 1
+    },
+    {
+      "id": -2006133,
+      "label": "Bridge Cables",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006132,
+      "label": "Pier Towers",
+      "parent": -2006131,
+      "categoryType": 1
+    },
+    {
+      "id": -2006131,
+      "label": "Piers",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006130,
+      "label": "Abutments",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2006114,
+      "label": "Design Options",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2006112,
+      "label": "Design Option Sets",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2006110,
+      "label": "Brace in Plan View Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006100,
+      "label": "Connection Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006090,
+      "label": "Structural Annotations",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006080,
+      "label": "Revision Cloud Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006071,
+      "label": "Revision Numbering Sequences",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2006070,
+      "label": "Revision",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2006060,
+      "label": "Revision Clouds",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006050,
+      "label": "Cut Profile",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2006045,
+      "label": "Elevation Marks",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006040,
+      "label": "Grid Heads",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006020,
+      "label": "Level Heads",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2006002,
+      "label": "OST_DecalType",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2006001,
+      "label": "OST_DecalElement",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2006000,
+      "label": "Scope Boxes",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005301,
+      "label": "Boundary Conditions",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2005255,
+      "label": "Internal Area Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005254,
+      "label": "Internal Line Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005253,
+      "label": "Internal Point Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005252,
+      "label": "Area Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005251,
+      "label": "Line Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005250,
+      "label": "Point Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005218,
+      "label": "Seismic Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005217,
+      "label": "Temperature Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005216,
+      "label": "Accidental Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005215,
+      "label": "Roof Live Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005214,
+      "label": "Snow Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005213,
+      "label": "Wind Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005212,
+      "label": "Live Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005211,
+      "label": "Dead Loads",
+      "parent": -2005210,
+      "categoryType": 5
+    },
+    {
+      "id": -2005210,
+      "label": "Structural Load Cases",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2005207,
+      "label": "Internal Area Loads",
+      "parent": -2005204,
+      "categoryType": 5
+    },
+    {
+      "id": -2005206,
+      "label": "Internal Line Loads",
+      "parent": -2005204,
+      "categoryType": 5
+    },
+    {
+      "id": -2005205,
+      "label": "Internal Point Loads",
+      "parent": -2005204,
+      "categoryType": 5
+    },
+    {
+      "id": -2005204,
+      "label": "Structural Internal Loads",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2005203,
+      "label": "Area Loads",
+      "parent": -2005200,
+      "categoryType": 5
+    },
+    {
+      "id": -2005202,
+      "label": "Line Loads",
+      "parent": -2005200,
+      "categoryType": 5
+    },
+    {
+      "id": -2005201,
+      "label": "Point Loads",
+      "parent": -2005200,
+      "categoryType": 5
+    },
+    {
+      "id": -2005200,
+      "label": "Structural Loads",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2005130,
+      "label": "Structural Beam System Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005111,
+      "label": "Foundation Span Direction Symbol",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005110,
+      "label": "Span Direction Symbol",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005102,
+      "label": "OST_SpotSlopesSymbols",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2005101,
+      "label": "OST_SpotCoordinateSymbols",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2005100,
+      "label": "Spot Elevation Symbols",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005033,
+      "label": "Multi Leader Tag",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005032,
+      "label": "Curtain Wall Mullion Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005031,
+      "label": "OST_StructuralConnectionHandlerTags_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2005030,
+      "label": "Structural Truss Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005029,
+      "label": "Keynote Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005028,
+      "label": "Detail Item Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005027,
+      "label": "Material Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005026,
+      "label": "Floor Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005025,
+      "label": "Curtain System Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005024,
+      "label": "OST_HostFinTags",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2005023,
+      "label": "Stair Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005022,
+      "label": "Multi-Category Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005021,
+      "label": "Planting Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005020,
+      "label": "Area Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005019,
+      "label": "Structural Foundation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005018,
+      "label": "Structural Column Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005017,
+      "label": "Parking Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005016,
+      "label": "Site Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005015,
+      "label": "Structural Framing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005014,
+      "label": "Specialty Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005013,
+      "label": "Generic Model Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005012,
+      "label": "Curtain Panel Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005011,
+      "label": "Wall Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005010,
+      "label": "Plumbing Fixture Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005009,
+      "label": "Mechanical Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005008,
+      "label": "Lighting Fixture Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005007,
+      "label": "Furniture System Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005006,
+      "label": "Furniture Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005004,
+      "label": "Electrical Fixture Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005003,
+      "label": "Electrical Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005002,
+      "label": "Ceiling Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005001,
+      "label": "Casework Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2005000,
+      "label": "OST_Tags",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2003605,
+      "label": "Color Fill",
+      "parent": -2003600,
+      "categoryType": 1
+    },
+    {
+      "id": -2003604,
+      "label": "Reference",
+      "parent": -2003600,
+      "categoryType": 1
+    },
+    {
+      "id": -2003603,
+      "label": "Interior",
+      "parent": -2003600,
+      "categoryType": 1
+    },
+    {
+      "id": -2003602,
+      "label": "Reference",
+      "parent": -2003600,
+      "categoryType": 1
+    },
+    {
+      "id": -2003601,
+      "label": "Interior",
+      "parent": -2003600,
+      "categoryType": 1
+    },
+    {
+      "id": -2003600,
+      "label": "Spaces",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003500,
+      "label": "Stacked Walls",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2003423,
+      "label": "Mass Windows and Skylights",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003422,
+      "label": "Mass Floors",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003421,
+      "label": "Mass Walls",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003420,
+      "label": "Mass Exterior Wall - Underground",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003419,
+      "label": "Mass Slab",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003418,
+      "label": "Mass Shade",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003417,
+      "label": "Mass Opening",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003416,
+      "label": "Mass Skylight",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003415,
+      "label": "Mass Glazing",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003414,
+      "label": "Mass Roof",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003413,
+      "label": "Mass Exterior Wall",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003412,
+      "label": "Mass Interior Wall",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003411,
+      "label": "Mass Zone",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003410,
+      "label": "Mass Floor Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2003409,
+      "label": "Default Host Template",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003408,
+      "label": "Default Face Splitter",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003407,
+      "label": "Default Mass Cutter",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003406,
+      "label": "Default Zoning Envelope",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003405,
+      "label": "Mass Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2003404,
+      "label": "Form",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003403,
+      "label": "Mass Floor",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003400,
+      "label": "Mass",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003333,
+      "label": "Discarded Division Lines",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003332,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2003331,
+      "label": "Pattern",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2003330,
+      "label": "Always excluded in all views",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003329,
+      "label": "Transparent Face",
+      "parent": -2003400,
+      "categoryType": 4
+    },
+    {
+      "id": -2003328,
+      "label": "Pre-Divided Surface",
+      "parent": -2003400,
+      "categoryType": 4
+    },
+    {
+      "id": -2003327,
+      "label": "Pattern Fill",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003326,
+      "label": "Pattern Lines",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003325,
+      "label": "Gridlines",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003324,
+      "label": "Nodes",
+      "parent": -2003400,
+      "categoryType": 1
+    },
+    {
+      "id": -2003323,
+      "label": "Divided Surface",
+      "parent": -2003400,
+      "categoryType": 4
+    },
+    {
+      "id": -2003321,
+      "label": "OST_RepeatingDetailLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2003308,
+      "label": "Down Arrow",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003307,
+      "label": "Up Arrow",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003306,
+      "label": "DOWN text",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003305,
+      "label": "UP text",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003304,
+      "label": "Stringers Beyond Cut Line",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003303,
+      "label": "Stringers",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003302,
+      "label": "Ramps Beyond Cut Line",
+      "parent": -2000180,
+      "categoryType": 1
+    },
+    {
+      "id": -2003301,
+      "label": "OST_RampsIncomplete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2003300,
+      "label": "OST_TrussDummy",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2003225,
+      "label": "Zone Schemes",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2003201,
+      "label": "Area Schemes",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2003200,
+      "label": "Areas",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003101,
+      "label": "Project Information",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003100,
+      "label": "Sheets",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2003000,
+      "label": "Profiles",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2002000,
+      "label": "Detail Items",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001393,
+      "label": "Roof Soffits",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2001392,
+      "label": "Slab Edges",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2001391,
+      "label": "Gutters",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2001390,
+      "label": "Fascias",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2001370,
+      "label": "Entourage",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001360,
+      "label": "Planting",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001359,
+      "label": "Blocks",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001358,
+      "label": "<Hidden Lines>",
+      "parent": -2001354,
+      "categoryType": 1
+    },
+    {
+      "id": -2001357,
+      "label": "Location Lines",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2001356,
+      "label": "Location Lines",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001355,
+      "label": "Structural Stiffener Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001354,
+      "label": "Structural Stiffeners",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001353,
+      "label": "Analytical Model",
+      "parent": -2001300,
+      "categoryType": 1
+    },
+    {
+      "id": -2001352,
+      "label": "RVT Links",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001351,
+      "label": "OST_Automatic",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001350,
+      "label": "Specialty Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001344,
+      "label": "Rigid Links",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2001343,
+      "label": "Secondary Contours",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001342,
+      "label": "Primary Contours",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001341,
+      "label": "Triangulation Edges",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001340,
+      "label": "Topography",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001339,
+      "label": "Topography Links",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001336,
+      "label": "Structural Trusses",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001335,
+      "label": "Stick Symbols",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2001334,
+      "label": "<Hidden Lines>",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2001333,
+      "label": "Rigid Links",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001332,
+      "label": "Analytical Model",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2001331,
+      "label": "Analytical Model",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001330,
+      "label": "Structural Columns",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001329,
+      "label": "<Hidden Lines>",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001328,
+      "label": "Kicker Bracing",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001327,
+      "label": "Structural Beam Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001326,
+      "label": "Vertical Bracing",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001325,
+      "label": "Horizontal Bracing",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001324,
+      "label": "Purlin",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001323,
+      "label": "Joist",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001322,
+      "label": "Girder",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001321,
+      "label": "Other",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2001320,
+      "label": "Structural Framing",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001302,
+      "label": "<Hidden Lines>",
+      "parent": -2001300,
+      "categoryType": 1
+    },
+    {
+      "id": -2001300,
+      "label": "Structural Foundations",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001276,
+      "label": "Link Base Point",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2001275,
+      "label": "<Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2001274,
+      "label": "<Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2001273,
+      "label": "<Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2001272,
+      "label": "Survey Point",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2001271,
+      "label": "Project Base Point",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2001270,
+      "label": "OST_SiteRegion",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001269,
+      "label": "Property Line Segment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001268,
+      "label": "Property Line Segments",
+      "parent": -2001260,
+      "categoryType": 4
+    },
+    {
+      "id": -2001267,
+      "label": "Property Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001266,
+      "label": "Boundary Point",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001265,
+      "label": "Property Lines",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2001263,
+      "label": "Pads",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2001262,
+      "label": "Interior Point",
+      "parent": -2001340,
+      "categoryType": 1
+    },
+    {
+      "id": -2001261,
+      "label": "OST_SiteSurface",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001260,
+      "label": "Site",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001242,
+      "label": "OST_HiddenBuildingUnitLines_REMOVED_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001241,
+      "label": "OST_BuildingUnits_REMOVED_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001240,
+      "label": "OST_Sewer",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001221,
+      "label": "Road Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001220,
+      "label": "Roads",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001200,
+      "label": "OST_Property",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001180,
+      "label": "Parking",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001160,
+      "label": "Plumbing Fixtures",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001140,
+      "label": "Mechanical Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001125,
+      "label": "Color Fill",
+      "parent": -2001001,
+      "categoryType": 5
+    },
+    {
+      "id": -2001124,
+      "label": "View Saved Positions",
+      "parent": -2003100,
+      "categoryType": 4
+    },
+    {
+      "id": -2001122,
+      "label": "Sub-divisions",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001121,
+      "label": "Light Source",
+      "parent": -2001120,
+      "categoryType": 1
+    },
+    {
+      "id": -2001120,
+      "label": "Lighting Fixtures",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001119,
+      "label": "Cable Types",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2001118,
+      "label": "Panel Schedules",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2001117,
+      "label": "Rebar Crank Type",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2001116,
+      "label": "Analytical Duct Segment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001115,
+      "label": "Analytical Duct Segments",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2001114,
+      "label": "Analytical Pipe Segment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001113,
+      "label": "Analytical Pipe Segments",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2001112,
+      "label": "Sheet Collections",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001111,
+      "label": "OST_DuctFlowDirectionSymbols_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001110,
+      "label": "OST_PipeFlowDirectionSymbols_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001109,
+      "label": "Rebar Splice Type",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2001108,
+      "label": "Splice Location Lines",
+      "parent": -2009000,
+      "categoryType": 1
+    },
+    {
+      "id": -2001107,
+      "label": "Data Exchanges",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001106,
+      "label": "Floor Layers",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2001105,
+      "label": "Wall Layers",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2001104,
+      "label": "Structural Rebar Bending Details",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001103,
+      "label": "Toposolid Link Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001102,
+      "label": "Electrical Connector Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001101,
+      "label": "Electrical Connector",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001100,
+      "label": "Furniture Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001099,
+      "label": "Electrical Analytical Load Scenario",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001098,
+      "label": "Electrical Analytical Load Set",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001097,
+      "label": "Toposolid Links",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001096,
+      "label": "Analytical Feeder",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001095,
+      "label": "Toposolid opening cut",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001094,
+      "label": "Toposolid Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001093,
+      "label": "Thermal/Air Layer",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001092,
+      "label": "Surface Pattern",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001091,
+      "label": "Finish 2",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001090,
+      "label": "Finish 1",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001089,
+      "label": "Substrate",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001088,
+      "label": "Structure",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001087,
+      "label": "Membrane Layer",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001086,
+      "label": "Cut Pattern",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001085,
+      "label": "Common Edges",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001084,
+      "label": "Split Lines",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001083,
+      "label": "Folding Lines",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001082,
+      "label": "Secondary Contours",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001081,
+      "label": "Primary Contours",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001080,
+      "label": "<Hidden Lines>",
+      "parent": -2001079,
+      "categoryType": 1
+    },
+    {
+      "id": -2001079,
+      "label": "Toposolid",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001078,
+      "label": "Area Based Load Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001077,
+      "label": "Electrical Analytical Transformer",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001076,
+      "label": "Split Lines",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2001075,
+      "label": "Cross Section",
+      "parent": -2009662,
+      "categoryType": 5
+    },
+    {
+      "id": -2001074,
+      "label": "RVT Link Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001073,
+      "label": "Model Group Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001072,
+      "label": "Wall Sweep Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001071,
+      "label": "Top Rail Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001070,
+      "label": "Slab Edge Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001069,
+      "label": "Roof Soffit Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001068,
+      "label": "Ramp Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001067,
+      "label": "Pad Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001066,
+      "label": "Handrail Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001065,
+      "label": "Gutter Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001064,
+      "label": "Entourage Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001063,
+      "label": "Column Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001062,
+      "label": "Fascia Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001061,
+      "label": "Signage Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001060,
+      "label": "Electrical Fixtures",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001059,
+      "label": "<Hidden Lines>",
+      "parent": -2001058,
+      "categoryType": 1
+    },
+    {
+      "id": -2001058,
+      "label": "Signage",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001057,
+      "label": "Audio Visual Device Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001056,
+      "label": "<Hidden Lines>",
+      "parent": -2001055,
+      "categoryType": 1
+    },
+    {
+      "id": -2001055,
+      "label": "Audio Visual Devices",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001054,
+      "label": "Vertical Circulation Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001053,
+      "label": "<Hidden Lines>",
+      "parent": -2001052,
+      "categoryType": 1
+    },
+    {
+      "id": -2001052,
+      "label": "Vertical Circulation",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001051,
+      "label": "Fire Protection Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001050,
+      "label": "<Hidden Lines>",
+      "parent": -2001049,
+      "categoryType": 1
+    },
+    {
+      "id": -2001049,
+      "label": "Fire Protection",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001048,
+      "label": "Medical Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001047,
+      "label": "<Hidden Lines>",
+      "parent": -2001046,
+      "categoryType": 1
+    },
+    {
+      "id": -2001046,
+      "label": "Medical Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001045,
+      "label": "Food Service Equipment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001044,
+      "label": "<Hidden Lines>",
+      "parent": -2001043,
+      "categoryType": 1
+    },
+    {
+      "id": -2001043,
+      "label": "Food Service Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001042,
+      "label": "Temporary Structure Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001041,
+      "label": "<Hidden Lines>",
+      "parent": -2001039,
+      "categoryType": 1
+    },
+    {
+      "id": -2001040,
+      "label": "Electrical Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001039,
+      "label": "Temporary Structures",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001038,
+      "label": "Hardscape Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001037,
+      "label": "<Hidden Lines>",
+      "parent": -2001036,
+      "categoryType": 1
+    },
+    {
+      "id": -2001036,
+      "label": "Hardscape",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001035,
+      "label": "OST_WallCoreLayer",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001034,
+      "label": "Non-Core Layers",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2001033,
+      "label": "<Area Based Load Boundary>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2001031,
+      "label": "Reference",
+      "parent": -2001024,
+      "categoryType": 5
+    },
+    {
+      "id": -2001030,
+      "label": "Interior",
+      "parent": -2001024,
+      "categoryType": 5
+    },
+    {
+      "id": -2001029,
+      "label": "Reference",
+      "parent": -2001024,
+      "categoryType": 5
+    },
+    {
+      "id": -2001028,
+      "label": "Interior Fill",
+      "parent": -2001024,
+      "categoryType": 5
+    },
+    {
+      "id": -2001027,
+      "label": "Color Fill",
+      "parent": -2001024,
+      "categoryType": 5
+    },
+    {
+      "id": -2001026,
+      "label": "Electrical Analytical Power Source",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001025,
+      "label": "OST_MEPLoadAreaTags_OBSOLETE",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001024,
+      "label": "Electrical Load Areas",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2001023,
+      "label": "Electrical Analytical Transfer Switch",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001022,
+      "label": "Electrical Analytical Branch",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001021,
+      "label": "Electrical Analytical Bus",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001020,
+      "label": "Electrical Analytical Loads",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2001019,
+      "label": "Area Based Load Type",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001018,
+      "label": "OST_ElectricalZoneEquipment_Obsolete",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001017,
+      "label": "Alignment Station Labels",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001016,
+      "label": "Alignment Station Label Sets",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001015,
+      "label": "Alignment Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001014,
+      "label": "OST_MinorStations_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001013,
+      "label": "OST_MajorStations_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001012,
+      "label": "Alignments",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001011,
+      "label": "Circuit Naming Scheme",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001010,
+      "label": "Zone Equipment",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001009,
+      "label": "Water Loops",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001008,
+      "label": "Air Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2001007,
+      "label": "System-Zone Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2001006,
+      "label": "OST_MEPSystemZoneReferenceLinesVisibility",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001005,
+      "label": "OST_MEPSystemZoneInteriorFillVisibility",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001004,
+      "label": "OST_MEPSystemZoneReferenceLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001003,
+      "label": "OST_MEPSystemZoneInteriorFill",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2001002,
+      "label": "Boundary",
+      "parent": -2001001,
+      "categoryType": 5
+    },
+    {
+      "id": -2001001,
+      "label": "System-Zones",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2001000,
+      "label": "Casework",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000999,
+      "label": "Rectangular Arc Wall Opening",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000998,
+      "label": "Incomplete dormer opening",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000997,
+      "label": "Rectangular Straight Wall Opening",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000996,
+      "label": "Shaft Openings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000995,
+      "label": "Structural opening cut",
+      "parent": -2001320,
+      "categoryType": 1
+    },
+    {
+      "id": -2000994,
+      "label": "Structural opening cut",
+      "parent": -2001330,
+      "categoryType": 1
+    },
+    {
+      "id": -2000990,
+      "label": "OST_OBSOLETE_UNKNOWN990_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000989,
+      "label": "Rise Drop Symbols",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000988,
+      "label": "Hydraulic Separation Symbols",
+      "parent": -2008044,
+      "categoryType": 1
+    },
+    {
+      "id": -2000987,
+      "label": "Mechanical Equipment Set Boundary Lines",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000986,
+      "label": "Mechanical Equipment Set Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000985,
+      "label": "Mechanical Equipment Sets",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000984,
+      "label": "Connection Line Symbol",
+      "parent": -2000983,
+      "categoryType": 5
+    },
+    {
+      "id": -2000983,
+      "label": "Analytical Pipe Connections",
+      "parent": null,
+      "categoryType": 5
+    },
+    {
+      "id": -2000982,
+      "label": "Coordination Model",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000981,
+      "label": "OST_OBSOLETE_UNKNOWN981_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000980,
+      "label": "Multistory Stairs",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000979,
+      "label": "OST_HiddenStructuralConnectionLines_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000978,
+      "label": "OST_StructuralConnectionHandler_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000977,
+      "label": "Internal Origin",
+      "parent": -2001260,
+      "categoryType": 1
+    },
+    {
+      "id": -2000976,
+      "label": "Local Coordinate System",
+      "parent": -2009643,
+      "categoryType": 5
+    },
+    {
+      "id": -2000975,
+      "label": "Local Coordinate System",
+      "parent": -2009639,
+      "categoryType": 5
+    },
+    {
+      "id": -2000974,
+      "label": "Local Coordinate System",
+      "parent": -2009640,
+      "categoryType": 5
+    },
+    {
+      "id": -2000973,
+      "label": "Local Coordinate System",
+      "parent": -2009633,
+      "categoryType": 5
+    },
+    {
+      "id": -2000972,
+      "label": "Local Coordinate System",
+      "parent": -2009636,
+      "categoryType": 5
+    },
+    {
+      "id": -2000971,
+      "label": "Local Coordinate System",
+      "parent": -2009630,
+      "categoryType": 5
+    },
+    {
+      "id": -2000970,
+      "label": "Multi-Rebar Annotations",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000969,
+      "label": "OST_DSR_LeaderTickMarkStyleId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000968,
+      "label": "OST_DSR_InteriorTickMarkStyleId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000967,
+      "label": "OST_DSR_ArrowHeadStyleId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000966,
+      "label": "OST_DSR_CenterlineTickMarkStyleId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000965,
+      "label": "OST_DSR_CenterlinePatternCatId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000964,
+      "label": "OST_DSR_DimStyleHeavyEndCategoryId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000963,
+      "label": "OST_DSR_DimStyleHeavyEndCatId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000962,
+      "label": "OST_DSR_DimStyleTickCategoryId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000961,
+      "label": "OST_DSR_LineAndTextAttrFontId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000960,
+      "label": "OST_DSR_LineAndTextAttrCategoryId",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000958,
+      "label": "Analytical Opening Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000957,
+      "label": "Analytical Panel Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000956,
+      "label": "Analytical Node Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000955,
+      "label": "Analytical Link Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000954,
+      "label": "Railing Rail Path Extension Lines",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000953,
+      "label": "Railing Rail Path Lines",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000952,
+      "label": "Supports",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000951,
+      "label": "<Above> Handrails",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000950,
+      "label": "<Above> Top Rails",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000949,
+      "label": "Terminations",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000948,
+      "label": "Supports",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000947,
+      "label": "Handrails",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000946,
+      "label": "Top Rails",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000945,
+      "label": "<Stair/Ramp Sketch: Stair Path>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000944,
+      "label": "Stair Tread/Riser Numbers",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000943,
+      "label": "OST_StairsTriserTags",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000942,
+      "label": "Stair Support Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000941,
+      "label": "Stair Landing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000940,
+      "label": "Stair Run Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000939,
+      "label": "<Above> Up Arrows",
+      "parent": -2000938,
+      "categoryType": 2
+    },
+    {
+      "id": -2000938,
+      "label": "Stair Paths",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000937,
+      "label": "<Above> Riser Lines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000936,
+      "label": "Riser Lines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000935,
+      "label": "<Above> Outlines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000934,
+      "label": "Outlines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000933,
+      "label": "<Above> Nosing Lines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000932,
+      "label": "Nosing Lines",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000931,
+      "label": "<Above> Cut Marks",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000930,
+      "label": "Cut Marks",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000928,
+      "label": "Repeated Component",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000927,
+      "label": "Repeater",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000926,
+      "label": "Divided Path",
+      "parent": -2003400,
+      "categoryType": 4
+    },
+    {
+      "id": -2000925,
+      "label": "Room Calculation Point",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000924,
+      "label": "Material Assets",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000923,
+      "label": "OST_AppearanceAsset",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000922,
+      "label": "OST_StairStringer2012_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000921,
+      "label": "Treads/Risers",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000920,
+      "label": "Landings",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000919,
+      "label": "Runs",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000918,
+      "label": "OST_Stair2012_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000917,
+      "label": "OST_RailingSystemTags",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000916,
+      "label": "OST_RailingSystemTransition",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000915,
+      "label": "OST_RailingSystemTermination",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000914,
+      "label": "OST_RailingSystemRail",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000913,
+      "label": "OST_RailingSystemTopRail",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000912,
+      "label": "OST_RailingSystemHandRailBracket",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000911,
+      "label": "OST_RailingSystemHandRail",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000910,
+      "label": "Hardware",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000909,
+      "label": "Panels",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000908,
+      "label": "OST_RailingSystemBaluster",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000907,
+      "label": "Posts",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000906,
+      "label": "Segments",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000905,
+      "label": "OST_RailingSystem",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000904,
+      "label": "OST_AdaptivePoints_HiddenLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000903,
+      "label": "Lines",
+      "parent": -2000900,
+      "categoryType": 2
+    },
+    {
+      "id": -2000902,
+      "label": "Planes",
+      "parent": -2000900,
+      "categoryType": 2
+    },
+    {
+      "id": -2000901,
+      "label": "Points",
+      "parent": -2000900,
+      "categoryType": 2
+    },
+    {
+      "id": -2000900,
+      "label": "Adaptive Points",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000899,
+      "label": "Ceiling opening cut",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000898,
+      "label": "Floor opening cut",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000897,
+      "label": "Roof opening cut",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000896,
+      "label": "Reference Planes",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000880,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000834,
+      "label": "Path of Travel Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000833,
+      "label": "<Path of Travel Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000832,
+      "label": "Dim Lock Control Leader",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000831,
+      "label": "<Space Separation>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000830,
+      "label": "Area Polylines",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000829,
+      "label": "Room Polylines",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000828,
+      "label": "<Defined by Instance>",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000827,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000810,
+      "label": "Opening cut",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000800,
+      "label": "Tile pattern grids",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000774,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000773,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000772,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000721,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000720,
+      "label": "X-ray mode - Constrained Profile Edge",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000719,
+      "label": "X-ray mode - Implicit Path Curve",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000718,
+      "label": "X-ray mode - Path Point",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000717,
+      "label": "X-ray mode - Path Curve",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000716,
+      "label": "X-ray mode - Side Edge",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000715,
+      "label": "X-ray mode - Profile Edge",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000714,
+      "label": "OST_ReferencePoints_HiddenLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000713,
+      "label": "Lines",
+      "parent": -2000710,
+      "categoryType": 2
+    },
+    {
+      "id": -2000712,
+      "label": "Planes",
+      "parent": -2000710,
+      "categoryType": 2
+    },
+    {
+      "id": -2000711,
+      "label": "Points",
+      "parent": -2000710,
+      "categoryType": 2
+    },
+    {
+      "id": -2000710,
+      "label": "Reference Points",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000700,
+      "label": "Materials",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000617,
+      "label": "Cut Pattern",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000616,
+      "label": "Common Edges",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000615,
+      "label": "Finish 2",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000614,
+      "label": "Finish 1",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000613,
+      "label": "Substrate",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000612,
+      "label": "Thermal/Air Layer",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000611,
+      "label": "Structure",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000610,
+      "label": "Membrane Layer",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000609,
+      "label": "Folding Lines",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000608,
+      "label": "Cut Pattern",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000607,
+      "label": "<Hidden Lines>",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000606,
+      "label": "Common Edges",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000605,
+      "label": "Finish 2",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000604,
+      "label": "Finish 1",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000603,
+      "label": "Substrate",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000602,
+      "label": "Thermal/Air Layer",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000601,
+      "label": "Structure",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000600,
+      "label": "Membrane Layer",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000598,
+      "label": "Interior Edges",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000597,
+      "label": "Cut Pattern",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000596,
+      "label": "Common Edges",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000595,
+      "label": "Finish 2",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000594,
+      "label": "Finish 1",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000593,
+      "label": "Substrate",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000592,
+      "label": "Thermal/Air Layer",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000591,
+      "label": "Structure",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000590,
+      "label": "Membrane Layer",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000588,
+      "label": "Cut Pattern",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000587,
+      "label": "<Hidden Lines>",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000586,
+      "label": "Common Edges",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000585,
+      "label": "Finish 2",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000584,
+      "label": "Finish 1",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000583,
+      "label": "Substrate",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000582,
+      "label": "Thermal/Air Layer",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000581,
+      "label": "Structure",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000580,
+      "label": "Membrane Layer",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000576,
+      "label": "Legend Components",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000575,
+      "label": "Legend Components",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000573,
+      "label": "Schedules",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000570,
+      "label": "Schedule Graphics",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000560,
+      "label": "Raster Images",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000552,
+      "label": "Color Fill Schema",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000551,
+      "label": "Color Fill",
+      "parent": -2000160,
+      "categoryType": 1
+    },
+    {
+      "id": -2000550,
+      "label": "Color Fill Legends",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000549,
+      "label": "Annotation Crop Boundary",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000548,
+      "label": "Crop Boundaries",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000547,
+      "label": "Annotation Crop Boundary",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000546,
+      "label": "Analytical Model",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000545,
+      "label": "Analytical Model",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000544,
+      "label": "Callout Leader Line",
+      "parent": -2000539,
+      "categoryType": 2
+    },
+    {
+      "id": -2000543,
+      "label": "Surface Pattern",
+      "parent": -2000038,
+      "categoryType": 1
+    },
+    {
+      "id": -2000542,
+      "label": "Surface Pattern",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000541,
+      "label": "Surface Pattern",
+      "parent": -2000032,
+      "categoryType": 1
+    },
+    {
+      "id": -2000540,
+      "label": "Surface Pattern",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000539,
+      "label": "Callout Boundary",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000538,
+      "label": "Callout Heads",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000537,
+      "label": "Callouts",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000536,
+      "label": "Crop Boundaries",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000535,
+      "label": "Elevations",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000533,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000532,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000531,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000530,
+      "label": "Reference Planes",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000520,
+      "label": "Lights",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000515,
+      "label": "View Titles",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000510,
+      "label": "Viewports",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000501,
+      "label": "Cameras",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000500,
+      "label": "Cameras",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000485,
+      "label": "Space Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000480,
+      "label": "Room Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000460,
+      "label": "Door Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000450,
+      "label": "Window Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000404,
+      "label": "<Wide Lines>",
+      "parent": -2000400,
+      "categoryType": 2
+    },
+    {
+      "id": -2000403,
+      "label": "<Medium Lines>",
+      "parent": -2000400,
+      "categoryType": 2
+    },
+    {
+      "id": -2000401,
+      "label": "<Thin Lines>",
+      "parent": -2000400,
+      "categoryType": 2
+    },
+    {
+      "id": -2000400,
+      "label": "Section Marks",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000350,
+      "label": "Contour Labels",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000341,
+      "label": "Curtain System Grid Layout",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000340,
+      "label": "Curtain Systems",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000328,
+      "label": "Room/Area Report",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000327,
+      "label": "Room/Area Report",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000326,
+      "label": "Room/Area Report",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000325,
+      "label": "Room/Area Report",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000323,
+      "label": "Curtain System Grids",
+      "parent": -2000340,
+      "categoryType": 1
+    },
+    {
+      "id": -2000322,
+      "label": "Curtain System Grids",
+      "parent": -2000090,
+      "categoryType": 4
+    },
+    {
+      "id": -2000321,
+      "label": "Curtain Wall Grids",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000320,
+      "label": "Curtain Roof Grids",
+      "parent": -2000035,
+      "categoryType": 1
+    },
+    {
+      "id": -2000317,
+      "label": "OST_DetailArray_REMOVED_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000316,
+      "label": "OST_ModelArray_REMOVED_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000315,
+      "label": "OST_HostFinHF",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000314,
+      "label": "OST_HostFinWall",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000313,
+      "label": "OST_HostFinCeiling",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000312,
+      "label": "OST_HostFinRoof",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000311,
+      "label": "OST_HostFinFloor",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000310,
+      "label": "OST_HostFin",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000304,
+      "label": "Analysis Display Style",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000303,
+      "label": "Analysis Results",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000302,
+      "label": "Render Regions",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000301,
+      "label": "Section Boxes",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000300,
+      "label": "Text Notes",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000291,
+      "label": "Divisions",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000290,
+      "label": "OST_Catalogs",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000289,
+      "label": "OST_DirectionEdgeLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000288,
+      "label": "<Centerline>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000287,
+      "label": "<Beyond>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000286,
+      "label": "<Hidden>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000285,
+      "label": "<Demolished>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000284,
+      "label": "<Overhead>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000283,
+      "label": "<Wide Lines>",
+      "parent": -2000280,
+      "categoryType": 2
+    },
+    {
+      "id": -2000282,
+      "label": "<Medium Lines>",
+      "parent": -2000280,
+      "categoryType": 2
+    },
+    {
+      "id": -2000281,
+      "label": "<Thin Lines>",
+      "parent": -2000280,
+      "categoryType": 2
+    },
+    {
+      "id": -2000280,
+      "label": "Title Blocks",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000279,
+      "label": "Views",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000278,
+      "label": "Views",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000277,
+      "label": "OST_OBSOLETE_UNKNOWN277_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000276,
+      "label": "OST_OBSOLETE_UNKNOWN276_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000275,
+      "label": "OST_OBSOLETE_UNKNOWN275_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000274,
+      "label": "OST_OBSOLETE_UNKNOWN274_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000273,
+      "label": "OST_OBSOLETE_UNKNOWN273_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000272,
+      "label": "OST_OBSOLETE_UNKNOWN272_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000271,
+      "label": "<Hidden Lines>",
+      "parent": -2000269,
+      "categoryType": 1
+    },
+    {
+      "id": -2000270,
+      "label": "Part Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000269,
+      "label": "Parts",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000268,
+      "label": "Assembly Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000267,
+      "label": "Assemblies",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000266,
+      "label": "Roof Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000265,
+      "label": "Spot Slopes",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000264,
+      "label": "Spot Coordinates",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000263,
+      "label": "Spot Elevations",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000262,
+      "label": "Constraints",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000261,
+      "label": "Automatic Sketch Dimensions",
+      "parent": -2000260,
+      "categoryType": 2
+    },
+    {
+      "id": -2000260,
+      "label": "Dimensions",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000245,
+      "label": "OST_DatumLevels_REMOVED_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000240,
+      "label": "Levels",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000223,
+      "label": "Displacement Path",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000222,
+      "label": "Displacement Set",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000221,
+      "label": "Multi-segmented Grid",
+      "parent": -2000220,
+      "categoryType": 2
+    },
+    {
+      "id": -2000220,
+      "label": "Grids",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000202,
+      "label": "Broken Section Line",
+      "parent": -2000201,
+      "categoryType": 2
+    },
+    {
+      "id": -2000201,
+      "label": "Section Line",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000200,
+      "label": "Sections",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000198,
+      "label": "View References",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000197,
+      "label": "View Reference",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000196,
+      "label": "Imports in Families",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000195,
+      "label": "OST_ModelText",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000194,
+      "label": "Masking Region",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000193,
+      "label": "Matchline",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000192,
+      "label": "Split Face",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000191,
+      "label": "Plan Region",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000190,
+      "label": "Filled region",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000187,
+      "label": "OST_MassingProjectionOutlines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000186,
+      "label": "OST_MassingCutOutlines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000185,
+      "label": "Massing",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000182,
+      "label": "Reveals",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000181,
+      "label": "Wall Sweeps",
+      "parent": -2000011,
+      "categoryType": 1
+    },
+    {
+      "id": -2000180,
+      "label": "Ramps",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000177,
+      "label": "OST_RailingBalusterRailCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000176,
+      "label": "OST_RailingBalusterRail",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000175,
+      "label": "OST_Railings",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000173,
+      "label": "Curtain Grids",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000172,
+      "label": "OST_CurtainWallMullionsCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000171,
+      "label": "Curtain Wall Mullions",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000170,
+      "label": "Curtain Panels",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000169,
+      "label": "Reference",
+      "parent": -2003200,
+      "categoryType": 1
+    },
+    {
+      "id": -2000168,
+      "label": "Interior Fill",
+      "parent": -2003200,
+      "categoryType": 1
+    },
+    {
+      "id": -2000167,
+      "label": "Reference",
+      "parent": -2000160,
+      "categoryType": 1
+    },
+    {
+      "id": -2000166,
+      "label": "Interior Fill",
+      "parent": -2000160,
+      "categoryType": 1
+    },
+    {
+      "id": -2000165,
+      "label": "Color Fill",
+      "parent": -2003200,
+      "categoryType": 1
+    },
+    {
+      "id": -2000164,
+      "label": "Reference",
+      "parent": -2003200,
+      "categoryType": 1
+    },
+    {
+      "id": -2000163,
+      "label": "Interior Fill",
+      "parent": -2003200,
+      "categoryType": 1
+    },
+    {
+      "id": -2000162,
+      "label": "Reference",
+      "parent": -2000160,
+      "categoryType": 1
+    },
+    {
+      "id": -2000161,
+      "label": "Interior Fill",
+      "parent": -2000160,
+      "categoryType": 1
+    },
+    {
+      "id": -2000160,
+      "label": "Rooms",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000151,
+      "label": "Generic Models",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000150,
+      "label": "Generic Annotations",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000140,
+      "label": "OST_Fixtures",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000133,
+      "label": "Railing Tags",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000132,
+      "label": "<Above> Railings Cut Line",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000131,
+      "label": "Down Arrows",
+      "parent": -2000938,
+      "categoryType": 2
+    },
+    {
+      "id": -2000130,
+      "label": "Up Arrows",
+      "parent": -2000938,
+      "categoryType": 2
+    },
+    {
+      "id": -2000129,
+      "label": "DOWN Text",
+      "parent": -2000938,
+      "categoryType": 2
+    },
+    {
+      "id": -2000128,
+      "label": "Rails",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000127,
+      "label": "Balusters",
+      "parent": -2000126,
+      "categoryType": 1
+    },
+    {
+      "id": -2000126,
+      "label": "Railings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000125,
+      "label": "UP Text",
+      "parent": -2000938,
+      "categoryType": 2
+    },
+    {
+      "id": -2000124,
+      "label": "<Above> Supports",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000123,
+      "label": "Supports",
+      "parent": -2000120,
+      "categoryType": 1
+    },
+    {
+      "id": -2000122,
+      "label": "OST_StairsAboveCut_ToBeDeprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000121,
+      "label": "OST_StairsIncomplete_Deprecated",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000120,
+      "label": "Stairs",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000117,
+      "label": "Internal Object Styles",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000116,
+      "label": "Computation height lines",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000115,
+      "label": "Upper/lower offset lines",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000114,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000113,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000112,
+      "label": "Phases",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000111,
+      "label": "Location Data",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000110,
+      "label": "Shared Site",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000109,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000107,
+      "label": "Guide Grid",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000106,
+      "label": "Future",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000105,
+      "label": "Temporary",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000104,
+      "label": "New",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000103,
+      "label": "Demolished",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000102,
+      "label": "Existing",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000101,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000100,
+      "label": "Columns",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000099,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000098,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000097,
+      "label": "Attached Detail Groups",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000096,
+      "label": "Detail Groups",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000095,
+      "label": "Model Groups",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000094,
+      "label": "Suspended Sketch",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000093,
+      "label": "Internal Object Styles",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000092,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000091,
+      "label": "Array",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000090,
+      "label": "Ruled Curtain System",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000089,
+      "label": "Thin Pixel - Dash",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000088,
+      "label": "Slab Shape Editor - Point Interior",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000087,
+      "label": "Slab Shape Editor - Point Boundary",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000086,
+      "label": "Slab Shape Editor - Boundary",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000085,
+      "label": "Slab Shape Editor - Auto Crease",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000084,
+      "label": "Slab Shape Editor - Explicit Crease",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000083,
+      "label": "Reference Lines",
+      "parent": null,
+      "categoryType": 2
+    },
+    {
+      "id": -2000082,
+      "label": "<Not Silhouette>",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000081,
+      "label": "Internal Object Styles",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000080,
+      "label": "Furniture",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000079,
+      "label": "<Area Boundary>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000078,
+      "label": "<Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000077,
+      "label": "<Insulation Batting Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000076,
+      "label": "OST_CloudLines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000075,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000074,
+      "label": "Cutting geometry",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000073,
+      "label": "Internal Object Styles",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000072,
+      "label": "Groups",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000071,
+      "label": "Ghost",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000070,
+      "label": "<Stair/Ramp Sketch: Landing Center>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000069,
+      "label": "<Stair/Ramp Sketch: Run>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000068,
+      "label": "<Stair/Ramp Sketch: Riser>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000067,
+      "label": "<Stair/Ramp Sketch: Boundary>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000066,
+      "label": "<Room Separation>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000065,
+      "label": "<Axis of Rotation>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000064,
+      "label": "<Invisible lines>",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000063,
+      "label": "Thin Pixel - DashDot",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000062,
+      "label": "Thin Pixel - Dash",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000061,
+      "label": "Thin Pixel - Dot",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000060,
+      "label": "OST_Extrusions",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000059,
+      "label": "Internal Object Styles",
+      "parent": null,
+      "categoryType": 4
+    },
+    {
+      "id": -2000058,
+      "label": "OST_CutOutlines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000057,
+      "label": "Thin Pixel",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000056,
+      "label": "Flip Control",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000055,
+      "label": "Work Plane Grid",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000054,
+      "label": "Suspended Sketch",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000053,
+      "label": "OST_IOSFreeSnapLine",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000052,
+      "label": "Datum Plane",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000051,
+      "label": "Lines",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000050,
+      "label": "OST_IOSConstructionLine",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000049,
+      "label": "OST_IOSAlignmentGraphics",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000048,
+      "label": "Aligning Line",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000047,
+      "label": "Backed Up Elements",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000046,
+      "label": "Regenerating elements.",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000045,
+      "label": "<Sketch>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000044,
+      "label": "<Wide Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000043,
+      "label": "<Medium Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000042,
+      "label": "<Thin Lines>",
+      "parent": -2000051,
+      "categoryType": 1
+    },
+    {
+      "id": -2000041,
+      "label": "OST_Curves",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000040,
+      "label": "OST_CeilingsProjection",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000039,
+      "label": "OST_CeilingsCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000038,
+      "label": "Ceilings",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000037,
+      "label": "OST_RoofsProjection",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000036,
+      "label": "OST_RoofsCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000035,
+      "label": "Roofs",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000034,
+      "label": "OST_FloorsProjection",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000033,
+      "label": "OST_FloorsCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000032,
+      "label": "Floors",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000031,
+      "label": "Glass",
+      "parent": -2000023,
+      "categoryType": 1
+    },
+    {
+      "id": -2000030,
+      "label": "OST_DoorsGlassCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000029,
+      "label": "Frame/Mullion",
+      "parent": -2000023,
+      "categoryType": 1
+    },
+    {
+      "id": -2000028,
+      "label": "OST_DoorsFrameMullionCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000027,
+      "label": "Opening",
+      "parent": -2000023,
+      "categoryType": 1
+    },
+    {
+      "id": -2000026,
+      "label": "OST_DoorsOpeningCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000025,
+      "label": "Panel",
+      "parent": -2000023,
+      "categoryType": 1
+    },
+    {
+      "id": -2000024,
+      "label": "OST_DoorsPanelCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000023,
+      "label": "Doors",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000022,
+      "label": "Opening",
+      "parent": -2000014,
+      "categoryType": 1
+    },
+    {
+      "id": -2000021,
+      "label": "OST_WindowsOpeningCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000020,
+      "label": "Sill/Head",
+      "parent": -2000014,
+      "categoryType": 1
+    },
+    {
+      "id": -2000019,
+      "label": "OST_WindowsSillHeadCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000018,
+      "label": "Frame/Mullion",
+      "parent": -2000014,
+      "categoryType": 1
+    },
+    {
+      "id": -2000017,
+      "label": "OST_WindowsFrameMullionCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000016,
+      "label": "Glass",
+      "parent": -2000014,
+      "categoryType": 1
+    },
+    {
+      "id": -2000015,
+      "label": "OST_WindowsGlassCut",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000014,
+      "label": "Windows",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000013,
+      "label": "OST_WallsProjectionOutlines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000012,
+      "label": "OST_WallsCutOutlines",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000011,
+      "label": "Walls",
+      "parent": null,
+      "categoryType": 1
+    },
+    {
+      "id": -2000010,
+      "label": "Regeneration Failure",
+      "parent": -2000059,
+      "categoryType": 4
+    },
+    {
+      "id": -2000008,
+      "label": "OST_ScheduleViewParamGroup",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000007,
+      "label": "OST_MatchSiteComponent",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000006,
+      "label": "OST_MatchProfile",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000005,
+      "label": "OST_MatchDetail",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000004,
+      "label": "OST_MatchAnnotation",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000003,
+      "label": "OST_MatchModel",
+      "parent": null,
+      "categoryType": 0
+    },
+    {
+      "id": -2000002,
+      "label": "OST_MatchAll",
+      "parent": null,
+      "categoryType": 0
+    }
+  ]
+}

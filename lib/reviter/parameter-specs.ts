@@ -94,8 +94,10 @@ function decimal(value: number, digits: number): string {
 export function formatParameterValue(parameter: {
   parameterId: number;
   value: number | string;
+  /** The name of the choice an enumerated value stands for. */
+  valueName?: string;
 }): string | null {
-  const { parameterId, value } = parameter;
+  const { parameterId, value, valueName } = parameter;
   if (typeof value === "string") return value;
   switch (parameterKind(parameterId)) {
     case "length":
@@ -109,7 +111,8 @@ export function formatParameterValue(parameter: {
     case "bool":
       return value === 1 ? "Yes" : value === 0 ? "No" : null;
     case "integer":
-      return Number.isInteger(value) ? String(value) : null;
+      if (!Number.isInteger(value)) return null;
+      return valueName ?? String(value);
     case "elementId":
       return value === -1 ? "None" : Number.isInteger(value) && value > 0 ? `Element ${value}` : null;
     case "text":

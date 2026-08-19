@@ -86,3 +86,9 @@ test("a table holding element-id parameters is not read as the double table", ()
     [],
   );
 });
+
+test("an enumerated value is shown by the name of its choice", () => {
+  assert.equal(formatParameterValue({ parameterId: -1001006, value: 0, valueName: "Interior" }), "Interior");
+  // Without a name the number stands.
+  assert.equal(formatParameterValue({ parameterId: -1001006, value: 0 }), "0");
+});
