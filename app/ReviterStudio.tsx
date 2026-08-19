@@ -65,6 +65,20 @@ import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
+import {
+  clearElementOverride,
+  emptyElementOverrideState,
+  overrideFor,
+  redoElementOverrides,
+  setElementOverride,
+  undoElementOverrides,
+  type AssertedCategory,
+  type ElementOverridePatch,
+  type ElementOverrideState,
+} from "../lib/reviter";
+import { AssertionReviewDialog } from "./studio/AssertionReviewDialog.tsx";
+import { assertionReviewDigest, buildAssertionReview, type AssertionReviewRow } from "./studio/assertion-review.ts";
+import { loadElementOverrides, saveElementOverrides } from "./studio/element-override-storage.ts";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import {
@@ -225,6 +239,21 @@ function ThemeIcons({ size }: { size: number }) {
   );
 }
 
+/**
+ * Who an assertion is attributed to in the export.
+ *
+ * A constant rather than a name, and deliberately so. Reviter has no account
+ * system, and the README's own commitment is that identity fields recovered
+ * from a file — the worksharing username, the saved paths — are filtered out of
+ * reports. Capturing a reviewer's name to satisfy `AssertedBy` would introduce
+ * exactly the identity this application has been careful not to carry.
+ *
+ * What the property has to establish is that a human, not a decoder, produced
+ * the value; that survives without naming them. A signed assertion is a later
+ * choice for someone who wants one, not a default the tool imposes.
+ */
+const ASSERTION_AUTHOR = "reviewer";
+
 export default function ReviterStudio() {
   const mobile = useSyncExternalStore(
     subscribeToBreakpoint,
@@ -296,6 +325,19 @@ export default function ReviterStudio() {
   const [browserSearch, setBrowserSearch] = useState("");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
+  /**
+   * Whether the reviewer is asserting over the recovery rather than reading it.
+   *
+   * Deliberately not persisted. A mode that survives a reload would put someone
+   * into editing without their having chosen it this session, and the whole
+   * value of the switch is that its state is something the reviewer knows.
+   */
+  const [editEnabled, setEditEnabled] = useState(false);
+  const [overrideState, setOverrideState] = useState<ElementOverrideState>(emptyElementOverrideState);
+  /** Open only while an IFC export is waiting on the reviewer reading its assertions. */
+  const [assertionReview, setAssertionReview] = useState<
+    { rows: AssertionReviewRow[]; digest: string; stale: boolean } | null
+  >(null);
   const [modelComments, setModelComments] = useState<ModelComment[]>([]);
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("open");
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
@@ -594,6 +636,7 @@ export default function ReviterStudio() {
             ?? null,
         );
         setModelComments(loadModelComments(converted));
+        setOverrideState({ overrides: loadElementOverrides(converted), past: [], future: [] });
         setMarkup(loadModelMarkup(converted));
         // Reviter's own recovery is what opening a model shows. Nothing about
         // the file — not its name, not its document id — switches the viewer to
@@ -905,10 +948,86 @@ export default function ReviterStudio() {
    * first; the recovery's own evidence follows, because in this viewer it is a
    * property of the object rather than a footnote about the file.
    */
-  const propertyRows: PropertyRow[] = useMemo(
-    () => propertyRowsFor(selectedRecord, selectedDimensions),
-    [selectedDimensions, selectedRecord],
+  const selectedOverride = useMemo(
+    () => selectedRecord ? overrideFor(overrideState.overrides, selectedRecord.elementId) : null,
+    [overrideState.overrides, selectedRecord],
   );
+
+  const propertyRows: PropertyRow[] = useMemo(
+    () => propertyRowsFor(selectedRecord, selectedDimensions, selectedOverride),
+    [selectedDimensions, selectedOverride, selectedRecord],
+  );
+
+  /**
+   * The categories a reviewer may assert, taken from this building.
+   *
+   * Revit publishes over a thousand categories and the decoder can name any of
+   * them, but a picker holding all of them would be asking someone correcting a
+   * misfiled curtain panel to find it among furniture systems and duct
+   * fittings. The categories this model actually contains are both the shorter
+   * list and the more likely answer.
+   */
+  const assertableCategories: AssertedCategory[] = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const record of activeGeometryResult?.elementBounds ?? []) {
+      if (record.categoryId == null || !record.categoryName) continue;
+      if (!byId.has(record.categoryId)) byId.set(record.categoryId, record.categoryName);
+    }
+    return [...byId]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, "en"));
+  }, [activeGeometryResult]);
+
+  const assertOnSelected = useCallback((patch: ElementOverridePatch) => {
+    const elementId = selectedRecord?.elementId;
+    if (elementId == null) return;
+    setOverrideState((state) => {
+      const next = setElementOverride(state, elementId, patch, ASSERTION_AUTHOR);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [result, selectedRecord]);
+
+  const clearAssertionOnSelected = useCallback(() => {
+    const elementId = selectedRecord?.elementId;
+    if (elementId == null) return;
+    setOverrideState((state) => {
+      const next = clearElementOverride(state, elementId);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [result, selectedRecord]);
+
+  const undoAssertion = useCallback(() => {
+    setOverrideState((state) => {
+      const next = undoElementOverrides(state);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [result]);
+
+  const redoAssertion = useCallback(() => {
+    setOverrideState((state) => {
+      const next = redoElementOverrides(state);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [result]);
+
+  /**
+   * Leaving edit mode ends the editing, it does not merely hide it.
+   *
+   * IFClite's viewer keeps a named `AUTHORING_TOOLS` set for the same reason and
+   * warns in its own comment that duplicating the check is how the two states
+   * drift apart. Reviter has no canvas authoring tool yet, so there is nothing
+   * to force back to select; what there is to end is the dock's editing
+   * surface, and ending it here rather than in the dock keeps the rule in one
+   * place for when a tool does arrive.
+   */
+  const setEditing = useCallback((enabled: boolean) => {
+    setEditEnabled(enabled);
+    if (!enabled) setEvidenceOpen(false);
+  }, []);
 
   const copySelectedProperties = useCallback(async () => {
     if (!selectedRecord || !propertyRows.length) return;
@@ -1477,6 +1596,45 @@ export default function ReviterStudio() {
     }
   }, [result]);
 
+  /**
+   * Write the IFC, assertions and all.
+   *
+   * Separate from the export action so the review dialog's confirm reaches the
+   * same code path. Two call sites building the options object independently is
+   * how a reviewed export and an unreviewed one start to differ.
+   */
+  const runIfcExport = useCallback((geometryResult: ConvertResult) => {
+    exportText(
+      "IFC",
+      "ifc",
+      () => makeIfcCenterlines(geometryResult, {
+        rooms: roomReview.rooms,
+        overrides: overrideState.overrides,
+      }),
+      "application/x-step",
+    );
+  }, [exportText, overrideState.overrides, roomReview.rooms]);
+
+  /**
+   * Confirm from the review dialog, refusing if the list went stale.
+   *
+   * The rows are re-derived here rather than trusted from the dialog's props:
+   * every assertion mutates state that the dialog does not own, so the only
+   * honest check is against live state at the moment of the click.
+   */
+  const confirmAssertionExport = useCallback(() => {
+    const geometryResult = referenceAssistedResult ?? result;
+    if (!geometryResult) return;
+    const rows = buildAssertionReview(geometryResult.elementBounds, overrideState.overrides);
+    const digest = assertionReviewDigest(rows);
+    if (digest !== assertionReview?.digest) {
+      setAssertionReview({ rows, digest, stale: true });
+      return;
+    }
+    setAssertionReview(null);
+    runIfcExport(geometryResult);
+  }, [assertionReview, overrideState.overrides, referenceAssistedResult, result, runIfcExport]);
+
   const exportActions: ExportAction[] = useMemo(() => {
     if (!result) return [];
     const geometryResult = referenceAssistedResult ?? result;
@@ -1536,7 +1694,12 @@ export default function ReviterStudio() {
         detail: referenceAssistedResult
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
           : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
+        run: () => {
+          // Nothing asserted, nothing to read: the export runs as it always has.
+          if (!overrideState.overrides.length) return runIfcExport(geometryResult);
+          const rows = buildAssertionReview(geometryResult.elementBounds, overrideState.overrides);
+          setAssertionReview({ rows, digest: assertionReviewDigest(rows), stale: false });
+        },
       },
       {
         id: "JSON",
@@ -1583,7 +1746,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
+  }, [exportText, markup, metadata, modelComments, overrideState.overrides, planLevelId, referenceAssistedResult, result, roomReview, runIfcExport]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -2060,6 +2223,9 @@ export default function ReviterStudio() {
               onOpen={openPicker}
               onPairIfc={() => ifcInputRef.current?.click()}
               onPairReferenceModel={() => referenceModelInputRef.current?.click()}
+              editEnabled={editEnabled}
+              onEditEnabled={setEditing}
+              assertionCount={overrideState.overrides.length}
               onCloseModel={closeModel}
             />
           )}
@@ -2314,6 +2480,16 @@ export default function ReviterStudio() {
                 onZoom={requestZoomToSelection}
                 onCopy={() => { void copySelectedProperties(); }}
                 onToggleEvidence={() => setEvidenceOpen((open) => !open)}
+                editEnabled={editEnabled}
+                selectionId={selectedRecord?.elementId ?? null}
+                override={selectedOverride}
+                categories={assertableCategories}
+                canUndo={overrideState.past.length > 0}
+                canRedo={overrideState.future.length > 0}
+                onAssert={assertOnSelected}
+                onClearAssertion={clearAssertionOnSelected}
+                onUndo={undoAssertion}
+                onRedo={redoAssertion}
               />
             )}
           </div>
@@ -2363,6 +2539,15 @@ export default function ReviterStudio() {
             </span>
           </footer>
         </>
+      )}
+
+      {assertionReview && (
+        <AssertionReviewDialog
+          rows={assertionReview.rows}
+          stale={assertionReview.stale}
+          onCancel={() => setAssertionReview(null)}
+          onConfirm={confirmAssertionExport}
+        />
       )}
     </main>
   );

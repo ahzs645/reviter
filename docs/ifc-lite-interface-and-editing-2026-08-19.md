@@ -277,15 +277,15 @@ that turn out to be wrong. Building an editor for a field the decoder gets right
 1. **Widen `PropertyRow`** with provenance. — **done, 2026-08-19.** Nothing is
    editable yet; the dock has stopped pretending every row is the same kind of
    fact. See the note below on what was deliberately left out.
-2. **`editEnabled` pill** in `ViewerToolbar` + the forced-tool-reset discipline.
-3. **`ElementOverrides` sidecar** — generalise `room-review`'s shape to
+2. **`editEnabled` pill** in `ViewerToolbar`. — **done, 2026-08-19.**
+3. **`ElementOverrides` sidecar** — **done, 2026-08-19.** Generalises `room-review`'s shape to
    `ElementBoundsRecord`, keyed by Revit element id, persisted through
    `review-exchange.ts` alongside comments and markup, with undo/redo.
-4. **`makeIfc` applies overrides** and marks them in `Reviter_Recovery`.
+4. **`makeIfc` applies overrides** and marks them in `Reviter_Recovery`. — **done, 2026-08-19.**
    Extend `tests/export-ifc.test.ts` to assert an overridden value is emitted
    *and* flagged — and re-run [probe 1](ifc-lite-evaluation-2026-08-19.md) so an
    independent reader confirms the flag survives.
-5. **Review-before-export dialog**, listing decoded → asserted per element.
+5. **Review-before-export dialog**, listing decoded → asserted per element. — **done, 2026-08-19.**
 6. **Bulk edit by category / evidence class** — the one that pays at 39,159
    elements.
 7. **Command palette and context menu** — cheap, and by now there are enough
@@ -294,6 +294,43 @@ that turn out to be wrong. Building an editor for a field the decoder gets right
    162 MB export, and a prerequisite for anything that treats the IFC as an
    editable substrate rather than a final artefact.
 9. *Only then* the route-B store for element creation and bulk authoring.
+
+### Steps 2 to 5, as built
+
+`lib/reviter/element-overrides.ts` holds the model: an override keyed by Revit
+element id, snapshot undo/redo, a validator and a sidecar shape, all mirroring
+`room-review.ts`. `app/studio/element-override-storage.ts` persists it per model
+the way comments and markup already are.
+
+Three fields are assertable — category, type name, note — and geometry
+deliberately is not. A reviewer is often right that a bounds envelope is the
+wrong shape, but "wrong" is not a shape, and a control that accepted the
+objection without one would invite a claim nothing can store.
+
+The category picker offers **the categories this building contains**, not
+Revit's full enumeration. On the supplied project that is 23 options rather than
+a thousand, and the right answer is nearly always among them.
+
+`AssertedBy` carries a constant, not a name. Reviter has no account system and
+the README commits to filtering recovered identity out of reports; capturing a
+reviewer's name to satisfy the property would introduce exactly the identity
+this application avoids. What the property must establish is that a human
+produced the value, and that survives without naming them.
+
+Assertion integrity lives in its own IDS document, `reviter-assertions.ids`,
+rather than in the always-on one. The reason is a finding rather than a
+preference: re-categorising an element **moves it out of the old class's
+applicability**, so folding an assertion rule into `reviter-recovery.ids` would
+make a wall-scoped specification match nothing on an export where the only wall
+was re-categorised — and that gate fails a specification that matched nothing.
+`tests/export-ifc-independent-reader.test.ts` pins the behaviour.
+
+Verified end to end in a browser on the supplied 67 MB model by
+`scripts/browser-check-assertions.mjs`: 21 checks, conversion in ~60s, covering
+the switch gating the surface, the picker, the row marker, undo stepping through
+assertions one at a time rather than collapsing them, the export stopping to be
+read, and the downloaded IFC carrying `AssertedFields`, `AssertedBy`,
+`DecodedRevitCategory` and a `CategoryEvidence` of `reviewer-assertion`.
 
 ### Step 1, as built
 

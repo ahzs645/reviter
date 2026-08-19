@@ -267,7 +267,7 @@ export function MobileShell({
                           {row.provenance !== "decoded" && (
                             <span className="property-provenance">{row.provenance}</span>
                           )}
-                          {row.value}
+                          <span className="property-value">{row.value}</span>
                         </dd>
                       </div>
                     ))}

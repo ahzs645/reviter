@@ -1,5 +1,7 @@
 /** Display formatting helpers for the studio shell. */
 
+import { applyOverrideToRecord } from "../../lib/reviter/element-overrides.ts";
+import type { ElementOverride } from "../../lib/reviter/element-overrides.ts";
 import type { ElementBoundsRecord, Vec3 } from "../../lib/reviter/types.ts";
 import type { CanvasMenuRequest, PropertyProvenance, PropertyRow } from "./types.ts";
 
@@ -137,21 +139,49 @@ export function savedFileName(path: string | undefined): string | null {
  * Which rows are a read and which are a derivation is the claim this palette
  * makes about the decoder's certainty, and a claim that only exists inside a
  * React hook is a claim nothing checks.
+ *
+ * An `override` replaces the values it asserts and marks those rows `edited`.
+ * The rows it does not assert keep their own provenance — an element whose
+ * category a reviewer corrected still has an id, a bounds record and a source
+ * offset that were read out of the file, and marking those as asserted would be
+ * its own dishonesty.
  */
 export function propertyRowsFor(
-  record: ElementBoundsRecord | null,
+  element: ElementBoundsRecord | null,
   dimensions: Vec3 | null,
+  override: ElementOverride | null = null,
 ): PropertyRow[] {
-  if (!record || !dimensions) return [];
+  if (!element || !dimensions) return [];
+  const applied = override ? applyOverrideToRecord(element, override) : null;
+  const record = applied?.record ?? element;
+  const asserted = new Set(applied?.asserted ?? []);
+  const rows = buildPropertyRows(record, dimensions, asserted);
+  if (!override?.note.trim()) return rows;
+  // The note has no decoded counterpart, so it is appended rather than
+  // replacing a row.
+  return [...rows, {
+    key: "assertion-note",
+    label: "Reviewer note",
+    value: override.note.trim(),
+    provenance: "edited" as const,
+  }];
+}
+
+function buildPropertyRows(
+  record: ElementBoundsRecord,
+  dimensions: Vec3,
+  asserted: ReadonlySet<string>,
+): PropertyRow[] {
 
   // A category read from the element's own token is a fact; one taken from a
   // record-code consensus is this decoder's best guess about which cluster
   // the element belongs to. They are shown together and must not read alike.
-  const categoryProvenance: PropertyProvenance =
-    record.categorySource === "native-token" ||
-    record.categorySource === "native-object"
+  const categoryProvenance: PropertyProvenance = asserted.has("category")
+    ? "edited"
+    : record.categorySource === "native-token" || record.categorySource === "native-object"
       ? "decoded"
       : "inferred";
+  const typeProvenance: PropertyProvenance = asserted.has("typeName") ? "edited" : "decoded";
 
   // The geometry and evidence rows describe the body in the viewport, so they
   // take the body's provenance: a native face mesh or a tagged paired body is
@@ -175,7 +205,7 @@ export function propertyRowsFor(
         key: "type",
         label: "Type",
         value: record.typeName,
-        provenance: "decoded" as const,
+        provenance: typeProvenance,
       }]
       : []),
     {
