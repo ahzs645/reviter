@@ -13,8 +13,18 @@
  * among them. The entire -1,000,000..-1,000,999 band is empty in the published
  * documentation while neighbouring bands are dense, so these are most likely
  * internal parameters Autodesk does not surface through the API. They are
- * reported by number rather than guessed at.
+ * reported by number rather than guessed at. The ODA label resource in
+ * `oda-label-resource.ts` is an independently produced table of the same
+ * enumeration and it does not carry those ids either, which is a second source
+ * agreeing that they are not public parameters.
+ *
+ * That resource does supply two things this table cannot: the enumerator name
+ * for an id, and a real label for the ids whose published documentation prints
+ * none. Where an entry below is the humanised enumerator rather than a label —
+ * `Rgb R Param` for `RGB_R_PARAM` — the resource's label replaces it.
  */
+
+import { odaParameterLabel, parameterEnumName } from "./oda-label-resource.ts";
 
 /** `id:Label` pairs joined by `|`. */
 const PACKED_PARAMETERS = [
@@ -1170,5 +1180,18 @@ function builtInParameterName(parameterId: number): string | undefined {
 }
 
 export function parameterDisplayName(parameterId: number): string {
-  return builtInParameterName(parameterId) ?? `Parameter ${parameterId}`;
+  return odaParameterLabel(parameterId)
+    ?? builtInParameterName(parameterId)
+    ?? `Parameter ${parameterId}`;
+}
+
+/**
+ * `BuiltInParameter` enumerator for an id, such as `WALL_USER_HEIGHT_PARAM`.
+ *
+ * The enumerator is the identifier that survives a release change or a localised
+ * Revit install, so an audit consumer joining on parameters should read this
+ * rather than the display label. `undefined` for the ids that are not public.
+ */
+export function builtInParameterEnumName(parameterId: number): string | undefined {
+  return parameterEnumName(parameterId);
 }

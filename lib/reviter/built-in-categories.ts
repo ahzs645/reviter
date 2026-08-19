@@ -15,7 +15,17 @@
  * Stored as a packed string rather than an object literal: 1,211 entries cost
  * about 34 KB either way in source, but the packed form parses once into a Map
  * instead of building a 1,211-property object at module load.
+ *
+ * The names here are enumerators. The label Revit actually prints for a category
+ * comes from the ODA label resource in `oda-label-resource.ts`; see
+ * `builtInCategoryLabel`.
  */
+
+import {
+  isAmbiguousCategoryLabel,
+  odaCategoryEnumName,
+  odaCategoryLabel,
+} from "./oda-label-resource.ts";
 
 /** `id:Name` pairs, `OST_` prefix stripped, joined by `|`. */
 const PACKED_CATEGORIES = [
@@ -449,9 +459,36 @@ function categoryTable(): Map<number, string> {
   return categoryNames;
 }
 
-/** `OST_` name for a category id, without the prefix, or `undefined`. */
+/**
+ * `OST_` name for a category id, without the prefix, or `undefined`.
+ *
+ * The transcribed table answers first. The ODA label resource covers 13 further
+ * ids that the published documentation omits, all of them deprecated or removed
+ * categories, so it is consulted as a fallback rather than an override.
+ */
 export function builtInCategoryName(categoryId: number): string | undefined {
-  return categoryTable().get(categoryId);
+  return categoryTable().get(categoryId) ?? odaCategoryEnumName(categoryId);
+}
+
+/**
+ * The label Revit itself shows for a category, when that label identifies the
+ * category on its own.
+ *
+ * `humaniseCategoryName` reconstructs a display name from the enumerator, which
+ * is close but not always what Revit prints: `OST_CurtainWallPanels` is "Curtain
+ * Panels", `OST_StairsRailing` is "Railings", and `OST_StairsRailingBaluster` is
+ * "Balusters" — the third largest category recovered from the supplied 2027
+ * project. 758 of the 1,075 labelled categories differ this way, so the
+ * difference is visible on every object list and every export.
+ *
+ * Revit also reuses one label across sibling sub-categories — `Lines` names 5
+ * categories and `<Hidden Lines>` names 65, each shown nested under a different
+ * parent. A shared label cannot name a category in a flat list, so those ids
+ * return `undefined` and keep the enumerator-derived name.
+ */
+export function builtInCategoryLabel(categoryId: number): string | undefined {
+  if (isAmbiguousCategoryLabel(categoryId)) return undefined;
+  return odaCategoryLabel(categoryId);
 }
 
 /**

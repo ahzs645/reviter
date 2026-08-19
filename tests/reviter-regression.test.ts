@@ -518,7 +518,8 @@ test("overrides a donated token only where the element's own cluster disagrees d
   const byId = new Map(records.map((record) => [record.elementId, record]));
   assert.equal(byId.get(200)!.categoryName, "Floors");
   assert.equal(byId.get(200)!.categorySource, "record-code-consensus");
-  assert.equal(byId.get(300)!.categoryName, "Stairs Paths");
+  // Revit's own label for `OST_StairsPaths`, which is not the humanised enumerator.
+  assert.equal(byId.get(300)!.categoryName, "Stair Paths");
   assert.equal(byId.get(300)!.categorySource, "native-token");
   assert.equal(summary.donatedTokenElements, 2);
   assert.equal(summary.donatedTokensOverridden, 1);

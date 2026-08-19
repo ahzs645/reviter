@@ -47,6 +47,7 @@ Read in this order they are roughly the order the work happened.
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
+| [The ODA label resource](oda-label-resource-tables.md) | The embedded enumeration tables, the Revit category labels they supply, and the parameter enumerators |
 
 ## Revit 2027 geometry replay
 

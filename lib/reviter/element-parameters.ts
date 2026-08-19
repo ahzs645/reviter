@@ -31,8 +31,13 @@
  * Only f64 values appear in these tables. Type parameters use a different
  * mechanism — positional, schema-tagged fields inside the type record — and are
  * not decoded here.
+ *
+ * Each decoded parameter also carries its `BuiltInParameter` enumerator where a
+ * published source names it, so a consumer can join on `WALL_USER_HEIGHT_PARAM`
+ * instead of on a display label that changes with release and locale.
  */
-import { parameterDisplayName } from "./built-in-parameters.ts";
+
+import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
 
 /** `ff ff ff ff 10 03 01 00 00 00` — the element-id anchor preceding a table. */
 const ANCHOR = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00] as const;
@@ -62,6 +67,11 @@ export type ElementParameter = {
   parameterId: number;
   /** Published parameter label, or `Parameter <id>` when Autodesk omits it. */
   name: string;
+  /**
+   * `BuiltInParameter` enumerator, such as `WALL_USER_HEIGHT_PARAM`. Absent for
+   * the ids that neither published source names.
+   */
+  enumName?: string;
   /** Value in Revit's internal units — feet for lengths. */
   value: number;
 };
@@ -87,7 +97,13 @@ function readTableAt(view: DataView, offset: number, byteLength: number): Elemen
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
     const value = view.getFloat64(entry + 8, true);
     if (!Number.isFinite(value) || Math.abs(value) > MAX_PARAMETER_VALUE) return null;
-    parameters.push({ parameterId, name: parameterDisplayName(parameterId), value });
+    const enumName = builtInParameterEnumName(parameterId);
+    parameters.push({
+      parameterId,
+      name: parameterDisplayName(parameterId),
+      ...(enumName ? { enumName } : {}),
+      value,
+    });
   }
   return parameters;
 }
