@@ -198,6 +198,37 @@ already cost. The 3,688
 parameter labels and 1,211 category enumerators the two sources share are not
 shipped twice.
 
+## What a stored number means
+
+`g_ParameterValues` is a second CSV in the same module, listing the enumerated
+values behind a parameter: 284 parameters with their own list, 143 more sharing
+one by alias, 1,171 values in all. It is committed as
+[`generated/revit-parameter-values.json`](generated/revit-parameter-values.json).
+
+It was passed over once, on the grounds that none of those 427 parameters is
+stored as a double and the double table was the only one being read. That is no
+longer true. `Rafter Cut` stores `33615` and `33618` on the supplied project,
+and those are "Plumb Cut" and "Two Cut - Square"; `Rafter or Truss` stores `0`,
+which is "Truss". 40 decoded values carry a name now, and the numbers they
+resolve are the ones the decoder was already producing — a check on the integer
+table as much as a gain in readability.
+
+`revitParameterValueName` answers for a parameter and a value, and the number
+stays beside the name rather than being replaced by it.
+
+## The category tree
+
+`g_Categories` in `TB_Base.tx` gives each category's label, its parent and a
+type code, tiling its symbol exactly: 1,224 categories, 569 with a parent. It is
+committed as [`generated/revit-category-tree.json`](generated/revit-category-tree.json)
+and agrees with the label CSV on every label they share.
+
+The parent is what makes a repeated label legible — `Lines` under `Adaptive
+Points` and `Lines` under `Analytical Nodes` are the collision that stops a label
+naming a category on its own, and Revit renders them nested rather than flat.
+Recorded rather than shipped: how to present a tree is a decision about the
+interface, not a decoder.
+
 ## What was left
 
 `g_Parameters` also carries, for all 3,723 parameters, a storage type — 1,401

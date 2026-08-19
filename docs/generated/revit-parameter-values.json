@@ -1,0 +1,6610 @@
+{
+  "source": "TB_ExLabelUtils.tx",
+  "symbol": "g_ParameterValues",
+  "parameters": 284,
+  "aliases": 143,
+  "values": 1171,
+  "enumerated": [
+    {
+      "id": -1155281,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "All"
+        },
+        {
+          "value": 2,
+          "label": "Image Rows"
+        }
+      ]
+    },
+    {
+      "id": -1155099,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Default"
+        },
+        {
+          "value": 1,
+          "label": "Continue Numbering"
+        }
+      ]
+    },
+    {
+      "id": -1154695,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Bend"
+        },
+        {
+          "value": 1,
+          "label": "Keep Straight"
+        }
+      ]
+    },
+    {
+      "id": -1154694,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Shape Driven"
+        },
+        {
+          "value": 1,
+          "label": "Free Form"
+        }
+      ]
+    },
+    {
+      "id": -1154687,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "by People and by Area"
+        },
+        {
+          "value": 1,
+          "label": "by ACH"
+        },
+        {
+          "value": 2,
+          "label": "Max(by People, by Area)"
+        },
+        {
+          "value": 3,
+          "label": "Max(by ACH, by People and by Area)"
+        },
+        {
+          "value": 4,
+          "label": "Max(by ACH, by Area, by People)"
+        }
+      ]
+    },
+    {
+      "id": -1154613,
+      "sharedWith": [
+        -1153100
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "ByDiscipline"
+        },
+        {
+          "value": 2,
+          "label": "All"
+        },
+        {
+          "value": 5,
+          "label": "Pump"
+        }
+      ]
+    },
+    {
+      "id": -1153002,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Calculated"
+        },
+        {
+          "value": 1,
+          "label": "OK Checked"
+        },
+        {
+          "value": 2,
+          "label": "Checking Failed"
+        }
+      ]
+    },
+    {
+      "id": -1152383,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Both joins enabled"
+        },
+        {
+          "value": 1,
+          "label": "One or two joins disabled"
+        }
+      ]
+    },
+    {
+      "id": -1152378,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Use Building Elements"
+        },
+        {
+          "value": 1,
+          "label": "Use Conceptual Masses"
+        },
+        {
+          "value": 2,
+          "label": "Use Conceptual Masses and Building Elements"
+        },
+        {
+          "value": 3,
+          "label": "Use Rooms or Spaces"
+        }
+      ]
+    },
+    {
+      "id": -1152375,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Use Radius"
+        },
+        {
+          "value": 1,
+          "label": "Use Diameter"
+        }
+      ]
+    },
+    {
+      "id": -1152374,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Single Chain"
+        },
+        {
+          "value": 1,
+          "label": "Double Chain"
+        }
+      ]
+    },
+    {
+      "id": -1152364,
+      "sharedWith": [
+        -1152372,
+        -1152368
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top"
+        },
+        {
+          "value": 1,
+          "label": "Center"
+        },
+        {
+          "value": 2,
+          "label": "Origin"
+        },
+        {
+          "value": 3,
+          "label": "Bottom"
+        },
+        {
+          "value": -1,
+          "label": "(none)"
+        },
+        {
+          "value": 0,
+          "label": "No"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        },
+        {
+          "value": -1,
+          "label": "<By Category>"
+        },
+        {
+          "value": -1,
+          "label": "<None>"
+        },
+        {
+          "value": -1,
+          "label": "<none>"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": -1,
+          "label": "-1"
+        },
+        {
+          "value": -1,
+          "label": "<None>"
+        },
+        {
+          "value": -1,
+          "label": "<none>"
+        },
+        {
+          "value": -1,
+          "label": "-1"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": -1,
+          "label": "Undefined"
+        },
+        {
+          "value": -1,
+          "label": "Undefined"
+        },
+        {
+          "value": -1,
+          "label": "<none>"
+        },
+        {
+          "value": -1,
+          "label": "<Building>"
+        },
+        {
+          "value": -1,
+          "label": "<Building>"
+        },
+        {
+          "value": -1,
+          "label": "<none>"
+        },
+        {
+          "value": -1,
+          "label": "<none>"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": -1,
+          "label": "Unconnected"
+        }
+      ]
+    },
+    {
+      "id": -1152362,
+      "sharedWith": [
+        -1152370,
+        -1152366
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Left"
+        },
+        {
+          "value": 1,
+          "label": "Center"
+        },
+        {
+          "value": 2,
+          "label": "Origin"
+        },
+        {
+          "value": 3,
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": -1152361,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Uniform"
+        },
+        {
+          "value": 1,
+          "label": "Independent"
+        }
+      ]
+    },
+    {
+      "id": -1152333,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Never"
+        },
+        {
+          "value": 1,
+          "label": "When Selected"
+        },
+        {
+          "value": 2,
+          "label": "Always"
+        }
+      ]
+    },
+    {
+      "id": -1152331,
+      "sharedWith": [
+        -1150320
+      ],
+      "values": [
+        {
+          "value": 2,
+          "label": "Host (xyz)"
+        },
+        {
+          "value": 3,
+          "label": "Host and Loop System (xyz)"
+        },
+        {
+          "value": 6,
+          "label": "Global (z) then Host (xy)"
+        },
+        {
+          "value": 7,
+          "label": "Global (xyz)"
+        },
+        {
+          "value": 8,
+          "label": "Instance (z) then Host (xy)"
+        },
+        {
+          "value": 9,
+          "label": "Instance (xyz)"
+        }
+      ]
+    },
+    {
+      "id": -1152175,
+      "sharedWith": [
+        -1007263
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Front Only"
+        },
+        {
+          "value": 1,
+          "label": "Front and Left"
+        },
+        {
+          "value": 2,
+          "label": "Front and Right"
+        },
+        {
+          "value": 3,
+          "label": "Front, Left and Right"
+        }
+      ]
+    },
+    {
+      "id": -1152161,
+      "sharedWith": [
+        -1007262
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Extend Riser Behind Tread"
+        },
+        {
+          "value": 1,
+          "label": "Extend Tread Under Riser"
+        },
+        {
+          "value": 2,
+          "label": "Join All Risers And Treads"
+        }
+      ]
+    },
+    {
+      "id": -1151901,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Balanced"
+        },
+        {
+          "value": 2,
+          "label": "Single Point"
+        }
+      ]
+    },
+    {
+      "id": -1151804,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Stepped"
+        },
+        {
+          "value": 1,
+          "label": "Smooth"
+        }
+      ]
+    },
+    {
+      "id": -1151803,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Closed"
+        },
+        {
+          "value": 1,
+          "label": "Open"
+        }
+      ]
+    },
+    {
+      "id": -1151710,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Right Support"
+        },
+        {
+          "value": 1,
+          "label": "Left Support"
+        },
+        {
+          "value": 2,
+          "label": "Intermediate Support"
+        }
+      ]
+    },
+    {
+      "id": -1151708,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Do not trim"
+        },
+        {
+          "value": 1,
+          "label": "Match Level"
+        },
+        {
+          "value": 2,
+          "label": "Match Landing Support"
+        }
+      ]
+    },
+    {
+      "id": -1151706,
+      "sharedWith": [
+        -1151705
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Perpendicular"
+        },
+        {
+          "value": 1,
+          "label": "Vertical Cut"
+        },
+        {
+          "value": 2,
+          "label": "Horizontal Cut"
+        }
+      ]
+    },
+    {
+      "id": -1151402,
+      "sharedWith": [
+        -1007256
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Stepped"
+        },
+        {
+          "value": 1,
+          "label": "Smooth"
+        }
+      ]
+    },
+    {
+      "id": -1151318,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Run: Left"
+        },
+        {
+          "value": 1,
+          "label": "Run: Center"
+        },
+        {
+          "value": 2,
+          "label": "Run: Right"
+        },
+        {
+          "value": 3,
+          "label": "Exterior Support: Left"
+        },
+        {
+          "value": 4,
+          "label": "Exterior Support: Right"
+        }
+      ]
+    },
+    {
+      "id": -1151233,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Assembled"
+        },
+        {
+          "value": 1,
+          "label": "Cast-in-place Monolithic"
+        },
+        {
+          "value": 2,
+          "label": "Precast Monolithic"
+        }
+      ]
+    },
+    {
+      "id": -1151232,
+      "sharedWith": [
+        -1151231
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Stringer (Closed)"
+        },
+        {
+          "value": 2,
+          "label": "Carriage (Open)"
+        }
+      ]
+    },
+    {
+      "id": -1151230,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Full Run Width"
+        },
+        {
+          "value": 1,
+          "label": "Custom"
+        }
+      ]
+    },
+    {
+      "id": -1151224,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Straight Cut"
+        },
+        {
+          "value": 1,
+          "label": "Notch"
+        }
+      ]
+    },
+    {
+      "id": -1151215,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "By Riser Line"
+        },
+        {
+          "value": 1,
+          "label": "By Nosing Line"
+        }
+      ]
+    },
+    {
+      "id": -1151116,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Total Run Width"
+        },
+        {
+          "value": 1,
+          "label": "Tread Width"
+        }
+      ]
+    },
+    {
+      "id": -1150622,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Complementary"
+        },
+        {
+          "value": 1,
+          "label": "Mirrored"
+        },
+        {
+          "value": 2,
+          "label": "Rotated"
+        }
+      ]
+    },
+    {
+      "id": -1150467,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": 0,
+          "label": "Independent"
+        },
+        {
+          "value": 1,
+          "label": "By Property Set"
+        }
+      ]
+    },
+    {
+      "id": -1150464,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Undefined"
+        },
+        {
+          "value": 1,
+          "label": "Basic"
+        },
+        {
+          "value": 2,
+          "label": "Generic"
+        },
+        {
+          "value": 3,
+          "label": "Metal"
+        },
+        {
+          "value": 4,
+          "label": "Concrete"
+        },
+        {
+          "value": 5,
+          "label": "Wood"
+        },
+        {
+          "value": 6,
+          "label": "Liquid"
+        },
+        {
+          "value": 7,
+          "label": "Gas"
+        },
+        {
+          "value": 8,
+          "label": "Plastic"
+        }
+      ]
+    },
+    {
+      "id": -1150355,
+      "sharedWith": [
+        -1013409
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Begin"
+        },
+        {
+          "value": 1,
+          "label": "Center"
+        },
+        {
+          "value": 2,
+          "label": "End"
+        },
+        {
+          "value": 3,
+          "label": "Beginning"
+        },
+        {
+          "value": 4,
+          "label": "Direction Line"
+        }
+      ]
+    },
+    {
+      "id": -1150352,
+      "sharedWith": [
+        -1013371,
+        -1013370,
+        -1013350,
+        -1013331,
+        -1013330,
+        -1013301,
+        -1013300,
+        -1011105
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Fixed Distance"
+        },
+        {
+          "value": 2,
+          "label": "Fixed Number"
+        },
+        {
+          "value": 3,
+          "label": "Maximum Spacing"
+        },
+        {
+          "value": 4,
+          "label": "Fill Available Space"
+        },
+        {
+          "value": 5,
+          "label": "Minimum Spacing"
+        }
+      ]
+    },
+    {
+      "id": -1150349,
+      "sharedWith": [
+        -1150347
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Wall"
+        },
+        {
+          "value": 2,
+          "label": "Floor"
+        },
+        {
+          "value": 3,
+          "label": "Post"
+        }
+      ]
+    },
+    {
+      "id": -1150343,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Gooseneck"
+        },
+        {
+          "value": 2,
+          "label": "Simple"
+        }
+      ]
+    },
+    {
+      "id": -1150337,
+      "sharedWith": [
+        -1150373
+      ],
+      "values": [
+        {
+          "value": -1,
+          "label": "By type"
+        },
+        {
+          "value": 0,
+          "label": "Miter"
+        },
+        {
+          "value": 1,
+          "label": "Fillet"
+        }
+      ]
+    },
+    {
+      "id": -1150334,
+      "sharedWith": [
+        -1150330
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Left"
+        },
+        {
+          "value": 2,
+          "label": "Right"
+        },
+        {
+          "value": 3,
+          "label": "Left and Right"
+        }
+      ]
+    },
+    {
+      "id": -1150232,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Use Function Parameter"
+        },
+        {
+          "value": 1,
+          "label": "Identify Exterior Elements"
+        }
+      ]
+    },
+    {
+      "id": -1150231,
+      "sharedWith": [
+        -1150230
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top"
+        },
+        {
+          "value": 1,
+          "label": "Middle VALUE;2;Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1150227,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Beginning"
+        },
+        {
+          "value": 2,
+          "label": "End"
+        }
+      ]
+    },
+    {
+      "id": -1150220,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Non-Normalized Curve Parameter"
+        },
+        {
+          "value": 2,
+          "label": "Normalized Curve Parameter"
+        },
+        {
+          "value": 3,
+          "label": "Segment Length"
+        },
+        {
+          "value": 4,
+          "label": "Normalized Segment Length"
+        },
+        {
+          "value": 5,
+          "label": "Chord Length"
+        }
+      ]
+    },
+    {
+      "id": -1150219,
+      "sharedWith": [
+        -1150218,
+        -1140716
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Bottom"
+        },
+        {
+          "value": 1,
+          "label": "Top"
+        }
+      ]
+    },
+    {
+      "id": -1150215,
+      "sharedWith": [
+        -1150214
+      ],
+      "values": [
+        {
+          "value": 1,
+          "label": "Distance"
+        },
+        {
+          "value": 4,
+          "label": "End Elevation"
+        }
+      ]
+    },
+    {
+      "id": -1150212,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top down"
+        },
+        {
+          "value": 1,
+          "label": "Parallel to level"
+        },
+        {
+          "value": 2,
+          "label": "Follow surface UV"
+        }
+      ]
+    },
+    {
+      "id": -1150205,
+      "sharedWith": [
+        -1150204
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Perpendicular"
+        },
+        {
+          "value": 1,
+          "label": "Horizontal"
+        },
+        {
+          "value": 2,
+          "label": "Vertical"
+        }
+      ]
+    },
+    {
+      "id": -1150202,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Fit to Tile"
+        },
+        {
+          "value": 1,
+          "label": "Overhang and Cropped"
+        }
+      ]
+    },
+    {
+      "id": -1150190,
+      "sharedWith": [
+        -1150189
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top of Beam"
+        },
+        {
+          "value": 1,
+          "label": "Center of Beam"
+        },
+        {
+          "value": 2,
+          "label": "Bottom of Beam"
+        },
+        {
+          "value": 3,
+          "label": "Location Line"
+        }
+      ]
+    },
+    {
+      "id": -1150179,
+      "sharedWith": [
+        -1150183
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Start"
+        },
+        {
+          "value": 1,
+          "label": "End"
+        }
+      ]
+    },
+    {
+      "id": -1150176,
+      "sharedWith": [
+        -1150180
+      ],
+      "values": [
+        {
+          "value": 1,
+          "label": "Distance"
+        },
+        {
+          "value": 2,
+          "label": "Ratio"
+        }
+      ]
+    },
+    {
+      "id": -1150171,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Vertical"
+        },
+        {
+          "value": 1,
+          "label": "Slanted - Angle Driven"
+        },
+        {
+          "value": 2,
+          "label": "Slanted - End Point Driven"
+        },
+        {
+          "value": 3,
+          "label": "Vertical"
+        }
+      ]
+    },
+    {
+      "id": -1150155,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Reference Point"
+        },
+        {
+          "value": 1,
+          "label": "Placement Point (Adaptive)"
+        },
+        {
+          "value": 2,
+          "label": "Shape Handle Point (Adaptive)"
+        }
+      ]
+    },
+    {
+      "id": -1150140,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "<None>"
+        },
+        {
+          "value": 1,
+          "label": "Start"
+        },
+        {
+          "value": 2,
+          "label": "Middle"
+        },
+        {
+          "value": 3,
+          "label": "End"
+        }
+      ]
+    },
+    {
+      "id": -1150137,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Simple"
+        },
+        {
+          "value": 1,
+          "label": "Advanced"
+        }
+      ]
+    },
+    {
+      "id": -1150132,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Wattage"
+        },
+        {
+          "value": 2,
+          "label": "Luminous Flux"
+        },
+        {
+          "value": 3,
+          "label": "Luminous Intensity"
+        },
+        {
+          "value": 4,
+          "label": "Illuminance"
+        }
+      ]
+    },
+    {
+      "id": -1150117,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -12,
+          "label": "Advanced Sample Project"
+        },
+        {
+          "value": 0,
+          "label": "<None>"
+        },
+        {
+          "value": 1,
+          "label": "Incandescent Lamp Curve"
+        },
+        {
+          "value": 6,
+          "label": "Stacked Wall"
+        }
+      ]
+    },
+    {
+      "id": -1150083,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Smooth"
+        },
+        {
+          "value": 1,
+          "label": "Faceted"
+        }
+      ]
+    },
+    {
+      "id": -1150069,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 2,
+          "label": "Show Surface"
+        },
+        {
+          "value": 4,
+          "label": "Show Pattern"
+        },
+        {
+          "value": 8,
+          "label": "Show Component"
+        }
+      ]
+    },
+    {
+      "id": -1150067,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Empty"
+        },
+        {
+          "value": 1,
+          "label": "Partial"
+        },
+        {
+          "value": 2,
+          "label": "Overhanging"
+        }
+      ]
+    },
+    {
+      "id": -1150059,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "0"
+        },
+        {
+          "value": 90,
+          "label": "90"
+        },
+        {
+          "value": 180,
+          "label": "180"
+        },
+        {
+          "value": 270,
+          "label": "270"
+        }
+      ]
+    },
+    {
+      "id": -1140970,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Set"
+        },
+        {
+          "value": 1,
+          "label": "Machine"
+        },
+        {
+          "value": 2,
+          "label": "Decoiled Straight"
+        },
+        {
+          "value": 3,
+          "label": "Spiral Straight"
+        },
+        {
+          "value": 4,
+          "label": "Oval Spiral Straight"
+        },
+        {
+          "value": 5,
+          "label": "Draw Only"
+        },
+        {
+          "value": 6,
+          "label": "Guillotine"
+        },
+        {
+          "value": 7,
+          "label": "Equipment"
+        },
+        {
+          "value": 8,
+          "label": "Pipework"
+        },
+        {
+          "value": 9,
+          "label": "Wrapped"
+        },
+        {
+          "value": 10,
+          "label": "Rotary"
+        }
+      ]
+    },
+    {
+      "id": -1140763,
+      "sharedWith": [
+        -1140743
+      ],
+      "values": [
+        {
+          "value": -14,
+          "label": "Location Line"
+        },
+        {
+          "value": -4,
+          "label": "Bottom of Beam"
+        },
+        {
+          "value": -3,
+          "label": "Center of Beam"
+        },
+        {
+          "value": -2,
+          "label": "Top of Beam"
+        },
+        {
+          "value": -1,
+          "label": "Auto-Detect"
+        }
+      ]
+    },
+    {
+      "id": -1140762,
+      "sharedWith": [
+        -1140761,
+        -1140742,
+        -1140741,
+        -1140732,
+        -1140731,
+        -1140722,
+        -1140721,
+        -1001537,
+        -1001536,
+        -1001516,
+        -1001515
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Fixed"
+        },
+        {
+          "value": 1,
+          "label": "Pinned"
+        },
+        {
+          "value": 2,
+          "label": "Bending Moment"
+        },
+        {
+          "value": 3,
+          "label": "User Defined"
+        },
+        {
+          "value": 4,
+          "label": "None"
+        }
+      ]
+    },
+    {
+      "id": -1140714,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top Chord"
+        },
+        {
+          "value": 1,
+          "label": "Bottom Chord"
+        },
+        {
+          "value": 2,
+          "label": "Bearing Chord"
+        }
+      ]
+    },
+    {
+      "id": -1140711,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Vertical"
+        },
+        {
+          "value": 1,
+          "label": "Orthogonal"
+        }
+      ]
+    },
+    {
+      "id": -1140706,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Center"
+        },
+        {
+          "value": 1,
+          "label": "Top"
+        },
+        {
+          "value": 2,
+          "label": "Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1140633,
+      "sharedWith": [
+        -1140635,
+        -1140634
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Fixed"
+        },
+        {
+          "value": 1,
+          "label": "Pinned"
+        },
+        {
+          "value": 2,
+          "label": "Roller"
+        },
+        {
+          "value": 3,
+          "label": "User"
+        }
+      ]
+    },
+    {
+      "id": -1140505,
+      "sharedWith": [
+        -1140507,
+        -1140506,
+        -1140504,
+        -1140503,
+        -1140502
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Fixed"
+        },
+        {
+          "value": 1,
+          "label": "Release"
+        },
+        {
+          "value": 2,
+          "label": "Spring"
+        }
+      ]
+    },
+    {
+      "id": -1140501,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Internal"
+        },
+        {
+          "value": 1,
+          "label": "External"
+        }
+      ]
+    },
+    {
+      "id": -1140500,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Point"
+        },
+        {
+          "value": 1,
+          "label": "Line"
+        },
+        {
+          "value": 2,
+          "label": "Area"
+        }
+      ]
+    },
+    {
+      "id": -1140423,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Element"
+        },
+        {
+          "value": 1,
+          "label": "Material"
+        },
+        {
+          "value": 2,
+          "label": "User"
+        }
+      ]
+    },
+    {
+      "id": -1140400,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Undefined"
+        },
+        {
+          "value": 1,
+          "label": "Steel"
+        },
+        {
+          "value": 2,
+          "label": "Concrete"
+        },
+        {
+          "value": 3,
+          "label": "Wood"
+        },
+        {
+          "value": 4,
+          "label": "Other"
+        },
+        {
+          "value": 5,
+          "label": "PrecastConcrete"
+        },
+        {
+          "value": 6,
+          "label": "Generic"
+        },
+        {
+          "value": 7,
+          "label": "Aluminum"
+        }
+      ]
+    },
+    {
+      "id": -1140359,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "No"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        }
+      ]
+    },
+    {
+      "id": -1140340,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Off"
+        },
+        {
+          "value": 1,
+          "label": "Up"
+        },
+        {
+          "value": 2,
+          "label": "Down"
+        }
+      ]
+    },
+    {
+      "id": -1140336,
+      "sharedWith": [
+        -1140335
+      ],
+      "values": [
+        {
+          "value": -1,
+          "label": "All"
+        },
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Flow only"
+        },
+        {
+          "value": 4,
+          "label": "Performance"
+        }
+      ]
+    },
+    {
+      "id": -1140334,
+      "sharedWith": [
+        -1140325,
+        -1140018,
+        -1133410,
+        -1133408
+      ],
+      "values": []
+    },
+    {
+      "id": -1140328,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Predominantly Flush Valves"
+        },
+        {
+          "value": 1,
+          "label": "Predominantly Flush Tanks"
+        }
+      ]
+    },
+    {
+      "id": -1140322,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Isotropic"
+        },
+        {
+          "value": 1,
+          "label": "Orthotropic"
+        },
+        {
+          "value": 2,
+          "label": "TransverseIsotropic"
+        }
+      ]
+    },
+    {
+      "id": -1140278,
+      "sharedWith": [],
+      "values": []
+    },
+    {
+      "id": -1140263,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Standard"
+        },
+        {
+          "value": 1,
+          "label": "High Pressure"
+        }
+      ]
+    },
+    {
+      "id": -1140262,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Standard"
+        },
+        {
+          "value": 1,
+          "label": "Small"
+        },
+        {
+          "value": 2,
+          "label": "Extra Large"
+        }
+      ]
+    },
+    {
+      "id": -1140261,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Standard"
+        },
+        {
+          "value": 1,
+          "label": "Extended"
+        }
+      ]
+    },
+    {
+      "id": -1140260,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Standard"
+        },
+        {
+          "value": 1,
+          "label": "Quick"
+        }
+      ]
+    },
+    {
+      "id": -1140259,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Round"
+        },
+        {
+          "value": 1,
+          "label": "Rectangular"
+        },
+        {
+          "value": 2,
+          "label": "Oval"
+        }
+      ]
+    },
+    {
+      "id": -1140221,
+      "sharedWith": [
+        -1140249
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Calculated"
+        },
+        {
+          "value": 1,
+          "label": "Preset"
+        },
+        {
+          "value": 2,
+          "label": "System"
+        },
+        {
+          "value": 3,
+          "label": "Fixture Units"
+        }
+      ]
+    },
+    {
+      "id": -1140219,
+      "sharedWith": [
+        -1140248
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Bidirectional"
+        },
+        {
+          "value": 1,
+          "label": "In"
+        },
+        {
+          "value": 2,
+          "label": "Out"
+        }
+      ]
+    },
+    {
+      "id": -1140209,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "Multiple Values"
+        },
+        {
+          "value": 0,
+          "label": "Laminar"
+        },
+        {
+          "value": 1,
+          "label": "Transition"
+        },
+        {
+          "value": 2,
+          "label": "Turbulent"
+        }
+      ]
+    },
+    {
+      "id": -1140189,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Circuit"
+        },
+        {
+          "value": 1,
+          "label": "Spare"
+        },
+        {
+          "value": 2,
+          "label": "Space"
+        }
+      ]
+    },
+    {
+      "id": -1140176,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Applicable"
+        },
+        {
+          "value": 1,
+          "label": "Breaker"
+        },
+        {
+          "value": 2,
+          "label": "Feed Through Lugs"
+        }
+      ]
+    },
+    {
+      "id": -1140170,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "One Column"
+        },
+        {
+          "value": 1,
+          "label": "Two Columns, Circuits Across"
+        },
+        {
+          "value": 2,
+          "label": "Two Columns, Circuits Down"
+        }
+      ]
+    },
+    {
+      "id": -1140129,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Bend"
+        },
+        {
+          "value": 2,
+          "label": "Fitting"
+        }
+      ]
+    },
+    {
+      "id": -1140106,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Calculated"
+        },
+        {
+          "value": 1,
+          "label": "On"
+        },
+        {
+          "value": 2,
+          "label": "Off"
+        }
+      ]
+    },
+    {
+      "id": -1140097,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Arc"
+        },
+        {
+          "value": 1,
+          "label": "Chamfer"
+        }
+      ]
+    },
+    {
+      "id": -1140087,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Prefixed"
+        },
+        {
+          "value": 1,
+          "label": "Standard"
+        },
+        {
+          "value": 2,
+          "label": "Panel Name"
+        },
+        {
+          "value": 3,
+          "label": "By Phase"
+        }
+      ]
+    },
+    {
+      "id": -1140067,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Other"
+        },
+        {
+          "value": 1,
+          "label": "Power"
+        },
+        {
+          "value": 2,
+          "label": "Lighting"
+        },
+        {
+          "value": 3,
+          "label": "HVAC"
+        }
+      ]
+    },
+    {
+      "id": -1140061,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Single"
+        },
+        {
+          "value": 1,
+          "label": "Three"
+        }
+      ]
+    },
+    {
+      "id": -1140060,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Wye"
+        },
+        {
+          "value": 2,
+          "label": "Delta"
+        }
+      ]
+    },
+    {
+      "id": -1140059,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 2,
+          "label": "2"
+        },
+        {
+          "value": 3,
+          "label": "3"
+        },
+        {
+          "value": 4,
+          "label": "4"
+        }
+      ]
+    },
+    {
+      "id": -1140022,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Hot Conductor Size"
+        },
+        {
+          "value": 1,
+          "label": "Unbalanced Current"
+        }
+      ]
+    },
+    {
+      "id": -1140009,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Leading"
+        },
+        {
+          "value": 1,
+          "label": "Lagging"
+        }
+      ]
+    },
+    {
+      "id": -1133753,
+      "sharedWith": [
+        -1011002
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "From View"
+        },
+        {
+          "value": 1,
+          "label": "Coarse"
+        },
+        {
+          "value": 2,
+          "label": "Medium"
+        },
+        {
+          "value": 3,
+          "label": "Fine"
+        }
+      ]
+    },
+    {
+      "id": -1133414,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Cable Tray Individual Connector"
+        },
+        {
+          "value": 2,
+          "label": "Conduit Individual Connector"
+        },
+        {
+          "value": 3,
+          "label": "Conduit Surface Connector"
+        }
+      ]
+    },
+    {
+      "id": -1133400,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Round"
+        },
+        {
+          "value": 1,
+          "label": "Rectangular"
+        },
+        {
+          "value": 2,
+          "label": "Oval"
+        }
+      ]
+    },
+    {
+      "id": -1114700,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "From Space Type"
+        },
+        {
+          "value": 1,
+          "label": "From Zone"
+        }
+      ]
+    },
+    {
+      "id": -1114385,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Simple"
+        },
+        {
+          "value": 1,
+          "label": "Simple with Shading Surfaces"
+        },
+        {
+          "value": 2,
+          "label": "Complex"
+        },
+        {
+          "value": 3,
+          "label": "Complex with Shading Surfaces"
+        },
+        {
+          "value": 4,
+          "label": "Complex with Mullions and Shading Surfaces"
+        }
+      ]
+    },
+    {
+      "id": -1114304,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "<Building>"
+        },
+        {
+          "value": 0,
+          "label": "Central Heating: Radiators"
+        },
+        {
+          "value": 1,
+          "label": "Central Heating: Convectors"
+        },
+        {
+          "value": 2,
+          "label": "Central Heating: Radiant Floor"
+        },
+        {
+          "value": 3,
+          "label": "Central Heating: Hot Air"
+        },
+        {
+          "value": 4,
+          "label": "Other Room Heater"
+        },
+        {
+          "value": 5,
+          "label": "Radiant Heater - Flue"
+        },
+        {
+          "value": 6,
+          "label": "Radiant Heater - No Flue"
+        },
+        {
+          "value": 7,
+          "label": "Radiant Heater - Multi-burner"
+        },
+        {
+          "value": 8,
+          "label": "Forced Convection Heater - Flue"
+        },
+        {
+          "value": 9,
+          "label": "Forced Convection Heater - No Flue"
+        },
+        {
+          "value": 10,
+          "label": "VAV - Single Duct"
+        },
+        {
+          "value": 11,
+          "label": "VAV - Dual Duct"
+        },
+        {
+          "value": 12,
+          "label": "VAV - Indoor Packaged Cabinet"
+        },
+        {
+          "value": 13,
+          "label": "VAV - Terminal Reheat"
+        },
+        {
+          "value": 14,
+          "label": "Fan Coil System"
+        },
+        {
+          "value": 15,
+          "label": "Induction System"
+        },
+        {
+          "value": 16,
+          "label": "Constant Volume - Fixed OA"
+        },
+        {
+          "value": 17,
+          "label": "Constant Volume - Variable OA"
+        },
+        {
+          "value": 18,
+          "label": "Constant Volume - Terminal Reheat"
+        },
+        {
+          "value": 19,
+          "label": "Multi-zone - Hot Deck / Cold Deck"
+        },
+        {
+          "value": 20,
+          "label": "Constant Volume - Dual Duct"
+        },
+        {
+          "value": 21,
+          "label": "Radiant Cooled Ceilings"
+        },
+        {
+          "value": 22,
+          "label": "Active Chilled Beams"
+        },
+        {
+          "value": 23,
+          "label": "Water Loop Heat Pump"
+        },
+        {
+          "value": 24,
+          "label": "Variable Refrigerant Flow"
+        },
+        {
+          "value": 25,
+          "label": "Split System(s) with Natural Ventilation"
+        },
+        {
+          "value": 26,
+          "label": "Split System(s) with Mechanical Ventilation"
+        },
+        {
+          "value": 27,
+          "label": "Split System(s) with Mechanical Ventilation with Cooling"
+        }
+      ]
+    },
+    {
+      "id": -1114259,
+      "sharedWith": [
+        -1114252
+      ],
+      "values": [
+        {
+          "value": -1,
+          "label": "By Space Type"
+        },
+        {
+          "value": 0,
+          "label": "Specified"
+        },
+        {
+          "value": 1,
+          "label": "Specified Supply Airflow"
+        },
+        {
+          "value": 2,
+          "label": "Calculated Supply Airflow"
+        },
+        {
+          "value": 3,
+          "label": "Actual Supply Airflow"
+        }
+      ]
+    },
+    {
+      "id": -1114258,
+      "sharedWith": [
+        -1114257
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Power Density"
+        },
+        {
+          "value": 1,
+          "label": "Power"
+        }
+      ]
+    },
+    {
+      "id": -1114224,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "By Space Type"
+        },
+        {
+          "value": 0,
+          "label": "Specified Lighting Load Values"
+        },
+        {
+          "value": 2,
+          "label": "Actual Lighting Load Values"
+        },
+        {
+          "value": 4,
+          "label": "By Space Type"
+        }
+      ]
+    },
+    {
+      "id": -1114223,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "By Space Type"
+        },
+        {
+          "value": 0,
+          "label": "Specified Power Load Values"
+        },
+        {
+          "value": 2,
+          "label": "Actual Power Load Values"
+        },
+        {
+          "value": 4,
+          "label": "By Space Type"
+        }
+      ]
+    },
+    {
+      "id": -1114206,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "Undefined"
+        },
+        {
+          "value": 0,
+          "label": "Normal"
+        },
+        {
+          "value": 1,
+          "label": "Duct Mounted"
+        },
+        {
+          "value": 2,
+          "label": "Junction Box"
+        },
+        {
+          "value": 3,
+          "label": "Attaches To"
+        },
+        {
+          "value": 4,
+          "label": "Breaks Into"
+        },
+        {
+          "value": 5,
+          "label": "Elbow"
+        },
+        {
+          "value": 6,
+          "label": "Tee"
+        },
+        {
+          "value": 7,
+          "label": "Transition"
+        },
+        {
+          "value": 8,
+          "label": "Cross"
+        },
+        {
+          "value": 9,
+          "label": "Cap"
+        },
+        {
+          "value": 10,
+          "label": "Tap - Perpendicular"
+        },
+        {
+          "value": 11,
+          "label": "Tap - Adjustable"
+        },
+        {
+          "value": 12,
+          "label": "Offset"
+        },
+        {
+          "value": 13,
+          "label": "Union"
+        },
+        {
+          "value": 14,
+          "label": "Panelboard"
+        },
+        {
+          "value": 15,
+          "label": "Transformer"
+        },
+        {
+          "value": 16,
+          "label": "Switchboard"
+        },
+        {
+          "value": 17,
+          "label": "Other Panel"
+        },
+        {
+          "value": 18,
+          "label": "Equipment Switch"
+        },
+        {
+          "value": 19,
+          "label": "Switch"
+        },
+        {
+          "value": 20,
+          "label": "Valve - Breaks Into"
+        },
+        {
+          "value": 21,
+          "label": "Spud - Perpendicular"
+        },
+        {
+          "value": 22,
+          "label": "Spud - Adjustable"
+        },
+        {
+          "value": 23,
+          "label": "Damper"
+        },
+        {
+          "value": 24,
+          "label": "Wye"
+        },
+        {
+          "value": 25,
+          "label": "Lateral Tee"
+        },
+        {
+          "value": 26,
+          "label": "Lateral Cross"
+        },
+        {
+          "value": 27,
+          "label": "Pants"
+        },
+        {
+          "value": 28,
+          "label": "Multi Port"
+        },
+        {
+          "value": 29,
+          "label": "Valve - Normal"
+        },
+        {
+          "value": 30,
+          "label": "Tee"
+        },
+        {
+          "value": 31,
+          "label": "Cross"
+        },
+        {
+          "value": 32,
+          "label": "Flange"
+        },
+        {
+          "value": 34,
+          "label": "Junction Box Elbow"
+        },
+        {
+          "value": 35,
+          "label": "Channel Elbow"
+        },
+        {
+          "value": 36,
+          "label": "Channel Vertical Elbow"
+        },
+        {
+          "value": 37,
+          "label": "Channel Cross"
+        },
+        {
+          "value": 38,
+          "label": "Channel Tee"
+        },
+        {
+          "value": 39,
+          "label": "Channel Transition"
+        },
+        {
+          "value": 40,
+          "label": "Channel Union"
+        },
+        {
+          "value": 41,
+          "label": "Channel Offset"
+        },
+        {
+          "value": 42,
+          "label": "Channel Multi Port"
+        },
+        {
+          "value": 43,
+          "label": "Ladder Elbow"
+        },
+        {
+          "value": 44,
+          "label": "Ladder Vertical Elbow"
+        },
+        {
+          "value": 45,
+          "label": "Ladder Cross"
+        },
+        {
+          "value": 46,
+          "label": "Ladder Tee"
+        },
+        {
+          "value": 47,
+          "label": "Ladder Transition"
+        },
+        {
+          "value": 48,
+          "label": "Ladder Union"
+        },
+        {
+          "value": 49,
+          "label": "Ladder Offset"
+        },
+        {
+          "value": 50,
+          "label": "Ladder Multi Port"
+        },
+        {
+          "value": 51,
+          "label": "Inline Sensor"
+        },
+        {
+          "value": 52,
+          "label": "Sensor"
+        },
+        {
+          "value": 53,
+          "label": "EndCap"
+        },
+        {
+          "value": 54,
+          "label": "Handrail Brackets"
+        },
+        {
+          "value": 55,
+          "label": "Panel Brackets"
+        },
+        {
+          "value": 56,
+          "label": "Terminations"
+        },
+        {
+          "value": 57,
+          "label": "Rails"
+        },
+        {
+          "value": 58,
+          "label": "Handrails"
+        },
+        {
+          "value": 59,
+          "label": "Top Rails"
+        },
+        {
+          "value": 60,
+          "label": "Mechanical Coupling"
+        }
+      ]
+    },
+    {
+      "id": -1114173,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "By Space Type"
+        },
+        {
+          "value": 0,
+          "label": "Number of people"
+        },
+        {
+          "value": 1,
+          "label": "Area per Person"
+        }
+      ]
+    },
+    {
+      "id": -1114171,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Heated"
+        },
+        {
+          "value": 1,
+          "label": "Cooled"
+        },
+        {
+          "value": 2,
+          "label": "Heated and cooled"
+        },
+        {
+          "value": 3,
+          "label": "Unconditioned"
+        },
+        {
+          "value": 4,
+          "label": "Vented"
+        },
+        {
+          "value": 5,
+          "label": "Naturally vented only"
+        }
+      ]
+    },
+    {
+      "id": -1114147,
+      "sharedWith": [],
+      "values": []
+    },
+    {
+      "id": -1114146,
+      "sharedWith": [],
+      "values": []
+    },
+    {
+      "id": -1114136,
+      "sharedWith": [
+        -1140234,
+        -1140230
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Defined"
+        },
+        {
+          "value": 1,
+          "label": "K Coefficient from Table"
+        },
+        {
+          "value": 2,
+          "label": "K Coefficient"
+        },
+        {
+          "value": 3,
+          "label": "Cv Coefficient"
+        },
+        {
+          "value": 4,
+          "label": "Specific Loss"
+        },
+        {
+          "value": 5,
+          "label": "Use Definition on Type"
+        },
+        {
+          "value": 6,
+          "label": "Coefficient"
+        }
+      ]
+    },
+    {
+      "id": -1114134,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Tap"
+        },
+        {
+          "value": 1,
+          "label": "Tee"
+        },
+        {
+          "value": 2,
+          "label": "Tap"
+        }
+      ]
+    },
+    {
+      "id": -1114106,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Middle"
+        },
+        {
+          "value": 1,
+          "label": "Bottom"
+        },
+        {
+          "value": 2,
+          "label": "Top"
+        }
+      ]
+    },
+    {
+      "id": -1114105,
+      "sharedWith": [
+        -1006642
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Center"
+        },
+        {
+          "value": 1,
+          "label": "Left"
+        },
+        {
+          "value": 2,
+          "label": "Right"
+        },
+        {
+          "value": 3,
+          "label": "Left Quarter"
+        },
+        {
+          "value": 4,
+          "label": "Right Quarter"
+        }
+      ]
+    },
+    {
+      "id": -1114005,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "Undefined"
+        },
+        {
+          "value": 0,
+          "label": "Single Line"
+        },
+        {
+          "value": 1,
+          "label": "Circle"
+        },
+        {
+          "value": 2,
+          "label": "Oval"
+        },
+        {
+          "value": 3,
+          "label": "Flex"
+        },
+        {
+          "value": 4,
+          "label": "Flex 2"
+        },
+        {
+          "value": 5,
+          "label": "Curve"
+        },
+        {
+          "value": 6,
+          "label": "Single Line 45"
+        }
+      ]
+    },
+    {
+      "id": -1050435,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Beginning"
+        },
+        {
+          "value": 1,
+          "label": "Center"
+        },
+        {
+          "value": 2,
+          "label": "End"
+        }
+      ]
+    },
+    {
+      "id": -1050432,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Chord Length"
+        },
+        {
+          "value": 1,
+          "label": "Segment Length"
+        }
+      ]
+    },
+    {
+      "id": -1050426,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Fixed Number"
+        },
+        {
+          "value": 2,
+          "label": "Fixed Distance"
+        },
+        {
+          "value": 3,
+          "label": "Minimum Distance"
+        },
+        {
+          "value": 4,
+          "label": "Maximum Distance"
+        }
+      ]
+    },
+    {
+      "id": -1019107,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top"
+        },
+        {
+          "value": 1,
+          "label": "Base"
+        },
+        {
+          "value": 2,
+          "label": "Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1019100,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Slanted"
+        },
+        {
+          "value": 1,
+          "label": "Vertical"
+        },
+        {
+          "value": 2,
+          "label": "Tapered"
+        }
+      ]
+    },
+    {
+      "id": -1019013,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Default"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        },
+        {
+          "value": 2,
+          "label": "No"
+        }
+      ]
+    },
+    {
+      "id": -1019012,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "By Type"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        },
+        {
+          "value": 2,
+          "label": "No"
+        }
+      ]
+    },
+    {
+      "id": -1018800,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Beams and Braces"
+        },
+        {
+          "value": 1,
+          "label": "Column Top"
+        },
+        {
+          "value": 2,
+          "label": "Column Base"
+        }
+      ]
+    },
+    {
+      "id": -1018313,
+      "sharedWith": [
+        -1018320,
+        -1018319,
+        -1018314
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Towards Exterior"
+        },
+        {
+          "value": 2,
+          "label": "Towards Interior"
+        }
+      ]
+    },
+    {
+      "id": -1018311,
+      "sharedWith": [
+        -1018318,
+        -1018317,
+        -1018312
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Up"
+        },
+        {
+          "value": 2,
+          "label": "Down"
+        }
+      ]
+    },
+    {
+      "id": -1018301,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Exterior"
+        },
+        {
+          "value": 1,
+          "label": "Interior"
+        }
+      ]
+    },
+    {
+      "id": -1018300,
+      "sharedWith": [
+        -1017702
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top"
+        },
+        {
+          "value": 1,
+          "label": "Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1018274,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Deformed"
+        },
+        {
+          "value": 1,
+          "label": "Plain"
+        }
+      ]
+    },
+    {
+      "id": -1018001,
+      "sharedWith": [
+        -1013410
+      ],
+      "values": [
+        {
+          "value": 1,
+          "label": "Fixed Distance"
+        },
+        {
+          "value": 2,
+          "label": "Fixed Number"
+        },
+        {
+          "value": 3,
+          "label": "Maximum Spacing"
+        },
+        {
+          "value": 4,
+          "label": "Clear Spacing"
+        }
+      ]
+    },
+    {
+      "id": -1017731,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Down"
+        },
+        {
+          "value": 1,
+          "label": "Up"
+        }
+      ]
+    },
+    {
+      "id": -1017729,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Major"
+        },
+        {
+          "value": 1,
+          "label": "Minor"
+        }
+      ]
+    },
+    {
+      "id": -1017728,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Major Axis"
+        },
+        {
+          "value": 1,
+          "label": "Minor Axis"
+        },
+        {
+          "value": 2,
+          "label": "Diagonal"
+        },
+        {
+          "value": 3,
+          "label": "Intersection"
+        }
+      ]
+    },
+    {
+      "id": -1017705,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top"
+        },
+        {
+          "value": 1,
+          "label": "Bottom"
+        },
+        {
+          "value": 2,
+          "label": "External"
+        },
+        {
+          "value": 3,
+          "label": "Internal"
+        }
+      ]
+    },
+    {
+      "id": -1017704,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Aligned"
+        },
+        {
+          "value": 1,
+          "label": "Major Half-way Stagger"
+        },
+        {
+          "value": 2,
+          "label": "Major Passing Stagger"
+        },
+        {
+          "value": 3,
+          "label": "Minor Half-way Stagger"
+        },
+        {
+          "value": 4,
+          "label": "Minor Passing Stagger"
+        }
+      ]
+    },
+    {
+      "id": -1017703,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "External"
+        },
+        {
+          "value": 1,
+          "label": "Internal"
+        }
+      ]
+    },
+    {
+      "id": -1017618,
+      "sharedWith": [
+        -1017611
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Actual Spacing"
+        },
+        {
+          "value": 1,
+          "label": "Fixed Number"
+        },
+        {
+          "value": 2,
+          "label": "Maximum Spacing"
+        },
+        {
+          "value": 3,
+          "label": "Number with Spacing"
+        },
+        {
+          "value": 4,
+          "label": "Quantitative Spacing"
+        }
+      ]
+    },
+    {
+      "id": -1017057,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Uniform"
+        },
+        {
+          "value": 1,
+          "label": "Varying length"
+        }
+      ]
+    },
+    {
+      "id": -1017055,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Other"
+        },
+        {
+          "value": 1,
+          "label": "Part"
+        },
+        {
+          "value": 2,
+          "label": "Structural Column"
+        },
+        {
+          "value": 3,
+          "label": "Structural Framing"
+        },
+        {
+          "value": 4,
+          "label": "Wall"
+        },
+        {
+          "value": 5,
+          "label": "Floor"
+        },
+        {
+          "value": 6,
+          "label": "Structural Foundation"
+        },
+        {
+          "value": 7,
+          "label": "Stairs"
+        },
+        {
+          "value": 8,
+          "label": "Slab Edge"
+        }
+      ]
+    },
+    {
+      "id": -1017047,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Interior Face of Cover Reference"
+        },
+        {
+          "value": 1,
+          "label": "Exterior Face of Cover Reference"
+        }
+      ]
+    },
+    {
+      "id": -1017026,
+      "sharedWith": [
+        -1017022,
+        -1017017
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Standard"
+        },
+        {
+          "value": 1,
+          "label": "Stirrup / Tie"
+        }
+      ]
+    },
+    {
+      "id": -1017024,
+      "sharedWith": [
+        -1017023
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 90,
+          "label": "90Â°"
+        }
+      ]
+    },
+    {
+      "id": -1017011,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Single"
+        },
+        {
+          "value": 1,
+          "label": "Fixed Number"
+        },
+        {
+          "value": 2,
+          "label": "Maximum Spacing"
+        },
+        {
+          "value": 3,
+          "label": "Number with Spacing"
+        },
+        {
+          "value": 4,
+          "label": "Minimum Clear Spacing"
+        }
+      ]
+    },
+    {
+      "id": -1017007,
+      "sharedWith": [
+        -1017009
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Up"
+        },
+        {
+          "value": 1,
+          "label": "Right"
+        },
+        {
+          "value": 2,
+          "label": "Down"
+        },
+        {
+          "value": 3,
+          "label": "Left"
+        },
+        {
+          "value": 4,
+          "label": "None"
+        }
+      ]
+    },
+    {
+      "id": -1016021,
+      "sharedWith": [
+        -1001122
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Wall Centerline"
+        },
+        {
+          "value": 1,
+          "label": "Core Centerline"
+        },
+        {
+          "value": 2,
+          "label": "Finish Face: Exterior"
+        },
+        {
+          "value": 3,
+          "label": "Finish Face: Interior"
+        },
+        {
+          "value": 4,
+          "label": "Core Face: Exterior"
+        },
+        {
+          "value": 5,
+          "label": "Core Face: Interior"
+        }
+      ]
+    },
+    {
+      "id": -1016008,
+      "sharedWith": [
+        -1016007
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Don't reuse"
+        },
+        {
+          "value": 1,
+          "label": "Reuse if Elements match exactly"
+        },
+        {
+          "value": 2,
+          "label": "Reuse if within offset"
+        }
+      ]
+    },
+    {
+      "id": -1015001,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Project"
+        },
+        {
+          "value": 1,
+          "label": "Host Local Coordinate System"
+        }
+      ]
+    },
+    {
+      "id": -1013335,
+      "sharedWith": [
+        -1013334,
+        -1013305,
+        -1013304
+      ],
+      "values": [
+        {
+          "value": 1,
+          "label": "Beginning"
+        },
+        {
+          "value": 2,
+          "label": "Center"
+        },
+        {
+          "value": 3,
+          "label": "End"
+        },
+        {
+          "value": 4,
+          "label": "Beginning"
+        },
+        {
+          "value": 5,
+          "label": "End"
+        }
+      ]
+    },
+    {
+      "id": -1013308,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Dependent"
+        },
+        {
+          "value": 2,
+          "label": "Independent"
+        }
+      ]
+    },
+    {
+      "id": -1012843,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Wall"
+        },
+        {
+          "value": 2,
+          "label": "Floor"
+        },
+        {
+          "value": 3,
+          "label": "Ceiling"
+        },
+        {
+          "value": 4,
+          "label": "Roof"
+        },
+        {
+          "value": 5,
+          "label": "Face"
+        }
+      ]
+    },
+    {
+      "id": -1012842,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Pointer"
+        },
+        {
+          "value": 1,
+          "label": "Body"
+        }
+      ]
+    },
+    {
+      "id": -1012621,
+      "sharedWith": [
+        -1007109,
+        -1006437
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Project Base Point"
+        },
+        {
+          "value": 1,
+          "label": "Survey Point"
+        },
+        {
+          "value": 2,
+          "label": "Relative"
+        }
+      ]
+    },
+    {
+      "id": -1012101,
+      "sharedWith": [
+        -1006445
+      ],
+      "values": [
+        {
+          "value": -2,
+          "label": "Default"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": 0,
+          "label": "New Construction"
+        },
+        {
+          "value": 3,
+          "label": "New Construction"
+        }
+      ]
+    },
+    {
+      "id": -1012047,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Default"
+        },
+        {
+          "value": 1,
+          "label": "24/7 Facility"
+        },
+        {
+          "value": 2,
+          "label": "24/6 Facility"
+        },
+        {
+          "value": 3,
+          "label": "24/5 Facility"
+        },
+        {
+          "value": 4,
+          "label": "12/7 Facility"
+        },
+        {
+          "value": 5,
+          "label": "12/6 Facility"
+        },
+        {
+          "value": 6,
+          "label": "12/5 Facility"
+        },
+        {
+          "value": 7,
+          "label": "K-12 School"
+        },
+        {
+          "value": 8,
+          "label": "Year-round School"
+        },
+        {
+          "value": 9,
+          "label": "Theater/Performing Arts"
+        },
+        {
+          "value": 10,
+          "label": "Worship"
+        }
+      ]
+    },
+    {
+      "id": -1012045,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "<By Energy Settings>"
+        },
+        {
+          "value": 1,
+          "label": "<By Surface>"
+        }
+      ]
+    },
+    {
+      "id": -1012000,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 2,
+          "label": "Independent"
+        },
+        {
+          "value": 3,
+          "label": "Align only"
+        },
+        {
+          "value": 4,
+          "label": "Dependent"
+        }
+      ]
+    },
+    {
+      "id": -1011109,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "90Â° Clockwise"
+        },
+        {
+          "value": 2,
+          "label": "180Â°"
+        },
+        {
+          "value": 3,
+          "label": "90Â° Counterclockwise"
+        }
+      ]
+    },
+    {
+      "id": -1011003,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -1,
+          "label": "Unset"
+        },
+        {
+          "value": 0,
+          "label": "Show Parts"
+        },
+        {
+          "value": 1,
+          "label": "Show Original"
+        },
+        {
+          "value": 2,
+          "label": "Show Both"
+        }
+      ]
+    },
+    {
+      "id": -1009530,
+      "sharedWith": [
+        -1009529,
+        -1009528,
+        -1009527,
+        -1009526,
+        -1009525
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Fixed"
+        },
+        {
+          "value": 1,
+          "label": "Released"
+        }
+      ]
+    },
+    {
+      "id": -1009522,
+      "sharedWith": [
+        -1009518,
+        -1009516,
+        -1009514,
+        -1009512,
+        -1009509,
+        -1009506,
+        -1009503,
+        -1009500
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Auto-Detect"
+        },
+        {
+          "value": 1,
+          "label": "Projection"
+        },
+        {
+          "value": 2,
+          "label": "<Manually Adjusted>"
+        }
+      ]
+    },
+    {
+      "id": -1009517,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Top of Element"
+        },
+        {
+          "value": 1,
+          "label": "Center of Element"
+        },
+        {
+          "value": 2,
+          "label": "Bottom of Element"
+        }
+      ]
+    },
+    {
+      "id": -1009515,
+      "sharedWith": [
+        -1009513
+      ],
+      "values": [
+        {
+          "value": -16,
+          "label": "Base Level Reference"
+        },
+        {
+          "value": -15,
+          "label": "Top Level Reference"
+        },
+        {
+          "value": -14,
+          "label": "Location Line"
+        },
+        {
+          "value": -10,
+          "label": "Default"
+        },
+        {
+          "value": -6,
+          "label": "Bottom Of Wall"
+        },
+        {
+          "value": -5,
+          "label": "Top Of Wall"
+        },
+        {
+          "value": -4,
+          "label": "Bottom Of Column"
+        },
+        {
+          "value": -2,
+          "label": "Top Of Column"
+        },
+        {
+          "value": -1,
+          "label": "Auto-Detect"
+        }
+      ]
+    },
+    {
+      "id": -1009511,
+      "sharedWith": [
+        -1009508,
+        -1009504,
+        -1009501
+      ],
+      "values": [
+        {
+          "value": -13,
+          "label": "Right of Element"
+        },
+        {
+          "value": -12,
+          "label": "Left of Element"
+        },
+        {
+          "value": -11,
+          "label": "Location Line"
+        },
+        {
+          "value": -10,
+          "label": "Center of Core"
+        },
+        {
+          "value": -8,
+          "label": "Default"
+        },
+        {
+          "value": -6,
+          "label": "Floor/Slab Edge"
+        },
+        {
+          "value": -4,
+          "label": "Exterior Face of Element"
+        },
+        {
+          "value": -3,
+          "label": "Center of Element"
+        },
+        {
+          "value": -2,
+          "label": "Interior Face of Element"
+        },
+        {
+          "value": -1,
+          "label": "Auto-Detect"
+        }
+      ]
+    },
+    {
+      "id": -1009510,
+      "sharedWith": [
+        -1009507
+      ],
+      "values": [
+        {
+          "value": -13,
+          "label": "Bottom of Element"
+        },
+        {
+          "value": -12,
+          "label": "Top of Element"
+        },
+        {
+          "value": -11,
+          "label": "Location Line"
+        },
+        {
+          "value": -10,
+          "label": "Center of Core"
+        },
+        {
+          "value": -8,
+          "label": "Default"
+        },
+        {
+          "value": -6,
+          "label": "Floor/Slab Edge"
+        },
+        {
+          "value": -4,
+          "label": "Exterior Face of Element"
+        },
+        {
+          "value": -3,
+          "label": "Center of Element"
+        },
+        {
+          "value": -2,
+          "label": "Interior Face of Element"
+        },
+        {
+          "value": -1,
+          "label": "Auto-Detect"
+        }
+      ]
+    },
+    {
+      "id": -1009505,
+      "sharedWith": [
+        -1009502
+      ],
+      "values": [
+        {
+          "value": -16,
+          "label": "Base Level Reference"
+        },
+        {
+          "value": -15,
+          "label": "Top Level Reference"
+        },
+        {
+          "value": -14,
+          "label": "Location Line"
+        },
+        {
+          "value": -10,
+          "label": "Default"
+        },
+        {
+          "value": -7,
+          "label": "Default"
+        },
+        {
+          "value": -6,
+          "label": "Bottom Of Wall"
+        },
+        {
+          "value": -5,
+          "label": "Top Of Wall"
+        },
+        {
+          "value": -4,
+          "label": "Bottom of Element"
+        },
+        {
+          "value": -3,
+          "label": "Center of Element"
+        },
+        {
+          "value": -2,
+          "label": "Top of Element"
+        },
+        {
+          "value": -1,
+          "label": "Auto-Detect"
+        }
+      ]
+    },
+    {
+      "id": -1008632,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Trim"
+        },
+        {
+          "value": 1,
+          "label": "Weld"
+        }
+      ]
+    },
+    {
+      "id": -1008631,
+      "sharedWith": [
+        -1008630
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Add Vertical/Horizontal Segments"
+        },
+        {
+          "value": 1,
+          "label": "No Connector"
+        },
+        {
+          "value": 2,
+          "label": "Extend Rails to Meet"
+        }
+      ]
+    },
+    {
+      "id": -1008614,
+      "sharedWith": [
+        -1008605
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Rectangular"
+        },
+        {
+          "value": 1,
+          "label": "Circle"
+        },
+        {
+          "value": 2,
+          "label": "None"
+        }
+      ]
+    },
+    {
+      "id": -1008608,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Use Baluster Separation"
+        },
+        {
+          "value": 1,
+          "label": "Balusters Per Tread (Stair Railing Only)"
+        }
+      ]
+    },
+    {
+      "id": -1008306,
+      "sharedWith": [
+        -1008307
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 3,
+          "label": "Inset"
+        }
+      ]
+    },
+    {
+      "id": -1008305,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Thick"
+        },
+        {
+          "value": 1,
+          "label": "Solid"
+        }
+      ]
+    },
+    {
+      "id": -1008209,
+      "sharedWith": [
+        -1006492
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Down"
+        },
+        {
+          "value": 1,
+          "label": "Up"
+        }
+      ]
+    },
+    {
+      "id": -1008203,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Independent"
+        },
+        {
+          "value": 1,
+          "label": "Same as parent view"
+        }
+      ]
+    },
+    {
+      "id": -1008003,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Both"
+        },
+        {
+          "value": 2,
+          "label": "Top"
+        },
+        {
+          "value": 3,
+          "label": "Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1007727,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 2,
+          "label": "Overlay"
+        },
+        {
+          "value": 3,
+          "label": "Attachment"
+        }
+      ]
+    },
+    {
+      "id": -1007705,
+      "sharedWith": [
+        -1005183
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Foreground"
+        },
+        {
+          "value": 1,
+          "label": "Background"
+        }
+      ]
+    },
+    {
+      "id": -1007704,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "meter"
+        },
+        {
+          "value": 1,
+          "label": "centimeter"
+        },
+        {
+          "value": 2,
+          "label": "millimeter"
+        },
+        {
+          "value": 3,
+          "label": "feet"
+        },
+        {
+          "value": 6,
+          "label": "inch"
+        }
+      ]
+    },
+    {
+      "id": -1007604,
+      "sharedWith": [
+        -1007609
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Outside Left"
+        },
+        {
+          "value": 1,
+          "label": "Outside Center"
+        },
+        {
+          "value": 2,
+          "label": "Outside Right"
+        },
+        {
+          "value": 3,
+          "label": "Inside"
+        }
+      ]
+    },
+    {
+      "id": -1007601,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Square"
+        },
+        {
+          "value": 1,
+          "label": "Circle"
+        }
+      ]
+    },
+    {
+      "id": -1007502,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "All"
+        },
+        {
+          "value": 1,
+          "label": "By View"
+        }
+      ]
+    },
+    {
+      "id": -1007395,
+      "sharedWith": [
+        -1005501
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Defined"
+        },
+        {
+          "value": 1,
+          "label": "Vertical Grid Continuous"
+        },
+        {
+          "value": 2,
+          "label": "Horizontal Grid Continuous"
+        },
+        {
+          "value": 3,
+          "label": "Border and Vertical Grid Continuous"
+        },
+        {
+          "value": 4,
+          "label": "Border and Horizontal Grid Continuous"
+        },
+        {
+          "value": 5,
+          "label": "Pipe Standard"
+        },
+        {
+          "value": 6,
+          "label": "I-shape Parallel Flange"
+        },
+        {
+          "value": 7,
+          "label": "I-shape Sloped Flange"
+        },
+        {
+          "value": 8,
+          "label": "I-shape Wide Flange"
+        },
+        {
+          "value": 9,
+          "label": "C-channel Parallel Flange"
+        },
+        {
+          "value": 10,
+          "label": "C-channel Sloped Flange"
+        },
+        {
+          "value": 11,
+          "label": "L-angle"
+        },
+        {
+          "value": 12,
+          "label": "Rectangular Bar"
+        },
+        {
+          "value": 13,
+          "label": "Round Bar"
+        },
+        {
+          "value": 14,
+          "label": "Rectangular HSS"
+        },
+        {
+          "value": 15,
+          "label": "Round HSS"
+        },
+        {
+          "value": 16,
+          "label": "I-shape Welded"
+        },
+        {
+          "value": 17,
+          "label": "I-split Parallel Flange"
+        },
+        {
+          "value": 18,
+          "label": "I-split Sloped Flange"
+        },
+        {
+          "value": 19,
+          "label": "Structural Tees"
+        },
+        {
+          "value": 20,
+          "label": "C Profile"
+        },
+        {
+          "value": 21,
+          "label": "C Profile with Lips"
+        },
+        {
+          "value": 22,
+          "label": "C Profile with Fold"
+        },
+        {
+          "value": 23,
+          "label": "L Profile"
+        },
+        {
+          "value": 24,
+          "label": "L Profile with Lips"
+        },
+        {
+          "value": 25,
+          "label": "Z Profile"
+        },
+        {
+          "value": 26,
+          "label": "Z Profile with Lips"
+        },
+        {
+          "value": 27,
+          "label": "Sigma Profile"
+        },
+        {
+          "value": 28,
+          "label": "Sigma Profile with Lips"
+        },
+        {
+          "value": 29,
+          "label": "Sigma Profile with Fold"
+        },
+        {
+          "value": 30,
+          "label": "User Defined"
+        },
+        {
+          "value": 31,
+          "label": "Rectangle"
+        },
+        {
+          "value": 32,
+          "label": "Rectangle Cut"
+        },
+        {
+          "value": 33,
+          "label": "T-Shape"
+        },
+        {
+          "value": 34,
+          "label": "Cross-Shape"
+        },
+        {
+          "value": 35,
+          "label": "Round"
+        }
+      ]
+    },
+    {
+      "id": -1007394,
+      "sharedWith": [
+        -1007393,
+        -1007392,
+        -1007391,
+        -1007390,
+        -1007389,
+        -1007388,
+        -1007386,
+        -1007385,
+        -1007384,
+        -1007383,
+        -1007382,
+        -1007381,
+        -1007380,
+        -1005153
+      ],
+      "values": [
+        {
+          "value": -4,
+          "label": "Level Below"
+        },
+        {
+          "value": -3,
+          "label": "Current Level"
+        },
+        {
+          "value": -2,
+          "label": "Level Above"
+        },
+        {
+          "value": -1,
+          "label": "None"
+        },
+        {
+          "value": 0,
+          "label": "Project Phase Information"
+        },
+        {
+          "value": 1,
+          "label": "Project Phase Information"
+        },
+        {
+          "value": 2,
+          "label": "Line Weights"
+        },
+        {
+          "value": 3,
+          "label": "Fill Patterns : <Solid fill>"
+        },
+        {
+          "value": 4,
+          "label": "Fill Patterns : Diagonal up"
+        },
+        {
+          "value": 5,
+          "label": "Fill Patterns : Diagonal down"
+        },
+        {
+          "value": 6,
+          "label": "Fill Patterns : Horizontal"
+        },
+        {
+          "value": 7,
+          "label": "Fill Patterns : Vertical"
+        },
+        {
+          "value": 8,
+          "label": "Fill Patterns : Crosshatch"
+        },
+        {
+          "value": 9,
+          "label": "Fill Patterns : Diagonal cross-hatch"
+        },
+        {
+          "value": 10,
+          "label": "Long Dash"
+        },
+        {
+          "value": 11,
+          "label": "Dash"
+        },
+        {
+          "value": 12,
+          "label": "Loose dash"
+        },
+        {
+          "value": 13,
+          "label": "Centre"
+        },
+        {
+          "value": 14,
+          "label": "Double dash"
+        },
+        {
+          "value": 15,
+          "label": "Triple dash"
+        },
+        {
+          "value": 16,
+          "label": "Dash dot"
+        },
+        {
+          "value": 17,
+          "label": "Dash dot dot"
+        },
+        {
+          "value": 18,
+          "label": "Dot"
+        },
+        {
+          "value": 19,
+          "label": "Overhead"
+        },
+        {
+          "value": 20,
+          "label": "Hidden"
+        },
+        {
+          "value": 21,
+          "label": "Demolished"
+        },
+        {
+          "value": 22,
+          "label": "Grid Line"
+        },
+        {
+          "value": 23,
+          "label": "Default"
+        },
+        {
+          "value": 24,
+          "label": "Default Wall"
+        },
+        {
+          "value": 25,
+          "label": "Default Roof"
+        },
+        {
+          "value": 26,
+          "label": "Glass"
+        },
+        {
+          "value": 27,
+          "label": "Dash"
+        },
+        {
+          "value": 28,
+          "label": "Loose dash"
+        },
+        {
+          "value": 29,
+          "label": "Phase - Temporary"
+        },
+        {
+          "value": 30,
+          "label": "Walls"
+        },
+        {
+          "value": 31,
+          "label": "Triple dash"
+        },
+        {
+          "value": 32,
+          "label": "Surface Pattern"
+        },
+        {
+          "value": 33,
+          "label": "Dash dot dot"
+        },
+        {
+          "value": 34,
+          "label": "Windows"
+        },
+        {
+          "value": 35,
+          "label": "Overhead"
+        },
+        {
+          "value": 36,
+          "label": "Hidden"
+        },
+        {
+          "value": 37,
+          "label": "Demolished"
+        },
+        {
+          "value": 38,
+          "label": "Frame/Mullion"
+        },
+        {
+          "value": 39,
+          "label": "Default"
+        },
+        {
+          "value": 40,
+          "label": "Sill/Head"
+        },
+        {
+          "value": 41,
+          "label": "Default Roof"
+        },
+        {
+          "value": 42,
+          "label": "Opening"
+        },
+        {
+          "value": 43,
+          "label": "Phase-Demo"
+        },
+        {
+          "value": 44,
+          "label": "Doors"
+        },
+        {
+          "value": 45,
+          "label": "Phase-Temp"
+        },
+        {
+          "value": 46,
+          "label": "Panel"
+        },
+        {
+          "value": 47,
+          "label": "Default Light Source"
+        },
+        {
+          "value": 48,
+          "label": "Analytical Floor Surface"
+        }
+      ]
+    },
+    {
+      "id": -1007387,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not Defined"
+        },
+        {
+          "value": 1,
+          "label": "Grid 1 Continuous"
+        },
+        {
+          "value": 2,
+          "label": "Grid 2 Continuous"
+        },
+        {
+          "value": 3,
+          "label": "Border and Grid 1 Continuous"
+        },
+        {
+          "value": 4,
+          "label": "Border and Grid 2 Continuous"
+        }
+      ]
+    },
+    {
+      "id": -1007364,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Natural face orientation"
+        },
+        {
+          "value": 1,
+          "label": "Parallel to ground"
+        }
+      ]
+    },
+    {
+      "id": -1007362,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -3,
+          "label": "Perpendicular to Face"
+        },
+        {
+          "value": -2,
+          "label": "Parallel to Ground"
+        },
+        {
+          "value": -1,
+          "label": "Perpendicular to Face"
+        }
+      ]
+    },
+    {
+      "id": -1007361,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": -3,
+          "label": "System Mullion Profile: Rectangular"
+        },
+        {
+          "value": -2,
+          "label": "System Mullion Profile: Circular"
+        },
+        {
+          "value": -1,
+          "label": "Default"
+        }
+      ]
+    },
+    {
+      "id": -1007352,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Rectangular Mullion"
+        },
+        {
+          "value": 1,
+          "label": "Circular Mullion"
+        },
+        {
+          "value": 2,
+          "label": "L Corner Mullion"
+        },
+        {
+          "value": 3,
+          "label": "V Corner Mullion"
+        },
+        {
+          "value": 4,
+          "label": "Trapezoid Corner Mullion"
+        },
+        {
+          "value": 5,
+          "label": "Quad Corner Mullion"
+        }
+      ]
+    },
+    {
+      "id": -1007277,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Do not trim"
+        },
+        {
+          "value": 1,
+          "label": "Match Level"
+        },
+        {
+          "value": 2,
+          "label": "Match Landing Stringer"
+        }
+      ]
+    },
+    {
+      "id": -1007265,
+      "sharedWith": [
+        -1007264
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Closed"
+        },
+        {
+          "value": 2,
+          "label": "Open"
+        }
+      ]
+    },
+    {
+      "id": -1007243,
+      "sharedWith": [
+        -1152159
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Straight"
+        },
+        {
+          "value": 2,
+          "label": "Slanted"
+        }
+      ]
+    },
+    {
+      "id": -1007236,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Closed"
+        },
+        {
+          "value": 1,
+          "label": "Open"
+        }
+      ]
+    },
+    {
+      "id": -1007234,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Left and Right"
+        },
+        {
+          "value": 2,
+          "label": "Left Only"
+        },
+        {
+          "value": 3,
+          "label": "Middle Only"
+        },
+        {
+          "value": 4,
+          "label": "Right Only"
+        },
+        {
+          "value": 5,
+          "label": "Left and Middle"
+        },
+        {
+          "value": 6,
+          "label": "Middle and Right"
+        },
+        {
+          "value": 7,
+          "label": "Left, Middle, and Right"
+        }
+      ]
+    },
+    {
+      "id": -1007006,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Attached End"
+        },
+        {
+          "value": 1,
+          "label": "Free End"
+        }
+      ]
+    },
+    {
+      "id": -1007004,
+      "sharedWith": [
+        -1007003,
+        -1006639,
+        -1006636,
+        -1006453
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Horizontal"
+        },
+        {
+          "value": 1,
+          "label": "Vertical"
+        },
+        {
+          "value": 2,
+          "label": "Model"
+        },
+        {
+          "value": 3,
+          "label": "Horizontal"
+        }
+      ]
+    },
+    {
+      "id": -1006998,
+      "sharedWith": [
+        -1006408
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Before Value"
+        },
+        {
+          "value": 2,
+          "label": "After Value"
+        }
+      ]
+    },
+    {
+      "id": -1006926,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Extrusive"
+        },
+        {
+          "value": 1,
+          "label": "True 3D"
+        }
+      ]
+    },
+    {
+      "id": -1006710,
+      "sharedWith": [
+        -1006434,
+        -1006305
+      ],
+      "values": [
+        {
+          "value": -3000020,
+          "label": "Aligning Line"
+        },
+        {
+          "value": -3000019,
+          "label": "Dash dot dot"
+        },
+        {
+          "value": -3000018,
+          "label": "Triple dash"
+        },
+        {
+          "value": -3000017,
+          "label": "Loose dash"
+        },
+        {
+          "value": -3000016,
+          "label": "Long dash"
+        },
+        {
+          "value": -3000015,
+          "label": "Double dash"
+        },
+        {
+          "value": -3000014,
+          "label": "Dot"
+        },
+        {
+          "value": -3000013,
+          "label": "Dash dot"
+        },
+        {
+          "value": -3000012,
+          "label": "Dash"
+        },
+        {
+          "value": -3000011,
+          "label": "Center"
+        },
+        {
+          "value": -3000010,
+          "label": "Solid"
+        }
+      ]
+    },
+    {
+      "id": -1006704,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Continuous"
+        },
+        {
+          "value": 1,
+          "label": "None"
+        },
+        {
+          "value": 2,
+          "label": "Custom"
+        }
+      ]
+    },
+    {
+      "id": -1006644,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Riser"
+        },
+        {
+          "value": 1,
+          "label": "Tread"
+        }
+      ]
+    },
+    {
+      "id": -1006643,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "All"
+        },
+        {
+          "value": 1,
+          "label": "Odd"
+        },
+        {
+          "value": 2,
+          "label": "Even"
+        },
+        {
+          "value": 3,
+          "label": "Start and End"
+        }
+      ]
+    },
+    {
+      "id": -1006641,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Front"
+        },
+        {
+          "value": 1,
+          "label": "Center"
+        },
+        {
+          "value": 2,
+          "label": "Back"
+        }
+      ]
+    },
+    {
+      "id": -1006624,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Straight"
+        },
+        {
+          "value": 1,
+          "label": "Curved"
+        }
+      ]
+    },
+    {
+      "id": -1006620,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Single Line"
+        },
+        {
+          "value": 1,
+          "label": "Double Line"
+        }
+      ]
+    },
+    {
+      "id": -1006616,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Zigzag"
+        },
+        {
+          "value": 2,
+          "label": "Curve"
+        }
+      ]
+    },
+    {
+      "id": -1006615,
+      "sharedWith": [
+        -1006467
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Gapped"
+        },
+        {
+          "value": 1,
+          "label": "Continuous"
+        },
+        {
+          "value": 2,
+          "label": "Baseline"
+        },
+        {
+          "value": 3,
+          "label": "Ordinate"
+        }
+      ]
+    },
+    {
+      "id": -1006609,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Intersecting Views"
+        },
+        {
+          "value": 1,
+          "label": "Parent View Only"
+        }
+      ]
+    },
+    {
+      "id": -1006523,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Dynamic"
+        },
+        {
+          "value": 1,
+          "label": "Always Show"
+        }
+      ]
+    },
+    {
+      "id": -1006517,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Tick and Line"
+        },
+        {
+          "value": 1,
+          "label": "Tick only"
+        },
+        {
+          "value": 2,
+          "label": "Hide"
+        }
+      ]
+    },
+    {
+      "id": -1006511,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Inline"
+        },
+        {
+          "value": 1,
+          "label": "Above"
+        }
+      ]
+    },
+    {
+      "id": -1006510,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Away From Origin"
+        },
+        {
+          "value": 1,
+          "label": "Beyond Witness Lines"
+        }
+      ]
+    },
+    {
+      "id": -1006508,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Line"
+        },
+        {
+          "value": 1,
+          "label": "Arc"
+        }
+      ]
+    },
+    {
+      "id": -1006505,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Centers"
+        },
+        {
+          "value": 1,
+          "label": "Widths"
+        }
+      ]
+    },
+    {
+      "id": -1006493,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Arrow"
+        },
+        {
+          "value": 1,
+          "label": "Triangle"
+        }
+      ]
+    },
+    {
+      "id": -1006489,
+      "sharedWith": [
+        -1006475,
+        -1006474,
+        -1006458
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Prefix"
+        },
+        {
+          "value": 1,
+          "label": "Suffix"
+        }
+      ]
+    },
+    {
+      "id": -1006471,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Above Leader"
+        },
+        {
+          "value": 1,
+          "label": "Below Leader"
+        },
+        {
+          "value": 2,
+          "label": "In-line with Leader"
+        }
+      ]
+    },
+    {
+      "id": -1006469,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Actual (Selected) Elevation"
+        },
+        {
+          "value": 1,
+          "label": "Top Elevation"
+        },
+        {
+          "value": 2,
+          "label": "Bottom Elevation"
+        },
+        {
+          "value": 3,
+          "label": "Top & Bottom Elevations"
+        }
+      ]
+    },
+    {
+      "id": -1006461,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Project Base Point"
+        },
+        {
+          "value": 1,
+          "label": "Survey Point"
+        },
+        {
+          "value": 2,
+          "label": "Internal Origin"
+        }
+      ]
+    },
+    {
+      "id": -1006457,
+      "sharedWith": [
+        -1006455
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "North / South"
+        },
+        {
+          "value": 2,
+          "label": "East / West"
+        }
+      ]
+    },
+    {
+      "id": -1006456,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Right"
+        },
+        {
+          "value": 2,
+          "label": "Below"
+        }
+      ]
+    },
+    {
+      "id": -1006448,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Horizontal"
+        },
+        {
+          "value": 1,
+          "label": "Up, then Left"
+        },
+        {
+          "value": 2,
+          "label": "Up, then Right"
+        },
+        {
+          "value": 3,
+          "label": "Left, then Up"
+        },
+        {
+          "value": 4,
+          "label": "Right, then Up"
+        }
+      ]
+    },
+    {
+      "id": -1006432,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Gap to Element"
+        },
+        {
+          "value": 1,
+          "label": "Fixed to Dimension Line"
+        }
+      ]
+    },
+    {
+      "id": -1006429,
+      "sharedWith": [
+        -1006314
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Opaque"
+        },
+        {
+          "value": 1,
+          "label": "Transparent"
+        }
+      ]
+    },
+    {
+      "id": -1006413,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Diagonal"
+        },
+        {
+          "value": 3,
+          "label": "Dot"
+        },
+        {
+          "value": 7,
+          "label": "Heavy end tick mark"
+        },
+        {
+          "value": 8,
+          "label": "Arrow"
+        },
+        {
+          "value": 9,
+          "label": "Datum triangle"
+        },
+        {
+          "value": 10,
+          "label": "Box"
+        },
+        {
+          "value": 11,
+          "label": "Elevation Target"
+        },
+        {
+          "value": 12,
+          "label": "Loop"
+        }
+      ]
+    },
+    {
+      "id": -1006411,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Above Dimension Line"
+        },
+        {
+          "value": 1,
+          "label": "Below Dimension Line"
+        }
+      ]
+    },
+    {
+      "id": -1006400,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Horizontal"
+        },
+        {
+          "value": 1,
+          "label": "Left of vertical"
+        },
+        {
+          "value": 2,
+          "label": "Right of vertical"
+        }
+      ]
+    },
+    {
+      "id": -1006309,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1023,
+          "label": "Top"
+        },
+        {
+          "value": 1024,
+          "label": "Middle"
+        },
+        {
+          "value": 2047,
+          "label": "Top"
+        },
+        {
+          "value": 2048,
+          "label": "Bottom"
+        }
+      ]
+    },
+    {
+      "id": -1006308,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 127,
+          "label": "Left"
+        },
+        {
+          "value": 128,
+          "label": "Center"
+        },
+        {
+          "value": 255,
+          "label": "Left"
+        },
+        {
+          "value": 256,
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": -1006100,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Run"
+        },
+        {
+          "value": 1,
+          "label": "Boundary"
+        },
+        {
+          "value": 2,
+          "label": "Riser"
+        }
+      ]
+    },
+    {
+      "id": -1006012,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Height at Tail"
+        },
+        {
+          "value": 1,
+          "label": "Slope"
+        }
+      ]
+    },
+    {
+      "id": -1005439,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Building Type"
+        },
+        {
+          "value": 1,
+          "label": "Schematic Type"
+        },
+        {
+          "value": 2,
+          "label": "User Defined"
+        }
+      ]
+    },
+    {
+      "id": -1005331,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Project"
+        },
+        {
+          "value": 1,
+          "label": "Shared"
+        }
+      ]
+    },
+    {
+      "id": -1005254,
+      "sharedWith": [
+        -1155280
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "90Â° Clockwise"
+        },
+        {
+          "value": 2,
+          "label": "90Â° Counterclockwise"
+        }
+      ]
+    },
+    {
+      "id": -1005251,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "No"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        },
+        {
+          "value": 2,
+          "label": "When multiple viewports"
+        }
+      ]
+    },
+    {
+      "id": -1005197,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "From Family"
+        },
+        {
+          "value": 1,
+          "label": "From Project Settings"
+        }
+      ]
+    },
+    {
+      "id": -1005196,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 3,
+          "label": "Family Geometry"
+        },
+        {
+          "value": 4,
+          "label": "Third Party"
+        }
+      ]
+    },
+    {
+      "id": -1005177,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Look down"
+        },
+        {
+          "value": 1,
+          "label": "Look up"
+        }
+      ]
+    },
+    {
+      "id": -1005172,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Wireframe"
+        },
+        {
+          "value": 2,
+          "label": "Hidden Line"
+        }
+      ]
+    },
+    {
+      "id": -1005169,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Adjusting"
+        },
+        {
+          "value": 1,
+          "label": "Explicit"
+        }
+      ]
+    },
+    {
+      "id": -1005168,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Project North"
+        },
+        {
+          "value": 1,
+          "label": "True North"
+        }
+      ]
+    },
+    {
+      "id": -1005165,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Wireframe"
+        },
+        {
+          "value": 2,
+          "label": "Hidden Line"
+        },
+        {
+          "value": 3,
+          "label": "Shaded"
+        },
+        {
+          "value": 4,
+          "label": "Shaded with Edges"
+        },
+        {
+          "value": 6,
+          "label": "Realistic"
+        },
+        {
+          "value": 7,
+          "label": "Consistent Colors"
+        },
+        {
+          "value": 8,
+          "label": "Realistic with Edges"
+        },
+        {
+          "value": 9,
+          "label": "Ray Trace"
+        }
+      ]
+    },
+    {
+      "id": -1005163,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Architectural"
+        },
+        {
+          "value": 2,
+          "label": "Structural"
+        },
+        {
+          "value": 4,
+          "label": "Mechanical"
+        },
+        {
+          "value": 8,
+          "label": "Electrical"
+        },
+        {
+          "value": 16,
+          "label": "Plumbing"
+        },
+        {
+          "value": 4095,
+          "label": "Coordination"
+        }
+      ]
+    },
+    {
+      "id": -1005161,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Normal"
+        },
+        {
+          "value": 1,
+          "label": "Halftone"
+        },
+        {
+          "value": 2,
+          "label": "Do not display"
+        }
+      ]
+    },
+    {
+      "id": -1005158,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Clean all wall joins"
+        },
+        {
+          "value": 1,
+          "label": "Clean same type wall joins"
+        }
+      ]
+    },
+    {
+      "id": -1005050,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Orthographic"
+        },
+        {
+          "value": 1,
+          "label": "Perspective"
+        },
+        {
+          "value": 2,
+          "label": "Orthographic"
+        }
+      ]
+    },
+    {
+      "id": -1004514,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Value"
+        },
+        {
+          "value": 1,
+          "label": "Equality Text"
+        },
+        {
+          "value": 2,
+          "label": "Equality Formula"
+        }
+      ]
+    },
+    {
+      "id": -1004016,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Left"
+        },
+        {
+          "value": 1,
+          "label": "Center (Left/Right)"
+        },
+        {
+          "value": 2,
+          "label": "Right"
+        },
+        {
+          "value": 3,
+          "label": "Bottom"
+        },
+        {
+          "value": 4,
+          "label": "Center (Front/Back)"
+        },
+        {
+          "value": 5,
+          "label": "Top"
+        },
+        {
+          "value": 12,
+          "label": "Not a Reference"
+        },
+        {
+          "value": 13,
+          "label": "Strong Reference"
+        },
+        {
+          "value": 14,
+          "label": "Weak Reference"
+        }
+      ]
+    },
+    {
+      "id": -1004003,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Left"
+        },
+        {
+          "value": 1,
+          "label": "Center (Left/Right)"
+        },
+        {
+          "value": 2,
+          "label": "Right"
+        },
+        {
+          "value": 3,
+          "label": "Front"
+        },
+        {
+          "value": 4,
+          "label": "Center (Front/Back)"
+        },
+        {
+          "value": 5,
+          "label": "Back"
+        },
+        {
+          "value": 6,
+          "label": "Bottom"
+        },
+        {
+          "value": 7,
+          "label": "Center (Elevation)"
+        },
+        {
+          "value": 8,
+          "label": "Top"
+        },
+        {
+          "value": 12,
+          "label": "Not a Reference"
+        },
+        {
+          "value": 13,
+          "label": "Strong Reference"
+        },
+        {
+          "value": 14,
+          "label": "Weak Reference"
+        }
+      ]
+    },
+    {
+      "id": -1004001,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Not a Reference"
+        },
+        {
+          "value": 1,
+          "label": "Weak Reference"
+        },
+        {
+          "value": 2,
+          "label": "Strong Reference"
+        }
+      ]
+    },
+    {
+      "id": -1002561,
+      "sharedWith": [
+        -1002562
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Cut Column"
+        },
+        {
+          "value": 1,
+          "label": "Cut Target"
+        },
+        {
+          "value": 2,
+          "label": "Do Not Cut"
+        }
+      ]
+    },
+    {
+      "id": -1002556,
+      "sharedWith": [
+        -1002555
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Minimum Intersection"
+        },
+        {
+          "value": 1,
+          "label": "Intersect Column Midline"
+        },
+        {
+          "value": 2,
+          "label": "Maximum Intersection"
+        },
+        {
+          "value": 3,
+          "label": "Tangent"
+        }
+      ]
+    },
+    {
+      "id": -1002201,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Grid"
+        },
+        {
+          "value": 2,
+          "label": "Linear"
+        }
+      ]
+    },
+    {
+      "id": -1002112,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Do not wrap"
+        },
+        {
+          "value": 1,
+          "label": "Exterior"
+        },
+        {
+          "value": 2,
+          "label": "Interior"
+        },
+        {
+          "value": 3,
+          "label": "Both"
+        }
+      ]
+    },
+    {
+      "id": -1002111,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "Exterior"
+        },
+        {
+          "value": 2,
+          "label": "Interior"
+        }
+      ]
+    },
+    {
+      "id": -1001956,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Edges Hidden by Other Members"
+        },
+        {
+          "value": 1,
+          "label": "Edges Hidden by Element Itself"
+        },
+        {
+          "value": 2,
+          "label": "All Edges"
+        },
+        {
+          "value": 3,
+          "label": "None"
+        }
+      ]
+    },
+    {
+      "id": -1001821,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "<Generic>"
+        },
+        {
+          "value": 1,
+          "label": "Wall Sweep"
+        },
+        {
+          "value": 2,
+          "label": "Reveal"
+        },
+        {
+          "value": 3,
+          "label": "Fascia"
+        },
+        {
+          "value": 4,
+          "label": "Gutter"
+        },
+        {
+          "value": 5,
+          "label": "Slab Edge"
+        },
+        {
+          "value": 6,
+          "label": "Railing"
+        },
+        {
+          "value": 7,
+          "label": "Stair Nosing"
+        },
+        {
+          "value": 8,
+          "label": "Mullion"
+        },
+        {
+          "value": 9,
+          "label": "Slab Metal Deck"
+        },
+        {
+          "value": 10,
+          "label": "Wall Foundation"
+        },
+        {
+          "value": 11,
+          "label": "Stair Tread"
+        },
+        {
+          "value": 12,
+          "label": "Stair Riser"
+        },
+        {
+          "value": 13,
+          "label": "Stair Support"
+        }
+      ]
+    },
+    {
+      "id": -1001818,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Model Lines"
+        },
+        {
+          "value": 1,
+          "label": "Symbolic Lines"
+        }
+      ]
+    },
+    {
+      "id": -1001807,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Solid"
+        },
+        {
+          "value": 1,
+          "label": "Void"
+        }
+      ]
+    },
+    {
+      "id": -1001714,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 26,
+          "label": "Faces at Top of the Roof"
+        },
+        {
+          "value": 27,
+          "label": "Faces at Bottom of the Roof"
+        }
+      ]
+    },
+    {
+      "id": -1001710,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 33615,
+          "label": "Plumb Cut"
+        },
+        {
+          "value": 33618,
+          "label": "Two Cut - Square"
+        },
+        {
+          "value": 33619,
+          "label": "Two Cut - Plumb"
+        }
+      ]
+    },
+    {
+      "id": -1001709,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Truss"
+        },
+        {
+          "value": 1,
+          "label": "Rafter"
+        }
+      ]
+    },
+    {
+      "id": -1001597,
+      "sharedWith": [
+        -1013457
+      ],
+      "values": [
+        {
+          "value": 0,
+          "label": "Unconnected"
+        },
+        {
+          "value": 1,
+          "label": "Connected - Manual"
+        },
+        {
+          "value": 2,
+          "label": "Connected - Auto-detect"
+        }
+      ]
+    },
+    {
+      "id": -1001595,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "From Column"
+        },
+        {
+          "value": 1,
+          "label": "Yes"
+        },
+        {
+          "value": 2,
+          "label": "No"
+        }
+      ]
+    },
+    {
+      "id": -1001585,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Edges Hidden by Other Members"
+        },
+        {
+          "value": 1,
+          "label": "Edges Hidden by Column Itself"
+        },
+        {
+          "value": 2,
+          "label": "All Edges"
+        }
+      ]
+    },
+    {
+      "id": -1001584,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Edges Hidden by Other Members"
+        },
+        {
+          "value": 1,
+          "label": "Edges Hidden by Beam Itself"
+        },
+        {
+          "value": 2,
+          "label": "All Edges"
+        }
+      ]
+    },
+    {
+      "id": -1001577,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 3,
+          "label": "One-Way"
+        },
+        {
+          "value": 4,
+          "label": "Foundation"
+        },
+        {
+          "value": 5,
+          "label": "Slab on Grade"
+        },
+        {
+          "value": 7,
+          "label": "Two-Way"
+        }
+      ]
+    },
+    {
+      "id": -1001576,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Hanger"
+        },
+        {
+          "value": 1,
+          "label": "Gravity"
+        },
+        {
+          "value": 2,
+          "label": "Lateral"
+        },
+        {
+          "value": 6,
+          "label": "Not for analysis"
+        },
+        {
+          "value": 8,
+          "label": "Gravity and Lateral"
+        }
+      ]
+    },
+    {
+      "id": -1001575,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "From geometry"
+        },
+        {
+          "value": 1,
+          "label": "From bounding box"
+        }
+      ]
+    },
+    {
+      "id": -1001573,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Normal"
+        },
+        {
+          "value": 1,
+          "label": "Horizontal"
+        }
+      ]
+    },
+    {
+      "id": -1001563,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Retaining"
+        },
+        {
+          "value": 1,
+          "label": "Bearing"
+        }
+      ]
+    },
+    {
+      "id": -1001550,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Steel"
+        },
+        {
+          "value": 2,
+          "label": "Concrete"
+        },
+        {
+          "value": 3,
+          "label": "Wood"
+        },
+        {
+          "value": 4,
+          "label": "Other"
+        },
+        {
+          "value": 5,
+          "label": "Precast Concrete"
+        }
+      ]
+    },
+    {
+      "id": -1001507,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 1,
+          "label": "Parallel Line"
+        },
+        {
+          "value": 2,
+          "label": "Line with Angle"
+        },
+        {
+          "value": 3,
+          "label": "Kicker Brace"
+        }
+      ]
+    },
+    {
+      "id": -1001503,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Center of Geometry"
+        },
+        {
+          "value": 1,
+          "label": "Top of Geometry"
+        },
+        {
+          "value": 2,
+          "label": "Bottom of Geometry"
+        },
+        {
+          "value": 3,
+          "label": "Location Line"
+        }
+      ]
+    },
+    {
+      "id": -1001390,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "By host"
+        },
+        {
+          "value": 1,
+          "label": "Neither"
+        },
+        {
+          "value": 2,
+          "label": "Interior"
+        },
+        {
+          "value": 3,
+          "label": "Exterior"
+        },
+        {
+          "value": 4,
+          "label": "Both"
+        }
+      ]
+    },
+    {
+      "id": -1001381,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Undefined"
+        },
+        {
+          "value": 1,
+          "label": "Wall"
+        },
+        {
+          "value": 2,
+          "label": "Column"
+        },
+        {
+          "value": 3,
+          "label": "Girder"
+        },
+        {
+          "value": 4,
+          "label": "Joist"
+        },
+        {
+          "value": 5,
+          "label": "Purlin"
+        },
+        {
+          "value": 6,
+          "label": "Other"
+        },
+        {
+          "value": 7,
+          "label": "Brace"
+        },
+        {
+          "value": 8,
+          "label": "HorizontalBracing"
+        },
+        {
+          "value": 9,
+          "label": "KickerBracing"
+        },
+        {
+          "value": 10,
+          "label": "Automatic"
+        },
+        {
+          "value": 11,
+          "label": "TrussChord"
+        },
+        {
+          "value": 12,
+          "label": "TrussWeb"
+        }
+      ]
+    },
+    {
+      "id": -1001124,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Wall"
+        },
+        {
+          "value": 1,
+          "label": "Panel"
+        }
+      ]
+    },
+    {
+      "id": -1001119,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Non-bearing"
+        },
+        {
+          "value": 1,
+          "label": "Bearing"
+        },
+        {
+          "value": 2,
+          "label": "Shear"
+        },
+        {
+          "value": 3,
+          "label": "Combined"
+        }
+      ]
+    },
+    {
+      "id": -1001006,
+      "sharedWith": [],
+      "values": [
+        {
+          "value": 0,
+          "label": "Interior"
+        },
+        {
+          "value": 1,
+          "label": "Exterior"
+        },
+        {
+          "value": 2,
+          "label": "Foundation"
+        },
+        {
+          "value": 3,
+          "label": "Retaining"
+        },
+        {
+          "value": 4,
+          "label": "Soffit"
+        },
+        {
+          "value": 5,
+          "label": "Coreshaft"
+        }
+      ]
+    }
+  ]
+}

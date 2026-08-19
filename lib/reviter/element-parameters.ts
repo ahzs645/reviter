@@ -61,6 +61,7 @@
  */
 
 import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
+import { revitParameterValueName } from "./revit-enum-tables.ts";
 
 /**
  * `ff ff ff ff 10 03 01 00 00 00` — the element-id anchor preceding a table.
@@ -148,6 +149,12 @@ export type ElementParameter = {
    * parameters Revit stores in its string value set.
    */
   value: number | string;
+  /**
+   * What the value means, where it names a choice rather than measuring
+   * something: `Rafter Cut` stores `33615` and that is "Plumb Cut". The number
+   * stays; this is the name beside it.
+   */
+  valueName?: string;
 };
 
 export type ElementParameterTable = {
@@ -214,11 +221,14 @@ function readIntegerTableAt(
     const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
     const enumName = builtInParameterEnumName(parameterId);
+    const value = view.getInt32(entry + 8, true);
+    const valueName = revitParameterValueName(parameterId, value);
     parameters.push({
       parameterId,
       name: parameterDisplayName(parameterId),
       ...(enumName ? { enumName } : {}),
-      value: view.getInt32(entry + 8, true),
+      ...(valueName ? { valueName } : {}),
+      value,
     });
   }
   return { parameters, end };
