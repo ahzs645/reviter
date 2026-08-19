@@ -274,8 +274,9 @@ that turn out to be wrong. Building an editor for a field the decoder gets right
 
 0. **Measure the decode against a semantic oracle** — the section above. What
    the overlay is for depends on which fields are actually wrong.
-1. **Widen `PropertyRow`** with provenance and editability. Nothing is editable
-   yet; the dock just stops pretending every row is the same kind of fact.
+1. **Widen `PropertyRow`** with provenance. — **done, 2026-08-19.** Nothing is
+   editable yet; the dock has stopped pretending every row is the same kind of
+   fact. See the note below on what was deliberately left out.
 2. **`editEnabled` pill** in `ViewerToolbar` + the forced-tool-reset discipline.
 3. **`ElementOverrides` sidecar** — generalise `room-review`'s shape to
    `ElementBoundsRecord`, keyed by Revit element id, persisted through
@@ -293,6 +294,41 @@ that turn out to be wrong. Building an editor for a field the decoder gets right
    162 MB export, and a prerequisite for anything that treats the IFC as an
    editable substrate rather than a final artefact.
 9. *Only then* the route-B store for element creation and bulk authoring.
+
+### Step 1, as built
+
+`PropertyRow` now carries `provenance: "decoded" | "inferred" | "edited"`, and
+the palette marks the two non-default cases inline — a word, not a colour, so a
+reader with low colour vision and a reader pasting into an issue tracker both
+keep the distinction (`propertyClipboardText` emits the same marker).
+
+The rules, and they are the claim the palette makes about the decoder:
+
+| Row | Decoded when | Inferred when |
+| --- | --- | --- |
+| Category, Category ID | `native-token`, `native-object` | `record-code-consensus`, or absent |
+| Geometry, Evidence | `native`, `reference-assisted` | reconstructed, clipped, bounds fallback, helper |
+| Element id, Type, Type element, parameters, bounds, stream, chunk, offset | always | — |
+
+Two decisions worth recording.
+
+**The `edit` descriptor was left out.** The plan above called for provenance
+*and* editability in one step. Shipping an `edit` field with no editor behind it
+would be API surface that nothing exercises and that would be redesigned around
+whatever the override overlay actually needs — so `edited` exists as a
+provenance the renderer and the clipboard already handle, and the descriptor
+that says *how* a field may be changed waits for step 3.
+
+**An inferred category does not make the element's identity inferred.** The
+blanket rule is the tempting one and it is wrong: an element whose category came
+from a consensus still has an id, a bounds record and a source offset that were
+read out of the file. Marking those as derived would be its own dishonesty, and
+`tests/property-row-provenance.test.ts` pins it.
+
+The row construction moved out of the studio's `useMemo` into
+`propertyRowsFor()` in `app/studio/format.ts` to make those rules testable. A
+claim about decoder certainty that lives only inside a React hook is a claim
+nothing checks.
 
 Steps 1–5 add no dependency on IFClite at all. Its viewer is worth reading as a
 worked example of the same problem solved at scale; only step 8 would import

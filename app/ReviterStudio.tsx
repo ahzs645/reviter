@@ -55,8 +55,7 @@ import {
   formatBytes,
   formatNumber,
   matchesFilter,
-  propertyEvidenceLabel,
-  propertyGeometryLabel,
+  propertyRowsFor,
   propertyClipboardText,
   savedFileName,
 } from "./studio/format.ts";
@@ -906,70 +905,10 @@ export default function ReviterStudio() {
    * first; the recovery's own evidence follows, because in this viewer it is a
    * property of the object rather than a footnote about the file.
    */
-  const propertyRows: PropertyRow[] = useMemo(() => {
-    if (!selectedRecord || !selectedDimensions) return [];
-    return [
-      { key: "category", label: "Category", value: selectedRecord.categoryName ?? "Uncategorised" },
-      ...(selectedRecord.typeName ? [{ key: "type", label: "Type", value: selectedRecord.typeName }] : []),
-      { key: "element-id", label: "Element id", value: String(selectedRecord.elementId) },
-      ...(selectedRecord.typeId != null
-        ? [{ key: "type-element", label: "Type element", value: String(selectedRecord.typeId) }]
-        : []),
-      {
-        key: "geometry",
-        label: "Geometry",
-        value: propertyGeometryLabel(selectedRecord),
-      },
-      {
-        key: "evidence",
-        label: "Evidence",
-        value: propertyEvidenceLabel(selectedRecord),
-      },
-      ...(selectedRecord.categoryId != null
-        ? [{
-          key: "category-id",
-          label: "Category ID",
-          value: `${selectedRecord.categoryId}${
-            selectedRecord.categorySource === "record-code-consensus"
-              ? " (record-code consensus)"
-              : selectedRecord.categorySource === "native-object"
-                ? " (native object)"
-                : " (native token)"
-          }`,
-        }]
-        : []),
-      ...(selectedRecord.solid
-        ? [{
-          key: "native-geometry",
-          label: "Native geometry",
-          value: `${Math.hypot(
-            selectedRecord.solid.end.x - selectedRecord.solid.start.x,
-            selectedRecord.solid.end.y - selectedRecord.solid.start.y,
-          ).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
-        }]
-        : []),
-      ...(selectedRecord.parameters?.map((parameter) => ({
-        key: `parameter-${parameter.parameterId}`,
-        label: parameter.name,
-        value: typeof parameter.value === "string"
-          ? parameter.value
-          : `${parameter.value.toFixed(4)} ft`,
-      })) ?? []),
-      {
-        key: "bounding-size",
-        label: "Bounding size",
-        value: `${selectedDimensions.x.toFixed(2)} × ${selectedDimensions.y.toFixed(2)} × ${selectedDimensions.z.toFixed(2)} ft`,
-      },
-      { key: "minimum-z", label: "Minimum Z", value: `${selectedRecord.boundsFeet.min.z.toFixed(3)} ft` },
-      { key: "stream", label: "Source stream", value: selectedRecord.stream },
-      ...(selectedRecord.chunkIndex >= 0
-        ? [{ key: "chunk", label: "Chunk", value: selectedRecord.chunkIndex.toLocaleString() }]
-        : []),
-      ...(selectedRecord.recordOffset >= 0
-        ? [{ key: "record-offset", label: "Record offset", value: `0x${selectedRecord.recordOffset.toString(16)}` }]
-        : []),
-    ];
-  }, [selectedDimensions, selectedRecord]);
+  const propertyRows: PropertyRow[] = useMemo(
+    () => propertyRowsFor(selectedRecord, selectedDimensions),
+    [selectedDimensions, selectedRecord],
+  );
 
   const copySelectedProperties = useCallback(async () => {
     if (!selectedRecord || !propertyRows.length) return;

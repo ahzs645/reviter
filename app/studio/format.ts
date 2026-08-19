@@ -1,11 +1,19 @@
 /** Display formatting helpers for the studio shell. */
 
-import type { ElementBoundsRecord } from "../../lib/reviter/types.ts";
-import type { CanvasMenuRequest } from "./types.ts";
+import type { ElementBoundsRecord, Vec3 } from "../../lib/reviter/types.ts";
+import type { CanvasMenuRequest, PropertyProvenance, PropertyRow } from "./types.ts";
 
 export type PropertyTextRow = {
   label: string;
   value: string;
+  /**
+   * Optional so a caller with nothing to say about provenance still type-checks.
+   * The studio's palette always sets it, and a paste that dropped the marker
+   * would put an inferred category into an issue tracker looking like a read
+   * one — which is the whole distinction, lost at exactly the moment the value
+   * leaves the application.
+   */
+  provenance?: PropertyProvenance;
 };
 
 /** Describe the geometry that is actually active in the viewport. */
@@ -52,7 +60,8 @@ export function propertyClipboardText(
     title,
     subtitle,
     "",
-    ...rows.map(({ label, value }) => `${label}\t${value}`),
+    ...rows.map(({ label, value, provenance }) =>
+      `${label}\t${value}${provenance && provenance !== "decoded" ? `\t(${provenance})` : ""}`),
   ].join("\n");
 }
 
@@ -115,4 +124,156 @@ export function formatNumber(value: number): string {
 export function savedFileName(path: string | undefined): string | null {
   if (!path) return null;
   return path.split(/[\\/]/).filter(Boolean).pop() ?? null;
+}
+
+/**
+ * The properties palette for one selected element.
+ *
+ * Category, type and id lead, because that is what a CAD palette answers
+ * first; the recovery's own evidence follows, because in this viewer it is a
+ * property of the object rather than a footnote about the file.
+ *
+ * Extracted from the studio's `useMemo` so the provenance rules are testable.
+ * Which rows are a read and which are a derivation is the claim this palette
+ * makes about the decoder's certainty, and a claim that only exists inside a
+ * React hook is a claim nothing checks.
+ */
+export function propertyRowsFor(
+  record: ElementBoundsRecord | null,
+  dimensions: Vec3 | null,
+): PropertyRow[] {
+  if (!record || !dimensions) return [];
+
+  // A category read from the element's own token is a fact; one taken from a
+  // record-code consensus is this decoder's best guess about which cluster
+  // the element belongs to. They are shown together and must not read alike.
+  const categoryProvenance: PropertyProvenance =
+    record.categorySource === "native-token" ||
+    record.categorySource === "native-object"
+      ? "decoded"
+      : "inferred";
+
+  // The geometry and evidence rows describe the body in the viewport, so they
+  // take the body's provenance: a native face mesh or a tagged paired body is
+  // read, everything else — rebuilt, clipped, or an axis-aligned envelope — is
+  // derived.
+  const geometryProvenance: PropertyProvenance =
+    record.renderGeometryProvenance === "native" ||
+    record.renderGeometryProvenance === "reference-assisted"
+      ? "decoded"
+      : "inferred";
+
+  return [
+    {
+      key: "category",
+      label: "Category",
+      value: record.categoryName ?? "Uncategorised",
+      provenance: categoryProvenance,
+    },
+    ...(record.typeName
+      ? [{
+        key: "type",
+        label: "Type",
+        value: record.typeName,
+        provenance: "decoded" as const,
+      }]
+      : []),
+    {
+      key: "element-id",
+      label: "Element id",
+      value: String(record.elementId),
+      provenance: "decoded" as const,
+    },
+    ...(record.typeId != null
+      ? [{
+        key: "type-element",
+        label: "Type element",
+        value: String(record.typeId),
+        provenance: "decoded" as const,
+      }]
+      : []),
+    {
+      key: "geometry",
+      label: "Geometry",
+      value: propertyGeometryLabel(record),
+      provenance: geometryProvenance,
+    },
+    {
+      key: "evidence",
+      label: "Evidence",
+      value: propertyEvidenceLabel(record),
+      provenance: geometryProvenance,
+    },
+    ...(record.categoryId != null
+      ? [{
+        key: "category-id",
+        label: "Category ID",
+        value: `${record.categoryId}${
+          record.categorySource === "record-code-consensus"
+            ? " (record-code consensus)"
+            : record.categorySource === "native-object"
+              ? " (native object)"
+              : " (native token)"
+        }`,
+        provenance: categoryProvenance,
+      }]
+      : []),
+    ...(record.solid
+      ? [{
+        key: "native-geometry",
+        label: "Native geometry",
+        value: `${Math.hypot(
+          record.solid.end.x - record.solid.start.x,
+          record.solid.end.y - record.solid.start.y,
+        ).toFixed(3)} ft long · ${(record.solid.thickness * 304.8).toFixed(0)} mm thick`,
+        provenance: "decoded" as const,
+      }]
+      : []),
+    // The parameter table is persisted and its framing is verified: the value
+    // under -1001101 reproduced the paired export's swept depth on 6,272 of
+    // 6,278 walls. These are read, not derived.
+    ...(record.parameters?.map((parameter) => ({
+      key: `parameter-${parameter.parameterId}`,
+      label: parameter.name,
+      value: typeof parameter.value === "string"
+        ? parameter.value
+        : `${parameter.value.toFixed(4)} ft`,
+      provenance: "decoded" as const,
+    })) ?? []),
+    // Both of these restate the element's own bounds record.
+    {
+      key: "bounding-size",
+      label: "Bounding size",
+      value: `${dimensions.x.toFixed(2)} × ${dimensions.y.toFixed(2)} × ${dimensions.z.toFixed(2)} ft`,
+      provenance: "decoded" as const,
+    },
+    {
+      key: "minimum-z",
+      label: "Minimum Z",
+      value: `${record.boundsFeet.min.z.toFixed(3)} ft`,
+      provenance: "decoded" as const,
+    },
+    {
+      key: "stream",
+      label: "Source stream",
+      value: record.stream,
+      provenance: "decoded" as const,
+    },
+    ...(record.chunkIndex >= 0
+      ? [{
+        key: "chunk",
+        label: "Chunk",
+        value: record.chunkIndex.toLocaleString(),
+        provenance: "decoded" as const,
+      }]
+      : []),
+    ...(record.recordOffset >= 0
+      ? [{
+        key: "record-offset",
+        label: "Record offset",
+        value: `0x${record.recordOffset.toString(16)}`,
+        provenance: "decoded" as const,
+      }]
+      : []),
+  ];
 }

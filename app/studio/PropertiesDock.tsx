@@ -11,7 +11,19 @@
  */
 import { ChevronDown, ChevronUp, MousePointerClick, TriangleAlert, X } from "lucide-react";
 
-import type { PropertyRow } from "./types.ts";
+import type { PropertyProvenance, PropertyRow } from "./types.ts";
+
+/**
+ * Why a row is not a plain read.
+ *
+ * Only the two non-default provenances get a marker. Labelling every decoded
+ * row as well would make the distinction disappear into noise, which is the
+ * failure this is meant to fix rather than a smaller version of it.
+ */
+const PROVENANCE_TITLE: Record<Exclude<PropertyProvenance, "decoded">, string> = {
+  inferred: "Derived by the decoder — not read from the file",
+  edited: "Asserted by a reviewer over the recovered value",
+};
 
 export type EvidenceRow = {
   label: string;
@@ -64,9 +76,16 @@ export function PropertiesDock({
         <>
           <dl className="property-rows">
             {rows.map((row) => (
-              <div className="property-row" key={row.key}>
+              <div className="property-row" data-provenance={row.provenance} key={row.key}>
                 <dt>{row.label}</dt>
-                <dd title={row.value}>{row.value}</dd>
+                <dd title={row.value}>
+                  {row.provenance !== "decoded" && (
+                    <span className="property-provenance" title={PROVENANCE_TITLE[row.provenance]}>
+                      {row.provenance}
+                    </span>
+                  )}
+                  {row.value}
+                </dd>
               </div>
             ))}
           </dl>
