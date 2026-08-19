@@ -93,24 +93,71 @@ problem at far greater scale: a `GeometryProvenance=approximate` bounds envelope
 is not a body, and "move this wall" against one means something different than
 against a native BREP.
 
+## The export is not the weak link — correcting this entry
+
+The first draft of this section treated route B below ("edit inside an IFC
+store") as the expensive one, largely on the assumption that Reviter's IFC is a
+lossy derivative. The [2026-08-02 export validation](unbc-rvt-to-ifc-export-2026-08-02.md)
+says otherwise, and the numbers change the argument:
+
+| Measure | Reviter IFC4 export | Paired Autodesk IFC2X3 |
+| --- | ---: | ---: |
+| IFC elements | 44,009 | 41,312 |
+| Products with readable geometry | 39,846 | 39,355 |
+| Triangles | 961,316 | 934,123 |
+| Revit tags with native `UniqueId` | 41,709 | 38,187 |
+| Material definitions | 69 | 30 |
+
+IfcOpenShell reported no schema, reference or IFC4 EXPRESS-rule violations on
+the full model. On element count, triangles, identity coverage and materials,
+Reviter's export is *ahead of* the file Revit's own exporter produced from the
+same building.
+
+That matters here for one reason: **the IFC is the only Reviter output that
+carries geometry, semantics, identity and provenance in one file.** GLB has the
+geometry and no semantics. The JSON audit has the semantics and no standard
+geometry. Anything that edits a Reviter model and expects the result to survive
+is editing towards the IFC whichever route it takes.
+
+Two corrections follow.
+
+**The express-id bridge is cheap, not expensive.** The earlier entry claimed the
+studio's viewport, picking and batching key on Reviter records rather than
+express ids, "so the whole UI would need a bridge". The exporter already writes
+`Reviter_Recovery.RevitElementId` on every tagged product and 41,709 of them
+also carry the native `UniqueId` — and [probe 1](ifc-lite-evaluation-2026-08-19.md)
+confirmed both survive an independent parse. The bridge is one `Map` built at
+parse time, not a rewrite.
+
+**The real blocker is size, and it is in our own doc.** That same audit records
+the export as **162 MB** for the 67 MB sample model — twice the Autodesk IFC,
+because bodies are per-element `IfcTriangulatedFaceSet` rather than parametric
+extrusions — and notes that IFC creation is currently **synchronous in the
+browser** and should move to a worker. Making an IFC round-trip the substrate
+for *interactive* editing would pay that cost to open a properties panel. That,
+not the data mapping, is what keeps interactive editing on a native overlay.
+
 ## What "edit" would mean in Reviter — three routes
 
 | Route | How | Buys | Costs |
 | --- | --- | --- | --- |
-| **A — native overlay** | Generalise `room-review`: an `ElementOverrides` sidecar keyed by Revit element id, applied by `makeIfc` | No new dependency, no second model in memory, provenance stays in Reviter's own vocabulary, works offline in the existing worker pipeline | Reviter writes every editor itself; no element *creation* without a lot of new geometry code |
-| **B — export then edit in IFClite's store** | `makeIfc` → `parseColumnar` → `StoreEditor` + `addWallToStore` etc. → `exportToStep({applyMutations:true})` | Their entire operation set immediately, including element creation, undo/redo, change sets | Two models in memory; the studio's viewport, picking and category batching all key on Reviter records, not express ids, so the whole UI would need a bridge; +1.46 MB gzipped WASM |
-| **C — A now, B later for creation only** | Overrides sidecar for everything that edits an existing element; defer creation | Ships the 80% that matters without a second data model | Two mechanisms eventually |
+| **A — native overlay** | Generalise `room-review`: an `ElementOverrides` sidecar keyed by Revit element id, applied by `makeIfc` | No new dependency, no second model in memory, provenance stays in Reviter's own vocabulary, works offline in the existing worker pipeline; edits are readable without materialising 162 MB | Reviter writes every editor itself; no element *creation* without a lot of new geometry code |
+| **B — export then edit in an IFC store** | `makeIfc` → `parseColumnar` → `StoreEditor` + `addWallToStore` etc. → `exportToStep({applyMutations:true})` | A whole authoring operation set immediately, including element creation, undo/redo and change sets, against an export that already validates | 162 MB materialised and parsed before the first edit, with export currently synchronous; +1.46 MB gzipped WASM; two models in memory |
+| **C — A for interactive editing, B for batch** | Overrides sidecar in the studio; IFC-store route for offline/CLI authoring and element creation | Neither path pays the other's cost — the panel stays responsive, and batch work gets the full operation set | Two mechanisms, and the override semantics have to agree between them |
 
-**Recommendation: C, starting with A.** The reason is that almost every edit
-worth making on a *recovery* is an override of something already decoded — a
-category the consensus got wrong, a type name that did not resolve, a parameter
-Revit does not surface, a `GeometryExact` claim the reviewer disputes. None of
-those need a new element. They need the room-review pattern applied to
-`ElementBoundsRecord`, and `makeIfc` already reads that record for every product
-it emits.
+**Recommendation: C, and the split is by workload rather than by phase.** Almost
+every edit worth making on a *recovery* is an override of something already
+decoded — a category the consensus got wrong, a type name that did not resolve,
+a parameter Revit does not surface, a `GeometryExact` claim the reviewer
+disputes. Those belong on the overlay: they are small, they are per-element, and
+a reviewer makes them while looking at the model.
 
 Element *creation* — patching the [undrawn census](unbc-undrawn-element-census-2026-07-28.md)
-by hand — is the one case that genuinely wants route B, and it can wait.
+by hand — and any bulk transformation over the whole building are the cases that
+genuinely want an IFC store, and they are also the cases where materialising the
+export is not a waste, because the export is the deliverable anyway. Moving IFC
+creation into a worker is a prerequisite for both, and it is already on the
+record as needed.
 
 ## The interface, piece by piece
 
@@ -186,7 +233,10 @@ value.
    elements.
 7. **Command palette and context menu** — cheap, and by now there are enough
    commands to justify them.
-8. *Only then* evaluate route B for element creation.
+8. **Move IFC creation into a worker** — already on the record as needed for a
+   162 MB export, and a prerequisite for anything that treats the IFC as an
+   editable substrate rather than a final artefact.
+9. *Only then* the route-B store for element creation and bulk authoring.
 
 Steps 1–5 add no dependency on IFClite at all. Its viewer is worth reading as a
 worked example of the same problem solved at scale; only step 8 would import
