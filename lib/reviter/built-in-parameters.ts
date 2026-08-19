@@ -13,10 +13,13 @@
  * among them. The entire -1,000,000..-1,000,999 band is empty in the published
  * documentation while neighbouring bands are dense, so these are most likely
  * internal parameters Autodesk does not surface through the API. They are
- * reported by number rather than guessed at. The ODA label resource in
- * `oda-label-resource.ts` is an independently produced table of the same
- * enumeration and it does not carry those ids either, which is a second source
- * agreeing that they are not public parameters.
+ * reported by number rather than guessed at — but the same SDK carries a second,
+ * richer table, `g_Parameters`, which does name them. `-1001101` is
+ * `wallHeightParam`, a `Double` whose measurement spec is `length`; `-1001111`
+ * is `wallBaseOffsetComputed`, also a length. They have no label because Revit
+ * does not surface them, not because they do not exist. Naming a parameter is
+ * better than printing its number, so `parameterDisplayName` falls back to that
+ * name for the 18 such ids that have one.
  *
  * That resource does supply two things this table cannot: the enumerator name
  * for an id, and a real label for the ids whose published documentation prints
@@ -24,7 +27,11 @@
  * `Rgb R Param` for `RGB_R_PARAM` — the resource's label replaces it.
  */
 
-import { odaParameterLabel, parameterEnumName } from "./oda-label-resource.ts";
+import {
+  odaParameterLabel,
+  parameterEnumName,
+  parameterTypeName,
+} from "./oda-label-resource.ts";
 
 /** `id:Label` pairs joined by `|`. */
 const PACKED_PARAMETERS = [
@@ -1182,6 +1189,7 @@ function builtInParameterName(parameterId: number): string | undefined {
 export function parameterDisplayName(parameterId: number): string {
   return odaParameterLabel(parameterId)
     ?? builtInParameterName(parameterId)
+    ?? parameterTypeName(parameterId)
     ?? `Parameter ${parameterId}`;
 }
 

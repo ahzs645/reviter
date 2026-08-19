@@ -17,6 +17,7 @@
  *   node scripts/extract-oda-label-tables.mjs [isolated-root] [--write-lib]
  */
 
+import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -26,7 +27,9 @@ const sourceRoot = resolve(
 const writeLib = process.argv.includes("--write-lib");
 
 const BINARY = "TB_ExLabelUtils.tx";
+const DESCRIPTOR_BINARY = "TB_Base.tx";
 const OUTPUT_JSON = resolve("docs/generated/oda-label-resource-tables.json");
+const OUTPUT_DESCRIPTORS = resolve("docs/generated/oda-parameter-descriptors.json");
 const OUTPUT_MARKDOWN = resolve("docs/generated/oda-label-resource-tables.md");
 const OUTPUT_MODULE = resolve("lib/reviter/oda-label-resource.ts");
 
@@ -171,6 +174,100 @@ for (const [family, rows] of sortedFamilies) {
   console.log(`  OdBm::${family}: ${rows.length}`);
 }
 
+/**
+ * `g_Parameters` in `TB_Base.tx`: one descriptor per `BuiltInParameter`.
+ *
+ * A length-prefixed record table, `[u32 15]` then, for each parameter,
+ * `i64 id`, `u32 storage`, `u32 0`, then UTF-16 spec, group, a `u16`, the
+ * label, and the parameter's Forge type id. It is self-terminating — the
+ * records tile the symbol exactly — so a run that does not land on the final
+ * byte has mis-read the layout and is rejected rather than truncated.
+ *
+ * This is a second table from the same SDK and it is a strict superset of the
+ * label CSV: every id agrees, no label conflicts, and 20 further ids appear
+ * that the CSV omits because Revit shows them no label. `-1001101` is one, and
+ * it is the id whose stored value reproduces the paired IFC export's wall
+ * extrusion depth.
+ */
+const STORAGE_TYPES = ["Integer", "Double", "String", "ElementId", "None"];
+
+function readParameterDescriptors(bytes, symbolOffset, symbolSize) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset + symbolOffset, symbolSize);
+  const decoder = new TextDecoder("utf-16le");
+  let cursor = 4;
+  const text = () => {
+    const units = view.getUint32(cursor, true);
+    cursor += 4;
+    const value = decoder.decode(new Uint8Array(view.buffer, view.byteOffset + cursor, units * 2));
+    cursor += units * 2;
+    return value;
+  };
+  const rows = [];
+  while (cursor < symbolSize) {
+    const id = Number(view.getBigInt64(cursor, true));
+    cursor += 8;
+    const storage = view.getUint32(cursor, true);
+    cursor += 8;
+    const spec = text();
+    const group = text();
+    cursor += 2;
+    const label = text();
+    const typeId = text();
+    rows.push({
+      id,
+      storage: STORAGE_TYPES[storage] ?? `Unknown ${storage}`,
+      spec: spec || null,
+      group: group || null,
+      label: label ? normaliseLabel(label) : null,
+      typeId: typeId || null,
+    });
+  }
+  if (cursor !== symbolSize) {
+    throw new Error(`g_Parameters did not tile its symbol: stopped at ${cursor} of ${symbolSize}`);
+  }
+  return rows;
+}
+
+/** Read a symbol's file offset and size from `nm -S`. */
+function symbolExtent(path, symbol) {
+  const listing = spawnSync("nm", ["-S", "--defined-only", path], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  }).stdout ?? "";
+  const row = listing.split("\n").find((line) => line.trim().endsWith(` ${symbol}`));
+  if (!row) return undefined;
+  const [address, size] = row.trim().split(/\s+/);
+  return { offset: Number.parseInt(address, 16), size: Number.parseInt(size, 16) };
+}
+
+let descriptors = [];
+const descriptorPath = resolve(sourceRoot, DESCRIPTOR_BINARY);
+const descriptorExtent = symbolExtent(descriptorPath, "g_Parameters");
+if (!descriptorExtent) {
+  console.warn(`skipping ${DESCRIPTOR_BINARY}: g_Parameters not found (is nm available?)`);
+} else {
+  const descriptorBytes = await readFile(descriptorPath);
+  descriptors = readParameterDescriptors(
+    descriptorBytes,
+    descriptorExtent.offset,
+    descriptorExtent.size,
+  );
+  const labelled = families.get("BuiltInParameter") ?? new Map();
+  for (const row of descriptors) {
+    const known = labelled.get(row.id);
+    if (known && known.label !== null && row.label !== null && known.label !== row.label) {
+      throw new Error(`descriptor label disagrees for ${row.id}: "${known.label}" vs "${row.label}"`);
+    }
+  }
+  await writeFile(OUTPUT_DESCRIPTORS, `${JSON.stringify({
+    source: DESCRIPTOR_BINARY,
+    symbol: "g_Parameters",
+    rows: descriptors.length,
+    parameters: descriptors,
+  }, null, 2)}\n`);
+  console.log(`${OUTPUT_DESCRIPTORS}: ${descriptors.length} parameter descriptors`);
+}
+
 if (!writeLib) {
   console.log("\npass --write-lib to regenerate lib/reviter/oda-label-resource.ts");
   process.exit(0);
@@ -298,6 +395,19 @@ const categoryEnumPairs = assertPackable(
     .map(([id, row]) => `${id}:${row.enumName.replace(/^OST_/, "")}`),
 );
 
+/**
+ * Forge parameter type ids for the ids the label tables do not name.
+ *
+ * 18 of the 20 have one. The prefix and the version suffix are dropped, so
+ * `autodesk.revit.parameter:wallHeightParam` ships as `wallHeightParam`.
+ */
+const parameterTypeNamePairs = assertPackable(
+  descriptors
+    .filter((row) => row.typeId !== null && !parameters.has(row.id))
+    .sort((a, b) => a.id - b.id)
+    .map((row) => `${row.id}:${row.typeId.replace(/^autodesk\.revit\.parameter:/, "").replace(/-\d+\.\d+\.\d+$/, "")}`),
+);
+
 const parameterEnumPairs = assertPackable(
   [...parameters.entries()]
     .sort((a, b) => a[0] - b[0])
@@ -378,6 +488,15 @@ const PACKED_PARAMETER_ENUM_NAMES = [
 ${packLines(parameterEnumPairs)}
 ].join("|");
 
+/**
+ * \`id:name\` pairs joined by \`|\`: the Forge parameter type id, stripped of its
+ * \`autodesk.revit.parameter:\` prefix and version, for parameters that neither
+ * label table names.
+ */
+const PACKED_PARAMETER_TYPE_NAMES = [
+${packLines(parameterTypeNamePairs)}
+].join("|");
+
 /** \`id:Label\` pairs joined by \`|\`, for every parameter the resource labels. */
 const PACKED_PARAMETER_LABELS = [
 ${packLines(parameterLabelPairs)}
@@ -396,6 +515,7 @@ function unpack(packed: string): Map<number, string> {
 let categoryLabels: Map<number, string> | undefined;
 let categoryEnumNames: Map<number, string> | undefined;
 let parameterEnumNames: Map<number, string> | undefined;
+let parameterTypeNames: Map<number, string> | undefined;
 let parameterLabels: Map<number, string> | undefined;
 let ambiguousCategoryLabels: Set<number> | undefined;
 
@@ -423,6 +543,18 @@ export function parameterEnumName(parameterId: number): string | undefined {
   return parameterEnumNames.get(parameterId);
 }
 
+/**
+ * Autodesk's Forge name for a parameter neither label table names, such as
+ * \`wallHeightParam\` for \`-1001101\`.
+ *
+ * These parameters exist and are typed, they simply carry no label because
+ * Revit does not surface them. Naming one is better than printing its number.
+ */
+export function parameterTypeName(parameterId: number): string | undefined {
+  parameterTypeNames ??= unpack(PACKED_PARAMETER_TYPE_NAMES);
+  return parameterTypeNames.get(parameterId);
+}
+
 /** Label Revit shows for a parameter id. */
 export function odaParameterLabel(parameterId: number): string | undefined {
   parameterLabels ??= unpack(PACKED_PARAMETER_LABELS);
@@ -431,4 +563,4 @@ export function odaParameterLabel(parameterId: number): string | undefined {
 `;
 
 await writeFile(OUTPUT_MODULE, moduleSource);
-console.log(`\n${OUTPUT_MODULE}: ${categoryLabelPairs.length} category labels, ${categoryEnumPairs.length} category names, ${ambiguousIds.length} ambiguous, ${parameterEnumPairs.length} parameter names, ${parameterLabelPairs.length} parameter labels`);
+console.log(`\n${OUTPUT_MODULE}: ${categoryLabelPairs.length} category labels, ${categoryEnumPairs.length} category names, ${ambiguousIds.length} ambiguous, ${parameterEnumPairs.length} parameter names, ${parameterTypeNamePairs.length} type names, ${parameterLabelPairs.length} parameter labels`);

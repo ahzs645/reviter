@@ -1,7 +1,12 @@
-# The ODA label resource
+# The ODA label and parameter tables
 
-`TB_ExLabelUtils.tx` in the isolated `BmJsonExportEx` runtime carries an
-embedded, CSV-derived label resource. Its rows are plain ASCII:
+Two of the isolated `BmJsonExportEx` binaries carry embedded enumeration data.
+`TB_ExLabelUtils.tx` holds a CSV-derived label resource, and `TB_Base.tx` holds
+a binary parameter descriptor table, `g_Parameters`, which is read for the ids
+the labels do not reach. Both are extracted by
+`scripts/extract-oda-label-tables.mjs`.
+
+The label resource's rows are plain ASCII:
 
 ```text
 OdBm::BuiltInParameter::WALL_USER_HEIGHT_PARAM;-1001105;Unconnected Height
@@ -141,37 +146,71 @@ It repairs one transcription artifact too. `-1006703 GRID_BUBBLE_LINE_PEN` was
 stored with a literal backslash-`n` on the end of "Bubble Weight Number", which
 reached the properties dock verbatim.
 
-### A second source agrees the internal ids are internal
+### The unnamed parameters have names after all
 
-Six parameter ids observed in the supplied project resolve in neither published
+Six parameter ids observed in the supplied project resolved in neither published
 source. `-1001101` — the id whose stored value reproduces the paired IFC export's
-wall extrusion depth on 6,272 of 6,278 walls — and `-1001111` are among them.
+wall extrusion depth on 6,272 of 6,278 walls — and `-1001111` were among them,
+and the README inferred from their absence that they were internal.
 
-This resource is a separately produced table of the same enumeration and it does
-not carry those ids either — independent corroboration that they are internal
-parameters Autodesk does not surface. They are still reported by number.
+They are not absent. `g_Parameters` in `TB_Base.tx` is a second, richer table
+from the same SDK: one binary descriptor per parameter carrying its storage
+type, measurement spec, group, label and Autodesk Forge type id. It tiles its
+symbol exactly — 3,723 records over 1,074,594 bytes, no remainder — and it is a
+strict superset of the label CSV, agreeing on every shared id with no label
+conflict. It names 20 ids the CSV omits, and those are precisely the ids Revit
+shows no label for:
 
-The README reached that conclusion by a different route, and its reasoning does
-not survive checking: it calls the `-1,000,000…-1,000,999` band empty, but
-`-1001101` and `-1001111` are not in it. They sit in `-1,001,000…-1,001,999`,
-which holds 245 entries in both tables. The band the README describes is empty,
-and so is everything above `-1,000,000` bar `-1` "Invalid" — the ids are simply
-gaps inside a dense band. Two independent tables omitting them is the evidence;
-the band argument is not.
+| Id | Forge name | Storage | Spec |
+| --- | --- | --- | --- |
+| `-1001101` | `wallHeightParam` | Double | `autodesk.spec.aec:length` |
+| `-1001111` | `wallBaseOffsetComputed` | Double | `autodesk.spec.aec:length` |
+
+So `-1001101` is a length parameter on walls, named by Autodesk's own schema.
+That is independent corroboration of the decode from a direction the paired IFC
+export cannot give: the id whose value matches a wall's extrusion depth is
+called *wall height* and is typed as a *length*. `parameterDisplayName` now
+returns `wallHeightParam` rather than `Parameter -1001101`.
+
+The README's supporting argument was wrong in any case, and is corrected there:
+it called the `-1,000,000…-1,000,999` band empty, but these ids are not in it.
+They sit in `-1,001,000…-1,001,999`, which holds 245 entries.
+
+The remaining two of the six are `-1005051` and `-1006800` if they are among the
+20; both appear in `g_Parameters` with a spec but no Forge type id, so they stay
+reported by number. Which four ids the other unresolved observations were is not
+recorded in this repository, so that cannot be closed here.
 
 ## Cost
 
 [`oda-label-resource.ts`](../lib/reviter/oda-label-resource.ts) is generated, and
 carries only what the transcribed tables do not already have: 1,075 category
-labels, 3,703 parameter enumerators, the 353-id ambiguous-label list, and the 13
-category and 25 parameter entries that fill gaps. It is 181 KiB of source, 44 KiB
-gzipped, next to the 140 KiB the two transcribed tables already cost. The 3,688
+labels, 3,703 parameter enumerators, the 353-id ambiguous-label list, the 18
+Forge names, and the 13 category and 25 parameter entries that fill gaps. It is
+183 KiB of source, 45 KiB gzipped, next to the 140 KiB the two transcribed tables
+already cost. The 3,688
 parameter labels and 1,211 category enumerators the two sources share are not
 shipped twice.
 
+## What was left
+
+`g_Parameters` also carries, for all 3,723 parameters, a storage type — 1,401
+Double, 1,205 Integer, 532 String, 466 ElementId, 119 None — a measurement spec
+across 116 kinds, and a parameter group across 111. The whole table is committed
+as [`generated/oda-parameter-descriptors.json`](generated/oda-parameter-descriptors.json).
+
+None of it is shipped, because nothing consumes it yet. It is the answer to a
+question `element-parameters.ts` currently states without explaining, though:
+"Only f64 values appear in these tables" is what you would expect if the decoder
+reads one of several value sets, and this table says which 1,401 parameters are
+doubles and which 2,322 are not. The spec would also give unit-aware formatting a
+basis it does not have.
+
 ## Regenerating
 
-The binaries are not in this repository and are not redistributable.
+The binaries are not in this repository and are not redistributable. `nm` is
+needed to locate `g_Parameters`; without it the label tables still extract and
+the descriptor step is skipped with a warning.
 
 ```sh
 node scripts/extract-oda-label-tables.mjs /path/to/BmJsonExportEx-isolated --write-lib

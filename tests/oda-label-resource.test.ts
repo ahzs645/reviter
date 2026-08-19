@@ -23,7 +23,19 @@ import {
 type ExtractedRow = { id: number; enumName: string; label: string | null };
 type ExtractedTables = { families: Record<string, ExtractedRow[]> };
 
+type Descriptor = { id: number; storage: string; spec: string | null; label: string | null };
+type Descriptors = { parameters: Descriptor[] };
+
 let tableCache: ExtractedTables | undefined;
+let descriptorCache: Descriptors | undefined;
+
+/** The committed `g_Parameters` extraction. */
+function parameterDescriptors(): Descriptors {
+  descriptorCache ??= JSON.parse(
+    readFileSync(new URL("../docs/generated/oda-parameter-descriptors.json", import.meta.url), "utf8"),
+  ) as Descriptors;
+  return descriptorCache;
+}
 
 /** The committed extraction the generated module is built from. */
 function extractedTables(): ExtractedTables {
@@ -108,10 +120,10 @@ test("parameter enumerators resolve for the verified wall-height ids", () => {
   assert.equal(parameterDisplayName(-1_001_105), "Unconnected Height");
 });
 
-test("the ids absent from the published enum are absent from the resource too", () => {
-  // A second, independently produced table of the same enumeration agreeing
-  // that these are not public parameters.
-  for (const id of [-1_001_101, -1_001_111]) {
+test("an id no source names at all is still reported by number", () => {
+  // `-1005051` and `-1006800` have a descriptor but no Forge type id and no
+  // label, so there is nothing to call them. Guessing is worse than a number.
+  for (const id of [-1_005_051, -1_006_800]) {
     assert.equal(parameterEnumName(id), undefined);
     assert.equal(parameterDisplayName(id), `Parameter ${id}`);
   }
@@ -253,4 +265,35 @@ test("no packed value can be corrupted by the table separator", () => {
   for (const row of withColons) {
     assert.equal(parameterDisplayName(row.id), row.label, `colon label for ${row.id}`);
   }
+});
+
+test("the parameters no label table names are still named", () => {
+  // `-1001101` is the id whose stored value reproduces the paired IFC export's
+  // wall extrusion depth. Neither label table carries it, because Revit shows
+  // it no label, but Autodesk's own schema names and types it.
+  assert.equal(parameterDisplayName(-1_001_101), "wallHeightParam");
+  assert.equal(parameterDisplayName(-1_001_111), "wallBaseOffsetComputed");
+  assert.equal(builtInParameterEnumName(-1_001_101), undefined);
+
+  const descriptors = parameterDescriptors();
+  const wallHeight = descriptors.parameters.find((row) => row.id === -1_001_101);
+  assert.equal(wallHeight?.storage, "Double");
+  assert.equal(wallHeight?.spec, "autodesk.spec.aec:length");
+});
+
+test("the descriptor table agrees with the label table on every shared id", () => {
+  // The descriptors are a strict superset read from a different binary. If the
+  // two ever disagreed, one of the two extractions would be misreading bytes.
+  const labelled = new Map(
+    extractedTables().families.BuiltInParameter.map((row) => [row.id, row.label]),
+  );
+  let shared = 0;
+  for (const row of parameterDescriptors().parameters) {
+    const label = labelled.get(row.id);
+    if (label === undefined) continue;
+    shared += 1;
+    if (label !== null && row.label !== null) assert.equal(row.label, label, `label for ${row.id}`);
+  }
+  assert.equal(shared, 3_703);
+  assert.equal(parameterDescriptors().parameters.length, 3_723);
 });

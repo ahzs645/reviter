@@ -2322,6 +2322,23 @@ const PACKED_PARAMETER_ENUM_NAMES = [
   "-1001000:WALL_ATTR_WIDTH_PARAM",
 ].join("|");
 
+/**
+ * `id:name` pairs joined by `|`: the Forge parameter type id, stripped of its
+ * `autodesk.revit.parameter:` prefix and version, for parameters that neither
+ * label table names.
+ */
+const PACKED_PARAMETER_TYPE_NAMES = [
+  "-1152999:structuralConnectionSymbol|-1151605:stairsLandingtypeTreadriserType",
+  "-1114137:rbsDuctFittingLossTableParam|-1060018:analyticalAutomationToleranceForBeams",
+  "-1060017:analyticalAutomationToleranceForFloors",
+  "-1060016:analyticalAutomationToleranceForColumnsAndWalls",
+  "-1060015:analyticalAutomationInPlanTolerance|-1013353:spacingJustification",
+  "-1006499:dimPickPref|-1006498:clearTempDimsToInserts|-1006497:arclengthDimsToWallsPrefs",
+  "-1006496:permDimsToWallsPrefs|-1006495:tempDimsToWallsPrefs|-1002102:surfacePatternIdParam",
+  "-1001116:cwallFakeEndParamn1|-1001115:cwallFakeEndParamn0|-1001111:wallBaseOffsetComputed",
+  "-1001101:wallHeightParam",
+].join("|");
+
 /** `id:Label` pairs joined by `|`, for every parameter the resource labels. */
 const PACKED_PARAMETER_LABELS = [
   "-1154691:Hook Orientation At End|-1154690:Hook Orientation At Start",
@@ -2354,6 +2371,7 @@ function unpack(packed: string): Map<number, string> {
 let categoryLabels: Map<number, string> | undefined;
 let categoryEnumNames: Map<number, string> | undefined;
 let parameterEnumNames: Map<number, string> | undefined;
+let parameterTypeNames: Map<number, string> | undefined;
 let parameterLabels: Map<number, string> | undefined;
 let ambiguousCategoryLabels: Set<number> | undefined;
 
@@ -2379,6 +2397,18 @@ export function odaCategoryEnumName(categoryId: number): string | undefined {
 export function parameterEnumName(parameterId: number): string | undefined {
   parameterEnumNames ??= unpack(PACKED_PARAMETER_ENUM_NAMES);
   return parameterEnumNames.get(parameterId);
+}
+
+/**
+ * Autodesk's Forge name for a parameter neither label table names, such as
+ * `wallHeightParam` for `-1001101`.
+ *
+ * These parameters exist and are typed, they simply carry no label because
+ * Revit does not surface them. Naming one is better than printing its number.
+ */
+export function parameterTypeName(parameterId: number): string | undefined {
+  parameterTypeNames ??= unpack(PACKED_PARAMETER_TYPE_NAMES);
+  return parameterTypeNames.get(parameterId);
 }
 
 /** Label Revit shows for a parameter id. */
