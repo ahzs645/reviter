@@ -14,6 +14,7 @@
  * the IFC useful without claiming that an approximate stair, door or wall is
  * exact native geometry.
  */
+import { applyElementOverrides, assertedFields } from "./element-overrides.ts";
 import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
 import { spacePredefinedType } from "./room-review.ts";
@@ -24,6 +25,7 @@ import type {
   MaterialData,
   MeshGeometrySource,
 } from "./types.ts";
+import type { ElementOverride, OverriddenRecord } from "./element-overrides.ts";
 import type { ReviewedRoom } from "./room-review.ts";
 
 const METRES_PER_FOOT = 0.3048;
@@ -49,6 +51,17 @@ type IfcClass = {
 export type IfcExportOptions = {
   /** Only accepted rooms with `ifc.export` enabled become IfcSpace entities. */
   rooms?: readonly ReviewedRoom[];
+  /**
+   * Reviewer assertions laid over the recovered elements.
+   *
+   * They change what the file says an element is — its category decides its IFC
+   * class — so every element carrying one is flagged in `Reviter_Recovery` with
+   * who asserted it, when, which fields, and what the decoder had said. A
+   * consumer that trusts a Reviter export because of its provenance properties
+   * must be able to see a human in the chain, or the properties are worth less
+   * than they claim.
+   */
+  overrides?: readonly ElementOverride[];
 };
 
 class StepWriter {
@@ -549,16 +562,52 @@ function emitElementProperties(
   product: number,
   element: ManifestElement,
   source: ElementBoundsRecord | undefined,
+  asserted: OverriddenRecord | undefined,
 ): void {
   const exact =
     element.geometry.finalProvenance === "native" ||
     element.geometry.finalProvenance === "reference-assisted";
+  const fields = asserted ? assertedFields(asserted.override) : [];
+  const categoryAsserted = fields.includes("category");
   const properties = [
     integerProperty(writer, "RevitElementId", element.elementId),
     ...(element.uniqueId ? [textProperty(writer, "RevitUniqueId", element.uniqueId)] : []),
     ...(element.category?.id == null ? [] : [integerProperty(writer, "RevitCategoryId", element.category.id)]),
     ...(element.category?.name ? [textProperty(writer, "RevitCategory", element.category.name)] : []),
-    textProperty(writer, "CategoryEvidence", element.category?.evidence ?? "unknown"),
+    // The evidence for the value now in `RevitCategory`. When a reviewer
+    // replaced it, the evidence is the reviewer — reporting the decoder's
+    // `record-code-consensus` beside a category the decoder did not choose
+    // would be attributing a human's claim to the machine.
+    textProperty(
+      writer,
+      "CategoryEvidence",
+      categoryAsserted ? "reviewer-assertion" : element.category?.evidence ?? "unknown",
+    ),
+    // What the decoder had said, kept whenever a reviewer overruled it. An
+    // export that shows only the assertion has replaced evidence with an
+    // opinion and left no way back.
+    ...(asserted && fields.length
+      ? [
+        textProperty(writer, "AssertedFields", fields.join(",")),
+        textProperty(writer, "AssertedBy", asserted.override.author),
+        textProperty(writer, "AssertedAt", asserted.override.updatedAt),
+        ...(asserted.override.note.trim()
+          ? [textProperty(writer, "AssertedNote", asserted.override.note.trim())]
+          : []),
+        ...(categoryAsserted && asserted.decoded.categoryId != null
+          ? [integerProperty(writer, "DecodedRevitCategoryId", asserted.decoded.categoryId)]
+          : []),
+        ...(categoryAsserted
+          ? [
+            textProperty(writer, "DecodedRevitCategory", asserted.decoded.categoryName ?? "Uncategorised"),
+            textProperty(writer, "DecodedCategoryEvidence", source?.categorySource ?? "unknown"),
+          ]
+          : []),
+        ...(fields.includes("typeName")
+          ? [textProperty(writer, "DecodedType", asserted.decoded.typeName ?? "")]
+          : []),
+      ]
+      : []),
     textProperty(writer, "GeometrySource", element.geometry.source),
     textProperty(writer, "GeometryProvenance", element.geometry.finalProvenance),
     booleanProperty(writer, "GeometryExact", exact),
@@ -600,8 +649,21 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
   const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
-  const manifest = elementManifest(result);
+  // Reviewer assertions are applied to a copy of the bounds records before the
+  // manifest is built, so an asserted category reaches `ifcClassFor` and the
+  // element is emitted as the class the reviewer said it is rather than being
+  // renamed while staying the decoder's class.
+  const { records: assertedBounds, overridden } = applyElementOverrides(
+    result.elementBounds,
+    options.overrides ?? [],
+  );
+  const manifest = elementManifest(
+    overridden.size ? { ...result, elementBounds: assertedBounds } : result,
+  );
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
+  // Deliberately the *original* records: this map supplies the source-record
+  // location and the decoder's own category evidence, both of which an override
+  // must not be able to rewrite.
   const sourceByElement = new Map<number, ElementBoundsRecord>();
   for (const source of result.elementBounds) {
     if (!sourceByElement.has(source.elementId)) sourceByElement.set(source.elementId, source);
@@ -762,6 +824,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       product,
       element,
       sourceByElement.get(element.elementId),
+      overridden.get(element.elementId),
     );
 
     if (element.type) {

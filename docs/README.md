@@ -45,8 +45,11 @@ Read in this order they are roughly the order the work happened.
 | [Stream coverage and the embedded schema](rvt-stream-and-schema-coverage.md) | Every CFB stream, how deeply each is decoded, and the `Formats/Latest` class inventory |
 | [Validating on a second building](validating-on-a-second-building.md) | What fitting every rule to one model has cost, rule by rule, and what to look at first on a second file |
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
+| [Running `BmJsonExportEx`, 2026-08-19](bm-json-export-execution-2026-08-19.md) | The first execution of the isolated runtime: the reconstructed contract confirmed, and the trial-activation gate that stops it being a semantic oracle |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
+| [IFClite evaluation, 2026-08-19](ifc-lite-evaluation-2026-08-19.md) | What an external client-side IFC toolkit has that Reviter does not, four probes against Reviter's own IFC output, and what is worth taking |
+| [Editing and the IFClite interface, 2026-08-19](ifc-lite-interface-and-editing-2026-08-19.md) | What an edit can mean when the source format cannot be written back, which parts of an authoring UI are worth copying, and the staged route from a read-only dock to reviewable overrides |
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
 | [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
 
@@ -86,6 +89,7 @@ surface classes it reaches, and the ownership rules that attribute them.
 Dated audits, each one run against one model on one day.
 
 [IFC parity baseline](unbc-ifc-parity-baseline.md) ·
+[independent-reader verification, 2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) ·
 [GLB registration and the stair waist, 2026-08-13](unbc-glb-registration-and-stair-waist-2026-08-13.md) ·
 [RVT to IFC export, 2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) ·
 [three-source audit, 2026-08-01](unbc-three-source-audit-2026-08-01.md) ·

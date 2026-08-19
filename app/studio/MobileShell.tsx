@@ -261,9 +261,14 @@ export function MobileShell({
                 properties.length ? (
                   <dl style={{ margin: 0 }}>
                     {properties.map((row) => (
-                      <div className="property-row" key={row.key}>
+                      <div className="property-row" data-provenance={row.provenance} key={row.key}>
                         <dt>{row.label}</dt>
-                        <dd title={row.value}>{row.value}</dd>
+                        <dd title={row.value}>
+                          {row.provenance !== "decoded" && (
+                            <span className="property-provenance">{row.provenance}</span>
+                          )}
+                          <span className="property-value">{row.value}</span>
+                        </dd>
                       </div>
                     ))}
                   </dl>

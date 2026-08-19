@@ -954,19 +954,167 @@ button[data-reason]:focus-visible::after {
 .property-row dt { color: var(--text-2); font-size: 11.5px; }
 .property-row dd {
   margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   overflow: hidden;
   font-family: var(--mono);
   font-size: 11px;
   text-align: right;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The value truncates; the provenance marker never does. A row that elided the
+   marker to fit a longer value would be hiding the one thing the row is here to
+   say. */
+.property-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .properties-header div,
 .property-row dt,
 .property-row dd { user-select: text; }
 
+/*
+ * A value the decoder derived, marked where it is read rather than in a legend.
+ *
+ * Colour alone would not carry this — a reader with low colour vision, or one
+ * pasting the palette elsewhere, would see an inferred category as a read one.
+ * The marker is therefore a word, it sits inline before the value, and the
+ * clipboard writer emits the same word.
+ */
+.property-provenance {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-family: var(--sans, inherit);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.property-row[data-provenance="edited"] .property-provenance {
+  background: color-mix(in srgb, var(--accent, var(--good)) 16%, transparent);
+  color: var(--accent, var(--good));
+}
+
 .property-actions { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .property-actions .rv-button { flex: 1; font-size: 11.5px; }
+
+/* The edit switch and the assertion surface it gates. */
+.edit-pill.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.edit-pill-count {
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.assertion-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.assertion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.assertion-header strong { font-size: 11.5px; }
+.assertion-history { display: flex; gap: 2px; }
+.assertion-field { display: grid; grid-template-columns: 1fr 1.15fr; align-items: center; gap: 10px; }
+.assertion-field span { color: var(--text-2); font-size: 11.5px; }
+.assertion-field select,
+.assertion-field input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-1, transparent);
+  color: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.assertion-caveat { margin: 0; color: var(--text-3); font-size: 10.5px; line-height: 1.4; }
+
+/* Review before export. */
+.assertion-review-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .55);
+}
+.assertion-review {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: min(76vh, 700px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-1, #14181b);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+}
+.assertion-review-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.assertion-review-header strong { display: block; font-size: 13px; }
+.assertion-review-header span { color: var(--text-2); font-size: 11.5px; }
+.assertion-review-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: 11.5px;
+}
+.assertion-review-body { flex: 1; min-height: 0; overflow: auto; }
+.assertion-review-row { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.assertion-review-element { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.assertion-review-element strong { font-size: 12px; }
+.assertion-review-element span { color: var(--text-2); font-size: 11px; }
+.assertion-review-orphan { color: var(--warn) !important; }
+.assertion-review-row dl { margin: 6px 0 0; display: grid; gap: 4px; }
+.assertion-review-row dl > div { display: grid; grid-template-columns: 90px 1fr; gap: 10px; align-items: center; }
+.assertion-review-row dt { color: var(--text-2); font-size: 11px; }
+.assertion-review-row dd { margin: 0; display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; }
+.assertion-review-decoded { color: var(--text-3); text-decoration: line-through; }
+.assertion-review-asserted { color: var(--accent); }
+.assertion-review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.assertion-review-actions p { margin: 0; max-width: 300px; color: var(--text-3); font-size: 10.5px; line-height: 1.4; }
+.assertion-review-actions div { display: flex; gap: 6px; }
+.assertion-review-actions .rv-button.primary {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
 
 .properties-empty {
   flex: 1;

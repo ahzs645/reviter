@@ -67,5 +67,31 @@ export type CommentFilter = "open" | "resolved" | "all";
 /** Mobile only: which panel is raised over the viewport. */
 export type MobileSheet = "model" | "comments" | "properties" | "map" | "report";
 
-export type PropertyRow = { key: string; label: string; value: string };
+/**
+ * How a displayed property value came to be known.
+ *
+ * Reviter recovers a proprietary format by measurement, so a value in the
+ * palette is not one kind of fact. `decoded` was read out of the file — the
+ * element's own category token, its persisted parameter table, the type record
+ * its type reference points at. `inferred` was derived when the file did not
+ * say: a category taken from a record-code consensus, a body rebuilt or fallen
+ * back to an axis-aligned envelope. On the supplied project on 2026-08-19 the
+ * split was not marginal — 60.1% of categorised products carried a consensus
+ * category rather than their own token, and 7.2% of bodies were a bounds
+ * fallback — so a palette that renders both in the same grey text is telling
+ * the reader that the decoder is more certain than it is.
+ *
+ * `edited` is reserved for a value a person asserted over the recovery. Nothing
+ * produces it yet; it exists so that the rendering and the clipboard format are
+ * settled before the override overlay lands, rather than being retrofitted
+ * around whatever the first editor happens to need.
+ */
+export type PropertyProvenance = "decoded" | "inferred" | "edited";
+
+export type PropertyRow = {
+  key: string;
+  label: string;
+  value: string;
+  provenance: PropertyProvenance;
+};
 export type CategoryRow = { name: string; count: number };
