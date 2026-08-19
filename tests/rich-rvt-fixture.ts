@@ -50,6 +50,7 @@ import {
   REVIT_PAGE_CHECKSUM_BYTES,
   REVIT_PAGE_PAYLOAD_BYTES,
 } from "../lib/reviter/revit-container.ts";
+import { INITIAL_SCHEMA_CLASS_INDEX } from "../lib/reviter/schema-reader.ts";
 
 /** Revit's canonical chunk header: gzip magic, no flags, no optional fields. */
 const GZIP_HEADER = [0x1f, 0x8b, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0x0b] as const;
@@ -608,29 +609,79 @@ export type ParameterSpec = {
   parameters: readonly (readonly [number, number])[];
 };
 
-/** The owner anchor a parameter table hangs off, then the table itself. */
+/** Bytes one element object with a parameter table occupies in a page. */
+export function parameterObjectBytes(parameterCount: number): number {
+  return PARAMETER_TABLE_OFFSET + 4 + parameterCount * 16 + 4;
+}
+
+/**
+ * Offset of the value sets within the object.
+ *
+ * They are the first objects the record defers, so they begin after all of
+ * `Element`'s own fields: the frame header, the seven leading pointers, the
+ * anchor, `m_id`, the seven element ids from `m_assocLevelId` to
+ * `m_designOptionId`, and three flags.
+ */
+const PARAMETER_TABLE_OFFSET = 125;
+
+/**
+ * One element object carrying a parameter table, framed as the file writes it.
+ *
+ * The decoder reads the leading `Element` fields to decide whether the element
+ * owns a table at all, so a bare anchor is not enough: the object needs its
+ * frame header, a live `m_pParamValueSetDouble` pointer, the five null pointers
+ * and the empty `m_constrInfo` that follow it, and the length echo behind it.
+ */
+export function writeParameterObject(
+  page: Uint8Array,
+  view: DataView,
+  start: number,
+  table: ParameterSpec,
+): number {
+  const tableEnd = start + PARAMETER_TABLE_OFFSET + 4 + table.parameters.length * 16;
+  const objectLength = tableEnd - start - 16;
+  view.setUint32(start, table.elementId, true);
+  view.setUint32(start + 4, 0, true);
+  view.setUint32(start + 8, 0, true);
+  view.setUint32(start + 12, objectLength, true);
+  view.setUint16(start + 16, 0x08c6, true);
+  // `m_pParamValueSetDouble`: handle -1, class `ParamValueSetDouble` (0x0c93).
+  page.set([0xff, 0xff, 0xff, 0xff, 0x93, 0x0c], start + 18);
+  // The four pointers and the geometry pair that follow are all null here.
+  for (let field = 0; field < 5; field += 1) view.setUint32(start + 24 + field * 4, 0, true);
+  // `m_constrInfo`, an empty collection.
+  view.setUint32(start + 44, 0, true);
+  // `m_cellList` and `m_docAccess.m_pDoc`, which together are the anchor.
+  page.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], start + 48);
+  // `m_id`, the element restating its own id.
+  view.setUint32(start + 58, table.elementId, true);
+  view.setUint32(start + 62, 0, true);
+  // `m_assocLevelId` through `m_designOptionId`, all unset, then three flags.
+  for (let field = 0; field < 7; field += 1) {
+    view.setInt32(start + 66 + field * 8, -1, true);
+    view.setInt32(start + 70 + field * 8, -1, true);
+  }
+  const at = start + PARAMETER_TABLE_OFFSET;
+  view.setUint32(at, table.parameters.length, true);
+  for (const [index, [id, value]] of table.parameters.entries()) {
+    view.setUint32(at + 4 + index * 16, id + 0x1_0000_0000, true);
+    view.setUint32(at + 8 + index * 16, 0xffff_ffff, true);
+    view.setFloat64(at + 12 + index * 16, value, true);
+  }
+  view.setUint32(tableEnd, objectLength, true);
+  return tableEnd + 4;
+}
+
+/** Element objects each carrying one parameter table. */
 export function parameterPage(tables: readonly ParameterSpec[]): Uint8Array {
   const size = tables.reduce(
-    (total, table) => total + 32 + 4 + table.parameters.length * 16 + 16,
+    (total, table) => total + parameterObjectBytes(table.parameters.length),
     0,
   );
   const page = new Uint8Array(size + 8);
   const view = new DataView(page.buffer);
   let cursor = 0;
-  for (const table of tables) {
-    cursor += 8;
-    page.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], cursor);
-    view.setUint32(cursor + 10, table.elementId, true);
-    view.setUint32(cursor + 14, 0, true);
-    const at = cursor + 24;
-    view.setUint32(at, table.parameters.length, true);
-    for (const [index, [id, value]] of table.parameters.entries()) {
-      view.setUint32(at + 4 + index * 16, id + 0x1_0000_0000, true);
-      view.setUint32(at + 8 + index * 16, 0xffff_ffff, true);
-      view.setFloat64(at + 12 + index * 16, value, true);
-    }
-    cursor = at + 4 + table.parameters.length * 16 + 16;
-  }
+  for (const table of tables) cursor = writeParameterObject(page, view, cursor, table);
   return page;
 }
 
@@ -694,9 +745,11 @@ export type FramedObjectSpec = {
  * frame and a few named fields.
  *
  * This is what the persisted relationship scanners read: an associated-level id
- * sits at a fixed offset inside a `0x0f3b` frame, and the level it names is
- * recognised by its own object's marker. Both are field reads within a proven
- * frame, so the frame is all this has to supply.
+ * sits inside a `0x0f3b` frame at a position the record's own pointer fields
+ * determine, and the level it names is recognised by its own object's marker.
+ * These objects carry no live pointers, so `m_assocLevelId` is at its narrowest
+ * offset, 62. Both are field reads within a proven frame, so the frame is all
+ * this has to supply.
  */
 export function framedObjectsPage(
   objects: readonly FramedObjectSpec[],
@@ -853,23 +906,70 @@ export function partitionTable(names: readonly string[]): Uint8Array {
   return data;
 }
 
-/** `Formats/Latest`: one tagged class and the parent it references. */
-export function formatsLatest(name: string, tag: number, parent: string): Uint8Array {
-  const parentOffset = 2 + name.length + 4;
-  const parentEnd = parentOffset + 2 + parent.length;
-  const data = new Uint8Array(parentEnd + 10);
-  const view = new DataView(data.buffer);
-  view.setUint16(0, name.length, true);
-  for (let index = 0; index < name.length; index += 1) data[2 + index] = name.charCodeAt(index);
-  view.setUint16(2 + name.length, 0x8000 | tag, true);
-  view.setUint16(parentOffset, parent.length, true);
-  for (let index = 0; index < parent.length; index += 1) {
-    data[parentOffset + 2 + index] = parent.charCodeAt(index);
+/**
+ * `Formats/Latest`: a class whose parent is defined inline, and a sibling whose
+ * parent is a back-reference to it.
+ *
+ * Written to the stream's own grammar rather than to the shape the inventory
+ * scanner looks for, so both readers accept it: a class is `[i16][u16 nameLen]
+ * [name][TypeRef parent][i32 version][i32 propertyCount][properties]
+ * [i32 guidCount]`, a `TypeRef` with the high bit set introduces a definition
+ * inline, and eight zero bytes close the stream. Indices are handed out in
+ * creation order from {@link INITIAL_SCHEMA_CLASS_INDEX}, so the class takes 12
+ * and the parent it defines takes 13.
+ *
+ * The scanner reads the same bytes because the parent definition's own leading
+ * word is the padding it expects, and the version and field count it takes from
+ * behind the parent name are that parent's.
+ */
+export function formatsLatest(
+  name: string,
+  parent: string,
+  sibling: string,
+  parentFields = 3,
+): Uint8Array {
+  const bytes: number[] = [];
+  const u16 = (value: number) => bytes.push(value & 0xff, (value >> 8) & 0xff);
+  const i32 = (value: number) =>
+    bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
+  const ascii = (text: string) => {
+    for (const character of text) bytes.push(character.charCodeAt(0));
+  };
+  const parentIndex = INITIAL_SCHEMA_CLASS_INDEX + 1;
+
+  u16(0);
+  u16(name.length);
+  ascii(name);
+  u16(0x8000 | parentIndex);
+  u16(0);
+  u16(parent.length);
+  ascii(parent);
+  u16(0);
+  i32(3);
+  i32(parentFields);
+  for (let field = 0; field < parentFields; field += 1) {
+    const fieldName = `m_f${field}`;
+    i32(fieldName.length);
+    ascii(fieldName);
+    // An `int32` member with no loading or item mode, and the unknown word.
+    bytes.push(0x04, 0x00);
+    u16(0);
   }
-  view.setUint16(parentEnd, tag, true);
-  view.setUint32(parentEnd + 2, 7, true);
-  view.setUint32(parentEnd + 6, 3, true);
-  return data;
+  i32(0);
+  i32(7);
+  i32(0);
+  i32(0);
+
+  u16(0);
+  u16(sibling.length);
+  ascii(sibling);
+  u16(parentIndex);
+  i32(5);
+  i32(0);
+  i32(0);
+
+  for (let index = 0; index < 8; index += 1) bytes.push(0);
+  return Uint8Array.from(bytes);
 }
 
 export function container(
@@ -985,7 +1085,7 @@ export function buildModel(spec: ModelSpec): Uint8Array {
   if (spec.includeSchema) {
     streams.push({
       path: "/Formats/Latest",
-      bytes: gzipChunk(formatsLatest("Wall", 1_234, "Element")),
+      bytes: gzipChunk(formatsLatest("Wall", "Element", "Floor")),
     });
   }
   streams.push({
@@ -1390,12 +1490,12 @@ export function richSpec(): ModelSpec {
       // element — which is also what puts the relations path, rather than the
       // z-histogram fallback, in charge of `levels`.
       { elementId: 47_000, objectLength: 96, marker: 0x0a19 },
-      { elementId: 46_000, objectLength: 120, marker: 0x0f3b, fields: [[70, 47_000]] },
+      { elementId: 46_000, objectLength: 120, marker: 0x0f3b, fields: [[62, 47_000]] },
       ...Array.from({ length: 24 }, (_, index) => ({
         elementId: 100_000 + index,
         objectLength: 120,
         marker: 0x0f3b,
-        fields: [[70, 47_000]] as const,
+        fields: [[62, 47_000]] as const,
       })),
     ],
     extraTokens: [{ elementId: 58_000, categoryId: CATEGORY.floors }],

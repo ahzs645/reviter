@@ -18,11 +18,11 @@ import {
   inflateRevitChunk,
   stripRevitPageChecksums,
 } from "../lib/reviter/revit-container.ts";
-import { summariseSchema } from "../lib/reviter/schema.ts";
 import {
-  findSchemaClassDefinition,
-  flattenSchemaFields,
-} from "../lib/reviter/schema-fields.ts";
+  readSchema,
+  schemaAncestorChain,
+  schemaClassesByName,
+} from "../lib/reviter/schema-reader.ts";
 
 const [rvtPath] = process.argv.slice(2);
 if (!rvtPath) throw new Error("usage: probe-stair-type-classes.ts model.rvt");
@@ -37,19 +37,20 @@ const offset = gzipOffsets(raw, 1)[0];
 if (offset == null) throw new Error("no gzip member");
 const schemaBytes = inflateRevitChunk(raw, offset);
 if (!schemaBytes) throw new Error("Formats/Latest gzip member did not inflate");
-const summary = summariseSchema(schemaBytes);
+const parsed = readSchema(schemaBytes);
+if (!parsed.ok) throw new Error(`schema did not tile: ${parsed.error} at ${parsed.offset}`);
+const { schema } = parsed;
+const byName = schemaClassesByName(schema);
 
 const interesting = /stair|riser|tread|monolith|runtype/i;
-console.log("tagged classes:");
-for (const entry of summary.taggedClasses) {
-  if (interesting.test(entry.name) || interesting.test(entry.parent ?? "")) {
-    console.log(`  tag=${entry.tag} name=${entry.name} parent=${entry.parent}` +
-      ` version=${entry.version} fields=${entry.declaredFieldCount}`);
-  }
-}
-console.log("referenced classes:");
-for (const entry of summary.referencedClasses ?? []) {
-  if (interesting.test(entry.name)) console.log(`  ${JSON.stringify(entry)}`);
+console.log(`${schema.classes.length} classes; those matching ${interesting}:`);
+for (const entry of schema.classes) {
+  const parent = entry.parent.kind === "inline" || entry.parent.kind === "reference"
+    ? entry.parent.name
+    : "";
+  if (!interesting.test(entry.name) && !interesting.test(parent)) continue;
+  console.log(`  index=${entry.index} name=${entry.name} parent=${parent}` +
+    ` version=${entry.version} fields=${entry.propertyCount}`);
 }
 
 const candidates = [
@@ -62,20 +63,24 @@ const candidates = [
   "StairsAttributes",
 ];
 for (const name of candidates) {
-  // `findSchemaClassDefinition` already returns the decoded layer; it used to
-  // hand back an offset to decode separately, and this loop was still reading
-  // `definition.offset` — undefined on the success branch — so every candidate
-  // reported "layer decode failed" instead of printing its fields.
-  const definition = findSchemaClassDefinition(schemaBytes, name);
-  if (!definition.ok) {
-    console.log(`\n${name}: field decode failed: ${definition.error}`);
+  const definition = byName.get(name);
+  if (!definition) {
+    console.log(`\n${name}: not declared by this file`);
     continue;
   }
-  const fields = flattenSchemaFields(definition.layer);
-  console.log(`\n${name} classId=${definition.layer.classId} fields=${fields.length}:`);
-  for (const field of fields) {
-    console.log(`    ${field.name} type=0x${field.typeCode.toString(16)}` +
-      ` mode=0x${field.mode.toString(16)}` +
-      (field.arrayElement ? ` array=${JSON.stringify(field.arrayElement)}` : ""));
+  // Base first, which is the order an instance writes them in.
+  const chain = schemaAncestorChain(schema, definition.index);
+  const fields = chain.flatMap((entry) =>
+    entry.properties.map((property) => ({ owner: entry.name, property })));
+  console.log(
+    `\n${name} index=${definition.index} chain=${chain.map((entry) => entry.name).join(" < ")}` +
+      ` fields=${fields.length}:`,
+  );
+  for (const { owner, property } of fields) {
+    console.log(
+      `    ${owner}.${property.name} type=0x${property.fieldType.toString(16)}` +
+        ` lm=${property.loadingMode} im=${property.itemMode}` +
+        (property.size == null ? "" : ` size=${property.size}`),
+    );
   }
 }

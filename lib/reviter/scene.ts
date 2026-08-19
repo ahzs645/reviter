@@ -549,15 +549,12 @@ export function isStairOrRailingHelperProxy(
     const height = record.boundsFeet.max.z - record.boundsFeet.min.z;
     if (Math.max(width, depth) <= 0.1 && height >= 5) return true;
   }
-  return (
-    (record.categoryId != null &&
-      PROXY_ONLY_HELPER_CATEGORY_IDS.has(record.categoryId)) ||
-    record.categoryName === "Railing Rail Path Extension Lines" ||
-    record.categoryName === "Stairs Paths" ||
-    record.categoryName === "Stairs Sketch Boundary Lines" ||
-    record.categoryName === "Sketch Lines" ||
-    record.categoryName === "Stairs Railing Baluster"
-  );
+  // Id only. The five display names this used to also accept are exactly the
+  // ids in the set above, and no producer sets a category name without its id,
+  // so the name arm was unreachable — and stale, once Revit's own labels
+  // replaced the enumerator-derived names.
+  return record.categoryId != null &&
+    PROXY_ONLY_HELPER_CATEGORY_IDS.has(record.categoryId);
 }
 
 /** Stair assembly containers whose native run children already reach the scene. */

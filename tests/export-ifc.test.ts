@@ -4,6 +4,7 @@ import test from "node:test";
 import { IfcAPI } from "web-ifc";
 
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
+import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
 import { isReviewedRoom } from "../lib/reviter/room-review.ts";
 import type { ConvertResult } from "../lib/reviter/types.ts";
 import type { ReviewedRoom } from "../lib/reviter/room-review.ts";
@@ -445,4 +446,65 @@ test("keeps element IFC GUIDs stable when the same native model is renamed", () 
   assert.ok(firstGuid);
   assert.equal(secondGuid, firstGuid);
   assert.match(firstGuid, /^[0-3][0-9A-Za-z_$]{21}$/);
+});
+
+/**
+ * Every category the exporter maps, and the IFC entity it must produce.
+ *
+ * This pins the mapping to category *ids*. It used to be keyed on the category
+ * display name, which made the exported class depend on a Revit label: when
+ * `OST_CurtainWallPanels` began reading "Curtain Panels" instead of "Curtain
+ * Wall Panels", every curtain panel silently became an `IfcBuildingElementProxy`
+ * and no test noticed, because every fixture wrote its own category name.
+ */
+const IFC_CLASS_EXPECTATIONS: readonly (readonly [number, string])[] = [
+  [-2_000_011, "IFCWALL"],
+  [-2_000_032, "IFCSLAB"],
+  [-2_000_035, "IFCROOF"],
+  [-2_000_038, "IFCCOVERING"],
+  [-2_000_023, "IFCDOOR"],
+  [-2_000_014, "IFCWINDOW"],
+  [-2_000_100, "IFCCOLUMN"],
+  [-2_001_330, "IFCCOLUMN"],
+  [-2_001_320, "IFCMEMBER"],
+  [-2_000_171, "IFCMEMBER"],
+  [-2_000_170, "IFCPLATE"],
+  [-2_000_120, "IFCSTAIR"],
+  [-2_000_919, "IFCSTAIRFLIGHT"],
+  [-2_000_175, "IFCRAILING"],
+  [-2_000_126, "IFCRAILING"],
+  [-2_000_920, "IFCSLAB"],
+  [-2_000_946, "IFCMEMBER"],
+  [-2_000_127, "IFCMEMBER"],
+  [-2_000_123, "IFCMEMBER"],
+  [-2_000_080, "IFCFURNITURE"],
+  [-2_001_100, "IFCFURNITURE"],
+  [-2_000_180, "IFCRAMP"],
+];
+
+test("IFC classes follow the category id, not its display name", () => {
+  for (const [categoryId, entity] of IFC_CLASS_EXPECTATIONS) {
+    const result = fixture();
+    // Named exactly as the pipeline names it, rather than hard-coded, so a
+    // change to Revit's label cannot quietly decouple the fixture from the map.
+    result.elementBounds = [{
+      ...result.elementBounds[0],
+      categoryId,
+      categoryName: categoryDisplayName(categoryId),
+    }];
+    result.meshes = [{ ...result.meshes[0], elementIds: new Uint32Array([10, 10]) }];
+    const source = makeIfc(result);
+    assert.match(source, new RegExp(`#\\d+=${entity}\\(`), `${categoryId} -> ${entity}`);
+  }
+});
+
+test("an unmapped category exports as a proxy", () => {
+  const result = fixture();
+  result.elementBounds = [{
+    ...result.elementBounds[0],
+    categoryId: -2_000_081,
+    categoryName: categoryDisplayName(-2_000_081),
+  }];
+  result.meshes = [{ ...result.meshes[0], elementIds: new Uint32Array([10, 10]) }];
+  assert.match(makeIfc(result), /#\d+=IFCBUILDINGELEMENTPROXY\(/);
 });

@@ -46,7 +46,9 @@ One entry in that table was wrong and is corrected here: `44` was read as `IfcOp
 
 The marker drifts by release exactly as schema tags do — `0x086d` in 2024, `0x08a4` in 2025, `0x08cc` in 2026, `0x08c6` in the 2027 project — so it is measured from the file rather than hard-coded. Releases 2020 and 2023 produce no chains; older releases frame objects differently.
 
-Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 417 MB payload. And the marker is not resolvable through `Formats/Latest`: that stream defines roughly 200 classes and references the rest by tag, so `0x08c6` is a tag in Revit's internal class registry that this file never names.
+Two limits are worth stating. Chaining runs per inflated page, so the ~0.05% of objects that straddle a page boundary are missed — that is the gap between the 47,265 recovered here and the 49,660 reachable when the whole stream is concatenated in memory, which a browser tab should not do for a 417 MB payload. And the marker was not resolvable through `Formats/Latest`: the scanner that read that stream recovered roughly 200 classes and referenced the rest by tag, so `0x08c6` looked like a tag in a registry the file never names.
+
+That is no longer true, and it was the whole justification for hard-coding a marker. `Formats/Latest` has a grammar; read with it the 2027 project declares 4,757 classes rather than 416, and `0x08c6` is `GElement`. Every class index this repository measured from records resolves the same way — see [`schema-reader.ts`](../lib/reviter/schema-reader.ts) and `scripts/audit-schema-constants.ts`, which resolves all 57 of them against a model's own schema.
 
 ## The elements that were nowhere are objects of another class
 

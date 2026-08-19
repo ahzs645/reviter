@@ -1,7 +1,7 @@
 /**
  * Certified Revit 2026 source-representation dispatch records.
  *
- * These records describe the two-stage dispatch used by ODA's format modules:
+ * These records describe the two-stage dispatch the reference format modules use:
  * a release-specific source slot is first mapped to a target runtime class,
  * then either a release-specific or common reader loads that target.
  *

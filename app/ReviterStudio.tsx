@@ -951,7 +951,9 @@ export default function ReviterStudio() {
       ...(selectedRecord.parameters?.map((parameter) => ({
         key: `parameter-${parameter.parameterId}`,
         label: parameter.name,
-        value: `${parameter.value.toFixed(4)} ft`,
+        value: typeof parameter.value === "string"
+          ? parameter.value
+          : `${parameter.value.toFixed(4)} ft`,
       })) ?? []),
       {
         key: "bounding-size",

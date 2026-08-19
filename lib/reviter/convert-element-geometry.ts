@@ -766,7 +766,7 @@ function attachRecoveredGeometry(input: ElementGeometryInput): {
       // "Stairs Landings", while its framed StairsRun object and Autodesk's
       // export both identify it as a 31-tread stair flight.
       record.categoryId = STAIRS_RUN_CATEGORY;
-      record.categoryName = "Stairs Runs";
+      record.categoryName = categoryDisplayName(STAIRS_RUN_CATEGORY);
       record.categorySource = "native-object";
     }
     if (record.categoryId === STAIRS_RUN_CATEGORY || nativeStairsRun) {

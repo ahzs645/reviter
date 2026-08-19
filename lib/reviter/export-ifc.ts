@@ -184,44 +184,53 @@ function optionalPositiveFeet(value: number): string {
   return Number.isFinite(value) && value > 0 ? feet(value) : "$";
 }
 
+/**
+ * `BuiltInCategory` id to IFC class.
+ *
+ * Keyed by id, not by the category's display name. The display name is what
+ * Revit prints, it is not stable, and keying behaviour on it makes an export
+ * class silently depend on a label: when `OST_CurtainWallPanels` started
+ * reading "Curtain Panels" rather than "Curtain Wall Panels", a name-keyed
+ * switch quietly demoted every curtain panel in the model to a proxy. Ids do
+ * not move.
+ *
+ * `OST_StructuralFraming` is mapped to `IFCMEMBER` rather than `IFCBEAM`, and
+ * `OST_Ceilings` to `IFCCOVERING`, because that is what the name-keyed table
+ * did. Its `beams`, `members`, `coverings`, `plates`, `foundations` and
+ * `structural foundations` arms never matched any Revit category name and so
+ * never ran; they are not carried over rather than guessed at.
+ */
+const IFC_CLASS_BY_CATEGORY: ReadonlyMap<number, readonly [string, string?]> = new Map([
+  [-2_000_011, ["IFCWALL"]],
+  [-2_000_032, ["IFCSLAB", ".FLOOR."]],
+  [-2_000_035, ["IFCROOF"]],
+  [-2_000_038, ["IFCCOVERING", ".CEILING."]],
+  [-2_000_023, ["IFCDOOR", ".DOOR."]],
+  [-2_000_014, ["IFCWINDOW", ".WINDOW."]],
+  [-2_000_100, ["IFCCOLUMN"]],
+  [-2_001_330, ["IFCCOLUMN"]],
+  [-2_001_320, ["IFCMEMBER"]],
+  [-2_000_171, ["IFCMEMBER"]],
+  [-2_000_170, ["IFCPLATE"]],
+  [-2_000_120, ["IFCSTAIR"]],
+  [-2_000_919, ["IFCSTAIRFLIGHT"]],
+  [-2_000_175, ["IFCRAILING"]],
+  [-2_000_126, ["IFCRAILING"]],
+  [-2_000_920, ["IFCSLAB", ".LANDING."]],
+  [-2_000_946, ["IFCMEMBER"]],
+  [-2_000_127, ["IFCMEMBER"]],
+  [-2_000_123, ["IFCMEMBER"]],
+  [-2_000_080, ["IFCFURNITURE"]],
+  [-2_001_100, ["IFCFURNITURE"]],
+  [-2_000_180, ["IFCRAMP"]],
+]);
+
 function ifcClassFor(element: ManifestElement): IfcClass {
-  const category = element.category?.name?.trim().toLowerCase() ?? "";
-  const common = (entity: string, predefinedType = ".NOTDEFINED."): IfcClass => ({
-    entity,
-    typeEntity: `${entity}TYPE`,
-    predefinedType,
-  });
-  switch (category) {
-    case "walls": return common("IFCWALL");
-    case "floors": return common("IFCSLAB", ".FLOOR.");
-    case "roofs": return common("IFCROOF");
-    case "ceilings":
-    case "coverings": return common("IFCCOVERING", ".CEILING.");
-    case "doors": return common("IFCDOOR", ".DOOR.");
-    case "windows": return common("IFCWINDOW", ".WINDOW.");
-    case "columns":
-    case "structural columns": return common("IFCCOLUMN");
-    case "beams": return common("IFCBEAM");
-    case "members":
-    case "structural framing":
-    case "curtain wall mullions": return common("IFCMEMBER");
-    case "plates":
-    case "curtain wall panels": return common("IFCPLATE");
-    case "stairs": return common("IFCSTAIR");
-    case "stairs runs": return common("IFCSTAIRFLIGHT");
-    case "railings":
-    case "stairs railing": return common("IFCRAILING");
-    case "stairs landings": return common("IFCSLAB", ".LANDING.");
-    case "railing top rail":
-    case "stairs railing baluster":
-    case "stairs stringer carriage": return common("IFCMEMBER");
-    case "furniture":
-    case "furniture systems": return common("IFCFURNITURE");
-    case "foundations":
-    case "structural foundations": return common("IFCFOOTING");
-    case "ramps": return common("IFCRAMP");
-    default: return common("IFCBUILDINGELEMENTPROXY");
-  }
+  const mapped = element.category?.id == null
+    ? undefined
+    : IFC_CLASS_BY_CATEGORY.get(element.category.id);
+  const [entity, predefinedType = ".NOTDEFINED."] = mapped ?? ["IFCBUILDINGELEMENTPROXY"];
+  return { entity, typeEntity: `${entity}TYPE`, predefinedType };
 }
 
 function collectGeometry(result: ConvertResult): {
@@ -567,8 +576,12 @@ function emitElementProperties(
   );
 
   if (!element.parameters.length) return;
+  // Revit stores a parameter as a double, an integer or a string depending on
+  // which of its value sets holds it, so the property follows the value.
   const parameterProperties = element.parameters.map((parameter) =>
-    realProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value));
+    typeof parameter.value === "string"
+      ? textProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value)
+      : realProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value));
   const parameterSet = writer.add(
     `IFCPROPERTYSET(${quoted(guidFor(namespace, "pset-parameters", element.elementId))},#${ownerHistory},'Reviter_RevitInstanceParameters','Raw Revit internal values; dimensional values are stored in feet',${writer.refs(parameterProperties)})`,
   );

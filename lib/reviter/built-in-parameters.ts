@@ -13,8 +13,25 @@
  * among them. The entire -1,000,000..-1,000,999 band is empty in the published
  * documentation while neighbouring bands are dense, so these are most likely
  * internal parameters Autodesk does not surface through the API. They are
- * reported by number rather than guessed at.
+ * reported by number rather than guessed at — but the same SDK carries a second,
+ * richer table, `g_Parameters`, which does name them. `-1001101` is
+ * `wallHeightParam`, a `Double` whose measurement spec is `length`; `-1001111`
+ * is `wallBaseOffsetComputed`, also a length. They have no label because Revit
+ * does not surface them, not because they do not exist. Naming a parameter is
+ * better than printing its number, so `parameterDisplayName` falls back to that
+ * name for the 18 such ids that have one.
+ *
+ * That resource does supply two things this table cannot: the enumerator name
+ * for an id, and a real label for the ids whose published documentation prints
+ * none. Where an entry below is the humanised enumerator rather than a label —
+ * `Rgb R Param` for `RGB_R_PARAM` — the resource's label replaces it.
  */
+
+import {
+  revitParameterLabel,
+  parameterEnumName,
+  parameterTypeName,
+} from "./revit-enum-tables.ts";
 
 /** `id:Label` pairs joined by `|`. */
 const PACKED_PARAMETERS = [
@@ -254,7 +271,7 @@ const PACKED_PARAMETERS = [
   "-1006636:Orientation|-1006637:Justify Offset|-1006638:Offset from Reference|-1006639:Orientation",
   "-1006641:Justify|-1006642:Reference|-1006643:Display Rule|-1006644:Tag Type|-1006645:Number Size",
   "-1006660:Start Extension|-1006661:Full Step Arrow|-1006700:Symbol",
-  "-1006703:Bubble Weight Number\\n|-1006704:Center Segment|-1006705:Center Segment Weight",
+  "-1006703:Bubble Weight Number|-1006704:Center Segment|-1006705:Center Segment Weight",
   "-1006706:Center Segment Color|-1006707:Center Segment Pattern|-1006708:End Segment Weight",
   "-1006709:End Segment Color|-1006710:End Segment Pattern|-1006711:End Segments Length",
   "-1006850:Data Range|-1006851:Analysis Configuration|-1006852:Description",
@@ -1170,5 +1187,25 @@ function builtInParameterName(parameterId: number): string | undefined {
 }
 
 export function parameterDisplayName(parameterId: number): string {
-  return builtInParameterName(parameterId) ?? `Parameter ${parameterId}`;
+  return revitParameterLabel(parameterId)
+    ?? builtInParameterName(parameterId)
+    ?? parameterTypeName(parameterId)
+    ?? `Parameter ${parameterId}`;
+}
+
+/**
+ * `BuiltInParameter` enumerator for an id, such as `WALL_USER_HEIGHT_PARAM`.
+ *
+ * The enumerator is the identifier that survives a release change or a localised
+ * Revit install, so an audit consumer joining on parameters should read this
+ * rather than the display label.
+ *
+ * Only the recovered label resource carries enumerators, so this is `undefined` both
+ * for ids neither source names and for the 12 ids the transcribed table names
+ * but that resource omits — `-1002102` "Surface fill pattern" and `-1114137`
+ * "ASHRAE Table" among them. A missing enumerator is not evidence that an id is
+ * private.
+ */
+export function builtInParameterEnumName(parameterId: number): string | undefined {
+  return parameterEnumName(parameterId);
 }

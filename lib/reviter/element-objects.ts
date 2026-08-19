@@ -8,14 +8,22 @@
  * S+0            u64 element id
  * S+8            u32 near-unique discriminator (not decoded)
  * S+12           u32 objLen        // object length, counted from S
- * S+16           u16 marker        // constant per release, e.g. 0x08c6 in 2027
- * S+18           u64 type code     // element class discriminator
- * S+26           u64 element id, repeated
- * ...            payload, including the duplicated-bounds sub-record
- * S+objLen       16 bytes          // release-specific late payload / padding
+ * S+16           u16 marker        // the object's schema class index
+ * S+18           ...               // the class's fields, then the objects its
+ *                                  // pointer fields deferred
  * S+objLen+16    u32 objLen        // echoed
  * S+objLen+20    next object
  * ```
+ *
+ * The body runs from S+18 to S+objLen+16 with nothing spare: the sixteen bytes
+ * before the echo used to read as release-specific padding, and they are
+ * ordinary fields. Records that defer no objects at all end exactly there, so
+ * the reading does not depend on knowing what the deferred region holds.
+ *
+ * The marker is the class index in the file's own `Formats/Latest`, which
+ * `schema-reader.ts` reads; `0x08c6` is `GElement` in the 2027 project. It is
+ * still measured from the file rather than assumed, because a class index moves
+ * between releases.
  *
  * The echo is what makes the framing safe to walk. Over the 2027 project it
  * holds for 99.51% of known records, while probing the echo at +12 or +20

@@ -8,14 +8,23 @@
  * independently against the paired IFC export agrees exactly — `-2000011`
  * Walls, `-2000170` CurtainWallPanels, `-2000171` CurtainWallMullions,
  * `-2000126` StairsRailing, `-2000032` Floors, `-2000038` Ceilings, `-2000180`
- * Ramps. Names the IFC could not corroborate are now resolved too: `-2000127`,
- * the third largest category in the model at 3,166 elements, is
- * `OST_StairsRailingBaluster`.
+ * Ramps. Names the IFC could not corroborate are now resolved too: `-2000127`
+ * is `OST_StairsRailingBaluster`, 79 elements in the supplied project.
  *
  * Stored as a packed string rather than an object literal: 1,211 entries cost
  * about 34 KB either way in source, but the packed form parses once into a Map
  * instead of building a 1,211-property object at module load.
+ *
+ * The names here are enumerators. The label Revit actually prints for a category
+ * comes from the recovered label resource in `revit-enum-tables.ts`; see
+ * `builtInCategoryLabel`.
  */
+
+import {
+  isAmbiguousCategoryLabel,
+  revitCategoryEnumName,
+  revitCategoryLabel,
+} from "./revit-enum-tables.ts";
 
 /** `id:Name` pairs, `OST_` prefix stripped, joined by `|`. */
 const PACKED_CATEGORIES = [
@@ -449,9 +458,41 @@ function categoryTable(): Map<number, string> {
   return categoryNames;
 }
 
-/** `OST_` name for a category id, without the prefix, or `undefined`. */
+/**
+ * `OST_` name for a category id, without the prefix, or `undefined`.
+ *
+ * The transcribed table answers first. The recovered label resource covers 13 further
+ * ids that the published documentation omits, all of them deprecated or removed
+ * categories, so it is consulted as a fallback rather than an override.
+ */
 export function builtInCategoryName(categoryId: number): string | undefined {
-  return categoryTable().get(categoryId);
+  return categoryTable().get(categoryId) ?? revitCategoryEnumName(categoryId);
+}
+
+/**
+ * The label Revit itself shows for a category, when that label identifies the
+ * category on its own.
+ *
+ * `humaniseCategoryName` reconstructs a display name from the enumerator, which
+ * is close but not always what Revit prints: `OST_CurtainWallPanels` is "Curtain
+ * Panels", `OST_StairsRailing` is "Railings", and `OST_StairsRailingBaluster` is
+ * "Balusters". 758 of the 1,075 labelled categories differ this way, and the
+ * three largest categories in the supplied project are among them, so the
+ * difference is visible on every object list and every export.
+ *
+ * A label is only adopted when it names one category and nothing else. Revit
+ * reuses one label across sibling sub-categories, each shown nested under a
+ * different parent: `Lines` names 5 categories and `<Hidden Lines>` names 65.
+ * One further label collides with the enumerator-derived name that a category
+ * adopting no label keeps — `OST_StairsRailing` is "Railings" in Revit, but
+ * `OST_Railings` is a different id that already reads that way and has no label
+ * of its own to take instead. Uniqueness is therefore judged across the names
+ * actually displayed, not just the labels; 352 ids fail it, return `undefined`
+ * here, and keep their enumerator name.
+ */
+export function builtInCategoryLabel(categoryId: number): string | undefined {
+  if (isAmbiguousCategoryLabel(categoryId)) return undefined;
+  return revitCategoryLabel(categoryId);
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Browser-safe reader for Revit's `ProjectInformation` CFB stream.
  *
- * ODA's loader symbols identify this as the PKZip compression route. Revit
+ * A reference loader's symbols identify this as the PKZip compression route. Revit
  * writes a small ZIP containing one Atom/PartAtom-shaped `.project.xml` file,
  * so the same metadata parser used for family PartAtom streams can read it.
  */

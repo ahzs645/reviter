@@ -4,7 +4,7 @@ import type { Revit2026GInfoStatic } from "./revit-2026-object-dispatch.ts";
 
 /**
  * `Formats/Latest` gives the framed GElement schema tag 2247, whose persisted
- * object marker is `tag - 1`. This marker is not an ObjectPtrInit source slot.
+ * object marker is the class's own index. It is not an ObjectPtrInit source slot.
  */
 export const REVIT_2026_GELEMENT_OBJECT_MARKER = 2246;
 /** Independently resolved by the release-scoped native direct reader. */

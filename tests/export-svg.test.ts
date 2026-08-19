@@ -215,7 +215,10 @@ test("composes a level-aware architectural map from recovered RVT elements", () 
   const door = placed(12, -2_000_023, "Doors", 2);
   const window = placed(13, -2_000_014, "Windows", 8);
   window.boundsFeet.min.z = 3;
-  const stair = placed(14, -2_000_121, "Stairs Runs", 13);
+  // `-2000919` is `OST_StairsRuns`. The fixture used to pair the run's display
+  // name with `-2000121`, `OST_StairsIncomplete_Deprecated`, which only passed
+  // while the plan matched on the name.
+  const stair = placed(14, -2_000_919, "Stairs Runs", 13);
   stair.boundsFeet.max.z = 10;
   stair.stairTreads = [[
     [13, 4, 1], [14, 4, 1], [14, 6, 1], [13, 6, 1],

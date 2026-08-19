@@ -64,6 +64,7 @@ import CFB from "cfb";
 import { deflateSync } from "fflate";
 
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
+import { formatsLatest } from "./rich-rvt-fixture.ts";
 import {
   gzipOffsets,
   inflateRevitChunk,
@@ -90,12 +91,12 @@ const CATEGORY_TOKEN_BYTES = 18;
 const ELEMENT_PAGE_BYTES = BOUNDS_RECORD_BYTES + CATEGORY_TOKEN_BYTES;
 
 /**
- * Non-empty CFB entries the writer contributes on its own: the root storage,
- * whose size is the mini-stream it holds, and the default stream `cfb_new`
- * seeds every container with. `stats.streamCount` counts non-empty entries, so
- * both land in it alongside the fixture's own streams.
+ * Non-empty CFB *streams* the writer contributes on its own: the default stream
+ * `cfb_new` seeds every container with. The root storage also reports a
+ * non-zero size — the mini-stream it holds — but it is a storage, not a stream,
+ * and is no longer counted.
  */
-const CONTAINER_OWN_STREAMS = 2;
+const CONTAINER_OWN_STREAMS = 1;
 
 type Box = { min: readonly [number, number, number]; max: readonly [number, number, number] };
 
@@ -243,29 +244,6 @@ function partitionTable(names: readonly string[]): Uint8Array {
   return data;
 }
 
-/**
- * `Formats/Latest`: one tagged class as `[u16 len][name][u16 0x8000|tag]`,
- * whose parent name begins exactly four bytes after that tag word, followed by
- * the class version and declared field count `schema.ts` reads past the parent.
- * The parent's own word references the defined tag, which makes it a schema
- * reference as well.
- */
-function formatsLatest(name: string, tag: number, parent: string): Uint8Array {
-  const parentOffset = 2 + name.length + 4;
-  const parentEnd = parentOffset + 2 + parent.length;
-  const data = new Uint8Array(parentEnd + 10);
-  const view = new DataView(data.buffer);
-  view.setUint16(0, name.length, true);
-  data.set(new Uint8Array(Buffer.from(name, "ascii")), 2);
-  view.setUint16(2 + name.length, 0x8000 | tag, true);
-  view.setUint16(parentOffset, parent.length, true);
-  data.set(new Uint8Array(Buffer.from(parent, "ascii")), parentOffset + 2);
-  view.setUint16(parentEnd, tag, true);
-  view.setUint32(parentEnd + 2, 7, true); // class version
-  view.setUint32(parentEnd + 6, 3, true); // declared field count
-  return data;
-}
-
 const SHEET_0 = "Partitions/Sheet0";
 const SHEET_1 = "Partitions/Sheet1";
 
@@ -379,7 +357,7 @@ function syntheticModel(): Uint8Array {
       path: "/Global/PartitionTable",
       bytes: gzipChunk(partitionTable(["Workset1", "Shared Levels and Grids"])),
     },
-    { path: "/Formats/Latest", bytes: gzipChunk(formatsLatest("Wall", 1_234, "Element")) },
+    { path: "/Formats/Latest", bytes: gzipChunk(formatsLatest("Wall", "Element", "Floor")) },
     { path: `/${SHEET_0}`, bytes: withPageChecksums(firstPartitionPayload()) },
     { path: `/${SHEET_1}`, bytes: gzipChunk(partitionPage(SECOND_PARTITION_ELEMENTS)) },
   ]);
@@ -640,17 +618,19 @@ test("the auxiliary container streams reach the result", () => {
     "Shared Levels and Grids",
   ]);
 
+  // Every class the stream declares, not the ones a pattern matched: indices run
+  // from 12 in creation order and a class is written before the parent it
+  // defines inline, so `Wall` is 12, the `Element` it defines is 13, and the
+  // sibling naming that parent by index is 14. Each field count is the class's
+  // own.
   assert.deepEqual(result.schema?.taggedClasses, [
-    {
-      name: "Wall",
-      tag: 1_234,
-      parent: "Element",
-      version: 7,
-      declaredFieldCount: 3,
-      offset: 0,
-    },
+    { name: "Wall", tag: 12, parent: "Element", version: 7, declaredFieldCount: 0, offset: 0 },
+    { name: "Element", tag: 13, parent: "", version: 3, declaredFieldCount: 3, offset: 10 },
+    { name: "Floor", tag: 14, parent: "Element", version: 5, declaredFieldCount: 0, offset: 83 },
   ]);
-  assert.deepEqual(result.schema?.referencedClasses.map((entry) => entry.name), ["Element"]);
+  // Nothing is left referenced-only once the whole stream is read: every name
+  // in it carries a definition.
+  assert.deepEqual(result.schema?.referencedClasses, []);
 
   // `Global/ElemTable` is read twice, once as an index and once as a graph.
   assert.equal(result.elementIndex?.recordCount, ALL_ELEMENTS.length + 1);

@@ -124,10 +124,12 @@ test("the enriched counters are what the fixture's populations say they are", ()
   const counters: Record<string, unknown> = { ...result.stats };
   delete counters.durationMs;
   assert.deepEqual(counters, {
-    streamCount: 9,
+    // 8, not 9: the CFB root storage reports the size of the mini-stream it
+    // holds, but it is a storage rather than a stream and is no longer counted.
+    streamCount: 8,
     partitionStreams: 2,
     gzipChunks: 16,
-    inflatedBytes: 106_962,
+    inflatedBytes: 107_124,
     candidatesFound: 552,
     candidatesFocused: 549,
     candidatesUsed: 549,

@@ -21,7 +21,11 @@
  * previous, weaker classification instead of inventing one.
  */
 
-import { builtInCategoryName, humaniseCategoryName } from "./built-in-categories.ts";
+import {
+  builtInCategoryLabel,
+  builtInCategoryName,
+  humaniseCategoryName,
+} from "./built-in-categories.ts";
 import {
   REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
@@ -77,6 +81,8 @@ function clearsConsensusFloor(support: number, purity: number): boolean {
 }
 
 export function categoryDisplayName(categoryId: number): string {
+  const label = builtInCategoryLabel(categoryId);
+  if (label) return label;
   const name = builtInCategoryName(categoryId);
   return name ? humaniseCategoryName(name) : `Revit category ${categoryId}`;
 }
