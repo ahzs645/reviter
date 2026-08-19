@@ -19,6 +19,7 @@ import {
   odaCategoryLabel,
   parameterEnumName,
 } from "../lib/reviter/oda-label-resource.ts";
+import { parameterObjectBytes, writeParameterObject } from "./rich-rvt-fixture.ts";
 
 type ExtractedRow = { id: number; enumName: string; label: string | null };
 type ExtractedTables = { families: Record<string, ExtractedRow[]> };
@@ -149,16 +150,11 @@ test("decoded parameters carry their enumerator", () => {
   const parameterId = -1_001_105;
   const value = 12.5;
 
-  const anchor = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00];
-  const data = new Uint8Array(anchor.length + 8 + 4 + 16);
-  const view = new DataView(data.buffer);
-  data.set(anchor, 0);
-  view.setBigUint64(anchor.length, BigInt(elementId), true);
-  const table = anchor.length + 8;
-  view.setUint32(table, 1, true);
-  view.setUint32(table + 4, parameterId + 0x1_0000_0000, true);
-  view.setUint32(table + 8, 0xffff_ffff, true);
-  view.setFloat64(table + 12, value, true);
+  const data = new Uint8Array(parameterObjectBytes(1));
+  writeParameterObject(data, new DataView(data.buffer), 0, {
+    elementId,
+    parameters: [[parameterId, value]],
+  });
 
   const tables = collectElementParameters(data);
   assert.equal(tables.length, 1);

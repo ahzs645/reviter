@@ -129,7 +129,7 @@ test("the enriched counters are what the fixture's populations say they are", ()
     streamCount: 8,
     partitionStreams: 2,
     gzipChunks: 16,
-    inflatedBytes: 106_962,
+    inflatedBytes: 107_006,
     candidatesFound: 552,
     candidatesFocused: 549,
     candidatesUsed: 549,

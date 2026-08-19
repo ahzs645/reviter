@@ -608,29 +608,67 @@ export type ParameterSpec = {
   parameters: readonly (readonly [number, number])[];
 };
 
-/** The owner anchor a parameter table hangs off, then the table itself. */
+/** Bytes one element object with a parameter table occupies in a page. */
+export function parameterObjectBytes(parameterCount: number): number {
+  return PARAMETER_TABLE_OFFSET + 4 + parameterCount * 16 + 4;
+}
+
+/** Offset of the table within the object, once the leading fields are written. */
+const PARAMETER_TABLE_OFFSET = 66;
+
+/**
+ * One element object carrying a parameter table, framed as the file writes it.
+ *
+ * The decoder reads the leading `Element` fields to decide whether the element
+ * owns a table at all, so a bare anchor is not enough: the object needs its
+ * frame header, a live `m_pParamValueSetDouble` pointer, the five null pointers
+ * and the empty `m_constrInfo` that follow it, and the length echo behind it.
+ */
+export function writeParameterObject(
+  page: Uint8Array,
+  view: DataView,
+  start: number,
+  table: ParameterSpec,
+): number {
+  const tableEnd = start + PARAMETER_TABLE_OFFSET + 4 + table.parameters.length * 16;
+  const objectLength = tableEnd - start - 16;
+  view.setUint32(start, table.elementId, true);
+  view.setUint32(start + 4, 0, true);
+  view.setUint32(start + 8, 0, true);
+  view.setUint32(start + 12, objectLength, true);
+  view.setUint16(start + 16, 0x08c6, true);
+  // `m_pParamValueSetDouble`: handle -1, class `ParamValueSetDouble` (0x0c93).
+  page.set([0xff, 0xff, 0xff, 0xff, 0x93, 0x0c], start + 18);
+  // The four pointers and the geometry pair that follow are all null here.
+  for (let field = 0; field < 5; field += 1) view.setUint32(start + 24 + field * 4, 0, true);
+  // `m_constrInfo`, an empty collection.
+  view.setUint32(start + 44, 0, true);
+  // `m_cellList` and `m_docAccess.m_pDoc`, which together are the anchor.
+  page.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], start + 48);
+  // `m_id`, the element restating its own id.
+  view.setUint32(start + 58, table.elementId, true);
+  view.setUint32(start + 62, 0, true);
+  const at = start + PARAMETER_TABLE_OFFSET;
+  view.setUint32(at, table.parameters.length, true);
+  for (const [index, [id, value]] of table.parameters.entries()) {
+    view.setUint32(at + 4 + index * 16, id + 0x1_0000_0000, true);
+    view.setUint32(at + 8 + index * 16, 0xffff_ffff, true);
+    view.setFloat64(at + 12 + index * 16, value, true);
+  }
+  view.setUint32(tableEnd, objectLength, true);
+  return tableEnd + 4;
+}
+
+/** Element objects each carrying one parameter table. */
 export function parameterPage(tables: readonly ParameterSpec[]): Uint8Array {
   const size = tables.reduce(
-    (total, table) => total + 32 + 4 + table.parameters.length * 16 + 16,
+    (total, table) => total + parameterObjectBytes(table.parameters.length),
     0,
   );
   const page = new Uint8Array(size + 8);
   const view = new DataView(page.buffer);
   let cursor = 0;
-  for (const table of tables) {
-    cursor += 8;
-    page.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], cursor);
-    view.setUint32(cursor + 10, table.elementId, true);
-    view.setUint32(cursor + 14, 0, true);
-    const at = cursor + 24;
-    view.setUint32(at, table.parameters.length, true);
-    for (const [index, [id, value]] of table.parameters.entries()) {
-      view.setUint32(at + 4 + index * 16, id + 0x1_0000_0000, true);
-      view.setUint32(at + 8 + index * 16, 0xffff_ffff, true);
-      view.setFloat64(at + 12 + index * 16, value, true);
-    }
-    cursor = at + 4 + table.parameters.length * 16 + 16;
-  }
+  for (const table of tables) cursor = writeParameterObject(page, view, cursor, table);
   return page;
 }
 

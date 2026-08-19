@@ -28,6 +28,14 @@
  * the element join together. Parameter *names* come from the published Revit
  * enumeration and are corroborating evidence rather than part of the decode.
  *
+ * What that check could not confirm is *ownership*, and the window was wrong
+ * about it. Reading a table for every anchor gave 11,492 elements a table on
+ * the supplied project; 2,007 of them do not have one. Their values are real —
+ * 99.5% of the 14,522 are ids Autodesk declares `Double` — because they are a
+ * neighbour's, which is why nothing about a table's contents can catch this.
+ * Gating on the element's own `m_pParamValueSetDouble` pointer leaves the
+ * remaining 9,485 tables byte-identical and drops the rest.
+ *
  * Only f64 values appear in these tables. Type parameters use a different
  * mechanism — positional, schema-tagged fields inside the type record — and are
  * not decoded here.
@@ -39,9 +47,44 @@
 
 import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
 
-/** `ff ff ff ff 10 03 01 00 00 00` — the element-id anchor preceding a table. */
+/**
+ * `ff ff ff ff 10 03 01 00 00 00` — the element-id anchor preceding a table.
+ *
+ * Not a signature. It is three consecutive `Element` fields: `m_cellList` as a
+ * pointer whose handle is `-1` and whose class is `CellList` (`0x0310`), then
+ * `m_docAccess.m_pDoc` as the stub `01 00 00 00`. The element id follows because
+ * `m_id` is the very next field.
+ */
 const ANCHOR = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00] as const;
 const ANCHOR_LENGTH = ANCHOR.length;
+
+/**
+ * `Element`'s fields before `m_cellList`, in declaration order: the four
+ * parameter value sets, then the two geometry pointers, then `m_constrInfo`.
+ *
+ * Each is a pointer written as `[i32 handle]`, followed by `[u16 class]` when
+ * the handle is non-zero — so four bytes for a null and six for a live one.
+ * `m_constrInfo` is a counted collection: `[i32 count]` and then that many
+ * pointers, which is zero on all but three objects in the supplied project.
+ */
+const LEADING_POINTER_FIELDS = 6;
+
+/** Index of `m_pParamValueSetDouble` among those pointers. */
+const DOUBLE_SET_POINTER = 0;
+
+/** Bytes from an object's start to its first field: the 18-byte frame header. */
+const OBJECT_BODY_OFFSET = 18;
+
+/**
+ * Widest span from an object's start to the anchor: the header, six live
+ * pointers and an empty collection. The narrowest is six null pointers.
+ */
+const MAX_ANCHOR_DISTANCE = OBJECT_BODY_OFFSET + LEADING_POINTER_FIELDS * 6 + 4;
+const MIN_ANCHOR_DISTANCE = OBJECT_BODY_OFFSET + LEADING_POINTER_FIELDS * 4 + 4;
+
+/** Smallest and largest object length the framing admits. */
+const MIN_OBJECT_LENGTH = 40;
+const MAX_OBJECT_LENGTH = 0xffff;
 
 /**
  * Bytes searched forward from an anchor for that element's table. Sweeping this
@@ -110,8 +153,76 @@ function readTableAt(view: DataView, offset: number, byteLength: number): Elemen
 }
 
 /**
- * Decode every element parameter table in one inflated page. Each anchor is
- * followed forward until a table validates against its own count header.
+ * Whether the object owning this anchor declares a double parameter set.
+ *
+ * The anchor sits in the middle of `Element`'s fields, so the object it belongs
+ * to starts a bounded distance behind it, and the fields in between are the
+ * pointers that say which value sets exist. Walking them backwards from the
+ * anchor answers two questions at once: whether this really is an element
+ * record — the walk has to land exactly on the anchor, from a frame whose own
+ * header restates the same id — and whether that element has a table at all.
+ *
+ * The second question is the one that matters. Searching forward from the
+ * anchor for anything that parses finds a neighbour's table when an element has
+ * none of its own: of the 20,524 tables that search produces on the supplied
+ * project, 6,962 belong to elements whose `m_pParamValueSetDouble` is null. A
+ * borrowed table is not detectable from its contents — 87% of the values in
+ * those 6,962 are declared `Double` by Autodesk's own parameter table, because
+ * they are real values, just another element's.
+ *
+ * Returns `null` when no frame explains the anchor.
+ */
+function ownsDoubleParameterSet(
+  view: DataView,
+  anchorOffset: number,
+  elementId: number,
+): boolean | null {
+  for (
+    let distance = MIN_ANCHOR_DISTANCE;
+    distance <= MAX_ANCHOR_DISTANCE;
+    distance += 1
+  ) {
+    const start = anchorOffset - distance;
+    if (start < 0) break;
+    // The frame restates the element id, and the id is a u64 whose high word is
+    // zero for every id Revit persists.
+    if (view.getUint32(start, true) !== elementId) continue;
+    if (view.getUint32(start + 4, true) !== 0) continue;
+    const objectLength = view.getUint32(start + 12, true);
+    if (objectLength < MIN_OBJECT_LENGTH || objectLength > MAX_OBJECT_LENGTH) continue;
+    // The length is echoed behind the object. Pages truncate objects, so this
+    // is required only when the echo is on this page at all.
+    const echo = start + objectLength + 16;
+    if (echo + 4 <= view.byteLength && view.getUint32(echo, true) !== objectLength) continue;
+
+    let cursor = start + OBJECT_BODY_OFFSET;
+    let live: boolean | null = null;
+    let walked = true;
+    for (let field = 0; field < LEADING_POINTER_FIELDS; field += 1) {
+      if (cursor + 4 > anchorOffset) { walked = false; break; }
+      const handle = view.getInt32(cursor, true);
+      cursor += handle === 0 ? 4 : 6;
+      if (field === DOUBLE_SET_POINTER) live = handle !== 0;
+    }
+    if (!walked || cursor + 4 > anchorOffset) continue;
+    // `m_constrInfo`, a counted collection of the same pointers.
+    const constraints = view.getUint32(cursor, true);
+    cursor += 4;
+    for (let index = 0; index < constraints && cursor + 4 <= anchorOffset; index += 1) {
+      const handle = view.getInt32(cursor, true);
+      cursor += handle === 0 ? 4 : 6;
+    }
+    if (cursor !== anchorOffset) continue;
+    return live ?? false;
+  }
+  return null;
+}
+
+/**
+ * Decode every element parameter table in one inflated page.
+ *
+ * An anchor is read only when the object it belongs to says it has a table, and
+ * then the table is looked for forward from the anchor as before.
  */
 export function collectElementParameters(data: Uint8Array): ElementParameterTable[] {
   const tables: ElementParameterTable[] = [];
@@ -136,6 +247,13 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
     if (view.getUint32(idOffset + 4, true) !== 0) continue;
     const elementId = view.getUint32(idOffset, true);
     if (!elementId) continue;
+
+    // An element with no double parameter set has no table to find, and
+    // searching for one only borrows a neighbour's.
+    if (ownsDoubleParameterSet(view, offset, elementId) !== true) {
+      offset += ANCHOR_LENGTH - 1;
+      continue;
+    }
 
     const limit = Math.min(data.byteLength, idOffset + 8 + TABLE_SEARCH_BYTES);
     for (let cursor = idOffset + 8; cursor + 20 <= limit; cursor += 1) {

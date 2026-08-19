@@ -54,6 +54,7 @@ import {
 import type { ConvertResult, ElementBoundsRecord, IfcReferenceManifest, RvtRegressionInput } from "../lib/reviter/types.ts";
 import { boxDifference } from "../lib/reviter/drawn-bounds.ts";
 import { residualDatumPileElementIds } from "../lib/reviter/datum-pile.ts";
+import { parameterObjectBytes, writeParameterObject } from "./rich-rvt-fixture.ts";
 
 test("parses Revit project ElemTable records with 40-byte framing", () => {
   const data = new Uint8Array(34 + 40 * 2);
@@ -669,19 +670,10 @@ test("chains element objects through the length echo behind each object", () => 
 
 test("decodes an element parameter table from its own anchor", () => {
   const parameters: [number, number][] = [[-1001105, 13.123359580052492], [-1001108, -0.65616797900262]];
-  const data = new Uint8Array(64 + parameters.length * 16);
-  const view = new DataView(data.buffer);
-  // ff ff ff ff 10 03 01 00 00 00 then the element restating its own id.
-  data.set([0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00], 8);
-  view.setUint32(18, 978605, true);
-  view.setUint32(22, 0, true);
-  const table = 32;
-  view.setUint32(table, parameters.length, true);
-  parameters.forEach(([id, value], index) => {
-    view.setUint32(table + 4 + index * 16, id + 0x1_0000_0000, true);
-    view.setUint32(table + 8 + index * 16, 0xffff_ffff, true);
-    view.setFloat64(table + 12 + index * 16, value, true);
-  });
+  // A whole element object, not a bare anchor: the decoder reads the leading
+  // `Element` pointers to decide whether this element owns a table.
+  const data = new Uint8Array(parameterObjectBytes(parameters.length));
+  writeParameterObject(data, new DataView(data.buffer), 0, { elementId: 978605, parameters });
 
   const decoded = collectElementParameters(data);
   assert.equal(decoded.length, 1);
