@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -14,21 +15,57 @@ import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
 import {
   isAmbiguousCategoryLabel,
+  odaCategoryEnumName,
   odaCategoryLabel,
   parameterEnumName,
 } from "../lib/reviter/oda-label-resource.ts";
 
+type ExtractedRow = { id: number; enumName: string; label: string | null };
+type ExtractedTables = { families: Record<string, ExtractedRow[]> };
+
+let tableCache: ExtractedTables | undefined;
+
+/** The committed extraction the generated module is built from. */
+function extractedTables(): ExtractedTables {
+  tableCache ??= JSON.parse(
+    readFileSync(new URL("../docs/generated/oda-label-resource-tables.json", import.meta.url), "utf8"),
+  ) as ExtractedTables;
+  return tableCache;
+}
+
+/** Every category id either published source names. */
+function knownCategoryIds(): number[] {
+  const source = readFileSync(new URL("../lib/reviter/built-in-categories.ts", import.meta.url), "utf8");
+  const block = /const PACKED_CATEGORIES[^=]*=\s*\[([\s\S]*?)\]\.join\("\|"\)/.exec(source);
+  assert.ok(block, "packed category table not found");
+  const packed = [...block[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)]
+    .map((match) => JSON.parse(`"${match[1]}"`) as string)
+    .join("|");
+  const ids = new Set<number>();
+  for (const entry of packed.split("|")) ids.add(Number(entry.slice(0, entry.indexOf(":"))));
+  for (const row of extractedTables().families.BuiltInCategory) ids.add(row.id);
+  return [...ids];
+}
+
 test("Revit labels replace the humanised enumerator where they differ", () => {
-  // The three largest recovered categories in the supplied 2027 project whose
-  // Revit label is not the humanised enumerator.
   assert.equal(humaniseCategoryName("CurtainWallPanels"), "Curtain Wall Panels");
   assert.equal(categoryDisplayName(-2_000_170), "Curtain Panels");
 
-  assert.equal(humaniseCategoryName("StairsRailing"), "Stairs Railing");
-  assert.equal(categoryDisplayName(-2_000_126), "Railings");
-
   assert.equal(humaniseCategoryName("StairsRailingBaluster"), "Stairs Railing Baluster");
   assert.equal(categoryDisplayName(-2_000_127), "Balusters");
+
+  assert.equal(humaniseCategoryName("StairsLandings"), "Stairs Landings");
+  assert.equal(categoryDisplayName(-2_000_920), "Landings");
+});
+
+test("a label that collides with another category's enumerator is not adopted", () => {
+  // Revit calls `OST_StairsRailing` "Railings", but `OST_Railings` is a
+  // different id whose enumerator already reads that way. Adopting the label
+  // would put two categories under one name, so the enumerator name stands.
+  assert.equal(odaCategoryLabel(-2_000_126), "Railings");
+  assert.equal(categoryDisplayName(-2_000_175), "Railings");
+  assert.ok(isAmbiguousCategoryLabel(-2_000_126));
+  assert.equal(categoryDisplayName(-2_000_126), "Stairs Railing");
 });
 
 test("categories whose label already matches the enumerator are unchanged", () => {
@@ -45,7 +82,7 @@ test("categories whose label already matches the enumerator are unchanged", () =
 });
 
 test("a label shared between sibling categories does not name either of them", () => {
-  // `OST_AdaptivePointsLines` and `OST_AnalyticalNodesLines` are both "Lines"
+  // `OST_AdaptivePoints_Lines` and `OST_AnalyticalNodes_Lines` are both "Lines"
   // in Revit, shown nested under different parents.
   assert.equal(odaCategoryLabel(-2_000_903), "Lines");
   assert.equal(odaCategoryLabel(-2_009_648), "Lines");
@@ -83,7 +120,16 @@ test("the ids absent from the published enum are absent from the resource too", 
 test("a real label replaces the humanised-enumerator placeholder", () => {
   assert.equal(builtInParameterEnumName(-1_010_024), "RGB_B_PARAM");
   assert.notEqual(parameterDisplayName(-1_010_024), "Rgb B Param");
-  assert.match(parameterDisplayName(-1_010_024), /^Blue value for RGB color spec\./);
+  assert.equal(
+    parameterDisplayName(-1_010_024),
+    "Blue value for RGB color spec. (for Use with XAML Data Template example)",
+  );
+});
+
+test("the transcribed table's literal backslash-n artifact is repaired", () => {
+  const label = parameterDisplayName(-1_006_703);
+  assert.equal(label, "Bubble Weight Number");
+  assert.ok(!label.includes("\\"), "no literal escape should reach a display name");
 });
 
 test("decoded parameters carry their enumerator", () => {
@@ -113,4 +159,98 @@ test("decoded parameters carry their enumerator", () => {
       value,
     },
   ]);
+});
+
+test("every known category id maps to a distinct display name", () => {
+  // The rule this guards is that a display name identifies one category. It is
+  // what stops a flat object list showing two unrelated rows under one name,
+  // and it is not implied by the labels being unique among themselves: a label
+  // can collide with an enumerator-derived name that some other id keeps.
+  const ids = new Set<number>(knownCategoryIds());
+  const owners = new Map<string, number[]>();
+  for (const id of ids) {
+    const name = categoryDisplayName(id);
+    const seen = owners.get(name);
+    if (seen) seen.push(id);
+    else owners.set(name, [id]);
+  }
+  const collisions = [...owners].filter(([, sharing]) => sharing.length > 1);
+  assert.deepEqual(collisions, [], `display names shared by several categories: ${
+    collisions.map(([name, sharing]) => `${name} <- ${sharing.join(", ")}`).join("; ")
+  }`);
+  assert.equal(owners.size, ids.size);
+});
+
+test("the generated module still agrees with the committed extraction", () => {
+  // `oda-label-resource.ts` is generated from this JSON and says "do not edit".
+  // Without this, an edit to either one drifts silently: the extraction needs a
+  // binary that is not in the repository, so no other check compares them.
+  const tables = extractedTables();
+  let categoryLabels = 0;
+  let parameterEnums = 0;
+
+  for (const row of tables.families.BuiltInCategory) {
+    assert.equal(odaCategoryEnumName(row.id) ?? builtInCategoryName(row.id),
+      row.enumName.replace(/^OST_/, ""), `enumerator for category ${row.id}`);
+    if (row.label === null) {
+      assert.equal(odaCategoryLabel(row.id), undefined, `category ${row.id} has no label`);
+      continue;
+    }
+    assert.equal(odaCategoryLabel(row.id), row.label, `label for category ${row.id}`);
+    categoryLabels += 1;
+  }
+
+  for (const row of tables.families.BuiltInParameter) {
+    assert.equal(parameterEnumName(row.id), row.enumName, `enumerator for parameter ${row.id}`);
+    if (row.label !== null) {
+      assert.equal(parameterDisplayName(row.id), row.label, `label for parameter ${row.id}`);
+    }
+    parameterEnums += 1;
+  }
+
+  assert.equal(categoryLabels, 1_075);
+  assert.equal(parameterEnums, 3_703);
+});
+
+test("the ambiguous set is exactly the ids whose label cannot stand alone", () => {
+  const tables = extractedTables();
+  const labelled = tables.families.BuiltInCategory.filter((row) => row.label !== null);
+  const labelOwners = new Map<string, number>();
+  for (const row of labelled) labelOwners.set(row.label!, (labelOwners.get(row.label!) ?? 0) + 1);
+
+  const fallbackOwners = new Map<string, number[]>();
+  for (const id of knownCategoryIds()) {
+    const name = builtInCategoryName(id);
+    if (!name) continue;
+    const display = humaniseCategoryName(name);
+    const seen = fallbackOwners.get(display);
+    if (seen) seen.push(id);
+    else fallbackOwners.set(display, [id]);
+  }
+
+  for (const row of labelled) {
+    const shared = labelOwners.get(row.label!)! > 1;
+    const collides = (fallbackOwners.get(row.label!) ?? []).some((other) => other !== row.id);
+    assert.equal(isAmbiguousCategoryLabel(row.id), shared || collides, `ambiguity of ${row.id}`);
+  }
+});
+
+test("no packed value can be corrupted by the table separator", () => {
+  // The tables are `id:value` pairs joined by `|`, so a `|` in any value would
+  // silently split one entry into two. Values containing `:` are fine and do
+  // occur — `Scale Value 1:` ends with one — because only the first is a
+  // separator. This is the invariant the generator asserts at build time, held
+  // here against the shipped tables, which build time never sees again.
+  const tables = extractedTables();
+  const values = [
+    ...tables.families.BuiltInCategory.flatMap((row) => [row.enumName, row.label ?? ""]),
+    ...tables.families.BuiltInParameter.flatMap((row) => [row.enumName, row.label ?? ""]),
+  ];
+  assert.deepEqual(values.filter((value) => value.includes("|")), []);
+
+  const withColons = tables.families.BuiltInParameter.filter((row) => row.label?.includes(":"));
+  assert.ok(withColons.length >= 20, `expected colon-bearing labels, saw ${withColons.length}`);
+  for (const row of withColons) {
+    assert.equal(parameterDisplayName(row.id), row.label, `colon label for ${row.id}`);
+  }
 });

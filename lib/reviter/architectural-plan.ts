@@ -8,6 +8,8 @@ const WALL_CATEGORY_IDS = new Set([-2_000_011, -2_000_170, -2_000_171]);
 const DOOR_CATEGORY_ID = -2_000_023;
 const WINDOW_CATEGORY_ID = -2_000_014;
 const COLUMN_CATEGORY_IDS = new Set([-2_000_100, -2_000_133]);
+const STAIRS_RUN_CATEGORY_ID = -2_000_919;
+const STAIRS_LANDING_CATEGORY_ID = -2_000_920;
 const PLAN_CUT_HEIGHT_FEET = 4;
 const OPEN_END_FLOOR_SEARCH_FEET = 3;
 const OPEN_END_MINIMUM_WALL_LENGTH_FEET = 6;
@@ -244,8 +246,10 @@ function isDrawableStairRecord(record: ElementBoundsRecord, low: number, high: n
   // `Stairs` is the assembly container around runs and landings. Drawing it as
   // another stair duplicates the assembly and turns its broad AABB into a fake
   // flight. Only components with their own plan geometry belong in this map.
-  return record.categoryName === "Stairs Landings" ||
-    (record.categoryName === "Stairs Runs" &&
+  //
+  // Matched on the category id: the display name is Revit's label and moves.
+  return record.categoryId === STAIRS_LANDING_CATEGORY_ID ||
+    (record.categoryId === STAIRS_RUN_CATEGORY_ID &&
       Boolean(record.stairTreads?.some((tread) => treadIsInBand(tread, low, high))));
 }
 
@@ -895,7 +899,7 @@ function runDirectionArrow(treads: readonly (readonly Point3[])[], bounds: PlanB
 function stairLayer(records: readonly ElementBoundsRecord[], bounds: PlanBounds, low: number, high: number) {
   return records.map((record) => {
     const points = distinctPlanPoints(record);
-    if (record.categoryName === "Stairs Landings") {
+    if (record.categoryId === STAIRS_LANDING_CATEGORY_ID) {
       return `<path class="landing" data-revit-element-id="${record.elementId}" d="${path(points, bounds)}"/>`;
     }
     const treads = (record.stairTreads ?? []).filter((tread) => treadIsInBand(tread, low, high));

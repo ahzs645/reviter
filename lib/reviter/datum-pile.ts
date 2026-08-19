@@ -10,16 +10,23 @@ const MIN_BUILDING_RECORDS = 500;
 const MIN_BUILDING_SPAN_FEET = 50;
 const MIN_RESIDUAL_PILE_RECORDS = 24;
 
-/** Categories whose unplaced definitions commonly carry family-local bounds. */
-const FAMILY_LOCAL_CATEGORIES = new Set([
-  "Doors",
-  "Windows",
-  "Curtain Wall Panels",
-  "Railing Top Rail",
+/**
+ * Categories whose unplaced definitions commonly carry family-local bounds:
+ * Doors, Windows, Curtain Wall Panels and Railing Top Rail.
+ *
+ * Keyed by id. As a name set this silently lost curtain panels and top rails
+ * the moment Revit's own labels replaced the enumerator-derived names, which
+ * left the residual pile below its minimum and switched the cleanup off.
+ */
+const FAMILY_LOCAL_CATEGORY_IDS = new Set([
+  -2_000_023,
+  -2_000_014,
+  -2_000_170,
+  -2_000_946,
 ]);
 
 function isFamilyLocalCategory(record: ElementBoundsRecord) {
-  return record.categoryName == null || FAMILY_LOCAL_CATEGORIES.has(record.categoryName);
+  return record.categoryId == null || FAMILY_LOCAL_CATEGORY_IDS.has(record.categoryId);
 }
 
 /**

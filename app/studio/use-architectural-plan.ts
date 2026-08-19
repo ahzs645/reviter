@@ -40,10 +40,12 @@ const PLAN_CATEGORY_IDS = new Set([
 
 /** The record subset the plan composer reads, cloneable into a worker. */
 function compactPlanResult(result: ConvertResult): ConvertResult {
+  // Stair runs and landings are carried in addition to the plan categories, and
+  // matched by id: the display name is Revit's label and moves.
   const relevant = (record: ElementBoundsRecord) =>
     PLAN_CATEGORY_IDS.has(record.categoryId ?? 0) ||
-    record.categoryName === "Stairs Landings" ||
-    record.categoryName === "Stairs Runs";
+    record.categoryId === -2_000_920 ||
+    record.categoryId === -2_000_919;
   return {
     levels: result.levels,
     nativeAssociatedLevelRelations: result.nativeAssociatedLevelRelations,

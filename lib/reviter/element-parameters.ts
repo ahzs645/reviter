@@ -69,7 +69,8 @@ export type ElementParameter = {
   name: string;
   /**
    * `BuiltInParameter` enumerator, such as `WALL_USER_HEIGHT_PARAM`. Absent for
-   * the ids that neither published source names.
+   * ids the ODA label resource does not carry, which includes 12 that the
+   * transcribed table does name, so its absence says nothing about the id.
    */
   enumName?: string;
   /** Value in Revit's internal units — feet for lengths. */

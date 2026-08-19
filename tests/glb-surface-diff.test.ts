@@ -17,6 +17,7 @@ import {
   surfaceOrientation,
 } from "../scripts/glb-surface-diff.ts";
 import { readIfcStairFlightCounts } from "../scripts/audit-stair-vertical-residuals.ts";
+import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
 import * as THREE from "three";
 
 function glb(
@@ -181,8 +182,11 @@ test("retains certified native surfaces and closed stairs without hiding proxy r
     }),
     "retainedCertifiedNativeSurface",
   );
+  // Derived, not hard-coded: batch labels are `${categoryName} ${batch}`, and
+  // pinning one spelling here is what let the disposition silently stop
+  // matching when Revit's label for the stair-run category changed.
   assert.equal(
-    residualDisposition("Stairs Runs 1"),
+    residualDisposition(`${categoryDisplayName(-2_000_919)} 1`),
     "retainedClosedStairRun",
   );
   assert.equal(

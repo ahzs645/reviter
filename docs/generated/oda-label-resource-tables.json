@@ -16888,8 +16888,11 @@
       },
       {
         "id": -1017023,
-        "enumName": "REBAR_SHAPE_HOOK_START_TYPE_OBSOLETE",
-        "label": "Hook At Start"
+        "enumName": "REBAR_SHAPE_HOOK_START_TYPE",
+        "label": "Hook At Start",
+        "aliases": [
+          "REBAR_SHAPE_HOOK_START_TYPE_OBSOLETE"
+        ]
       },
       {
         "id": -1017022,
@@ -16959,7 +16962,10 @@
       {
         "id": -1017009,
         "enumName": "REBAR_ELEM_TERMINATION_END_ORIENT",
-        "label": "Orientation At End"
+        "label": "Orientation At End",
+        "aliases": [
+          "REBAR_ELEM_HOOK_END_ORIENT"
+        ]
       },
       {
         "id": -1017008,

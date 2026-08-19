@@ -264,7 +264,7 @@ const PACKED_PARAMETERS = [
   "-1006636:Orientation|-1006637:Justify Offset|-1006638:Offset from Reference|-1006639:Orientation",
   "-1006641:Justify|-1006642:Reference|-1006643:Display Rule|-1006644:Tag Type|-1006645:Number Size",
   "-1006660:Start Extension|-1006661:Full Step Arrow|-1006700:Symbol",
-  "-1006703:Bubble Weight Number\\n|-1006704:Center Segment|-1006705:Center Segment Weight",
+  "-1006703:Bubble Weight Number|-1006704:Center Segment|-1006705:Center Segment Weight",
   "-1006706:Center Segment Color|-1006707:Center Segment Pattern|-1006708:End Segment Weight",
   "-1006709:End Segment Color|-1006710:End Segment Pattern|-1006711:End Segments Length",
   "-1006850:Data Range|-1006851:Analysis Configuration|-1006852:Description",
@@ -1190,7 +1190,13 @@ export function parameterDisplayName(parameterId: number): string {
  *
  * The enumerator is the identifier that survives a release change or a localised
  * Revit install, so an audit consumer joining on parameters should read this
- * rather than the display label. `undefined` for the ids that are not public.
+ * rather than the display label.
+ *
+ * Only the ODA label resource carries enumerators, so this is `undefined` both
+ * for ids neither source names and for the 12 ids the transcribed table names
+ * but that resource omits — `-1002102` "Surface fill pattern" and `-1114137`
+ * "ASHRAE Table" among them. A missing enumerator is not evidence that an id is
+ * private.
  */
 export function builtInParameterEnumName(parameterId: number): string | undefined {
   return parameterEnumName(parameterId);

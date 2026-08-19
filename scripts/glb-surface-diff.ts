@@ -18,6 +18,9 @@ import {
   optionValue,
   positionals,
 } from "./lib/rvt-harness.ts";
+import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
+
+const STAIRS_RUN_CATEGORY_ID = -2_000_919;
 
 type Accessor = {
   bufferView?: number;
@@ -441,11 +444,21 @@ export function surfaceOrientation(
  * review. The visual-reference GLB is optimized and is not an authority for
  * deleting a pane back face or the closure of a solid stair tread.
  */
+/**
+ * Batch labels are built as `${categoryName} ${batch}`, so this has to track
+ * whatever Revit calls the stair-run category rather than pin one spelling.
+ * Pinning "Stairs Runs" silently stopped matching when the label became "Runs".
+ */
+function isStairRunLabel(meshLabel: string): boolean {
+  const prefix = categoryDisplayName(STAIRS_RUN_CATEGORY_ID);
+  return meshLabel === prefix || meshLabel.startsWith(`${prefix} `);
+}
+
 export function residualDisposition(
   meshLabel: string,
   material?: GlbMaterial,
 ): ResidualDisposition {
-  if (/^Stairs Runs(?:\s|$)/u.test(meshLabel)) return "retainedClosedStairRun";
+  if (isStairRunLabel(meshLabel)) return "retainedClosedStairRun";
   const alpha = material?.pbrMetallicRoughness?.baseColorFactor?.[3] ?? 1;
   if (
     meshLabel.startsWith("Certified native BRep") &&

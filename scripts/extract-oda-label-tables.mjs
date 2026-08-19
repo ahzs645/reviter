@@ -33,12 +33,26 @@ const OUTPUT_MODULE = resolve("lib/reviter/oda-label-resource.ts");
 /** The resource writes this sentinel where a row has no label. */
 const NULL_LABEL = "ODBM_CSV_NULL";
 
-/** Row shape: `OdBm::Family::ENUM_NAME;id` with an optional `;label` tail. */
-const ROW = /^OdBm::([A-Za-z]+)::([A-Za-z0-9_]+);(-?\d+)(?:;(.*))?$/;
+/**
+ * Row shape: `OdBm::Family::ENUM_NAME;id` with an optional `;label` tail.
+ *
+ * A `MAPPING;` prefix marks the rows of a separate table that lists which
+ * parameters have enumerated values. Those rows carry no label, but two of them
+ * are the only place in the file that names a parameter by its live enumerator
+ * rather than an `_OBSOLETE` one, so they are read for the name alone.
+ */
+const ROW = /^(?:MAPPING;)?OdBm::([A-Za-z]+)::([A-Za-z0-9_]+);(-?\d+)(?:;(.*))?$/;
 
 /**
  * Printable-ASCII runs of at least `minimum` characters, which is what `strings`
  * reports. Done in-process so the extraction does not depend on binutils.
+ *
+ * Every `OdBm::` row in this module is pure ASCII, and each one is terminated by
+ * a CRLF or a NUL, so nothing the extractor reads is truncated here. That is not
+ * true of the module's sibling tables: 182 rows across the unit-symbol and
+ * enumerated-value tables carry bytes above 0x7f — `BTU/(h·ft²·°F)`, `90°
+ * Counterclockwise` — and this scan would split them silently, leaving a prefix
+ * that still parses. Anything reading those tables needs a UTF-8 scan first.
  */
 function asciiRuns(bytes, minimum = 4) {
   const runs = [];
@@ -90,10 +104,19 @@ for (const run of asciiRuns(bytes)) {
     rowCount += 1;
     continue;
   }
+  // An id recurs when a label table and the enumerated-value table both name it.
+  // Every such recurrence is label-less, so this only ever fills a gap.
   if (label !== null && existing.label === null) existing.label = label;
   if (existing.enumName === enumName) continue;
-  // Two ids carry a renamed and a current enumerator. One pair is distinguished
-  // by an `_OBSOLETE` suffix; for the other the labelled row is the live name.
+  if (label !== null && existing.label !== null && label !== existing.label) {
+    // Never observed. If it ever happens the tie-break below would pair one
+    // row's name with the other's label, so refuse rather than invent a row.
+    throw new Error(
+      `conflicting labels for ${family} ${id}: "${existing.label}" vs "${label}"`,
+    );
+  }
+  // Four ids carry both a renamed and a live enumerator. Three are distinguished
+  // by an `_OBSOLETE` suffix; for the fourth the labelled row is the live name.
   const obsolete = /_OBSOLETE$/;
   const [primary, alias] = obsolete.test(enumName) !== obsolete.test(existing.enumName)
     ? (obsolete.test(enumName) ? [existing.enumName, enumName] : [enumName, existing.enumName])
@@ -224,16 +247,47 @@ const categoryLabelPairs = assertPackable(
     .map(([id, row]) => `${id}:${row.label}`),
 );
 
+/** Display form the transcribed table falls back to when no label is adopted. */
+function humaniseCategoryName(name) {
+  return name
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim();
+}
+
 // A Revit sub-category label such as "Lines" is only meaningful under its
 // parent, so a label shared by several ids cannot name a category on its own.
 const labelOwners = new Map();
-for (const [id, row] of categories) {
+for (const [, row] of categories) {
   if (row.label === null) continue;
   labelOwners.set(row.label, (labelOwners.get(row.label) ?? 0) + 1);
-  void id;
 }
+
+// A label also has to be unique against the names the ids that adopt no label
+// keep. `OST_StairsRailing` is "Railings" in Revit, but `OST_Railings` is a
+// different id whose enumerator already reads "Railings", so adopting the label
+// would put two categories under one name. Judging uniqueness inside the label
+// table alone misses that; the test is the whole display-name space.
+const fallbackOwners = new Map();
+for (const [id, name] of transcribedCategories) {
+  const display = humaniseCategoryName(name);
+  if (!fallbackOwners.has(display)) fallbackOwners.set(display, []);
+  fallbackOwners.get(display).push(id);
+}
+for (const [id, row] of categories) {
+  if (transcribedCategories.has(id)) continue;
+  const display = humaniseCategoryName(row.enumName.replace(/^OST_/, ""));
+  if (!fallbackOwners.has(display)) fallbackOwners.set(display, []);
+  fallbackOwners.get(display).push(id);
+}
+
 const ambiguousIds = [...categories.entries()]
-  .filter(([, row]) => row.label !== null && labelOwners.get(row.label) > 1)
+  .filter(([id, row]) => {
+    if (row.label === null) return false;
+    if (labelOwners.get(row.label) > 1) return true;
+    return (fallbackOwners.get(row.label) ?? []).some((other) => other !== id);
+  })
   .map(([id]) => id)
   .sort((a, b) => a - b);
 
@@ -307,9 +361,13 @@ ${packLines(categoryEnumPairs)}
 ].join("|");
 
 /**
- * Categories whose label is shared with at least one other category, because
- * Revit shows it nested under a parent. \`Lines\` alone names 5 categories and
- * \`<Hidden Lines>\` names 65, so these labels cannot stand in a flat list.
+ * Categories whose label cannot name them on its own.
+ *
+ * Most are labels Revit shows nested under a parent and reuses across siblings:
+ * \`Lines\` alone names 5 categories and \`<Hidden Lines>\` names 65. Two more are
+ * labels that collide with the enumerator-derived name another category keeps —
+ * \`OST_StairsRailing\` is "Railings" in Revit but \`OST_Railings\` already reads
+ * that way, and \`OST_CurtainSystems\` likewise against \`OST_Curtain_Systems\`.
  */
 const AMBIGUOUS_CATEGORY_LABEL_IDS = [
 ${packLines(ambiguousIds.map(String))}
