@@ -31,6 +31,29 @@ would close the gaps.
 > **one building**. See [validating on a second
 > building](validating-on-a-second-building.md).
 
+## The consumer is pinned to this repository
+
+It consumes Reviter as a **git submodule**, runs `scripts/extract-geometry.ts`
+as a subprocess, and imports none of these modules. The coupling is the IFC file
+and nothing else, which is the arrangement that lets the decoders here keep
+changing: a recovery improvement cannot break a Minecraft world, because the
+only thing the world depends on is the list of facts below.
+
+That freedom has one price. A consumer that shells out cannot be caught by a
+type error, so three things have to hold still, and
+`tests/downstream-cli-contract.test.ts` now asserts them:
+
+- `scripts/extract-geometry.ts` stays at that path;
+- `model.rvt --out something.ifc` keeps selecting the IFC exporter, with
+  `--revit-version` still accepted beside it;
+- `package.json` keeps declaring `engines.node`, which the consumer's preflight
+  reads rather than duplicating.
+
+None of the three constrains what any decoder does. Because the consumer pins a
+commit rather than a branch, breaking one of them is not an emergency — it
+strands the consumer on the old pin until someone updates it — but it is silent,
+which is why it is a test rather than a paragraph.
+
 ## The contract, and where the export stands
 
 | What the consumer reads | Why it needs it | Reviter IFC4 today | Source |
