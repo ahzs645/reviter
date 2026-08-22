@@ -1,0 +1,200 @@
+# What a voxel consumer needs from the export
+
+Reviter's IFC4 export has been graded by three readers — `web-ifc`,
+IfcOpenShell's validator, and the independent reader behind
+[`audit-ifc-export-independent.ts`](unbc-independent-ifc-verification-2026-08-19.md).
+All three ask the same kind of question: is the file well-formed, and does every
+product carry its evidence. None of them asks whether the file is *usable* for
+anything in particular.
+
+[bimmer](https://github.com/ahzs645/bimmer) is a consumer that does. It converts
+an IFC into a walkable Minecraft world, and it is built on the same three UNBC
+sources this repository pins by SHA-256 — the 67 MB RVT, the 80 MB Autodesk IFC,
+and the Autodesk GLB. It has been hardened end-to-end on the Autodesk export, so
+it is a working oracle for a question no schema check can answer: **which of the
+facts in a real BIM file does a downstream tool actually depend on, and does the
+recovery carry them?**
+
+Its governing principle happens to be the sharpest possible test of a recovery.
+At one block per metre it is far past the resolution where geometry alone
+survives — published voxel escape-route work finds vertical links stop surviving
+above ~25 cm cells — so everything the player walks on or through is driven by
+IFC *semantics*, with geometry only as a tie-breaker. A file can be
+geometrically excellent and still convert into a building whose stairwells are
+sealed.
+
+Nothing here changes the converter. It is a reading of one consumer's contract
+against this repository's own dated measurements, and a ranked list of what
+would close the gaps.
+
+> As everywhere in `docs/`, every figure is an observation from a dated run on
+> **one building**. See [validating on a second
+> building](validating-on-a-second-building.md).
+
+## The contract, and where the export stands
+
+| What the consumer reads | Why it needs it | Reviter IFC4 today | Source |
+| --- | --- | --- | --- |
+| Z-up, metres, valid IFC4 | the voxel lattice | yes; both readers open it, `ifcopenshell.validate --rules` is clean | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
+| typed products | class → block, overlap priority | typed; **571** `IfcBuildingElementProxy` (1.5%) fall to a generic solid | [2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) |
+| **`IfcRelAggregates` on stairs** | stringer vs mullion; stairwell identity; spiral rebuild | **absent** — only the spatial hierarchy and reviewed spaces are aggregated | `export-ifc.ts` |
+| stair shape enum | spiral synthesis | written as `PredefinedType` (IFC4), which is correct; the consumer read only the IFC2X3 spelling until it was fixed there | — |
+| `IfcDoor.OverallWidth` | leaf count | `max(bounds.width, bounds.depth)` — the larger horizontal extent of the box | `export-ifc.ts:453` |
+| door body base | the door's floor level | 1,921 doors at **100.0% centre / 99.9% size** on the half-foot overlay | [2026-08-01](unbc-three-source-audit-2026-08-01.md) |
+| `IfcSlab` / `IfcCovering` / `IfcRoof` | the walkable surface | 94 slabs against 107 tagged; "floor/landing recovery remains incomplete" | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
+| `FillsVoids → opening → wall` | replaying openings onto moved walls | present — 1,932 persisted relationships, none invented | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
+| `Tag` | joining two exports of one building | present; 41,709 also carry a native `UniqueId` | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
+| `GlobalId` | keying per-element overrides | derived from Reviter's own namespace; **does not match** Autodesk's | `export-ifc.ts:111` |
+| geometry provenance | knowing which bodies are boxes | declared: 84.3% native, 8.5% reconstructed, **7.2% (2,797) bounds fallback** | [2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) |
+
+## Three things worth changing, in order
+
+### 1. Carry the stair aggregation into the export
+
+This is the largest gap and it needs no new decoding.
+
+`Revit2027StairsElementAggregate` already carries `runAndLandingIds`,
+`registeredRailingIds` and `supportIds`; `Revit2027StairsRunAndLandingAggregate`
+already carries its parent `stairsId` and its `stringerIds`. That is the whole
+tree. `convert-element-geometry.ts` reads it to place run geometry and then
+drops it: it never reaches `ConvertResult`, so `export-ifc.ts` cannot see it.
+The only `IfcRelAggregates` in the delivered file are project → site → building
+→ storeys, and reviewed spaces.
+
+The consequence downstream is specific rather than cosmetic. Three separate
+passes key on `element.Decomposes`, and each degrades *silently*:
+
+- an `IfcMember` inside a stair is a stringer, not a curtain-wall mullion —
+  without the parent it is voxelized as curtain-wall framing;
+- flights whose assembly bounding boxes overlap are merged into one stairwell
+  before the climb test, so a scissor pair is one shaft rather than two;
+- flights of a spiral stair are routed to a synthesiser that rebuilds them as a
+  climbable spiral, because a spiral voxelized at 1 m is an unclimbable blob.
+
+A file with 108 flights and no containers passes every geometric check and
+produces stairwells that a walkability audit reports as isolated.
+
+The 2026-08-02 validation calls curtain-wall and stair wrapper aggregation
+something that "can be added later without changing visible geometry". That is
+true of the picture and it is the reason to separate two things the same note
+otherwise keeps apart correctly: a container's *geometry* is duplicate and worth
+suppressing — the same entry is right that container counts are not a geometry
+failure signal — but a container is also the **relationship carrier**, and
+suppressing the carrier deletes the relationship. The Autodesk file keeps 92
+stair containers and 1,835 curtain-wall containers for exactly this reason. A
+non-geometric `IfcStair` with an `IfcRelAggregates` to its recovered runs,
+landings, stringers and railings adds no surface and restores the tree.
+
+### 2. Derive `OverallWidth` from the host wall, not the bounding box
+
+`export-ifc.ts` writes `max(dimensions.width, dimensions.depth)` — the larger
+horizontal extent of the element's axis-aligned box. That is not a door's width
+in two ordinary cases, and this building has both:
+
+- **On a rotated wall it is a projection, not a width.** A quarter of this
+  model's walls sit at 58° to the model axes. For a leaf of width `w` and
+  thickness `t` at angle θ the box extents are `w·|cosθ| + t·|sinθ|` and
+  `w·|sinθ| + t·|cosθ|`; at 58° a 0.9 m leaf reports 0.82 m. The number is
+  angle-dependent, which a width is not.
+- **The swing is inside the box.** [The 2026-07-28 door
+  entry](unbc-door-window-opening-geometry-2026-07-28.md) settles that a door's
+  record is its opening plus the swing. Where the swing is part of the recovered
+  body, the box is the swing.
+
+The consumer turns this into `round(OverallWidth / pitch)` leaves, so at 1 m a
+door within about 10 cm of a half-metre boundary flips between one leaf and two.
+Entrance banks — runs of three, four, even six leaves, which this model really
+has — are exactly the population near those boundaries.
+
+The fix is in reach with data already resolved: the exporter looks the host
+relation up to write `IfcRelFillsElement`, so the host wall is in hand, and its
+direction turns the box into a projection onto the wall centreline. The change
+is gradeable without any new oracle — count how many of the 1,921 doors move
+across a `round(w / pitch)` boundary — and it can be checked against the paired
+export, which carries Revit's own `OverallWidth`.
+
+### 3. Decide what `Tag` is for, and grade the bounds fallbacks by class
+
+**Two exports of one building share no GlobalIds.** Each producer derives them
+its own way; Reviter compresses a hash of `namespace:kind:key`. Anything keyed
+on GlobalId — a curated per-door overrides file, a per-element diff between two
+builds — matches nothing across producers. Both files do write the Revit element
+id into `Tag`, so `Tag` is the join that works, and the consumer should key on it
+(that is filed on its side).
+
+Whether the two could be made to agree is a genuinely measurable question rather
+than a matter of taste. Autodesk derives its GlobalId from the element's Revit
+`UniqueId`, and this recovery has the `UniqueId` for 41,709 elements. The paired
+export supplies 38,187 known answers, so any candidate derivation can simply be
+scored against them. It is worth an hour before it is worth an opinion.
+
+**The 2,797 bounds fallbacks need a class breakdown, not a percentage.** An
+axis-aligned box is nearly harmless for a wall, because a wall is a box. For a
+stair it is a solid cube that seals the stairwell it stands in; for a railing it
+is a wall where a guardrail belongs. The provenance property set already carries
+what is needed to separate them, and the overlay already says where to look:
+`IfcStairFlight` scores **75.0%** on both centre and size against the paired
+export, against 99.8% for members and 100.0% for plates. Reporting
+`bounds-fallback` per native category — rather than as one figure — turns 7.2%
+into the short list of elements that will actually break a downstream model.
+
+## One thing to offer that nothing else has
+
+Neither source carries room semantics: the RVT reports `Rooms: 0` and the paired
+IFC `IfcSpace: 0`. Reviter nevertheless *derives* zones from recovered walls —
+[135 zones on level 311 from 1,989 wall records at a 1.4 ft grid, in about
+0.45 s](unbc-cad-floor-audit-2026-08-01.md) — and labels them **Inferred**,
+never as native Revit Rooms. The exporter can already write reviewed rooms as
+`IfcSpace`.
+
+That inference is worth more to a voxel consumer than to a viewer. Rounding a
+building to 1 m cells merges any two walls closer than about 1.5 m into solid
+mass, which swallows small rooms whole; on this model roughly 250 doors end up
+opening into rooms that no longer exist, and the consumer has to *guess* from
+voxel occupancy whether there was a room behind each one. A zone map computed at
+full model resolution — before rounding destroys the evidence — answers that
+directly, and it answers a second question too: an unreachable region that
+contains no room does not need a corridor synthesised to reach it.
+
+The honest framing is the one already in place. These zones are inferred, they
+can merge across incomplete walls, and they are not Rooms. A consumer that
+treats them as a *hint about where a room was* is using them for exactly what
+they support, which is not true of a consumer that would label them in a
+viewer.
+
+## Two notes on coordinates
+
+**This export is in project-internal coordinates.** Reviter reads Revit's
+internal frame and does not apply a project base point or survey point; the
+Autodesk export may carry shared coordinates. So the two files are not in the
+same place, and any element-by-element comparison between them needs a
+registration first. The method is already established here: pair elements whose
+axis-aligned bounds agree to 0.01 ft on all three axes and let each pair vote.
+On 2026-08-13 that put **1,642 pairs in a single 0.01 ft bin** against 122 for
+the runner-up, and [the same
+entry](unbc-glb-registration-and-stair-waist-2026-08-13.md) records
+bounding-box centres and footprint overlap being tried first and being wrong by
+feet. It transfers from IFC↔GLB to IFC↔IFC unchanged.
+
+**The export is Z-up, and one of our own tables can be misread as saying
+otherwise.** The 2026-08-02 validation reports the model spanning
+"217.898923 × 19.400000 × 375.120452 metres", with the height in the middle.
+That is web-ifc's axis convention, which is why the audit names the field
+`spansWebIfcAxesMetres` — the file itself writes storey elevations on Z and
+extrusions along `IFCDIRECTION((0.,0.,1.))`. Naming the field for its frame is
+what keeps that readable; anyone re-deriving a transform from the printed triple
+would insert a swap that is not needed.
+
+## What closing these gaps would and would not establish
+
+It would give this repository its first consumer-side test: an oracle that fails
+on a missing *relationship*, which no schema validator and no triangle count can
+see. The three IDS specifications already check that every wall and door carries
+identity and states its provenance; none of them can check that a stair knows
+its own flights, because nothing in the file has ever needed to know.
+
+It would not say anything about a second building. Every rule here is still
+fitted to one model, and joining a second tool to it doubles the tooling on the
+same file. The part that transfers is the shape of the question — the consumer's
+contract is a list of facts a *file* must carry, so it can be checked against a
+model nobody here has seen.

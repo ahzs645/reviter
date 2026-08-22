@@ -44,6 +44,7 @@ Read in this order they are roughly the order the work happened.
 | --- | --- |
 | [Stream coverage and the embedded schema](rvt-stream-and-schema-coverage.md) | Every CFB stream, how deeply each is decoded, and the `Formats/Latest` class inventory |
 | [Validating on a second building](validating-on-a-second-building.md) | What fitting every rule to one model has cost, rule by rule, and what to look at first on a second file |
+| [What a voxel consumer needs from the export](voxel-consumer-requirements.md) | A downstream tool that fails on a missing *relationship* rather than a malformed one: the facts it reads, where the export stands against each, and the three changes that would close the gaps |
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
