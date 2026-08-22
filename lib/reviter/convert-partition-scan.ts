@@ -97,7 +97,10 @@ import type { CategoryToken } from "./native-categories.ts";
 import type { PageConsumer } from "./page-frame-index.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
 import type { Revit2027NativeMeshCollector } from "./revit-2027-native-mesh-bridge.ts";
-import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
+import type {
+  Revit2027StairsElementAggregate,
+  Revit2027StairsRunAndLandingAggregate,
+} from "./revit-2027-stairs-aggregate.ts";
 import type { CompoundStructureCandidate } from "./compound-structure-materials.ts";
 import type { SegmentScale } from "./segment-scan.ts";
 import type { CylinderPatch, PlanePatch } from "./surfaces.ts";
@@ -181,6 +184,7 @@ export type PartitionScan = {
   gzipChunks: number;
   inflatedBytes: number;
   stairsRuns: ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>;
+  stairsAggregates: ReadonlyMap<number, Revit2027StairsElementAggregate>;
   persistedCadFileNames: PersistedCadFileName[];
   nativeCompoundStructureDefinitions: NativeCompoundStructureDefinition[];
   /** Total layer width per wall type, which a curved wall's sketch needs. */
@@ -595,6 +599,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     for (const consumer of pageConsumers) consumer.finishPartition();
   }
   const stairsRuns = stairsRunCollector.snapshot();
+  const stairsAggregates = stairsRunCollector.stairsSnapshot();
   const persistedCadFileNames = finalisePersistedCadFileNames(
     cadFileNameOccurrences,
   );
@@ -642,6 +647,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     gzipChunks,
     inflatedBytes,
     stairsRuns,
+    stairsAggregates,
     persistedCadFileNames,
     nativeCompoundStructureDefinitions,
     wallThicknessByType,

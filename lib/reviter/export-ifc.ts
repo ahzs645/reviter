@@ -16,6 +16,7 @@
  */
 import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
+import { stairAssemblyParts } from "./stair-assemblies.ts";
 import { spacePredefinedType } from "./room-review.ts";
 
 import type {
@@ -710,6 +711,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   );
   const productByElement = new Map<number, number>();
   const classByElement = new Map<number, IfcClass>();
+  const storeyByElement = new Map<number, number>();
   const productsByStorey = new Map<number, number[]>();
   const typeGroups = new Map<string, { type: number; products: number[] }>();
   const typeObjectByElement = new Map<number, number>();
@@ -752,6 +754,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     productByElement.set(element.elementId, product);
     classByElement.set(element.elementId, ifcClass);
     const storey = nearestStorey(element);
+    storeyByElement.set(element.elementId, storey);
     const products = productsByStorey.get(storey) ?? [];
     products.push(product);
     productsByStorey.set(storey, products);
@@ -900,6 +903,63 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
 
   for (const [storey, spaces] of spacesByStorey) {
     writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate-spaces", storey))},#${ownerHistory},'Reviewed rooms',$,#${storey},${writer.refs(spaces)})`);
+  }
+
+  // Stair assemblies. The parts are already exported and already placed in a
+  // storey; what was missing is the statement that they are one stair. Three
+  // things downstream of this file cannot be recovered from geometry -- which
+  // `IfcMember` is a stringer rather than a curtain-wall mullion, which flights
+  // share a stairwell, and which flights belong to one stair at all -- and all
+  // three are read off `Decomposes`.
+  //
+  // The container carries NO representation. Its geometry is duplicate: the
+  // runs, landings, stringers and railings already draw the stair, and the
+  // display scene suppresses the wrapper for exactly that reason. Suppressing
+  // the wrapper's geometry and suppressing the wrapper are different acts, and
+  // only the first one was ever wanted.
+  //
+  // `PredefinedType` stays `.NOTDEFINED.`: nothing decoded here says whether a
+  // stair is spiral, straight or a half-turn. A run recovered by the spiral
+  // mesh replay is evidence of a spiral, but that decoder's identity does not
+  // reach this manifest, so writing `.SPIRAL_STAIR.` would be a guess dressed
+  // as a reading.
+  for (const assembly of result.nativeStairAssemblies ?? []) {
+    const parts = stairAssemblyParts(assembly)
+      .map((elementId) => productByElement.get(elementId))
+      .filter((product): product is number => product != null);
+    if (!parts.length) continue;
+
+    let container = productByElement.get(assembly.stairElementId);
+    if (container == null) {
+      const identity = identityByElement.get(assembly.stairElementId)
+        ?? assembly.stairElementId;
+      container = writer.add(
+        `IFCSTAIR(${quoted(guid("element", identity))},#${ownerHistory},` +
+        `${quoted(`Stairs ${assembly.stairElementId}`)},` +
+        `${quoted(`Recovered stair assembly; parts joined from ${assembly.evidence}.`)},` +
+        `$,#${modelPlacement},$,${quoted(String(assembly.stairElementId))},.NOTDEFINED.)`,
+      );
+      productByElement.set(assembly.stairElementId, container);
+      // Place the container in the storey its own parts landed in, so it is
+      // reachable from the spatial structure like any other product rather
+      // than floating outside it.
+      const storey = assembly.runAndLandingIds
+        .map((elementId) => storeyByElement.get(elementId))
+        .find((value): value is number => value != null);
+      if (storey != null) {
+        const products = productsByStorey.get(storey) ?? [];
+        products.push(container);
+        productsByStorey.set(storey, products);
+      }
+    }
+
+    writer.add(
+      `IFCRELAGGREGATES(${quoted(guid("stair-assembly", assembly.stairElementId))},` +
+      `#${ownerHistory},'Stair assembly',` +
+      `${quoted(`Runs/landings ${assembly.runAndLandingIds.length}, stringers ${assembly.stringerIds.length}, ` +
+        `railings ${assembly.railingIds.length}, supports ${assembly.supportIds.length}`)},` +
+      `#${container},${writer.refs(parts)})`,
+    );
   }
 
   for (const [storey, products] of productsByStorey) {

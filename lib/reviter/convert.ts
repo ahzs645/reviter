@@ -29,6 +29,7 @@
 import { dominantMarker } from "./element-objects.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
 import { buildMeshes } from "./scene.ts";
+import { buildStairAssemblies } from "./stair-assemblies.ts";
 import {
   FAMILY_SEGMENT_SCALE,
   deduplicate,
@@ -151,6 +152,7 @@ export function convertRvtBytes(
       gzipChunks,
       inflatedBytes,
       stairsRuns,
+      stairsAggregates,
       persistedCadFileNames,
       nativeCompoundStructureDefinitions,
       wallThicknessByType,
@@ -307,6 +309,11 @@ export function convertRvtBytes(
       coverage,
     };
     const decodedRelations = {
+      // The assembly tree was decoded to place run geometry and then dropped
+      // before anything could publish it, so a consumer of the export could
+      // not tell a stringer from a mullion or two flights of one stairwell
+      // from two stairwells. Both sources are joined here once.
+      nativeStairAssemblies: buildStairAssemblies(stairsRuns, stairsAggregates),
       elementIndex: elementIndex
         ? {
             ...elementIndex,

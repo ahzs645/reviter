@@ -3,6 +3,7 @@ import {
   decodeRevit2027StairsRunAndLandingAggregate,
   REVIT_2027_STAIRS_ELEMENT_MARKER,
   REVIT_2027_STAIRS_RUN_MARKER,
+  type Revit2027StairsElementAggregate,
   type Revit2027StairsRunAndLandingAggregate,
 } from "./revit-2027-stairs-aggregate.ts";
 
@@ -14,6 +15,16 @@ export type Revit2027StairsRunCollector = {
   pushPage(page: Uint8Array): void;
   finishPartition(): void;
   snapshot(): ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>;
+  /**
+   * The decoded `Stairs` element aggregates, keyed by stair element id.
+   *
+   * The element frame was already being decoded here to learn which ids are
+   * stairs, and everything else it carries -- the registered railings, the
+   * runs and landings, the supports -- was discarded a line later. That is the
+   * assembly tree, and a consumer that has to know a stringer from a mullion,
+   * or which flights share a stairwell, cannot reconstruct it from geometry.
+   */
+  stairsSnapshot(): ReadonlyMap<number, Revit2027StairsElementAggregate>;
 };
 
 /**
@@ -35,6 +46,7 @@ export function createRevit2027StairsRunCollector(
     { elementId: number; objectLength: number; marker: number }
   >();
   const knownStairsIds = new Set<number>();
+  const stairsAggregates = new Map<number, Revit2027StairsElementAggregate>();
   const runFrames: {
     elementId: number;
     objectLength: number;
@@ -117,6 +129,7 @@ export function createRevit2027StairsRunCollector(
           );
           if (decoded.ok && decoded.value.elementId === target.elementId) {
             knownStairsIds.add(target.elementId);
+            stairsAggregates.set(target.elementId, decoded.value);
           }
         } else {
           runFrames.push({
@@ -156,6 +169,9 @@ export function createRevit2027StairsRunCollector(
         }
       }
       return new Map(runs);
+    },
+    stairsSnapshot(): ReadonlyMap<number, Revit2027StairsElementAggregate> {
+      return new Map(stairsAggregates);
     },
   };
 }

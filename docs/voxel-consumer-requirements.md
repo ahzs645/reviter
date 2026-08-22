@@ -60,7 +60,7 @@ which is why it is a test rather than a paragraph.
 | --- | --- | --- | --- |
 | Z-up, metres, valid IFC4 | the voxel lattice | yes; both readers open it, `ifcopenshell.validate --rules` is clean | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
 | typed products | class → block, overlap priority | typed; **571** `IfcBuildingElementProxy` (1.5%) fall to a generic solid | [2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) |
-| **`IfcRelAggregates` on stairs** | stringer vs mullion; stairwell identity; spiral rebuild | **absent** — only the spatial hierarchy and reviewed spaces are aggregated | `export-ifc.ts` |
+| **`IfcRelAggregates` on stairs** | stringer vs mullion; stairwell identity; spiral rebuild | **now written** — see below; the spiral *shape* is still undeclared | `stair-assemblies.ts` |
 | stair shape enum | spiral synthesis | written as `PredefinedType` (IFC4), which is correct; the consumer read only the IFC2X3 spelling until it was fixed there | — |
 | `IfcDoor.OverallWidth` | leaf count | `max(bounds.width, bounds.depth)` — the larger horizontal extent of the box | `export-ifc.ts:453` |
 | door body base | the door's floor level | 1,921 doors at **100.0% centre / 99.9% size** on the half-foot overlay | [2026-08-01](unbc-three-source-audit-2026-08-01.md) |
@@ -72,9 +72,36 @@ which is why it is a test rather than a paragraph.
 
 ## Three things worth changing, in order
 
-### 1. Carry the stair aggregation into the export
+### 1. Carry the stair aggregation into the export — done
 
-This is the largest gap and it needs no new decoding.
+`lib/reviter/stair-assemblies.ts` joins the two sources and
+`ConvertResult.nativeStairAssemblies` publishes the result; the exporter emits
+one `IfcRelAggregates` per assembly, onto the stair's own product where it has
+one and onto a **representation-less `IfcStair`** where it does not. The
+container adds no surface — the runs, landings, stringers and railings already
+draw the stair — so the display scene's reason for suppressing the wrapper is
+untouched. What changes is that the file now says they are one stair.
+
+Two properties are enforced rather than hoped for. A part is claimed by exactly
+one assembly, because IFC4 gives every object at most one
+(`IfcObjectDefinition.Decomposes : SET [0:1]`) and a landing shared between two
+flights would otherwise emit a file no conforming reader should accept; and the
+output is sorted rather than scan-ordered, because the exporter derives GUIDs
+and entity order from it and a re-run of one file has to produce the same bytes.
+
+`PredefinedType` stays `.NOTDEFINED.`. Nothing decoded here says whether a stair
+is spiral, straight or a half-turn, and the consumer's spiral rebuild reads
+exactly that enum — so this closes the assembly gap and leaves the shape gap
+open. The evidence for closing it exists: a run recovered by
+`revit-2027-spiral-stair-mesh` is a spiral by construction, since that replay
+only succeeds against matching inner/outer `GCylindricalHelix` guides. That
+decoder's identity does not reach the export manifest, which is the work.
+Writing `.SPIRAL_STAIR.` without it would be a guess dressed as a reading.
+
+The rest of this section is what the gap was, kept because it is why the shape
+of the fix is what it is.
+
+It needed no new decoding.
 
 `Revit2027StairsElementAggregate` already carries `runAndLandingIds`,
 `registeredRailingIds` and `supportIds`; `Revit2027StairsRunAndLandingAggregate`
