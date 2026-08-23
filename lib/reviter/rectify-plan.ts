@@ -16,6 +16,9 @@
  * conversion between the two is a scale, so a pivot divides by 0.3048 and an
  * angle is an angle.
  */
+import polygonClipping from "polygon-clipping";
+import type { Ring } from "polygon-clipping";
+
 import type { ConvertResult, ElementBoundsRecord, Point3 } from "./types.ts";
 
 const METRES_PER_FOOT = 0.3048;
@@ -84,43 +87,35 @@ function move(wing: Wing, x: number, y: number): [number, number] {
 }
 
 /**
- * Densify a ring so a per-point transform cuts it at the hull instead of
- * shearing it.
- *
- * A rigid motion applied to a REGION has to cut whatever crosses the region's
- * boundary. The consumer does that on its triangles; a plan's polygons need the
- * same treatment, or a floor slab spanning the seam is drawn as one long
- * diagonal from a corner that moved to a corner that did not.
+ * The wing's hull as a polygon, by clipping a very large square against each
+ * half-plane in turn. The hull is an intersection of half-planes, so it is
+ * convex, and Sutherland-Hodgman is exact for a convex clip region.
  */
-function densify(ring: readonly Point3[], step: number): Point3[] {
-  const out: Point3[] = [];
-  for (let index = 0; index < ring.length; index += 1) {
-    const from = ring[index]!;
-    const to = ring[(index + 1) % ring.length]!;
-    out.push(from);
-    const span = Math.hypot(to[0] - from[0], to[1] - from[1]);
-    const pieces = Math.floor(span / step);
-    for (let piece = 1; piece < pieces; piece += 1) {
-      const t = piece / pieces;
-      out.push([
-        from[0] + (to[0] - from[0]) * t,
-        from[1] + (to[1] - from[1]) * t,
-        from[2] + (to[2] - from[2]) * t,
-      ]);
+function hullRing(wing: Wing, reach = 1e6): Ring {
+  let ring: [number, number][] = [
+    [-reach, -reach], [reach, -reach], [reach, reach], [-reach, reach],
+  ];
+  for (const [a, b, c] of wing.planes) {
+    const inside = (point: [number, number]) => a * point[0] + b * point[1] + c <= wing.margin;
+    const cross = (from: [number, number], to: [number, number]): [number, number] => {
+      const fromValue = a * from[0] + b * from[1] + c - wing.margin;
+      const toValue = a * to[0] + b * to[1] + c - wing.margin;
+      const t = fromValue / (fromValue - toValue);
+      return [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t];
+    };
+    const out: [number, number][] = [];
+    for (let index = 0; index < ring.length; index += 1) {
+      const from = ring[index]!;
+      const to = ring[(index + 1) % ring.length]!;
+      const fromIn = inside(from);
+      const toIn = inside(to);
+      if (fromIn) out.push(from);
+      if (fromIn !== toIn) out.push(cross(from, to));
     }
+    ring = out;
+    if (!ring.length) break;
   }
-  return out;
-}
-
-function movePoints<T extends readonly [number, number, number]>(
-  points: readonly T[], wings: Wing[],
-): T[] {
-  return points.map((point) => {
-    const wing = wingAt(wings, point[0], point[1]);
-    if (!wing) return point as unknown as T;
-    const [x, y] = move(wing, point[0], point[1]);
-    return [x, y, point[2]] as unknown as T;
-  });
+  return [...ring, ring[0]!].filter(Boolean) as Ring;
 }
 
 /** The plan point a whole-element assignment is decided from. */
@@ -150,6 +145,8 @@ export type RectifyPlanReport = {
   moved: number;
   /** Records with points on BOTH sides — the ones the seam runs through. */
   straddling: number;
+  /** Element ids a wing moved, so an audit can ask what was left behind. */
+  movedIds: Set<number>;
 };
 
 export type Assignment =
@@ -181,11 +178,11 @@ export function rectifyForPlan(
   result: ConvertResult,
   input: RectifyPlanInput,
   assignment: Assignment = "mixed",
-  densifyFeet = 2,
 ): { result: ConvertResult; report: RectifyPlanReport } {
   const wings = toFeet(input);
   const report: RectifyPlanReport = {
     wings: wings.length, records: result.elementBounds.length, moved: 0, straddling: 0,
+    movedIds: new Set<number>(),
   };
   if (!wings.length) return { result, report };
 
@@ -216,13 +213,45 @@ export function rectifyForPlan(
         const [x, y] = rigid(point[0], point[1]);
         return [x, y, point[2]] as Point3;
       });
-    const cutPoints = (points: readonly Point3[]): Point3[] => {
-      for (const point of points) {
-        if (wingAt(wings, point[0], point[1])) inCount += 1; else outCount += 1;
+    /**
+     * Split a closed ring at the wing edges and move only the pieces inside.
+     *
+     * Relocating some of a ring's VERTICES does not cut it — the ring is still
+     * one closed polygon, so it draws as the old shape with two long spikes
+     * reaching across the building to wherever the moved vertices went. That is
+     * what the first drawing showed, and it looked like a defect in the
+     * rectification rather than in this. A ring has to be split into rings.
+     */
+    const splitRing = (points: readonly Point3[]): Point3[][] => {
+      const z = points[0]?.[2] ?? 0;
+      const closed: Ring = [...points.map((point) => [point[0], point[1]] as [number, number])];
+      if (closed.length && (closed[0]![0] !== closed.at(-1)![0]
+        || closed[0]![1] !== closed.at(-1)![1])) closed.push(closed[0]!);
+      let rest: [number, number][][][] = [[closed]];
+      const out: Point3[][] = [];
+      for (const wing of wings) {
+        if (!rest.length) break;
+        const hull = [[hullRing(wing)]] as [number, number][][][];
+        const inside = polygonClipping.intersection(rest as never, hull as never);
+        for (const polygon of inside) {
+          for (const ring of polygon) {
+            inCount += ring.length;
+            out.push(ring.map(([x, y]) => {
+              const [mx, my] = move(wing, x, y);
+              return [mx, my, z] as Point3;
+            }));
+          }
+        }
+        rest = polygonClipping.difference(rest as never, hull as never) as never;
       }
-      return movePoints(densify(points, densifyFeet), wings);
+      for (const polygon of rest) {
+        for (const ring of polygon) {
+          outCount += ring.length;
+          out.push(ring.map(([x, y]) => [x, y, z] as Point3));
+        }
+      }
+      return out.length ? out : [rigidPoints(points)];
     };
-    const ring = assignment === "element" ? rigidPoints : cutPoints;
 
     const next: ElementBoundsRecord = { ...record };
     const moveSolid = (solid: NonNullable<ElementBoundsRecord["solid"]>) => ({
@@ -246,9 +275,15 @@ export function rectifyForPlan(
       next.stairTreads = record.stairTreads.map((tread) =>
         rigidPoints(tread) as [Point3, Point3, Point3, Point3]);
     }
-    if (record.loops?.length) next.loops = record.loops.map(ring);
+    if (record.loops?.length) {
+      next.loops = assignment === "element"
+        ? record.loops.map(rigidPoints)
+        : record.loops.flatMap(splitRing);
+    }
+    // A rail path is an open polyline, not a ring, so a per-point move is a
+    // cut already: the run simply jumps where it crosses the wing edge.
     if (record.railPath?.polylines.length) {
-      next.railPath = { ...record.railPath, polylines: record.railPath.polylines.map(ring) };
+      next.railPath = { ...record.railPath, polylines: record.railPath.polylines.map(rigidPoints) };
     }
     if (record.boundsFeet && whole) {
       const [minX, minY] = move(whole, record.boundsFeet.min.x, record.boundsFeet.min.y);
@@ -259,7 +294,7 @@ export function rectifyForPlan(
       };
     }
 
-    if (inCount) report.moved += 1;
+    if (inCount) { report.moved += 1; report.movedIds.add(record.elementId); }
     if (inCount && outCount) report.straddling += 1;
     return inCount ? next : record;
   });

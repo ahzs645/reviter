@@ -96,34 +96,41 @@ test("a wall outside the wing is left exactly where it was", () => {
   assert.equal(result.elementBounds[0], wall, "an untouched record is not even copied");
 });
 
-test("a floor spanning the seam is cut at the seam, not sheared across it", () => {
+test("a floor spanning the seam is SPLIT into two rings", () => {
   // One long slab from x = -40 to x = +40 ft. Its wing half must travel and its
-  // spine half must not; without densifying, the single edge between the two
-  // corners is drawn as a diagonal and the tear is invisible.
+  // spine half must not. Relocating some of the ring's vertices does not cut
+  // it — the ring stays one closed polygon and draws as the old shape with two
+  // long spikes reaching across the building, which is what the first drawing
+  // showed and what it was mistaken for.
   const slab = record({
     categoryId: -2000032,
     loops: [[[-40, 0, 0], [40, 0, 0], [40, 20, 0], [-40, 20, 0]]],
   });
   const { result, report } = rectifyForPlan(model([slab]), wingTurningQuarter([0, 100]));
   assert.equal(report.straddling, 1);
-  const ring = result.elementBounds[0]!.loops![0]!;
-  const has = (x: number, y: number) =>
-    ring.some((point) => Math.abs(point[0] - x) < 1e-6 && Math.abs(point[1] - y) < 1e-6);
-  // The spine's own corners are exactly where they were ...
-  assert.ok(has(-40, 0) && has(-40, 20), "the spine half should not have moved");
-  // ... and the wing half has travelled: 90 degrees about the origin plus
-  // 100 m north sends (x, y) to (-y, x + 328.08 ft).
-  const north = ring.filter((point) => point[1] > 300);
-  assert.ok(north.length >= 2, `the wing half should have travelled, got ${north.length}`);
-  // Cut, not sheared: going round the ring, the coordinates jump exactly twice
-  // — once entering the wing and once leaving it. A sheared ring would ease
-  // across the seam over many small steps instead.
-  const jumps = ring.filter((point, index) => {
-    const next = ring[(index + 1) % ring.length]!;
-    return Math.hypot(next[0] - point[0], next[1] - point[1]) > 100;
-  });
-  assert.equal(jumps.length, 2, `the ring should be cut in two places, got ${jumps.length}`);
-  assert.ok(ring.length > 50, "the ring should have been densified before cutting");
+  const loops = result.elementBounds[0]!.loops!;
+  assert.equal(loops.length, 2, `expected two rings, got ${loops.length}`);
+  const spans = loops.map((loop) => ({
+    minX: Math.min(...loop.map((point) => point[0])),
+    maxX: Math.max(...loop.map((point) => point[0])),
+    minY: Math.min(...loop.map((point) => point[1])),
+    maxY: Math.max(...loop.map((point) => point[1])),
+  }));
+  const spine = spans.find((span) => span.maxY <= 20.001);
+  const wing = spans.find((span) => span.minY > 99);
+  assert.ok(spine, "the spine half stays in the y = 0..20 band");
+  assert.ok(wing, "the wing half travels 100 m north");
+  assert.ok(Math.abs(spine!.minX + 40) < 1e-6 && Math.abs(spine!.maxX) < 1e-6,
+    `the spine half spans x -40..0, got ${spine!.minX}..${spine!.maxX}`);
+  // And neither ring reaches across the gap: no edge is longer than the slab.
+  for (const loop of loops) {
+    for (let index = 0; index < loop.length; index += 1) {
+      const from = loop[index]!;
+      const to = loop[(index + 1) % loop.length]!;
+      assert.ok(Math.hypot(to[0] - from[0], to[1] - from[1]) < 100,
+        "no ring may span the gap the move opened");
+    }
+  }
 });
 
 test("the transform arrives in metres and is applied in feet", () => {

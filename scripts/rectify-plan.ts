@@ -22,6 +22,7 @@ import { hasFlag, isEntryPoint, optionValue } from "./lib/rvt-harness.ts";
 import { makeArchitecturalFloorSvg } from "../lib/reviter/architectural-plan.ts";
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { floorPlateLevels } from "../lib/reviter/export-svg.ts";
+import { auditLevels } from "../lib/reviter/rectify-audit.ts";
 import { rectifyForPlan, type RectifyPlanInput, type RectifyPlanReport }
   from "../lib/reviter/rectify-plan.ts";
 import type { ConvertResult } from "../lib/reviter/types.ts";
@@ -101,10 +102,14 @@ export async function runRectifyPlan(args: RectifyPlanArguments): Promise<void> 
   // Both assignments, from one decode. A wall is small and wants to move
   // whole; a floor plate spans the seam and has to be cut at it. Drawing both
   // is the only way to see which the plan actually needs.
-  const reports: Record<string, RectifyPlanReport> = {};
+  const reports: Record<string, Omit<RectifyPlanReport, "movedIds">> = {};
+  let squaredForAudit: ConvertResult | null = null;
+  let movedIds = new Set<number>();
   for (const assignment of ["element", "mixed"] as const) {
     const { result: squared, report } = rectifyForPlan(result, wings, assignment);
-    reports[assignment] = report;
+    const { movedIds: ids, ...rest } = report;
+    reports[assignment] = rest;
+    if (assignment === "mixed") { squaredForAudit = squared; movedIds = ids; }
     process.stderr.write(
       `rectify (${assignment}): ${report.wings} wing(s) moved ${report.moved} of ` +
       `${report.records} element records; ${report.straddling} straddle a wing edge\n`);
@@ -113,9 +118,49 @@ export async function runRectifyPlan(args: RectifyPlanArguments): Promise<void> 
       writeFileSync(join(args.outDir, `level-${levelId}-after-${assignment}.svg`), svg, "utf8");
     }
   }
-  process.stderr.write(`  ${levels.length} level(s) drawn four ways\n`);
+  process.stderr.write(`  ${levels.length} level(s) drawn before and after, two ways\n`);
+
+  // Floor by floor: what stayed put that should not have.
+  const elevations = new Map(result.levels.flatMap((level) =>
+    level.levelId == null ? [] : [[level.levelId, level.elevation] as const]));
+  const byLevel = new Map<number, { elevation: number; elementIds: number[] }>();
+  for (const relation of result.nativeAssociatedLevelRelations ?? []) {
+    if (!levels.includes(relation.levelId)) continue;
+    const entry = byLevel.get(relation.levelId)
+      ?? { elevation: elevations.get(relation.levelId) ?? 0, elementIds: [] };
+    entry.elementIds.push(relation.elementId);
+    byLevel.set(relation.levelId, entry);
+  }
+  const audit = auditLevels({
+    before: result, after: squaredForAudit!, movedIds, drawnByLevel: byLevel,
+  });
+  process.stderr.write(
+    `\n${"level".padEnd(10)}${"elev".padStart(8)}${"drawn".padStart(8)}` +
+    `${"moved".padStart(8)}${"joins broken".padStart(14)}${"clashes".padStart(9)}\n`);
+  const byCategory = new Map<string, number>();
+  for (const level of audit) {
+    process.stderr.write(
+      `${String(level.levelId).padEnd(10)}${level.elevation.toFixed(1).padStart(8)}` +
+      `${String(level.drawn).padStart(8)}${String(level.moved).padStart(8)}` +
+      `${String(level.brokenJoins.length).padStart(14)}` +
+      `${String(level.clashes.length).padStart(9)}\n`);
+    for (const finding of [...level.brokenJoins, ...level.clashes]) {
+      const name = finding.categoryName ?? String(finding.categoryId ?? "?");
+      byCategory.set(name, (byCategory.get(name) ?? 0) + 1);
+    }
+  }
+  // Which categories the hull keeps missing is the actionable half: one
+  // element left behind is a rounding call, a whole category of them is a
+  // population the hull was never built from.
+  const ranked = [...byCategory].sort((left, right) => right[1] - left[1]);
+  if (ranked.length) {
+    process.stderr.write("\nleft behind, by category:\n");
+    for (const [name, count] of ranked) {
+      process.stderr.write(`  ${String(count).padStart(5)}  ${name}\n`);
+    }
+  }
   writeFileSync(join(args.outDir, "rectify-plan.json"),
-    JSON.stringify({ levels, reports }, null, 2), "utf8");
+    JSON.stringify({ levels, reports, audit }, null, 2), "utf8");
 }
 
 if (isEntryPoint(import.meta.url)) {
