@@ -135,7 +135,7 @@ stair containers and 1,835 curtain-wall containers for exactly this reason. A
 non-geometric `IfcStair` with an `IfcRelAggregates` to its recovered runs,
 landings, stringers and railings adds no surface and restores the tree.
 
-### 2. Derive `OverallWidth` from the host wall, not the bounding box
+### 2. Derive `OverallWidth` from the footprint, not the bounding box — done
 
 `export-ifc.ts` writes `max(dimensions.width, dimensions.depth)` — the larger
 horizontal extent of the element's axis-aligned box. That is not a door's width
@@ -162,6 +162,27 @@ direction turns the box into a projection onto the wall centreline. The change
 is gradeable without any new oracle — count how many of the 1,921 doors move
 across a `round(w / pitch)` boundary — and it can be checked against the paired
 export, which carries Revit's own `OverallWidth`.
+
+### 2b. Measured on the building — done
+
+Both changes run against the real RVT (`8c294549…`, 70,336,512 bytes) and the
+consumer's gate read the result:
+
+| | before | after | Autodesk's own export |
+| --- | ---: | ---: | ---: |
+| flights aggregated | **0 of 108** | **108 of 108** | 123 of 123 |
+| `IfcStair` containers | 0 | 82 | 92 |
+| doors within 0.1 cell of a leaf boundary | **394** | **9** | 35 |
+| gate verdict | **FAIL** | WARN | WARN |
+
+The door figure is the one worth dwelling on. 394 of 1,921 doors sat close
+enough to a `round(width / pitch)` boundary that a small change in
+`OverallWidth` flips them between one leaf and two — a fifth of every door in
+the building, against 35 from the paired export. Reading the width off the
+footprint's own principal axis instead of an axis-aligned box takes it to 9,
+which is fewer than the export's. That is the whole argument for the change,
+and it was worth measuring rather than asserting: the bounding-box rule was
+wrong in a way that mattered at a scale nobody had put a number on.
 
 ### 3. Decide what `Tag` is for, and grade the bounds fallbacks by class
 

@@ -423,6 +423,83 @@ function emitRoomShape(
   return writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
 }
 
+/**
+ * A door or window's true opening width, from the footprint's own axes.
+ *
+ * `max(boundsFeet.width, boundsFeet.depth)` is the larger side of an
+ * AXIS-ALIGNED box, which is the width only when the leaf happens to be
+ * aligned with the model. A quarter of this building's walls sit at 58
+ * degrees, and for a leaf of width w and thickness t at angle θ the box sides
+ * are `w·|cosθ| + t·|sinθ|` and `w·|sinθ| + t·|cosθ|` -- so a 0.9 m leaf at 58
+ * degrees reports 0.82 m, and the number moves with the angle, which a width
+ * does not.
+ *
+ * The first principal axis of the plan footprint is the leaf's own long
+ * direction whatever the wall's angle, so its extent is the width. Measured
+ * against the paired Autodesk export of this building, the AABB rule leaves
+ * 394 doors within a tenth of a cell of a `round(width / pitch)` boundary
+ * where the export leaves 35.
+ *
+ * Returns null when the footprint has no dominant direction (a square stub),
+ * where a computed width would be a coin toss and the caller should fall back.
+ *
+ * NB the fragments' positions are already in METRES -- `emitTessellatedShape`
+ * converts them on the way in -- while `boxDimensions` and every other length
+ * reaching `optionalPositiveFeet` is in feet. The extent is divided back so
+ * the caller's unit stays uniform; without that the width is multiplied by
+ * 0.3048 twice and a 3 ft door reports 0.28 m.
+ */
+function planarWidthFeet(fragments: readonly GeometryFragment[]): number | null {
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (const fragment of fragments) {
+    for (let index = 0; index + 2 < fragment.positions.length; index += 3) {
+      sumX += fragment.positions[index]!;
+      sumY += fragment.positions[index + 1]!;
+      count += 1;
+    }
+  }
+  if (count < 3) return null;
+  const meanX = sumX / count;
+  const meanY = sumY / count;
+
+  let xx = 0;
+  let xy = 0;
+  let yy = 0;
+  for (const fragment of fragments) {
+    for (let index = 0; index + 2 < fragment.positions.length; index += 3) {
+      const dx = fragment.positions[index]! - meanX;
+      const dy = fragment.positions[index + 1]! - meanY;
+      xx += dx * dx;
+      xy += dx * dy;
+      yy += dy * dy;
+    }
+  }
+  // Principal axis of the 2x2 covariance, in closed form.
+  const trace = xx + yy;
+  const diff = Math.sqrt(Math.max(0, (xx - yy) * (xx - yy) + 4 * xy * xy));
+  const major = (trace + diff) / 2;
+  const minor = (trace - diff) / 2;
+  if (major <= 1e-9 || minor / major > 0.7) return null;   // no dominant axis
+  const angle = Math.atan2(major - xx, xy || 1e-12);
+  const axisX = Math.cos(angle);
+  const axisY = Math.sin(angle);
+
+  let low = Infinity;
+  let high = -Infinity;
+  for (const fragment of fragments) {
+    for (let index = 0; index + 2 < fragment.positions.length; index += 3) {
+      const projected = (fragment.positions[index]! - meanX) * axisX
+        + (fragment.positions[index + 1]! - meanY) * axisY;
+      if (projected < low) low = projected;
+      if (projected > high) high = projected;
+    }
+  }
+  const extent = (high - low) / METRES_PER_FOOT;
+  return Number.isFinite(extent) && extent > 0 ? extent : null;
+}
+
 function emitProduct(
   writer: StepWriter,
   ifcClass: IfcClass,
@@ -431,6 +508,7 @@ function emitProduct(
   element: ManifestElement,
   placement: number,
   shape: number | null,
+  fragments: readonly GeometryFragment[] = [],
 ): number {
   const name = quoted(elementName(element));
   const description = quoted(
@@ -451,13 +529,15 @@ function emitProduct(
   ];
   const dimensions = boxDimensions(element);
   if (ifcClass.entity === "IFCDOOR") {
-    const planar = Math.max(dimensions.width, dimensions.depth);
+    const planar = planarWidthFeet(fragments)
+      ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
       `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".DOOR.", ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCWINDOW") {
-    const planar = Math.max(dimensions.width, dimensions.depth);
+    const planar = planarWidthFeet(fragments)
+      ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
       `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".WINDOW.", ".NOTDEFINED.", "$"].join(",")})`,
     );
@@ -750,6 +830,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       element,
       modelPlacement,
       shape,
+      fragments,
     );
     productByElement.set(element.elementId, product);
     classByElement.set(element.elementId, ifcClass);
