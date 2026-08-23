@@ -192,3 +192,41 @@ test("the drawn plan actually changes — the caches are keyed on the result", (
   // And the original is still drawable, unchanged: this returns a copy.
   assert.equal(makeArchitecturalFloorSvg(base, levelId), before);
 });
+
+test("a mullion the hull missed travels with the wall it hangs on", () => {
+  // The measured defect: a wing's hull is built from wall placements, so
+  // curtain panels and mullions on its facade fall outside it. The wall behind
+  // the glazing rotates and the glazing stays, driven through the rooms that
+  // moved — 409 of 605 findings on the real model.
+  const inside = record({ elementId: 1, categoryId: -2_000_011,
+    solid: { elementId: 1, start: { x: 1, y: 0 }, end: { x: 20, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 } });
+  const mullion = record({ elementId: 2, categoryId: -2_000_171,
+    solid: { elementId: 2, start: { x: -0.4, y: 0 }, end: { x: -0.2, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.3 } });
+  const far = record({ elementId: 3, categoryId: -2_000_171,
+    solid: { elementId: 3, start: { x: -0.4, y: 90 }, end: { x: -0.2, y: 90 },
+             baseElevation: 0, topElevation: 9, thickness: 0.3 } });
+  const { result, report } = rectifyForPlan(
+    model([inside, mullion, far]), wingTurningQuarter([0, 100]));
+  assert.equal(report.contactClaims, 1, "one mullion touches the wall, one does not");
+  const moved = result.elementBounds[1]!.solid!;
+  assert.ok(moved.start.y > 99, `the mullion should travel with its wall, got ${moved.start.y}`);
+  assert.equal(result.elementBounds[2]!.solid!.start.y, 90, "the far one stays");
+});
+
+test("a long wall that merely reaches the wing is not dragged into it", () => {
+  // Contact is tested on boxes, so a corridor wall touching a wing at one end
+  // touches it by its box too. Claimed, the whole corridor swings away: on the
+  // voxel side that opened 138 see-through cells in a building that had none.
+  const inside = record({ elementId: 1, categoryId: -2_000_011,
+    solid: { elementId: 1, start: { x: 1, y: 0 }, end: { x: 20, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 } });
+  const corridor = record({ elementId: 2, categoryId: -2_000_011,
+    solid: { elementId: 2, start: { x: -300, y: 0 }, end: { x: -0.2, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 } });
+  const { result, report } = rectifyForPlan(
+    model([inside, corridor]), wingTurningQuarter([0, 100]));
+  assert.equal(report.contactClaims, 0);
+  assert.equal(result.elementBounds[1]!.solid!.start.x, -300, "the corridor stays put");
+});

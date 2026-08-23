@@ -22,6 +22,10 @@ import type { Ring } from "polygon-clipping";
 import type { ConvertResult, ElementBoundsRecord, Point3 } from "./types.ts";
 
 const METRES_PER_FOOT = 0.3048;
+/** Close enough to count as joined, and how far from the hull a claim may sit.
+ * The same two numbers the voxel pipeline uses, so both draw the same recipe. */
+const TOUCH_METRES = 0.6;
+const REACH_METRES = 6;
 
 /** One wing, exactly as the consumer publishes it. */
 export type WingTransform = {
@@ -118,6 +122,90 @@ function hullRing(wing: Wing, reach = 1e6): Ring {
   return [...ring, ring[0]!].filter(Boolean) as Ring;
 }
 
+/** An element's plan box, from whatever geometry the plan draws it by. */
+function planBox(record: ElementBoundsRecord): [number, number, number, number] | null {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  const eat = (x: number, y: number) => {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  };
+  for (const solid of record.solids ?? (record.solid ? [record.solid] : [])) {
+    eat(solid.start.x, solid.start.y);
+    eat(solid.end.x, solid.end.y);
+  }
+  for (const point of record.orientedBox ?? []) eat(point[0], point[1]);
+  for (const loop of record.loops ?? []) for (const point of loop) eat(point[0], point[1]);
+  if (!Number.isFinite(minX) && record.boundsFeet) {
+    eat(record.boundsFeet.min.x, record.boundsFeet.min.y);
+    eat(record.boundsFeet.max.x, record.boundsFeet.max.y);
+  }
+  return Number.isFinite(minX) ? [minX, minY, maxX, maxY] : null;
+}
+
+/**
+ * Elements the hull missed that are JOINED to elements it claimed.
+ *
+ * A wing's hull is the convex hull of its WALL placements, and a curtain wall
+ * is not a wall: panels and mullions are their own elements hanging on the
+ * facade. Audited floor by floor, the wall behind the glazing rotates and the
+ * glazing stays, and that is 409 of 605 findings.
+ *
+ * Two bounds keep the claim from becoming a second, sloppier hull. An element
+ * must TOUCH something already claimed, and ALL of it must sit within
+ * `reachFeet` of the hull — the farthest corner, not the nearest, because
+ * contact is tested on boxes and a forty-foot corridor wall that reaches the
+ * wing at one end touches it by its box too. Claimed, the whole corridor would
+ * swing away with the wing.
+ */
+function contactClaims(
+  records: readonly ElementBoundsRecord[], wings: Wing[],
+  seeded: ReadonlyMap<number, Wing>, touchFeet: number, reachFeet: number, rounds = 3,
+): Map<number, Wing> {
+  const boxes = new Map<number, [number, number, number, number]>();
+  for (const record of records) {
+    const box = planBox(record);
+    if (box) boxes.set(record.elementId, box);
+  }
+  const wholeBoxSlack = (box: [number, number, number, number]) => {
+    let best = Infinity;
+    for (const wing of wings) {
+      let worst = -Infinity;
+      for (const [a, b, c] of wing.planes) {
+        let corner = -Infinity;
+        for (const x of [box[0], box[2]]) {
+          for (const y of [box[1], box[3]]) corner = Math.max(corner, a * x + b * y);
+        }
+        worst = Math.max(worst, corner + c);
+      }
+      best = Math.min(best, worst - wing.margin);
+    }
+    return best;
+  };
+  const candidates = new Map<number, [number, number, number, number]>();
+  for (const [id, box] of boxes) {
+    if (!seeded.has(id) && wholeBoxSlack(box) <= reachFeet) candidates.set(id, box);
+  }
+  const touches = (a: [number, number, number, number], b: [number, number, number, number]) =>
+    a[0] - touchFeet <= b[2] && b[0] - touchFeet <= a[2]
+    && a[1] - touchFeet <= b[3] && b[1] - touchFeet <= a[3];
+
+  const claims = new Map<number, Wing>();
+  let frontier = seeded;
+  for (let round = 0; round < rounds && frontier.size && candidates.size; round += 1) {
+    const won = new Map<number, Wing>();
+    for (const [id, box] of candidates) {
+      for (const [other, wing] of frontier) {
+        const otherBox = boxes.get(other);
+        if (otherBox && touches(box, otherBox)) { won.set(id, wing); break; }
+      }
+    }
+    if (!won.size) break;
+    for (const [id, wing] of won) { claims.set(id, wing); candidates.delete(id); }
+    frontier = won;
+  }
+  return claims;
+}
+
 /** The plan point a whole-element assignment is decided from. */
 function planCentre(record: ElementBoundsRecord): [number, number] | null {
   // A wall's location line first: it is the thing the plan actually draws, and
@@ -147,6 +235,8 @@ export type RectifyPlanReport = {
   straddling: number;
   /** Element ids a wing moved, so an audit can ask what was left behind. */
   movedIds: Set<number>;
+  /** Elements the hull missed and contact claimed. */
+  contactClaims: number;
 };
 
 export type Assignment =
@@ -182,14 +272,27 @@ export function rectifyForPlan(
   const wings = toFeet(input);
   const report: RectifyPlanReport = {
     wings: wings.length, records: result.elementBounds.length, moved: 0, straddling: 0,
-    movedIds: new Set<number>(),
+    movedIds: new Set<number>(), contactClaims: 0,
   };
   if (!wings.length) return { result, report };
+
+  // Seed on the plan centre, then claim by contact what the hull did not reach.
+  const seeded = new Map<number, Wing>();
+  for (const record of result.elementBounds) {
+    const centre = planCentre(record);
+    if (!centre) continue;
+    const wing = wingAt(wings, centre[0], centre[1]);
+    if (wing) seeded.set(record.elementId, wing);
+  }
+  const claimed = contactClaims(
+    result.elementBounds, wings, seeded,
+    TOUCH_METRES / METRES_PER_FOOT, REACH_METRES / METRES_PER_FOOT);
+  report.contactClaims = claimed.size;
 
   const elementBounds = result.elementBounds.map((record) => {
     const centre = planCentre(record);
     if (!centre) return record;
-    const whole = wingAt(wings, centre[0], centre[1]);
+    const whole = wingAt(wings, centre[0], centre[1]) ?? claimed.get(record.elementId) ?? null;
     let inCount = whole ? 1 : 0;
     let outCount = whole ? 0 : 1;
 
