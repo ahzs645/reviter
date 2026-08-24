@@ -90,6 +90,9 @@ export async function runRectifyPlan(args: RectifyPlanArguments): Promise<void> 
   process.stderr.write("\n");
   if (!result.ok) throw new Error(`Could not read ${args.input}: ${result.error ?? ""}`);
 
+  process.stderr.write(
+    `model origin ${result.origin.x.toFixed(1)}, ${result.origin.y.toFixed(1)} ft — ` +
+    `the shared placement the IFC export carries; the hulls are taken back off it\n`);
   const levels = levelsToDraw(result, args.levelId);
   mkdirSync(args.outDir, { recursive: true });
   process.stderr.write(`${levels.length} level(s) with a recovered floor sketch\n`);

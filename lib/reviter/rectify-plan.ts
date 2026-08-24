@@ -12,9 +12,16 @@
  * draws any other: real wall poché, door swings, floor sketch boundaries.
  *
  * The transforms arrive in METRES, because that is the unit of the IFC the
- * consumer reads; a `ConvertResult` is in Revit's internal FEET. The only
- * conversion between the two is a scale, so a pivot divides by 0.3048 and an
- * angle is an angle.
+ * consumer reads; a `ConvertResult` is in Revit's internal FEET. The conversion
+ * between the two is a scale AND A TRANSLATION, and assuming it was only a
+ * scale is the mistake that cost this file a full round of wrong drawings.
+ *
+ * `export-ifc.ts` writes tessellated coordinates raw and puts the model's
+ * `origin` on the shared placement, so a consumer reading the IFC with world
+ * coordinates sees `feet * 0.3048 + origin`. On this model that origin is
+ * (-0.46, +87.57, -2.2) m: a hull applied without subtracting it lands 87 m
+ * north of the wing it was computed from, claims whatever happens to be there,
+ * and squares it — which looks like a working rectification and is not one.
  */
 import polygonClipping from "polygon-clipping";
 import type { Ring } from "polygon-clipping";
@@ -42,7 +49,7 @@ export type RectifyPlanInput = {
   hull_margin_m?: number;
 };
 
-type Wing = {
+export type Wing = {
   pivotX: number; pivotY: number;
   cos: number; sin: number;
   shiftX: number; shiftY: number;
@@ -50,27 +57,39 @@ type Wing = {
   margin: number;
 };
 
-/** Feet, since that is the frame every record is already in. */
-function toFeet(input: RectifyPlanInput): Wing[] {
+/**
+ * Feet, in the model's own frame.
+ *
+ * `originFeet` is the model's `origin`, which the IFC export puts on the shared
+ * placement — so an IFC world coordinate is `feet * 0.3048 + origin` and this
+ * has to take it back off. Pass `result.origin`; there is no sensible default,
+ * and defaulting it to zero is how the first version came to be wrong.
+ */
+export function toFeet(
+  input: RectifyPlanInput, originFeet: readonly [number, number] = [0, 0],
+): Wing[] {
   const margin = (input.hull_margin_m ?? 2.5) / METRES_PER_FOOT;
+  const [ox, oy] = originFeet;
   return input.wings.map((wing) => {
     const radians = (wing.rotation_deg * Math.PI) / 180;
     const [shiftX, shiftY] = wing.shift_xy_m ?? [0, 0];
     return {
-      pivotX: wing.pivot_xy_m[0] / METRES_PER_FOOT,
-      pivotY: wing.pivot_xy_m[1] / METRES_PER_FOOT,
+      pivotX: wing.pivot_xy_m[0] / METRES_PER_FOOT - ox,
+      pivotY: wing.pivot_xy_m[1] / METRES_PER_FOOT - oy,
       cos: Math.cos(radians), sin: Math.sin(radians),
+      // A shift is a translation: it has no origin term.
       shiftX: shiftX / METRES_PER_FOOT, shiftY: shiftY / METRES_PER_FOOT,
-      // c divides too: the plane is a*x + b*y + c <= margin with (a, b) a unit
-      // normal, so c and the margin are both lengths.
+      // `a*x + b*y + c <= margin` in metres, with (a, b) a unit normal. In feet
+      // about the model's origin the normal is unchanged and the offset picks
+      // up the origin: c/0.3048 + a*ox + b*oy.
       planes: wing.hull_half_planes.map(([a, b, c]) =>
-        [a, b, c / METRES_PER_FOOT] as [number, number, number]),
+        [a, b, c / METRES_PER_FOOT + a * ox + b * oy] as [number, number, number]),
       margin,
     };
   });
 }
 
-function wingAt(wings: Wing[], x: number, y: number): Wing | null {
+export function wingAt(wings: Wing[], x: number, y: number): Wing | null {
   for (const wing of wings) {
     let inside = true;
     for (const [a, b, c] of wing.planes) {
@@ -81,7 +100,7 @@ function wingAt(wings: Wing[], x: number, y: number): Wing | null {
   return null;
 }
 
-function move(wing: Wing, x: number, y: number): [number, number] {
+export function move(wing: Wing, x: number, y: number): [number, number] {
   const dx = x - wing.pivotX;
   const dy = y - wing.pivotY;
   return [
@@ -157,7 +176,7 @@ function planBox(record: ElementBoundsRecord): [number, number, number, number] 
  * wing at one end touches it by its box too. Claimed, the whole corridor would
  * swing away with the wing.
  */
-function contactClaims(
+export function contactClaims(
   records: readonly ElementBoundsRecord[], wings: Wing[],
   seeded: ReadonlyMap<number, Wing>, touchFeet: number, reachFeet: number, rounds = 3,
 ): Map<number, Wing> {
@@ -207,7 +226,7 @@ function contactClaims(
 }
 
 /** The plan point a whole-element assignment is decided from. */
-function planCentre(record: ElementBoundsRecord): [number, number] | null {
+export function planCentre(record: ElementBoundsRecord): [number, number] | null {
   // A wall's location line first: it is the thing the plan actually draws, and
   // a wall's axis-aligned box can sit well off the wall when the run is long
   // and diagonal.
@@ -269,7 +288,7 @@ export function rectifyForPlan(
   input: RectifyPlanInput,
   assignment: Assignment = "mixed",
 ): { result: ConvertResult; report: RectifyPlanReport } {
-  const wings = toFeet(input);
+  const wings = toFeet(input, [result.origin?.x ?? 0, result.origin?.y ?? 0]);
   const report: RectifyPlanReport = {
     wings: wings.length, records: result.elementBounds.length, moved: 0, straddling: 0,
     movedIds: new Set<number>(), contactClaims: 0,

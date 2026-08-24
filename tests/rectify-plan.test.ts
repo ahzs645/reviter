@@ -230,3 +230,33 @@ test("a long wall that merely reaches the wing is not dragged into it", () => {
   assert.equal(report.contactClaims, 0);
   assert.equal(result.elementBounds[1]!.solid!.start.x, -300, "the corridor stays put");
 });
+
+test("the hulls are taken back off the model origin", () => {
+  // The IFC export writes tessellated coordinates raw and puts `origin` on the
+  // shared placement, so a consumer reading world coordinates computes its
+  // hulls in `feet * 0.3048 + origin`. On the real model that origin is
+  // (-0.46, +87.57) m — a hull applied without subtracting it lands 87 m north
+  // of the wing it came from, claims whatever is there, and squares it. That
+  // looks like a working rectification and is not one.
+  const ORIGIN_FEET = 287.3;                       // 87.57 m
+  const wall = record({
+    solid: { elementId: 1, start: { x: 10, y: 0 }, end: { x: 30, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 },
+  });
+  // A hull covering x >= 0 in the IFC's frame — which is x >= 0 in feet only
+  // after the origin comes off; the wall sits at y = 0 in the model's frame.
+  const input: RectifyPlanInput = {
+    wings: [{
+      rotation_deg: 90, pivot_xy_m: [0, ORIGIN_FEET * FEET],
+      shift_xy_m: [0, 0], hull_half_planes: [[-1, 0, 0]],
+    }],
+    hull_margin_m: 0,
+  };
+  const withOrigin = { ...model([wall]), origin: { x: 0, y: ORIGIN_FEET, z: 0 } } as ConvertResult;
+  const { result, report } = rectifyForPlan(withOrigin, input);
+  assert.equal(report.moved, 1, "the wall is inside the hull once the origin comes off");
+  const moved = result.elementBounds[0]!.solid!;
+  // A quarter turn about (0, 0) in the model's frame sends (30, 0) to (0, 30).
+  assert.ok(Math.abs(moved.end.x) < 1e-4 && Math.abs(moved.end.y - 30) < 1e-4,
+    `expected (0, 30), got (${moved.end.x}, ${moved.end.y})`);
+});
