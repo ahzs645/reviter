@@ -11,17 +11,34 @@
  * `makeArchitecturalFloorSvg` draws the rectified building the same way it
  * draws any other: real wall poché, door swings, floor sketch boundaries.
  *
- * The transforms arrive in METRES, because that is the unit of the IFC the
- * consumer reads; a `ConvertResult` is in Revit's internal FEET. The conversion
- * between the two is a scale AND A TRANSLATION, and assuming it was only a
- * scale is the mistake that cost this file a full round of wrong drawings.
+ * ## One `ConvertResult`, two frames
  *
- * `export-ifc.ts` writes tessellated coordinates raw and puts the model's
- * `origin` on the shared placement, so a consumer reading the IFC with world
- * coordinates sees `feet * 0.3048 + origin`. On this model that origin is
- * (-0.46, +87.57, -2.2) m: a hull applied without subtracting it lands 87 m
- * north of the wing it was computed from, claims whatever happens to be there,
- * and squares it — which looks like a working rectification and is not one.
+ * The transforms arrive in METRES, because that is the unit of the IFC the
+ * consumer reads; a `ConvertResult` is in Revit's internal FEET. Whether the
+ * conversion between them is a bare scale or a scale AND A TRANSLATION depends
+ * on WHICH GEOMETRY you are touching, because a `ConvertResult` carries two
+ * frames at once. Measured on the UNBC model:
+ *
+ * | | x (m) | y (m) |
+ * |---|---|---|
+ * | `meshes` | -110.1 .. 107.8 | **-187.6 .. 187.5** |
+ * | `elementBounds` (solid, loops, boundsFeet) | -110.4 .. 107.3 | **-99.7 .. 274.9** |
+ * | `origin` | -0.46 | **+87.57** |
+ *
+ * Same 375 m building, 87.6 m apart. `export-ifc.ts` writes tessellated MESH
+ * coordinates raw and puts `origin` on the shared placement, so a consumer
+ * reading those in world coordinates sees `feet * 0.3048 + origin` — and a
+ * hull computed from that IFC has to have the origin taken back off before it
+ * can be applied to `meshes`. `elementBounds` are already in the consumer's
+ * frame and must NOT have it taken off.
+ *
+ * So `toFeet` takes the origin as a parameter and the two callers pass
+ * different things: `rectifyForPlan` (elementBounds) passes zero,
+ * `rectify-walk.ts` (meshes) passes `result.origin`. Getting either one wrong
+ * lands the hull 87 m from the wing it was computed from, where it claims
+ * whatever happens to be there and squares it — which looks like a working
+ * rectification and is not one. Both directions of that mistake have been made
+ * here; the test file pins both.
  */
 import polygonClipping from "polygon-clipping";
 import type { Ring } from "polygon-clipping";
@@ -60,10 +77,9 @@ export type Wing = {
 /**
  * Feet, in the model's own frame.
  *
- * `originFeet` is the model's `origin`, which the IFC export puts on the shared
- * placement — so an IFC world coordinate is `feet * 0.3048 + origin` and this
- * has to take it back off. Pass `result.origin`; there is no sensible default,
- * and defaulting it to zero is how the first version came to be wrong.
+ * `originFeet` is zero for anything driven by `elementBounds`, which already
+ * sit in the frame the consumer's IFC reports, and `result.origin` for anything
+ * driven by `meshes`, which sit 87 m off it. See the note on this module.
  */
 export function toFeet(
   input: RectifyPlanInput, originFeet: readonly [number, number] = [0, 0],
@@ -283,12 +299,19 @@ export type Assignment =
  * are shared with the original untouched: this is a drawing of the rectified
  * building, not a rectified model.
  */
+/** `contact: false` runs the hull alone. That is not a mode anyone wants a
+ * drawing from — it is the ablation the contact claim is measured against, and
+ * a published before/after has to be re-runnable. */
+export type RectifyPlanOptions = { contact?: boolean };
+
 export function rectifyForPlan(
   result: ConvertResult,
   input: RectifyPlanInput,
   assignment: Assignment = "mixed",
+  options: RectifyPlanOptions = {},
 ): { result: ConvertResult; report: RectifyPlanReport } {
-  const wings = toFeet(input, [result.origin?.x ?? 0, result.origin?.y ?? 0]);
+  // Zero deliberately: `elementBounds` are already in the consumer's frame.
+  const wings = toFeet(input);
   const report: RectifyPlanReport = {
     wings: wings.length, records: result.elementBounds.length, moved: 0, straddling: 0,
     movedIds: new Set<number>(), contactClaims: 0,
@@ -303,9 +326,11 @@ export function rectifyForPlan(
     const wing = wingAt(wings, centre[0], centre[1]);
     if (wing) seeded.set(record.elementId, wing);
   }
-  const claimed = contactClaims(
-    result.elementBounds, wings, seeded,
-    TOUCH_METRES / METRES_PER_FOOT, REACH_METRES / METRES_PER_FOOT);
+  const claimed = options.contact === false
+    ? new Map<number, Wing>()
+    : contactClaims(
+      result.elementBounds, wings, seeded,
+      TOUCH_METRES / METRES_PER_FOOT, REACH_METRES / METRES_PER_FOOT);
   report.contactClaims = claimed.size;
 
   const elementBounds = result.elementBounds.map((record) => {

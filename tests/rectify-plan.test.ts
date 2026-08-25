@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { makeArchitecturalFloorSvg } from "../lib/reviter/architectural-plan.ts";
-import { rectifyForPlan, type RectifyPlanInput } from "../lib/reviter/rectify-plan.ts";
+import { rectifyForPlan, toFeet, type RectifyPlanInput } from "../lib/reviter/rectify-plan.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 const FEET = 0.3048;
@@ -215,6 +215,26 @@ test("a mullion the hull missed travels with the wall it hangs on", () => {
   assert.equal(result.elementBounds[2]!.solid!.start.y, 90, "the far one stays");
 });
 
+test("--no-contact runs the hull alone, so the claim has something to beat", () => {
+  // The published contact-claim figure is a before/after, and the "before" is
+  // this: same wings, same decode, hull only. Without a way to ask for it the
+  // ablation is a deleted branch of the code, and the figure is unrepeatable.
+  const inside = record({ elementId: 1, categoryId: -2_000_011,
+    solid: { elementId: 1, start: { x: 1, y: 0 }, end: { x: 20, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 } });
+  const mullion = record({ elementId: 2, categoryId: -2_000_171,
+    solid: { elementId: 2, start: { x: -0.4, y: 0 }, end: { x: -0.2, y: 0 },
+             baseElevation: 0, topElevation: 9, thickness: 0.3 } });
+  const { result, report } = rectifyForPlan(
+    model([inside, mullion]), wingTurningQuarter([0, 100]), "mixed", { contact: false });
+  assert.equal(report.contactClaims, 0, "the hull alone claims nothing by contact");
+  assert.equal(result.elementBounds[1]!.solid!.start.y, 0,
+    "the mullion the hull missed stays exactly where it was");
+  // ...and the wall the hull DID reach still moves, or this ablation would be
+  // measuring a no-op rather than the claim.
+  assert.ok(result.elementBounds[0]!.solid!.start.y > 99);
+});
+
 test("a long wall that merely reaches the wing is not dragged into it", () => {
   // Contact is tested on boxes, so a corridor wall touching a wing at one end
   // touches it by its box too. Claimed, the whole corridor swings away: on the
@@ -231,32 +251,37 @@ test("a long wall that merely reaches the wing is not dragged into it", () => {
   assert.equal(result.elementBounds[1]!.solid!.start.x, -300, "the corridor stays put");
 });
 
-test("the hulls are taken back off the model origin", () => {
-  // The IFC export writes tessellated coordinates raw and puts `origin` on the
-  // shared placement, so a consumer reading world coordinates computes its
-  // hulls in `feet * 0.3048 + origin`. On the real model that origin is
-  // (-0.46, +87.57) m — a hull applied without subtracting it lands 87 m north
-  // of the wing it came from, claims whatever is there, and squares it. That
-  // looks like a working rectification and is not one.
-  const ORIGIN_FEET = 287.3;                       // 87.57 m
+test("the plan is transformed in elementBounds' own frame, origin and all", () => {
+  // A ConvertResult holds geometry in two frames 87 m apart on the real model:
+  // `meshes` at y -187.6..187.5 m and `elementBounds` at y -99.7..274.9 m, with
+  // `origin` the +87.57 m between them. `elementBounds` already sit in the
+  // frame the consumer's IFC reports, so a hull applies to them as it arrives.
+  // Subtracting the origin here — which a previous version did — moves the
+  // hull 87 m off its wing, and it still squares SOMETHING, so the drawing
+  // looks fine. Only a bbox tells you.
   const wall = record({
     solid: { elementId: 1, start: { x: 10, y: 0 }, end: { x: 30, y: 0 },
              baseElevation: 0, topElevation: 9, thickness: 0.5 },
   });
-  // A hull covering x >= 0 in the IFC's frame — which is x >= 0 in feet only
-  // after the origin comes off; the wall sits at y = 0 in the model's frame.
-  const input: RectifyPlanInput = {
-    wings: [{
-      rotation_deg: 90, pivot_xy_m: [0, ORIGIN_FEET * FEET],
-      shift_xy_m: [0, 0], hull_half_planes: [[-1, 0, 0]],
-    }],
-    hull_margin_m: 0,
-  };
-  const withOrigin = { ...model([wall]), origin: { x: 0, y: ORIGIN_FEET, z: 0 } } as ConvertResult;
-  const { result, report } = rectifyForPlan(withOrigin, input);
-  assert.equal(report.moved, 1, "the wall is inside the hull once the origin comes off");
+  const withOrigin = {
+    ...model([wall]), origin: { x: 0, y: 287.3, z: 0 },
+  } as ConvertResult;
+  const { result, report } = rectifyForPlan(withOrigin, wingTurningQuarter());
+  assert.equal(report.moved, 1, "a hull over x >= 0 contains a wall at x = 10..30");
   const moved = result.elementBounds[0]!.solid!;
-  // A quarter turn about (0, 0) in the model's frame sends (30, 0) to (0, 30).
   assert.ok(Math.abs(moved.end.x) < 1e-4 && Math.abs(moved.end.y - 30) < 1e-4,
-    `expected (0, 30), got (${moved.end.x}, ${moved.end.y})`);
+    `a quarter turn about (0,0) sends (30,0) to (0,30); got (${moved.end.x}, ${moved.end.y})`);
+});
+
+test("toFeet takes an origin off when it is given one", () => {
+  // The mesh path needs it: see rectify-walk.ts.
+  const plain = toFeet({ wings: [{ rotation_deg: 0, pivot_xy_m: [0, 100 * FEET],
+    shift_xy_m: [0, 0], hull_half_planes: [[0, -1, 0]] }], hull_margin_m: 0 });
+  const shifted = toFeet({ wings: [{ rotation_deg: 0, pivot_xy_m: [0, 100 * FEET],
+    shift_xy_m: [0, 0], hull_half_planes: [[0, -1, 0]] }], hull_margin_m: 0 }, [0, 40]);
+  assert.ok(Math.abs(plain[0]!.pivotY - 100) < 1e-6, `got ${plain[0]!.pivotY}`);
+  assert.ok(Math.abs(shifted[0]!.pivotY - 60) < 1e-6, `got ${shifted[0]!.pivotY}`);
+  // `-y + 0 <= 0` is y >= 0; shifted down 40 ft it becomes y >= -40.
+  assert.ok(Math.abs(shifted[0]!.planes[0]![2] - -40) < 1e-6,
+    `the half-plane offset picks up the origin, got ${shifted[0]!.planes[0]![2]}`);
 });
