@@ -36,6 +36,8 @@ export type RectifyPlanArguments = {
   revitVersion?: number;
   /** Hull only, no contact claim — the ablation the claim is measured against. */
   noContact: boolean;
+  /** Elastic transition band in metres; 0 for the rigid transform. */
+  bandMetres: number;
 };
 
 export function parseRectifyPlanArguments(argv: string[]): RectifyPlanArguments {
@@ -45,7 +47,8 @@ export function parseRectifyPlanArguments(argv: string[]): RectifyPlanArguments 
   if (!input || input.startsWith("-") || !wings || !outDir) {
     throw new Error(
       "Usage: rectify-plan.ts model.rvt --wings wings.json --out-dir dir/ " +
-      "[--level-id 311] [--theme dark] [--revit-version 2027] [--no-contact]");
+      "[--level-id 311] [--theme dark] [--revit-version 2027] [--no-contact] " +
+      "[--band-metres 5]");
   }
   const rawLevel = optionValue("--level-id", argv);
   const levelId = rawLevel == null ? undefined : Number(rawLevel);
@@ -57,6 +60,7 @@ export function parseRectifyPlanArguments(argv: string[]): RectifyPlanArguments 
   return {
     input, wings, outDir, levelId, revitVersion,
     noContact: hasFlag("--no-contact", argv),
+    bandMetres: Number(optionValue("--band-metres", argv) ?? 0),
     theme: hasFlag("--theme=dark", argv) || optionValue("--theme", argv) === "dark"
       ? "dark" : "light",
   };
@@ -114,14 +118,17 @@ export async function runRectifyPlan(args: RectifyPlanArguments): Promise<void> 
   let movedIds = new Set<number>();
   for (const assignment of ["element", "mixed"] as const) {
     const { result: squared, report } = rectifyForPlan(
-      result, wings, assignment, { contact: !args.noContact });
+      result, wings, assignment,
+      { contact: !args.noContact, bandMetres: args.bandMetres || undefined });
     const { movedIds: ids, ...rest } = report;
     reports[assignment] = rest;
     if (assignment === "mixed") { squaredForAudit = squared; movedIds = ids; }
     process.stderr.write(
       `rectify (${assignment}): ${report.wings} wing(s) moved ${report.moved} of ` +
       `${report.records} element records; ${report.straddling} straddle a wing edge; ` +
-      `${args.noContact ? "hull only (--no-contact)" : `${report.contactClaims} claimed by contact`}\n`);
+      `${args.bandMetres ? `elastic, ${args.bandMetres} m band, ${report.straddling} deformed`
+        : args.noContact ? "hull only (--no-contact)"
+        : `${report.contactClaims} claimed by contact`}\n`);
     for (const levelId of levels) {
       const svg = makeArchitecturalFloorSvg(squared, levelId, { theme: args.theme });
       writeFileSync(join(args.outDir, `level-${levelId}-after-${assignment}.svg`), svg, "utf8");

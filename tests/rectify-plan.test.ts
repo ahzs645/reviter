@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { makeArchitecturalFloorSvg } from "../lib/reviter/architectural-plan.ts";
-import { rectifyForPlan, toFeet, type RectifyPlanInput } from "../lib/reviter/rectify-plan.ts";
+import { blendedPoint, move, rectifyForPlan, toFeet, wingWeight, type RectifyPlanInput }
+  from "../lib/reviter/rectify-plan.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 const FEET = 0.3048;
@@ -249,6 +250,99 @@ test("a long wall that merely reaches the wing is not dragged into it", () => {
     model([inside, corridor]), wingTurningQuarter([0, 100]));
   assert.equal(report.contactClaims, 0);
   assert.equal(result.elementBounds[1]!.solid!.start.x, -300, "the corridor stays put");
+});
+
+/** The same half-plane hull, but with the pivot off the wall line so a
+ *  partial rotation actually moves a point on it. */
+function wingAboutFarPivot(): RectifyPlanInput {
+  return {
+    wings: [{ rotation_deg: 90, pivot_xy_m: [0, -100 * FEET], shift_xy_m: [0, 0],
+              hull_half_planes: [[-1, 0, 0]] }],
+    hull_margin_m: 0,
+  };
+}
+
+function wallFrom(elementId: number, ax: number, ay: number, bx: number, by: number) {
+  return record({ elementId, categoryId: -2_000_011,
+    solid: { elementId, start: { x: ax, y: ay }, end: { x: bx, y: by },
+             baseElevation: 0, topElevation: 9, thickness: 0.5 } });
+}
+
+const gap = (l: { x: number; y: number }, r: { x: number; y: number }) =>
+  Math.hypot(l.x - r.x, l.y - r.y);
+
+test("an elastic band stretches the wall that a rigid edge would tear off", () => {
+  // The whole case for a non-rigid transform in one fixture: two walls meeting
+  // at x = 0, one inside the hull and one outside. Rigid, the inside one is
+  // carried away and the join is gone. Elastic, the shared point is a single
+  // point in a continuous field, so it can only go one place.
+  const inside = wallFrom(1, 0, 0, 40, 0);
+  const outside = wallFrom(2, -40, 0, 0, 0);
+  const wings = wingAboutFarPivot();
+
+  const rigid = rectifyForPlan(model([inside, outside]), wings, "mixed");
+  const rigidJoin = gap(rigid.result.elementBounds[0]!.solid!.start,
+                        rigid.result.elementBounds[1]!.solid!.end);
+  assert.ok(rigidJoin > 100, `the rigid edge tears the join open, got ${rigidJoin}`);
+
+  const elastic = rectifyForPlan(model([inside, outside]), wings, "mixed", { bandMetres: 40 * FEET });
+  const elasticJoin = gap(elastic.result.elementBounds[0]!.solid!.start,
+                          elastic.result.elementBounds[1]!.solid!.end);
+  assert.ok(elasticJoin < 1e-6, `the join should survive, got ${elasticJoin}`);
+});
+
+test("what the elastic band costs is the straightness it stretches", () => {
+  // It is not free, and the cost is severe rather than cosmetic. This wall was
+  // 40 ft; spanning a 40 ft band whose far end takes a quarter turn about a
+  // pivot 100 ft away, it comes out over 50 — a 27% strain. The displacement
+  // that has to reach zero across the band is what sets that, and on the real
+  // building the displacement at the far end of a wing is tens of metres.
+  // Nothing tears; everything near the seam distorts, a lot.
+  const inside = wallFrom(1, 0, 0, 40, 0);
+  const wings = wingAboutFarPivot();
+  const { result } = rectifyForPlan(model([inside]), wings, "mixed", { bandMetres: 40 * FEET });
+  const moved = result.elementBounds[0]!.solid!;
+  const length = gap(moved.start, moved.end);
+  assert.ok(length > 45 && length < 60,
+    `expected a large but finite stretch, got ${length} from 40`);
+});
+
+test("the field is continuous, because a jump in it is a tear by another name", () => {
+  // The first version picked the wing with the largest weight and applied a
+  // fraction of ITS rotation. That is a different map either side of wherever
+  // two wings' bands cross over — the hull's one discontinuity traded for
+  // several interior ones, which is worse, not better. Displacements sum.
+  const two: RectifyPlanInput = {
+    wings: [
+      { rotation_deg: 90, pivot_xy_m: [0, -100 * FEET], shift_xy_m: [0, 0],
+        hull_half_planes: [[-1, 0, 0]] },
+      { rotation_deg: -40, pivot_xy_m: [0, 200 * FEET], shift_xy_m: [0, 0],
+        hull_half_planes: [[1, 0, -30 * FEET]] },        // x <= 30 ft
+    ],
+    hull_margin_m: 0,
+  };
+  const wings = toFeet(two);
+  let worst = 0;
+  let last: { x: number; y: number } | null = null;
+  for (let x = -60; x <= 90; x += 0.25) {
+    const here = blendedPoint(wings, x, 0, 40) ?? { x, y: 0 };
+    if (last) worst = Math.max(worst, Math.hypot(here.x - last.x, here.y - last.y));
+    last = here;
+  }
+  // A quarter-foot step in the input may not become a leap in the output.
+  assert.ok(worst < 4, `the field jumps by ${worst} ft somewhere along the sweep`);
+});
+
+test("at full weight the blend is exactly the rigid transform", () => {
+  // A blend that is not exact where it is supposed to be whole would move the
+  // whole wing slightly, and the wing is the part that was already right.
+  const wings = toFeet(wingAboutFarPivot());
+  const wing = wings[0]!;
+  const blended = blendedPoint(wings, 80, 25, 40)!;
+  const [rx, ry] = move(wing, 80, 25);
+  assert.equal(blended.weight, 1);
+  assert.ok(Math.abs(blended.x - rx) < 1e-9 && Math.abs(blended.y - ry) < 1e-9,
+    `expected (${rx}, ${ry}), got (${blended.x}, ${blended.y})`);
 });
 
 test("the plan is transformed in elementBounds' own frame, origin and all", () => {

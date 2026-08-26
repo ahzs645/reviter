@@ -50,6 +50,13 @@ const METRES_PER_FOOT = 0.3048;
  * The same two numbers the voxel pipeline uses, so both draw the same recipe. */
 const TOUCH_METRES = 0.6;
 const REACH_METRES = 6;
+/** Under an elastic field every point moves a little, so "did this element
+ *  move" stops being a yes/no. An element is reported as carried by a wing
+ *  when most of the rotation applies at its centre. */
+const CARRIED_WEIGHT = 0.5;
+/** Below this, a spread of weights across one element is rounding, not a
+ *  deformation worth reporting. */
+const WEIGHT_EPSILON = 1e-6;
 
 /** One wing, exactly as the consumer publishes it. */
 export type WingTransform = {
@@ -103,6 +110,73 @@ export function toFeet(
       margin,
     };
   });
+}
+
+/**
+ * How far outside `wing` this point is, in feet: negative inside the hull
+ * (including its margin), zero on the boundary, positive beyond it.
+ */
+export function hullDepth(wing: Wing, x: number, y: number): number {
+  let worst = -Infinity;
+  for (const [a, b, c] of wing.planes) worst = Math.max(worst, a * x + b * y + c);
+  return worst - wing.margin;
+}
+
+/** How much of THIS wing's motion applies at this point, 0 to 1. Smoothstep
+ *  rather than linear because a linear ramp has a corner at each end of the
+ *  band, and a corner in the weight is a kink in every wall that crosses it. */
+export function wingWeight(wing: Wing, x: number, y: number, bandFeet: number): number {
+  if (bandFeet <= 0) return hullDepth(wing, x, y) <= 0 ? 1 : 0;
+  const half = bandFeet / 2;
+  const depth = hullDepth(wing, x, y);
+  if (depth >= half) return 0;
+  const t = Math.min(1, Math.max(0, (half - depth) / bandFeet));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The point, moved by as much of the wings' motion as applies here.
+ *
+ * The rigid transform is a step function — full rotation inside the hull,
+ * nothing outside — and the step is where every broken join is. This is the
+ * same edit with the step replaced by a ramp `bandFeet` wide straddling the
+ * boundary, so an element spanning it is stretched instead of torn off it.
+ *
+ * Each wing contributes its own DISPLACEMENT, scaled by its weight and summed.
+ * Not "pick the wing with the largest weight and apply a fraction of its
+ * rotation": that is a different map on each side of wherever two wings' bands
+ * cross over, so it trades the hull's discontinuity for several interior ones.
+ * Summing displacements is continuous everywhere and exact at weight 1, which
+ * is what a blend has to be to be worth measuring.
+ *
+ * Returns null when no wing reaches here, so the caller can skip the write.
+ */
+export function blendedPoint(
+  wings: Wing[], x: number, y: number, bandFeet: number,
+): { x: number; y: number; weight: number } | null {
+  let dx = 0;
+  let dy = 0;
+  let total = 0;
+  for (const wing of wings) {
+    const weight = wingWeight(wing, x, y, bandFeet);
+    if (weight <= 0) continue;
+    const [mx, my] = move(wing, x, y);
+    dx += weight * (mx - x);
+    dy += weight * (my - y);
+    total += weight;
+  }
+  if (total <= 0) return null;
+  // Wings are disjoint regions, so overlapping bands mean a corner between two
+  // of them. Cap the total so a point there cannot be displaced further than
+  // either wing would have taken it.
+  const scale = total > 1 ? 1 / total : 1;
+  return { x: x + dx * scale, y: y + dy * scale, weight: Math.min(1, total) };
+}
+
+/** The rotation a direction on this element should take, in radians. */
+function spinAngle(wing: Wing | null, weight: number): number {
+  if (!wing) return 0;
+  return Math.atan2(wing.sin, wing.cos) * weight;
 }
 
 export function wingAt(wings: Wing[], x: number, y: number): Wing | null {
@@ -301,8 +375,19 @@ export type Assignment =
  */
 /** `contact: false` runs the hull alone. That is not a mode anyone wants a
  * drawing from — it is the ablation the contact claim is measured against, and
- * a published before/after has to be re-runnable. */
-export type RectifyPlanOptions = { contact?: boolean };
+ * a published before/after has to be re-runnable.
+ *
+ * `bandMetres` switches the transform from RIGID to ELASTIC: instead of a step
+ * at the hull boundary, the rotation ramps from full to none across a band that
+ * straddles it, so elements crossing the boundary are stretched rather than
+ * torn. It replaces the hull test and the contact claim entirely — there is no
+ * in-or-out to claim past — and it trades straight walls near the seam for
+ * joins that survive. See REVITER §2j for what that trade actually costs. */
+export type RectifyPlanOptions = {
+  contact?: boolean;
+  /** Width of the elastic transition band, in metres. Omit for rigid. */
+  bandMetres?: number;
+};
 
 export function rectifyForPlan(
   result: ConvertResult,
@@ -318,6 +403,9 @@ export function rectifyForPlan(
   };
   if (!wings.length) return { result, report };
 
+  const bandFeet = (options.bandMetres ?? 0) / METRES_PER_FOOT;
+  const elastic = bandFeet > 0;
+
   // Seed on the plan centre, then claim by contact what the hull did not reach.
   const seeded = new Map<number, Wing>();
   for (const record of result.elementBounds) {
@@ -326,7 +414,7 @@ export function rectifyForPlan(
     const wing = wingAt(wings, centre[0], centre[1]);
     if (wing) seeded.set(record.elementId, wing);
   }
-  const claimed = options.contact === false
+  const claimed = options.contact === false || elastic
     ? new Map<number, Wing>()
     : contactClaims(
       result.elementBounds, wings, seeded,
@@ -336,23 +424,51 @@ export function rectifyForPlan(
   const elementBounds = result.elementBounds.map((record) => {
     const centre = planCentre(record);
     if (!centre) return record;
-    const whole = wingAt(wings, centre[0], centre[1]) ?? claimed.get(record.elementId) ?? null;
+    // In elastic mode the element has no membership: every point carries its
+    // own weight. `atCentre` stands in wherever one number is needed for the
+    // whole element — a direction, an arc, the report.
+    const centreWeight = elastic
+      ? blendedPoint(wings, centre[0], centre[1], bandFeet)?.weight ?? 0 : 0;
+    const whole = elastic
+      ? (centreWeight > CARRIED_WEIGHT
+        ? wings.reduce((best, wing) =>
+          wingWeight(wing, centre[0], centre[1], bandFeet)
+            > wingWeight(best, centre[0], centre[1], bandFeet) ? wing : best)
+        : null)
+      : wingAt(wings, centre[0], centre[1]) ?? claimed.get(record.elementId) ?? null;
     let inCount = whole ? 1 : 0;
     let outCount = whole ? 0 : 1;
 
-    const rigid = (x: number, y: number): [number, number] =>
-      whole ? move(whole, x, y) : [x, y];
+    // Under an elastic field an element has no membership, so `inCount` cannot
+    // decide whether to keep the rewritten record: a wall whose CENTRE is
+    // outside the hull may still have an end deep in the band. Track the
+    // weights the element's points actually took instead.
+    let lowWeight = Infinity;
+    let highWeight = -Infinity;
+    const rigid = (x: number, y: number): [number, number] => {
+      if (!elastic) return whole ? move(whole, x, y) : [x, y];
+      const here = blendedPoint(wings, x, y, bandFeet);
+      const weight = here?.weight ?? 0;
+      lowWeight = Math.min(lowWeight, weight);
+      highWeight = Math.max(highWeight, weight);
+      return here ? [here.x, here.y] : [x, y];
+    };
     const rigidXY = <T extends { x: number; y: number }>(point: T): T => {
       const [x, y] = rigid(point.x, point.y);
       return { ...point, x, y };
     };
-    /** A direction rotates but does not translate. */
+    /** A direction rotates but does not translate. It has no position of its
+     * own, so under an elastic field it takes the weight at the element's
+     * centre — an arc is not an arc after a non-uniform map, and pretending
+     * otherwise draws a shape the building does not have. */
+    const spinCos = elastic ? Math.cos(spinAngle(whole, centreWeight)) : whole?.cos ?? 1;
+    const spinSin = elastic ? Math.sin(spinAngle(whole, centreWeight)) : whole?.sin ?? 0;
     const spin = <T extends { x: number; y: number }>(direction: T): T => {
       if (!whole) return direction;
       return {
         ...direction,
-        x: whole.cos * direction.x - whole.sin * direction.y,
-        y: whole.sin * direction.x + whole.cos * direction.y,
+        x: spinCos * direction.x - spinSin * direction.y,
+        y: spinSin * direction.x + spinCos * direction.y,
       };
     };
     const rigidPoints = (points: readonly Point3[]): Point3[] =>
@@ -423,7 +539,10 @@ export function rectifyForPlan(
         rigidPoints(tread) as [Point3, Point3, Point3, Point3]);
     }
     if (record.loops?.length) {
-      next.loops = assignment === "element"
+      // Elastic: a plate spanning the boundary STRETCHES across it, so there
+      // is nothing to split. That is the whole point — the tear a split makes
+      // clean is the canyon `close_seam_walls` exists to wall up.
+      next.loops = elastic || assignment === "element"
         ? record.loops.map(rigidPoints)
         : record.loops.flatMap(splitRing);
     }
@@ -432,15 +551,23 @@ export function rectifyForPlan(
     if (record.railPath?.polylines.length) {
       next.railPath = { ...record.railPath, polylines: record.railPath.polylines.map(rigidPoints) };
     }
-    if (record.boundsFeet && whole) {
-      const [minX, minY] = move(whole, record.boundsFeet.min.x, record.boundsFeet.min.y);
-      const [maxX, maxY] = move(whole, record.boundsFeet.max.x, record.boundsFeet.max.y);
+    if (record.boundsFeet && (whole || elastic)) {
+      const [minX, minY] = rigid(record.boundsFeet.min.x, record.boundsFeet.min.y);
+      const [maxX, maxY] = rigid(record.boundsFeet.max.x, record.boundsFeet.max.y);
       next.boundsFeet = {
         min: { x: Math.min(minX, maxX), y: Math.min(minY, maxY), z: record.boundsFeet.min.z },
         max: { x: Math.max(minX, maxX), y: Math.max(minY, maxY), z: record.boundsFeet.max.z },
       };
     }
 
+    if (elastic) {
+      // "Moved" stays the reportable thing a reader expects — most of the
+      // rotation applied — but "straddling" becomes the number that matters:
+      // how many elements the band is actually deforming.
+      if (inCount) { report.moved += 1; report.movedIds.add(record.elementId); }
+      if (highWeight > 0 && highWeight - lowWeight > WEIGHT_EPSILON) report.straddling += 1;
+      return highWeight > 0 ? next : record;
+    }
     if (inCount) { report.moved += 1; report.movedIds.add(record.elementId); }
     if (inCount && outCount) report.straddling += 1;
     return inCount ? next : record;
