@@ -1,0 +1,63 @@
+name: CI
+
+# Typecheck and unit tests, and nothing else.
+#
+# pages.yml already runs lint, typecheck and test:unit -- but it runs them as
+# the opening steps of a job whose real purpose is building and uploading the
+# static site, under `concurrency: pages-<ref>` with cancel-in-progress. That
+# makes them collateral: they stop reporting when the Pages build breaks, and
+# a rapid second push cancels them mid-run.
+#
+# This workflow is the part that has to answer on every push regardless. It
+# builds nothing, deploys nothing, needs no Pages permissions, and finishes in
+# about a minute. If you would rather not run these checks twice, delete the
+# Lint / Typecheck / Test steps from pages.yml -- not this file.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck + unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          # package.json declares engines.node >= 22.13.0; 22 resolves to the
+          # latest 22.x. rvt_to_ifc.py in the consuming repo reads that floor
+          # rather than duplicating it, so raise it there first.
+          node-version: 22
+          # Caches ~/.npm, keyed on package-lock.json.
+          cache: npm
+
+      # ci, not install: the lockfile is authoritative and a drifted
+      # package.json should fail here rather than be silently reconciled.
+      - name: Install dependencies
+        run: npm ci
+
+      # Types are erased by --experimental-strip-types and never checked at
+      # runtime, so tsc is the only place a type error can surface at all.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Glob discovery over tests/**/*.test.ts, so a newly added test file runs
+      # without being enumerated anywhere. ~1000 assertions across 155 files in
+      # about 20 s. Two cases self-skip unless REVITER_ODA_ROOT or
+      # REVITER_MODEL_2027 point at inputs that are in no repository; that is
+      # intended, and is what keeps this suite runnable on a bare runner.
+      - name: Unit tests
+        run: npm run test:unit
