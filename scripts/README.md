@@ -24,7 +24,7 @@ file. Nothing here may change behaviour without a test run.
 
 | script | what depends on it |
 | --- | --- |
-| `extract-geometry.ts` | `npm run extract`; `tests/basic-file-info.test.ts` imports `parseExtractArguments` |
+| `extract-geometry.ts` | `npm run extract`; `tests/basic-file-info.test.ts` imports `parseExtractArguments`; `tests/downstream-cli-contract.test.ts` pins the entry path, the `--out *.ifc` form and the `engines.node` declaration that an out-of-repo consumer shells out against |
 | `build-pages.mjs` | `npm run build:pages` |
 | `prepare-sites-build.mjs` | `npm run build:sites` |
 | `audit-ifc-export-roundtrip.ts` | `npm run audit:ifc-roundtrip` |

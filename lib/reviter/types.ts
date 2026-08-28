@@ -4,6 +4,7 @@ import type { SchemaSummary } from "./schema.ts";
 import type { SurfaceSummary } from "./surfaces.ts";
 import type { SurfaceQuad, WallArc, WallSolid } from "./native-geometry.ts";
 import type { Point3 } from "./sketch-curves.ts";
+import type { NativeStairAssembly } from "./stair-assemblies.ts";
 import type { CoverageSummary } from "./stream-coverage.ts";
 import type { PartitionName } from "./partition-names.ts";
 import type { PartAtomMetadata } from "./part-atom.ts";
@@ -777,6 +778,8 @@ export type ConvertResult = {
   nativeCompoundLayerMaterialAssignments?: NativeCompoundLayerMaterialAssignment[];
   /** Persisted hosted-element relationships from InsertableInst.m_hostId. */
   nativeHostRelations?: NativeHostRelation[];
+  /** Stair assemblies joined from the run frames and the `Stairs` element frame. */
+  nativeStairAssemblies?: NativeStairAssembly[];
   /** Elements whose display mesh was replaced by a tagged paired-IFC body. */
   referenceAssistedElementIds?: Uint32Array;
   /** Ramp aggregates admitted by both IFC decomposition and extent-parity gates. */
