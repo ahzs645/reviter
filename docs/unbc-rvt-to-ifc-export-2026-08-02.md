@@ -37,7 +37,7 @@ The generated IFC spans 217.898923 × 19.400000 × 375.120452 metres. The recove
 | Columns | 312 | 311 | One additional recovered occurrence. |
 | Doors | 1,936 | 1,912 | Identity coverage is broader; Autodesk door bodies remain more detailed. |
 | Stair flights | 108 | 121 entities / 108 Revit tags | Tagged flight count is exact; Autodesk has extra aggregate representation items. |
-| Slabs | 94 | 161 entities / 107 Revit tags | Reviter now includes stair landings, but floor/landing recovery remains incomplete. |
+| Slabs | 94 | 161 entities / 107 Revit tags | **Not a gap — see below.** All 94 match by `Tag`; the 13 unmatched Autodesk tags are 12 Revit Roofs and one ramp landing that this exporter writes under their own class. |
 | Coverings | 46 | 46 | Exact count parity. |
 | Windows | 22 | 20 | Two additional recovered occurrences. |
 | Openings | 1,932 | 3,071 | Reviter emits only persisted host relationships; it does not synthesize unsupported voids. |
@@ -79,3 +79,30 @@ node scripts/audit-ifc-parity.mjs \
 python -m ifcopenshell.validate --rules --json /tmp/model.ifc
 ```
 
+
+
+## Addendum: the slab count is a class difference, not a recovery gap
+
+The row above read as "floor/landing recovery remains incomplete" and was
+carried downstream as a high-severity gap. It was drawn from an entity count
+without doing the `Tag` join. Joined:
+
+- All **94** exported `IfcSlab` Tags exist in the Autodesk file; none is spurious.
+- The **13** Autodesk slab Tags not exported as `IfcSlab` are **12 Revit Roofs**
+  (written here as `IfcRoof`; Autodesk writes an `IfcRoof` container plus N
+  `IfcSlab(.ROOF.)` parts sharing the parent Tag) and **one ramp landing**
+  (kept inside this exporter's `IfcRamp`; Autodesk splits it out as
+  `IfcSlab(.LANDING.)`).
+- Revit **Floors are 68 of 68**. Landings are 26 of 27, the 27th being the ramp's.
+- Bounding boxes of the 94 matched agree on every face to under 0.05 m; plan
+  footprints of the 12 roofs agree to 0.7%.
+- Counting distinct Tags across `IfcSlab` + `IfcCovering` + `IfcRoof` +
+  `IfcRamp`, this export has **182 floor-class elements against Autodesk's 172**.
+- Independently of `Tag`, rasterising every near-horizontal face at 0.1 m into
+  half-metre bands: **99.92%** of Autodesk's standable surface is reproduced
+  within half a metre. 87 sq m of 103,935 is genuinely absent (0.084%),
+  scattered, and dominated by ramp slopes and raster edges.
+
+`IfcSlab` entity counts are not comparable between producers: one decomposes a
+roof into parts and one does not, and one calls a ramp landing a slab and one
+does not. Compare Tags across the floor classes.
