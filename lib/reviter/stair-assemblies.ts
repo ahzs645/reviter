@@ -37,6 +37,32 @@ export type NativeStairAssembly = {
   supportIds: readonly number[];
   /** Which of the two sources contributed, so a consumer can see the difference. */
   evidence: "runs" | "element-frame" | "runs-and-element-frame";
+  /**
+   * Runs of this assembly that the spiral mesh replay recovered, sorted.
+   *
+   * `revit-2027-spiral-stair-mesh` accepts a run only when the run's own GRep
+   * holds exactly two top-level `GCylindricalHelix` guides that are coaxial,
+   * share one angular interval and one pitch, and are separated by exactly the
+   * run's persisted `actualRunWidthFeet`. A run drawn by a helical pair is a
+   * helical run: this list is a reading, not a guess.
+   */
+  spiralRunIds: readonly number[];
+  /**
+   * The stair's shape, where the file proves one.
+   *
+   * `"spiral"` requires two things, because the consumer of this field
+   * replaces *every* flight of a spiral stair with one synthesised helix: at
+   * least one run must be proven helical, and no other decoded run of the same
+   * assembly may lack that proof. A stair that mixes a proven helical run with
+   * a run whose shape is unknown stays `"undetermined"` -- an unlabelled
+   * spiral is a stair voxelized badly, a mislabelled straight flight is a
+   * straight flight deleted and replaced by a helix, and only the second one
+   * destroys evidence.
+   *
+   * `"undetermined"` is the absence of proof and never a claim of a straight
+   * stair. Landings carry no run scalars and so neither prove nor veto.
+   */
+  shape: "spiral" | "undetermined";
 };
 
 function sortedUnique(values: Iterable<number>): number[] {
@@ -52,6 +78,13 @@ export function buildStairAssemblies(
   stairsAggregates:
     | ReadonlyMap<number, Revit2027StairsElementAggregate>
     | undefined,
+  /**
+   * `StairsRun` element ids the spiral mesh replay recovered, from
+   * `Revit2027NativeMeshCollection.spiralStairRunOwnerIds`. Absent on the
+   * branches that build no display scene, where no replay ran and every stair
+   * is therefore `"undetermined"`.
+   */
+  spiralStairRunIds: ReadonlySet<number> = new Set<number>(),
 ): NativeStairAssembly[] {
   const runsByStair = new Map<number, number[]>();
   const stringersByStair = new Map<number, number[]>();
@@ -117,6 +150,18 @@ export function buildStairAssemblies(
         ? "runs"
         : "element-frame";
 
+    // A part id is a run only where a decoded run frame says so; a landing has
+    // no run scalars and an id the element frame named but no scan reached has
+    // no evidence either way. Both are silent rather than disqualifying.
+    const decodedRuns = runAndLandingIds.filter(
+      (id) => stairsRuns?.get(id)?.runProperties != null,
+    );
+    const spiralRunIds = decodedRuns.filter((id) => spiralStairRunIds.has(id));
+    const shape = spiralRunIds.length > 0 &&
+        spiralRunIds.length === decodedRuns.length
+      ? "spiral"
+      : "undetermined";
+
     assemblies.push({
       stairElementId,
       runAndLandingIds,
@@ -124,6 +169,8 @@ export function buildStairAssemblies(
       railingIds,
       supportIds,
       evidence,
+      spiralRunIds,
+      shape,
     });
   }
   return assemblies;

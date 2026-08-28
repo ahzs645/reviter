@@ -35,6 +35,37 @@ function run(
 }
 
 /**
+ * A run that carries run scalars, so it counts as a flight rather than a
+ * landing.
+ *
+ * `run()` above leaves `runProperties` null, which is what a `StairsLanding`
+ * decodes to. The shape rule turns on that distinction: a landing can neither
+ * prove nor veto a spiral, and only a decoded *run* does either.
+ */
+function flightRun(
+  elementId: number,
+  stairsId: number,
+  stringerIds: readonly number[] = [],
+): Revit2027StairsRunAndLandingAggregate {
+  return {
+    ...run(elementId, stairsId, stringerIds),
+    runProperties: {
+      bottomElevationFeet: 0,
+      topElevationFeet: 10,
+      extendBelowBaseFeet: 0,
+      extendBelowTreadBaseFeet: 0,
+      actualRunWidthFeet: 3,
+      leftStringerWidthFeet: 0.1,
+      rightStringerWidthFeet: 0.1,
+      topRiserIndex: 16,
+      centerMarkVisible: true,
+      beginWithRiser: true,
+      endWithRiser: false,
+    },
+  };
+}
+
+/**
  * Only the three id lists this file cares about are settable.
  *
  * A `Partial<Revit2027StairsElementAggregate>` spread would be shorter and is
@@ -129,6 +160,80 @@ test("a stair is never a part of another stair's assembly", () => {
   assert.ok(byId.has(200));
   assert.ok(!stairAssemblyParts(byId.get(200)!).includes(210),
     "210 owns an assembly of its own, so it cannot also be a part of 200's");
+});
+
+// --------------------------------------------------------------------------
+// The shape
+// --------------------------------------------------------------------------
+
+test("the helix replay's runs are what makes a stair spiral", () => {
+  // The identity comes from `revit-2027-spiral-stair-mesh`, which recovers a
+  // run only from two coaxial `GCylindricalHelix` guides exactly the run's own
+  // width apart. Nothing weaker than that set may reach this field.
+  const assemblies = buildStairAssemblies(
+    new Map([[201, flightRun(201, 200, [301])]]),
+    undefined,
+    new Set([201]),
+  );
+
+  assert.equal(assemblies.length, 1);
+  assert.deepEqual(assemblies[0]!.spiralRunIds, [201]);
+  assert.equal(assemblies[0]!.shape, "spiral");
+});
+
+test("without the replay a stair has no shape, not a straight one", () => {
+  const assemblies = buildStairAssemblies(
+    new Map([[201, flightRun(201, 200)]]),
+    undefined,
+  );
+
+  assert.deepEqual(assemblies[0]!.spiralRunIds, []);
+  assert.equal(assemblies[0]!.shape, "undetermined",
+    "absence of the helical reading is absence, never a claim of a straight run");
+});
+
+test("a landing neither proves nor vetoes the shape", () => {
+  // A `StairsLanding` decodes with no run scalars. Letting it veto would make
+  // every real spiral stair -- which lands between flights -- undeterminable.
+  const assemblies = buildStairAssemblies(
+    new Map([[201, flightRun(201, 200)], [202, run(202, 200)]]),
+    undefined,
+    new Set([201]),
+  );
+
+  assert.deepEqual(assemblies[0]!.runAndLandingIds, [201, 202]);
+  assert.deepEqual(assemblies[0]!.spiralRunIds, [201]);
+  assert.equal(assemblies[0]!.shape, "spiral");
+});
+
+test("a decoded run the replay declined vetoes the whole assembly", () => {
+  // The consumer replaces *every* flight of a spiral stair with one synthesised
+  // helix. A stair that mixes a proven helical run with a run of unknown shape
+  // would have the unknown one deleted and redrawn as a helix, so the evidence
+  // is kept and the conclusion is withheld.
+  const assemblies = buildStairAssemblies(
+    new Map([[201, flightRun(201, 200)], [202, flightRun(202, 200)]]),
+    undefined,
+    new Set([201]),
+  );
+
+  assert.deepEqual(assemblies[0]!.spiralRunIds, [201]);
+  assert.equal(assemblies[0]!.shape, "undetermined");
+});
+
+test("spiral evidence follows the assembly that claimed the run", () => {
+  // `runAndLandingIds` is the claimed set, and a part belongs to one assembly
+  // only. Evidence for an id another stair claimed must not label this one.
+  const assemblies = buildStairAssemblies(
+    new Map([[201, flightRun(201, 200)], [211, flightRun(211, 210)]]),
+    undefined,
+    new Set([201]),
+  );
+
+  const byId = new Map(assemblies.map((assembly) => [assembly.stairElementId, assembly]));
+  assert.equal(byId.get(200)!.shape, "spiral");
+  assert.equal(byId.get(210)!.shape, "undetermined");
+  assert.deepEqual(byId.get(210)!.spiralRunIds, []);
 });
 
 test("output is stable across equal inputs", () => {
@@ -289,6 +394,67 @@ test("a stair that already has a body is not duplicated", () => {
   const ifc = makeIfc(withBody);
   const containers = ifc.match(/=IFCSTAIR\(/g) ?? [];
   assert.equal(containers.length, 1, `expected one IFCSTAIR, found ${containers.length}`);
+});
+
+test("the export states the spiral shape the helix replay proved", () => {
+  // The consumer routes on this enum alone: `IfcStair.PredefinedType ==
+  // SPIRAL_STAIR` sends the assembly's flights and stringers to a synthesised
+  // helix, and anything else to the generic path. Carrying the replay's
+  // identity this far is the whole point of the field.
+  const base = stairFixture();
+  const spiral: ConvertResult = {
+    ...base,
+    nativeStairAssemblies: buildStairAssemblies(
+      new Map([[201, flightRun(201, 200, [301])]]),
+      undefined,
+      new Set([201]),
+    ),
+  };
+
+  const ifc = makeIfc(spiral);
+
+  const container = ifc.match(/#(\d+)=IFCSTAIR\(([^\n]*)\);/);
+  assert.ok(container);
+  assert.match(container[2]!, /,'200',\.SPIRAL_STAIR\.$/,
+    "IfcStairTypeEnum spells the winding stair SPIRAL_STAIR");
+
+  const flight = ifc.match(/=IFCSTAIRFLIGHT\(([^\n]*)\);/);
+  assert.ok(flight);
+  assert.match(flight[1]!, /,\$,\$,\$,\$,\.SPIRAL\.$/,
+    "IfcStairFlightTypeEnum spells the same shape SPIRAL, and the run is what was proven");
+
+  // The aggregate is still what joins them; the shape does not replace it.
+  assert.match(ifc, /IFCRELAGGREGATES\([^)]*'Stair assembly'/);
+});
+
+test("a spiral stair that kept its own body is shaped on that product", () => {
+  // The wrapper survives into the scene often enough that the container branch
+  // is not the only place the enum has to be written; a stair emitted through
+  // the ordinary manifest loop takes its shape from the same evidence.
+  const base = stairFixture();
+  const withBody: ConvertResult = {
+    ...base,
+    elementBounds: [...base.elementBounds, boundsRecord(200, -2_000_120, "Stairs")],
+    meshes: [{ ...base.meshes[0]!, elementIds: new Uint32Array([201, 200]) }],
+    nativeStairAssemblies: buildStairAssemblies(
+      new Map([[201, flightRun(201, 200, [301])]]),
+      undefined,
+      new Set([201]),
+    ),
+  };
+
+  const ifc = makeIfc(withBody);
+  const stairs = ifc.match(/=IFCSTAIR\([^\n]*\);/g) ?? [];
+  assert.equal(stairs.length, 1, `expected one IFCSTAIR, found ${stairs.length}`);
+  assert.match(stairs[0]!, /,'200',\.SPIRAL_STAIR\.\);$/);
+});
+
+test("a stair the replay never recovered keeps its flight undeclared", () => {
+  const ifc = makeIfc(stairFixture());
+  const flight = ifc.match(/=IFCSTAIRFLIGHT\(([^\n]*)\);/);
+  assert.ok(flight);
+  assert.match(flight[1]!, /,\$,\$,\$,\$,\.NOTDEFINED\.$/,
+    "no helical reading means no shape written, on the flight as on the stair");
 });
 
 test("an assembly whose parts never reached the file emits nothing", () => {

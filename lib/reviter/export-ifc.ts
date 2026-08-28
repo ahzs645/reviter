@@ -500,6 +500,157 @@ function planarWidthFeet(fragments: readonly GeometryFragment[]): number | null 
   return Number.isFinite(extent) && extent > 0 ? extent : null;
 }
 
+/** Revit's `BuiltInCategory.OST_Walls`, the only host a centreline is read from. */
+const WALL_CATEGORY_ID = -2_000_011;
+
+/** Below this a location line is a degenerate point, not a direction. */
+const MIN_HOST_AXIS_LENGTH_FEET = 1e-3;
+
+/**
+ * How far the wall's own reading may fall below the box's largest side before
+ * it is refused as an implausible width.
+ *
+ * A correct projection can legitimately read *smaller* than the box, and that
+ * is the whole point of it: the box side of a swing footprint on a 32 degree
+ * wall is 1.4x the opening. Swept over leaves and swings of 2.5 to 8 ft at
+ * every whole degree, the worst honest ratio is 0.684 while reading a leaf
+ * ACROSS its wall instead of along it never exceeds 0.165, so 0.5 separates
+ * them. This is the second gate, not the first: a swing footprint is square,
+ * so a crossed host reads a plausible number off it and only the centreline
+ * check in `hostWallAxis` refuses that one.
+ */
+const MIN_HOST_PROJECTION_RATIO = 0.5;
+
+type PlanAxis = { x: number; y: number };
+
+/** Plan distance from `point` to the segment `ax,ay`..`bx,by`. */
+function distanceToSegment(
+  point: PlanAxis,
+  ax: number, ay: number, bx: number, by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length2 = dx * dx + dy * dy;
+  if (!length2) return Math.hypot(point.x - ax, point.y - ay);
+  const t = Math.max(0, Math.min(1, ((point.x - ax) * dx + (point.y - ay) * dy) / length2));
+  return Math.hypot(point.x - (ax + dx * t), point.y - (ay + dy * t));
+}
+
+/**
+ * The direction the host wall's centreline runs beneath a hosted opening.
+ *
+ * A wall modelled as several runs carries one solid per run, so the run whose
+ * location line passes closest to the opening is the one the opening sits in.
+ * A curved host has no straight centreline and yields nothing; the caller
+ * falls back rather than projecting onto a chord.
+ */
+function hostWallAxis(
+  host: ElementBoundsRecord,
+  centre: PlanAxis,
+  reach: number,
+): PlanAxis | null {
+  const runs = host.solids?.length ? host.solids : host.solid ? [host.solid] : [];
+  let best: { distance: number; axis: PlanAxis } | null = null;
+  for (const run of runs) {
+    const dx = run.end.x - run.start.x;
+    const dy = run.end.y - run.start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < MIN_HOST_AXIS_LENGTH_FEET) continue;
+    const distance = distanceToSegment(centre, run.start.x, run.start.y, run.end.x, run.end.y);
+    if (best && distance >= best.distance) continue;
+    best = { distance, axis: { x: dx / length, y: dy / length } };
+  }
+  // A door is in its own wall. The persisted relation says which wall that is,
+  // and this says the geometry agrees -- which rejects the case that would
+  // otherwise be silent, a host resolved to the perpendicular wall at a corner.
+  if (!best || best.distance > reach) return null;
+  return best.axis;
+}
+
+/**
+ * Host wall direction per hosted opening, keyed by the opening's element id.
+ *
+ * The relation itself is already resolved -- `makeIfcCenterlines` writes it out
+ * as `IfcRelFillsElement` -- so this only has to follow it to the wall's own
+ * rebuilt location line.
+ */
+function hostAxesByOpening(result: ConvertResult): Map<number, PlanAxis> {
+  const axes = new Map<number, PlanAxis>();
+  const relations = result.nativeHostRelations ?? [];
+  if (!relations.length) return axes;
+  const recordById = new Map(result.elementBounds.map((record) => [record.elementId, record]));
+  for (const relation of relations) {
+    const host = recordById.get(relation.hostId);
+    const opening = recordById.get(relation.elementId);
+    if (!host || !opening || host.categoryId !== WALL_CATEGORY_ID) continue;
+    const { min, max } = opening.boundsFeet;
+    const centre = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2 };
+    // The record of a door with a modelled swing is the opening *plus* the arc,
+    // so its centre sits off the wall by about half the leaf. Half the box's
+    // plan diagonal covers that and still excludes a wall elsewhere.
+    const reach = Math.hypot(max.x - min.x, max.y - min.y) / 2;
+    const axis = hostWallAxis(host, centre, reach);
+    if (axis) axes.set(relation.elementId, axis);
+  }
+  return axes;
+}
+
+/**
+ * A hosted opening's width, read along the wall it is cut into.
+ *
+ * `planarWidthFeet` takes the footprint's own dominant direction, which is the
+ * leaf's long axis only while the leaf is the whole footprint. It is not: a
+ * door drawn with its swing is a quarter disc, whose dominant direction is a
+ * diagonal, and the extent along that diagonal is the *swing*. Measured in
+ * `tests/door-host-width.test.ts`, a 6 ft opening drawn with its swing reads
+ * 2.62 m that way at every angle -- three whole voxel blocks of hole punched
+ * for a two-block door.
+ *
+ * The wall's centreline is the direction that makes the number a width: an
+ * opening's width is its extent along the wall it perforates, whatever the leaf
+ * does in front of it and whatever angle the wall runs at.
+ *
+ * Returns null when there is no host axis or when the reading is implausibly
+ * small against the box, so the caller keeps today's answer rather than a
+ * worse one.
+ */
+function hostedWidthFeet(
+  fragments: readonly GeometryFragment[],
+  axis: PlanAxis | null,
+): number | null {
+  if (!axis) return null;
+  let along = Infinity;
+  let alongHigh = -Infinity;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let count = 0;
+  for (const fragment of fragments) {
+    for (let index = 0; index + 2 < fragment.positions.length; index += 3) {
+      const x = fragment.positions[index]!;
+      const y = fragment.positions[index + 1]!;
+      const projected = x * axis.x + y * axis.y;
+      if (projected < along) along = projected;
+      if (projected > alongHigh) alongHigh = projected;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      count += 1;
+    }
+  }
+  if (count < 3) return null;
+  // The fragments are already in METRES -- `emitTessellatedShape` converts them
+  // on the way in -- while every length reaching `optionalPositiveFeet` is in
+  // feet. See the same note on `planarWidthFeet`.
+  const extent = (alongHigh - along) / METRES_PER_FOOT;
+  if (!Number.isFinite(extent) || extent <= 0) return null;
+  const boxSide = Math.max(maxX - minX, maxY - minY) / METRES_PER_FOOT;
+  if (extent < boxSide * MIN_HOST_PROJECTION_RATIO) return null;
+  return extent;
+}
+
 function emitProduct(
   writer: StepWriter,
   ifcClass: IfcClass,
@@ -509,6 +660,7 @@ function emitProduct(
   placement: number,
   shape: number | null,
   fragments: readonly GeometryFragment[] = [],
+  hostAxis: PlanAxis | null = null,
 ): number {
   const name = quoted(elementName(element));
   const description = quoted(
@@ -529,22 +681,27 @@ function emitProduct(
   ];
   const dimensions = boxDimensions(element);
   if (ifcClass.entity === "IFCDOOR") {
-    const planar = planarWidthFeet(fragments)
+    const planar = hostedWidthFeet(fragments, hostAxis)
+      ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
       `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".DOOR.", ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCWINDOW") {
-    const planar = planarWidthFeet(fragments)
+    const planar = hostedWidthFeet(fragments, hostAxis)
+      ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
       `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".WINDOW.", ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCSTAIRFLIGHT") {
+    // Riser count, tread count, riser height and tread length are `$` because
+    // nothing decoded reads them off a flight; the shape enum is the class's,
+    // which is `.NOTDEFINED.` unless the spiral replay proved otherwise.
     return writer.add(
-      `IFCSTAIRFLIGHT(${[...common, "$", "$", "$", "$", ".NOTDEFINED."].join(",")})`,
+      `IFCSTAIRFLIGHT(${[...common, "$", "$", "$", "$", ifcClass.predefinedType].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCBUILDINGELEMENTPROXY") {
@@ -683,6 +840,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
   const manifest = elementManifest(result);
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
+  const hostAxes = hostAxesByOpening(result);
   const sourceByElement = new Map<number, ElementBoundsRecord>();
   for (const source of result.elementBounds) {
     if (!sourceByElement.has(source.elementId)) sourceByElement.set(source.elementId, source);
@@ -797,6 +955,52 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const typeObjectByElement = new Map<number, number>();
   const noMeshScene = result.meshes.length === 0;
 
+  /*
+   * Stair shape, carried from the one decoder that can prove it.
+   *
+   * `revit-2027-spiral-stair-mesh` recovers a run's body only from two
+   * top-level `GCylindricalHelix` guides in that run's own GRep that are
+   * coaxial, share one angular interval and one pitch, and stand exactly the
+   * run's persisted `actualRunWidthFeet` apart. A run drawn by a helical pair
+   * is a helical run, so the replay's success is a reading of the file's own
+   * curves rather than a shape guessed from a bounding box, and
+   * `stair-assemblies.ts` carries which runs it recovered onto the assembly.
+   *
+   * Absence of that evidence stays `.NOTDEFINED.` and never becomes a straight
+   * or turned stair: this file has no reading for those. An assembly that
+   * mixes a proven helical run with a decoded run the replay declined is
+   * `"undetermined"` for the same reason -- see `NativeStairAssembly.shape`.
+   */
+  const spiralStairElementIds = new Set<number>();
+  const spiralRunElementIds = new Set<number>();
+  for (const assembly of result.nativeStairAssemblies ?? []) {
+    if (assembly.shape !== "spiral") continue;
+    spiralStairElementIds.add(assembly.stairElementId);
+    for (const runId of assembly.spiralRunIds) spiralRunElementIds.add(runId);
+  }
+  /**
+   * The occurrence's own shape enum.
+   *
+   * `IfcStair` and `IfcStairFlight` do not share an enumeration --
+   * `IfcStairTypeEnum` spells the winding stair `SPIRAL_STAIR` and
+   * `IfcStairFlightTypeEnum` spells it `SPIRAL` -- so the entity, not the
+   * evidence, picks the spelling. The type object keeps `.NOTDEFINED.`: one
+   * `IfcStairFlightType` is shared by every occurrence of a Revit type, and
+   * only some of those occurrences are proven.
+   */
+  const shapedClass = (ifcClass: IfcClass, elementId: number): IfcClass => {
+    if (ifcClass.entity === "IFCSTAIR" && spiralStairElementIds.has(elementId)) {
+      return { ...ifcClass, predefinedType: ".SPIRAL_STAIR." };
+    }
+    if (
+      ifcClass.entity === "IFCSTAIRFLIGHT" &&
+      spiralRunElementIds.has(elementId)
+    ) {
+      return { ...ifcClass, predefinedType: ".SPIRAL." };
+    }
+    return ifcClass;
+  };
+
   const nearestStorey = (element: ManifestElement): number => {
     const statedLevel = levelByElement.get(element.elementId);
     if (statedLevel != null) {
@@ -824,13 +1028,14 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const identity = identityByElement.get(element.elementId) ?? element.uniqueId ?? element.elementId;
     const product = emitProduct(
       writer,
-      ifcClass,
+      shapedClass(ifcClass, element.elementId),
       guid("element", identity),
       ownerHistory,
       element,
       modelPlacement,
       shape,
       fragments,
+      hostAxes.get(element.elementId) ?? null,
     );
     productByElement.set(element.elementId, product);
     classByElement.set(element.elementId, ifcClass);
@@ -999,11 +1204,11 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // the wrapper's geometry and suppressing the wrapper are different acts, and
   // only the first one was ever wanted.
   //
-  // `PredefinedType` stays `.NOTDEFINED.`: nothing decoded here says whether a
-  // stair is spiral, straight or a half-turn. A run recovered by the spiral
-  // mesh replay is evidence of a spiral, but that decoder's identity does not
-  // reach this manifest, so writing `.SPIRAL_STAIR.` would be a guess dressed
-  // as a reading.
+  // `PredefinedType` is `.SPIRAL_STAIR.` exactly where the spiral mesh replay
+  // recovered the assembly's runs from matching inner/outer `GCylindricalHelix`
+  // guides, and `.NOTDEFINED.` everywhere else. Nothing decoded here can tell a
+  // straight run from a half-turn, so absence of the helical reading stays
+  // absence rather than becoming a second claim.
   for (const assembly of result.nativeStairAssemblies ?? []) {
     const parts = stairAssemblyParts(assembly)
       .map((elementId) => productByElement.get(elementId))
@@ -1018,7 +1223,8 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         `IFCSTAIR(${quoted(guid("element", identity))},#${ownerHistory},` +
         `${quoted(`Stairs ${assembly.stairElementId}`)},` +
         `${quoted(`Recovered stair assembly; parts joined from ${assembly.evidence}.`)},` +
-        `$,#${modelPlacement},$,${quoted(String(assembly.stairElementId))},.NOTDEFINED.)`,
+        `$,#${modelPlacement},$,${quoted(String(assembly.stairElementId))},` +
+        `${assembly.shape === "spiral" ? ".SPIRAL_STAIR." : ".NOTDEFINED."})`,
       );
       productByElement.set(assembly.stairElementId, container);
       // Place the container in the storey its own parts landed in, so it is

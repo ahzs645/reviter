@@ -60,9 +60,9 @@ which is why it is a test rather than a paragraph.
 | --- | --- | --- | --- |
 | Z-up, metres, valid IFC4 | the voxel lattice | yes; both readers open it, `ifcopenshell.validate --rules` is clean | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
 | typed products | class → block, overlap priority | typed; **571** `IfcBuildingElementProxy` (1.5%) fall to a generic solid | [2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) |
-| **`IfcRelAggregates` on stairs** | stringer vs mullion; stairwell identity; spiral rebuild | **now written** — see below; the spiral *shape* is still undeclared | `stair-assemblies.ts` |
+| **`IfcRelAggregates` on stairs** | stringer vs mullion; stairwell identity; spiral rebuild | **now written** — see below, with `PredefinedType` `.SPIRAL_STAIR.` where the helix replay proved the shape | `stair-assemblies.ts` |
 | stair shape enum | spiral synthesis | written as `PredefinedType` (IFC4), which is correct; the consumer read only the IFC2X3 spelling until it was fixed there | — |
-| `IfcDoor.OverallWidth` | leaf count | `max(bounds.width, bounds.depth)` — the larger horizontal extent of the box | `export-ifc.ts:453` |
+| `IfcDoor.OverallWidth` | leaf count | the opening's extent **along its host wall's centreline**, falling back to the footprint's own principal axis and then to the box | `export-ifc.ts` `hostedWidthFeet` |
 | door body base | the door's floor level | 1,921 doors at **100.0% centre / 99.9% size** on the half-foot overlay | [2026-08-01](unbc-three-source-audit-2026-08-01.md) |
 | `IfcSlab` / `IfcCovering` / `IfcRoof` | the walkable surface | 94 slabs against 107 tagged; "floor/landing recovery remains incomplete" | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
 | `FillsVoids → opening → wall` | replaying openings onto moved walls | present — 1,932 persisted relationships, none invented | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
@@ -89,14 +89,23 @@ flights would otherwise emit a file no conforming reader should accept; and the
 output is sorted rather than scan-ordered, because the exporter derives GUIDs
 and entity order from it and a re-run of one file has to produce the same bytes.
 
-`PredefinedType` stays `.NOTDEFINED.`. Nothing decoded here says whether a stair
-is spiral, straight or a half-turn, and the consumer's spiral rebuild reads
-exactly that enum — so this closes the assembly gap and leaves the shape gap
-open. The evidence for closing it exists: a run recovered by
-`revit-2027-spiral-stair-mesh` is a spiral by construction, since that replay
-only succeeds against matching inner/outer `GCylindricalHelix` guides. That
-decoder's identity does not reach the export manifest, which is the work.
-Writing `.SPIRAL_STAIR.` without it would be a guess dressed as a reading.
+`PredefinedType` is now `.SPIRAL_STAIR.` on a stair whose runs
+`revit-2027-spiral-stair-mesh` recovered, and `.NOTDEFINED.` on every other.
+That replay accepts a run only against matching inner/outer
+`GCylindricalHelix` guides — coaxial, one angular interval, one pitch, exactly
+the run's persisted `actualRunWidthFeet` apart — so a run it recovered is drawn
+by a helical pair and is a helical run. The decoder's identity now travels:
+`Revit2027NativeMeshCollection.spiralStairRunOwnerIds` records it where the
+replay fires, `convert.ts` hands that set to `buildStairAssemblies`, and the
+assembly carries `spiralRunIds` and `shape` to `export-ifc.ts`.
+
+Two asymmetries are deliberate. `.NOTDEFINED.` remains the absence of a
+reading and never a claim that a stair is straight or a half-turn — nothing
+decoded here can read those. And an assembly that mixes a proven helical run
+with a decoded run the replay declined stays undetermined, because the
+consumer replaces *every* flight of a `SPIRAL_STAIR` with one synthesised
+helix: an unlabelled spiral is a stair voxelized badly, while a mislabelled
+straight flight is a straight flight deleted.
 
 The rest of this section is what the gap was, kept because it is why the shape
 of the fix is what it is.
@@ -135,7 +144,7 @@ stair containers and 1,835 curtain-wall containers for exactly this reason. A
 non-geometric `IfcStair` with an `IfcRelAggregates` to its recovered runs,
 landings, stringers and railings adds no surface and restores the tree.
 
-### 2. Derive `OverallWidth` from the footprint, not the bounding box — done
+### 2. Derive `OverallWidth` from the host wall, not the bounding box — done
 
 `export-ifc.ts` writes `max(dimensions.width, dimensions.depth)` — the larger
 horizontal extent of the element's axis-aligned box. That is not a door's width
@@ -156,12 +165,15 @@ door within about 10 cm of a half-metre boundary flips between one leaf and two.
 Entrance banks — runs of three, four, even six leaves, which this model really
 has — are exactly the population near those boundaries.
 
-The fix is in reach with data already resolved: the exporter looks the host
-relation up to write `IfcRelFillsElement`, so the host wall is in hand, and its
-direction turns the box into a projection onto the wall centreline. The change
-is gradeable without any new oracle — count how many of the 1,921 doors move
-across a `round(w / pitch)` boundary — and it can be checked against the paired
-export, which carries Revit's own `OverallWidth`.
+Both are now closed, and they took two different readings. The **rotated wall**
+is answered by the footprint's own principal axis (`planarWidthFeet`), measured
+below. The **swing** is not: a principal axis run down a quarter disc measures
+the swing rather than the door, and reads *worse* than the box it replaced. So
+the width is now taken along the host wall's centreline, which is the direction
+that makes the number a width at all — an opening's width is its extent along
+the wall it perforates, whatever the leaf does in front of it. The exporter
+already looks the host relation up to write `IfcRelFillsElement`, so the wall's
+rebuilt location line was in reach; `hostedWidthFeet` follows it.
 
 ### 2b. Measured on the building — done
 
@@ -183,6 +195,56 @@ footprint's own principal axis instead of an axis-aligned box takes it to 9,
 which is fewer than the export's. That is the whole argument for the change,
 and it was worth measuring rather than asserting: the bounding-box rule was
 wrong in a way that mattered at a scale nobody had put a number on.
+
+### 2c. The swing, and what the host wall costs it
+
+`planarWidthFeet` closed the rotated-wall half of §2 and was measured on the
+building: 394 fragile doors down to 9. The swing half stayed open, and on a
+footprint that carries its swing the principal axis is *not* the leaf's long
+axis — it runs down the diagonal of the quarter disc, and the extent along it
+is the swing.
+
+Measured through `makeIfc` itself on the fixtures in
+`tests/door-host-width.test.ts` (an extruded plan ring, a host wall solid whose
+location line runs at the stated angle, and the persisted host relation),
+reported width and the `round(width / 1 m)` blocks the consumer rounds it to:
+
+| footprint | angle | true | box (pre-`69eddf0`) | principal axis | host wall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 3′0″ leaf | 0° | 0.914 / 1 | 0.914 / 1 | 0.914 / 1 | 0.914 / 1 |
+| 3′0″ leaf | 32° | 0.914 / 1 | 0.829 / 1 | 0.914 / 1 | 0.914 / 1 |
+| 3′0″ leaf | 58° | 0.914 / 1 | 0.829 / 1 | 0.914 / 1 | 0.914 / 1 |
+| 5′0″ leaf | 0° | 1.524 / 2 | 1.524 / 2 | 1.524 / 2 | 1.524 / 2 |
+| 5′0″ leaf | 32° | 1.524 / 2 | **1.346 / 1** | 1.524 / 2 | 1.524 / 2 |
+| 5′0″ leaf | 58° | 1.524 / 2 | **1.346 / 1** | 1.524 / 2 | 1.524 / 2 |
+| 3′0″ leaf + swing | 0° | 0.914 / 1 | 0.965 / 1 | 1.329 / 1 | 0.914 / 1 |
+| 3′0″ leaf + swing | 32° | 0.914 / 1 | 1.303 / 1 | 1.329 / 1 | 0.914 / 1 |
+| 3′0″ leaf + swing | 58° | 0.914 / 1 | 1.287 / 1 | 1.329 / 1 | 0.914 / 1 |
+| 5′0″ leaf + swing | 0° | 1.524 / 2 | 1.574 / 2 | 2.191 / 2 | 1.524 / 2 |
+| 5′0″ leaf + swing | 32° | 1.524 / 2 | 2.143 / 2 | 2.191 / 2 | 1.524 / 2 |
+| 5′0″ leaf + swing | 58° | 1.524 / 2 | 2.127 / 2 | 2.191 / 2 | 1.524 / 2 |
+| 6′0″ leaf + swing | 0° | 1.829 / 2 | 1.879 / 2 | **2.622 / 3** | 1.829 / 2 |
+| 6′0″ leaf + swing | 32° | 1.829 / 2 | **2.563 / 3** | **2.622 / 3** | 1.829 / 2 |
+| 6′0″ leaf + swing | 58° | 1.829 / 2 | **2.547 / 3** | **2.622 / 3** | 1.829 / 2 |
+
+Three of the fifteen change block count, and they are the three the principal
+axis gets wrong: a 6 ft opening drawn with its swing is a **three-block hole
+punched for a two-block door**, at every angle including 0°, where the box it
+replaced was right. The host wall reads the true width exactly in all fifteen.
+
+The block counts are the grading the item asked for and they are honest, but
+they are counts over a *fixture*, not over the building. What is still
+unmeasured is the population: how many of the 1,921 doors reach the exporter
+carrying their swing, rather than a leaf `door-leaf.ts` has already cut out of
+it. That needs a decode of the real RVT and the consumer's gate, the same way
+§2b was measured.
+
+Two gates keep the projection from being worse than what it replaces. The wall
+run's centreline must pass within half the opening's plan diagonal of it —
+which is what refuses a host id that landed on the perpendicular wall at a
+corner — and the projected extent must be at least half the footprint's largest
+box side. Neither firing, or a curved host with no straight centreline, falls
+back to the principal axis and then to the box.
 
 ### 3. Decide what `Tag` is for, and grade the bounds fallbacks by class
 
