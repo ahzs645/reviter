@@ -69,6 +69,31 @@ const FALLBACK_TOP_STOREY_METRES = 3;
 /** Pascal's stock glazing finish, given to the walls that stand in for panels. */
 const CURTAIN_PANEL_SLOT = "library:preset-glass";
 
+/**
+ * Vertical extent above which a recovered surface is a slope, not a plate.
+ *
+ * Pascal's `slab` and `ceiling` are flat: a polygon at one height. Most of what
+ * reaches them really is flat — in the supplied model every drawn floor, ceiling
+ * and landing has an extent of 0.20 m or less — but a pitched roof and a ramp do
+ * not, and their extent is mostly rise. Taking that extent as a thickness turns a
+ * 3.54 m roof into a solid block standing proud of the building at the ridge.
+ */
+const SURFACE_PLATE_LIMIT_METRES = 0.6;
+
+/**
+ * Depth of the flat plate that stands in for a sloped surface.
+ *
+ * Where the plate sits was measured rather than assumed. Against the paired
+ * Autodesk export, anchoring it at the middle of the recovered extent scores
+ * 99.65% / 99.16% surface agreement, and beats anchoring it at the top
+ * (99.47% / 99.00%), at the bottom (99.56% / 99.00%), and keeping the full
+ * extent as a thickness (99.32% / 99.02%). Dropping these surfaces altogether
+ * buys a better one-way figure (99.74%) by leaving a hole, and is worse the
+ * other way (98.84%). The middle is where a plane best approximates a slope in
+ * both directions, which is what the numbers say too.
+ */
+const SLOPED_SURFACE_PLATE_METRES = 0.3;
+
 /** Revit `BuiltInCategory` ids this exporter recognises. */
 const CATEGORY = {
   walls: -2_000_011,
@@ -155,6 +180,10 @@ export type PascalSceneStats = {
   blocks: number;
   /** Elements that carried usable geometry but no Pascal node was written for. */
   skipped: number;
+  /** Elements held back because the conversion's own display scene omits them. */
+  notDrawn: number;
+  /** Sloped surfaces — pitched roofs, ramps — written as one flat plate. */
+  flattenedSlopes: number;
 };
 
 export type PascalScene = {
@@ -241,6 +270,29 @@ function planDistanceToSegment(point: Plan, start: Plan, end: Plan): number {
 }
 
 // ─── Element evidence ────────────────────────────────────────────────────────
+
+/**
+ * The elements that actually reached the display scene.
+ *
+ * This is the same gate the GLB and IFC exports pass through — both build their
+ * products out of `result.meshes` — and the Pascal export has to honour it too.
+ * A conversion recovers evidence for more elements than it is willing to draw:
+ * stair paths, rail-path extension lines and unnamed storey-sized plates all
+ * carry bounds, and all of them are excluded from the display scene on purpose
+ * (see `docs/unbc-drawn-but-not-elements-2026-07-28.md`). Three such plates in
+ * the supplied model measure 83 m by 52 m and 100 mm thick; exporting them puts
+ * the scene's extents 24 m outside the building.
+ *
+ * An empty set means no display scene was built at all — a bounds-only
+ * conversion — and there is then nothing to gate against.
+ */
+function drawnElements(result: ConvertResult): Set<number> {
+  const drawn = new Set<number>();
+  for (const mesh of result.meshes) {
+    for (const elementId of mesh.elementIds ?? []) drawn.add(elementId);
+  }
+  return drawn;
+}
 
 /**
  * The best record for each element id.
@@ -330,6 +382,8 @@ export function makePascalScene(
     stairs: 0,
     blocks: 0,
     skipped: 0,
+    notDrawn: 0,
+    flattenedSlopes: 0,
   };
 
   const add = (node: PascalNode): PascalNode => {
@@ -487,7 +541,19 @@ export function makePascalScene(
 
   // ── Walls ──────────────────────────────────────────────────────────────────
 
-  const records = bestRecordByElement(result.elementBounds);
+  const drawn = drawnElements(result);
+  const records = bestRecordByElement(
+    drawn.size === 0
+      ? result.elementBounds
+      : result.elementBounds.filter((record) => drawn.has(record.elementId)),
+  );
+  stats.notDrawn = drawn.size === 0
+    ? 0
+    : new Set(
+        result.elementBounds
+          .filter((record) => !drawn.has(record.elementId))
+          .map((record) => record.elementId),
+      ).size;
   const wallsByElement = new Map<number, WallPlacement[]>();
 
   const addWall = (
@@ -784,8 +850,16 @@ export function makePascalScene(
       continue;
     }
 
-    const top = up(record.boundsFeet.max.z);
+    const extent = surfaceThickness(record.boundsFeet);
+    const sloped = extent > SURFACE_PLATE_LIMIT_METRES;
+    const thickness = sloped ? Math.min(SLOPED_SURFACE_PLATE_METRES, extent) : extent;
+    // A flat plate stands in for a slope at the middle of its extent, so the
+    // error is shared between the high end and the low one.
+    const top = up(record.boundsFeet.max.z) - (sloped ? (extent - thickness) / 2 : 0);
     const level = levelFor(record.elementId, top);
+    const metadata = sloped
+      ? { ...elementMetadata(record), revitExtentMetres: extent, flattenedSlope: true }
+      : elementMetadata(record);
 
     if (isCeiling) {
       add({
@@ -801,7 +875,7 @@ export function makePascalScene(
         height: Math.max(top - level.elevation, 0.01),
         autoFromWalls: false,
         children: [],
-        metadata: elementMetadata(record),
+        metadata,
       });
       stats.ceilings += 1;
       continue;
@@ -817,16 +891,16 @@ export function makePascalScene(
       polygon: outline.polygon,
       holes: outline.holes,
       holeMetadata: [],
-      // Pascal's slab is anchored at its walking surface and grows downward,
-      // which is the top of the recovered mass.
+      // Pascal's slab is anchored at its walking surface and grows downward.
       elevation: top - level.elevation,
-      thickness: surfaceThickness(record.boundsFeet),
+      thickness,
       recessed: false,
       autoFromWalls: false,
       children: [],
-      metadata: elementMetadata(record),
+      metadata,
     });
     stats.slabs += 1;
+    if (sloped) stats.flattenedSlopes += 1;
   }
 
   // ── Columns ────────────────────────────────────────────────────────────────

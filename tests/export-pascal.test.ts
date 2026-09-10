@@ -405,6 +405,68 @@ test("writes leftover elements as block solids only when asked for all of them",
   }
 });
 
+test("writes only what the conversion's own display scene draws", () => {
+  const withoutDisplayScene = fixture();
+  assert.equal(makePascalScene(withoutDisplayScene).stats.notDrawn, 0);
+  assert.ok(makePascalScene(withoutDisplayScene).nodes.column_e14);
+
+  // With a display scene, an element the conversion declined to draw — an
+  // unnamed storey-sized plate, a rail-path extension line — is held back the
+  // same way the GLB and IFC exports hold it back, because both of those build
+  // their products out of `meshes` too.
+  const withDisplayScene = fixture();
+  withDisplayScene.meshes = [{
+    name: "Recovered elements",
+    positions: new Float32Array(9),
+    indices: new Uint32Array([0, 1, 2]),
+    colors: new Float32Array(9),
+    materialIndex: 0,
+    elementIds: new Uint32Array([10, 11, 12, 13, 15]),
+    source: "native-brep",
+  }];
+  const gated = makePascalScene(withDisplayScene);
+  assert.equal(gated.nodes.column_e14, undefined, "the undrawn column is held back");
+  assert.equal(gated.stats.columns, 0);
+  assert.equal(gated.stats.notDrawn, 1);
+  assert.ok(gated.nodes.wall_e10, "a drawn wall still crosses");
+  assert.ok(gated.nodes.slab_e13);
+});
+
+test("stands a flat plate in for a sloped surface at the middle of its extent", () => {
+  const withRamp = fixture();
+  // A ramp rising two feet across its run: the extent is mostly rise, not
+  // thickness, so taking it as a thickness would stand a block on the model.
+  withRamp.elementBounds.push(record({
+    elementId: 17,
+    categoryId: -2_000_180,
+    categoryName: "Ramps",
+    boundsFeet: boundsFor([100, 250, 10], [120, 260, 14]),
+    loops: [[
+      [100, 250, 10],
+      [120, 250, 10],
+      [120, 260, 10],
+      [100, 260, 10],
+    ]],
+  }));
+  const scene = makePascalScene(withRamp);
+  const ramp = scene.nodes.slab_e17!;
+  assert.equal(scene.stats.flattenedSlopes, 1);
+  assert.equal(ramp.metadata?.flattenedSlope, true);
+  assert.ok(Math.abs((ramp.metadata?.revitExtentMetres as number) - 4 * FOOT) < 1e-9);
+  assert.ok(Math.abs((ramp.thickness as number) - 0.3) < 1e-9);
+
+  // Top of the extent is 4 ft above the level plane; the plate's own top sits
+  // half the discarded extent below that.
+  const level = scene.nodes[ramp.parentId as string]!;
+  assert.equal(level.type, "level");
+  const expected = 4 * FOOT - (4 * FOOT - 0.3) / 2;
+  assert.ok(Math.abs((ramp.elevation as number) - expected) < 1e-9);
+
+  // A floor of ordinary thickness is untouched.
+  assert.equal(scene.nodes.slab_e13!.metadata?.flattenedSlope, undefined);
+  assert.ok(Math.abs((scene.nodes.slab_e13!.thickness as number) - FOOT) < 1e-9);
+});
+
 test("mirrorPlan reproduces Pascal's own IFC importer convention", () => {
   const kept = makePascalScene(fixture()).nodes.column_e14!;
   const mirrored = makePascalScene(fixture(), { mirrorPlan: true }).nodes.column_e14!;

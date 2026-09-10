@@ -47,6 +47,12 @@ npm run extract -- model.rvt --out model.pascal.json
 Load it in Pascal through the settings panel's **Save & Load → Load Build**. The
 same export is the **Pascal** button in the browser studio.
 
+Against the paired Autodesk GLB export of the supplied building, the exported
+Pascal scene agrees to 99.65% of its surface and 99.16% of the reference's, at
+0.5 m voxels — the recovery it is written from scores 99.98% both ways, and the
+gap is Pascal's vocabulary: openings not cut out of walls, joins not mitered, and
+pitched roofs flattened to a plate.
+
 `--extras all` additionally carries every remaining element — mullions, railings,
 furniture — as Pascal `block` solids, which needs an editor built from the Pascal
 repository rather than the current npm release. [Exporting to

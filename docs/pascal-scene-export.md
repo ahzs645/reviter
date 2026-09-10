@@ -116,7 +116,7 @@ what matters is that each element's absolute height is right, and it is.
 | Walls | `wall` | Location line, thickness, height, base offset from the level plane; one node per recovered solid, so a run modelled in segments stays segmented |
 | Walls (curved) | `wall` + `curveOffset` | The sagitta at the arc's midpoint, measured from the rebuilt arc rather than re-derived from its sweep, so a mirrored export keeps the bulge on the right side |
 | Doors, Windows | `door`, `window` | Width and height measured *in the host wall's frame*; distance along the wall from its start; centre height above the wall's base; `wallId` from the persisted host relation |
-| Floors, Landings, Ramps, Roofs | `slab` | Outer sketch ring as the outline, inner rings as holes, walking surface as `elevation`, mass depth as `thickness` |
+| Floors, Landings, Ramps, Roofs | `slab` | Outer sketch ring as the outline, inner rings as holes, walking surface as `elevation`, mass depth as `thickness`; a sloped surface becomes a flat plate at the middle of its extent |
 | Ceilings | `ceiling` | Outline and holes, plane height above the level |
 | Columns, Structural Columns | `column` | Base centre, plan rotation, width, depth and height from the oriented box |
 | Runs (stair) | `stair` + one `stair-segment` | Direction of travel, tread width, total rise, step count, tread thickness |
@@ -127,6 +127,45 @@ A wall carries `supportSlabId: "ground"` and a `supportOffset`. Without it Pasca
 elects whichever slab lies under a wall and lifts the wall onto it — sensible
 when a person is drawing, wrong when the RVT has already said where the base is.
 The sentinel pins the wall to its level's plane and the offset states the rest.
+
+### Only what the conversion draws
+
+The export passes through the same gate the GLB and IFC exports pass through:
+an element is written only if it reached the display scene, which both of those
+build their products out of. A conversion recovers evidence for more elements
+than it is willing to draw — stair paths, rail-path extension lines, and the
+unnamed storey-sized plates recorded in [Drawn but not
+elements](unbc-drawn-but-not-elements-2026-07-28.md) all carry bounds — and
+writing those into Pascal is not harmless. Three of those plates in the supplied
+model measure 83 m by 52 m and 100 mm thick, and putting them in the scene threw
+its extents 24 m outside the building; against the Autodesk export, surface
+agreement fell to 36%. The gate costs 4,232 elements and is the difference
+between an unusable `--extras all` file and a 97% one.
+
+### Sloped surfaces
+
+Pascal's `slab` and `ceiling` are flat: one polygon at one height. Most of what
+reaches them really is flat — every drawn floor, ceiling and landing in the
+supplied model has a vertical extent of 0.20 m or less — but a pitched roof and
+a ramp do not, and their extent is mostly rise. Six of eighteen roofs exceed
+0.6 m, the worst at 3.54 m, and all twenty-three ramps do.
+
+Where the stand-in plate sits was measured rather than assumed, against the
+paired Autodesk export:
+
+| Plate placement | Pascal → reference | reference → Pascal |
+| --- | --- | --- |
+| Extent taken as thickness (no stand-in) | 99.32% | 99.02% |
+| Thin plate at the top of the extent | 99.47% | 99.00% |
+| Thin plate at the bottom | 99.56% | 99.00% |
+| **Thin plate at the middle** | **99.65%** | **99.16%** |
+| Surface dropped altogether | 99.74% | 98.84% |
+
+The middle wins in both directions at once, which is where a plane best
+approximates a slope. Dropping the surface buys a better one-way figure by
+leaving a hole and is worse the other way. The recovered extent is kept in
+`metadata.revitExtentMetres` alongside a `flattenedSlope` flag, so a later
+mapping onto Pascal's own `roof` and `roof-segment` nodes has what it needs.
 
 ### Why curtain panels are walls and not blocks
 
@@ -154,6 +193,10 @@ adds blocks for the rest and needs an editor built from the repository.
   a swept rail path — but Pascal generates its own railings from a stair's
   `railingMode`, and a swept path is not that. Under `--extras all` they arrive
   as blocks.
+- **Roof pitch.** A pitched roof crosses as a flat plate, not as Pascal's own
+  `roof` and `roof-segment` nodes, because Reviter recovers a roof's outline and
+  extent but not its pitch planes. This is the largest single remaining
+  divergence from the Autodesk export.
 - **Rooms.** Reviter derives and reviews rooms, and Pascal has a `zone` node.
   Nothing joins them yet.
 - **Parameters.** The per-element Revit parameter tables go into the IFC export
@@ -164,15 +207,61 @@ Each node does carry its `revitElementId`, category and evidence, type and
 family names, and geometry provenance in `metadata`, so anything above can be
 rejoined later from the audit JSON by element id.
 
+## Does the exported building match the real one?
+
+The checks above prove the export carries Reviter's recovery faithfully. They
+say nothing about whether that recovery is the building — for that the yardstick
+is the paired Autodesk GLB export of the same project.
+
+Both scenes were put through `scripts/glb-surface-diff.ts`, the repository's own
+voxel comparison, at 0.5 m cells. The Pascal scene was instantiated first by
+`scripts/pascal-scene-glb.ts`: each node's mass built from its own data — a
+wall's box on its centreline, a slab's prism inside its outline and holes, a
+column's box, a stair's steps — with no wall mitering and no door or window
+openings cut, because those refine a surface without moving a building.
+
+```sh
+npm run extract -- model.rvt --out model.pascal.json
+node --experimental-strip-types scripts/pascal-scene-glb.ts model.pascal.json model.pascal.glb
+node --experimental-strip-types scripts/glb-surface-diff.ts model.pascal.glb reference.glb
+```
+
+| Scene | Scene → reference | reference → scene |
+| --- | --- | --- |
+| Reviter's own GLB (the recovery itself) | 99.98% | 99.98% |
+| Pascal, `--extras none` | 99.74% | 98.18% |
+| Pascal, default (`curtain-panels`) | 99.65% | 99.16% |
+| Pascal, `--extras all` | 97.23% | 99.65% |
+
+Registration comes out at a scale of 1.0000 — the Pascal scene is already in the
+reference's metres — and the extents agree to centimetres on a 375 m building:
+217.90 m by 19.40 m by 374.98 m against the reference's 217.90 by 19.40 by
+374.77.
+
+Rendered into one frame, the two silhouettes share 99.67% of their pixels.
+
+The gap between the recovery's 99.98% and the export's 99.65% is the cost of
+Pascal's vocabulary, and it is accounted for: openings not cut out of walls,
+wall ends not mitered at joins, sloped surfaces flattened to one plate, and
+stairs written as a single straight flight. `--extras all` trades the other way
+— it recovers the mullions and railings the default omits, taking reference
+coverage to 99.65%, and spends some of its own coverage on box-approximated
+railings.
+
 ## Measurements on the supplied model, 2026-09-10
 
 The 67 MB Revit 2027 UNBC project, converted and exported in one run:
 
 | `--extras` | Nodes | Composition | `validateBuildJson` |
 | --- | --- | --- | --- |
-| `none` | 11,814 | 9,184 walls (68 curved), 1,898 doors, 20 windows, 135 slabs, 45 ceilings, 304 columns, 107 stairs, 12 levels | **ok**, 0 errors, 0 warnings |
-| `curtain-panels` (default) | 18,052 | the above plus 6,238 panels as walls | **ok**, 0 errors, 0 warnings |
-| `all` | 39,336 | the above plus 21,284 blocks | 21,284 unknown-type nodes on the published `@pascal-app/core`; **0 schema failures** against the repository's own schemas |
+| `none` | 9,998 | 7,466 walls (68 curved), 1,800 doors, 20 windows, 135 slabs, 45 ceilings, 304 columns, 107 stairs, 12 levels | **ok**, 0 errors, 0 warnings |
+| `curtain-panels` (default) | 16,236 | the above plus 6,238 panels as walls | **ok**, 0 errors, 0 warnings |
+| `all` | 36,460 | the above plus 20,224 blocks | the blocks are an unknown type on the published `@pascal-app/core`; **0 schema failures** against the repository's own schemas |
+
+4,232 elements are held back by the drawn-scene gate, 29 sloped surfaces are
+flattened to a plate, and 147 elements with usable evidence produce no node at
+all — mostly doors hosted on a curtain system and elements whose only evidence is
+a degenerate envelope.
 
 Those two verdicts are from Pascal's own validator, not a local re-implementation
 of it: the first two rows through `validateBuildJson` from `@pascal-app/core` on
@@ -194,10 +283,6 @@ against the elevations the RVT states. All twelve storey planes reproduce exactl
 (0.000, 1.200, 2.200, 3.200, 5.200, 6.600, 8.100, 9.600, 11.350, 12.600, 14.400,
 15.600 m above the datum), and across 9,116 walls the worst base and top errors
 are both zero to floating-point precision.
-
-243 elements with usable geometry were skipped at `--extras none`, 1,634 at
-`--extras all`; the difference is elements whose only evidence is a degenerate or
-zero-height envelope.
 
 ## Using it
 
