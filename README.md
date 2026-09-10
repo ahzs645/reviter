@@ -22,14 +22,43 @@ npm ci
 npm run extract -- model.rvt --out model.glb
 ```
 
-The output extension selects GLB, OBJ, DXF, SVG, IFC proxy, or JSON audit
-output. All formats use the same locally recovered scene as the browser; no
-model data is uploaded. Use a paired export to verify a model element by
-element when one is available:
+The output extension selects GLB, OBJ, DXF, SVG, IFC proxy, Pascal scene, or
+JSON audit output. All formats use the same locally recovered scene as the
+browser; no model data is uploaded. Use a paired export to verify a model element
+by element when one is available:
 
 ```sh
 node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc
 ```
+
+## Open a recovered model in Pascal
+
+[Pascal](https://github.com/pascalorg/editor) is an open-source local-first
+building editor whose scene is a graph of typed building nodes, not a mesh. The
+Pascal export writes those nodes straight out of what the RVT states — a wall's
+location line and thickness from its own plane triples, a door's host wall from
+`InsertableInst.m_hostId`, a storey from `Element.m_assocLevelId` — so nothing is
+re-derived from a mesh or defaulted:
+
+```sh
+npm run extract -- model.rvt --out model.pascal.json
+```
+
+Load it in Pascal through the settings panel's **Save & Load → Load Build**. The
+same export is the **Pascal** button in the browser studio.
+
+Against the paired Autodesk GLB export of the supplied building, the exported
+Pascal scene agrees to 99.65% of its surface and 99.16% of the reference's, at
+0.5 m voxels — the recovery it is written from scores 99.98% both ways, and the
+gap is Pascal's vocabulary: openings not cut out of walls, joins not mitered, and
+pitched roofs flattened to a plate.
+
+`--extras all` additionally carries every remaining element — mullions, railings,
+furniture — as Pascal `block` solids, which needs an editor built from the Pascal
+repository rather than the current npm release. [Exporting to
+Pascal](docs/pascal-scene-export.md) is the full record: the coordinate and
+storey-stacking mapping, the per-category table, what does not cross, and the
+measurements behind it.
 
 ## Development
 
@@ -119,6 +148,7 @@ local identity data to the model export:
 - evidence-backed display classification for walls, doors, panels, frames, columns, railings, slabs/roofs, coverings, windows, stairs, and ramps in the supplied 2027 model
 - a standards-aware Revit `Material` schema adapter for reader-supported releases (real-file extraction and element assignment are not wired yet)
 - open-format export of recovered geometry to GLB, OBJ, DXF, SVG, IFC solid proxies, and JSON audit data, with the decoded Revit category carried through the proxy name, description, and audit report
+- export of the recovered building to [Pascal](https://github.com/pascalorg/editor) as editable typed nodes — walls with their own location line and thickness, doors on their persisted host wall, floors from their own sketch loops — validated against Pascal's own schemas
 - browser-generated per-element JSON manifests with recovered IDs, categories, type links, parameters, bounds, display state, and geometry provenance
 
 ## What is experimental
