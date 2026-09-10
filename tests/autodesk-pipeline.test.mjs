@@ -7,6 +7,18 @@ import { webcrypto } from 'node:crypto';
 import { deflateRawSync, gzipSync, gunzipSync } from 'node:zlib';
 import { runInNewContext } from 'node:vm';
 import { checkCapture, compareViewerCounts, gltfCounts, packGlb, rawAssetPath, readCaptureTar, safePath, saveRaw, sha256 } from '../tools/autodesk/files.mjs';
+import { expandPolylineIndices } from '../tools/autodesk/svf-lines.mjs';
+
+test('SVF polyline boundaries preserve every connected edge without joining separate strips', () => {
+  const indices = Uint16Array.from([0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(Array.from(expandPolylineIndices(indices, [0, 3, 6])), [0, 1, 1, 2, 3, 4, 4, 5]);
+  assert.deepEqual(Array.from(expandPolylineIndices(Uint16Array.from([0, 1, 2, 0]), [0, 4])), [0, 1, 1, 2, 2, 0]);
+  assert.equal(expandPolylineIndices(Uint16Array.from({ length: 12 }, (_, i) => i), [0, 12]).length / 2, 11);
+  assert.equal(expandPolylineIndices(Uint16Array.from({ length: 11 }, (_, i) => i), [0, 11]).length / 2, 10);
+  assert.deepEqual(expandPolylineIndices(indices, [0, 2, 4, 6]), indices);
+  assert.throws(() => expandPolylineIndices(indices, [0, 7]), /Malformed/);
+  assert.throws(() => expandPolylineIndices(indices, [0, 4, 2, 6]), /Malformed/);
+});
 
 function zipManifest(manifest) {
   const name = Buffer.from('manifest.json'), body = Buffer.from(JSON.stringify(manifest)), packed = deflateRawSync(body);

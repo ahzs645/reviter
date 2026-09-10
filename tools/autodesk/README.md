@@ -129,5 +129,12 @@ and [Khronos glTF Validator](https://github.com/KhronosGroup/glTF-Validator).
 The converter wrapper supplies two deprecated Node `util` functions required by
 forge-convert-utils 4.0.5 on newer Node releases.
 
+It also reads SVF polyline boundaries that forge-convert-utils 4.0.5 ignores,
+expanding connected strips into glTF line pairs without joining separate strips.
+The UNBC Fixed Library capture verified this correction across three geometries:
+51,420 fragments, 1,212,419 triangles, and 9,758 line segments match the viewer
+exactly. The raw files remain unchanged, and the correction is recorded in
+`summary.json` as `svfPolylineNormalization`.
+
 Model files belong in ignored `work/` storage or another local output directory.
 They are not committed or deployed with this tool.

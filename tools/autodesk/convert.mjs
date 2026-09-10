@@ -5,6 +5,7 @@ import util from 'node:util';
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
 import { checkCapture, compareViewerCounts, gltfCounts, packGlb, rawAssetPath, readCaptureTar, saveRaw, sha256 } from './files.mjs';
+import { normalizeSvfPolylines } from './svf-lines.mjs';
 
 const help = `Usage: npm run autodesk:convert -- capture.tar --out work/autodesk/model [--keep-origin]
 
@@ -63,6 +64,9 @@ async function main() {
         throw new Error(`SVF references an uncaptured asset: ${asset.URI}`);
     }
     const scene = await reader.read({ log });
+    const { PackFileReader } = require('forge-convert-utils/lib/common/packfile-reader');
+    const svfPolylineNormalization = await normalizeSvfPolylines(reader, scene, PackFileReader);
+    log(`Polyline decoding: ${JSON.stringify(svfPolylineNormalization)}`);
     const fragments = [], source = { fragments: scene.getNodeCount(), meshNodes: 0, triangles: 0, lineSegments: 0, points: 0 };
     for (let i = 0; i < scene.getNodeCount(); i++) {
       const node = scene.getNode(i), geometry = scene.getGeometry(node.geometry);
@@ -106,7 +110,7 @@ async function main() {
         materials: doc.materials?.length ?? 0, images: doc.images?.length ?? 0,
         coordinates: { sourceUnits: capture.units, units: 'metres', up: 'Y', centred: !values['keep-origin'],
           rootMatrix: doc.nodes[0]?.matrix, placementMatrix: doc.nodes[1]?.matrix } },
-      geometryCountsMatch: true, viewerComparison, validation: validation.issues,
+      geometryCountsMatch: true, viewerComparison, svfPolylineNormalization, validation: validation.issues,
       tools: { converter: require('forge-convert-utils/package.json').version, validator: validation.validatorVersion, node: process.version },
     };
     writeJson('summary.json', summary);
