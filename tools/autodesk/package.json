@@ -1,0 +1,11 @@
+{
+  "name": "reviter-autodesk-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": {
+    "forge-convert-utils": "4.0.5",
+    "gltf-validator": "2.0.0-dev.3.10"
+  }
+}

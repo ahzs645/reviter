@@ -51,6 +51,12 @@ Build it with the default base path for that check; a bundle built for GitHub Pa
 
 The raw SVF extraction remains in ignored `work/` storage. **No reference derivative is bundled any more.** A 25.6 MB GLB of one building used to ship in the repository and be offered to whichever file matched it, which meant every clone carried a derivative of someone's project and every other RVT found the feature permanently disabled. The comparison is worth keeping — a conversion by Revit's own tooling is the best yardstick there is for judging a recovery — so the capability stayed and the asset went: pair your own GLB or glTF from disk, exactly as a paired IFC export is already supplied. It is read in the browser through an object URL and never uploaded, it works for any model, and nothing about a particular building is compiled in. The deployment now ships only the small glTF runtime loader.
 
+The [Autodesk capture pipeline](tools/autodesk/README.md) makes that reference
+workflow repeatable: capture a loaded Autodesk 3D view, retain its complete raw
+SVF bundle, then run `npm run autodesk:convert -- capture.tar --out work/autodesk/model`
+to produce a GLB with geometry checks, fragment IDs, checksums, and validation
+reports. Install its separate local dependencies with `npm run autodesk:setup`.
+
 ### Google Colab build
 
 Run `python3 scripts/prepare_reviter_colab_bundle.py` to snapshot the current tracked and untracked build inputs into `My Drive/Reviter`. The generated `reviter_pages_build_colab.ipynb` follows the same Drive-backed pattern as CBCTer: it mounts Drive, verifies the source and Autodesk-model checksums, extracts the active workspace to `/content`, runs the Pages validation build there, and saves the artifact, summary, and build log under `My Drive/Reviter/reviter-outputs`.
