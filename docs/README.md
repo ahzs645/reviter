@@ -49,6 +49,7 @@ Read in this order they are roughly the order the work happened.
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
 | [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
+| [Exporting to Pascal](pascal-scene-export.md) | Why the Pascal export writes that editor's own building nodes instead of going through IFC, the coordinate and storey-stacking mapping, what crosses and what does not |
 
 ## Revit 2027 geometry replay
 
