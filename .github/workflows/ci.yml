@@ -61,3 +61,10 @@ jobs:
       # intended, and is what keeps this suite runnable on a bare runner.
       - name: Unit tests
         run: npm run test:unit
+
+      # The Autodesk pipeline tests are a .mjs file, so the test:unit glob
+      # (tests/**/*.test.ts) does not reach them and they had no gate. They
+      # need no network and no tools/autodesk install -- 8 tests in under a
+      # second -- so there is no reason for them not to run here.
+      - name: Autodesk pipeline tests
+        run: npm run test:autodesk
