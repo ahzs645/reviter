@@ -19,6 +19,7 @@ import {
   makeIfcCenterlines,
   makeFloorPlateSvg,
   makeObj,
+  makePascalScene,
   makePlanSvg,
   makeReport,
   meshBoundsByElement,
@@ -1598,6 +1599,20 @@ export default function ReviterStudio() {
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
           : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
         run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
+      },
+      {
+        id: "PASCAL",
+        format: "Pascal",
+        detail: "Editable building · Load Build JSON",
+        run: () => exportText(
+          "PASCAL",
+          "pascal.json",
+          () => {
+            const scene = makePascalScene(geometryResult);
+            return `${JSON.stringify({ nodes: scene.nodes, rootNodeIds: scene.rootNodeIds }, null, 1)}\n`;
+          },
+          "application/json",
+        ),
       },
       {
         id: "JSON",

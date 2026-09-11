@@ -43,4 +43,6 @@ export type {
 } from "./floor-reference-overlay.ts";
 export { makeIfc, makeIfcCenterlines } from "./export-ifc.ts";
 export type { IfcExportOptions } from "./export-ifc.ts";
+export { makePascalScene, makePascalSceneJson } from "./export-pascal.ts";
+export type { PascalExportOptions, PascalExtraElements, PascalNode, PascalScene, PascalSceneStats } from "./export-pascal.ts";
 export { elementManifest, makeReport } from "./export-report.ts";

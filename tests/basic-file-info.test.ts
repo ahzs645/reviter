@@ -47,11 +47,38 @@ test("the extraction command infers format from its output", () => {
       revitVersion: undefined,
       planLevelId: undefined,
       floorPlates: false,
+      extras: undefined,
+      mirrorPlan: undefined,
     },
   );
   assert.equal(
     parseExtractArguments(["model.rvt", "--out", "model.bin", "--format", "ifc"]).format,
     "ifc",
+  );
+});
+
+test("the extraction command reads a Pascal scene off its compound suffix", () => {
+  // `model.pascal.json` and `model.json` share a last extension, so the Pascal
+  // build format is selected by the whole suffix rather than by `extname`.
+  assert.equal(parseExtractArguments(["model.rvt", "--out", "model.pascal.json"]).format, "pascal");
+  assert.equal(parseExtractArguments(["model.rvt", "--out", "audit.json"]).format, "json");
+  assert.equal(
+    parseExtractArguments([
+      "model.rvt", "--out", "model.pascal.json", "--extras", "all", "--mirror-plan",
+    ]).extras,
+    "all",
+  );
+  assert.equal(
+    parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--mirror-plan"]).mirrorPlan,
+    true,
+  );
+  assert.throws(
+    () => parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--extras", "some"]),
+    /Invalid --extras/u,
+  );
+  assert.throws(
+    () => parseExtractArguments(["model.rvt", "--out", "model.glb", "--extras", "all"]),
+    /only for Pascal/u,
   );
 });
 

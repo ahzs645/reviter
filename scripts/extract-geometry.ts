@@ -5,6 +5,7 @@
  *   npm run extract -- model.rvt --out model.glb
  *   npm run extract -- model.rvt --out audit.json
  *   npm run extract -- model.rvt --out model.obj --revit-version 2027
+ *   npm run extract -- model.rvt --out model.pascal.json --extras all
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
@@ -14,10 +15,11 @@ import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import { makeGlb } from "../lib/reviter/export-glb.ts";
 import { makeIfcCenterlines } from "../lib/reviter/export-ifc.ts";
 import { makeDxf, makeObj } from "../lib/reviter/export-mesh-text.ts";
+import { makePascalSceneJson, type PascalExtraElements } from "../lib/reviter/export-pascal.ts";
 import { makeReport } from "../lib/reviter/export-report.ts";
 import { makeFloorPlateSvg, makePlanSvg } from "../lib/reviter/export-svg.ts";
 
-type Format = "glb" | "obj" | "dxf" | "svg" | "ifc" | "json";
+type Format = "glb" | "obj" | "dxf" | "svg" | "ifc" | "json" | "pascal";
 
 export type ExtractArguments = {
   input: string;
@@ -26,23 +28,34 @@ export type ExtractArguments = {
   revitVersion?: number;
   planLevelId?: number;
   floorPlates?: boolean;
+  extras?: PascalExtraElements;
+  mirrorPlan?: boolean;
 };
 
-const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json"]);
+const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json", "pascal"]);
+
+const EXTRA_ELEMENTS = new Set<PascalExtraElements>(["none", "curtain-panels", "all"]);
+
+/**
+ * `model.pascal.json` and `model.json` are both `.json` by extension, so the
+ * Pascal scene is selected by the compound suffix rather than by the last one.
+ */
+function formatFromOutputName(output: string): string {
+  return /\.pascal\.json$/i.test(output) ? "pascal" : extname(output).slice(1).toLowerCase();
+}
 
 export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   const input = arguments_[0];
   const output = optionValue("--out", arguments_);
   if (!input || input.startsWith("-") || !output) {
-    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates]");
+    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates] [--extras all] [--mirror-plan]");
   }
 
-  const extension = extname(output).slice(1).toLowerCase();
-  const requestedFormat = (optionValue("--format", arguments_) ?? extension) as Format;
+  const requestedFormat = (optionValue("--format", arguments_) ?? formatFromOutputName(output)) as Format;
   if (!FORMATS.has(requestedFormat)) {
     throw new Error(
       `Unsupported output format "${requestedFormat || "(none)"}". ` +
-        "Use glb, obj, dxf, svg, ifc, or json.",
+        "Use glb, obj, dxf, svg, ifc, json, or pascal.",
     );
   }
 
@@ -71,7 +84,25 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     throw new Error("--floor-plates requires an SVG output and --level-id.");
   }
 
-  return { input, output, format: requestedFormat, revitVersion, planLevelId, floorPlates };
+  const rawExtras = optionValue("--extras", arguments_);
+  if (rawExtras != null && !EXTRA_ELEMENTS.has(rawExtras as PascalExtraElements)) {
+    throw new Error(`Invalid --extras value "${rawExtras}". Use none, curtain-panels, or all.`);
+  }
+  const mirrorPlan = hasFlag("--mirror-plan", arguments_);
+  if ((rawExtras != null || mirrorPlan) && requestedFormat !== "pascal") {
+    throw new Error("--extras and --mirror-plan are available only for Pascal scene exports.");
+  }
+
+  return {
+    input,
+    output,
+    format: requestedFormat,
+    revitVersion,
+    planLevelId,
+    floorPlates,
+    extras: (rawExtras ?? undefined) as PascalExtraElements | undefined,
+    mirrorPlan: mirrorPlan || undefined,
+  };
 }
 
 type SuccessfulConversion = Extract<ReturnType<typeof convertRvtBytes>, { ok: true }>;
@@ -79,7 +110,7 @@ type SuccessfulConversion = Extract<ReturnType<typeof convertRvtBytes>, { ok: tr
 function outputFor(
   format: Format,
   result: SuccessfulConversion,
-  options: Pick<ExtractArguments, "planLevelId" | "floorPlates"> = {},
+  options: Pick<ExtractArguments, "planLevelId" | "floorPlates" | "extras" | "mirrorPlan"> = {},
 ): Uint8Array | string {
   switch (format) {
     case "glb": return new Uint8Array(makeGlb(result));
@@ -89,6 +120,10 @@ function outputFor(
       ? makeFloorPlateSvg(result, options.planLevelId!)
       : makePlanSvg(result, { levelId: options.planLevelId });
     case "ifc": return makeIfcCenterlines(result);
+    case "pascal": return makePascalSceneJson(result, {
+      extras: options.extras,
+      mirrorPlan: options.mirrorPlan,
+    });
     case "json": return makeReport(result, null);
   }
 }
