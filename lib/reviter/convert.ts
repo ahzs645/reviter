@@ -29,6 +29,7 @@
 import { dominantMarker } from "./element-objects.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
 import { buildMeshes } from "./scene.ts";
+import { buildStairAssemblies } from "./stair-assemblies.ts";
 import {
   FAMILY_SEGMENT_SCALE,
   deduplicate,
@@ -151,6 +152,7 @@ export function convertRvtBytes(
       gzipChunks,
       inflatedBytes,
       stairsRuns,
+      stairsAggregates,
       persistedCadFileNames,
       nativeCompoundStructureDefinitions,
       wallThicknessByType,
@@ -306,7 +308,23 @@ export function convertRvtBytes(
       persistedCadFileNames,
       coverage,
     };
-    const decodedRelations = {
+    // A function of one argument rather than a constant, because the only
+    // thing either branch can add to the decoded relations is the stair shape,
+    // and the evidence for it -- which runs the spiral mesh replay recovered --
+    // is not known until the display scene has been built. The branch that
+    // builds no scene passes nothing and every stair stays undetermined.
+    const decodedRelations = (
+      spiralStairRunIds: ReadonlySet<number> = new Set<number>(),
+    ) => ({
+      // The assembly tree was decoded to place run geometry and then dropped
+      // before anything could publish it, so a consumer of the export could
+      // not tell a stringer from a mullion or two flights of one stairwell
+      // from two stairwells. Both sources are joined here once.
+      nativeStairAssemblies: buildStairAssemblies(
+        stairsRuns,
+        stairsAggregates,
+        spiralStairRunIds,
+      ),
       elementIndex: elementIndex
         ? {
             ...elementIndex,
@@ -327,7 +345,7 @@ export function convertRvtBytes(
       nativeCompoundLayerMaterialAssignments,
       nativeHostRelations,
       nativeAssociatedLevelRelations,
-    };
+    });
 
     // Everything both result branches say about the file, minus the one figure
     // each branch counts for itself.
@@ -383,7 +401,9 @@ export function convertRvtBytes(
         bbox: scene.bbox,
         levels: scene.levels,
         method: "partition-bounds-recovery",
-        ...decodedRelations,
+        ...decodedRelations(
+          scene.report.meshCollection.spiralStairRunOwnerIds,
+        ),
         warnings: buildWarnings(basis, scene.report),
         stats: {
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
@@ -486,7 +506,7 @@ export function convertRvtBytes(
       bbox: relativeBounds,
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
-      ...decodedRelations,
+      ...decodedRelations(),
       warnings: buildWarnings(basis, coordinateReport),
       stats: {
         streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,

@@ -123,6 +123,21 @@ export type Revit2027NativeMeshCollection = {
    * the selected state and therefore are not a valid independent mesh gate.
    */
   readonly carrierComposedOwnerIds?: ReadonlySet<number>;
+  /**
+   * `StairsRun` owners whose body came from `revit-2027-spiral-stair-mesh`.
+   *
+   * The other half of `reconstructedOwnerIds`, named separately because it is
+   * a *shape* statement and not only a provenance one. That replay accepts a
+   * run only when the run's own GRep holds exactly two top-level
+   * `GCylindricalHelix` guides that are coaxial, share one angular interval
+   * and one pitch, and are separated by exactly the run's persisted
+   * `actualRunWidthFeet`. A run described by a helical pair is a helical run,
+   * so membership here is the file saying the flight winds -- which is the
+   * one fact `IfcStair.PredefinedType` needs and nothing else decoded here
+   * supplies. Non-membership says nothing: it is the absence of that
+   * evidence, never a statement that a run is straight.
+   */
+  readonly spiralStairRunOwnerIds?: ReadonlySet<number>;
   readonly scannedFrames: number;
   readonly eligibleRoots: number;
   /** Exact non-legacy syntactic roots entering bounded tessellator replay. */
@@ -983,6 +998,7 @@ function finalizeRevit2027NativeMeshCollection(
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
   const reconstructedOwnerIds = new Set<number>();
   const carrierComposedOwnerIds = new Set<number>();
+  const spiralStairRunOwnerIds = new Set<number>();
   // Conditional sibling composition is a stringer encoding, not a generic
   // GFilter rule. The target must be named by a decoded stair-run aggregate;
   // otherwise an unrelated sibling under the same owner can donate its body.
@@ -1021,6 +1037,10 @@ function finalizeRevit2027NativeMeshCollection(
       triangles: spiral.triangles,
     });
     reconstructedOwnerIds.add(definition.ownerElementId);
+    // Recorded here rather than re-derived downstream: this is the only place
+    // that knows the helix replay -- and not some other reconstruction -- is
+    // what produced the body.
+    spiralStairRunOwnerIds.add(definition.ownerElementId);
   }
 
   /*
@@ -1302,6 +1322,7 @@ function finalizeRevit2027NativeMeshCollection(
     owners,
     reconstructedOwnerIds,
     carrierComposedOwnerIds,
+    spiralStairRunOwnerIds,
     scannedFrames: state.scannedFrames,
     eligibleRoots: state.eligibleRoots,
     boundedTessellatorCandidateRoots:
