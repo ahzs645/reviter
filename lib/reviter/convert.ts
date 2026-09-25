@@ -301,7 +301,7 @@ export function convertRvtBytes(
       nativeAssociatedLevelRelations,
       elementHeaders,
     });
-    const { boundedSolids, nonSceneNativeMeshIds } = drawable;
+    const { boundedSolids, nonSceneNativeMeshIds, nonModelElements } = drawable;
     unplacedRecords += drawable.unplacedRecords;
 
     // The two branches below publish the same decoded file — the same records,
@@ -388,6 +388,7 @@ export function convertRvtBytes(
         nativeAssociatedLevelRelations,
         markerByElement,
         nonSceneNativeMeshIds,
+        nonModelElements,
         materialElementIds,
         nativeMaterialIndexById,
         proxyMaterialIndexByElement,

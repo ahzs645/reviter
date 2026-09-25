@@ -80,5 +80,5 @@ test("view-owned, category-less and non-model-category elements are not part of 
     [{ elementId: 1, categoryId: -2000011 }, { elementId: 2, categoryId: -2000530 }],
     new Map([[3, { ...wall, elementId: 3, ownerViewId: 99 }]]),
   );
-  assert.deepEqual([...excluded].sort(), [2, 3]);
+  assert.deepEqual([...excluded].sort(), [[2, "non-model-category"], [3, "view-owned"]]);
 });

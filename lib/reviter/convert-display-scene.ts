@@ -59,7 +59,8 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
-import { nonModelElementIds } from "./model-elements.ts";
+import { NO_ENVELOPE_PROXY_CATEGORY_IDS, nonModelElementIds } from "./model-elements.ts";
+import type { NonModelReason } from "./model-elements.ts";
 import type { ElementHeader } from "./element-headers.ts";
 
 export type DrawableRecordsInput = {
@@ -77,6 +78,8 @@ export type DrawableRecords = {
   boundedSolids: ElementBoundsRecord[];
   /** Records that must not be drawn, as a proxy or as a native mesh. */
   nonSceneNativeMeshIds: Set<number>;
+  /** The subset that are not model elements at all, with the reason. */
+  nonModelElements: Map<number, NonModelReason>;
   /** How many records were dropped as never placed. */
   unplacedRecords: number;
 };
@@ -128,7 +131,8 @@ export function selectDrawableRecords(
   }
   // Annotation, datums, sketches, containers and the like are records of the
   // file but not parts of the building; see `model-elements.ts`.
-  for (const elementId of nonModelElementIds(elementBounds, elementHeaders)) {
+  const nonModelElements = nonModelElementIds(elementBounds, elementHeaders);
+  for (const elementId of nonModelElements.keys()) {
     nonSceneNativeMeshIds.add(elementId);
   }
   for (const record of elementBounds) {
@@ -151,7 +155,7 @@ export function selectDrawableRecords(
         (record.stairTreads?.length ?? 0) > 0
       ),
   );
-  return { boundedSolids, nonSceneNativeMeshIds, unplacedRecords };
+  return { boundedSolids, nonSceneNativeMeshIds, nonModelElements, unplacedRecords };
 }
 
 export type DisplaySceneInput = {
@@ -168,6 +172,8 @@ export type DisplaySceneInput = {
   markerByElement: Map<number, number>;
   /** Records that must not be drawn, and whose native meshes are declined. */
   nonSceneNativeMeshIds: Set<number>;
+  /** The subset that are not model elements, reported on their own. */
+  nonModelElements?: ReadonlyMap<number, NonModelReason>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -205,6 +211,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     nativeAssociatedLevelRelations,
     markerByElement,
     nonSceneNativeMeshIds,
+    nonModelElements,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -437,8 +444,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   // is not a subset of the display set, so the old difference of totals
   // could go negative and once reported "-3,547 records not rendered".
   const proxyDisplayBounds: typeof displayBounds = [];
-  let omittedHelperProxyCount = nonSceneNativeMeshIds.size;
+  let omittedHelperProxyCount = 0;
+  for (const elementId of nonSceneNativeMeshIds) {
+    if (!nonModelElements?.has(elementId)) omittedHelperProxyCount += 1;
+  }
   let omittedCurtainAssemblyProxyCount = 0;
+  let omittedTerrainProxyCount = 0;
   const displayRecordById = new Map(
     displayBounds.map((record) => [record.elementId, record]),
   );
@@ -502,6 +513,10 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     if (nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
     if (curtainAssemblyHelpers.has(record.elementId)) {
       omittedCurtainAssemblyProxyCount += 1;
+      continue;
+    }
+    if (record.categoryId != null && NO_ENVELOPE_PROXY_CATEGORY_IDS.has(record.categoryId)) {
+      omittedTerrainProxyCount += 1;
       continue;
     }
     const recoveredStairAssembly =
@@ -597,6 +612,21 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       inferredCurtainPanels: inferredCurtainPanelCount,
       omittedHelperProxies: omittedHelperProxyCount,
       omittedCurtainAssemblyProxies: omittedCurtainAssemblyProxyCount,
+      omittedTerrainProxies: omittedTerrainProxyCount,
+      nonModelElements: countReasons(nonModelElements),
     },
   };
+}
+
+/** How many elements each non-model reason excluded. */
+function countReasons(
+  reasons: ReadonlyMap<number, NonModelReason> | undefined,
+): Record<NonModelReason, number> {
+  const counts: Record<NonModelReason, number> = {
+    "view-owned": 0,
+    "no-category": 0,
+    "non-model-category": 0,
+  };
+  for (const reason of reasons?.values() ?? []) counts[reason] += 1;
+  return counts;
 }

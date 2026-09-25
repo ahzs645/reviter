@@ -21,6 +21,7 @@
  * shared entries keep the relative order both copies had, with the
  * scene-specific entries interleaved at exactly the points they appeared.
  */
+import type { NonModelReason } from "./model-elements.ts";
 import type { NativeCompoundLayerMaterialAssignment, NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type {
@@ -98,6 +99,10 @@ export type ConvertSceneReport = {
   inferredCurtainPanels: number;
   omittedHelperProxies: number;
   omittedCurtainAssemblyProxies: number;
+  /** Terrain and RPC content whose only geometry would have been a box. */
+  omittedTerrainProxies?: number;
+  /** Records of the file that are not part of the 3D model, by reason. */
+  nonModelElements?: Record<NonModelReason, number>;
 };
 
 /** The diagnostic segment scan, which runs when no element record decoded. */
@@ -467,6 +472,13 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
       : []),
     ...(displaySelection.omittedSheetCount
       ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]
+      : []),
+    ...(scene.nonModelElements &&
+        Object.values(scene.nonModelElements).some((count) => count > 0)
+      ? [`${Object.values(scene.nonModelElements).reduce((sum, count) => sum + count, 0).toLocaleString()} records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: ${scene.nonModelElements["view-owned"].toLocaleString()} owned by a view (annotation, tags, detail items), ${scene.nonModelElements["no-category"].toLocaleString()} with no category, and ${scene.nonModelElements["non-model-category"].toLocaleString()} datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.`]
+      : []),
+    ...(scene.omittedTerrainProxies
+      ? [`${scene.omittedTerrainProxies.toLocaleString()} topography, planting and entourage elements have no decoded mesh and are not drawn: their envelope is not their shape (a terrain's is a block under the whole site, an RPC tree's a solid cube).`]
       : []),
     ...(scene.omittedHelperProxies
       ? [`${scene.omittedHelperProxies.toLocaleString()} unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.`]
