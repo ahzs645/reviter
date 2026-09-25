@@ -13,7 +13,7 @@ import {
   scanFramedElementObjects,
   type ElementObject,
 } from "./element-objects.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { fileClassFieldCount, fileClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
 
@@ -22,9 +22,25 @@ export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
  * class index `0x11ab`, which the file's own `Formats/Latest` names
  * `VerticalRegionsStructure`.
  */
-const LAYERS_FIELD = [0xff, 0xff, 0xff, 0xff, 0xab, 0x11] as const;
-const LAYERS_FIELD_BYTES = LAYERS_FIELD.length;
+const VERTICAL_REGIONS_STRUCTURE_CLASS = 0x11ab;
+
+/** The layers pointer as this file writes it: its own index for the class. */
+function layersFieldBytes(): readonly number[] | null {
+  const verticalRegions = fileClassTag(VERTICAL_REGIONS_STRUCTURE_CLASS);
+  if (verticalRegions < 0 || verticalRegions > 0xffff) return null;
+  return [0xff, 0xff, 0xff, 0xff, verticalRegions & 0xff, verticalRegions >> 8];
+}
+const LAYERS_FIELD_BYTES = 6;
+/**
+ * `CompoundStructureLayer`, in the 2027 numbering. Its layout grew between
+ * releases: the 2027 schema declares eight fields (version 2), with
+ * `m_layerPriority` after `m_layerFunction`; the 2025 schema declares seven
+ * (version 1) and has no priority. A layer is 41 bytes in one and 37 in the
+ * other, and the file's own declaration says which.
+ */
+const COMPOUND_STRUCTURE_LAYER_CLASS = 872;
 const LAYER_BYTES = 41;
+const LAYER_BYTES_WITHOUT_PRIORITY = 37;
 const MAX_LAYERS = 64;
 const MAX_LAYER_WIDTH_FEET = 100;
 
@@ -97,6 +113,7 @@ function readLayer(
   view: DataView,
   offset: number,
   layerIndex: number,
+  hasPriority = true,
 ): CompoundStructureLayerCandidate | null {
   const widthFeet = view.getFloat64(offset, true);
   if (
@@ -111,10 +128,15 @@ function readLayer(
   if (!material.valid || !profile.valid) return null;
 
   const layerFunction = view.getInt32(offset + 24, true);
-  const priority = view.getInt32(offset + 28, true);
-  const embeddingType = view.getInt32(offset + 32, true);
-  const layerId = view.getInt32(offset + 36, true);
-  const capFlag = view.getUint8(offset + 40);
+  // Without the field, a layer has the priority Revit gives its function: the
+  // function's own number, and 999 for a membrane.
+  const tail = hasPriority ? 32 : 28;
+  const priority = hasPriority
+    ? view.getInt32(offset + 28, true)
+    : layerFunction === MEMBRANE_FUNCTION ? MEMBRANE_PRIORITY : layerFunction;
+  const embeddingType = view.getInt32(offset + tail, true);
+  const layerId = view.getInt32(offset + tail + 4, true);
+  const capFlag = view.getUint8(offset + tail + 8);
   const ordinary =
     ORDINARY_FUNCTIONS.has(layerFunction) &&
     priority === layerFunction;
@@ -157,23 +179,29 @@ function readCandidate(
   object: ElementObject,
 ): CompoundStructureCandidate | null {
   const objectEnd = object.offset + object.objectLength;
+  const layersField = layersFieldBytes();
+  if (!layersField) return null;
   const fields: number[] = [];
   for (
     let offset = object.offset;
     offset + LAYERS_FIELD_BYTES + 4 <= objectEnd;
     offset += 1
   ) {
-    if (matchesAt(data, offset, LAYERS_FIELD)) fields.push(offset);
+    if (matchesAt(data, offset, layersField)) fields.push(offset);
   }
   if (fields.length !== 1) return null;
 
   const field = fields[0]!;
   const count = view.getUint32(field + LAYERS_FIELD_BYTES, true);
   const layersOffset = field + LAYERS_FIELD_BYTES + 4;
+  // Seven declared fields is the layout without `m_layerPriority`; anything
+  // else, including no schema at all, reads the 2027 layout.
+  const hasPriority = fileClassFieldCount(COMPOUND_STRUCTURE_LAYER_CLASS) !== 7;
+  const layerBytes = hasPriority ? LAYER_BYTES : LAYER_BYTES_WITHOUT_PRIORITY;
   if (
     count < 1 ||
     count > MAX_LAYERS ||
-    layersOffset + count * LAYER_BYTES > objectEnd
+    layersOffset + count * layerBytes > objectEnd
   ) {
     return null;
   }
@@ -182,8 +210,9 @@ function readCandidate(
   for (let layerIndex = 0; layerIndex < count; layerIndex += 1) {
     const layer = readLayer(
       view,
-      layersOffset + layerIndex * LAYER_BYTES,
+      layersOffset + layerIndex * layerBytes,
       layerIndex,
+      hasPriority,
     );
     if (!layer) return null;
     layers.push(layer);
