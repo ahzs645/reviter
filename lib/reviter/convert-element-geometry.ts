@@ -70,6 +70,7 @@ import {
   respaceStraightStairTreads,
   snapTreadsToSketchRiserLines,
 } from "./stair-treads.ts";
+import { widenWallsToEnvelope } from "./wall-envelope-thickness.ts";
 import { recoverWallJoinCorners } from "./wall-joins.ts";
 
 import type { ElementOwnershipDecode } from "./element-relations.ts";
@@ -137,6 +138,7 @@ export type ElementGeometryCounts = {
   extendedSolids: number;
   shrunkSolids: number;
   narrowedSolidBands: number;
+  widenedWalls: number;
   recoveredWallJoinEnds: number;
   adoptedStairBoxes: number;
   narrowedFacetBands: number;
@@ -1013,6 +1015,7 @@ function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
   extendedSolids: number;
   shrunkSolids: number;
   narrowedSolidBands: number;
+  widenedWalls: number;
 } {
   /*
    * A rebuilt solid, clipped to the element's own envelope.
@@ -1111,12 +1114,16 @@ function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
           : longest);
     }
   }
+  // The length is the envelope's along the wall; the thickness is its extent
+  // across it, where the wall runs along an axis. See `wall-envelope-thickness.ts`.
+  const widenedWalls = widenWallsToEnvelope(elementBounds);
   return {
     clippedSolids,
     disownedSolids,
     extendedSolids,
     shrunkSolids,
     narrowedSolidBands,
+    widenedWalls,
   };
 }
 

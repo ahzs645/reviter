@@ -162,6 +162,7 @@ test("the enriched counters are what the fixture's populations say they are", ()
     adoptedStairBoxes: 1,
     clippedSolids: 2,
     extendedSolids: 3,
+    widenedWalls: 0,
     recoveredWallJoinEnds: 1,
     shrunkSolids: 1,
     narrowedSolidBands: 1,

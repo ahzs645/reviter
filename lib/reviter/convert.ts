@@ -459,6 +459,7 @@ export function convertRvtBytes(
           adoptedStairBoxes: counts.adoptedStairBoxes,
           clippedSolids: counts.clippedSolids,
           extendedSolids: counts.extendedSolids,
+          widenedWalls: counts.widenedWalls,
           recoveredWallJoinEnds: counts.recoveredWallJoinEnds,
           shrunkSolids: counts.shrunkSolids,
           narrowedSolidBands: counts.narrowedSolidBands,

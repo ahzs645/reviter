@@ -83,7 +83,11 @@ export function doorLeafCorners(
   // the wall runs along is the leaf width.
   const along = Math.abs(best.ux) > Math.abs(best.uy) ? spanX : spanY;
   const halfAlong = along / 2;
-  const halfThick = best.wall.thickness / 2;
+  // The wall's thickness, but never more than the door's own extent across
+  // the wall: a door frame set in a 3.28 ft wall of the UNBC project is 0.43 ft
+  // deep, and a leaf the wall's depth would be drawn outside its own envelope.
+  const across = Math.abs(best.ux) > Math.abs(best.uy) ? spanY : spanX;
+  const halfThick = Math.min(best.wall.thickness, across) / 2;
   const ring: [number, number][] = [
     [-halfAlong, -halfThick],
     [halfAlong, -halfThick],

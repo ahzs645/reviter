@@ -517,6 +517,12 @@ export type ConvertStats = {
    * extension Revit applies to a wall's body without moving its location line.
    */
   extendedSolids?: number;
+  /**
+   * Straight, axis-aligned walls widened from their centre-plane triple to
+   * their own envelope's extent across them, which is the whole layered wall
+   * where the triple is only its core.
+   */
+  widenedWalls?: number;
   /** Wall ends trimmed to a corroborating adjacent native wall face. */
   recoveredWallJoinEnds?: number;
   /**
