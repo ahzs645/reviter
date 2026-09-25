@@ -413,7 +413,7 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
   return [
     ...(meshScene.meshes.length
       ? [
-          `${meshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit 2027 GRep/BRep face meshes (${meshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
+          `${meshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit GRep/BRep face meshes (${meshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
         ]
       : []),
     ...(meshCollection.incompleteOwners

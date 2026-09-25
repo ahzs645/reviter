@@ -105,7 +105,10 @@ export function ObjectList({
               <b>{record.categoryName ?? "Uncategorised"}</b>
               <em>{record.elementId}</em>
             </span>
-            <small>{dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft</small>
+            <small>
+              {[record.familyName, record.typeName].filter(Boolean).map((name) => `${name} · `).join("")}
+              {dimensions.x.toFixed(1)} × {dimensions.y.toFixed(1)} × {dimensions.z.toFixed(1)} ft
+            </small>
           </button>
         );
       })}

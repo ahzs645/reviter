@@ -82,7 +82,7 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
         productionElements: 0,
         diagnosticCandidates: 0,
         exportLevel: "unavailable",
-        summary: `The optional standards-aware reader could not complete: ${error instanceof Error ? error.message : String(error)}`,
+        summary: `The optional Rust reader stopped on this file (${error instanceof Error ? error.message : String(error)}). Reviter's own decoders are unaffected and produced everything shown; shapes are approximate where the file's geometry is not decoded.`,
         warnings: [],
       }, materials: [] };
   }

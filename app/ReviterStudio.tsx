@@ -829,7 +829,7 @@ export default function ReviterStudio() {
   );
   const visibleModelRecords = useMemo(
     () => solidRecords.filter((record) =>
-      matchesFilter(browserSearch, record.elementId, record.categoryName, record.typeName)),
+      matchesFilter(browserSearch, record.elementId, record.categoryName, record.familyName, record.typeName)),
     [browserSearch, solidRecords],
   );
   const categoryRows = useMemo(() => {
@@ -913,6 +913,7 @@ export default function ReviterStudio() {
     if (!selectedRecord || !selectedDimensions) return [];
     return [
       { key: "category", label: "Category", value: selectedRecord.categoryName ?? "Uncategorised" },
+      ...(selectedRecord.familyName ? [{ key: "family", label: "Family", value: selectedRecord.familyName }] : []),
       ...(selectedRecord.typeName ? [{ key: "type", label: "Type", value: selectedRecord.typeName }] : []),
       { key: "element-id", label: "Element id", value: String(selectedRecord.elementId) },
       ...(selectedRecord.typeId != null
@@ -1518,7 +1519,7 @@ export default function ReviterStudio() {
         value: materials ? `${materials.toLocaleString()} definitions` : "Not decoded",
         tone: materials ? "warn" : "off",
       },
-      { label: "Openings & textures", value: "Not available", tone: "off" },
+      { label: "Textures", value: "Not decoded", tone: "off" },
     ];
   }, [metadata, result]);
 
@@ -1777,7 +1778,7 @@ export default function ReviterStudio() {
 
   const selectedTitle = selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection";
   const selectedSubtitle = selectedRecord
-    ? [selectedRecord.typeName, `id ${selectedRecord.elementId}`].filter(Boolean).join(" · ")
+    ? [selectedRecord.familyName, selectedRecord.typeName, `id ${selectedRecord.elementId}`].filter(Boolean).join(" · ")
     : "Nothing picked";
 
   const legend = geometrySource === "reference-model"
