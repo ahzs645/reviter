@@ -167,6 +167,7 @@ export {
   type NavigationMode,
   type OrbitDragConvention,
   type RenderMode,
+  type ViewFrame,
 } from "./viewer.ts";
 
 // ─── Rooms and review ────────────────────────────────────────────────────────

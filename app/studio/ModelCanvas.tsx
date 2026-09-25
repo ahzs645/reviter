@@ -698,7 +698,15 @@ export function ModelCanvas({
     // building and that beats opening on nothing.
     const pose = isReferenceModel && referenceBoundsRef.current
       ? referenceHomePose(referenceBoundsRef.current)
-      : { ...cameraPoseForPreset(center, radius, DEFAULT_CAMERA_PRESET), target: center, fov: 45 };
+      : {
+          ...cameraPoseForPreset(center, radius, DEFAULT_CAMERA_PRESET, {
+            halfExtents: { x: dx / 2, y: dy / 2, z: dz / 2 },
+            verticalFovDegrees: 45,
+            aspect: (canvas.clientWidth || 1) / (canvas.clientHeight || 1),
+          }),
+          target: center,
+          fov: 45,
+        };
     const poseTarget = pose.target;
     camera.fov = pose.fov;
     camera.up.set(pose.up.x, pose.up.y, pose.up.z);
@@ -1869,7 +1877,12 @@ export function ModelCanvas({
     ) * 0.62;
     const pose = (() => {
       if (source !== "reference-model") {
-        return { ...cameraPoseForPreset(frameCenter, frameRadius, preset), target: frameCenter, fov: 45 };
+        const frame = {
+          halfExtents: { x: frameSize.x / 2, y: frameSize.y / 2, z: frameSize.z / 2 },
+          verticalFovDegrees: 45,
+          aspect: runtime.camera.aspect,
+        };
+        return { ...cameraPoseForPreset(frameCenter, frameRadius, preset, frame), target: frameCenter, fov: 45 };
       }
       const referencePose = referencePoseForPreset(preset, frameRadius);
       return {

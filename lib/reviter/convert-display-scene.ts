@@ -225,8 +225,13 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   const displaySelection = selectDisplayBounds(boundedSolids);
   const displayBounds = displaySelection.records;
   // Framed to the building rather than to the outermost record, so a few
-  // misparsed envelopes cannot throw the camera off the model.
-  const bounds = framingBoundsOfRecords(displayBounds);
+  // misparsed envelopes cannot throw the camera off the model. Terrain and
+  // planting are the site around the building rather than the building, and
+  // their envelopes are not drawn: the RAC sample's toposolid alone made its
+  // frame 190 x 268 ft around a building drawn 121 x 133 ft.
+  const buildingRecords = displayBounds.filter((record) =>
+    record.categoryId == null || !NO_ENVELOPE_PROXY_CATEGORY_IDS.has(record.categoryId));
+  const bounds = framingBoundsOfRecords(buildingRecords.length ? buildingRecords : displayBounds);
   const origin = {
     x: (bounds.min.x + bounds.max.x) / 2,
     y: (bounds.min.y + bounds.max.y) / 2,
