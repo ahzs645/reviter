@@ -206,7 +206,7 @@ test("drawable coverage excludes zero-loop reference faces and fails closed on p
 });
 
 test("collector is inert outside the Revit 2027 release gate", () => {
-  const collector = createRevit2027NativeMeshCollector(2026);
+  const collector = createRevit2027NativeMeshCollector(2023);
   collector.scanPage(new Uint8Array(256));
   const state = collector.snapshot([10]);
   assert.equal(state.enabled, false);

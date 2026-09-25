@@ -62,7 +62,7 @@ test("decodes a count-bounded Revit 2027 GHermiteSpline", () => {
 test("GHermiteSpline decoder fails closed", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027GHermiteSpline(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GHermiteSpline(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

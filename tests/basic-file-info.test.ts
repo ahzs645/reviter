@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { revitVersionFromBasicFileInfo } from "../lib/reviter/basic-file-info.ts";
+import {
+  parseBasicFileInfoProperties,
+  revitVersionFromBasicFileInfo,
+} from "../lib/reviter/basic-file-info.ts";
 import { parseExtractArguments } from "../scripts/extract-geometry.ts";
 
 const utf16 = (value: string) => Buffer.from(value, "utf16le");
@@ -28,6 +31,28 @@ test("reads the legacy length-prefixed BasicFileInfo release", () => {
     data.set(encoded, 18);
     assert.equal(revitVersionFromBasicFileInfo(data), revitVersion);
   }
+});
+
+test("repairs the 8-bit boolean Revit 2024-2025 writes into the wide property bag", () => {
+  // The bytes as they appear in the Revit 2025 RAC basic sample: a wide key, a
+  // wide ": ", then the ASCII bytes `False` and a NUL, then a wide CRLF.
+  const bag = (value: Buffer) => Buffer.concat([
+    Buffer.from([0x0e, 0, 0, 0, 0x0d, 0x0a]),
+    utf16("Worksharing: Not enabled\r\nIsSingleUserCloudModel: "),
+    value,
+    utf16("\r\nAuthor: 中文\r\n"),
+  ]);
+  const narrow = parseBasicFileInfoProperties(
+    new Uint8Array(bag(Buffer.from([0x46, 0x61, 0x6c, 0x73, 0x65, 0x00]))),
+  );
+  assert.equal(narrow.properties.IsSingleUserCloudModel, "False");
+  assert.equal(narrow.isSingleUserCloudModel, false);
+  // A genuine CJK value is never re-read: its bytes are printable ASCII too.
+  assert.equal(narrow.author, "中文");
+
+  const wide = parseBasicFileInfoProperties(new Uint8Array(bag(utf16("True"))));
+  assert.equal(wide.properties.IsSingleUserCloudModel, "True");
+  assert.equal(wide.isSingleUserCloudModel, true);
 });
 
 test("declines malformed or unsupported BasicFileInfo", () => {

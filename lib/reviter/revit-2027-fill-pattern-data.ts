@@ -2,6 +2,7 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot reached from `GFilling.m_data`. */
 export const REVIT_2027_FILL_PATTERN_DATA_SOURCE_CLASS_SLOT = 2087;
@@ -60,7 +61,7 @@ export function decodeRevit2027FillPatternData(
   revitVersion: number,
   options: { maxFillGrids?: number } = {},
 ): Revit2027FillPatternDataDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 FillPatternData decoding requires release 2027",

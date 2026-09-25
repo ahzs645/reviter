@@ -103,7 +103,7 @@ test("rejects unsupported history framing and impossible element chronology", ()
   const brokenHistory = historyFixture();
   brokenHistory[brokenHistory.length - 5] = 0x29;
   assert.equal(decodeRevitDocumentHistory(brokenHistory, 2027).format, "unsupported");
-  assert.equal(decodeRevitDocumentHistory(historyFixture(), 2026).format, "unsupported");
+  assert.equal(decodeRevitDocumentHistory(historyFixture(), 2023).format, "unsupported");
 
   const history = decodeRevitDocumentHistory(historyFixture(), 2027);
   assert.notEqual(history.format, "unsupported");

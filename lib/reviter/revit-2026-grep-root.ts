@@ -1,6 +1,7 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
 import type { ElementObject } from "./element-objects.ts";
 import type { Revit2026GInfoStatic } from "./revit-2026-object-dispatch.ts";
+import { canonicalClassTag } from "./revit-class-tags.ts";
 
 /**
  * `Formats/Latest` gives the framed GElement schema tag 2247, whose persisted
@@ -122,7 +123,7 @@ export function decodeRevit2026GRepRoot(
   }
   if (
     frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER ||
-    view.getUint16(frame.offset + FRAME_MARKER_OFFSET, true) !==
+    canonicalClassTag(view.getUint16(frame.offset + FRAME_MARKER_OFFSET, true)) !==
       REVIT_2026_GELEMENT_OBJECT_MARKER
   ) {
     return { ok: false, error: "frame is not a Revit 2026 GElement" };
@@ -167,7 +168,7 @@ export function decodeRevit2026GRepRoot(
       if (!fitsWithin(offset, 2, bodyOffset, frameEndOffset)) {
         return { ok: false, error: "GGroup child source-class slot is truncated" };
       }
-      sourceClassSlot = view.getInt16(offset, true);
+      sourceClassSlot = canonicalClassTag(view.getInt16(offset, true));
       if (sourceClassSlot <= 0) {
         return { ok: false, error: "GGroup child source-class slot is invalid" };
       }

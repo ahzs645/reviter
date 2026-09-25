@@ -8,6 +8,7 @@ import {
   REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gelement.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT = 2215;
 export const REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT = 2513;
@@ -97,7 +98,7 @@ export function decodeRevit2027GInstanceStatic(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GInstanceDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GInstance decoding requires release 2027",
@@ -214,7 +215,7 @@ export function decodeRevit2027InstanceInfo(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027InstanceInfoDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 InstanceInfo decoding requires release 2027",

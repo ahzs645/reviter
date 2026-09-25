@@ -42,7 +42,7 @@ test("decodes the exact release-gated Revit 2027 GLine body", () => {
 test("rejects another release, another body size, and invalid geometry", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027GLine(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GLine(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

@@ -57,6 +57,7 @@
  * marker's 12.8% — and a page with no slot is then dropped whole. Every record
  * head then reads its slot from that index rather than searching for it.
  */
+import { canonicalClassTag, fileClassTag } from "./revit-class-tags.ts";
 
 /**
  * Discriminator B of the records whose type reference this decoder reads.
@@ -71,12 +72,6 @@ const NULL_FIELD_MARKER = 0xffff_ffff;
 
 /** A field slot: the null-field marker, then the field id as a u16. */
 const SLOT_BYTES = 6;
-
-/**
- * High byte shared by both field ids below, and the rare byte the slot index
- * scans for. Keep it in step if a field id with another high byte is added.
- */
-const FIELD_ID_HIGH_BYTE = 0x11;
 
 /** Field id whose slot precedes the type reference: the class `VWallDriver`. */
 const TYPE_REFERENCE_FIELD = 0x116f;
@@ -114,23 +109,39 @@ export type TypeLinks = {
 type SlotIndex = { nameSlots: number[]; referenceSlots: number[] };
 
 /**
- * Locate both kinds of field slot in one pass, keyed off the `0x11` high byte
- * of their field ids so the native byte search does the skipping.
+ * Locate both kinds of field slot in one pass, keyed off the high byte of
+ * their field ids (`0x11` in the 2027 numbering) so the native byte search
+ * does the skipping.
  */
 function indexFieldSlots(data: Uint8Array, view: DataView): SlotIndex {
   const nameSlots: number[] = [];
   const referenceSlots: number[] = [];
   const tail = SLOT_BYTES - 1;
-  for (
-    let high = data.indexOf(FIELD_ID_HIGH_BYTE, tail);
-    high >= 0;
-    high = data.indexOf(FIELD_ID_HIGH_BYTE, high + 1)
-  ) {
-    const slot = high - tail;
-    if (view.getUint32(slot, true) !== NULL_FIELD_MARKER) continue;
-    const field = view.getUint16(slot + 4, true);
-    if (field === TYPE_NAME_FIELD) nameSlots.push(slot);
-    else if (field === TYPE_REFERENCE_FIELD) referenceSlots.push(slot);
+  // The field ids are class indices, so the bytes hold the file's own; in a
+  // 2025 file both classes sit under `0x10` rather than `0x11`.
+  const nameField = fileClassTag(TYPE_NAME_FIELD);
+  const referenceField = fileClassTag(TYPE_REFERENCE_FIELD);
+  const highBytes = new Set(
+    [nameField, referenceField]
+      .filter((field) => field >= 0 && field <= 0xffff)
+      .map((field) => field >> 8),
+  );
+  for (const highByte of highBytes) {
+    for (
+      let high = data.indexOf(highByte, tail);
+      high >= 0;
+      high = data.indexOf(highByte, high + 1)
+    ) {
+      const slot = high - tail;
+      if (view.getUint32(slot, true) !== NULL_FIELD_MARKER) continue;
+      const field = view.getUint16(slot + 4, true);
+      if (field === nameField) nameSlots.push(slot);
+      else if (field === referenceField) referenceSlots.push(slot);
+    }
+  }
+  if (highBytes.size > 1) {
+    nameSlots.sort((a, b) => a - b);
+    referenceSlots.sort((a, b) => a - b);
   }
   return { nameSlots, referenceSlots };
 }
@@ -251,7 +262,10 @@ export function collectTypeLinks(data: Uint8Array): TypeLinks {
       }
     }
 
-    if (view.getUint16(recordOffset + 22, true) !== TYPED_RECORD_DISCRIMINATOR) continue;
+    if (
+      canonicalClassTag(view.getUint16(recordOffset + 22, true)) !==
+        TYPED_RECORD_DISCRIMINATOR
+    ) continue;
     if (seenReference.has(elementId)) continue;
     const typeId = readTypeReference(data, view, referenceSlot);
     if (typeId == null) continue;

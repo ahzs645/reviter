@@ -16,6 +16,7 @@ import {
   readInstancePlacement,
   type InstancePlacement,
 } from "./instanced-geometry.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER = 0x0810;
 
@@ -108,7 +109,7 @@ export function scanFamilySymbolMaterialPage(
     referenceSets: [],
     placements: [],
   };
-  if (revitVersion !== 2027) return result;
+  if (!usesRevit2027RecordLayout(revitVersion)) return result;
   for (const object of scanFramedElementObjects(data)) {
     if (object.marker === REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER) {
       result.referenceSets.push(scanReferenceSet(data, object));

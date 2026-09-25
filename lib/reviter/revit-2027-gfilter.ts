@@ -6,6 +6,7 @@ import {
   decodeRevit2027GGroupStatic,
   type Revit2027GGroupStatic,
 } from "./revit-2027-ggroup-fifo.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source slot for `GFilter`. */
 export const REVIT_2027_GFILTER_SOURCE_CLASS_SLOT = 2254;
@@ -42,7 +43,7 @@ export function decodeRevit2027GFilter(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GFilterDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GFilter decoding requires release 2027",

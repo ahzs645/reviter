@@ -56,7 +56,7 @@ test("GArray rejects another release, another body size, and invalid fields", ()
     data,
     0,
     data.byteLength,
-    2026,
+    2023,
   );
   assert.equal(wrongRelease.ok, false);
   if (!wrongRelease.ok) {
@@ -131,7 +131,7 @@ test("GGroup prefix is release-gated and bounded", () => {
   view.setInt16(28, 2248, true);
 
   assert.equal(
-    decodeRevit2027GGroupPrefix(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GGroupPrefix(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(decodeRevit2027GGroupPrefix(data, 0, 29, 2027).ok, false);

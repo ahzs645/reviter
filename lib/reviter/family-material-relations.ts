@@ -13,6 +13,7 @@
  * The scanner returns candidates and target class ids separately. Resolution
  * is deliberately a second step so references can cross compressed chunks.
  */
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_FAMILY_MARKER = 0x07d9;
 export const REVIT_2027_FAMILY_SYMBOL_MARKER = 0x0810;
@@ -237,7 +238,7 @@ export function scanPersistedRelationshipCandidates(
   const familySymbolCandidates: FamilySymbolCandidate[] = [];
   const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
   const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) {
+  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) {
     return {
       familyElementIds,
       familyDefinitions,
@@ -256,7 +257,7 @@ export function scanPersistedRelationshipCandidates(
     if (objectLength < MIN_OBJECT_BYTES || objectLength > MAX_OBJECT_BYTES) continue;
     const echo = offset + objectLength + 16;
     if (echo + 4 > data.byteLength || view.getUint32(echo, true) !== objectLength) continue;
-    const marker = view.getUint16(offset + 16, true);
+    const marker = canonicalClassTag(view.getUint16(offset + 16, true));
     if (marker === REVIT_2027_FAMILY_MARKER) {
       familyElementIds.push(elementId);
       const definition = readFamilyDefinition(

@@ -2,6 +2,7 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Surface source slots observed in `Face.m_pSurf` in the supplied 2027 RVT. */
 export const REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT = 634;
@@ -186,7 +187,7 @@ export function decodeRevit2027AnalyticSurface(
   revitVersion: number,
   sourceClassSlot: number,
 ): Revit2027SurfaceDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 Surface decoding requires release 2027",

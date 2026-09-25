@@ -5,6 +5,7 @@ import {
   type CondInt16QueueEntry,
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /**
  * @deprecated Source slot 2215 is now schema-certified as `GInstance`; use
@@ -117,7 +118,7 @@ export function decodeRevit2027GArray(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GArrayDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GArray decoding requires release 2027" };
   }
   if (
@@ -227,7 +228,7 @@ export function decodeRevit2027GGroupPrefix(
   revitVersion: number,
   options: { maxChildren?: number } = {},
 ): Revit2027GGroupPrefixDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GGroup decoding requires release 2027" };
   }
   if (!bounded(data, byteOffset, GINFO_BYTES + 4, enclosingEndOffset)) {

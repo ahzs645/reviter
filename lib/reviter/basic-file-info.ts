@@ -105,6 +105,36 @@ function propertyText(data: Uint8Array): string {
   return new TextDecoder().decode(data).replaceAll("\0", "");
 }
 
+/**
+ * The same text read as the 8-bit string Revit sometimes writes into the wide
+ * property bag, or `null` when the code units cannot be one.
+ *
+ * Revit 2024 and 2025 write `IsSingleUserCloudModel`'s value as the five ASCII
+ * bytes `False` plus a NUL inside otherwise UTF-16LE text, which decodes as
+ * `慆獬e`. Revit 2027 writes it wide. Only a value that repairs to a boolean
+ * literal is replaced: a genuine CJK value also has printable-ASCII bytes
+ * (`中` is `2d 4e`), so a blanket re-read would corrupt real text.
+ */
+function narrowStringValue(value: string): string | null {
+  let text = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    for (const byte of [unit & 0xff, unit >> 8]) {
+      if (byte === 0) continue;
+      if (byte < 0x20 || byte > 0x7e) return null;
+      text += String.fromCharCode(byte);
+    }
+  }
+  return text === value ? null : text;
+}
+
+function repairNarrowBooleanValue(value: string): string {
+  const narrow = narrowStringValue(value);
+  return narrow != null && /^(true|false|0|1|yes|no)$/i.test(narrow.trim())
+    ? narrow.trim()
+    : value;
+}
+
 function integerProperty(properties: Record<string, string>, key: string): number | undefined {
   const value = Number.parseInt(properties[key] ?? "", 10);
   return Number.isInteger(value) ? value : undefined;
@@ -125,7 +155,7 @@ export function parseBasicFileInfoProperties(data: Uint8Array): BasicFileInfoPro
     if (separator < 1) continue;
     const key = line.slice(0, separator).trim().replace(/^[^\p{L}]*/u, "");
     if (!key || key.length > 160 || /[\u0000-\u001f]/.test(key)) continue;
-    properties[key] = line.slice(separator + 1).trim();
+    properties[key] = repairNarrowBooleanValue(line.slice(separator + 1).trim());
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);

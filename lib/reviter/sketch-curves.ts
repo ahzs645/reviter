@@ -59,12 +59,24 @@
  */
 
 import { noteLimit } from "./limit-census.ts";
+import { fileClassTag } from "./revit-class-tags.ts";
 
 /** `04 00 08 01` — the edge-record signature. */
 const CURVE_SIGNATURE = [0x04, 0x00, 0x08, 0x01] as const;
 
-/** `ff ff ff ff 10 03 01 00 00 00` — the single-element owner anchor. */
-const OWNER_ANCHOR = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00] as const;
+/**
+ * `ff ff ff ff 10 03 01 00 00 00` — the single-element owner anchor: the
+ * `Element.m_cellList` pointer at class `CellList` (`0x0310` in the 2027
+ * numbering), then the document stub. The class bytes are the file's own.
+ */
+const CELL_LIST_CLASS = 0x0310;
+const OWNER_ANCHOR_LENGTH = 10;
+
+function ownerAnchorBytes(): readonly number[] | null {
+  const cellList = fileClassTag(CELL_LIST_CLASS);
+  if (cellList < 0 || cellList > 0xffff) return null;
+  return [0xff, 0xff, 0xff, 0xff, cellList & 0xff, cellList >> 8, 0x01, 0x00, 0x00, 0x00];
+}
 
 /**
  * A line needs eight f64 fields after the signature, an arc twelve. Records sit
@@ -206,18 +218,19 @@ export function collectSketchCurves(data: Uint8Array): SketchCurve[] {
   // over every byte of a 384 MB inflation costs more than the decode does.
   const anchorOffsets: number[] = [];
   const anchorOwners: number[] = [];
+  const ownerAnchor = ownerAnchorBytes();
   for (
-    let offset = data.indexOf(OWNER_ANCHOR[0]);
-    offset >= 0 && offset + OWNER_ANCHOR.length + 8 <= data.byteLength;
-    offset = data.indexOf(OWNER_ANCHOR[0], offset + 1)
+    let offset = ownerAnchor ? data.indexOf(ownerAnchor[0]!) : -1;
+    ownerAnchor && offset >= 0 && offset + OWNER_ANCHOR_LENGTH + 8 <= data.byteLength;
+    offset = data.indexOf(ownerAnchor[0]!, offset + 1)
   ) {
-    if (!matchesAt(data, offset, OWNER_ANCHOR)) continue;
+    if (!matchesAt(data, offset, ownerAnchor)) continue;
     if (view.getUint32(offset + 14, true) !== 0) continue;
     const owner = view.getUint32(offset + 10, true);
     if (!owner) continue;
     anchorOffsets.push(offset);
     anchorOwners.push(owner);
-    offset += OWNER_ANCHOR.length - 1;
+    offset += OWNER_ANCHOR_LENGTH - 1;
   }
 
   let anchor = 0;

@@ -1,4 +1,5 @@
 /** Exact Revit 2027 source slot for `GConditionDir`. */
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 export const REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT = 2235;
 export const REVIT_2027_GCONDITION_DIR_BODY_BYTES = 29;
 
@@ -28,7 +29,7 @@ export function decodeRevit2027GConditionDir(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GConditionDirDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GConditionDir decoding requires release 2027",

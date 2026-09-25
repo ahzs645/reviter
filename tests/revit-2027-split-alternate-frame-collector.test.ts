@@ -45,7 +45,7 @@ test("reassembles only a TopRailType frame split across partition pages", () => 
 
 test("fails closed across releases, partition boundaries, echoes, and limits", () => {
   const expected = frame(1234);
-  const wrongRelease = createRevit2027SplitAlternateFrameCollector(2026);
+  const wrongRelease = createRevit2027SplitAlternateFrameCollector(2023);
   assert.deepEqual(wrongRelease.pushPage(expected.subarray(0, 50)), []);
   assert.deepEqual(wrongRelease.pushPage(expected.subarray(50)), []);
 

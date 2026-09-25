@@ -49,7 +49,7 @@ test("GPoint rejects release, boundary, scalar, and display-size violations", ()
   const data = new Uint8Array(REVIT_2027_GPOINT_BODY_BYTES);
   const view = new DataView(data.buffer);
   assert.equal(
-    decodeRevit2027GPoint(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GPoint(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

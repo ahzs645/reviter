@@ -1,5 +1,6 @@
 import { srgbBytesToLinear } from "./material-palette.ts";
 import type { Bounds3, MaterialData } from "./types.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const ARC_WALL_2023_TAG = 0x0191;
 const ARC_WALL_2023_VARIANT = 0x07fa;
@@ -84,7 +85,7 @@ export function decoderPlanForVersion(revitVersion?: number): DecoderPlan {
     // The 2023 envelope is decodable, but its six-double geometry semantics
     // remain unresolved in the source corpus. Do not promote it to profiles.
     nativeProfileDecoder: null,
-    elementBoundsDecoder: version === 2027 ? "revit-2027-duplicated-bounds-v1" : null,
+    elementBoundsDecoder: usesRevit2027RecordLayout(version) ? "revit-2027-duplicated-bounds-v1" : null,
     diagnosticCoordinateScanner: true,
   };
 }

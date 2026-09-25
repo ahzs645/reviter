@@ -6,6 +6,7 @@ import {
   type Revit2027StairsElementAggregate,
   type Revit2027StairsRunAndLandingAggregate,
 } from "./revit-2027-stairs-aggregate.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const HEADER_SCAN_BYTES = 22;
@@ -62,7 +63,7 @@ export function createRevit2027StairsRunCollector(
 
   return {
     pushPage(page: Uint8Array): void {
-      if (release !== 2027) return;
+      if (!usesRevit2027RecordLayout(release)) return;
       const combined = new Uint8Array(buffer.byteLength + page.byteLength);
       combined.set(buffer);
       combined.set(page, buffer.byteLength);
@@ -81,7 +82,7 @@ export function createRevit2027StairsRunCollector(
         streamOffset += 1
       ) {
         const offset = streamOffset - combinedStart;
-        const marker = view.getUint16(offset + 16, true);
+        const marker = canonicalClassTag(view.getUint16(offset + 16, true));
         if (
           (marker !== REVIT_2027_STAIRS_RUN_MARKER &&
             marker !== REVIT_2027_STAIRS_ELEMENT_MARKER) ||

@@ -71,7 +71,7 @@ test("decodes from a bounded offset without claiming owner padding", () => {
 
 test("fails closed on release, bounds, scalars, basis, radius, and flag", () => {
   const data = fixture();
-  assert.equal(decodeRevit2027GArc(data, 0, data.length, 2026).ok, false);
+  assert.equal(decodeRevit2027GArc(data, 0, data.length, 2023).ok, false);
   assert.equal(decodeRevit2027GArc(data, 0, 116, 2027).ok, false);
 
   const view = new DataView(data.buffer);

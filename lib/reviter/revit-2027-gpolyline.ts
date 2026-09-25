@@ -1,5 +1,6 @@
 import type { RevitExtents3d } from "./revit-2026-grep-root.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Resolved from the Revit 2027 source schema for the supplied UNBC model. */
 export const REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT = 2276;
@@ -72,7 +73,7 @@ export function decodeRevit2027GPolyLine(
   revitVersion: number,
   options: { maxPoints?: number } = {},
 ): Revit2027GPolyLineDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GPolyLine decoding requires release 2027",

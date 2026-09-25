@@ -303,7 +303,7 @@ test("fails closed when one element has conflicting shared geometry ids", () => 
 
 test("is release gated and rejects a broken object-length echo", () => {
   const data = object(7, 0x0810, 520, [[449, 8]]);
-  assert.equal(scanPersistedRelationshipCandidates(data, 2026).familySymbolCandidates.length, 0);
+  assert.equal(scanPersistedRelationshipCandidates(data, 2023).familySymbolCandidates.length, 0);
   new DataView(data.buffer).setUint32(536, 519, true);
   assert.equal(scanPersistedRelationshipCandidates(data, 2027).familySymbolCandidates.length, 0);
 });

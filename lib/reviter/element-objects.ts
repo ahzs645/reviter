@@ -38,6 +38,8 @@
  * are still linked into the chain.
  */
 
+import { canonicalClassTag, fileClassTag } from "./revit-class-tags.ts";
+
 /**
  * General page-scanner ceiling. Most element frames are below 64 KB; the
  * bounded release-specific collectors handle the proven large collection
@@ -69,7 +71,10 @@ export type ElementObject = {
    * begins at +20.
    */
   objectLength: number;
-  /** Release-specific object marker at `offset + 16`. */
+  /**
+   * The object's class at `offset + 16`, in the 2027 numbering: the file's own
+   * index translated by class name (see `revit-class-tags.ts`).
+   */
   marker: number;
   /** Element class discriminator at `offset + 18`. */
   typeCode: number;
@@ -93,7 +98,7 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
     offset,
     elementId,
     objectLength,
-    marker: view.getUint16(offset + 16, true),
+    marker: canonicalClassTag(view.getUint16(offset + 16, true)),
     // Read as u32: the field is 64-bit but element class codes are small, and
     // 0xffffffff is itself a real code in the corpus.
     typeCode: view.getUint32(offset + 18, true),
@@ -291,9 +296,12 @@ export function markerObjectSeeds(
 ): number[] {
   const seeds: number[] = [];
   if (data.byteLength < 64) return seeds;
+  // The bytes hold the file's own index for the class, not the 2027 one.
+  const fileMarker = fileClassTag(marker);
+  if (fileMarker < 0 || fileMarker > 0xffff) return seeds;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const low = marker & 0xff;
-  const high = (marker >> 8) & 0xff;
+  const low = fileMarker & 0xff;
+  const high = (fileMarker >> 8) & 0xff;
 
   for (
     let offset = data.indexOf(low, 16);

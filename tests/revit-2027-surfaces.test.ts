@@ -147,7 +147,7 @@ test("fails closed for release, source slot, boolean, truncation, and NaN", () =
       plane,
       0,
       plane.byteLength,
-      2026,
+      2023,
       REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
     ).ok,
     false,

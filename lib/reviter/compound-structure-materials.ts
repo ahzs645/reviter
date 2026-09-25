@@ -13,6 +13,7 @@ import {
   scanFramedElementObjects,
   type ElementObject,
 } from "./element-objects.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
 
@@ -201,7 +202,7 @@ export function scanCompoundStructureCandidates(
   data: Uint8Array,
   revitVersion: number,
 ): CompoundStructureCandidate[] {
-  if (revitVersion !== 2027) return [];
+  if (!usesRevit2027RecordLayout(revitVersion)) return [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const result: CompoundStructureCandidate[] = [];
   for (const object of scanFramedElementObjects(data)) {

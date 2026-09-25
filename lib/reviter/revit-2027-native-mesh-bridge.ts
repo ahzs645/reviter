@@ -63,6 +63,7 @@ import {
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 
 import type { Bounds3, MeshData, Vec3 } from "./types.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
 const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
@@ -1396,7 +1397,7 @@ export function createRevit2027NativeMeshCollector(
     MAX_INCOMPLETE_SAMPLES,
   );
   const state: MutableCollection = {
-    enabled: release === 2027,
+    enabled: usesRevit2027RecordLayout(release),
     definitions: new Map(),
     definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
@@ -1590,7 +1591,7 @@ export function createRevit2027NativeMeshCollector(
       );
       const elementId = view.getUint32(0, true);
       const objectLength = view.getUint32(12, true);
-      const marker = view.getUint16(16, true);
+      const marker = canonicalClassTag(view.getUint16(16, true));
       if (
         elementId === 0 ||
         view.getUint32(4, true) !== 0 ||

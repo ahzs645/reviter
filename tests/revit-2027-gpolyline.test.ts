@@ -67,7 +67,7 @@ test("decodes a count-bounded Revit 2027 GPolyLine FIFO body", () => {
 test("rejects the wrong release, truncation, excessive counts, and invalid booleans", () => {
   const { bytes, bodyEndOffset } = fixture();
   assert.equal(
-    decodeRevit2027GPolyLine(bytes, 0, bytes.byteLength, 2026).ok,
+    decodeRevit2027GPolyLine(bytes, 0, bytes.byteLength, 2023).ok,
     false,
   );
   assert.equal(

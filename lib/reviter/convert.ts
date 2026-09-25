@@ -28,6 +28,7 @@
  */
 import { dominantMarker } from "./element-objects.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
+import { setActiveClassTagTranslation } from "./revit-class-tags.ts";
 import { buildMeshes } from "./scene.ts";
 import { buildStairAssemblies } from "./stair-assemblies.ts";
 import {
@@ -88,6 +89,9 @@ export function convertRvtBytes(
   // Fitted-limit counters are module-level, so a previous conversion's tally
   // must not carry into this one.
   resetLimitCensus();
+  // Installed by `openRevitContainer` from this file's schema and removed
+  // below, so one file's class numbering never reaches the next.
+  setActiveClassTagTranslation(null);
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const segmentScale = segmentScaleFor(fileName, options.geometryScale);
@@ -534,5 +538,7 @@ export function convertRvtBytes(
       fileName,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    setActiveClassTagTranslation(null);
   }
 }

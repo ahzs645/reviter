@@ -1,4 +1,5 @@
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GArc`. */
 export const REVIT_2027_GARC_SOURCE_CLASS_SLOT = 2213;
@@ -63,7 +64,7 @@ export function decodeRevit2027GArc(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GArcDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GArc decoding requires release 2027",

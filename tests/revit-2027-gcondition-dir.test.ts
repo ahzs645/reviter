@@ -35,7 +35,7 @@ test("decodes the exact Revit 2027 GConditionDir body", () => {
 test("GConditionDir decoder fails closed", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027GConditionDir(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GConditionDir(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

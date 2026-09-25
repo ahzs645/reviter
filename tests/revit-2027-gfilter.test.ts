@@ -67,7 +67,7 @@ test("decodes GFilter collections in native FIFO insertion order", () => {
 
 test("GFilter decoder fails closed on release, boundary, and boolean", () => {
   const data = fixture();
-  assert.equal(decodeRevit2027GFilter(data, 0, data.byteLength, 2026).ok, false);
+  assert.equal(decodeRevit2027GFilter(data, 0, data.byteLength, 2023).ok, false);
   assert.equal(
     decodeRevit2027GFilter(data, 0, data.byteLength - 1, 2027).ok,
     false,

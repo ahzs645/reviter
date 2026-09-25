@@ -7,6 +7,7 @@ import {
   isDynamicQueueReplayCertificate,
   type DynamicQueueReplayCertificate,
 } from "./dynamic-object-registry.ts";
+import { canonicalClassTag } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_QUEUE_ENTRIES = 10_000;
 const DEFAULT_MAX_QUEUE_SEARCH_BYTES = 64 * 1024;
@@ -149,7 +150,7 @@ export function decodeCondInt16QueueCollection(
       if (!fits(data, offset, 2)) {
         return { ok: false, error: "CondInt16 source-class slot is truncated" };
       }
-      sourceClassSlot = view.getInt16(offset, true);
+      sourceClassSlot = canonicalClassTag(view.getInt16(offset, true));
       if (sourceClassSlot <= 0) {
         return { ok: false, error: "CondInt16 source-class slot is not positive" };
       }
@@ -185,7 +186,7 @@ export function decodeCondInt16PropertyDescriptor(
     if (!fits(data, endOffset, 2)) {
       return { ok: false, error: "CondInt16 property source-class slot is truncated" };
     }
-    sourceClassSlot = view.getInt16(endOffset, true);
+    sourceClassSlot = canonicalClassTag(view.getInt16(endOffset, true));
     if (sourceClassSlot <= 0) {
       return { ok: false, error: "CondInt16 property source-class slot is not positive" };
     }

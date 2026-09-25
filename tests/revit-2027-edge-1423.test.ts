@@ -163,7 +163,7 @@ test("classifies only native-proven GEdge curve kinds", () => {
 test("GEdge reader is release-gated, bounded, and count-limited", () => {
   const { data, bodyEndOffset } = fixture(2);
   assert.equal(
-    decodeRevit2027GEdgeStatic(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GEdgeStatic(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

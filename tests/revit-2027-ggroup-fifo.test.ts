@@ -211,7 +211,7 @@ test("GGroup FIFO locator rejects another release and unknown siblings", () => {
     data.byteLength,
   );
   assert.equal(
-    locateRevit2027FirstGGroupNestedFifo(data, groupRoot, 2026).ok,
+    locateRevit2027FirstGGroupNestedFifo(data, groupRoot, 2023).ok,
     false,
   );
 

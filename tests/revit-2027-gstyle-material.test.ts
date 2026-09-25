@@ -85,7 +85,7 @@ test("decodes the queued GStyle material field after GStyleElem static fields", 
 test("rejects the release, layout, source slot, flag, and echo independently", () => {
   const base = fixture();
   assert.equal(
-    decodeRevit2027GStyleElementRecord(base.bytes, base.object, 2026).ok,
+    decodeRevit2027GStyleElementRecord(base.bytes, base.object, 2023).ok,
     false,
   );
 
@@ -141,7 +141,7 @@ test("scans only exact framed GStyleElem records", () => {
   assert.equal(result.failures.size, 0);
 
   assert.equal(
-    scanRevit2027GStyleElementRecords(exact.bytes, 2026)
+    scanRevit2027GStyleElementRecords(exact.bytes, 2023)
       .decodedStyleElements,
     0,
   );

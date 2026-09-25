@@ -110,7 +110,7 @@ test("does not enqueue a null Data descriptor", () => {
 test("fails closed on release, bounds, booleans, finite values, and slots", () => {
   const data = fixture(11);
   assert.equal(
-    decodeRevit2027GFilling(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GFilling(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

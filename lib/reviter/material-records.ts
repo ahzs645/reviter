@@ -16,6 +16,7 @@
  * release-specific class marker, a name string with its own stable field
  * trailer, and the bounded colour layouts documented below.
  */
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** `MaterialElem` object marker measured in the supplied Revit 2027 file. */
 export const REVIT_2027_MATERIAL_ELEMENT_MARKER = 0x0ad3;
@@ -410,7 +411,7 @@ export function scanMaterialElementRecords(
   revitVersion: number,
 ): MaterialRecordScan {
   const definitions: NativeMaterialDefinition[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) {
+  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) {
     return {
       revitVersion,
       framedMaterialElements: 0,
@@ -431,7 +432,7 @@ export function scanMaterialElementRecords(
     if (
       echo + 4 > data.byteLength ||
       view.getUint32(echo, true) !== objectLength ||
-      view.getUint16(offset + 16, true) !== REVIT_2027_MATERIAL_ELEMENT_MARKER
+      canonicalClassTag(view.getUint16(offset + 16, true)) !== REVIT_2027_MATERIAL_ELEMENT_MARKER
     ) {
       continue;
     }

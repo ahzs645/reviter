@@ -61,6 +61,7 @@
  */
 
 import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
+import { fileClassTag } from "./revit-class-tags.ts";
 
 /**
  * `ff ff ff ff 10 03 01 00 00 00` — the element-id anchor preceding a table.
@@ -70,8 +71,16 @@ import { builtInParameterEnumName, parameterDisplayName } from "./built-in-param
  * `m_docAccess.m_pDoc` as the stub `01 00 00 00`. The element id follows because
  * `m_id` is the very next field.
  */
-const ANCHOR = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00] as const;
-const ANCHOR_LENGTH = ANCHOR.length;
+const ANCHOR_LENGTH = 10;
+
+/** `CellList` in the 2027 numbering; the anchor carries the file's own index. */
+const CELL_LIST_CLASS = 0x0310;
+
+function anchorBytes(): readonly number[] | null {
+  const cellList = fileClassTag(CELL_LIST_CLASS);
+  if (cellList < 0 || cellList > 0xffff) return null;
+  return [0xff, 0xff, 0xff, 0xff, cellList & 0xff, cellList >> 8, 0x01, 0x00, 0x00, 0x00];
+}
 
 /**
  * `Element`'s fields before `m_cellList`, in declaration order: the four
@@ -386,16 +395,18 @@ function ownedParameterSets(
 export function collectElementParameters(data: Uint8Array): ElementParameterTable[] {
   const tables: ElementParameterTable[] = [];
   if (data.byteLength < ANCHOR_LENGTH + 12) return tables;
+  const anchor = anchorBytes();
+  if (!anchor) return tables;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
   for (
-    let offset = data.indexOf(ANCHOR[0]);
+    let offset = data.indexOf(anchor[0]!);
     offset >= 0 && offset + ANCHOR_LENGTH + 8 <= data.byteLength;
-    offset = data.indexOf(ANCHOR[0], offset + 1)
+    offset = data.indexOf(anchor[0]!, offset + 1)
   ) {
     let matched = true;
     for (let index = 1; index < ANCHOR_LENGTH; index += 1) {
-      if (data[offset + index] !== ANCHOR[index]) {
+      if (data[offset + index] !== anchor[index]) {
         matched = false;
         break;
       }

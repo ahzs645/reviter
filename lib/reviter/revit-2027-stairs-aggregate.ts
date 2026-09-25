@@ -2,6 +2,7 @@ import {
   decodeCondInt16QueueCollection,
   type CondInt16QueueCollection,
 } from "./dynamic-geometry-queue.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Revit 2027 framed-object marker for `StairsElement`. */
 export const REVIT_2027_STAIRS_ELEMENT_MARKER = 4075;
@@ -118,7 +119,7 @@ function decodeFrame(
   ) {
     return { ok: false, error: "stairs framed object length echo does not match" };
   }
-  const marker = view.getUint16(objectOffset + 16, true);
+  const marker = canonicalClassTag(view.getUint16(objectOffset + 16, true));
   if (!allowedMarkers.has(marker)) {
     return { ok: false, error: "stairs framed object marker is not allowed" };
   }
@@ -214,7 +215,7 @@ export function decodeRevit2027StairsElementAggregate(
   objectLength: number,
   revitVersion: number,
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsElementAggregate> {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "StairsElement aggregate decoding requires Revit 2027",
@@ -319,7 +320,7 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
   revitVersion: number,
   options: { knownStairsElementIds?: ReadonlySet<number> } = {},
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsRunAndLandingAggregate> {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "StairsRunAndLanding aggregate decoding requires Revit 2027",

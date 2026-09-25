@@ -106,7 +106,7 @@ test("decodes the complete Revit 2027 Face static body", () => {
 test("Face reader is release-gated and respects the enclosing boundary", () => {
   const bytes = faceBody();
   assert.deepEqual(
-    decodeRevit2027FaceStatic(bytes, 0, bytes.byteLength, 2026),
+    decodeRevit2027FaceStatic(bytes, 0, bytes.byteLength, 2023),
     {
       ok: false,
       error: "Revit 2027 Face decoding requires release 2027",

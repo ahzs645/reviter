@@ -99,7 +99,7 @@ test("is release/class gated and rejects an invalid layer sequence", () => {
   const data = wallType([
     { width: 0.25, materialId: 414, function: 4, priority: 4 },
   ]);
-  assert.deepEqual(scanCompoundStructureCandidates(data, 2026), []);
+  assert.deepEqual(scanCompoundStructureCandidates(data, 2023), []);
   assert.deepEqual(
     scanCompoundStructureCandidates(wallType([
       { width: 0.25, materialId: 414, function: 4, priority: 4 },

@@ -24,6 +24,7 @@
  * different compressed chunks. It does not consult IFC, names, elevations, or
  * geometric proximity.
  */
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Revit 2027 framed-object marker for `Level` elements. */
 export const REVIT_2027_LEVEL_MARKER = 0x0a19;
@@ -113,7 +114,7 @@ export function scanAssociatedLevelRelationCandidates(
   revitVersion: number,
 ): AssociatedLevelRelationCandidate[] {
   const candidates: AssociatedLevelRelationCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) return candidates;
+  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) return candidates;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
@@ -127,7 +128,7 @@ export function scanAssociatedLevelRelationCandidates(
       continue;
     }
     const limit = offset + objectLength;
-    const objectMarker = view.getUint16(offset + 16, true);
+    const objectMarker = canonicalClassTag(view.getUint16(offset + 16, true));
     const fieldOffset = associatedLevelFieldOffset(view, offset, limit);
     if (fieldOffset != null) {
       const levelId = readId(view, offset + fieldOffset, limit);

@@ -62,7 +62,7 @@ test("queued GElement fails closed on release, tail, and invalid extents", () =>
   writeExtents(view, 72, [-1, -2, -3, 1, 2, 3]);
 
   assert.equal(
-    decodeRevit2027GElementStatic(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GElementStatic(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

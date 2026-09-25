@@ -40,6 +40,11 @@ import {
 } from "./revit-container.ts";
 import { summariseSchema, summariseSchemaStream } from "./schema.ts";
 import { readSchema } from "./schema-reader.ts";
+import {
+  buildClassTagTranslation,
+  setActiveClassTagTranslation,
+} from "./revit-class-tags.ts";
+import type { ClassTagTranslation } from "./revit-class-tags.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parseRevitTransmissionData } from "./transmission-data.ts";
 
@@ -127,6 +132,8 @@ export type OpenedRevitContainer = {
   transmissionData: RevitTransmissionData | undefined;
   coverage: CoverageSummary;
   schema: SchemaSummary | undefined;
+  /** How this file's class indices map onto the 2027 numbering. */
+  classTagTranslation: ClassTagTranslation;
   partitionNames: PartitionName[];
 };
 
@@ -248,6 +255,11 @@ export function openRevitContainer(
     const strict = readSchema(data);
     return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
   });
+  // Everything below reads class indices out of partition bytes, beginning
+  // with the marker sample, so the file's numbering is translated into the
+  // 2027 one the decoders compare against before any of it runs.
+  const classTagTranslation = buildClassTagTranslation(schema?.taggedClasses ?? []);
+  setActiveClassTagTranslation(classTagTranslation);
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
   const partitions = cfb.FileIndex
@@ -295,6 +307,7 @@ export function openRevitContainer(
     transmissionData,
     coverage,
     schema,
+    classTagTranslation,
     partitionNames,
   };
 }

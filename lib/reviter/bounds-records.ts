@@ -8,6 +8,8 @@
  * what makes the signature strict enough to trust: a false positive would have
  * to reproduce 48 bytes exactly.
  */
+import { fileClassTag } from "./revit-class-tags.ts";
+
 import type { Bounds3, ElementBoundsRecord } from "./types.ts";
 
 const BOUNDS_DUPLICATE_BYTES = 48;
@@ -50,16 +52,26 @@ function enclosedVolume(bounds: Bounds6): number {
     .reduce((product, span) => product * span, 1);
 }
 
+/** `GElement` in the 2027 numbering; the file's own index is searched for. */
+const GELEMENT_CLASS = 0x08c6;
+
 export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsRecord[] {
   const records: DetectedBoundsRecord[] = [];
   if (data.byteLength < 138) return records;
+  // In a 2025 file `c6 08` is `GeomPositioningCell`, whose objects also carry
+  // this layout, so searching the 2027 bytes there found family instances
+  // alone. The element's own record is under the file's `GElement`.
+  const tag = fileClassTag(GELEMENT_CLASS);
+  if (tag < 0 || tag > 0xffff) return records;
+  const tagLow = tag & 0xff;
+  const tagHigh = tag >> 8;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (
-    let tagOffset = data.indexOf(0xc6, 16);
+    let tagOffset = data.indexOf(tagLow, 16);
     tagOffset >= 0 && tagOffset + 122 < data.byteLength;
-    tagOffset = data.indexOf(0xc6, tagOffset + 1)
+    tagOffset = data.indexOf(tagLow, tagOffset + 1)
   ) {
-    if (data[tagOffset + 1] !== 0x08) continue;
+    if (data[tagOffset + 1] !== tagHigh) continue;
     const recordOffset = tagOffset - 16;
     const elementId = view.getUint32(recordOffset, true);
     if (

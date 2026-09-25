@@ -11,6 +11,7 @@
  * primary does not resolve. This rejects the overlapping byte windows that
  * otherwise make `+153` look like a live id in unrelated records.
  */
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_INSERTABLE_INSTANCE_MARKER = 0x07ef;
 
@@ -46,7 +47,7 @@ export function scanHostRelationCandidates(
   revitVersion: number,
 ): HostRelationCandidate[] {
   const candidates: HostRelationCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) return candidates;
+  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) return candidates;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (view.getUint32(offset + 4, true) !== 0) continue;
@@ -58,7 +59,7 @@ export function scanHostRelationCandidates(
     if (
       echo + 4 > data.byteLength ||
       view.getUint32(echo, true) !== objectLength ||
-      view.getUint16(offset + 16, true) !== REVIT_2027_INSERTABLE_INSTANCE_MARKER
+      canonicalClassTag(view.getUint16(offset + 16, true)) !== REVIT_2027_INSERTABLE_INSTANCE_MARKER
     ) {
       continue;
     }

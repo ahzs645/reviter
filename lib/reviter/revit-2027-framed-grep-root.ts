@@ -3,6 +3,7 @@ import {
   decodeRevit2026GRepRoot,
   type Revit2026GRepRoot,
 } from "./revit-2026-grep-root.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /**
  * The exact Revit 2027 UNBC `GElement` frame marker. `Formats/Latest` defines
@@ -36,7 +37,7 @@ export function decodeRevit2027FramedGRepRoot(
   frame: ElementObject,
   revitVersion: number,
 ): Revit2027FramedGRepRootResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 framed GRep decoding requires release 2027",

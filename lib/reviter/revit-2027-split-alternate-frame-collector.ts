@@ -3,6 +3,7 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const HEADER_SCAN_BYTES = 22;
 const FRAME_SUFFIX_BYTES = 20;
@@ -66,7 +67,7 @@ export function createRevit2027SplitAlternateFrameCollector(
 
   return {
     pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (release !== 2027 || page.byteLength === 0) return [];
+      if (!usesRevit2027RecordLayout(release) || page.byteLength === 0) return [];
       const pageStart = bufferStreamOffset + buffer.byteLength;
       const combined = new Uint8Array(buffer.byteLength + page.byteLength);
       combined.set(buffer);
@@ -86,7 +87,7 @@ export function createRevit2027SplitAlternateFrameCollector(
         streamOffset += 1
       ) {
         const offset = streamOffset - combinedStart;
-        const marker = view.getUint16(offset + 16, true);
+        const marker = canonicalClassTag(view.getUint16(offset + 16, true));
         if (
           (marker !== REVIT_2027_TOP_RAIL_TYPE_MARKER &&
             marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) ||

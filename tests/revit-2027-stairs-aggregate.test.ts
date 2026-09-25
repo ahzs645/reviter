@@ -138,7 +138,7 @@ test("decodes the reciprocal StairsRunAndLanding suffix and stringers", () => {
 test("stairs aggregate readers are release, frame, and ambiguity gated", () => {
   const stairs = frame(REVIT_2027_STAIRS_ELEMENT_MARKER, 100);
   assert.equal(
-    decodeRevit2027StairsElementAggregate(stairs, 0, 400, 2026).ok,
+    decodeRevit2027StairsElementAggregate(stairs, 0, 400, 2023).ok,
     false,
   );
   stairs[16] = 0;

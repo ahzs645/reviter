@@ -104,9 +104,20 @@
  *   median 10.1 ft worst-vertex error with none inside a foot. Those surfaces
  *   are not wall bodies.
  */
+import { fileClassTag } from "./revit-class-tags.ts";
 
-/** `ff ff ff ff 10 03` — the owner record that introduces an element's blob. */
-const OWNER_RECORD = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03] as const;
+/**
+ * `ff ff ff ff 10 03` — the owner record that introduces an element's blob:
+ * `Element.m_cellList`, a pointer with handle `-1` at class `CellList`, which is
+ * `0x0310` in the 2027 numbering. The class bytes are the file's own.
+ */
+const CELL_LIST_CLASS = 0x0310;
+
+function ownerRecordBytes(): readonly number[] | null {
+  const cellList = fileClassTag(CELL_LIST_CLASS);
+  if (cellList < 0 || cellList > 0xffff) return null;
+  return [0xff, 0xff, 0xff, 0xff, cellList & 0xff, cellList >> 8];
+}
 
 /** Record sizes, in bytes. */
 const PLANE_BYTES = 105;
@@ -296,10 +307,15 @@ export function collectOwnedSurfaces(data: Uint8Array): OwnedSurface[] {
   const owned: OwnedSurface[] = [];
   if (data.byteLength < PLANE_BYTES) return owned;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const ownerRecord = ownerRecordBytes();
   let owner = 0;
 
   for (let offset = 0; offset + PLANE_BYTES <= data.byteLength; ) {
-    if (data[offset] === 0xff && matchesOwnerRecord(data, view, offset)) {
+    if (
+      ownerRecord &&
+      data[offset] === 0xff &&
+      matchesOwnerRecord(data, view, offset, ownerRecord)
+    ) {
       owner = view.getUint32(offset + 10, true);
       offset += 18;
       continue;
@@ -325,10 +341,15 @@ export function collectOwnedSurfaces(data: Uint8Array): OwnedSurface[] {
   return owned;
 }
 
-function matchesOwnerRecord(data: Uint8Array, view: DataView, offset: number): boolean {
+function matchesOwnerRecord(
+  data: Uint8Array,
+  view: DataView,
+  offset: number,
+  ownerRecord: readonly number[],
+): boolean {
   if (offset + 18 > data.byteLength) return false;
-  for (let index = 0; index < OWNER_RECORD.length; index += 1) {
-    if (data[offset + index] !== OWNER_RECORD[index]) return false;
+  for (let index = 0; index < ownerRecord.length; index += 1) {
+    if (data[offset + index] !== ownerRecord[index]) return false;
   }
   // A single-element owner record; the id follows as a 64-bit value.
   if (view.getUint32(offset + 6, true) !== 1) return false;

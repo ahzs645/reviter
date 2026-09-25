@@ -2,6 +2,7 @@ import type { ElementObject } from "./element-objects.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /**
  * Persisted Revit 2027 `GStyleElem` and its queued `GStyle` body.
@@ -80,7 +81,7 @@ export function decodeRevit2027GStyleElementRecord(
   object: ElementObject,
   revitVersion: number,
 ): Revit2027GStyleElementDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GStyleElem decoding requires release 2027",
@@ -110,7 +111,7 @@ export function decodeRevit2027GStyleElementRecord(
     view.getUint32(object.offset, true) !== object.elementId ||
     view.getUint32(object.offset + 4, true) !== 0 ||
     view.getUint32(object.offset + 12, true) !== object.objectLength ||
-    view.getUint16(object.offset + 16, true) !== object.marker ||
+    canonicalClassTag(view.getUint16(object.offset + 16, true)) !== object.marker ||
     view.getUint32(object.offset + 18, true) !== object.typeCode ||
     view.getBigUint64(
       object.offset + REPEATED_ELEMENT_ID_OFFSET,
@@ -193,7 +194,7 @@ export function scanRevit2027GStyleElementRecords(
   const failures = new Map<string, number>();
   let framedStyleElements = 0;
 
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       revitVersion,
       framedStyleElements,

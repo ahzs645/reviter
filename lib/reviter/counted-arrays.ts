@@ -12,6 +12,7 @@
  * stream and did so wrongly; `schema-reader.ts` replaced that half. These
  * survived it because they never depended on it.
  */
+import { canonicalClassTag } from "./revit-class-tags.ts";
 
 /** Whether `byteLength` bytes starting at `offset` are inside `data`. */
 function rangeFits(data: Uint8Array, offset: number, byteLength: number): boolean {
@@ -48,7 +49,9 @@ export function readCountedArrayHeader(
 /** Read the verified signed int16 selector used by polymorphic object fields. */
 export function readClassSelector(data: Uint8Array, offset: number): number | null {
   if (!rangeFits(data, offset, 2)) return null;
-  return new DataView(data.buffer, data.byteOffset, data.byteLength).getInt16(offset, true);
+  return canonicalClassTag(
+    new DataView(data.buffer, data.byteOffset, data.byteLength).getInt16(offset, true),
+  );
 }
 
 export type CountedTupleArray = {

@@ -30,6 +30,7 @@ import {
   REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
   type Revit2027GHermiteSpline,
 } from "./revit-2027-ghermite-spline.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** `BaseRailingSym`, measured from the release-2027 framed class table. */
 export const REVIT_2027_BASE_RAILING_SYMBOL_MARKER = 605;
@@ -162,7 +163,7 @@ function validateFrame(
   maxFrameBytes: number,
 ): { ok: true; view: DataView; frameEndOffset: number; echoOffset: number } |
   { ok: false; error: string } {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "railing symbol decoding requires Revit 2027" };
   }
   if (
@@ -186,7 +187,7 @@ function validateFrame(
   }
   if (
     frame.marker !== marker ||
-    view.getUint16(frame.offset + 16, true) !== marker
+    canonicalClassTag(view.getUint16(frame.offset + 16, true)) !== marker
   ) {
     return { ok: false, error: "railing symbol frame marker does not match" };
   }
