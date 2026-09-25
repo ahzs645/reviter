@@ -3,19 +3,11 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { createSplitFrameStream } from "./split-frame-stream.ts";
 
-const HEADER_SCAN_BYTES = 22;
-const FRAME_SUFFIX_BYTES = 20;
 const MIN_FRAME_BYTES = 40;
 const DEFAULT_MAX_FRAME_BYTES = 320 * 1024 * 1024;
-
-type PendingFrame = {
-  elementId: number;
-  marker: number;
-  objectLength: number;
-  requiresAlternateScan: boolean;
-};
 
 export type Revit2027SplitAlternateFrameCollector = {
   /**
@@ -53,104 +45,21 @@ export function createRevit2027SplitAlternateFrameCollector(
     Number.isSafeInteger(maxFrameBytes) && maxFrameBytes >= MIN_FRAME_BYTES
       ? maxFrameBytes
       : DEFAULT_MAX_FRAME_BYTES;
-  let buffer = new Uint8Array();
-  let bufferStreamOffset = 0;
-  let nextScanOffset = 0;
-  const pending = new Map<number, PendingFrame>();
-
-  const finishPartition = (): void => {
-    buffer = new Uint8Array();
-    bufferStreamOffset = 0;
-    nextScanOffset = 0;
-    pending.clear();
-  };
-
+  const stream = createSplitFrameStream({
+    markers: [REVIT_2027_TOP_RAIL_TYPE_MARKER, REVIT_2027_BASE_RAILING_SYMBOL_MARKER],
+    minObjectLength: MIN_FRAME_BYTES,
+    maxFrameBytes: boundedMaxFrameBytes,
+  });
   return {
     pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (!usesRevit2027RecordLayout(release) || page.byteLength === 0) return [];
-      const pageStart = bufferStreamOffset + buffer.byteLength;
-      const combined = new Uint8Array(buffer.byteLength + page.byteLength);
-      combined.set(buffer);
-      combined.set(page, buffer.byteLength);
-      const combinedStart = bufferStreamOffset;
-      const combinedEnd = combinedStart + combined.byteLength;
-      const view = new DataView(
-        combined.buffer,
-        combined.byteOffset,
-        combined.byteLength,
-      );
-      const scanStart = Math.max(nextScanOffset, combinedStart);
-      const scanEnd = combinedEnd - HEADER_SCAN_BYTES;
-      for (
-        let streamOffset = scanStart;
-        streamOffset <= scanEnd;
-        streamOffset += 1
-      ) {
-        const offset = streamOffset - combinedStart;
-        const marker = canonicalClassTag(view.getUint16(offset + 16, true));
-        if (
-          (marker !== REVIT_2027_TOP_RAIL_TYPE_MARKER &&
-            marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) ||
-          view.getUint32(offset + 4, true) !== 0
-        ) {
-          continue;
-        }
-        const elementId = view.getUint32(offset, true);
-        const objectLength = view.getUint32(offset + 12, true);
-        if (
-          elementId === 0 ||
-          objectLength < MIN_FRAME_BYTES ||
-          objectLength + FRAME_SUFFIX_BYTES > boundedMaxFrameBytes
-        ) {
-          continue;
-        }
-        const frameEnd = streamOffset + objectLength + FRAME_SUFFIX_BYTES;
-        pending.set(streamOffset, {
-          elementId,
-          marker,
-          objectLength,
-          requiresAlternateScan:
-            streamOffset < pageStart ||
-            frameEnd > combinedEnd ||
-            objectLength > MAX_SCANNED_OBJECT_BYTES,
-        });
-      }
-      nextScanOffset = Math.max(nextScanOffset, scanEnd + 1);
-
-      const complete: Uint8Array[] = [];
-      for (const [streamOffset, target] of pending) {
-        const frameEnd =
-          streamOffset + target.objectLength + FRAME_SUFFIX_BYTES;
-        if (frameEnd > combinedEnd) continue;
-        const offset = streamOffset - combinedStart;
-        if (
-          offset < 0 ||
-          view.getUint32(offset + target.objectLength + 16, true) !==
-            target.objectLength
-        ) {
-          pending.delete(streamOffset);
-          continue;
-        }
-        if (target.requiresAlternateScan) {
-          complete.push(
-            combined.slice(
-              offset,
-              offset + target.objectLength + FRAME_SUFFIX_BYTES,
-            ),
-          );
-        }
-        pending.delete(streamOffset);
-      }
-
-      let retainFrom = nextScanOffset;
-      for (const streamOffset of pending.keys()) {
-        retainFrom = Math.min(retainFrom, streamOffset);
-      }
-      retainFrom = Math.max(combinedStart, retainFrom);
-      buffer = combined.slice(retainFrom - combinedStart);
-      bufferStreamOffset = retainFrom;
-      return complete;
+      if (!usesRevit2027RecordLayout(release)) return [];
+      // A frame that fits one page within the ordinary scanner's ceiling is
+      // already seen there, and must not be decoded twice.
+      return stream
+        .push(page)
+        .filter((frame) => frame.crossedPage || frame.objectLength > MAX_SCANNED_OBJECT_BYTES)
+        .map((frame) => frame.data);
     },
-    finishPartition,
+    finishPartition: () => stream.reset(),
   };
 }
