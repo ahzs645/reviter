@@ -116,3 +116,11 @@ export function savedFileName(path: string | undefined): string | null {
   if (!path) return null;
   return path.split(/[\\/]/).filter(Boolean).pop() ?? null;
 }
+
+/**
+ * The Revit names of the levels a plan covers, joined; empty when none of them
+ * decoded a name. "Floor 1", or "Floor 1 / Floor 1.25" for a split level.
+ */
+export function levelNames(levels: readonly { name?: string }[]): string {
+  return [...new Set(levels.flatMap((level) => (level.name ? [level.name] : [])))].join(" / ");
+}

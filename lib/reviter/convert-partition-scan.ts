@@ -40,6 +40,7 @@ import {
 } from "./compound-structure-materials.ts";
 import { chainElementObjects, markerObjectSeeds } from "./element-objects.ts";
 import { scanElementHeaders } from "./element-headers.ts";
+import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "./level-definitions.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
@@ -95,6 +96,7 @@ import type { HostRelationCandidate } from "./host-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { AssociatedLevelRelationCandidate } from "./level-relations.ts";
 import type { ElementHeader } from "./element-headers.ts";
+import type { LevelDefinition } from "./level-definitions.ts";
 import type { CategoryToken } from "./native-categories.ts";
 import type { PageConsumer } from "./page-frame-index.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
@@ -159,6 +161,8 @@ export type PartitionScan = {
    * owning view, stated by the element's own record (see `element-headers.ts`).
    */
   elementHeaders: Map<number, ElementHeader>;
+  /** Each `Level` element's own name and elevation, keyed by level id. */
+  levelDefinitions: Map<number, LevelDefinition>;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -248,6 +252,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
   const elementHeaders = new Map<number, ElementHeader>();
+  const levelDefinitions = new Map<number, LevelDefinition>();
   const elementBounds: ElementBoundsRecord[] = [];
   const elementObjects: ElementObject[] = [];
   const instancePlacements = new Map<number, InstancePlacement>();
@@ -340,6 +345,14 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const pageFrames = decoderPlan.elementBoundsDecoder
         ? indexPageFrames(inflated)
         : null;
+      if (pageFrames?.hasMarker(REVIT_2027_LEVEL_CLASS)) {
+        for (const frame of pageFrames.frames) {
+          const definition = readLevelDefinition(inflated, frame);
+          if (definition && !levelDefinitions.has(definition.levelId)) {
+            levelDefinitions.set(definition.levelId, definition);
+          }
+        }
+      }
       // Permissive when there is no index: the decoders keep their own release
       // gates and return nothing, exactly as they did before.
       const mayHoldMarker = (marker: number): boolean =>
@@ -632,6 +645,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     candidates,
     categoryTokens,
     elementHeaders,
+    levelDefinitions,
     elementBounds,
     elementObjects,
     instancePlacements,

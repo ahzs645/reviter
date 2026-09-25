@@ -187,8 +187,8 @@ export function ReportDock({
                 <p className="report-heading">Dominant elevations</p>
                 <div className="toolkit-chips">
                   {levels.map((level) => (
-                    <span key={level.elevation}>
-                      {level.elevation.toFixed(1)}′ · {formatNumber(level.candidates)}
+                    <span key={level.levelId ?? level.elevation}>
+                      {level.name ? `${level.name} · ` : ""}{level.elevation.toFixed(1)}′ · {formatNumber(level.candidates)}
                     </span>
                   ))}
                 </div>

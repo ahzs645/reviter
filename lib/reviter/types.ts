@@ -435,6 +435,13 @@ export type LevelBand = {
    * states from one inferred out of a pile of elevations.
    */
   source?: "assoc-level-id" | "elevation-band";
+  /** The level's own name, from its `Level` element. */
+  name?: string;
+  /**
+   * Where `elevation` came from: the `Level` element itself, or the median
+   * base of the level's members when its record did not decode.
+   */
+  elevationSource?: "level-element" | "member-median";
 };
 
 export type ConvertStats = {

@@ -2550,6 +2550,7 @@ const MIN_LEVEL_MEMBERS = 20;
 export function levelsFromRelations(
   records: ElementBoundsRecord[],
   relations: readonly { elementId: number; levelId: number }[],
+  definitions?: ReadonlyMap<number, { name: string; elevationFeet: number }>,
 ): LevelBand[] {
   const baseByElement = new Map<number, number>();
   for (const record of records) {
@@ -2571,11 +2572,16 @@ export function levelsFromRelations(
   for (const [levelId, members] of membersByLevel) {
     if (members.length < MIN_LEVEL_MEMBERS) continue;
     members.sort((a, b) => a - b);
+    // The level's own elevation where its record decoded; the median of its
+    // members' bases only as the fallback.
+    const definition = definitions?.get(levelId);
     levels.push({
-      elevation: members[Math.floor(members.length / 2)]!,
+      elevation: definition?.elevationFeet ?? members[Math.floor(members.length / 2)]!,
       candidates: members.length,
       levelId,
       source: "assoc-level-id",
+      ...(definition ? { name: definition.name } : {}),
+      elevationSource: definition ? "level-element" : "member-median",
     });
   }
   return levels.sort((a, b) => a.elevation - b.elevation);

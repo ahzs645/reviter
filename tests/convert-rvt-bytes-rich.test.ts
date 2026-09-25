@@ -286,14 +286,16 @@ test("the file's own storeys outrank the elevation histogram", () => {
   const result = converted(richModel());
 
   // Twenty-five elements name the same level object; only the level with at
-  // least twenty members is reported, and its elevation is its members' median
-  // base rather than a rounded z band.
+  // least twenty members is reported. The fixture writes no `Level` record of
+  // its own, so the elevation is its members' median base rather than a
+  // rounded z band, and says so.
   assert.equal(result.nativeAssociatedLevelRelations?.length, 25);
   assert.deepEqual(result.levels, [{
     elevation: 0,
     candidates: 24,
     levelId: 47_000,
     source: "assoc-level-id",
+    elevationSource: "member-median",
   }]);
 });
 

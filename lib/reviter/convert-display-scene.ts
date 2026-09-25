@@ -61,6 +61,7 @@ import type {
 } from "./types.ts";
 import { NO_ENVELOPE_PROXY_CATEGORY_IDS, nonModelElementIds } from "./model-elements.ts";
 import type { NonModelReason } from "./model-elements.ts";
+import type { LevelDefinition } from "./level-definitions.ts";
 import type { ElementHeader } from "./element-headers.ts";
 
 export type DrawableRecordsInput = {
@@ -174,6 +175,8 @@ export type DisplaySceneInput = {
   nonSceneNativeMeshIds: Set<number>;
   /** The subset that are not model elements, reported on their own. */
   nonModelElements?: ReadonlyMap<number, NonModelReason>;
+  /** Each `Level` element's own name and elevation. */
+  levelDefinitions?: ReadonlyMap<number, LevelDefinition>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -212,6 +215,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     markerByElement,
     nonSceneNativeMeshIds,
     nonModelElements,
+    levelDefinitions,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -594,7 +598,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     // rather than only the drawn ones, because an element held back from
     // the scene still says which level it sits on.
     levels: nativeAssociatedLevelRelations.length
-      ? levelsFromRelations(elementBounds, nativeAssociatedLevelRelations)
+      ? levelsFromRelations(elementBounds, nativeAssociatedLevelRelations, levelDefinitions)
       : levelsForBounds(displayBounds),
     meshes,
     segments,
