@@ -126,6 +126,7 @@ export function convertRvtBytes(
     const {
       candidates,
       categoryTokens,
+      elementHeaders,
       elementBounds,
       elementObjects,
       instancePlacements,
@@ -227,6 +228,7 @@ export function convertRvtBytes(
     const { nativeCategories, counts } = resolveElementGeometry({
       elementBounds,
       categoryTokens,
+      elementHeaders,
       elementIndex,
       elementOwnership,
       elementParameters,
@@ -255,7 +257,10 @@ export function convertRvtBytes(
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
-    const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
+    const categorisedElements =
+      (nativeCategories.headerElements ?? 0) +
+      nativeCategories.directElements +
+      nativeCategories.inheritedElements;
     const relations = resolveNativeRelations({
       elementBounds,
       instancePlacements,
@@ -294,6 +299,7 @@ export function convertRvtBytes(
       markersByElement,
       instancePlacements,
       nativeAssociatedLevelRelations,
+      elementHeaders,
     });
     const { boundedSolids, nonSceneNativeMeshIds } = drawable;
     unplacedRecords += drawable.unplacedRecords;

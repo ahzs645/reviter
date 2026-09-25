@@ -75,6 +75,7 @@ import { recoverWallJoinCorners } from "./wall-joins.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { wallArcs, wallSolids, surfaceQuadsFor } from "./native-geometry.ts";
+import type { ElementHeader } from "./element-headers.ts";
 import type { CategoryToken } from "./native-categories.ts";
 import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
 import type { Point3, SketchCurve } from "./sketch-curves.ts";
@@ -94,6 +95,8 @@ export type ElementGeometryInput = {
   /** Every recovered record, real or synthesised. Mutated in place. */
   elementBounds: ElementBoundsRecord[];
   categoryTokens: CategoryToken[];
+  /** Each element's own `ElementHeader`, where the release carries one. */
+  elementHeaders: Map<number, ElementHeader>;
   elementIndex: RvtElementIndex | undefined;
   elementOwnership: ElementOwnershipDecode | undefined;
   elementParameters: Map<number, Map<number, ElementParameter>>;
@@ -593,7 +596,7 @@ function railPathFor(
 export function resolveElementGeometry(
   input: ElementGeometryInput,
 ): ElementGeometryResolution {
-  const { elementBounds, categoryTokens, elementIndex, elementOwnership } = input;
+  const { elementBounds, categoryTokens, elementHeaders, elementIndex, elementOwnership } = input;
   // The persisted ownership table lists every element in the document, not
   // only the drawable ones, which is what lets the category resolver tell a
   // token that fell through from an undrawn element apart from one that
@@ -605,6 +608,7 @@ export function resolveElementGeometry(
     elementOwnership
       ? new Set(elementOwnership.records.map((record) => record.elementId))
       : undefined,
+    elementHeaders,
   );
 
 

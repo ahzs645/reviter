@@ -39,6 +39,7 @@ import {
   scanCompoundStructureCandidates,
 } from "./compound-structure-materials.ts";
 import { chainElementObjects, markerObjectSeeds } from "./element-objects.ts";
+import { scanElementHeaders } from "./element-headers.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
@@ -93,6 +94,7 @@ import type { FamilySymbolMaterialReferenceSet } from "./family-symbol-materials
 import type { HostRelationCandidate } from "./host-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { AssociatedLevelRelationCandidate } from "./level-relations.ts";
+import type { ElementHeader } from "./element-headers.ts";
 import type { CategoryToken } from "./native-categories.ts";
 import type { PageConsumer } from "./page-frame-index.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
@@ -152,6 +154,11 @@ export type PartitionScan = {
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
+  /**
+   * Each element's `ElementHeader`, keyed by element id: its category and
+   * owning view, stated by the element's own record (see `element-headers.ts`).
+   */
+  elementHeaders: Map<number, ElementHeader>;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -240,6 +247,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   ];
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
+  const elementHeaders = new Map<number, ElementHeader>();
   const elementBounds: ElementBoundsRecord[] = [];
   const elementObjects: ElementObject[] = [];
   const instancePlacements = new Map<number, InstancePlacement>();
@@ -478,6 +486,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       if (categoryTokens.length < MAX_CATEGORY_TOKENS) {
         for (const token of collectCategoryTokens(inflated)) categoryTokens.push(token);
       }
+      if (usesRevit2027RecordLayout(decoderPlan.revitVersion)) {
+        for (const header of scanElementHeaders(inflated)) {
+          if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
+        }
+      }
       const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
         ? detectDuplicatedBoundsRecords(inflated)
         : [];
@@ -618,6 +631,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   return {
     candidates,
     categoryTokens,
+    elementHeaders,
     elementBounds,
     elementObjects,
     instancePlacements,

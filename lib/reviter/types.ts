@@ -370,12 +370,14 @@ export type ElementBoundsRecord = {
 };
 
 /**
+ * `element-header` means the element's own `ElementHeader` stated it.
  * `native-token` means the element's own category token was decoded.
  * `native-object` means a schema-specific native object proved the class.
  * `record-code-consensus` means the category was inherited from sibling records
  * that share the element's record code.
  */
 export type NativeCategorySource =
+  | "element-header"
   | "native-token"
   | "native-object"
   | "record-code-consensus";
@@ -397,6 +399,11 @@ export type NativeCategoryCodeConsensus = {
 
 export type NativeCategorySummary = {
   tokensFound: number;
+  /** Element headers read, whatever they state (see `element-headers.ts`). */
+  elementHeadersFound?: number;
+  /** Records whose category their own `ElementHeader` stated. */
+  headerElements?: number;
+  /** Records labelled by their own category token. */
   directElements: number;
   inheritedElements: number;
   /**

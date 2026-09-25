@@ -126,6 +126,7 @@ export function buildDecoderCoverage(
       // The bounds decoder is what makes this the bounds branch, so it is
       // reported unconditionally there and is absent from the other.
       ...(scene ? ["revit-2027-duplicated-bounds-v1"] : []),
+      ...(basis.nativeCategories.headerElements ? ["revit-element-header-category-v1"] : []),
       ...(basis.nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
       ...(basis.elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
       ...(basis.nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
@@ -324,7 +325,15 @@ export function buildWarnings(
       ? [
           `${scene.drawableRecords.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           basis.categorisedElements
-            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`
+            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${[
+                nativeCategories.headerElements
+                  ? `${nativeCategories.headerElements.toLocaleString()} stated by their own ElementHeader`
+                  : null,
+                nativeCategories.directElements || !nativeCategories.headerElements
+                  ? `${nativeCategories.directElements.toLocaleString()} from their own category token`
+                  : null,
+                `${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus`,
+              ].filter(Boolean).join(", ")}).`
             : "No native Revit category tokens were decoded, so element display falls back to record-code clusters.",
         ]
       : [

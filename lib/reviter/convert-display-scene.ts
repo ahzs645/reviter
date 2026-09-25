@@ -59,6 +59,8 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
+import { nonModelElementIds } from "./model-elements.ts";
+import type { ElementHeader } from "./element-headers.ts";
 
 export type DrawableRecordsInput = {
   /** Every recovered record. Unplaced ones are removed, in place. */
@@ -66,6 +68,8 @@ export type DrawableRecordsInput = {
   markersByElement: Map<number, Set<number>>;
   instancePlacements: Map<number, InstancePlacement>;
   nativeAssociatedLevelRelations: NativeAssociatedLevelRelation[];
+  /** Each element's own header, where the release carries one. */
+  elementHeaders?: ReadonlyMap<number, ElementHeader>;
 };
 
 export type DrawableRecords = {
@@ -95,6 +99,7 @@ export function selectDrawableRecords(
     markersByElement,
     instancePlacements,
     nativeAssociatedLevelRelations,
+    elementHeaders,
   } = input;
   let unplacedRecords = 0;
   const residualDatumPileIds = residualDatumPileElementIds(
@@ -119,6 +124,11 @@ export function selectDrawableRecords(
   );
   const nonSceneNativeMeshIds = nonSceneNativeMeshHelperIds(elementBounds);
   for (const elementId of nonSceneObjectDefinitionIds) {
+    nonSceneNativeMeshIds.add(elementId);
+  }
+  // Annotation, datums, sketches, containers and the like are records of the
+  // file but not parts of the building; see `model-elements.ts`.
+  for (const elementId of nonModelElementIds(elementBounds, elementHeaders)) {
     nonSceneNativeMeshIds.add(elementId);
   }
   for (const record of elementBounds) {
