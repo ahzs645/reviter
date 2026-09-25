@@ -403,3 +403,13 @@ test("the enriched categories are the ones the tokens name", () => {
   );
   assert.equal(result.nativeCategories!.inheritedElements, 0);
 });
+
+test("a release without a bounds decoder never claims one", () => {
+  // The same populations saved as Revit 2023: the release-independent passes
+  // still synthesise records from the plane triples and placements, but no
+  // 2023 record decoder ran, so the result must not be the bounds scene.
+  const result = convertRvtBytes(buildModel({ ...richSpec(), release: "2023" }), "old.rvt");
+  if (!result.ok) return;
+  assert.notEqual(result.method, "partition-bounds-recovery");
+  assert.ok(!result.decoderCoverage.activeDecoders.includes("revit-2027-duplicated-bounds-v1"));
+});

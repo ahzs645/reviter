@@ -373,7 +373,13 @@ export function convertRvtBytes(
       ...relations,
     };
 
-    if (boundedSolids.length) {
+    // The bounds branch is the release's own record decoder. Records the
+    // release-independent passes synthesised (a wall solid rebuilt from plane
+    // triples, a sketch ring) are not that decoder, and on a release it does
+    // not cover they once took this branch on their own: four synthesised
+    // boxes turned the 2024 Snowdon sample into a four-element "validated
+    // bounds" scene and dropped its coordinate scan.
+    if (boundedSolids.length && decoderPlan.elementBoundsDecoder) {
       onProgress?.({
         ratio: 0.96,
         message: `Building the display scene · ${boundedSolids.length.toLocaleString()} drawable records`,
