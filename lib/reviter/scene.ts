@@ -1255,6 +1255,12 @@ function solidOpening(
   ) {
     return null;
   }
+  // A curtain wall set into a wall runs along it, so its envelope is at least
+  // as long along the wall as across it, at any plan angle. One that runs
+  // across the wall is a wall this one abuts, and the overlap is their join:
+  // in the 2025 technical school, 26 interior walls meet the curtain facade
+  // end-on, and cutting the overlap took 1.39 ft off each of them.
+  if (normalRadius > alongRadius + epsilon) return null;
 
   const start = Math.max(0, alongCentre - alongRadius);
   const end = Math.min(length, alongCentre + alongRadius);
