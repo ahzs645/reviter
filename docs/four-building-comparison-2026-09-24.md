@@ -1,5 +1,10 @@
 # The UNBC model against three other buildings, 2026-09-24
 
+> **Update 2026-09-25.** The 2024 and 2025 files are now read by the same
+> decoders as UNBC, and the four defects listed below are fixed, the fourth by
+> reading each element's own `ElementHeader` instead of its tokens. See
+> [Reading Revit 2024 and 2025 files](older-release-decoding-2026-09-25.md).
+
 [Validating on a second building](validating-on-a-second-building.md) ends on
 the observation that every threshold here is "a hypothesis with one supporting
 observation". Three more Revit projects arrived with Autodesk Viewer captures
