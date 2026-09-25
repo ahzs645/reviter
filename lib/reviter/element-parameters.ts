@@ -61,6 +61,7 @@
  */
 
 import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
+import { parameterStorage, type ParameterStorage } from "./parameter-specs.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
 /**
@@ -164,6 +165,15 @@ export type ElementParameterTable = {
   parameters: ElementParameter[];
 };
 
+/**
+ * Whether a parameter may appear in the given value set. One Autodesk does not
+ * list is not refused: the published tables do not name every id a file holds.
+ */
+function declaredIn(parameterId: number, storage: ParameterStorage): boolean {
+  const declared = parameterStorage(parameterId);
+  return declared === undefined || declared === storage;
+}
+
 function readTableAt(
   view: DataView,
   offset: number,
@@ -183,6 +193,10 @@ function readTableAt(
     if (view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
     const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
+    // A parameter Autodesk declares in another value set means this is not
+    // the double table: an element-id table has the same 16-byte stride, and
+    // read as doubles its level ids came out as denormals printed "0".
+    if (!declaredIn(parameterId, "double")) return null;
     const value = view.getFloat64(entry + 8, true);
     if (!Number.isFinite(value) || Math.abs(value) > MAX_PARAMETER_VALUE) return null;
     const enumName = builtInParameterEnumName(parameterId);
@@ -222,6 +236,7 @@ function readIntegerTableAt(
     if (view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
     const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
+    if (!declaredIn(parameterId, "integer")) return null;
     const enumName = builtInParameterEnumName(parameterId);
     parameters.push({
       parameterId,
@@ -258,6 +273,7 @@ function readStringTableAt(
     if (view.getUint32(cursor + 4, true) !== 0xffff_ffff) return null;
     const parameterId = view.getUint32(cursor, true) - 0x1_0000_0000;
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
+    if (!declaredIn(parameterId, "text")) return null;
     const characters = view.getUint32(cursor + 8, true);
     if (characters > MAX_PARAMETER_TEXT) return null;
     const textEnd = cursor + 12 + characters * 2;

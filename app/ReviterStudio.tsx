@@ -12,6 +12,8 @@ import {
   DEFAULT_CAMERA_PRESET,
   downloadBlob,
   deriveRoomsForLevels,
+  formatParameterValue,
+  isInternalParameter,
   floorPlateLevels,
   incompleteExpectedStairTopologyIds,
   makeDxf,
@@ -949,13 +951,16 @@ export default function ReviterStudio() {
           ).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
         }]
         : []),
-      ...(selectedRecord.parameters?.map((parameter) => ({
-        key: `parameter-${parameter.parameterId}`,
-        label: parameter.name,
-        value: typeof parameter.value === "string"
-          ? parameter.value
-          : `${parameter.value.toFixed(4)} ft`,
-      })) ?? []),
+      // Each value in the unit its parameter declares; parameters Revit never
+      // shows, and values that cannot be what their parameter declares, are
+      // left out rather than printed as feet.
+      ...(selectedRecord.parameters?.flatMap((parameter) => {
+        if (isInternalParameter(parameter.parameterId)) return [];
+        const value = formatParameterValue(parameter);
+        return value == null
+          ? []
+          : [{ key: `parameter-${parameter.parameterId}`, label: parameter.name, value }];
+      }) ?? []),
       {
         key: "bounding-size",
         label: "Bounding size",
