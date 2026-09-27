@@ -55,7 +55,7 @@ const MAX_FIELD_OFFSET = OBJECT_BODY_OFFSET + (LEADING_POINTERS + 1) * 6 + 4 + D
  * Offset of `m_assocLevelId` within one framed object, or `null` when the walk
  * runs past the object.
  */
-function associatedLevelFieldOffset(
+export function associatedLevelFieldOffset(
   view: DataView,
   start: number,
   limit: number,

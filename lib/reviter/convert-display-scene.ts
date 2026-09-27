@@ -190,6 +190,8 @@ export type DisplaySceneInput = {
   levelDefinitions?: ReadonlyMap<number, LevelDefinition>;
   /** Graphics styles whose geometry Revit hides in model views. */
   lightSourceStyleIds?: ReadonlySet<number>;
+  /** Each placed type's family-document solid forms (`family-forms.ts`). */
+  familyDocumentForms?: ReadonlyMap<number, readonly number[]>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -230,6 +232,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     nonModelElements,
     levelDefinitions,
     lightSourceStyleIds,
+    familyDocumentForms,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -310,6 +313,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
           .map((record) => record.elementId),
       ),
       lightSourceStyleIds,
+      familyDocumentForms,
     );
   const nativeMeshScene = buildRevit2027NativeMeshScene(
     nativeMeshCollection,

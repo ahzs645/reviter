@@ -132,6 +132,13 @@ export type Revit2027NativeMeshCollection = {
    */
   readonly carrierComposedOwnerIds?: ReadonlySet<number>;
   /**
+   * Placed types drawn from their family document's forms because the project
+   * stores no geometry for the type itself (`family-forms.ts`). The document
+   * holds the family in one type's dimensions, so the scene admits each only
+   * where it fills the placed element's own envelope.
+   */
+  readonly familyDocumentOwnerIds?: ReadonlySet<number>;
+  /**
    * `StairsRun` owners whose body came from `revit-2027-spiral-stair-mesh`.
    *
    * The other half of `reconstructedOwnerIds`, named separately because it is
@@ -325,6 +332,8 @@ export type Revit2027NativeMeshCollector = {
     unplacedElementIds?: ReadonlySet<number>,
     /** Graphics styles whose geometry is left out of every published mesh. */
     hiddenStyleIds?: ReadonlySet<number>,
+    /** Each placed type's family-document solid forms, for a type with no stored geometry. */
+    familyDocumentForms?: ReadonlyMap<number, readonly number[]>,
   ): Revit2027NativeMeshCollection;
 };
 
@@ -1043,6 +1052,7 @@ function finalizeRevit2027NativeMeshCollection(
   owningElementByElement: ReadonlyMap<number, number> = new Map(),
   unplacedElementIds: ReadonlySet<number> = new Set(),
   hiddenStyleIds: ReadonlySet<number> = new Set(),
+  familyDocumentForms: ReadonlyMap<number, readonly number[]> = new Map(),
 ): Revit2027NativeMeshCollection {
   // A light fixture's family carries the shape of its light source, drawn in
   // the "Light Source" subcategory that Revit hides in model views and the
@@ -1089,6 +1099,42 @@ function finalizeRevit2027NativeMeshCollection(
       )
     : new Set<number>();
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
+  // A placed type that stores no geometry of its own is drawn from its family
+  // document's solid forms, each already in the family's coordinates, when
+  // every one of them is complete. In the 2025 RAC sample the "Cabinet 1"
+  // type stores none; its document's 13 solid forms, placed by the cabinet
+  // instance, land on the Autodesk Viewer's box to 0.001 ft.
+  const familyDocumentOwnerIds = new Set<number>();
+  for (const [symbolId, formIds] of familyDocumentForms) {
+    if (
+      state.definitions.has(symbolId) ||
+      state.conflictingOwnerIds.has(symbolId) ||
+      formIds.length === 0
+    ) {
+      continue;
+    }
+    const faces: Revit2027CompactOwnerMesh["faces"][number][] = [];
+    let triangles = 0;
+    let complete = true;
+    for (const formId of formIds) {
+      const form = state.definitions.get(formId);
+      const geometry = form ? visibleGeometry(form) : null;
+      if (
+        !form?.localComplete ||
+        form.nestedInstances.length > 0 ||
+        state.conflictingOwnerIds.has(formId) ||
+        !geometry
+      ) {
+        complete = false;
+        break;
+      }
+      faces.push(...geometry.faces);
+      triangles += geometry.triangles;
+    }
+    if (!complete || faces.length === 0) continue;
+    owners.set(symbolId, { ownerElementId: symbolId, faces, triangles });
+    familyDocumentOwnerIds.add(symbolId);
+  }
   const reconstructedOwnerIds = new Set<number>();
   const carrierComposedOwnerIds = new Set<number>();
   const spiralStairRunOwnerIds = new Set<number>();
@@ -1430,6 +1476,7 @@ function finalizeRevit2027NativeMeshCollection(
     owners,
     reconstructedOwnerIds,
     carrierComposedOwnerIds,
+    familyDocumentOwnerIds,
     spiralStairRunOwnerIds,
     scannedFrames: state.scannedFrames,
     eligibleRoots: state.eligibleRoots,
@@ -2023,6 +2070,7 @@ export function createRevit2027NativeMeshCollector(
       owningElementByElement: ReadonlyMap<number, number> = new Map(),
       unplacedElementIds: ReadonlySet<number> = new Set(),
       hiddenStyleIds: ReadonlySet<number> = new Set(),
+      familyDocumentForms: ReadonlyMap<number, readonly number[]> = new Map(),
     ): Revit2027NativeMeshCollection {
       admitAlternateDefinitions();
       return finalizeRevit2027NativeMeshCollection(
@@ -2032,6 +2080,7 @@ export function createRevit2027NativeMeshCollector(
         owningElementByElement,
         unplacedElementIds,
         hiddenStyleIds,
+        familyDocumentForms,
       );
     },
   };
@@ -2052,6 +2101,10 @@ export type Revit2027NativeMeshBuildOptions = {
 
 export type Revit2027NativeMeshScene = {
   meshes: MeshData[];
+  /** Placed elements drawn from their family document's forms. */
+  familyDocumentElements?: number;
+  /** Family-document meshes declined for not filling the element's envelope. */
+  familyDocumentMismatches?: number;
   /** Elements replaced only after all of their native triangles were admitted. */
   coveredElementIds: ReadonlySet<number>;
   /** Covered elements whose admitted owner used exact reconstruction. */
@@ -2183,6 +2236,16 @@ function containedWithin(
   );
 }
 
+/** How closely a family-document mesh must fill its element's envelope. */
+const FAMILY_DOCUMENT_TOLERANCE_FEET = 0.05;
+
+/** True when `actual` reaches every side of `expected`, within `tolerance`. */
+function fillsEnvelope(actual: Bounds3, expected: Bounds3, tolerance: number): boolean {
+  return (["x", "y", "z"] as const).every((axis) =>
+    Math.abs(actual.min[axis] - expected.min[axis]) <= tolerance &&
+    Math.abs(actual.max[axis] - expected.max[axis]) <= tolerance);
+}
+
 /**
  * Expand compact owner-local meshes only after the scene origin and all exact
  * instance placements are known. A proxy is replaceable only when every one
@@ -2257,6 +2320,8 @@ export function buildRevit2027NativeMeshScene(
   let unrepresentedElements = 0;
   let carrierComposedItems = 0;
   let carrierComposedOutsideEnvelope = 0;
+  let familyDocumentElements = 0;
+  let familyDocumentMismatches = 0;
   const boundsMismatchSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const boundsToleranceFeet =
@@ -2310,6 +2375,19 @@ export function buildRevit2027NativeMeshScene(
     if (options.knownElementIds && !options.knownElementIds.has(item.elementId)) {
       unrepresentedElements += 1;
       continue;
+    }
+    // A family document holds its family in whichever type it was last
+    // edited in. Its forms are this element's geometry only if they fill the
+    // element's own envelope; fitting inside it is not enough, since a
+    // smaller type fits inside a larger one. The RAC sample's windows are the
+    // case: their document is a 3.3 ft window, the placed ones 4.9 ft.
+    if (collection.familyDocumentOwnerIds?.has(item.owner.ownerElementId)) {
+      const expected = options.expectedBoundsByElement?.get(item.elementId);
+      if (!expected || !fillsEnvelope(itemBounds(item), expected, FAMILY_DOCUMENT_TOLERANCE_FEET)) {
+        familyDocumentMismatches += 1;
+        continue;
+      }
+      familyDocumentElements += 1;
     }
     const exactCarrierComposition =
       item.placement == null &&
@@ -2473,6 +2551,8 @@ export function buildRevit2027NativeMeshScene(
 
   return {
     meshes,
+    familyDocumentElements,
+    familyDocumentMismatches,
     coveredElementIds,
     reconstructedElementIds,
     ownerElements,

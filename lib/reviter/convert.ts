@@ -49,6 +49,7 @@ import {
 import { resolveElementGeometry } from "./convert-element-geometry.ts";
 import { resolveNativeRelations } from "./convert-native-relations.ts";
 import { resolveFamilyTypeNames } from "./family-type-names.ts";
+import { familyDocumentFormsBySymbol } from "./family-forms.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -113,6 +114,7 @@ export function convertRvtBytes(
       coverage,
       schema,
       partitionNames,
+      contentDocuments,
     } = openRevitContainer(bytes, options);
 
     const scan = scanPartitions({
@@ -123,6 +125,7 @@ export function convertRvtBytes(
       segmentScale,
       maxNativeMeshBytes: options.maxNativeMeshBytes,
       onProgress,
+      contentDocuments,
     });
     const {
       candidates,
@@ -130,6 +133,8 @@ export function convertRvtBytes(
       elementHeaders,
       levelDefinitions,
       lightSourceStyleIds,
+      familyDocuments,
+      familyForms,
       nameEntries,
       instanceReferences,
       symbolReferences,
@@ -274,6 +279,12 @@ export function convertRvtBytes(
       nameEntries,
       (elementId) => elementHeaders.get(elementId)?.categoryId,
     );
+    const familyDocumentForms = familyDocumentFormsBySymbol(
+      instancePlacements.values(),
+      (elementId) => familyTypeNames.get(elementId)?.familyId,
+      familyDocuments,
+      familyForms,
+    );
     const relations = resolveNativeRelations({
       elementBounds,
       nameEntries,
@@ -412,6 +423,7 @@ export function convertRvtBytes(
         nonModelElements,
         levelDefinitions,
         lightSourceStyleIds,
+        familyDocumentForms,
         materialElementIds,
         nativeMaterialIndexById,
         proxyMaterialIndexByElement,

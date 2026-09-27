@@ -22,6 +22,7 @@ import CFB from "cfb";
 import { revitVersionFromBasicFileInfo } from "./basic-file-info.ts";
 import { scanObjectMarkers } from "./element-objects.ts";
 import { parseElemTable } from "./elem-table.ts";
+import { readContentDocuments, type ContentDocument } from "./content-documents.ts";
 import { decodeElementOwnership } from "./element-relations.ts";
 import {
   decodeRevitDocumentHistory,
@@ -135,6 +136,8 @@ export type OpenedRevitContainer = {
   /** How this file's class indices map onto the 2027 numbering. */
   classTagTranslation: ClassTagTranslation;
   partitionNames: PartitionName[];
+  /** The loaded families' documents, keyed by GUID (`content-documents.ts`). */
+  contentDocuments: Map<string, ContentDocument>;
 };
 
 /**
@@ -261,6 +264,10 @@ export function openRevitContainer(
   const classTagTranslation = buildClassTagTranslation(schema?.taggedClasses ?? []);
   setActiveClassTagTranslation(classTagTranslation);
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
+  // Read after the class numbering is installed: its entries are headed by
+  // the file's own ContentMarker and ContentKey classes.
+  const contentDocuments =
+    readStreamSummary(cfb, /\/Global\/ContentDocuments$/i, readContentDocuments) ?? new Map();
 
   const partitions = cfb.FileIndex
     .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
@@ -309,5 +316,6 @@ export function openRevitContainer(
     schema,
     classTagTranslation,
     partitionNames,
+    contentDocuments,
   };
 }

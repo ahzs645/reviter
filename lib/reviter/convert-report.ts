@@ -252,6 +252,8 @@ export function buildDecoderCoverage(
           nativeMeshCarrierComposedOutsideEnvelope:
             meshScene.carrierComposedOutsideEnvelope,
           nativeMeshMissingBounds: meshScene.missingBounds,
+          nativeMeshFamilyDocumentElements: meshScene.familyDocumentElements ?? 0,
+          nativeMeshFamilyDocumentMismatches: meshScene.familyDocumentMismatches ?? 0,
           nativeMeshUnrepresentedElements: meshScene.unrepresentedElements,
           nativeMeshNestedDefinitions: meshCollection.nestedDefinitions,
           nativeMeshNestedLinks: meshCollection.nestedLinks,
@@ -439,6 +441,11 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
     ...(meshScene.carrierComposedOutsideEnvelope
       ? [
           `${meshScene.carrierComposedOutsideEnvelope.toLocaleString()} of ${meshScene.carrierComposedItems.toLocaleString()} carrier-composed stringer meshes are drawn outside the element's own RVT envelope; that route composes a sibling's geometry by a state displacement and skips the envelope cross-check.`,
+        ]
+      : []),
+    ...(meshScene.familyDocumentElements || meshScene.familyDocumentMismatches
+      ? [
+          `${(meshScene.familyDocumentElements ?? 0).toLocaleString()} family instances whose type stores no geometry are drawn from their family's own document, which the project carries; ${(meshScene.familyDocumentMismatches ?? 0).toLocaleString()} more keep their box because the document holds the family in a different type's size.`,
         ]
       : []),
     ...(meshScene.missingBounds

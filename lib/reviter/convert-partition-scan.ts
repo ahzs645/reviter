@@ -47,6 +47,19 @@ import {
 import { resolveNameEntries, scanNameEntries, type NameEntry } from "./name-entries.ts";
 import { scanElementHeaders } from "./element-headers.ts";
 import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "./level-definitions.ts";
+
+/** `Family` in the 2027 numbering. */
+const REVIT_2027_FAMILY_CLASS = 2009;
+import {
+  contentDocumentLookup,
+  familyContentDocument,
+  type ContentDocument,
+} from "./content-documents.ts";
+import {
+  readFamilyForm,
+  REVIT_2027_FAMILY_FORM_CLASSES,
+  type FamilyForm,
+} from "./family-forms.ts";
 import {
   LIGHT_SOURCE_CATEGORY_ID,
   readGStyleElementCategoryId,
@@ -161,6 +174,8 @@ export type PartitionScanInput = {
   segmentScale: SegmentScale;
   maxNativeMeshBytes: number | undefined;
   onProgress?: (update: ProgressUpdate) => void;
+  /** The loaded families' documents, from `Global/ContentDocuments`. */
+  contentDocuments?: ReadonlyMap<string, ContentDocument>;
 };
 
 export type PartitionScan = {
@@ -176,6 +191,10 @@ export type PartitionScan = {
   levelDefinitions: Map<number, LevelDefinition>;
   /** Graphics styles in the "Light Source" subcategory, which Revit hides in model views. */
   lightSourceStyleIds: Set<number>;
+  /** Each loaded family's own document, keyed by the project's `Family` id. */
+  familyDocuments: Map<number, ContentDocument>;
+  /** Every family form (extrusion, blend, sweep...) the partitions hold. */
+  familyForms: Map<number, FamilyForm>;
   /** The stored name of each loaded family and family type (`name-entries.ts`). */
   nameEntries: Map<number, NameEntry>;
   /** The element ids each family instance's own record references. */
@@ -233,7 +252,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     segmentScale,
     maxNativeMeshBytes,
     onProgress,
+    contentDocuments,
   } = input;
+  const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
     maxNativeMeshBytes == null ? undefined : { maxStoredBytes: maxNativeMeshBytes },
@@ -285,6 +306,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const elementHeaders = new Map<number, ElementHeader>();
   const levelDefinitions = new Map<number, LevelDefinition>();
   const lightSourceStyleIds = new Set<number>();
+  const familyDocuments = new Map<number, ContentDocument>();
+  const familyForms = new Map<number, FamilyForm>();
   const rawNameEntries: NameEntry[] = [];
   const instanceReferences = new Map<number, Uint32Array>();
   const symbolReferences = new Map<number, Uint32Array>();
@@ -394,6 +417,25 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           if (target && !target.has(frame.elementId)) {
             target.set(frame.elementId, referencedElementIds(inflated, frame));
           }
+        }
+      }
+      if (contentLookup.size && pageFrames?.hasMarker(REVIT_2027_FAMILY_CLASS)) {
+        for (const frame of pageFrames.frames) {
+          if (frame.marker !== REVIT_2027_FAMILY_CLASS || familyDocuments.has(frame.elementId)) continue;
+          const document = familyContentDocument(
+            inflated,
+            frame.offset,
+            Math.min(inflated.byteLength, frame.offset + frame.objectLength + 20),
+            contentLookup,
+          );
+          if (document) familyDocuments.set(frame.elementId, document);
+        }
+      }
+      if (pageFrames) {
+        for (const frame of pageFrames.frames) {
+          if (!REVIT_2027_FAMILY_FORM_CLASSES.has(frame.marker) || familyForms.has(frame.elementId)) continue;
+          const form = readFamilyForm(inflated, frame);
+          if (form) familyForms.set(frame.elementId, form);
         }
       }
       if (pageFrames?.hasMarker(REVIT_2027_GSTYLE_ELEMENT_MARKER)) {
@@ -706,6 +748,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     elementHeaders,
     levelDefinitions,
     lightSourceStyleIds,
+    familyDocuments,
+    familyForms,
     nameEntries: resolveNameEntries(rawNameEntries),
     instanceReferences,
     symbolReferences,

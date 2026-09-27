@@ -186,6 +186,10 @@ export type DecoderCoverage = {
   nativeMeshBoundsMismatches?: number;
   /** Complete native items lacking an independent display-envelope cross-check. */
   nativeMeshMissingBounds?: number;
+  /** Placed elements drawn from their family document's forms. */
+  nativeMeshFamilyDocumentElements?: number;
+  /** Family-document meshes declined for not filling the element's envelope. */
+  nativeMeshFamilyDocumentMismatches?: number;
   nativeMeshUnrepresentedElements?: number;
   /** Framed GRep owner definitions retained for recursive symbol resolution. */
   nativeMeshNestedDefinitions?: number;
