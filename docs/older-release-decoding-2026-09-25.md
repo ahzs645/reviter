@@ -205,6 +205,42 @@ RAC had 65 elements drawn as boxes. Instrumenting the geometry replay to say why
 Two fixes fell out along the way. `SplineNode` declares its fields in a different order in 2024 and 2025 (parameter, point, tangent) than in 2027 (point, tangent, parameter), so older splines' parameters were read from their tangents; decoders can now ask the file for a class's field order. And a wall swap that fires at exactly 0.5 ft had been deciding four Snowdon walls by float32 rounding.
 
 The comparison script now takes each Autodesk box from its node's transformed vertices rather than its transformed local box, which overstated rotated nodes such as trees.
+## 10. Revit 2019 to 2023, 2026-09-27
+
+Autodesk's RAC basic sample is published for every release, and the 2019 to 2023 copies keep the element ids of the 2025 copy that Autodesk's viewer capture scores. That made each decoder checkable byte for byte: read the 2025 file, find the same element's record in the older one, and measure where the same values sit.
+
+**What differs is the id width.** The 2019 to 2023 schemas declare `Identifier.m_id` as an `int32`; 2024 on declare an `int64`. `element-id-width.ts` takes the width from the file's schema for each conversion, and `usesNarrowIdRecordLayout` admits 2019 to 2023 only while the schema says 32 bits (`readsElementRecordLayout` is that or the 2024 to 2027 gate). Everything else follows from narrowed ids:
+
+| | 2024 on | 2019 to 2023 |
+| --- | --- | --- |
+| Object frame | `[u64 id][u32 disc][u32 len][u16 class]`, length echoed at start + 16 + len | `[u32 id][u32 disc][u32 len][u16 class]`, echoed at start + 12 + len |
+| `ElementHeader` record | `[u64 id][u32 len][u16 class]` | `[u32 id][u32 len][u16 class]`; category, family and owner view `int32` |
+| `GElement` bounds record | record code +18 (i64), id +26, field table +42 | id +14, record code +22 (u32), field table +34 |
+| `Level` name | +127 to +133 | +91 to +97 (the elevation is 56 bytes before the echo in both) |
+| Double parameter entry | `[f64][i64 id]` or the reverse | `[f64][i32 id]`, value first |
+| `InsertableInst` host id | +151 / +153 | +115 / +117 |
+| `CompoundStructureLayer` | 37 or 41 bytes, ids after the width | 29 bytes, function and embedding type before the ids |
+| `GInfo` | 20 bytes | 16 bytes |
+| `GRep` | carries `m_elementId` | version 5 has none; the owner is the frame's id |
+| `InstanceInfo` | 112 bytes | 108 (2023), 104 without `m_GRepId` (2019 to 2022) |
+| `ElemTable` rows | 40 bytes | 28 bytes from byte 30 |
+
+The 2024 schema also moved `ElementId` fields to the front of several classes (`GInfo`, `GFace`, `GInstance`, `GStyle`, `Material`, `CompoundStructureLayer`, the stairs tail), so the narrow layouts are not the wide ones with four bytes removed; each reader has its own offsets, and each was found by locating the 2025 values in the 2023 bytes. Where a class version changed inside the range, the reader takes the layout from the file's declared field count: `GInstance` v5 (no `m_tagId`), `InstInfoBase` v1 (no `m_GRepId`), `GPoint` v3 (no `m_borderSize`) in 2019 to 2022, and `FillPatternPlacer` v2 (no `m_uvScale`) in 2019 to 2021. Missing `m_GRepId` also moves every family instance's placement: the word after its geometry id is `m_cda`, not zero, and the fixed instance object is 268 bytes.
+
+Against Autodesk's capture of the 2025 file:
+
+| | 2019 | 2020 | 2021 | 2022 | 2023 | 2025 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Autodesk-drawn elements displayed (of 450) | 431 | 431 | 431 | 431 | 431 | 429 |
+| … box within 0.5 ft | 394 | 394 | 393 | 393 | 393 | 393 |
+| Type names equal to Autodesk's | 432 / 432 | 432 / 432 | 432 / 432 | 432 / 432 | 432 / 432 | 427 / 427 |
+| Materials: name, colour, transparency exact (of 174) | 156 | 171 | 171 | 171 | 173 | 174 |
+| Parameter values equal to the 2025 file's | 18,415 / 18,495 | 18,427 / 18,505 | 18,496 / 18,505 | 18,497 / 18,505 | 18,574 / 18,583 | |
+
+Levels (names and elevations) are equal to the 2025 file's in every release. Against the 2025 file itself, 2023 agrees on all 85,381 `ElementHeader`s both carry, 2,780 of 2,783 bounds records, 562 of 562 level relations, 462 of 463 placements, 304 of 304 host relations, 11 of 11 compound structures, 8,214 of 8,216 `ElemTable` owners and every stair aggregate; 11,023 geometry owners replay to identical triangle counts. The materials the older files miss are not in them (their ids, from 1,093,206 up, do not occur in the partitions), and the one other difference is a transparency of 97.5% that Autodesk shows as 98%. Nor do the 2019 and 2020 files store the `VOID_CUTS_GEOMETRY` parameter that accounts for 69 of their absent values. The 17 level relations 2019 to 2022 lack belong to analytical panels the 2023 upgrade created.
+
+2023 writes 5,784 more `GElement` frames than 2022. 5,615 of them are sketch lines and most of the rest analytical nodes and stair sketch lines; together they hold 38 triangles; the 5,240 owners both files replay have identical triangle counts. The structural sample's 2019, 2022 and 2023 copies draw all 503 elements the 2026 copy draws within 0.5 ft of its boxes.
+
 
 ## What is still not right
 
@@ -212,5 +248,5 @@ The comparison script now takes each Autodesk box from its node's transformed ve
 - **Family documents in another type's size.** A type whose document was last edited in a different type keeps its box (RAC's 15 windows).
 - **Not drawn:** the school's 27 parking stalls draw one of their two painted stripes. Planting, entourage and terrain are drawn only where their stored mesh decodes (their boxes are not their shape); rebar, room separation lines and UNBC's stair assemblies are left out on purpose. Terrain is drawn as its stored surface, where the Autodesk capture adds a base down to -37.7 ft and crops it.
 - **Snowdon's 39 wall types** read from the older decoder as the type they were drawn with.
-- **Revit 2023 and older are not decoded.** Autodesk's own 2019–2023 samples are available and were checked: those releases write 32-bit element ids (`Identifier.m_id` is an `int32`) and a 12-byte object header, `[u32 id][u32 discriminator][u32 length]` before the class, where 2024 on write a 64-bit id and a 16-byte header. Every reader that touches an element id would need that variant, including the geometry replay. Until then the studio says plainly that the file's release is not decoded.
+- **Revit 2019 to 2023** (section 10) still lack: the family-material relations (18 of the 437 elements the 2023 and 2025 RAC files both draw show a different material), the native-identity (`UniqueId`) reader, the railing baluster and alternate-frame readers, and the GStyle material binding. Of section 9's additions, `GEllipse`, `GComponentRef`, `GImposter` and the asset tree read either width; `GPolyMesh`, the family-document forms and the light-source styles are read only where ids are 64-bit, and fail closed before that. The regeneration-history entry size in narrow `ElementHeader`s is assumed, not measured: every sample's count is zero. Revit 2018 and older are not claimed; no sample was available.
 - **The optional Rust reader** stops on the 2024 and 2027 samples. Nothing shown depends on it.

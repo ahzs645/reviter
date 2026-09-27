@@ -62,9 +62,20 @@
  * Each decoded parameter also carries its `BuiltInParameter` enumerator where a
  * published source names it, so a consumer can join on `WALL_USER_HEIGHT_PARAM`
  * instead of on a display label that changes with release and locale.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) a
+ * parameter id is an `int32`, and every table narrows with it: a double entry
+ * is `[f64 value][i32 id]`, 12 bytes (the 2024 and 2025 order), an integer
+ * entry `[i32 id][i32 value]` and a text entry `[i32 id][u32 n][UTF-16]`. The
+ * anchor's `m_id` and the seven ids after it are four bytes each, and the
+ * frame header is 12 bytes. On the 2023 RAC sample, over the 10,269 elements
+ * whose tables both it and the 2025 copy of the project read, 18,574 of the
+ * 2025 copy's 18,583 values are read equal (10,515 integer, 7,177 double and
+ * 901 text values in all); 8 are not read and one Mark differs in the data.
  */
 
 import { builtInParameterEnumName, parameterDisplayName } from "./built-in-parameters.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import { parameterStorage, type ParameterStorage } from "./parameter-specs.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 import { revitParameterValueName } from "./revit-enum-tables.ts";
@@ -113,6 +124,12 @@ const BASE_FIELDS_AFTER_ANCHOR = 10 + 8 + 7 * 8 + 3;
 
 /** Bytes from an object's start to its first field: the 18-byte frame header. */
 const OBJECT_BODY_OFFSET = 18;
+
+/** The same spans where ids are 32-bit: four-byte ids and a 14-byte frame head. */
+const NARROW_BASE_FIELDS_AFTER_ANCHOR = 10 + 4 + 7 * 4 + 3;
+const NARROW_OBJECT_BODY_OFFSET = 14;
+const NARROW_MAX_ANCHOR_DISTANCE = NARROW_OBJECT_BODY_OFFSET + LEADING_POINTER_FIELDS * 6 + 4;
+const NARROW_MIN_ANCHOR_DISTANCE = NARROW_OBJECT_BODY_OFFSET + LEADING_POINTER_FIELDS * 4 + 4;
 
 /**
  * Widest span from an object's start to the anchor: the header, six live
@@ -185,11 +202,60 @@ function declaredIn(parameterId: number, storage: ParameterStorage): boolean {
   return declared === undefined || declared === storage;
 }
 
+/** A parameter id read as an `int32`, or null outside the BuiltInParameter window. */
+function narrowParameterId(view: DataView, at: number): number | null {
+  const parameterId = view.getInt32(at, true);
+  return parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX ? null : parameterId;
+}
+
+/** The smallest positive normal double. */
+const MIN_NORMAL_DOUBLE = 2.2250738585072014e-308;
+
+/** `readTableAt` where parameter ids are `int32`: 12-byte entries. */
+function readNarrowTableAt(
+  view: DataView,
+  offset: number,
+  byteLength: number,
+): { parameters: ElementParameter[]; end: number } | null {
+  if (offset + 4 > byteLength) return null;
+  const count = view.getUint32(offset, true);
+  if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
+  const end = offset + 4 + count * 12;
+  if (end > byteLength) return null;
+  // Value first in the 2023 sample, as in 2024 and 2025; the id's place in
+  // the first entry decides, as it does for the wide table.
+  const idFirst = narrowParameterId(view, offset + 4 + 8) == null;
+  const idAt = idFirst ? 0 : 8;
+  const valueAt = idFirst ? 4 : 0;
+  const parameters: ElementParameter[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const entry = offset + 4 + index * 12;
+    const parameterId = narrowParameterId(view, entry + idAt);
+    if (parameterId == null || !declaredIn(parameterId, "double")) return null;
+    const value = view.getFloat64(entry + valueAt, true);
+    if (!Number.isFinite(value) || Math.abs(value) > MAX_PARAMETER_VALUE) return null;
+    // A four-byte id is easier to match by accident than an eight-byte one:
+    // `00 01 ff ff`, which pointer bytes spell often, reads as -65280. What
+    // such a match reads as a value is a subnormal, which no length, angle or
+    // ratio Revit stores ever is.
+    if (value !== 0 && Math.abs(value) < MIN_NORMAL_DOUBLE) return null;
+    const enumName = builtInParameterEnumName(parameterId);
+    parameters.push({
+      parameterId,
+      name: parameterDisplayName(parameterId),
+      ...(enumName ? { enumName } : {}),
+      value,
+    });
+  }
+  return { parameters, end };
+}
+
 function readTableAt(
   view: DataView,
   offset: number,
   byteLength: number,
 ): { parameters: ElementParameter[]; end: number } | null {
+  if (narrowElementIds()) return readNarrowTableAt(view, offset, byteLength);
   if (offset + 4 > byteLength) return null;
   const count = view.getUint32(offset, true);
   if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
@@ -247,18 +313,21 @@ function readIntegerTableAt(
   if (offset + 4 > byteLength) return null;
   const count = view.getUint32(offset, true);
   if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
-  const end = offset + 4 + count * 12;
+  // `[i64 id][i32 value]`, or `[i32 id][i32 value]` where ids are 32-bit.
+  const idBytes = narrowElementIds() ? 4 : 8;
+  const entryBytes = idBytes + 4;
+  const end = offset + 4 + count * entryBytes;
   if (end > byteLength) return null;
 
   const parameters: ElementParameter[] = [];
   for (let index = 0; index < count; index += 1) {
-    const entry = offset + 4 + index * 12;
-    if (view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
-    const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
+    const entry = offset + 4 + index * entryBytes;
+    if (idBytes === 8 && view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
+    const parameterId = view.getInt32(entry, true);
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
     if (!declaredIn(parameterId, "integer")) return null;
     const enumName = builtInParameterEnumName(parameterId);
-    const value = view.getInt32(entry + 8, true);
+    const value = view.getInt32(entry + idBytes, true);
     const valueName = revitParameterValueName(parameterId, value);
     parameters.push({
       parameterId,
@@ -290,18 +359,21 @@ function readStringTableAt(
   if (count < MIN_PARAMETERS || count > MAX_PARAMETERS) return null;
 
   const parameters: ElementParameter[] = [];
+  // `[i64 id][u32 n]`, or `[i32 id][u32 n]` where ids are 32-bit.
+  const idBytes = narrowElementIds() ? 4 : 8;
   let cursor = offset + 4;
   for (let index = 0; index < count; index += 1) {
-    if (cursor + 12 > byteLength) return null;
-    if (view.getUint32(cursor + 4, true) !== 0xffff_ffff) return null;
-    const parameterId = view.getUint32(cursor, true) - 0x1_0000_0000;
+    if (cursor + idBytes + 4 > byteLength) return null;
+    if (idBytes === 8 && view.getUint32(cursor + 4, true) !== 0xffff_ffff) return null;
+    const parameterId = view.getInt32(cursor, true);
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
     if (!declaredIn(parameterId, "text")) return null;
-    const characters = view.getUint32(cursor + 8, true);
+    const characters = view.getUint32(cursor + idBytes, true);
     if (characters > MAX_PARAMETER_TEXT) return null;
-    const textEnd = cursor + 12 + characters * 2;
+    const textStart = cursor + idBytes + 4;
+    const textEnd = textStart + characters * 2;
     if (textEnd > byteLength) return null;
-    const text = new TextDecoder("utf-16le").decode(data.subarray(cursor + 12, textEnd));
+    const text = new TextDecoder("utf-16le").decode(data.subarray(textStart, textEnd));
     // A control character means the walk is reading something else.
     if (/[\u0000-\u0008\u000e-\u001f\ufffd]/.test(text)) return null;
     const enumName = builtInParameterEnumName(parameterId);
@@ -380,9 +452,14 @@ function ownedParameterSets(
   anchorOffset: number,
   elementId: number,
 ): { double: boolean; integer: boolean; text: boolean } | null {
+  // Where ids are 32-bit the frame head is `[u32 id][u32][u32 length][u16]`.
+  const narrow = narrowElementIds();
+  const header = narrow ? 12 : 16;
+  const minDistance = narrow ? NARROW_MIN_ANCHOR_DISTANCE : MIN_ANCHOR_DISTANCE;
+  const maxDistance = narrow ? NARROW_MAX_ANCHOR_DISTANCE : MAX_ANCHOR_DISTANCE;
   for (
-    let distance = MIN_ANCHOR_DISTANCE;
-    distance <= MAX_ANCHOR_DISTANCE;
+    let distance = minDistance;
+    distance <= maxDistance;
     distance += 1
   ) {
     const start = anchorOffset - distance;
@@ -390,15 +467,15 @@ function ownedParameterSets(
     // The frame restates the element id, and the id is a u64 whose high word is
     // zero for every id Revit persists.
     if (view.getUint32(start, true) !== elementId) continue;
-    if (view.getUint32(start + 4, true) !== 0) continue;
-    const objectLength = view.getUint32(start + 12, true);
+    if (!narrow && view.getUint32(start + 4, true) !== 0) continue;
+    const objectLength = view.getUint32(start + header - 4, true);
     if (objectLength < MIN_OBJECT_LENGTH || objectLength > MAX_OBJECT_LENGTH) continue;
     // The length is echoed behind the object. Pages truncate objects, so this
     // is required only when the echo is on this page at all.
-    const echo = start + objectLength + 16;
+    const echo = start + objectLength + header;
     if (echo + 4 <= view.byteLength && view.getUint32(echo, true) !== objectLength) continue;
 
-    let cursor = start + OBJECT_BODY_OFFSET;
+    let cursor = start + header + 2;
     let double = false;
     let integer = false;
     let text = false;
@@ -437,6 +514,7 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
   const anchor = anchorBytes();
   if (!anchor) return tables;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const narrow = narrowElementIds();
 
   for (
     let offset = data.indexOf(anchor[0]!);
@@ -453,9 +531,9 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
     if (!matched) continue;
 
     const idOffset = offset + ANCHOR_LENGTH;
-    if (view.getUint32(idOffset + 4, true) !== 0) continue;
+    if (!narrow && view.getUint32(idOffset + 4, true) !== 0) continue;
     const elementId = view.getUint32(idOffset, true);
-    if (!elementId) continue;
+    if (!elementId || (narrow && elementId > 0x7fff_ffff)) continue;
 
     // An element that declares no value set has no table to find, and searching
     // for one only borrows a neighbour's.
@@ -467,7 +545,7 @@ export function collectElementParameters(data: Uint8Array): ElementParameterTabl
 
     // The sets are the first objects deferred by this record, so they begin
     // after its own fields rather than at some distance from the anchor.
-    const from = offset + BASE_FIELDS_AFTER_ANCHOR;
+    const from = offset + (narrow ? NARROW_BASE_FIELDS_AFTER_ANCHOR : BASE_FIELDS_AFTER_ANCHOR);
     const limit = Math.min(data.byteLength, from + TABLE_SEARCH_BYTES);
     for (let cursor = from; cursor + 12 <= limit; cursor += 1) {
       const parameters = readParameterSets(view, cursor, data.byteLength, sets, data);

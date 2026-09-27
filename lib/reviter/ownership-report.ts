@@ -1,3 +1,4 @@
+import type { ElementOwnershipFormat } from "./element-relations.ts";
 import type { ConvertResult } from "./types.ts";
 
 export type ModelTreeReport = {
@@ -5,7 +6,7 @@ export type ModelTreeReport = {
   source: "Global/ElemTable.OwningElementId";
   hostSource?: "Partitions/InsertableInst.m_hostId";
   levelSource?: "Partitions/Element.m_assocLevelId";
-  format: "revit-2024-2027-elem-table";
+  format: ElementOwnershipFormat;
   declaredRecordCount: number;
   recordCount: number;
   membershipCount: number;

@@ -6,7 +6,8 @@ import {
   type Revit2027StairsElementAggregate,
   type Revit2027StairsRunAndLandingAggregate,
 } from "./revit-2027-stairs-aggregate.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { readsElementRecordLayout } from "./revit-class-tags.ts";
 import { createSplitFrameStream } from "./split-frame-stream.ts";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
@@ -45,8 +46,10 @@ export function createRevit2027StairsRunCollector(
     markers: [REVIT_2027_STAIRS_RUN_MARKER, REVIT_2027_STAIRS_ELEMENT_MARKER],
     minObjectLength: MIN_OBJECT_LENGTH,
     maxFrameBytes: MAX_FRAME_BYTES,
-    // Both classes write a zero type code.
-    acceptHeader: (view, offset) => view.getUint32(offset + 18, true) === 0,
+    // Both classes write a zero type code: `Element`'s first pointer, null,
+    // right after the class (+18, or +14 where ids are 32-bit).
+    acceptHeader: (view, offset) =>
+      view.getUint32(offset + (narrowElementIds() ? 14 : 18), true) === 0,
   });
   const knownStairsIds = new Set<number>();
   const stairsAggregates = new Map<number, Revit2027StairsElementAggregate>();
@@ -58,7 +61,7 @@ export function createRevit2027StairsRunCollector(
 
   return {
     pushPage(page: Uint8Array): void {
-      if (!usesRevit2027RecordLayout(release)) return;
+      if (!readsElementRecordLayout(release)) return;
       for (const frame of stream.push(page)) {
         if (frame.marker === REVIT_2027_STAIRS_ELEMENT_MARKER) {
           const decoded = decodeRevit2027StairsElementAggregate(

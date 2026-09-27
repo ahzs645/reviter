@@ -23,6 +23,7 @@
  * before only walls had one (7,523, 121 and 46). Family names equal the
  * Viewer's parent node wherever both are stated: 2,130, 495 and 170.
  */
+import { frameHeaderBytes, narrowElementIds } from "./element-id-width.ts";
 import type { ElementObject } from "./element-objects.ts";
 import type { NameEntry } from "./name-entries.ts";
 
@@ -40,9 +41,22 @@ const OBJECT_BODY_OFFSET = 18;
  * Every 64-bit value in an object's body that could be an element id: a
  * nonzero low word and a zero high word. Most are not ids, which is why they
  * are only ever read against the name entries.
+ *
+ * Where ids are 32-bit there is no high word, and every non-negative `u32` in
+ * the body is offered instead; the join to a name entry of the instance's own
+ * category, required to be unique, is what selects the type.
  */
 export function referencedElementIds(data: Uint8Array, frame: ElementObject): Uint32Array {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (narrowElementIds()) {
+    const bodyEnd = Math.min(data.byteLength, frame.offset + frame.objectLength + frameHeaderBytes()) - 4;
+    const narrowIds = new Set<number>();
+    for (let at = frame.offset + frameHeaderBytes() + 2; at <= bodyEnd; at += 1) {
+      const value = view.getUint32(at, true);
+      if (value && value <= MAX_ELEMENT_ID && value !== frame.elementId) narrowIds.add(value);
+    }
+    return Uint32Array.from(narrowIds);
+  }
   const end = Math.min(data.byteLength, frame.offset + frame.objectLength) - 8;
   const ids = new Set<number>();
   for (let at = frame.offset + OBJECT_BODY_OFFSET; at <= end; at += 1) {

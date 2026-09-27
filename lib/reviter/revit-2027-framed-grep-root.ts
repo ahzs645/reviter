@@ -3,7 +3,8 @@ import {
   decodeRevit2026GRepRoot,
   type Revit2026GRepRoot,
 } from "./revit-2026-grep-root.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { frameHeaderBytes } from "./element-id-width.ts";
+import { readsElementRecordLayout } from "./revit-class-tags.ts";
 
 /**
  * The exact Revit 2027 UNBC `GElement` frame marker. `Formats/Latest` defines
@@ -37,7 +38,7 @@ export function decodeRevit2027FramedGRepRoot(
   frame: ElementObject,
   revitVersion: number,
 ): Revit2027FramedGRepRootResult {
-  if (!usesRevit2027RecordLayout(revitVersion)) {
+  if (!readsElementRecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 framed GRep decoding requires release 2027",
@@ -57,7 +58,8 @@ export function decodeRevit2027FramedGRepRoot(
       // The Revit 2027 length echo is at frameEnd + 16. Exact one-child
       // GLine bodies use all 16 preceding bytes for their final vector
       // components, so the 2027 FIFO replay envelope extends to the echo.
-      dynamicPayloadEndOffset: decoded.value.frameEndOffset + 16,
+      // Where ids are 32-bit the echo is at frameEnd + 12.
+      dynamicPayloadEndOffset: decoded.value.frameEndOffset + frameHeaderBytes(),
     },
   };
 }

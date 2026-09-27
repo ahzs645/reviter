@@ -133,7 +133,7 @@ export function buildDecoderCoverage(
       ...(scene ? ["revit-2027-duplicated-bounds-v1"] : []),
       ...(basis.nativeCategories.headerElements ? ["revit-element-header-category-v1"] : []),
       ...(basis.nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
-      ...(basis.elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
+      ...(basis.elementOwnership ? [`${basis.elementOwnership.format}-ownership-v1`] : []),
       ...(basis.nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
       ...(basis.transmissionData ? ["revit-transmission-data-v1"] : []),
       ...(basis.nativeMaterialDefinitions.length

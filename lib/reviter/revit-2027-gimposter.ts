@@ -4,7 +4,7 @@ import {
   type CondInt16QueueEntry,
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoBytes, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GImposter`. */
@@ -13,9 +13,6 @@ export const REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT = 2262;
 export const REVIT_2027_ASSET_SOURCE_CLASS_SLOT = 425;
 export const REVIT_2027_GIMPOSTER_BODY_BYTES = 122;
 
-const GINFO_BYTES = 20;
-const TRANSFORM_OFFSET = GINFO_BYTES;
-const ASSET_OFFSET = TRANSFORM_OFFSET + 96;
 
 /**
  * A rendering stand-in: an appearance asset placed under a transform, which a
@@ -54,16 +51,19 @@ export function decodeRevit2027GImposter(
     byteOffset < 0 ||
     !Number.isSafeInteger(enclosingEndOffset) ||
     enclosingEndOffset > data.byteLength ||
-    byteOffset > enclosingEndOffset - REVIT_2027_GIMPOSTER_BODY_BYTES
+    byteOffset > enclosingEndOffset - (revit2027GInfoBytes() + 102)
   ) {
     return { ok: false, error: "Revit 2027 GImposter body is truncated or outside its owner" };
   }
-  const transform = decodeTrf201120260(data, byteOffset + TRANSFORM_OFFSET);
+  // GInfo, then the inline 96-byte transform, then the asset descriptor.
+  const transformOffset = byteOffset + revit2027GInfoBytes();
+  const bodyEnd = transformOffset + 96 + 6;
+  const transform = decodeTrf201120260(data, transformOffset);
   if (!transform.ok) return transform;
-  const asset = decodeCondInt16PropertyDescriptor(data, byteOffset + ASSET_OFFSET);
+  const asset = decodeCondInt16PropertyDescriptor(data, transformOffset + 96);
   if (!asset.ok) return asset;
   if (
-    asset.descriptor.endOffset !== byteOffset + REVIT_2027_GIMPOSTER_BODY_BYTES ||
+    asset.descriptor.endOffset !== bodyEnd ||
     asset.descriptor.token !== -1 ||
     asset.descriptor.sourceClassSlot !== REVIT_2027_ASSET_SOURCE_CLASS_SLOT
   ) {
@@ -77,13 +77,8 @@ export function decodeRevit2027GImposter(
     ok: true,
     value: {
       byteOffset,
-      endOffset: byteOffset + REVIT_2027_GIMPOSTER_BODY_BYTES,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      endOffset: bodyEnd,
+      gInfo: readRevit2027GInfo(view, byteOffset),
       transform: transform.transform,
       asset: asset.descriptor,
     },

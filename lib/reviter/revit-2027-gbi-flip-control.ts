@@ -1,4 +1,4 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source slot for `GBiFlipControl` (schema tag 2,220). */
@@ -56,7 +56,7 @@ export function decodeRevit2027GBiFlipControl(
     !Number.isSafeInteger(bodyEndOffset) ||
     byteOffset < 0 ||
     bodyEndOffset > data.byteLength ||
-    bodyEndOffset - byteOffset !== REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES
+    bodyEndOffset - byteOffset !== (REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES - revit2027GInfoShrink())
   ) {
     return {
       ok: false,
@@ -65,17 +65,19 @@ export function decodeRevit2027GBiFlipControl(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  // Fields after GInfo sit 4 bytes nearer where ids are 32-bit.
+  const fieldBase = byteOffset - revit2027GInfoShrink();
   const origin = [
-    view.getFloat64(byteOffset + ORIGIN_OFFSET, true),
-    view.getFloat64(byteOffset + ORIGIN_OFFSET + 8, true),
-    view.getFloat64(byteOffset + ORIGIN_OFFSET + 16, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET + 8, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET + 16, true),
   ] as const;
   const base = [
-    view.getFloat64(byteOffset + BASE_OFFSET, true),
-    view.getFloat64(byteOffset + BASE_OFFSET + 8, true),
-    view.getFloat64(byteOffset + BASE_OFFSET + 16, true),
+    view.getFloat64(fieldBase + BASE_OFFSET, true),
+    view.getFloat64(fieldBase + BASE_OFFSET + 8, true),
+    view.getFloat64(fieldBase + BASE_OFFSET + 16, true),
   ] as const;
-  const length = view.getFloat64(byteOffset + LENGTH_OFFSET, true);
+  const length = view.getFloat64(fieldBase + LENGTH_OFFSET, true);
   if (!finiteTuple(origin) || !finiteTuple(base) || !Number.isFinite(length)) {
     return {
       ok: false,
@@ -94,12 +96,7 @@ export function decodeRevit2027GBiFlipControl(
     value: {
       byteOffset,
       endOffset: bodyEndOffset,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       origin,
       base,
       length,

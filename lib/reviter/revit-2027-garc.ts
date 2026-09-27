@@ -1,4 +1,4 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GArc`. */
@@ -43,7 +43,7 @@ function bounded(
     Number.isSafeInteger(enclosingEndOffset) &&
     enclosingEndOffset >= byteOffset &&
     enclosingEndOffset <= data.byteLength &&
-    byteOffset <= enclosingEndOffset - REVIT_2027_GARC_BODY_BYTES
+    byteOffset <= enclosingEndOffset - (REVIT_2027_GARC_BODY_BYTES - revit2027GInfoShrink())
   );
 }
 
@@ -78,25 +78,27 @@ export function decodeRevit2027GArc(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  // Fields after GInfo sit 4 bytes nearer where ids are 32-bit.
+  const fieldBase = byteOffset - revit2027GInfoShrink();
   const endParameters = [
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET, true),
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET + 8, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET + 8, true),
   ] as const;
   const xDirection = [
-    view.getFloat64(byteOffset + X_DIRECTION_OFFSET, true),
-    view.getFloat64(byteOffset + X_DIRECTION_OFFSET + 8, true),
-    view.getFloat64(byteOffset + X_DIRECTION_OFFSET + 16, true),
+    view.getFloat64(fieldBase + X_DIRECTION_OFFSET, true),
+    view.getFloat64(fieldBase + X_DIRECTION_OFFSET + 8, true),
+    view.getFloat64(fieldBase + X_DIRECTION_OFFSET + 16, true),
   ] as const;
   const yDirection = [
-    view.getFloat64(byteOffset + Y_DIRECTION_OFFSET, true),
-    view.getFloat64(byteOffset + Y_DIRECTION_OFFSET + 8, true),
-    view.getFloat64(byteOffset + Y_DIRECTION_OFFSET + 16, true),
+    view.getFloat64(fieldBase + Y_DIRECTION_OFFSET, true),
+    view.getFloat64(fieldBase + Y_DIRECTION_OFFSET + 8, true),
+    view.getFloat64(fieldBase + Y_DIRECTION_OFFSET + 16, true),
   ] as const;
-  const radius = view.getFloat64(byteOffset + RADIUS_OFFSET, true);
+  const radius = view.getFloat64(fieldBase + RADIUS_OFFSET, true);
   const center = [
-    view.getFloat64(byteOffset + CENTER_OFFSET, true),
-    view.getFloat64(byteOffset + CENTER_OFFSET + 8, true),
-    view.getFloat64(byteOffset + CENTER_OFFSET + 16, true),
+    view.getFloat64(fieldBase + CENTER_OFFSET, true),
+    view.getFloat64(fieldBase + CENTER_OFFSET + 8, true),
+    view.getFloat64(fieldBase + CENTER_OFFSET + 16, true),
   ] as const;
   if (
     !finiteTuple(endParameters) ||
@@ -125,7 +127,7 @@ export function decodeRevit2027GArc(
       error: "Revit 2027 GArc radius is negative",
     };
   }
-  const filled = data[byteOffset + FILLED_OFFSET]!;
+  const filled = data[fieldBase + FILLED_OFFSET]!;
   if (filled !== 0 && filled !== 1) {
     return {
       ok: false,
@@ -137,13 +139,8 @@ export function decodeRevit2027GArc(
     ok: true,
     value: {
       byteOffset,
-      endOffset: byteOffset + REVIT_2027_GARC_BODY_BYTES,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      endOffset: byteOffset + (REVIT_2027_GARC_BODY_BYTES - revit2027GInfoShrink()),
+      gInfo: readRevit2027GInfo(view, byteOffset),
       endParameters,
       xDirection,
       yDirection,

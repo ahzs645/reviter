@@ -1,4 +1,5 @@
 import type { ElementObject } from "./element-objects.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
@@ -205,6 +206,8 @@ export function readGStyleElementCategoryId(
   object: ElementObject,
 ): number | null {
   if (object.marker !== REVIT_2027_GSTYLE_ELEMENT_MARKER) return null;
+  // The category read below is a 64-bit id (2024 on).
+  if (narrowElementIds()) return null;
   const styleTag = fileClassTag(REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT);
   const echoOffset = object.offset + object.objectLength + 16;
   if (styleTag < 0 || !rangeFits(data, object.offset, object.objectLength + 20)) return null;

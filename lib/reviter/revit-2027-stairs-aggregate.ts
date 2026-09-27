@@ -2,7 +2,8 @@ import {
   decodeCondInt16QueueCollection,
   type CondInt16QueueCollection,
 } from "./dynamic-geometry-queue.ts";
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { canonicalClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 /** Revit 2027 framed-object marker for `StairsElement`. */
 export const REVIT_2027_STAIRS_ELEMENT_MARKER = 4075;
@@ -16,6 +17,48 @@ const FRAME_ECHO_OFFSET = 16;
 const FRAME_ECHO_BYTES = 20;
 const MAX_COLLECTION_ITEMS = 10_000;
 const MAX_RECIPROCAL_STATIC_BYTES = 16 * 1024;
+
+/**
+ * The same records where ids are 32-bit (Revit 2019 to 2023). The 2023 RAC
+ * sample's two stairs and their runs, against the 2025 copy:
+ *
+ * - the frame header is 12 bytes and `Element`'s eight ids are four bytes
+ *   each, so `StairsElement`'s own fields start at +91 rather than +127;
+ * - every `ObjectId` in the arrays and the run suffix is four bytes;
+ * - `StairsElement`'s scalar tail is declared doubles first: five doubles,
+ *   `m_actualNumberOfRisers`, the base, multistorey and top level ids,
+ *   `m_triserNumberBaseIndex`, `m_typeId` and four booleans, 68 bytes where
+ *   2024 on interleave the ids with the doubles in 84.
+ */
+const NARROW = {
+  staticBodyOffset: 91,
+  echoOffset: 12,
+  echoBytes: 16,
+  lengthOffset: 8,
+  markerOffset: 12,
+  /** The second `Element` pointer, null in every stairs record, as the wide +22. */
+  nullPointerOffset: 18,
+  idBytes: 4,
+  scalarTailBytes: 68,
+  scalarTailDoubles: [0, 8, 16, 24, 32],
+  scalarTailBooleans: 64,
+} as const;
+const WIDE = {
+  staticBodyOffset: STATIC_BODY_OFFSET,
+  echoOffset: FRAME_ECHO_OFFSET,
+  echoBytes: FRAME_ECHO_BYTES,
+  lengthOffset: 12,
+  markerOffset: 16,
+  nullPointerOffset: 22,
+  idBytes: 8,
+  scalarTailBytes: 84,
+  scalarTailDoubles: [0, 8, 24, 40, 56],
+  scalarTailBooleans: 80,
+} as const;
+
+function layout(): typeof NARROW | typeof WIDE {
+  return narrowElementIds() ? NARROW : WIDE;
+}
 
 export type Revit2027StairsElementAggregate = {
   elementId: number;
@@ -96,40 +139,43 @@ function decodeFrame(
   objectLength: number,
   allowedMarkers: ReadonlySet<number>,
 ): Revit2027StairsAggregateDecodeResult<FramedObject> {
+  const at = layout();
   if (
     !Number.isSafeInteger(objectLength) ||
-    objectLength < STATIC_BODY_OFFSET ||
+    objectLength < at.staticBodyOffset ||
     !fits(
       data,
       objectOffset,
-      objectLength + FRAME_ECHO_BYTES,
+      objectLength + at.echoBytes,
     )
   ) {
     return { ok: false, error: "stairs framed object is truncated" };
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  if (view.getUint32(objectOffset + 12, true) !== objectLength) {
+  if (view.getUint32(objectOffset + at.lengthOffset, true) !== objectLength) {
     return { ok: false, error: "stairs framed object length does not match" };
   }
   if (
     view.getUint32(
-      objectOffset + objectLength + FRAME_ECHO_OFFSET,
+      objectOffset + objectLength + at.echoOffset,
       true,
     ) !== objectLength
   ) {
     return { ok: false, error: "stairs framed object length echo does not match" };
   }
-  const marker = canonicalClassTag(view.getUint16(objectOffset + 16, true));
+  const marker = canonicalClassTag(view.getUint16(objectOffset + at.markerOffset, true));
   if (!allowedMarkers.has(marker)) {
     return { ok: false, error: "stairs framed object marker is not allowed" };
   }
-  if (view.getUint32(objectOffset + 22, true) !== 0) {
+  if (view.getUint32(objectOffset + at.nullPointerOffset, true) !== 0) {
     return { ok: false, error: "stairs framed object type high word is nonzero" };
   }
   const elementId = view.getUint32(objectOffset, true);
   if (
     elementId === 0 ||
-    view.getUint32(objectOffset + 4, true) !== 0
+    (at.idBytes === 8
+      ? view.getUint32(objectOffset + 4, true) !== 0
+      : elementId > 0x7fff_ffff)
   ) {
     return { ok: false, error: "stairs framed object element id is invalid" };
   }
@@ -163,14 +209,18 @@ function readObjectIdArray(
     };
   }
   const itemsOffset = countOffset + 4;
-  if (!fits(data, itemsOffset, count * 8, endOffset)) {
+  const idBytes = layout().idBytes;
+  if (!fits(data, itemsOffset, count * idBytes, endOffset)) {
     return { ok: false, error: "stairs ObjectId collection is truncated" };
   }
   const ids: number[] = [];
   for (let index = 0; index < count; index += 1) {
-    const offset = itemsOffset + index * 8;
+    const offset = itemsOffset + index * idBytes;
     const id = view.getUint32(offset, true);
-    if (id === 0 || view.getUint32(offset + 4, true) !== 0) {
+    if (
+      id === 0 ||
+      (idBytes === 8 ? view.getUint32(offset + 4, true) !== 0 : id > 0x7fff_ffff)
+    ) {
       return {
         ok: false,
         error: "stairs ObjectId collection contains an invalid id",
@@ -178,7 +228,7 @@ function readObjectIdArray(
     }
     ids.push(id);
   }
-  return { ok: true, value: { ids, endOffset: itemsOffset + count * 8 } };
+  return { ok: true, value: { ids, endOffset: itemsOffset + count * idBytes } };
 }
 
 function queueCollectionAt(
@@ -215,7 +265,7 @@ export function decodeRevit2027StairsElementAggregate(
   objectLength: number,
   revitVersion: number,
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsElementAggregate> {
-  if (!usesRevit2027RecordLayout(revitVersion)) {
+  if (!readsElementRecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "StairsElement aggregate decoding requires Revit 2027",
@@ -229,7 +279,8 @@ export function decodeRevit2027StairsElementAggregate(
   );
   if (!frame.ok) return frame;
   const endOffset = frame.value.objectEndOffset;
-  let cursor = objectOffset + STATIC_BODY_OFFSET;
+  const at = layout();
+  let cursor = objectOffset + at.staticBodyOffset;
 
   const registeredRailings = readObjectIdArray(data, cursor, endOffset);
   if (!registeredRailings.ok) return registeredRailings;
@@ -251,23 +302,18 @@ export function decodeRevit2027StairsElementAggregate(
   if (!supports.ok) return supports;
   cursor = supports.value.endOffset;
 
-  const scalarBytes = 84;
+  const scalarBytes = at.scalarTailBytes;
   if (!fits(data, cursor, scalarBytes, endOffset)) {
     return { ok: false, error: "StairsElement scalar tail is truncated" };
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (const offset of [
-    cursor,
-    cursor + 8,
-    cursor + 24,
-    cursor + 40,
-    cursor + 56,
-  ]) {
+  for (const offset of at.scalarTailDoubles.map((delta) => cursor + delta)) {
     if (!Number.isFinite(view.getFloat64(offset, true))) {
       return { ok: false, error: "StairsElement scalar tail is non-finite" };
     }
   }
-  for (const offset of [cursor + 80, cursor + 81, cursor + 82, cursor + 83]) {
+  const booleans = cursor + at.scalarTailBooleans;
+  for (const offset of [booleans, booleans + 1, booleans + 2, booleans + 3]) {
     if (data[offset]! > 1) {
       return { ok: false, error: "StairsElement boolean tail is invalid" };
     }
@@ -280,7 +326,7 @@ export function decodeRevit2027StairsElementAggregate(
       elementId: frame.value.elementId,
       objectOffset,
       objectLength,
-      staticBodyOffset: objectOffset + STATIC_BODY_OFFSET,
+      staticBodyOffset: objectOffset + at.staticBodyOffset,
       staticEndOffset: cursor,
       registeredRailingIds: registeredRailings.value.ids,
       runAndLandingIds: runsAndLandings.value.ids,
@@ -295,6 +341,11 @@ function nullableObjectId(
   view: DataView,
   byteOffset: number,
 ): number | null | undefined {
+  if (narrowElementIds()) {
+    const id = view.getUint32(byteOffset, true);
+    if (id === 0 || id === 0xffff_ffff) return null;
+    return id <= 0x7fff_ffff ? id : undefined;
+  }
   const low = view.getUint32(byteOffset, true);
   const high = view.getUint32(byteOffset + 4, true);
   if (low === 0 && high === 0) return null;
@@ -320,7 +371,7 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
   revitVersion: number,
   options: { knownStairsElementIds?: ReadonlySet<number> } = {},
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsRunAndLandingAggregate> {
-  if (!usesRevit2027RecordLayout(revitVersion)) {
+  if (!readsElementRecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "StairsRunAndLanding aggregate decoding requires Revit 2027",
@@ -337,7 +388,10 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
   );
   if (!frame.ok) return frame;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const searchStart = objectOffset + STATIC_BODY_OFFSET;
+  // `[id m_stairsId][id m_triserSymId][i32 m_baseRiserIndex][u8 m_isMirrored]`,
+  // each id eight bytes, or four where ids are 32-bit.
+  const idBytes = layout().idBytes;
+  const searchStart = objectOffset + layout().staticBodyOffset;
   const searchEnd = Math.min(
     frame.value.objectEndOffset,
     objectOffset + MAX_RECIPROCAL_STATIC_BYTES,
@@ -353,16 +407,16 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
     ) {
       continue;
     }
-    const triserSymbolId = nullableObjectId(view, stairsIdOffset + 8);
+    const triserSymbolId = nullableObjectId(view, stairsIdOffset + idBytes);
     if (triserSymbolId === undefined) continue;
-    const baseRiserIndex = view.getInt32(stairsIdOffset + 16, true);
+    const baseRiserIndex = view.getInt32(stairsIdOffset + 2 * idBytes, true);
     if (baseRiserIndex < -1 || baseRiserIndex > 1_000_000) continue;
-    const mirrored = data[stairsIdOffset + 20]!;
+    const mirrored = data[stairsIdOffset + 2 * idBytes + 4]!;
     if (mirrored > 1) continue;
 
     const stringers = readObjectIdArray(
       data,
-      stairsIdOffset + 21,
+      stairsIdOffset + 2 * idBytes + 5,
       frame.value.objectEndOffset,
     );
     if (!stringers.ok) continue;

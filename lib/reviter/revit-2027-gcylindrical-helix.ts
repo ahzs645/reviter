@@ -1,4 +1,4 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source slot for `GCylindricalHelix`. */
@@ -78,7 +78,7 @@ export function decodeRevit2027GCylindricalHelix(
     !Number.isSafeInteger(bodyEndOffset) ||
     byteOffset < 0 ||
     bodyEndOffset > data.byteLength ||
-    bodyEndOffset - byteOffset !== REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES
+    bodyEndOffset - byteOffset !== (REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES - revit2027GInfoShrink())
   ) {
     return {
       ok: false,
@@ -87,16 +87,18 @@ export function decodeRevit2027GCylindricalHelix(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  // Fields after GInfo sit 4 bytes nearer where ids are 32-bit.
+  const fieldBase = byteOffset - revit2027GInfoShrink();
   const endParameters = [
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET, true),
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET + DOUBLE_BYTES, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET + DOUBLE_BYTES, true),
   ] as const;
-  const radius = view.getFloat64(byteOffset + RADIUS_OFFSET, true);
-  const pitchOver2Pi = view.getFloat64(byteOffset + PITCH_OFFSET, true);
-  const basePoint = point3d(view, byteOffset + BASE_POINT_OFFSET);
-  const xVector = point3d(view, byteOffset + X_VECTOR_OFFSET);
-  const yVector = point3d(view, byteOffset + Y_VECTOR_OFFSET);
-  const zVector = point3d(view, byteOffset + Z_VECTOR_OFFSET);
+  const radius = view.getFloat64(fieldBase + RADIUS_OFFSET, true);
+  const pitchOver2Pi = view.getFloat64(fieldBase + PITCH_OFFSET, true);
+  const basePoint = point3d(view, fieldBase + BASE_POINT_OFFSET);
+  const xVector = point3d(view, fieldBase + X_VECTOR_OFFSET);
+  const yVector = point3d(view, fieldBase + Y_VECTOR_OFFSET);
+  const zVector = point3d(view, fieldBase + Z_VECTOR_OFFSET);
   if (
     !finite([
       ...endParameters,
@@ -144,12 +146,7 @@ export function decodeRevit2027GCylindricalHelix(
     value: {
       byteOffset,
       endOffset: bodyEndOffset,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       endParameters,
       radius,
       pitchOver2Pi,

@@ -3,6 +3,7 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GPolyMesh`. */
@@ -47,6 +48,11 @@ export function decodeRevit2027GPolyMesh(
 ): Revit2027GPolyMeshDecodeResult {
   if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GPolyMesh decoding requires release 2027" };
+  }
+  // Through 2023 its two element ids are 32-bit and 2019-2022 add a trailing
+  // flag; that layout has not been checked against a file, so it is not read.
+  if (narrowElementIds()) {
+    return { ok: false, error: "Revit 2027 GPolyMesh is not read where element ids are 32-bit" };
   }
   if (
     !Number.isSafeInteger(byteOffset) ||

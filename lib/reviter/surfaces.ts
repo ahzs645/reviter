@@ -104,6 +104,7 @@
  *   median 10.1 ft worst-vertex error with none inside a foot. Those surfaces
  *   are not wall bodies.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
 /**
@@ -351,8 +352,13 @@ function matchesOwnerRecord(
   for (let index = 0; index < ownerRecord.length; index += 1) {
     if (data[offset + index] !== ownerRecord[index]) return false;
   }
-  // A single-element owner record; the id follows as a 64-bit value.
+  // A single-element owner record; the id follows as a 64-bit value, or a
+  // 32-bit one where the file writes 32-bit ids.
   if (view.getUint32(offset + 6, true) !== 1) return false;
+  if (narrowElementIds()) {
+    const owner = view.getUint32(offset + 10, true);
+    return owner > 0 && owner <= 0x7fff_ffff;
+  }
   if (view.getUint32(offset + 14, true) !== 0) return false;
   return view.getUint32(offset + 10, true) > 0;
 }

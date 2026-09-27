@@ -23,8 +23,19 @@
  * This is a two-pass decoder because a source and its Level target can live in
  * different compressed chunks. It does not consult IFC, names, elevations, or
  * geometric proximity.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * 2023 schema declares `Element`'s fields in the same order, so the walk is the
+ * same with the body starting after a 12-byte frame header and `m_id` and
+ * `m_assocLevelId` four bytes each.
  */
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { scanFramedElementObjects } from "./element-objects.ts";
+import {
+  canonicalClassTag,
+  readsElementRecordLayout,
+  usesRevit2027RecordLayout,
+} from "./revit-class-tags.ts";
 
 /** Revit 2027 framed-object marker for `Level` elements. */
 export const REVIT_2027_LEVEL_MARKER = 0x0a19;
@@ -51,6 +62,14 @@ const DOC_STUB_AND_ID_BYTES = 4 + 8;
 const MIN_FIELD_OFFSET = OBJECT_BODY_OFFSET + (LEADING_POINTERS + 1) * 4 + 4 + DOC_STUB_AND_ID_BYTES;
 const MAX_FIELD_OFFSET = OBJECT_BODY_OFFSET + (LEADING_POINTERS + 1) * 6 + 4 + DOC_STUB_AND_ID_BYTES;
 
+/** The same bounds and body offset where ids are 32-bit. */
+const NARROW_OBJECT_BODY_OFFSET = 14;
+const NARROW_DOC_STUB_AND_ID_BYTES = 4 + 4;
+const NARROW_MIN_FIELD_OFFSET =
+  NARROW_OBJECT_BODY_OFFSET + (LEADING_POINTERS + 1) * 4 + 4 + NARROW_DOC_STUB_AND_ID_BYTES;
+const NARROW_MAX_FIELD_OFFSET =
+  NARROW_OBJECT_BODY_OFFSET + (LEADING_POINTERS + 1) * 6 + 4 + NARROW_DOC_STUB_AND_ID_BYTES;
+
 /**
  * Offset of `m_assocLevelId` within one framed object, or `null` when the walk
  * runs past the object.
@@ -59,8 +78,9 @@ export function associatedLevelFieldOffset(
   view: DataView,
   start: number,
   limit: number,
+  narrow = false,
 ): number | null {
-  let cursor = start + OBJECT_BODY_OFFSET;
+  let cursor = start + (narrow ? NARROW_OBJECT_BODY_OFFSET : OBJECT_BODY_OFFSET);
   const step = () => {
     if (cursor + 4 > limit) return false;
     cursor += view.getInt32(cursor, true) === 0 ? 4 : 6;
@@ -75,9 +95,12 @@ export function associatedLevelFieldOffset(
   if (constraints > (limit - cursor) / 4) return null;
   for (let index = 0; index < constraints; index += 1) if (!step()) return null;
   if (!step()) return null;
-  cursor += DOC_STUB_AND_ID_BYTES;
+  cursor += narrow ? NARROW_DOC_STUB_AND_ID_BYTES : DOC_STUB_AND_ID_BYTES;
   const fieldOffset = cursor - start;
-  if (fieldOffset < MIN_FIELD_OFFSET || fieldOffset > MAX_FIELD_OFFSET) return null;
+  const [min, max] = narrow
+    ? [NARROW_MIN_FIELD_OFFSET, NARROW_MAX_FIELD_OFFSET]
+    : [MIN_FIELD_OFFSET, MAX_FIELD_OFFSET];
+  if (fieldOffset < min || fieldOffset > max) return null;
   return fieldOffset;
 }
 
@@ -108,14 +131,45 @@ function readId(view: DataView, offset: number, limit: number): number | null {
   return id || null;
 }
 
+/**
+ * The narrow walk: every frame the shared frame walk finds, stepping over a
+ * frame it has read as the wide walk does, so a frame nested in another's body
+ * is not read.
+ */
+function scanNarrowCandidates(data: Uint8Array, view: DataView): AssociatedLevelRelationCandidate[] {
+  const candidates: AssociatedLevelRelationCandidate[] = [];
+  let next = 0;
+  for (const frame of scanFramedElementObjects(data)) {
+    if (frame.offset < next) continue;
+    next = frame.offset + frame.objectLength + 16;
+    const limit = frame.offset + frame.objectLength + 12;
+    const fieldOffset = associatedLevelFieldOffset(view, frame.offset, limit, true);
+    if (fieldOffset == null || frame.offset + fieldOffset + 4 > limit) continue;
+    const levelId = view.getUint32(frame.offset + fieldOffset, true);
+    if (!levelId || levelId > 0x7fff_ffff || levelId === frame.elementId) continue;
+    candidates.push({
+      elementId: frame.elementId,
+      levelId,
+      fieldOffset,
+      recordOffset: frame.offset,
+      objectLength: frame.objectLength,
+      objectMarker: frame.marker,
+    });
+  }
+  return candidates;
+}
+
 /** Scan one inflated partition chunk for framed associated-level candidates. */
 export function scanAssociatedLevelRelationCandidates(
   data: Uint8Array,
   revitVersion: number,
 ): AssociatedLevelRelationCandidate[] {
   const candidates: AssociatedLevelRelationCandidate[] = [];
-  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) return candidates;
+  if (!readsElementRecordLayout(revitVersion) || data.byteLength < 64) return candidates;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (!usesRevit2027RecordLayout(revitVersion) && narrowElementIds()) {
+    return scanNarrowCandidates(data, view);
+  }
 
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (view.getUint32(offset + 4, true) !== 0) continue;

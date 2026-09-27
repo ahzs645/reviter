@@ -3,14 +3,13 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import { REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT } from "./revit-2027-ginstance.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoBytes, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GComponentRef`. */
 export const REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT = 2230;
 export const REVIT_2027_GCOMPONENT_REF_BODY_BYTES = 26;
 
-const GINFO_BYTES = 20;
 
 /**
  * A reference, inside one element's geometry, to a component that is its own
@@ -52,14 +51,15 @@ export function decodeRevit2027GComponentRef(
     byteOffset < 0 ||
     !Number.isSafeInteger(enclosingEndOffset) ||
     enclosingEndOffset > data.byteLength ||
-    byteOffset > enclosingEndOffset - REVIT_2027_GCOMPONENT_REF_BODY_BYTES
+    byteOffset > enclosingEndOffset - (revit2027GInfoBytes() + 6)
   ) {
     return { ok: false, error: "Revit 2027 GComponentRef body is truncated or outside its owner" };
   }
-  const instanceInfo = decodeCondInt16PropertyDescriptor(data, byteOffset + GINFO_BYTES);
+  const bodyBytes = revit2027GInfoBytes() + 6;
+  const instanceInfo = decodeCondInt16PropertyDescriptor(data, byteOffset + revit2027GInfoBytes());
   if (!instanceInfo.ok) return instanceInfo;
   if (
-    instanceInfo.descriptor.endOffset !== byteOffset + REVIT_2027_GCOMPONENT_REF_BODY_BYTES ||
+    instanceInfo.descriptor.endOffset !== byteOffset + bodyBytes ||
     instanceInfo.descriptor.token !== -1 ||
     instanceInfo.descriptor.sourceClassSlot !== REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT
   ) {
@@ -73,13 +73,8 @@ export function decodeRevit2027GComponentRef(
     ok: true,
     value: {
       byteOffset,
-      endOffset: byteOffset + REVIT_2027_GCOMPONENT_REF_BODY_BYTES,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      endOffset: byteOffset + bodyBytes,
+      gInfo: readRevit2027GInfo(view, byteOffset),
       instanceInfo: instanceInfo.descriptor,
     },
   };

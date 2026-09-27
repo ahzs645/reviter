@@ -11,6 +11,7 @@
  * In the 2025 RAC sample 575 forms are read this way, 69 of them voids.
  */
 import type { ElementObject } from "./element-objects.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import { associatedLevelFieldOffset } from "./level-relations.ts";
 
 /** `GenSweep`'s concrete classes in the 2027 numbering. */
@@ -45,6 +46,8 @@ function optionalId(value: bigint): number | null {
 /** One form's `GenSweep` fields, or null for a frame that is not a form. */
 export function readFamilyForm(data: Uint8Array, frame: ElementObject): FamilyForm | null {
   if (!REVIT_2027_FAMILY_FORM_CLASSES.has(frame.marker)) return null;
+  // The offsets below are for 64-bit element ids (2024 on).
+  if (narrowElementIds()) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const limit = Math.min(data.byteLength, frame.offset + frame.objectLength);
   const fieldOffset = associatedLevelFieldOffset(view, frame.offset, limit);

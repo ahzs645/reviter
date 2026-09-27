@@ -1,4 +1,4 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for `GEllipse`. */
@@ -65,21 +65,23 @@ export function decodeRevit2027GEllipse(
     byteOffset < 0 ||
     !Number.isSafeInteger(enclosingEndOffset) ||
     enclosingEndOffset > data.byteLength ||
-    byteOffset > enclosingEndOffset - REVIT_2027_GELLIPSE_BODY_BYTES
+    byteOffset > enclosingEndOffset - (REVIT_2027_GELLIPSE_BODY_BYTES - revit2027GInfoShrink())
   ) {
     return { ok: false, error: "Revit 2027 GEllipse body is truncated or outside its owner" };
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  // Fields after GInfo sit 4 bytes nearer where ids are 32-bit.
+  const fieldBase = byteOffset - revit2027GInfoShrink();
   const endParameters = [
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET, true),
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET + 8, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET + 8, true),
   ] as const;
-  const center = vector(view, byteOffset + CENTER_OFFSET);
-  const xDirection = vector(view, byteOffset + X_DIRECTION_OFFSET);
-  const yDirection = vector(view, byteOffset + Y_DIRECTION_OFFSET);
-  const xRadius = view.getFloat64(byteOffset + X_RADIUS_OFFSET, true);
-  const yRadius = view.getFloat64(byteOffset + Y_RADIUS_OFFSET, true);
+  const center = vector(view, fieldBase + CENTER_OFFSET);
+  const xDirection = vector(view, fieldBase + X_DIRECTION_OFFSET);
+  const yDirection = vector(view, fieldBase + Y_DIRECTION_OFFSET);
+  const xRadius = view.getFloat64(fieldBase + X_RADIUS_OFFSET, true);
+  const yRadius = view.getFloat64(fieldBase + Y_RADIUS_OFFSET, true);
   if (
     ![...endParameters, ...center, ...xDirection, ...yDirection, xRadius, yRadius]
       .every(Number.isFinite)
@@ -100,13 +102,8 @@ export function decodeRevit2027GEllipse(
     ok: true,
     value: {
       byteOffset,
-      endOffset: byteOffset + REVIT_2027_GELLIPSE_BODY_BYTES,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      endOffset: byteOffset + REVIT_2027_GELLIPSE_BODY_BYTES - revit2027GInfoShrink(),
+      gInfo: readRevit2027GInfo(view, byteOffset),
       endParameters,
       center,
       xDirection,

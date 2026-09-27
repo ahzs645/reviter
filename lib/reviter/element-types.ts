@@ -56,7 +56,20 @@
  * costs little because a slot ends in `0x11` — 0.17% of bytes, against the
  * marker's 12.8% — and a page with no slot is then dropped whole. Every record
  * head then reads its slot from that index rather than searching for it.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * record heads are the frames the shared frame walk finds, and the type
+ * reference is read by `VWall`'s declared field order rather than by the zero
+ * run, which only works where both offsets happen to be zero. After the
+ * `m_pCurveDriver` slot (`VWallDriver`) and its `m_pRefFaces` list come
+ * `m_embeddedTo` (`[u32 n]` ids), the `m_wallRunTimeData` pointer (four bytes
+ * null, six live), `m_keyRefOffset` and `m_locLineOffset` as f64, and then
+ * `m_WallAttributesId`, the wall's type. Measured on the walls whose type the
+ * 2025 RAC sample names: the id sits 24 or 26 bytes past the list in both
+ * files, as that order predicts.
  */
+import { narrowElementIds } from "./element-id-width.ts";
+import { scanFramedElementObjects } from "./element-objects.ts";
 import { canonicalClassTag, fileClassTag } from "./revit-class-tags.ts";
 
 /**
@@ -81,6 +94,23 @@ const TYPE_REFERENCE_FIELD = 0x116f;
  * `TaperableWallTypeWidthAtParametersCell`.
  */
 const TYPE_NAME_FIELD = 0x1104;
+
+/**
+ * `PatternHelper` in the 2027 numbering. The type-name slot's class,
+ * `TaperableWallTypeWidthAtParametersCell`, first appears in the 2022 schema,
+ * which wrote the taperable-wall cells between this one and the name. Where
+ * ids are 32-bit and the file has no taperable cells (the 2019, 2020 and 2021
+ * RAC samples), each of the 13 wall types whose 2025 name was found writes it
+ * behind a `PatternHelper` pointer instead.
+ */
+const PRE_TAPERABLE_TYPE_NAME_FIELD = 0x0168;
+
+/** The class whose slot precedes a type's name in this file. */
+function typeNameField(): number {
+  const field = fileClassTag(TYPE_NAME_FIELD);
+  if (field >= 0 || !narrowElementIds()) return field;
+  return fileClassTag(PRE_TAPERABLE_TYPE_NAME_FIELD);
+}
 
 /** Bytes of a record searched for the type-reference slot. */
 const RECORD_SEARCH_BYTES = 1_200;
@@ -119,7 +149,7 @@ function indexFieldSlots(data: Uint8Array, view: DataView): SlotIndex {
   const tail = SLOT_BYTES - 1;
   // The field ids are class indices, so the bytes hold the file's own; in a
   // 2025 file both classes sit under `0x10` rather than `0x11`.
-  const nameField = fileClassTag(TYPE_NAME_FIELD);
+  const nameField = typeNameField();
   const referenceField = fileClassTag(TYPE_REFERENCE_FIELD);
   const highBytes = new Set(
     [nameField, referenceField]
@@ -209,6 +239,62 @@ function readTypeName(data: Uint8Array, view: DataView, slot: number): string | 
   return new TextDecoder("utf-16le").decode(data.subarray(start, start + chars * 2));
 }
 
+/** Ids `m_embeddedTo` may list before the walk stops trusting itself. */
+const MAX_EMBEDDED_IDS = 1_000;
+
+/**
+ * `m_WallAttributesId` read by `VWall`'s field order from a located
+ * `m_pCurveDriver` slot, where ids are 32-bit, or null. `end` bounds the walk
+ * to the wall's own frame.
+ */
+function readNarrowTypeReference(view: DataView, slot: number, end: number): number | null {
+  if (slot + 10 > end) return null;
+  const faces = view.getUint32(slot + 6, true);
+  if (faces > MAX_INDEX_ENTRIES) return null;
+  let cursor = slot + 10 + faces * 6;
+  if (cursor + 4 > end) return null;
+  const embedded = view.getUint32(cursor, true);
+  if (embedded > MAX_EMBEDDED_IDS) return null;
+  cursor += 4 + embedded * 4;
+  if (cursor + 4 > end) return null;
+  cursor += view.getInt32(cursor, true) === 0 ? 4 : 6;
+  for (const offset of [0, 8]) {
+    if (cursor + offset + 8 > end || !Number.isFinite(view.getFloat64(cursor + offset, true))) return null;
+  }
+  cursor += 16;
+  if (cursor + 4 > end) return null;
+  const typeId = view.getUint32(cursor, true);
+  return typeId >= MIN_TYPE_ID && typeId < MAX_TYPE_ID ? typeId : null;
+}
+
+/** `collectTypeLinks` where ids are 32-bit: one record per framed object. */
+function collectNarrowTypeLinks(data: Uint8Array, view: DataView, slots: SlotIndex): TypeLinks {
+  const references: TypeReference[] = [];
+  const names: TypeNameRecord[] = [];
+  const seenReference = new Set<number>();
+  const seenName = new Set<number>();
+  const nameCursor = new SlotCursor(slots.nameSlots);
+  const referenceCursor = new SlotCursor(slots.referenceSlots);
+  for (const frame of scanFramedElementObjects(data)) {
+    const end = Math.min(data.byteLength, frame.offset + frame.objectLength + 12);
+    const nameSlot = nameCursor.within(frame.offset);
+    if (nameSlot >= 0 && nameSlot < end && !seenName.has(frame.elementId)) {
+      const name = readTypeName(data, view, nameSlot);
+      if (name) {
+        seenName.add(frame.elementId);
+        names.push({ typeId: frame.elementId, name });
+      }
+    }
+    const referenceSlot = referenceCursor.within(frame.offset);
+    if (referenceSlot < 0 || referenceSlot >= end || seenReference.has(frame.elementId)) continue;
+    const typeId = readNarrowTypeReference(view, referenceSlot, end);
+    if (typeId == null || typeId === frame.elementId) continue;
+    seenReference.add(frame.elementId);
+    references.push({ elementId: frame.elementId, typeId });
+  }
+  return { references, names };
+}
+
 /**
  * Decode type references and type names from one inflated page. Records are
  * found structurally, by the null-field marker at `+18` and the zero word at
@@ -223,6 +309,7 @@ export function collectTypeLinks(data: Uint8Array): TypeLinks {
   // Without a slot of either kind no record on this page can yield anything,
   // and most pages of a real model are in that state.
   if (nameSlots.length === 0 && referenceSlots.length === 0) return { references, names };
+  if (narrowElementIds()) return collectNarrowTypeLinks(data, view, { nameSlots, referenceSlots });
 
   const nameCursor = new SlotCursor(nameSlots);
   const referenceCursor = new SlotCursor(referenceSlots);

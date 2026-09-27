@@ -1,9 +1,12 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_GEDGE_SOURCE_CLASS_SLOT = 1423;
 
-const GINFO_BYTES = 20;
 const REFERENCE_ARRAY_BYTES = 2 * 4;
 const EDGE_POINT_BYTES = 4 * 8;
 const ENDPOINT_COUNT = 2;
@@ -198,12 +201,12 @@ export function decodeRevit2027GEdgeStatic(
   }
 
   const interiorCountOffset =
-    byteOffset + GINFO_BYTES + 3 * REFERENCE_ARRAY_BYTES;
+    byteOffset + revit2027GInfoBytes() + 3 * REFERENCE_ARRAY_BYTES;
   if (
     !bounded(
       data,
       byteOffset,
-      GINFO_BYTES + 3 * REFERENCE_ARRAY_BYTES + 4,
+      revit2027GInfoBytes() + 3 * REFERENCE_ARRAY_BYTES + 4,
       enclosingEndOffset,
     )
   ) {
@@ -256,23 +259,18 @@ export function decodeRevit2027GEdgeStatic(
     value: {
       byteOffset,
       endOffset: flagsOffset + 1,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       faceReferences: readInt32Pair(
         view,
-        byteOffset + GINFO_BYTES,
+        byteOffset + revit2027GInfoBytes(),
       ),
       nextReferences: readInt32Pair(
         view,
-        byteOffset + GINFO_BYTES + REFERENCE_ARRAY_BYTES,
+        byteOffset + revit2027GInfoBytes() + REFERENCE_ARRAY_BYTES,
       ),
       previousReferences: readInt32Pair(
         view,
-        byteOffset + GINFO_BYTES + 2 * REFERENCE_ARRAY_BYTES,
+        byteOffset + revit2027GInfoBytes() + 2 * REFERENCE_ARRAY_BYTES,
       ),
       interiorEdgePoints,
       firstAndLastEdgePoints,
