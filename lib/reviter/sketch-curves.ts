@@ -58,6 +58,7 @@
  * and `assembleRings` can be asked for the bare corners instead.
  */
 
+import { narrowElementIds } from "./element-id-width.ts";
 import { noteLimit } from "./limit-census.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
@@ -219,15 +220,18 @@ export function collectSketchCurves(data: Uint8Array): SketchCurve[] {
   const anchorOffsets: number[] = [];
   const anchorOwners: number[] = [];
   const ownerAnchor = ownerAnchorBytes();
+  // The id after the anchor is `m_id`: 64-bit with a zero high word, or a
+  // non-negative 32-bit id where the file writes 32-bit ids.
+  const narrow = narrowElementIds();
   for (
     let offset = ownerAnchor ? data.indexOf(ownerAnchor[0]!) : -1;
     ownerAnchor && offset >= 0 && offset + OWNER_ANCHOR_LENGTH + 8 <= data.byteLength;
     offset = data.indexOf(ownerAnchor[0]!, offset + 1)
   ) {
     if (!matchesAt(data, offset, ownerAnchor)) continue;
-    if (view.getUint32(offset + 14, true) !== 0) continue;
+    if (!narrow && view.getUint32(offset + 14, true) !== 0) continue;
     const owner = view.getUint32(offset + 10, true);
-    if (!owner) continue;
+    if (!owner || (narrow && owner > 0x7fff_ffff)) continue;
     anchorOffsets.push(offset);
     anchorOwners.push(owner);
     offset += OWNER_ANCHOR_LENGTH - 1;

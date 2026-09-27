@@ -26,6 +26,7 @@ import {
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
+import { readInstancePlacement, readLocalBounds } from "../lib/reviter/instanced-geometry.ts";
 import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "../lib/reviter/level-definitions.ts";
 import { scanAssociatedLevelRelationCandidates } from "../lib/reviter/level-relations.ts";
 import {
@@ -34,6 +35,8 @@ import {
 } from "../lib/reviter/material-records.ts";
 import { scanNameEntries } from "../lib/reviter/name-entries.ts";
 import { decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
+import { collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
+import { collectOwnedSurfaces } from "../lib/reviter/surfaces.ts";
 import {
   REVIT_2027_CLASS_NAMES,
   REVIT_2027_FIRST_CLASS_INDEX,
@@ -365,4 +368,75 @@ test("before 2022 a narrow wall type's name follows its PatternHelper cell point
   } finally {
     setActiveClassTagTranslation(null);
   }
+});
+
+/** `ff ff ff ff <CellList> 01 00 00 00` followed by a four-byte `m_id`. */
+const narrowAnchor = (elementId: number) => new Bytes().i32(-1).u16(0x0310).u32(1).u32(elementId).out;
+
+test("narrow sketch edges and surface patches are owned through a four-byte m_id", () => {
+  const line = new Bytes().u8(0x04).u8(0x00).u8(0x08).u8(0x01)
+    .f64(0).f64(12.5) // t range
+    .f64(10).f64(20).f64(0) // origin
+    .f64(1).f64(0).f64(0) // unit direction
+    .zeros(16).out;
+  const plane = new Bytes().u8(0x01)
+    .f64(10).f64(20).f64(0) // origin
+    .f64(1).f64(0).f64(0) // u
+    .f64(0).f64(0).f64(1) // v
+    .f64(0).f64(0).f64(12.5).f64(9.8) // trim
+    .zeros(16).out;
+  // A second id right behind the four-byte one, which a 64-bit reading would
+  // take for a nonzero high word.
+  const data = page(narrowAnchor(765523), [0x44, 0x05, 0, 0], line, narrowAnchor(198694), [0x44, 0x05, 0, 0], plane);
+  const curves = narrow(() => collectSketchCurves(data));
+  assert.deepEqual(curves.map((curve) => [curve.owner, curve.kind, curve.start, curve.end]), [
+    [765523, "line", [10, 20, 0], [22.5, 20, 0]],
+  ]);
+  assert.deepEqual(collectSketchCurves(data), []);
+  const surfaces = narrow(() => collectOwnedSurfaces(data));
+  assert.deepEqual(surfaces.map(({ owner, surface }) => [owner, surface.kind]), [[198694, "plane"]]);
+  assert.deepEqual(collectOwnedSurfaces(data), []);
+});
+
+test("a narrow placement: the 276-byte instance object and the element's own tail placement", () => {
+  const basis = [0, -1, 0, 1, 0, 0, 0, 0, 1];
+  const placementBytes = (origin: number[], geometryId: number) => {
+    const out = new Bytes();
+    for (const value of [...basis, ...origin]) out.f64(value);
+    return out.u32(geometryId).u32(0).out;
+  };
+  // Fixed-length object: 276 bytes, basis at end - 96, origin at end - 24, id at end.
+  const fixed = new Uint8Array(276 + 16 + 16);
+  const fixedView = new DataView(fixed.buffer);
+  fixedView.setUint32(0, 423100, true);
+  fixedView.setUint32(4, 0x5eed_1234, true);
+  fixedView.setUint32(8, 276, true);
+  fixedView.setUint16(12, 0x07ef, true);
+  fixed.set(placementBytes([12, 34, 5], 381904).slice(0, 96), 276 - 96);
+  fixedView.setUint32(276, 381904, true); // id, then a zero word, then the echo at +288
+  fixedView.setUint32(276 + 12, 276, true);
+  const fixedFrame = narrow(() => scanFramedElementObjects(fixed))[0]!;
+  assert.deepEqual(narrow(() => readInstancePlacement(fixed, fixedFrame)), {
+    elementId: 423100, basis, origin: [12, 34, 5], geometryId: 381904, symbolId: 381904,
+  });
+
+  // Tail placement inside a longer object, at +358 from its start.
+  const body = new Bytes().zeros(358 - 14);
+  body.out.push(...placementBytes([-3, 7.5, 0], 211807));
+  body.zeros(40);
+  const tail = page(narrowFrame(211850, 0x07ef, body.out));
+  const tailFrame = narrow(() => scanFramedElementObjects(tail))[0]!;
+  assert.deepEqual(narrow(() => readInstancePlacement(tail, tailFrame))?.origin, [-3, 7.5, 0]);
+  assert.equal(narrow(() => readInstancePlacement(tail, tailFrame))?.geometryId, 211807);
+});
+
+test("a narrow shared shape's local bounds follow its narrow field table", () => {
+  const body = new Bytes().u32(381904).u32(0).i32(-1).u32(0x0008_8004).u32(1).u32(3).u16(0x0821);
+  for (let copy = 0; copy < 2; copy += 1) for (const value of [-1, -0.5, 0, 1, 0.5, 7]) body.f64(value);
+  body.zeros(24);
+  const data = page(narrowFrame(381904, 0x08c6, body.out));
+  const frame = narrow(() => scanFramedElementObjects(data))[0]!;
+  assert.deepEqual(narrow(() => readLocalBounds(data, frame)), {
+    elementId: 381904, min: [-1, -0.5, 0], max: [1, 0.5, 7],
+  });
 });
