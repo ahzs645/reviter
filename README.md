@@ -167,9 +167,9 @@ A 2027 envelope is not an element's native shape. Reviter therefore records geom
 
 | Revit release | Native evidence | Rendered geometry | Categories | Materials |
 | --- | --- | --- | --- | --- |
-| 2023 | fixed `ArcWall` six-coordinate record detected as a bounds hypothesis | production promotion disabled pending paired proof | attempted; no project file in the corpus to verify against | schema adapter only; real extraction pending |
+| 2023 and older | none: 32-bit element ids and a 12-byte object header ([details](docs/older-release-decoding-2026-09-25.md#8-second-pass-2026-09-27)) | diagnostic coordinate scan, labelled as such in the studio | not decoded | not decoded |
 | 2024–2025 | the 2027 record decoders, reading the file's own class indices through a name-based translation ([details](docs/older-release-decoding-2026-09-25.md)) | native face meshes, rebuilt walls and envelope fallback; 91–100% of Autodesk-drawn elements displayed on three sample projects | each element's own `ElementHeader`; agrees with Autodesk on every displayed element | native definitions and assignments; name, colour and transparency exact for every material Autodesk lists |
-| 2026 | the same path as 2024–2025 | as 2024–2025 | as 2024–2025 | as 2024–2025; no 2026 file in the corpus to verify against |
+| 2026 | the same path as 2024–2025 | as 2024–2025; Autodesk's 2026 RAC basic and structural samples convert with native geometry, types, parameters and levels | as 2024–2025 | as 2024–2025; no Autodesk capture of a 2026 file to score against |
 | 2027 | nested duplicated bounds, native element ID, `ElementHeader` and record classification | native face meshes, rebuilt walls and envelope fallback; 99.6% of Autodesk-drawn elements displayed | `ElementHeader` and `BuiltInCategory` tokens, IFC- and Autodesk-corroborated | native definitions and assignments; name, colour and transparency exact |
 | unknown | no release-specific decoder | diagnostic fallback only | attempted; reports zero when the token is absent | no claim |
 

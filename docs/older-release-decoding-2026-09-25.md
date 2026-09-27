@@ -20,12 +20,15 @@ ids, names, categories, levels and materials; the GLB for per-element geometry).
 | | UNBC | Technical school | RAC basic sample | Snowdon Towers |
 | --- | ---: | ---: | ---: | ---: |
 | Release | 2027 | 2025 | 2025 | 2024 |
-| Autodesk-drawn elements displayed | 36,299 of 36,432 | 5,369 of 5,479 | 410 of 450 | 1,310 of 1,310 † |
-| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) | 99.6% | 99.6% | 91.2% | 95.0% |
+| Autodesk-drawn elements displayed | 36,337 of 36,432 | 5,434 of 5,479 | 429 of 450 | 1,310 of 1,310 † |
+| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) | 99.7% | 99.1% | 91.6% | 95.2% |
+| Elements drawn that Autodesk does not draw | 34 | 66 | 9 | † |
 | Materials: name, colour and transparency exact | 94 / 94 | 186 / 186 | 174 / 174 | 220 / 220 |
 | Levels: name and elevation exact | 13 / 13 | 5 / 5 | 6 / 6 | 18 / 18 |
-| Family names, where decoded, equal to Autodesk's | 2,235 / 2,235 | 249 / 249 | 114 / 114 | — |
-| Time to the ready studio (headless Chromium) | 54 s | 11 s | 10 s | 47 s |
+| Type names equal to Autodesk's "Type Name" | 35,299 / 35,299 | 5,356 / 5,356 | 427 / 427 | 7,725 / 7,764 ‡ |
+| Time to the ready studio (headless Chromium) | 57 s | 13 s | 12 s | 54 s |
+
+‡ The 39 that differ are walls, from the older wall-type decoder (`element-types.ts`), not the name entries below; they look like walls whose type was changed after they were drawn.
 
 † Snowdon's Autodesk capture is a walls-only coordination view (1,061 walls and
 249 wall sweeps), so it scores only those. The studio draws 9,247 elements
@@ -172,28 +175,26 @@ the held pages as a list and uses the native `indexOf` on each watched class's
 file index to find candidates. UNBC's output is byte-identical and its time is
 unchanged.
 
+## 8. Second pass, 2026-09-27
+
+A second pass worked through the list above, with two outside inputs: a survey of this repository's other branches, and a search for public material on the format. The rvt-rs project's published reports (Apache-2.0) supplied two facts reimplemented here; everything else is this project's own measurement against the Autodesk captures.
+
+- **Grouped and datum-centred elements.** A model group's placement points at one of its members, and the member was removed as a cached family shape: 6 bar chairs and 12 solar panels in RAC. The datum-pile rule removed a wall and a ceiling of RAC, whose building stands on its own origin; they were the only project walls, floors, roofs or ceilings in the pile of any of the four files, and host elements are now exempt. An element whose `ElementHeader` names a family (`m_familyId`) is part of that family's definition: none of the 111,000 elements Autodesk lists across the four files has one, and they are no longer drawn (RAC's extras 39 → 9, UNBC's 51 → 34).
+- **Type and family names** (`name-entries.ts`, `family-type-names.ts`). Partitions carry a name entry, `[u64 id][u32 n][UTF-16 name][i64 category]`, for every loaded family and type (rvt-rs RE-38). An instance's type is the one id its own record references with an entry of its category, and its family the one its type's record references. Doors and windows point their placement at a per-host symbol clone with no name, so the record, not the placement, is what reaches the type.
+- **Parameters on older files.** 2024 and 2025 write each double parameter entry as `[f64 value][i64 id]`, the reverse of 2027, with identical schema declarations; the reader now takes the order from the table (a parameter id's all-ones high word sits at +4 in one order and +12 in the other). Base and Top Offset equal Autodesk's on every wall compared. The same comparison showed the stored Unconnected Height is stale once a wall's top is constrained (right for 209 of 9,368 UNBC walls), while the wall's built height is right for all 9,368; the palette shows that as Height. Enumerated values show by name ("Interior", "Plumb Cut"), from the branch `learn-external-document`.
+- **Rotations are rows.** A nested instance's stored rotation was read as columns; `instanceCorners` has always read a placement's as rows. Read as rows, RAC's 37-degree solar panels and two of the school's beams land on Autodesk's boxes (0.02 ft), and no UNBC element moves.
+- **Unplaced instances.** An instance whose placement did not decode is now composed from its own geometry root, which is a GInstance of its symbol: RAC's solar panels, and 38 more UNBC elements.
+- **Page-crossing geometry.** A `GElement` whose length echo falls on the next 64 KiB page was never framed; those are now reassembled (UNBC 14 more elements within tolerance).
+- **Walls.** An angled wall takes its type's compound width, placed by its envelope's middle, where that keeps the core inside the wall and the wall inside its envelope (5 Snowdon walls, all closer).
+- **Reinforcement and beam systems.** Rebar, area, path and fabric reinforcement envelopes are the region their bars run through, and are not drawn as boxes; a beam system is a container whose beams are drawn, and is left out.
+- **From the other branches:** the independent IFC reader check with its recovery-evidence IDS, which found a synthesised stair container with no `Reviter_Recovery` set (now fixed); per-row "decoded / inferred" markers in the properties palette; and the enumerated parameter value names.
+- **Revit 2026** is read by the same path. Autodesk's 2026 RAC basic and structural samples convert in 12 s and 8 s, with type names, parameters and levels; there is no Autodesk capture of them to score against.
+
 ## What is still not right
 
-- **Loadable families with no decoded geometry are boxes.** RAC's wind
-  generators (34 ft tall), its round drop-cap column, and the school's pendant
-  lights draw as their envelopes. Where the envelope includes things Autodesk
-  does not draw, the box is too big: 11 RAC pile caps are 20.7 ft tall because
-  a pile cap's envelope includes its nested pile, and the school's pendants
-  include the light's hanging rod.
-- **Not drawn:** RAC's 12 electrical equipment items and 6 furniture pieces, and
-  the school's 38 generic models and 27 parking stalls. Planting, entourage,
-  terrain, room separation lines and UNBC's 82 stair assemblies (whose runs,
-  landings and supports are drawn) are left out on purpose.
-- **Type names** decode only for system-family walls. Loadable-family type
-  names and most family names are still missing: family names reach 2,235 of
-  UNBC's 36,299 drawn elements and 249 of the school's 5,369.
-- **Parameters on older files are sparse.** 2024 and 2025 walls rarely yield a
-  parameter table, so Base Offset, Unconnected Height and similar show only on
-  UNBC.
-- **Angled walls** in 2024 and 2025 keep their core thickness, since their
-  envelope mixes length into depth. Most of Snowdon's remaining 66 wall
-  mismatches are those, or walls built from segments that are not on one line.
-- **The optional Rust reader** stops on the 2024 and 2027 samples. Nothing
-  shown depends on it.
-- **2023 and older** are untouched: no project from those releases was
-  available to check.
+- **Family geometry that is not in the project.** 25 of RAC's 65 remaining boxes are instances whose symbol has no geometry object in the project at all; Revit regenerates it from the family's embedded document, which is not decoded. Most of the rest stop at geometry classes the replay has no certified reader for: `GImposter`, `GComponentRef`, `GEllipse`, `GNurbSpline` and `GPolyMesh` in the 2025 files, and `GBitmap` and `GConditionSelected` in UNBC. Each needs its own byte-level reader.
+- **Envelopes that include more than the element.** A pile cap's envelope includes its nested pile (20.7 ft tall for a 1 ft cap), and a pendant light's its hanging rod.
+- **Not drawn:** the school's 27 parking stalls draw one of their two painted stripes. Planting, entourage, terrain, rebar, room separation lines and UNBC's stair assemblies are left out on purpose.
+- **Snowdon's 39 wall types** read from the older decoder as the type they were drawn with.
+- **Revit 2023 and older are not decoded.** Autodesk's own 2019–2023 samples are available and were checked: those releases write 32-bit element ids (`Identifier.m_id` is an `int32`) and a 12-byte object header, `[u32 id][u32 discriminator][u32 length]` before the class, where 2024 on write a 64-bit id and a 16-byte header. Every reader that touches an element id would need that variant, including the geometry replay. Until then the studio says plainly that the file's release is not decoded.
+- **The optional Rust reader** stops on the 2024 and 2027 samples. Nothing shown depends on it.
