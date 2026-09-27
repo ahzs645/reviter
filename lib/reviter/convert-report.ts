@@ -478,7 +478,7 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
       ? [`${Object.values(scene.nonModelElements).reduce((sum, count) => sum + count, 0).toLocaleString()} records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: ${scene.nonModelElements["view-owned"].toLocaleString()} owned by a view (annotation, tags, detail items), ${scene.nonModelElements["family-internal"].toLocaleString()} inside a loaded family's own definition, ${scene.nonModelElements["no-category"].toLocaleString()} with no category, and ${scene.nonModelElements["non-model-category"].toLocaleString()} datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.`]
       : []),
     ...(scene.omittedTerrainProxies
-      ? [`${scene.omittedTerrainProxies.toLocaleString()} topography, planting and entourage elements have no decoded mesh and are not drawn: their envelope is not their shape (a terrain's is a block under the whole site, an RPC tree's a solid cube).`]
+      ? [`${scene.omittedTerrainProxies.toLocaleString()} topography, planting, entourage and reinforcement elements have no decoded mesh and are not drawn: their envelope is not their shape (a terrain's is a block under the whole site, an RPC tree's a solid cube, a rebar set's the slab its bars run through).`]
       : []),
     ...(scene.omittedHelperProxies
       ? [`${scene.omittedHelperProxies.toLocaleString()} unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.`]
