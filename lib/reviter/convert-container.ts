@@ -254,14 +254,27 @@ export function openRevitContainer(
   // classes' own. A stream it cannot tile is evidence about the stream, not a
   // partial schema, so the scanner still answers for one — losing the panel
   // entirely would be a worse failure than an incomplete inventory.
+  // Each class's field names go to the class translation only: decoders
+  // ask it for a class's field order, and the summary stays the size it was.
+  let fieldNamesByClass: Map<string, string[]> | undefined;
   const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
     const strict = readSchema(data);
-    return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
+    if (!strict.ok) return summariseSchema(data);
+    fieldNamesByClass = new Map(strict.schema.classes.map((entry) => [
+      entry.name,
+      entry.properties.map((property) => property.name),
+    ]));
+    return summariseSchemaStream(strict.schema);
   });
   // Everything below reads class indices out of partition bytes, beginning
   // with the marker sample, so the file's numbering is translated into the
   // 2027 one the decoders compare against before any of it runs.
-  const classTagTranslation = buildClassTagTranslation(schema?.taggedClasses ?? []);
+  const classTagTranslation = buildClassTagTranslation(
+    (schema?.taggedClasses ?? []).map((entry) => ({
+      ...entry,
+      fieldNames: fieldNamesByClass?.get(entry.name),
+    })),
+  );
   setActiveClassTagTranslation(classTagTranslation);
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
   // Read after the class numbering is installed: its entries are headed by

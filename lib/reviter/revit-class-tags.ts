@@ -101,6 +101,8 @@ export type ClassTagTranslation = {
    * this rather than assuming 2027's.
    */
   declaredFieldCounts: ReadonlyMap<number, number>;
+  /** Each 2027 class's own fields, in the order this file declares them. */
+  declaredFieldNames?: ReadonlyMap<number, readonly string[]>;
 };
 
 let canonicalIndexByName: Map<string, number> | null = null;
@@ -123,14 +125,23 @@ function canonicalIndices(): Map<string, number> {
  * not read is decoded exactly as before.
  */
 export function buildClassTagTranslation(
-  classes: ReadonlyArray<{ name: string; tag: number; declaredFieldCount?: number }>,
+  classes: ReadonlyArray<{
+    name: string;
+    tag: number;
+    declaredFieldCount?: number;
+    fieldNames?: readonly string[];
+  }>,
 ): ClassTagTranslation {
   const canonical = canonicalIndices();
   const declaredFieldCounts = new Map<number, number>();
+  const declaredFieldNames = new Map<number, readonly string[]>();
   for (const entry of classes) {
     const target = canonical.get(entry.name);
     if (target != null && entry.declaredFieldCount != null && !declaredFieldCounts.has(target)) {
       declaredFieldCounts.set(target, entry.declaredFieldCount);
+    }
+    if (target != null && entry.fieldNames && !declaredFieldNames.has(target)) {
+      declaredFieldNames.set(target, entry.fieldNames);
     }
   }
   const targets = new Map<number, number>();
@@ -168,7 +179,7 @@ export function buildClassTagTranslation(
   // of them by name with 2027, while a fixture declaring three classes at
   // arbitrary indices says nothing about the indices it omits.
   if (movedClasses === 0 || targets.size < MIN_RELEASE_SCHEMA_CLASSES) {
-    return { identity: true, ...summary, toCanonical, toFile, declaredFieldCounts };
+    return { identity: true, ...summary, toCanonical, toFile, declaredFieldCounts, declaredFieldNames };
   }
 
   // A real file declares every index from 12 to its last with no gap. Then a
@@ -198,16 +209,28 @@ export function buildClassTagTranslation(
     toCanonical[entry.tag] = target;
     toFile[target] = entry.tag;
   }
-  return { identity: false, ...summary, toCanonical, toFile, declaredFieldCounts };
+  return { identity: false, ...summary, toCanonical, toFile, declaredFieldCounts, declaredFieldNames };
 }
 
 let active: ClassTagTranslation | null = null;
 let activeFieldCounts: ReadonlyMap<number, number> | null = null;
+let activeFieldNames: ReadonlyMap<number, readonly string[]> | null = null;
 
 /** Install `translation` for the conversion about to run; `null` restores the identity. */
 export function setActiveClassTagTranslation(translation: ClassTagTranslation | null): void {
   active = translation && !translation.identity ? translation : null;
   activeFieldCounts = translation?.declaredFieldCounts ?? null;
+  activeFieldNames = translation?.declaredFieldNames ?? null;
+}
+
+/**
+ * A 2027 class's own fields in the order the current file declares them, or
+ * undefined when no walked schema is installed. Autodesk has reordered a
+ * class's fields between releases: `SplineNode` is parameter, point, tangent
+ * in 2024 and 2025 and point, tangent, parameter in 2027.
+ */
+export function fileClassFieldNames(canonicalIndex: number): readonly string[] | undefined {
+  return activeFieldNames?.get(canonicalIndex);
 }
 
 /**
