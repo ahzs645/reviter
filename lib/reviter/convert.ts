@@ -48,6 +48,7 @@ import {
 } from "./convert-display-scene.ts";
 import { resolveElementGeometry } from "./convert-element-geometry.ts";
 import { resolveNativeRelations } from "./convert-native-relations.ts";
+import { resolveFamilyTypeNames } from "./family-type-names.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -128,6 +129,9 @@ export function convertRvtBytes(
       categoryTokens,
       elementHeaders,
       levelDefinitions,
+      nameEntries,
+      instanceReferences,
+      symbolReferences,
       elementBounds,
       elementObjects,
       instancePlacements,
@@ -263,8 +267,16 @@ export function convertRvtBytes(
       (nativeCategories.headerElements ?? 0) +
       nativeCategories.directElements +
       nativeCategories.inheritedElements;
+    const familyTypeNames = resolveFamilyTypeNames(
+      instanceReferences,
+      symbolReferences,
+      nameEntries,
+      (elementId) => elementHeaders.get(elementId)?.categoryId,
+    );
     const relations = resolveNativeRelations({
       elementBounds,
+      nameEntries,
+      familyTypeNames,
       instancePlacements,
       sharedGeometryIds,
       familyElementIds,
