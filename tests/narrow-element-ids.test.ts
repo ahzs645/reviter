@@ -23,11 +23,16 @@ import {
   scanFramedElementObjects,
   scanObjectMarkers,
 } from "../lib/reviter/element-objects.ts";
+import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
+import { collectTypeLinks } from "../lib/reviter/element-types.ts";
+import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
 import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "../lib/reviter/level-definitions.ts";
+import { scanAssociatedLevelRelationCandidates } from "../lib/reviter/level-relations.ts";
 import {
   REVIT_2027_MATERIAL_ELEMENT_MARKER,
   scanMaterialElementRecords,
 } from "../lib/reviter/material-records.ts";
+import { scanNameEntries } from "../lib/reviter/name-entries.ts";
 import { decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import {
   readsElementRecordLayout,
@@ -226,4 +231,105 @@ test("the split-frame stream reassembles a narrow frame across pages", () => {
   assert.equal(out[0]!.objectLength, 302);
   assert.equal(out[0]!.crossedPage, true);
   assert.deepEqual([...out[0]!.data], [...frame]);
+});
+
+test("a narrow name entry is [u32 id][u32 n][UTF-16][i32 category]; an array of categories is not one", () => {
+  const entry = new Bytes().u32(697447).utf16("hood enclosure").i32(-2001100);
+  const categories = new Bytes().u32(9).u32(2);
+  for (const category of [-2000032, -2000023]) categories.i32(category);
+  categories.i32(-2001040);
+  const data = page(entry.out, [0, 0, 0, 0], categories.out);
+  assert.deepEqual(narrow(() => scanNameEntries(data)), [
+    { elementId: 697447, name: "hood enclosure", categoryId: -2001100 },
+  ]);
+  assert.deepEqual(scanNameEntries(data), []);
+});
+
+test("a narrow instance's referenced ids are every non-negative u32 in its body", () => {
+  const body = new Bytes().u32(0).u32(506157).i32(-1).u32(211850).zeros(40);
+  const data = page(narrowFrame(211850, 0x07ef, body.out));
+  const frame = narrow(() => scanFramedElementObjects(data))[0]!;
+  const ids = narrow(() => [...referencedElementIds(data, frame)]);
+  assert.ok(ids.includes(506157));
+  assert.ok(!ids.includes(211850), "the instance's own id is not a reference");
+  assert.ok(ids.every((id) => id > 0 && id <= 0x7fff_ffff));
+});
+
+test("a narrow element's m_assocLevelId follows its pointers, cell list, doc stub and four-byte m_id", () => {
+  const body = new Bytes()
+    .i32(-1).u16(0x0c93) // m_pParamValueSetDouble, live
+    .i32(0).i32(0).i32(0).i32(0).i32(0) // the other five pointers, null
+    .u32(0) // m_constrInfo, empty
+    .i32(-1).u16(0x0310) // m_cellList
+    .u32(1) // m_docAccess.m_pDoc
+    .u32(765523) // m_id
+    .u32(245423) // m_assocLevelId
+    .zeros(40);
+  const data = page(narrowFrame(765523, 0x0f3b, body.out));
+  const candidates = narrow(() => scanAssociatedLevelRelationCandidates(data, 2023));
+  assert.deepEqual(
+    candidates.map(({ elementId, levelId, fieldOffset }) => ({ elementId, levelId, fieldOffset })),
+    [{ elementId: 765523, levelId: 245423, fieldOffset: 14 + 6 + 20 + 4 + 6 + 4 + 4 }],
+  );
+  assert.deepEqual(scanAssociatedLevelRelationCandidates(data, 2023), []);
+});
+
+test("a narrow wall's type is read by VWall's field order after its curve-driver slot", () => {
+  const wall = (elementId: number, liveRunTime: boolean) => {
+    const body = new Bytes().zeros(40)
+      .i32(-1).u16(0x116f).u32(2).u32(3).u16(0x0671).u32(4).u16(0x0671) // m_pCurveDriver, m_pRefFaces
+      .u32(0); // m_embeddedTo
+    if (liveRunTime) body.i32(-1).u16(0x10a8);
+    else body.i32(0);
+    body.f64(-0.3302).f64(0).u32(198367).u32(245423).zeros(24);
+    return narrowFrame(elementId, 3899, body.out);
+  };
+  const links = narrow(() => collectTypeLinks(page(wall(427092, false), wall(198694, true))));
+  assert.deepEqual(links.references, [
+    { elementId: 427092, typeId: 198367 },
+    { elementId: 198694, typeId: 198367 },
+  ]);
+});
+
+test("narrow parameter tables: 12-byte doubles value first, 8-byte integers, [i32 id][u32 n] text", () => {
+  // -1001200 is an id Autodesk's storage table does not list, so it may stand
+  // in the integer table.
+  const tables = new Bytes()
+    .u32(2).f64(0).i32(-1012829).f64(-0.984251968503937).i32(-1001111)
+    .u32(1).i32(-1001200).i32(1)
+    .u32(1).i32(-1001203).utf16("206B").out;
+  const body = new Bytes()
+    .i32(-1).u16(0x0c93).i32(-1).u16(0x0c94).i32(-1).u16(0x0c95).i32(0).i32(0).i32(0) // pointers
+    .u32(0) // m_constrInfo
+    .i32(-1).u16(0x0310).u32(1) // the anchor: m_cellList and m_docAccess
+    .u32(431198) // m_id
+    .i32(-1).i32(-1).i32(-1).i32(-1).i32(-1).i32(-1).i32(-1) // seven ids
+    .zeros(3) // flags
+    .zeros(20);
+  body.out.push(...tables);
+  body.zeros(16);
+  const data = page(narrowFrame(431198, 0x07ef, body.out));
+  const read = narrow(() => collectElementParameters(data));
+  assert.equal(read.length, 1);
+  assert.equal(read[0]!.elementId, 431198);
+  assert.deepEqual(
+    read[0]!.parameters.map((parameter) => [parameter.parameterId, parameter.value]),
+    [[-1012829, 0], [-1001111, -0.984251968503937], [-1001200, 1], [-1001203, "206B"]],
+  );
+});
+
+test("a subnormal read as a narrow double parameter is not a table", () => {
+  const body = new Bytes()
+    .i32(-1).u16(0x0c93).i32(0).i32(0).i32(0).i32(0).i32(0).u32(0)
+    .i32(-1).u16(0x0310).u32(1).u32(765523)
+    .i32(-1).i32(-1).i32(-1).i32(-1).i32(-1).i32(-1).i32(-1).zeros(3)
+    .u32(1).u32(0x0000_0001).u32(0).i32(-65280) // a subnormal and a plausible id
+    .u32(1).f64(10.170603674540683).i32(-1001111)
+    .zeros(16);
+  const data = page(narrowFrame(765523, 3899, body.out));
+  const read = narrow(() => collectElementParameters(data));
+  assert.deepEqual(
+    read.map((table) => table.parameters.map((parameter) => parameter.value)),
+    [[10.170603674540683]],
+  );
 });

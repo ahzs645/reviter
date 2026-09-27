@@ -546,8 +546,6 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
         for (const header of scanElementHeaders(inflated)) {
           if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
         }
-      }
-      if (usesRevit2027RecordLayout(decoderPlan.revitVersion)) {
         for (const entry of scanNameEntries(inflated)) rawNameEntries.push(entry);
       }
       const detectedBoundsRecords = decoderPlan.elementBoundsDecoder

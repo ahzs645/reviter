@@ -18,7 +18,15 @@
  * here from that description, and holds on the 2027 UNBC project too. How the
  * entries are joined to instances, and how those names compare with the
  * Autodesk Viewer's, is in `family-type-names.ts`.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * entry is `[u32 element id] [u32 n] [n UTF-16LE code units] [i32
+ * BuiltInCategory]`: in the 2023 RAC sample "hood enclosure" is written as
+ * `67 a4 0a 00` (697447), the length and name, then `34 77 e1 ff` (-2001100),
+ * the id and category the 2025 copy gives it. With no all-ones high word to
+ * find, the category is found by its own top byte, `0xff`, and its band.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 
 /** A category id's band: well inside `BuiltInCategory`, never an element id. */
 const MIN_CATEGORY_ID = -3_000_000;
@@ -48,10 +56,59 @@ function readName(data: Uint8Array, start: number, units: number): string | null
   return text.normalize("NFC");
 }
 
+/**
+ * Whether `text` is a run of `int32` category ids read as UTF-16: every second
+ * code unit is then a category's high half, `0xffd2` to `0xfff0`. Arrays of
+ * categories end in a category too, and in the 2023 RAC sample 18 of them
+ * read as entries this way, beside the 740 real ones.
+ */
+function categoryArrayText(text: string): boolean {
+  if (text.length < 2 || text.length % 2 !== 0) return false;
+  for (let index = 1; index < text.length; index += 2) {
+    const unit = text.charCodeAt(index);
+    if (unit < 0xffd2 || unit > 0xfff0) return false;
+  }
+  return true;
+}
+
+/** A name entry whose `i32` category starts at `categoryAt`, read back from there. */
+function narrowEntryBefore(data: Uint8Array, view: DataView, categoryAt: number): NameEntry | null {
+  const categoryId = view.getInt32(categoryAt, true);
+  if (categoryId < MIN_CATEGORY_ID || categoryId > MAX_CATEGORY_ID) return null;
+  for (let units = 1; units <= MAX_NAME_UNITS; units += 1) {
+    const lengthAt = categoryAt - units * 2 - 4;
+    const idAt = lengthAt - 4;
+    if (idAt < 0) break;
+    if (view.getUint32(lengthAt, true) !== units) continue;
+    const elementId = view.getUint32(idAt, true);
+    if (!elementId || elementId > MAX_ELEMENT_ID) return null;
+    let name: string | null = null;
+    try {
+      name = readName(data, lengthAt + 4, units);
+    } catch {
+      name = null;
+    }
+    return name && !categoryArrayText(name) ? { elementId, name, categoryId } : null;
+  }
+  return null;
+}
+
 /** Every name entry in one inflated page. */
 export function scanNameEntries(data: Uint8Array): NameEntry[] {
   const entries: NameEntry[] = [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (narrowElementIds()) {
+    // The category's top byte is 0xff; `at` is that byte.
+    for (
+      let at = data.indexOf(0xff, 11);
+      at >= 0 && at < data.byteLength;
+      at = data.indexOf(0xff, at + 1)
+    ) {
+      const entry = narrowEntryBefore(data, view, at - 3);
+      if (entry) entries.push(entry);
+    }
+    return entries;
+  }
   // The category's high word is all ones; find it by its last byte.
   for (
     let at = data.indexOf(0xff, 7);
