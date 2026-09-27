@@ -34,3 +34,17 @@ test("a stair assembly's symbol id remains a drawable subelement", () => {
   );
   assert.deepEqual([...ids], []);
 });
+
+test("a model group's placement points at a member, not at a cached shape", () => {
+  // Group 988591 in the 2025 RAC sample points at bar chair 988462, and group
+  // 800281 at solar panel 800280: both are placed elements Autodesk draws.
+  const ids = sharedGeometryIdsForPlacements(
+    [placement(988_591, 988_462), placement(800_281, 800_280), placement(988_462, 988_018)],
+    new Map([
+      [988_591, -2_000_095],
+      [800_281, -2_000_095],
+      [988_462, -2_000_080],
+    ]),
+  );
+  assert.deepEqual([...ids], [988_018]);
+});

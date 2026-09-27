@@ -13,7 +13,7 @@ import { nonModelElementIds, nonModelReason } from "../lib/reviter/model-element
  */
 function header(
   elementId: number,
-  { category = -2000011, history = 0, ownerView = -1, designOption = -1 } = {},
+  { category = -2000011, history = 0, family = -1, ownerView = -1, designOption = -1 } = {},
 ): number[] {
   const bytes: number[] = [];
   const u32 = (value: number) => bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
@@ -33,7 +33,7 @@ function header(
     u32(0x340);
   }
   i64(category);
-  i64(-1); // m_familyId
+  i64(family); // m_familyId
   i64(ownerView);
   i64(designOption);
   i64(-1);
@@ -50,12 +50,14 @@ test("a header states its own owner, category and owning view", () => {
     header(978609, { category: -2000011, history: 2 }),
     header(213581, { category: -2000300, ownerView: 312 }),
     header(4242, { category: -1 }),
+    header(295447, { family: 295427 }),
   ));
   assert.deepEqual(headers, [
-    { elementId: 139854, categoryId: -2000011, ownerViewId: null, designOptionId: null },
-    { elementId: 978609, categoryId: -2000011, ownerViewId: null, designOptionId: null },
-    { elementId: 213581, categoryId: -2000300, ownerViewId: 312, designOptionId: null },
-    { elementId: 4242, categoryId: null, ownerViewId: null, designOptionId: null },
+    { elementId: 139854, categoryId: -2000011, familyId: null, ownerViewId: null, designOptionId: null },
+    { elementId: 978609, categoryId: -2000011, familyId: null, ownerViewId: null, designOptionId: null },
+    { elementId: 213581, categoryId: -2000300, familyId: null, ownerViewId: 312, designOptionId: null },
+    { elementId: 4242, categoryId: null, familyId: null, ownerViewId: null, designOptionId: null },
+    { elementId: 295447, categoryId: -2000011, familyId: 295427, ownerViewId: null, designOptionId: null },
   ]);
 });
 
@@ -67,9 +69,11 @@ test("a class-index match whose fields are not a header's is rejected", () => {
 });
 
 test("view-owned, category-less and non-model-category elements are not part of the model", () => {
-  const wall = { elementId: 1, categoryId: -2000011, ownerViewId: null, designOptionId: null };
+  const wall = { elementId: 1, categoryId: -2000011, familyId: null, ownerViewId: null, designOptionId: null };
   assert.equal(nonModelReason(wall, undefined), null);
   assert.equal(nonModelReason({ ...wall, ownerViewId: 312 }, undefined), "view-owned");
+  // A wall inside a loaded family's own definition, as in the 2025 school.
+  assert.equal(nonModelReason({ ...wall, familyId: 295427 }, undefined), "family-internal");
   assert.equal(nonModelReason({ ...wall, categoryId: null }, undefined), "no-category");
   assert.equal(nonModelReason({ ...wall, categoryId: -2000530 }, undefined), "non-model-category");
   // With no header, a category from another source still decides it.

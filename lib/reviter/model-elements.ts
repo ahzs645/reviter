@@ -11,9 +11,12 @@
  * Two kinds of evidence decide it, and both are the file's own statement:
  *
  *  - **The element's `ElementHeader`.** An element owned by a view is
- *    view-specific — a detail item, a tag, a text note, a dimension — and an
+ *    view-specific — a detail item, a tag, a text note, a dimension — an
+ *    element whose header names a family is part of that family's own
+ *    definition, which the project carries for every loaded family, and an
  *    element whose header states no category is an internal record rather than
- *    a building element. Joined to the Autodesk Viewer property database of
+ *    a building element. None of the 111,000 elements the Autodesk Viewer
+ *    lists across the four sample files names a family in its header. Joined to the Autodesk Viewer property database of
  *    the same files, every element Autodesk draws in a 3D view has no owning
  *    view and a stated category: 36,283 of 36,283 in the 2027 UNBC project,
  *    5,404 of 5,404 in the 2025 technical school, 421 of 421 in the 2025 RAC
@@ -105,7 +108,11 @@ export const NO_ENVELOPE_PROXY_CATEGORY_IDS: ReadonlySet<number> = new Set([
   -2001370, // Entourage
 ]);
 
-export type NonModelReason = "view-owned" | "no-category" | "non-model-category";
+export type NonModelReason =
+  | "view-owned"
+  | "family-internal"
+  | "no-category"
+  | "non-model-category";
 
 /** Why an element is not part of the 3D model, or null when it is. */
 export function nonModelReason(
@@ -113,6 +120,7 @@ export function nonModelReason(
   categoryId: number | undefined,
 ): NonModelReason | null {
   if (header?.ownerViewId != null) return "view-owned";
+  if (header?.familyId != null) return "family-internal";
   if (header && header.categoryId == null) return "no-category";
   const category = header?.categoryId ?? categoryId;
   if (category != null && NON_MODEL_CATEGORY_IDS.has(category)) return "non-model-category";

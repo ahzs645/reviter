@@ -633,6 +633,7 @@ function countReasons(
 ): Record<NonModelReason, number> {
   const counts: Record<NonModelReason, number> = {
     "view-owned": 0,
+    "family-internal": 0,
     "no-category": 0,
     "non-model-category": 0,
   };

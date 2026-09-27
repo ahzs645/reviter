@@ -64,6 +64,12 @@ export type ElementHeader = {
   elementId: number;
   /** BuiltInCategory, or null when the header states none (-1). */
   categoryId: number | null;
+  /**
+   * `m_familyId`: set for the elements that make up a family's own
+   * definition, which a project carries for every loaded family, and null for
+   * every element of the project itself.
+   */
+  familyId: number | null;
   /** The view that owns the element, or null for a model element. */
   ownerViewId: number | null;
   /** The design option the element belongs to, or null for the main model. */
@@ -117,7 +123,7 @@ export function scanElementHeaders(data: Uint8Array): ElementHeader[] {
     const designOptionId = optionalId(view.getBigInt64(categoryAt + 24, true));
     if (familyId === undefined || ownerViewId === undefined || designOptionId === undefined) continue;
 
-    headers.push({ elementId, categoryId, ownerViewId, designOptionId });
+    headers.push({ elementId, categoryId, familyId, ownerViewId, designOptionId });
   }
   return headers;
 }

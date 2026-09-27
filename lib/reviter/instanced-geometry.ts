@@ -104,6 +104,9 @@ export type LocalBounds = {
 /** Native category of a Revit stair assembly (`OST_Stairs`). */
 const STAIRS_CATEGORY_ID = -2_000_120;
 
+/** Native category of a model group's instance (`OST_IOSModelGroups`). */
+const MODEL_GROUP_CATEGORY_ID = -2_000_095;
+
 /**
  * Resolve the ids that are genuinely reusable local shapes.
  *
@@ -114,8 +117,10 @@ const STAIRS_CATEGORY_ID = -2_000_120;
  * element. Treating those two meanings as interchangeable removed the only
  * `IfcMember` and `IfcStairFlight` products absent from the exact UNBC scene.
  *
- * The exception is gated by the assembly's own persisted `OST_Stairs` token.
- * No IFC class, element id, adjacency, or object-marker singleton participates.
+ * The exception is gated by the assembly's own category, from its
+ * `ElementHeader` or its persisted `OST_Stairs` token. A model group is the
+ * second exception, gated the same way. No IFC class, element id, adjacency,
+ * or object-marker singleton participates.
  */
 export function sharedGeometryIdsForPlacements(
   placements: Iterable<InstancePlacement>,
@@ -123,7 +128,12 @@ export function sharedGeometryIdsForPlacements(
 ): Set<number> {
   const shared = new Set<number>();
   for (const placement of placements) {
-    if (categoryByElement.get(placement.elementId) === STAIRS_CATEGORY_ID) continue;
+    const category = categoryByElement.get(placement.elementId);
+    // A model group's placement points at one of its members the same way:
+    // in the 2025 RAC sample, group 988591 points at bar chair 988462 and
+    // group 800281 at solar panel 800280, both placed elements Autodesk
+    // draws, and removing them as cached shapes lost 6 chairs and 12 panels.
+    if (category === STAIRS_CATEGORY_ID || category === MODEL_GROUP_CATEGORY_ID) continue;
     shared.add(placement.geometryId);
   }
   return shared;

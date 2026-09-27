@@ -219,8 +219,9 @@ export function convertRvtBytes(
       categoryTokens,
       elementIndex,
       instancePlacements,
+      elementHeaders,
     });
-    let unplacedRecords = removeDatumPileRecords(elementBounds);
+    let unplacedRecords = removeDatumPileRecords(elementBounds, elementHeaders);
 
     onProgress?.({
       ratio: 0.84,
