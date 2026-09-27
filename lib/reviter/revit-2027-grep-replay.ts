@@ -99,7 +99,7 @@ import {
 } from "./revit-2027-gpolyline.ts";
 import {
   decodeRevit2027GPoint,
-  REVIT_2027_GPOINT_BODY_BYTES,
+  revit2027GPointBodyBytes,
   REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gpoint.ts";
 import {
@@ -554,7 +554,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GPoint",
       read: fixedBodyReader(
-        () => REVIT_2027_GPOINT_BODY_BYTES - revit2027GInfoShrink(),
+        revit2027GPointBodyBytes,
         decodeRevit2027GPoint,
         () => [],
       ),

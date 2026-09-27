@@ -46,7 +46,15 @@ import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
-import { decodeRevit2027InstanceInfo } from "../lib/reviter/revit-2027-ginstance.ts";
+import { decodeRevit2027GFilling } from "../lib/reviter/revit-2027-gfilling.ts";
+import {
+  decodeRevit2027GInstanceStatic,
+  decodeRevit2027InstanceInfo,
+  REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+  revit2027GInstanceLayout,
+  revit2027InstanceInfoBodyBytes,
+} from "../lib/reviter/revit-2027-ginstance.ts";
+import { decodeRevit2027GPoint, revit2027GPointBodyBytes } from "../lib/reviter/revit-2027-gpoint.ts";
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gline.ts";
 import { readRevit2027GInfo, revit2027GInfoBytes } from "../lib/reviter/revit-2027-grep-prefixes.ts";
 import { replayRevit2027GRepFifo } from "../lib/reviter/revit-2027-grep-replay.ts";
@@ -610,4 +618,73 @@ test("a narrow compound layer is 29 bytes: width, function, embedding, then four
       { widthFeet: 0, layerFunction: 100, priority: 999, materialId: 1240, profileId: null, layerId: 1 },
     ],
   );
+});
+
+test("2019 to 2022 declare shorter GInstance, InstanceInfo, GPoint and FillPatternPlacer bodies", () => {
+  // The four classes as the 2019 schema declares them: GInstance v5 without
+  // m_tagId, InstInfoBase v1 without m_GRepId, GPoint v3 without m_borderSize,
+  // and FillPatternPlacer v2 without m_uvScale (2019 to 2021 only).
+  const older = new Map([["GInstance", 5], ["InstInfoBase", 2], ["GPoint", 3], ["FillPatternPlacer", 5]]);
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position, declaredFieldCount: older.get(name),
+  }))));
+  try {
+    narrow(() => {
+      assert.equal(revit2027InstanceInfoBodyBytes(), 104);
+      assert.equal(revit2027GInstanceLayout().scalarSuffixBytes, 6);
+      assert.equal(revit2027GPointBodyBytes(), 48);
+
+      const info = new Bytes();
+      for (const value of [1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 5, 6]) info.f64(value);
+      info.i32(776839).i32(1);
+      const decodedInfo = decodeRevit2027InstanceInfo(Uint8Array.from(info.out), 0, 104, 2027);
+      assert.equal(decodedInfo.ok, true);
+      if (decodedInfo.ok) {
+        assert.equal(decodedInfo.value.symbolElementId, 776839n);
+        assert.equal(decodedInfo.value.gRepId, 0);
+        assert.equal(decodedInfo.value.cda, 1);
+      }
+
+      const instance = new Bytes()
+        .i32(2).i32(0).i32(-1).u32(0x0008_8024) // GInfo
+        .i32(-1).u16(REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT) // m_instanceInfo
+        .i32(0) // no embedded symbol
+        .i32(53246).u8(0).u8(1); // m_forbiddenTarget and the two booleans, no m_tagId
+      const decodedInstance = decodeRevit2027GInstanceStatic(Uint8Array.from(instance.out), 0, 32, 2027);
+      assert.equal(decodedInstance.ok, true);
+      if (decodedInstance.ok) {
+        assert.equal(decodedInstance.value.tagElementId, -1n);
+        assert.equal(decodedInstance.value.forbiddenTarget, 53246);
+        assert.equal(decodedInstance.value.hasScale, true);
+      }
+
+      const point = new Bytes().i32(7).i32(0).i32(-1).u32(0).f64(1).f64(2).f64(3).i32(5).i32(0x40);
+      const decodedPoint = decodeRevit2027GPoint(Uint8Array.from(point.out), 0, 48, 2027);
+      assert.equal(decodedPoint.ok, true);
+      if (decodedPoint.ok) {
+        assert.deepEqual([...decodedPoint.value.coordinate], [1, 2, 3]);
+        assert.equal(decodedPoint.value.size, 5);
+        assert.equal(decodedPoint.value.borderSize, 0);
+        assert.equal(decodedPoint.value.pointFlags, 0x40);
+      }
+
+      const filling = new Bytes()
+        .i32(7).i32(0).i32(-1).u32(0) // GInfo
+        .i32(3) // m_pGFace reference
+        .f64(2).f64(0.5).f64(0.25).f64(1).f64(0).u8(1).u8(0) // scale, origin, direction, flags
+        .i32(0) // no pattern data
+        .i32(4321).u32(0x00ff00).i32(9);
+      const decodedFilling = decodeRevit2027GFilling(Uint8Array.from(filling.out), 0, filling.length, 2027);
+      assert.equal(decodedFilling.ok, true);
+      if (decodedFilling.ok) {
+        assert.equal(decodedFilling.value.placer.scale, 2);
+        assert.deepEqual(decodedFilling.value.placer.uvScale, [1, 1]);
+        assert.equal(decodedFilling.value.placer.mirrored, true);
+        assert.equal(decodedFilling.value.patternElementId, 4321n);
+        assert.equal(decodedFilling.value.endOffset, filling.length);
+      }
+    });
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
 });

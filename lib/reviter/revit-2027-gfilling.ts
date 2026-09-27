@@ -8,7 +8,7 @@ import {
   readRevit2027GInfo,
   type Revit2027GInfo,
 } from "./revit-2027-grep-prefixes.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { fileClassFieldCount, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `GFilling`. */
 export const REVIT_2027_GFILLING_SOURCE_CLASS_SLOT = 2253;
@@ -20,6 +20,21 @@ const DOUBLE_BYTES = 8;
 const POINT_2D_BYTES = 16;
 const FILL_PATTERN_PLACER_BYTES =
   DOUBLE_BYTES + POINT_2D_BYTES * 3 + 1 + 1;
+/** `FillPatternPlacer`, in the 2027 numbering. */
+const FILL_PATTERN_PLACER_CLASS = 2093;
+
+/**
+ * Whether the file's `FillPatternPlacer` has no `m_uvScale`: the 2019 to 2021
+ * schemas declare version 2, five fields, and the placer is 16 bytes shorter.
+ * Such a placer scales both directions by one.
+ */
+function placerWithoutUvScale(): boolean {
+  return fileClassFieldCount(FILL_PATTERN_PLACER_CLASS) === 5;
+}
+
+function fillPatternPlacerBytes(): number {
+  return FILL_PATTERN_PLACER_BYTES - (placerWithoutUvScale() ? POINT_2D_BYTES : 0);
+}
 
 export type Revit2027Point2d = readonly [number, number];
 
@@ -98,36 +113,36 @@ function decodePlacer(
 ):
   | { ok: true; value: Revit2027FillPatternPlacer }
   | { ok: false; error: string } {
+  const placerBytes = fillPatternPlacerBytes();
   if (
     !bounded(
       data,
       byteOffset,
-      FILL_PATTERN_PLACER_BYTES,
+      placerBytes,
       enclosingEndOffset,
     )
   ) {
     return { ok: false, error: "Revit 2027 FillPatternPlacer is truncated" };
   }
+  const scaled = !placerWithoutUvScale();
   const scale = view.getFloat64(byteOffset, true);
   const origin = point2d(view, byteOffset + DOUBLE_BYTES);
   const direction = point2d(
     view,
     byteOffset + DOUBLE_BYTES + POINT_2D_BYTES,
   );
-  const uvScale = point2d(
-    view,
-    byteOffset + DOUBLE_BYTES + POINT_2D_BYTES * 2,
-  );
+  const uvScale: Revit2027Point2d = scaled
+    ? point2d(view, byteOffset + DOUBLE_BYTES + POINT_2D_BYTES * 2)
+    : [1, 1];
+  const flagsOffset = byteOffset + placerBytes - 2;
   if (!finite([scale, ...origin, ...direction, ...uvScale])) {
     return {
       ok: false,
       error: "Revit 2027 FillPatternPlacer fields are not finite",
     };
   }
-  const mirroredByte =
-    data[byteOffset + DOUBLE_BYTES + POINT_2D_BYTES * 3];
-  const placedDraftByte =
-    data[byteOffset + DOUBLE_BYTES + POINT_2D_BYTES * 3 + 1];
+  const mirroredByte = data[flagsOffset];
+  const placedDraftByte = data[flagsOffset + 1];
   if (
     (mirroredByte !== 0 && mirroredByte !== 1) ||
     (placedDraftByte !== 0 && placedDraftByte !== 1)
@@ -141,7 +156,7 @@ function decodePlacer(
     ok: true,
     value: {
       byteOffset,
-      endOffset: byteOffset + FILL_PATTERN_PLACER_BYTES,
+      endOffset: byteOffset + placerBytes,
       scale,
       origin,
       direction,
@@ -179,7 +194,7 @@ export function decodeRevit2027GFilling(
   const minimumBytes =
     revit2027GInfoBytes() +
     INT32_BYTES +
-    FILL_PATTERN_PLACER_BYTES +
+    fillPatternPlacerBytes() +
     INT32_BYTES +
     idBytes +
     COLOR_BYTES +
