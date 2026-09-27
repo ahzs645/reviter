@@ -2,8 +2,9 @@ import {
   REVIT_2027_BASE_RAILING_SYMBOL_MARKER,
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { readsElementRecordLayout, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 import { createSplitFrameStream } from "./split-frame-stream.ts";
 
 const MIN_FRAME_BYTES = 40;
@@ -91,15 +92,21 @@ export function createRevit2027SplitGElementCollector(
     markers: [GELEMENT_CLASS],
     minObjectLength: MIN_FRAME_BYTES,
     maxFrameBytes: MAX_SPLIT_GELEMENT_BYTES,
-    // The frame restates its element id at +26, as every GElement does.
-    acceptHeader: (view, offset) =>
-      offset + 30 <= view.byteLength &&
-      view.getUint32(offset + 26, true) === view.getUint32(offset, true),
+    // The frame restates its element id at +26, as every GElement does: its
+    // `GInfo.m_tag`. Where ids are 32-bit the tag leads a 16-byte `GInfo`
+    // right after the class, at +14.
+    acceptHeader: (view, offset) => {
+      const restated = offset + (narrowElementIds() ? 14 : 26);
+      return (
+        restated + 4 <= view.byteLength &&
+        view.getUint32(restated, true) === view.getUint32(offset, true)
+      );
+    },
     crossingOnly: true,
   });
   return {
     pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (!usesRevit2027RecordLayout(release)) return [];
+      if (!readsElementRecordLayout(release)) return [];
       return stream.push(page).map((frame) => frame.data);
     },
     finishPartition: () => stream.reset(),

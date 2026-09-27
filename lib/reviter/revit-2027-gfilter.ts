@@ -1,3 +1,4 @@
+import { narrowElementIds } from "./element-id-width.ts";
 import {
   decodeCondInt16QueueCollection,
   type CondInt16QueueEntry,
@@ -72,6 +73,24 @@ export function decodeRevit2027GFilter(
     };
   }
   const flagOffset = conditions.collection.endOffset;
+  // The 2019 to 2023 schemas (`GFilter` version 3 in both) declare no
+  // `m_bIsNestedDetailFamily`; the body ends with the conditions.
+  if (narrowElementIds()) {
+    return {
+      ok: true,
+      value: {
+        byteOffset,
+        endOffset: flagOffset,
+        group: group.value,
+        conditions: conditions.collection.entries,
+        isNestedDetailFamily: false,
+        queuedProperties: [
+          ...group.value.children,
+          ...conditions.collection.entries,
+        ],
+      },
+    };
+  }
   if (flagOffset >= enclosingEndOffset) {
     return {
       ok: false,

@@ -1,17 +1,20 @@
 import type { RevitExtents3d } from "./revit-2026-grep-root.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Resolved from the Revit 2027 source schema for the supplied UNBC model. */
 export const REVIT_2027_GPOLYLINE_SOURCE_CLASS_SLOT = 2276;
 
-const GINFO_BYTES = 20;
 const POINT_COUNT_BYTES = 4;
 const POINT3D_BYTES = 24;
 const EXTENTS_BYTES = 48;
 const FILLED_BYTES = 1;
-const FIXED_BODY_BYTES =
-  GINFO_BYTES + POINT_COUNT_BYTES + EXTENTS_BYTES + FILLED_BYTES;
+const fixedBodyBytes = (): number =>
+  revit2027GInfoBytes() + POINT_COUNT_BYTES + EXTENTS_BYTES + FILLED_BYTES;
 const DEFAULT_MAX_POINTS = 1_000_000;
 
 export type RevitPoint3d = readonly [number, number, number];
@@ -79,7 +82,7 @@ export function decodeRevit2027GPolyLine(
       error: "Revit 2027 GPolyLine decoding requires release 2027",
     };
   }
-  if (!bounded(data, byteOffset, GINFO_BYTES + POINT_COUNT_BYTES, enclosingEndOffset)) {
+  if (!bounded(data, byteOffset, revit2027GInfoBytes() + POINT_COUNT_BYTES, enclosingEndOffset)) {
     return { ok: false, error: "Revit 2027 GPolyLine prefix is truncated" };
   }
 
@@ -89,7 +92,7 @@ export function decodeRevit2027GPolyLine(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const pointCount = view.getInt32(byteOffset + GINFO_BYTES, true);
+  const pointCount = view.getInt32(byteOffset + revit2027GInfoBytes(), true);
   if (pointCount < 0 || pointCount > maxPoints) {
     return {
       ok: false,
@@ -97,7 +100,7 @@ export function decodeRevit2027GPolyLine(
     };
   }
 
-  const bodyBytes = FIXED_BODY_BYTES + pointCount * POINT3D_BYTES;
+  const bodyBytes = fixedBodyBytes() + pointCount * POINT3D_BYTES;
   if (
     !Number.isSafeInteger(bodyBytes) ||
     !bounded(data, byteOffset, bodyBytes, enclosingEndOffset)
@@ -116,7 +119,7 @@ export function decodeRevit2027GPolyLine(
     Number.NEGATIVE_INFINITY,
     Number.NEGATIVE_INFINITY,
   ];
-  let offset = byteOffset + GINFO_BYTES + POINT_COUNT_BYTES;
+  let offset = byteOffset + revit2027GInfoBytes() + POINT_COUNT_BYTES;
   for (let index = 0; index < pointCount; index += 1) {
     const point = [
       view.getFloat64(offset, true),
@@ -186,12 +189,7 @@ export function decodeRevit2027GPolyLine(
     value: {
       byteOffset,
       endOffset: offset,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       coordinates,
       extents,
       extentsMatchCoordinates,

@@ -3,12 +3,15 @@ import {
   type CondInt16QueueCollection,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT = 2343;
 
-const GINFO_BYTES = 20;
 const INT32_BYTES = 4;
 const TESS_EPS_CNTRL_BYTES = 8;
 const DEFAULT_MAX_COLLECTION_ENTRIES = 1_000_000;
@@ -64,12 +67,7 @@ function bounded(
 }
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
-  return {
-    gStyleElementId: view.getBigInt64(byteOffset, true),
-    tag: view.getInt32(byteOffset + 8, true),
-    controlCommand: view.getInt32(byteOffset + 12, true),
-    flags: view.getUint32(byteOffset + 16, true),
-  };
+  return readRevit2027GInfo(view, byteOffset);
 }
 
 function maxEntries(
@@ -129,7 +127,7 @@ export function decodeRevit2027GeometryStatic(
     !bounded(
       data,
       byteOffset,
-      GINFO_BYTES + INT32_BYTES,
+      revit2027GInfoBytes() + INT32_BYTES,
       enclosingEndOffset,
     )
   ) {
@@ -142,7 +140,7 @@ export function decodeRevit2027GeometryStatic(
       : data.subarray(0, enclosingEndOffset);
   const faces = decodeCondInt16QueueCollection(
     boundedData,
-    byteOffset + GINFO_BYTES,
+    byteOffset + revit2027GInfoBytes(),
     { maxEntries: maxFaces },
   );
   if (!faces.ok) {

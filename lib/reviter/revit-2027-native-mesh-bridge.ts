@@ -1,4 +1,5 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
+import { frameHeaderBytes } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
 import {
@@ -63,7 +64,7 @@ import {
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 
 import type { Bounds3, MeshData, Vec3 } from "./types.ts";
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { canonicalClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
 const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
@@ -1416,7 +1417,7 @@ export function createRevit2027NativeMeshCollector(
     MAX_INCOMPLETE_SAMPLES,
   );
   const state: MutableCollection = {
-    enabled: usesRevit2027RecordLayout(release),
+    enabled: readsElementRecordLayout(release),
     definitions: new Map(),
     definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
@@ -1874,15 +1875,17 @@ export function createRevit2027NativeMeshCollector(
     scanSplitGElementFrame(data: Uint8Array): void {
       if (!state.enabled || state.truncated || data.byteLength < 60) return;
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      // A 16-byte frame header, or 12 where ids are 32-bit (no high word).
+      const header = frameHeaderBytes();
       const elementId = view.getUint32(0, true);
-      const objectLength = view.getUint32(12, true);
-      const marker = canonicalClassTag(view.getUint16(16, true));
+      const objectLength = view.getUint32(header - 4, true);
+      const marker = canonicalClassTag(view.getUint16(header, true));
       if (
         elementId === 0 ||
-        view.getUint32(4, true) !== 0 ||
+        (header === 16 && view.getUint32(4, true) !== 0) ||
         marker !== REVIT_2027_GELEMENT_OBJECT_MARKER ||
-        objectLength + 20 !== data.byteLength ||
-        view.getUint32(objectLength + 16, true) !== objectLength
+        objectLength + header + 4 !== data.byteLength ||
+        view.getUint32(objectLength + header, true) !== objectLength
       ) {
         return;
       }
@@ -1892,7 +1895,7 @@ export function createRevit2027NativeMeshCollector(
         elementId,
         objectLength,
         marker,
-        typeCode: view.getUint32(18, true),
+        typeCode: view.getUint32(header + 2, true),
       });
     },
     scanPage(data: Uint8Array): void {

@@ -35,6 +35,14 @@ import {
 } from "../lib/reviter/material-records.ts";
 import { scanNameEntries } from "../lib/reviter/name-entries.ts";
 import { decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
+import {
+  decodeRevit2027FramedGRepRoot,
+  REVIT_2027_GELEMENT_OBJECT_MARKER,
+} from "../lib/reviter/revit-2027-framed-grep-root.ts";
+import { decodeRevit2027InstanceInfo } from "../lib/reviter/revit-2027-ginstance.ts";
+import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gline.ts";
+import { readRevit2027GInfo, revit2027GInfoBytes } from "../lib/reviter/revit-2027-grep-prefixes.ts";
+import { replayRevit2027GRepFifo } from "../lib/reviter/revit-2027-grep-replay.ts";
 import { collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
 import { collectOwnedSurfaces } from "../lib/reviter/surfaces.ts";
 import {
@@ -439,4 +447,61 @@ test("a narrow shared shape's local bounds follow its narrow field table", () =>
   assert.deepEqual(narrow(() => readLocalBounds(data, frame)), {
     elementId: 381904, min: [-1, -0.5, 0], max: [1, 0.5, 7],
   });
+});
+
+test("GInfo is 16 bytes where ids are 32-bit: tag, control command, int32 category, flags", () => {
+  const bytes = new Bytes().i32(198694).i32(0).i32(-1).u32(0x0008_8004).zeros(4).out;
+  const view = new DataView(Uint8Array.from(bytes).buffer);
+  assert.deepEqual(narrow(() => readRevit2027GInfo(view, 0)), {
+    gStyleElementId: -1n, tag: 198694, controlCommand: 0, flags: 0x0008_8004,
+  });
+  assert.equal(narrow(() => revit2027GInfoBytes()), 16);
+  assert.equal(revit2027GInfoBytes(), 20);
+});
+
+test("a narrow GElement frame replays its GLine child through the same FIFO", () => {
+  const elementId = 12344;
+  const origin = [10.5, -3.25, 9.8];
+  const direction = [0, 1, 0];
+  const body = new Bytes()
+    .i32(elementId).i32(0).i32(-1).u32(0x0008_8004) // GInfo: tag, control, category, flags
+    .u32(1).i32(3).u16(REVIT_2027_GLINE_SOURCE_CLASS_SLOT); // m_subNodes: one GLine, the first token after the reserved three
+  for (let box = 0; box < 2; box += 1) for (const value of [10.5, -3.25, 9.8, 10.5, 1.75, 9.8]) body.f64(value);
+  body.i32(2).u32(0x20); // GRep: m_gElemType, m_flags (no m_elementId before 2024)
+  body.i32(elementId).i32(0).i32(-1).u32(0x0008_8004); // the GLine's own GInfo
+  body.f64(0).f64(5);
+  for (const value of [...origin, ...direction]) body.f64(value);
+  const data = Uint8Array.from(narrowFrame(elementId, REVIT_2027_GELEMENT_OBJECT_MARKER, body.out));
+  narrow(() => {
+    const frame = scanFramedElementObjects(data)[0]!;
+    const root = decodeRevit2027FramedGRepRoot(data, frame, 2023);
+    assert.equal(root.ok, true);
+    if (!root.ok) return;
+    assert.equal(root.value.ownerElementId, BigInt(elementId));
+    assert.equal(root.value.objectType, 2);
+    assert.equal(root.value.dynamicPayloadEndOffset, frame.objectLength + 12);
+    const replay = replayRevit2027GRepFifo(data, root.value);
+    assert.equal(replay.ok, true);
+    if (!replay.ok) return;
+    assert.equal(replay.value.spans.length, 1);
+    const line = replay.value.spans[0]!.value as { origin: readonly number[]; direction: readonly number[]; endParameters: readonly number[] };
+    assert.deepEqual([...line.origin], origin);
+    assert.deepEqual([...line.direction], direction);
+    assert.deepEqual([...line.endParameters], [0, 5]);
+  });
+});
+
+test("a narrow InstanceInfo is 108 bytes: the transform, an int32 symbol id, m_GRepId and m_cda", () => {
+  const info = new Bytes();
+  for (const value of [1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 5, 6]) info.f64(value);
+  info.i32(776839).i32(0).i32(1);
+  const data = Uint8Array.from([...info.out, 0, 0, 0, 0]);
+  const decoded = narrow(() => decodeRevit2027InstanceInfo(data, 0, 108, 2027));
+  assert.equal(decoded.ok, true);
+  if (decoded.ok) {
+    assert.equal(decoded.value.symbolElementId, 776839n);
+    assert.equal(decoded.value.gRepId, 0);
+    assert.equal(decoded.value.cda, 1);
+  }
+  assert.equal(decodeRevit2027InstanceInfo(data, 0, 108, 2027).ok, false);
 });

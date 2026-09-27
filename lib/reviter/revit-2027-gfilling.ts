@@ -2,13 +2,17 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `GFilling`. */
 export const REVIT_2027_GFILLING_SOURCE_CLASS_SLOT = 2253;
 
-const GINFO_BYTES = 20;
 const INT32_BYTES = 4;
 const ELEMENT_ID_BYTES = 8;
 const COLOR_BYTES = 4;
@@ -83,12 +87,7 @@ function finite(values: readonly number[]): boolean {
 }
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
-  return {
-    gStyleElementId: view.getBigInt64(byteOffset, true),
-    tag: view.getInt32(byteOffset + 8, true),
-    controlCommand: view.getInt32(byteOffset + 12, true),
-    flags: view.getUint32(byteOffset + 16, true),
-  };
+  return readRevit2027GInfo(view, byteOffset);
 }
 
 function decodePlacer(
@@ -174,12 +173,15 @@ export function decodeRevit2027GFilling(
       error: "Revit 2027 GFilling decoding requires release 2027",
     };
   }
+  // `m_patternId` is an `ElementId`: four bytes where ids are 32-bit.
+  const narrow = narrowElementIds();
+  const idBytes = narrow ? 4 : ELEMENT_ID_BYTES;
   const minimumBytes =
-    GINFO_BYTES +
+    revit2027GInfoBytes() +
     INT32_BYTES +
     FILL_PATTERN_PLACER_BYTES +
     INT32_BYTES +
-    ELEMENT_ID_BYTES +
+    idBytes +
     COLOR_BYTES +
     INT32_BYTES;
   if (!bounded(data, byteOffset, minimumBytes, enclosingEndOffset)) {
@@ -187,7 +189,7 @@ export function decodeRevit2027GFilling(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const faceIdOffset = byteOffset + GINFO_BYTES;
+  const faceIdOffset = byteOffset + revit2027GInfoBytes();
   const placer = decodePlacer(
     data,
     view,
@@ -208,7 +210,7 @@ export function decodeRevit2027GFilling(
     return { ok: false, error: `GFilling data: ${dataProperty.error}` };
   }
   const scalarOffset = dataProperty.descriptor.endOffset;
-  const scalarBytes = ELEMENT_ID_BYTES + COLOR_BYTES + INT32_BYTES;
+  const scalarBytes = idBytes + COLOR_BYTES + INT32_BYTES;
   if (!bounded(data, scalarOffset, scalarBytes, enclosingEndOffset)) {
     return {
       ok: false,
@@ -225,10 +227,12 @@ export function decodeRevit2027GFilling(
       faceIdReference: view.getInt32(faceIdOffset, true),
       placer: placer.value,
       data: dataProperty.descriptor,
-      patternElementId: view.getBigInt64(scalarOffset, true),
-      fillColor: view.getUint32(scalarOffset + ELEMENT_ID_BYTES, true),
+      patternElementId: narrow
+        ? BigInt(view.getInt32(scalarOffset, true))
+        : view.getBigInt64(scalarOffset, true),
+      fillColor: view.getUint32(scalarOffset + idBytes, true),
       flags: view.getInt32(
-        scalarOffset + ELEMENT_ID_BYTES + COLOR_BYTES,
+        scalarOffset + idBytes + COLOR_BYTES,
         true,
       ),
       queuedProperties:

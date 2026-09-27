@@ -4,13 +4,17 @@ import {
   type CondInt16QueueCollection,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `Face`. */
 export const REVIT_2027_FACE_SOURCE_CLASS_SLOT = 1825;
 
-const GINFO_BYTES = 20;
 const ELEMENT_ID_BYTES = 8;
 const INT32_BYTES = 4;
 const DEFAULT_MAX_FACE_REGIONS = 1_000_000;
@@ -63,12 +67,7 @@ function bounded(
 }
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
-  return {
-    gStyleElementId: view.getBigInt64(byteOffset, true),
-    tag: view.getInt32(byteOffset + 8, true),
-    controlCommand: view.getInt32(byteOffset + 12, true),
-    flags: view.getUint32(byteOffset + 16, true),
-  };
+  return readRevit2027GInfo(view, byteOffset);
 }
 
 function propertyAt(
@@ -119,13 +118,13 @@ export function decodeRevit2027FaceStatic(
     };
   }
 
-  if (!bounded(data, byteOffset, GINFO_BYTES + 4, enclosingEndOffset)) {
+  if (!bounded(data, byteOffset, revit2027GInfoBytes() + 4, enclosingEndOffset)) {
     return { ok: false, error: "Revit 2027 Face/GFace prefix is truncated" };
   }
 
   const firstLoop = propertyAt(
     data,
-    byteOffset + GINFO_BYTES,
+    byteOffset + revit2027GInfoBytes(),
     enclosingEndOffset,
     "first loop",
   );
@@ -159,8 +158,12 @@ export function decodeRevit2027FaceStatic(
   );
   if (!backgroundFilling.ok) return backgroundFilling;
 
+  // `[i64 m_renderStyleId][i32 m_cutType][i32 m_faceFlags_v9]` from 2024;
+  // the 2019 to 2023 schemas declare `m_cutType`, `m_faceFlags_v9`, then a
+  // four-byte `m_renderStyleId`.
+  const narrow = narrowElementIds();
   const scalarOffset = backgroundFilling.value.endOffset;
-  const scalarBytes = ELEMENT_ID_BYTES + INT32_BYTES + INT32_BYTES;
+  const scalarBytes = (narrow ? 4 : ELEMENT_ID_BYTES) + INT32_BYTES + INT32_BYTES;
   if (!bounded(data, scalarOffset, scalarBytes + 4, enclosingEndOffset)) {
     return {
       ok: false,
@@ -186,10 +189,12 @@ export function decodeRevit2027FaceStatic(
       faceRegions: faceRegions.collection,
       foregroundFilling: foregroundFilling.value,
       backgroundFilling: backgroundFilling.value,
-      renderStyleElementId: view.getBigInt64(scalarOffset, true),
-      cutType: view.getInt32(scalarOffset + ELEMENT_ID_BYTES, true),
+      renderStyleElementId: narrow
+        ? BigInt(view.getInt32(scalarOffset + 2 * INT32_BYTES, true))
+        : view.getBigInt64(scalarOffset, true),
+      cutType: view.getInt32(scalarOffset + (narrow ? 0 : ELEMENT_ID_BYTES), true),
       faceFlags: view.getUint32(
-        scalarOffset + ELEMENT_ID_BYTES + INT32_BYTES,
+        scalarOffset + (narrow ? 0 : ELEMENT_ID_BYTES) + INT32_BYTES,
         true,
       ),
       surface: surface.value,
