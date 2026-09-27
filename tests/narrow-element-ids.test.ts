@@ -23,10 +23,16 @@ import {
   scanFramedElementObjects,
   scanObjectMarkers,
 } from "../lib/reviter/element-objects.ts";
+import { scanCompoundStructureCandidates } from "../lib/reviter/compound-structure-materials.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
+import {
+  REVIT_2027_INSERTABLE_INSTANCE_MARKER,
+  resolveHostRelations,
+  scanHostRelationCandidates,
+} from "../lib/reviter/host-relations.ts";
 import { readInstancePlacement, readLocalBounds } from "../lib/reviter/instanced-geometry.ts";
 import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "../lib/reviter/level-definitions.ts";
 import { scanAssociatedLevelRelationCandidates } from "../lib/reviter/level-relations.ts";
@@ -565,4 +571,43 @@ test("a narrow stairs run links to its stairs through four-byte ids", () => {
     assert.equal(decodedRun.value.runProperties?.topRiserIndex, 3);
     assert.equal(decodedRun.value.runProperties?.actualRunWidthFeet, 19.69);
   }
+});
+
+test("a narrow placed instance's host is a four-byte id at +115, or +117 in the versioned layout", () => {
+  const instance = (hostAt: number, hostId: number) => {
+    const body = new Bytes().u32(0x01020304).zeros(140).out;
+    const frame = narrowFrame(hostAt === 115 ? 725100 : 725101, REVIT_2027_INSERTABLE_INSTANCE_MARKER, body, 0x5a5a1234);
+    const view = new DataView(Uint8Array.from(frame).buffer);
+    view.setUint32(hostAt, hostId, true);
+    return [...new Uint8Array(view.buffer)];
+  };
+  const data = page(instance(115, 5000), instance(117, 5001));
+  const candidates = narrow(() => scanHostRelationCandidates(data, 2023));
+  assert.deepEqual(scanHostRelationCandidates(data, 2023), []);
+  const resolved = resolveHostRelations(candidates, new Set([725100, 725101, 5000, 5001]))
+    .map(({ elementId, hostId, fieldOffset }) => ({ elementId, hostId, fieldOffset }));
+  assert.deepEqual(resolved, [
+    { elementId: 725100, hostId: 5000, fieldOffset: 115 },
+    { elementId: 725101, hostId: 5001, fieldOffset: 117 },
+  ]);
+});
+
+test("a narrow compound layer is 29 bytes: width, function, embedding, then four-byte material, profile and layer id", () => {
+  const layer = (width: number, layerFunction: number, materialId: number, layerId: number) =>
+    new Bytes().f64(width).i32(layerFunction).i32(-1).i32(materialId).i32(-1).i32(layerId).u8(1).out;
+  const body = new Bytes().u32(0x01020304).zeros(40)
+    .u32(0xffff_ffff).u16(0x11ab).u32(2).out
+    .concat(layer(0.5, 1, 1234, 0), layer(0, 100, 1240, 1), new Bytes().zeros(24).out);
+  const data = page(narrowFrame(725200, 0x0270, body, 0x77665544));
+  assert.deepEqual(scanCompoundStructureCandidates(data, 2023), []);
+  const [candidate] = narrow(() => scanCompoundStructureCandidates(data, 2023));
+  assert.equal(candidate?.typeId, 725200);
+  assert.deepEqual(
+    candidate?.layers.map(({ widthFeet, function: layerFunction, priority, materialId, profileId, layerId }) =>
+      ({ widthFeet, layerFunction, priority, materialId, profileId, layerId })),
+    [
+      { widthFeet: 0.5, layerFunction: 1, priority: 1, materialId: 1234, profileId: null, layerId: 0 },
+      { widthFeet: 0, layerFunction: 100, priority: 999, materialId: 1240, profileId: null, layerId: 1 },
+    ],
+  );
 });
