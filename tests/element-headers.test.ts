@@ -13,7 +13,7 @@ import { nonModelElementIds, nonModelReason } from "../lib/reviter/model-element
  */
 function header(
   elementId: number,
-  { category = -2000011, history = 0, family = -1, ownerView = -1, designOption = -1 } = {},
+  { category = -2000011, history = 0, family = -1, ownerView = -1, designOption = -1, unplacedOwner = -1 } = {},
 ): number[] {
   const bytes: number[] = [];
   const u32 = (value: number) => bytes.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff);
@@ -36,7 +36,7 @@ function header(
   i64(family); // m_familyId
   i64(ownerView);
   i64(designOption);
-  i64(-1);
+  i64(unplacedOwner);
   i64(-1);
   return bytes;
 }
@@ -85,4 +85,25 @@ test("view-owned, category-less and non-model-category elements are not part of 
     new Map([[3, { ...wall, elementId: 3, ownerViewId: 99 }]]),
   );
   assert.deepEqual([...excluded].sort(), [[2, "non-model-category"], [3, "view-owned"]]);
+});
+
+test("a member of a group type that is never placed is not part of the model", () => {
+  // The 2025 RAC sample's second copy of its terrain, a member of model group
+  // type 800214, which has no placed instance.
+  const [unplaced] = scanElementHeaders(page(header(800334, { category: -2001340, unplacedOwner: 800214 })));
+  assert.equal(unplaced?.unplacedOwnerId, 800214);
+  assert.equal(nonModelReason(unplaced, undefined), "unplaced");
+  const [placed] = scanElementHeaders(page(header(411452, { category: -2001340 })));
+  assert.equal(placed?.unplacedOwnerId, undefined);
+  assert.equal(nonModelReason(placed, undefined), null);
+});
+
+test("a family type is not a placed element, whatever its category", () => {
+  const records = [
+    { elementId: 147401, categoryId: -2000023 }, // a door type's per-host copy
+    { elementId: 147400, categoryId: -2000023 }, // the door itself
+  ];
+  const excluded = nonModelElementIds(records, undefined, new Set([147401]));
+  assert.equal(excluded.get(147401), "type");
+  assert.equal(excluded.has(147400), false);
 });

@@ -47,6 +47,11 @@ import {
 import { resolveNameEntries, scanNameEntries, type NameEntry } from "./name-entries.ts";
 import { scanElementHeaders } from "./element-headers.ts";
 import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "./level-definitions.ts";
+import {
+  LIGHT_SOURCE_CATEGORY_ID,
+  readGStyleElementCategoryId,
+  REVIT_2027_GSTYLE_ELEMENT_MARKER,
+} from "./revit-2027-gstyle-material.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
@@ -169,6 +174,8 @@ export type PartitionScan = {
   elementHeaders: Map<number, ElementHeader>;
   /** Each `Level` element's own name and elevation, keyed by level id. */
   levelDefinitions: Map<number, LevelDefinition>;
+  /** Graphics styles in the "Light Source" subcategory, which Revit hides in model views. */
+  lightSourceStyleIds: Set<number>;
   /** The stored name of each loaded family and family type (`name-entries.ts`). */
   nameEntries: Map<number, NameEntry>;
   /** The element ids each family instance's own record references. */
@@ -277,6 +284,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const categoryTokens: CategoryToken[] = [];
   const elementHeaders = new Map<number, ElementHeader>();
   const levelDefinitions = new Map<number, LevelDefinition>();
+  const lightSourceStyleIds = new Set<number>();
   const rawNameEntries: NameEntry[] = [];
   const instanceReferences = new Map<number, Uint32Array>();
   const symbolReferences = new Map<number, Uint32Array>();
@@ -385,6 +393,13 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
               : null;
           if (target && !target.has(frame.elementId)) {
             target.set(frame.elementId, referencedElementIds(inflated, frame));
+          }
+        }
+      }
+      if (pageFrames?.hasMarker(REVIT_2027_GSTYLE_ELEMENT_MARKER)) {
+        for (const frame of pageFrames.frames) {
+          if (readGStyleElementCategoryId(inflated, frame) === LIGHT_SOURCE_CATEGORY_ID) {
+            lightSourceStyleIds.add(frame.elementId);
           }
         }
       }
@@ -690,6 +705,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     categoryTokens,
     elementHeaders,
     levelDefinitions,
+    lightSourceStyleIds,
     nameEntries: resolveNameEntries(rawNameEntries),
     instanceReferences,
     symbolReferences,

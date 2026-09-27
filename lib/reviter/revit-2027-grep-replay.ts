@@ -1,4 +1,14 @@
 import {
+  REVIT_2027_FACETED_TOPOLOGY_FORMS,
+  decodeRevit2027FacetedTopology,
+} from "./revit-2027-faceted-topology.ts";
+import {
+  REVIT_2027_GPOLYMESH_BODY_BYTES,
+  REVIT_2027_GPOLYMESH_SOURCE_CLASS_SLOT,
+  decodeRevit2027GPolyMesh,
+  type Revit2027GPolyMesh,
+} from "./revit-2027-gpolymesh.ts";
+import {
   REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS,
   decodeRevit2027AssetProperty,
   type Revit2027AssetPropertyClass,
@@ -775,6 +785,42 @@ const BUILTIN_READERS: readonly [
       },
     },
   ],
+  [
+    REVIT_2027_GPOLYMESH_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GPolyMesh",
+      read: fixedBodyReader(
+        REVIT_2027_GPOLYMESH_BODY_BYTES,
+        decodeRevit2027GPolyMesh,
+        (value) => [(value as unknown as Revit2027GPolyMesh).topology],
+      ),
+    },
+  ],
+  ...[...REVIT_2027_FACETED_TOPOLOGY_FORMS].map(
+    ([slot, form]): [number, Revit2027GRepReplayReaderRegistration] => [
+      slot,
+      {
+        id: `Revit2027${form.name}`,
+        read: (data, context) => {
+          const decoded = decodeRevit2027FacetedTopology(
+            data,
+            context.byteOffset,
+            context.replayEndOffset,
+            context.revitVersion,
+            slot,
+          );
+          if (!decoded.ok) return decoded;
+          return {
+            ok: true,
+            startOffset: context.byteOffset,
+            endOffset: decoded.value.endOffset,
+            appendedProperties: [],
+            value: decoded.value,
+          };
+        },
+      },
+    ],
+  ),
   [
     REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT,
     {

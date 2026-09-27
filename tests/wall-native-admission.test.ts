@@ -107,3 +107,18 @@ test("accepts a sub-quarter-foot centre shift but rejects a larger ambiguous ove
   );
   assert.deepEqual([...replacements], [1]);
 });
+
+test("an overfill of exactly the threshold is not decided by float rounding", () => {
+  // A native wall exactly half a foot thicker than its recovered core, as
+  // four Snowdon walls are; float32 positions put it a hair either side.
+  const mesh = boxMesh([
+    { elementId: 1, bounds: [0, -0.75, 0, 10, 0.750002, 10] },
+    { elementId: 2, bounds: [0, -0.75, 0, 10, 0.749998, 10] },
+  ]);
+  const replacements = nativeWallProxyReplacementIds(
+    [mesh],
+    { x: 0, y: 0, z: 0 },
+    [wall(1), wall(2)],
+  );
+  assert.deepEqual([...replacements], []);
+});

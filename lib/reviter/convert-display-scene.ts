@@ -59,6 +59,7 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
+import { REVIT_2027_FAMILY_SYMBOL_MARKER } from "./family-material-relations.ts";
 import { NO_ENVELOPE_PROXY_CATEGORY_IDS, nonModelElementIds } from "./model-elements.ts";
 import type { NonModelReason } from "./model-elements.ts";
 import type { LevelDefinition } from "./level-definitions.ts";
@@ -132,7 +133,17 @@ export function selectDrawableRecords(
   }
   // Annotation, datums, sketches, containers and the like are records of the
   // file but not parts of the building; see `model-elements.ts`.
-  const nonModelElements = nonModelElementIds(elementBounds, elementHeaders);
+  const nonModelElements = nonModelElementIds(
+    elementBounds,
+    elementHeaders,
+    new Set(
+      elementBounds
+        .filter((record) =>
+          markersByElement.get(record.elementId)?.has(REVIT_2027_FAMILY_SYMBOL_MARKER) === true &&
+          !instancePlacements.has(record.elementId))
+        .map((record) => record.elementId),
+    ),
+  );
   for (const elementId of nonModelElements.keys()) {
     nonSceneNativeMeshIds.add(elementId);
   }
@@ -177,6 +188,8 @@ export type DisplaySceneInput = {
   nonModelElements?: ReadonlyMap<number, NonModelReason>;
   /** Each `Level` element's own name and elevation. */
   levelDefinitions?: ReadonlyMap<number, LevelDefinition>;
+  /** Graphics styles whose geometry Revit hides in model views. */
+  lightSourceStyleIds?: ReadonlySet<number>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -216,6 +229,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     nonSceneNativeMeshIds,
     nonModelElements,
     levelDefinitions,
+    lightSourceStyleIds,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -295,6 +309,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
           .filter((record) => !instancePlacements.has(record.elementId))
           .map((record) => record.elementId),
       ),
+      lightSourceStyleIds,
     );
   const nativeMeshScene = buildRevit2027NativeMeshScene(
     nativeMeshCollection,
@@ -639,6 +654,8 @@ function countReasons(
   const counts: Record<NonModelReason, number> = {
     "view-owned": 0,
     "family-internal": 0,
+    unplaced: 0,
+    type: 0,
     "no-category": 0,
     "non-model-category": 0,
   };

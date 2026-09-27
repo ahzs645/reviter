@@ -74,6 +74,14 @@ export type ElementHeader = {
   ownerViewId: number | null;
   /** The design option the element belongs to, or null for the main model. */
   designOptionId: number | null;
+  /**
+   * `m_unplacedOwnerId`: the group type whose unplaced definition the element
+   * belongs to, or null for an element placed in the model. In the 2025 RAC
+   * sample a second copy of the site terrain and two solar panels are members
+   * of a model group type with no placed instance: Revit does not show them,
+   * and the Autodesk Viewer has no record of them.
+   */
+  unplacedOwnerId?: number | null;
 };
 
 /** -1 is "none"; anything else must look like an element id. */
@@ -122,8 +130,16 @@ export function scanElementHeaders(data: Uint8Array): ElementHeader[] {
     const ownerViewId = optionalId(view.getBigInt64(categoryAt + 16, true));
     const designOptionId = optionalId(view.getBigInt64(categoryAt + 24, true));
     if (familyId === undefined || ownerViewId === undefined || designOptionId === undefined) continue;
+    const unplacedOwnerId = optionalId(view.getBigInt64(categoryAt + 32, true));
 
-    headers.push({ elementId, categoryId, familyId, ownerViewId, designOptionId });
+    headers.push({
+      elementId,
+      categoryId,
+      familyId,
+      ownerViewId,
+      designOptionId,
+      ...(unplacedOwnerId ? { unplacedOwnerId } : {}),
+    });
   }
   return headers;
 }

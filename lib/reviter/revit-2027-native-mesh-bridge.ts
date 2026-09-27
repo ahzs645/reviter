@@ -1,4 +1,9 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
+import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  meshRevit2027PolyMeshReplay,
+  type Revit2027PolyMeshFace,
+} from "./revit-2027-polymesh-owner-mesh.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
 import {
@@ -109,6 +114,8 @@ export type Revit2027CompactOwnerMesh = {
     mesh: NeutralFaceMesh;
     /** Exact column-major root-local transform for a nested occurrence. */
     nestedTransform?: RevitTransform3d["matrix"];
+    /** The graphics style of the nearest geometry node above the face that names one. */
+    gStyleElementId?: number;
   }[];
   triangles: number;
 };
@@ -316,6 +323,8 @@ export type Revit2027NativeMeshCollector = {
      * nested instances: those with no decoded placement of their own.
      */
     unplacedElementIds?: ReadonlySet<number>,
+    /** Graphics styles whose geometry is left out of every published mesh. */
+    hiddenStyleIds?: ReadonlySet<number>,
   ): Revit2027NativeMeshCollection;
 };
 
@@ -567,10 +576,29 @@ type CompactFacesResult =
   | { ok: true; value: Revit2027CompactOwnerMesh["faces"] }
   | { ok: false; error: string };
 
+/**
+ * The graphics style a replayed node draws in: its own, or the nearest
+ * ancestor's that names one, since a node without a style draws in its
+ * parent's.
+ */
+function replayStyleId(
+  spans: readonly Revit2027GRepReplaySpan[],
+  replayIndex: number | null,
+): number | undefined {
+  for (let index = replayIndex; index != null; index = spans[index]?.parentReplayIndex ?? null) {
+    const gInfo = (spans[index]?.value as { gInfo?: Revit2027GInfo } | undefined)?.gInfo;
+    const styleId = gInfo ? Number(gInfo.gStyleElementId) : 0;
+    if (styleId > 0 && Number.isSafeInteger(styleId)) return styleId;
+  }
+  return undefined;
+}
+
 function compactFaces(
   faces: readonly Revit2027CertifiedOwnerFaceMesh[],
   faceSpans: Revit2027FaceSpanClassification<Revit2027GRepReplaySpan>,
   bindings: readonly Revit2027GInstanceBinding[],
+  polyMeshes: readonly Revit2027PolyMeshFace[] = [],
+  spans: readonly Revit2027GRepReplaySpan[] = [],
 ): CompactFacesResult {
   if (faceSpans.duplicateToken != null) {
     return {
@@ -593,12 +621,30 @@ function compactFaces(
       span.path,
     );
     if (!embedded.ok) return embedded;
+    const gStyleElementId = replayStyleId(spans, span.parentReplayIndex);
     compact.push({
       faceToken,
       mesh,
       ...(embedded.value == null
         ? {}
         : { nestedTransform: embedded.value }),
+      ...(gStyleElementId == null ? {} : { gStyleElementId }),
+    });
+  }
+  for (const { span, faceToken, mesh } of polyMeshes) {
+    const embedded = composeRevit2027EmbeddedPathTransform(
+      bindings,
+      span.path,
+    );
+    if (!embedded.ok) return embedded;
+    const gStyleElementId = replayStyleId(spans, span.replayIndex);
+    compact.push({
+      faceToken,
+      mesh,
+      ...(embedded.value == null
+        ? {}
+        : { nestedTransform: embedded.value }),
+      ...(gStyleElementId == null ? {} : { gStyleElementId }),
     });
   }
   return { ok: true, value: compact };
@@ -996,7 +1042,42 @@ function finalizeRevit2027NativeMeshCollection(
   > = new Map(),
   owningElementByElement: ReadonlyMap<number, number> = new Map(),
   unplacedElementIds: ReadonlySet<number> = new Set(),
+  hiddenStyleIds: ReadonlySet<number> = new Set(),
 ): Revit2027NativeMeshCollection {
+  // A light fixture's family carries the shape of its light source, drawn in
+  // the "Light Source" subcategory that Revit hides in model views and the
+  // Autodesk Viewer does not draw. In the 2025 RAC sample's pendants it is a
+  // 1.1 x 1.6 x 2 ft mesh around the lamp, which put the fixture outside its
+  // own envelope. Faces in such a style are left out of what is published.
+  const visibleGeometryByOwner = new Map<number, Revit2027CompactOwnerMesh | null>();
+  const visibleGeometry = (
+    definition: CompactOwnerDefinition,
+  ): Revit2027CompactOwnerMesh | null => {
+    const geometry = definition.geometry;
+    if (!geometry || hiddenStyleIds.size === 0) return geometry;
+    const cached = visibleGeometryByOwner.get(definition.ownerElementId);
+    if (cached !== undefined) return cached;
+    const faces = geometry.faces.filter(
+      (face) =>
+        face.gStyleElementId == null ||
+        !hiddenStyleIds.has(face.gStyleElementId),
+    );
+    const visible =
+      faces.length === geometry.faces.length
+        ? geometry
+        : faces.length === 0
+        ? null
+        : {
+            ...geometry,
+            faces,
+            triangles: faces.reduce(
+              (total, face) => total + face.mesh.indices.length / 3,
+              0,
+            ),
+          };
+    visibleGeometryByOwner.set(definition.ownerElementId, visible);
+    return visible;
+  };
   const requestedOwners = state.enabled
     ? new Set(
         [...requestedOwnerIds].filter(
@@ -1029,10 +1110,10 @@ function finalizeRevit2027NativeMeshCollection(
         unplacedElementIds.has(definition.ownerElementId)) &&
       definition.nestedInstances.length === 0 &&
       definition.localComplete &&
-      definition.geometry &&
+      visibleGeometry(definition) &&
       !state.conflictingOwnerIds.has(definition.ownerElementId)
     ) {
-      owners.set(definition.ownerElementId, definition.geometry);
+      owners.set(definition.ownerElementId, visibleGeometry(definition)!);
     }
   }
   for (const definition of state.definitions.values()) {
@@ -1207,7 +1288,7 @@ function finalizeRevit2027NativeMeshCollection(
       // contains grouping/instance nodes. This lets finalization enforce local
       // coverage for the entire recursive closure, not only mesh-bearing nodes.
       geometry: {
-        mesh: definition.geometry,
+        mesh: visibleGeometry(definition),
         localComplete: definition.localComplete,
       } satisfies NestedGeometryMarker,
       nestedInstances: definition.nestedInstances,
@@ -1714,12 +1795,29 @@ export function createRevit2027NativeMeshCollector(
       return;
     }
 
+    const polyMeshes = meshRevit2027PolyMeshReplay(replayed.value);
+    if (!polyMeshes.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `polymesh meshing failed: ${polyMeshes.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+
     const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
-    const coverage = drawableFaceCoverage(
+    const faceCoverage = drawableFaceCoverage(
       faceSpans.drawableTokens,
       meshed.value.faceMeshes,
       meshed.value.issues,
     );
+    // A polymesh is drawable as stored. An owner whose only geometry is
+    // polymeshes is complete; one that also has faces is complete when they
+    // are.
+    const coverage: Revit2027DrawableFaceCoverage =
+      faceCoverage.code === "no-drawable-faces" && polyMeshes.value.length > 0
+        ? { ...faceCoverage, complete: true, code: "complete" }
+        : faceCoverage;
     if (directRoot) {
       state.excludedNonTopologicalFaces +=
         faceSpans.excludedNonTopologicalFaces;
@@ -1732,6 +1830,8 @@ export function createRevit2027NativeMeshCollector(
           ),
           faceSpans,
           bindings.value,
+          polyMeshes.value,
+          replayed.value.spans,
         )
       : { ok: true as const, value: [] };
     if (!compacted.ok) {
@@ -1922,6 +2022,7 @@ export function createRevit2027NativeMeshCollector(
       > = new Map(),
       owningElementByElement: ReadonlyMap<number, number> = new Map(),
       unplacedElementIds: ReadonlySet<number> = new Set(),
+      hiddenStyleIds: ReadonlySet<number> = new Set(),
     ): Revit2027NativeMeshCollection {
       admitAlternateDefinitions();
       return finalizeRevit2027NativeMeshCollection(
@@ -1930,6 +2031,7 @@ export function createRevit2027NativeMeshCollector(
         stairsRuns,
         owningElementByElement,
         unplacedElementIds,
+        hiddenStyleIds,
       );
     },
   };

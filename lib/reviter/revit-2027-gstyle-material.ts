@@ -2,7 +2,7 @@ import type { ElementObject } from "./element-objects.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { canonicalClassTag, fileClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /**
  * Persisted Revit 2027 `GStyleElem` and its queued `GStyle` body.
@@ -183,6 +183,42 @@ export function decodeRevit2027GStyleElementRecord(
       evidence: "framed-gstyle-element-queued-gstyle",
     },
   };
+}
+
+/** `OST_LightingFixtureSource`, the "Light Source" subcategory of lighting fixtures. */
+export const LIGHT_SOURCE_CATEGORY_ID = -2_001_121;
+
+/**
+ * The subcategory a graphics style draws in, in any release that frames it.
+ *
+ * `GStyleElem` writes its queued `m_pGStyle` descriptor and then
+ * `m_categoryId`. In the 2027 layout above that descriptor is at +121; the
+ * 2024 and 2025 files hold the same 156-byte record for most styles and a
+ * longer element prefix for the rest, with the descriptor at +121, +123 or
+ * +125. Across every style in the three older sample files the descriptor
+ * (token -1 and the file's own `GStyle` class) occurs exactly once, so it is
+ * found rather than assumed, and a record where it does not occur exactly
+ * once is not read.
+ */
+export function readGStyleElementCategoryId(
+  data: Uint8Array,
+  object: ElementObject,
+): number | null {
+  if (object.marker !== REVIT_2027_GSTYLE_ELEMENT_MARKER) return null;
+  const styleTag = fileClassTag(REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT);
+  const echoOffset = object.offset + object.objectLength + 16;
+  if (styleTag < 0 || !rangeFits(data, object.offset, object.objectLength + 20)) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(echoOffset, true) !== object.objectLength) return null;
+  let descriptor = -1;
+  for (let at = object.offset + 20; at + 14 <= echoOffset; at += 1) {
+    if (view.getInt32(at, true) !== -1 || view.getUint16(at + 4, true) !== styleTag) continue;
+    if (descriptor >= 0) return null;
+    descriptor = at;
+  }
+  if (descriptor < 0) return null;
+  const categoryId = view.getBigInt64(descriptor + 6, true);
+  return categoryId >= -0x8000_0000n && categoryId <= 0x7fff_ffffn ? Number(categoryId) : null;
 }
 
 /** Scan one inflated partition chunk for certified queued-GStyle records. */

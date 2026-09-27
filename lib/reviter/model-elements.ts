@@ -119,6 +119,8 @@ export const NO_ENVELOPE_PROXY_CATEGORY_IDS: ReadonlySet<number> = new Set([
 export type NonModelReason =
   | "view-owned"
   | "family-internal"
+  | "unplaced"
+  | "type"
   | "no-category"
   | "non-model-category";
 
@@ -129,6 +131,7 @@ export function nonModelReason(
 ): NonModelReason | null {
   if (header?.ownerViewId != null) return "view-owned";
   if (header?.familyId != null) return "family-internal";
+  if (header?.unplacedOwnerId != null) return "unplaced";
   if (header && header.categoryId == null) return "no-category";
   const category = header?.categoryId ?? categoryId;
   if (category != null && NON_MODEL_CATEGORY_IDS.has(category)) return "non-model-category";
@@ -143,9 +146,21 @@ export function nonModelReason(
 export function nonModelElementIds(
   records: readonly Pick<ElementBoundsRecord, "elementId" | "categoryId">[],
   headers: ReadonlyMap<number, ElementHeader> | undefined,
+  /**
+   * The ids whose own record is a `FamilySymbol`: a family type, never a
+   * placed element, though it carries its family's category. The per-host
+   * copy of a door or window type has a bounds record of its own, and was
+   * drawn as a second door: 21 in the 2025 technical school, 64 in the 2024
+   * Snowdon sample. The Autodesk Viewer draws none of them.
+   */
+  typeIds: ReadonlySet<number> = new Set(),
 ): Map<number, NonModelReason> {
   const excluded = new Map<number, NonModelReason>();
+  for (const record of records) {
+    if (typeIds.has(record.elementId)) excluded.set(record.elementId, "type");
+  }
   for (const [elementId, header] of headers ?? []) {
+    if (excluded.has(elementId)) continue;
     const reason = nonModelReason(header, undefined);
     if (reason) excluded.set(elementId, reason);
   }
