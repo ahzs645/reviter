@@ -146,6 +146,13 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
   0x0810, // FamilySymbol
   3392, // FootprintRoof
   3462, // RampSym
+  // A family document's solid forms, kept out of the scene by `scene.ts`.
+  1728, // ExtrusionElem
+  647, // BlendElem
+  3817, // RevolutionElem
+  4297, // SweepElem
+  4308, // SweptBlendElem
+  648, // GenSweep
 ]);
 
 /** Same backstop for sketch edges, which are chained pairwise per element. */

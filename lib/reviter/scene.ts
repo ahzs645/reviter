@@ -408,6 +408,17 @@ const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
 const REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = 974;
 
 /**
+ * A family document's solid forms: `ExtrusionElem`, `BlendElem`,
+ * `RevolutionElem`, `SweepElem`, `SweptBlendElem` and their base `GenSweep`.
+ * Each stores its geometry in the family's own coordinates, so drawn as an
+ * element of its own it lands beside the project origin. Before curved trims
+ * meshed, three such forms in the 2025 technical school sample and eighteen
+ * in one larger sample were drawn that way, none of them by the Autodesk
+ * Viewer; meshing curved trims completed nine more.
+ */
+const REVIT_2027_FAMILY_FORM_MARKERS = new Set([1728, 647, 3817, 4297, 4308, 648]);
+
+/**
  * An unlabelled type/annotation definition is not a placed scene element.
  *
  * Both identities come from exact framed classes in the file's own schema.
@@ -423,10 +434,17 @@ export function isNonSceneObjectDefinition(
   if (record.categoryId != null || record.categoryName || hasInstancePlacement) {
     return false;
   }
-  return Boolean(
-    nativeMarkers?.has(REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER) ||
-      nativeMarkers?.has(REVIT_2027_FAMILY_SYMBOL_MARKER),
-  );
+  if (!nativeMarkers) return false;
+  if (
+    nativeMarkers.has(REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER) ||
+    nativeMarkers.has(REVIT_2027_FAMILY_SYMBOL_MARKER)
+  ) {
+    return true;
+  }
+  for (const marker of nativeMarkers) {
+    if (REVIT_2027_FAMILY_FORM_MARKERS.has(marker)) return true;
+  }
+  return false;
 }
 
 /**
