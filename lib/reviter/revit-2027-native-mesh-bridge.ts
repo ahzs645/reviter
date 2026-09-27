@@ -1016,10 +1016,17 @@ function finalizeRevit2027NativeMeshCollection(
   // otherwise an unrelated sibling under the same owner can donate its body.
   // That is how a rectangular curtain panel was copied into a sloped boundary.
   const stringerOwnerIds = decodedStairStringerIds(stairsRuns);
+  // A scene element with no decoded placement is published from its own
+  // complete root as well, whatever the root's shape. In the 2025 RAC sample
+  // that is each pile cap: its root holds the cap body and a reference to its
+  // pile, which is drawn by the pile's own element, so the cap is drawn at its
+  // own 2 x 2 x 1 ft where its envelope, which spans the pile, is 20.7 ft
+  // tall. The scene's envelope gate still checks the result.
   for (const definition of state.definitions.values()) {
     if (
       (definition.directRoot ||
-        requestedOwners.has(definition.ownerElementId)) &&
+        requestedOwners.has(definition.ownerElementId) ||
+        unplacedElementIds.has(definition.ownerElementId)) &&
       definition.nestedInstances.length === 0 &&
       definition.localComplete &&
       definition.geometry &&

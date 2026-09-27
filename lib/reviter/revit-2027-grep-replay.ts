@@ -1,4 +1,26 @@
 import {
+  REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS,
+  decodeRevit2027AssetProperty,
+  type Revit2027AssetPropertyClass,
+} from "./revit-2027-asset-properties.ts";
+import {
+  REVIT_2027_GIMPOSTER_BODY_BYTES,
+  REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT,
+  decodeRevit2027GImposter,
+  type Revit2027GImposter,
+} from "./revit-2027-gimposter.ts";
+import {
+  REVIT_2027_GCOMPONENT_REF_BODY_BYTES,
+  REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+  decodeRevit2027GComponentRef,
+  type Revit2027GComponentRef,
+} from "./revit-2027-gcomponent-ref.ts";
+import {
+  REVIT_2027_GELLIPSE_BODY_BYTES,
+  REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+  decodeRevit2027GEllipse,
+} from "./revit-2027-gellipse.ts";
+import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
@@ -751,6 +773,67 @@ const BUILTIN_READERS: readonly [
           value: decoded.value,
         };
       },
+    },
+  ],
+  [
+    REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GImposter",
+      read: fixedBodyReader(
+        REVIT_2027_GIMPOSTER_BODY_BYTES,
+        decodeRevit2027GImposter,
+        (value) => [(value as unknown as Revit2027GImposter).asset],
+      ),
+    },
+  ],
+  ...(Object.entries(REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS) as [
+    Revit2027AssetPropertyClass,
+    number,
+  ][]).map(
+    ([className, slot]): [number, Revit2027GRepReplayReaderRegistration] => [
+      slot,
+      {
+        id: `Revit2027${className}`,
+        read: (data, context) => {
+          const decoded = decodeRevit2027AssetProperty(
+            data,
+            context.byteOffset,
+            context.replayEndOffset,
+            context.revitVersion,
+            className,
+          );
+          if (!decoded.ok) return decoded;
+          return {
+            ok: true,
+            startOffset: context.byteOffset,
+            endOffset: decoded.value.endOffset,
+            appendedProperties: decoded.value.queued,
+            value: decoded.value,
+          };
+        },
+      },
+    ],
+  ),
+  [
+    REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GEllipse",
+      read: fixedBodyReader(
+        REVIT_2027_GELLIPSE_BODY_BYTES,
+        decodeRevit2027GEllipse,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GComponentRef",
+      read: fixedBodyReader(
+        REVIT_2027_GCOMPONENT_REF_BODY_BYTES,
+        decodeRevit2027GComponentRef,
+        (value) => [(value as unknown as Revit2027GComponentRef).instanceInfo],
+      ),
     },
   ],
   [
