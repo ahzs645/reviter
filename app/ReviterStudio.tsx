@@ -44,6 +44,10 @@ import {
   type WorkerRequest,
 } from "../lib/reviter";
 import {
+  REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE,
+  usesRevit2027RecordLayout,
+} from "../lib/reviter/revit-class-tags.ts";
+import {
   WorkerClient,
   type WorkerClientOptions,
   type WorkerRequestEnvelope,
@@ -1259,6 +1263,20 @@ export default function ReviterStudio() {
   // check reads both ends of its range so a legacy file is described the same
   // way rather than silently falling through as if it were supported.
   const isBeyondStandardsReader = versionNumber > 0 && !standardsReaderSupports(versionNumber);
+  // A project from a release whose records Reviter cannot yet read. Revit
+  // 2023 and earlier write 32-bit element ids and a 12-byte object header, so
+  // none of the element decoders apply, and what the scene shows is the
+  // diagnostic coordinate scan. The file should say so rather than present
+  // that scan as a model.
+  const isUndecodedRelease =
+    versionNumber > 0 &&
+    !usesRevit2027RecordLayout(versionNumber) &&
+    /\.rvt$/i.test(result?.fileName ?? file?.name ?? "");
+  const undecodedReleaseNote =
+    `Revit ${versionNumber} projects are not decoded yet: Reviter reads elements, categories, ` +
+    `materials, levels and geometry from Revit ${REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE}–2027 projects. ` +
+    "The lines shown are a diagnostic scan of coordinate-like values in the file, not the building. " +
+    "File metadata is read directly.";
   const referenceModelAvailable = Boolean(referenceModelUrl);
   /**
    * How many objects the file holds.
@@ -1456,7 +1474,9 @@ export default function ReviterStudio() {
     ];
   }, [metadata, result]);
 
-  const evidenceSummary = isBeyondStandardsReader
+  const evidenceSummary = isUndecodedRelease
+    ? undecodedReleaseNote
+    : isBeyondStandardsReader
     ? `Revit ${metadata?.version} is outside the optional Rust reader's verified ${STANDARDS_READER_RANGE_LABEL} range; Reviter's own decoders ran normally. Shapes are approximate; metadata is read directly from the file.`
     : result?.readerDiagnostics?.summary
       ?? "This is a recovery, not a native Revit decode. Shapes are approximate; metadata is read directly from the file.";
@@ -1707,7 +1727,9 @@ export default function ReviterStudio() {
     ? "Only the recovered source carries object ids. Switch back to Recovered to browse objects and categories."
     : browserSearch.trim()
       ? "Nothing in this model matches that filter."
-      : "This file converted into geometry, but no element ids were recovered from it — there is nothing to list. The Report dock has the stream-by-stream detail.";
+      : isUndecodedRelease
+        ? undecodedReleaseNote
+        : "This file converted into geometry, but no element ids were recovered from it — there is nothing to list. The Report dock has the stream-by-stream detail.";
 
   const selectedTitle = selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection";
   const selectedSubtitle = selectedRecord
