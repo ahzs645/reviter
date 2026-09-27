@@ -66,3 +66,30 @@ test("a wall whose envelope cannot be read as its thickness keeps the triple", (
     assert.ok(record.solids!.every((solid) => solid.thickness === 0.3));
   }
 });
+
+test("an angled wall takes its type's thickness, on the side its envelope says", () => {
+  // A 20 ft wall at 30 degrees whose triple is its 0.5 ft core; the type is
+  // 1.1 ft thick and all of the extra lies on one side.
+  const ux = Math.cos(Math.PI / 6);
+  const uy = Math.sin(Math.PI / 6);
+  const nx = -uy;
+  const ny = ux;
+  const core = run([0, 0], [20 * ux, 20 * uy], 0.5);
+  const centre = 0.3; // the whole wall's middle, measured across from the core's
+  const corners = [
+    [0, -0.25], [0, 0.85], [20, -0.25], [20, 0.85],
+  ].map(([along, across]) => [along! * ux + across! * nx, along! * uy + across! * ny]);
+  const xs = corners.map(([x]) => x!);
+  const ys = corners.map(([, y]) => y!);
+  const record = wall([core], { min: [Math.min(...xs), Math.min(...ys)], max: [Math.max(...xs), Math.max(...ys)] });
+  assert.equal(widenWallsToEnvelope([record], () => 1.1), 1);
+  assert.ok(Math.abs(record.solid!.thickness - 1.1) < 1e-9);
+  assert.ok(Math.abs(record.solid!.start.x - centre * nx) < 1e-9);
+  assert.ok(Math.abs(record.solid!.start.y - centre * ny) < 1e-9);
+
+  // A type width the envelope cannot hold, as for a wall whose type reads
+  // wrong, is not applied.
+  const other = wall([run([0, 0], [20 * ux, 20 * uy], 0.5)], { min: [Math.min(...xs), Math.min(...ys)], max: [Math.max(...xs), Math.max(...ys)] });
+  assert.equal(widenWallsToEnvelope([other], () => 4), 0);
+  assert.equal(other.solid!.thickness, 0.5);
+});

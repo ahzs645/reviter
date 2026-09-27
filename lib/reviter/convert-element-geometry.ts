@@ -619,7 +619,7 @@ export function resolveElementGeometry(
   const attached = attachRecoveredGeometry(input);
   applyNativeObjectCategories(input);
   const completedFlatSketches = completeFlatSketchRecords(elementBounds);
-  const solids = reconcileSolidsWithEnvelopes(elementBounds);
+  const solids = reconcileSolidsWithEnvelopes(elementBounds, input.wallThicknessByType);
   // A non-square wall join cannot be represented by moving the location-line
   // endpoints: its two long faces end at different stations.  Recover those
   // two corners only where an adjacent native wall face and this wall's own
@@ -1009,7 +1009,10 @@ function completeFlatSketchRecords(
   return completedFlatSketches;
 }
 
-function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
+function reconcileSolidsWithEnvelopes(
+  elementBounds: ElementBoundsRecord[],
+  wallThicknessByType: ReadonlyMap<number, number>,
+): {
   clippedSolids: number;
   disownedSolids: number;
   extendedSolids: number;
@@ -1116,7 +1119,10 @@ function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
   }
   // The length is the envelope's along the wall; the thickness is its extent
   // across it, where the wall runs along an axis. See `wall-envelope-thickness.ts`.
-  const widenedWalls = widenWallsToEnvelope(elementBounds);
+  const widenedWalls = widenWallsToEnvelope(
+    elementBounds,
+    (record) => (record.typeId == null ? undefined : wallThicknessByType.get(record.typeId)),
+  );
   return {
     clippedSolids,
     disownedSolids,
