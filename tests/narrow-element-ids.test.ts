@@ -688,3 +688,47 @@ test("2019 to 2022 declare shorter GInstance, InstanceInfo, GPoint and FillPatte
     setActiveClassTagTranslation(null);
   }
 });
+
+test("before 2023 a placement's geometry id is followed by m_cda, and the instance object is 268 bytes", () => {
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position, declaredFieldCount: name === "InstInfoBase" ? 2 : undefined,
+  }))));
+  try {
+    const basis = [0, -1, 0, 1, 0, 0, 0, 0, 1];
+    const placementBytes = (origin: number[], geometryId: number) => {
+      const out = new Bytes();
+      for (const value of [...basis, ...origin]) out.f64(value);
+      return out.u32(geometryId).u32(1).out; // m_symbolId, then m_cda
+    };
+    // Fixed-length object: 268 bytes, the transform ending at +272, the id, m_cda and the echo at +280.
+    const fixed = new Uint8Array(268 + 12 + 16);
+    const fixedView = new DataView(fixed.buffer);
+    fixedView.setUint32(0, 423100, true);
+    fixedView.setUint32(4, 0x5eed_1234, true);
+    fixedView.setUint32(8, 268, true);
+    fixedView.setUint16(12, 0x07ef, true);
+    fixed.set(placementBytes([12, 34, 5], 381904), 272 - 96);
+    fixedView.setUint32(268 + 12, 268, true);
+    const fixedFrame = narrow(() => scanFramedElementObjects(fixed))[0]!;
+    assert.deepEqual(narrow(() => readInstancePlacement(fixed, fixedFrame)), {
+      elementId: 423100, basis, origin: [12, 34, 5], geometryId: 381904, symbolId: 381904,
+    });
+
+    // The element's own tail placement at the same place as in 2023.
+    const body = new Bytes().zeros(358 - 14);
+    body.out.push(...placementBytes([-3, 7.5, 0], 211807));
+    body.zeros(40);
+    const tail = page(narrowFrame(211850, 0x07ef, body.out));
+    const tailFrame = narrow(() => scanFramedElementObjects(tail))[0]!;
+    assert.equal(narrow(() => readInstancePlacement(tail, tailFrame))?.geometryId, 211807);
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
+  // With m_GRepId declared, a 1 after the id is not a placement.
+  const body = new Bytes().zeros(358 - 14);
+  for (const value of [0, -1, 0, 1, 0, 0, 0, 0, 1, -3, 7.5, 0]) body.f64(value);
+  body.u32(211807).u32(1).zeros(40);
+  const tail = page(narrowFrame(211850, 0x07ef, body.out));
+  const tailFrame = narrow(() => scanFramedElementObjects(tail))[0]!;
+  assert.equal(narrow(() => readInstancePlacement(tail, tailFrame)), null);
+});

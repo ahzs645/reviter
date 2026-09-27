@@ -81,6 +81,15 @@ function instanceInfoWithoutGRepId(): boolean {
   return fileClassFieldCount(INST_INFO_BASE_CLASS) === 2;
 }
 
+/**
+ * Whether the file's `InstInfoBase` stores `m_GRepId` after `m_symbolId`:
+ * every schema from 2023 on, and none of 2019 to 2022. Placements embedded in
+ * element objects have the same layout, so their readers ask too.
+ */
+export function instanceInfoStoresGRepId(): boolean {
+  return !instanceInfoWithoutGRepId();
+}
+
 function ginstanceLayout():
   | typeof NARROW_GINSTANCE
   | typeof NARROW_GINSTANCE_WITHOUT_TAG

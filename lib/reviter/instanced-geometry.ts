@@ -48,9 +48,16 @@
  * by a zero word in both layouts. On the 2023 RAC sample, 462 of the 463
  * placements the 2025 copy yields are there, with the same basis, origin and
  * geometry id.
+ *
+ * That zero word is `InstInfoBase.m_GRepId`, which the 2019 to 2022 schemas do
+ * not declare: there the id is followed by `m_cda` (1 on every placement of the
+ * 2022 RAC sample), and the fixed instance object is 268 bytes, its transform
+ * ending four bytes nearer the echo. The placements inside element objects sit
+ * where they do in 2023.
  */
 import { narrowElementIds } from "./element-id-width.ts";
 import type { ElementObject } from "./element-objects.ts";
+import { instanceInfoStoresGRepId } from "./revit-2027-ginstance.ts";
 import { collectSurfaces, type PlanePatch, type SurfacePatch } from "./surfaces.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
@@ -59,8 +66,23 @@ const INSTANCE_OBJECT_LENGTH = 300;
 /** The same where ids are 32-bit. */
 const NARROW_INSTANCE_OBJECT_LENGTH = 276;
 
+/** The same where `InstInfoBase` has no `m_GRepId` (2019 to 2022). */
+const NARROW_INSTANCE_OBJECT_LENGTH_WITHOUT_GREP_ID = 268;
+
 function instanceObjectLength(): number {
-  return narrowElementIds() ? NARROW_INSTANCE_OBJECT_LENGTH : INSTANCE_OBJECT_LENGTH;
+  if (!narrowElementIds()) return INSTANCE_OBJECT_LENGTH;
+  return instanceInfoStoresGRepId()
+    ? NARROW_INSTANCE_OBJECT_LENGTH
+    : NARROW_INSTANCE_OBJECT_LENGTH_WITHOUT_GREP_ID;
+}
+
+/**
+ * The word after a placement's geometry id: the id's zero high word, or a zero
+ * `m_GRepId` where ids are 32-bit, or `m_cda` (0 or 1) where there is no
+ * `m_GRepId`.
+ */
+function acceptsWordAfterGeometryId(word: number): boolean {
+  return word === 0 || (word === 1 && !instanceInfoStoresGRepId());
 }
 
 /** Model coordinates in feet stay well inside this bound. */
@@ -285,7 +307,7 @@ function readTailPlacement(
     // An orthonormal basis alone is not rare — it fires on 99.7% of one other
     // object class. A live geometry reference immediately behind it is what
     // makes the read specific.
-    if (view.getUint32(at + 100, true) !== 0) continue;
+    if (!acceptsWordAfterGeometryId(view.getUint32(at + 100, true))) continue;
     const geometryId = view.getUint32(at + 96, true);
     if (!geometryId) continue;
     return { elementId: object.elementId, basis, origin, geometryId, symbolId: geometryId };
@@ -386,7 +408,9 @@ export function readInstancePlacement(
       readDeepInsertablePlacement(data, object)
     );
   }
-  const end = object.offset + object.objectLength;
+  // The transform ends where the geometry id starts: at the object's length,
+  // or four bytes later where no `m_GRepId` follows the id.
+  const end = object.offset + object.objectLength + (instanceInfoStoresGRepId() ? 0 : 4);
   if (end + 8 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -404,7 +428,7 @@ export function readInstancePlacement(
   if (!origin.every(finite)) return null;
 
   // The first trailer word is the shared geometry object's element id.
-  if (view.getUint32(end + 4, true) !== 0) return null;
+  if (!acceptsWordAfterGeometryId(view.getUint32(end + 4, true))) return null;
   const geometryId = view.getUint32(end, true);
   if (!geometryId) return null;
 
