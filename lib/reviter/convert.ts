@@ -29,6 +29,7 @@
 import { dominantMarker } from "./element-objects.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
 import { setActiveClassTagTranslation } from "./revit-class-tags.ts";
+import { setActiveElementIdBytes } from "./element-id-width.ts";
 import { buildMeshes } from "./scene.ts";
 import { buildStairAssemblies } from "./stair-assemblies.ts";
 import {
@@ -91,8 +92,9 @@ export function convertRvtBytes(
   // must not carry into this one.
   resetLimitCensus();
   // Installed by `openRevitContainer` from this file's schema and removed
-  // below, so one file's class numbering never reaches the next.
+  // below, so one file's class numbering and id width never reach the next.
   setActiveClassTagTranslation(null);
+  setActiveElementIdBytes(null);
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const segmentScale = segmentScaleFor(fileName, options.geometryScale);
@@ -569,5 +571,6 @@ export function convertRvtBytes(
     };
   } finally {
     setActiveClassTagTranslation(null);
+    setActiveElementIdBytes(null);
   }
 }

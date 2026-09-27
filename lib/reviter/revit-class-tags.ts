@@ -36,6 +36,7 @@
  * `convertRvtBytes` for the length of one conversion, the way the limit census
  * is.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import {
   REVIT_2027_CLASS_NAMES,
   REVIT_2027_FIRST_CLASS_INDEX,
@@ -66,6 +67,39 @@ export function usesRevit2027RecordLayout(revitVersion: number | null | undefine
   );
 }
 
+/**
+ * Oldest release whose 32-bit-id records the decoders with a narrow variant
+ * read. Those releases write every element id in four bytes (see
+ * `element-id-width.ts`), and only the decoders that have been given, and
+ * checked in, a narrow variant are admitted for them: each was compared, id by
+ * id, between Autodesk's 2023 RAC sample and the 2025 copy of the same project.
+ */
+export const NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE = 2023;
+
+/**
+ * Whether a release before 2024 is read by the decoders with a 32-bit-id
+ * variant. True only while the file's own schema declares 32-bit ids, so the
+ * gate follows what the file says rather than its release number alone.
+ */
+export function usesNarrowIdRecordLayout(revitVersion: number | null | undefined): boolean {
+  return (
+    narrowElementIds() &&
+    revitVersion != null &&
+    Number.isInteger(revitVersion) &&
+    revitVersion >= NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE &&
+    revitVersion < REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE
+  );
+}
+
+/**
+ * Whether the element-record decoders that read both id widths — the frame
+ * walk, `ElementHeader`, the bounds records and the others ported so far —
+ * read this release.
+ */
+export function readsElementRecordLayout(revitVersion: number | null | undefined): boolean {
+  return usesRevit2027RecordLayout(revitVersion) || usesNarrowIdRecordLayout(revitVersion);
+}
+
 /** Last index the 2027 schema declares. */
 export const REVIT_2027_LAST_CLASS_INDEX =
   REVIT_2027_FIRST_CLASS_INDEX + REVIT_2027_CLASS_NAMES.length - 1;
@@ -91,6 +125,11 @@ export type ClassTagTranslation = {
   unmatchedFileClasses: number;
   /** 2027 classes the file does not declare. */
   missingCanonicalClasses: number;
+  /**
+   * The highest class index the file's schema declares, or -1 when it
+   * declares none. A file's classes run from 12 to this with no gap.
+   */
+  lastFileClass: number;
   /** File index -> 2027 index, indexed by the raw `u16`. */
   toCanonical: Int32Array;
   /** 2027 index -> file index, or -1 when the file lacks the class. */
@@ -155,11 +194,14 @@ export function buildClassTagTranslation(
     toCanonical[value] = value;
     toFile[value] = value;
   }
+  let fileLast = -1;
+  for (const entry of classes) fileLast = Math.max(fileLast, entry.tag);
   const summary = {
     matchedClasses: targets.size,
     movedClasses,
     unmatchedFileClasses,
     missingCanonicalClasses: canonical.size - seen.size,
+    lastFileClass: fileLast,
   };
   // A schema that agrees with the 2027 numbering wherever the two share a
   // class — a 2027 file — is read as written. So is one too small to be a
@@ -176,8 +218,6 @@ export function buildClassTagTranslation(
   // index it does not declare is not a class number in this file. A schema
   // with gaps says nothing about what it omits, so those pass through.
   const declared = new Set(classes.map((entry) => entry.tag));
-  let fileLast = -1;
-  for (const entry of classes) fileLast = Math.max(fileLast, entry.tag);
   let complete = fileLast >= REVIT_2027_FIRST_CLASS_INDEX;
   for (let index = REVIT_2027_FIRST_CLASS_INDEX; complete && index <= fileLast; index += 1) {
     if (!declared.has(index)) complete = false;
@@ -203,11 +243,27 @@ export function buildClassTagTranslation(
 
 let active: ClassTagTranslation | null = null;
 let activeFieldCounts: ReadonlyMap<number, number> | null = null;
+let activeLastFileClass = -1;
 
 /** Install `translation` for the conversion about to run; `null` restores the identity. */
 export function setActiveClassTagTranslation(translation: ClassTagTranslation | null): void {
   active = translation && !translation.identity ? translation : null;
   activeFieldCounts = translation?.declaredFieldCounts ?? null;
+  activeLastFileClass =
+    translation && translation.matchedClasses >= MIN_RELEASE_SCHEMA_CLASSES
+      ? translation.lastFileClass
+      : -1;
+}
+
+/**
+ * Whether a raw class index read from the file names a class its schema
+ * declares: 12 through the last declared index. With no release schema
+ * installed (a test fixture, or a file whose schema did not read) nothing is
+ * known about the numbering, and every index is allowed.
+ */
+export function fileClassDeclared(fileIndex: number): boolean {
+  if (activeLastFileClass < 0) return true;
+  return fileIndex >= REVIT_2027_FIRST_CLASS_INDEX && fileIndex <= activeLastFileClass;
 }
 
 /**

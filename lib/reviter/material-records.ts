@@ -16,7 +16,14 @@
  * release-specific class marker, a name string with its own stable field
  * trailer, and the bounded colour layouts documented below.
  */
-import { canonicalClassTag, fileClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { scanFramedElementObjects } from "./element-objects.ts";
+import {
+  canonicalClassTag,
+  fileClassTag,
+  readsElementRecordLayout,
+  usesRevit2027RecordLayout,
+} from "./revit-class-tags.ts";
 
 /** `MaterialElem` object marker measured in the supplied Revit 2027 file. */
 export const REVIT_2027_MATERIAL_ELEMENT_MARKER = 0x0ad3;
@@ -57,6 +64,19 @@ function materialNameTrailer(): readonly number[] | null {
  * null in most 2025 materials, live then null in some of the RAC sample's, and
  * both live in the 2027 project's direct records (which puts the colour 84
  * bytes after the name, the offset the older reader had measured).
+ *
+ * **Where ids are 32-bit** (the 2023 schema, also version 13) the same fields
+ * are declared in another order and every id is an `int32`:
+ *
+ * ```text
+ * f32     m_transparency, m_smoothness
+ * i32 x8  the cut, cut background, surface and surface background pattern
+ *         ids, each followed by its colour
+ * i32     m_color, m_shininess
+ * i32 x2  m_appearanceAssetId, m_structuralPropertySetId
+ * ```
+ *
+ * 56 bytes against 80, with the colour 40 bytes in and the transparency first.
  */
 /** Offsets from the first id field, `m_appearanceAssetId`. */
 const MATERIAL_ID_FIELDS = 6;
@@ -221,10 +241,46 @@ function hasMaterialIdAndColorFields(view: DataView, at: number, limit: number):
   return shininess >= 0 && shininess <= 128;
 }
 
+/** The 32-bit-id field block; see the note on `Material`'s fields above. */
+const NARROW_MATERIAL_TRANSPARENCY_OFFSET = 0;
+const NARROW_MATERIAL_SMOOTHNESS_OFFSET = 4;
+const NARROW_MATERIAL_PATTERNS_OFFSET = 8;
+const NARROW_MATERIAL_COLOR_OFFSET = 40;
+const NARROW_MATERIAL_SHININESS_OFFSET = 44;
+const NARROW_MATERIAL_ASSET_IDS_OFFSET = 48;
+const NARROW_MATERIAL_FIELDS_BYTES = 56;
+
+/** An `int32` id field: -1 for none, otherwise a positive element id. */
+function narrowIdField(view: DataView, at: number): boolean {
+  const id = view.getInt32(at, true);
+  return id === -1 || id > 0;
+}
+
+/** `hasMaterialIdAndColorFields` for the 32-bit-id field order. */
+function hasNarrowMaterialFields(view: DataView, at: number, limit: number): boolean {
+  if (at < 0 || at + NARROW_MATERIAL_FIELDS_BYTES > limit) return false;
+  for (const offset of [NARROW_MATERIAL_TRANSPARENCY_OFFSET, NARROW_MATERIAL_SMOOTHNESS_OFFSET]) {
+    const ratio = view.getFloat32(at + offset, true);
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio > 1) return false;
+  }
+  for (let pattern = 0; pattern < 4; pattern += 1) {
+    const idAt = at + NARROW_MATERIAL_PATTERNS_OFFSET + pattern * 8;
+    if (!narrowIdField(view, idAt)) return false;
+    if (view.getUint8(idAt + 7) !== 0) return false;
+  }
+  if (view.getUint8(at + NARROW_MATERIAL_COLOR_OFFSET + 3) !== 0) return false;
+  const shininess = view.getInt32(at + NARROW_MATERIAL_SHININESS_OFFSET, true);
+  if (shininess < 0 || shininess > 128) return false;
+  return (
+    narrowIdField(view, at + NARROW_MATERIAL_ASSET_IDS_OFFSET) &&
+    narrowIdField(view, at + NARROW_MATERIAL_ASSET_IDS_OFFSET + 4)
+  );
+}
+
 /**
- * Where `Material`'s id fields start after a name, read through its two
- * pointer fields, or null when the bytes are not those fields. A live
- * pointer's class must be one the file declares.
+ * Where `Material`'s fields after the two pointers start, read through the
+ * pointers, or null when the bytes are not those fields. A live pointer's
+ * class must be one the file declares.
  */
 function materialFieldsAfterName(view: DataView, nameEnd: number, limit: number): number | null {
   let at = nameEnd;
@@ -238,6 +294,7 @@ function materialFieldsAfterName(view: DataView, nameEnd: number, limit: number)
     if (pointedClass < 12 || pointedClass > 0xffff) return null;
     at += 2;
   }
+  if (narrowElementIds()) return hasNarrowMaterialFields(view, at, limit) ? at : null;
   return hasMaterialIdAndColorFields(view, at, limit) ? at : null;
 }
 
@@ -417,16 +474,23 @@ function readMaterialAppearance(
   if (name.fieldsAt != null) {
     // Every field was read through `materialFieldsAfterName`; the colour and
     // the transparency are where the schema puts them.
-    const colorFieldOffset = name.fieldsAt + MATERIAL_COLOR_OFFSET;
+    const narrow = narrowElementIds();
+    const colorFieldOffset = name.fieldsAt +
+      (narrow ? NARROW_MATERIAL_COLOR_OFFSET : MATERIAL_COLOR_OFFSET);
     const colorPacked = view.getUint32(colorFieldOffset, true);
     return {
       colorPacked,
       baseColorSrgb: [colorPacked & 0xff, (colorPacked >>> 8) & 0xff, (colorPacked >>> 16) & 0xff],
       colorFieldOffset: colorFieldOffset - objectOffset,
       evidence: "framed-material-color-schema",
-      transparency: view.getFloat32(name.fieldsAt + MATERIAL_TRANSPARENCY_OFFSET, true),
+      transparency: view.getFloat32(
+        name.fieldsAt + (narrow ? NARROW_MATERIAL_TRANSPARENCY_OFFSET : MATERIAL_TRANSPARENCY_OFFSET),
+        true,
+      ),
     };
   }
+  // The heuristic colour layouts below were measured on 64-bit-id files only.
+  if (narrowElementIds()) return null;
   if (objectLength < MIN_APPEARANCE_RECORD_BYTES) return null;
   if (nested) {
     const colorFieldOffset = name.end + NESTED_RENDER_COLOR_OFFSET;
@@ -518,7 +582,7 @@ export function scanMaterialElementRecords(
   revitVersion: number,
 ): MaterialRecordScan {
   const definitions: NativeMaterialDefinition[] = [];
-  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) {
+  if (!readsElementRecordLayout(revitVersion) || data.byteLength < 64) {
     return {
       revitVersion,
       framedMaterialElements: 0,
@@ -528,6 +592,9 @@ export function scanMaterialElementRecords(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (!usesRevit2027RecordLayout(revitVersion)) {
+    return scanNarrowMaterialElementRecords(data, view, revitVersion);
+  }
   let framedMaterialElements = 0;
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (view.getUint32(offset + 4, true) !== 0) continue;
@@ -573,6 +640,50 @@ export function scanMaterialElementRecords(
     offset += objectLength + OBJECT_TRAILER_BYTES - 1;
   }
 
+  return {
+    revitVersion,
+    framedMaterialElements,
+    namedMaterialElements: definitions.length,
+    definitions,
+  };
+}
+
+/**
+ * `scanMaterialElementRecords` where ids are 32-bit: the `MaterialElem` frames
+ * the shared frame walk finds, each named only when the fields after its name
+ * read as the narrow `Material` fields. The nested and heuristic layouts were
+ * measured on 64-bit-id files and are not tried.
+ */
+function scanNarrowMaterialElementRecords(
+  data: Uint8Array,
+  view: DataView,
+  revitVersion: number,
+): MaterialRecordScan {
+  const definitions: NativeMaterialDefinition[] = [];
+  let framedMaterialElements = 0;
+  for (const frame of scanFramedElementObjects(data)) {
+    if (frame.marker !== REVIT_2027_MATERIAL_ELEMENT_MARKER) continue;
+    framedMaterialElements += 1;
+    const nameField = readMaterialName(data, view, frame.offset, frame.objectLength);
+    if (!nameField || nameField.fieldsAt == null) continue;
+    const appearance = readMaterialAppearance(
+      data,
+      view,
+      frame.offset,
+      frame.objectLength,
+      nameField,
+      false,
+    );
+    definitions.push({
+      elementId: frame.elementId,
+      name: nameField.value,
+      recordOffset: frame.offset,
+      objectLength: frame.objectLength,
+      objectMarker: REVIT_2027_MATERIAL_ELEMENT_MARKER,
+      evidence: "framed-material-element-name",
+      ...(appearance ? { appearance } : {}),
+    });
+  }
   return {
     revitVersion,
     framedMaterialElements,

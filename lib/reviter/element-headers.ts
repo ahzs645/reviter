@@ -35,7 +35,27 @@
  * ffffffff` "token": in the 2027 file it matches the tail of an
  * `m_regenHistory` entry followed by the next i64, which is why that decoder had
  * to guess each token's owner from the nearest preceding element id.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * same twelve fields are written with every `ElementId` as an `int32`:
+ *
+ * ```text
+ * [u32 owner id] [u32 length] [u16 ElementHeader class index]
+ * [u32 n] n x 14-byte m_regenHistory entries (two i32, a u16, a u32)
+ * [i32 m_categroryId] [i32 m_familyId] [i32 m_ownerViewId] [i32 m_designOptionId] ...
+ * ... [u32 length]
+ * ```
+ *
+ * The u32 in front of the class is the record's length, counted from the class
+ * to an echo of it, which the narrow reader checks: without an id high word to
+ * test, the echo is what ties the class bytes to a record. In the 2023 RAC
+ * sample 85,441 headers read; the 85,381 whose element the 2025 copy of the
+ * same project also has agree with its header on all four fields, and all 450
+ * elements Autodesk draws from the 2025 copy have one. No 2019–2023 sample here
+ * writes a history entry (every count is zero), so the 14-byte entry is the
+ * 2024 entry with its two ids narrowed, not a measurement.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
 /** `ElementHeader` in the 2027 numbering. */
@@ -43,6 +63,9 @@ export const REVIT_2027_ELEMENT_HEADER_CLASS = 1540;
 
 /** Bytes of one `m_regenHistory` entry: two i64, a u16 and a u32. */
 const REGEN_ENTRY_BYTES = 22;
+
+/** The same entry where ids are 32-bit: two i32, a u16 and a u32. */
+const NARROW_REGEN_ENTRY_BYTES = 14;
 
 /**
  * The largest history list accepted. The supplied projects peak at 0 (both
@@ -83,6 +106,59 @@ function optionalId(value: bigint): number | null | undefined {
   return undefined;
 }
 
+/** `optionalId` for an `int32` id. */
+function optionalNarrowId(value: number): number | null | undefined {
+  if (value === -1) return null;
+  if (value > 0) return value;
+  return undefined;
+}
+
+/** A BuiltInCategory, null for -1, or undefined when the value is neither. */
+function categoryValue(value: number): number | null | undefined {
+  if (value === -1) return null;
+  if (value > MIN_CATEGORY_ID && value <= MAX_CATEGORY_ID) return value;
+  return undefined;
+}
+
+/** `scanElementHeaders` where ids are 32-bit; see the module comment. */
+function scanNarrowElementHeaders(data: Uint8Array, tag: number): ElementHeader[] {
+  const headers: ElementHeader[] = [];
+  const low = tag & 0xff;
+  const high = tag >> 8;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (
+    let at = data.indexOf(low, 8);
+    at >= 8 && at + 6 <= data.byteLength;
+    at = data.indexOf(low, at + 1)
+  ) {
+    if (data[at + 1] !== high) continue;
+    const recordLength = view.getUint32(at - 4, true);
+    const echoAt = at + recordLength;
+    if (recordLength < 6 || echoAt + 4 > data.byteLength) continue;
+    if (view.getUint32(echoAt, true) !== recordLength) continue;
+    const elementId = view.getUint32(at - 8, true);
+    if (!elementId || elementId > MAX_ELEMENT_ID) continue;
+    const entries = view.getUint32(at + 2, true);
+    if (entries > MAX_REGEN_ENTRIES) continue;
+    const categoryAt = at + 6 + entries * NARROW_REGEN_ENTRY_BYTES;
+    if (categoryAt + 4 * (1 + HEADER_ID_FIELDS) > echoAt) continue;
+
+    const categoryId = categoryValue(view.getInt32(categoryAt, true));
+    const familyId = optionalNarrowId(view.getInt32(categoryAt + 4, true));
+    const ownerViewId = optionalNarrowId(view.getInt32(categoryAt + 8, true));
+    const designOptionId = optionalNarrowId(view.getInt32(categoryAt + 12, true));
+    if (
+      categoryId === undefined ||
+      familyId === undefined ||
+      ownerViewId === undefined ||
+      designOptionId === undefined
+    ) continue;
+
+    headers.push({ elementId, categoryId, familyId, ownerViewId, designOptionId });
+  }
+  return headers;
+}
+
 /**
  * Every `ElementHeader` on one inflated page. The caller decides the release;
  * this reads whatever index `ElementHeader` has in the installed translation.
@@ -91,6 +167,7 @@ export function scanElementHeaders(data: Uint8Array): ElementHeader[] {
   const headers: ElementHeader[] = [];
   const tag = fileClassTag(REVIT_2027_ELEMENT_HEADER_CLASS);
   if (tag < 0 || tag > 0xffff || data.byteLength < 64) return headers;
+  if (narrowElementIds()) return scanNarrowElementHeaders(data, tag);
   const low = tag & 0xff;
   const high = tag >> 8;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);

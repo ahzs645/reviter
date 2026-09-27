@@ -17,7 +17,17 @@
  * its members, which is right only where a storey's elements start at its
  * level: in the technical school it put "01 - Entry Level" (elevation 0) at
  * 12.53 ft and "02 - Floor" (12.47 ft) at 19.05 ft.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * elevation copy is still 56 bytes before the echoed length, which the
+ * 12-byte frame header puts 44 bytes before the stored boundary rather than
+ * 40. The name starts 36 bytes earlier than in 2025, after `Element`'s fields
+ * with their ids narrowed: at +91 to +97 from the frame for all 108 levels of
+ * the 2023 RAC sample against +127 to +133 in the 2025 copy. Read so, the six
+ * levels Autodesk lists for the 2025 copy come out of the 2023 file with the
+ * same names and elevations.
  */
+import { frameHeaderBytes, narrowElementIds } from "./element-id-width.ts";
 import type { ElementObject } from "./element-objects.ts";
 
 /** `Level` in the 2027 numbering. */
@@ -28,8 +38,11 @@ const NAME_SEARCH_START = 100;
 const NAME_SEARCH_END = 220;
 const MAX_NAME_CHARS = 200;
 
-/** The elevation copy, measured back from the stored object-length boundary. */
-const ELEVATION_FROM_END = 40;
+/** How much earlier the name starts where ids are 32-bit. */
+const NARROW_NAME_SHIFT = 36;
+
+/** The elevation copy, measured back from the echoed length. */
+const ELEVATION_BEFORE_ECHO = 56;
 
 /** Elevations in feet stay well inside this. */
 const MAX_ELEVATION_FEET = 100_000;
@@ -43,9 +56,10 @@ export type LevelDefinition = {
 
 function readName(data: Uint8Array, view: DataView, frame: ElementObject): string | null {
   const end = frame.offset + frame.objectLength;
+  const shift = narrowElementIds() ? NARROW_NAME_SHIFT : 0;
   for (
-    let at = frame.offset + NAME_SEARCH_START;
-    at + 4 <= Math.min(end, frame.offset + NAME_SEARCH_END);
+    let at = frame.offset + NAME_SEARCH_START - shift;
+    at + 4 <= Math.min(end, frame.offset + NAME_SEARCH_END - shift);
     at += 1
   ) {
     const characters = view.getUint32(at, true);
@@ -67,7 +81,8 @@ export function readLevelDefinition(
 ): LevelDefinition | null {
   if (frame.marker !== REVIT_2027_LEVEL_CLASS) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const elevationAt = frame.offset + frame.objectLength - ELEVATION_FROM_END;
+  const echoAt = frame.offset + frame.objectLength + frameHeaderBytes();
+  const elevationAt = echoAt - ELEVATION_BEFORE_ECHO;
   if (elevationAt < frame.offset || elevationAt + 8 > data.byteLength) return null;
   const elevationFeet = view.getFloat64(elevationAt, true);
   if (!Number.isFinite(elevationFeet) || Math.abs(elevationFeet) > MAX_ELEVATION_FEET) return null;

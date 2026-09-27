@@ -19,14 +19,17 @@
  *
  * Class indices are compared as the file writes them: the 2027 classes a
  * collector asks for are looked up once per push, not translated per byte.
+ *
+ * Where element ids are 32-bit (see `element-id-width.ts`) the frame header is
+ * 12 bytes instead of 16: the class sits at `+12`, the length at `+8`, and the
+ * echo `length` bytes after the class, as in the wide layout. The width is read
+ * once per push, like the class indices.
  */
+import { frameHeaderBytes } from "./element-id-width.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
-/** Bytes a frame header occupies: id, discriminator, length, class, type code. */
-const HEADER_SCAN_BYTES = 22;
-
-/** Bytes after the stored object length through the echoed length. */
-const FRAME_SUFFIX_BYTES = 20;
+/** Bytes a frame header occupies after the class: the class and a type code. */
+const HEADER_TAIL_BYTES = 6;
 
 export type StreamedFrame = {
   elementId: number;
@@ -89,6 +92,13 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
     },
     push(page: Uint8Array): StreamedFrame[] {
       if (page.byteLength === 0) return [];
+      // Id, discriminator and length in front of the class: 16 bytes, or 12
+      // where ids are 32-bit. The frame ends with the echo, four bytes past
+      // `header + length`.
+      const header = frameHeaderBytes();
+      const narrow = header === 12;
+      const headerScanBytes = header + HEADER_TAIL_BYTES;
+      const frameSuffixBytes = header + 4;
       const fileMarkers = new Map<number, number>();
       for (const marker of options.markers) {
         const fileMarker = fileClassTag(marker);
@@ -104,42 +114,46 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
       const window = bytesBetween(windowStart, streamEnd);
       const view = new DataView(window.buffer, window.byteOffset, window.byteLength);
       const scanStart = Math.max(nextScanOffset, windowStart);
-      const scanEnd = streamEnd - HEADER_SCAN_BYTES;
-      // A header's class sits at +16, so each class's low byte is found by the
-      // native byte search and only those offsets are examined. Offsets are
-      // visited in ascending order, as a byte-by-byte walk would.
+      const scanEnd = streamEnd - headerScanBytes;
+      // A header's class sits at +16 (+12), so each class's low byte is found
+      // by the native byte search and only those offsets are examined. Offsets
+      // are visited in ascending order, as a byte-by-byte walk would.
       const candidates: number[] = [];
       for (const fileMarker of fileMarkers.keys()) {
         const low = fileMarker & 0xff;
         const high = fileMarker >> 8;
-        const first = scanStart - windowStart + 16;
-        const last = scanEnd - windowStart + 16;
+        const first = scanStart - windowStart + header;
+        const last = scanEnd - windowStart + header;
         for (
           let at = window.indexOf(low, first);
           at >= 0 && at <= last;
           at = window.indexOf(low, at + 1)
         ) {
-          if (window[at + 1] === high) candidates.push(at - 16);
+          if (window[at + 1] === high) candidates.push(at - header);
         }
       }
       if (fileMarkers.size > 1) candidates.sort((left, right) => left - right);
       for (const offset of candidates) {
         const streamOffset = windowStart + offset;
-        const marker = fileMarkers.get(view.getUint16(offset + 16, true))!;
-        if (view.getUint32(offset + 4, true) !== 0) continue;
-        if (options.acceptHeader && !options.acceptHeader(view, offset)) continue;
+        const marker = fileMarkers.get(view.getUint16(offset + header, true))!;
         const elementId = view.getUint32(offset, true);
-        const objectLength = view.getUint32(offset + 12, true);
+        const objectLength = view.getUint32(offset + header - 4, true);
+        // The wide id's high word is zero; a narrow id is a non-negative
+        // int32 whose hash-like discriminator does not repeat the length.
+        if (narrow) {
+          if (elementId > 0x7fff_ffff || view.getUint32(offset + 4, true) === objectLength) continue;
+        } else if (view.getUint32(offset + 4, true) !== 0) continue;
+        if (options.acceptHeader && !options.acceptHeader(view, offset)) continue;
         if (
           elementId === 0 ||
           objectLength < options.minObjectLength ||
-          objectLength + FRAME_SUFFIX_BYTES > options.maxFrameBytes
+          objectLength + frameSuffixBytes > options.maxFrameBytes
         ) {
           continue;
         }
         const crossedPage =
           streamOffset < pageStart ||
-          streamOffset + objectLength + FRAME_SUFFIX_BYTES > streamEnd;
+          streamOffset + objectLength + frameSuffixBytes > streamEnd;
         if (options.crossingOnly && !crossedPage) continue;
         pending.set(streamOffset, { elementId, marker, objectLength, crossedPage });
       }
@@ -147,11 +161,11 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
 
       const complete: StreamedFrame[] = [];
       for (const [streamOffset, target] of pending) {
-        const frameEnd = streamOffset + target.objectLength + FRAME_SUFFIX_BYTES;
+        const frameEnd = streamOffset + target.objectLength + frameSuffixBytes;
         if (frameEnd > streamEnd) continue;
         pending.delete(streamOffset);
         if (streamOffset < held[0]!.start) continue;
-        const echoAt = streamOffset + target.objectLength + 16;
+        const echoAt = streamOffset + target.objectLength + header;
         const echo = new DataView(bytesBetween(echoAt, echoAt + 4).buffer).getUint32(0, true);
         if (echo !== target.objectLength) continue;
         complete.push({

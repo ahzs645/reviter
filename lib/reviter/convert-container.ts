@@ -40,6 +40,8 @@ import {
 } from "./revit-container.ts";
 import { summariseSchema, summariseSchemaStream } from "./schema.ts";
 import { readSchema } from "./schema-reader.ts";
+import { elementIdBytesFromSchema, setActiveElementIdBytes } from "./element-id-width.ts";
+import type { ElementIdBytes } from "./element-id-width.ts";
 import {
   buildClassTagTranslation,
   setActiveClassTagTranslation,
@@ -251,8 +253,10 @@ export function openRevitContainer(
   // classes' own. A stream it cannot tile is evidence about the stream, not a
   // partial schema, so the scanner still answers for one — losing the panel
   // entirely would be a worse failure than an incomplete inventory.
+  let elementIdBytes: ElementIdBytes | null = null;
   const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
     const strict = readSchema(data);
+    if (strict.ok) elementIdBytes = elementIdBytesFromSchema(strict.schema.classes);
     return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
   });
   // Everything below reads class indices out of partition bytes, beginning
@@ -260,6 +264,12 @@ export function openRevitContainer(
   // 2027 one the decoders compare against before any of it runs.
   const classTagTranslation = buildClassTagTranslation(schema?.taggedClasses ?? []);
   setActiveClassTagTranslation(classTagTranslation);
+  // So is the width of an element id, which sets the frame header every
+  // partition object is read with (`element-id-width.ts`). A release before
+  // 2024 is admitted to the record decoders only once its schema has said its
+  // ids are 32-bit, so the plan is drawn again now that it is known.
+  setActiveElementIdBytes(elementIdBytes);
+  if (elementIdBytes === 4) decoderPlan = decoderPlanForVersion(decoderPlan.revitVersion ?? undefined);
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
   const partitions = cfb.FileIndex
