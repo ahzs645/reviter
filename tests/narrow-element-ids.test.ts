@@ -35,7 +35,14 @@ import {
 import { scanNameEntries } from "../lib/reviter/name-entries.ts";
 import { decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import {
+  REVIT_2027_CLASS_NAMES,
+  REVIT_2027_FIRST_CLASS_INDEX,
+} from "../lib/reviter/revit-2027-class-names.data.ts";
+import {
+  buildClassTagTranslation,
+  fileClassTag,
   readsElementRecordLayout,
+  setActiveClassTagTranslation,
   usesNarrowIdRecordLayout,
   usesRevit2027RecordLayout,
 } from "../lib/reviter/revit-class-tags.ts";
@@ -205,7 +212,7 @@ test("a narrow Material's fields: ratios first, pattern ids beside their colours
   assert.equal(scanMaterialElementRecords(data, 2023).definitions.length, 0);
 });
 
-test("2023 is admitted only while the schema declares 32-bit ids", () => {
+test("2019 to 2023 are admitted only while the schema declares 32-bit ids", () => {
   assert.equal(usesNarrowIdRecordLayout(2023), false);
   assert.equal(readsElementRecordLayout(2023), false);
   assert.equal(decoderPlanForVersion(2023).elementBoundsDecoder, null);
@@ -213,7 +220,8 @@ test("2023 is admitted only while the schema declares 32-bit ids", () => {
     assert.equal(usesNarrowIdRecordLayout(2023), true);
     assert.equal(readsElementRecordLayout(2023), true);
     assert.equal(usesRevit2027RecordLayout(2023), false);
-    assert.equal(usesNarrowIdRecordLayout(2022), false);
+    assert.equal(usesNarrowIdRecordLayout(2019), true);
+    assert.equal(usesNarrowIdRecordLayout(2018), false);
     assert.equal(usesNarrowIdRecordLayout(2024), false);
     assert.equal(decoderPlanForVersion(2023).elementBoundsDecoder, "revit-2027-duplicated-bounds-v1");
   });
@@ -332,4 +340,29 @@ test("a subnormal read as a narrow double parameter is not a table", () => {
     read.map((table) => table.parameters.map((parameter) => parameter.value)),
     [[10.170603674540683]],
   );
+});
+
+test("before 2022 a narrow wall type's name follows its PatternHelper cell pointer", () => {
+  const index2027 = (name: string) => REVIT_2027_FIRST_CLASS_INDEX + REVIT_2027_CLASS_NAMES.indexOf(name);
+  // A schema without the taperable-wall cells, renumbered as a 2021 file is.
+  const names = REVIT_2027_CLASS_NAMES.filter((name) => !name.startsWith("TaperableWallType"));
+  setActiveClassTagTranslation(buildClassTagTranslation(
+    names.map((name, position) => ({ name, tag: REVIT_2027_FIRST_CLASS_INDEX + position })),
+  ));
+  try {
+    const body = new Bytes().zeros(40)
+      .i32(-1).u16(fileClassTag(index2027("AnalyticalPropertiesCell")))
+      .i32(-1).u16(fileClassTag(index2027("PatternHelper")))
+      .utf16("Wall - Timber Clad")
+      .zeros(24);
+    const frame = narrowFrame(198367, fileClassTag(index2027("BasicWallType")), body.out);
+    assert.deepEqual(
+      narrow(() => collectTypeLinks(page(frame)).names),
+      [{ typeId: 198367, name: "Wall - Timber Clad" }],
+    );
+    // A 64-bit-id file keeps keying on the taperable cell, which this schema lacks.
+    assert.deepEqual(collectTypeLinks(page(frame)).names, []);
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
 });

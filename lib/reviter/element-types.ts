@@ -95,6 +95,23 @@ const TYPE_REFERENCE_FIELD = 0x116f;
  */
 const TYPE_NAME_FIELD = 0x1104;
 
+/**
+ * `PatternHelper` in the 2027 numbering. The type-name slot's class,
+ * `TaperableWallTypeWidthAtParametersCell`, first appears in the 2022 schema,
+ * which wrote the taperable-wall cells between this one and the name. Where
+ * ids are 32-bit and the file has no taperable cells (the 2019, 2020 and 2021
+ * RAC samples), each of the 13 wall types whose 2025 name was found writes it
+ * behind a `PatternHelper` pointer instead.
+ */
+const PRE_TAPERABLE_TYPE_NAME_FIELD = 0x0168;
+
+/** The class whose slot precedes a type's name in this file. */
+function typeNameField(): number {
+  const field = fileClassTag(TYPE_NAME_FIELD);
+  if (field >= 0 || !narrowElementIds()) return field;
+  return fileClassTag(PRE_TAPERABLE_TYPE_NAME_FIELD);
+}
+
 /** Bytes of a record searched for the type-reference slot. */
 const RECORD_SEARCH_BYTES = 1_200;
 
@@ -132,7 +149,7 @@ function indexFieldSlots(data: Uint8Array, view: DataView): SlotIndex {
   const tail = SLOT_BYTES - 1;
   // The field ids are class indices, so the bytes hold the file's own; in a
   // 2025 file both classes sit under `0x10` rather than `0x11`.
-  const nameField = fileClassTag(TYPE_NAME_FIELD);
+  const nameField = typeNameField();
   const referenceField = fileClassTag(TYPE_REFERENCE_FIELD);
   const highBytes = new Set(
     [nameField, referenceField]

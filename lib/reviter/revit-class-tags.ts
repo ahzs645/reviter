@@ -73,8 +73,19 @@ export function usesRevit2027RecordLayout(revitVersion: number | null | undefine
  * `element-id-width.ts`), and only the decoders that have been given, and
  * checked in, a narrow variant are admitted for them: each was compared, id by
  * id, between Autodesk's 2023 RAC sample and the 2025 copy of the same project.
+ *
+ * Autodesk's 2019, 2020, 2021 and 2022 copies of that project read the same
+ * way. Their schemas declare `Element`, `ElementHeader`, `Level`,
+ * `DatumPlane`, `Material`, `GElement`, `GRep` and the parameter value sets
+ * exactly as 2023 does, and against the 2025 copy each gives the same headers,
+ * bounds, storeys, level relations and type names (398 of 398 Autodesk type
+ * names), names every `MaterialElem` it frames with Autodesk's name and colour
+ * (the materials it lacks, it does not contain), and differs in no parameter
+ * value. The one layout that moved, the class a wall type's name follows, is
+ * handled in `element-types.ts`. 2018 and older are not claimed: no file from
+ * those releases was available.
  */
-export const NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE = 2023;
+export const NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE = 2019;
 
 /**
  * Whether a release before 2024 is read by the decoders with a 32-bit-id
