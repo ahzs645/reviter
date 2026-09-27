@@ -11,6 +11,7 @@ import {
   meshRevit2027CertifiedOwnerReplay,
   type Revit2027CertifiedOwnerFaceMesh,
 } from "./revit-2027-certified-owner-mesh.ts";
+import { REVIT_2027_TRIMMED_OWNER_MESH_DECODER_ID } from "./revit-2027-trimmed-owner-mesh.ts";
 import {
   decodeRevit2027BalusterInstanceDefinition,
   decodeRevit2027TopRailTypeCurves,
@@ -2146,6 +2147,39 @@ type RenderItem = {
   placement?: InstancePlacement;
 };
 
+/**
+ * Order items so that, when the scene cannot hold them all, those with faces
+ * from the trimmed-surface path are admitted last, smallest first.
+ *
+ * Every other item is then admitted exactly as before whenever it fitted,
+ * and trimmed-surface geometry only fills the budget left over. The order is
+ * untouched when everything fits. One larger sample needs 1.53M output
+ * triangles once its curved trims are meshed against the 1.25M cap, and in
+ * arrival order 65 of its natively drawn windows fell back to boxes.
+ */
+function admitTrimmedSurfaceItemsLast(
+  items: RenderItem[],
+  maxOutputTriangles: number,
+): void {
+  let total = 0;
+  for (const item of items) total += item.owner.triangles;
+  if (total <= maxOutputTriangles) return;
+  const rank = new Map<Revit2027CompactOwnerMesh, number>();
+  for (const item of items) {
+    if (rank.has(item.owner)) continue;
+    const trimmed = item.owner.faces.some((face) =>
+      face.mesh.groups.some(
+        (group) =>
+          group.faceProvenance.decoderId ===
+            REVIT_2027_TRIMMED_OWNER_MESH_DECODER_ID,
+      )
+    );
+    rank.set(item.owner, trimmed ? item.owner.triangles : -1);
+  }
+  // Array.prototype.sort is stable, so equal ranks keep arrival order.
+  items.sort((left, right) => rank.get(left.owner)! - rank.get(right.owner)!);
+}
+
 function materialId(
   mesh: NeutralFaceMesh,
   definitions: ReadonlySet<number> | undefined,
@@ -2306,6 +2340,7 @@ export function buildRevit2027NativeMeshScene(
     const owner = collection.owners.get(placement.geometryId);
     if (owner) items.push({ elementId: placement.elementId, owner, placement });
   }
+  admitTrimmedSurfaceItemsLast(items, maxOutputTriangles);
 
   const meshes: MeshData[] = [];
   const coveredElementIds = new Set<number>();
