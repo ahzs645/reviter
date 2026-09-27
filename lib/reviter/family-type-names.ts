@@ -20,7 +20,7 @@
  * Against the "Type Name" the Autodesk Viewer shows for the same elements,
  * every type name this produces is equal: 35,299 in the 2027 UNBC project,
  * 5,356 in the 2025 technical school and 427 in the 2025 RAC sample, where
- * before it only walls had one (7,523, 121 and 36). Family names equal the
+ * before only walls had one (7,523, 121 and 46). Family names equal the
  * Viewer's parent node wherever both are stated: 2,130, 495 and 170.
  */
 import type { ElementObject } from "./element-objects.ts";
