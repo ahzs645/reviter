@@ -1,6 +1,6 @@
 /** Display formatting helpers for the studio shell. */
 
-import { formatParameterValue, isInternalParameter } from "../../lib/reviter/parameter-specs.ts";
+import { presentedParameters } from "../../lib/reviter/parameter-specs.ts";
 import type { ElementBoundsRecord, Vec3 } from "../../lib/reviter/types.ts";
 import type { CanvasMenuRequest, PropertyProvenance, PropertyRow } from "./types.ts";
 
@@ -254,18 +254,12 @@ export function propertyRowsFor(
     // 6,278 walls. These are read, not derived. Each is shown in the unit its
     // parameter declares; parameters Revit never shows, and values that cannot
     // be what their parameter declares, are left out rather than printed as feet.
-    ...(record.parameters?.flatMap((parameter) => {
-      if (isInternalParameter(parameter.parameterId)) return [];
-      const value = formatParameterValue(parameter);
-      return value == null
-        ? []
-        : [{
-          key: `parameter-${parameter.parameterId}`,
-          label: parameter.name,
-          value,
-          provenance: "decoded" as const,
-        }];
-    }) ?? []),
+    ...presentedParameters(record.parameters ?? []).map((parameter) => ({
+      key: `parameter-${parameter.parameterId}`,
+      label: parameter.label,
+      value: parameter.value,
+      provenance: "decoded" as const,
+    })),
     // Both of these restate the element's own bounds record.
     {
       key: "bounding-size",

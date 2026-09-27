@@ -7,6 +7,7 @@ import {
   isInternalParameter,
   parameterKind,
   parameterStorage,
+  presentedParameters,
 } from "../lib/reviter/parameter-specs.ts";
 
 test("parameters are shown in the unit Autodesk declares for them", () => {
@@ -91,4 +92,19 @@ test("an enumerated value is shown by the name of its choice", () => {
   assert.equal(formatParameterValue({ parameterId: -1001006, value: 0, valueName: "Interior" }), "Interior");
   // Without a name the number stands.
   assert.equal(formatParameterValue({ parameterId: -1001006, value: 0 }), "0");
+});
+
+test("a wall's built height is shown in place of its stale stored height", () => {
+  const shown = presentedParameters([
+    { parameterId: -1001105, name: "Unconnected Height", value: 13.123359580052492 },
+    { parameterId: -1001101, name: "wallHeightParam", value: 13.779527559055119 },
+    { parameterId: -1001108, name: "Base Offset", value: 0 },
+  ]);
+  assert.deepEqual(shown.map(({ label, value }) => [label, value]), [["Height", "13.7795 ft"], ["Base Offset", "0 ft"]]);
+  // Without the built height the stored one is all there is.
+  assert.deepEqual(
+    presentedParameters([{ parameterId: -1001105, name: "Unconnected Height", value: 13.123359580052492 }])
+      .map(({ label }) => label),
+    ["Unconnected Height"],
+  );
 });

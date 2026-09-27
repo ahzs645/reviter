@@ -8,6 +8,10 @@
  * [u32 count] [count x ( i64 negative parameter id, f64 value in feet )]
  * ```
  *
+ * That is the 2027 order. The 2024 and 2025 samples write each entry the
+ * other way round, `(f64 value, i64 id)`, and the reader takes the order
+ * from the table itself (see `readTableAt`).
+ *
  * The table carries no element id. Ownership comes from the anchor that
  * precedes it, in which the element restates its own id:
  *
@@ -192,19 +196,28 @@ function readTableAt(
   const end = offset + 4 + count * 16;
   if (end > byteLength) return null;
 
+  // Which half of an entry is the id. A 2027 file writes `[i64 id][f64
+  // value]`; the 2024 and 2025 samples write `[f64 value][i64 id]`, and their
+  // schemas declare the set identically, so the table itself decides: a
+  // parameter id is negative and small, so its high word is all ones, and it
+  // sits at +4 of an entry in one order and at +12 in the other. One order
+  // holds for the whole table.
+  const idFirst = view.getUint32(offset + 8, true) === 0xffff_ffff;
+  const idAt = idFirst ? 0 : 8;
+  const valueAt = idFirst ? 8 : 0;
   const parameters: ElementParameter[] = [];
   for (let index = 0; index < count; index += 1) {
     const entry = offset + 4 + index * 16;
     // Parameter ids are negative and small in magnitude, so the high word is
     // all ones and the low word carries the value.
-    if (view.getUint32(entry + 4, true) !== 0xffff_ffff) return null;
-    const parameterId = view.getUint32(entry, true) - 0x1_0000_0000;
+    if (view.getUint32(entry + idAt + 4, true) !== 0xffff_ffff) return null;
+    const parameterId = view.getUint32(entry + idAt, true) - 0x1_0000_0000;
     if (parameterId < PARAMETER_ID_MIN || parameterId > PARAMETER_ID_MAX) return null;
     // A parameter Autodesk declares in another value set means this is not
     // the double table: an element-id table has the same 16-byte stride, and
     // read as doubles its level ids came out as denormals printed "0".
     if (!declaredIn(parameterId, "double")) return null;
-    const value = view.getFloat64(entry + 8, true);
+    const value = view.getFloat64(entry + valueAt, true);
     if (!Number.isFinite(value) || Math.abs(value) > MAX_PARAMETER_VALUE) return null;
     const enumName = builtInParameterEnumName(parameterId);
     parameters.push({

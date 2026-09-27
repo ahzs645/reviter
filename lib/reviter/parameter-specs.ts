@@ -121,3 +121,43 @@ export function formatParameterValue(parameter: {
       return decimal(value, 4);
   }
 }
+
+/** `WALL_USER_HEIGHT_PARAM`, the height a wall stores for itself. */
+const WALL_USER_HEIGHT_PARAMETER = -1_001_105;
+/** `wallHeightParam`: the wall's height as built, which Revit never labels. */
+const WALL_HEIGHT_PARAMETER = -1_001_101;
+
+export type PresentedParameter = { parameterId: number; label: string; value: string };
+
+/**
+ * The parameters worth showing, labelled and in their units.
+ *
+ * One substitution: a wall's stored `Unconnected Height` is the height it had
+ * when its top was last unconstrained, and Revit does not update it once the
+ * top is tied to a level. Against the Autodesk Viewer's figure for the same
+ * walls, the stored value is right for 209 of 9,368 in the UNBC project and
+ * 161 of 734 in the Snowdon sample, while the wall's own built height, which
+ * Revit keeps unlabelled, is right for 9,368 and 719. Where the built height
+ * is decoded it is shown as "Height" in place of the stored one. (Where a
+ * wall's top is attached to a roof or ceiling, Revit's "Unconnected Height"
+ * reports the level-to-level distance instead, which is not decoded.)
+ */
+export function presentedParameters(
+  parameters: readonly { parameterId: number; name: string; value: number | string; valueName?: string }[],
+): PresentedParameter[] {
+  const built = parameters.find((parameter) => parameter.parameterId === WALL_HEIGHT_PARAMETER);
+  const shown: PresentedParameter[] = [];
+  for (const parameter of parameters) {
+    if (parameter.parameterId === WALL_USER_HEIGHT_PARAMETER && built) continue;
+    const isBuiltHeight = parameter.parameterId === WALL_HEIGHT_PARAMETER;
+    if (!isBuiltHeight && isInternalParameter(parameter.parameterId)) continue;
+    const value = formatParameterValue(parameter);
+    if (value == null) continue;
+    shown.push({
+      parameterId: parameter.parameterId,
+      label: isBuiltHeight ? "Height" : parameter.name,
+      value,
+    });
+  }
+  return shown;
+}

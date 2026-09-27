@@ -149,6 +149,7 @@ test("a category the element's own header states is a read, and its family and p
   assert.equal(rows.get("category-id")?.value, "-2000011 (element header)");
   assert.equal(rows.get("family")?.value, "M_Single-Flush");
   assert.equal(rows.get("parameter--1001955")?.value, "148°");
-  // Revit never shows wallHeightParam.
-  assert.equal(rows.has("parameter--1001101"), false);
+  // A wall's built height, which Revit keeps unlabelled, is shown as its height.
+  assert.equal(rows.get("parameter--1001101")?.label, "Height");
+  assert.equal(rows.get("parameter--1001101")?.value, "13.78 ft");
 });
