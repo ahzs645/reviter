@@ -25,9 +25,14 @@
  *
  * A project `Family` names its document by that GUID (`FamilyBase` holds it
  * with the document's first element id right after it). Every record restates
- * its id, and a table is read only when all of its records do. Documents
- * found: 162 in the RAC sample, 116 in the 2025 technical school, 172 in the
- * 2024 Snowdon sample, each linked from exactly one `Family`.
+ * its id, and a table is read only when all of its records do.
+ *
+ * Documents read: 162 in the RAC sample, 116 in the 2025 technical school and
+ * 172 in the 2024 Snowdon sample, of which a `Family` names 162, 113 and 157.
+ * A few are named by two families (3, 3 and 4 documents), which then share
+ * its forms; the scene's envelope check decides for each placed element. The
+ * 2027 UNBC project's index is not read by this layout (no document is
+ * found), and none of its placed types lacks stored geometry.
  */
 import { fileClassTag } from "./revit-class-tags.ts";
 
