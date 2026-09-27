@@ -14,6 +14,7 @@ import {
 } from "./revit-2027-face-static.ts";
 import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "./revit-2027-garc.ts";
 import { REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT } from "./revit-2027-gcylindrical-helix.ts";
+import { REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT } from "./revit-2027-gellipse.ts";
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "./revit-2027-gline.ts";
 import { REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT } from "./revit-2027-hermite-surface.ts";
 import type {
@@ -112,9 +113,19 @@ const BUILTIN_SURFACES: readonly [
     {
       id: "Revit2027SurfaceOfRevolution",
       requirePositiveToken: false,
+      // Among the 2025 RAC sample's boxed elements 875 SurfRev faces revolve
+      // a GLine and 7 a GEllipse; the trimmed-surface path reads all three.
       curves: [
         {
           sourceClassSlot: REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+          requirePositiveToken: false,
+        },
+        {
+          sourceClassSlot: REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
+          requirePositiveToken: false,
+        },
+        {
+          sourceClassSlot: REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
           requirePositiveToken: false,
         },
       ],
@@ -134,6 +145,16 @@ const BUILTIN_SURFACES: readonly [
           sourceClassSlot: REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
           requirePositiveToken: true,
         },
+        // The same elements' RuledSurf faces also rule GArc and GEllipse
+        // profiles (59 faces with a GArc, GEllipse or mixed pair).
+        {
+          sourceClassSlot: REVIT_2027_GARC_SOURCE_CLASS_SLOT,
+          requirePositiveToken: true,
+        },
+        {
+          sourceClassSlot: REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+          requirePositiveToken: true,
+        },
       ],
     },
   ],
@@ -145,17 +166,21 @@ const BUILTIN_SURFACES: readonly [
 
 const SURFACE_REGISTRATIONS = new Map(BUILTIN_SURFACES);
 
-/** Curve slot to the surface slot it may hang from, and its token policy. */
+/**
+ * Surface slot to the curve slots that may hang from it, with their token
+ * policy. One curve slot can profile several surfaces (a GLine rules a
+ * RuledSurf and is revolved by a SurfRev), so the owning surface decides.
+ */
 const CURVE_REGISTRATIONS = new Map<
   number,
-  Revit2027OwnerCurveRegistration & { surfaceSourceClassSlot: number }
+  ReadonlyMap<number, Revit2027OwnerCurveRegistration>
 >(
-  BUILTIN_SURFACES.flatMap(([surfaceSourceClassSlot, registration]) =>
-    (registration.curves ?? []).map((curve) => [
-      curve.sourceClassSlot,
-      { ...curve, surfaceSourceClassSlot },
-    ] as const)
-  ),
+  BUILTIN_SURFACES.map(([surfaceSourceClassSlot, registration]) => [
+    surfaceSourceClassSlot,
+    new Map(
+      (registration.curves ?? []).map((curve) => [curve.sourceClassSlot, curve]),
+    ),
+  ]),
 );
 
 function spanValue<T>(span: Revit2027GRepReplaySpan): T {
@@ -229,13 +254,11 @@ function buildIndex(replay: Revit2027GRepReplay): Revit2027OwnerMeshIndex {
       });
       continue;
     }
-    const curve = CURVE_REGISTRATIONS.get(slot);
+    const owner = faceTokenBySurfaceReplayIndex.get(span.parentReplayIndex);
+    if (!owner) continue;
+    const curve = CURVE_REGISTRATIONS.get(owner.sourceClassSlot)?.get(slot);
     if (!curve) continue;
     if (curve.requirePositiveToken && span.propertyToken <= 0) continue;
-    const owner = faceTokenBySurfaceReplayIndex.get(span.parentReplayIndex);
-    if (!owner || owner.sourceClassSlot !== curve.surfaceSourceClassSlot) {
-      continue;
-    }
     const forFace = curves.get(owner.faceToken) ?? [];
     forFace.push({
       sourceClassSlot: slot,
