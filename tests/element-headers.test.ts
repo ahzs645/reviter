@@ -76,6 +76,8 @@ test("view-owned, category-less and non-model-category elements are not part of 
   assert.equal(nonModelReason({ ...wall, familyId: 295427 }, undefined), "family-internal");
   assert.equal(nonModelReason({ ...wall, categoryId: null }, undefined), "no-category");
   assert.equal(nonModelReason({ ...wall, categoryId: -2000530 }, undefined), "non-model-category");
+  // A wall reveal is cut from its wall, as an opening is.
+  assert.equal(nonModelReason({ ...wall, categoryId: -2000182 }, undefined), "non-model-category");
   // With no header, a category from another source still decides it.
   assert.equal(nonModelReason(undefined, -2000095), "non-model-category");
   assert.equal(nonModelReason(undefined, -2000011), null);

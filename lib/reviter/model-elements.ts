@@ -59,6 +59,10 @@ export const NON_MODEL_CATEGORY_IDS: ReadonlySet<number> = new Set([
   -2003403, // MassFloor
   -2003404, // MassForm
   // Opening voids: they cut their host rather than add to it.
+  // A wall reveal is the same: a profile cut along its wall. The technical
+  // school's 8 were drawn as solids; the Autodesk Viewer lists all 8 and
+  // draws none.
+  -2000182, // Reveals
   -2000996, // ShaftOpening
   -2000997, // SWallRectOpening
   -2000999, // ArcWallRectOpening

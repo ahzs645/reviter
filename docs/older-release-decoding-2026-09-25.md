@@ -20,13 +20,17 @@ ids, names, categories, levels and materials; the GLB for per-element geometry).
 | | UNBC | Technical school | RAC basic sample | Snowdon Towers |
 | --- | ---: | ---: | ---: | ---: |
 | Release | 2027 | 2025 | 2025 | 2024 |
-| Autodesk-drawn elements displayed | 36,337 of 36,432 | 5,434 of 5,479 | 429 of 450 | 1,310 of 1,310 † |
-| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) | 99.7% | 99.1% | 91.6% | 95.2% |
-| Elements drawn that Autodesk does not draw | 34 | 66 | 9 | † |
+| Autodesk-drawn elements displayed | 36,340 of 36,432 | 5,463 of 5,479 | 440 of 450 | 1,310 of 1,310 † |
+| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) ¶ | 99.7% | 99.5% | 94.1% | 96.7% |
+| Elements drawn that Autodesk does not draw | 34 | 40 | 17 § | † |
 | Materials: name, colour and transparency exact | 94 / 94 | 186 / 186 | 174 / 174 | 220 / 220 |
 | Levels: name and elevation exact | 13 / 13 | 5 / 5 | 6 / 6 | 18 / 18 |
 | Type names equal to Autodesk's "Type Name" | 35,299 / 35,299 | 5,356 / 5,356 | 427 / 427 | 7,725 / 7,764 ‡ |
 | Time to the ready studio (headless Chromium) | 57 s | 13 s | 12 s | 54 s |
+
+¶ Each Autodesk box is taken from its node's transformed vertices (section 9). Before this round: 99.7%, 99.1%, 91.6% and 95.2%.
+
+§ 11 are RPC trees the Autodesk Viewer lists but draws no geometry for; the rest are five stair runs, landings and treads and one wall.
 
 ‡ The 39 that differ are walls, from the older wall-type decoder (`element-types.ts`), not the name entries below; they look like walls whose type was changed after they were drawn.
 
@@ -244,8 +248,9 @@ Levels (names and elevations) are equal to the 2025 file's in every release. Aga
 
 ## What is still not right
 
-- **Curved faces with irregular trims.** Most of RAC's and the technical school's remaining boxes are fixtures and railings whose curved faces are trimmed by something other than their surface's parameter rectangle; the curved meshers only take the rectangle. The same faces keep most family-document types from qualifying.
-- **Family documents in another type's size.** A type whose document was last edited in a different type keeps its box (RAC's 15 windows).
+- **Curved faces** now mesh whatever their trim (merged from the curved-face work: every face-meshing cause is gone from RAC's and the technical school's breakdowns). What still keeps those two files' family instances as boxes: types that store no geometry and whose family document holds another type's size (RAC 23, Snowdon 93, including RAC's 15 windows); RAC's 7 track lights, whose family carries geometry for several track lengths behind conditions not yet decoded, so the mesh spans 12 ft of a 4.4 ft fixture and the envelope check declines it; and one faucet.
+- **Drawn but not drawn by Autodesk:** the technical school's 6 handrail-termination templates, placed at the internal origin by their own records. Their created phase is unset, but so is that of Snowdon's 2,608 railing supports, which are real geometry, so phase alone does not separate them.
+- **Scene budget.** When a scene exceeds its triangle budget, items with trimmed curved faces are admitted last, smallest first; Snowdon's large trees stay boxes for that reason.
 - **Not drawn:** the school's 27 parking stalls draw one of their two painted stripes. Planting, entourage and terrain are drawn only where their stored mesh decodes (their boxes are not their shape); rebar, room separation lines and UNBC's stair assemblies are left out on purpose. Terrain is drawn as its stored surface, where the Autodesk capture adds a base down to -37.7 ft and crops it.
 - **Snowdon's 39 wall types** read from the older decoder as the type they were drawn with.
 - **Revit 2019 to 2023** (section 10) still lack: the family-material relations (18 of the 437 elements the 2023 and 2025 RAC files both draw show a different material), the native-identity (`UniqueId`) reader, the railing baluster and alternate-frame readers, and the GStyle material binding. Of section 9's additions, `GEllipse`, `GComponentRef`, `GImposter` and the asset tree read either width; `GPolyMesh`, the family-document forms and the light-source styles are read only where ids are 64-bit, and fail closed before that. The regeneration-history entry size in narrow `ElementHeader`s is assumed, not measured: every sample's count is zero. Revit 2018 and older are not claimed; no sample was available.
