@@ -311,6 +311,11 @@ export type Revit2027NativeMeshCollector = {
     requestedOwnerIds?: Iterable<number>,
     stairsRuns?: ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>,
     owningElementByElement?: ReadonlyMap<number, number>,
+    /**
+     * Scene elements whose own geometry root may be composed through its
+     * nested instances: those with no decoded placement of their own.
+     */
+    unplacedElementIds?: ReadonlySet<number>,
   ): Revit2027NativeMeshCollection;
 };
 
@@ -990,6 +995,7 @@ function finalizeRevit2027NativeMeshCollection(
     Revit2027StairsRunAndLandingAggregate
   > = new Map(),
   owningElementByElement: ReadonlyMap<number, number> = new Map(),
+  unplacedElementIds: ReadonlySet<number> = new Set(),
 ): Revit2027NativeMeshCollection {
   const requestedOwners = state.enabled
     ? new Set(
@@ -1140,11 +1146,19 @@ function finalizeRevit2027NativeMeshCollection(
     (definition) =>
       definition.directRoot && definition.nestedInstances.length > 0,
   );
+  // A placed family instance's own GElement is often nothing but a GInstance
+  // of its symbol under the instance's transform. Where the instance's
+  // placement was decoded, the symbol is requested and placed from it. Where
+  // it was not — every one of the 2025 RAC sample's solar panels, whose
+  // symbol decodes complete — the instance's own root says the same thing,
+  // and is composed like a direct root; the scene's envelope gate still
+  // checks the result against the element's own bounds.
   const selectedNestedRoots = [...state.definitions.values()].filter(
     (definition) =>
       definition.nestedInstances.length > 0 &&
       (definition.directRoot ||
-        requestedOwners.has(definition.ownerElementId)),
+        requestedOwners.has(definition.ownerElementId) ||
+        unplacedElementIds.has(definition.ownerElementId)),
   );
   let completeNestedRoots = 0;
   let partialNestedRoots = 0;
@@ -1900,6 +1914,7 @@ export function createRevit2027NativeMeshCollector(
         Revit2027StairsRunAndLandingAggregate
       > = new Map(),
       owningElementByElement: ReadonlyMap<number, number> = new Map(),
+      unplacedElementIds: ReadonlySet<number> = new Set(),
     ): Revit2027NativeMeshCollection {
       admitAlternateDefinitions();
       return finalizeRevit2027NativeMeshCollection(
@@ -1907,6 +1922,7 @@ export function createRevit2027NativeMeshCollector(
         requestedOwnerIds,
         stairsRuns,
         owningElementByElement,
+        unplacedElementIds,
       );
     },
   };

@@ -386,9 +386,18 @@ export function decodeTrf201120260(
     view.getFloat64(offset + 8, true),
     view.getFloat64(offset + 16, true),
   ];
-  const xAxis = tuple(byteOffset);
-  const yAxis = tuple(byteOffset + 24);
-  const zAxis = tuple(byteOffset + 48);
+  // The nine stored scalars are the rotation's rows, so each local axis is a
+  // column: local x is (r0[0], r1[0], r2[0]). `instanceCorners` has always
+  // read a placement's basis this way. Read the other way, a nested instance
+  // with a non-symmetric rotation was drawn at the transpose of its rotation:
+  // the 2025 RAC sample's 37-degree solar panels 1.94 ft from Autodesk's, and
+  // two of the technical school's beams with the wrong section. Read as rows,
+  // all fourteen land on Autodesk's boxes, and no UNBC element moves, since
+  // every nested rotation there is symmetric.
+  const rows = [tuple(byteOffset), tuple(byteOffset + 24), tuple(byteOffset + 48)] as const;
+  const xAxis: [number, number, number] = [rows[0][0], rows[1][0], rows[2][0]];
+  const yAxis: [number, number, number] = [rows[0][1], rows[1][1], rows[2][1]];
+  const zAxis: [number, number, number] = [rows[0][2], rows[1][2], rows[2][2]];
   const origin = tuple(byteOffset + 72);
   if (![...xAxis, ...yAxis, ...zAxis, ...origin].every(Number.isFinite)) {
     return { ok: false, error: "Trf201120260 contains a non-finite scalar" };

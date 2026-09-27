@@ -290,6 +290,11 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
           relation.ownerId,
         ]),
       ),
+      new Set(
+        displayBounds
+          .filter((record) => !instancePlacements.has(record.elementId))
+          .map((record) => record.elementId),
+      ),
     );
   const nativeMeshScene = buildRevit2027NativeMeshScene(
     nativeMeshCollection,
