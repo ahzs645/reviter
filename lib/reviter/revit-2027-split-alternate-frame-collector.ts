@@ -63,3 +63,45 @@ export function createRevit2027SplitAlternateFrameCollector(
     finishPartition: () => stream.reset(),
   };
 }
+
+/** `GElement` in the 2027 numbering. */
+const GELEMENT_CLASS = 0x08c6;
+
+/**
+ * A family symbol's geometry lives in its `GElement`, and a symbol with real
+ * geometry writes one of tens of kilobytes (38,488 bytes for the RAC sample's
+ * bar-chair symbol). Pages are 64 KiB inflated, so some cross a boundary, and
+ * the per-page scan never frames those at all. Reassembled, they bring 14
+ * more UNBC elements within half a foot of Autodesk's geometry. The largest
+ * one seen is well under this bound, which keeps a candidate header that never
+ * completes from holding pages for long.
+ */
+const MAX_SPLIT_GELEMENT_BYTES = 8 * 1024 * 1024;
+
+export type Revit2027SplitGElementCollector = {
+  pushPage(page: Uint8Array): readonly Uint8Array[];
+  finishPartition(): void;
+};
+
+/** Reassemble the `GElement` frames that cross a page boundary. */
+export function createRevit2027SplitGElementCollector(
+  release: number | null | undefined,
+): Revit2027SplitGElementCollector {
+  const stream = createSplitFrameStream({
+    markers: [GELEMENT_CLASS],
+    minObjectLength: MIN_FRAME_BYTES,
+    maxFrameBytes: MAX_SPLIT_GELEMENT_BYTES,
+    // The frame restates its element id at +26, as every GElement does.
+    acceptHeader: (view, offset) =>
+      offset + 30 <= view.byteLength &&
+      view.getUint32(offset + 26, true) === view.getUint32(offset, true),
+    crossingOnly: true,
+  });
+  return {
+    pushPage(page: Uint8Array): readonly Uint8Array[] {
+      if (!usesRevit2027RecordLayout(release)) return [];
+      return stream.push(page).map((frame) => frame.data);
+    },
+    finishPartition: () => stream.reset(),
+  };
+}

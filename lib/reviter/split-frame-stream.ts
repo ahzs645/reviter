@@ -46,6 +46,12 @@ export type SplitFrameStreamOptions = {
   maxFrameBytes: number;
   /** Further header checks a collector's classes guarantee. */
   acceptHeader?: (view: DataView, offset: number) => boolean;
+  /**
+   * Assemble only frames that cross a page. For a class as common as
+   * `GElement`, whose frames the per-page scan already sees whole, copying
+   * every one out again would be most of the work.
+   */
+  crossingOnly?: boolean;
 };
 
 export type SplitFrameStream = {
@@ -131,14 +137,11 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
         ) {
           continue;
         }
-        pending.set(streamOffset, {
-          elementId,
-          marker,
-          objectLength,
-          crossedPage:
-            streamOffset < pageStart ||
-            streamOffset + objectLength + FRAME_SUFFIX_BYTES > streamEnd,
-        });
+        const crossedPage =
+          streamOffset < pageStart ||
+          streamOffset + objectLength + FRAME_SUFFIX_BYTES > streamEnd;
+        if (options.crossingOnly && !crossedPage) continue;
+        pending.set(streamOffset, { elementId, marker, objectLength, crossedPage });
       }
       nextScanOffset = Math.max(nextScanOffset, scanEnd + 1);
 

@@ -299,6 +299,11 @@ export type Revit2027NativeMeshCollector = {
    */
   scanAlternateFrame(data: Uint8Array): void;
   /**
+   * Admit one `GElement` frame reassembled across a page boundary, which the
+   * page scan saw only in part and could not decode.
+   */
+  scanSplitGElementFrame(data: Uint8Array): void;
+  /**
    * Finalize direct scene roots plus only the non-direct definitions proven to
    * be referenced by persisted instance placements.
    */
@@ -1580,6 +1585,246 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
+  // One framed GElement: its GRep replayed, meshed and stored as a definition.
+  // Shared by the page scan and by frames reassembled across a page boundary.
+  const decodeGElementFrame = (
+    data: Uint8Array,
+    frame: ReturnType<typeof scanFramedElementObjects>[number],
+  ): void => {
+    const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
+    if (!root.ok) {
+      state.definitionFailures.set(
+        frame.elementId,
+        `framed GRep root decode failed: ${root.error}`,
+      );
+      return;
+    }
+    const boundedTessellatorRoot =
+      isRevit2027BoundedTessellatorRoot(root.value);
+    const conditionedGeometryRoot =
+      isRevit2027ConditionedGeometryRoot(root.value);
+    const embeddedGeometryRoot =
+      isRevit2027EmbeddedGeometryRoot(root.value);
+    const directRoot = isRevit2027DirectGeometryRoot(root.value);
+    if (directRoot) state.eligibleRoots += 1;
+    if (boundedTessellatorRoot) {
+      state.boundedTessellatorCandidateRoots += 1;
+    }
+    if (conditionedGeometryRoot) {
+      state.conditionedGeometryCandidateRoots += 1;
+    }
+    if (embeddedGeometryRoot) {
+      state.embeddedGeometryCandidateRoots += 1;
+    }
+
+    const ownerElementId = Number(root.value.ownerElementId);
+    if (
+      !Number.isSafeInteger(ownerElementId) ||
+      ownerElementId <= 0 ||
+      ownerElementId > 0xffff_ffff ||
+      ownerElementId !== frame.elementId
+    ) {
+      if (directRoot) {
+        rememberIncomplete({
+          ownerElementId: null,
+          code: "unsafe-owner-id",
+        });
+      }
+      return;
+    }
+    if (
+      state.definitions.has(ownerElementId) ||
+      state.conflictingOwnerIds.has(ownerElementId)
+    ) {
+      state.conflictingOwnerIds.add(ownerElementId);
+      return;
+    }
+
+    const replayed = replayRevit2027GRepFifo(data, root.value);
+    if (!replayed.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `GRep FIFO replay failed: ${replayed.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    if (directRoot) state.replayedOwners += 1;
+    const bindings = collectRevit2027GInstanceBindings(replayed.value);
+    if (!bindings.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `instance binding replay failed: ${bindings.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const embeddedError = validateEmbeddedBindings(
+      replayed.value,
+      root.value.localExtents,
+      bindings.value,
+    );
+    if (embeddedError) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `embedded-instance validation failed: ${embeddedError}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const nested = collectRevit2027NestedInstances(replayed.value);
+    if (!nested.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `nested-instance replay failed: ${nested.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const meshed = meshRevit2027CertifiedOwnerReplay(replayed.value, {
+      materialForFace: rawFaceStyleId,
+    });
+    if (!meshed.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `certified face meshing failed: ${meshed.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+
+    const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+    const coverage = drawableFaceCoverage(
+      faceSpans.drawableTokens,
+      meshed.value.faceMeshes,
+      meshed.value.issues,
+    );
+    if (directRoot) {
+      state.excludedNonTopologicalFaces +=
+        faceSpans.excludedNonTopologicalFaces;
+    }
+
+    const compacted = coverage.complete
+      ? compactFaces(
+          meshed.value.faceMeshes.filter((face) =>
+            faceSpans.drawableTokens.has(face.faceToken),
+          ),
+          faceSpans,
+          bindings.value,
+        )
+      : { ok: true as const, value: [] };
+    if (!compacted.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `embedded face association failed: ${compacted.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const faces = compacted.value;
+    const triangles = coverage.complete
+      ? faces.reduce(
+          (total, face) => total + face.mesh.indices.length / 3,
+          0,
+        )
+      : 0;
+    const geometry =
+      coverage.complete && faces.length > 0
+        ? { ownerElementId, faces, triangles }
+        : null;
+    const localComplete =
+      coverage.complete ||
+      (coverage.code === "no-drawable-faces" &&
+        nested.value.length > 0);
+    const meshIssueDetails = [
+      ...new Set(
+        meshed.value.issues
+          .filter(({ issue }) => issue.code !== "material-unresolved")
+          .map(
+            ({ path, issue }) =>
+              `${path}:${issue.code}` +
+              (issue.faceToken == null
+                ? ""
+                : `(face ${issue.faceToken})`),
+          ),
+      ),
+    ];
+    const localFailureDetail = localComplete
+      ? null
+      : coverage.code === "no-drawable-faces"
+      ? "persisted geometry replay contains no drawable topological faces"
+      : `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh` +
+        (meshIssueDetails.length
+          ? `; ${meshIssueDetails.join(", ")}`
+          : "");
+    if (directRoot && !localComplete) {
+      rememberIncomplete(
+        coverage.code === "no-drawable-faces"
+          ? {
+              ownerElementId,
+              code: "no-drawable-faces",
+              drawableFaces: 0,
+              meshedDrawableFaces: 0,
+            }
+          : {
+              ownerElementId,
+              code: "incomplete-drawable-faces",
+              drawableFaces: coverage.drawableFaces,
+              meshedDrawableFaces: coverage.meshedDrawableFaces,
+              detail:
+                `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
+            },
+      );
+    }
+    const definitionBytes = estimatedDefinitionBytes(
+      geometry,
+      nested.value,
+    );
+    if (
+      state.definitions.size >= maxOwners ||
+      state.storedTriangles + triangles > maxStoredTriangles ||
+      state.nestedLinks + nested.value.length > maxNestedLinks ||
+      state.storedBytes + definitionBytes > maxStoredBytes
+    ) {
+      state.truncated = true;
+      if (directRoot) {
+        rememberIncomplete({
+          ownerElementId,
+          code: "storage-limit",
+          drawableFaces: coverage.drawableFaces,
+          meshedDrawableFaces: coverage.meshedDrawableFaces,
+          detail:
+            `native definition storage cap reached at ${state.storedTriangles} triangles, ` +
+            `${state.nestedLinks} links, and ${state.storedBytes} estimated bytes`,
+        });
+      }
+      return;
+    }
+    state.definitions.set(ownerElementId, {
+      ownerElementId,
+      directRoot,
+      boundedTessellatorRoot,
+      conditionedGeometryRoot,
+      embeddedGeometryRoot,
+      geometry,
+      localComplete,
+      localFailureDetail,
+      nestedInstances: nested.value,
+      spiralReplay:
+        coverage.code === "no-drawable-faces" &&
+          nested.value.length > 0
+          ? replayed.value
+          : null,
+      conditionalStateCarrier:
+        readRevit2027ConditionalStateCarrier(replayed.value),
+    });
+    state.definitionFailures.delete(ownerElementId);
+    if (directRoot && coverage.complete) state.completeOwners += 1;
+    state.storedTriangles += triangles;
+    state.storedBytes += definitionBytes;
+    state.nestedLinks += nested.value.length;
+  };
+
   return {
     release: release ?? null,
     scanAlternateFrame(data: Uint8Array): void {
@@ -1612,6 +1857,30 @@ export function createRevit2027NativeMeshCollector(
         typeCode: view.getUint32(18, true),
       });
     },
+    scanSplitGElementFrame(data: Uint8Array): void {
+      if (!state.enabled || state.truncated || data.byteLength < 60) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const elementId = view.getUint32(0, true);
+      const objectLength = view.getUint32(12, true);
+      const marker = canonicalClassTag(view.getUint16(16, true));
+      if (
+        elementId === 0 ||
+        view.getUint32(4, true) !== 0 ||
+        marker !== REVIT_2027_GELEMENT_OBJECT_MARKER ||
+        objectLength + 20 !== data.byteLength ||
+        view.getUint32(objectLength + 16, true) !== objectLength
+      ) {
+        return;
+      }
+      state.scannedFrames += 1;
+      decodeGElementFrame(data, {
+        offset: 0,
+        elementId,
+        objectLength,
+        marker,
+        typeCode: view.getUint32(18, true),
+      });
+    },
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
       for (const frame of scanFramedElementObjects(data)) {
@@ -1620,238 +1889,8 @@ export function createRevit2027NativeMeshCollector(
           collectAlternateDefinition(data, frame);
           continue;
         }
-        const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
-        if (!root.ok) {
-          state.definitionFailures.set(
-            frame.elementId,
-            `framed GRep root decode failed: ${root.error}`,
-          );
-          continue;
-        }
-        const boundedTessellatorRoot =
-          isRevit2027BoundedTessellatorRoot(root.value);
-        const conditionedGeometryRoot =
-          isRevit2027ConditionedGeometryRoot(root.value);
-        const embeddedGeometryRoot =
-          isRevit2027EmbeddedGeometryRoot(root.value);
-        const directRoot = isRevit2027DirectGeometryRoot(root.value);
-        if (directRoot) state.eligibleRoots += 1;
-        if (boundedTessellatorRoot) {
-          state.boundedTessellatorCandidateRoots += 1;
-        }
-        if (conditionedGeometryRoot) {
-          state.conditionedGeometryCandidateRoots += 1;
-        }
-        if (embeddedGeometryRoot) {
-          state.embeddedGeometryCandidateRoots += 1;
-        }
-
-        const ownerElementId = Number(root.value.ownerElementId);
-        if (
-          !Number.isSafeInteger(ownerElementId) ||
-          ownerElementId <= 0 ||
-          ownerElementId > 0xffff_ffff ||
-          ownerElementId !== frame.elementId
-        ) {
-          if (directRoot) {
-            rememberIncomplete({
-              ownerElementId: null,
-              code: "unsafe-owner-id",
-            });
-          }
-          continue;
-        }
-        if (
-          state.definitions.has(ownerElementId) ||
-          state.conflictingOwnerIds.has(ownerElementId)
-        ) {
-          state.conflictingOwnerIds.add(ownerElementId);
-          continue;
-        }
-
-        const replayed = replayRevit2027GRepFifo(data, root.value);
-        if (!replayed.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `GRep FIFO replay failed: ${replayed.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        if (directRoot) state.replayedOwners += 1;
-        const bindings = collectRevit2027GInstanceBindings(replayed.value);
-        if (!bindings.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `instance binding replay failed: ${bindings.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const embeddedError = validateEmbeddedBindings(
-          replayed.value,
-          root.value.localExtents,
-          bindings.value,
-        );
-        if (embeddedError) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `embedded-instance validation failed: ${embeddedError}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const nested = collectRevit2027NestedInstances(replayed.value);
-        if (!nested.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `nested-instance replay failed: ${nested.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const meshed = meshRevit2027CertifiedOwnerReplay(replayed.value, {
-          materialForFace: rawFaceStyleId,
-        });
-        if (!meshed.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `certified face meshing failed: ${meshed.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-
-        const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
-        const coverage = drawableFaceCoverage(
-          faceSpans.drawableTokens,
-          meshed.value.faceMeshes,
-          meshed.value.issues,
-        );
-        if (directRoot) {
-          state.excludedNonTopologicalFaces +=
-            faceSpans.excludedNonTopologicalFaces;
-        }
-
-        const compacted = coverage.complete
-          ? compactFaces(
-              meshed.value.faceMeshes.filter((face) =>
-                faceSpans.drawableTokens.has(face.faceToken),
-              ),
-              faceSpans,
-              bindings.value,
-            )
-          : { ok: true as const, value: [] };
-        if (!compacted.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `embedded face association failed: ${compacted.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const faces = compacted.value;
-        const triangles = coverage.complete
-          ? faces.reduce(
-              (total, face) => total + face.mesh.indices.length / 3,
-              0,
-            )
-          : 0;
-        const geometry =
-          coverage.complete && faces.length > 0
-            ? { ownerElementId, faces, triangles }
-            : null;
-        const localComplete =
-          coverage.complete ||
-          (coverage.code === "no-drawable-faces" &&
-            nested.value.length > 0);
-        const meshIssueDetails = [
-          ...new Set(
-            meshed.value.issues
-              .filter(({ issue }) => issue.code !== "material-unresolved")
-              .map(
-                ({ path, issue }) =>
-                  `${path}:${issue.code}` +
-                  (issue.faceToken == null
-                    ? ""
-                    : `(face ${issue.faceToken})`),
-              ),
-          ),
-        ];
-        const localFailureDetail = localComplete
-          ? null
-          : coverage.code === "no-drawable-faces"
-          ? "persisted geometry replay contains no drawable topological faces"
-          : `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh` +
-            (meshIssueDetails.length
-              ? `; ${meshIssueDetails.join(", ")}`
-              : "");
-        if (directRoot && !localComplete) {
-          rememberIncomplete(
-            coverage.code === "no-drawable-faces"
-              ? {
-                  ownerElementId,
-                  code: "no-drawable-faces",
-                  drawableFaces: 0,
-                  meshedDrawableFaces: 0,
-                }
-              : {
-                  ownerElementId,
-                  code: "incomplete-drawable-faces",
-                  drawableFaces: coverage.drawableFaces,
-                  meshedDrawableFaces: coverage.meshedDrawableFaces,
-                  detail:
-                    `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
-                },
-          );
-        }
-        const definitionBytes = estimatedDefinitionBytes(
-          geometry,
-          nested.value,
-        );
-        if (
-          state.definitions.size >= maxOwners ||
-          state.storedTriangles + triangles > maxStoredTriangles ||
-          state.nestedLinks + nested.value.length > maxNestedLinks ||
-          state.storedBytes + definitionBytes > maxStoredBytes
-        ) {
-          state.truncated = true;
-          if (directRoot) {
-            rememberIncomplete({
-              ownerElementId,
-              code: "storage-limit",
-              drawableFaces: coverage.drawableFaces,
-              meshedDrawableFaces: coverage.meshedDrawableFaces,
-              detail:
-                `native definition storage cap reached at ${state.storedTriangles} triangles, ` +
-                `${state.nestedLinks} links, and ${state.storedBytes} estimated bytes`,
-            });
-          }
-          break;
-        }
-        state.definitions.set(ownerElementId, {
-          ownerElementId,
-          directRoot,
-          boundedTessellatorRoot,
-          conditionedGeometryRoot,
-          embeddedGeometryRoot,
-          geometry,
-          localComplete,
-          localFailureDetail,
-          nestedInstances: nested.value,
-          spiralReplay:
-            coverage.code === "no-drawable-faces" &&
-              nested.value.length > 0
-              ? replayed.value
-              : null,
-          conditionalStateCarrier:
-            readRevit2027ConditionalStateCarrier(replayed.value),
-        });
-        state.definitionFailures.delete(ownerElementId);
-        if (directRoot && coverage.complete) state.completeOwners += 1;
-        state.storedTriangles += triangles;
-        state.storedBytes += definitionBytes;
-        state.nestedLinks += nested.value.length;
+        decodeGElementFrame(data, frame);
+        if (state.truncated) break;
       }
     },
     snapshot(

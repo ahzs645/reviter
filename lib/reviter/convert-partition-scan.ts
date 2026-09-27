@@ -82,7 +82,7 @@ import {
   stripRevitPageChecksums,
 } from "./revit-container.ts";
 import { createRevit2027NativeMeshCollector } from "./revit-2027-native-mesh-bridge.ts";
-import { createRevit2027SplitAlternateFrameCollector } from "./revit-2027-split-alternate-frame-collector.ts";
+import { createRevit2027SplitAlternateFrameCollector, createRevit2027SplitGElementCollector } from "./revit-2027-split-alternate-frame-collector.ts";
 import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
 import { scanSegments } from "./segment-scan.ts";
 import { collectOwnedSurfaces } from "./surfaces.ts";
@@ -239,6 +239,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       decoderPlan.revitVersion,
       maxNativeMeshBytes,
     );
+  const splitGElementCollector = createRevit2027SplitGElementCollector(
+    decoderPlan.revitVersion,
+  );
   // The three release collectors are all "hand me every page of this partition
   // in order", spelled three different ways. They are adapted to one protocol
   // here so the loop drives them alike; see `PageConsumer`.
@@ -258,6 +261,15 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
         }
       },
       finishPartition: () => splitAlternateFrameCollector.finishPartition(),
+    },
+    {
+      // Geometry frames the page scan saw only in part.
+      pushPage: (page) => {
+        for (const frame of splitGElementCollector.pushPage(page)) {
+          nativeMeshCollector.scanSplitGElementFrame(frame);
+        }
+      },
+      finishPartition: () => splitGElementCollector.finishPartition(),
     },
     stairsRunCollector,
   ];
