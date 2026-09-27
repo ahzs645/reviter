@@ -269,7 +269,15 @@ export function openRevitContainer(
   // 2024 is admitted to the record decoders only once its schema has said its
   // ids are 32-bit, so the plan is drawn again now that it is known.
   setActiveElementIdBytes(elementIdBytes);
-  if (elementIdBytes === 4) decoderPlan = decoderPlanForVersion(decoderPlan.revitVersion ?? undefined);
+  if (elementIdBytes === 4) {
+    decoderPlan = decoderPlanForVersion(decoderPlan.revitVersion ?? undefined);
+    // The element table was read before the width was known, and its
+    // ownership rows are 28 bytes rather than 40 where ids are 32-bit.
+    if (elementTableData) {
+      const ownership = decodeElementOwnership(elementTableData);
+      elementOwnership = ownership.format !== "unsupported" ? ownership : undefined;
+    }
+  }
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
   const partitions = cfb.FileIndex

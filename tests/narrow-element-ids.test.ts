@@ -24,6 +24,7 @@ import {
   scanObjectMarkers,
 } from "../lib/reviter/element-objects.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
+import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
 import { readInstancePlacement, readLocalBounds } from "../lib/reviter/instanced-geometry.ts";
@@ -43,6 +44,12 @@ import { decodeRevit2027InstanceInfo } from "../lib/reviter/revit-2027-ginstance
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gline.ts";
 import { readRevit2027GInfo, revit2027GInfoBytes } from "../lib/reviter/revit-2027-grep-prefixes.ts";
 import { replayRevit2027GRepFifo } from "../lib/reviter/revit-2027-grep-replay.ts";
+import {
+  decodeRevit2027StairsElementAggregate,
+  decodeRevit2027StairsRunAndLandingAggregate,
+  REVIT_2027_STAIRS_ELEMENT_MARKER,
+  REVIT_2027_STAIRS_RUN_MARKER,
+} from "../lib/reviter/revit-2027-stairs-aggregate.ts";
 import { collectSketchCurves } from "../lib/reviter/sketch-curves.ts";
 import { collectOwnedSurfaces } from "../lib/reviter/surfaces.ts";
 import {
@@ -504,4 +511,58 @@ test("a narrow InstanceInfo is 108 bytes: the transform, an int32 symbol id, m_G
     assert.equal(decoded.value.cda, 1);
   }
   assert.equal(decodeRevit2027InstanceInfo(data, 0, 108, 2027).ok, false);
+});
+
+test("a narrow element table: 28-byte rows of owner, id, history and partition from byte 30", () => {
+  const rows: [number, number][] = [[-1, 2], [-1, 725045], [725045, 725046], [725047, 725047]];
+  const table = new Bytes().u16(1370).u32(rows.length + 1).zeros(24);
+  for (const [owner, id] of rows) table.i32(owner).i32(id).i32(2).i32(0).i32(551).i32(551).i32(0);
+  table.zeros(23);
+  const data = Uint8Array.from(table.out);
+  const decoded = narrow(() => decodeElementOwnership(data));
+  if (decoded.format === "unsupported") assert.fail(decoded.reason);
+  assert.equal(decoded.format, "revit-2019-2023-elem-table");
+  assert.equal(decoded.decodedRecordCount, 4);
+  assert.equal(decoded.rootRecordCount, 2);
+  assert.equal(decoded.selfOwnedRecordCount, 1);
+  assert.deepEqual(decoded.relations.map(({ ownerId, elementId }) => [ownerId, elementId]), [[725045, 725046]]);
+  assert.equal(decodeElementOwnership(data).format, "unsupported");
+});
+
+test("a narrow stairs run links to its stairs through four-byte ids", () => {
+  const stairs = new Bytes().zeros(91 - 14)
+    .u32(0).u32(0).u32(0).u32(0) // no railings, runs or supports; two empty collections
+    .u32(0)
+    .f64(0.54).f64(0.98).f64(-0.65).f64(1.64).f64(0) // riser, tread, base offset, height, top offset
+    .i32(3).i32(694).i32(-1).i32(245423).i32(1).i32(141749) // risers, three level ids, base index, type
+    .u8(0).u8(0).u8(1).u8(1)
+    .zeros(24);
+  const stairsFrame = Uint8Array.from([...narrowFrame(725045, REVIT_2027_STAIRS_ELEMENT_MARKER, stairs.out, 0x11112222), 0, 0, 0, 0]);
+  const stairsView = new DataView(stairsFrame.buffer);
+  stairsView.setUint32(14, 0, true);
+  stairsView.setUint32(18, 0, true);
+  const decodedStairs = narrow(() =>
+    decodeRevit2027StairsElementAggregate(stairsFrame, 0, stairsView.getUint32(8, true), 2023));
+  assert.deepEqual(decodedStairs.ok ? "ok" : decodedStairs.error, "ok");
+
+  const run = new Bytes().zeros(200)
+    .u32(725045).u32(725047).i32(0).u8(0) // m_stairsId, m_triserSymId, m_baseRiserIndex, m_isMirrored
+    .u32(0) // no stringers
+    .u32(0) // no support paths
+    .u32(1).i32(393).i32(1) // one support status
+    .f64(8.2).f64(9.84).f64(0).f64(0).f64(19.69).f64(0).f64(0).i32(3).u8(1).u8(1).u8(0)
+    .zeros(16);
+  const runFrame = Uint8Array.from([...narrowFrame(725046, REVIT_2027_STAIRS_RUN_MARKER, run.out, 0x33334444), 0, 0, 0, 0]);
+  const runView = new DataView(runFrame.buffer);
+  const decodedRun = narrow(() =>
+    decodeRevit2027StairsRunAndLandingAggregate(runFrame, 0, runView.getUint32(8, true), 2023, {
+      knownStairsElementIds: new Set([725045]),
+    }));
+  assert.deepEqual(decodedRun.ok ? "ok" : decodedRun.error, "ok");
+  if (decodedRun.ok) {
+    assert.equal(decodedRun.value.stairsId, 725045);
+    assert.equal(decodedRun.value.triserSymbolId, 725047);
+    assert.equal(decodedRun.value.runProperties?.topRiserIndex, 3);
+    assert.equal(decodedRun.value.runProperties?.actualRunWidthFeet, 19.69);
+  }
 });
