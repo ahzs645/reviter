@@ -70,7 +70,7 @@ function solidProxyBounds(record: ElementBoundsRecord): Bounds3 | null {
   return bounds;
 }
 
-function meshBoundsByElement(
+export function meshBoundsByElement(
   meshes: readonly MeshData[],
   origin: Vec3,
   targets: ReadonlySet<number>,

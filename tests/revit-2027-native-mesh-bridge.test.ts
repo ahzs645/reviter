@@ -675,4 +675,15 @@ test("the envelope allowance grows with a building-sized envelope", () => {
   const building = within({ x: -500, y: -300, z: -1 });
   assert.equal(building.boundsMismatches, 0);
   assert.deepEqual([...building.coveredElementIds], [10]);
+
+  // An element the caller cleans and re-checks is admitted provisionally.
+  const provisional = buildRevit2027NativeMeshScene(collection, [], { x: 0, y: 0, z: 0 }, {
+    expectedBoundsByElement: new Map([[10, { min: { x: -1, y: -1, z: -1 }, max: { x: 0.3, y: 0.3, z: 1 } }]]),
+    provisionalElementIds: new Set([10]),
+  });
+  assert.equal(provisional.boundsMismatches, 0);
+  assert.deepEqual([...provisional.provisionalElementIds], [10]);
+  assert.deepEqual([...provisional.coveredElementIds], [10]);
+  // One that fits is not provisional.
+  assert.deepEqual([...within({ x: -500, y: -300, z: -1 }).provisionalElementIds], []);
 });

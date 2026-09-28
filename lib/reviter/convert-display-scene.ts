@@ -26,7 +26,7 @@ import { framingBoundsOfRecords, solidBounds } from "./bounds-records.ts";
 import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
 import { applyNativeMaterialIndices } from "./material-palette.ts";
 import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
-import { buildRevit2027NativeMeshScene } from "./revit-2027-native-mesh-bridge.ts";
+import { buildRevit2027NativeMeshScene, nativeMeshWithinEnvelope } from "./revit-2027-native-mesh-bridge.ts";
 import { residualDatumPileElementIds } from "./datum-pile.ts";
 import { removeRecordsInPlace } from "./convert-synthesised-records.ts";
 import {
@@ -43,7 +43,7 @@ import {
   selectDisplayBounds,
   stairAssembliesWithRecoveredNativeRuns,
 } from "./scene.ts";
-import { nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
+import { meshBoundsByElement, nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
 
 import type { ConvertSceneReport } from "./convert-report.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
@@ -305,6 +305,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   // their exact nested GInstance closure atomically and never publishes
   // unrelated non-scene definitions.
   const wrapperIds = new Set(displaySelection.openingWrappers.map((record) => record.elementId));
+  const boundedSolidById = new Map(boundedSolids.map((record) => [record.elementId, record]));
   const nativeMeshCollection =
     nativeMeshCollector.snapshot(
       sharedGeometryIds,
@@ -375,6 +376,17 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
         ...elementBounds.map((record) => record.elementId),
         ...(boundlessSceneElements?.keys() ?? []),
       ]),
+      // A wall with compound-layer materials can also store a generic
+      // display shell, which reaches past the wall's ends at its joins and
+      // which the cleanup below removes. Judged with that shell, 57 UNBC
+      // walls escaped their envelope by 0.56 to 0.8 ft and fell back to a
+      // shorter reconstruction, although without it each mesh matches
+      // Autodesk's box exactly. Such a wall is checked again once cleaned.
+      provisionalElementIds: new Set(
+        [...preferredWallMaterialIdsByElement.keys()].filter(
+          (elementId) => boundedSolidById.get(elementId)?.categoryId === -2_000_011,
+        ),
+      ),
     },
   );
   // A door family's complete native object can be the swept-open family
@@ -439,6 +451,34 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   );
   nativeMeshScene.meshes = nativeMeshCleanup.meshes;
   nativeMeshScene.triangles = nativeMeshCleanup.outputTriangles;
+  const provisionalIds = nativeMeshScene.provisionalElementIds;
+  if (provisionalIds.size) {
+    const cleanedBounds = meshBoundsByElement(nativeMeshScene.meshes, origin, provisionalIds);
+    const escaping = new Set<number>();
+    for (const elementId of provisionalIds) {
+      const cleaned = cleanedBounds.get(elementId);
+      const expected = boundedSolidById.get(elementId)?.boundsFeet;
+      if (!cleaned || !expected || !nativeMeshWithinEnvelope(cleaned, expected)) {
+        escaping.add(elementId);
+      }
+    }
+    if (escaping.size) {
+      nativeMeshScene.meshes = excludeMeshElementIds(nativeMeshScene.meshes, escaping);
+      nativeMeshScene.coveredElementIds = new Set(
+        [...nativeMeshScene.coveredElementIds].filter((elementId) => !escaping.has(elementId)),
+      );
+      nativeMeshScene.reconstructedElementIds = new Set(
+        [...nativeMeshScene.reconstructedElementIds].filter(
+          (elementId) => !escaping.has(elementId),
+        ),
+      );
+      nativeMeshScene.boundsMismatches += escaping.size;
+      nativeMeshScene.triangles = nativeMeshScene.meshes.reduce(
+        (total, mesh) => total + mesh.indices.length / 3,
+        0,
+      );
+    }
+  }
   // Compare against the proxy *after* persisted hosted openings are cut.
   // The uncut location-line solid can look better by span while an opening
   // at an end removes its entire cap and changes the geometry the viewer

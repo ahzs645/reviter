@@ -2100,6 +2100,12 @@ export type Revit2027NativeMeshBuildOptions = {
   expectedBoundsByElement?: ReadonlyMap<number, Bounds3>;
   /** Every placed element decoded from the RVT, including zero-volume records. */
   knownElementIds?: ReadonlySet<number>;
+  /**
+   * Elements whose mesh the caller cleans after the scene is built, and
+   * re-checks against the envelope once cleaned. One that escapes its
+   * envelope is admitted provisionally rather than declined.
+   */
+  provisionalElementIds?: ReadonlySet<number>;
   boundsToleranceFeet?: number;
 };
 
@@ -2125,6 +2131,11 @@ export type Revit2027NativeMeshScene = {
   triangles: number;
   truncated: boolean;
   boundsMismatches: number;
+  /**
+   * Of `provisionalElementIds`, those admitted although their mesh escapes
+   * their envelope; the caller declines any that still do once cleaned.
+   */
+  provisionalElementIds: ReadonlySet<number>;
   missingBounds: number;
   /** Complete native owners declined because no placed RVT element names them. */
   unrepresentedElements: number;
@@ -2238,7 +2249,8 @@ function itemBounds(item: RenderItem): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
   for (const face of item.owner.faces) {
-    for (let index = 0; index < face.mesh.positions.length; index += 3) {
+    for (const vertex of face.mesh.indices) {
+      const index = vertex * 3;
       const [x, y, z] = transformFacePoint(
         face,
         face.mesh.positions[index]!,
@@ -2294,6 +2306,15 @@ function envelopeTolerance(expected: Bounds3, tolerance: number): number {
   return Math.max(tolerance, diagonal * ENVELOPE_RELATIVE_TOLERANCE);
 }
 
+/** The scene's envelope check: `actual` lies within `expected` and its allowance. */
+export function nativeMeshWithinEnvelope(
+  actual: Bounds3,
+  expected: Bounds3,
+  toleranceFeet = 0.5,
+): boolean {
+  return containedWithin(actual, expected, envelopeTolerance(expected, toleranceFeet));
+}
+
 /** How closely a family-document mesh must fill its element's envelope. */
 const FAMILY_DOCUMENT_TOLERANCE_FEET = 0.05;
 
@@ -2329,6 +2350,7 @@ export function buildRevit2027NativeMeshScene(
       triangles: 0,
       truncated: collection.truncated,
       boundsMismatches: 0,
+      provisionalElementIds: new Set(),
       missingBounds: 0,
       unrepresentedElements: 0,
       carrierComposedItems: 0,
@@ -2375,6 +2397,7 @@ export function buildRevit2027NativeMeshScene(
   let embeddedGeometryElements = 0;
   let truncated = collection.truncated;
   let boundsMismatches = 0;
+  const provisionalElementIds = new Set<number>();
   let missingBounds = 0;
   let unrepresentedElements = 0;
   let carrierComposedItems = 0;
@@ -2497,17 +2520,21 @@ export function buildRevit2027NativeMeshScene(
             code: "missing-bounds",
           });
         }
-      } else if (!containedWithin(itemBounds(item), expected, envelopeTolerance(expected, boundsToleranceFeet))) {
-        boundsMismatches += 1;
-        if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
-          boundsMismatchSamples.push({
-            elementId: item.elementId,
-            ownerElementId: item.owner.ownerElementId,
-            placed: item.placement != null,
-            code: "bounds-mismatch",
-          });
+      } else if (!nativeMeshWithinEnvelope(itemBounds(item), expected, boundsToleranceFeet)) {
+        if (!options.provisionalElementIds?.has(item.elementId)) {
+          boundsMismatches += 1;
+          if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
+            boundsMismatchSamples.push({
+              elementId: item.elementId,
+              ownerElementId: item.owner.ownerElementId,
+              placed: item.placement != null,
+              code: "bounds-mismatch",
+            });
+          }
+          continue;
         }
-        continue;
+        // The caller cleans this mesh and checks it again.
+        provisionalElementIds.add(item.elementId);
       }
     }
     if (triangles + item.owner.triangles > maxOutputTriangles) {
@@ -2623,6 +2650,7 @@ export function buildRevit2027NativeMeshScene(
     triangles,
     truncated,
     boundsMismatches,
+    provisionalElementIds,
     missingBounds,
     unrepresentedElements,
     carrierComposedItems,
