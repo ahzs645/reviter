@@ -499,6 +499,23 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     elementBounds,
     renderedWallProxyPreview,
   );
+  // The proxy that replaces a native wall is also cut around the curtain-wall
+  // wrappers standing in the wall. Where that cut leaves nothing, the native
+  // mesh stays: three UNBC walls were otherwise replaced by a proxy that was
+  // never drawn.
+  if (nativeWallProxyReplacements.size && displaySelection.openingWrappers.length) {
+    const cutProxies = buildBoundsMeshes(
+      elementBounds.filter((record) => nativeWallProxyReplacements.has(record.elementId)),
+      origin,
+      displaySelection.openingWrappers,
+      proxyMaterialIndexByElement,
+      hostedOpeningsByWall,
+    );
+    const drawn = meshBoundsByElement(cutProxies, origin, nativeWallProxyReplacements);
+    for (const elementId of nativeWallProxyReplacements) {
+      if (!drawn.has(elementId)) nativeWallProxyReplacements.delete(elementId);
+    }
+  }
   if (nativeWallProxyReplacements.size) {
     nativeMeshScene.meshes = excludeMeshElementIds(
       nativeMeshScene.meshes,
