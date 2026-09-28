@@ -19,7 +19,7 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { fileClassFieldNames, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slots of the asset property family. */
 export const REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS = {
@@ -174,6 +174,14 @@ const OWN_FIELDS: Record<
   },
   APropertyBoolean: (reader) => reader.bool(),
   APropertyDistance: (reader) => {
+    // The 2019 and 2020 schemas declare version 0: `m_value`, then `m_unit`,
+    // an int32 unit enum, where 2021 on declare the unit as a ForgeTypeId
+    // before the value.
+    if (fileClassFieldNames(REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS.APropertyDistance)?.[0] === "m_value") {
+      const value = reader.f64();
+      reader.i32(); // m_unit
+      return value;
+    }
     reader.string(); // m_unitTypeId, an inline ForgeTypeId
     return reader.f64();
   },

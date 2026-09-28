@@ -9,8 +9,19 @@
  *
  * The decoder is deliberately release-gated and checks the complete stream
  * shapes plus temporal invariants before formatting any UniqueId.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`)
+ * `Global/History` has the same shape under an older format number in its
+ * first two bytes (`0x045d` in 2019 up to `0x04dc` in 2023, against `0x0552`
+ * in 2027), and an `ElemTable` row is 28 bytes from byte 30: `[i32 owner][i32
+ * id][i32 original id][u32 creation][u32 last modification][u32 last user
+ * modification][u32]`. On the 2023 RAC sample every one of the 5,092 elements
+ * Autodesk's capture of the 2025 copy gives a UniqueId has that UniqueId.
+ * The 2024 and 2025 format numbers are not admitted: their files are not
+ * checked here.
  */
-import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { readsElementRecordLayout, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const HISTORY_PREFIX = [
   0x52, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00,
@@ -28,6 +39,17 @@ const MAX_HISTORY_ITEMS = 1_000_000;
 const ELEMENT_RECORD_START = 34;
 const ELEMENT_RECORD_BYTES = 40;
 const ELEMENT_TABLE_SUFFIX_BYTES = 36;
+const NARROW_ELEMENT_RECORD_START = 30;
+const NARROW_ELEMENT_RECORD_BYTES = 28;
+const NARROW_ELEMENT_TABLE_SUFFIX_BYTES = 23;
+/** `Global/History` format numbers of the 2019 to 2023 releases. */
+const NARROW_HISTORY_FORMATS = new Set([0x045d, 0x0468, 0x0482, 0x04a2, 0x04dc]);
+
+function narrowIdentityLayout(revitVersion: number): boolean {
+  return !usesRevit2027RecordLayout(revitVersion) &&
+    readsElementRecordLayout(revitVersion) &&
+    narrowElementIds();
+}
 const MAX_ELEMENT_RECORDS = 10_000_000;
 const NO_EPISODE = 0xffff_ffff;
 
@@ -39,7 +61,7 @@ export type RevitEpisode = {
 };
 
 export type RevitDocumentHistory = {
-  format: "revit-2027-history-v0x10552";
+  format: "revit-2027-history-v0x10552" | "revit-2019-2023-history";
   nextLocalSequenceNumber: number;
   subsequenceNumberDeficit: number;
   documentGuidSlots: string[];
@@ -60,7 +82,7 @@ export type NativeElementIdentity = {
 };
 
 export type NativeIdentityDecode = {
-  format: "revit-2027-native-identity";
+  format: "revit-2027-native-identity" | "revit-2019-2023-native-identity";
   declaredRecordCount: number;
   decodedIdentityCount: number;
   skippedLeadingRecordCount: 1;
@@ -119,8 +141,16 @@ export function decodeRevitDocumentHistory(
   data: Uint8Array,
   revitVersion: number,
 ): RevitDocumentHistory | NativeIdentityFailure {
-  if (!usesRevit2027RecordLayout(revitVersion)) return unsupported(`unsupported Revit release ${revitVersion}`);
-  if (data.byteLength < 128 || !matches(data, 0, HISTORY_PREFIX)) {
+  const narrow = narrowIdentityLayout(revitVersion);
+  if (!usesRevit2027RecordLayout(revitVersion) && !narrow) {
+    return unsupported(`unsupported Revit release ${revitVersion}`);
+  }
+  const header = narrow
+    ? data.byteLength >= 128 &&
+      NARROW_HISTORY_FORMATS.has(data[0]! | (data[1]! << 8)) &&
+      matches(data, 2, HISTORY_PREFIX.slice(2))
+    : data.byteLength >= 128 && matches(data, 0, HISTORY_PREFIX);
+  if (!header) {
     return unsupported("Global/History does not have the measured 2027 header");
   }
 
@@ -200,7 +230,7 @@ export function decodeRevitDocumentHistory(
   episodes.sort((left, right) => left.episodeId - right.episodeId);
 
   return {
-    format: "revit-2027-history-v0x10552",
+    format: narrow ? "revit-2019-2023-history" : "revit-2027-history-v0x10552",
     nextLocalSequenceNumber,
     subsequenceNumberDeficit,
     documentGuidSlots,
@@ -228,6 +258,7 @@ export function decodeRevitNativeIdentities(
   history: RevitDocumentHistory,
   revitVersion: number,
 ): NativeIdentityDecode | NativeIdentityFailure {
+  if (narrowIdentityLayout(revitVersion)) return decodeNarrowNativeIdentities(data, history);
   if (!usesRevit2027RecordLayout(revitVersion)) return unsupported(`unsupported Revit release ${revitVersion}`);
   if (data.byteLength < ELEMENT_RECORD_START + ELEMENT_TABLE_SUFFIX_BYTES) {
     return unsupported("Global/ElemTable is shorter than the measured 2027 framing");
@@ -318,6 +349,91 @@ export function decodeRevitNativeIdentities(
 
   return {
     format: "revit-2027-native-identity",
+    declaredRecordCount,
+    decodedIdentityCount,
+    skippedLeadingRecordCount: 1,
+    identities,
+  };
+}
+
+/** The same join over the 2019-2023 element table's 28-byte rows. */
+function decodeNarrowNativeIdentities(
+  data: Uint8Array,
+  history: RevitDocumentHistory,
+): NativeIdentityDecode | NativeIdentityFailure {
+  if (data.byteLength < NARROW_ELEMENT_RECORD_START + NARROW_ELEMENT_TABLE_SUFFIX_BYTES) {
+    return unsupported("Global/ElemTable is shorter than the 2019-2023 framing");
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const declaredRecordCount = view.getUint32(2, true);
+  if (declaredRecordCount < 2 || declaredRecordCount > MAX_ELEMENT_RECORDS) {
+    return unsupported(`implausible element record count ${declaredRecordCount}`);
+  }
+  const decodedIdentityCount = declaredRecordCount - 1;
+  const expectedBytes =
+    NARROW_ELEMENT_RECORD_START +
+    decodedIdentityCount * NARROW_ELEMENT_RECORD_BYTES +
+    NARROW_ELEMENT_TABLE_SUFFIX_BYTES;
+  if (expectedBytes !== data.byteLength) {
+    return unsupported(
+      `element count and stream length disagree (${expectedBytes} != ${data.byteLength})`,
+    );
+  }
+
+  const episodeById = new Map(history.episodes.map((episode) => [episode.episodeId, episode]));
+  const elementIds = new Set<number>();
+  const uniqueIds = new Set<string>();
+  const identities: NativeElementIdentity[] = [];
+  for (let index = 0; index < decodedIdentityCount; index += 1) {
+    const byteOffset = NARROW_ELEMENT_RECORD_START + index * NARROW_ELEMENT_RECORD_BYTES;
+    const elementId = view.getInt32(byteOffset + 4, true);
+    const originalElementId = view.getInt32(byteOffset + 8, true);
+    if (elementId < 1 || originalElementId < 1) {
+      return unsupported(`element row ${index} contains an invalid id`);
+    }
+    if (elementIds.has(elementId)) return unsupported(`duplicate element id ${elementId}`);
+    elementIds.add(elementId);
+
+    const creationEpisodeId = view.getUint32(byteOffset + 12, true);
+    const lastModificationEpisodeId = view.getUint32(byteOffset + 16, true);
+    const rawLastUserEpisodeId = view.getUint32(byteOffset + 20, true);
+    const creationEpisode = episodeById.get(creationEpisodeId);
+    if (!creationEpisode) {
+      return unsupported(
+        `element ${elementId} creation episode ${creationEpisodeId} is unresolved`,
+      );
+    }
+    if (
+      !episodeById.has(lastModificationEpisodeId) ||
+      lastModificationEpisodeId < creationEpisodeId
+    ) {
+      return unsupported(`element ${elementId} has an invalid modification episode`);
+    }
+    if (
+      rawLastUserEpisodeId !== NO_EPISODE &&
+      (!episodeById.has(rawLastUserEpisodeId) ||
+        rawLastUserEpisodeId < creationEpisodeId)
+    ) {
+      return unsupported(`element ${elementId} has an invalid user-modification episode`);
+    }
+    const uniqueId = formatNativeRevitUniqueId(creationEpisode.guid, originalElementId);
+    if (uniqueIds.has(uniqueId)) return unsupported(`duplicate native UniqueId ${uniqueId}`);
+    uniqueIds.add(uniqueId);
+    identities.push({
+      elementId,
+      originalElementId,
+      creationEpisodeId,
+      lastModificationEpisodeId,
+      lastUserModificationEpisodeId:
+        rawLastUserEpisodeId === NO_EPISODE ? null : rawLastUserEpisodeId,
+      episodeGuid: creationEpisode.guid,
+      uniqueId,
+      byteOffset,
+      provenance: "Global/ElemTable.ElementHistory+Global/History.Episode",
+    });
+  }
+  return {
+    format: "revit-2019-2023-native-identity",
     declaredRecordCount,
     decodedIdentityCount,
     skippedLeadingRecordCount: 1,

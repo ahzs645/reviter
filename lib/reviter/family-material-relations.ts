@@ -12,8 +12,27 @@
  *
  * The scanner returns candidates and target class ids separately. Resolution
  * is deliberately a second step so references can cross compressed chunks.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`) the
+ * same relations are four-byte ids in narrow frames. On the 2023 RAC sample,
+ * every one of the 386 symbols whose family the 2025 copy resolves carries that
+ * family's id straight after the same 14-double static tail, so the tail is
+ * the narrow path (there is no fixed offset). The geometry material ids sit at
+ * `+340` and then every 54 bytes in a `GElement` (`+356`, every 62, in 2024
+ * on), `+99` in `SysMullionFamSym` and `+97` in `SysPanelFamSym`, 36 bytes
+ * nearer the start than `+135` and `+133`. In a `GElement` the id is a face's
+ * `m_renderStyleId`, which the older `GFace` writes after `m_cutType` and
+ * `m_faceFlags` rather than before them; those two small words are required,
+ * since without them the same offsets of a differently shaped `GElement` read
+ * descriptor words and counts that can equal a low material id.
  */
-import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { scanFramedElementObjects } from "./element-objects.ts";
+import {
+  canonicalClassTag,
+  readsElementRecordLayout,
+  usesRevit2027RecordLayout,
+} from "./revit-class-tags.ts";
 
 export const REVIT_2027_FAMILY_MARKER = 0x07d9;
 export const REVIT_2027_FAMILY_SYMBOL_MARKER = 0x0810;
@@ -27,6 +46,15 @@ const MATERIAL_FIELDS = new Map<number, readonly number[]>([
   [0x10dc, [135]],
   [0x10de, [133]],
 ]);
+const NARROW_MATERIAL_FIELDS = new Map<number, readonly number[]>([
+  [0x08c6, [340, 394, 448, 502, 556, 610]],
+  [0x10dc, [99]],
+  [0x10de, [97]],
+]);
+const MAX_NARROW_ID = 0x7fff_ffff;
+const GELEMENT_MARKER = 0x08c6;
+const MAX_FACE_CUT_TYPE = 16;
+const MAX_FACE_FLAGS = 0xffff;
 
 export type FamilySymbolCandidate = {
   symbolId: number;
@@ -238,7 +266,7 @@ export function scanPersistedRelationshipCandidates(
   const familySymbolCandidates: FamilySymbolCandidate[] = [];
   const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
   const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
-  if (!usesRevit2027RecordLayout(revitVersion) || data.byteLength < 64) {
+  if (!readsElementRecordLayout(revitVersion) || data.byteLength < 64) {
     return {
       familyElementIds,
       familyDefinitions,
@@ -249,6 +277,22 @@ export function scanPersistedRelationshipCandidates(
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (!usesRevit2027RecordLayout(revitVersion) && narrowElementIds()) {
+    scanNarrowRelationshipCandidates(data, view, {
+      familyElementIds,
+      familyDefinitions,
+      familySymbolCandidates,
+      familySymbolReferenceSets,
+      geometryMaterialCandidates,
+    });
+    return {
+      familyElementIds,
+      familyDefinitions,
+      familySymbolCandidates,
+      familySymbolReferenceSets,
+      geometryMaterialCandidates,
+    };
+  }
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (view.getUint32(offset + 4, true) !== 0) continue;
     const elementId = view.getUint32(offset, true);
@@ -338,6 +382,69 @@ export function scanPersistedRelationshipCandidates(
     familySymbolReferenceSets,
     geometryMaterialCandidates,
   };
+}
+
+/**
+ * The same relations where ids are 32-bit, read from the narrow frames. A
+ * symbol's family is only the static-tail reference; a narrow id has no zero
+ * high word to make an arbitrary offset specific.
+ */
+function scanNarrowRelationshipCandidates(
+  data: Uint8Array,
+  view: DataView,
+  scan: PersistedRelationshipScan,
+): void {
+  for (const object of scanFramedElementObjects(data)) {
+    const { offset, objectLength, elementId, marker } = object;
+    const limit = offset + objectLength;
+    if (marker === REVIT_2027_FAMILY_MARKER) {
+      scan.familyElementIds.push(elementId);
+      const definition = readFamilyDefinition(view, offset, objectLength, elementId);
+      if (definition) scan.familyDefinitions.push(definition);
+    }
+    if (marker === REVIT_2027_FAMILY_SYMBOL_MARKER) {
+      const staticTailReferencePairs: number[] = [];
+      for (let referenceOffset = offset + 14; referenceOffset + 4 <= limit; referenceOffset += 1) {
+        const referencedId = view.getUint32(referenceOffset, true);
+        if (!referencedId || referencedId > MAX_NARROW_ID) continue;
+        if (hasFamilyIdStaticTail(view, offset, referenceOffset)) {
+          staticTailReferencePairs.push(referencedId, referenceOffset - offset);
+        }
+      }
+      scan.familySymbolReferenceSets.push({
+        symbolId: elementId,
+        recordOffset: offset,
+        objectLength,
+        objectMarker: REVIT_2027_FAMILY_SYMBOL_MARKER,
+        referencePairs: Uint32Array.from(staticTailReferencePairs),
+        staticTailReferencePairs: Uint32Array.from(staticTailReferencePairs),
+      });
+    }
+    const fields = NARROW_MATERIAL_FIELDS.get(marker);
+    if (!fields) continue;
+    const seen = new Set<number>();
+    for (const fieldOffset of fields) {
+      if (offset + fieldOffset + 4 > limit) continue;
+      if (
+        marker === GELEMENT_MARKER &&
+        (view.getUint32(offset + fieldOffset - 8, true) > MAX_FACE_CUT_TYPE ||
+          view.getUint32(offset + fieldOffset - 4, true) > MAX_FACE_FLAGS)
+      ) {
+        continue;
+      }
+      const materialId = view.getUint32(offset + fieldOffset, true);
+      if (!materialId || materialId > MAX_NARROW_ID || seen.has(materialId)) continue;
+      seen.add(materialId);
+      scan.geometryMaterialCandidates.push({
+        geometryId: elementId,
+        materialId,
+        recordOffset: offset,
+        fieldOffset,
+        objectLength,
+        objectMarker: marker,
+      });
+    }
+  }
 }
 
 export function resolveFamilySymbolRelations(

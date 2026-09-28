@@ -24,9 +24,23 @@ import {
   scanObjectMarkers,
 } from "../lib/reviter/element-objects.ts";
 import { scanCompoundStructureCandidates } from "../lib/reviter/compound-structure-materials.ts";
+import {
+  contentDocumentLookup,
+  familyContentDocument,
+  readContentDocuments,
+} from "../lib/reviter/content-documents.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
+import {
+  resolveUniqueFamilySymbolTargets,
+  scanPersistedRelationshipCandidates,
+} from "../lib/reviter/family-material-relations.ts";
+import {
+  resolveFamilySymbolMaterialMaps,
+  scanFamilySymbolMaterialReferenceSets,
+} from "../lib/reviter/family-symbol-materials.ts";
+import { readFamilyForm } from "../lib/reviter/family-forms.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
 import {
   REVIT_2027_INSERTABLE_INSTANCE_MARKER,
@@ -46,7 +60,16 @@ import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
+import { decodeRevit2027AssetProperty } from "../lib/reviter/revit-2027-asset-properties.ts";
+import {
+  decodeRevit2027TopRailTypeCurves,
+  REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_TOP_RAIL_TYPE_MARKER,
+} from "../lib/reviter/revit-2027-baluster-instances.ts";
+import { decodeRevitDocumentHistory, decodeRevitNativeIdentities } from "../lib/reviter/native-identity.ts";
 import { decodeRevit2027GFilling } from "../lib/reviter/revit-2027-gfilling.ts";
+import { decodeRevit2027GPolyMesh, revit2027GPolyMeshBodyBytes } from "../lib/reviter/revit-2027-gpolymesh.ts";
 import {
   decodeRevit2027GInstanceStatic,
   decodeRevit2027InstanceInfo,
@@ -58,6 +81,13 @@ import { decodeRevit2027GPoint, revit2027GPointBodyBytes } from "../lib/reviter/
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gline.ts";
 import { readRevit2027GInfo, revit2027GInfoBytes } from "../lib/reviter/revit-2027-grep-prefixes.ts";
 import { replayRevit2027GRepFifo } from "../lib/reviter/revit-2027-grep-replay.ts";
+import {
+  LIGHT_SOURCE_CATEGORY_ID,
+  readGStyleElementCategoryId,
+  REVIT_2027_GSTYLE_ELEMENT_MARKER,
+  REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT,
+  scanRevit2027GStyleElementRecords,
+} from "../lib/reviter/revit-2027-gstyle-material.ts";
 import {
   decodeRevit2027StairsElementAggregate,
   decodeRevit2027StairsRunAndLandingAggregate,
@@ -731,4 +761,203 @@ test("before 2023 a placement's geometry id is followed by m_cda, and the instan
   const tail = page(narrowFrame(211850, 0x07ef, body.out));
   const tailFrame = narrow(() => scanFramedElementObjects(tail))[0]!;
   assert.equal(narrow(() => readInstancePlacement(tail, tailFrame)), null);
+});
+
+test("a narrow FamilySymbol names its family after the 14-double static tail, and maps geometry tags in 8-byte entries", () => {
+  const symbol = (map: Array<[number, number]>, later: Array<[number, number]>) => {
+    const body = new Bytes().u32(0x0102_0304).zeros(40);
+    for (const value of [0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 4]) body.f64(value); // outline, origin, rotation centre, cut planes
+    body.u32(287257).i32(-1).zeros(24); // m_familyId, m_masterId
+    body.u32(map.length);
+    for (const [tag, id] of map) body.i32(tag).u32(id);
+    body.zeros(40);
+    // A later table of 16-byte records reads as one-entry maps of low material ids.
+    for (const [tag, id] of later) body.u32(1).i32(tag).u32(id).u32(0x0003_d000);
+    return body.zeros(24).out;
+  };
+  const data = page(
+    narrowFrame(496586, 0x0810, symbol([[111, 288295], [122, 288295]], [[101, 23], [102, 24]]), 0x1111_2222),
+    narrowFrame(677680, 0x0810, symbol([[75, 677432], [126, 0xffff_ffff]], [[3547, 24]]), 0x3333_4444),
+  );
+  const materials = new Set([23, 24, 288295, 677432]);
+  narrow(() => {
+    const scan = scanPersistedRelationshipCandidates(data, 2023);
+    assert.deepEqual(
+      resolveUniqueFamilySymbolTargets(scan.familySymbolReferenceSets, new Set([287257]), new Set([496586, 677680]))
+        .map(({ symbolId, familyId }) => [symbolId, familyId]),
+      [[496586, 287257], [677680, 287257]],
+    );
+    const maps = resolveFamilySymbolMaterialMaps(scanFamilySymbolMaterialReferenceSets(data, 2023), materials);
+    // The first map is taken over the later look-alikes; a map with an empty entry fails closed.
+    assert.deepEqual(maps.map(({ symbolId, entries }) => [symbolId, entries]), [
+      [496586, [{ geometryTag: 111, materialId: 288295 }, { geometryTag: 122, materialId: 288295 }]],
+    ]);
+  });
+  assert.deepEqual(scanPersistedRelationshipCandidates(data, 2023).familySymbolReferenceSets, []);
+});
+
+test("a narrow GElement face material follows its cut type and face flags", () => {
+  const body = (before: [number, number]) => new Bytes().zeros(340 - 14 - 8).u32(before[0]).u32(before[1]).u32(232859).zeros(300).out;
+  const data = page(
+    narrowFrame(459090, 0x08c6, body([0, 6]), 0x5555_6666),
+    narrowFrame(1030496, 0x08c6, body([0xffff_ffff, 0xffff_0212]), 0x7777_8888),
+  );
+  const candidates = narrow(() => scanPersistedRelationshipCandidates(data, 2023).geometryMaterialCandidates);
+  assert.deepEqual(candidates.map(({ geometryId, materialId, fieldOffset }) => [geometryId, materialId, fieldOffset]), [
+    [459090, 232859, 340],
+  ]);
+});
+
+test("a narrow GStyleElem is 108 bytes: its category after the queued GStyle descriptor, the GStyle in its older order", () => {
+  const body = new Bytes().u32(0).zeros(50 - 18).u32(1234567).zeros(85 - 54)
+    .i32(-1).u16(REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT) // m_pGStyle
+    .i32(LIGHT_SOURCE_CATEGORY_ID).i32(-1).i32(1) // m_categoryId, m_ownerId, m_gstyleType
+    .i32(3).u32(0x00ff_8000).i32(-3000010).i32(288295).u8(0); // pen, colour, line pattern, material, screen-sized
+  assert.equal(body.length, 106);
+  const data = page(narrowFrame(1234567, REVIT_2027_GSTYLE_ELEMENT_MARKER, body.out, 0x2468_1357));
+  narrow(() => {
+    const frame = scanFramedElementObjects(data)[0]!;
+    assert.equal(readGStyleElementCategoryId(data, frame), LIGHT_SOURCE_CATEGORY_ID);
+    const [record] = scanRevit2027GStyleElementRecords(data, 2023).records;
+    assert.equal(record?.categoryElementId, BigInt(LIGHT_SOURCE_CATEGORY_ID));
+    assert.equal(record?.materialElementId, 288295n);
+    assert.equal(record?.linePatternElementId, -3000010n);
+    assert.equal(record?.penNumber, 3);
+    assert.equal(record?.color, 0x00ff_8000);
+  });
+});
+
+test("a narrow GPolyMesh writes its flags before its two ids, and 2019-2022 add a trailing boolean", () => {
+  const body = new Bytes()
+    .i32(7).i32(0).i32(-1).u32(0) // GInfo
+    .i32(5).u16(1868) // m_pFacetedTopology, queueing a FacetedTopology0
+    .i32(3).i32(-1).i32(288295); // m_polyMeshFlags, m_interiorGStyleID, m_materialID
+  narrow(() => {
+    assert.equal(revit2027GPolyMeshBodyBytes(), 34);
+    const decoded = decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 0, 0]), 0, body.length + 2, 2027);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.value.endOffset, 34);
+    assert.equal(decoded.value.polyMeshFlags, 3);
+    assert.equal(decoded.value.materialElementId, 288295n);
+    assert.equal(decoded.value.interiorGStyleElementId, -1n);
+    assert.equal(decoded.value.topology.sourceClassSlot, 1868);
+  });
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position, declaredFieldCount: name === "GPolyMesh" ? 5 : undefined,
+  }))));
+  try {
+    narrow(() => {
+      assert.equal(revit2027GPolyMeshBodyBytes(), 35);
+      const decoded = decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 1]), 0, 35, 2027);
+      assert.equal(decoded.ok && decoded.value.endOffset, 35);
+      assert.equal(decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 2]), 0, 35, 2027).ok, false);
+    });
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
+});
+
+test("before 2021 an APropertyDistance is its value and an int32 unit", () => {
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position,
+    fieldNames: name === "APropertyDistance" ? ["m_value", "m_unit"] : undefined,
+  }))));
+  try {
+    const data = Uint8Array.from(new Bytes().utf16("width").i32(0).i32(0).f64(2).i32(1).out);
+    const decoded = decodeRevit2027AssetProperty(data, 0, data.length, 2027, "APropertyDistance");
+    assert.equal(decoded.ok, true);
+    if (decoded.ok) {
+      assert.equal(decoded.value.value, 2);
+      assert.equal(decoded.value.endOffset, data.length);
+    }
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
+});
+
+test("a narrow content document: the count 109 bytes from its GUID's start, 28-byte records, and a Family naming it 8 bytes on", () => {
+  const guid = Array.from({ length: 16 }, (_, index) => 0x10 + index);
+  const entry = new Bytes().u32(0).u16(951).i32(-1).u16(950).i32(-1);
+  entry.out.push(...guid);
+  entry.zeros(109 - 16).u32(3);
+  for (const [id, previous] of [[1031472, -1], [1031473, 1031472], [1031474, 1031473]]) {
+    entry.u32(id).u32(id).u32(808).u32(833).i32(-1).u32(0).i32(previous);
+  }
+  const index = Uint8Array.from([...entry.out, ...new Array(32).fill(0)]);
+  const family = Uint8Array.from([...new Array(20).fill(0), ...guid, ...new Bytes().u32(0x7d).u32(0x115).u32(1031472).zeros(40).out]);
+  narrow(() => {
+    const documents = readContentDocuments(index);
+    const document = documents.get(Buffer.from(guid).toString("hex"));
+    assert.deepEqual(Array.from(document?.elementIds ?? []), [1031472, 1031473, 1031474]);
+    assert.equal(familyContentDocument(family, 0, family.length, contentDocumentLookup(documents)), document);
+  });
+  assert.equal(readContentDocuments(index).size, 0);
+});
+
+test("a narrow family form: visibility, subcategory, material and cutting flag, 31 bytes after m_assocLevelId", () => {
+  const body = new Bytes()
+    .i32(0).i32(0).i32(0).i32(0).i32(0).i32(0) // six null pointers
+    .u32(0) // m_constrInfo, empty
+    .i32(-1).u16(0x0310) // m_cellList
+    .u32(1) // m_docAccess.m_pDoc
+    .u32(506161) // m_id
+    .i32(-1) // m_assocLevelId
+    .zeros(27)
+    .i32(57406).i32(-1).i32(232859).u8(1) // visibility, subcategory, material, cutting
+    .zeros(24);
+  const data = page(narrowFrame(506161, 1728, body.out, 0x1357_2468));
+  const form = narrow(() => readFamilyForm(data, scanFramedElementObjects(data)[0]!));
+  assert.deepEqual(form, {
+    elementId: 506161, cutting: true, visibilityFlags: 57406, subcategoryId: null, materialId: 232859,
+  });
+});
+
+test("a narrow TopRailType: its curve loops at +105, a four-byte owning rail id, and 16-byte-GInfo lines", () => {
+  const body = new Bytes().zeros(105 - 14)
+    .u32(2).i32(-1).u16(REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT).i32(-1).u16(REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT)
+    .u32(566600); // the owning TopRail
+  for (const height of [3, 3.5]) body.i32(-1).u16(REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT).u32(2).f64(height).f64(height);
+  for (const token of [3, 4]) body.u8(0).u32(1).i32(token).u16(REVIT_2027_GLINE_SOURCE_CLASS_SLOT);
+  for (const y of [0, 0.25]) {
+    body.i32(566601).i32(0).i32(-1).u32(0x0008_8004).f64(0).f64(10); // GInfo, end parameters
+    body.f64(0).f64(y).f64(3).f64(1).f64(0).f64(0); // origin, direction
+  }
+  const data = Uint8Array.from([...narrowFrame(566601, REVIT_2027_TOP_RAIL_TYPE_MARKER, body.out, 0x0246_8ace), 0, 0, 0, 0]);
+  narrow(() => {
+    const frame = scanFramedElementObjects(data)[0]!;
+    const decoded = decodeRevit2027TopRailTypeCurves(data, frame, 2027);
+    assert.deepEqual(decoded.ok ? "ok" : decoded.error, "ok");
+    if (!decoded.ok) return;
+    assert.equal(decoded.value.owningTopRailElementId, 566600);
+    assert.deepEqual(
+      decoded.value.loops.map((loop) => loop.segments.map(({ start, end }) => [[...start], [...end]])),
+      [[[[0, 0, 3], [10, 0, 3]]], [[[0, 0.25, 3.5], [10, 0.25, 3.5]]]],
+    );
+  });
+});
+
+test("2019 to 2023 UniqueIds: an older History format number and 28-byte ElemTable rows", () => {
+  const guid = (seed: number) => Array.from({ length: 16 }, (_, index) => (seed + index) & 0xff);
+  const history = new Bytes().u16(0x04dc).u16(1).zeros(10).u32(2).i32(0);
+  for (let slot = 0; slot < 5; slot += 1) history.out.push(...guid(0x40));
+  history.u32(0).u32(2); // no history index values; two episodes, newest first
+  history.out.push(...guid(0x90)); history.u8(0x28);
+  history.out.push(...guid(0x10)); history.u8(0x28);
+  history.u32(0);
+  const table = new Bytes().u16(0).u32(2).zeros(24) // header: two declared records, the first skipped
+    .i32(-1).i32(7).i32(7).u32(0).u32(1).u32(0xffff_ffff).u32(0)
+    .zeros(23);
+  narrow(() => {
+    const decodedHistory = decodeRevitDocumentHistory(Uint8Array.from(history.out), 2023);
+    if (decodedHistory.format === "unsupported") assert.fail(decodedHistory.reason);
+    assert.equal(decodedHistory.format, "revit-2019-2023-history");
+    const identities = decodeRevitNativeIdentities(Uint8Array.from(table.out), decodedHistory, 2023);
+    if (identities.format === "unsupported") assert.fail(identities.reason);
+    assert.equal(identities.format, "revit-2019-2023-native-identity");
+    assert.deepEqual(identities.identities.map(({ elementId, uniqueId }) => [elementId, uniqueId]), [
+      [7, "13121110-1514-1716-1819-1a1b1c1d1e1f-00000007"],
+    ]);
+  });
+  assert.equal(decodeRevitDocumentHistory(Uint8Array.from(history.out), 2023).format, "unsupported");
 });
