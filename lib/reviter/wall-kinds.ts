@@ -55,3 +55,32 @@ export function resolveWallKinds(
   }
   return kinds;
 }
+
+/**
+ * Each wall's type: the one wall type among the ids its record references.
+ *
+ * The older type decoder (`element-types.ts`) reads walls whose type was
+ * changed after they were drawn as the type they were drawn with, and leaves
+ * some walls unnamed. The type a wall's own record references agrees with
+ * Autodesk's "Type Name" on every wall it names: 962 in the 2024 Snowdon
+ * sample, 116 in the 2025 technical school and 45 in the 2025 RAC sample.
+ * A wall that references no wall type, or two, is left out.
+ */
+export function resolveWallTypeIds(
+  wallReferences: ReadonlyMap<number, ArrayLike<number>>,
+  wallTypeKinds: ReadonlyMap<number, WallKind>,
+): Map<number, number> {
+  const typeIds = new Map<number, number>();
+  for (const [wallId, references] of wallReferences) {
+    let typeId: number | undefined;
+    let ambiguous = false;
+    for (let index = 0; index < references.length; index += 1) {
+      const id = references[index]!;
+      if (!wallTypeKinds.has(id) || id === typeId) continue;
+      if (typeId != null) ambiguous = true;
+      typeId = id;
+    }
+    if (typeId != null && !ambiguous) typeIds.set(wallId, typeId);
+  }
+  return typeIds;
+}

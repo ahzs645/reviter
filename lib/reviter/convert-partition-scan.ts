@@ -54,6 +54,7 @@ import {
   REVIT_2027_WALL_CLASSES,
   REVIT_2027_WALL_TYPE_KINDS,
   resolveWallKinds,
+  resolveWallTypeIds,
   type WallKind,
 } from "./wall-kinds.ts";
 import {
@@ -216,6 +217,8 @@ export type PartitionScan = {
   symbolReferences: Map<number, Uint32Array>;
   /** Each wall's kind, from the class of the type its record references. */
   wallKinds: Map<number, WallKind>;
+  /** Each wall's type, the one wall type its record references. */
+  wallTypeIds: Map<number, number>;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -780,6 +783,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     instanceReferences,
     symbolReferences,
     wallKinds: resolveWallKinds(wallReferences, wallTypeKinds),
+    wallTypeIds: resolveWallTypeIds(wallReferences, wallTypeKinds),
     elementBounds,
     elementObjects,
     instancePlacements,

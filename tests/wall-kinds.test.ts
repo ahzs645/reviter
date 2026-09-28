@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveWallKinds, REVIT_2027_WALL_TYPE_KINDS } from "../lib/reviter/wall-kinds.ts";
+import { resolveWallKinds, REVIT_2027_WALL_TYPE_KINDS, resolveWallTypeIds } from "../lib/reviter/wall-kinds.ts";
 import { selectDisplayBounds } from "../lib/reviter/scene.ts";
 import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
 
@@ -50,4 +50,19 @@ test("a basic wall is never held back as a curtain wall's container", () => {
   const selection = selectDisplayBounds(records);
   assert.deepEqual(selection.openingWrappers.map((record) => record.elementId), [2]);
   assert.ok(selection.records.some((record) => record.elementId === 1));
+});
+
+test("a wall's type is the one wall type its record references", () => {
+  const typeKinds = new Map<number, "basic" | "curtain" | "stacked">([[500, "basic"], [501, "basic"], [600, "curtain"]]);
+  const typeIds = resolveWallTypeIds(
+    new Map([
+      [1, Uint32Array.from([30, 500, 31])],
+      [2, Uint32Array.from([500, 500])],
+      [3, Uint32Array.from([500, 501])],
+      [4, Uint32Array.from([30, 31])],
+      [5, Uint32Array.from([600])],
+    ]),
+    typeKinds,
+  );
+  assert.deepEqual([...typeIds], [[1, 500], [2, 500], [5, 600]]);
 });
