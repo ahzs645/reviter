@@ -24,6 +24,11 @@ import {
   scanObjectMarkers,
 } from "../lib/reviter/element-objects.ts";
 import { scanCompoundStructureCandidates } from "../lib/reviter/compound-structure-materials.ts";
+import {
+  contentDocumentLookup,
+  familyContentDocument,
+  readContentDocuments,
+} from "../lib/reviter/content-documents.ts";
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
@@ -35,6 +40,7 @@ import {
   resolveFamilySymbolMaterialMaps,
   scanFamilySymbolMaterialReferenceSets,
 } from "../lib/reviter/family-symbol-materials.ts";
+import { readFamilyForm } from "../lib/reviter/family-forms.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
 import {
   REVIT_2027_INSERTABLE_INSTANCE_MARKER,
@@ -861,4 +867,41 @@ test("before 2021 an APropertyDistance is its value and an int32 unit", () => {
   } finally {
     setActiveClassTagTranslation(null);
   }
+});
+
+test("a narrow content document: the count 109 bytes from its GUID's start, 28-byte records, and a Family naming it 8 bytes on", () => {
+  const guid = Array.from({ length: 16 }, (_, index) => 0x10 + index);
+  const entry = new Bytes().u32(0).u16(951).i32(-1).u16(950).i32(-1);
+  entry.out.push(...guid);
+  entry.zeros(109 - 16).u32(3);
+  for (const [id, previous] of [[1031472, -1], [1031473, 1031472], [1031474, 1031473]]) {
+    entry.u32(id).u32(id).u32(808).u32(833).i32(-1).u32(0).i32(previous);
+  }
+  const index = Uint8Array.from([...entry.out, ...new Array(32).fill(0)]);
+  const family = Uint8Array.from([...new Array(20).fill(0), ...guid, ...new Bytes().u32(0x7d).u32(0x115).u32(1031472).zeros(40).out]);
+  narrow(() => {
+    const documents = readContentDocuments(index);
+    const document = documents.get(Buffer.from(guid).toString("hex"));
+    assert.deepEqual(Array.from(document?.elementIds ?? []), [1031472, 1031473, 1031474]);
+    assert.equal(familyContentDocument(family, 0, family.length, contentDocumentLookup(documents)), document);
+  });
+  assert.equal(readContentDocuments(index).size, 0);
+});
+
+test("a narrow family form: visibility, subcategory, material and cutting flag, 31 bytes after m_assocLevelId", () => {
+  const body = new Bytes()
+    .i32(0).i32(0).i32(0).i32(0).i32(0).i32(0) // six null pointers
+    .u32(0) // m_constrInfo, empty
+    .i32(-1).u16(0x0310) // m_cellList
+    .u32(1) // m_docAccess.m_pDoc
+    .u32(506161) // m_id
+    .i32(-1) // m_assocLevelId
+    .zeros(27)
+    .i32(57406).i32(-1).i32(232859).u8(1) // visibility, subcategory, material, cutting
+    .zeros(24);
+  const data = page(narrowFrame(506161, 1728, body.out, 0x1357_2468));
+  const form = narrow(() => readFamilyForm(data, scanFramedElementObjects(data)[0]!));
+  assert.deepEqual(form, {
+    elementId: 506161, cutting: true, visibilityFlags: 57406, subcategoryId: null, materialId: 232859,
+  });
 });

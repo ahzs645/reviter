@@ -33,7 +33,17 @@
  * its forms; the scene's envelope check decides for each placed element. The
  * 2027 UNBC project's index is not read by this layout (no document is
  * found), and none of its placed types lacks stored geometry.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`) the
+ * entry opens the same way, the count is 109 bytes from the GUID's start
+ * (117 in 2024 on) and each record is 28 bytes, `[u32 id][u32 id again][u32]
+ * [u32][i32][u32][u32 previous id]`. The 2023 RAC sample indexes the same 162 documents under
+ * the same GUIDs; 161 of them list a subset of the 2025 copy's elements (the
+ * upgrade adds some), and 76,950 of its 77,188 ids are there. A `Family`
+ * record follows the GUID with the document's first element id 8 bytes on,
+ * not 12.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
 /** `ContentMarker` and `ContentKey` in the 2027 numbering. */
@@ -46,6 +56,15 @@ const TABLE_COUNT_OFFSET = GUID_OFFSET + 117;
 const TABLE_OFFSET = TABLE_COUNT_OFFSET + 4;
 const RECORD_BYTES = 40;
 const MAX_RECORDS = 1_000_000;
+const NARROW_TABLE_COUNT_OFFSET = GUID_OFFSET + 109;
+const NARROW_TABLE_OFFSET = NARROW_TABLE_COUNT_OFFSET + 4;
+const NARROW_RECORD_BYTES = 28;
+
+function tableLayout(): { countOffset: number; tableOffset: number; recordBytes: number } {
+  return narrowElementIds()
+    ? { countOffset: NARROW_TABLE_COUNT_OFFSET, tableOffset: NARROW_TABLE_OFFSET, recordBytes: NARROW_RECORD_BYTES }
+    : { countOffset: TABLE_COUNT_OFFSET, tableOffset: TABLE_OFFSET, recordBytes: RECORD_BYTES };
+}
 
 export type ContentDocument = {
   /** The document's GUID, as its 16 stored bytes in hex. */
@@ -61,6 +80,14 @@ function hex(bytes: Uint8Array): string {
 }
 
 function recordsRestateIds(view: DataView, tableAt: number, count: number): boolean {
+  if (narrowElementIds()) {
+    for (let index = 0; index < count; index += 1) {
+      const record = tableAt + index * NARROW_RECORD_BYTES;
+      const id = view.getUint32(record, true);
+      if (id === 0 || view.getUint32(record + 4, true) !== id) return false;
+    }
+    return true;
+  }
   for (let index = 0; index < count; index += 1) {
     const record = tableAt + index * RECORD_BYTES;
     if (
@@ -82,7 +109,8 @@ export function readContentDocuments(data: Uint8Array): Map<string, ContentDocum
   const key = fileClassTag(REVIT_2027_CONTENT_KEY_CLASS);
   if (marker < 0 || key < 0) return documents;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let at = 0; at + TABLE_OFFSET <= data.byteLength; at += 1) {
+  const { countOffset, tableOffset, recordBytes } = tableLayout();
+  for (let at = 0; at + tableOffset <= data.byteLength; at += 1) {
     if (
       view.getUint16(at + 4, true) !== marker ||
       view.getInt32(at + 6, true) !== -1 ||
@@ -91,18 +119,18 @@ export function readContentDocuments(data: Uint8Array): Map<string, ContentDocum
     ) {
       continue;
     }
-    const count = view.getUint32(at + TABLE_COUNT_OFFSET, true);
-    const tableAt = at + TABLE_OFFSET;
-    if (count === 0 || count > MAX_RECORDS || tableAt + count * RECORD_BYTES > data.byteLength) continue;
+    const count = view.getUint32(at + countOffset, true);
+    const tableAt = at + tableOffset;
+    if (count === 0 || count > MAX_RECORDS || tableAt + count * recordBytes > data.byteLength) continue;
     if (!recordsRestateIds(view, tableAt, count)) continue;
     const guid = hex(data.subarray(at + GUID_OFFSET, at + GUID_OFFSET + GUID_BYTES));
     if (documents.has(guid)) continue;
     const elementIds = new Uint32Array(count);
     for (let index = 0; index < count; index += 1) {
-      elementIds[index] = view.getUint32(tableAt + index * RECORD_BYTES, true);
+      elementIds[index] = view.getUint32(tableAt + index * recordBytes, true);
     }
     documents.set(guid, { guid, elementIds });
-    at = tableAt + count * RECORD_BYTES - 1;
+    at = tableAt + count * recordBytes - 1;
   }
   return documents;
 }
@@ -126,7 +154,8 @@ export function contentDocumentLookup(
 /**
  * The one indexed document a `Family` record names, or undefined when it
  * names none or more than one. The GUID is followed in the record, 12 bytes
- * on, by the document's first element id, which is checked as well.
+ * on (8 where ids are 32-bit), by the document's first element id, which is
+ * checked as well.
  */
 export function familyContentDocument(
   data: Uint8Array,
@@ -136,13 +165,14 @@ export function familyContentDocument(
 ): ContentDocument | undefined {
   if (lookup.size === 0) return undefined;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const firstIdAfterGuid = narrowElementIds() ? 8 : 12;
   let found: ContentDocument | undefined;
   for (let at = recordOffset; at + GUID_BYTES + 16 <= recordEnd; at += 1) {
     const bucket = lookup.get(view.getUint32(at, true));
     if (!bucket) continue;
     for (const document of bucket) {
       if (hex(data.subarray(at, at + GUID_BYTES)) !== document.guid) continue;
-      if (view.getUint32(at + GUID_BYTES + 12, true) !== document.elementIds[0]) continue;
+      if (view.getUint32(at + GUID_BYTES + firstIdAfterGuid, true) !== document.elementIds[0]) continue;
       if (found && found !== document) return undefined;
       found = document;
     }

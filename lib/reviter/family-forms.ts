@@ -9,6 +9,14 @@
  * 59 bytes after `m_assocLevelId`, which `level-relations.ts` locates.
  *
  * In the 2025 RAC sample 575 forms are read this way, 69 of them voids.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`)
+ * `Element`'s fields end 31 bytes after `m_assocLevelId`, and `GenSweep`
+ * declares its fields in another order, the visibility first: `[i32
+ * visibility][i32 subcategory][i32 material][u8 cutting]`. `m_id` before the
+ * level is a four-byte id. The 2023 RAC sample holds the same 575 forms,
+ * each with the 2025 copy's subcategory, material, visibility and cutting
+ * flag.
  */
 import type { ElementObject } from "./element-objects.ts";
 import { narrowElementIds } from "./element-id-width.ts";
@@ -29,6 +37,10 @@ const SUBCATEGORY_OFFSET = 59;
 const MATERIAL_OFFSET = SUBCATEGORY_OFFSET + 8;
 const VISIBILITY_OFFSET = MATERIAL_OFFSET + 8;
 const CUTTING_OFFSET = VISIBILITY_OFFSET + 4;
+const NARROW_VISIBILITY_OFFSET = 31;
+const NARROW_SUBCATEGORY_OFFSET = NARROW_VISIBILITY_OFFSET + 4;
+const NARROW_MATERIAL_OFFSET = NARROW_SUBCATEGORY_OFFSET + 4;
+const NARROW_CUTTING_OFFSET = NARROW_MATERIAL_OFFSET + 4;
 
 export type FamilyForm = {
   elementId: number;
@@ -46,8 +58,7 @@ function optionalId(value: bigint): number | null {
 /** One form's `GenSweep` fields, or null for a frame that is not a form. */
 export function readFamilyForm(data: Uint8Array, frame: ElementObject): FamilyForm | null {
   if (!REVIT_2027_FAMILY_FORM_CLASSES.has(frame.marker)) return null;
-  // The offsets below are for 64-bit element ids (2024 on).
-  if (narrowElementIds()) return null;
+  if (narrowElementIds()) return readNarrowFamilyForm(data, frame);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const limit = Math.min(data.byteLength, frame.offset + frame.objectLength);
   const fieldOffset = associatedLevelFieldOffset(view, frame.offset, limit);
@@ -64,6 +75,26 @@ export function readFamilyForm(data: Uint8Array, frame: ElementObject): FamilyFo
     visibilityFlags: view.getInt32(level + VISIBILITY_OFFSET, true),
     subcategoryId: optionalId(view.getBigInt64(level + SUBCATEGORY_OFFSET, true)),
     materialId: optionalId(view.getBigInt64(level + MATERIAL_OFFSET, true)),
+  };
+}
+
+function readNarrowFamilyForm(data: Uint8Array, frame: ElementObject): FamilyForm | null {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const limit = Math.min(data.byteLength, frame.offset + frame.objectLength);
+  const fieldOffset = associatedLevelFieldOffset(view, frame.offset, limit, true);
+  if (fieldOffset == null) return null;
+  const level = frame.offset + fieldOffset;
+  if (view.getUint32(level - 4, true) !== frame.elementId) return null;
+  if (level + NARROW_CUTTING_OFFSET + 1 > limit) return null;
+  const cutting = data[level + NARROW_CUTTING_OFFSET];
+  if (cutting !== 0 && cutting !== 1) return null;
+  const id = (at: number) => optionalId(BigInt(view.getInt32(level + at, true)));
+  return {
+    elementId: frame.elementId,
+    cutting: cutting === 1,
+    visibilityFlags: view.getInt32(level + NARROW_VISIBILITY_OFFSET, true),
+    subcategoryId: id(NARROW_SUBCATEGORY_OFFSET),
+    materialId: id(NARROW_MATERIAL_OFFSET),
   };
 }
 
