@@ -74,7 +74,18 @@ import type { Bounds3, MeshData, Vec3 } from "./types.ts";
 import { canonicalClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
-const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
+/**
+ * The native scene's triangle budget. Of the four corpus models only the
+ * fourth reaches it: fully meshed, its scene is 1.58M triangles, and at the
+ * former 1.25M budget 97 elements it meshes were left as boxes (78) or not
+ * drawn at all (19, its 17 trees among them). Measured on that model, 2M
+ * costs no conversion time (55-58 s either way), takes its published meshes
+ * from 51.7 to 68.0 MiB and its GLB from 47.5 to 62.1 MiB, and in the studio
+ * rendered in software (SwiftShader, 1600 x 1000) takes the frames drawn
+ * while orbiting from 1.67 to 1.99 s on average. The other three models
+ * (0.19M, 0.38M and 0.90M triangles) are untouched.
+ */
+const DEFAULT_MAX_OUTPUT_TRIANGLES = 2_000_000;
 // The exact UNBC corpus has one framed GRep owner for most persisted elements,
 // including non-scene definitions encountered before a later symbol reference.
 // Keep the cap above that corpus while remaining finite and independently
@@ -2177,9 +2188,10 @@ type RenderItem = {
  *
  * Every other item is then admitted exactly as before whenever it fitted,
  * and trimmed-surface geometry only fills the budget left over. The order is
- * untouched when everything fits. One larger sample needs 1.53M output
- * triangles once its curved trims are meshed against the 1.25M cap, and in
- * arrival order 65 of its natively drawn windows fell back to boxes.
+ * untouched when everything fits. One larger sample needed 1.53M output
+ * triangles once its curved trims were meshed, against the budget of 1.25M
+ * then, and in arrival order 65 of its natively drawn windows fell back to
+ * boxes.
  */
 function admitTrimmedSurfaceItemsLast(
   items: RenderItem[],
