@@ -7,6 +7,11 @@
  * `center + radius*(cos t*x + sin t*y)`, a GCylindricalHelix adds
  * `pitchOver2Pi*t` along its axis. A GEllipse is read as the GArc
  * construction with separate radii, `center + xLen*cos t*x + yLen*sin t*y`.
+ * A GHermiteSpline is the cubic Hermite interpolant of its nodes, each node's
+ * tangent the derivative by the curve's own parameter: in the technical
+ * school's curved beams the tangents measure 45.65 to 46.67 ft per unit
+ * parameter where the chord between nodes 1/32 apart is 1.4267 to 1.4578 ft,
+ * i.e. 45.65 to 46.65 ft per unit.
  *
  * None of these is trusted on its own when it meshes a new face: the trimmed
  * surface path evaluates every trim sample on both faces that share it, so a
@@ -25,6 +30,10 @@ import {
   type Revit2027GEllipse,
 } from "./revit-2027-gellipse.ts";
 import {
+  REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
+  type Revit2027GHermiteSpline,
+} from "./revit-2027-ghermite-spline.ts";
+import {
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
   type Revit2027GLine,
 } from "./revit-2027-gline.ts";
@@ -34,7 +43,8 @@ export type Revit2027ProfileCurve =
   | { kind: "line"; curve: Revit2027GLine }
   | { kind: "arc"; curve: Revit2027GArc }
   | { kind: "ellipse"; curve: Revit2027GEllipse }
-  | { kind: "helix"; curve: Revit2027GCylindricalHelix };
+  | { kind: "helix"; curve: Revit2027GCylindricalHelix }
+  | { kind: "spline"; curve: Revit2027GHermiteSpline };
 
 export type Revit2027CurveSample = {
   point: Revit2027Point3;
@@ -47,6 +57,7 @@ export const REVIT_2027_PROFILE_CURVE_SOURCE_CLASS_SLOTS = [
   REVIT_2027_GARC_SOURCE_CLASS_SLOT,
   REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
   REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
+  REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
 ] as const;
 
 function finite(values: readonly number[]): boolean {
@@ -108,7 +119,32 @@ export function revit2027ProfileCurve(
       ? { kind: "helix", curve }
       : null;
   }
+  if (sourceClassSlot === REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT) {
+    const curve = value as Revit2027GHermiteSpline;
+    return interpolatingSpline(curve) ? { kind: "spline", curve } : null;
+  }
   return null;
+}
+
+/**
+ * A spline this evaluator reads: open, at least two finite nodes with rising
+ * parameters, and end parameters inside the nodes' own range. A periodic one
+ * would need its closing segment, which is not read.
+ */
+function interpolatingSpline(curve: Revit2027GHermiteSpline): boolean {
+  const nodes = curve.nodes;
+  if (curve.periodic || !Array.isArray(nodes) || nodes.length < 2) return false;
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]!;
+    if (!finite([...node.point, ...node.tangent, node.parameter])) return false;
+    if (index > 0 && !(node.parameter > nodes[index - 1]!.parameter)) return false;
+  }
+  const [start, end] = curve.endParameters;
+  const first = nodes[0]!.parameter;
+  const last = nodes[nodes.length - 1]!.parameter;
+  const slack = (last - first) * 1e-9;
+  return finite([start, end]) && start < end &&
+    start >= first - slack && end <= last + slack;
 }
 
 /** The persisted parameter interval of one profile curve. */
@@ -165,6 +201,8 @@ export function evaluateRevit2027ProfileCurve(
         derivative: combine(ZERO, [xDirection, -xRadius * sine], [yDirection, yRadius * cosine]),
       };
     }
+    case "spline":
+      return evaluateSpline(profile.curve, parameter);
     case "helix": {
       const { basePoint, xVector, yVector, zVector, radius, pitchOver2Pi } = profile.curve;
       return {
@@ -183,4 +221,44 @@ export function evaluateRevit2027ProfileCurve(
       };
     }
   }
+}
+
+/**
+ * The cubic Hermite segment between the two nodes around the parameter; a
+ * parameter outside the nodes continues the end segment's cubic.
+ */
+function evaluateSpline(
+  curve: Revit2027GHermiteSpline,
+  parameter: number,
+): Revit2027CurveSample {
+  const nodes = curve.nodes;
+  let low = 0;
+  let high = nodes.length - 2;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (nodes[middle]!.parameter <= parameter) low = middle;
+    else high = middle - 1;
+  }
+  const a = nodes[low]!;
+  const b = nodes[low + 1]!;
+  const h = b.parameter - a.parameter;
+  const s = (parameter - a.parameter) / h;
+  const s2 = s * s;
+  const s3 = s2 * s;
+  return {
+    point: combine(
+      ZERO,
+      [a.point, 2 * s3 - 3 * s2 + 1],
+      [a.tangent, (s3 - 2 * s2 + s) * h],
+      [b.point, -2 * s3 + 3 * s2],
+      [b.tangent, (s3 - s2) * h],
+    ),
+    derivative: combine(
+      ZERO,
+      [a.point, (6 * s2 - 6 * s) / h],
+      [a.tangent, 3 * s2 - 4 * s + 1],
+      [b.point, (-6 * s2 + 6 * s) / h],
+      [b.tangent, 3 * s2 - 2 * s],
+    ),
+  };
 }

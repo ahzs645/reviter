@@ -273,6 +273,9 @@ function profileInLocalXz(profile: Revit2027ProfileCurve): boolean {
         flat(profile.curve.xDirection[1]) &&
         flat(profile.curve.yDirection[1]);
     case "helix":
+    case "spline":
+      // A SurfRev does not hang either kind; the owner index registers them
+      // only beneath a RuledSurf.
       return false;
   }
 }
