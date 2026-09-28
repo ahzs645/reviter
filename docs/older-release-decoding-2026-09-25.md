@@ -21,20 +21,20 @@ ids, names, categories, levels and materials; the GLB for per-element geometry).
 | --- | ---: | ---: | ---: | ---: |
 | Release | 2027 | 2025 | 2025 | 2024 |
 | Autodesk-drawn elements displayed | 36,381 of 36,422 | 5,467 of 5,473 | 441 of 444 | 1,310 of 1,310 † |
-| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) ¶ | 99.85% | 99.96% | 94.1% ◊ | 96.8% |
+| … of those, drawn box within 0.5 ft of Autodesk's (centre and size) ¶ | 99.95% | 99.96% | 94.8% ◊ | 99.4% |
 | Elements drawn that Autodesk does not draw | 34 | 40 | 20 § | † |
 | Materials: name, colour and transparency exact | 94 / 94 | 186 / 186 | 174 / 174 | 220 / 220 |
 | Levels: name and elevation exact | 13 / 13 | 5 / 5 | 6 / 6 | 18 / 18 |
-| Type names equal to Autodesk's "Type Name" | 35,299 / 35,299 | 5,356 / 5,356 | 427 / 427 | 7,725 / 7,764 ‡ |
+| Type names equal to Autodesk's "Type Name" | 35,305 / 35,305 | 5,379 / 5,379 | 432 / 432 | 7,875 / 7,890 ‡ |
 | Time to the ready studio (headless Chromium) | 57 s | 13 s | 12 s | 54 s |
 
 ¶ Each Autodesk box is taken from its node's transformed vertices, and from its triangles only: an element the capture draws only as lines (a 2D family, a model line) is not counted as drawn (sections 9 and 11). Before section 11: 99.7%, 99.5%, 94.1% and 96.7%.
 
-◊ The RAC capture is clipped by its 3D view's section box (section 11). Clipped to the same box, 418 of 438 (95.4%).
+◊ The RAC capture is clipped by its 3D view's section box (section 11). Clipped to the same box, 421 of 438 (96.1%).
 
 § 11 are RPC trees the Autodesk Viewer lists but draws no geometry for; five are stair runs, landings and treads; three are a 2D shower-stall family's plan-only face; one is a wall. The 41 elements UNBC's capture draws and the studio does not are all stair assemblies, whose triangles the studio gives to their runs and landings.
 
-‡ The 39 that differ are walls, from the older wall-type decoder (`element-types.ts`), not the name entries below; they look like walls whose type was changed after they were drawn.
+‡ The 15 that differ are walls that reference no wall type, or two, and keep the older wall-type decoder's reading (`element-types.ts`; section 11).
 
 † Snowdon's Autodesk capture is a walls-only coordination view (1,061 walls and
 249 wall sweeps), so it scores only those. The studio draws 9,247 elements
@@ -265,6 +265,13 @@ Levels (names and elevations) are equal to the 2025 file's in every release. Aga
 - **Revit 2019 to 2023** now draw RAC as the 2025 file does: 441 of 444 Autodesk-drawn elements, 415 within 0.5 ft, in both the 2019 and the 2023 copies (section 10's additions: family materials, graphics styles, polymeshes and assets, family documents, railing types).
 - **Measuring.** The RAC capture is clipped by its 3D view's section box: every Autodesk box ends at x = ±82.73, y = ±115.43 or z = −37.72, and its terrain is filled solid down to the box's floor. Seven of RAC's 26 differences are that clip (two walls, a pad, a foundation, part of a wall, and the terrain). `cmp-drawn.py` scores the clipped figure with `CLIP=1`.
 
+- **Wall types.** A wall's record references its current type among the ids it holds, the one of them framed as a wall type. That type's name agrees with Autodesk's on every wall it names (962 in Snowdon, 116 in the technical school, 45 in RAC); the older decoder read walls whose type had been changed as the type they were drawn with, and left others unnamed.
+- **Geometry the saved view does not draw** (merged from the geometry follow-up). A family's geometry can hold alternatives for several types, and each type persists which ones it draws: the groups it leaves out carry bit `0x80` in their `GInfo` flags (`0x880e4` against `0x88004`). RAC's track lights store twelve heads for every track length this way; a face, polymesh or nested instance under a flagged node is now neither drawn nor required for its owner to be complete, and all seven track lights draw within 0.001 ft of Autodesk's boxes. The same bit marks each wall's four reference planes: leaving them out brings 92 technical-school walls from 0.23 to 0.50 ft off to within 0.001 ft, and turns 1,189 UNBC walls from rebuilt to native. Checked against each geometry's stored world extents, dropping the flagged faces is what makes 35, 121, 919 and 5,636 owners' meshes match them (RAC, school, Snowdon, UNBC). Native walls are no longer cut around their doors and windows either: the wall bodies already carry their openings, and the cut removed jambs wherever a door's box reached past its opening.
+- **Ruled faces between spline rails, and a fallback triangulation.** The technical school's curved beam 201308 has side faces ruled between two splines, now evaluated; 16 curved walls, 10 hardscape elements and 2 top rails in Snowdon and 2 UNBC ramps mesh with it. Where ear clipping fails its own checks, a constrained Delaunay triangulation re-covers the region: 8 of Snowdon's 10 such faces now mesh, and the other two trims really do cross themselves.
+- **Triangle budget.** Only Snowdon reached the scene's 1.25M-triangle cap (it needs 1.58M). The cap is now 2M: its 17 trees and 78 more elements draw natively, for 16 MiB more mesh data and no measurable change in load time.
+
+Scores after these (the table above): UNBC 36,364 of 36,381 within 0.5 ft, the technical school 5,465 of 5,467, RAC 418 of 441 (the 2019 and 2023 copies the same), Snowdon 1,302 of 1,310.
+
 What these looked at and left:
 
 - **Family types in another size.** Every remaining case differs in more than one direction: RAC's windows are a 3.3 × 3.35 ft document where the placed type is 4.9 × 8.9 ft, the pocket doors' document is a different width, and Snowdon's 86 pendants take their drop length from an instance parameter. Drawing them needs Revit's parametric regeneration, which the file does not store; they keep their boxes. (Snowdon's seven island sinks, also declined there, are members of an unplaced group definition and are not drawn in any case.)
@@ -274,11 +281,11 @@ What these looked at and left:
 
 ## What is still not right
 
-- **Curved faces** now mesh whatever their trim (merged from the curved-face work: every face-meshing cause is gone from RAC's and the technical school's breakdowns). What still keeps those two files' family instances as boxes: types that store no geometry and whose family document holds another type's size (RAC 23, Snowdon 86 pendants, including RAC's 15 windows; section 11); RAC's 7 track lights, whose family carries geometry for several track lengths behind conditions not yet decoded, so the mesh spans 12 ft of a 4.4 ft fixture and the envelope check declines it; and one faucet.
+- **Curved faces** now mesh whatever their trim (merged from the curved-face work: every face-meshing cause is gone from RAC's and the technical school's breakdowns). What still keeps those two files' family instances as boxes: types that store no geometry and whose family document holds another type's size (RAC 23, including its 15 windows, and Snowdon's 86 pendants; section 11). RAC's track lights and faucet now draw (section 11).
 - **Drawn but not drawn by Autodesk:** the technical school's 6 handrail-termination templates, placed at the internal origin by their own records. Their created phase is unset, but so is that of Snowdon's 2,608 railing supports, which are real geometry, so phase alone does not separate them.
-- **Scene budget.** When a scene exceeds its triangle budget, items with trimmed curved faces are admitted last, smallest first; Snowdon's large trees stay boxes for that reason.
+- **Scene budget.** When a scene exceeds its triangle budget (now 2M), items with trimmed curved faces are admitted last, smallest first. None of the four models reaches it.
 - **Not drawn:** planting, entourage and terrain are drawn only where their stored mesh decodes (their boxes are not their shape); rebar, room separation lines and UNBC's stair assemblies are left out on purpose. Terrain is drawn as its stored surface, where the Autodesk capture adds a base down to -37.7 ft and crops it.
-- **Snowdon's 39 wall types** read from the older decoder as the type they were drawn with.
+- **Snowdon's 15 wall types** that differ from Autodesk's are walls whose record references no wall type, or two.
 - **Plan-only family geometry** is drawn in 3D where a family keeps it in its geometry: RAC's three 2D shower stalls show as flat faces. Telling it apart needs the geometry's visibility conditions.
 - **Revit 2019 to 2023** (section 10): the narrow `BaseRailingSym` baluster layout is the schema's and is checked against synthetic bytes only, since no older sample holds a baluster set whose 2024-on copy decodes (RAC's fail on a non-empty `m_GRepLoops` in every release). The `GElement` face-material fields are read at fixed offsets only for the face layout they were measured on, and 2 of the 2025 file's 90 geometry-material ids are missed that way. The regeneration-history entry size in narrow `ElementHeader`s is assumed, not measured: every sample's count is zero. Revit 2018 and older are not claimed; no sample was available.
 - **The optional Rust reader** stops on the 2024 and 2027 samples. Nothing shown depends on it.
