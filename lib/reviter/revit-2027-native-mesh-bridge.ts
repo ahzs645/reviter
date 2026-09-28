@@ -4,6 +4,7 @@ import {
   meshRevit2027PolyMeshReplay,
   type Revit2027PolyMeshFace,
 } from "./revit-2027-polymesh-owner-mesh.ts";
+import { revit2027UndrawnReplayIndices } from "./revit-2027-undrawn-geometry.ts";
 import { frameHeaderBytes } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
@@ -1854,9 +1855,32 @@ export function createRevit2027NativeMeshCollector(
       return;
     }
 
+    // What the saved view leaves undrawn is neither drawn nor owed a mesh.
+    // See `revit-2027-undrawn-geometry.ts`.
+    const undrawn = revit2027UndrawnReplayIndices(replayed.value.spans);
+    if (!undrawn) {
+      state.definitionFailures.set(
+        ownerElementId,
+        "GRep replay parent links do not resolve to its own nodes",
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
     const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+    const drawnTokens = new Set(
+      [...faceSpans.drawableTokens].filter((token) => {
+        const span = faceSpans.spansByToken.get(token);
+        return !span || !undrawn.has(span.replayIndex);
+      }),
+    );
+    const drawnPolyMeshes = polyMeshes.value.filter(
+      (face) => !undrawn.has(face.span.replayIndex),
+    );
+    const nestedInstances = nested.value.filter(
+      (instance) => !undrawn.has(instance.instanceReplayIndex),
+    );
     const faceCoverage = drawableFaceCoverage(
-      faceSpans.drawableTokens,
+      drawnTokens,
       meshed.value.faceMeshes,
       meshed.value.issues,
     );
@@ -1864,7 +1888,7 @@ export function createRevit2027NativeMeshCollector(
     // polymeshes is complete; one that also has faces is complete when they
     // are.
     const coverage: Revit2027DrawableFaceCoverage =
-      faceCoverage.code === "no-drawable-faces" && polyMeshes.value.length > 0
+      faceCoverage.code === "no-drawable-faces" && drawnPolyMeshes.length > 0
         ? { ...faceCoverage, complete: true, code: "complete" }
         : faceCoverage;
     if (directRoot) {
@@ -1875,11 +1899,11 @@ export function createRevit2027NativeMeshCollector(
     const compacted = coverage.complete
       ? compactFaces(
           meshed.value.faceMeshes.filter((face) =>
-            faceSpans.drawableTokens.has(face.faceToken),
+            drawnTokens.has(face.faceToken),
           ),
           faceSpans,
           bindings.value,
-          polyMeshes.value,
+          drawnPolyMeshes,
           replayed.value.spans,
         )
       : { ok: true as const, value: [] };
@@ -1905,7 +1929,7 @@ export function createRevit2027NativeMeshCollector(
     const localComplete =
       coverage.complete ||
       (coverage.code === "no-drawable-faces" &&
-        nested.value.length > 0);
+        nestedInstances.length > 0);
     const meshIssueDetails = [
       ...new Set(
         meshed.value.issues
@@ -1948,12 +1972,12 @@ export function createRevit2027NativeMeshCollector(
     }
     const definitionBytes = estimatedDefinitionBytes(
       geometry,
-      nested.value,
+      nestedInstances,
     );
     if (
       state.definitions.size >= maxOwners ||
       state.storedTriangles + triangles > maxStoredTriangles ||
-      state.nestedLinks + nested.value.length > maxNestedLinks ||
+      state.nestedLinks + nestedInstances.length > maxNestedLinks ||
       state.storedBytes + definitionBytes > maxStoredBytes
     ) {
       state.truncated = true;
@@ -1979,10 +2003,10 @@ export function createRevit2027NativeMeshCollector(
       geometry,
       localComplete,
       localFailureDetail,
-      nestedInstances: nested.value,
+      nestedInstances,
       spiralReplay:
         coverage.code === "no-drawable-faces" &&
-          nested.value.length > 0
+          nestedInstances.length > 0
           ? replayed.value
           : null,
       conditionalStateCarrier:
@@ -1992,7 +2016,7 @@ export function createRevit2027NativeMeshCollector(
     if (directRoot && coverage.complete) state.completeOwners += 1;
     state.storedTriangles += triangles;
     state.storedBytes += definitionBytes;
-    state.nestedLinks += nested.value.length;
+    state.nestedLinks += nestedInstances.length;
   };
 
   return {
