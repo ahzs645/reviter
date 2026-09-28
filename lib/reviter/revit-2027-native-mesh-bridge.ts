@@ -4,6 +4,7 @@ import {
   meshRevit2027PolyMeshReplay,
   type Revit2027PolyMeshFace,
 } from "./revit-2027-polymesh-owner-mesh.ts";
+import { revit2027UndrawnReplayIndices } from "./revit-2027-undrawn-geometry.ts";
 import { frameHeaderBytes } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
@@ -73,7 +74,18 @@ import type { Bounds3, MeshData, Vec3 } from "./types.ts";
 import { canonicalClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
-const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
+/**
+ * The native scene's triangle budget. Of the four corpus models only the
+ * fourth reaches it: fully meshed, its scene is 1.58M triangles, and at the
+ * former 1.25M budget 97 elements it meshes were left as boxes (78) or not
+ * drawn at all (19, its 17 trees among them). Measured on that model, 2M
+ * costs no conversion time (55-58 s either way), takes its published meshes
+ * from 51.7 to 68.0 MiB and its GLB from 47.5 to 62.1 MiB, and in the studio
+ * rendered in software (SwiftShader, 1600 x 1000) takes the frames drawn
+ * while orbiting from 1.67 to 1.99 s on average. The other three models
+ * (0.19M, 0.38M and 0.90M triangles) are untouched.
+ */
+const DEFAULT_MAX_OUTPUT_TRIANGLES = 2_000_000;
 // The exact UNBC corpus has one framed GRep owner for most persisted elements,
 // including non-scene definitions encountered before a later symbol reference.
 // Keep the cap above that corpus while remaining finite and independently
@@ -1854,9 +1866,32 @@ export function createRevit2027NativeMeshCollector(
       return;
     }
 
+    // What the saved view leaves undrawn is neither drawn nor owed a mesh.
+    // See `revit-2027-undrawn-geometry.ts`.
+    const undrawn = revit2027UndrawnReplayIndices(replayed.value.spans);
+    if (!undrawn) {
+      state.definitionFailures.set(
+        ownerElementId,
+        "GRep replay parent links do not resolve to its own nodes",
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
     const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+    const drawnTokens = new Set(
+      [...faceSpans.drawableTokens].filter((token) => {
+        const span = faceSpans.spansByToken.get(token);
+        return !span || !undrawn.has(span.replayIndex);
+      }),
+    );
+    const drawnPolyMeshes = polyMeshes.value.filter(
+      (face) => !undrawn.has(face.span.replayIndex),
+    );
+    const nestedInstances = nested.value.filter(
+      (instance) => !undrawn.has(instance.instanceReplayIndex),
+    );
     const faceCoverage = drawableFaceCoverage(
-      faceSpans.drawableTokens,
+      drawnTokens,
       meshed.value.faceMeshes,
       meshed.value.issues,
     );
@@ -1864,7 +1899,7 @@ export function createRevit2027NativeMeshCollector(
     // polymeshes is complete; one that also has faces is complete when they
     // are.
     const coverage: Revit2027DrawableFaceCoverage =
-      faceCoverage.code === "no-drawable-faces" && polyMeshes.value.length > 0
+      faceCoverage.code === "no-drawable-faces" && drawnPolyMeshes.length > 0
         ? { ...faceCoverage, complete: true, code: "complete" }
         : faceCoverage;
     if (directRoot) {
@@ -1875,11 +1910,11 @@ export function createRevit2027NativeMeshCollector(
     const compacted = coverage.complete
       ? compactFaces(
           meshed.value.faceMeshes.filter((face) =>
-            faceSpans.drawableTokens.has(face.faceToken),
+            drawnTokens.has(face.faceToken),
           ),
           faceSpans,
           bindings.value,
-          polyMeshes.value,
+          drawnPolyMeshes,
           replayed.value.spans,
         )
       : { ok: true as const, value: [] };
@@ -1905,7 +1940,7 @@ export function createRevit2027NativeMeshCollector(
     const localComplete =
       coverage.complete ||
       (coverage.code === "no-drawable-faces" &&
-        nested.value.length > 0);
+        nestedInstances.length > 0);
     const meshIssueDetails = [
       ...new Set(
         meshed.value.issues
@@ -1948,12 +1983,12 @@ export function createRevit2027NativeMeshCollector(
     }
     const definitionBytes = estimatedDefinitionBytes(
       geometry,
-      nested.value,
+      nestedInstances,
     );
     if (
       state.definitions.size >= maxOwners ||
       state.storedTriangles + triangles > maxStoredTriangles ||
-      state.nestedLinks + nested.value.length > maxNestedLinks ||
+      state.nestedLinks + nestedInstances.length > maxNestedLinks ||
       state.storedBytes + definitionBytes > maxStoredBytes
     ) {
       state.truncated = true;
@@ -1979,10 +2014,10 @@ export function createRevit2027NativeMeshCollector(
       geometry,
       localComplete,
       localFailureDetail,
-      nestedInstances: nested.value,
+      nestedInstances,
       spiralReplay:
         coverage.code === "no-drawable-faces" &&
-          nested.value.length > 0
+          nestedInstances.length > 0
           ? replayed.value
           : null,
       conditionalStateCarrier:
@@ -1992,7 +2027,7 @@ export function createRevit2027NativeMeshCollector(
     if (directRoot && coverage.complete) state.completeOwners += 1;
     state.storedTriangles += triangles;
     state.storedBytes += definitionBytes;
-    state.nestedLinks += nested.value.length;
+    state.nestedLinks += nestedInstances.length;
   };
 
   return {
@@ -2164,9 +2199,10 @@ type RenderItem = {
  *
  * Every other item is then admitted exactly as before whenever it fitted,
  * and trimmed-surface geometry only fills the budget left over. The order is
- * untouched when everything fits. One larger sample needs 1.53M output
- * triangles once its curved trims are meshed against the 1.25M cap, and in
- * arrival order 65 of its natively drawn windows fell back to boxes.
+ * untouched when everything fits. One larger sample needed 1.53M output
+ * triangles once its curved trims were meshed, against the budget of 1.25M
+ * then, and in arrival order 65 of its natively drawn windows fell back to
+ * boxes.
  */
 function admitTrimmedSurfaceItemsLast(
   items: RenderItem[],

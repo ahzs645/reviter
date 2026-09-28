@@ -283,23 +283,6 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     openings.push(opening);
     hostedOpeningsByWall.set(host.elementId, openings);
   }
-  const relativeHostedOpeningsByWall = new Map(
-    [...hostedOpeningsByWall].map(([hostId, openings]) => [
-      hostId,
-      openings.map(({ boundsFeet }) => ({
-        min: {
-          x: boundsFeet.min.x - origin.x,
-          y: boundsFeet.min.y - origin.y,
-          z: boundsFeet.min.z - origin.z,
-        },
-        max: {
-          x: boundsFeet.max.x - origin.x,
-          y: boundsFeet.max.y - origin.y,
-          z: boundsFeet.max.z - origin.z,
-        },
-      })),
-    ]),
-  );
   // Only definitions proven to be referenced by persisted placements may
   // leave the collector as reusable local geometry. The collector composes
   // their exact nested GInstance closure atomically and never publishes
@@ -436,10 +419,20 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     (total, mesh) => total + mesh.indices.length / 3,
     0,
   );
+  // A native wall is not cut by its hosted doors and windows. Revit saves the
+  // wall's body already cut; what filled its openings was the wall's
+  // reference planes, which the saved view does not draw and the native route
+  // now leaves out (`revit-2027-undrawn-geometry.ts`). With them gone, a line
+  // across each native host through its hosted opening's centre passes
+  // through a hole for 16 of the 2025 RAC sample's 19, all 53 of the
+  // technical school's, 177 of the fourth sample's 187 and all 1,787 of the
+  // 2027 campus model's; the others meet the wall's own pocket and sill
+  // steps. Cutting the door's or window's box out again took wall with it
+  // wherever the box reaches past the opening: 16 campus walls lost their
+  // jambs up to the door head, one 13.8 ft wall drawn only from 7.2 ft up.
   const nativeMeshCleanup = cleanNativeMeshScene(
     nativeMeshScene.meshes,
     {
-      hostedOpeningsByWall: relativeHostedOpeningsByWall,
       preferredMaterialIdsByElement:
         preferredWallMaterialIdsByElement,
       wallElementIds: new Set(

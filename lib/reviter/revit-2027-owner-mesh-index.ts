@@ -15,6 +15,7 @@ import {
 import { REVIT_2027_GARC_SOURCE_CLASS_SLOT } from "./revit-2027-garc.ts";
 import { REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT } from "./revit-2027-gcylindrical-helix.ts";
 import { REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT } from "./revit-2027-gellipse.ts";
+import { REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT } from "./revit-2027-ghermite-spline.ts";
 import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "./revit-2027-gline.ts";
 import { REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT } from "./revit-2027-hermite-surface.ts";
 import type {
@@ -153,6 +154,12 @@ const BUILTIN_SURFACES: readonly [
         },
         {
           sourceClassSlot: REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+          requirePositiveToken: true,
+        },
+        // The technical school's curved beams rule pairs of GHermiteSpline
+        // rails (six faces per beam type).
+        {
+          sourceClassSlot: REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
           requirePositiveToken: true,
         },
       ],
