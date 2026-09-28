@@ -51,6 +51,12 @@ import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "./level-definitions
 /** `Family` in the 2027 numbering. */
 const REVIT_2027_FAMILY_CLASS = 2009;
 import {
+  REVIT_2027_WALL_CLASSES,
+  REVIT_2027_WALL_TYPE_KINDS,
+  resolveWallKinds,
+  type WallKind,
+} from "./wall-kinds.ts";
+import {
   contentDocumentLookup,
   familyContentDocument,
   type ContentDocument,
@@ -208,6 +214,8 @@ export type PartitionScan = {
   instanceReferences: Map<number, Uint32Array>;
   /** The element ids each family symbol's own record references. */
   symbolReferences: Map<number, Uint32Array>;
+  /** Each wall's kind, from the class of the type its record references. */
+  wallKinds: Map<number, WallKind>;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -318,6 +326,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const rawNameEntries: NameEntry[] = [];
   const instanceReferences = new Map<number, Uint32Array>();
   const symbolReferences = new Map<number, Uint32Array>();
+  const wallReferences = new Map<number, Uint32Array>();
+  const wallTypeKinds = new Map<number, WallKind>();
   const elementBounds: ElementBoundsRecord[] = [];
   const elementObjects: ElementObject[] = [];
   const instancePlacements = new Map<number, InstancePlacement>();
@@ -423,6 +433,15 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
               : null;
           if (target && !target.has(frame.elementId)) {
             target.set(frame.elementId, referencedElementIds(inflated, frame));
+          }
+        }
+      }
+      if (pageFrames) {
+        for (const frame of pageFrames.frames) {
+          const typeKind = REVIT_2027_WALL_TYPE_KINDS.get(frame.marker);
+          if (typeKind) wallTypeKinds.set(frame.elementId, typeKind);
+          else if (REVIT_2027_WALL_CLASSES.has(frame.marker) && !wallReferences.has(frame.elementId)) {
+            wallReferences.set(frame.elementId, referencedElementIds(inflated, frame));
           }
         }
       }
@@ -760,6 +779,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     nameEntries: resolveNameEntries(rawNameEntries),
     instanceReferences,
     symbolReferences,
+    wallKinds: resolveWallKinds(wallReferences, wallTypeKinds),
     elementBounds,
     elementObjects,
     instancePlacements,

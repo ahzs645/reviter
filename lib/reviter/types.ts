@@ -371,6 +371,8 @@ export type ElementBoundsRecord = {
     | "bounds-fallback"
     | "not-rendered-helper";
   boundsFeet: Bounds3;
+  /** Basic, curtain or stacked, from the wall's own type (`wall-kinds.ts`). */
+  wallKind?: "basic" | "curtain" | "stacked";
 };
 
 /**

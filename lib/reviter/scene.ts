@@ -256,6 +256,8 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
  * has the final say.
  */
 function matchesWrapperRecordShape(record: ElementBoundsRecord): boolean {
+  // A wall whose own type is a basic wall type holds no panels.
+  if (record.wallKind === "basic") return false;
   const hasNamedAnalyticSolid =
     !!record.typeName && (!!record.solid || (record.solids?.length ?? 0) > 0);
   const count = record.recordCount;

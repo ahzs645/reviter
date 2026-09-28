@@ -140,6 +140,7 @@ export function convertRvtBytes(
       nameEntries,
       instanceReferences,
       symbolReferences,
+      wallKinds,
       elementBounds,
       elementObjects,
       instancePlacements,
@@ -275,6 +276,10 @@ export function convertRvtBytes(
       (nativeCategories.headerElements ?? 0) +
       nativeCategories.directElements +
       nativeCategories.inheritedElements;
+    for (const record of elementBounds) {
+      const wallKind = wallKinds.get(record.elementId);
+      if (wallKind) record.wallKind = wallKind;
+    }
     const familyTypeNames = resolveFamilyTypeNames(
       instanceReferences,
       symbolReferences,
