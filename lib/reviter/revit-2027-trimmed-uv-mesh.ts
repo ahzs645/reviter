@@ -21,6 +21,7 @@
  * whose area is exactly theirs, and whose every triangle faces the persisted
  * surface sense. Anything else fails closed.
  */
+import { triangulateConstrainedRegion } from "./constrained-region-triangulation.ts";
 import { triangulate, type Point2 } from "./polygon.ts";
 import type {
   Revit2027Point3,
@@ -375,29 +376,58 @@ class Cover {
   }
 }
 
+/**
+ * Add one region's rings to the cover as vertices and constraint segments.
+ *
+ * A trim that passes twice through one UV point (two lobes of a face that
+ * touch at a vertex, as where an arc's apex meets a straight edge) gets one
+ * cover vertex there, so the ear clipper's triangles, which keep only one of
+ * the two, still name every ring vertex. Only bit-identical points are one
+ * vertex; nearly coincident ones stay apart and the audits judge them.
+ */
 function linkRegion(
   cover: Cover,
   region: Revit2027TrimmedUvRegion,
 ): { ok: true; rings: number[][] } | Failure {
   const rings = [wound(region.outer, true), ...region.holes.map((hole) => wound(hole, false))];
   const indexRings: number[][] = [];
+  const vertexAt = new Map<string, number>();
   for (const ring of rings) {
     const indices: number[] = [];
-    for (const uv of ring.points) {
-      const index = cover.addVertex(uv);
+    const collapsed: boolean[] = [];
+    for (let at = 0; at < ring.points.length; at += 1) {
+      const uv = ring.points[at]!;
+      const spot = `${uv[0]}:${uv[1]}`;
+      let index = vertexAt.get(spot);
       if (index == null) {
-        return fail("surface-evaluation-failed", "a trim sample does not evaluate on the surface");
+        const added = cover.addVertex(uv);
+        if (added == null) {
+          return fail("surface-evaluation-failed", "a trim sample does not evaluate on the surface");
+        }
+        index = added;
+        vertexAt.set(spot, index);
+      }
+      if (indices.at(-1) === index) {
+        // A zero-length segment: the point is already this ring's last.
+        collapsed[collapsed.length - 1] = collapsed.at(-1)! && ring.collapsed[at]!;
+        continue;
       }
       indices.push(index);
+      collapsed.push(ring.collapsed[at]!);
     }
+    while (indices.length > 1 && indices[0] === indices.at(-1)) {
+      indices.pop();
+      collapsed.pop();
+    }
+    if (indices.length < 3) return fail("boundary-mismatch", "a trim ring has fewer than three distinct points");
     for (let index = 0; index < indices.length; index += 1) {
       const a = indices[index]!;
       const b = indices[(index + 1) % indices.length]!;
       if (cover.constraints.has(cover.key(a, b))) {
         return fail("boundary-mismatch", "a trim segment is repeated");
       }
-      cover.constraints.set(cover.key(a, b), ring.collapsed[index]!);
-      if (ring.collapsed[index]) {
+      cover.constraints.set(cover.key(a, b), collapsed[index]!);
+      if (collapsed[index]) {
         const segment: CollapsedSegment = [cover.uv[a]!, cover.uv[b]!];
         cover.collapsedSegments.set(cover.key(a, b), segment);
         cover.markCollapsed(a, segment);
@@ -471,14 +501,20 @@ function auditCover(cover: Cover, expectedArea: number): Failure | null {
 
 /** Directed ring segments must run along the triangles, not against them. */
 function auditRingDirections(cover: Cover, rings: readonly number[][]): Failure | null {
-  for (const ring of rings) {
-    for (let index = 0; index < ring.length; index += 1) {
-      const a = ring[index]!;
-      const b = ring[(index + 1) % ring.length]!;
-      const list = cover.edges.get(cover.key(a, b));
-      if (!list || list.length !== 1 || !cover.rotated(list[0]!, a, b)) {
-        return fail("boundary-mismatch", "a trim segment does not bound the cover on its inner side");
-      }
+  return auditSegmentDirections(
+    cover,
+    rings.flatMap((ring) => ring.map((a, index) => [a, ring[(index + 1) % ring.length]!] as const)),
+  );
+}
+
+function auditSegmentDirections(
+  cover: Cover,
+  segments: readonly (readonly [number, number])[],
+): Failure | null {
+  for (const [a, b] of segments) {
+    const list = cover.edges.get(cover.key(a, b));
+    if (!list || list.length !== 1 || !cover.rotated(list[0]!, a, b)) {
+      return fail("boundary-mismatch", "a trim segment does not bound the cover on its inner side");
     }
   }
   return null;
@@ -629,9 +665,17 @@ function refine(cover: Cover, tolerance: number, collapseTolerance: number): Fai
 }
 
 /**
- * Cover one region with the ear clipper's triangles and prove the cover is
- * exactly the region. Regions share no vertices, so the audit runs over
- * everything covered so far against the running trim area.
+ * Cover one region and prove the cover is exactly the region. Regions share
+ * no vertices, so the audit runs over everything covered so far against the
+ * running trim area.
+ *
+ * The ear clipper covers almost every region. Where its cover fails the
+ * audit it is taken back and the region is covered again by constrained
+ * insertion (`constrained-region-triangulation.ts`), which does not depend
+ * on walking the ring: in the fourth sample it covers the cone faces whose
+ * two holes' bottoms lie on one parameter line, and the planar faces an
+ * opening splits into two pieces joined by a zero-width strip. A region with
+ * a collapsed side keeps the ear clipper's verdict.
  */
 function coverRegion(
   cover: Cover,
@@ -641,6 +685,31 @@ function coverRegion(
   const linked = linkRegion(cover, region);
   if (linked.ok === false) return linked;
   const rings = linked.rings;
+  const area = priorArea + rings.reduce(
+    (sum, ring) => sum + signedArea(ring.map((index) => cover.uv[index]!)),
+    0,
+  );
+  const firstTriangle = cover.triangles.length;
+  const clipped = clipRegion(cover, rings, area);
+  if (!clipped) return { ok: true, area };
+  const segments = rings.flatMap((ring) =>
+    ring.map((a, index) => [a, ring[(index + 1) % ring.length]!] as [number, number]));
+  if (segments.some(([a, b]) => cover.constraints.get(cover.key(a, b)))) return clipped;
+  for (let id = firstTriangle; id < cover.triangles.length; id += 1) {
+    if (cover.triangles[id]) cover.removeTriangle(id);
+  }
+  const inserted = triangulateConstrainedRegion(cover.uv, segments);
+  if (!inserted.ok) {
+    return fail(clipped.code, `${clipped.detail}; constrained insertion: ${inserted.error}`);
+  }
+  for (const [a, b] of segments) cover.constraints.delete(cover.key(a, b));
+  for (const [a, b] of inserted.segments) cover.constraints.set(cover.key(a, b), false);
+  for (const [a, b, c] of inserted.triangles) cover.addTriangle(a, b, c);
+  return auditCover(cover, area) ?? auditSegmentDirections(cover, inserted.segments) ?? { ok: true, area };
+}
+
+/** Cover one linked region with the ear clipper; null when it audits. */
+function clipRegion(cover: Cover, rings: readonly number[][], area: number): Failure | null {
   const flat: number[] = rings.flat();
   const ringPoints = rings.map((ring) => ring.map((index) => [...cover.uv[index]!] as Point2));
   const local = triangulate(ringPoints[0]!, ringPoints.slice(1));
@@ -653,7 +722,10 @@ function coverRegion(
     let b = flat[local[index + 1]!]!;
     let c = flat[local[index + 2]!]!;
     const twice = cover.twiceArea(a, b, c);
-    if (twice === 0) return fail("triangulation-failed", "ear clipping produced a zero-area triangle");
+    // Three collinear trim samples: the ear adds no area, and the middle
+    // sample is put back on the boundary edge below like any other the
+    // clipper dropped. The audits prove the cover without it.
+    if (twice === 0) continue;
     if (twice < 0) [b, c] = [c, b];
     cover.addTriangle(a, b, c);
     used.add(a).add(b).add(c);
@@ -664,10 +736,9 @@ function coverRegion(
     if (!restoreVertex(cover, vertex, ringVertices)) {
       return fail("boundary-vertex-lost", "a trim sample is not on the triangulated boundary");
     }
+    used.add(vertex);
   }
-  const area = priorArea + ringPoints.reduce((sum, ring) => sum + signedArea(ring), 0);
-  const audited = auditCover(cover, area) ?? auditRingDirections(cover, rings);
-  return audited ?? { ok: true, area };
+  return auditCover(cover, area) ?? auditRingDirections(cover, rings);
 }
 
 type UvBox = { minimum: [number, number]; maximum: [number, number] };

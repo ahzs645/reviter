@@ -247,6 +247,44 @@ test("fails closed on a self-crossing trim and on an unevaluable surface", () =>
   if (!unevaluable.ok) assert.equal(unevaluable.code, "surface-evaluation-failed");
 });
 
+function planarArea(outer: readonly Uv[], holes: readonly Uv[][] = []): number {
+  const result = meshRevit2027TrimmedUvRegions({
+    regions: [{ outer: ring(outer), holes: holes.map((hole) => ring(hole)) }],
+    evaluate: plane,
+    orientFlag: true,
+    metricScale: [1, 1],
+    chordTolerance: 0.01,
+    collapseTolerance: 1e-7,
+    maxVertices: 5000,
+  });
+  assert.equal(result.ok, true, result.ok ? "" : `${result.code}: ${result.detail}`);
+  if (!result.ok) return NaN;
+  const { positions, indices } = result.mesh;
+  let area = 0;
+  for (let index = 0; index < indices.length; index += 3) {
+    area += triangleArea(
+      vertex(positions, indices[index]!),
+      vertex(positions, indices[index + 1]!),
+      vertex(positions, indices[index + 2]!),
+    );
+  }
+  return area;
+}
+
+test("covers trims the ear clipper alone gets wrong", () => {
+  // Three collinear samples on one side: the clipper's ear there has no area.
+  assert.ok(Math.abs(planarArea([[0, 2], [-1.3, 2], [-1.1, 0.76], [0, 0.76], [0, 1.35]]) - 1.24 * 1.2) < 1e-9);
+  // Two lobes that touch where an arc's apex meets the straight side above.
+  assert.ok(Math.abs(planarArea([[0, 1], [0, 0], [1, 1], [2, 0], [2, 1], [1, 1]]) - 1) < 1e-12);
+  // A face an opening splits in two, kept as one loop over the opening's top.
+  assert.ok(Math.abs(planarArea([[0, 0], [2, 0], [2, 8], [8, 8], [8, 0], [10, 0], [10, 8], [0, 8]]) - 32) < 1e-9);
+  // Two holes whose bottom edges lie on one line.
+  assert.ok(Math.abs(planarArea(
+    [[0, 0], [10, 0], [10, 4], [0, 4]],
+    [[[2, 1], [2, 3], [4, 3], [4, 1]], [[6, 1], [6, 3], [8, 3], [8, 1]]],
+  ) - 32) < 1e-9);
+});
+
 // ---------------------------------------------------------------------------
 // Owner level: a quarter annulus on a GLine SurfRev beside a planar face.
 // ---------------------------------------------------------------------------
