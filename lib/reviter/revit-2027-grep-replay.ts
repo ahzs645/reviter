@@ -1,4 +1,12 @@
 import {
+  REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT,
+  REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT,
+  decodeRevit2027GBitmap,
+  decodeRevit2027GConditionSelected,
+  revit2027GBitmapBytes,
+  revit2027GConditionSelectedBytes,
+} from "./revit-2027-gbitmap.ts";
+import {
   REVIT_2027_FACETED_TOPOLOGY_FORMS,
   decodeRevit2027FacetedTopology,
 } from "./revit-2027-faceted-topology.ts";
@@ -787,6 +795,24 @@ const BUILTIN_READERS: readonly [
           value: decoded.value,
         };
       },
+    },
+  ],
+  [
+    REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GBitmap",
+      read: fixedBodyReader(revit2027GBitmapBytes, decodeRevit2027GBitmap, () => []),
+    },
+  ],
+  [
+    REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GConditionSelected",
+      read: fixedBodyReader(
+        revit2027GConditionSelectedBytes,
+        decodeRevit2027GConditionSelected,
+        () => [],
+      ),
     },
   ],
   [

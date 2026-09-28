@@ -6,6 +6,14 @@ import {
   REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS,
 } from "../lib/reviter/revit-2027-asset-properties.ts";
 import {
+  REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT,
+  REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT,
+  decodeRevit2027GBitmap,
+  decodeRevit2027GConditionSelected,
+  revit2027GBitmapBytes,
+  revit2027GConditionSelectedBytes,
+} from "../lib/reviter/revit-2027-gbitmap.ts";
+import {
   decodeRevit2027GComponentRef,
   REVIT_2027_GCOMPONENT_REF_BODY_BYTES,
   REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
@@ -23,6 +31,7 @@ import {
 } from "../lib/reviter/revit-2027-gimposter.ts";
 import { REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-ginstance.ts";
 import { createRevit2027GRepReplayRegistry } from "../lib/reviter/revit-2027-grep-replay.ts";
+import { setActiveElementIdBytes } from "../lib/reviter/element-id-width.ts";
 
 /** A little-endian byte builder. */
 class Bytes {
@@ -207,4 +216,48 @@ test("typed asset properties read their values and fail closed", () => {
   // A string longer than the object is refused rather than read past it.
   const truncated = prefix(new Bytes(), "label").i32(40).string("short").build();
   assert.equal(read(truncated, "APropertyString").ok, false);
+});
+
+test("a GBitmap is a marker point with a pixel size, 60 bytes with 64-bit ids", () => {
+  const data = new Bytes().gInfo().f64(12.5, -3, 40).i32(16).i32(24).i32(3).i32(1).build();
+  assert.equal(data.length, revit2027GBitmapBytes());
+  assert.equal(data.length, 60);
+  const decoded = decodeRevit2027GBitmap(data, 0, data.length, 2027);
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok) return;
+  assert.deepEqual(decoded.value.point, [12.5, -3, 40]);
+  assert.deepEqual(decoded.value.sizePixels, [16, 24]);
+  assert.equal(decoded.value.bitmapType, 3);
+  assert.equal(decoded.value.alignment, 1);
+  assert.equal(decodeRevit2027GBitmap(data, 0, data.length - 1, 2027).ok, false);
+  const notFinite = new Bytes().gInfo().f64(Number.NaN, 0, 0).i32(16).i32(16).i32(0).i32(0).build();
+  assert.equal(decodeRevit2027GBitmap(notFinite, 0, notFinite.length, 2027).ok, false);
+  assert.equal(
+    createRevit2027GRepReplayRegistry().get(REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GBitmap",
+  );
+});
+
+test("a GConditionSelected is a comparison and a view id", () => {
+  const data = new Bytes().i32(-1).i64(-1n).build();
+  assert.equal(data.length, revit2027GConditionSelectedBytes());
+  const decoded = decodeRevit2027GConditionSelected(data, 0, data.length, 2027);
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok) return;
+  assert.equal(decoded.value.compareMode, -1);
+  assert.equal(decoded.value.viewElementId, -1);
+  assert.equal(decodeRevit2027GConditionSelected(data, 0, 8, 2027).ok, false);
+  setActiveElementIdBytes(4);
+  try {
+    const narrow = new Bytes().i32(0).i32(812345).build();
+    assert.equal(revit2027GConditionSelectedBytes(), 8);
+    const read = decodeRevit2027GConditionSelected(narrow, 0, narrow.length, 2027);
+    assert.equal(read.ok && read.value.viewElementId, 812345);
+  } finally {
+    setActiveElementIdBytes(null);
+  }
+  assert.equal(
+    createRevit2027GRepReplayRegistry().get(REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT)?.id,
+    "Revit2027GConditionSelected",
+  );
 });
