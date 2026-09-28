@@ -192,6 +192,12 @@ export type DisplaySceneInput = {
   lightSourceStyleIds?: ReadonlySet<number>;
   /** Each placed type's family-document solid forms (`family-forms.ts`). */
   familyDocumentForms?: ReadonlyMap<number, readonly number[]>;
+  /**
+   * Model elements with no bounds record of their own whose native mesh may
+   * still be drawn, with the category their header states
+   * (`boundlessSceneElements` in `model-elements.ts`).
+   */
+  boundlessSceneElements?: ReadonlyMap<number, number>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -233,6 +239,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     levelDefinitions,
     lightSourceStyleIds,
     familyDocumentForms,
+    boundlessSceneElements,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -349,7 +356,10 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       // A certified owner without any decoded element-table record is a
       // reusable definition, not evidence of a placed object. Zero-volume
       // records remain known and may still use their exact native mesh.
-      knownElementIds: new Set(elementBounds.map((record) => record.elementId)),
+      knownElementIds: new Set([
+        ...elementBounds.map((record) => record.elementId),
+        ...(boundlessSceneElements?.keys() ?? []),
+      ]),
     },
   );
   // A door family's complete native object can be the swept-open family
@@ -598,6 +608,44 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       record.renderGeometryProvenance = "reconstructed";
     } else {
       record.renderGeometryProvenance = "bounds-fallback";
+    }
+  }
+  // An element admitted without a bounds record of its own is given one, from
+  // the geometry drawn for it, so the studio can list and select it.
+  if (boundlessSceneElements?.size) {
+    const drawnBounds = new Map<number, Bounds3>();
+    for (const mesh of nativeMeshScene.meshes) {
+      if (!mesh.elementIds) continue;
+      for (let triangle = 0; triangle < mesh.elementIds.length; triangle += 1) {
+        const elementId = mesh.elementIds[triangle]!;
+        if (!boundlessSceneElements.has(elementId)) continue;
+        let bounds = drawnBounds.get(elementId);
+        if (!bounds) {
+          bounds = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
+          drawnBounds.set(elementId, bounds);
+        }
+        for (let corner = 0; corner < 3; corner += 1) {
+          const vertex = mesh.indices[triangle * 3 + corner]! * 3;
+          const x = mesh.positions[vertex]! + origin.x;
+          const y = mesh.positions[vertex + 1]! + origin.y;
+          const z = mesh.positions[vertex + 2]! + origin.z;
+          bounds.min.x = Math.min(bounds.min.x, x); bounds.max.x = Math.max(bounds.max.x, x);
+          bounds.min.y = Math.min(bounds.min.y, y); bounds.max.y = Math.max(bounds.max.y, y);
+          bounds.min.z = Math.min(bounds.min.z, z); bounds.max.z = Math.max(bounds.max.z, z);
+        }
+      }
+    }
+    for (const [elementId, boundsFeet] of drawnBounds) {
+      elementBounds.push({
+        elementId,
+        stream: "native-mesh",
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        categoryId: boundlessSceneElements.get(elementId)!,
+        boundsFeet,
+        renderGeometryProvenance: "native",
+      });
     }
   }
   const meshes = [

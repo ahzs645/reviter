@@ -51,6 +51,7 @@ import { resolveElementGeometry } from "./convert-element-geometry.ts";
 import { resolveNativeRelations } from "./convert-native-relations.ts";
 import { resolveFamilyTypeNames } from "./family-type-names.ts";
 import { familyDocumentFormsBySymbol } from "./family-forms.ts";
+import { boundlessSceneElements } from "./model-elements.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -431,6 +432,10 @@ export function convertRvtBytes(
         levelDefinitions,
         lightSourceStyleIds,
         familyDocumentForms,
+        boundlessSceneElements: boundlessSceneElements(
+          elementHeaders,
+          new Set(elementBounds.map((record) => record.elementId)),
+        ),
         materialElementIds,
         nativeMaterialIndexById,
         proxyMaterialIndexByElement,

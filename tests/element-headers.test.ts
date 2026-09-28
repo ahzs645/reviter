@@ -109,3 +109,17 @@ test("a family type is not a placed element, whatever its category", () => {
   assert.equal(excluded.get(147401), "type");
   assert.equal(excluded.has(147400), false);
 });
+
+test("slab edges and entourage without a bounds record may still be drawn", async () => {
+  const { boundlessSceneElements } = await import("../lib/reviter/model-elements.ts");
+  const header = (elementId: number, categoryId: number, extra = {}) =>
+    [elementId, { elementId, categoryId, familyId: null, ownerViewId: null, designOptionId: null, ...extra }] as const;
+  const elements = boundlessSceneElements(new Map([
+    header(217846, -2001392), // a slab edge
+    header(950367, -2001370), // placed entourage
+    header(217850, -2001392, { familyId: 9 }), // inside a family's definition
+    header(217851, -2000127), // a baluster: not listed
+    header(217852, -2001392), // already has a record
+  ]), new Set([217852]));
+  assert.deepEqual([...elements], [[217846, -2001392], [950367, -2001370]]);
+});

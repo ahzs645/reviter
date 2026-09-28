@@ -175,3 +175,41 @@ export function nonModelElementIds(
   }
   return excluded;
 }
+
+/**
+ * Categories whose elements Revit writes with no bounds record of their own,
+ * yet which are real geometry the Autodesk Viewer draws: slab edges, fascias,
+ * gutters and soffits (sweeps along a host's edge), and placed entourage.
+ * The technical school's 2 slab edges and the RAC sample's 2 entourage
+ * elements (a car and a person) have complete native meshes and no bounds
+ * record, and Autodesk draws all 4. Other model elements in the same state
+ * are mostly not drawn by Autodesk (104 of 106 in the technical school are
+ * balusters inside railings, door type templates and the like), so the list
+ * is kept to these.
+ */
+export const BOUNDLESS_SCENE_CATEGORY_IDS: ReadonlySet<number> = new Set([
+  -2_001_370, // Entourage
+  -2_001_390, // Fascia
+  -2_001_391, // Gutter
+  -2_001_392, // EdgeSlab
+  -2_001_393, // RoofSoffit
+]);
+
+/**
+ * Model elements in those categories that have no bounds record, with their
+ * header's category: the ones whose native mesh the scene may draw without an
+ * envelope to check it against.
+ */
+export function boundlessSceneElements(
+  headers: ReadonlyMap<number, ElementHeader> | undefined,
+  recordedIds: ReadonlySet<number>,
+): Map<number, number> {
+  const elements = new Map<number, number>();
+  for (const [elementId, header] of headers ?? []) {
+    const categoryId = header.categoryId;
+    if (categoryId == null || !BOUNDLESS_SCENE_CATEGORY_IDS.has(categoryId)) continue;
+    if (recordedIds.has(elementId) || nonModelReason(header, undefined) != null) continue;
+    elements.set(elementId, categoryId);
+  }
+  return elements;
+}
