@@ -54,7 +54,9 @@ import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
+import { decodeRevit2027AssetProperty } from "../lib/reviter/revit-2027-asset-properties.ts";
 import { decodeRevit2027GFilling } from "../lib/reviter/revit-2027-gfilling.ts";
+import { decodeRevit2027GPolyMesh, revit2027GPolyMeshBodyBytes } from "../lib/reviter/revit-2027-gpolymesh.ts";
 import {
   decodeRevit2027GInstanceStatic,
   decodeRevit2027InstanceInfo,
@@ -810,4 +812,53 @@ test("a narrow GStyleElem is 108 bytes: its category after the queued GStyle des
     assert.equal(record?.penNumber, 3);
     assert.equal(record?.color, 0x00ff_8000);
   });
+});
+
+test("a narrow GPolyMesh writes its flags before its two ids, and 2019-2022 add a trailing boolean", () => {
+  const body = new Bytes()
+    .i32(7).i32(0).i32(-1).u32(0) // GInfo
+    .i32(5).u16(1868) // m_pFacetedTopology, queueing a FacetedTopology0
+    .i32(3).i32(-1).i32(288295); // m_polyMeshFlags, m_interiorGStyleID, m_materialID
+  narrow(() => {
+    assert.equal(revit2027GPolyMeshBodyBytes(), 34);
+    const decoded = decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 0, 0]), 0, body.length + 2, 2027);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.value.endOffset, 34);
+    assert.equal(decoded.value.polyMeshFlags, 3);
+    assert.equal(decoded.value.materialElementId, 288295n);
+    assert.equal(decoded.value.interiorGStyleElementId, -1n);
+    assert.equal(decoded.value.topology.sourceClassSlot, 1868);
+  });
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position, declaredFieldCount: name === "GPolyMesh" ? 5 : undefined,
+  }))));
+  try {
+    narrow(() => {
+      assert.equal(revit2027GPolyMeshBodyBytes(), 35);
+      const decoded = decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 1]), 0, 35, 2027);
+      assert.equal(decoded.ok && decoded.value.endOffset, 35);
+      assert.equal(decodeRevit2027GPolyMesh(Uint8Array.from([...body.out, 2]), 0, 35, 2027).ok, false);
+    });
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
+});
+
+test("before 2021 an APropertyDistance is its value and an int32 unit", () => {
+  setActiveClassTagTranslation(buildClassTagTranslation(REVIT_2027_CLASS_NAMES.map((name, position) => ({
+    name, tag: REVIT_2027_FIRST_CLASS_INDEX + position,
+    fieldNames: name === "APropertyDistance" ? ["m_value", "m_unit"] : undefined,
+  }))));
+  try {
+    const data = Uint8Array.from(new Bytes().utf16("width").i32(0).i32(0).f64(2).i32(1).out);
+    const decoded = decodeRevit2027AssetProperty(data, 0, data.length, 2027, "APropertyDistance");
+    assert.equal(decoded.ok, true);
+    if (decoded.ok) {
+      assert.equal(decoded.value.value, 2);
+      assert.equal(decoded.value.endOffset, data.length);
+    }
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
 });

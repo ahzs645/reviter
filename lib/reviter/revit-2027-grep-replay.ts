@@ -3,7 +3,7 @@ import {
   decodeRevit2027FacetedTopology,
 } from "./revit-2027-faceted-topology.ts";
 import {
-  REVIT_2027_GPOLYMESH_BODY_BYTES,
+  revit2027GPolyMeshBodyBytes,
   REVIT_2027_GPOLYMESH_SOURCE_CLASS_SLOT,
   decodeRevit2027GPolyMesh,
   type Revit2027GPolyMesh,
@@ -794,7 +794,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GPolyMesh",
       read: fixedBodyReader(
-        () => REVIT_2027_GPOLYMESH_BODY_BYTES,
+        revit2027GPolyMeshBodyBytes,
         decodeRevit2027GPolyMesh,
         (value) => [(value as unknown as Revit2027GPolyMesh).topology],
       ),
