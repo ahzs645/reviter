@@ -142,7 +142,7 @@ import type {
   ProgressUpdate,
   Segment,
 } from "./types";
-import { readsElementRecordLayout, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { readsElementRecordLayout } from "./revit-class-tags.ts";
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
@@ -524,7 +524,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           familySymbolMaterialPlacements.push(
             ...familySymbolMaterialScan.placements,
           );
-        } else if (usesRevit2027RecordLayout(decoderPlan.revitVersion)) {
+        } else if (readsElementRecordLayout(decoderPlan.revitVersion)) {
           for (const frame of pageFrames.frames) {
             const placement = readInstancePlacement(inflated, frame);
             if (placement) familySymbolMaterialPlacements.push(placement);

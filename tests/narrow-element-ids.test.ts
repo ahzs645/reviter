@@ -27,6 +27,14 @@ import { scanCompoundStructureCandidates } from "../lib/reviter/compound-structu
 import { collectElementParameters } from "../lib/reviter/element-parameters.ts";
 import { decodeElementOwnership } from "../lib/reviter/element-relations.ts";
 import { collectTypeLinks } from "../lib/reviter/element-types.ts";
+import {
+  resolveUniqueFamilySymbolTargets,
+  scanPersistedRelationshipCandidates,
+} from "../lib/reviter/family-material-relations.ts";
+import {
+  resolveFamilySymbolMaterialMaps,
+  scanFamilySymbolMaterialReferenceSets,
+} from "../lib/reviter/family-symbol-materials.ts";
 import { referencedElementIds } from "../lib/reviter/family-type-names.ts";
 import {
   REVIT_2027_INSERTABLE_INSTANCE_MARKER,
@@ -731,4 +739,49 @@ test("before 2023 a placement's geometry id is followed by m_cda, and the instan
   const tail = page(narrowFrame(211850, 0x07ef, body.out));
   const tailFrame = narrow(() => scanFramedElementObjects(tail))[0]!;
   assert.equal(narrow(() => readInstancePlacement(tail, tailFrame)), null);
+});
+
+test("a narrow FamilySymbol names its family after the 14-double static tail, and maps geometry tags in 8-byte entries", () => {
+  const symbol = (map: Array<[number, number]>, later: Array<[number, number]>) => {
+    const body = new Bytes().u32(0x0102_0304).zeros(40);
+    for (const value of [0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 4]) body.f64(value); // outline, origin, rotation centre, cut planes
+    body.u32(287257).i32(-1).zeros(24); // m_familyId, m_masterId
+    body.u32(map.length);
+    for (const [tag, id] of map) body.i32(tag).u32(id);
+    body.zeros(40);
+    // A later table of 16-byte records reads as one-entry maps of low material ids.
+    for (const [tag, id] of later) body.u32(1).i32(tag).u32(id).u32(0x0003_d000);
+    return body.zeros(24).out;
+  };
+  const data = page(
+    narrowFrame(496586, 0x0810, symbol([[111, 288295], [122, 288295]], [[101, 23], [102, 24]]), 0x1111_2222),
+    narrowFrame(677680, 0x0810, symbol([[75, 677432], [126, 0xffff_ffff]], [[3547, 24]]), 0x3333_4444),
+  );
+  const materials = new Set([23, 24, 288295, 677432]);
+  narrow(() => {
+    const scan = scanPersistedRelationshipCandidates(data, 2023);
+    assert.deepEqual(
+      resolveUniqueFamilySymbolTargets(scan.familySymbolReferenceSets, new Set([287257]), new Set([496586, 677680]))
+        .map(({ symbolId, familyId }) => [symbolId, familyId]),
+      [[496586, 287257], [677680, 287257]],
+    );
+    const maps = resolveFamilySymbolMaterialMaps(scanFamilySymbolMaterialReferenceSets(data, 2023), materials);
+    // The first map is taken over the later look-alikes; a map with an empty entry fails closed.
+    assert.deepEqual(maps.map(({ symbolId, entries }) => [symbolId, entries]), [
+      [496586, [{ geometryTag: 111, materialId: 288295 }, { geometryTag: 122, materialId: 288295 }]],
+    ]);
+  });
+  assert.deepEqual(scanPersistedRelationshipCandidates(data, 2023).familySymbolReferenceSets, []);
+});
+
+test("a narrow GElement face material follows its cut type and face flags", () => {
+  const body = (before: [number, number]) => new Bytes().zeros(340 - 14 - 8).u32(before[0]).u32(before[1]).u32(232859).zeros(300).out;
+  const data = page(
+    narrowFrame(459090, 0x08c6, body([0, 6]), 0x5555_6666),
+    narrowFrame(1030496, 0x08c6, body([0xffff_ffff, 0xffff_0212]), 0x7777_8888),
+  );
+  const candidates = narrow(() => scanPersistedRelationshipCandidates(data, 2023).geometryMaterialCandidates);
+  assert.deepEqual(candidates.map(({ geometryId, materialId, fieldOffset }) => [geometryId, materialId, fieldOffset]), [
+    [459090, 232859, 340],
+  ]);
 });
