@@ -112,3 +112,22 @@ test("rejects unsupported history framing and impossible element chronology", ()
   new DataView(table.buffer).setUint32(34 + 24, 0, true);
   assert.equal(decodeRevitNativeIdentities(table, history, 2027).format, "unsupported");
 });
+
+test("the History format numbers of 2024, 2025 and 2026 are read like 2027's", () => {
+  for (const format of [0x04ff, 0x051d, 0x0538]) {
+    const data = historyFixture();
+    data[0] = format & 0xff;
+    data[1] = format >> 8;
+    const result = decodeRevitDocumentHistory(data, 2027);
+    if (result.format === "unsupported") assert.fail(result.reason);
+    assert.equal(result.episodes[1]!.guid, "11223321-4455-6677-8899-aabbccddee21");
+  }
+  const unknown = historyFixture();
+  unknown[0] = 0x00;
+  assert.equal(decodeRevitDocumentHistory(unknown, 2027).format, "unsupported");
+  // A 2019-2023 format number is not read with the wide layout.
+  const narrow = historyFixture();
+  narrow[0] = 0xdc;
+  narrow[1] = 0x04;
+  assert.equal(decodeRevitDocumentHistory(narrow, 2027).format, "unsupported");
+});

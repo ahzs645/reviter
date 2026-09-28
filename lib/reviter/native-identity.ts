@@ -17,8 +17,13 @@
  * id][i32 original id][u32 creation][u32 last modification][u32 last user
  * modification][u32]`. On the 2023 RAC sample every one of the 5,092 elements
  * Autodesk's capture of the 2025 copy gives a UniqueId has that UniqueId.
- * The 2024 and 2025 format numbers are not admitted: their files are not
- * checked here.
+ *
+ * **2024 to 2026** files use the 2027 layout under their own format numbers
+ * (`0x04ff`, `0x051d`, `0x0538`). Every UniqueId decoded for an element
+ * Autodesk's captures name agrees with the capture: 34,063 in the 2024
+ * Snowdon sample, 12,260 in the 2025 technical school and 5,192 in the 2025
+ * RAC sample, none different. The 2026 RAC sample agrees with its 2025 copy
+ * on all 8,325 elements both hold.
  */
 import { narrowElementIds } from "./element-id-width.ts";
 import { readsElementRecordLayout, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
@@ -44,6 +49,8 @@ const NARROW_ELEMENT_RECORD_BYTES = 28;
 const NARROW_ELEMENT_TABLE_SUFFIX_BYTES = 23;
 /** `Global/History` format numbers of the 2019 to 2023 releases. */
 const NARROW_HISTORY_FORMATS = new Set([0x045d, 0x0468, 0x0482, 0x04a2, 0x04dc]);
+/** `Global/History` format numbers of the 2024, 2025, 2026 and 2027 releases. */
+const WIDE_HISTORY_FORMATS = new Set([0x04ff, 0x051d, 0x0538, 0x0552]);
 
 function narrowIdentityLayout(revitVersion: number): boolean {
   return !usesRevit2027RecordLayout(revitVersion) &&
@@ -145,11 +152,9 @@ export function decodeRevitDocumentHistory(
   if (!usesRevit2027RecordLayout(revitVersion) && !narrow) {
     return unsupported(`unsupported Revit release ${revitVersion}`);
   }
-  const header = narrow
-    ? data.byteLength >= 128 &&
-      NARROW_HISTORY_FORMATS.has(data[0]! | (data[1]! << 8)) &&
-      matches(data, 2, HISTORY_PREFIX.slice(2))
-    : data.byteLength >= 128 && matches(data, 0, HISTORY_PREFIX);
+  const header = data.byteLength >= 128 &&
+    (narrow ? NARROW_HISTORY_FORMATS : WIDE_HISTORY_FORMATS).has(data[0]! | (data[1]! << 8)) &&
+    matches(data, 2, HISTORY_PREFIX.slice(2));
   if (!header) {
     return unsupported("Global/History does not have the measured 2027 header");
   }
