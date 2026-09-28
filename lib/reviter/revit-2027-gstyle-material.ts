@@ -3,7 +3,11 @@ import { narrowElementIds } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
-import { canonicalClassTag, fileClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import {
+  canonicalClassTag,
+  fileClassTag,
+  readsElementRecordLayout,
+} from "./revit-class-tags.ts";
 
 /**
  * Persisted Revit 2027 `GStyleElem` and its queued `GStyle` body.
@@ -12,10 +16,35 @@ import { canonicalClassTag, fileClassTag, usesRevit2027RecordLayout } from "./re
  * `m_pGStyle`, is a CondInt16-owned object. The record writes the four static
  * `GStyleElem` fields first, then materializes the queued source-slot 2,288
  * `GStyle` body in the 16 late bytes before the object's echoed length.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`) the
+ * same record is 108 bytes: the frame repeats its id at +50, the descriptor is
+ * at +85, and `m_categoryId`, `m_ownerId` and `m_gstyleType` follow it, then
+ * the `GStyle` in its older field order, `m_penNumber`, `m_color`,
+ * `m_linePatternId`, `m_materialElemId`, `m_isScreenSized`. All 8,822
+ * 108-byte styles of the 2023 RAC sample decode to the 2025 copy's 156-byte
+ * records of the same ids, field for field, and the category of each of the
+ * 13,124 styles both files frame is the 2025 one.
  */
 export const REVIT_2027_GSTYLE_ELEMENT_MARKER = 2292;
 export const REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT = 2288;
 export const REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH = 156;
+/** The same queued-GStyle record where ids are 32-bit. */
+export const NARROW_GSTYLE_ELEMENT_OBJECT_LENGTH = 108;
+
+const NARROW_LAYOUT = {
+  repeatedElementId: 50,
+  descriptor: 85,
+  category: 91,
+  owner: 95,
+  graphicsStyleType: 99,
+  penNumber: 103,
+  color: 107,
+  linePattern: 111,
+  material: 115,
+  screenSized: 119,
+  lengthEcho: 120,
+} as const;
 
 const REPEATED_ELEMENT_ID_OFFSET = 54;
 const GSTYLE_DESCRIPTOR_OFFSET = 121;
@@ -32,7 +61,9 @@ const LENGTH_ECHO_OFFSET = 172;
 export type Revit2027GStyleElementRecord = {
   elementId: number;
   recordOffset: number;
-  objectLength: typeof REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH;
+  objectLength:
+    | typeof REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH
+    | typeof NARROW_GSTYLE_ELEMENT_OBJECT_LENGTH;
   objectMarker: typeof REVIT_2027_GSTYLE_ELEMENT_MARKER;
   categoryElementId: bigint;
   ownerElementId: bigint;
@@ -82,7 +113,7 @@ export function decodeRevit2027GStyleElementRecord(
   object: ElementObject,
   revitVersion: number,
 ): Revit2027GStyleElementDecodeResult {
-  if (!usesRevit2027RecordLayout(revitVersion)) {
+  if (!readsElementRecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GStyleElem decoding requires release 2027",
@@ -97,6 +128,7 @@ export function decodeRevit2027GStyleElementRecord(
       error: "object is not a Revit 2027 GStyleElem frame",
     };
   }
+  if (narrowElementIds()) return decodeNarrowGStyleElementRecord(data, object);
   if (object.objectLength !== REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH) {
     return {
       ok: false,
@@ -186,6 +218,71 @@ export function decodeRevit2027GStyleElementRecord(
   };
 }
 
+function decodeNarrowGStyleElementRecord(
+  data: Uint8Array,
+  object: ElementObject,
+): Revit2027GStyleElementDecodeResult {
+  const layout = NARROW_LAYOUT;
+  if (object.objectLength !== NARROW_GSTYLE_ELEMENT_OBJECT_LENGTH) {
+    return {
+      ok: false,
+      error: "GStyleElem is not the certified 108-byte queued-GStyle layout",
+    };
+  }
+  if (!rangeFits(data, object.offset, layout.lengthEcho + 4)) {
+    return { ok: false, error: "GStyleElem frame is truncated" };
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (
+    view.getUint32(object.offset, true) !== object.elementId ||
+    view.getUint32(object.offset + 8, true) !== object.objectLength ||
+    canonicalClassTag(view.getUint16(object.offset + 12, true)) !== object.marker ||
+    view.getUint32(object.offset + layout.repeatedElementId, true) !== object.elementId ||
+    view.getUint32(object.offset + layout.lengthEcho, true) !== object.objectLength
+  ) {
+    return {
+      ok: false,
+      error: "GStyleElem frame invariants do not match its supplied envelope",
+    };
+  }
+  const descriptor = decodeCondInt16PropertyDescriptor(data, object.offset + layout.descriptor);
+  if (
+    !descriptor.ok ||
+    descriptor.descriptor.token !== -1 ||
+    descriptor.descriptor.sourceClassSlot !== REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT ||
+    descriptor.descriptor.endOffset !== object.offset + layout.category
+  ) {
+    return {
+      ok: false,
+      error:
+        "GStyleElem m_pGStyle is not the certified token -1/source-slot 2288 descriptor",
+    };
+  }
+  const screenSized = data[object.offset + layout.screenSized];
+  if (screenSized !== 0 && screenSized !== 1) {
+    return { ok: false, error: "GStyle contains an invalid screen-sized flag" };
+  }
+  const id = (at: number) => BigInt(view.getInt32(object.offset + at, true));
+  return {
+    ok: true,
+    value: {
+      elementId: object.elementId,
+      recordOffset: object.offset,
+      objectLength: NARROW_GSTYLE_ELEMENT_OBJECT_LENGTH,
+      objectMarker: REVIT_2027_GSTYLE_ELEMENT_MARKER,
+      categoryElementId: id(layout.category),
+      ownerElementId: id(layout.owner),
+      graphicsStyleType: view.getInt32(object.offset + layout.graphicsStyleType, true),
+      linePatternElementId: id(layout.linePattern),
+      materialElementId: id(layout.material),
+      penNumber: view.getInt32(object.offset + layout.penNumber, true),
+      color: view.getUint32(object.offset + layout.color, true),
+      isScreenSized: screenSized === 1,
+      evidence: "framed-gstyle-element-queued-gstyle",
+    },
+  };
+}
+
 /** `OST_LightingFixtureSource`, the "Light Source" subcategory of lighting fixtures. */
 export const LIGHT_SOURCE_CATEGORY_ID = -2_001_121;
 
@@ -199,27 +296,29 @@ export const LIGHT_SOURCE_CATEGORY_ID = -2_001_121;
  * +125. Across every style in the three older sample files the descriptor
  * (token -1 and the file's own `GStyle` class) occurs exactly once, so it is
  * found rather than assumed, and a record where it does not occur exactly
- * once is not read.
+ * once is not read. Where ids are 32-bit the category after it is an `int32`,
+ * and the frame's echo is 12 bytes past its length.
  */
 export function readGStyleElementCategoryId(
   data: Uint8Array,
   object: ElementObject,
 ): number | null {
   if (object.marker !== REVIT_2027_GSTYLE_ELEMENT_MARKER) return null;
-  // The category read below is a 64-bit id (2024 on).
-  if (narrowElementIds()) return null;
+  const narrow = narrowElementIds();
+  const header = narrow ? 12 : 16;
   const styleTag = fileClassTag(REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT);
-  const echoOffset = object.offset + object.objectLength + 16;
-  if (styleTag < 0 || !rangeFits(data, object.offset, object.objectLength + 20)) return null;
+  const echoOffset = object.offset + object.objectLength + header;
+  if (styleTag < 0 || !rangeFits(data, object.offset, object.objectLength + header + 4)) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (view.getUint32(echoOffset, true) !== object.objectLength) return null;
   let descriptor = -1;
-  for (let at = object.offset + 20; at + 14 <= echoOffset; at += 1) {
+  for (let at = object.offset + header + 4; at + (narrow ? 10 : 14) <= echoOffset; at += 1) {
     if (view.getInt32(at, true) !== -1 || view.getUint16(at + 4, true) !== styleTag) continue;
     if (descriptor >= 0) return null;
     descriptor = at;
   }
   if (descriptor < 0) return null;
+  if (narrow) return view.getInt32(descriptor + 6, true);
   const categoryId = view.getBigInt64(descriptor + 6, true);
   return categoryId >= -0x8000_0000n && categoryId <= 0x7fff_ffffn ? Number(categoryId) : null;
 }
@@ -233,7 +332,7 @@ export function scanRevit2027GStyleElementRecords(
   const failures = new Map<string, number>();
   let framedStyleElements = 0;
 
-  if (!usesRevit2027RecordLayout(revitVersion)) {
+  if (!readsElementRecordLayout(revitVersion)) {
     return {
       revitVersion,
       framedStyleElements,

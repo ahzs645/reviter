@@ -67,6 +67,13 @@ import { REVIT_2027_GLINE_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-gl
 import { readRevit2027GInfo, revit2027GInfoBytes } from "../lib/reviter/revit-2027-grep-prefixes.ts";
 import { replayRevit2027GRepFifo } from "../lib/reviter/revit-2027-grep-replay.ts";
 import {
+  LIGHT_SOURCE_CATEGORY_ID,
+  readGStyleElementCategoryId,
+  REVIT_2027_GSTYLE_ELEMENT_MARKER,
+  REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT,
+  scanRevit2027GStyleElementRecords,
+} from "../lib/reviter/revit-2027-gstyle-material.ts";
+import {
   decodeRevit2027StairsElementAggregate,
   decodeRevit2027StairsRunAndLandingAggregate,
   REVIT_2027_STAIRS_ELEMENT_MARKER,
@@ -784,4 +791,23 @@ test("a narrow GElement face material follows its cut type and face flags", () =
   assert.deepEqual(candidates.map(({ geometryId, materialId, fieldOffset }) => [geometryId, materialId, fieldOffset]), [
     [459090, 232859, 340],
   ]);
+});
+
+test("a narrow GStyleElem is 108 bytes: its category after the queued GStyle descriptor, the GStyle in its older order", () => {
+  const body = new Bytes().u32(0).zeros(50 - 18).u32(1234567).zeros(85 - 54)
+    .i32(-1).u16(REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT) // m_pGStyle
+    .i32(LIGHT_SOURCE_CATEGORY_ID).i32(-1).i32(1) // m_categoryId, m_ownerId, m_gstyleType
+    .i32(3).u32(0x00ff_8000).i32(-3000010).i32(288295).u8(0); // pen, colour, line pattern, material, screen-sized
+  assert.equal(body.length, 106);
+  const data = page(narrowFrame(1234567, REVIT_2027_GSTYLE_ELEMENT_MARKER, body.out, 0x2468_1357));
+  narrow(() => {
+    const frame = scanFramedElementObjects(data)[0]!;
+    assert.equal(readGStyleElementCategoryId(data, frame), LIGHT_SOURCE_CATEGORY_ID);
+    const [record] = scanRevit2027GStyleElementRecords(data, 2023).records;
+    assert.equal(record?.categoryElementId, BigInt(LIGHT_SOURCE_CATEGORY_ID));
+    assert.equal(record?.materialElementId, 288295n);
+    assert.equal(record?.linePatternElementId, -3000010n);
+    assert.equal(record?.penNumber, 3);
+    assert.equal(record?.color, 0x00ff_8000);
+  });
 });
