@@ -304,6 +304,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   // leave the collector as reusable local geometry. The collector composes
   // their exact nested GInstance closure atomically and never publishes
   // unrelated non-scene definitions.
+  const wrapperIds = new Set(displaySelection.openingWrappers.map((record) => record.elementId));
   const nativeMeshCollection =
     nativeMeshCollector.snapshot(
       sharedGeometryIds,
@@ -315,7 +316,21 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
         ]),
       ),
       new Set(
-        displayBounds
+        [
+          // Holding a record back from the box scene is a statement about its
+          // box: a building-sized container would hide the building, and
+          // terrain and planting are never drawn as boxes. It says nothing
+          // about the element's own geometry, which may still be published;
+          // the technical school's 1,047 ft terrain and its roof, whose
+          // record spans 468 ft, are held back that way and both have a
+          // complete mesh. Curtain-wall wrappers stay out: their panels and
+          // mullions are drawn in their place. A record with no category is
+          // not a placed element (the RAC sample's one is an RPC plant type,
+          // its box in the type's own coordinates), so it stays out too.
+          ...boundedSolids.filter(
+            (record) => record.categoryId != null && !wrapperIds.has(record.elementId),
+          ),
+        ]
           .filter((record) => !instancePlacements.has(record.elementId))
           .map((record) => record.elementId),
       ),
@@ -586,6 +601,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   const proxyIds = new Set(
     proxyDisplayBounds.map((record) => record.elementId),
   );
+  // A held-back record whose own mesh was published is drawn by that mesh.
+  const displayIds = new Set(displayBounds.map((record) => record.elementId));
+  for (const record of boundedSolids) {
+    if (displayIds.has(record.elementId)) continue;
+    if (nativeMeshScene.coveredElementIds.has(record.elementId)) record.renderGeometryProvenance = "native";
+  }
   for (const record of displayBounds) {
     if (nativeMeshScene.reconstructedElementIds.has(record.elementId)) {
       record.renderGeometryProvenance = "reconstructed";

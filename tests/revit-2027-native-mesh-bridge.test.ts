@@ -617,3 +617,62 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
     ],
   );
 });
+
+test("the envelope allowance grows with a building-sized envelope", () => {
+  const collection: Revit2027NativeMeshCollection = {
+    enabled: true,
+    reconstructedOwnerIds: new Set(),
+    owners: new Map([
+      [10, {
+        ownerElementId: 10,
+        faces: [{ faceToken: 1, mesh: triangle() }],
+        triangles: 1,
+      }],
+    ]),
+    scannedFrames: 1,
+    eligibleRoots: 1,
+    boundedTessellatorCandidateRoots: 0,
+    completeBoundedTessellatorRoots: 0,
+    boundedTessellatorOwnerIds: new Set(),
+    conditionedGeometryCandidateRoots: 0,
+    completeConditionedGeometryRoots: 0,
+    conditionedGeometryOwnerIds: new Set(),
+    embeddedGeometryCandidateRoots: 0,
+    completeEmbeddedGeometryRoots: 0,
+    embeddedGeometryOwnerIds: new Set(),
+    replayedOwners: 1,
+    completeOwners: 1,
+    incompleteOwners: 0,
+    excludedNonTopologicalFaces: 0,
+    failedOwners: 0,
+    storedTriangles: 1,
+    storedBytes: 0,
+    truncated: false,
+    incompleteSamples: [],
+    nestedDefinitions: 0,
+    nestedLinks: 0,
+    nestedRootOwners: 0,
+    completeNestedRoots: 0,
+    partialNestedRoots: 0,
+    nestedTriangles: 0,
+    nestedFailures: 0,
+    nestedFailureSamples: [],
+    requestedOwnerDefinitions: 0,
+    completeRequestedOwners: 0,
+    partialRequestedOwners: 0,
+    requestedOwnerTriangles: 0,
+    requestedOwnerFailures: 0,
+    requestedOwnerFailureSamples: [],
+  };
+  // The unit triangle ends 0.7 ft past the envelope's +x and +y faces.
+  const within = (min: { x: number; y: number; z: number }) =>
+    buildRevit2027NativeMeshScene(collection, [], { x: 0, y: 0, z: 0 }, {
+      expectedBoundsByElement: new Map([[10, { min, max: { x: 0.3, y: 0.3, z: 1 } }]]),
+    });
+  // A 3 ft envelope keeps the fixed half-foot allowance.
+  assert.equal(within({ x: -1, y: -1, z: -1 }).boundsMismatches, 1);
+  // A 580 ft one allows 0.2% of its diagonal, 1.2 ft.
+  const building = within({ x: -500, y: -300, z: -1 });
+  assert.equal(building.boundsMismatches, 0);
+  assert.deepEqual([...building.coveredElementIds], [10]);
+});

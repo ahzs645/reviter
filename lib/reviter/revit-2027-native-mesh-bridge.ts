@@ -2273,6 +2273,27 @@ function containedWithin(
   );
 }
 
+/**
+ * The envelope check's allowance grows with the envelope: 0.2% of its
+ * diagonal where that is more than the fixed tolerance. A record is a stored
+ * box that Revit does not always rewrite when the element is edited, and on a
+ * building-sized element a small edit moves a face by more than a fixed
+ * half-foot. The technical school's main roof is the case: its record spans
+ * 468 ft and ends 0.71 ft short of the roof's certified mesh, which matches
+ * Autodesk's own box for the roof to the hundredth of a foot. Across the four
+ * sample models, no other rejected mesh passes with the allowance.
+ */
+const ENVELOPE_RELATIVE_TOLERANCE = 0.002;
+
+function envelopeTolerance(expected: Bounds3, tolerance: number): number {
+  const diagonal = Math.hypot(
+    expected.max.x - expected.min.x,
+    expected.max.y - expected.min.y,
+    expected.max.z - expected.min.z,
+  );
+  return Math.max(tolerance, diagonal * ENVELOPE_RELATIVE_TOLERANCE);
+}
+
 /** How closely a family-document mesh must fill its element's envelope. */
 const FAMILY_DOCUMENT_TOLERANCE_FEET = 0.05;
 
@@ -2438,7 +2459,7 @@ export function buildRevit2027NativeMeshScene(
     if (exactCarrierComposition && options.expectedBoundsByElement) {
       carrierComposedItems += 1;
       const expected = options.expectedBoundsByElement.get(item.elementId);
-      if (expected && !containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+      if (expected && !containedWithin(itemBounds(item), expected, envelopeTolerance(expected, boundsToleranceFeet))) {
         carrierComposedOutsideEnvelope += 1;
         if (carrierComposedSamples.length < MAX_INCOMPLETE_SAMPLES) {
           carrierComposedSamples.push({
@@ -2476,7 +2497,7 @@ export function buildRevit2027NativeMeshScene(
             code: "missing-bounds",
           });
         }
-      } else if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+      } else if (!containedWithin(itemBounds(item), expected, envelopeTolerance(expected, boundsToleranceFeet))) {
         boundsMismatches += 1;
         if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
           boundsMismatchSamples.push({
