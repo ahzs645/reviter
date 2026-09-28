@@ -61,6 +61,13 @@ import {
   REVIT_2027_GELEMENT_OBJECT_MARKER,
 } from "../lib/reviter/revit-2027-framed-grep-root.ts";
 import { decodeRevit2027AssetProperty } from "../lib/reviter/revit-2027-asset-properties.ts";
+import {
+  decodeRevit2027TopRailTypeCurves,
+  REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT,
+  REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT,
+  REVIT_2027_TOP_RAIL_TYPE_MARKER,
+} from "../lib/reviter/revit-2027-baluster-instances.ts";
+import { decodeRevitDocumentHistory, decodeRevitNativeIdentities } from "../lib/reviter/native-identity.ts";
 import { decodeRevit2027GFilling } from "../lib/reviter/revit-2027-gfilling.ts";
 import { decodeRevit2027GPolyMesh, revit2027GPolyMeshBodyBytes } from "../lib/reviter/revit-2027-gpolymesh.ts";
 import {
@@ -904,4 +911,53 @@ test("a narrow family form: visibility, subcategory, material and cutting flag, 
   assert.deepEqual(form, {
     elementId: 506161, cutting: true, visibilityFlags: 57406, subcategoryId: null, materialId: 232859,
   });
+});
+
+test("a narrow TopRailType: its curve loops at +105, a four-byte owning rail id, and 16-byte-GInfo lines", () => {
+  const body = new Bytes().zeros(105 - 14)
+    .u32(2).i32(-1).u16(REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT).i32(-1).u16(REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT)
+    .u32(566600); // the owning TopRail
+  for (const height of [3, 3.5]) body.i32(-1).u16(REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT).u32(2).f64(height).f64(height);
+  for (const token of [3, 4]) body.u8(0).u32(1).i32(token).u16(REVIT_2027_GLINE_SOURCE_CLASS_SLOT);
+  for (const y of [0, 0.25]) {
+    body.i32(566601).i32(0).i32(-1).u32(0x0008_8004).f64(0).f64(10); // GInfo, end parameters
+    body.f64(0).f64(y).f64(3).f64(1).f64(0).f64(0); // origin, direction
+  }
+  const data = Uint8Array.from([...narrowFrame(566601, REVIT_2027_TOP_RAIL_TYPE_MARKER, body.out, 0x0246_8ace), 0, 0, 0, 0]);
+  narrow(() => {
+    const frame = scanFramedElementObjects(data)[0]!;
+    const decoded = decodeRevit2027TopRailTypeCurves(data, frame, 2027);
+    assert.deepEqual(decoded.ok ? "ok" : decoded.error, "ok");
+    if (!decoded.ok) return;
+    assert.equal(decoded.value.owningTopRailElementId, 566600);
+    assert.deepEqual(
+      decoded.value.loops.map((loop) => loop.segments.map(({ start, end }) => [[...start], [...end]])),
+      [[[[0, 0, 3], [10, 0, 3]]], [[[0, 0.25, 3.5], [10, 0.25, 3.5]]]],
+    );
+  });
+});
+
+test("2019 to 2023 UniqueIds: an older History format number and 28-byte ElemTable rows", () => {
+  const guid = (seed: number) => Array.from({ length: 16 }, (_, index) => (seed + index) & 0xff);
+  const history = new Bytes().u16(0x04dc).u16(1).zeros(10).u32(2).i32(0);
+  for (let slot = 0; slot < 5; slot += 1) history.out.push(...guid(0x40));
+  history.u32(0).u32(2); // no history index values; two episodes, newest first
+  history.out.push(...guid(0x90)); history.u8(0x28);
+  history.out.push(...guid(0x10)); history.u8(0x28);
+  history.u32(0);
+  const table = new Bytes().u16(0).u32(2).zeros(24) // header: two declared records, the first skipped
+    .i32(-1).i32(7).i32(7).u32(0).u32(1).u32(0xffff_ffff).u32(0)
+    .zeros(23);
+  narrow(() => {
+    const decodedHistory = decodeRevitDocumentHistory(Uint8Array.from(history.out), 2023);
+    if (decodedHistory.format === "unsupported") assert.fail(decodedHistory.reason);
+    assert.equal(decodedHistory.format, "revit-2019-2023-history");
+    const identities = decodeRevitNativeIdentities(Uint8Array.from(table.out), decodedHistory, 2023);
+    if (identities.format === "unsupported") assert.fail(identities.reason);
+    assert.equal(identities.format, "revit-2019-2023-native-identity");
+    assert.deepEqual(identities.identities.map(({ elementId, uniqueId }) => [elementId, uniqueId]), [
+      [7, "13121110-1514-1716-1819-1a1b1c1d1e1f-00000007"],
+    ]);
+  });
+  assert.equal(decodeRevitDocumentHistory(Uint8Array.from(history.out), 2023).format, "unsupported");
 });

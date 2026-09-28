@@ -4,7 +4,7 @@ import {
 } from "./revit-2027-baluster-instances.ts";
 import { narrowElementIds } from "./element-id-width.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
-import { readsElementRecordLayout, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
+import { readsElementRecordLayout } from "./revit-class-tags.ts";
 import { createSplitFrameStream } from "./split-frame-stream.ts";
 
 const MIN_FRAME_BYTES = 40;
@@ -53,7 +53,7 @@ export function createRevit2027SplitAlternateFrameCollector(
   });
   return {
     pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (!usesRevit2027RecordLayout(release)) return [];
+      if (!readsElementRecordLayout(release)) return [];
       // A frame that fits one page within the ordinary scanner's ceiling is
       // already seen there, and must not be decoded twice.
       return stream
