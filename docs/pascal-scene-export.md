@@ -177,6 +177,65 @@ slab of enclosure, which is what a thin wall is, so panels go across as walls
 and a curtain-wall building keeps its façade on *every* Pascal. `--extras all`
 adds blocks for the rest and needs an editor built from the repository.
 
+### Wall joins
+
+Revit joins walls *graphically*. A wall teed into another usually has its
+location line stop at the other wall's near face, half a thickness short of its
+centreline, and the drawing cleans the join up. Pascal does no such cleanup: it
+mitres two walls only when their endpoints coincide within 1 mm
+(`TOLERANCE = 0.001` in its `wall-mitering.ts`) or an endpoint lies on another
+wall's line. Written as the RVT states them, 14,334 of the supplied model's
+14,884 straight-wall ends (96%) are open on location lines. That is authored,
+not a parsing artifact: Autodesk's own IFC export of the model ends its wall
+`Axis` at the same point for 96% of those ends, and its wall bodies touch for
+99.8% of them. The two were matched wall by wall, all 7,521 drawn walls by
+Revit element id.
+
+So the CLI's Pascal export heals joins first, through `healConvertResult` in
+`lib/reviter/heal-walls.ts`. It moves a wall end only along the wall's own axis
+onto the neighbour's location line, snaps collinear runs that are at most 20 mm
+out of line, closes gaps of at most 0.15 m, and moves no end more than 0.35 m. It
+rejects any move that would cost a neighbouring end a contact it already had. On
+the supplied model it makes 7,958 end moves on 5,736 of the 13,758 wall nodes:
+7,387 tee extensions, 270 collinear snaps, 203 corners and 98 tee trims. The
+largest move is 0.348 m, just inside the cap. Ends open on location lines go from
+14,334 to 6,280. Most of the remainder are the through-runs of butt corners,
+which are now closed by their partner's T. Ends whose bodies are open go from
+2,099 to 1,158. Nearly all the gaps that remain are wider than 0.15 m, and
+are probably deliberate. The GLB and IFC exports are not healed. They draw native
+meshes, and healing corrects meaning, not appearance.
+
+Doors and windows are measured against the healed wall, so when a start moves,
+their offset along the wall moves by the same amount. Across all 1,820
+openings, the largest along-wall drift is 0.1 mm. The only other drift is
+sideways: 77 openings on walls that a collinear snap straightened move with
+their wall's line, by at most 14 mm. Pascal's `opening_outside_wall` warnings
+fall from 186 to 141. Healing resolves 45 and introduces none. Doors on a wall
+shorter than the door itself fall from 24 to 10. All 141 that remain are doors,
+and 97 of them overhang their wall's end by more than 5 cm. Healing closes
+joins. It does not lengthen a wall to fit its door.
+
+Every healed wall carries a compact record in `metadata.reviterJoinHeal`, in
+the file's own plan metres. The record holds the RVT's `originalStart` and
+`originalEnd`, the `hostedOffsetShift` added to its openings' offsets, and one
+entry per end move: `end`, `reason`, the end's class before the move,
+`movedMetres`, and the partner's node id and Revit element id. Restoring the original line and
+subtracting the shift from each hosted opening reverts the edit from the Pascal
+file alone. On the supplied model, the restored lines match the unhealed
+export to within 1 nm, and the restored offsets match to within 0.06 mm.
+
+The building node carries a summary in `metadata.reviterJoinHeal`: edit counts by reason, the largest move, every
+tolerance used with the defaults filled in, and the open-end counts before and
+after. The site node carries `metadata.reviterFrame`, which is the exact map
+back to Revit feet (`pascalFrameFor` in `lib/reviter/room-annotations.ts`). With
+it, an edited scene can be diffed and replayed without the conversion that
+wrote it.
+
+Healing costs about as much time as the conversion does: 109 s on top of 68 s
+for the supplied model. The records add 3 MB to the 14.2 MB file.
+`--no-heal-joins` skips the pass. The studio's **Pascal** button does not
+heal, because the pass would block the browser's main thread for that long.
+
 ## What does not cross
 
 - **Materials.** Reviter decodes 69 native material definitions and assigns them
@@ -290,6 +349,7 @@ are both zero to floating-point precision.
 npm run extract -- model.rvt --out model.pascal.json
 npm run extract -- model.rvt --out model.pascal.json --extras all
 npm run extract -- model.rvt --out model.pascal.json --extras none --mirror-plan
+npm run extract -- model.rvt --out model.pascal.json --no-heal-joins   # walls exactly as the RVT states them
 ```
 
 The compound `.pascal.json` suffix selects the format, because `model.json` is

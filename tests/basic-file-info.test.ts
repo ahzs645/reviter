@@ -74,6 +74,7 @@ test("the extraction command infers format from its output", () => {
       floorPlates: false,
       extras: undefined,
       mirrorPlan: undefined,
+      healJoins: undefined,
     },
   );
   assert.equal(
@@ -96,6 +97,25 @@ test("the extraction command reads a Pascal scene off its compound suffix", () =
   assert.equal(
     parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--mirror-plan"]).mirrorPlan,
     true,
+  );
+  // Join healing is on for Pascal unless turned off, and never touches other formats.
+  assert.equal(parseExtractArguments(["model.rvt", "--out", "model.pascal.json"]).healJoins, true);
+  assert.equal(
+    parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--heal-joins"]).healJoins,
+    true,
+  );
+  assert.equal(
+    parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--no-heal-joins"]).healJoins,
+    false,
+  );
+  assert.equal(parseExtractArguments(["model.rvt", "--out", "model.glb"]).healJoins, undefined);
+  assert.throws(
+    () => parseExtractArguments(["model.rvt", "--out", "model.ifc", "--heal-joins"]),
+    /only for Pascal/u,
+  );
+  assert.throws(
+    () => parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--heal-joins", "--no-heal-joins"]),
+    /either/u,
   );
   assert.throws(
     () => parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--extras", "some"]),
