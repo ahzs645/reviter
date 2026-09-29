@@ -30,6 +30,7 @@ import type {
   Segment,
   Vec3,
 } from "./types.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 const MESH_BATCH_SIZE = 2_000;
 
@@ -256,6 +257,8 @@ export function displayRole(record: ElementBoundsRecord): DisplayRole | "wrapper
 
 export type DisplaySelection = {
   records: ElementBoundsRecord[];
+  /** Records in non-model categories (annotation, views, links, groups) held back. */
+  omittedNonModelCount: number;
   /**
    * Curtain-wall/opening containers omitted because their panels and mullions
    * are drawn instead. Their envelopes are also the only recovered evidence of
@@ -338,10 +341,10 @@ const PROXY_ONLY_HELPER_CATEGORY_IDS = new Set([
 ]);
 
 /** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
-const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
+let REVIT_2027_RAMP_SYMBOL_MARKER = registerReleaseMarker("RampSym", 3462, (value) => { REVIT_2027_RAMP_SYMBOL_MARKER = value; });
 
 /** `ContourLabelingElem`, an annotation/drawing-aid class in Formats/Latest. */
-const REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = 974;
+let REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = registerReleaseMarker("CurveElem", 974, (value) => { REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = value; });
 
 /**
  * An unlabelled type/annotation definition is not a placed scene element.
@@ -1040,7 +1043,69 @@ export function glazingElementIds(records: ElementBoundsRecord[]): Set<number> {
   return ids;
 }
 
-export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySelection {
+/**
+ * Categories whose elements are not building geometry, so their envelopes
+ * must not be drawn as solids.
+ *
+ * Measured 2026-09-11 on the Snowdon Towers (Revit 2024) and RAC (2025)
+ * sample models, once their records decoded: five `RVT Links` instances drew
+ * as one 662 million cubic-foot block — a link's envelope is the whole linked
+ * building's — and were 1,368,328 of the 1,437,842 recovered-only voxels
+ * against the Autodesk view; a text note drew as a 2.6 million cubic-foot
+ * plate; 227 viewports, 360 sun-path elements, section boxes, C-lines,
+ * adaptive points and schedule graphics drew as boxes at their sheet or
+ * datum positions. Model groups are containers whose members are drawn on
+ * their own, exactly as stair assemblies are. The supplied 2027 project
+ * carries none of these categories among its drawn elements, so nothing it
+ * shows is affected.
+ *
+ * The list is by id and reported by count; a category not listed here is
+ * drawn as before, so an omission costs a stray box rather than a lost element.
+ */
+const NON_MODEL_CATEGORY_IDS = new Set([
+  -2001352, // RVT Links: the linked model's envelope, not this file's geometry
+  -2000095, // Model Groups: a container; its members are drawn themselves
+  -2000096, // Detail Groups
+  -2000097, // Attached Detail Groups
+  -2000300, // Text Notes
+  -2000510, // Viewports
+  -2000279, // Views
+  -2000500, // Cameras
+  -2000280, // Title Blocks
+  -2003100, // Sheets
+  -2000301, // Section Boxes
+  -2000530, // C Lines
+  -2000083, // Reference Lines
+  -2000260, // Dimensions
+  -2000261, // Automatic Sketch Dimensions
+  -2000263, // Spot Elevations
+  -2000264, // Spot Coordinates
+  -2000150, // Generic Annotations
+  -2000570, // Schedule Graphics
+  -2000573, // Schedules
+  -2000575, // Legend Components
+  -2000576, // Preview Legend Components
+  -2000700, // Materials
+  -2000900, // Adaptive Points
+  -2009609, // Sun Path
+  -2006114, // Design Options
+  -2000220, // Grids
+  -2000240, // Levels
+  -2009645, // Analytical Nodes
+  -2009662, // Analytical Members
+  -2009664, // Analytical Panels
+]);
+
+/** Whether a record's decoded category is one the scene never draws. */
+export function isNonModelCategoryRecord(
+  record: Pick<ElementBoundsRecord, "categoryId">,
+): boolean {
+  return record.categoryId != null && NON_MODEL_CATEGORY_IDS.has(record.categoryId);
+}
+
+export function selectDisplayBounds(allRecords: ElementBoundsRecord[]): DisplaySelection {
+  const records = allRecords.filter((record) => !isNonModelCategoryRecord(record));
+  const omittedNonModelCount = allRecords.length - records.length;
   const held = heldBackWrappers(records);
   const openingWrappers = [...held];
   const withoutWrappers = records.filter((record) => !held.has(record));
@@ -1052,6 +1117,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   if (classified.length < 2) {
     return {
       records: classified,
+      omittedNonModelCount,
       openingWrappers,
       omittedContainerCount: 0,
       omittedWrapperCount,
@@ -1074,6 +1140,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   if (!isDominantContainer) {
     return {
       records: classified,
+      omittedNonModelCount,
       openingWrappers,
       omittedContainerCount: 0,
       omittedWrapperCount,
@@ -1083,6 +1150,7 @@ export function selectDisplayBounds(records: ElementBoundsRecord[]): DisplaySele
   }
   return {
     records: classified.filter((record) => record !== largest.record),
+    omittedNonModelCount,
     openingWrappers,
     omittedContainerCount: 1,
     omittedWrapperCount,

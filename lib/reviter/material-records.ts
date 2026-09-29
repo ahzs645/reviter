@@ -17,8 +17,10 @@
  * trailer, and the bounded colour layouts documented below.
  */
 
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+
 /** `MaterialElem` object marker measured in the supplied Revit 2027 file. */
-export const REVIT_2027_MATERIAL_ELEMENT_MARKER = 0x0ad3;
+export let REVIT_2027_MATERIAL_ELEMENT_MARKER = registerReleaseMarker("MaterialElem", 0x0ad3, (value) => { REVIT_2027_MATERIAL_ELEMENT_MARKER = value; });
 
 /** Marker immediately following the material element's UTF-16 name field. */
 const REVIT_2027_MATERIAL_NAME_TRAILER = [
@@ -410,7 +412,7 @@ export function scanMaterialElementRecords(
   revitVersion: number,
 ): MaterialRecordScan {
   const definitions: NativeMaterialDefinition[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) {
+  if (!releaseDecodersApply(revitVersion) || data.byteLength < 64) {
     return {
       revitVersion,
       framedMaterialElements: 0,

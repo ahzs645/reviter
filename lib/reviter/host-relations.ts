@@ -12,7 +12,9 @@
  * otherwise make `+153` look like a live id in unrelated records.
  */
 
-export const REVIT_2027_INSERTABLE_INSTANCE_MARKER = 0x07ef;
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+
+export let REVIT_2027_INSERTABLE_INSTANCE_MARKER = registerReleaseMarker("FamilyInstance", 0x07ef, (value) => { REVIT_2027_INSERTABLE_INSTANCE_MARKER = value; });
 
 const PRIMARY_HOST_ID_OFFSET = 151;
 const ALTERNATE_HOST_ID_OFFSET = 153;
@@ -46,7 +48,7 @@ export function scanHostRelationCandidates(
   revitVersion: number,
 ): HostRelationCandidate[] {
   const candidates: HostRelationCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) return candidates;
+  if (!releaseDecodersApply(revitVersion) || data.byteLength < 64) return candidates;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     if (view.getUint32(offset + 4, true) !== 0) continue;

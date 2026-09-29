@@ -1,3 +1,4 @@
+import { appendOwnedNativeRecords, heldNativeWrapperIds } from "./owned-model-elements.ts";
 /**
  * The display scene: what the viewer receives, and what it is told was held
  * back.
@@ -31,21 +32,23 @@ import { residualDatumPileElementIds } from "./datum-pile.ts";
 import { removeRecordsInPlace } from "./convert-synthesised-records.ts";
 import {
   anonymousWallDuplicateProxyIds,
-  isNonSceneObjectDefinition,
-  nonSceneNativeMeshHelperIds,
   boundsPlanSegments,
   buildBoundsMeshes,
   curtainAssemblyHelperProxyIds,
   excludeMeshElementIds,
+  isNonModelCategoryRecord,
+  isNonSceneObjectDefinition,
   isStairOrRailingHelperProxy,
   levelsForBounds,
   levelsFromRelations,
+  nonSceneNativeMeshHelperIds,
   selectDisplayBounds,
   stairAssembliesWithRecoveredNativeRuns,
 } from "./scene.ts";
 import { nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
 
 import type { ConvertSceneReport } from "./convert-report.ts";
+import type { OwnedFacetedGeometry } from "./owned-faceted-geometry.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
@@ -59,6 +62,11 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
+
+/** `Stairs`: the assembly container whose runs and landings carry the geometry. */
+const STAIRS_CATEGORY_ID = -2000120;
+/** `Multistory Stairs`: the container of `Stairs` containers. */
+const MULTISTORY_STAIRS_CATEGORY_ID = -2000980;
 
 export type DrawableRecordsInput = {
   /** Every recovered record. Unplaced ones are removed, in place. */
@@ -121,6 +129,26 @@ export function selectDrawableRecords(
   for (const elementId of nonSceneObjectDefinitionIds) {
     nonSceneNativeMeshIds.add(elementId);
   }
+  // Non-model categories are excluded here, ahead of every geometry route:
+  // a link instance, viewport or sun-path element reaches the scene through
+  // an envelope, a placed shared shape or a native mesh alike, and the
+  // display selection only ever sees the envelopes. See `isNonModelCategoryRecord`.
+  for (const record of elementBounds) {
+    if (isNonModelCategoryRecord(record)) nonSceneNativeMeshIds.add(record.elementId);
+  }
+  // A multistory stair is a container of `Stairs` containers, and its own
+  // record carries a placed shape that duplicates the stairs beneath it.
+  // Surfaced 2026-09-11 when categories started to come from each element's
+  // own header record: ten UNBC records the record-code consensus had filed
+  // under `Top Rails` (and hidden as such) are `Multistory Stairs`, drawn they
+  // added 597 recovered-only voxels against the Autodesk reference, and the
+  // paired IFC export tags a product with none of the ten ids — the same
+  // evidence the baluster-set rule rests on. Excluded here, ahead of every
+  // route, because the placed shape reaches the scene through the mesh path
+  // before the proxy branch that holds `Stairs` containers back.
+  for (const record of elementBounds) {
+    if (record.categoryId === MULTISTORY_STAIRS_CATEGORY_ID) nonSceneNativeMeshIds.add(record.elementId);
+  }
   for (const record of elementBounds) {
     if (nonSceneNativeMeshIds.has(record.elementId)) {
       record.renderGeometryProvenance = "not-rendered-helper";
@@ -145,6 +173,8 @@ export function selectDrawableRecords(
 }
 
 export type DisplaySceneInput = {
+  provenModelCategories?: ReadonlyMap<number, number>;
+  ownedFacetedGeometry?: ReadonlyMap<number, OwnedFacetedGeometry>;
   /** Records worth drawing: a volume, a boundary ring, or a tread set. */
   boundedSolids: ElementBoundsRecord[];
   /** Every recovered record, drawable or not; mutated with its provenance. */
@@ -202,6 +232,9 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     nativeMeshCollector,
   } = input;
   const displaySelection = selectDisplayBounds(boundedSolids);
+  // The records themselves were held out of `boundedSolids` above, so the
+  // selection cannot count them; count them from the full record list here.
+  displaySelection.omittedNonModelCount = elementBounds.filter(isNonModelCategoryRecord).length;
   const displayBounds = displaySelection.records;
   // Framed to the building rather than to the outermost record, so a few
   // misparsed envelopes cannot throw the camera off the model.
@@ -250,13 +283,20 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       })),
     ]),
   );
-  // Only definitions proven to be referenced by persisted placements may
-  // leave the collector as reusable local geometry. The collector composes
-  // their exact nested GInstance closure atomically and never publishes
-  // unrelated non-scene definitions.
+  // Request reusable definitions named by placements and missing physical
+  // owners proven by their sequence-102 class plus owned category header. Mixed
+  // GGroup/GFilter wall roots can have complete bodies without matching the
+  // collector's small direct-root patterns. A missing proxy is not a reason
+  // to withhold those bodies. The collector separates the recognized wall
+  // view drawings from its model body before certifying face completeness.
+  // Other mixed wall representations remain unresolved, so preserve existing
+  // display routes while recovering owners that otherwise have no body.
+  const displayedIds = new Set(displayBounds.map(record => record.elementId));
+  const missingPhysicalIds = [...(input.provenModelCategories?.keys() ?? [])]
+    .filter(id => !displayedIds.has(id));
   const nativeMeshCollection =
     nativeMeshCollector.snapshot(
-      sharedGeometryIds,
+      new Set([...sharedGeometryIds, ...missingPhysicalIds]),
       stairsRuns,
       new Map(
         (elementOwnership?.relations ?? []).map((relation) => [
@@ -296,12 +336,41 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
           record.boundsFeet,
         ]),
       ),
-      // A certified owner without any decoded element-table record is a
-      // reusable definition, not evidence of a placed object. Zero-volume
-      // records remain known and may still use their exact native mesh.
-      knownElementIds: new Set(elementBounds.map((record) => record.elementId)),
+      // An owner needs a decoded record or class + category proof that it is
+      // a placed physical element. Geometry ownership alone may describe a
+      // reusable definition. Zero-volume records also remain eligible.
+      knownElementIds: new Set([...elementBounds.map((record) => record.elementId), ...(input.provenModelCategories?.keys() ?? [])]),
     },
   );
+  appendOwnedNativeRecords(elementBounds, nativeMeshScene.meshes, origin, input.provenModelCategories ?? new Map());
+  // Complete, element-owned terrain arrays can be read even when a large
+  // envelope was omitted by proxy display selection. Admit only the measured
+  // Topography category; conditioned/instanced planting remains unresolved.
+  for (const record of elementBounds) {
+    const faceted = input.ownedFacetedGeometry?.get(record.elementId);
+    if (!faceted || record.categoryId !== -2001340 || nonSceneNativeMeshIds.has(record.elementId) || nativeMeshScene.coveredElementIds.has(record.elementId)) continue;
+    for (const { mesh, materialId } of faceted.meshes) {
+      const positions = new Float32Array(mesh.positions.length);
+      for (let i = 0; i < positions.length; i += 3) {
+        positions[i] = mesh.positions[i]! - origin.x;
+        positions[i + 1] = mesh.positions[i + 1]! - origin.y;
+        positions[i + 2] = mesh.positions[i + 2]! - origin.z;
+      }
+      nativeMeshScene.meshes.push({
+        name: `Topography ${record.elementId}`, positions, indices: mesh.indices,
+        elementIds: new Uint32Array(mesh.indices.length / 3).fill(record.elementId),
+        colors: new Float32Array(positions.length).fill(1),
+        materialIndex: (materialId == null ? undefined : nativeMaterialIndexById.get(materialId)) ?? proxyMaterialIndexByElement.get(record.elementId) ?? 0,
+        ...(materialId != null && materialElementIds.has(materialId) ? { nativeMaterialElementId: materialId } : {}),
+        source: "native-faceted",
+      });
+      nativeMeshScene.triangles += mesh.indices.length / 3;
+      nativeMeshScene.faceMeshes += 1;
+    }
+    nativeMeshScene.coveredElementIds = new Set([...nativeMeshScene.coveredElementIds, record.elementId]);
+    nativeMeshScene.ownerElements += 1;
+    record.renderGeometryProvenance = "native";
+  }
   // A door family's complete native object can be the swept-open family
   // geometry rather than the closed leaf the scene needs. Those meshes
   // were admitted after `doorLeafFromShape` had reconstructed the leaf and
@@ -316,15 +385,16 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       .filter((record) => record.doorLeafSource != null)
       .map((record) => record.elementId),
   );
-  // A curtain-wall assembly wrapper is held back only after decoded facade
-  // children are found inside it. Apply that same decision to native mesh
-  // admission: otherwise a complete BRep tagged to the parent puts the
+  // A curtain-wall assembly wrapper can put a complete parent BRep back over
   // aggregate envelope straight back over its plate and mullions. UNBC
   // object 2422391 is the concrete case — its 20 parent triangles span the
   // full 10.57 × 8.33 × 13.78 ft wrapper while the IFC parent has no body;
-  // panel 2422392 and mullions 2422394–2422397 carry the real geometry.
-  const heldWrapperNativeMeshIds = new Set(
-    displaySelection.openingWrappers.map((record) => record.elementId),
+  // panel 2422392 and mullions 2422394–2422397 carry the real geometry. For
+  // proven physical walls, require actual ownership of a facade child;
+  // proximity alone was also suppressing five ordinary RAC wall bodies.
+  const heldWrapperNativeMeshIds = heldNativeWrapperIds(
+    displaySelection.openingWrappers, elementBounds,
+    input.provenModelCategories ?? new Map(), elementOwnership?.relations ?? [],
   );
   const excludedNativeMeshIds = new Set([
     ...nonSceneNativeMeshIds,
@@ -495,12 +565,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       continue;
     }
     const recoveredStairAssembly =
-      record.categoryId === -2000120 &&
+      record.categoryId === STAIRS_CATEGORY_ID &&
       stairAssembliesWithRecoveredChildren.has(record.elementId);
     if (
       recoveredStairAssembly ||
       (
-        record.categoryId !== -2000120 &&
+        record.categoryId !== STAIRS_CATEGORY_ID &&
         (
           anonymousWallDuplicates.has(record.elementId) ||
           isStairOrRailingHelperProxy(

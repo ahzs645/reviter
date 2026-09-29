@@ -774,9 +774,9 @@ function fragmentGeometryFidelity(
   fragments: readonly GeometryFragment[],
 ): { provenance: string; exact: boolean } {
   const exact = fragments.every((fragment) =>
-    fragment.source === "native-brep" || fragment.source === "reference-ifc");
+    fragment.source === "native-brep" || fragment.source === "native-faceted" || (fragment.source === "reference-ifc" || fragment.source === "reference-autodesk"));
   if (!exact) return { provenance: "reconstructed", exact: false };
-  const referenced = fragments.some((fragment) => fragment.source === "reference-ifc");
+  const referenced = fragments.some((fragment) => (fragment.source === "reference-ifc" || fragment.source === "reference-autodesk"));
   return { provenance: referenced ? "reference-assisted" : "native", exact: true };
 }
 

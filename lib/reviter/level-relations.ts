@@ -25,8 +25,10 @@
  * geometric proximity.
  */
 
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+
 /** Revit 2027 framed-object marker for `Level` elements. */
-export const REVIT_2027_LEVEL_MARKER = 0x0a19;
+export let REVIT_2027_LEVEL_MARKER = registerReleaseMarker("Level", 0x0a19, (value) => { REVIT_2027_LEVEL_MARKER = value; });
 
 const MIN_OBJECT_BYTES = 40;
 const MAX_OBJECT_BYTES = 0xffff;
@@ -113,7 +115,7 @@ export function scanAssociatedLevelRelationCandidates(
   revitVersion: number,
 ): AssociatedLevelRelationCandidate[] {
   const candidates: AssociatedLevelRelationCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) return candidates;
+  if (!releaseDecodersApply(revitVersion) || data.byteLength < 64) return candidates;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {

@@ -41,6 +41,7 @@
  */
 import type { ElementObject } from "./element-objects.ts";
 import { collectSurfaces, type PlanePatch, type SurfacePatch } from "./surfaces.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
 const INSTANCE_OBJECT_LENGTH = 300;
@@ -178,7 +179,7 @@ const DEEP_INSERTABLE_PLACEMENT_PREFIX = [
   0x81, 0x01, 0xff, 0xff,
   0xff, 0xff, 0xf4, 0x07,
 ] as const;
-const INSERTABLE_INSTANCE_MARKER = 0x07ef;
+let INSERTABLE_INSTANCE_MARKER = registerReleaseMarker("FamilyInstance", 0x07ef, (value) => { INSERTABLE_INSTANCE_MARKER = value; });
 
 /** True when the columns of a row-major 3x3 are a right-handed orthonormal set. */
 function rightHandedOrthonormal(basis: number[]): boolean {
@@ -547,7 +548,12 @@ const MULLION_SHAPE_LENGTH = 1_379;
 const PANEL_SHAPE_LENGTH = 1_639;
 
 /** Markers heading a shared shape `readLocalShape` knows how to read. */
-export const SHAPE_OBJECT_MARKERS = [0x10dc, 0x10de, 0x0810];
+let SYS_MULLION_FAMILY_SYMBOL_MARKER = registerReleaseMarker("SysMullionFamSym", 0x10dc, (value) => { SYS_MULLION_FAMILY_SYMBOL_MARKER = value; });
+let SYS_PANEL_FAMILY_SYMBOL_MARKER = registerReleaseMarker("SysPanelFamSym", 0x10de, (value) => { SYS_PANEL_FAMILY_SYMBOL_MARKER = value; });
+let FAMILY_SYMBOL_SHAPE_MARKER = registerReleaseMarker("FamilySymbol", 0x0810, (value) => { FAMILY_SYMBOL_SHAPE_MARKER = value; });
+export function shapeObjectMarkers(): number[] {
+  return [SYS_MULLION_FAMILY_SYMBOL_MARKER, SYS_PANEL_FAMILY_SYMBOL_MARKER, FAMILY_SYMBOL_SHAPE_MARKER];
+}
 
 /** A panel's glass sits this far off the local origin: 25 mm, in feet. */
 const PANEL_FACE_OFFSET_FEET = 0.0820209973753281;
@@ -870,7 +876,7 @@ export function readLocalShape(data: Uint8Array, object: ElementObject): LocalBo
     return box(-width / 2, near, 0, width / 2, far, height);
   }
 
-  if (object.marker === 0x0810) {
+  if (object.marker === FAMILY_SYMBOL_SHAPE_MARKER) {
     const patches = collectSurfaces(data.subarray(start, end));
     // The window route is tried first because it cannot reach a door shape: its
     // gate fires on 0 of the 257 shapes a door points at, measured. The door

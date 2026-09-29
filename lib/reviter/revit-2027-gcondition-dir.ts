@@ -1,5 +1,7 @@
 /** Exact Revit 2027 source slot for `GConditionDir`. */
-export const REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT = 2235;
+
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+export let REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT = registerReleaseMarker("GConditionDir", 2235, (value) => { REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GCONDITION_DIR_BODY_BYTES = 29;
 
 export type Revit2027GConditionDir = {
@@ -28,7 +30,7 @@ export function decodeRevit2027GConditionDir(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GConditionDirDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GConditionDir decoding requires release 2027",

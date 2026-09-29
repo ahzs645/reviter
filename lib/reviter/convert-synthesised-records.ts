@@ -421,6 +421,9 @@ export function synthesiseSketchBoundaryRecords(input: {
  * placements referenced.
  */
 export function removeCachedShapeRecords(input: {
+  /** Sequence-102 class identity proves these are model instances, even when
+   * another drawing/annotation object references them as its geometry. */
+  modelInstanceIds?: ReadonlySet<number>;
   elementBounds: ElementBoundsRecord[];
   categoryTokens: CategoryToken[];
   elementIndex: RvtElementIndex | undefined;
@@ -459,6 +462,7 @@ export function removeCachedShapeRecords(input: {
     instancePlacements.values(),
     placementCategories,
   );
+  for (const id of input.modelInstanceIds ?? []) sharedGeometryIds.delete(id);
   let cachedShapeRecords = 0;
   if (sharedGeometryIds.size) {
     cachedShapeRecords = removeRecordsInPlace(elementBounds, (record) =>

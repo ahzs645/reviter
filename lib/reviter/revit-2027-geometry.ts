@@ -4,8 +4,9 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
-export const REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT = 2343;
+export let REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT = registerReleaseMarker("Geometry", 2343, (value) => { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const INT32_BYTES = 4;
@@ -105,7 +106,7 @@ export function decodeRevit2027GeometryStatic(
   revitVersion: number,
   options: Revit2027GeometryDecodeOptions = {},
 ): Revit2027GeometryStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 Geometry decoding requires release 2027",

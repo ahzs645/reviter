@@ -5,9 +5,10 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `Face`. */
-export const REVIT_2027_FACE_SOURCE_CLASS_SLOT = 1825;
+export let REVIT_2027_FACE_SOURCE_CLASS_SLOT = registerReleaseMarker("Face", 1825, (value) => { REVIT_2027_FACE_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const ELEMENT_ID_BYTES = 8;
@@ -102,7 +103,7 @@ export function decodeRevit2027FaceStatic(
   revitVersion: number,
   options: Revit2027FaceDecodeOptions = {},
 ): Revit2027FaceStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 Face decoding requires release 2027",

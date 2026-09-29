@@ -2,13 +2,14 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Surface source slots observed in `Face.m_pSurf` in the supplied 2027 RVT. */
-export const REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT = 634;
-export const REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT = 900;
-export const REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT = 1144;
-export const REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT = 4283;
-export const REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT = 3859;
+export let REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT = registerReleaseMarker("Plane", 634, (value) => { REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT = registerReleaseMarker("ConeSurf", 900, (value) => { REVIT_2027_CONE_SURFACE_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT = registerReleaseMarker("CylSurf", 1144, (value) => { REVIT_2027_CYLINDER_SURFACE_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT = registerReleaseMarker("SurfRev", 4283, (value) => { REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT = registerReleaseMarker("RuledSurf", 3859, (value) => { REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT = value; });
 
 const POINT_2D_BYTES = 16;
 const POINT_3D_BYTES = 24;
@@ -186,7 +187,7 @@ export function decodeRevit2027AnalyticSurface(
   revitVersion: number,
   sourceClassSlot: number,
 ): Revit2027SurfaceDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 Surface decoding requires release 2027",

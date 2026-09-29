@@ -3,6 +3,7 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
+import { releaseDecodersApply } from "./release-markers.ts";
 
 const HEADER_SCAN_BYTES = 22;
 const FRAME_SUFFIX_BYTES = 20;
@@ -66,7 +67,7 @@ export function createRevit2027SplitAlternateFrameCollector(
 
   return {
     pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (release !== 2027 || page.byteLength === 0) return [];
+      if (!releaseDecodersApply(release) || page.byteLength === 0) return [];
       const pageStart = bufferStreamOffset + buffer.byteLength;
       const combined = new Uint8Array(buffer.byteLength + page.byteLength);
       combined.set(buffer);

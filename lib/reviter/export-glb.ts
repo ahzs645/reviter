@@ -14,7 +14,7 @@ function vectorExtents(values: Float32Array): { min: number[]; max: number[] } {
   return { min, max };
 }
 
-function vertexNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
+export function vertexNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
   const normals = new Float32Array(positions.length);
   for (let index = 0; index < indices.length; index += 3) {
     const ia = indices[index]! * 3;
@@ -64,7 +64,7 @@ export function makeGlb(result: ConvertResult): ArrayBuffer {
   for (const mesh of result.meshes) {
     if (!mesh.positions.length || !mesh.indices.length) continue;
     const positionView = addView(mesh.positions, 34_962);
-    const normalView = addView(vertexNormals(mesh.positions, mesh.indices), 34_962);
+    const normalView = addView(mesh.normals ?? vertexNormals(mesh.positions, mesh.indices), 34_962);
     const indexView = addView(mesh.indices, 34_963);
     const extents = vectorExtents(mesh.positions);
     const positionAccessor = accessors.push({

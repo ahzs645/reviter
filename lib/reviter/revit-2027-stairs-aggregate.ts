@@ -2,13 +2,14 @@ import {
   decodeCondInt16QueueCollection,
   type CondInt16QueueCollection,
 } from "./dynamic-geometry-queue.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Revit 2027 framed-object marker for `StairsElement`. */
-export const REVIT_2027_STAIRS_ELEMENT_MARKER = 4075;
+export let REVIT_2027_STAIRS_ELEMENT_MARKER = registerReleaseMarker("StairsElement", 4075, (value) => { REVIT_2027_STAIRS_ELEMENT_MARKER = value; });
 /** Revit 2027 framed-object marker for the `StairsLanding` subclass. */
-export const REVIT_2027_STAIRS_LANDING_MARKER = 4080;
+export let REVIT_2027_STAIRS_LANDING_MARKER = registerReleaseMarker("StairsLanding", 4080, (value) => { REVIT_2027_STAIRS_LANDING_MARKER = value; });
 /** Revit 2027 framed-object marker for the `StairsRun` subclass. */
-export const REVIT_2027_STAIRS_RUN_MARKER = 4102;
+export let REVIT_2027_STAIRS_RUN_MARKER = registerReleaseMarker("StairsRun", 4102, (value) => { REVIT_2027_STAIRS_RUN_MARKER = value; });
 
 const STATIC_BODY_OFFSET = 127;
 const FRAME_ECHO_OFFSET = 16;
@@ -214,7 +215,7 @@ export function decodeRevit2027StairsElementAggregate(
   objectLength: number,
   revitVersion: number,
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsElementAggregate> {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "StairsElement aggregate decoding requires Revit 2027",
@@ -319,7 +320,7 @@ export function decodeRevit2027StairsRunAndLandingAggregate(
   revitVersion: number,
   options: { knownStairsElementIds?: ReadonlySet<number> } = {},
 ): Revit2027StairsAggregateDecodeResult<Revit2027StairsRunAndLandingAggregate> {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "StairsRunAndLanding aggregate decoding requires Revit 2027",

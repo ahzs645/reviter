@@ -14,18 +14,25 @@
  * is deliberately a second step so references can cross compressed chunks.
  */
 
-export const REVIT_2027_FAMILY_MARKER = 0x07d9;
-export const REVIT_2027_FAMILY_SYMBOL_MARKER = 0x0810;
+import { registerReleaseMarker, releaseDecodersApply, releaseMemo } from "./release-markers.ts";
+
+export let REVIT_2027_FAMILY_MARKER = registerReleaseMarker("Family", 0x07d9, (value) => { REVIT_2027_FAMILY_MARKER = value; });
+export let REVIT_2027_FAMILY_SYMBOL_MARKER = registerReleaseMarker("FamilySymbol", 0x0810, (value) => { REVIT_2027_FAMILY_SYMBOL_MARKER = value; });
 
 const FAMILY_ID_OFFSET = 449;
 const MIN_OBJECT_BYTES = 40;
 const MAX_OBJECT_BYTES = 0xffff;
 
-const MATERIAL_FIELDS = new Map<number, readonly number[]>([
-  [0x08c6, [356, 418, 480, 542, 604, 666]],
-  [0x10dc, [135]],
-  [0x10de, [133]],
-]);
+let GELEMENT_MARKER = registerReleaseMarker("GElement", 0x08c6, (value) => { GELEMENT_MARKER = value; });
+let SYS_MULLION_FAMILY_SYMBOL_MARKER = registerReleaseMarker("SysMullionFamSym", 0x10dc, (value) => { SYS_MULLION_FAMILY_SYMBOL_MARKER = value; });
+let SYS_PANEL_FAMILY_SYMBOL_MARKER = registerReleaseMarker("SysPanelFamSym", 0x10de, (value) => { SYS_PANEL_FAMILY_SYMBOL_MARKER = value; });
+
+/** Field offsets per object marker; keyed by class index, so rebuilt per resolution. */
+const materialFields = releaseMemo(() => new Map<number, readonly number[]>([
+  [GELEMENT_MARKER, [356, 418, 480, 542, 604, 666]],
+  [SYS_MULLION_FAMILY_SYMBOL_MARKER, [135]],
+  [SYS_PANEL_FAMILY_SYMBOL_MARKER, [133]],
+]));
 
 export type FamilySymbolCandidate = {
   symbolId: number;
@@ -237,7 +244,7 @@ export function scanPersistedRelationshipCandidates(
   const familySymbolCandidates: FamilySymbolCandidate[] = [];
   const familySymbolReferenceSets: FamilySymbolReferenceSet[] = [];
   const geometryMaterialCandidates: GeometryMaterialCandidate[] = [];
-  if (revitVersion !== 2027 || data.byteLength < 64) {
+  if (!releaseDecodersApply(revitVersion) || data.byteLength < 64) {
     return {
       familyElementIds,
       familyDefinitions,
@@ -311,7 +318,7 @@ export function scanPersistedRelationshipCandidates(
       }
     }
 
-    const fields = MATERIAL_FIELDS.get(marker);
+    const fields = materialFields().get(marker);
     if (fields) {
       const seen = new Set<number>();
       for (const fieldOffset of fields) {

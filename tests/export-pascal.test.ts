@@ -483,3 +483,51 @@ test("serialises only the two fields the build format defines", () => {
   assert.deepEqual(Object.keys(json).sort(), ["nodes", "rootNodeIds"]);
   assert.ok(Object.keys(json.nodes as Record<string, unknown>).length > 0);
 });
+
+test("drawn Pascal export preserves sloped indexed triangles instead of stored envelopes", () => {
+  const r = fixture();
+  r.meshes = [{ name: "sloped", materialIndex: 0, source: "native-faceted", positions: new Float32Array([1,2,3, 5,2,3, 1,6,4, 900,900,900]), indices: new Uint32Array([0,1,2]), colors: new Float32Array(12).fill(1), elementIds: new Uint32Array([11]) }];
+  const scene = makePascalScene(r, { geometry: "drawn" });
+  assert.deepEqual(scene.rootNodeIds, ["building_reviter"]);
+  assert.equal(scene.nodes.building_reviter!.parentId, null);
+  assert.ok(!Object.values(scene.nodes).some(n => n.type === "site"), "Pascal must not add a flat site ground over recovered terrain");
+  const blocks = Object.values(scene.nodes).filter(n => n.type === "block");
+  assert.equal(blocks.length,1);
+  const b=blocks[0]!;
+  assert.equal(b.parentId,"level_r31");
+  assert.equal(b.supportSlabId,"ground");
+  const top=b.topology as {vertices:{id:string;position:number[]}[];faces:{vertexIds:string[]}[];edges:{vertexIds:string[]}[]};
+  const position=b.position as number[];
+  const world=top.vertices.map(v => v.position.map((x,i) => x + position[i]! + (i===1?10*FOOT:0)));
+  const expected=[[1*FOOT,3*FOOT,-2*FOOT],[5*FOOT,3*FOOT,-2*FOOT],[1*FOOT,4*FOOT,-6*FOOT]];
+  world.forEach((p,i)=>p.forEach((x,j)=>assert.ok(Math.abs(x-expected[i]![j]!)<1e-10)));
+  assert.equal(top.vertices.length,3,"unused stored vertices cannot enlarge export");
+  assert.equal(top.faces.length,1);
+  assert.equal(top.edges.length,3);
+  assert.equal(scene.stats.drawnTriangles,1);
+  assert.equal(scene.stats.walls,0,"semantic wall proxies cannot duplicate drawn faces");
+  const mirrored=makePascalScene(r,{geometry:"drawn",mirrorPlan:true});
+  const mirror=Object.values(mirrored.nodes).find(n=>n.type==="block")!;
+  assert.deepEqual((mirror.topology as typeof top).faces[0]!.vertexIds,["v2","v1","v0"]);
+  assert.deepEqual(makePascalScene({...r,meshes:[]},{geometry:"drawn"}).stats.drawnTriangles,0);
+});
+
+test("drawn Pascal export bounds detailed topology parts and rejects invalid ownership", () => {
+  const r=fixture();
+  const positions=new Float32Array([0,0,0,1,0,0,0,1,1]);
+  r.meshes=[{name:"many",materialIndex:0,positions,colors:new Float32Array(9),indices:new Uint32Array(Array.from({length:257},()=>[0,1,2]).flat()),elementIds:new Uint32Array(257).fill(10)}];
+  const scene=makePascalScene(r,{geometry:"drawn"});
+  assert.equal(scene.stats.blocks,2);assert.equal(scene.stats.drawnTriangles,257);
+  for(const node of Object.values(scene.nodes).filter(n=>n.type==="block"))assert.ok((node.topology as {faces:unknown[]}).faces.length<=256);
+  r.meshes[0]!.elementIds=new Uint32Array(1);
+  assert.throws(()=>makePascalScene(r,{geometry:"drawn"}),/ownership/);
+});
+
+test("drawn Pascal materials carry colour, transparency and face sidedness through JSON", () => {
+  const r = fixture();
+  r.materials = [{name: "Glazing", baseColorLinear: [1, 0, 0, 0.25], roughness: 0.3, metallic: 0.4, doubleSided: true, source: "rvt-material", assignedElements: 1}];
+  r.meshes = [{name: "glass", materialIndex: 0, positions: new Float32Array([0,0,0, 1,0,0, 0,1,1]), indices: new Uint32Array([0,1,2]), colors: new Float32Array(9), elementIds: new Uint32Array([10])}];
+  const json = JSON.parse(makePascalSceneJson(r, {geometry: "drawn"}));
+  assert.deepEqual(json.materials.mat_reviter_0.material.properties, {color: "#ff0000", opacity: 0.25, transparent: true, roughness: 0.3, metalness: 0.4, side: "double"});
+  assert.equal(json.nodes.block_e10_m0_p0.slots.body, "scene:mat_reviter_0");
+});

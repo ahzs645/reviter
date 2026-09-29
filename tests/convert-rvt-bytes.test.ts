@@ -470,6 +470,10 @@ test("the counters agree with what the container was given", () => {
   const { durationMs, ...counters } = result.stats;
   assert.ok(durationMs >= 0);
   assert.deepEqual(counters, {
+    ownedFacetedElements: 0,
+    partitionSequences: [102, 103, 102, 103].map(sequence => ({
+      sequence, records: 0, spanningRecords: 0, rejectedBlocks: 0, incompleteRecords: 0,
+    })),
     streamCount: 6 + CONTAINER_OWN_STREAMS,
     partitionStreams: 2,
     gzipChunks: 3,
@@ -590,6 +594,10 @@ test("decoder coverage names the decoders the container actually fed", () => {
 
   assert.deepEqual(result.nativeCategories, {
     tokensFound: ALL_ELEMENTS.length,
+    // The synthetic container has no element-header sequence, so every label
+    // still comes from a token and the header counters read zero.
+    headerElements: 0,
+    headerRecords: 0,
     directElements: ALL_ELEMENTS.length,
     inheritedElements: 0,
     donatedTokenElements: 0,

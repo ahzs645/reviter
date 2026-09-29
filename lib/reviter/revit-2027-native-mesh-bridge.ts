@@ -1,4 +1,5 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
+import { wallModelFaceTokens } from "./revit-2027-wall-representation.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
 import {
@@ -39,10 +40,12 @@ import {
 } from "./revit-2027-gpoint.ts";
 import {
   REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  type Revit2027GeometryStatic,
 } from "./revit-2027-geometry.ts";
 import {
   decodeRevit2027FramedGRepRoot,
   REVIT_2027_GELEMENT_OBJECT_MARKER,
+  type Revit2027FramedGRepRoot,
 } from "./revit-2027-framed-grep-root.ts";
 import {
   replayRevit2027GRepFifo,
@@ -63,6 +66,7 @@ import {
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 
 import type { Bounds3, MeshData, Vec3 } from "./types.ts";
+import { releaseDecodersApply, activeRelease } from "./release-markers.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
 const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
@@ -292,6 +296,8 @@ type MutableCollection = {
 export type Revit2027NativeMeshCollector = {
   readonly release: number | null;
   scanPage(data: Uint8Array): void;
+  /** Complete sequence-103 frame, validated independently of the page scanner. */
+  scanOwnedFrame(data: Uint8Array): void;
   /**
    * Admit one independently reassembled alternate frame whose size or page
    * split kept it outside the ordinary framed-object scanner.
@@ -881,6 +887,18 @@ function alternateDefinitionEquivalent(
   );
 }
 
+/** An explicit empty reusable Geometry is a valid leaf in a nested closure.
+ * Do not confuse an unsupported face or helper-only root with this encoding. */
+export function isExplicitEmptyGeometryDefinition(root: Revit2027FramedGRepRoot, replay: Revit2027GRepReplay): boolean {
+  if (root.flags !== 2 || root.objectType !== 3 || root.children.length !== 1 ||
+      replay.spans.length !== 1 || replay.endOffset !== root.dynamicPayloadEndOffset) return false;
+  const span = replay.spans[0]!;
+  if (span.propertySourceClassSlot !== REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT || span.path.length !== 1) return false;
+  const geometry = span.value as Revit2027GeometryStatic;
+  return geometry.faces.count === 0 && geometry.edges.count === 0 &&
+    geometry.sharedSurfaceInfo.count === 0 && geometry.queuedProperties.length === 0;
+}
+
 type NestedGeometryMarker = {
   mesh: Revit2027CompactOwnerMesh | null;
   localComplete: boolean;
@@ -1396,7 +1414,7 @@ export function createRevit2027NativeMeshCollector(
     MAX_INCOMPLETE_SAMPLES,
   );
   const state: MutableCollection = {
-    enabled: release === 2027,
+    enabled: releaseDecodersApply(release),
     definitions: new Map(),
     definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
@@ -1458,7 +1476,7 @@ export function createRevit2027NativeMeshCollector(
       const evidence = decodeRevit2027TopRailTypeCurves(
         data,
         frame,
-        2027,
+        activeRelease(),
       );
       if (evidence.ok) {
         state.topRailTypeEvidenceFrames += 1;
@@ -1472,7 +1490,7 @@ export function createRevit2027NativeMeshCollector(
     const alternate = alternateDefinitionProvider(
       data,
       frame,
-      2027,
+      activeRelease(),
       { maxNestedLinks, maxStoredBytes },
     );
     if (!alternate.ok) {
@@ -1579,47 +1597,15 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
-  return {
-    release: release ?? null,
-    scanAlternateFrame(data: Uint8Array): void {
-      if (!state.enabled || state.truncated || data.byteLength < 60) return;
-      const view = new DataView(
-        data.buffer,
-        data.byteOffset,
-        data.byteLength,
-      );
-      const elementId = view.getUint32(0, true);
-      const objectLength = view.getUint32(12, true);
-      const marker = view.getUint16(16, true);
-      if (
-        elementId === 0 ||
-        view.getUint32(4, true) !== 0 ||
-        objectLength < 40 ||
-        objectLength + 20 !== data.byteLength ||
-        (marker !== REVIT_2027_TOP_RAIL_TYPE_MARKER &&
-          marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) ||
-        view.getUint32(objectLength + 16, true) !== objectLength
-      ) {
-        return;
-      }
-      state.scannedFrames += 1;
-      collectAlternateDefinition(data, {
-        offset: 0,
-        elementId,
-        objectLength,
-        marker,
-        typeCode: view.getUint32(18, true),
-      });
-    },
-    scanPage(data: Uint8Array): void {
+  const scanFrames = (data: Uint8Array, frames: ReturnType<typeof scanFramedElementObjects>): void => {
       if (!state.enabled || state.truncated) return;
-      for (const frame of scanFramedElementObjects(data)) {
+      for (const frame of frames) {
         state.scannedFrames += 1;
         if (frame.marker !== REVIT_2027_GELEMENT_OBJECT_MARKER) {
           collectAlternateDefinition(data, frame);
           continue;
         }
-        const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
+        const root = decodeRevit2027FramedGRepRoot(data, frame, release ?? 0);
         if (!root.ok) {
           state.definitionFailures.set(
             frame.elementId,
@@ -1722,8 +1708,12 @@ export function createRevit2027NativeMeshCollector(
         }
 
         const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+        const modelFaceTokens = wallModelFaceTokens(root.value, replayed.value);
+        const drawableTokens = modelFaceTokens
+          ? new Set([...faceSpans.drawableTokens].filter(token => modelFaceTokens.has(token)))
+          : faceSpans.drawableTokens;
         const coverage = drawableFaceCoverage(
-          faceSpans.drawableTokens,
+          drawableTokens,
           meshed.value.faceMeshes,
           meshed.value.issues,
         );
@@ -1735,7 +1725,7 @@ export function createRevit2027NativeMeshCollector(
         const compacted = coverage.complete
           ? compactFaces(
               meshed.value.faceMeshes.filter((face) =>
-                faceSpans.drawableTokens.has(face.faceToken),
+                drawableTokens.has(face.faceToken),
               ),
               faceSpans,
               bindings.value,
@@ -1763,7 +1753,7 @@ export function createRevit2027NativeMeshCollector(
         const localComplete =
           coverage.complete ||
           (coverage.code === "no-drawable-faces" &&
-            nested.value.length > 0);
+            (nested.value.length > 0 || isExplicitEmptyGeometryDefinition(root.value, replayed.value)));
         const meshIssueDetails = [
           ...new Set(
             meshed.value.issues
@@ -1852,6 +1842,54 @@ export function createRevit2027NativeMeshCollector(
         state.storedBytes += definitionBytes;
         state.nestedLinks += nested.value.length;
       }
+    };
+
+  return {
+    release: release ?? null,
+    scanAlternateFrame(data: Uint8Array): void {
+      if (!state.enabled || state.truncated || data.byteLength < 60) return;
+      const view = new DataView(
+        data.buffer,
+        data.byteOffset,
+        data.byteLength,
+      );
+      const elementId = view.getUint32(0, true);
+      const objectLength = view.getUint32(12, true);
+      const marker = view.getUint16(16, true);
+      if (
+        elementId === 0 ||
+        view.getUint32(4, true) !== 0 ||
+        objectLength < 40 ||
+        objectLength + 20 !== data.byteLength ||
+        (marker !== REVIT_2027_TOP_RAIL_TYPE_MARKER &&
+          marker !== REVIT_2027_BASE_RAILING_SYMBOL_MARKER) ||
+        view.getUint32(objectLength + 16, true) !== objectLength
+      ) {
+        return;
+      }
+      state.scannedFrames += 1;
+      collectAlternateDefinition(data, {
+        offset: 0,
+        elementId,
+        objectLength,
+        marker,
+        typeCode: view.getUint32(18, true),
+      });
+    },
+    scanPage(data: Uint8Array): void {
+      scanFrames(data, scanFramedElementObjects(data));
+    },
+    scanOwnedFrame(data: Uint8Array): void {
+      if (data.byteLength < 60) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const elementId = view.getUint32(0, true);
+      const objectLength = view.getUint32(12, true);
+      const marker = view.getUint16(16, true);
+      if (elementId === 0 || view.getUint32(4, true) !== 0 ||
+          objectLength < 40 || objectLength + 20 !== data.byteLength ||
+          marker !== REVIT_2027_GELEMENT_OBJECT_MARKER ||
+          view.getUint32(objectLength + 16, true) !== objectLength) return;
+      scanFrames(data, [{ offset: 0, elementId, objectLength, marker, typeCode: view.getUint32(18, true) }]);
     },
     snapshot(
       requestedOwnerIds: Iterable<number> = [],

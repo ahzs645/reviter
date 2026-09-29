@@ -3,9 +3,10 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `GFilling`. */
-export const REVIT_2027_GFILLING_SOURCE_CLASS_SLOT = 2253;
+export let REVIT_2027_GFILLING_SOURCE_CLASS_SLOT = registerReleaseMarker("GFilling", 2253, (value) => { REVIT_2027_GFILLING_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const INT32_BYTES = 4;
@@ -167,7 +168,7 @@ export function decodeRevit2027GFilling(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GFillingDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GFilling decoding requires release 2027",

@@ -5,13 +5,14 @@ import {
   type CondInt16QueueEntry,
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /**
  * @deprecated Source slot 2215 is now schema-certified as `GInstance`; use
  * `REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT`.
  */
-export const REVIT_2027_GARRAY_SOURCE_CLASS_SLOT = 2215;
-export const REVIT_2027_GGROUP_SOURCE_CLASS_SLOT = 2248;
+export let REVIT_2027_GARRAY_SOURCE_CLASS_SLOT = registerReleaseMarker("GInstance", 2215, (value) => { REVIT_2027_GARRAY_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_GGROUP_SOURCE_CLASS_SLOT = registerReleaseMarker("GGroup", 2248, (value) => { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GARRAY_BODY_BYTES = 144;
 
 const GINFO_BYTES = 20;
@@ -117,7 +118,7 @@ export function decodeRevit2027GArray(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GArrayDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return { ok: false, error: "Revit 2027 GArray decoding requires release 2027" };
   }
   if (
@@ -227,7 +228,7 @@ export function decodeRevit2027GGroupPrefix(
   revitVersion: number,
   options: { maxChildren?: number } = {},
 ): Revit2027GGroupPrefixDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return { ok: false, error: "Revit 2027 GGroup decoding requires release 2027" };
   }
   if (!bounded(data, byteOffset, GINFO_BYTES + 4, enclosingEndOffset)) {

@@ -1,3 +1,4 @@
+import { drawnPascalBlocks, type PascalSceneMaterial, type PascalDrawnGrouping } from "./export-pascal-mesh.ts";
 /**
  * Pascal build-JSON export of Reviter's recovered model.
  *
@@ -43,8 +44,9 @@
  * Pascal stacks levels: a level's plane sits at the running total of the storey
  * heights below it, plus its own `baseElevation`. Writing the Revit elevations
  * into that model therefore means giving the lowest level a `baseElevation` and
- * every level a `height` equal to the gap above it, after which each plane lands
- * on its measured elevation and `baseElevation` is zero the rest of the way up.
+ * every level a `height` equal to the gap above it. Coincident or very close
+ * levels need an offset to compensate for Pascal's positive minimum height,
+ * so the next plane still lands on its measured elevation.
  *
  * Elements are placed against their own level's plane, not the datum, because
  * that is the frame Pascal renders their children in.
@@ -141,6 +143,10 @@ const COLUMN_CATEGORIES: ReadonlySet<number> = new Set([
 export type PascalExtraElements = "none" | "curtain-panels" | "all";
 
 export type PascalExportOptions = {
+  /** Semantic building nodes (default), or the exact drawn triangle surface as editable blocks. */
+  geometry?: "semantic" | "drawn";
+  /** Drawn blocks grouped by element (default), or larger review meshes retaining face ownership. */
+  drawnGrouping?: PascalDrawnGrouping;
   /** See {@link PascalExtraElements}. Defaults to `"curtain-panels"`. */
   extras?: PascalExtraElements;
   /**
@@ -184,12 +190,15 @@ export type PascalSceneStats = {
   notDrawn: number;
   /** Sloped surfaces — pitched roofs, ramps — written as one flat plate. */
   flattenedSlopes: number;
+  drawnTriangles?: number;
+  representedElements?: number;
 };
 
 export type PascalScene = {
   nodes: Record<string, PascalNode>;
   rootNodeIds: string[];
   stats: PascalSceneStats;
+  materials?: Record<string, PascalSceneMaterial>;
 };
 
 type Plan = [number, number];
@@ -356,6 +365,10 @@ export function makePascalScene(
   result: ConvertResult,
   options: PascalExportOptions = {},
 ): PascalScene {
+  if (options.drawnGrouping != null && options.geometry !== "drawn")
+    throw new Error("Pascal drawnGrouping requires drawn geometry");
+  if (options.drawnGrouping != null && !["element", "review"].includes(options.drawnGrouping))
+    throw new Error("Pascal drawnGrouping must be element or review");
   const extras: PascalExtraElements = options.extras ?? "curtain-panels";
   const mirrorPlan = options.mirrorPlan === true;
   const projectName = options.projectName ?? result.fileName.replace(/\.[^.]+$/, "");
@@ -451,6 +464,7 @@ export function makePascalScene(
   const levels: LevelPlacement[] = [];
   const levelById = new Map<string, LevelPlacement>();
   const levelByRevitId = new Map<number, LevelPlacement>();
+  let stackElevation = 0;
 
   bands.forEach((band, index) => {
     const elevation = up(band.elevation);
@@ -476,10 +490,9 @@ export function makePascalScene(
       parentId: buildingId,
       visible: true,
       level: index,
-      // Pascal stacks storeys, so only the lowest level needs to state where
-      // the stack starts; every level above lands on its own elevation once the
-      // heights below it are the measured gaps.
-      baseElevation: index === 0 ? elevation : 0,
+      // Offsets are additive in Pascal. Compensate when a coincident or close
+      // preceding datum needed its height clamped to the positive minimum.
+      baseElevation: elevation - stackElevation,
       height: Math.max(height, 0.01),
       children: [],
       metadata: {
@@ -489,6 +502,7 @@ export function makePascalScene(
         levelEvidence: band.source ?? "elevation-band",
       },
     });
+    stackElevation = elevation + Math.max(height, 0.01);
     stats.levels += 1;
   });
 
@@ -538,6 +552,28 @@ export function makePascalScene(
     }
     return chosen;
   };
+
+  if (options.geometry === "drawn") {
+    // A Pascal site renders its own flat ground fill. A building root is valid
+    // and keeps the exported scene limited to the recovered model's surfaces.
+    nodes[buildingId]!.parentId = null;
+    nodes[buildingId]!.metadata = nodes[siteId]!.metadata;
+    delete nodes[siteId];
+    const meshScene = drawnPascalBlocks(result, mirrorPlan, levelFor, options.drawnGrouping);
+    for (const node of meshScene.nodes) add(node);
+    if (options.drawnGrouping === "review") {
+      nodes[buildingId]!.metadata!.revitElements = Object.fromEntries(
+        result.elementBounds.filter(record => meshScene.elementIds.has(record.elementId)).map(record => [
+          record.elementId, elementMetadata(record),
+        ]),
+      );
+    }
+    stats.blocks = meshScene.nodes.length;
+    stats.drawnTriangles = meshScene.triangles;
+    stats.representedElements = meshScene.elementIds.size;
+    stats.notDrawn = new Set(result.elementBounds.filter(r => !meshScene.elementIds.has(r.elementId)).map(r => r.elementId)).size;
+    return { nodes, rootNodeIds: [buildingId], stats, materials: meshScene.materials };
+  }
 
   // ── Walls ──────────────────────────────────────────────────────────────────
 
@@ -1154,5 +1190,5 @@ export function makePascalSceneJson(
   options: PascalExportOptions = {},
 ): string {
   const scene = makePascalScene(result, options);
-  return `${JSON.stringify({ nodes: scene.nodes, rootNodeIds: scene.rootNodeIds }, null, 1)}\n`;
+  return `${JSON.stringify({ nodes: scene.nodes, rootNodeIds: scene.rootNodeIds, ...(scene.materials ? { materials: scene.materials } : {}) }, null, options.geometry === "drawn" ? undefined : 1)}\n`;
 }

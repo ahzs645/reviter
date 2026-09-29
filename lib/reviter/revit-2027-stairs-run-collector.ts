@@ -6,6 +6,7 @@ import {
   type Revit2027StairsElementAggregate,
   type Revit2027StairsRunAndLandingAggregate,
 } from "./revit-2027-stairs-aggregate.ts";
+import { releaseDecodersApply, activeRelease } from "./release-markers.ts";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const HEADER_SCAN_BYTES = 22;
@@ -62,7 +63,7 @@ export function createRevit2027StairsRunCollector(
 
   return {
     pushPage(page: Uint8Array): void {
-      if (release !== 2027) return;
+      if (!releaseDecodersApply(release)) return;
       const combined = new Uint8Array(buffer.byteLength + page.byteLength);
       combined.set(buffer);
       combined.set(page, buffer.byteLength);
@@ -125,7 +126,7 @@ export function createRevit2027StairsRunCollector(
             data,
             0,
             target.objectLength,
-            2027,
+            activeRelease(),
           );
           if (decoded.ok && decoded.value.elementId === target.elementId) {
             knownStairsIds.add(target.elementId);
@@ -157,7 +158,7 @@ export function createRevit2027StairsRunCollector(
           frame.data,
           0,
           frame.objectLength,
-          2027,
+          activeRelease(),
           { knownStairsElementIds: knownStairsIds },
         );
         if (

@@ -26,6 +26,7 @@ import type {
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
+import type { ReleaseMarkerResolution } from "./release-markers.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -63,11 +64,12 @@ export type Segment = {
  *   surface geometry, not an envelope, and the element's
  *   `renderGeometryProvenance` becomes `"reference-assisted"` to match.
  */
-export type MeshGeometrySource = "native-brep" | "display-proxy" | "reference-ifc";
+export type MeshGeometrySource = "native-brep" | "native-faceted" | "display-proxy" | "reference-ifc" | "reference-autodesk";
 
 export type MeshData = {
   name: string;
   positions: Float32Array;
+  normals?: Float32Array;
   indices: Uint32Array;
   colors: Float32Array;
   materialIndex: number;
@@ -206,6 +208,8 @@ export type DecoderCoverage = {
   nativeMeshPartialRequestedOwners?: number;
   nativeMeshRequestedOwnerTriangles?: number;
   nativeMeshRequestedOwnerFailures?: number;
+  /** First few owner or nested mesh failures, with the detail each recorded. */
+  nativeMeshFailureSamples?: { ownerElementId: number | null; detail: string }[];
   nativeMaterialDefinitions: number;
   /** Placed elements inheriting at least one exact shared-geometry material. */
   nativeMaterialAssignments: number;
@@ -261,6 +265,10 @@ export type ElementBoundsRecord = {
   recordOffset: number;
   /** Byte offset from record start to the first of the duplicated bounds blocks. */
   boundsOffset?: number;
+  /** UI bounds synthesized from an admitted owned mesh, with no persisted envelope. */
+  boundsFromNativeMesh?: true;
+  /** Synthetic manifest identity restored by an explicit Autodesk repair. */
+  boundsFromReferenceMesh?: true;
   recordCode?: number;
   recordCount?: number;
   /** Negative Revit `BuiltInCategory` id decoded from the partition stream. */
@@ -376,6 +384,7 @@ export type ElementBoundsRecord = {
  * that share the element's record code.
  */
 export type NativeCategorySource =
+  | "element-header"
   | "native-token"
   | "native-object"
   | "record-code-consensus";
@@ -397,6 +406,10 @@ export type NativeCategoryCodeConsensus = {
 
 export type NativeCategorySummary = {
   tokensFound: number;
+  /** Elements labelled from their own element-header record (exact ownership). */
+  headerElements?: number;
+  /** Element-header records read from the header sequence, categorised or not. */
+  headerRecords?: number;
   directElements: number;
   inheritedElements: number;
   /**
@@ -431,6 +444,8 @@ export type LevelBand = {
 };
 
 export type ConvertStats = {
+  partitionSequences?: { sequence: number; records: number; spanningRecords: number; rejectedBlocks: number; incompleteRecords: number }[];
+  ownedFacetedElements?: number;
   streamCount: number;
   partitionStreams: number;
   gzipChunks: number;
@@ -739,6 +754,8 @@ export type ConvertResult = {
   nativeCategories?: NativeCategorySummary;
   /** Serializable class inventory decoded from the embedded `Formats/Latest`. */
   schema?: SchemaSummary;
+  /** How that schema resolved the decoders' class indices for this release. */
+  releaseMarkers?: ReleaseMarkerResolution;
   /** Workset or family partition names decoded from `Global/PartitionTable`. */
   partitionNames?: PartitionName[];
   /** Family/type metadata decoded from the optional PartAtom XML stream. */

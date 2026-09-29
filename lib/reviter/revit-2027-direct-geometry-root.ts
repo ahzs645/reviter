@@ -8,9 +8,11 @@ import { REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT } from "./revit-2027-gc
 import { REVIT_2027_GGROUP_SOURCE_CLASS_SLOT } from "./revit-2027-grep-prefixes.ts";
 import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+  REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
 } from "./revit-2027-ginstance.ts";
 import { REVIT_2027_GGTAG_SOURCE_CLASS_SLOT } from "./revit-2027-ggtag.ts";
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "./revit-2027-geometry.ts";
+import { releaseMemo } from "./release-markers.ts";
 
 export type Revit2027DirectGeometryRootLike = {
   children: readonly {
@@ -18,7 +20,7 @@ export type Revit2027DirectGeometryRootLike = {
   }[];
 };
 
-const EXACT_TESSELLATOR_CANDIDATE_SHAPES = [
+const exactTessellatorCandidateShapes = releaseMemo(() => [
   [
     REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
     REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
@@ -41,9 +43,15 @@ const EXACT_TESSELLATOR_CANDIDATE_SHAPES = [
     REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
     REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
   ],
-] as const;
+] as const);
 
-const EMBEDDED_GEOMETRY_CANDIDATE_SHAPES = [
+const embeddedGeometryCandidateShapes = releaseMemo(() => [
+  [
+    REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+    REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
+    REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
+    REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
+  ],
   [
     REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
     REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
@@ -54,9 +62,9 @@ const EMBEDDED_GEOMETRY_CANDIDATE_SHAPES = [
     REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT,
     REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
   ],
-] as const;
+] as const);
 
-const CONDITIONED_GEOMETRY_PREFIX_SLOTS = new Set<number>([
+const conditionedGeometryPrefixSlots = releaseMemo(() => new Set<number>([
   REVIT_2027_GFILTER_SOURCE_CLASS_SLOT,
   REVIT_2027_GLINE_SOURCE_CLASS_SLOT,
   REVIT_2027_GARC_SOURCE_CLASS_SLOT,
@@ -64,7 +72,7 @@ const CONDITIONED_GEOMETRY_PREFIX_SLOTS = new Set<number>([
   REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT,
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
-]);
+]));
 
 function hasExactSourceClassShape(
   root: Revit2027DirectGeometryRootLike,
@@ -89,7 +97,7 @@ function hasExactSourceClassShape(
 export function isRevit2027BoundedTessellatorRoot(
   root: Revit2027DirectGeometryRootLike,
 ): boolean {
-  return EXACT_TESSELLATOR_CANDIDATE_SHAPES.some((shape) =>
+  return exactTessellatorCandidateShapes().some((shape) =>
     hasExactSourceClassShape(root, shape));
 }
 
@@ -97,7 +105,7 @@ export function isRevit2027BoundedTessellatorRoot(
 export function isRevit2027EmbeddedGeometryRoot(
   root: Revit2027DirectGeometryRootLike,
 ): boolean {
-  return EMBEDDED_GEOMETRY_CANDIDATE_SHAPES.some((shape) =>
+  return embeddedGeometryCandidateShapes().some((shape) =>
     hasExactSourceClassShape(root, shape));
 }
 
@@ -129,7 +137,7 @@ export function isRevit2027ConditionedGeometryRoot(
     prefix.every(
       (child) =>
         child.sourceClassSlot != null &&
-        CONDITIONED_GEOMETRY_PREFIX_SLOTS.has(child.sourceClassSlot),
+        conditionedGeometryPrefixSlots().has(child.sourceClassSlot),
     )
   );
 }

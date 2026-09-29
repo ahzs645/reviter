@@ -32,6 +32,7 @@ import {
 } from "./revit-2027-baluster-instances.ts";
 
 import type { ElementBoundsRecord, NativeCategorySummary } from "./types.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
 const CATEGORY_ID_MIN = -2_100_000;
@@ -88,7 +89,10 @@ export function categoryDisplayName(categoryId: number): string {
 }
 
 /** `RampSym` tag 3463 is persisted as marker 3462 in Revit 2027. */
-const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
+/** `ElementHeader`: the class index framing the header form of the category id. */
+let ELEMENT_HEADER_MARKER = registerReleaseMarker("ElementHeader", 0x0604, (value) => { ELEMENT_HEADER_MARKER = value; });
+
+let REVIT_2027_RAMP_SYMBOL_MARKER = registerReleaseMarker("RampSym", 3462, (value) => { REVIT_2027_RAMP_SYMBOL_MARKER = value; });
 
 /** Footprint-roof parameter which is independent of the duplicated-bounds code. */
 const MAXIMUM_RIDGE_HEIGHT_PARAMETER_ID = -1_001_705;
@@ -154,12 +158,27 @@ export function collectCategoryTokens(data: Uint8Array): CategoryToken[] {
   if (data.byteLength < 18) return tokens;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
+  // Two 18-byte frames carry the id. The `04 00` field tag is the form the
+  // 2027 project was decoded from. The other is the element header: the
+  // `ElementHeader` class index, a zero word, the id, and the terminator.
+  // Measured 2026-09-11, the header form is the dominant one in every release
+  // — 20,510 ids in 1,000 Revit 2025 pages against a single `04 00` token —
+  // so a file that lacks the field-tag form still names its elements.
+  const headerLow = ELEMENT_HEADER_MARKER & 0xff;
+  const headerHigh = ELEMENT_HEADER_MARKER >> 8;
   for (
-    let offset = data.indexOf(0x04);
+    let offset = 0;
     offset >= 0 && offset + 18 <= data.byteLength;
-    offset = data.indexOf(0x04, offset + 1)
+    offset += 1
   ) {
-    if (data[offset + 1] !== 0x00) continue;
+    const first = data[offset]!;
+    if (first === 0x04) {
+      if (data[offset + 1] !== 0x00) continue;
+    } else if (first === headerLow) {
+      if (data[offset + 1] !== headerHigh || view.getUint32(offset + 2, true) !== 0) continue;
+    } else {
+      continue;
+    }
     if (view.getUint32(offset + 10, true) !== 0xffff_ffff) continue;
     if (view.getUint32(offset + 14, true) !== 0xffff_ffff) continue;
 
@@ -355,6 +374,13 @@ export function applyNativeCategories(
   tokens: CategoryToken[],
   elemTableIds?: Uint32Array,
   ownershipElementIds?: Set<number>,
+  /**
+   * Each element's category from its own header record (`element-headers.ts`).
+   * Exact by construction, so it takes precedence over a token, whose owner is
+   * the nearest preceding id and can be a neighbour's; tokens still label the
+   * elements the header sequence did not reach.
+   */
+  headerCategories?: ReadonlyMap<number, number>,
 ): NativeCategorySummary {
   const knownElementIds = new Set<number>(records.map((record) => record.elementId));
   if (elemTableIds) for (const elementId of elemTableIds) knownElementIds.add(elementId);
@@ -373,17 +399,26 @@ export function applyNativeCategories(
     resolved = resolveElementCategories(tokens, knownElementIds);
     donatedOnly = new Set();
   }
+  // Header categories seed the consensus too: a record-code cluster should
+  // learn from exact labels before it learns from guessed ones.
+  if (headerCategories?.size) {
+    const merged = new Map(resolved);
+    for (const [elementId, categoryId] of headerCategories) merged.set(elementId, categoryId);
+    resolved = merged;
+  }
   const consensus = deriveRecordCodeCategories(records, resolved);
 
+  let headerElements = 0;
   let directElements = 0;
   let inheritedElements = 0;
   let donatedTokenElements = 0;
   let donatedTokensOverridden = 0;
   const counts = new Map<number, number>();
   for (const record of records) {
-    let direct = resolved.get(record.elementId);
+    const fromHeader = headerCategories?.get(record.elementId);
+    let direct = fromHeader ?? resolved.get(record.elementId);
     const clusterEntry = consensus.get(recordCodeKey(record.recordCode, record.recordCount));
-    if (direct != null && donatedOnly.has(record.elementId)) {
+    if (fromHeader == null && direct != null && donatedOnly.has(record.elementId)) {
       donatedTokenElements += 1;
       if (clusterEntry && clusterEntry.categoryId !== direct) {
         donatedTokensOverridden += 1;
@@ -395,8 +430,11 @@ export function applyNativeCategories(
     if (categoryId == null) continue;
     record.categoryId = categoryId;
     record.categoryName = categoryDisplayName(categoryId);
-    record.categorySource = direct == null ? "record-code-consensus" : "native-token";
+    record.categorySource = direct == null
+      ? "record-code-consensus"
+      : fromHeader != null ? "element-header" : "native-token";
     if (direct == null) inheritedElements += 1;
+    else if (fromHeader != null) headerElements += 1;
     else directElements += 1;
     counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1);
   }
@@ -413,6 +451,7 @@ export function applyNativeCategories(
 
   return {
     tokensFound: tokens.length,
+    headerElements,
     directElements,
     inheritedElements,
     donatedTokenElements,

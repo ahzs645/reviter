@@ -1,5 +1,6 @@
 /** JSON audit report: what was decoded, from what evidence, and what was not. */
 import type { ConvertResult, ElementBoundsRecord } from "./types.ts";
+import { meshBoundsByElement } from "./mesh-element-bounds.ts";
 import {
   bimSemanticFidelity,
   modelTreeFidelity,
@@ -82,9 +83,17 @@ export function elementManifest(result: ConvertResult) {
       bestByElement.set(record.elementId, record);
     }
   }
-  const drawnIds = new Set<number>();
+  const drawnBounds = meshBoundsByElement(result.meshes, result.origin);
+  const meshSources = new Map<number, Map<string, number>>();
   for (const mesh of result.meshes) {
-    for (const elementId of mesh.elementIds ?? []) drawnIds.add(elementId);
+    const count = Math.min(mesh.elementIds?.length ?? 0, Math.floor(mesh.indices.length / 3));
+    for (let triangle = 0; triangle < count; triangle += 1) {
+      const elementId = mesh.elementIds![triangle]!;
+      const sources = meshSources.get(elementId) ?? new Map<string, number>();
+      const source = mesh.source ?? "unknown";
+      sources.set(source, (sources.get(source) ?? 0) + 1);
+      meshSources.set(elementId, sources);
+    }
   }
   const materialNameById = new Map(
     (result.nativeMaterialDefinitions ?? []).map((definition) => [
@@ -147,6 +156,21 @@ export function elementManifest(result: ConvertResult) {
     .sort((a, b) => a.elementId - b.elementId)
     .map((record) => {
       const identity = identityByElement.get(record.elementId);
+      const box = drawnBounds.get(record.elementId);
+      const sources = [...(meshSources.get(record.elementId) ?? [])]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([source, triangles]) => ({ source, triangles }));
+      const recordSource = geometrySource(record);
+      // Record fields describe available evidence, not necessarily the mesh
+      // selected after native admission, proxy removal and reconstruction.
+      const source = !box ? "not-drawn"
+        : sources.length > 1 ? "mixed"
+        : sources[0]?.source === "native-brep" ? (record.renderGeometryProvenance === "reconstructed" ? "reconstructed-mesh" : "native-brep")
+        : sources[0]?.source === "native-faceted" ? "native-faceted"
+        : sources[0]?.source === "reference-autodesk" ? "paired-autodesk-tessellation"
+        : sources[0]?.source === "reference-ifc" ? "paired-ifc-tessellation"
+        : record.renderGeometryProvenance === "bounds-fallback" ? "validated-bounds-envelope"
+        : recordSource;
       const materialAssignments = [
         ...(materialsByElement.get(record.elementId) ?? []),
       ]
@@ -165,7 +189,7 @@ export function elementManifest(result: ConvertResult) {
       return {
         elementId: record.elementId,
         ...(identity ? { uniqueId: identity.uniqueId } : {}),
-        displayed: drawnIds.has(record.elementId),
+        displayed: drawnBounds.has(record.elementId),
         category: record.categoryId == null && !record.categoryName
           ? null
           : {
@@ -190,10 +214,21 @@ export function elementManifest(result: ConvertResult) {
               ...(record.familyName ? { familyName: record.familyName } : {}),
             },
         geometry: {
-          source: geometrySource(record),
+          source,
+          recordSource: record.boundsFromReferenceMesh ? "reference-autodesk" : recordSource,
+          meshSources: sources,
           finalProvenance:
             record.renderGeometryProvenance ?? "bounds-fallback",
           boundsFeet: record.boundsFeet,
+          // Keep the legacy record bounds, but do not call new mesh-derived
+          // UI records a persisted envelope.
+          persistedBoundsFeet: record.boundsFromNativeMesh || record.boundsFromReferenceMesh ? null : record.boundsFeet,
+          ...(record.boundsFromNativeMesh ? { boundsSource: "owned-native-triangles" } : {}),
+          ...(record.boundsFromReferenceMesh ? { boundsSource: "reference-autodesk-triangles" } : {}),
+          drawnBoundsFeet: box ? {
+            min: { x: box[0], y: box[1], z: box[2] },
+            max: { x: box[3], y: box[4], z: box[5] },
+          } : null,
           bodies: record.solids?.length ?? (record.solid ? 1 : record.arcs?.length ?? 1),
           nativeFaces: record.quads?.length ?? 0,
         },
@@ -260,6 +295,7 @@ export function makeReport(
       decoderCoverage: result.decoderCoverage,
       nativeCategories: result.nativeCategories ?? null,
       schema: result.schema ?? null,
+      releaseMarkers: result.releaseMarkers ?? null,
       partitionNames: result.partitionNames ?? null,
       partAtom: result.partAtom ?? null,
       transmissionData: result.transmissionData ?? null,

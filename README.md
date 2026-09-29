@@ -33,32 +33,34 @@ node --experimental-strip-types scripts/verify-pair.ts model.rvt model.ifc
 
 ## Open a recovered model in Pascal
 
-[Pascal](https://github.com/pascalorg/editor) is an open-source local-first
-building editor whose scene is a graph of typed building nodes, not a mesh. The
-Pascal export writes those nodes straight out of what the RVT states — a wall's
-location line and thickness from its own plane triples, a door's host wall from
-`InsertableInst.m_hostId`, a storey from `Element.m_assocLevelId` — so nothing is
-re-derived from a mesh or defaulted:
+Reviter exports Pascal Build JSON in two modes:
+
+- **Pascal** in the browser exports the recovered triangle geometry as editable
+  mesh blocks, including terrain, sloped surfaces, and fixtures. It carries base
+  materials and uses a building root so Pascal does not add a flat site surface.
+- **Pascal editable** exports simplified typed walls, floors, doors, and windows.
+  It supports building edits but does not preserve the full rendered surface.
 
 ```sh
-npm run extract -- model.rvt --out model.pascal.json
+npm run extract -- model.rvt --out model.pascal.json --pascal-geometry drawn
+npm run extract -- model.rvt --out model.editable.pascal.json --pascal-geometry semantic
 ```
 
-Load it in Pascal through the settings panel's **Save & Load → Load Build**. The
-same export is the **Pascal** button in the browser studio.
+The CLI and library keep semantic geometry as their default for compatibility.
+Use Pascal's **Save & Load → Load Build** to load the JSON. Drawn geometry needs
+an editor supporting topology-backed `block` nodes, such as the supplied
+`editor-main` source checked on 2026-09-11.
 
-Against the paired Autodesk GLB export of the supplied building, the exported
-Pascal scene agrees to 99.65% of its surface and 99.16% of the reference's, at
-0.5 m voxels — the recovery it is written from scores 99.98% both ways, and the
-gap is Pascal's vocabulary: openings not cut out of walls, joins not mitered, and
-pitched roofs flattened to a plate.
-
-`--extras all` additionally carries every remaining element — mullions, railings,
-furniture — as Pascal `block` solids, which needs an editor built from the Pascal
-repository rather than the current npm release. [Exporting to
-Pascal](docs/pascal-scene-export.md) is the full record: the coordinate and
-storey-stacking mapping, the per-category table, what does not cross, and the
-measurements behind it.
+The supplied Pascal validator, scene loader, and block renderer were exercised
+against RAC, Technical School, and UNBC. RAC and Technical School pass a
+0.01 mm triangle-position check against Reviter's GLB, with smaller omitted
+slivers counted separately. UNBC has 33 omitted slivers above that tolerance
+and fails the strict check. A subsequent in-app Browser test also crashed after
+confirming the full UNBC import; RAC and Technical School rendered successfully.
+These results establish export fidelity to the
+recovery; they do not establish complete agreement with Autodesk. See the
+[verification report](docs/pascal-export-verification-2026-09-11.md) and
+[semantic mapping notes](docs/pascal-scene-export.md).
 
 ## Development
 
@@ -168,9 +170,13 @@ A 2027 envelope is not an element's native shape. Reviter therefore records geom
 | Revit release | Native evidence | Rendered geometry | Categories | Materials |
 | --- | --- | --- | --- | --- |
 | 2023 | fixed `ArcWall` six-coordinate record detected as a bounds hypothesis | production promotion disabled pending paired proof | attempted; no project file in the corpus to verify against | schema adapter only; real extraction pending |
-| 2024–2026 | version-specific geometry record not yet proven | diagnostic fallback only | attempted; no project file in the corpus to verify against | schema adapter only; real extraction pending |
+| 2024–2026 | the 2027 record layouts, located by class indices resolved from the file's own `Formats/Latest` | native BRep meshes and envelopes; measured on three Autodesk sample models (2024, 2025, 2025) | native `BuiltInCategory` tokens, checked against the Autodesk property database | direct-layout `MaterialElem` records; appearance-backed materials pending |
 | 2027 | supplied-project nested duplicated bounds + native element ID and record classification | filtered, category-styled axis-aligned envelope proxies | native `BuiltInCategory` tokens, IFC-corroborated | category display fallbacks; native assignment pending |
 | unknown | no release-specific decoder | diagnostic fallback only | attempted; reports zero when the token is absent | no claim |
+
+Each element's category is read from its own element-header record: a partition stream interleaves three sequences behind a block header before every gzip member, and sequence 101 is a run of fixed-framed `ElementHeader` records whose body names the element's `BuiltInCategory`. That gives exact ownership where the token scan below could only take the nearest preceding id; on the supplied project 39,892 of 40,317 categorised elements now come from their header, and the token and consensus paths remain for the rest. [`docs/partition-sequences-and-element-headers-2026-09-11.md`](docs/partition-sequences-and-element-headers-2026-09-11.md) is the record.
+
+Every class index the release-gated decoders look for — the object marker, the GRep source slots, the material, level, family and stairs markers — is a position in the file's own `Formats/Latest` stream, and it moves with every release while the record layouts underneath do not (57 constants: 57 shifted, 0 unchanged between 2027 and 2025). Since 2026-09-11 the constants are resolved by class name from each file's schema before any decoder runs (`lib/reviter/release-markers.ts`), which is what opens Revit 2024 and 2025 files. Measured that day against Autodesk Viewer captures of three sample models: 98.6%, 92.7% and 96.6% of the elements the viewer draws are displayed, with certified native meshes for 4,853, 360 and 7,022 elements; the remaining surface residual is site topography and planting drawn as envelopes. [`docs/second-buildings-release-drift-2026-09-11.md`](docs/second-buildings-release-drift-2026-09-11.md) is the record, both directions.
 
 The category decoder is not gated on the release, because it is self-validating: a file that carries no category tokens simply reports none, and the previous record-code classification stays in place. Its building-scale rules are verified against the supplied Revit 2027 project, **and against no second building**. The Revitless toolkit contributes one real Revit 2014 `.rfa` fixture, which now verifies legacy release detection, PartAtom metadata, and the component-scale diagnostic path; it does not validate project geometry rules. Every building threshold and classification rule in Reviter is therefore still fitted on one building, and every figure quoted anywhere in this file or in [`docs/`](docs/README.md) is an observation from a dated run on that building rather than a standing fact. [`docs/validating-on-a-second-building.md`](docs/validating-on-a-second-building.md) records what that has cost so far, rule by rule, the harness that now makes the problem testable on any model rather than on this one, and what to look at first on a second file.
 

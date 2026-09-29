@@ -16,8 +16,9 @@ import {
   readInstancePlacement,
   type InstancePlacement,
 } from "./instanced-geometry.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
-export const REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER = 0x0810;
+export let REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER = registerReleaseMarker("FamilySymbol", 0x0810, (value) => { REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER = value; });
 
 const MAX_MAP_ENTRIES = 512;
 const MAP_ENTRY_BYTES = 12;
@@ -108,7 +109,7 @@ export function scanFamilySymbolMaterialPage(
     referenceSets: [],
     placements: [],
   };
-  if (revitVersion !== 2027) return result;
+  if (!releaseDecodersApply(revitVersion)) return result;
   for (const object of scanFramedElementObjects(data)) {
     if (object.marker === REVIT_2027_FAMILY_SYMBOL_MATERIAL_MARKER) {
       result.referenceSets.push(scanReferenceSet(data, object));

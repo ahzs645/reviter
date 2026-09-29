@@ -306,3 +306,63 @@ test("the combined owner entry point promotes the certified curved face", () => 
   assert.equal(result.value.faceMeshes[0]!.kind, "arc-surfrev");
   assert.equal(result.value.faceMeshes[0]!.mesh.groups[0]!.materialId, 26);
 });
+
+function poleReplay(): Revit2027GRepReplay {
+  const r = replay();
+  const spherical = surface();
+  spherical.surface.envelope.secondCorner = [Math.PI, Math.PI];
+  const arc = profile();
+  arc.center = [0, 0, 0];
+  const boundary = loop();
+  boundary.previousEdgeReference = 21;
+  boundary.staticReferences = [FACE, 20, 21];
+  boundary.envelope.maximum = [Math.PI, Math.PI];
+  return { ...r, spans: [
+    span(0, FACE, REVIT_2027_FACE_SOURCE_CLASS_SLOT, null, face()),
+    span(1, LOOP, REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT, 0, boundary),
+    span(2, 20, REVIT_2027_GEDGE_SOURCE_CLASS_SLOT, null, edge(20, [0, Math.PI], [0, 0], 5, LOOP, 21)),
+    span(3, 21, REVIT_2027_GEDGE_SOURCE_CLASS_SLOT, null, edge(21, [Math.PI, 0], [Math.PI, Math.PI], 5, 20, LOOP)),
+    span(4, SURFACE, REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT, 0, spherical),
+    span(5, PROFILE, REVIT_2027_GARC_SOURCE_CLASS_SLOT, 4, arc),
+  ] };
+}
+
+test("two meridians certify a spherical face with collapsed poles", () => {
+  for (const orientFlag of [true, false]) {
+    const r = poleReplay();
+    (r.spans[4]!.value as Revit2027SurfaceOfRevolution).surface.orientFlag = orientFlag;
+    const result = meshRevit2027ArcSurfRevReplay(r, { materialDefinitions: [glass()] });
+    assert.equal(result.ok, true); if (!result.ok) return;
+    assert.deepEqual(result.value.issues, []);
+    assert.equal(result.value.faceMeshes.length, 1);
+    const mesh = result.value.faceMeshes[0]!.mesh;
+    assert.equal(mesh.indices.length / 3, 40);
+    const p = (i: number) => Array.from(mesh.positions.slice(i * 3, i * 3 + 3));
+    for (let t = 0; t < mesh.indices.length; t += 3) {
+      const [a, b, c] = [0, 1, 2].map(j => p(mesh.indices[t + j]!));
+      const u = b!.map((x, k) => x - a![k]!), v = c!.map((x, k) => x - a![k]!);
+      const cross = [u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!];
+      assert.ok(Math.hypot(...cross) > 1e-10, "pole fans must not emit degenerate triangles");
+      const ni = mesh.indices[t]! * 3;
+      assert.ok(cross.reduce((sum, x, k) => sum + x * mesh.normals[ni + k]!, 0) > 0, "normal agrees with winding");
+    }
+    for (let i = 0; i < mesh.normals.length; i += 3)
+      assert.ok(Math.abs(Math.hypot(...mesh.normals.slice(i, i + 3)) - 1) < 1e-6);
+  }
+});
+
+test("two-edge trims fail closed without true poles or matching complete samples", () => {
+  for (const defect of ['off-axis', 'short-edge', 'unequal-sampling', 'disconnected'] as const) {
+    const r = poleReplay();
+    const arc = r.spans[5]!.value as Revit2027GArc;
+    const e = r.spans[3]!.value as Revit2027GEdgeStatic;
+    if (defect === 'off-axis') arc.center = [1, 0, 0];
+    if (defect === 'short-edge') e.firstAndLastEdgePoints = [e.firstAndLastEdgePoints[0], point([Math.PI, Math.PI / 2])];
+    if (defect === 'unequal-sampling') e.interiorEdgePoints = samples([Math.PI, 0], [Math.PI, Math.PI], 6);
+    if (defect === 'disconnected') e.nextReferences = [999, 0];
+    const result = meshRevit2027ArcSurfRevReplay(r);
+    assert.equal(result.ok, true); if (!result.ok) return;
+    assert.equal(result.value.faceMeshes.length, 0, defect);
+    assert.ok(result.value.issues.length > 0);
+  }
+});

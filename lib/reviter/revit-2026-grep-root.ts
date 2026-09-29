@@ -1,15 +1,16 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
 import type { ElementObject } from "./element-objects.ts";
 import type { Revit2026GInfoStatic } from "./revit-2026-object-dispatch.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 /**
  * `Formats/Latest` gives the framed GElement schema tag 2247, whose persisted
  * object marker is the class's own index. It is not an ObjectPtrInit source slot.
  */
-export const REVIT_2026_GELEMENT_OBJECT_MARKER = 2246;
+export let REVIT_2026_GELEMENT_OBJECT_MARKER = registerReleaseMarker("GElement", 2246, (value) => { REVIT_2026_GELEMENT_OBJECT_MARKER = value; });
 /** Independently resolved by the release-scoped native direct reader. */
-export const REVIT_2026_GELEMENT_SOURCE_CLASS_SLOT = 2206;
-export const REVIT_2026_GREP_SOURCE_CLASS_SLOT = 2207;
+export let REVIT_2026_GELEMENT_SOURCE_CLASS_SLOT = registerReleaseMarker("FrenetTransport", 2206, (value) => { REVIT_2026_GELEMENT_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2026_GREP_SOURCE_CLASS_SLOT = registerReleaseMarker("Transport", 2207, (value) => { REVIT_2026_GREP_SOURCE_CLASS_SLOT = value; });
 
 const FRAME_MARKER_OFFSET = 16;
 const BODY_OFFSET = 18;

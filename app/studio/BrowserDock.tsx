@@ -31,6 +31,7 @@ export function BrowserDock({
   hiddenCategories,
   onToggleCategory,
   onShowAllCategories,
+  onBuildingView,
   comments,
   visibleComments,
   commentFilter,
@@ -61,6 +62,7 @@ export function BrowserDock({
   hiddenCategories: ReadonlySet<string>;
   onToggleCategory: (name: string) => void;
   onShowAllCategories: () => void;
+  onBuildingView: () => void;
   comments: readonly ModelComment[];
   visibleComments: readonly ModelComment[];
   commentFilter: CommentFilter;
@@ -145,9 +147,15 @@ export function BrowserDock({
             <button
               type="button"
               className="rv-button rv-button-quiet"
+              title="Show building categories and hide conceptual masses and mass floors"
+              onClick={onBuildingView}
+            >Building view</button>
+            <button
+              type="button"
+              className="rv-button rv-button-quiet"
               disabled={!hiddenCategories.size}
               onClick={onShowAllCategories}
-            >Show all categories</button>
+            >All categories</button>
           </div>
         </>
       )}

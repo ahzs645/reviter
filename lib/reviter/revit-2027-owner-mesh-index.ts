@@ -27,6 +27,7 @@ import {
   REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
 } from "./revit-2027-surfaces.ts";
+import { releaseMemo } from "./release-markers.ts";
 
 export type Revit2027OwnerLoopRecord = {
   token: number;
@@ -91,10 +92,10 @@ type Revit2027OwnerSurfaceRegistration = {
  * surface is added by source slot without touching the indexing pass, and an
  * unregistered slot is simply not indexed.
  */
-const BUILTIN_SURFACES: readonly [
+const builtinSurfaces = releaseMemo((): readonly [
   number,
   Revit2027OwnerSurfaceRegistration,
-][] = [
+][] => [
   [
     REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,
     { id: "Revit2027PlaneSurface", requirePositiveToken: true },
@@ -141,22 +142,22 @@ const BUILTIN_SURFACES: readonly [
     REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT,
     { id: "Revit2027HermiteSurface", requirePositiveToken: false },
   ],
-];
+]);
 
-const SURFACE_REGISTRATIONS = new Map(BUILTIN_SURFACES);
+const surfaceRegistrations = releaseMemo(() => new Map(builtinSurfaces()));
 
 /** Curve slot to the surface slot it may hang from, and its token policy. */
-const CURVE_REGISTRATIONS = new Map<
+const curveRegistrations = releaseMemo(() => new Map<
   number,
   Revit2027OwnerCurveRegistration & { surfaceSourceClassSlot: number }
 >(
-  BUILTIN_SURFACES.flatMap(([surfaceSourceClassSlot, registration]) =>
+  builtinSurfaces().flatMap(([surfaceSourceClassSlot, registration]) =>
     (registration.curves ?? []).map((curve) => [
       curve.sourceClassSlot,
       { ...curve, surfaceSourceClassSlot },
     ] as const)
   ),
-);
+));
 
 function spanValue<T>(span: Revit2027GRepReplaySpan): T {
   return span.value as T;
@@ -210,7 +211,7 @@ function buildIndex(replay: Revit2027GRepReplay): Revit2027OwnerMeshIndex {
       continue;
     }
     if (span.parentReplayIndex == null) continue;
-    const surface = SURFACE_REGISTRATIONS.get(slot);
+    const surface = surfaceRegistrations().get(slot);
     if (surface) {
       if (surface.requirePositiveToken && span.propertyToken <= 0) continue;
       const faceToken = faceTokenByReplayIndex.get(span.parentReplayIndex);
@@ -229,7 +230,7 @@ function buildIndex(replay: Revit2027GRepReplay): Revit2027OwnerMeshIndex {
       });
       continue;
     }
-    const curve = CURVE_REGISTRATIONS.get(slot);
+    const curve = curveRegistrations().get(slot);
     if (!curve) continue;
     if (curve.requirePositiveToken && span.propertyToken <= 0) continue;
     const owner = faceTokenBySurfaceReplayIndex.get(span.parentReplayIndex);

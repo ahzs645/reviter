@@ -8,9 +8,24 @@ import {
   REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gelement.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
-export const REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT = 2215;
-export const REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT = 2513;
+export let REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT = registerReleaseMarker("GInstance", 2215, (value) => { REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT = value; });
+export let REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT = registerReleaseMarker("InstanceInfo", 2513, (value) => { REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT = value; });
+export let REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT = registerReleaseMarker("GComponentRef", 2230, value => { REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT = value; });
+
+/** GNode/GInfo followed by the queued m_instanceInfo reference. This names a
+ * related component (e.g. the column beneath a footing), not an additional
+ * drawable GInstance. Preserve its FIFO entry without composing that other
+ * component's geometry into this element.
+ */
+export function decodeGComponentRef(data: Uint8Array, byteOffset: number, bodyEndOffset: number, revitVersion: number) {
+  if (!releaseDecodersApply(revitVersion) || !hasExactBody(data, byteOffset, bodyEndOffset, 26)) return { ok: false as const, error: "GComponentRef boundary is invalid" };
+  const descriptor = decodeCondInt16PropertyDescriptor(data.subarray(0, bodyEndOffset), byteOffset + 20);
+  if (!descriptor.ok) return descriptor;
+  if (descriptor.descriptor.token !== -1 || descriptor.descriptor.sourceClassSlot !== REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT) return { ok: false as const, error: "GComponentRef does not name retained InstanceInfo" };
+  return { ok: true as const, value: { byteOffset, endOffset: bodyEndOffset, instanceInfo: descriptor.descriptor } };
+}
 /** Static length when `m_oEmbeddedSymbolGRep` is null. */
 export const REVIT_2027_GINSTANCE_BODY_BYTES = 44;
 /** Static length when `m_oEmbeddedSymbolGRep` queues a GElement. */
@@ -97,7 +112,7 @@ export function decodeRevit2027GInstanceStatic(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GInstanceDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GInstance decoding requires release 2027",
@@ -214,7 +229,7 @@ export function decodeRevit2027InstanceInfo(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027InstanceInfoDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 InstanceInfo decoding requires release 2027",

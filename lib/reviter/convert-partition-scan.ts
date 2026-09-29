@@ -1,3 +1,4 @@
+import { physicalModelCategory } from "./owned-model-elements.ts";
 /**
  * The page walk: one pass over every inflated page of every partition stream.
  *
@@ -54,7 +55,7 @@ import {
   readInstancePlacement,
   readLocalBounds,
   readLocalShape,
-  SHAPE_OBJECT_MARKERS,
+  shapeObjectMarkers,
 } from "./instanced-geometry.ts";
 import { scanAssociatedLevelRelationCandidates } from "./level-relations.ts";
 import {
@@ -114,6 +115,16 @@ import type {
   ProgressUpdate,
   Segment,
 } from "./types";
+import { releaseDecodersApply } from "./release-markers.ts";
+import { walkElementHeaderBlock } from "./element-headers.ts";
+import { PartitionRecordReader } from "./partition-records.ts";
+import { decodeOwnedFacetedGeometry, type OwnedFacetedGeometry } from "./owned-faceted-geometry.ts";
+import { readOwnedInstancePlacement } from "./owned-instance-placement.ts";
+import {
+  PARTITION_SEQUENCE_DRAWABLE,
+  PARTITION_SEQUENCE_ELEMENT_OBJECT,
+  readPartitionBlockHeader,
+} from "./revit-container.ts";
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
@@ -147,10 +158,28 @@ export type PartitionScanInput = {
   onProgress?: (update: ProgressUpdate) => void;
 };
 
+export type ElementHeaderScanStats = {
+  /** Blocks per sequence, and blocks whose header did not read. */
+  blocks: { elementHeader: number; elementObject: number; drawable: number; unheaded: number };
+  headerBlocksWalked: number;
+  /** Header blocks not walked: a record spans into or out of them, or the block did not inflate. */
+  headerBlocksSkipped: number;
+  headerRecords: number;
+  headerRecordsWithCategory: number;
+  misalignedBlocks: number;
+};
+
 export type PartitionScan = {
+  provenModelCategories: Map<number, number>;
+  modelInstanceIds: Set<number>;
+  ownedFacetedGeometry: Map<number, OwnedFacetedGeometry>;
+  sequenceStats: { sequence: number; records: number; spanningRecords: number; rejectedBlocks: number; incompleteRecords: number }[];
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
+  /** Each element's category from its own header record; exact ownership. */
+  elementHeaderCategories: Map<number, number>;
+  elementHeaderStats: ElementHeaderScanStats;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -238,7 +267,24 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     stairsRunCollector,
   ];
   const candidates: Segment[] = [];
+  const ownedFacetedGeometry = new Map<number, OwnedFacetedGeometry>();
+  // Proven placed families and physical model owners must survive cached-shape
+  // cleanup, even when a drawing helper also references their geometry.
+  const modelInstanceIds = new Set<number>();
+  const provenModelCategories = new Map<number, number>();
+  const ownedPlacements = new Map<number, NonNullable<ReturnType<typeof readOwnedInstancePlacement>> & { stream: string; chunkIndex: number; rawOffset: number }>();
+  let facetedBytes = 0;
+  const sequenceStats: PartitionScan["sequenceStats"] = [];
   const categoryTokens: CategoryToken[] = [];
+  const elementHeaderCategories = new Map<number, number>();
+  const elementHeaderStats: ElementHeaderScanStats = {
+    blocks: { elementHeader: 0, elementObject: 0, drawable: 0, unheaded: 0 },
+    headerBlocksWalked: 0,
+    headerBlocksSkipped: 0,
+    headerRecords: 0,
+    headerRecordsWithCategory: 0,
+    misalignedBlocks: 0,
+  };
   const elementBounds: ElementBoundsRecord[] = [];
   const elementObjects: ElementObject[] = [];
   const instancePlacements = new Map<number, InstancePlacement>();
@@ -289,7 +335,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const scanLimit = Math.max(maxSegments * 4, 40_000);
   const objectSeedMarkers = new Set([
     ...objectMarkers,
-    ...SHAPE_OBJECT_MARKERS,
+    ...shapeObjectMarkers(),
   ]);
 
   for (let partitionIndex = 0; partitionIndex < partitions.length; partitionIndex += 1) {
@@ -301,16 +347,71 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     // Carried so a chunk with back-references past its own start can be read
     // against the window the writer left behind; see `inflateRevitChunk`.
     let window: Uint8Array | null = null;
+    const sequenceReaders = new Map([
+      [102, new PartitionRecordReader(102)], [103, new PartitionRecordReader(103)],
+    ]);
     for (let index = 0; index < offsets.length; index += 1) {
       // A chunk that desyncs partway is still read up to that point, and the
       // prefix is not allowed to seed the next chunk's window because it is
       // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
       const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
       const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (!read) for (const reader of sequenceReaders.values()) reader.reset();
       if (!inflated) continue;
       if (read) window = revitWindowTail(read);
       gzipChunks += 1;
       inflatedBytes += inflated.byteLength;
+      // The block header names which of the three sequences this member
+      // belongs to. Sequence 101 is the element headers: walked record by
+      // record, each element's category is read from its own record.
+      const blockHeader = readPartitionBlockHeader(data, offsets[index]!);
+      if (!blockHeader) for (const reader of sequenceReaders.values()) reader.reset();
+      if (blockHeader && read && releaseDecodersApply(decoderPlan.revitVersion)) {
+        const records = sequenceReaders.get(blockHeader.sequence)?.push(blockHeader, read, index) ?? [];
+        for (const record of records) {
+          if (record.elementId <= 0) continue;
+          partitionRecordIds.add(record.elementId);
+          if (blockHeader.sequence === 102) {
+            const category = physicalModelCategory(record.classIndex, elementHeaderCategories.get(record.elementId));
+            if (category != null) { provenModelCategories.set(record.elementId, category); modelInstanceIds.add(record.elementId); }
+          }
+          if (blockHeader.sequence === 102 && record.classIndex === REVIT_2027_INSERTABLE_INSTANCE_MARKER) modelInstanceIds.add(record.elementId);
+          if (blockHeader.sequence !== 103) continue;
+          // Only frames the bounded page scan cannot see; avoid replaying ordinary owners.
+          if (record.objectLength > 0xffff || record.firstChunk !== record.lastChunk) nativeMeshCollector.scanOwnedFrame(record.data);
+          const owned = readOwnedInstancePlacement(record, decoderPlan.revitVersion!);
+          if (owned) ownedPlacements.set(record.elementId, { ...owned, stream: partition.path.replace(/^Root Entry\//, ""), chunkIndex: record.firstChunk, rawOffset: offsets[record.firstChunk]! });
+          const faceted = decodeOwnedFacetedGeometry(record, decoderPlan.revitVersion!);
+          if (faceted && !ownedFacetedGeometry.has(record.elementId)) {
+            const bytes = faceted.meshes.reduce((n, { mesh }) => n + mesh.positions.byteLength + mesh.indices.byteLength + (mesh.normals?.byteLength ?? 0), 0);
+            if (facetedBytes + bytes <= (maxNativeMeshBytes ?? 128 * 1024 * 1024)) {
+              ownedFacetedGeometry.set(record.elementId, faceted);
+              facetedBytes += bytes;
+            }
+          }
+        }
+      }
+      if (!blockHeader) elementHeaderStats.blocks.unheaded += 1;
+      else if (blockHeader.sequence === PARTITION_SEQUENCE_ELEMENT_OBJECT) elementHeaderStats.blocks.elementObject += 1;
+      else if (blockHeader.sequence === PARTITION_SEQUENCE_DRAWABLE) elementHeaderStats.blocks.drawable += 1;
+      else {
+        elementHeaderStats.blocks.elementHeader += 1;
+        if (blockHeader.flags !== 4 || !read) {
+          elementHeaderStats.headerBlocksSkipped += 1;
+        } else {
+          elementHeaderStats.headerBlocksWalked += 1;
+          const walk = walkElementHeaderBlock(inflated);
+          if (walk.misalignedAt != null) elementHeaderStats.misalignedBlocks += 1;
+          elementHeaderStats.headerRecords += walk.records.length;
+          for (const record of walk.records) {
+            if (record.categoryId == null) continue;
+            elementHeaderStats.headerRecordsWithCategory += 1;
+            if (!elementHeaderCategories.has(record.elementId)) {
+              elementHeaderCategories.set(record.elementId, record.categoryId);
+            }
+          }
+        }
+      }
       for (const fileName of scanPersistedDwgFileNames(inflated)) {
         const key = fileName.toLocaleLowerCase("en-US");
         const current = cadFileNameOccurrences.get(key);
@@ -395,7 +496,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           familySymbolMaterialPlacements.push(
             ...familySymbolMaterialScan.placements,
           );
-        } else if (decoderPlan.revitVersion === 2027) {
+        } else if (releaseDecodersApply(decoderPlan.revitVersion)) {
           for (const frame of pageFrames.frames) {
             const placement = readInstancePlacement(inflated, frame);
             if (placement) familySymbolMaterialPlacements.push(placement);
@@ -596,9 +697,23 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
         });
       }
     }
+    for (const reader of sequenceReaders.values()) {
+      reader.reset();
+      sequenceStats.push({ sequence: reader.sequence, ...reader.stats });
+    }
     for (const consumer of pageConsumers) consumer.finishPartition();
   }
   const stairsRuns = stairsRunCollector.snapshot();
+  for (const [id, owned] of ownedPlacements) {
+    if (!elementHeaderCategories.has(id)) continue;
+    if (!instancePlacements.has(id)) instancePlacements.set(id, owned.placement);
+    if (!boundedElementIds.has(id)) {
+      boundedElementIds.add(id);
+      elementBounds.push({ elementId: id, stream: owned.stream, chunkIndex: owned.chunkIndex,
+        rawOffset: owned.rawOffset, recordOffset: 0, boundsOffset: 0, recordCode: 0, recordCount: 0,
+        boundsFeet: owned.bounds });
+    }
+  }
   const stairsAggregates = stairsRunCollector.stairsSnapshot();
   const persistedCadFileNames = finalisePersistedCadFileNames(
     cadFileNameOccurrences,
@@ -615,8 +730,14 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     ]),
   );
   return {
+    modelInstanceIds,
+    provenModelCategories,
+    ownedFacetedGeometry,
+    sequenceStats,
     candidates,
     categoryTokens,
+    elementHeaderCategories,
+    elementHeaderStats,
     elementBounds,
     elementObjects,
     instancePlacements,

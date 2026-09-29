@@ -4,8 +4,34 @@ import test from "node:test";
 import {
   decodeFacetedTopologyFields,
   locateFacetedTopology8Body,
+  locateFacetedTopology0Body,
   type FacetedTopologyFieldLayout,
 } from "../lib/reviter/faceted-topology.ts";
+
+test("reads a queued Topology0 triangle without consuming the next object's bytes", () => {
+  const data = new Uint8Array(110), view = new DataView(data.buffer);
+  view.setUint32(16, 3, true);
+  writeFloat32(view, 20, [0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  view.setUint32(56, 3, true);
+  writeFloat32(view, 60, [0, 0, 0, 2, 0, 1, 0, 3, 1]);
+  view.setUint32(96, 1, true);
+  view.setUint16(100, 0, true); view.setUint16(102, 1, true); view.setUint16(104, 2, true);
+  view.setUint32(106, 0xdeadbeef, true);
+  const located = locateFacetedTopology0Body(data, 0);
+  assert.ok(located.ok);
+  assert.equal(located.body.endOffset, 106);
+  view.setFloat32(4, NaN, true);
+  assert.equal(locateFacetedTopology0Body(data, 0).ok, false);
+  view.setFloat32(4, 0, true);
+  const decoded = decodeFacetedTopologyFields(data, located.body.layout);
+  assert.ok(decoded.ok);
+  assert.deepEqual([...decoded.mesh.indices], [0, 1, 2]);
+  assert.equal(locateFacetedTopology0Body(data.subarray(0, 105), 0).ok, false);
+  view.setUint16(104, 3, true);
+  assert.equal(locateFacetedTopology0Body(data, 0).ok, false);
+  view.setUint32(56, 0xffffffff, true);
+  assert.equal(locateFacetedTopology0Body(data, 0).ok, false);
+});
 
 function writeFloat32(view: DataView, offset: number, values: number[]): void {
   values.forEach((value, index) => view.setFloat32(offset + index * 4, value, true));

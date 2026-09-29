@@ -13,8 +13,9 @@ import {
   scanFramedElementObjects,
   type ElementObject,
 } from "./element-objects.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
-export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
+export let REVIT_2027_BASIC_WALL_TYPE_MARKER = registerReleaseMarker("BasicWallType", 0x0270, (value) => { REVIT_2027_BASIC_WALL_TYPE_MARKER = value; });
 
 /**
  * The pointer to a wall type's layer structure: handle `-1`, then the schema
@@ -201,7 +202,7 @@ export function scanCompoundStructureCandidates(
   data: Uint8Array,
   revitVersion: number,
 ): CompoundStructureCandidate[] {
-  if (revitVersion !== 2027) return [];
+  if (!releaseDecodersApply(revitVersion)) return [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const result: CompoundStructureCandidate[] = [];
   for (const object of scanFramedElementObjects(data)) {

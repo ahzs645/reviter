@@ -617,3 +617,27 @@ test("independent RVT bounds reject mismatched direct and placed coordinates wit
     ],
   );
 });
+
+test("owned frames bypass only the page-size ceiling, keeping the length/echo guard", async () => {
+  const { REVIT_2027_GELEMENT_OBJECT_MARKER } = await import("../lib/reviter/revit-2027-framed-grep-root.ts");
+  const objectLength = 80_138;
+  const data = new Uint8Array(objectLength + 20);
+  const view = new DataView(data.buffer);
+  view.setBigUint64(0,400237n,true);view.setUint32(12,objectLength,true);
+  view.setUint16(16,REVIT_2027_GELEMENT_OBJECT_MARKER,true);
+  view.setBigUint64(18,91n,true);
+  view.setUint32(38,20_000,true); // measured null descriptors, each four bytes
+  view.setBigInt64(80_138,400237n,true);
+  view.setInt32(80_146,2,true);view.setUint32(80_150,0x20,true);
+  view.setUint32(objectLength+16,objectLength,true);
+  const collector = createRevit2027NativeMeshCollector(2027);
+  collector.scanPage(data);
+  assert.equal(collector.snapshot().scannedFrames,0);
+  collector.scanOwnedFrame(data);
+  assert.equal(collector.snapshot().scannedFrames,1);
+  assert.equal(collector.snapshot().owners.size,0,"an empty owner must not invent geometry");
+  view.setUint32(objectLength+16,objectLength-1,true);
+  collector.scanOwnedFrame(data);
+  collector.scanOwnedFrame(data.subarray(0,data.length-1));
+  assert.equal(collector.snapshot().scannedFrames,1);
+});

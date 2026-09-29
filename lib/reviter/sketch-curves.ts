@@ -59,12 +59,14 @@
  */
 
 import { noteLimit } from "./limit-census.ts";
+import { registerReleaseMarker, releaseMemo } from "./release-markers.ts";
 
 /** `04 00 08 01` — the edge-record signature. */
 const CURVE_SIGNATURE = [0x04, 0x00, 0x08, 0x01] as const;
 
 /** `ff ff ff ff 10 03 01 00 00 00` — the single-element owner anchor. */
-const OWNER_ANCHOR = [0xff, 0xff, 0xff, 0xff, 0x10, 0x03, 0x01, 0x00, 0x00, 0x00] as const;
+let CELL_LIST_MARKER = registerReleaseMarker("CellList", 0x0310, (value) => { CELL_LIST_MARKER = value; });
+const ownerAnchor = releaseMemo(() => [0xff, 0xff, 0xff, 0xff, CELL_LIST_MARKER & 0xff, CELL_LIST_MARKER >> 8, 0x01, 0x00, 0x00, 0x00] as const);
 
 /**
  * A line needs eight f64 fields after the signature, an arc twelve. Records sit
@@ -206,6 +208,7 @@ export function collectSketchCurves(data: Uint8Array): SketchCurve[] {
   // over every byte of a 384 MB inflation costs more than the decode does.
   const anchorOffsets: number[] = [];
   const anchorOwners: number[] = [];
+  const OWNER_ANCHOR = ownerAnchor();
   for (
     let offset = data.indexOf(OWNER_ANCHOR[0]);
     offset >= 0 && offset + OWNER_ANCHOR.length + 8 <= data.byteLength;

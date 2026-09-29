@@ -33,5 +33,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "dist", "dist-pages", ".vinext", ".output"]
+  "exclude": ["work", "node_modules", "dist", "dist-pages", ".vinext", ".output"]
 }

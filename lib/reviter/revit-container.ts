@@ -561,3 +561,75 @@ export function leadingU32(data: Uint8Array): number | null {
       ((data[3] ?? 0) << 24)) >>> 0
   );
 }
+
+// ─── Partition block headers ─────────────────────────────────────────────────
+
+/**
+ * Bytes of the block header that precedes every gzip member of a partition
+ * stream. Measured 2026-09-11 on Revit 2024, 2025 and 2027 files: 4,604,
+ * 1,000 and 3,666 members, every one headed this way.
+ */
+export const PARTITION_BLOCK_HEADER_BYTES = 26;
+
+/** The three logical sequences a partition stream interleaves. */
+export const PARTITION_SEQUENCE_ELEMENT_HEADER = 101;
+export const PARTITION_SEQUENCE_ELEMENT_OBJECT = 102;
+export const PARTITION_SEQUENCE_DRAWABLE = 103;
+
+export type PartitionBlockHeader = {
+  /** A class index that moves per release: 3708 in 2024, 3801 in 2025, 3939 in 2027. */
+  tag: number;
+  /**
+   * 4 = the block holds whole records only; bit 1 set = the last record runs
+   * on into the next block of the same sequence; bit 0 set = the first record
+   * continues one that began earlier.
+   */
+  flags: number;
+  /** Records whose header starts in this block. */
+  recordsStarting: number;
+  /** Eight plus the gzip member's stored length. */
+  sizeHint: number;
+  /** Record body bytes stored in this block. */
+  bodyBytes: number;
+  /** 101 element headers, 102 element objects, 103 drawable representations. */
+  sequence: number;
+};
+
+/**
+ * The header written just before the gzip member at `gzipOffset`, or null when
+ * the bytes there are not one.
+ *
+ * Layout, little-endian: `u16 tag, u32 flags, u32 recordsStarting, u32
+ * sizeHint, u32 bodyBytes, u32 sequence, u32 0`; a six-byte footer (`u16`,
+ * `u32 sizeHint`) follows each member. The layout was published in a
+ * third-party write-up of the format and is confirmed here by measurement —
+ * on the files above a whole-records block of sequence 101 inflates to exactly
+ * `16 × recordsStarting + bodyBytes` bytes, block after block, with no
+ * exception. Neither that write-up's code nor its licence is used; only the
+ * numbers it made checkable.
+ */
+export function readPartitionBlockHeader(
+  data: Uint8Array,
+  gzipOffset: number,
+): PartitionBlockHeader | null {
+  if (gzipOffset < PARTITION_BLOCK_HEADER_BYTES) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const at = gzipOffset - PARTITION_BLOCK_HEADER_BYTES;
+  const header = {
+    tag: view.getUint16(at, true),
+    flags: view.getUint32(at + 2, true),
+    recordsStarting: view.getUint32(at + 6, true),
+    sizeHint: view.getUint32(at + 10, true),
+    bodyBytes: view.getUint32(at + 14, true),
+    sequence: view.getUint32(at + 18, true),
+  };
+  if (header.flags < 4 || header.flags > 7) return null;
+  if (
+    header.sequence !== PARTITION_SEQUENCE_ELEMENT_HEADER &&
+    header.sequence !== PARTITION_SEQUENCE_ELEMENT_OBJECT &&
+    header.sequence !== PARTITION_SEQUENCE_DRAWABLE
+  ) {
+    return null;
+  }
+  return header;
+}

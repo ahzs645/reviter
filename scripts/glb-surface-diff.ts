@@ -1248,12 +1248,23 @@ function unionBounds(a: Bounds, b: Bounds): Bounds {
   };
 }
 
-export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Array, cellMetres = 0.5) {
+export function compareGlbs(
+  recoveredBytes: Uint8Array,
+  referenceBytes: Uint8Array,
+  cellMetres = 0.5,
+  // A registration supplied by the caller replaces the one derived from the
+  // two scenes' bounds. The derived one assumes both scenes span the same
+  // building; when the reference view carries site elements the recovery
+  // dropped, its bounds are the wrong yardstick and the scale comes out
+  // wrong by the ratio of the extents (0.34 on the Technical School model).
+  // `scripts/register-glb-by-elements.py` derives one from matched elements.
+  suppliedRegistration?: Registration,
+) {
   const recovered = parseGlb(recoveredBytes);
   const reference = parseGlb(referenceBytes);
   const recoveredBounds = geometryBounds(recovered);
   const referenceBounds = geometryBounds(reference);
-  const registration = deriveRegistration(recoveredBounds, referenceBounds);
+  const registration = suppliedRegistration ?? deriveRegistration(recoveredBounds, referenceBounds);
   const alignedRecoveredBounds = registeredBounds(recoveredBounds, registration);
   const grid = makeVoxelGrid(unionBounds(alignedRecoveredBounds, referenceBounds), cellMetres);
   const recoveredVoxels = sampleScene(recovered, registration, grid);
@@ -1329,16 +1340,28 @@ export function compareGlbs(recoveredBytes: Uint8Array, referenceBytes: Uint8Arr
 }
 
 if (isEntryPoint(import.meta.url)) {
-  const [recoveredPath, referencePath] = positionals("--cell", "--json", "--svg", "--actionable-svg");
+  const [recoveredPath, referencePath] = positionals("--cell", "--json", "--svg", "--actionable-svg", "--registration");
   const jsonPath = optionValue("--json");
   const svgPath = optionValue("--svg");
   const actionableSvgPath = optionValue("--actionable-svg");
   if (!recoveredPath || !referencePath) {
-    throw new Error("usage: glb-surface-diff.ts recovered.glb reference.glb [--cell 0.5] [--json report.json] [--svg diff.svg] [--actionable-svg review.svg]");
+    throw new Error("usage: glb-surface-diff.ts recovered.glb reference.glb [--cell 0.5] [--json report.json] [--svg diff.svg] [--actionable-svg review.svg] [--registration registration.json]");
   }
   const cellMetres = numberOption("--cell", 0.5);
   if (cellMetres <= 0) throw new Error("--cell must be positive.");
-  const report = compareGlbs(readFileSync(recoveredPath), readFileSync(referencePath), cellMetres);
+  const registrationPath = optionValue("--registration");
+  const suppliedRegistration = registrationPath
+    ? (JSON.parse(readFileSync(registrationPath, "utf8")) as Registration)
+    : undefined;
+  if (
+    suppliedRegistration &&
+    (!Number.isFinite(suppliedRegistration.scale) ||
+      suppliedRegistration.sourceCenter?.length !== 3 ||
+      suppliedRegistration.referenceCenter?.length !== 3)
+  ) {
+    throw new Error("--registration must hold { scale, sourceCenter[3], referenceCenter[3] }.");
+  }
+  const report = compareGlbs(readFileSync(recoveredPath), readFileSync(referencePath), cellMetres, suppliedRegistration);
   const {
     reviewRecoveredOnlyIndices,
     missingHorizontalStairSurfaceIndices,

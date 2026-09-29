@@ -54,10 +54,14 @@ import type {
   LocatedNativeMaterialDefinition,
   NativeCategorySummary,
 } from "./types.ts";
+import { REFERENCE_RELEASE } from "./release-markers.ts";
+import type { ReleaseMarkerResolution } from "./release-markers.ts";
 
 /** Everything both branches decode, and therefore both branches report. */
 export type ConvertReportBasis = {
   revitVersion: number | null;
+  /** How the file's schema resolved the registered class indices. */
+  releaseMarkers?: ReleaseMarkerResolution;
   nativeCategories: NativeCategorySummary;
   /** Elements carrying a category, from their own token or by consensus. */
   categorisedElements: number;
@@ -264,6 +268,12 @@ export function buildDecoderCoverage(
             meshCollection.requestedOwnerTriangles,
           nativeMeshRequestedOwnerFailures:
             meshCollection.requestedOwnerFailures,
+          // The first few failure details, so a file on which every owner
+          // fails says why in its own audit instead of only counting.
+          nativeMeshFailureSamples: [
+            ...meshCollection.requestedOwnerFailureSamples,
+            ...meshCollection.nestedFailureSamples,
+          ].slice(0, 12),
         }
       : {}),
     nativeMaterialDefinitions: basis.nativeMaterialDefinitions.length,
@@ -307,6 +317,25 @@ export function buildDecoderCoverage(
  * Each entry states something the file was actually found to contain, so a
  * count of zero means the sentence is omitted rather than printed as "0".
  */
+/**
+ * What the class-index resolution did for this file. A non-2027 file whose
+ * schema resolved every registered class is decoded with its own indices; one
+ * that did not is left on the diagnostic path, and the missing names are the
+ * reason, so they are printed rather than left to be inferred from an empty scene.
+ */
+function releaseMarkerWarnings(basis: ConvertReportBasis): string[] {
+  const markers = basis.releaseMarkers;
+  if (!markers || basis.revitVersion == null) return [];
+  if (markers.resolved) {
+    return basis.revitVersion === REFERENCE_RELEASE
+      ? []
+      : [`Revit ${basis.revitVersion}: ${markers.registered.toLocaleString()} decoder class indices were resolved from the file's own Formats/Latest schema (${markers.shifted.length.toLocaleString()} differ from the Revit ${REFERENCE_RELEASE} defaults), so the release-specific decoders ran with this file's indices.`];
+  }
+  if (basis.revitVersion === REFERENCE_RELEASE) return [];
+  const missing = markers.missing.slice(0, 8).join(", ") + (markers.missing.length > 8 ? ", …" : "");
+  return [`Revit ${basis.revitVersion}: release-specific decoders stayed disabled because the file's Formats/Latest schema did not resolve ${markers.missing.length.toLocaleString()} registered class${markers.missing.length === 1 ? "" : "es"} (${missing}).`];
+}
+
 export function buildWarnings(
   basis: ConvertReportBasis,
   branch: ConvertBranchReport,
@@ -324,7 +353,7 @@ export function buildWarnings(
       ? [
           `${scene.drawableRecords.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           basis.categorisedElements
-            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`
+            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${(nativeCategories.headerElements ?? 0).toLocaleString()} from their own element-header record, ${nativeCategories.directElements.toLocaleString()} from a category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`
             : "No native Revit category tokens were decoded, so element display falls back to record-code clusters.",
         ]
       : [
@@ -335,6 +364,7 @@ export function buildWarnings(
             ? "Family file: geometry is inferred from component-scale coordinate-like partition records and is not a native Revit element model."
             : "Geometry is inferred from coordinate-like partition records and is not a native Revit element model.",
         ]),
+    ...releaseMarkerWarnings(basis),
     ...(basis.elementOwnership
       ? [`${basis.elementOwnership.relations.length.toLocaleString()} persisted element ownership relationships were decoded from Global/ElemTable for the client model tree.`]
       : []),
@@ -455,6 +485,9 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
       : []),
     ...(displaySelection.unclassifiedCount
       ? [`${displaySelection.unclassifiedCount.toLocaleString()} element envelopes are drawn without a decoded Revit category, grouped as uncategorised elements.`]
+      : []),
+    ...(displaySelection.omittedNonModelCount
+      ? [`${displaySelection.omittedNonModelCount.toLocaleString()} elements in non-model categories (links, groups, text notes, viewports, sun path, datums, analytical elements) are held back from the scene; a link instance's envelope is the whole linked building and an annotation's is a sheet position, so neither is building geometry.`]
       : []),
     ...(displaySelection.omittedSheetCount
       ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]

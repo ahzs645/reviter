@@ -3,9 +3,10 @@ import {
   REVIT_2027_GCONDITION_DIR_BODY_BYTES,
   type Revit2027GConditionDir,
 } from "./revit-2027-gcondition-dir.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 /** Exact Revit 2027 source slot for `GConditionCut`. */
-export const REVIT_2027_GCONDITION_CUT_SOURCE_CLASS_SLOT = 2234;
+export let REVIT_2027_GCONDITION_CUT_SOURCE_CLASS_SLOT = registerReleaseMarker("GConditionCut", 2234, (value) => { REVIT_2027_GCONDITION_CUT_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GCONDITION_CUT_BODY_BYTES =
   REVIT_2027_GCONDITION_DIR_BODY_BYTES + 16;
 

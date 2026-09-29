@@ -1,6 +1,7 @@
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
-export const REVIT_2027_GEDGE_SOURCE_CLASS_SLOT = 1423;
+export let REVIT_2027_GEDGE_SOURCE_CLASS_SLOT = registerReleaseMarker("Edge", 1423, (value) => { REVIT_2027_GEDGE_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const REFERENCE_ARRAY_BYTES = 2 * 4;
@@ -178,7 +179,7 @@ export function decodeRevit2027GEdgeStatic(
   revitVersion: number,
   options: { maxInteriorEdgePoints?: number } = {},
 ): Revit2027GEdgeStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GEdge decoding requires release 2027",

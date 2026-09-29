@@ -274,9 +274,9 @@ test("exports one semantic manifest record per recovered element", () => {
   record.parameters = [{ parameterId: -1_001_105, name: "Unconnected Height", value: 14 }];
   result.meshes[0] = {
     name: "Walls",
-    positions: new Float32Array(),
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 1]),
     colors: new Float32Array(),
-    indices: new Uint32Array(),
+    indices: new Uint32Array([0, 1, 2]),
     elementIds: new Uint32Array([290618]),
     materialIndex: 1,
   };
@@ -288,8 +288,15 @@ test("exports one semantic manifest record per recovered element", () => {
     type: { elementId: 609157, name: "Interior Wall - 120mm" },
     geometry: {
       source: "validated-bounds-envelope",
+      recordSource: "validated-bounds-envelope",
+      meshSources: [{ source: "unknown", triangles: 1 }],
       finalProvenance: "bounds-fallback",
       boundsFeet: record.boundsFeet,
+      persistedBoundsFeet: record.boundsFeet,
+      drawnBoundsFeet: {
+        min: { ...result.origin },
+        max: { x: result.origin.x + 1, y: result.origin.y + 1, z: result.origin.z + 1 },
+      },
       bodies: 1,
       nativeFaces: 0,
     },
@@ -325,6 +332,34 @@ test("exports one semantic manifest record per recovered element", () => {
       properties: { Worksharing: "Enabled" },
     },
   });
+});
+
+test("audit distinguishes persisted envelopes, mixed emitted meshes and undrawn records", () => {
+  const result = boundsResult();
+  const id = result.elementBounds[0]!.elementId;
+  result.origin = { x: 100, y: -50, z: 10 };
+  result.meshes = [{ name: "native", positions: Float32Array.from([0, 0, 0, 2, 0, 0, 0, 3, 1]),
+    indices: Uint32Array.from([0, 1, 2]), colors: new Float32Array(9).fill(1), materialIndex: 0,
+    source: "native-brep", elementIds: Uint32Array.from([id]) }];
+  let geometry = elementManifest(result)[0]!.geometry;
+  assert.equal(geometry.source, "native-brep");
+  assert.equal(geometry.recordSource, "validated-bounds-envelope");
+  assert.deepEqual(geometry.drawnBoundsFeet, { min: { x: 100, y: -50, z: 10 }, max: { x: 102, y: -47, z: 11 } });
+  assert.deepEqual(geometry.persistedBoundsFeet, result.elementBounds[0]!.boundsFeet);
+  result.elementBounds[0]!.boundsFromNativeMesh = true;
+  geometry = elementManifest(result)[0]!.geometry;
+  assert.equal(geometry.persistedBoundsFeet, null);
+  assert.equal(geometry.boundsSource, "owned-native-triangles");
+  assert.ok(geometry.drawnBoundsFeet);
+  result.meshes.push({ ...result.meshes[0]!, source: "display-proxy" });
+  geometry = elementManifest(result)[0]!.geometry;
+  assert.equal(geometry.source, "mixed");
+  assert.equal(geometry.meshSources.length, 2);
+  result.meshes = [];
+  const hidden = elementManifest(result)[0]!;
+  assert.equal(hidden.displayed, false);
+  assert.equal(hidden.geometry.drawnBoundsFeet, null);
+  assert.equal(hidden.geometry.source, "not-drawn");
 });
 
 test("types IFC elements from native categories while retaining approximate geometry evidence", () => {

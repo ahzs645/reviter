@@ -1,5 +1,33 @@
 # Exporting a recovered model to Pascal
 
+**2026-09-13 update:** Compressed drawn exports are available from the CLI:
+
+```sh
+npm run extract -- model.rvt --out model.pascal.json.gz --pascal-geometry drawn --pascal-grouping review
+```
+
+The updated local Pascal editor accepts these files through **Load Build** and
+decompresses/validates gzip in an import worker. Compression reduces disk and
+transfer size; expanded scene memory remains a separate constraint. Explicit
+category filtering is available with `--exclude-categories`, followed by
+comma-separated negative Revit category IDs (for example `-2003400` for Mass).
+Filtering retains unknown categories and preserves the remaining triangle owners.
+Imported drawn blocks now show triangle sections at 1.2 m above their assigned
+level in the plan view, with constant screen-width lines. These are geometric
+sections, not complete architectural plans or semantic wall/door nodes.
+
+**2026-09-11 update:** The notes below describe the semantic mapping and its
+historical measurements. The browser now offers **Pascal review** for batched
+large-model geometry, **Pascal per element** for separate drawn element parts,
+and **Pascal editable** for this simplified semantic mapping. See the
+[review export measurements and usage](pascal-export-optimization-2026-09-11.md).
+The CLI keeps semantic mode as its default; `--pascal-geometry drawn` selects
+mesh blocks, scene materials, and a building root without an invented ground
+plane. The old voxel results below were made with a local approximation of
+Pascal geometry and are not an actual Pascal renderer round trip. See the
+[current verification report](pascal-export-verification-2026-09-11.md) for
+checks through the supplied editor’s validator, loader, and renderer.
+
 [Pascal](https://github.com/pascalorg/editor) is an open-source, local-first 3D
 building editor. It is not a viewer: its scene is a graph of *typed building
 nodes* — walls with a location line and a thickness, slabs with an outline,
@@ -293,7 +321,7 @@ npm run extract -- model.rvt --out model.pascal.json --extras none --mirror-plan
 ```
 
 The compound `.pascal.json` suffix selects the format, because `model.json` is
-already the audit report. In the browser studio the same export is the **Pascal**
+already the audit report. In the browser studio this semantic export is the **Pascal editable**
 button in the export list.
 
 In Pascal, open the settings panel and use **Save & Load → Load Build**. The

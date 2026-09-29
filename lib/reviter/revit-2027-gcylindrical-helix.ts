@@ -1,7 +1,8 @@
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source slot for `GCylindricalHelix`. */
-export const REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT = 2244;
+export let REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT = registerReleaseMarker("GCylindricalHelix", 2244, (value) => { REVIT_2027_GCYLINDRICAL_HELIX_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES = 148;
 
 const GINFO_BYTES = 20;
@@ -66,7 +67,7 @@ export function decodeRevit2027GCylindricalHelix(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GCylindricalHelixDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GCylindricalHelix decoding requires release 2027",

@@ -3,9 +3,10 @@ import {
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `EdgeLoop`. */
-export const REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT = 1434;
+export let REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT = registerReleaseMarker("EdgeLoop", 1434, (value) => { REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT = value; });
 /** Exact Revit 2027 source-class slot for `EdgeLoopWithChainEnvelopes`. */
 export const REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT =
   1437;
@@ -108,7 +109,7 @@ export function decodeRevit2027EdgeLoopStatic(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027EdgeLoopStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 EdgeLoop decoding requires release 2027",
@@ -213,7 +214,7 @@ export function decodeRevit2027EdgeLoopWithChainEnvelopesStatic(
   revitVersion: number,
   options: { maxChains?: number } = {},
 ): Revit2027EdgeLoopWithChainEnvelopesStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error:

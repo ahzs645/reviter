@@ -9,8 +9,12 @@
  * to reproduce 48 bytes exactly.
  */
 import type { Bounds3, ElementBoundsRecord } from "./types.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
 
 const BOUNDS_DUPLICATE_BYTES = 48;
+
+/** `GElement`: the class index at `+16` of the record, `0x08c6` in Revit 2027. */
+export let BOUNDS_RECORD_MARKER = registerReleaseMarker("GElement", 0x08c6, (value) => { BOUNDS_RECORD_MARKER = value; });
 
 /** Span below which an axis is treated as degenerate rather than solid. */
 export const MIN_SOLID_SPAN_FEET = 0.001;
@@ -54,12 +58,14 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
   const records: DetectedBoundsRecord[] = [];
   if (data.byteLength < 138) return records;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const markerLow = BOUNDS_RECORD_MARKER & 0xff;
+  const markerHigh = BOUNDS_RECORD_MARKER >> 8;
   for (
-    let tagOffset = data.indexOf(0xc6, 16);
+    let tagOffset = data.indexOf(markerLow, 16);
     tagOffset >= 0 && tagOffset + 122 < data.byteLength;
-    tagOffset = data.indexOf(0xc6, tagOffset + 1)
+    tagOffset = data.indexOf(markerLow, tagOffset + 1)
   ) {
-    if (data[tagOffset + 1] !== 0x08) continue;
+    if (data[tagOffset + 1] !== markerHigh) continue;
     const recordOffset = tagOffset - 16;
     const elementId = view.getUint32(recordOffset, true);
     if (

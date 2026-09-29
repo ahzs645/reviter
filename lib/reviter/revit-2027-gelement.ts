@@ -4,9 +4,10 @@ import {
 } from "./dynamic-geometry-queue.ts";
 import type { RevitExtents3d } from "./revit-2026-grep-root.ts";
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Selector-free ObjectPtrInit source slot for a queued Revit 2027 GElement. */
-export const REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT = 2246;
+export let REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT = registerReleaseMarker("GElement", 2246, (value) => { REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const GREP_STATIC_SUFFIX_BYTES = 112;
@@ -72,7 +73,7 @@ export function decodeRevit2027GElementStatic(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GElementStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GElement decoding requires release 2027",

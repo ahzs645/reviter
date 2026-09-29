@@ -11,6 +11,8 @@
  * shapes plus temporal invariants before formatting any UniqueId.
  */
 
+import { releaseDecodersApply } from "./release-markers.ts";
+
 const HISTORY_PREFIX = [
   0x52, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -118,7 +120,7 @@ export function decodeRevitDocumentHistory(
   data: Uint8Array,
   revitVersion: number,
 ): RevitDocumentHistory | NativeIdentityFailure {
-  if (revitVersion !== 2027) return unsupported(`unsupported Revit release ${revitVersion}`);
+  if (!releaseDecodersApply(revitVersion)) return unsupported(`unsupported Revit release ${revitVersion}`);
   if (data.byteLength < 128 || !matches(data, 0, HISTORY_PREFIX)) {
     return unsupported("Global/History does not have the measured 2027 header");
   }
@@ -227,7 +229,7 @@ export function decodeRevitNativeIdentities(
   history: RevitDocumentHistory,
   revitVersion: number,
 ): NativeIdentityDecode | NativeIdentityFailure {
-  if (revitVersion !== 2027) return unsupported(`unsupported Revit release ${revitVersion}`);
+  if (!releaseDecodersApply(revitVersion)) return unsupported(`unsupported Revit release ${revitVersion}`);
   if (data.byteLength < ELEMENT_RECORD_START + ELEMENT_TABLE_SUFFIX_BYTES) {
     return unsupported("Global/ElemTable is shorter than the measured 2027 framing");
   }

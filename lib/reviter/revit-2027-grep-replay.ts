@@ -1,3 +1,9 @@
+import { addPhotometricAssetReaders } from "./photometric-asset.ts";
+import { decodeRevitGBitmap, REVIT_GBITMAP_BODY_BYTES, REVIT_GBITMAP_SOURCE_CLASS_SLOT } from "./revit-2027-gbitmap.ts";
+import {
+  REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+  decodeGComponentRef,
+} from "./revit-2027-ginstance.ts";
 import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
@@ -117,6 +123,7 @@ import {
   REVIT_2027_RULED_SURFACE_SOURCE_CLASS_SLOT,
   REVIT_2027_SURFACE_OF_REVOLUTION_SOURCE_CLASS_SLOT,
 } from "./revit-2027-surfaces.ts";
+import { releaseMemo, activeRelease } from "./release-markers.ts";
 
 const REVIT_2027_GREP_INITIAL_TOKEN_COUNT = 3;
 
@@ -128,7 +135,7 @@ export type Revit2027GRepReplayPath = readonly number[];
 export type Revit2027GRepReplayReaderContext = {
   byteOffset: number;
   replayEndOffset: number;
-  revitVersion: 2027;
+  revitVersion: number;
   ownerElementId: bigint;
   replayIndex: number;
   queueSequence: number;
@@ -284,10 +291,10 @@ function fixedBodyReader(
   };
 }
 
-const BUILTIN_READERS: readonly [
+const builtinReaders = releaseMemo((): readonly [
   number,
   Revit2027GRepReplayReaderRegistration,
-][] = [
+][] => [
   [
     REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
     {
@@ -809,7 +816,7 @@ const BUILTIN_READERS: readonly [
       },
     ],
   ),
-];
+]);
 
 /**
  * Return a mutable registry preloaded with the release-certified readers.
@@ -821,7 +828,24 @@ export function createRevit2027GRepReplayRegistry(): Map<
   number,
   Revit2027GRepReplayReaderRegistration
 > {
-  return new Map(BUILTIN_READERS);
+  const readers = new Map(builtinReaders());
+  readers.set(REVIT_GBITMAP_SOURCE_CLASS_SLOT, {
+    id: "GBitmap",
+    read: fixedBodyReader(REVIT_GBITMAP_BODY_BYTES, decodeRevitGBitmap, () => []),
+  });
+  readers.set(REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT, componentRefReader());
+  addPhotometricAssetReaders(readers);
+  return readers;
+}
+
+function componentRefReader(): Revit2027GRepReplayReaderRegistration {
+  return { id: "GComponentRef", read(data, context) {
+    if (context.byteOffset + 26 > context.replayEndOffset) return { ok: false, error: "GComponentRef truncated" };
+    const decoded = decodeGComponentRef(data, context.byteOffset, context.byteOffset + 26, context.revitVersion);
+    if (!decoded.ok) return decoded;
+    return { ok: true, startOffset: context.byteOffset, endOffset: decoded.value.endOffset,
+      appendedProperties: [decoded.value.instanceInfo], value: decoded.value };
+  } };
 }
 
 /**
@@ -833,7 +857,7 @@ export function createRevit2027GRepReplayRegistry(): Map<
  * `createRevit2027GRepReplayRegistry`. Nothing hands this map out, so no
  * caller can register into it and change what a later replay decodes.
  */
-const CERTIFIED_READERS: Revit2027GRepReplayRegistry = new Map(BUILTIN_READERS);
+const certifiedReaders = releaseMemo((): Revit2027GRepReplayRegistry => createRevit2027GRepReplayRegistry());
 
 function validLimit(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
@@ -853,7 +877,7 @@ function validLimit(value: number): boolean {
 export function replayRevit2027GRepFifo(
   data: Uint8Array,
   root: Revit2027FramedGRepRoot,
-  registry: Revit2027GRepReplayRegistry = CERTIFIED_READERS,
+  registry: Revit2027GRepReplayRegistry = certifiedReaders(),
   options: Revit2027GRepReplayOptions = {},
 ): Revit2027GRepReplayResult {
   const maxReplayEntries =
@@ -1097,7 +1121,7 @@ export function replayRevit2027GRepFifo(
       read = registration.read(data, {
         byteOffset: offset,
         replayEndOffset: root.dynamicPayloadEndOffset,
-        revitVersion: 2027,
+        revitVersion: activeRelease(),
         ownerElementId: pending.ownerElementId,
         replayIndex,
         queueSequence: pending.queueSequence,

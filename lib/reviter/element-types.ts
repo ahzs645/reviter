@@ -58,13 +58,15 @@
  * head then reads its slot from that index rather than searching for it.
  */
 
+import { registerReleaseMarker } from "./release-markers.ts";
+
 /**
  * Discriminator B of the records whose type reference this decoder reads.
  *
  * A pointer at `ParamValueSetDouble`, so it marks a record that carries a
  * double parameter set rather than a kind of element.
  */
-const TYPED_RECORD_DISCRIMINATOR = 0x0c93;
+let TYPED_RECORD_DISCRIMINATOR = registerReleaseMarker("ParamValueSetDouble", 0x0c93, (value) => { TYPED_RECORD_DISCRIMINATOR = value; });
 
 /** The `ff ff ff ff` that heads a record's null-field marker and every slot. */
 const NULL_FIELD_MARKER = 0xffff_ffff;
@@ -79,13 +81,13 @@ const SLOT_BYTES = 6;
 const FIELD_ID_HIGH_BYTE = 0x11;
 
 /** Field id whose slot precedes the type reference: the class `VWallDriver`. */
-const TYPE_REFERENCE_FIELD = 0x116f;
+let TYPE_REFERENCE_FIELD = registerReleaseMarker("VWallDriver", 0x116f, (value) => { TYPE_REFERENCE_FIELD = value; });
 
 /**
  * Field id whose slot precedes a type record's name string: the class
  * `TaperableWallTypeWidthAtParametersCell`.
  */
-const TYPE_NAME_FIELD = 0x1104;
+let TYPE_NAME_FIELD = registerReleaseMarker("TaperableWallTypeWidthAtParametersCell", 0x1104, (value) => { TYPE_NAME_FIELD = value; });
 
 /** Bytes of a record searched for the type-reference slot. */
 const RECORD_SEARCH_BYTES = 1_200;

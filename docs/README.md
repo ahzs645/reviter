@@ -44,12 +44,15 @@ Read in this order they are roughly the order the work happened.
 | --- | --- |
 | [Stream coverage and the embedded schema](rvt-stream-and-schema-coverage.md) | Every CFB stream, how deeply each is decoded, and the `Formats/Latest` class inventory |
 | [Validating on a second building](validating-on-a-second-building.md) | What fitting every rule to one model has cost, rule by rule, and what to look at first on a second file |
+| [Three more buildings, three other releases](second-buildings-release-drift-2026-09-11.md) | The 2024/2025 Autodesk sample models: every release-gated decoder was keyed on a `Formats/Latest` class index that drifts per release while the record layouts stay byte-identical; the schema-resolved marker registry that opened them, and the element-by-element and surface results against the Autodesk captures, both ways |
+| [Partition sequences and the element-header record](partition-sequences-and-element-headers-2026-09-11.md) | The block header before every gzip member, the three interleaved sequences, and the element-header record that names each element's category with exact ownership; measured on four releases and wired in ahead of the token scan |
 | [What a voxel consumer needs from the export](voxel-consumer-requirements.md) | A downstream tool that fails on a missing *relationship* rather than a malformed one: the facts it reads, where the export stands against each, and the three changes that would close the gaps |
 | [ODA `BmJsonExport` static analysis](bm-json-export-static-analysis.md) | The semantic JSON contract and the native geometry boundary that cannot cross into a browser |
 | [`rvt-rs` loader analysis](oda-loader-analysis.md) · [semantic graph](oda-semantic-graph-analysis.md) | The vendored Rust/WASM reader's structure and support boundary |
 | [Parser prototype review](rvt-parser-prototype-review.md) | The early prototype the current parser replaced |
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
 | [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
+| [Pascal export verification](pascal-export-verification-2026-09-11.md) | Drawn and semantic modes checked against the supplied editor; actual triangle positions, omitted slivers, and additional native owner recovery |
 | [Exporting to Pascal](pascal-scene-export.md) | Why the Pascal export writes that editor's own building nodes instead of going through IFC, the coordinate and storey-stacking mapping, what crosses and what does not |
 
 ## Revit 2027 geometry replay
@@ -96,3 +99,5 @@ Dated audits, each one run against one model on one day.
 [faceted topology probe](unbc-faceted-topology-probe.md) ·
 [`GPolymesh` object context audit](unbc-gpolymesh-object-context-audit.md) ·
 [identity-tree material gap audit](unbc-identity-tree-material-gap-audit.md)
+
+- [Autodesk example improvements — measured follow-up](autodesk-example-improvements-2026-09-11.md): drawn bounds, owned terrain and large symbols, missing families, footing corrections, fine checks, and remaining defects.

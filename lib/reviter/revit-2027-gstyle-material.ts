@@ -2,6 +2,7 @@ import type { ElementObject } from "./element-objects.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /**
  * Persisted Revit 2027 `GStyleElem` and its queued `GStyle` body.
@@ -11,8 +12,8 @@ import { decodeCondInt16PropertyDescriptor } from "./dynamic-geometry-queue.ts";
  * `GStyleElem` fields first, then materializes the queued source-slot 2,288
  * `GStyle` body in the 16 late bytes before the object's echoed length.
  */
-export const REVIT_2027_GSTYLE_ELEMENT_MARKER = 2292;
-export const REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT = 2288;
+export let REVIT_2027_GSTYLE_ELEMENT_MARKER = registerReleaseMarker("GStyleElem", 2292, (value) => { REVIT_2027_GSTYLE_ELEMENT_MARKER = value; });
+export let REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT = registerReleaseMarker("GStyle", 2288, (value) => { REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH = 156;
 
 const REPEATED_ELEMENT_ID_OFFSET = 54;
@@ -80,7 +81,7 @@ export function decodeRevit2027GStyleElementRecord(
   object: ElementObject,
   revitVersion: number,
 ): Revit2027GStyleElementDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GStyleElem decoding requires release 2027",
@@ -193,7 +194,7 @@ export function scanRevit2027GStyleElementRecords(
   const failures = new Map<string, number>();
   let framedStyleElements = 0;
 
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       revitVersion,
       framedStyleElements,

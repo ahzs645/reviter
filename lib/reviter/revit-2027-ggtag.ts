@@ -3,9 +3,10 @@ import {
   decodeRevit2027GGroupStatic,
   type Revit2027GGroupStatic,
 } from "./revit-2027-ggroup-fifo.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source slot for persisted `GGTag`. */
-export const REVIT_2027_GGTAG_SOURCE_CLASS_SLOT = 2256;
+export let REVIT_2027_GGTAG_SOURCE_CLASS_SLOT = registerReleaseMarker("GGTag", 2256, (value) => { REVIT_2027_GGTAG_SOURCE_CLASS_SLOT = value; });
 
 const MODEL_TEST_POINT_BYTES = 24;
 const BOOLEAN_BYTES = 1;
@@ -38,7 +39,7 @@ export function decodeRevit2027GGTag(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GGTagDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GGTag decoding requires release 2027",

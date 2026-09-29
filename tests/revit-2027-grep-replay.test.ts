@@ -33,7 +33,25 @@ import {
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
   REVIT_2027_INSTANCE_INFO_BODY_BYTES,
   REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+  REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
 } from "../lib/reviter/revit-2027-ginstance.ts";
+
+test("component references consume their InstanceInfo without becoming drawable instances", () => {
+  const data = new Uint8Array(144), view = new DataView(data.buffer);
+  view.setInt32(0, 3, true);
+  view.setUint16(4, REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT, true);
+  view.setInt32(26, -1, true);
+  view.setUint16(30, REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT, true);
+  for (const offset of [32, 64, 96]) view.setFloat64(offset, 1, true);
+  view.setBigInt64(128, 900n, true);
+  view.setInt32(140, 1, true);
+  const replay = replayRevit2027GRepFifo(data, root([descriptor(3, REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT, 0)], 6, 144));
+  assert.ok(replay.ok);
+  assert.deepEqual(replay.value.spans.map(s => s.readerId), ["GComponentRef", "Revit2027InstanceInfo"]);
+  assert.equal(replay.value.endOffset, 144);
+  view.setUint16(30, REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT, true);
+  assert.equal(replayRevit2027GRepFifo(data, root([descriptor(3, REVIT_GCOMPONENT_REF_SOURCE_CLASS_SLOT, 0)], 6, 144)).ok, false);
+});
 import { REVIT_2027_GEOMETRY_SOURCE_CLASS_SLOT } from "../lib/reviter/revit-2027-geometry.ts";
 import {
   REVIT_2027_PLANE_SURFACE_SOURCE_CLASS_SLOT,

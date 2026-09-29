@@ -1,5 +1,7 @@
 /** Exact Revit 2027 source slot for persisted `GConditionInt`. */
-export const REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT = 2238;
+
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+export let REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT = registerReleaseMarker("GConditionInt", 2238, (value) => { REVIT_2027_GCONDITION_INT_SOURCE_CLASS_SLOT = value; });
 export const REVIT_2027_GCONDITION_INT_BODY_BYTES = 12;
 
 export type Revit2027GConditionInt = {
@@ -27,7 +29,7 @@ export function decodeRevit2027GConditionInt(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GConditionIntDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GConditionInt decoding requires release 2027",

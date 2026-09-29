@@ -31,6 +31,7 @@ import {
   type Revit2027TrimBoundary,
 } from "./revit-2027-owner-mesh-trim.ts";
 import {
+  evaluateRevit2027GArc,
   tessellateRevit2027ArcSurfRev,
 } from "./revit-2027-arc-surfrev.ts";
 import {
@@ -185,18 +186,43 @@ export function meshRevit2027ArcSurfRevReplay(
       faceToken,
       loop,
       edges: index.edges,
-      loopArity: "rectangular-4",
+      loopArity: "open",
     });
     if (directed.ok === false) {
       issues.push(directed.issue);
       continue;
     }
+    // A spherical half-face has only the two meridians: each remaining
+    // rectangular boundary collapses to a pole. Certify that singular case
+    // from the actual profile and the complete directed edge samples.
+    const arc = profile.value as Revit2027GArc;
+    const minimum = surface.surface.envelope.firstCorner;
+    const maximum = surface.surface.envelope.secondCorner;
+    const poleTrim = directed.edges.length === 2 &&
+      Math.abs(arc.center[0]) <= tolerance &&
+      Math.abs(maximum[1] - minimum[1] - Math.PI) <= tolerance &&
+      [minimum[1], maximum[1]].every(v => Math.abs(evaluateRevit2027GArc(arc, v)[0]) <= tolerance) &&
+      directed.edges.every(edge => {
+        const points = revit2027DirectedEdgeUvs(edge);
+        const u = points[0]![0], start = points[0]![1], end = points.at(-1)![1];
+        return points.length >= 3 &&
+          (Math.abs(u - minimum[0]) <= tolerance || Math.abs(u - maximum[0]) <= tolerance) &&
+          Math.abs(Math.min(start, end) - minimum[1]) <= tolerance &&
+          Math.abs(Math.max(start, end) - maximum[1]) <= tolerance &&
+          points.every((p, i) => Math.abs(p[0] - u) <= tolerance &&
+            Math.abs(p[1] - (start + (end - start) * i / (points.length - 1))) <= tolerance);
+      }) && (() => {
+        const [a, b] = directed.edges.map(revit2027DirectedEdgeUvs);
+        return Math.abs(a![0]![0] - b![0]![0]) > tolerance &&
+          Math.abs(a!.at(-1)![1] - b![0]![1]) <= tolerance &&
+          Math.abs(b!.at(-1)![1] - a![0]![1]) <= tolerance && a!.length === b!.length;
+      })();
     const linked = linkRevit2027DirectedLoopEndpoints(
       directed.edges,
       tolerance,
       { continuous: sameUv },
     );
-    if (linked.ok === false) {
+    if (linked.ok === false && !poleTrim) {
       issues.push({
         code: "uv-link-unresolved",
         faceToken,
@@ -224,7 +250,7 @@ export function meshRevit2027ArcSurfRevReplay(
       byBoundary.set(boundary, edge);
       segmentCounts.set(boundary, points.length - 1);
     }
-    if (boundaryFailure || byBoundary.size !== 4) {
+    if ((boundaryFailure || byBoundary.size !== 4) && !poleTrim) {
       issues.push({
         code: "non-rectangular-trim",
         faceToken,
@@ -233,10 +259,12 @@ export function meshRevit2027ArcSurfRevReplay(
       });
       continue;
     }
-    const revolutionSegments = segmentCounts.get("v-min")!;
+    const revolutionSegments = poleTrim
+      ? Math.max(2, Math.ceil((maximum[0] - minimum[0]) / (maximum[1] - minimum[1]) * segmentCounts.get("u-min")!))
+      : segmentCounts.get("v-min")!;
     const profileSegments = segmentCounts.get("u-min")!;
     if (
-      revolutionSegments !== segmentCounts.get("v-max") ||
+      (!poleTrim && revolutionSegments !== segmentCounts.get("v-max")) ||
       profileSegments !== segmentCounts.get("u-max")
     ) {
       issues.push({

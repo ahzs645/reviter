@@ -1,5 +1,7 @@
 /** Revit 2027 framed-object marker for persisted `BaseRailing`. */
-export const REVIT_2027_BASE_RAILING_MARKER = 598;
+
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
+export let REVIT_2027_BASE_RAILING_MARKER = registerReleaseMarker("BaseRailing", 598, (value) => { REVIT_2027_BASE_RAILING_MARKER = value; });
 
 const BASE_RAILING_SUFFIX_BYTES = 58;
 const FRAME_ECHO_OFFSET = 16;
@@ -85,7 +87,7 @@ export function decodeRevit2027BaseRailingStairsRelation(
   revitVersion: number,
   options: { knownStairsElementIds?: ReadonlySet<number> } = {},
 ): Revit2027BaseRailingStairsDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "BaseRailing stairs decoding requires Revit 2027",

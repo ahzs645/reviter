@@ -149,6 +149,39 @@ export type FacetedTopology8LocateResult =
   | { ok: true; body: FacetedTopology8Body }
   | { ok: false; error: string };
 
+/** Selector-free FacetedTopology0: float normals, float points and u16 facets.
+ * The sample models' queued terrain records use mode 0 with one normal per
+ * vertex. Unlike Topology8 there is no edge-visibility array. Only call this
+ * after the owning GPolyMesh descriptor has identified FacetedTopology0.
+ */
+export function locateFacetedTopology0Body(
+  data: Uint8Array,
+  byteOffset: number,
+): { ok: true; body: { endOffset: number; layout: FacetedTopologyFieldLayout } } | { ok: false; error: string } {
+  if (!fieldFits(data, byteOffset, 20)) return { ok: false, error: "FacetedTopology0 header is truncated" };
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getInt32(byteOffset, true) !== 0) return { ok: false, error: "FacetedTopology0 requires measured normals mode 0" };
+  for (let axis = 0; axis < 3; axis++) {
+    if (!Number.isFinite(view.getFloat32(byteOffset + 4 + axis * 4, true))) return { ok: false, error: "FacetedTopology0 common normal is not finite" };
+  }
+  const normals = readCountedField(data, view, byteOffset + 16, 12, DEFAULT_MAX_VERTICES);
+  const points = normals && readCountedField(data, view, normals.endOffset, 12, DEFAULT_MAX_VERTICES);
+  const facets = points && readCountedField(data, view, points.endOffset, 6, DEFAULT_MAX_TRIANGLES);
+  if (!normals || !points || !facets || normals.count !== points.count) {
+    return { ok: false, error: "FacetedTopology0 arrays or per-vertex normals are invalid" };
+  }
+  const layout: FacetedTopologyFieldLayout = {
+    vertexCount: points.count,
+    triangleCount: facets.count,
+    points: { byteOffset: points.itemsOffset, encoding: "float32-le" },
+    facets: { byteOffset: facets.itemsOffset, encoding: "uint16-le" },
+    normals: { byteOffset: normals.itemsOffset, encoding: "float32-le", binding: "per-vertex" },
+  };
+  const decoded = decodeFacetedTopologyFields(data, layout);
+  if (!decoded.ok) return decoded;
+  return { ok: true, body: { endOffset: facets.endOffset, layout } };
+}
+
 function readCountedField(
   data: Uint8Array,
   view: DataView,

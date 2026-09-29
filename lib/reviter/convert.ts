@@ -107,6 +107,7 @@ export function convertRvtBytes(
       transmissionData,
       coverage,
       schema,
+      releaseMarkers,
       partitionNames,
     } = openRevitContainer(bytes, options);
 
@@ -121,7 +122,13 @@ export function convertRvtBytes(
     });
     const {
       candidates,
+      ownedFacetedGeometry,
+      modelInstanceIds,
+      provenModelCategories,
+      sequenceStats,
       categoryTokens,
+      elementHeaderCategories,
+      elementHeaderStats,
       elementBounds,
       elementObjects,
       instancePlacements,
@@ -209,6 +216,7 @@ export function convertRvtBytes(
       solidStream,
     });
     const { sharedGeometryIds, cachedShapeRecords } = removeCachedShapeRecords({
+      modelInstanceIds,
       elementBounds,
       categoryTokens,
       elementIndex,
@@ -223,6 +231,8 @@ export function convertRvtBytes(
     const { nativeCategories, counts } = resolveElementGeometry({
       elementBounds,
       categoryTokens,
+      elementHeaderCategories,
+      elementHeaderStats,
       elementIndex,
       elementOwnership,
       elementParameters,
@@ -251,7 +261,7 @@ export function convertRvtBytes(
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
-    const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
+    const categorisedElements = (nativeCategories.headerElements ?? 0) + nativeCategories.directElements + nativeCategories.inheritedElements;
     const relations = resolveNativeRelations({
       elementBounds,
       instancePlacements,
@@ -302,6 +312,7 @@ export function convertRvtBytes(
       nativeProfiles,
       nativeCategories,
       schema,
+      releaseMarkers,
       partitionNames,
       partAtom,
       transmissionData,
@@ -351,6 +362,7 @@ export function convertRvtBytes(
     // each branch counts for itself.
     const reportBasis: Omit<ConvertReportBasis, "approximateSolids"> = {
       revitVersion: decoderPlan.revitVersion,
+      releaseMarkers,
       nativeCategories,
       categorisedElements,
       elementOwnership,
@@ -368,6 +380,8 @@ export function convertRvtBytes(
         message: `Building the display scene · ${boundedSolids.length.toLocaleString()} drawable records`,
       });
       const scene = buildDisplayScene({
+        provenModelCategories,
+        ownedFacetedGeometry,
         boundedSolids,
         elementBounds,
         stairsRuns,
@@ -406,6 +420,8 @@ export function convertRvtBytes(
         ),
         warnings: buildWarnings(basis, scene.report),
         stats: {
+          partitionSequences: sequenceStats,
+          ownedFacetedElements: new Set(scene.meshes.filter(m => m.source === "native-faceted").flatMap(m => [...(m.elementIds ?? [])])).size,
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
           gzipChunks,

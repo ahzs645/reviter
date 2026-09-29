@@ -40,6 +40,9 @@ import {
 } from "./revit-container.ts";
 import { summariseSchema, summariseSchemaStream } from "./schema.ts";
 import { readSchema } from "./schema-reader.ts";
+import { applyReleaseMarkers } from "./release-markers.ts";
+import type { SchemaStream } from "./schema-reader.ts";
+import type { ReleaseMarkerResolution } from "./release-markers.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parseRevitTransmissionData } from "./transmission-data.ts";
 
@@ -127,6 +130,8 @@ export type OpenedRevitContainer = {
   transmissionData: RevitTransmissionData | undefined;
   coverage: CoverageSummary;
   schema: SchemaSummary | undefined;
+  /** How the file's class indices resolved against the registered decoders. */
+  releaseMarkers: ReleaseMarkerResolution;
   partitionNames: PartitionName[];
 };
 
@@ -167,6 +172,25 @@ export function openRevitContainer(
       );
     }
   }
+
+  // The grammar reader first: it recovers every class the stream declares
+  // rather than the ones a pattern matches, and its field counts are the
+  // classes' own. A stream it cannot tile is evidence about the stream, not a
+  // partial schema, so the scanner still answers for one — losing the panel
+  // entirely would be a worse failure than an incomplete inventory.
+  //
+  // Read before the decoder plan is settled: every release-gated decoder finds
+  // its records by a class index from this stream, and the indices drift per
+  // release while the layouts do not (release-markers.ts). Resolving them here
+  // is what lets a 2024 or 2025 file take the same path as the 2027 project.
+  let schemaStream: SchemaStream | null = null;
+  const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
+    const strict = readSchema(data);
+    if (strict.ok) schemaStream = strict.schema;
+    return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
+  });
+  const releaseMarkers = applyReleaseMarkers(schemaStream, decoderPlan.revitVersion);
+  decoderPlan = decoderPlanForVersion(decoderPlan.revitVersion ?? undefined);
   const elemTableEntry = cfb.FileIndex
     .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
     .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -239,15 +263,6 @@ export function openRevitContainer(
       ),
   );
 
-  // The grammar reader first: it recovers every class the stream declares
-  // rather than the ones a pattern matches, and its field counts are the
-  // classes' own. A stream it cannot tile is evidence about the stream, not a
-  // partial schema, so the scanner still answers for one — losing the panel
-  // entirely would be a worse failure than an incomplete inventory.
-  const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
-    const strict = readSchema(data);
-    return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
-  });
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
 
   const partitions = cfb.FileIndex
@@ -295,6 +310,7 @@ export function openRevitContainer(
     transmissionData,
     coverage,
     schema,
+    releaseMarkers,
     partitionNames,
   };
 }

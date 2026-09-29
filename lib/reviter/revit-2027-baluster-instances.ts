@@ -30,15 +30,16 @@ import {
   REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
   type Revit2027GHermiteSpline,
 } from "./revit-2027-ghermite-spline.ts";
+import { registerReleaseMarker, releaseDecodersApply, activeRelease } from "./release-markers.ts";
 
 /** `BaseRailingSym`, measured from the release-2027 framed class table. */
-export const REVIT_2027_BASE_RAILING_SYMBOL_MARKER = 605;
+export let REVIT_2027_BASE_RAILING_SYMBOL_MARKER = registerReleaseMarker("BaseRailingSym", 605, (value) => { REVIT_2027_BASE_RAILING_SYMBOL_MARKER = value; });
 /** `TopRailType` class id 969 is persisted with this framed marker. */
-export const REVIT_2027_TOP_RAIL_TYPE_MARKER = 967;
+export let REVIT_2027_TOP_RAIL_TYPE_MARKER = registerReleaseMarker("ContinuousRailSymbol", 967, (value) => { REVIT_2027_TOP_RAIL_TYPE_MARKER = value; });
 /** Formats/Latest source slot for `RailingCurveLoopData`. */
-export const REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT = 3444;
+export let REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT = registerReleaseMarker("RailingCurveLoopData", 3444, (value) => { REVIT_2027_RAILING_CURVE_LOOP_DATA_SOURCE_CLASS_SLOT = value; });
 /** Formats/Latest source slot for the `CurveLoop` property. */
-export const REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT = 1087;
+export let REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT = registerReleaseMarker("CurveLoop", 1087, (value) => { REVIT_2027_CURVE_LOOP_SOURCE_CLASS_SLOT = value; });
 
 const FRAME_HEADER_BYTES = 18;
 const FRAME_ECHO_OFFSET = 16;
@@ -84,7 +85,7 @@ export type Revit2027TopRailTypeEvidence = {
   ownerElementId: number;
   owningTopRailElementId: number;
   curveLoopCount: number;
-  curveLoopSourceClassSlot: 3444;
+  curveLoopSourceClassSlot: number;
   frameOffset: number;
   frameEndOffset: number;
   objectLength: number;
@@ -162,7 +163,7 @@ function validateFrame(
   maxFrameBytes: number,
 ): { ok: true; view: DataView; frameEndOffset: number; echoOffset: number } |
   { ok: false; error: string } {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return { ok: false, error: "railing symbol decoding requires Revit 2027" };
   }
   if (
@@ -238,7 +239,7 @@ function locateUniqueGInstanceBlock(
         data,
         cursor,
         cursor + REVIT_2027_GINSTANCE_BODY_BYTES,
-        2027,
+        activeRelease(),
       );
       if (!decoded.ok) break;
       values.push(decoded.value);
@@ -286,7 +287,7 @@ function locateUniqueInstanceInfoBlock(
         data,
         cursor,
         cursor + REVIT_2027_INSTANCE_INFO_BODY_BYTES,
-        2027,
+        activeRelease(),
       );
       if (
         !decoded.ok ||

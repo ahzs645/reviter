@@ -180,6 +180,7 @@ function validateSubset(
   }
   const [u0, v0] = input.minimumUv;
   const [u1, v1] = input.maximumUv;
+
   if (
     ![u0, v0, u1, v1].every(Number.isFinite) ||
     !(u1 > u0) ||
@@ -274,6 +275,11 @@ export function tessellateRevit2027ArcSurfRev(
   const uvs = new Float64Array(vertexCount * 2);
   const [u0, v0] = input.minimumUv;
   const [u1, v1] = input.maximumUv;
+  // A circular meridian centred on the revolution axis has smooth poles.
+  // Admit the half-circle only; an internal axis crossing is not this case.
+  const poleProfile = Math.abs(input.profile.center[0]) <= (input.tolerance ?? 1e-9) &&
+    Math.abs(v1 - v0 - Math.PI) <= (input.tolerance ?? 1e-9) &&
+    [v0, v1].every(v => Math.abs(evaluateRevit2027GArc(input.profile, v)[0]) <= (input.tolerance ?? 1e-9));
 
   for (let uIndex = 0; uIndex < uCount; uIndex += 1) {
     const uFraction = uIndex / input.revolutionSegments;
@@ -291,7 +297,9 @@ export function tessellateRevit2027ArcSurfRev(
     for (let vIndex = 0; vIndex < vCount; vIndex += 1) {
       const vFraction = vIndex / input.profileSegments;
       const v = v0 + (v1 - v0) * vFraction;
-      const local = evaluateRevit2027GArc(input.profile, v);
+      let local = evaluateRevit2027GArc(input.profile, v);
+      const atPole = poleProfile && (vIndex === 0 || vIndex === input.profileSegments);
+      if (atPole) local = [0, local[1], local[2]];
       const position = add(
         input.surface.center,
         add(
@@ -311,7 +319,9 @@ export function tessellateRevit2027ArcSurfRev(
         scale(radialDirection, localDerivative[0]),
         scale(input.surface.zVector, localDerivative[2]),
       );
-      let normal = normalized(cross(du, dv));
+      let normal = atPole
+        ? normalized(scale(input.surface.zVector, -localDerivative[0] * Math.sign(evaluateRevit2027GArc(input.profile, (v0 + v1) / 2)[0])))
+        : normalized(cross(du, dv));
       if (!normal) {
         return {
           ok: false,
@@ -350,12 +360,17 @@ export function tessellateRevit2027ArcSurfRev(
         input.surface.surface.orientFlag
           ? [first, second, fourth, second, third, fourth]
           : [first, fourth, second, second, fourth, third];
-      indices.set(triangle, indexCursor);
-      indexCursor += 6;
+      // The collapsed edge contributes one fan triangle, never a zero-area
+      // second triangle. Other grid cells retain their original winding.
+      const emitted = poleProfile && vIndex === 0 ? triangle.slice(3)
+        : poleProfile && vIndex === input.profileSegments - 1 ? triangle.slice(0, 3)
+        : triangle;
+      indices.set(emitted, indexCursor);
+      indexCursor += emitted.length;
     }
   }
   return {
     ok: true,
-    mesh: { positions, normals, uvs, indices },
+    mesh: { positions, normals, uvs, indices: indices.subarray(0, indexCursor) },
   };
 }

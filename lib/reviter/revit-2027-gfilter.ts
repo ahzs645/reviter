@@ -6,9 +6,10 @@ import {
   decodeRevit2027GGroupStatic,
   type Revit2027GGroupStatic,
 } from "./revit-2027-ggroup-fifo.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source slot for `GFilter`. */
-export const REVIT_2027_GFILTER_SOURCE_CLASS_SLOT = 2254;
+export let REVIT_2027_GFILTER_SOURCE_CLASS_SLOT = registerReleaseMarker("GFilter", 2254, (value) => { REVIT_2027_GFILTER_SOURCE_CLASS_SLOT = value; });
 
 export type Revit2027GFilter = {
   byteOffset: number;
@@ -42,7 +43,7 @@ export function decodeRevit2027GFilter(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GFilterDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GFilter decoding requires release 2027",

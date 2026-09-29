@@ -49,6 +49,7 @@ test("the extraction command infers format from its output", () => {
       floorPlates: false,
       extras: undefined,
       mirrorPlan: undefined,
+      pascalGeometry: undefined,
     },
   );
   assert.equal(
@@ -80,6 +81,12 @@ test("the extraction command reads a Pascal scene off its compound suffix", () =
     () => parseExtractArguments(["model.rvt", "--out", "model.glb", "--extras", "all"]),
     /only for Pascal/u,
   );
+});
+
+test("the extraction command selects drawn Pascal geometry explicitly", () => {
+  assert.equal(parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--pascal-geometry", "drawn"]).pascalGeometry, "drawn");
+  assert.throws(() => parseExtractArguments(["model.rvt", "--out", "model.pascal.json", "--pascal-geometry", "boxes"]), /semantic or drawn/u);
+  assert.throws(() => parseExtractArguments(["model.rvt", "--out", "model.glb", "--pascal-geometry", "drawn"]), /requires Pascal/u);
 });
 
 test("the extraction command accepts an exact Revit level only for SVG", () => {

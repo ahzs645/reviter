@@ -85,6 +85,8 @@ import type {
   NativeCategorySummary,
   RvtElementIndex,
 } from "./types.ts";
+import { registerReleaseMarker } from "./release-markers.ts";
+import type { ElementHeaderScanStats } from "./convert-partition-scan.ts";
 
 type WallSolid = ReturnType<typeof wallSolids>[number];
 type WallArc = ReturnType<typeof wallArcs>[number];
@@ -94,6 +96,9 @@ export type ElementGeometryInput = {
   /** Every recovered record, real or synthesised. Mutated in place. */
   elementBounds: ElementBoundsRecord[];
   categoryTokens: CategoryToken[];
+  /** Categories read from each element's own header record, when the sequence walked. */
+  elementHeaderCategories?: Map<number, number>;
+  elementHeaderStats?: ElementHeaderScanStats;
   elementIndex: RvtElementIndex | undefined;
   elementOwnership: ElementOwnershipDecode | undefined;
   elementParameters: Map<number, Map<number, ElementParameter>>;
@@ -358,7 +363,7 @@ const MAX_UNNAMED_SKETCH_CURVES = 512;
 const SKETCH_PLAN_TOLERANCE_FEET = 0.05;
 
 /** Persisted Revit 2027 footprint-roof class marker in the supplied schema. */
-const REVIT_2027_FOOTPRINT_ROOF_MARKER = 3392;
+let REVIT_2027_FOOTPRINT_ROOF_MARKER = registerReleaseMarker("ProfileRoof", 3392, (value) => { REVIT_2027_FOOTPRINT_ROOF_MARKER = value; });
 
 /** Arc sampling can miss the exact plan extremum by one 50 mm segment. */
 const ROOF_SKETCH_PLAN_TOLERANCE_FEET = 0.2;
@@ -386,7 +391,7 @@ const ORIENTED_BOX_AGREEMENT_FEET = 1;
  * corpus carries a conflicting drawing subcategory, so its own category token
  * cannot be used as the geometry discriminator.
  */
-const REVIT_2027_FLOOR_SKETCH_OWNER_MARKER = 0x0869;
+let REVIT_2027_FLOOR_SKETCH_OWNER_MARKER = registerReleaseMarker("Floor", 0x0869, (value) => { REVIT_2027_FLOOR_SKETCH_OWNER_MARKER = value; });
 
 /** Revit category of a door, whose record is its opening rather than its leaf. */
 const DOOR_CATEGORY = -2000023;
@@ -593,7 +598,7 @@ function railPathFor(
 export function resolveElementGeometry(
   input: ElementGeometryInput,
 ): ElementGeometryResolution {
-  const { elementBounds, categoryTokens, elementIndex, elementOwnership } = input;
+  const { elementBounds, categoryTokens, elementIndex, elementOwnership, elementHeaderCategories, elementHeaderStats } = input;
   // The persisted ownership table lists every element in the document, not
   // only the drawable ones, which is what lets the category resolver tell a
   // token that fell through from an undrawn element apart from one that
@@ -605,7 +610,9 @@ export function resolveElementGeometry(
     elementOwnership
       ? new Set(elementOwnership.records.map((record) => record.elementId))
       : undefined,
+    elementHeaderCategories,
   );
+  if (elementHeaderStats) nativeCategories.headerRecords = elementHeaderStats.headerRecords;
 
 
 

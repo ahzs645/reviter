@@ -58,6 +58,11 @@ the measurements it composes.
 - `footprint-audit.ts` — is its plan outline right
 - `glb-surface-diff.ts`, `glb-statistics.ts` — recovered GLB against a reference GLB
 - `holdout.ts` — the partitioned single-building check
+- `compare-glb-elements.py` — per-element centre and size agreement against the Autodesk GLB by category, with the geometry route each element took; `svg-to-png.mjs` rasterises a diff drawing with playwright's Chromium or `CHROME_PATH`
+- `audit-pascal-export.mjs` — validates a drawn Pascal export, loads it through a supplied editor source tree, and compares its actual block-renderer triangles with the originating Reviter GLB at a fixed 0.01 mm tolerance; exits nonzero on a failed match. Requires Bun and the editor dependencies. See [Pascal verification](../docs/pascal-export-verification-2026-09-11.md).
+- `compare-svf-elements.py`, `residuals-by-category.py`, `register-glb-by-elements.py` — a recovery against an Autodesk SVF capture (`work/autodesk/*-final/`): which drawn elements are displayed and which displayed elements are not drawn, the surface residual by category both ways, and an element-paired registration for `glb-surface-diff.ts --registration`
+- `probe-release-schema-drift.ts`, `probe-release-bounds-marker.ts`, `probe-release-category-frame.ts` — the class-index drift between releases, and the bounds and category signatures under another file's indices
+- `probe-partition-block-header.ts`, `probe-sequence-101-headers.ts`, `probe-element-header-bodies.ts` — what heads an inflated page, the block header and sequence id before every gzip member with a full element-header walk compared against an audit, and where the category sits inside a header body
 - `extract-geometry.ts` — the converter as a command
 - `audit-ifc-export-roundtrip.ts` — reopen Reviter's own IFC
 - `compare-view.ts`, `browser-check.mjs` — visual comparison
@@ -454,3 +459,21 @@ quoted in these files are from the commit that quoted them, and the ones in
 `holdout.ts`'s own header moved twice while it was being written, because the
 door leaf, the solid clipping and the cross-chunk inflate window all landed in
 the same afternoon. Re-run rather than trust a number's second decimal place.
+
+### Owned records and Autodesk example checks
+
+`probe-owned-records.ts model.rvt --ids 123,456 --out-dir records --json ownership.json`
+walks length/echo records in sequences 102/103, including split objects. Supply
+`--comparison comparison.json` to inspect missing reference IDs instead.
+
+`compare-glb-elements.py audit.json capture-dir --json comparison.json` measures
+indexed triangle bounds on both sides, reports missing and non-surface IDs, and
+keeps persisted envelopes as separate diagnostics (`--bounds persisted`). Audits
+must contain `drawnBoundsFeet`. `register-glb-by-elements.py` also requires these
+bounds and uses the known 0.3048 feet-to-metres scale.
+
+`compare-element-surfaces.ts model.rvt capture-dir --ids 123,456 --registration registration.json --json local.json --cell 0.1`
+performs separate fine surface checks with fixed whole-scene registration.
+It converts the RVT once; missing IDs receive explicit statuses. See
+[the measured example follow-up](../docs/autodesk-example-improvements-2026-09-11.md)
+for results and remaining defects.

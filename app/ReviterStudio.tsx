@@ -20,6 +20,7 @@ import {
   makeFloorPlateSvg,
   makeObj,
   makePascalScene,
+  makePascalSceneJson,
   makePlanSvg,
   makeReport,
   meshBoundsByElement,
@@ -1601,18 +1602,34 @@ export default function ReviterStudio() {
         run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
       },
       {
+        id: "PASCAL_REVIEW",
+        format: "Pascal review",
+        detail: "Fewer mesh groups · faster large-model imports",
+        run: () => exportText(
+          "PASCAL_REVIEW", "review.pascal.json",
+          () => makePascalSceneJson(geometryResult, { geometry: "drawn", drawnGrouping: "review" }),
+          "application/json",
+        ),
+      },
+      {
         id: "PASCAL",
-        format: "Pascal",
-        detail: "Editable building · Load Build JSON",
+        format: "Pascal per element",
+        detail: "Drawn geometry · separate element parts",
         run: () => exportText(
           "PASCAL",
           "pascal.json",
-          () => {
-            const scene = makePascalScene(geometryResult);
-            return `${JSON.stringify({ nodes: scene.nodes, rootNodeIds: scene.rootNodeIds }, null, 1)}\n`;
-          },
+          () => makePascalSceneJson(geometryResult, { geometry: "drawn" }),
           "application/json",
         ),
+      },
+      {
+        id: "PASCAL_EDITABLE",
+        format: "Pascal editable",
+        detail: "Simplified walls, floors and openings",
+        run: () => exportText("PASCAL_EDITABLE", "editable.pascal.json", () => {
+          const scene = makePascalScene(geometryResult);
+          return JSON.stringify({ nodes: scene.nodes, rootNodeIds: scene.rootNodeIds });
+        }, "application/json"),
       },
       {
         id: "JSON",
@@ -2181,6 +2198,7 @@ export default function ReviterStudio() {
                 hiddenCategories={hiddenCategories}
                 onToggleCategory={toggleCategory}
                 onShowAllCategories={() => setHiddenCategories(new Set())}
+                onBuildingView={() => setHiddenCategories(new Set(["Mass", "Mass Floor"]))}
                 {...commentPanelProps}
               />
             )}

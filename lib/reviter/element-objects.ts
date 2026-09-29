@@ -38,6 +38,8 @@
  * are still linked into the chain.
  */
 
+import { registerReleaseMarker } from "./release-markers.ts";
+
 /**
  * General page-scanner ceiling. Most element frames are below 64 KB; the
  * bounded release-specific collectors handle the proven large collection
@@ -105,7 +107,7 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
  * Measured per file elsewhere; here it is only a starting guess that every
  * candidate is then made to justify through the length echo.
  */
-const DEFAULT_OBJECT_MARKER = 0x08c6;
+let DEFAULT_OBJECT_MARKER = registerReleaseMarker("GElement", 0x08c6, (value) => { DEFAULT_OBJECT_MARKER = value; });
 
 /**
  * Which markers head verified objects on this page, and how many each heads.

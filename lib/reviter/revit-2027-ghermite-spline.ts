@@ -1,7 +1,8 @@
 import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { registerReleaseMarker, releaseDecodersApply } from "./release-markers.ts";
 
 /** Exact Revit 2027 source slot for `GHermiteSpline`. */
-export const REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT = 2259;
+export let REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT = registerReleaseMarker("GHermiteSpline", 2259, (value) => { REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT = value; });
 
 const GINFO_BYTES = 20;
 const END_PARAMETERS_BYTES = 16;
@@ -46,7 +47,7 @@ export function decodeRevit2027GHermiteSpline(
   revitVersion: number,
   options: { maxNodes?: number } = {},
 ): Revit2027GHermiteSplineDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!releaseDecodersApply(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GHermiteSpline decoding requires release 2027",
