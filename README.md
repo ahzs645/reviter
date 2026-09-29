@@ -65,6 +65,27 @@ Pascal](docs/pascal-scene-export.md) is the full record: the coordinate and
 storey-stacking mapping, the per-category table, what does not cross, and the
 measurements behind it.
 
+## Numbered rooms from a survey DWG
+
+A Revit model without native Rooms can take its room numbers from a survey
+DWG that labels them. `scripts/build-dwg-rooms.ts` takes the RVT, the DWG, and
+the sheet registration that `scripts/register-dwg-sheets.ts` writes. It floods
+outwards from every registered room label at once. The barriers are the level's
+healed walls, its door openings and the drawing's own wall lines. Each label
+gets one boundary polygon. The result is a room sidecar in Revit feet, which
+keeps manual edits across re-runs. The script also writes Pascal `zone` nodes
+and IFC `IfcSpace`s from it:
+
+```sh
+node --experimental-strip-types scripts/build-dwg-rooms.ts model.rvt survey.dwg registration.json \
+  --out model.rooms.json --pascal-in model.pascal.json --pascal-out model.rooms.pascal.json --ifc-out model.rooms.ifc
+npm run extract -- model.rvt --out model.pascal.json --rooms model.rooms.json   # or --out model.ifc
+```
+
+[UNBC room numbers from the survey DWG](docs/unbc-dwg-room-numbers-2026-09-29.md)
+covers the method, the full pipeline and its measurements on the supplied
+building.
+
 ## Development
 
 ```bash
