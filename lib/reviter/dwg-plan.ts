@@ -31,6 +31,18 @@ export type DwgEntity = {
   axisRatio?: number;
   text?: string;
   height?: number;
+  /**
+   * Where justified text is pinned: the alignment point of a centred or
+   * right-aligned TEXT or ATTRIB. `centre` stays the left-baseline start the
+   * renderer draws from; this is the point the drafter actually placed, which
+   * for a room tag is the middle of the room.
+   */
+  anchor?: readonly [number, number];
+  /** An attribute's tag, e.g. `ROOMNUM`, which is what says what its text is. */
+  tag?: string;
+  /** The model-space block reference this came out of, by name and handle. */
+  block?: string;
+  insert?: string;
   closed?: boolean;
 };
 
@@ -61,8 +73,36 @@ export function entityBounds(entity: DwgEntity): DwgBounds | null {
   const bounds: DwgBounds = { ...EMPTY };
   if (entity.centre && Number.isFinite(entity.radius)) {
     const radius = Math.abs(entity.radius!);
-    grow(bounds, entity.centre[0] - radius, entity.centre[1] - radius);
-    grow(bounds, entity.centre[0] + radius, entity.centre[1] + radius);
+    const [cx, cy] = entity.centre;
+    if (entity.startAngle == null || entity.endAngle == null) {
+      grow(bounds, cx - radius, cy - radius);
+      grow(bounds, cx + radius, cy + radius);
+    } else {
+      /*
+       * An arc covers its two ends and whichever of the four compass points
+       * its sweep passes, not its whole circle. A gently curved wall is a
+       * shallow arc on a circle hundreds of metres across, and boxing the
+       * circle made each one span every margin on the sheet — which, to the
+       * section splitter, is one drawing.
+       */
+      const start = entity.startAngle;
+      let sweep = entity.endAngle - start;
+      while (sweep <= 0) sweep += Math.PI * 2;
+      grow(bounds, cx + radius * Math.cos(start), cy + radius * Math.sin(start));
+      grow(bounds, cx + radius * Math.cos(start + sweep), cy + radius * Math.sin(start + sweep));
+      for (let quarter = 0; quarter < 4; quarter += 1) {
+        const angle = (quarter * Math.PI) / 2;
+        let offset = (angle - start) % (Math.PI * 2);
+        if (offset < 0) offset += Math.PI * 2;
+        if (offset <= sweep) grow(bounds, cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
+      }
+    }
+  }
+  // Text has no linework, but it has a place; without one it could be neither
+  // cropped into a section nor drawn, and a plan's labels vanished with it.
+  if (entity.text != null && entity.centre && entity.radius == null) {
+    grow(bounds, entity.centre[0], entity.centre[1]);
+    if (entity.anchor) grow(bounds, entity.anchor[0], entity.anchor[1]);
   }
   if (entity.majorAxis && entity.centre) {
     const reach = Math.hypot(entity.majorAxis[0], entity.majorAxis[1]);
@@ -91,7 +131,7 @@ export function dwgEntityIsFinite(entity: DwgEntity): boolean {
   ]) {
     if (value != null && !Number.isFinite(value)) return false;
   }
-  for (const pair of [entity.centre, entity.majorAxis]) {
+  for (const pair of [entity.centre, entity.majorAxis, entity.anchor]) {
     if (pair && !(Number.isFinite(pair[0]) && Number.isFinite(pair[1]))) return false;
   }
   for (const point of entity.points ?? []) {

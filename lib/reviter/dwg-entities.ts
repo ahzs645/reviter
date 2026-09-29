@@ -55,6 +55,126 @@ function text(entity: RawEntity): string | undefined {
 }
 
 /**
+ * The `%%` control codes TEXT carries for characters a code page lacked:
+ * `%%d` degree, `%%p` plus-minus, `%%c` diameter, `%%nnn` by number. `%%u` and
+ * `%%o` toggle under- and overline and print nothing.
+ */
+export function plainDwgText(value: string): string {
+  return value.replace(/%%(\d{3}|[dpcuo%])/giu, (_, code: string) => {
+    if (/^\d{3}$/u.test(code)) return String.fromCharCode(Number(code));
+    switch (code.toLowerCase()) {
+      case "d": return "°";
+      case "p": return "±";
+      case "c": return "⌀";
+      case "%": return "%";
+      default: return "";
+    }
+  });
+}
+
+/**
+ * MTEXT's inline formatting, reduced to the characters it prints.
+ *
+ * The content string is a small markup language: `\P` is a paragraph break,
+ * `{\fArial|b1|i0|c0|p34;Room}` a font change scoped by the braces, `\H1.5x;`
+ * a height, `\S3^4;` a stacked fraction. Left in, a title reads
+ * `{\fArial|b1;LEVEL 2}` and a two-line tag reads `07-400\POFFICE`, which is
+ * not text anybody can search for. Codes that take an argument run to the next
+ * `;`; the ones that do not are a single letter. Unknown codes keep their
+ * letter rather than eat text, so a stray backslash in a file costs a
+ * character, not a word.
+ */
+export function plainMText(value: string): string {
+  let out = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (character === "{" || character === "}") continue;
+    if (character !== "\\") { out += character; continue; }
+    const code = value[index + 1];
+    if (code == null) break;
+    index += 1;
+    switch (code) {
+      case "P": case "X": out += "\n"; break;
+      case "~": out += " "; break;
+      case "\\": case "{": case "}": out += code; break;
+      case "L": case "l": case "O": case "o": case "K": case "k": case "N": break;
+      case "U": {
+        // `\U+00B0`: a character by code point.
+        const hex = /^\+([0-9a-f]{4,6})/iu.exec(value.slice(index + 1));
+        if (hex) {
+          out += String.fromCodePoint(Number.parseInt(hex[1]!, 16));
+          index += hex[0].length;
+        } else {
+          out += code;
+        }
+        break;
+      }
+      case "S": {
+        // A stacked fraction, `\S1^2;`, `\S1/2;` or `\S1#2;`, reads as 1/2,
+        // set apart from a whole number before it so 1\S1^2; is not "11/2".
+        const end = value.indexOf(";", index + 1);
+        const body = end < 0 ? value.slice(index + 1) : value.slice(index + 1, end);
+        if (/\d$/u.test(out)) out += " ";
+        out += body.replace(/[\^#]/u, "/");
+        index = end < 0 ? value.length : end;
+        break;
+      }
+      case "A": case "C": case "c": case "F": case "f": case "H": case "Q":
+      case "T": case "W": case "p": {
+        const end = value.indexOf(";", index + 1);
+        index = end < 0 ? value.length : end;
+        break;
+      }
+      default: out += code;
+    }
+  }
+  return plainDwgText(out)
+    .split("\n")
+    .map((line) => line.replace(/\s+/gu, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * The part of a text-like entity that holds the text.
+ *
+ * TEXT and MTEXT carry their string, insertion point and height at the top
+ * level. ATTRIB and ATTDEF nest all of them under `text`, as a TEXT-shaped
+ * object, next to the attribute's own tag and flags. Reading the top level of
+ * an attribute finds an object where the string should be and no position at
+ * all — which is how every room number in a tagged plan went missing.
+ */
+function textBody(raw: RawEntity): RawEntity {
+  const nested = raw.text;
+  return nested && typeof nested === "object" ? nested as RawEntity : raw;
+}
+
+/** An ATTRIB with bit 1 of its flags set is invisible and prints nothing. */
+const ATTRIBUTE_INVISIBLE_BIT = 0x1;
+
+/**
+ * The alignment point of justified single-line text, or null when it is
+ * left-baseline and the start point already is the anchor.
+ *
+ * Only the justified cases set the second point; a left-aligned TEXT leaves it
+ * at the origin, so reading it unconditionally would pin every label to (0, 0).
+ * ALIGNED and FIT stretch the text between the two points, so their anchor is
+ * the middle of that baseline.
+ */
+function textAnchor(raw: RawEntity, body: RawEntity): [number, number] | undefined {
+  const halign = number(body.halign) ?? 0;
+  const valign = number(body.valign) ?? 0;
+  if (halign === 0 && valign === 0) return undefined;
+  const start = point(body.startPoint);
+  const end = point(raw.alignmentPoint) ?? point(body.endPoint);
+  if (!end) return undefined;
+  if ((halign === 3 || halign === 5) && start) {
+    return [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
+  }
+  return end;
+}
+
+/**
  * Tessellate a polyline whose segments carry DWG bulges (the tangent of a
  * quarter of the included angle). A bulge of zero is a straight run.
  */
@@ -177,6 +297,50 @@ export function modelSpaceHandle(database: unknown): string | null {
 }
 
 /**
+ * The entities whose coordinates are in their own object coordinate system
+ * (OCS) rather than the world's. LINE, ELLIPSE, SPLINE, 3DFACE, MTEXT and 3D
+ * polylines are world coordinates already.
+ */
+const OCS_TYPES = new Set(["ARC", "CIRCLE", "LWPOLYLINE", "POLYLINE2D", "SOLID", "TEXT", "ATTRIB"]);
+
+/**
+ * Whether an entity's extrusion is straight down, making its OCS the world
+ * mirrored in X.
+ *
+ * AutoCAD's arbitrary-axis rule turns an extrusion of (0, 0, -1) into an OCS
+ * whose X axis is the world's -X: a centre stored as (x, y) is at (-x, y). It
+ * is what MIRROR leaves behind on arcs and circles, and ignoring it drew 1,403
+ * of the survey drawing's arcs and circles reflected across the Y axis — off
+ * the sheet entirely, in a band the section splitter could not cut across.
+ * Other tilted extrusions project to ellipses, which plan drawings do not use;
+ * they are left as stored.
+ */
+function ocsMirrored(raw: RawEntity): boolean {
+  const direction = raw.extrusionDirection ?? raw.extrusion;
+  if (!direction || typeof direction !== "object") return false;
+  const { x, y, z } = direction as { x?: unknown; y?: unknown; z?: unknown };
+  const tilt = 1 / 64;
+  return (number(z) ?? 0) < 0 && Math.abs(number(x) ?? 0) < tilt && Math.abs(number(y) ?? 0) < tilt;
+}
+
+/**
+ * Reflect a converted entity across the Y axis, from a mirrored OCS into the
+ * world. A counter-clockwise sweep from `start` to `end` reflects to one from
+ * `π - end` to `π - start`, which is still counter-clockwise.
+ */
+function mirrorEntity(entity: DwgEntity) {
+  const flip = ([x, y]: readonly [number, number]): [number, number] => [-x, y];
+  if (entity.points) entity.points = entity.points.map(flip);
+  if (entity.centre) entity.centre = flip(entity.centre);
+  if (entity.anchor) entity.anchor = flip(entity.anchor);
+  if (entity.startAngle != null && entity.endAngle != null) {
+    const start = entity.startAngle;
+    entity.startAngle = Math.PI - entity.endAngle;
+    entity.endAngle = Math.PI - start;
+  }
+}
+
+/**
  * One entity, or null when the file's fields do not describe a drawable one.
  *
  * Non-finite geometry is refused here, where it is produced, rather than where
@@ -188,6 +352,7 @@ export function modelSpaceHandle(database: unknown): string | null {
 export function convertDwgEntity(raw: RawEntity): DwgEntity | null {
   const entity = readDwgEntity(raw);
   if (!entity) return null;
+  if (OCS_TYPES.has(entity.type) && ocsMirrored(textBody(raw))) mirrorEntity(entity);
   if (!dwgEntityIsFinite(entity)) {
     noteLimit("non-finite-drawing-geometry");
     return null;
@@ -304,10 +469,20 @@ function readDwgEntity(raw: RawEntity): DwgEntity | null {
     case "TEXT":
     case "MTEXT":
     case "ATTRIB": {
-      const centre = point(raw.startPoint ?? raw.insertionPoint ?? raw.position ?? raw.center);
-      const value = text(raw);
-      if (!centre || !value) return null;
-      return { ...base, centre, text: value, height: number(raw.height ?? raw.textHeight) };
+      const body = textBody(raw);
+      if (type === "ATTRIB" && ((number(raw.flags) ?? 0) & ATTRIBUTE_INVISIBLE_BIT)) return null;
+      const centre = point(body.startPoint ?? body.insertionPoint ?? raw.position ?? raw.center);
+      // A multi-line attribute keeps its content in an embedded MTEXT.
+      const multiline = raw.mtext && typeof raw.mtext === "object" ? text(raw.mtext as RawEntity) : undefined;
+      const rawValue = multiline ?? text(body);
+      if (!centre || !rawValue) return null;
+      const value = type === "MTEXT" || multiline ? plainMText(rawValue) : plainDwgText(rawValue).trim();
+      if (!value) return null;
+      const entity: DwgEntity = { ...base, centre, text: value, height: number(body.height ?? body.textHeight) };
+      const anchor = type === "MTEXT" ? undefined : textAnchor(raw, body);
+      if (anchor) entity.anchor = anchor;
+      if (type === "ATTRIB" && typeof raw.tag === "string" && raw.tag) entity.tag = raw.tag;
+      return entity;
     }
     default:
       // POINT, HATCH, VIEWPORT, DIMENSION and the rest are dropped rather than
@@ -353,6 +528,7 @@ function placeEntity(entity: DwgEntity, placement: Placement): DwgEntity | null 
     ? Math.abs(placement.scaleX) : null;
   const moved: DwgEntity = { ...entity };
   if (entity.points) moved.points = entity.points.map(([x, y]) => place(placement, x, y));
+  if (entity.anchor) moved.anchor = place(placement, entity.anchor[0], entity.anchor[1]);
   if (entity.centre) {
     moved.centre = place(placement, entity.centre[0], entity.centre[1]);
     if (entity.radius != null) {
@@ -385,13 +561,18 @@ function placeEntity(entity: DwgEntity, placement: Placement): DwgEntity | null 
 
 function placementOf(raw: RawEntity): Placement {
   const origin = point(raw.insertionPoint ?? raw.position) ?? [0, 0];
-  return {
+  const rotation = radians(raw.rotation) ?? 0;
+  const placement: Placement = {
     originX: origin[0], originY: origin[1],
     scaleX: number(raw.xScale) ?? 1,
     scaleY: number(raw.yScale) ?? 1,
-    cos: Math.cos(radians(raw.rotation) ?? 0),
-    sin: Math.sin(radians(raw.rotation) ?? 0),
+    cos: Math.cos(rotation),
+    sin: Math.sin(rotation),
   };
+  // A reference in a mirrored OCS is the same placement reflected in X: the
+  // origin's X, the X scale and the turn all change sign.
+  if (!ocsMirrored(raw)) return placement;
+  return { ...placement, originX: -placement.originX, scaleX: -placement.scaleX, sin: -placement.sin };
 }
 
 /** Blocks may reference blocks; this bounds a cycle rather than trusting files. */
@@ -456,6 +637,46 @@ function takeEntitySlot(budget: EntityBudget): boolean {
   return false;
 }
 
+/** Which model-space block reference an expanded entity came out of. */
+type InsertSource = { block?: string; insert?: string };
+
+function fromInsert(entity: DwgEntity, source: InsertSource): DwgEntity {
+  if (source.block != null) entity.block = source.block;
+  if (source.insert != null) entity.insert = source.insert;
+  return entity;
+}
+
+/**
+ * The attribute values a block reference carries, e.g. a room tag's number and
+ * name.
+ *
+ * LibreDWG hangs them off the INSERT as `attribs`, and also lists them among
+ * the database's entities — but owned by the INSERT's handle, not by model
+ * space, so the model-space filter in `convertDwgEntities` drops that copy.
+ * They are placed by the space the INSERT sits in, not by the INSERT's own
+ * transform: an ATTRIB's position is already where it prints, which is why a
+ * block defined with only ATTDEFs still labels the right room. They belong to
+ * the reference, not to each copy of a MINSERT grid, so they are drawn once.
+ */
+function insertAttributes(
+  raw: RawEntity,
+  outer: Placement,
+  source: InsertSource,
+  out: DwgEntity[],
+  budget: EntityBudget,
+) {
+  if (!Array.isArray(raw.attribs)) return;
+  for (const attribute of raw.attribs as RawEntity[]) {
+    if (!attribute || typeof attribute !== "object" || attribute.isVisible === false) continue;
+    const converted = convertDwgEntity({ ...attribute, type: "ATTRIB" });
+    if (!converted) continue;
+    const moved = outer === IDENTITY ? converted : placeEntity(converted, outer);
+    if (!moved) continue;
+    if (!takeEntitySlot(budget)) return;
+    out.push(fromInsert(moved, source));
+  }
+}
+
 function expandInsert(
   raw: RawEntity,
   blocks: ReadonlyMap<string, readonly RawEntity[]>,
@@ -463,9 +684,15 @@ function expandInsert(
   depth: number,
   out: DwgEntity[],
   budget: EntityBudget,
+  outermost?: InsertSource,
 ) {
   if (depth >= MAX_BLOCK_DEPTH) return;
   const name = typeof raw.name === "string" ? raw.name : null;
+  const source: InsertSource = outermost ?? {
+    ...(name != null ? { block: name } : {}),
+    ...(raw.handle != null ? { insert: String(raw.handle) } : {}),
+  };
+  insertAttributes(raw, outer, source, out, budget);
   const contents = name == null ? undefined : blocks.get(name);
   if (!contents?.length) return;
 
@@ -498,7 +725,7 @@ function expandInsert(
       for (const inner of contents) {
         if (inner.isVisible === false) continue;
         if (inner.type === "INSERT") {
-          expandInsert(inner, blocks, placement, depth + 1, out, budget);
+          expandInsert(inner, blocks, placement, depth + 1, out, budget, source);
           // A nested reference that used the budget up leaves nothing for the
           // copies still queued here. Reporting through the same claim keeps a
           // drawing that stops exactly on the budget from stopping silently.
@@ -509,14 +736,15 @@ function expandInsert(
           continue;
         }
         // ATTDEF is the blank the block leaves for a value; the filled-in ATTRIB
-        // is a sibling of the INSERT, so drawing both would print the prompt.
+        // hangs off the INSERT and is drawn from there, so drawing both would
+        // print the prompt over the value.
         if (inner.type === "ATTDEF") continue;
         const converted = convertDwgEntity(inner);
         if (!converted) continue;
         const moved = placeEntity(converted, placement);
         if (!moved) continue;
         if (!takeEntitySlot(budget)) return;
-        out.push(moved);
+        out.push(fromInsert(moved, source));
       }
     }
   }
@@ -551,7 +779,10 @@ export function convertDwgEntities(
   raw: readonly unknown[],
   options: {
     ownerHandle?: string | null;
-    /** Block contents by name; without them, block references draw nothing. */
+    /**
+     * Block contents by name; without them, block references draw only the
+     * attribute values they carry.
+     */
     blocks?: ReadonlyMap<string, readonly RawEntity[]>;
     /**
      * How many entities this drawing may expand to, defaulting to
@@ -562,12 +793,23 @@ export function convertDwgEntities(
   } = {},
 ): DwgEntity[] {
   const owner = options.ownerHandle;
-  const blocks = options.blocks;
+  const blocks = options.blocks ?? new Map<string, readonly RawEntity[]>();
   const out: DwgEntity[] = [];
   const budget: EntityBudget = {
     remaining: options.maxEntities ?? MAX_DRAWING_ENTITIES,
     noted: false,
   };
+  // Attributes are drawn from the reference that carries them. When there is
+  // no model-space handle to filter by, the entity list's own copy of each
+  // would otherwise print a second time on top.
+  const carried = new Set<string>();
+  for (const entry of raw) {
+    const attribs = (entry as RawEntity)?.attribs;
+    if (!Array.isArray(attribs)) continue;
+    for (const attribute of attribs as RawEntity[]) {
+      if (attribute?.handle != null) carried.add(String(attribute.handle));
+    }
+  }
   for (const entry of raw) {
     const entity = entry as RawEntity;
     if (owner != null) {
@@ -575,8 +817,11 @@ export function convertDwgEntities(
       if (entityOwner != null && String(entityOwner) !== owner) continue;
     }
     if (entity.isVisible === false) continue;
+    if (entity.type === "ATTRIB" && entity.handle != null && carried.has(String(entity.handle))) continue;
     if (entity.type === "INSERT") {
-      if (blocks) expandInsert(entity, blocks, IDENTITY, 0, out, budget);
+      // Without block definitions the reference's linework cannot be drawn,
+      // but the attribute values it carries are still real text in the file.
+      expandInsert(entity, blocks, IDENTITY, 0, out, budget);
       if (budget.remaining <= 0) {
         takeEntitySlot(budget);
         break;
