@@ -47,6 +47,11 @@ npm run extract -- model.rvt --out model.pascal.json
 Load it in Pascal through the settings panel's **Save & Load → Load Build**. The
 same export is the **Pascal** button in the browser studio.
 
+The CLI also closes Revit's graphical wall joins on location lines, because
+Pascal mitres walls only where their endpoints meet within 1 mm. It records
+each moved end on its wall node so the move can be reverted, and
+`--no-heal-joins` skips the step. The studio button writes the walls unhealed.
+
 Against the paired Autodesk GLB export of the supplied building, the exported
 Pascal scene agrees to 99.65% of its surface and 99.16% of the reference's, at
 0.5 m voxels — the recovery it is written from scores 99.98% both ways, and the

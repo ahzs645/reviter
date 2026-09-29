@@ -6,6 +6,11 @@
  *   npm run extract -- model.rvt --out audit.json
  *   npm run extract -- model.rvt --out model.obj --revit-version 2027
  *   npm run extract -- model.rvt --out model.pascal.json --extras all
+ *   npm run extract -- model.rvt --out model.pascal.json --no-heal-joins
+ *
+ * A Pascal export closes Revit's graphical wall joins on location lines by
+ * default (see `healJoins` in export-pascal.ts); `--no-heal-joins` writes the
+ * walls exactly as the RVT states them. Every other format stays raw.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
@@ -30,6 +35,8 @@ export type ExtractArguments = {
   floorPlates?: boolean;
   extras?: PascalExtraElements;
   mirrorPlan?: boolean;
+  /** Pascal only; on unless `--no-heal-joins`. */
+  healJoins?: boolean;
 };
 
 const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json", "pascal"]);
@@ -48,7 +55,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   const input = arguments_[0];
   const output = optionValue("--out", arguments_);
   if (!input || input.startsWith("-") || !output) {
-    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates] [--extras all] [--mirror-plan]");
+    throw new Error("Usage: npm run extract -- model.rvt --out model.glb [--revit-version 2027] [--level-id 311] [--floor-plates] [--extras all] [--mirror-plan] [--no-heal-joins]");
   }
 
   const requestedFormat = (optionValue("--format", arguments_) ?? formatFromOutputName(output)) as Format;
@@ -92,6 +99,12 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
   if ((rawExtras != null || mirrorPlan) && requestedFormat !== "pascal") {
     throw new Error("--extras and --mirror-plan are available only for Pascal scene exports.");
   }
+  const healFlag = hasFlag("--heal-joins", arguments_);
+  const noHealFlag = hasFlag("--no-heal-joins", arguments_);
+  if (healFlag && noHealFlag) throw new Error("Use either --heal-joins or --no-heal-joins, not both.");
+  if ((healFlag || noHealFlag) && requestedFormat !== "pascal") {
+    throw new Error("--heal-joins and --no-heal-joins are available only for Pascal scene exports.");
+  }
 
   return {
     input,
@@ -102,6 +115,7 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     floorPlates,
     extras: (rawExtras ?? undefined) as PascalExtraElements | undefined,
     mirrorPlan: mirrorPlan || undefined,
+    healJoins: requestedFormat === "pascal" ? !noHealFlag : undefined,
   };
 }
 
@@ -110,7 +124,7 @@ type SuccessfulConversion = Extract<ReturnType<typeof convertRvtBytes>, { ok: tr
 function outputFor(
   format: Format,
   result: SuccessfulConversion,
-  options: Pick<ExtractArguments, "planLevelId" | "floorPlates" | "extras" | "mirrorPlan"> = {},
+  options: Pick<ExtractArguments, "planLevelId" | "floorPlates" | "extras" | "mirrorPlan" | "healJoins"> = {},
 ): Uint8Array | string {
   switch (format) {
     case "glb": return new Uint8Array(makeGlb(result));
@@ -123,6 +137,7 @@ function outputFor(
     case "pascal": return makePascalSceneJson(result, {
       extras: options.extras,
       mirrorPlan: options.mirrorPlan,
+      healJoins: options.healJoins,
     });
     case "json": return makeReport(result, null);
   }

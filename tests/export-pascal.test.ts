@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { makePascalScene, makePascalSceneJson } from "../lib/reviter/export-pascal.ts";
 import type { PascalNode } from "../lib/reviter/export-pascal.ts";
+import { pascalFrameFor } from "../lib/reviter/room-annotations.ts";
 import type { ConvertResult, ElementBoundsRecord } from "../lib/reviter/types.ts";
 
 const FOOT = 0.3048;
@@ -482,4 +483,156 @@ test("serialises only the two fields the build format defines", () => {
   const json = JSON.parse(makePascalSceneJson(fixture())) as Record<string, unknown>;
   assert.deepEqual(Object.keys(json).sort(), ["nodes", "rootNodeIds"]);
   assert.ok(Object.keys(json.nodes as Record<string, unknown>).length > 0);
+});
+
+/**
+ * The fixture plus a cross wall whose near face is exactly where wall 10's
+ * location line starts: Revit's usual graphical T, open on location lines.
+ */
+function teeFixture(): ConvertResult {
+  const result = fixture();
+  result.elementBounds.push(record({
+    elementId: 20,
+    categoryId: -2_000_011,
+    categoryName: "Walls",
+    boundsFeet: boundsFor([99, 190, 10], [100, 210, 20]),
+    solid: {
+      elementId: 20,
+      start: { x: 99.5, y: 190 },
+      end: { x: 99.5, y: 210 },
+      baseElevation: 10,
+      topElevation: 20,
+      thickness: 1,
+    },
+  }));
+  result.nativeAssociatedLevelRelations!.push({
+    ...result.nativeAssociatedLevelRelations![0]!,
+    elementId: 20,
+    recordOffset: 20,
+  });
+  return result;
+}
+
+/** A hosted opening's centre in plan, from its wall's line and its offset along it. */
+function openingInPlan(nodes: Record<string, PascalNode>, id: string): [number, number] {
+  const opening = nodes[id]!;
+  const wall = nodes[opening.wallId as string]!;
+  const start = wall.start as [number, number];
+  const end = wall.end as [number, number];
+  const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+  const along = (opening.position as number[])[0]!;
+  return [
+    start[0] + ((end[0] - start[0]) / length) * along,
+    start[1] + ((end[1] - start[1]) / length) * along,
+  ];
+}
+
+test("stamps the Reviter frame on the site so the file reads back into Revit feet", () => {
+  const { nodes } = makePascalScene(fixture());
+  assert.deepEqual(nodes.site_reviter!.metadata?.reviterFrame, pascalFrameFor(fixture()));
+  const mirrored = makePascalScene(fixture(), { mirrorPlan: true });
+  assert.equal((mirrored.nodes.site_reviter!.metadata?.reviterFrame as { planSign: number }).planSign, 1);
+});
+
+test("leaves wall joins as the RVT draws them unless healing is asked for", () => {
+  const scene = makePascalScene(teeFixture());
+  assert.deepEqual(scene.nodes.wall_e10!.start, [0, -0]);
+  assert.equal(scene.nodes.wall_e10!.metadata?.reviterJoinHeal, undefined);
+  assert.equal(scene.nodes.building_reviter!.metadata?.reviterJoinHeal, undefined);
+  assert.equal(scene.stats.healedWalls, 0);
+  assert.equal(scene.stats.healEdits, 0);
+});
+
+test("healing joins moves a wall start onto its neighbour's line and keeps its door in place", () => {
+  const raw = makePascalScene(teeFixture());
+  const healed = makePascalScene(teeFixture(), { healJoins: true });
+  const wall = healed.nodes.wall_e10!;
+
+  // The start moved half the cross wall's thickness, onto its centreline, so
+  // the two location lines now meet and Pascal can mitre them.
+  assert.ok(Math.abs((wall.start as number[])[0]! + 0.5 * FOOT) < 1e-9);
+  assert.deepEqual(wall.end, raw.nodes.wall_e10!.end);
+  assert.deepEqual(healed.nodes.wall_e20!.start, raw.nodes.wall_e20!.start);
+  assert.equal(healed.stats.healedWalls, 1);
+  assert.equal(healed.stats.healEdits, 1);
+
+  // Pascal measures a door from its wall's start, so its offset grows by the
+  // same half foot and the door does not move in the world.
+  const rawDoor = raw.nodes.door_e12!.position as number[];
+  const healedDoor = healed.nodes.door_e12!.position as number[];
+  assert.ok(Math.abs(healedDoor[0]! - rawDoor[0]! - 0.5 * FOOT) < 1e-9);
+  assert.equal(healedDoor[1], rawDoor[1]);
+  const before = openingInPlan(raw.nodes, "door_e12");
+  const after = openingInPlan(healed.nodes, "door_e12");
+  assert.ok(Math.hypot(after[0] - before[0], after[1] - before[1]) < 1e-9);
+  assert.ok(Math.abs((healed.nodes.door_e12!.width as number) - 3 * FOOT) < 1e-9);
+});
+
+test("records each healed wall's original line so the edit reverts from the file alone", () => {
+  const raw = makePascalScene(teeFixture());
+  const healed = makePascalScene(teeFixture(), { healJoins: true });
+  const record = healed.nodes.wall_e10!.metadata?.reviterJoinHeal as {
+    originalStart: [number, number];
+    originalEnd: [number, number];
+    hostedOffsetShift: number;
+    edits: Record<string, unknown>[];
+  };
+  assert.ok(record, "the healed wall carries its edit record");
+  assert.equal(healed.nodes.wall_e10!.metadata?.revitElementId, 10, "identity is kept alongside it");
+  assert.equal(healed.nodes.wall_e20!.metadata?.reviterJoinHeal, undefined);
+
+  assert.equal(record.edits.length, 1);
+  const edit = record.edits[0]!;
+  assert.equal(edit.end, "start");
+  assert.equal(edit.reason, "tee-extend");
+  assert.equal(edit.fromClass, "at-face");
+  assert.equal(edit.partnerNodeId, "wall_e20");
+  assert.equal(edit.partnerRevitElementId, 20);
+  assert.ok(Math.abs((edit.movedMetres as number) - 0.5 * FOOT) < 1e-6);
+
+  // Reverting: put the original line back and take the shift off the door.
+  const rawWall = raw.nodes.wall_e10!;
+  for (const [recorded, original] of [
+    [record.originalStart, rawWall.start],
+    [record.originalEnd, rawWall.end],
+  ] as [[number, number], [number, number]][]) {
+    assert.ok(Math.abs(recorded[0] - original[0]) < 1e-9 && Math.abs(recorded[1] - original[1]) < 1e-9);
+  }
+  const healedAlong = (healed.nodes.door_e12!.position as number[])[0]!;
+  const rawAlong = (raw.nodes.door_e12!.position as number[])[0]!;
+  assert.ok(Math.abs(healedAlong - record.hostedOffsetShift - rawAlong) < 1e-9);
+});
+
+test("summarises the healing and its tolerances on the building node", () => {
+  const healed = makePascalScene(teeFixture(), { healJoins: { maxGap: 0.1 } });
+  const summary = healed.nodes.building_reviter!.metadata?.reviterJoinHeal as {
+    kind: string;
+    edits: number;
+    healedWalls: number;
+    maxMoveMetres: number;
+    byReason: Record<string, number>;
+    tolerances: Record<string, unknown>;
+    ends: { before: { lineOpen: number }; after: { lineOpen: number } };
+  };
+  assert.equal(summary.kind, "reviter-join-heal");
+  assert.equal(summary.edits, 1);
+  assert.equal(summary.healedWalls, 1);
+  assert.deepEqual(summary.byReason, { "tee-extend": 1 });
+  assert.ok(Math.abs(summary.maxMoveMetres - 0.5 * FOOT) < 1e-6);
+  // The caller's override and every default it left alone, in metres.
+  assert.equal(summary.tolerances.maxGap, 0.1);
+  assert.equal(summary.tolerances.nodeTolerance, 0.001);
+  assert.equal(summary.tolerances.maxMove, 0.35);
+  assert.equal(summary.tolerances.mergeCollinear, undefined, "merging is never offered");
+  assert.ok(summary.ends.after.lineOpen < summary.ends.before.lineOpen);
+
+  // A setting that rules the join out leaves the file untouched but still says
+  // what was tried.
+  const untouched = makePascalScene(teeFixture(), { healJoins: { normaliseInBody: false } });
+  assert.equal(untouched.stats.healEdits, 0);
+  assert.deepEqual(untouched.nodes.wall_e10!.start, [0, -0]);
+  assert.equal(
+    (untouched.nodes.building_reviter!.metadata?.reviterJoinHeal as { edits: number }).edits,
+    0,
+  );
 });

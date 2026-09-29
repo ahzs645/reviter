@@ -161,7 +161,8 @@ type Resolved = Required<Omit<HealOptions, "unitsPerMetre">> & {
   minJoinSine: number;
 };
 
-const DEFAULTS = {
+/** Default tolerances, in metres and degrees; what `HealOptions` falls back to. */
+export const HEAL_DEFAULTS = {
   nodeTolerance: 0.001,
   searchRadius: 1.0,
   maxGap: 0.15,
@@ -174,7 +175,9 @@ const DEFAULTS = {
   mergeCollinear: false,
   trimCorners: false,
   minZOverlap: 0.05,
-};
+} as const satisfies Required<Omit<HealOptions, "unitsPerMetre">>;
+
+const DEFAULTS = HEAL_DEFAULTS;
 
 function resolve(options: HealOptions): Resolved {
   const scale = options.unitsPerMetre ?? 1;

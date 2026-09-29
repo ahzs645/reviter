@@ -48,8 +48,22 @@
  *
  * Elements are placed against their own level's plane, not the datum, because
  * that is the frame Pascal renders their children in.
+ *
+ * ## Wall joins
+ *
+ * Revit joins walls graphically: a wall teed into another usually has its
+ * location line stop at the other wall's near face, and the drawing cleans the
+ * join up. Pascal mitres two walls only when their endpoints coincide within
+ * 1 mm, so written as-is those joins arrive open. {@link
+ * PascalExportOptions.healJoins} runs `healConvertResult` first, which moves
+ * wall ends along their own axis onto the neighbour's location line, and
+ * records every move on the wall it touched (`metadata.reviterJoinHeal`) and a
+ * summary on the building node. Doors and windows are measured against the
+ * healed wall, so they keep their place in the world.
  */
+import { HEAL_DEFAULTS, healConvertResult, type HealOptions, type WallEdit } from "./heal-walls.ts";
 import type { WallArc, WallSolid } from "./native-geometry.ts";
+import { pascalFrameFor, stampPascalFrame } from "./room-annotations.ts";
 import type { Point3 } from "./sketch-curves.ts";
 import type { Bounds3, ConvertResult, ElementBoundsRecord } from "./types.ts";
 
@@ -140,6 +154,13 @@ const COLUMN_CATEGORIES: ReadonlySet<number> = new Set([
  */
 export type PascalExtraElements = "none" | "curtain-panels" | "all";
 
+/**
+ * Tolerances for wall-join healing, in metres; see `HealOptions`. Collinear
+ * merging is not offered here: a merge deletes a wall node that doors, rooms
+ * and a person's later edits may refer to.
+ */
+export type PascalJoinHealOptions = Omit<HealOptions, "unitsPerMetre" | "mergeCollinear">;
+
 export type PascalExportOptions = {
   /** See {@link PascalExtraElements}. Defaults to `"curtain-panels"`. */
   extras?: PascalExtraElements;
@@ -150,6 +171,13 @@ export type PascalExportOptions = {
   mirrorPlan?: boolean;
   /** Name given to the site and building nodes. Defaults to the file name. */
   projectName?: string;
+  /**
+   * Close Revit's graphical wall joins on location lines before writing walls,
+   * so Pascal mitres them. `true` uses `heal-walls.ts`'s defaults; an object
+   * overrides them. Off unless asked: healing a whole building takes about as
+   * long as converting it. The CLI turns it on for `.pascal.json`.
+   */
+  healJoins?: boolean | PascalJoinHealOptions;
 };
 
 /** A Pascal node. Structural only — Pascal's own zod schemas are authoritative. */
@@ -184,6 +212,10 @@ export type PascalSceneStats = {
   notDrawn: number;
   /** Sloped surfaces — pitched roofs, ramps — written as one flat plate. */
   flattenedSlopes: number;
+  /** Wall nodes whose ends join healing moved (0 unless `healJoins`). */
+  healedWalls: number;
+  /** Individual end moves recorded on those walls. */
+  healEdits: number;
 };
 
 export type PascalScene = {
@@ -353,9 +385,16 @@ function elementMetadata(record: ElementBoundsRecord): Record<string, unknown> {
  * fields the format defines.
  */
 export function makePascalScene(
-  result: ConvertResult,
+  input: ConvertResult,
   options: PascalExportOptions = {},
 ): PascalScene {
+  const healOptions: PascalJoinHealOptions | null = options.healJoins
+    ? healTolerances(options.healJoins === true ? {} : options.healJoins)
+    : null;
+  // Healing returns a copy whose wall records carry moved ends; every other
+  // record is shared, so the rest of the export reads it exactly as the input.
+  const heal = healOptions ? healConvertResult(input, { ...healOptions, mergeCollinear: false }) : null;
+  const result = heal ? heal.result : input;
   const extras: PascalExtraElements = options.extras ?? "curtain-panels";
   const mirrorPlan = options.mirrorPlan === true;
   const projectName = options.projectName ?? result.fileName.replace(/\.[^.]+$/, "");
@@ -384,6 +423,8 @@ export function makePascalScene(
     skipped: 0,
     notDrawn: 0,
     flattenedSlopes: 0,
+    healedWalls: 0,
+    healEdits: 0,
   };
 
   const add = (node: PascalNode): PascalNode => {
@@ -673,6 +714,10 @@ export function makePascalScene(
       continue;
     }
     stats.skipped += 1;
+  }
+
+  if (heal && healOptions) {
+    recordJoinHealing(nodes, nodes[buildingId]!, heal.edits, heal.before, heal.after, healOptions, plan, stats);
   }
 
   // ── Curtain panels ─────────────────────────────────────────────────────────
@@ -1145,7 +1190,168 @@ export function makePascalScene(
     }
   }
 
+  // The exact map back to Revit feet, so the file can be read (and its heal
+  // records reverted) without the conversion that wrote it.
+  stampPascalFrame({ nodes, rootNodeIds: [siteId] }, pascalFrameFor(result, { mirrorPlan }));
+
   return { nodes, rootNodeIds: [siteId], stats };
+}
+
+/** What a healed wall carries in `metadata.reviterJoinHeal`. */
+export type PascalWallHealRecord = {
+  /** The wall's location line as the RVT states it, in this file's plan metres. */
+  originalStart: Plan;
+  originalEnd: Plan;
+  /**
+   * Metres added to each hosted door's and window's `position[0]` by the move
+   * of `start` (openings are measured from the start). Subtract it when
+   * restoring the original line, and the openings stay where they are.
+   */
+  hostedOffsetShift: number;
+  /** Each end move, in the order applied. */
+  edits: {
+    end: "start" | "end";
+    reason: WallEdit["reason"];
+    /** How the end met its neighbour before the move (`heal-walls.ts` classes). */
+    fromClass: WallEdit["fromClass"];
+    movedMetres: number;
+    /** The wall it was joined to; a curtain-wall line has no node of its own. */
+    partnerNodeId?: string;
+    partnerRevitElementId?: number;
+  }[];
+};
+
+/** What the building node carries in `metadata.reviterJoinHeal`. */
+export type PascalJoinHealSummary = {
+  kind: "reviter-join-heal";
+  version: 1;
+  healedWalls: number;
+  edits: number;
+  maxMoveMetres: number;
+  byReason: Record<string, number>;
+  /** The tolerances used, in metres and degrees, defaults filled in. */
+  tolerances: Required<PascalJoinHealOptions>;
+  /** Wall ends (movable walls only) whose location line is open or whose body is open. */
+  ends: {
+    before: { ends: number; lineOpen: number; bodyOpen: number };
+    after: { ends: number; lineOpen: number; bodyOpen: number };
+  };
+};
+
+/** Every healing tolerance, defaults filled in, so the file states what was used. */
+function healTolerances(options: PascalJoinHealOptions): Required<PascalJoinHealOptions> {
+  const pick = <K extends keyof PascalJoinHealOptions>(key: K) => options[key] ?? HEAL_DEFAULTS[key];
+  return {
+    nodeTolerance: pick("nodeTolerance"),
+    searchRadius: pick("searchRadius"),
+    maxGap: pick("maxGap"),
+    maxMove: pick("maxMove"),
+    maxCollinearOffset: pick("maxCollinearOffset"),
+    collinearAngleDegrees: pick("collinearAngleDegrees"),
+    minJoinAngleDegrees: pick("minJoinAngleDegrees"),
+    normaliseInBody: pick("normaliseInBody"),
+    trimOvershoots: pick("trimOvershoots"),
+    trimCorners: pick("trimCorners"),
+    minZOverlap: pick("minZOverlap"),
+  };
+}
+
+/**
+ * The node a heal partner id names: `${elementId}[_${solid}]` is a straight
+ * run, `${elementId}_arc${n}_${chord}` a chord of a curved wall's `n`th arc.
+ */
+function partnerNodeIdFor(partnerId: string): string {
+  const arc = /^(\d+)_arc(\d+)_\d+$/u.exec(partnerId);
+  if (arc) return `wall_e${arc[1]}${arc[2] === "0" ? "" : `_${arc[2]}`}`;
+  return `wall_e${partnerId}`;
+}
+
+const round = (value: number, digits = 6): number => {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+};
+
+/**
+ * Stamp each healed wall with its own edit record and the building with a
+ * summary. Heal wall ids are `${elementId}` or `${elementId}_${solidIndex}`,
+ * which is exactly the suffix of the wall node ids this exporter writes.
+ */
+function recordJoinHealing(
+  nodes: Record<string, PascalNode>,
+  building: PascalNode,
+  edits: readonly WallEdit[],
+  before: { ends: number; lineOpen: number; bodyOpen: number },
+  after: { ends: number; lineOpen: number; bodyOpen: number },
+  options: PascalJoinHealOptions,
+  plan: (x: number, y: number) => Plan,
+  stats: PascalSceneStats,
+): void {
+  const byWall = new Map<string, WallEdit[]>();
+  for (const edit of edits) {
+    const list = byWall.get(edit.wallId);
+    if (list) list.push(edit);
+    else byWall.set(edit.wallId, [edit]);
+  }
+
+  let maxMove = 0;
+  const byReason: Record<string, number> = {};
+  for (const [wallId, wallEdits] of byWall) {
+    const node = nodes[`wall_e${wallId}`];
+    if (!node || node.type !== "wall") continue;
+    const start = node.start as Plan;
+    const end = node.end as Plan;
+    const firstBefore = (which: "start" | "end") => wallEdits.find((edit) => edit.end === which)?.before;
+    const startFeet = firstBefore("start");
+    const endFeet = firstBefore("end");
+    const originalStart = startFeet ? plan(startFeet.x, startFeet.y) : start;
+    const originalEnd = endFeet ? plan(endFeet.x, endFeet.y) : end;
+    // Openings are measured from the start along the (healed) axis, so moving
+    // the start by d along the axis adds -d to every hosted offset.
+    const axisX = end[0] - start[0];
+    const axisZ = end[1] - start[1];
+    const axisLength = Math.hypot(axisX, axisZ) || 1;
+    const hostedOffsetShift =
+      ((originalStart[0] - start[0]) * axisX + (originalStart[1] - start[1]) * axisZ) / axisLength;
+
+    const record: PascalWallHealRecord = {
+      originalStart: [round(originalStart[0], 9), round(originalStart[1], 9)],
+      originalEnd: [round(originalEnd[0], 9), round(originalEnd[1], 9)],
+      hostedOffsetShift: round(hostedOffsetShift, 9),
+      edits: wallEdits.map((edit) => {
+        const partnerElement = edit.partnerId ? Number.parseInt(edit.partnerId, 10) : Number.NaN;
+        const partnerNodeId = edit.partnerId ? partnerNodeIdFor(edit.partnerId) : undefined;
+        const movedMetres = edit.moved * METRES_PER_FOOT;
+        maxMove = Math.max(maxMove, movedMetres);
+        byReason[edit.reason] = (byReason[edit.reason] ?? 0) + 1;
+        stats.healEdits += 1;
+        return {
+          end: edit.end,
+          reason: edit.reason,
+          fromClass: edit.fromClass,
+          movedMetres: round(movedMetres),
+          ...(partnerNodeId && nodes[partnerNodeId] ? { partnerNodeId } : {}),
+          ...(Number.isFinite(partnerElement) ? { partnerRevitElementId: partnerElement } : {}),
+        };
+      }),
+    };
+    node.metadata = { ...(node.metadata ?? {}), reviterJoinHeal: record };
+    stats.healedWalls += 1;
+  }
+
+  const summary: PascalJoinHealSummary = {
+    kind: "reviter-join-heal",
+    version: 1,
+    healedWalls: stats.healedWalls,
+    edits: stats.healEdits,
+    maxMoveMetres: round(maxMove),
+    byReason,
+    tolerances: healTolerances(options),
+    ends: {
+      before: { ends: before.ends, lineOpen: before.lineOpen, bodyOpen: before.bodyOpen },
+      after: { ends: after.ends, lineOpen: after.lineOpen, bodyOpen: after.bodyOpen },
+    },
+  };
+  building.metadata = { ...(building.metadata ?? {}), reviterJoinHeal: summary };
 }
 
 /** The Pascal build JSON itself, as Load Build reads it. */
