@@ -49,7 +49,7 @@ The Autodesk file also contains 1,835 non-geometric curtain-wall containers and 
 ## IFC content now exported
 
 - IFC4 project, site, building, and recovered storey hierarchy.
-- Stable deterministic IFC GUIDs derived from native model identity and Revit element identity.
+- Stable deterministic IFC GUIDs derived from native model identity and Revit element identity. (Since 2026-09-29 the namespace is the RVT's `BasicFileInfo` "Unique Document GUID"; before then it also folded in the element count, so adding or deleting any element renamed every GUID. See the scheme comment in `export-ifc.ts`.)
 - Per-element `IfcTriangulatedFaceSet` bodies; explicit bounds solids only when no recovered mesh exists.
 - Native category-to-IFC class mappings, including walls, slabs, roofs, coverings, doors, windows, columns, members, plates, stairs, flights, railings, ramps, foundations, and furniture.
 - Revit type objects and occurrence-to-type relationships.

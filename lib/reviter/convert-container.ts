@@ -19,7 +19,10 @@
  */
 import CFB from "cfb";
 
-import { revitVersionFromBasicFileInfo } from "./basic-file-info.ts";
+import {
+  parseBasicFileInfoProperties,
+  revitVersionFromBasicFileInfo,
+} from "./basic-file-info.ts";
 import { scanObjectMarkers } from "./element-objects.ts";
 import { parseElemTable } from "./elem-table.ts";
 import { readContentDocuments, type ContentDocument } from "./content-documents.ts";
@@ -132,6 +135,8 @@ export type OpenedRevitContainer = {
   elementIndex: RvtElementIndex | undefined;
   elementOwnership: ElementOwnershipDecode | undefined;
   nativeIdentity: NativeIdentityDecode | undefined;
+  /** `BasicFileInfo`'s "Unique Document GUID"; see `ConvertResult.uniqueDocumentGuid`. */
+  uniqueDocumentGuid: string | undefined;
   transmissionData: RevitTransmissionData | undefined;
   coverage: CoverageSummary;
   schema: SchemaSummary | undefined;
@@ -141,6 +146,26 @@ export type OpenedRevitContainer = {
   /** The loaded families' documents, keyed by GUID (`content-documents.ts`). */
   contentDocuments: Map<string, ContentDocument>;
 };
+
+const GUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ZERO_GUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * The document's own GUID, as `BasicFileInfo` states it ("Unique Document
+ * GUID"), lower-cased. Revit keeps it across saves (only "Unique Document
+ * Increments" moves), so it names the document rather than one revision of it.
+ * Anything that is not a well-formed, non-zero GUID is treated as absent: an
+ * unreadable value must not become a namespace two files could share.
+ */
+function documentGuid(data: Uint8Array): string | undefined {
+  let value: string | undefined;
+  try {
+    value = parseBasicFileInfoProperties(data).uniqueDocumentGuid?.trim().toLowerCase();
+  } catch {
+    return undefined;
+  }
+  return value && GUID_TEXT.test(value) && value !== ZERO_GUID ? value : undefined;
+}
 
 /**
  * Read the container and its summary streams.
@@ -169,16 +194,17 @@ export function openRevitContainer(
       );
     }
   }
-  if (!Number.isInteger(options.revitVersion)) {
-    const basicFileInfo = cfb.FileIndex
-      .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
-      .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
-    if (basicFileInfo) {
-      decoderPlan = decoderPlanForVersion(
-        revitVersionFromBasicFileInfo(asBytes(basicFileInfo.entry.content)) ?? undefined,
-      );
-    }
+  const basicFileInfo = cfb.FileIndex
+    .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
+    .find(({ entry, path }) => entry.size > 0 && /\/BasicFileInfo$/i.test(path));
+  if (basicFileInfo && !Number.isInteger(options.revitVersion)) {
+    decoderPlan = decoderPlanForVersion(
+      revitVersionFromBasicFileInfo(asBytes(basicFileInfo.entry.content)) ?? undefined,
+    );
   }
+  const uniqueDocumentGuid = basicFileInfo
+    ? documentGuid(asBytes(basicFileInfo.entry.content))
+    : undefined;
   const elemTableEntry = cfb.FileIndex
     .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
     .find(({ entry, path }) => entry.size > 0 && /\/Global\/ElemTable$/i.test(path));
@@ -342,6 +368,7 @@ export function openRevitContainer(
     elementIndex,
     elementOwnership,
     nativeIdentity,
+    uniqueDocumentGuid,
     transmissionData,
     coverage,
     schema,

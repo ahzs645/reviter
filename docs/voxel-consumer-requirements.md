@@ -67,7 +67,7 @@ which is why it is a test rather than a paragraph.
 | `IfcSlab` / `IfcCovering` / `IfcRoof` | the walkable surface | **met.** 94 slabs against 107 tags is a class difference, not a gap — 68/68 Revit Floors, 182 floor-class elements by Tag against Autodesk's 172, 99.92% of standable surface reproduced within half a metre | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
 | `FillsVoids → opening → wall` | replaying openings onto moved walls | present — 1,932 persisted relationships, none invented | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
 | `Tag` | joining two exports of one building | present; 41,709 also carry a native `UniqueId` | [2026-08-02](unbc-rvt-to-ifc-export-2026-08-02.md) |
-| `GlobalId` | keying per-element overrides | derived from Reviter's own namespace; **does not match** Autodesk's | `export-ifc.ts:111` |
+| `GlobalId` | keying per-element overrides | derived from the RVT's Unique Document GUID plus the element's UniqueId, so stable across re-exports and unrelated edits; **does not match** Autodesk's | `export-ifc.ts` `guidNamespace` |
 | geometry provenance | knowing which bodies are boxes | declared: 84.3% native, 8.5% reconstructed, **7.2% (2,797) bounds fallback** | [2026-08-19](unbc-independent-ifc-verification-2026-08-19.md) |
 
 ## Three things worth changing, in order

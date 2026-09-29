@@ -13,6 +13,7 @@ export function ifcExportFixture(): ConvertResult {
     ok: true,
     fileName: "ifc-export-fixture.rvt",
     byteLength: 64,
+    uniqueDocumentGuid: "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0",
     meshes: [{
       name: "Recovered elements",
       positions: new Float32Array([

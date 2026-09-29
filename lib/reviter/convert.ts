@@ -113,6 +113,7 @@ export function convertRvtBytes(
       elementIndex,
       elementOwnership,
       nativeIdentity,
+      uniqueDocumentGuid,
       transmissionData,
       coverage,
       schema,
@@ -349,6 +350,7 @@ export function convertRvtBytes(
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
     const decodedFile = {
+      ...(uniqueDocumentGuid ? { uniqueDocumentGuid } : {}),
       elementBounds,
       nativeProfiles,
       nativeCategories,

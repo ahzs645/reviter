@@ -757,6 +757,14 @@ export type ConvertResult = {
   ok: true;
   fileName: string;
   byteLength: number;
+  /**
+   * The RVT document's own identity: `BasicFileInfo`'s "Unique Document GUID",
+   * lower-cased. It survives saves and edits, so exporters that need a
+   * per-document namespace (IFC `GlobalId`s, see `export-ifc.ts`) key on it
+   * rather than on anything that changes when the model does. Absent when the
+   * stream is missing or states no well-formed GUID.
+   */
+  uniqueDocumentGuid?: string;
   meshes: MeshData[];
   materials: MaterialData[];
   segments: Segment[];

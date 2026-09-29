@@ -8,6 +8,10 @@ import { ifcExportFixture as fixture } from "./fixtures/ifc-export-fixture.ts";
 import { categoryDisplayName } from "../lib/reviter/native-categories.ts";
 import { isReviewedRoom } from "../lib/reviter/room-review.ts";
 import type { ReviewedRoom } from "../lib/reviter/room-review.ts";
+import { annotationsToReviewedRooms } from "../lib/reviter/room-annotations.ts";
+import type { RoomAnnotation } from "../lib/reviter/room-annotations.ts";
+import type { ConvertResult } from "../lib/reviter/types.ts";
+import { ifcGlobalIds, withoutElement } from "./fixtures/ifc-guids.ts";
 
 /** ISO 10303-21: `[SIGN] DIGIT {DIGIT} "." {DIGIT} [ "E" [SIGN] DIGIT {DIGIT} ]`. */
 const STEP_REAL = /^[-+]?\d+\.\d*(?:E[-+]?\d+)?$/;
@@ -281,6 +285,8 @@ test("keeps two types apart when their recovered names contain the key separator
 });
 
 test("keeps element IFC GUIDs stable when the same native model is renamed", () => {
+  // The namespace is the RVT's own "Unique Document GUID", so the file name
+  // plays no part while the document states one.
   const first = fixture();
   const second = fixture();
   second.fileName = "renamed-copy.rvt";
@@ -289,6 +295,141 @@ test("keeps element IFC GUIDs stable when the same native model is renamed", () 
   assert.ok(firstGuid);
   assert.equal(secondGuid, firstGuid);
   assert.match(firstGuid, /^[0-3][0-9A-Za-z_$]{21}$/);
+  assert.deepEqual(ifcGlobalIds(makeIfc(second)), ifcGlobalIds(makeIfc(first)));
+});
+
+test("every GlobalId is a unique 22-character compressed GUID", () => {
+  const rooms = annotationsToReviewedRooms([roomAnnotation("rm-a"), roomAnnotation("rm-b")]);
+  const ids = ifcGlobalIds(makeIfc(fixture(), { rooms }));
+  assert.ok(ids.length > 20);
+  for (const id of ids) assert.match(id, /^[0-3][0-9A-Za-z_$]{21}$/);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+/** A second wall, 12, with its own identity, triangle, type and level. */
+function withExtraWall(result: ConvertResult): ConvertResult {
+  const [wall] = result.elementBounds;
+  const [mesh] = result.meshes;
+  const [identity] = result.nativeIdentity!.identities;
+  const [level] = result.nativeAssociatedLevelRelations!;
+  return {
+    ...result,
+    elementBounds: [...result.elementBounds, { ...wall!, elementId: 12, typeId: 23, typeName: "Interior 100mm" }],
+    meshes: [{
+      ...mesh!,
+      positions: new Float32Array([...mesh!.positions, 5, 0, 0, 6, 0, 0, 5, 0, 3]),
+      indices: new Uint32Array([...mesh!.indices, 6, 7, 8]),
+      colors: new Float32Array(27),
+      elementIds: new Uint32Array([...mesh!.elementIds!, 12]),
+    }],
+    nativeIdentity: {
+      ...result.nativeIdentity!,
+      identities: [...result.nativeIdentity!.identities, {
+        ...identity!,
+        elementId: 12,
+        originalElementId: 12,
+        uniqueId: "11111111-2222-3333-4444-555555555555-0000000c",
+      }],
+    },
+    nativeElementMaterialAssignments: [
+      ...result.nativeElementMaterialAssignments!,
+      { ...result.nativeElementMaterialAssignments![0]!, elementId: 12 },
+    ],
+    nativeAssociatedLevelRelations: [...result.nativeAssociatedLevelRelations!, { ...level!, elementId: 12 }],
+  };
+}
+
+test("adding or deleting an element leaves every other GlobalId unchanged", () => {
+  const rooms = annotationsToReviewedRooms([roomAnnotation("rm-a")]);
+  const base = ifcGlobalIds(makeIfc(fixture(), { rooms }));
+  const added = new Set(ifcGlobalIds(makeIfc(withExtraWall(fixture()), { rooms })));
+  const deleted = ifcGlobalIds(makeIfc(withoutElement(fixture(), 11), { rooms }));
+
+  // Adding wall 12 introduces its own entities and renames nothing.
+  assert.ok(added.size > base.length);
+  assert.deepEqual(base.filter((id) => !added.has(id)), []);
+  // Deleting door 11 removes its entities (and its opening) and renames nothing.
+  assert.ok(deleted.length < base.length);
+  assert.deepEqual(deleted.filter((id) => !base.includes(id)), []);
+  // The remaining wall, its storey and its space are each still present.
+  const wall = /IFCWALL\('([^']+)'/.exec(makeIfc(fixture()))![1]!;
+  assert.ok(deleted.includes(wall) && added.has(wall));
+});
+
+test("two documents give the same element id different GlobalIds", () => {
+  const first = fixture();
+  const second = fixture();
+  second.uniqueDocumentGuid = "a1b2c3d4-0000-4000-8000-000000000001";
+  const firstIds = new Set(ifcGlobalIds(makeIfc(first)));
+  const secondIds = ifcGlobalIds(makeIfc(second));
+  assert.deepEqual(secondIds.filter((id) => firstIds.has(id)), []);
+});
+
+test("without a document GUID the namespace falls back to the file name", () => {
+  const first = fixture();
+  delete first.uniqueDocumentGuid;
+  const same = fixture();
+  delete same.uniqueDocumentGuid;
+  const renamed = fixture();
+  delete renamed.uniqueDocumentGuid;
+  renamed.fileName = "renamed-copy.rvt";
+  assert.deepEqual(ifcGlobalIds(makeIfc(same)), ifcGlobalIds(makeIfc(first)));
+  // Documented limitation: with no document identity, a rename is a new namespace.
+  const renamedIds = new Set(ifcGlobalIds(makeIfc(renamed)));
+  assert.deepEqual(ifcGlobalIds(makeIfc(first)).filter((id) => renamedIds.has(id)), []);
+  // And the document GUID, once present, is what is used.
+  assert.notDeepEqual(ifcGlobalIds(makeIfc(fixture())), ifcGlobalIds(makeIfc(first)));
+});
+
+function roomAnnotation(key: string, overrides: Partial<RoomAnnotation> = {}): RoomAnnotation {
+  return {
+    key,
+    levelId: 30,
+    number: "101",
+    name: "Seminar",
+    polygonFeet: [[100, 200], [104, 200], [104, 201], [100, 201]],
+    labelPointFeet: [102, 200.5],
+    source: { number: "dwg", name: "dwg", polygon: "derived" },
+    confidence: 0.9,
+    status: "active",
+    ...overrides,
+  };
+}
+
+function spaceGuids(source: string): string[] {
+  return [...source.matchAll(/IFCSPACE\('([^']+)'/g)].map((match) => match[1]!);
+}
+
+test("an IfcSpace GlobalId depends only on its room key", () => {
+  const original = spaceGuids(makeIfc(fixture(), {
+    rooms: annotationsToReviewedRooms([roomAnnotation("rm-a")]),
+  }));
+  assert.equal(original.length, 1);
+
+  // Renumbered, renamed, re-traced, re-confirmed on a later date, listed after
+  // a new neighbour, and exported from a model with an element fewer: the key
+  // is unchanged, so the GlobalId is.
+  const edited = annotationsToReviewedRooms([
+    roomAnnotation("rm-new-neighbour", { number: "100" }),
+    roomAnnotation("rm-a", {
+      number: "101A",
+      name: "Lab",
+      polygonFeet: [[100, 200], [103, 200], [103, 201.5], [100, 201.5]],
+      source: { number: "manual", name: "manual", polygon: "manual" },
+      updatedAt: "2031-01-01T00:00:00.000Z",
+    }),
+  ]);
+  const later = makeIfc(withoutElement(fixture(), 11), { rooms: edited });
+  const laterSpaces = spaceGuids(later);
+  assert.equal(laterSpaces.length, 2);
+  assert.equal(laterSpaces[1], original[0]);
+  assert.notEqual(laterSpaces[0], original[0]);
+
+  // A different key is a different space.
+  const rekeyed = spaceGuids(makeIfc(fixture(), {
+    rooms: annotationsToReviewedRooms([roomAnnotation("rm-b")]),
+  }));
+  assert.notEqual(rekeyed[0], original[0]);
 });
 
 /**

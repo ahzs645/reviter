@@ -93,24 +93,68 @@ function compressedIfcGuid(value: string): string {
   return result.join("");
 }
 
-function guidNamespace(result: ConvertResult): string {
-  const identities = result.nativeIdentity?.identities ?? [];
-  if (identities.length) {
-    return `revit:${identities[0]!.uniqueId}:${identities.at(-1)!.uniqueId}:${identities.length}`;
-  }
-  return [
-    "reviter-fallback",
-    result.fileName,
-    result.byteLength,
-    result.origin.x,
-    result.origin.y,
-    result.origin.z,
-    result.elementBounds.length,
-  ].join(":");
+/*
+ * GlobalId scheme.
+ *
+ * Every `GlobalId` is `compressedIfcGuid("<namespace>:<kind>:<key>")`, where
+ *
+ * - `namespace` names the RVT *document*, not one revision of it: Revit's own
+ *   "Unique Document GUID" from `BasicFileInfo` (`ConvertResult
+ *   .uniqueDocumentGuid`), which survives saves and edits. When a result does
+ *   not carry it (a file without a readable `BasicFileInfo`, or a result cached
+ *   before the field existed) the namespace falls back to the lower-cased file
+ *   name. That fallback is stable across re-exports of one file but NOT across
+ *   a rename, and two same-named documents without a GUID share it.
+ * - `kind` says what sort of entity it is (`element`, `storey`, `space`,
+ *   `rel-material`, ...), so one key can name several entities.
+ * - `key` is the entity's own stable identity: a Revit element's UniqueId
+ *   (else its element id), a level's for a storey, a reviewed room's `roomId`
+ *   (for room annotations `ann-<key>`) for an IfcSpace. Synthesised entities --
+ *   relationships, property sets, anonymous context -- derive their key from
+ *   the keys of the entities they relate or from their own content.
+ *
+ * Nothing here may depend on a count, a running index, a STEP instance number,
+ * or iteration order: a consumer that matches objects across re-exports by
+ * GlobalId (Bonsai, a Revit IFC link, the room round trip) would otherwise see
+ * every object replaced when one unrelated element is added or deleted.
+ */
+function guidNamespace(result: Pick<ConvertResult, "fileName" | "uniqueDocumentGuid">): string {
+  const documentGuid = result.uniqueDocumentGuid?.trim().toLowerCase();
+  if (documentGuid) return `revit-document:${documentGuid}`;
+  return `revit-file:${result.fileName.trim().toLowerCase()}`;
 }
 
 function guidFor(namespace: string, kind: string, key: string | number): string {
   return compressedIfcGuid(`${namespace}:${kind}:${key}`);
+}
+
+/**
+ * The content key of a fragment that has no Revit owner.
+ *
+ * Such a fragment has no identity of its own, so its geometry is its identity:
+ * the same triangles keep one GlobalId, and adding or removing some other
+ * fragment does not renumber it the way its position in the list would.
+ */
+function fragmentContentKey(fragment: GeometryFragment): string {
+  // Four differently seeded 32-bit FNV-1a lanes over the quantised positions
+  // and the indices: 128 bits without a BigInt step per value, which matters
+  // because an unowned fragment can be a whole render batch.
+  const lanes = new Uint32Array([0x811c9dc5, 0x050c5d1f, 0x2d358dcc, 0x6c62272e]);
+  const feed = (value: number) => {
+    const low = value >>> 0;
+    const high = Math.floor(value / 0x1_0000_0000) >>> 0;
+    for (let lane = 0; lane < lanes.length; lane += 1) {
+      let hash = lanes[lane]!;
+      hash = Math.imul(hash ^ low, 0x01000193);
+      hash = Math.imul(hash ^ high, 0x01000193);
+      lanes[lane] = hash ^ (hash >>> (11 + lane));
+    }
+  };
+  for (const value of fragment.positions) feed(Math.round(value * 1e6));
+  feed(-1);
+  for (const value of fragment.indices) feed(value);
+  const digest = [...lanes].map((lane) => lane.toString(16).padStart(8, "0")).join("");
+  return JSON.stringify([fragment.name ?? null, fragment.materialIndex, fragment.source ?? null, digest]);
 }
 
 /** Encode non-ASCII text using STEP's UTF-16 `X2` escape. */
@@ -782,7 +826,8 @@ function fragmentGeometryFidelity(
 
 function emitElementProperties(
   writer: StepWriter,
-  namespace: string,
+  guid: (kind: string, key: string) => string,
+  elementKey: string,
   ownerHistory: number,
   product: number,
   element: ManifestElement,
@@ -807,10 +852,10 @@ function emitElementProperties(
     )] : []),
   ];
   const propertySet = writer.add(
-    `IFCPROPERTYSET(${quoted(guidFor(namespace, "pset-recovery", element.elementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(properties)})`,
+    `IFCPROPERTYSET(${quoted(guid("pset-recovery", elementKey))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(properties)})`,
   );
   writer.add(
-    `IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-recovery", element.elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
+    `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", elementKey))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
   );
 
   if (!element.parameters.length) return;
@@ -821,10 +866,10 @@ function emitElementProperties(
       ? textProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value)
       : realProperty(writer, `${parameter.name} [${parameter.id}]`, parameter.value));
   const parameterSet = writer.add(
-    `IFCPROPERTYSET(${quoted(guidFor(namespace, "pset-parameters", element.elementId))},#${ownerHistory},'Reviter_RevitInstanceParameters','Raw Revit internal values; dimensional values are stored in feet',${writer.refs(parameterProperties)})`,
+    `IFCPROPERTYSET(${quoted(guid("pset-parameters", elementKey))},#${ownerHistory},'Reviter_RevitInstanceParameters','Raw Revit internal values; dimensional values are stored in feet',${writer.refs(parameterProperties)})`,
   );
   writer.add(
-    `IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-parameters", element.elementId))},#${ownerHistory},$,$,(#${product}),#${parameterSet})`,
+    `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-parameters", elementKey))},#${ownerHistory},$,$,(#${product}),#${parameterSet})`,
   );
 }
 
@@ -837,7 +882,26 @@ function emitElementProperties(
 export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOptions = {}): string {
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
-  const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
+  // Every GlobalId is issued through here, so two entities that were given one
+  // identity fail the export instead of silently sharing a GlobalId, which IFC
+  // forbids and every GlobalId-matching consumer would misread.
+  const issuedGuids = new Map<string, string>();
+  const guid = (kind: string, key: string): string => {
+    const value = guidFor(namespace, kind, key);
+    const identity = `${kind}:${key}`;
+    const previous = issuedGuids.get(value);
+    if (previous != null) {
+      throw new Error(`IFC GlobalId ${value} issued twice (${previous}; ${identity})`);
+    }
+    issuedGuids.set(value, identity);
+    return value;
+  };
+  const identityByElement = new Map(
+    (result.nativeIdentity?.identities ?? []).map((identity) => [identity.elementId, identity.uniqueId]),
+  );
+  /** A Revit element's stable key: its UniqueId, else its element id. */
+  const elementKey = (elementId: number, uniqueId?: string): string =>
+    identityByElement.get(elementId) ?? uniqueId ?? `element-id:${elementId}`;
   const manifest = elementManifest(result);
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
   const hostAxes = hostAxesByOpening(result);
@@ -875,16 +939,16 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     `IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${context},$,.MODEL_VIEW.,$)`,
   );
   const project = writer.add(
-    `IFCPROJECT(${quoted(guid("project", 1))},#${ownerHistory},${quoted(result.fileName)},$,$,$,$,(#${context}),#${units})`,
+    `IFCPROJECT(${quoted(guid("project", "document"))},#${ownerHistory},${quoted(result.fileName)},$,$,$,$,(#${context}),#${units})`,
   );
 
   const zeroPlacement = writer.add(`IFCLOCALPLACEMENT($,#${worldAxis})`);
   const site = writer.add(
-    `IFCSITE(${quoted(guid("site", 1))},#${ownerHistory},'Recovered site',$,$,#${zeroPlacement},$,$,.ELEMENT.,$,$,$,$,$)`,
+    `IFCSITE(${quoted(guid("site", "document"))},#${ownerHistory},'Recovered site',$,$,#${zeroPlacement},$,$,.ELEMENT.,$,$,$,$,$)`,
   );
   const buildingPlacement = writer.add(`IFCLOCALPLACEMENT(#${zeroPlacement},#${worldAxis})`);
   const building = writer.add(
-    `IFCBUILDING(${quoted(guid("building", 1))},#${ownerHistory},'Recovered building',$,$,#${buildingPlacement},$,$,.ELEMENT.,$,$,$)`,
+    `IFCBUILDING(${quoted(guid("building", "document"))},#${ownerHistory},'Recovered building',$,$,#${buildingPlacement},$,$,.ELEMENT.,$,$,$)`,
   );
   writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate", "project-site"))},#${ownerHistory},$,$,#${project},(#${site}))`);
   writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate", "site-building"))},#${ownerHistory},$,$,#${site},(#${building}))`);
@@ -901,18 +965,23 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     : [{ elevation: 0, candidates: manifest.length, source: "elevation-band" as const }];
   const storeyByLevelId = new Map<number, number>();
   const storeys: Array<{ id: number; elevation: number; levelId?: number }> = [];
+  /** Storey STEP id -> the storey's stable key, for relationships keyed on it. */
+  const storeyKeyById = new Map<number, string>();
   for (let index = 0; index < levels.length; index += 1) {
     const level = levels[index]!;
     const point = writer.add(`IFCCARTESIANPOINT((0.,0.,${feet(level.elevation)}))`);
     const axis = writer.add(`IFCAXIS2PLACEMENT3D(#${point},$,$)`);
     const placement = writer.add(`IFCLOCALPLACEMENT(#${buildingPlacement},#${axis})`);
-    const levelKey = level.levelId ?? `elevation-${level.elevation}`;
+    const levelKey = level.levelId == null
+      ? `elevation:${level.elevation}`
+      : elementKey(level.levelId);
     const name = level.levelId == null
       ? `Recovered level ${index + 1}`
       : `Revit level ${level.levelId}`;
     const storey = writer.add(
       `IFCBUILDINGSTOREY(${quoted(guid("storey", levelKey))},#${ownerHistory},${quoted(name)},$,$,#${placement},$,$,.ELEMENT.,${feet(level.elevation)})`,
     );
+    storeyKeyById.set(storey, levelKey);
     storeys.push({ id: storey, elevation: level.elevation, ...(level.levelId == null ? {} : { levelId: level.levelId }) });
     if (level.levelId != null) storeyByLevelId.set(level.levelId, storey);
   }
@@ -941,9 +1010,6 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     return entity;
   };
 
-  const identityByElement = new Map(
-    (result.nativeIdentity?.identities ?? []).map((identity) => [identity.elementId, identity.uniqueId]),
-  );
   const levelByElement = new Map(
     (result.nativeAssociatedLevelRelations ?? []).map((relation) => [relation.elementId, relation.levelId]),
   );
@@ -951,7 +1017,8 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const classByElement = new Map<number, IfcClass>();
   const storeyByElement = new Map<number, number>();
   const productsByStorey = new Map<number, number[]>();
-  const typeGroups = new Map<string, { type: number; products: number[] }>();
+  const typeGroups = new Map<string, { type: number; guidKey: string; products: number[] }>();
+  const typeGuidKeys = new Set<string>();
   const typeObjectByElement = new Map<number, number>();
   const noMeshScene = result.meshes.length === 0;
 
@@ -1025,7 +1092,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       : noMeshScene
         ? emitBoundsShape(writer, bodyContext, extrusionDirection, element, result.origin)
         : null;
-    const identity = identityByElement.get(element.elementId) ?? element.uniqueId ?? element.elementId;
+    const identity = elementKey(element.elementId, element.uniqueId);
     const product = emitProduct(
       writer,
       shapedClass(ifcClass, element.elementId),
@@ -1046,7 +1113,8 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     productsByStorey.set(storey, products);
     emitElementProperties(
       writer,
-      namespace,
+      guid,
+      identity,
       ownerHistory,
       product,
       element,
@@ -1069,14 +1137,26 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       ]);
       let group = typeGroups.get(typeKey);
       if (!group) {
+        // The GlobalId follows the Revit type element where one is known, so
+        // renaming a type in Revit keeps its IfcTypeObject. The full tuple is
+        // the key only when no id is, or when a second group claims the same
+        // id (one type recovered under two names): that group still gets a
+        // GlobalId of its own.
+        const typeElementId = element.type.elementId ?? element.type.symbolId ?? null;
+        const byId = typeElementId == null
+          ? null
+          : JSON.stringify([ifcClass.typeEntity, elementKey(typeElementId)]);
+        const guidKey = byId != null && !typeGuidKeys.has(byId) ? byId : typeKey;
+        typeGuidKeys.add(guidKey);
         group = {
           type: emitTypeObject(
             writer,
             ifcClass,
-            guid("type", typeKey),
+            guid("type", guidKey),
             ownerHistory,
             element,
           ),
+          guidKey,
           products: [],
         };
         typeGroups.set(typeKey, group);
@@ -1094,7 +1174,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     if (productByElement.has(elementId) || !fragments.length) continue;
     const shape = emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
     if (!shape) continue;
-    const identity = identityByElement.get(elementId) ?? elementId;
+    const identity = elementKey(elementId);
     const product = writer.add(
       `IFCBUILDINGELEMENTPROXY(${quoted(guid("element", identity))},#${ownerHistory},${quoted(fragments[0]!.name ?? `Recovered element ${elementId}`)},'Certified recovered triangles without a resolved semantic record','Reviter unclassified element',#${modelPlacement},#${shape},${quoted(String(elementId))},.NOTDEFINED.)`,
     );
@@ -1113,10 +1193,10 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       booleanProperty(writer, "GeometryExact", fidelity.exact),
     ];
     const propertySet = writer.add(
-      `IFCPROPERTYSET(${quoted(guid("pset-recovery", elementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
+      `IFCPROPERTYSET(${quoted(guid("pset-recovery", identity))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
     );
     writer.add(
-      `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
+      `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", identity))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
     );
   }
 
@@ -1127,11 +1207,17 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   if (unownedFragments.length) {
     const contextStorey = storeys[0]!.id;
     const contextProducts = productsByStorey.get(contextStorey) ?? [];
+    // Identical anonymous fragments are told apart by their occurrence among
+    // the identical ones, which no unrelated fragment can shift.
+    const occurrences = new Map<string, number>();
     unownedFragments.forEach((fragment, index) => {
       const shape = emitTessellatedShape(writer, bodyContext, [fragment], styleByMaterial);
       if (!shape) return;
+      const contentKey = fragmentContentKey(fragment);
+      const occurrence = occurrences.get(contentKey) ?? 0;
+      occurrences.set(contentKey, occurrence + 1);
       const product = writer.add(
-        `IFCBUILDINGELEMENTPROXY(${quoted(guid("unowned-context", index))},#${ownerHistory},${quoted(fragment.name ?? `Recovered context ${index + 1}`)},'Recovered display geometry without a resolvable element owner','Reviter context',#${modelPlacement},#${shape},$,.NOTDEFINED.)`,
+        `IFCBUILDINGELEMENTPROXY(${quoted(guid("unowned-context", `${contentKey}#${occurrence}`))},#${ownerHistory},${quoted(fragment.name ?? `Recovered context ${index + 1}`)},'Recovered display geometry without a resolvable element owner','Reviter context',#${modelPlacement},#${shape},$,.NOTDEFINED.)`,
       );
       contextProducts.push(product);
     });
@@ -1143,11 +1229,16 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // spaces. They stay under their exact raw Revit storey even when the floor
   // workspace visually composes several split levels.
   const spacesByStorey = new Map<number, number[]>();
+  const exportedRoomIds = new Set<string>();
   for (const room of options.rooms ?? []) {
     if (room.disposition !== "accepted" || !room.ifc.export) continue;
+    // `roomId` is the space's identity and its GlobalId key; a second record
+    // under one id would be a second IfcSpace claiming the first one's GUID.
+    if (exportedRoomIds.has(room.roomId)) continue;
     const storey = storeyByLevelId.get(room.levelId);
     const level = result.levels.find((candidate) => candidate.levelId === room.levelId);
     if (!storey || !level) continue;
+    exportedRoomIds.add(room.roomId);
     const shape = emitRoomShape(writer, bodyContext, extrusionDirection, room, level.elevation, result.origin);
     const name = room.details.number && room.details.name
       ? `${room.details.number} · ${room.details.name}`
@@ -1188,7 +1279,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   }
 
   for (const [storey, spaces] of spacesByStorey) {
-    writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate-spaces", storey))},#${ownerHistory},'Reviewed rooms',$,#${storey},${writer.refs(spaces)})`);
+    writer.add(`IFCRELAGGREGATES(${quoted(guid("aggregate-spaces", storeyKeyById.get(storey)!))},#${ownerHistory},'Reviewed rooms',$,#${storey},${writer.refs(spaces)})`);
   }
 
   // Stair assemblies. The parts are already exported and already placed in a
@@ -1217,8 +1308,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
 
     let container = productByElement.get(assembly.stairElementId);
     if (container == null) {
-      const identity = identityByElement.get(assembly.stairElementId)
-        ?? assembly.stairElementId;
+      const identity = elementKey(assembly.stairElementId);
       container = writer.add(
         `IFCSTAIR(${quoted(guid("element", identity))},#${ownerHistory},` +
         `${quoted(`Stairs ${assembly.stairElementId}`)},` +
@@ -1237,10 +1327,10 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         booleanProperty(writer, "GeometryExact", false),
       ];
       const propertySet = writer.add(
-        `IFCPROPERTYSET(${quoted(guid("pset-recovery", assembly.stairElementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
+        `IFCPROPERTYSET(${quoted(guid("pset-recovery", elementKey(assembly.stairElementId)))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
       );
       writer.add(
-        `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", assembly.stairElementId))},#${ownerHistory},$,$,(#${container}),#${propertySet})`,
+        `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", elementKey(assembly.stairElementId)))},#${ownerHistory},$,$,(#${container}),#${propertySet})`,
       );
       // Place the container in the storey its own parts landed in, so it is
       // reachable from the spatial structure like any other product rather
@@ -1256,7 +1346,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     }
 
     writer.add(
-      `IFCRELAGGREGATES(${quoted(guid("stair-assembly", assembly.stairElementId))},` +
+      `IFCRELAGGREGATES(${quoted(guid("stair-assembly", elementKey(assembly.stairElementId)))},` +
       `#${ownerHistory},'Stair assembly',` +
       `${quoted(`Runs/landings ${assembly.runAndLandingIds.length}, stringers ${assembly.stringerIds.length}, ` +
         `railings ${assembly.railingIds.length}, supports ${assembly.supportIds.length}`)},` +
@@ -1267,12 +1357,12 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   for (const [storey, products] of productsByStorey) {
     if (!products.length) continue;
     writer.add(
-      `IFCRELCONTAINEDINSPATIALSTRUCTURE(${quoted(guid("containment", storey))},#${ownerHistory},$,$,${writer.refs(products)},#${storey})`,
+      `IFCRELCONTAINEDINSPATIALSTRUCTURE(${quoted(guid("containment", storeyKeyById.get(storey)!))},#${ownerHistory},$,$,${writer.refs(products)},#${storey})`,
     );
   }
-  for (const [key, group] of typeGroups) {
+  for (const group of typeGroups.values()) {
     writer.add(
-      `IFCRELDEFINESBYTYPE(${quoted(guid("rel-type", key))},#${ownerHistory},$,$,${writer.refs(group.products)},#${group.type})`,
+      `IFCRELDEFINESBYTYPE(${quoted(guid("rel-type", group.guidKey))},#${ownerHistory},$,$,${writer.refs(group.products)},#${group.type})`,
     );
   }
 
@@ -1287,6 +1377,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   }
   const layerSetByKey = new Map<string, number>();
   const typeLayerAssociations = new Set<string>();
+  const typeGuidKeyByObject = new Map([...typeGroups.values()].map((group) => [group.type, group.guidKey]));
   for (const [elementId, unsortedLayers] of compoundByElement) {
     const product = productByElement.get(elementId);
     if (!product || !unsortedLayers.length) continue;
@@ -1309,14 +1400,16 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       `IFCMATERIALLAYERSETUSAGE(#${layerSet},${direction},.POSITIVE.,0.,$)`,
     );
     writer.add(
-      `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-layer-usage", elementId))},#${ownerHistory},$,$,(#${product}),#${usage})`,
+      `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-layer-usage", elementKey(elementId)))},#${ownerHistory},$,$,(#${product}),#${usage})`,
     );
     const typeObject = typeObjectByElement.get(elementId);
     const typeKey = typeObject == null ? null : `${typeObject}:${layerSet}`;
     if (typeObject && typeKey && !typeLayerAssociations.has(typeKey)) {
       typeLayerAssociations.add(typeKey);
+      // Keyed by the type's own GlobalId key and the layer stack, not by the
+      // STEP instance numbers that de-duplicate it here.
       writer.add(
-        `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-layer-type", typeKey))},#${ownerHistory},$,$,(#${typeObject}),#${layerSet})`,
+        `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-layer-type", JSON.stringify([typeGuidKeyByObject.get(typeObject)!, key])))},#${ownerHistory},$,$,(#${typeObject}),#${layerSet})`,
       );
     }
   }
@@ -1343,7 +1436,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       );
     }
     writer.add(
-      `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-material", elementId))},#${ownerHistory},$,$,(#${product}),#${relatingMaterial})`,
+      `IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-material", elementKey(elementId)))},#${ownerHistory},$,$,(#${product}),#${relatingMaterial})`,
     );
   }
 
@@ -1351,19 +1444,25 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // opening body is intentionally omitted: its recovered element envelope is
   // not necessarily the exact host cut, while RelVoids/RelFills still preserve
   // the persisted BIM relationship without inventing a solid.
+  const filledElements = new Set<number>();
   for (const relation of result.nativeHostRelations ?? []) {
+    // A door or window fills one opening; a repeated relation for it would be
+    // a second opening under the same identity.
+    if (filledElements.has(relation.elementId)) continue;
     const filling = productByElement.get(relation.elementId);
     const host = productByElement.get(relation.hostId);
     const childClass = classByElement.get(relation.elementId)?.entity;
     if (!filling || !host || (childClass !== "IFCDOOR" && childClass !== "IFCWINDOW")) continue;
+    filledElements.add(relation.elementId);
+    const fillKey = elementKey(relation.elementId);
     const opening = writer.add(
-      `IFCOPENINGELEMENT(${quoted(guid("opening", relation.elementId))},#${ownerHistory},${quoted(`Opening for ${relation.elementId}`)},'Persisted Revit host relationship',$,#${modelPlacement},$,$,.OPENING.)`,
+      `IFCOPENINGELEMENT(${quoted(guid("opening", fillKey))},#${ownerHistory},${quoted(`Opening for ${relation.elementId}`)},'Persisted Revit host relationship',$,#${modelPlacement},$,$,.OPENING.)`,
     );
     writer.add(
-      `IFCRELVOIDSELEMENT(${quoted(guid("void", relation.elementId))},#${ownerHistory},$,$,#${host},#${opening})`,
+      `IFCRELVOIDSELEMENT(${quoted(guid("void", fillKey))},#${ownerHistory},$,$,#${host},#${opening})`,
     );
     writer.add(
-      `IFCRELFILLSELEMENT(${quoted(guid("fill", relation.elementId))},#${ownerHistory},$,$,#${opening},#${filling})`,
+      `IFCRELFILLSELEMENT(${quoted(guid("fill", fillKey))},#${ownerHistory},$,$,#${opening},#${filling})`,
     );
   }
 
