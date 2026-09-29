@@ -56,6 +56,7 @@ Read in this order they are roughly the order the work happened.
 | [How an element record is laid out](revit-element-record-layout.md) | The frame, the field encodings, the deferred-object queue, and what they explain |
 | [Revit's embedded enumeration tables](revit-enumeration-tables.md) | The embedded enumeration tables, the Revit category labels they supply, the parameter enumerators, and what `-1001101` turns out to be |
 | [Exporting to Pascal](pascal-scene-export.md) | Why the Pascal export writes that editor's own building nodes instead of going through IFC, the coordinate and storey-stacking mapping, what crosses and what does not |
+| [UNBC room numbers from the survey DWG, 2026-09-29](unbc-dwg-room-numbers-2026-09-29.md) | The model has no Rooms, but the survey DWG labels 2,224 of them. This covers reading the labels, registering 53 sheets onto Revit levels, healing wall joins, and flooding one room region per label. It also covers the sidecar, Pascal zones and IfcSpaces that carry the rooms, and how to re-run the pipeline |
 
 ## Revit 2027 geometry replay
 
