@@ -74,7 +74,7 @@ test("decodes a bounded Revit 2027 HermiteSurf", () => {
 test("HermiteSurf decoder fails closed", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027HermiteSurface(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027HermiteSurface(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

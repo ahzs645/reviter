@@ -173,7 +173,7 @@ test("GInstance and InstanceInfo reject wrong releases and body sizes", () => {
       gInstance,
       0,
       gInstance.byteLength,
-      2026,
+      2023,
     ).ok,
     false,
   );
@@ -194,7 +194,7 @@ test("GInstance and InstanceInfo reject wrong releases and body sizes", () => {
       instanceInfo,
       0,
       instanceInfo.byteLength,
-      2026,
+      2023,
     ).ok,
     false,
   );

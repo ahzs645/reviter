@@ -72,7 +72,7 @@ test("uses the alternate field only when the overlapping primary does not resolv
 
 test("requires the 2027 class marker, length echo, and a framed target", () => {
   const data = instance(7, 551, [[151, 8]]);
-  assert.deepEqual(scanHostRelationCandidates(data, 2026), []);
+  assert.deepEqual(scanHostRelationCandidates(data, 2023), []);
   new DataView(data.buffer).setUint16(16, 0x08c6, true);
   assert.deepEqual(scanHostRelationCandidates(data, 2027), []);
   new DataView(data.buffer).setUint16(16, 0x07ef, true);

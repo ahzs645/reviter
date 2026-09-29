@@ -31,6 +31,8 @@ const DESCRIPTOR_BINARY = "TB_Base.tx";
 const OUTPUT_JSON = resolve("docs/generated/revit-enum-tables.json");
 const OUTPUT_DESCRIPTORS = resolve("docs/generated/revit-parameter-descriptors.json");
 const OUTPUT_COMPOSITION = resolve("docs/generated/revit-release-composition-ranges.json");
+const OUTPUT_VALUES = resolve("docs/generated/revit-parameter-values.json");
+const OUTPUT_CATEGORY_TREE = resolve("docs/generated/revit-category-tree.json");
 const OUTPUT_MARKDOWN = resolve("docs/generated/revit-enum-tables.md");
 const OUTPUT_MODULE = resolve("lib/reviter/revit-enum-tables.ts");
 
@@ -299,6 +301,138 @@ function readCompositionRanges(path) {
     .map(([className, ranges]) => ({ class: className, ranges: [...ranges].sort() }));
 }
 
+/**
+ * `g_ParameterValues`: what a parameter's stored number means.
+ *
+ * A second CSV in the same module as the labels, listing the enumerated values
+ * behind a parameter. A parameter heads a block, its values follow, and a
+ * `MAPPING;` row names another parameter that shares the same list:
+ *
+ * ```text
+ * OdBm::BuiltInParameter::ROOF_EAVE_CUT_PARAM;-1001710
+ * VALUE;33615;Plumb Cut
+ * VALUE;33618;Two Cut - Square
+ * ```
+ *
+ * Nine value rows are keyed by a shared-parameter GUID rather than an integer
+ * and are skipped: the key is the stored value, and a GUID is not one.
+ */
+function readParameterValues(bytes, symbolOffset, symbolSize) {
+  const text = new TextDecoder("latin1")
+    .decode(bytes.subarray(symbolOffset, symbolOffset + symbolSize))
+    .split("\u0000")[0];
+  const lists = new Map();
+  const aliases = new Map();
+  let current = null;
+  for (const line of text.split("\r\n")) {
+    const fields = line.split(";");
+    if (line.startsWith("OdBm::BuiltInParameter::")) {
+      const id = Number(fields[1]);
+      current = Number.isInteger(id) ? id : null;
+      if (current !== null && !lists.has(current)) lists.set(current, []);
+      continue;
+    }
+    if (current === null) continue;
+    if (line.startsWith("MAPPING;")) {
+      const id = Number(fields[2]);
+      if (Number.isInteger(id)) aliases.set(id, current);
+      continue;
+    }
+    if (!line.startsWith("VALUE;")) continue;
+    const value = Number(fields[1]);
+    if (!Number.isInteger(value)) continue;
+    lists.get(current).push({ value, label: normaliseLabel(fields.slice(2).join(";")) });
+  }
+  return { lists, aliases };
+}
+
+const valuesExtent = symbolExtent(resolve(sourceRoot, BINARY), "g_ParameterValues");
+let parameterValues = { lists: new Map(), aliases: new Map() };
+if (valuesExtent) {
+  parameterValues = readParameterValues(bytes, valuesExtent.offset, valuesExtent.size);
+  const { lists, aliases } = parameterValues;
+  await writeFile(OUTPUT_VALUES, `${JSON.stringify({
+    source: BINARY,
+    symbol: "g_ParameterValues",
+    parameters: lists.size,
+    aliases: aliases.size,
+    values: [...lists.values()].reduce((n, list) => n + list.length, 0),
+    enumerated: [...lists.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([id, list]) => ({
+        id,
+        sharedWith: [...aliases.entries()].filter(([, owner]) => owner === id).map(([other]) => other).sort((a, b) => a - b),
+        values: list,
+      })),
+  }, null, 2)}\n`);
+  console.log(`${OUTPUT_VALUES}: ${lists.size} parameters, ${aliases.size} aliases, ${
+    [...lists.values()].reduce((n, list) => n + list.length, 0)} values`);
+} else {
+  console.warn(`skipping g_ParameterValues: symbol not found in ${BINARY}`);
+}
+
+/**
+ * `g_Categories` in `TB_Base.tx`: each category's label, parent and type.
+ *
+ * `[u32 15][u64 count]` then, per category, `i64 id`, a constant `u16`, the
+ * UTF-16 label, `i64 parentId` (`-1` at the top level), and three `u32` the
+ * meaning of which is not established here. It tiles its symbol exactly.
+ *
+ * The parent is why a label can repeat: Revit shows `Lines` under one category
+ * and `Lines` under another, which is exactly the ambiguity that stops a label
+ * naming a category on its own. Recorded rather than shipped — rendering the
+ * tree is a decision about presentation, not a decoder.
+ */
+function readCategoryTree(bytes, symbolOffset, symbolSize) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset + symbolOffset, symbolSize);
+  const decoder = new TextDecoder("utf-16le");
+  let cursor = 12;
+  const rows = [];
+  while (cursor < symbolSize) {
+    const id = Number(view.getBigInt64(cursor, true));
+    cursor += 10;
+    const units = view.getUint32(cursor, true);
+    cursor += 4;
+    const label = decoder.decode(new Uint8Array(view.buffer, view.byteOffset + cursor, units * 2));
+    cursor += units * 2;
+    const parent = Number(view.getBigInt64(cursor, true));
+    cursor += 8;
+    const categoryType = view.getUint32(cursor, true);
+    cursor += 12;
+    rows.push({ id, label: normaliseLabel(label) || null, parent: parent === -1 ? null : parent, categoryType });
+  }
+  if (cursor !== symbolSize) {
+    throw new Error(`g_Categories did not tile its symbol: stopped at ${cursor} of ${symbolSize}`);
+  }
+  return rows;
+}
+
+const categoryExtent = symbolExtent(descriptorPath, "g_Categories");
+if (categoryExtent) {
+  const descriptorBytesForTree = await readFile(descriptorPath);
+  const tree = readCategoryTree(descriptorBytesForTree, categoryExtent.offset, categoryExtent.size);
+  const labelled = tree.filter((row) => row.label !== null);
+  const labelledCategories = families.get("BuiltInCategory") ?? new Map();
+  for (const row of tree) {
+    const known = labelledCategories.get(row.id);
+    if (known && known.label !== null && row.label !== null && known.label !== row.label) {
+      throw new Error(`category label disagrees for ${row.id}: "${known.label}" vs "${row.label}"`);
+    }
+  }
+  await writeFile(OUTPUT_CATEGORY_TREE, `${JSON.stringify({
+    source: DESCRIPTOR_BINARY,
+    symbol: "g_Categories",
+    rows: tree.length,
+    withParent: tree.filter((row) => row.parent !== null).length,
+    labelled: labelled.length,
+    categories: tree.sort((a, b) => a.id - b.id),
+  }, null, 2)}\n`);
+  console.log(`${OUTPUT_CATEGORY_TREE}: ${tree.length} categories, ${
+    tree.filter((row) => row.parent !== null).length} with a parent`);
+} else {
+  console.warn(`skipping g_Categories: symbol not found in ${DESCRIPTOR_BINARY}`);
+}
+
 const compositionRanges = readCompositionRanges(resolve(sourceRoot, "TB_LoaderBase.tx"));
 if (compositionRanges.length > 0) {
   await writeFile(OUTPUT_COMPOSITION, `${JSON.stringify({
@@ -476,6 +610,22 @@ const parameterTypeNamePairs = assertPackable(
     .map((row) => `${row.id}:${row.typeId.replace(/^autodesk\.revit\.parameter:/, "").replace(/-\d+\.\d+\.\d+$/, "")}`),
 );
 
+/**
+ * `id:value=label` triples for the parameters whose stored number names a
+ * choice, aliases resolved so a parameter that shares another's list carries
+ * its own copy.
+ */
+const parameterValuePairs = assertPackable(
+  [...new Set([...parameterValues.lists.keys(), ...parameterValues.aliases.keys()])]
+    .sort((a, b) => a - b)
+    .flatMap((id) => {
+      const list = parameterValues.lists.get(id)
+        ?? parameterValues.lists.get(parameterValues.aliases.get(id))
+        ?? [];
+      return list.map((entry) => `${id}:${entry.value}=${entry.label}`);
+    }),
+);
+
 const parameterEnumPairs = assertPackable(
   [...parameters.entries()]
     .sort((a, b) => a[0] - b[0])
@@ -565,10 +715,29 @@ const PACKED_PARAMETER_TYPE_NAMES = [
 ${packLines(parameterTypeNamePairs)}
 ].join("|");
 
+/**
+ * \`id:value=label\` triples joined by \`|\`: what a parameter's stored number
+ * means, for the parameters that enumerate their values.
+ */
+const PACKED_PARAMETER_VALUES = [
+${packLines(parameterValuePairs)}
+].join("|");
+
 /** \`id:Label\` pairs joined by \`|\`, for every parameter the resource labels. */
 const PACKED_PARAMETER_LABELS = [
 ${packLines(parameterLabelPairs)}
 ].join("|");
+
+/** \`id:value=label\` triples, keyed \`id:value\`. A label may contain \`=\`. */
+function unpackValues(packed: string): Map<string, string> {
+  const table = new Map<string, string>();
+  for (const entry of packed.split("|")) {
+    const separator = entry.indexOf("=");
+    if (separator < 0) continue;
+    table.set(entry.slice(0, separator), entry.slice(separator + 1));
+  }
+  return table;
+}
 
 function unpack(packed: string): Map<number, string> {
   const table = new Map<number, string>();
@@ -584,6 +753,7 @@ let categoryLabels: Map<number, string> | undefined;
 let categoryEnumNames: Map<number, string> | undefined;
 let parameterEnumNames: Map<number, string> | undefined;
 let parameterTypeNames: Map<number, string> | undefined;
+let parameterValueNames: Map<string, string> | undefined;
 let parameterLabels: Map<number, string> | undefined;
 let ambiguousCategoryLabels: Set<number> | undefined;
 
@@ -623,6 +793,23 @@ export function parameterTypeName(parameterId: number): string | undefined {
   return parameterTypeNames.get(parameterId);
 }
 
+/**
+ * What a parameter's stored number means, where the number names a choice
+ * rather than measuring something.
+ *
+ * Revit keeps these in its integer value set, so a decoded \`33615\` under
+ * \`Rafter Cut\` is "Plumb Cut" and a \`0\` under \`Rafter or Truss\` is "Truss".
+ * \`undefined\` for the parameters that enumerate nothing, which is most of them.
+ */
+export function revitParameterValueName(
+  parameterId: number,
+  value: number,
+): string | undefined {
+  if (!Number.isInteger(value)) return undefined;
+  parameterValueNames ??= unpackValues(PACKED_PARAMETER_VALUES);
+  return parameterValueNames.get(\`\${parameterId}:\${value}\`);
+}
+
 /** Label Revit shows for a parameter id. */
 export function revitParameterLabel(parameterId: number): string | undefined {
   parameterLabels ??= unpack(PACKED_PARAMETER_LABELS);
@@ -631,4 +818,4 @@ export function revitParameterLabel(parameterId: number): string | undefined {
 `;
 
 await writeFile(OUTPUT_MODULE, moduleSource);
-console.log(`\n${OUTPUT_MODULE}: ${categoryLabelPairs.length} category labels, ${categoryEnumPairs.length} category names, ${ambiguousIds.length} ambiguous, ${parameterEnumPairs.length} parameter names, ${parameterTypeNamePairs.length} type names, ${parameterLabelPairs.length} parameter labels`);
+console.log(`\n${OUTPUT_MODULE}: ${categoryLabelPairs.length} category labels, ${categoryEnumPairs.length} category names, ${ambiguousIds.length} ambiguous, ${parameterEnumPairs.length} parameter names, ${parameterTypeNamePairs.length} type names, ${parameterValuePairs.length} value names, ${parameterLabelPairs.length} parameter labels`);

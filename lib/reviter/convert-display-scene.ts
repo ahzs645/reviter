@@ -26,7 +26,7 @@ import { framingBoundsOfRecords, solidBounds } from "./bounds-records.ts";
 import { inferCurtainPanelBoundaries } from "./curtain-panel-boundary.ts";
 import { applyNativeMaterialIndices } from "./material-palette.ts";
 import { cleanNativeMeshScene } from "./native-mesh-cleanup.ts";
-import { buildRevit2027NativeMeshScene } from "./revit-2027-native-mesh-bridge.ts";
+import { buildRevit2027NativeMeshScene, nativeMeshWithinEnvelope } from "./revit-2027-native-mesh-bridge.ts";
 import { residualDatumPileElementIds } from "./datum-pile.ts";
 import { removeRecordsInPlace } from "./convert-synthesised-records.ts";
 import {
@@ -43,7 +43,7 @@ import {
   selectDisplayBounds,
   stairAssembliesWithRecoveredNativeRuns,
 } from "./scene.ts";
-import { nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
+import { meshBoundsByElement, nativeWallProxyReplacementIds } from "./wall-native-admission.ts";
 
 import type { ConvertSceneReport } from "./convert-report.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
@@ -59,6 +59,11 @@ import type {
   MeshData,
   Segment,
 } from "./types.ts";
+import { REVIT_2027_FAMILY_SYMBOL_MARKER } from "./family-material-relations.ts";
+import { NO_ENVELOPE_PROXY_CATEGORY_IDS, nonModelElementIds } from "./model-elements.ts";
+import type { NonModelReason } from "./model-elements.ts";
+import type { LevelDefinition } from "./level-definitions.ts";
+import type { ElementHeader } from "./element-headers.ts";
 
 export type DrawableRecordsInput = {
   /** Every recovered record. Unplaced ones are removed, in place. */
@@ -66,6 +71,8 @@ export type DrawableRecordsInput = {
   markersByElement: Map<number, Set<number>>;
   instancePlacements: Map<number, InstancePlacement>;
   nativeAssociatedLevelRelations: NativeAssociatedLevelRelation[];
+  /** Each element's own header, where the release carries one. */
+  elementHeaders?: ReadonlyMap<number, ElementHeader>;
 };
 
 export type DrawableRecords = {
@@ -73,6 +80,8 @@ export type DrawableRecords = {
   boundedSolids: ElementBoundsRecord[];
   /** Records that must not be drawn, as a proxy or as a native mesh. */
   nonSceneNativeMeshIds: Set<number>;
+  /** The subset that are not model elements at all, with the reason. */
+  nonModelElements: Map<number, NonModelReason>;
   /** How many records were dropped as never placed. */
   unplacedRecords: number;
 };
@@ -95,6 +104,7 @@ export function selectDrawableRecords(
     markersByElement,
     instancePlacements,
     nativeAssociatedLevelRelations,
+    elementHeaders,
   } = input;
   let unplacedRecords = 0;
   const residualDatumPileIds = residualDatumPileElementIds(
@@ -121,6 +131,22 @@ export function selectDrawableRecords(
   for (const elementId of nonSceneObjectDefinitionIds) {
     nonSceneNativeMeshIds.add(elementId);
   }
+  // Annotation, datums, sketches, containers and the like are records of the
+  // file but not parts of the building; see `model-elements.ts`.
+  const nonModelElements = nonModelElementIds(
+    elementBounds,
+    elementHeaders,
+    new Set(
+      elementBounds
+        .filter((record) =>
+          markersByElement.get(record.elementId)?.has(REVIT_2027_FAMILY_SYMBOL_MARKER) === true &&
+          !instancePlacements.has(record.elementId))
+        .map((record) => record.elementId),
+    ),
+  );
+  for (const elementId of nonModelElements.keys()) {
+    nonSceneNativeMeshIds.add(elementId);
+  }
   for (const record of elementBounds) {
     if (nonSceneNativeMeshIds.has(record.elementId)) {
       record.renderGeometryProvenance = "not-rendered-helper";
@@ -141,7 +167,7 @@ export function selectDrawableRecords(
         (record.stairTreads?.length ?? 0) > 0
       ),
   );
-  return { boundedSolids, nonSceneNativeMeshIds, unplacedRecords };
+  return { boundedSolids, nonSceneNativeMeshIds, nonModelElements, unplacedRecords };
 }
 
 export type DisplaySceneInput = {
@@ -158,6 +184,20 @@ export type DisplaySceneInput = {
   markerByElement: Map<number, number>;
   /** Records that must not be drawn, and whose native meshes are declined. */
   nonSceneNativeMeshIds: Set<number>;
+  /** The subset that are not model elements, reported on their own. */
+  nonModelElements?: ReadonlyMap<number, NonModelReason>;
+  /** Each `Level` element's own name and elevation. */
+  levelDefinitions?: ReadonlyMap<number, LevelDefinition>;
+  /** Graphics styles whose geometry Revit hides in model views. */
+  lightSourceStyleIds?: ReadonlySet<number>;
+  /** Each placed type's family-document solid forms (`family-forms.ts`). */
+  familyDocumentForms?: ReadonlyMap<number, readonly number[]>;
+  /**
+   * Model elements with no bounds record of their own whose native mesh may
+   * still be drawn, with the category their header states
+   * (`boundlessSceneElements` in `model-elements.ts`).
+   */
+  boundlessSceneElements?: ReadonlyMap<number, number>;
   /** Element ids of decoded native materials, for native mesh admission. */
   materialElementIds: Set<number>;
   nativeMaterialIndexById: Map<number, number>;
@@ -195,6 +235,11 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     nativeAssociatedLevelRelations,
     markerByElement,
     nonSceneNativeMeshIds,
+    nonModelElements,
+    levelDefinitions,
+    lightSourceStyleIds,
+    familyDocumentForms,
+    boundlessSceneElements,
     materialElementIds,
     nativeMaterialIndexById,
     proxyMaterialIndexByElement,
@@ -204,8 +249,13 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   const displaySelection = selectDisplayBounds(boundedSolids);
   const displayBounds = displaySelection.records;
   // Framed to the building rather than to the outermost record, so a few
-  // misparsed envelopes cannot throw the camera off the model.
-  const bounds = framingBoundsOfRecords(displayBounds);
+  // misparsed envelopes cannot throw the camera off the model. Terrain and
+  // planting are the site around the building rather than the building, and
+  // their envelopes are not drawn: the RAC sample's toposolid alone made its
+  // frame 190 x 268 ft around a building drawn 121 x 133 ft.
+  const buildingRecords = displayBounds.filter((record) =>
+    record.categoryId == null || !NO_ENVELOPE_PROXY_CATEGORY_IDS.has(record.categoryId));
+  const bounds = framingBoundsOfRecords(buildingRecords.length ? buildingRecords : displayBounds);
   const origin = {
     x: (bounds.min.x + bounds.max.x) / 2,
     y: (bounds.min.y + bounds.max.y) / 2,
@@ -233,27 +283,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     openings.push(opening);
     hostedOpeningsByWall.set(host.elementId, openings);
   }
-  const relativeHostedOpeningsByWall = new Map(
-    [...hostedOpeningsByWall].map(([hostId, openings]) => [
-      hostId,
-      openings.map(({ boundsFeet }) => ({
-        min: {
-          x: boundsFeet.min.x - origin.x,
-          y: boundsFeet.min.y - origin.y,
-          z: boundsFeet.min.z - origin.z,
-        },
-        max: {
-          x: boundsFeet.max.x - origin.x,
-          y: boundsFeet.max.y - origin.y,
-          z: boundsFeet.max.z - origin.z,
-        },
-      })),
-    ]),
-  );
   // Only definitions proven to be referenced by persisted placements may
   // leave the collector as reusable local geometry. The collector composes
   // their exact nested GInstance closure atomically and never publishes
   // unrelated non-scene definitions.
+  const wrapperIds = new Set(displaySelection.openingWrappers.map((record) => record.elementId));
+  const boundedSolidById = new Map(boundedSolids.map((record) => [record.elementId, record]));
   const nativeMeshCollection =
     nativeMeshCollector.snapshot(
       sharedGeometryIds,
@@ -264,6 +299,27 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
           relation.ownerId,
         ]),
       ),
+      new Set(
+        [
+          // Holding a record back from the box scene is a statement about its
+          // box: a building-sized container would hide the building, and
+          // terrain and planting are never drawn as boxes. It says nothing
+          // about the element's own geometry, which may still be published;
+          // the technical school's 1,047 ft terrain and its roof, whose
+          // record spans 468 ft, are held back that way and both have a
+          // complete mesh. Curtain-wall wrappers stay out: their panels and
+          // mullions are drawn in their place. A record with no category is
+          // not a placed element (the RAC sample's one is an RPC plant type,
+          // its box in the type's own coordinates), so it stays out too.
+          ...boundedSolids.filter(
+            (record) => record.categoryId != null && !wrapperIds.has(record.elementId),
+          ),
+        ]
+          .filter((record) => !instancePlacements.has(record.elementId))
+          .map((record) => record.elementId),
+      ),
+      lightSourceStyleIds,
+      familyDocumentForms,
     );
   const nativeMeshScene = buildRevit2027NativeMeshScene(
     nativeMeshCollection,
@@ -299,7 +355,21 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       // A certified owner without any decoded element-table record is a
       // reusable definition, not evidence of a placed object. Zero-volume
       // records remain known and may still use their exact native mesh.
-      knownElementIds: new Set(elementBounds.map((record) => record.elementId)),
+      knownElementIds: new Set([
+        ...elementBounds.map((record) => record.elementId),
+        ...(boundlessSceneElements?.keys() ?? []),
+      ]),
+      // A wall with compound-layer materials can also store a generic
+      // display shell, which reaches past the wall's ends at its joins and
+      // which the cleanup below removes. Judged with that shell, 57 UNBC
+      // walls escaped their envelope by 0.56 to 0.8 ft and fell back to a
+      // shorter reconstruction, although without it each mesh matches
+      // Autodesk's box exactly. Such a wall is checked again once cleaned.
+      provisionalElementIds: new Set(
+        [...preferredWallMaterialIdsByElement.keys()].filter(
+          (elementId) => boundedSolidById.get(elementId)?.categoryId === -2_000_011,
+        ),
+      ),
     },
   );
   // A door family's complete native object can be the swept-open family
@@ -349,10 +419,20 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     (total, mesh) => total + mesh.indices.length / 3,
     0,
   );
+  // A native wall is not cut by its hosted doors and windows. Revit saves the
+  // wall's body already cut; what filled its openings was the wall's
+  // reference planes, which the saved view does not draw and the native route
+  // now leaves out (`revit-2027-undrawn-geometry.ts`). With them gone, a line
+  // across each native host through its hosted opening's centre passes
+  // through a hole for 16 of the 2025 RAC sample's 19, all 53 of the
+  // technical school's, 177 of the fourth sample's 187 and all 1,787 of the
+  // 2027 campus model's; the others meet the wall's own pocket and sill
+  // steps. Cutting the door's or window's box out again took wall with it
+  // wherever the box reaches past the opening: 16 campus walls lost their
+  // jambs up to the door head, one 13.8 ft wall drawn only from 7.2 ft up.
   const nativeMeshCleanup = cleanNativeMeshScene(
     nativeMeshScene.meshes,
     {
-      hostedOpeningsByWall: relativeHostedOpeningsByWall,
       preferredMaterialIdsByElement:
         preferredWallMaterialIdsByElement,
       wallElementIds: new Set(
@@ -364,6 +444,34 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   );
   nativeMeshScene.meshes = nativeMeshCleanup.meshes;
   nativeMeshScene.triangles = nativeMeshCleanup.outputTriangles;
+  const provisionalIds = nativeMeshScene.provisionalElementIds;
+  if (provisionalIds.size) {
+    const cleanedBounds = meshBoundsByElement(nativeMeshScene.meshes, origin, provisionalIds);
+    const escaping = new Set<number>();
+    for (const elementId of provisionalIds) {
+      const cleaned = cleanedBounds.get(elementId);
+      const expected = boundedSolidById.get(elementId)?.boundsFeet;
+      if (!cleaned || !expected || !nativeMeshWithinEnvelope(cleaned, expected)) {
+        escaping.add(elementId);
+      }
+    }
+    if (escaping.size) {
+      nativeMeshScene.meshes = excludeMeshElementIds(nativeMeshScene.meshes, escaping);
+      nativeMeshScene.coveredElementIds = new Set(
+        [...nativeMeshScene.coveredElementIds].filter((elementId) => !escaping.has(elementId)),
+      );
+      nativeMeshScene.reconstructedElementIds = new Set(
+        [...nativeMeshScene.reconstructedElementIds].filter(
+          (elementId) => !escaping.has(elementId),
+        ),
+      );
+      nativeMeshScene.boundsMismatches += escaping.size;
+      nativeMeshScene.triangles = nativeMeshScene.meshes.reduce(
+        (total, mesh) => total + mesh.indices.length / 3,
+        0,
+      );
+    }
+  }
   // Compare against the proxy *after* persisted hosted openings are cut.
   // The uncut location-line solid can look better by span while an opening
   // at an end removes its entire cap and changes the geometry the viewer
@@ -384,6 +492,23 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     elementBounds,
     renderedWallProxyPreview,
   );
+  // The proxy that replaces a native wall is also cut around the curtain-wall
+  // wrappers standing in the wall. Where that cut leaves nothing, the native
+  // mesh stays: three UNBC walls were otherwise replaced by a proxy that was
+  // never drawn.
+  if (nativeWallProxyReplacements.size && displaySelection.openingWrappers.length) {
+    const cutProxies = buildBoundsMeshes(
+      elementBounds.filter((record) => nativeWallProxyReplacements.has(record.elementId)),
+      origin,
+      displaySelection.openingWrappers,
+      proxyMaterialIndexByElement,
+      hostedOpeningsByWall,
+    );
+    const drawn = meshBoundsByElement(cutProxies, origin, nativeWallProxyReplacements);
+    for (const elementId of nativeWallProxyReplacements) {
+      if (!drawn.has(elementId)) nativeWallProxyReplacements.delete(elementId);
+    }
+  }
   if (nativeWallProxyReplacements.size) {
     nativeMeshScene.meshes = excludeMeshElementIds(
       nativeMeshScene.meshes,
@@ -427,8 +552,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   // is not a subset of the display set, so the old difference of totals
   // could go negative and once reported "-3,547 records not rendered".
   const proxyDisplayBounds: typeof displayBounds = [];
-  let omittedHelperProxyCount = nonSceneNativeMeshIds.size;
+  let omittedHelperProxyCount = 0;
+  for (const elementId of nonSceneNativeMeshIds) {
+    if (!nonModelElements?.has(elementId)) omittedHelperProxyCount += 1;
+  }
   let omittedCurtainAssemblyProxyCount = 0;
+  let omittedTerrainProxyCount = 0;
   const displayRecordById = new Map(
     displayBounds.map((record) => [record.elementId, record]),
   );
@@ -494,6 +623,10 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       omittedCurtainAssemblyProxyCount += 1;
       continue;
     }
+    if (record.categoryId != null && NO_ENVELOPE_PROXY_CATEGORY_IDS.has(record.categoryId)) {
+      omittedTerrainProxyCount += 1;
+      continue;
+    }
     const recoveredStairAssembly =
       record.categoryId === -2000120 &&
       stairAssembliesWithRecoveredChildren.has(record.elementId);
@@ -518,6 +651,12 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
   const proxyIds = new Set(
     proxyDisplayBounds.map((record) => record.elementId),
   );
+  // A held-back record whose own mesh was published is drawn by that mesh.
+  const displayIds = new Set(displayBounds.map((record) => record.elementId));
+  for (const record of boundedSolids) {
+    if (displayIds.has(record.elementId)) continue;
+    if (nativeMeshScene.coveredElementIds.has(record.elementId)) record.renderGeometryProvenance = "native";
+  }
   for (const record of displayBounds) {
     if (nativeMeshScene.reconstructedElementIds.has(record.elementId)) {
       record.renderGeometryProvenance = "reconstructed";
@@ -540,6 +679,44 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       record.renderGeometryProvenance = "reconstructed";
     } else {
       record.renderGeometryProvenance = "bounds-fallback";
+    }
+  }
+  // An element admitted without a bounds record of its own is given one, from
+  // the geometry drawn for it, so the studio can list and select it.
+  if (boundlessSceneElements?.size) {
+    const drawnBounds = new Map<number, Bounds3>();
+    for (const mesh of nativeMeshScene.meshes) {
+      if (!mesh.elementIds) continue;
+      for (let triangle = 0; triangle < mesh.elementIds.length; triangle += 1) {
+        const elementId = mesh.elementIds[triangle]!;
+        if (!boundlessSceneElements.has(elementId)) continue;
+        let bounds = drawnBounds.get(elementId);
+        if (!bounds) {
+          bounds = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
+          drawnBounds.set(elementId, bounds);
+        }
+        for (let corner = 0; corner < 3; corner += 1) {
+          const vertex = mesh.indices[triangle * 3 + corner]! * 3;
+          const x = mesh.positions[vertex]! + origin.x;
+          const y = mesh.positions[vertex + 1]! + origin.y;
+          const z = mesh.positions[vertex + 2]! + origin.z;
+          bounds.min.x = Math.min(bounds.min.x, x); bounds.max.x = Math.max(bounds.max.x, x);
+          bounds.min.y = Math.min(bounds.min.y, y); bounds.max.y = Math.max(bounds.max.y, y);
+          bounds.min.z = Math.min(bounds.min.z, z); bounds.max.z = Math.max(bounds.max.z, z);
+        }
+      }
+    }
+    for (const [elementId, boundsFeet] of drawnBounds) {
+      elementBounds.push({
+        elementId,
+        stream: "native-mesh",
+        chunkIndex: -1,
+        rawOffset: -1,
+        recordOffset: -1,
+        categoryId: boundlessSceneElements.get(elementId)!,
+        boundsFeet,
+        renderGeometryProvenance: "native",
+      });
     }
   }
   const meshes = [
@@ -569,7 +746,7 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
     // rather than only the drawn ones, because an element held back from
     // the scene still says which level it sits on.
     levels: nativeAssociatedLevelRelations.length
-      ? levelsFromRelations(elementBounds, nativeAssociatedLevelRelations)
+      ? levelsFromRelations(elementBounds, nativeAssociatedLevelRelations, levelDefinitions)
       : levelsForBounds(displayBounds),
     meshes,
     segments,
@@ -587,6 +764,24 @@ export function buildDisplayScene(input: DisplaySceneInput): DisplayScene {
       inferredCurtainPanels: inferredCurtainPanelCount,
       omittedHelperProxies: omittedHelperProxyCount,
       omittedCurtainAssemblyProxies: omittedCurtainAssemblyProxyCount,
+      omittedTerrainProxies: omittedTerrainProxyCount,
+      nonModelElements: countReasons(nonModelElements),
     },
   };
+}
+
+/** How many elements each non-model reason excluded. */
+function countReasons(
+  reasons: ReadonlyMap<number, NonModelReason> | undefined,
+): Record<NonModelReason, number> {
+  const counts: Record<NonModelReason, number> = {
+    "view-owned": 0,
+    "family-internal": 0,
+    unplaced: 0,
+    type: 0,
+    "no-category": 0,
+    "non-model-category": 0,
+  };
+  for (const reason of reasons?.values() ?? []) counts[reason] += 1;
+  return counts;
 }

@@ -83,6 +83,11 @@ export function displayMaterials(): MaterialData[] {
     // Keep this at the end so every established fallback material index stays
     // stable.
     fallback("Stair display proxy", [...srgbBytesToLinear([127, 127, 127]), 1], 0.2),
+    // Roles for categories the 2027 reference building does not contain,
+    // appended so every index above stays where it was.
+    fallback("Furnishing display proxy", [0.62, 0.52, 0.40, 1], 0.8),
+    fallback("Services display proxy", [0.45, 0.56, 0.52, 1], 0.6),
+    fallback("Site display proxy", [0.40, 0.52, 0.33, 1], 0.95),
   ];
 }
 
@@ -97,6 +102,12 @@ export type DisplayRole =
   | "slab"
   | "covering"
   | "glazing"
+  /** Furniture, casework, fixtures, equipment and devices. */
+  | "furnishing"
+  /** Mechanical and plumbing services: equipment, ducts, pipes, trays. */
+  | "services"
+  /** Site, terrain, planting, hardscape and parking. */
+  | "site"
   /** Category decoded natively, but with no dedicated shading role. */
   | "native"
   /**
@@ -142,6 +153,53 @@ const CATEGORY_DISPLAY_ROLE: Record<number, DisplayRole> = {
   [-2000945]: "railing",
   [-2000946]: "railing",
   [-2000954]: "railing",
+  // The categories below are ones the 2027 reference building does not use;
+  // the 2025 and 2024 samples do. Each is mapped by what Revit's own
+  // enumeration names it, not by what one building happened to contain.
+  [-2000947]: "railing", // Handrails
+  [-2000948]: "railing", // RailingSupport
+  [-2000949]: "railing", // RailingTermination
+  [-2000921]: "stair", // StairsTrisers
+  [-2000181]: "wall", // Cornices: wall sweeps
+  [-2000182]: "wall", // Reveals
+  [-2001390]: "slab", // Fascia
+  [-2001391]: "slab", // Gutter
+  [-2001392]: "slab", // EdgeSlab
+  [-2001393]: "slab", // RoofSoffit
+  [-2001263]: "slab", // BuildingPad
+  [-2001300]: "structure", // StructuralFoundation
+  [-2001320]: "structure", // StructuralFraming
+  [-2001336]: "structure", // StructuralTruss
+  [-2001354]: "structure", // StructuralStiffener
+  [-2009030]: "structure", // StructConnections
+  [-2000080]: "furnishing", // Furniture
+  [-2001100]: "furnishing", // FurnitureSystems
+  [-2001000]: "furnishing", // Casework
+  [-2001350]: "furnishing", // SpecialityEquipment
+  [-2001160]: "furnishing", // PlumbingFixtures
+  [-2001040]: "furnishing", // ElectricalEquipment
+  [-2001060]: "furnishing", // ElectricalFixtures
+  [-2001120]: "furnishing", // LightingFixtures
+  [-2008077]: "furnishing", // NurseCallDevices
+  [-2008079]: "furnishing", // SecurityDevices
+  [-2008081]: "furnishing", // CommunicationDevices
+  [-2008083]: "furnishing", // DataDevices
+  [-2008085]: "furnishing", // FireAlarmDevices
+  [-2008087]: "furnishing", // LightingDevices
+  [-2001140]: "services", // MechanicalEquipment
+  [-2008000]: "services", // DuctCurves
+  [-2008044]: "services", // PipeCurves
+  [-2008099]: "services", // Sprinklers
+  [-2008130]: "services", // CableTray
+  [-2008132]: "services", // Conduit
+  [-2001260]: "site", // Site
+  [-2001180]: "site", // Parking
+  [-2001340]: "site", // Topography
+  [-2001079]: "site", // Toposolid
+  [-2001036]: "site", // Hardscape
+  [-2001220]: "site", // Roads
+  [-2001360]: "site", // Planting
+  [-2001370]: "site", // Entourage
 };
 
 /**
@@ -165,6 +223,9 @@ const ROLE_TINT: Record<DisplayRole, [number, number, number]> = {
   slab: [0.80, 0.82, 0.85],
   covering: [0.78, 0.79, 0.76],
   glazing: [0.48, 0.74, 0.88],
+  furnishing: [0.74, 0.66, 0.55],
+  services: [0.62, 0.70, 0.66],
+  site: [0.58, 0.68, 0.50],
 };
 
 const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
@@ -180,6 +241,9 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
   covering: 8,
   glazing: 9,
   stair: 10,
+  furnishing: 11,
+  services: 12,
+  site: 13,
 };
 
 /**
@@ -192,6 +256,8 @@ const DISPLAY_MATERIAL_INDEX: Record<DisplayRole, number> = {
  * has the final say.
  */
 function matchesWrapperRecordShape(record: ElementBoundsRecord): boolean {
+  // A wall whose own type is a basic wall type holds no panels.
+  if (record.wallKind === "basic") return false;
   const hasNamedAnalyticSolid =
     !!record.typeName && (!!record.solid || (record.solids?.length ?? 0) > 0);
   const count = record.recordCount;
@@ -344,6 +410,17 @@ const REVIT_2027_RAMP_SYMBOL_MARKER = 3462;
 const REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER = 974;
 
 /**
+ * A family document's solid forms: `ExtrusionElem`, `BlendElem`,
+ * `RevolutionElem`, `SweepElem`, `SweptBlendElem` and their base `GenSweep`.
+ * Each stores its geometry in the family's own coordinates, so drawn as an
+ * element of its own it lands beside the project origin. Before curved trims
+ * meshed, three such forms in the 2025 technical school sample and eighteen
+ * in one larger sample were drawn that way, none of them by the Autodesk
+ * Viewer; meshing curved trims completed nine more.
+ */
+const REVIT_2027_FAMILY_FORM_MARKERS = new Set([1728, 647, 3817, 4297, 4308, 648]);
+
+/**
  * An unlabelled type/annotation definition is not a placed scene element.
  *
  * Both identities come from exact framed classes in the file's own schema.
@@ -359,10 +436,17 @@ export function isNonSceneObjectDefinition(
   if (record.categoryId != null || record.categoryName || hasInstancePlacement) {
     return false;
   }
-  return Boolean(
-    nativeMarkers?.has(REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER) ||
-      nativeMarkers?.has(REVIT_2027_FAMILY_SYMBOL_MARKER),
-  );
+  if (!nativeMarkers) return false;
+  if (
+    nativeMarkers.has(REVIT_2027_CONTOUR_LABELING_ELEMENT_MARKER) ||
+    nativeMarkers.has(REVIT_2027_FAMILY_SYMBOL_MARKER)
+  ) {
+    return true;
+  }
+  for (const marker of nativeMarkers) {
+    if (REVIT_2027_FAMILY_FORM_MARKERS.has(marker)) return true;
+  }
+  return false;
 }
 
 /**
@@ -1191,6 +1275,12 @@ function solidOpening(
   ) {
     return null;
   }
+  // A curtain wall set into a wall runs along it, so its envelope is at least
+  // as long along the wall as across it, at any plan angle. One that runs
+  // across the wall is a wall this one abuts, and the overlap is their join:
+  // in the 2025 technical school, 26 interior walls meet the curtain facade
+  // end-on, and cutting the overlap took 1.39 ft off each of them.
+  if (normalRadius > alongRadius + epsilon) return null;
 
   const start = Math.max(0, alongCentre - alongRadius);
   const end = Math.min(length, alongCentre + alongRadius);
@@ -2550,6 +2640,7 @@ const MIN_LEVEL_MEMBERS = 20;
 export function levelsFromRelations(
   records: ElementBoundsRecord[],
   relations: readonly { elementId: number; levelId: number }[],
+  definitions?: ReadonlyMap<number, { name: string; elevationFeet: number }>,
 ): LevelBand[] {
   const baseByElement = new Map<number, number>();
   for (const record of records) {
@@ -2571,11 +2662,16 @@ export function levelsFromRelations(
   for (const [levelId, members] of membersByLevel) {
     if (members.length < MIN_LEVEL_MEMBERS) continue;
     members.sort((a, b) => a - b);
+    // The level's own elevation where its record decoded; the median of its
+    // members' bases only as the fallback.
+    const definition = definitions?.get(levelId);
     levels.push({
-      elevation: members[Math.floor(members.length / 2)]!,
+      elevation: definition?.elevationFeet ?? members[Math.floor(members.length / 2)]!,
       candidates: members.length,
       levelId,
       source: "assoc-level-id",
+      ...(definition ? { name: definition.name } : {}),
+      elevationSource: definition ? "level-element" : "member-median",
     });
   }
   return levels.sort((a, b) => a.elevation - b.elevation);

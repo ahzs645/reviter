@@ -15,6 +15,7 @@ import {
 } from "../../lib/reviter";
 import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
 import { useTheme } from "./use-theme.ts";
+import { levelNames } from "./format.ts";
 
 type Point2 = [number, number];
 
@@ -276,9 +277,13 @@ export function FloorMiniMap({
   const selectedMarker = selectedPoint ? { x: selectedPoint[0] - bounds.minX, y: bounds.maxY - selectedPoint[1] } : null;
   const choose = (index: number) => { const plan = plans[index]; if (plan) { onSelectedLevelId(plan.primaryLevelId); setZoom(1); setPan({ x: 0, y: 0 }); } };
   /** "0'-0"" for one elevation, "0'-0"–4'-6"" for a composed split level. */
-  const planLabel = (plan: typeof plans[number]) => plan.minElevation === plan.maxElevation
-    ? formatFeetInches(plan.minElevation)
-    : `${formatFeetInches(plan.minElevation)}–${formatFeetInches(plan.maxElevation)}`;
+  const planLabel = (plan: typeof plans[number]) => {
+    const elevation = plan.minElevation === plan.maxElevation
+      ? formatFeetInches(plan.minElevation)
+      : `${formatFeetInches(plan.minElevation)}–${formatFeetInches(plan.maxElevation)}`;
+    const names = levelNames(plan.levels ?? []);
+    return names ? `${names} · ${elevation}` : elevation;
+  };
   // Zoom keeps the point under the cursor (or the viewport centre, for the
   // buttons) fixed, instead of scaling about the map's top-left corner.
   const applyZoom = (value: number, focus?: { x: number; y: number }) => {

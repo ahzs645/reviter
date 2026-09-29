@@ -70,11 +70,13 @@ import {
   respaceStraightStairTreads,
   snapTreadsToSketchRiserLines,
 } from "./stair-treads.ts";
+import { widenWallsToEnvelope } from "./wall-envelope-thickness.ts";
 import { recoverWallJoinCorners } from "./wall-joins.ts";
 
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { wallArcs, wallSolids, surfaceQuadsFor } from "./native-geometry.ts";
+import type { ElementHeader } from "./element-headers.ts";
 import type { CategoryToken } from "./native-categories.ts";
 import type { Revit2027StairsRunAndLandingAggregate } from "./revit-2027-stairs-aggregate.ts";
 import type { Point3, SketchCurve } from "./sketch-curves.ts";
@@ -94,6 +96,8 @@ export type ElementGeometryInput = {
   /** Every recovered record, real or synthesised. Mutated in place. */
   elementBounds: ElementBoundsRecord[];
   categoryTokens: CategoryToken[];
+  /** Each element's own `ElementHeader`, where the release carries one. */
+  elementHeaders: Map<number, ElementHeader>;
   elementIndex: RvtElementIndex | undefined;
   elementOwnership: ElementOwnershipDecode | undefined;
   elementParameters: Map<number, Map<number, ElementParameter>>;
@@ -134,6 +138,7 @@ export type ElementGeometryCounts = {
   extendedSolids: number;
   shrunkSolids: number;
   narrowedSolidBands: number;
+  widenedWalls: number;
   recoveredWallJoinEnds: number;
   adoptedStairBoxes: number;
   narrowedFacetBands: number;
@@ -593,7 +598,7 @@ function railPathFor(
 export function resolveElementGeometry(
   input: ElementGeometryInput,
 ): ElementGeometryResolution {
-  const { elementBounds, categoryTokens, elementIndex, elementOwnership } = input;
+  const { elementBounds, categoryTokens, elementHeaders, elementIndex, elementOwnership } = input;
   // The persisted ownership table lists every element in the document, not
   // only the drawable ones, which is what lets the category resolver tell a
   // token that fell through from an undrawn element apart from one that
@@ -605,6 +610,7 @@ export function resolveElementGeometry(
     elementOwnership
       ? new Set(elementOwnership.records.map((record) => record.elementId))
       : undefined,
+    elementHeaders,
   );
 
 
@@ -613,7 +619,7 @@ export function resolveElementGeometry(
   const attached = attachRecoveredGeometry(input);
   applyNativeObjectCategories(input);
   const completedFlatSketches = completeFlatSketchRecords(elementBounds);
-  const solids = reconcileSolidsWithEnvelopes(elementBounds);
+  const solids = reconcileSolidsWithEnvelopes(elementBounds, input.wallThicknessByType);
   // A non-square wall join cannot be represented by moving the location-line
   // endpoints: its two long faces end at different stations.  Recover those
   // two corners only where an adjacent native wall face and this wall's own
@@ -1003,12 +1009,16 @@ function completeFlatSketchRecords(
   return completedFlatSketches;
 }
 
-function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
+function reconcileSolidsWithEnvelopes(
+  elementBounds: ElementBoundsRecord[],
+  wallThicknessByType: ReadonlyMap<number, number>,
+): {
   clippedSolids: number;
   disownedSolids: number;
   extendedSolids: number;
   shrunkSolids: number;
   narrowedSolidBands: number;
+  widenedWalls: number;
 } {
   /*
    * A rebuilt solid, clipped to the element's own envelope.
@@ -1107,12 +1117,19 @@ function reconcileSolidsWithEnvelopes(elementBounds: ElementBoundsRecord[]): {
           : longest);
     }
   }
+  // The length is the envelope's along the wall; the thickness is its extent
+  // across it, where the wall runs along an axis. See `wall-envelope-thickness.ts`.
+  const widenedWalls = widenWallsToEnvelope(
+    elementBounds,
+    (record) => (record.typeId == null ? undefined : wallThicknessByType.get(record.typeId)),
+  );
   return {
     clippedSolids,
     disownedSolids,
     extendedSolids,
     shrunkSolids,
     narrowedSolidBands,
+    widenedWalls,
   };
 }
 

@@ -54,7 +54,7 @@ test("decodes GGTag group children and exact derived fields", () => {
 test("GGTag rejects release, truncation, non-finite point, and bad booleans", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027GGTag(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GGTag(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(

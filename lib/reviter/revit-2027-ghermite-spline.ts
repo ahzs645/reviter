@@ -1,16 +1,48 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
+import { fileClassFieldNames, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source slot for `GHermiteSpline`. */
 export const REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT = 2259;
 
-const GINFO_BYTES = 20;
 const END_PARAMETERS_BYTES = 16;
 const PERIODIC_BYTES = 1;
 const NODE_COUNT_BYTES = 4;
 const SPLINE_NODE_BYTES = 56;
-const FIXED_PREFIX_BYTES =
-  GINFO_BYTES + END_PARAMETERS_BYTES + PERIODIC_BYTES + NODE_COUNT_BYTES;
+const fixedPrefixBytes = (): number =>
+  revit2027GInfoBytes() + END_PARAMETERS_BYTES + PERIODIC_BYTES + NODE_COUNT_BYTES;
 const DEFAULT_MAX_NODES = 1_000_000;
+
+/** `SplineNode` in the 2027 numbering. */
+const REVIT_2027_SPLINE_NODE_CLASS = 2260;
+
+/**
+ * Byte offsets of a node's point, tangent and parameter, in the order the
+ * file's own schema declares its fields. 2027 declares point, tangent,
+ * parameter; 2024 and 2025 declare parameter, point, tangent, and read the
+ * 2027 way a 2025 spline's parameters come out as its tangents' last
+ * component, falling where they rise: the RAC sample's faucet and two of the
+ * technical school's beams were refused as "not ordered".
+ */
+function splineNodeLayout(): { point: number; tangent: number; parameter: number } {
+  const fields = fileClassFieldNames(REVIT_2027_SPLINE_NODE_CLASS);
+  if (fields && fields.length === 3) {
+    const at = new Map<string, number>();
+    let offset = 0;
+    for (const field of fields) {
+      at.set(field, offset);
+      offset += field === "m_iParametr" ? 8 : 24;
+    }
+    const point = at.get("m_iPoint");
+    const tangent = at.get("m_iTangent");
+    const parameter = at.get("m_iParametr");
+    if (point != null && tangent != null && parameter != null) return { point, tangent, parameter };
+  }
+  return { point: 0, tangent: 24, parameter: 48 };
+}
 
 export type Revit2027SplineNode = {
   point: readonly [number, number, number];
@@ -46,7 +78,7 @@ export function decodeRevit2027GHermiteSpline(
   revitVersion: number,
   options: { maxNodes?: number } = {},
 ): Revit2027GHermiteSplineDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GHermiteSpline decoding requires release 2027",
@@ -64,7 +96,7 @@ export function decodeRevit2027GHermiteSpline(
     !Number.isSafeInteger(enclosingEndOffset) ||
     byteOffset < 0 ||
     enclosingEndOffset > data.byteLength ||
-    byteOffset > enclosingEndOffset - FIXED_PREFIX_BYTES
+    byteOffset > enclosingEndOffset - fixedPrefixBytes()
   ) {
     return {
       ok: false,
@@ -74,10 +106,10 @@ export function decodeRevit2027GHermiteSpline(
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const endParameters = [
-    view.getFloat64(byteOffset + GINFO_BYTES, true),
-    view.getFloat64(byteOffset + GINFO_BYTES + 8, true),
+    view.getFloat64(byteOffset + revit2027GInfoBytes(), true),
+    view.getFloat64(byteOffset + revit2027GInfoBytes() + 8, true),
   ] as const;
-  const periodicOffset = byteOffset + GINFO_BYTES + END_PARAMETERS_BYTES;
+  const periodicOffset = byteOffset + revit2027GInfoBytes() + END_PARAMETERS_BYTES;
   const periodic = data[periodicOffset]!;
   if (periodic !== 0 && periodic !== 1) {
     return {
@@ -93,7 +125,7 @@ export function decodeRevit2027GHermiteSpline(
       error: "Revit 2027 GHermiteSpline node count is outside the safety bound",
     };
   }
-  const byteLength = FIXED_PREFIX_BYTES + nodeCount * SPLINE_NODE_BYTES;
+  const byteLength = fixedPrefixBytes() + nodeCount * SPLINE_NODE_BYTES;
   const endOffset = byteOffset + byteLength;
   if (!Number.isSafeInteger(endOffset) || endOffset > enclosingEndOffset) {
     return {
@@ -109,20 +141,21 @@ export function decodeRevit2027GHermiteSpline(
   }
 
   const nodes: Revit2027SplineNode[] = [];
+  const layout = splineNodeLayout();
   let cursor = countOffset + NODE_COUNT_BYTES;
   let previousParameter = -Infinity;
   for (let index = 0; index < nodeCount; index += 1) {
     const point = [
-      view.getFloat64(cursor, true),
-      view.getFloat64(cursor + 8, true),
-      view.getFloat64(cursor + 16, true),
+      view.getFloat64(cursor + layout.point, true),
+      view.getFloat64(cursor + layout.point + 8, true),
+      view.getFloat64(cursor + layout.point + 16, true),
     ] as const;
     const tangent = [
-      view.getFloat64(cursor + 24, true),
-      view.getFloat64(cursor + 32, true),
-      view.getFloat64(cursor + 40, true),
+      view.getFloat64(cursor + layout.tangent, true),
+      view.getFloat64(cursor + layout.tangent + 8, true),
+      view.getFloat64(cursor + layout.tangent + 16, true),
     ] as const;
-    const parameter = view.getFloat64(cursor + 48, true);
+    const parameter = view.getFloat64(cursor + layout.parameter, true);
     if (
       !point.every(Number.isFinite) ||
       !tangent.every(Number.isFinite) ||
@@ -149,12 +182,7 @@ export function decodeRevit2027GHermiteSpline(
     value: {
       byteOffset,
       endOffset,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       endParameters,
       periodic: periodic === 1,
       nodes,

@@ -6,6 +6,8 @@ import type { NativeMaterialDefinition } from "../lib/reviter/material-records.t
 import {
   bindRevit2027FaceGStyleMaterialFallback,
   decodeRevit2027GStyleElementRecord,
+  LIGHT_SOURCE_CATEGORY_ID,
+  readGStyleElementCategoryId,
   REVIT_2027_GSTYLE_ELEMENT_MARKER,
   REVIT_2027_GSTYLE_ELEMENT_OBJECT_LENGTH,
   REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT,
@@ -85,7 +87,7 @@ test("decodes the queued GStyle material field after GStyleElem static fields", 
 test("rejects the release, layout, source slot, flag, and echo independently", () => {
   const base = fixture();
   assert.equal(
-    decodeRevit2027GStyleElementRecord(base.bytes, base.object, 2026).ok,
+    decodeRevit2027GStyleElementRecord(base.bytes, base.object, 2023).ok,
     false,
   );
 
@@ -141,7 +143,7 @@ test("scans only exact framed GStyleElem records", () => {
   assert.equal(result.failures.size, 0);
 
   assert.equal(
-    scanRevit2027GStyleElementRecords(exact.bytes, 2026)
+    scanRevit2027GStyleElementRecords(exact.bytes, 2023)
       .decodedStyleElements,
     0,
   );
@@ -251,4 +253,28 @@ test("reports missing style and material carriers without guessing", () => {
     [],
   );
   assert.equal(missingMaterial.status, "unresolved-material");
+});
+
+test("a style's category is read wherever its descriptor sits", () => {
+  const { bytes, object } = fixture();
+  assert.equal(readGStyleElementCategoryId(bytes, object), -2000011);
+
+  // The 2025 RAC sample's light-source style 102861: a 176-byte record, two
+  // bytes more element prefix, the descriptor at +123 and "Light Source" after it.
+  const longer = new Uint8Array(196);
+  const view = new DataView(longer.buffer);
+  view.setUint32(0, 102861, true);
+  view.setUint32(12, 176, true);
+  view.setUint16(16, REVIT_2027_GSTYLE_ELEMENT_MARKER, true);
+  view.setInt32(123, -1, true);
+  view.setUint16(127, REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT, true);
+  view.setBigInt64(129, BigInt(LIGHT_SOURCE_CATEGORY_ID), true);
+  view.setUint32(192, 176, true);
+  const longerObject = { ...object, elementId: 102861, objectLength: 176 };
+  assert.equal(readGStyleElementCategoryId(longer, longerObject), LIGHT_SOURCE_CATEGORY_ID);
+
+  // Two candidate descriptors: nothing is claimed.
+  view.setInt32(150, -1, true);
+  view.setUint16(154, REVIT_2027_GSTYLE_SOURCE_CLASS_SLOT, true);
+  assert.equal(readGStyleElementCategoryId(longer, longerObject), null);
 });

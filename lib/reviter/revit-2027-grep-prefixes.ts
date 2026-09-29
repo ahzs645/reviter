@@ -5,6 +5,8 @@ import {
   type CondInt16QueueEntry,
   type RevitTransform3d,
 } from "./dynamic-geometry-queue.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /**
  * @deprecated Source slot 2215 is now schema-certified as `GInstance`; use
@@ -89,12 +91,48 @@ function bounded(
 }
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
+  return readRevit2027GInfo(view, byteOffset);
+}
+
+/**
+ * `GNode.m_GInfo`, which every geometry node begins with.
+ *
+ * The 2024 to 2027 schemas declare it `m_categoryId` (an `ElementId`, eight
+ * bytes), `m_tag`, `m_controlCommand`, `m_flags`: 20 bytes. The 2019 to 2023
+ * schemas declare the same four fields with the id third and four bytes wide:
+ * `m_tag`, `m_controlCommand`, `m_categoryId`, `m_flags`, 16 bytes. Which one
+ * a file writes follows its element-id width (`element-id-width.ts`); the
+ * returned fields are the same either way, the category widened to 64 bits.
+ */
+export function readRevit2027GInfo(view: DataView, byteOffset: number): Revit2027GInfo {
+  if (narrowElementIds()) {
+    return {
+      gStyleElementId: BigInt(view.getInt32(byteOffset + 8, true)),
+      tag: view.getInt32(byteOffset, true),
+      controlCommand: view.getInt32(byteOffset + 4, true),
+      flags: view.getUint32(byteOffset + 12, true),
+    };
+  }
   return {
     gStyleElementId: view.getBigInt64(byteOffset, true),
     tag: view.getInt32(byteOffset + 8, true),
     controlCommand: view.getInt32(byteOffset + 12, true),
     flags: view.getUint32(byteOffset + 16, true),
   };
+}
+
+/** Bytes of `GNode.m_GInfo` in the current file: 20, or 16 where ids are 32-bit. */
+export function revit2027GInfoBytes(): 16 | 20 {
+  return narrowElementIds() ? 16 : 20;
+}
+
+/**
+ * How many bytes shorter a node body is where ids are 32-bit, for each
+ * `GInfo` it holds: 4, or 0 in a 64-bit-id file. The per-class body sizes
+ * below are the 2027 ones; a reader subtracts this for the narrow layout.
+ */
+export function revit2027GInfoShrink(): 0 | 4 {
+  return narrowElementIds() ? 4 : 0;
 }
 
 function readBoolean(data: Uint8Array, byteOffset: number): boolean | null {
@@ -117,7 +155,7 @@ export function decodeRevit2027GArray(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GArrayDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GArray decoding requires release 2027" };
   }
   if (
@@ -227,10 +265,10 @@ export function decodeRevit2027GGroupPrefix(
   revitVersion: number,
   options: { maxChildren?: number } = {},
 ): Revit2027GGroupPrefixDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GGroup decoding requires release 2027" };
   }
-  if (!bounded(data, byteOffset, GINFO_BYTES + 4, enclosingEndOffset)) {
+  if (!bounded(data, byteOffset, revit2027GInfoBytes() + 4, enclosingEndOffset)) {
     return { ok: false, error: "Revit 2027 GGroup prefix is truncated" };
   }
 
@@ -240,7 +278,7 @@ export function decodeRevit2027GGroupPrefix(
       : data.subarray(0, enclosingEndOffset);
   const queue = decodeCondInt16QueueCollection(
     boundedData,
-    byteOffset + GINFO_BYTES,
+    byteOffset + revit2027GInfoBytes(),
     {
       maxEntries: options.maxChildren,
     },

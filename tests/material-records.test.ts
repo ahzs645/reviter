@@ -218,7 +218,7 @@ test("selects the nested render color rather than its different graphic color", 
 });
 
 test("rejects the record on a different release, marker, or broken length echo", () => {
-  assert.equal(scanMaterialElementRecords(materialRecord(), 2026).framedMaterialElements, 0);
+  assert.equal(scanMaterialElementRecords(materialRecord(), 2023).framedMaterialElements, 0);
   assert.equal(
     scanMaterialElementRecords(materialRecord({ marker: 0x08c6 }), 2027)
       .framedMaterialElements,

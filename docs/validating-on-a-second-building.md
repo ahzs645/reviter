@@ -81,6 +81,13 @@ Until that second run exists, every threshold in this repository is a hypothesis
 with one supporting observation, and the honest reading of a green assertion
 list is that nothing has contradicted it yet.
 
+> **2026-09-24:** three more projects arrived, and [the comparison
+> run](four-building-comparison-2026-09-24.md) found none of them is a 2027
+> save. It exercises the release gate and `Global/ElemTable`, not the rules
+> above, so this paragraph still stands. One baseline has moved: the reference
+> model now reaches `monumental-solid-treads` 26 times by design, so item 1
+> above is no longer "empty on the reference model".
+
 ## Ranked backlog
 
 By visible impact rather than by how well understood each one is. All four have

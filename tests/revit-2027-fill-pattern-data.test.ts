@@ -82,7 +82,7 @@ test("fails closed on release, bounds, count, scalar, and descriptors", () => {
   view.setInt32(36, 0, true);
 
   assert.equal(
-    decodeRevit2027FillPatternData(data, 0, data.length, 2026).ok,
+    decodeRevit2027FillPatternData(data, 0, data.length, 2023).ok,
     false,
   );
   assert.equal(

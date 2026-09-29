@@ -1286,6 +1286,43 @@ test("a wall whose wrapper consumes every cell is all opening, not an envelope",
   assert.equal(kept.indices.length / 3, 12);
 });
 
+test("a curtain wall running across a wall's end is a join, not an opening", () => {
+  // Interior wall 158088 in the 2025 technical school meets the curtain
+  // facade end-on. The facade's envelope crosses both of the wall's faces and
+  // overlaps its last 1.39 ft, but it runs across the wall rather than along
+  // it, so nothing is cut: Autodesk draws the wall to its full 26.69 ft.
+  const wall: ElementBoundsRecord = {
+    elementId: 158088,
+    stream: "Partitions/15",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    categoryId: -2000011,
+    boundsFeet: { min: { x: -0.23, y: 0, z: 0 }, max: { x: 0.23, y: 26.69, z: 12.47 } },
+    solids: [{
+      elementId: 158088,
+      start: { x: 0, y: 26.69 },
+      end: { x: 0, y: 0 },
+      baseElevation: 0,
+      topElevation: 12.47,
+      thickness: 0.45,
+    }],
+  };
+  const facade: ElementBoundsRecord = {
+    elementId: 153616,
+    stream: "Partitions/15",
+    chunkIndex: 0,
+    rawOffset: 0,
+    recordOffset: 0,
+    boundsFeet: { min: { x: -101.7, y: -1.89, z: 0 }, max: { x: 32.8, y: 1.39, z: 12.47 } },
+  };
+  const [mesh] = buildBoundsMeshes([wall], { x: 0, y: 0, z: 0 }, [facade]);
+  assert.ok(mesh);
+  const ys = mesh.positions.filter((_, index) => index % 3 === 1);
+  assert.ok(Math.abs(Math.min(...ys)) < 1e-4);
+  assert.ok(Math.abs(Math.max(...ys) - 26.69) < 1e-4);
+});
+
 test("holds back a storey-sized plate that no category claims", () => {
   // Size alone proves nothing — real slabs are larger than these. Size with no
   // category is the discriminator, and it is what put 89 ft of sheet outside

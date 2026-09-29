@@ -66,6 +66,33 @@ test("names ten camera orientations and puts the camera outside the model for ea
   }
 });
 
+test("a fitted view keeps every corner of the model on the canvas", () => {
+  // The 2024 Snowdon sample's framed box: compact and tall, so a distance
+  // taken from its longest side alone left the near corner off the canvas.
+  const halfExtents = { x: 91.6, y: 41.2, z: 47.5 };
+  const aspect = 1024 / 880;
+  for (const { preset } of CAMERA_PRESETS) {
+    const pose = cameraPoseForPreset({ x: 0, y: 0, z: 0 }, 113.6, preset, {
+      halfExtents,
+      verticalFovDegrees: 45,
+      aspect,
+    });
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100_000);
+    camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    let widest = 0;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      const corner = new THREE.Vector3(sx * halfExtents.x, sy * halfExtents.y, sz * halfExtents.z).project(camera);
+      widest = Math.max(widest, Math.abs(corner.x), Math.abs(corner.y));
+    }
+    assert.ok(widest <= 1, `${preset} put a corner off the canvas (${widest.toFixed(3)})`);
+    // ...and fills it rather than leaving the model small in the middle.
+    assert.ok(widest > 0.85, `${preset} framed the model too loosely (${widest.toFixed(3)})`);
+  }
+});
+
 test("top and bottom look at the model from opposite sides", () => {
   const center = { x: 0, y: 0, z: 0 };
   const top = cameraPoseForPreset(center, 20, "top");

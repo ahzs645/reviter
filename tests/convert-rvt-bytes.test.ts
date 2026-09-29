@@ -506,6 +506,7 @@ test("the counters agree with what the container was given", () => {
     adoptedStairBoxes: 0,
     clippedSolids: 0,
     extendedSolids: 0,
+    widenedWalls: 0,
     recoveredWallJoinEnds: 0,
     shrunkSolids: 0,
     narrowedSolidBands: 0,

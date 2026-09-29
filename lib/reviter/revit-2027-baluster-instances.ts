@@ -6,12 +6,14 @@ import {
 import {
   decodeRevit2027GInstanceStatic,
   decodeRevit2027InstanceInfo,
-  REVIT_2027_GINSTANCE_BODY_BYTES,
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
-  REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+  revit2027GInstanceLayout,
+  revit2027InstanceInfoBodyBytes,
   type Revit2027GInstance,
   type Revit2027InstanceInfo,
 } from "./revit-2027-ginstance.ts";
+import { narrowElementIds } from "./element-id-width.ts";
+import { revit2027GInfoShrink } from "./revit-2027-grep-prefixes.ts";
 import type { Revit2027NestedInstance } from "./revit-2027-nested-instance.ts";
 import {
   decodeRevit2027GLine,
@@ -30,6 +32,7 @@ import {
   REVIT_2027_GHERMITE_SPLINE_SOURCE_CLASS_SLOT,
   type Revit2027GHermiteSpline,
 } from "./revit-2027-ghermite-spline.ts";
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** `BaseRailingSym`, measured from the release-2027 framed class table. */
 export const REVIT_2027_BASE_RAILING_SYMBOL_MARKER = 605;
@@ -47,6 +50,32 @@ const BASE_RAILING_SYMBOL_DERIVED_OFFSET = 149;
 const PARAMS_AND_ID_BYTES = 57;
 const BASE_RAILING_SYMBOL_DERIVED_SUFFIX_BYTES = 35;
 const TOP_RAIL_TYPE_DERIVED_OFFSET = 149;
+
+/**
+ * The same classes where ids are 32-bit (Revit 2019 to 2023;
+ * `element-id-width.ts`). The frame header is 12 bytes and the derived
+ * fields of both classes start at +105: in all 20 railing frames of the 2023
+ * RAC sample the curve-loop collection is there, where the 2025 copy has it
+ * at +149. A `paramsAndId` row declares its four angles first and its three
+ * four-byte ids after them (45 bytes), and `BaseRailingSym` its
+ * `m_baseRailingId` after `m_railYDir`, not after `m_approxLength`. The
+ * `TopRailType` curves decode to the 2025 copy's for all ten top rails; no
+ * 2019 to 2023 sample holds a `BaseRailingSym` whose balusters decode in its
+ * 2024-on copy either, so the narrow baluster layout is the schema's, checked
+ * against synthetic bytes only.
+ */
+const NARROW_DERIVED_OFFSET = 105;
+const NARROW_PARAMS_AND_ID_BYTES = 45;
+
+function idBytes(): number {
+  return narrowElementIds() ? 4 : 8;
+}
+
+/** A `GInstance` body with no embedded symbol, in the current file. */
+function gInstanceBodyBytes(): number {
+  const layout = revit2027GInstanceLayout();
+  return layout.embeddedSymbolOffset + 4 + layout.scalarSuffixBytes;
+}
 const MIN_TOP_RAIL_TYPE_CURVE_LOOPS = 2;
 const DEFAULT_MAX_INSTANCES = 100_000;
 const DEFAULT_MAX_FRAME_BYTES = 320 * 1024 * 1024;
@@ -162,7 +191,7 @@ function validateFrame(
   maxFrameBytes: number,
 ): { ok: true; view: DataView; frameEndOffset: number; echoOffset: number } |
   { ok: false; error: string } {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "railing symbol decoding requires Revit 2027" };
   }
   if (
@@ -176,24 +205,26 @@ function validateFrame(
     return { ok: false, error: "railing symbol framed object is truncated or exceeds its byte cap" };
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const narrow = narrowElementIds();
+  const header = narrow ? 12 : FRAME_ECHO_OFFSET;
   const frameEndOffset = frame.offset + frame.objectLength;
-  const echoOffset = frameEndOffset + FRAME_ECHO_OFFSET;
+  const echoOffset = frameEndOffset + header;
   if (
-    view.getUint32(frame.offset + 12, true) !== frame.objectLength ||
+    view.getUint32(frame.offset + header - 4, true) !== frame.objectLength ||
     view.getUint32(echoOffset, true) !== frame.objectLength
   ) {
     return { ok: false, error: "railing symbol frame length echo does not match" };
   }
   if (
     frame.marker !== marker ||
-    view.getUint16(frame.offset + 16, true) !== marker
+    canonicalClassTag(view.getUint16(frame.offset + header, true)) !== marker
   ) {
     return { ok: false, error: "railing symbol frame marker does not match" };
   }
   if (
     frame.elementId <= 0 ||
     view.getUint32(frame.offset, true) !== frame.elementId ||
-    view.getUint32(frame.offset + 4, true) !== 0
+    (!narrow && view.getUint32(frame.offset + 4, true) !== 0)
   ) {
     return { ok: false, error: "railing symbol frame owner id is invalid or inconsistent" };
   }
@@ -204,6 +235,7 @@ function readPositiveObjectId(
   view: DataView,
   byteOffset: number,
 ): number | null {
+  if (narrowElementIds()) return positiveObjectId(BigInt(view.getInt32(byteOffset, true)));
   return positiveObjectId(view.getBigInt64(byteOffset, true));
 }
 
@@ -224,7 +256,8 @@ function locateUniqueGInstanceBlock(
   count: number,
 ): { ok: true; values: Revit2027GInstance[] } |
   { ok: false; error: string } {
-  const byteLength = count * REVIT_2027_GINSTANCE_BODY_BYTES;
+  const bodyBytes = gInstanceBodyBytes();
+  const byteLength = count * bodyBytes;
   const matches: Revit2027GInstance[][] = [];
   for (
     let offset = startOffset;
@@ -237,7 +270,7 @@ function locateUniqueGInstanceBlock(
       const decoded = decodeRevit2027GInstanceStatic(
         data,
         cursor,
-        cursor + REVIT_2027_GINSTANCE_BODY_BYTES,
+        cursor + bodyBytes,
         2027,
       );
       if (!decoded.ok) break;
@@ -272,7 +305,8 @@ function locateUniqueInstanceInfoBlock(
   const allowedSymbolElementIds = new Set(
     paramsAndIds.map(({ symbolElementId }) => symbolElementId),
   );
-  const byteLength = count * REVIT_2027_INSTANCE_INFO_BODY_BYTES;
+  const bodyBytes = revit2027InstanceInfoBodyBytes();
+  const byteLength = count * bodyBytes;
   const matches: Revit2027InstanceInfo[][] = [];
   for (
     let offset = startOffset;
@@ -285,7 +319,7 @@ function locateUniqueInstanceInfoBlock(
       const decoded = decodeRevit2027InstanceInfo(
         data,
         cursor,
-        cursor + REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+        cursor + bodyBytes,
         2027,
       );
       if (
@@ -349,7 +383,9 @@ export function decodeRevit2027BalusterInstanceDefinition(
     return { ok: false, error: "BaseRailingSym type code does not match" };
   }
 
-  let cursor = frame.offset + BASE_RAILING_SYMBOL_DERIVED_OFFSET;
+  const narrow = narrowElementIds();
+  let cursor = frame.offset + (narrow ? NARROW_DERIVED_OFFSET : BASE_RAILING_SYMBOL_DERIVED_OFFSET);
+  const paramsRowBytes = narrow ? NARROW_PARAMS_AND_ID_BYTES : PARAMS_AND_ID_BYTES;
   if (cursor > framed.frameEndOffset - 4) {
     return { ok: false, error: "BaseRailingSym derived body is truncated" };
   }
@@ -415,8 +451,8 @@ export function decodeRevit2027BalusterInstanceDefinition(
     };
   }
   if (
-    !Number.isSafeInteger(paramsCount * PARAMS_AND_ID_BYTES) ||
-    cursor > framed.frameEndOffset - paramsCount * PARAMS_AND_ID_BYTES
+    !Number.isSafeInteger(paramsCount * paramsRowBytes) ||
+    cursor > framed.frameEndOffset - paramsCount * paramsRowBytes
   ) {
     return { ok: false, error: "BaseRailingSym m_paramsAndIds body is truncated" };
   }
@@ -424,17 +460,22 @@ export function decodeRevit2027BalusterInstanceDefinition(
   const paramsAndIds: Revit2027BalusterParamAndId[] = [];
   for (let index = 0; index < paramsCount; index += 1) {
     const byteOffset = cursor;
-    const botAngle = finiteAt(framed.view, cursor);
+    // 2024 on: angle, id, height, id, slope, id, top angle, flag. Before:
+    // the four angles, then the three four-byte ids, then the flag.
+    const at = narrow
+      ? { bot: 0, family: 32, height: 8, instance: 36, slope: 16, symbol: 40, top: 24, deleted: 44 }
+      : { bot: 0, family: 8, height: 16, instance: 24, slope: 32, symbol: 40, top: 48, deleted: 56 };
+    const botAngle = finiteAt(framed.view, cursor + at.bot);
     const familySymbolElementId = readPositiveObjectId(
       framed.view,
-      cursor + 8,
+      cursor + at.family,
     );
-    const height = finiteAt(framed.view, cursor + 16);
-    const instanceElementId = readPositiveObjectId(framed.view, cursor + 24);
-    const slopeAngle = finiteAt(framed.view, cursor + 32);
-    const symbolElementId = readPositiveObjectId(framed.view, cursor + 40);
-    const topAngle = finiteAt(framed.view, cursor + 48);
-    const deleted = readBoolean(data, cursor + 56);
+    const height = finiteAt(framed.view, cursor + at.height);
+    const instanceElementId = readPositiveObjectId(framed.view, cursor + at.instance);
+    const slopeAngle = finiteAt(framed.view, cursor + at.slope);
+    const symbolElementId = readPositiveObjectId(framed.view, cursor + at.symbol);
+    const topAngle = finiteAt(framed.view, cursor + at.top);
+    const deleted = readBoolean(data, cursor + at.deleted);
     if (
       botAngle == null ||
       familySymbolElementId == null ||
@@ -467,7 +508,7 @@ export function decodeRevit2027BalusterInstanceDefinition(
       deleted,
       byteOffset,
     });
-    cursor += PARAMS_AND_ID_BYTES;
+    cursor += paramsRowBytes;
   }
 
   const sweepPath = decodeCondInt16PropertyDescriptor(data, cursor);
@@ -488,7 +529,7 @@ export function decodeRevit2027BalusterInstanceDefinition(
   if (
     usedSymbolCount < 0 ||
     usedSymbolCount > maxInstances ||
-    cursor > framed.frameEndOffset - usedSymbolCount * 8
+    cursor > framed.frameEndOffset - usedSymbolCount * idBytes()
   ) {
     return { ok: false, error: "BaseRailingSym used-symbol array is invalid" };
   }
@@ -496,26 +537,29 @@ export function decodeRevit2027BalusterInstanceDefinition(
     if (readPositiveObjectId(framed.view, cursor) == null) {
       return { ok: false, error: "BaseRailingSym used-symbol array contains an invalid id" };
     }
-    cursor += 8;
+    cursor += idBytes();
   }
   const approximateLength = finiteAt(framed.view, cursor);
-  const baseRailingElementId = readPositiveObjectId(framed.view, cursor + 8);
+  // `m_baseRailingId` follows `m_approxLength` in 2024 on, and `m_railYDir`
+  // before.
+  const baseRailingElementId = readPositiveObjectId(framed.view, cursor + (narrow ? 40 : 8));
   if (approximateLength == null || approximateLength < 0) {
     return { ok: false, error: "BaseRailingSym approximate length is non-finite or negative" };
   }
   if (baseRailingElementId == null) {
     return { ok: false, error: "BaseRailingSym m_baseRailingId is invalid" };
   }
-  cursor += 16;
+  cursor += narrow ? 8 : 16;
   const maxOffset = finiteAt(framed.view, cursor);
   const railYDirection = [
     finiteAt(framed.view, cursor + 8),
     finiteAt(framed.view, cursor + 16),
     finiteAt(framed.view, cursor + 24),
   ];
-  const displayBalusters = readBoolean(data, cursor + 32);
-  const flipped = readBoolean(data, cursor + 33);
-  const useIndexForTangent = readBoolean(data, cursor + 34);
+  const flagsAt = cursor + (narrow ? 36 : 32);
+  const displayBalusters = readBoolean(data, flagsAt);
+  const flipped = readBoolean(data, flagsAt + 1);
+  const useIndexForTangent = readBoolean(data, flagsAt + 2);
   if (
     maxOffset == null ||
     railYDirection.some((value) => value == null) ||
@@ -525,7 +569,7 @@ export function decodeRevit2027BalusterInstanceDefinition(
   ) {
     return { ok: false, error: "BaseRailingSym derived suffix is non-finite or invalid" };
   }
-  cursor += BASE_RAILING_SYMBOL_DERIVED_SUFFIX_BYTES;
+  cursor += BASE_RAILING_SYMBOL_DERIVED_SUFFIX_BYTES + (narrow ? 4 : 0);
 
   const gInstances = locateUniqueGInstanceBlock(
     data,
@@ -606,8 +650,8 @@ export function decodeRevit2027BalusterInstanceDefinition(
       estimatedBytes:
         frame.objectLength +
         nestedInstances.length *
-          (REVIT_2027_GINSTANCE_BODY_BYTES +
-            REVIT_2027_INSTANCE_INFO_BODY_BYTES),
+          (gInstanceBodyBytes() +
+            revit2027InstanceInfoBodyBytes()),
       source: "BaseRailingSym.m_balusterInstances",
     },
   };
@@ -639,7 +683,7 @@ export function decodeRevit2027TopRailTypeEvidence(
   }
   const loops = decodeCondInt16QueueCollection(
     data,
-    frame.offset + TOP_RAIL_TYPE_DERIVED_OFFSET,
+    frame.offset + (narrowElementIds() ? NARROW_DERIVED_OFFSET : TOP_RAIL_TYPE_DERIVED_OFFSET),
   );
   if (!loops.ok) {
     return { ok: false, error: `TopRailType curve-loop array: ${loops.error}` };
@@ -807,7 +851,7 @@ export function decodeRevit2027TopRailTypeCurves(
 
   const derivedLoops = decodeCondInt16QueueCollection(
     data,
-    frame.offset + TOP_RAIL_TYPE_DERIVED_OFFSET,
+    frame.offset + (narrowElementIds() ? NARROW_DERIVED_OFFSET : TOP_RAIL_TYPE_DERIVED_OFFSET),
   );
   if (!derivedLoops.ok) {
     return { ok: false, error: derivedLoops.error };
@@ -818,7 +862,7 @@ export function decodeRevit2027TopRailTypeCurves(
   }
   const loopData = locateRailingCurveLoopData(
     data,
-    derivedLoops.collection.endOffset + 8,
+    derivedLoops.collection.endOffset + idBytes(),
     framed.echoOffset,
     maxInstances,
     loopCount,
@@ -895,7 +939,7 @@ export function decodeRevit2027TopRailTypeCurves(
         const decoded = decodeRevit2027GLine(
           data,
           curveOffset,
-          curveOffset + REVIT_2027_GLINE_BODY_BYTES,
+          curveOffset + REVIT_2027_GLINE_BODY_BYTES - revit2027GInfoShrink(),
           revitVersion,
         );
         if (!decoded.ok) break;
@@ -907,7 +951,7 @@ export function decodeRevit2027TopRailTypeCurves(
         const decoded = decodeRevit2027GArc(
           data,
           curveOffset,
-          curveOffset + REVIT_2027_GARC_BODY_BYTES,
+          curveOffset + REVIT_2027_GARC_BODY_BYTES - revit2027GInfoShrink(),
           revitVersion,
         );
         if (!decoded.ok) break;

@@ -136,7 +136,7 @@ test("rejects unproven negative next-loop sentinels", () => {
 test("EdgeLoop reader is release-gated and bounded by its envelope", () => {
   const data = makeEdgeLoop(8);
   assert.equal(
-    decodeRevit2027EdgeLoopStatic(data, 0, data.length, 2026).ok,
+    decodeRevit2027EdgeLoopStatic(data, 0, data.length, 2023).ok,
     false,
   );
   assert.equal(
@@ -261,7 +261,7 @@ test("chain-envelope reader rejects release, count, option, extent, and non-fini
       data,
       0,
       data.length,
-      2026,
+      2023,
     ).ok,
     false,
   );

@@ -30,6 +30,11 @@ import {
   meshRevit2027HermiteReplay,
   type Revit2027HermiteOwnerMeshIssue,
 } from "./revit-2027-hermite-owner-mesh.ts";
+import {
+  meshRevit2027TrimmedSurfaceReplay,
+  type Revit2027TrimmedOwnerFaceMesh,
+  type Revit2027TrimmedOwnerMeshIssue,
+} from "./revit-2027-trimmed-owner-mesh.ts";
 
 export type Revit2027CertifiedOwnerFaceMesh =
   | {
@@ -81,7 +86,8 @@ export type Revit2027CertifiedOwnerFaceMesh =
       uSegments: number;
       vSegments: number;
       mesh: NeutralFaceMesh;
-    };
+    }
+  | ({ kind: "trimmed-surface" } & Revit2027TrimmedOwnerFaceMesh);
 
 export type Revit2027CertifiedOwnerMeshIssue =
   | {
@@ -107,6 +113,10 @@ export type Revit2027CertifiedOwnerMeshIssue =
   | {
       path: "hermite-sampled";
       issue: Revit2027HermiteOwnerMeshIssue;
+    }
+  | {
+      path: "trimmed-surface";
+      issue: Revit2027TrimmedOwnerMeshIssue;
     };
 
 export type Revit2027CertifiedOwnerMesh = {
@@ -153,7 +163,11 @@ function pathed<Path extends string, Issue>(
  * path and never produce partial geometry.
  *
  * Each path indexes the replay through the shared owner mesh index, which is
- * memoized per replay, so running all six here walks `replay.spans` once.
+ * memoized per replay, so running all seven here walks `replay.spans` once.
+ *
+ * The six shape-specific paths run first. The trimmed-surface path then
+ * takes only the drawable faces none of them meshed; when it certifies one,
+ * the other paths' reasons for declining that face are superseded.
  */
 export function meshRevit2027CertifiedOwnerReplay(
   replay: Revit2027GRepReplay,
@@ -188,7 +202,29 @@ export function meshRevit2027CertifiedOwnerReplay(
       ...hermite.value.faceMeshes,
     ].map((face) => face.faceToken),
   );
-  const planarIssues = planar.value.issues.filter(
+  const trimmed = meshRevit2027TrimmedSurfaceReplay(replay, {
+    ...shared,
+    skipFaceTokens: new Set([
+      ...certifiedCurvedFaceTokens,
+      ...planar.value.faceMeshes.map((face) => face.faceToken),
+    ]),
+  });
+  if (trimmed.ok === false) return trimmed;
+  const trimmedFaceTokens = new Set(
+    trimmed.value.faceMeshes.map((face) => face.faceToken),
+  );
+  // A declined face's reasons stand unless the trimmed path certified it.
+  // Material notes are kept: they never block a face, only describe it.
+  const standing = <Issue extends { code: string; faceToken?: number }>(
+    issues: readonly Issue[],
+  ): Issue[] =>
+    issues.filter(
+      (issue) =>
+        issue.code === "material-unresolved" ||
+        issue.faceToken == null ||
+        !trimmedFaceTokens.has(issue.faceToken),
+    );
+  const planarIssues = standing(planar.value.issues).filter(
     (issue) =>
       !(
         issue.code === "unsupported-surface" &&
@@ -208,14 +244,16 @@ export function meshRevit2027CertifiedOwnerReplay(
         ...tagged("cone-apex-sector", cone.value.faceMeshes),
         ...tagged("ruled-helix", ruledHelix.value.faceMeshes),
         ...tagged("hermite-sampled", hermite.value.faceMeshes),
+        ...tagged("trimmed-surface", trimmed.value.faceMeshes),
       ],
       issues: [
         ...pathed("planar-sampled", planarIssues),
-        ...pathed("arc-surfrev", surfRev.value.issues),
-        ...pathed("cylinder-sampled", cylinder.value.issues),
-        ...pathed("cone-apex-sector", cone.value.issues),
-        ...pathed("ruled-helix", ruledHelix.value.issues),
-        ...pathed("hermite-sampled", hermite.value.issues),
+        ...pathed("arc-surfrev", standing(surfRev.value.issues)),
+        ...pathed("cylinder-sampled", standing(cylinder.value.issues)),
+        ...pathed("cone-apex-sector", standing(cone.value.issues)),
+        ...pathed("ruled-helix", standing(ruledHelix.value.issues)),
+        ...pathed("hermite-sampled", standing(hermite.value.issues)),
+        ...pathed("trimmed-surface", trimmed.value.issues),
       ],
     },
   };

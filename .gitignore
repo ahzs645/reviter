@@ -49,3 +49,6 @@ __pycache__/
 
 # agent scratch: probe scripts and cached conversions, regenerable and large
 /.work
+
+# agent worktrees
+/.claude/worktrees/

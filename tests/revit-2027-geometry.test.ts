@@ -98,7 +98,7 @@ test("decodes the schema-complete Revit 2027 Geometry static body", () => {
 test("Geometry reader is release-gated and respects collection bounds", () => {
   const { data } = fixture();
   assert.equal(
-    decodeRevit2027GeometryStatic(data, 4, data.byteLength, 2026).ok,
+    decodeRevit2027GeometryStatic(data, 4, data.byteLength, 2023).ok,
     false,
   );
 

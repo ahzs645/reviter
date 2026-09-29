@@ -167,7 +167,15 @@ export {
   type NavigationMode,
   type OrbitDragConvention,
   type RenderMode,
+  type ViewFrame,
 } from "./viewer.ts";
+
+export {
+  formatParameterValue,
+  isInternalParameter,
+  parameterKind,
+  type ParameterKind,
+} from "./parameter-specs.ts";
 
 // ─── Rooms and review ────────────────────────────────────────────────────────
 // Regions inferred from recovered barriers, and the human dispositions that

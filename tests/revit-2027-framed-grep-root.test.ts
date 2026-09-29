@@ -53,7 +53,7 @@ test("Revit 2027 framed GRep root adapter accepts only its release and marker", 
     );
   }
 
-  assert.deepEqual(decodeRevit2027FramedGRepRoot(data, frame, 2026), {
+  assert.deepEqual(decodeRevit2027FramedGRepRoot(data, frame, 2023), {
     ok: false,
     error: "Revit 2027 framed GRep decoding requires release 2027",
   });

@@ -39,6 +39,39 @@ import {
   scanCompoundStructureCandidates,
 } from "./compound-structure-materials.ts";
 import { chainElementObjects, markerObjectSeeds } from "./element-objects.ts";
+import {
+  REVIT_2027_FAMILY_INSTANCE_CLASS,
+  REVIT_2027_FAMILY_SYMBOL_CLASS,
+  referencedElementIds,
+} from "./family-type-names.ts";
+import { resolveNameEntries, scanNameEntries, type NameEntry } from "./name-entries.ts";
+import { scanElementHeaders } from "./element-headers.ts";
+import { readLevelDefinition, REVIT_2027_LEVEL_CLASS } from "./level-definitions.ts";
+
+/** `Family` in the 2027 numbering. */
+const REVIT_2027_FAMILY_CLASS = 2009;
+import {
+  REVIT_2027_WALL_CLASSES,
+  REVIT_2027_WALL_TYPE_KINDS,
+  resolveWallKinds,
+  resolveWallTypeIds,
+  type WallKind,
+} from "./wall-kinds.ts";
+import {
+  contentDocumentLookup,
+  familyContentDocument,
+  type ContentDocument,
+} from "./content-documents.ts";
+import {
+  readFamilyForm,
+  REVIT_2027_FAMILY_FORM_CLASSES,
+  type FamilyForm,
+} from "./family-forms.ts";
+import {
+  LIGHT_SOURCE_CATEGORY_ID,
+  readGStyleElementCategoryId,
+  REVIT_2027_GSTYLE_ELEMENT_MARKER,
+} from "./revit-2027-gstyle-material.ts";
 import { collectElementParameters } from "./element-parameters.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
@@ -74,7 +107,7 @@ import {
   stripRevitPageChecksums,
 } from "./revit-container.ts";
 import { createRevit2027NativeMeshCollector } from "./revit-2027-native-mesh-bridge.ts";
-import { createRevit2027SplitAlternateFrameCollector } from "./revit-2027-split-alternate-frame-collector.ts";
+import { createRevit2027SplitAlternateFrameCollector, createRevit2027SplitGElementCollector } from "./revit-2027-split-alternate-frame-collector.ts";
 import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-collector.ts";
 import { scanSegments } from "./segment-scan.ts";
 import { collectOwnedSurfaces } from "./surfaces.ts";
@@ -93,6 +126,8 @@ import type { FamilySymbolMaterialReferenceSet } from "./family-symbol-materials
 import type { HostRelationCandidate } from "./host-relations.ts";
 import type { InstancePlacement, LocalBounds } from "./instanced-geometry.ts";
 import type { AssociatedLevelRelationCandidate } from "./level-relations.ts";
+import type { ElementHeader } from "./element-headers.ts";
+import type { LevelDefinition } from "./level-definitions.ts";
 import type { CategoryToken } from "./native-categories.ts";
 import type { PageConsumer } from "./page-frame-index.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
@@ -114,6 +149,7 @@ import type {
   ProgressUpdate,
   Segment,
 } from "./types";
+import { readsElementRecordLayout } from "./revit-class-tags.ts";
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
@@ -130,6 +166,13 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
   0x0810, // FamilySymbol
   3392, // FootprintRoof
   3462, // RampSym
+  // A family document's solid forms, kept out of the scene by `scene.ts`.
+  1728, // ExtrusionElem
+  647, // BlendElem
+  3817, // RevolutionElem
+  4297, // SweepElem
+  4308, // SweptBlendElem
+  648, // GenSweep
 ]);
 
 /** Same backstop for sketch edges, which are chained pairwise per element. */
@@ -145,12 +188,37 @@ export type PartitionScanInput = {
   segmentScale: SegmentScale;
   maxNativeMeshBytes: number | undefined;
   onProgress?: (update: ProgressUpdate) => void;
+  /** The loaded families' documents, from `Global/ContentDocuments`. */
+  contentDocuments?: ReadonlyMap<string, ContentDocument>;
 };
 
 export type PartitionScan = {
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
+  /**
+   * Each element's `ElementHeader`, keyed by element id: its category and
+   * owning view, stated by the element's own record (see `element-headers.ts`).
+   */
+  elementHeaders: Map<number, ElementHeader>;
+  /** Each `Level` element's own name and elevation, keyed by level id. */
+  levelDefinitions: Map<number, LevelDefinition>;
+  /** Graphics styles in the "Light Source" subcategory, which Revit hides in model views. */
+  lightSourceStyleIds: Set<number>;
+  /** Each loaded family's own document, keyed by the project's `Family` id. */
+  familyDocuments: Map<number, ContentDocument>;
+  /** Every family form (extrusion, blend, sweep...) the partitions hold. */
+  familyForms: Map<number, FamilyForm>;
+  /** The stored name of each loaded family and family type (`name-entries.ts`). */
+  nameEntries: Map<number, NameEntry>;
+  /** The element ids each family instance's own record references. */
+  instanceReferences: Map<number, Uint32Array>;
+  /** The element ids each family symbol's own record references. */
+  symbolReferences: Map<number, Uint32Array>;
+  /** Each wall's kind, from the class of the type its record references. */
+  wallKinds: Map<number, WallKind>;
+  /** Each wall's type, the one wall type its record references. */
+  wallTypeIds: Map<number, number>;
   /** One record per element with a duplicated-bounds block of its own. */
   elementBounds: ElementBoundsRecord[];
   elementObjects: ElementObject[];
@@ -202,7 +270,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     segmentScale,
     maxNativeMeshBytes,
     onProgress,
+    contentDocuments,
   } = input;
+  const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
     maxNativeMeshBytes == null ? undefined : { maxStoredBytes: maxNativeMeshBytes },
@@ -215,6 +285,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       decoderPlan.revitVersion,
       maxNativeMeshBytes,
     );
+  const splitGElementCollector = createRevit2027SplitGElementCollector(
+    decoderPlan.revitVersion,
+  );
   // The three release collectors are all "hand me every page of this partition
   // in order", spelled three different ways. They are adapted to one protocol
   // here so the loop drives them alike; see `PageConsumer`.
@@ -235,10 +308,29 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       },
       finishPartition: () => splitAlternateFrameCollector.finishPartition(),
     },
+    {
+      // Geometry frames the page scan saw only in part.
+      pushPage: (page) => {
+        for (const frame of splitGElementCollector.pushPage(page)) {
+          nativeMeshCollector.scanSplitGElementFrame(frame);
+        }
+      },
+      finishPartition: () => splitGElementCollector.finishPartition(),
+    },
     stairsRunCollector,
   ];
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
+  const elementHeaders = new Map<number, ElementHeader>();
+  const levelDefinitions = new Map<number, LevelDefinition>();
+  const lightSourceStyleIds = new Set<number>();
+  const familyDocuments = new Map<number, ContentDocument>();
+  const familyForms = new Map<number, FamilyForm>();
+  const rawNameEntries: NameEntry[] = [];
+  const instanceReferences = new Map<number, Uint32Array>();
+  const symbolReferences = new Map<number, Uint32Array>();
+  const wallReferences = new Map<number, Uint32Array>();
+  const wallTypeKinds = new Map<number, WallKind>();
   const elementBounds: ElementBoundsRecord[] = [];
   const elementObjects: ElementObject[] = [];
   const instancePlacements = new Map<number, InstancePlacement>();
@@ -331,6 +423,65 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const pageFrames = decoderPlan.elementBoundsDecoder
         ? indexPageFrames(inflated)
         : null;
+      if (
+        pageFrames &&
+        (pageFrames.hasMarker(REVIT_2027_FAMILY_INSTANCE_CLASS) ||
+          pageFrames.hasMarker(REVIT_2027_FAMILY_SYMBOL_CLASS))
+      ) {
+        for (const frame of pageFrames.frames) {
+          const target = frame.marker === REVIT_2027_FAMILY_INSTANCE_CLASS
+            ? instanceReferences
+            : frame.marker === REVIT_2027_FAMILY_SYMBOL_CLASS
+              ? symbolReferences
+              : null;
+          if (target && !target.has(frame.elementId)) {
+            target.set(frame.elementId, referencedElementIds(inflated, frame));
+          }
+        }
+      }
+      if (pageFrames) {
+        for (const frame of pageFrames.frames) {
+          const typeKind = REVIT_2027_WALL_TYPE_KINDS.get(frame.marker);
+          if (typeKind) wallTypeKinds.set(frame.elementId, typeKind);
+          else if (REVIT_2027_WALL_CLASSES.has(frame.marker) && !wallReferences.has(frame.elementId)) {
+            wallReferences.set(frame.elementId, referencedElementIds(inflated, frame));
+          }
+        }
+      }
+      if (contentLookup.size && pageFrames?.hasMarker(REVIT_2027_FAMILY_CLASS)) {
+        for (const frame of pageFrames.frames) {
+          if (frame.marker !== REVIT_2027_FAMILY_CLASS || familyDocuments.has(frame.elementId)) continue;
+          const document = familyContentDocument(
+            inflated,
+            frame.offset,
+            Math.min(inflated.byteLength, frame.offset + frame.objectLength + 20),
+            contentLookup,
+          );
+          if (document) familyDocuments.set(frame.elementId, document);
+        }
+      }
+      if (pageFrames) {
+        for (const frame of pageFrames.frames) {
+          if (!REVIT_2027_FAMILY_FORM_CLASSES.has(frame.marker) || familyForms.has(frame.elementId)) continue;
+          const form = readFamilyForm(inflated, frame);
+          if (form) familyForms.set(frame.elementId, form);
+        }
+      }
+      if (pageFrames?.hasMarker(REVIT_2027_GSTYLE_ELEMENT_MARKER)) {
+        for (const frame of pageFrames.frames) {
+          if (readGStyleElementCategoryId(inflated, frame) === LIGHT_SOURCE_CATEGORY_ID) {
+            lightSourceStyleIds.add(frame.elementId);
+          }
+        }
+      }
+      if (pageFrames?.hasMarker(REVIT_2027_LEVEL_CLASS)) {
+        for (const frame of pageFrames.frames) {
+          const definition = readLevelDefinition(inflated, frame);
+          if (definition && !levelDefinitions.has(definition.levelId)) {
+            levelDefinitions.set(definition.levelId, definition);
+          }
+        }
+      }
       // Permissive when there is no index: the decoders keep their own release
       // gates and return nothing, exactly as they did before.
       const mayHoldMarker = (marker: number): boolean =>
@@ -395,7 +546,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           familySymbolMaterialPlacements.push(
             ...familySymbolMaterialScan.placements,
           );
-        } else if (decoderPlan.revitVersion === 2027) {
+        } else if (readsElementRecordLayout(decoderPlan.revitVersion)) {
           for (const frame of pageFrames.frames) {
             const placement = readInstancePlacement(inflated, frame);
             if (placement) familySymbolMaterialPlacements.push(placement);
@@ -476,6 +627,12 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
       if (categoryTokens.length < MAX_CATEGORY_TOKENS) {
         for (const token of collectCategoryTokens(inflated)) categoryTokens.push(token);
+      }
+      if (readsElementRecordLayout(decoderPlan.revitVersion)) {
+        for (const header of scanElementHeaders(inflated)) {
+          if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
+        }
+        for (const entry of scanNameEntries(inflated)) rawNameEntries.push(entry);
       }
       const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
         ? detectDuplicatedBoundsRecords(inflated)
@@ -617,6 +774,16 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   return {
     candidates,
     categoryTokens,
+    elementHeaders,
+    levelDefinitions,
+    lightSourceStyleIds,
+    familyDocuments,
+    familyForms,
+    nameEntries: resolveNameEntries(rawNameEntries),
+    instanceReferences,
+    symbolReferences,
+    wallKinds: resolveWallKinds(wallReferences, wallTypeKinds),
+    wallTypeIds: resolveWallTypeIds(wallReferences, wallTypeKinds),
     elementBounds,
     elementObjects,
     instancePlacements,

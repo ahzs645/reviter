@@ -7,7 +7,29 @@
  * The axis-aligned bounds that follow are written twice, and that duplication is
  * what makes the signature strict enough to trust: a false positive would have
  * to reproduce 48 bytes exactly.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * same record is written with a 12-byte frame header and its fields in another
+ * order. Measured on the same walls in the 2023 and 2025 RAC samples, byte for
+ * byte after the class:
+ *
+ * ```text
+ *                     2024 on            2023
+ * class               +16                +12
+ * record code         +18 (i64)          +22 (u32, all ones for none)
+ * element id          +26 (u32)          +14 (the frame's own id)
+ * flags, zero         +30                +18
+ * 0x00088004          +34                +26
+ * count               +38                +30
+ * field table         +42                +34   count x [u32 ordinal][u16 class], first ordinal 3
+ * bounds, twice       +42 + 6 count      +34 + 6 count
+ * ```
+ *
+ * The six doubles of each wall compared are identical in the two files.
  */
+import { narrowElementIds } from "./element-id-width.ts";
+import { fileClassTag } from "./revit-class-tags.ts";
+
 import type { Bounds3, ElementBoundsRecord } from "./types.ts";
 
 const BOUNDS_DUPLICATE_BYTES = 48;
@@ -50,16 +72,38 @@ function enclosedVolume(bounds: Bounds6): number {
     .reduce((product, span) => product * span, 1);
 }
 
+/** `GElement` in the 2027 numbering; the file's own index is searched for. */
+const GELEMENT_CLASS = 0x08c6;
+
+/** The narrow record's fields, from the frame start; see the module comment. */
+const NARROW = {
+  header: 12,
+  idAt: 14,
+  flagsAt: 18,
+  codeAt: 22,
+  familyAt: 26,
+  countAt: 30,
+  tableAt: 34,
+} as const;
+
 export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsRecord[] {
   const records: DetectedBoundsRecord[] = [];
   if (data.byteLength < 138) return records;
+  // In a 2025 file `c6 08` is `GeomPositioningCell`, whose objects also carry
+  // this layout, so searching the 2027 bytes there found family instances
+  // alone. The element's own record is under the file's `GElement`.
+  const tag = fileClassTag(GELEMENT_CLASS);
+  if (tag < 0 || tag > 0xffff) return records;
+  const tagLow = tag & 0xff;
+  const tagHigh = tag >> 8;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (narrowElementIds()) return detectNarrowRecords(data, view, tagLow, tagHigh);
   for (
-    let tagOffset = data.indexOf(0xc6, 16);
+    let tagOffset = data.indexOf(tagLow, 16);
     tagOffset >= 0 && tagOffset + 122 < data.byteLength;
-    tagOffset = data.indexOf(0xc6, tagOffset + 1)
+    tagOffset = data.indexOf(tagLow, tagOffset + 1)
   ) {
-    if (data[tagOffset + 1] !== 0x08) continue;
+    if (data[tagOffset + 1] !== tagHigh) continue;
     const recordOffset = tagOffset - 16;
     const elementId = view.getUint32(recordOffset, true);
     if (
@@ -113,6 +157,73 @@ export function detectDuplicatedBoundsRecords(data: Uint8Array): DetectedBoundsR
     // taking the tighter copy keeps the same 95.9% within 0.05 ft while cutting
     // the mean error from 2.009 ft to 0.380 and the worst case tenfold. For a
     // record whose copies agree the choice is moot.
+    const first = readBounds(view, boundsStart);
+    const second = readBounds(view, boundsStart + BOUNDS_DUPLICATE_BYTES);
+    const chosen = first && second
+      ? (enclosedVolume(second) <= enclosedVolume(first) ? second : first)
+      : first ?? second;
+    if (!chosen) continue;
+    const [minX, minY, minZ, maxX, maxY, maxZ] = chosen;
+    records.push({
+      elementId,
+      recordOffset,
+      boundsOffset,
+      recordCode,
+      recordCount,
+      duplicated: duplicate,
+      boundsFeet: {
+        min: { x: minX, y: minY, z: minZ },
+        max: { x: maxX, y: maxY, z: maxZ },
+      },
+    });
+  }
+  return records;
+}
+
+/**
+ * `detectDuplicatedBoundsRecords` for the 32-bit-id layout: the same signature,
+ * duplicated bounds and choice of copy, at the narrow offsets. The record code
+ * is a u32 here, so there is no reserved high word to test.
+ */
+function detectNarrowRecords(
+  data: Uint8Array,
+  view: DataView,
+  tagLow: number,
+  tagHigh: number,
+): DetectedBoundsRecord[] {
+  const records: DetectedBoundsRecord[] = [];
+  const minimumTail = NARROW.tableAt + 6 + BOUNDS_DUPLICATE_BYTES * 2 - NARROW.header;
+  for (
+    let tagOffset = data.indexOf(tagLow, NARROW.header);
+    tagOffset >= 0 && tagOffset + minimumTail < data.byteLength;
+    tagOffset = data.indexOf(tagLow, tagOffset + 1)
+  ) {
+    if (data[tagOffset + 1] !== tagHigh) continue;
+    const recordOffset = tagOffset - NARROW.header;
+    const elementId = view.getUint32(recordOffset, true);
+    if (
+      !elementId ||
+      elementId > 0x7fff_ffff ||
+      view.getUint32(recordOffset + NARROW.idAt, true) !== elementId ||
+      view.getUint32(recordOffset + NARROW.flagsAt, true) !== 0 ||
+      view.getUint32(recordOffset + NARROW.familyAt, true) !== 0x0008_8004 ||
+      view.getUint32(recordOffset + NARROW.tableAt, true) !== 3
+    ) {
+      continue;
+    }
+    const recordCode = view.getUint32(recordOffset + NARROW.codeAt, true);
+    const recordCount = view.getUint32(recordOffset + NARROW.countAt, true);
+    if (recordCount < 1 || recordCount > 10_000) continue;
+    const boundsOffset = NARROW.tableAt + recordCount * 6;
+    const boundsStart = recordOffset + boundsOffset;
+    if (boundsStart + BOUNDS_DUPLICATE_BYTES * 2 > data.byteLength) continue;
+    let duplicate = true;
+    for (let byte = 0; byte < BOUNDS_DUPLICATE_BYTES; byte += 1) {
+      if (data[boundsStart + byte] !== data[boundsStart + BOUNDS_DUPLICATE_BYTES + byte]) {
+        duplicate = false;
+        break;
+      }
+    }
     const first = readBounds(view, boundsStart);
     const second = readBounds(view, boundsStart + BOUNDS_DUPLICATE_BYTES);
     const chosen = first && second

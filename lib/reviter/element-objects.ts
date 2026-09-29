@@ -38,6 +38,10 @@
  * are still linked into the chain.
  */
 
+import { frameHeaderBytes, narrowElementIds } from "./element-id-width.ts";
+import { REVIT_2027_ELEMENT_HEADER_CLASS } from "./element-headers.ts";
+import { canonicalClassTag, fileClassDeclared, fileClassTag } from "./revit-class-tags.ts";
+
 /**
  * General page-scanner ceiling. Most element frames are below 64 KB; the
  * bounded release-specific collectors handle the proven large collection
@@ -59,6 +63,16 @@ const TRAILER_BYTES = 20;
 /** Offset within the trailer at which the length is echoed. */
 const ECHO_OFFSET = 16;
 
+/**
+ * The same envelope where element ids are 32-bit (Revit 2023 and older; see
+ * `element-id-width.ts`): `[u32 id][u32 discriminator][u32 length][u16 class]`.
+ * The length still counts from the class to the echo, so the echo is at
+ * `S + length + 12` and the next object at `S + length + 16`.
+ */
+const NARROW_HEADER_BYTES = 12;
+const NARROW_ECHO_OFFSET = 12;
+const NARROW_TRAILER_BYTES = 16;
+
 export type ElementObject = {
   /** Offset of the object start within the inflated page. */
   offset: number;
@@ -69,13 +83,92 @@ export type ElementObject = {
    * begins at +20.
    */
   objectLength: number;
-  /** Release-specific object marker at `offset + 16`. */
+  /**
+   * The object's class at `offset + 16` (`offset + 12` where ids are 32-bit),
+   * in the 2027 numbering: the file's own index translated by class name (see
+   * `revit-class-tags.ts`).
+   */
   marker: number;
-  /** Element class discriminator at `offset + 18`. */
+  /** The first u32 after the class: `offset + 18` (`offset + 14` where ids are 32-bit). */
   typeCode: number;
 };
 
+/**
+ * A 12-byte-header object at `offset`, or null.
+ *
+ * Where ids are 32-bit there is no zero high word to test, and two things the
+ * wide layout's high word rules out have to be ruled out explicitly:
+ *
+ *  - **An `ElementHeader` read four bytes early.** An element's
+ *    `ElementHeader` is written as a plain record, `[id][u32 length][class]`,
+ *    with no discriminator; in the 2025 RAC sample 85,740 records of that class
+ *    are written so and none with a discriminator, and no other class is
+ *    written so more than a few dozen times. Read from four bytes before it,
+ *    the previous object's echo becomes an id, the header's own id a
+ *    discriminator, and the length and echo still agree. So a frame headed by
+ *    `ElementHeader` is never a frame (85,268 such readings in the 2023 RAC
+ *    sample).
+ *  - **Repetitive data.** A run of equal words (`00 01 00 00` repeated, 99,449
+ *    readings in the 2023 RAC sample) frames itself: id, discriminator, length,
+ *    class and echo all read the same value. The class must be one the
+ *    file's schema declares, the id a non-negative `int32`, and the
+ *    discriminator, a hash-like word that differs between the 2023 and 2025
+ *    copies of the same element, must not repeat the length.
+ */
+function readNarrowObject(view: DataView, offset: number, byteLength: number): ElementObject | null {
+  if (offset < 0 || offset + NARROW_HEADER_BYTES + 6 > byteLength) return null;
+  const objectLength = view.getUint32(offset + 8, true);
+  if (
+    objectLength < MIN_OBJECT_BYTES ||
+    objectLength > MAX_SCANNED_OBJECT_BYTES
+  ) return null;
+  const echoAt = offset + objectLength + NARROW_ECHO_OFFSET;
+  if (echoAt + 4 > byteLength) return null;
+  if (view.getUint32(echoAt, true) !== objectLength) return null;
+
+  // `Identifier.m_id` is an int32, and a negative id is a built-in or invalid one.
+  const elementId = view.getUint32(offset, true);
+  if (!elementId || elementId > 0x7fff_ffff) return null;
+  const discriminator = view.getUint32(offset + 4, true);
+  if (discriminator === objectLength) return null;
+  const fileClass = view.getUint16(offset + 12, true);
+  if (!fileClassDeclared(fileClass)) return null;
+  // Tables of small counts written a word apart (`00 01 00 00 00 02 00 00`)
+  // put a zero low byte under the discriminator, the length and the class at
+  // once; a real frame's hash-like discriminator does that one time in 256.
+  if ((discriminator & 0xff) === 0 && (objectLength & 0xff) === 0 && (fileClass & 0xff) === 0) {
+    return null;
+  }
+  const marker = canonicalClassTag(fileClass);
+  if (marker === REVIT_2027_ELEMENT_HEADER_CLASS) return null;
+
+  return {
+    offset,
+    elementId,
+    objectLength,
+    marker,
+    typeCode: view.getUint32(offset + 14, true),
+  };
+}
+
+/**
+ * Every narrow-layout object on a page. A length of at most 0xffff has two
+ * zero high bytes, which rejects most offsets before the echo is read.
+ */
+function scanNarrowFrames(data: Uint8Array): ElementObject[] {
+  const objects: ElementObject[] = [];
+  if (data.byteLength < 64) return objects;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (let offset = 0; offset + 20 <= data.byteLength; offset += 1) {
+    if (data[offset + 10] !== 0 || data[offset + 11] !== 0) continue;
+    const object = readNarrowObject(view, offset, data.byteLength);
+    if (object) objects.push(object);
+  }
+  return objects;
+}
+
 function readObject(view: DataView, offset: number, byteLength: number): ElementObject | null {
+  if (narrowElementIds()) return readNarrowObject(view, offset, byteLength);
   if (offset < 0 || offset + 20 > byteLength) return null;
   const objectLength = view.getUint32(offset + 12, true);
   if (
@@ -93,7 +186,7 @@ function readObject(view: DataView, offset: number, byteLength: number): Element
     offset,
     elementId,
     objectLength,
-    marker: view.getUint16(offset + 16, true),
+    marker: canonicalClassTag(view.getUint16(offset + 16, true)),
     // Read as u32: the field is 64-bit but element class codes are small, and
     // 0xffffffff is itself a real code in the corpus.
     typeCode: view.getUint32(offset + 18, true),
@@ -124,6 +217,12 @@ const DEFAULT_OBJECT_MARKER = 0x08c6;
 export function scanObjectMarkers(data: Uint8Array): Map<number, number> {
   const markers = new Map<number, number>();
   if (data.byteLength < 64) return markers;
+  if (narrowElementIds()) {
+    for (const object of scanNarrowFrames(data)) {
+      markers.set(object.marker, (markers.get(object.marker) ?? 0) + 1);
+    }
+    return markers;
+  }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
     // The id's high word is zero, which is four byte compares and rejects
@@ -173,12 +272,7 @@ export function scanFramedObjectClassEvidence(
   const trackedByElement = new Map<number, Set<number>>();
   const seedOffsets: number[] = [];
   if (data.byteLength < 64) return { classes, trackedByElement, seedOffsets };
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
-    if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
-    if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
-    const object = readObject(view, offset, data.byteLength);
-    if (!object) continue;
+  const record = (object: ElementObject): void => {
     if (seedMarkers.has(object.marker)) seedOffsets.push(object.offset);
     if (!classes.has(object.elementId)) {
       classes.set(object.elementId, object.marker);
@@ -188,6 +282,17 @@ export function scanFramedObjectClassEvidence(
       markers.add(object.marker);
       trackedByElement.set(object.elementId, markers);
     }
+  };
+  if (narrowElementIds()) {
+    for (const object of scanNarrowFrames(data)) record(object);
+    return { classes, trackedByElement, seedOffsets };
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  for (let offset = 0; offset + 24 <= data.byteLength; offset += 1) {
+    if (data[offset + 4] !== 0 || data[offset + 5] !== 0) continue;
+    if (data[offset + 6] !== 0 || data[offset + 7] !== 0) continue;
+    const object = readObject(view, offset, data.byteLength);
+    if (object) record(object);
   }
   return { classes, trackedByElement, seedOffsets };
 }
@@ -205,6 +310,7 @@ export function scanFramedObjectClasses(data: Uint8Array): Map<number, number> {
  * element object without treating proximity as framing.
  */
 export function scanFramedElementObjects(data: Uint8Array): ElementObject[] {
+  if (narrowElementIds()) return scanNarrowFrames(data);
   const objects: ElementObject[] = [];
   if (data.byteLength < 64) return objects;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -291,17 +397,21 @@ export function markerObjectSeeds(
 ): number[] {
   const seeds: number[] = [];
   if (data.byteLength < 64) return seeds;
+  // The bytes hold the file's own index for the class, not the 2027 one.
+  const fileMarker = fileClassTag(marker);
+  if (fileMarker < 0 || fileMarker > 0xffff) return seeds;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const low = marker & 0xff;
-  const high = (marker >> 8) & 0xff;
+  const low = fileMarker & 0xff;
+  const high = (fileMarker >> 8) & 0xff;
+  const header = frameHeaderBytes();
 
   for (
-    let offset = data.indexOf(low, 16);
+    let offset = data.indexOf(low, header);
     offset >= 0 && offset + 1 < data.byteLength;
     offset = data.indexOf(low, offset + 1)
   ) {
     if (data[offset + 1] !== high) continue;
-    if (readObject(view, offset - 16, data.byteLength)) seeds.push(offset - 16);
+    if (readObject(view, offset - header, data.byteLength)) seeds.push(offset - header);
   }
   return seeds;
 }
@@ -315,6 +425,7 @@ export function chainElementObjects(data: Uint8Array, seeds: Iterable<number>): 
   const found = new Map<number, ElementObject>();
   if (data.byteLength < 64) return [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const trailer = narrowElementIds() ? NARROW_TRAILER_BYTES : TRAILER_BYTES;
 
   for (const seed of seeds) {
     if (found.has(seed)) continue;
@@ -326,7 +437,7 @@ export function chainElementObjects(data: Uint8Array, seeds: Iterable<number>): 
     let cursor = seed;
     let current: ElementObject | null = start;
     while (current) {
-      cursor = cursor + current.objectLength + TRAILER_BYTES;
+      cursor = cursor + current.objectLength + trailer;
       if (found.has(cursor)) break;
       current = readObject(view, cursor, data.byteLength);
       if (current) found.set(cursor, current);
@@ -334,13 +445,13 @@ export function chainElementObjects(data: Uint8Array, seeds: Iterable<number>): 
 
     // Backward: the previous object's length sits four bytes before this one.
     cursor = seed;
-    while (cursor >= TRAILER_BYTES + 4) {
+    while (cursor >= trailer + 4) {
       const previousLength = view.getUint32(cursor - 4, true);
       if (
         previousLength < MIN_OBJECT_BYTES ||
         previousLength > MAX_SCANNED_OBJECT_BYTES
       ) break;
-      const previous = cursor - TRAILER_BYTES - previousLength;
+      const previous = cursor - trailer - previousLength;
       if (previous < 0 || found.has(previous)) break;
       const object = readObject(view, previous, data.byteLength);
       if (!object || object.objectLength !== previousLength) break;

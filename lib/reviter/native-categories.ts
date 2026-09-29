@@ -31,6 +31,7 @@ import {
   REVIT_2027_TOP_RAIL_TYPE_MARKER,
 } from "./revit-2027-baluster-instances.ts";
 
+import type { ElementHeader } from "./element-headers.ts";
 import type { ElementBoundsRecord, NativeCategorySummary } from "./types.ts";
 
 /** Revit BuiltInCategory ids are dense in this window; anything else is noise. */
@@ -355,7 +356,15 @@ export function applyNativeCategories(
   tokens: CategoryToken[],
   elemTableIds?: Uint32Array,
   ownershipElementIds?: Set<number>,
+  elementHeaders?: ReadonlyMap<number, ElementHeader>,
 ): NativeCategorySummary {
+  // An element's own header states its category and needs no owner resolved,
+  // so it outranks a token, which does. Tokens and the record-code consensus
+  // remain for elements with no header of their own.
+  const headerCategories = new Map<number, number>();
+  for (const [elementId, header] of elementHeaders ?? []) {
+    if (header.categoryId != null) headerCategories.set(elementId, header.categoryId);
+  }
   const knownElementIds = new Set<number>(records.map((record) => record.elementId));
   if (elemTableIds) for (const elementId of elemTableIds) knownElementIds.add(elementId);
 
@@ -373,14 +382,26 @@ export function applyNativeCategories(
     resolved = resolveElementCategories(tokens, knownElementIds);
     donatedOnly = new Set();
   }
-  const consensus = deriveRecordCodeCategories(records, resolved);
+  const consensusEvidence = new Map(resolved);
+  for (const [elementId, categoryId] of headerCategories) consensusEvidence.set(elementId, categoryId);
+  const consensus = deriveRecordCodeCategories(records, consensusEvidence);
 
+  let headerElements = 0;
   let directElements = 0;
   let inheritedElements = 0;
   let donatedTokenElements = 0;
   let donatedTokensOverridden = 0;
   const counts = new Map<number, number>();
   for (const record of records) {
+    const stated = headerCategories.get(record.elementId);
+    if (stated != null) {
+      record.categoryId = stated;
+      record.categoryName = categoryDisplayName(stated);
+      record.categorySource = "element-header";
+      headerElements += 1;
+      counts.set(stated, (counts.get(stated) ?? 0) + 1);
+      continue;
+    }
     let direct = resolved.get(record.elementId);
     const clusterEntry = consensus.get(recordCodeKey(record.recordCode, record.recordCount));
     if (direct != null && donatedOnly.has(record.elementId)) {
@@ -413,6 +434,9 @@ export function applyNativeCategories(
 
   return {
     tokensFound: tokens.length,
+    ...(elementHeaders?.size
+      ? { elementHeadersFound: elementHeaders.size, headerElements }
+      : {}),
     directElements,
     inheritedElements,
     donatedTokenElements,

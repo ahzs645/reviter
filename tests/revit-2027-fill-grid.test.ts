@@ -73,7 +73,7 @@ test("fails closed on release, bounds, count, and non-finite values", () => {
   view.setFloat64(44, 6, true);
 
   assert.equal(
-    decodeRevit2027FillGrid(data, 0, data.length, 2026).ok,
+    decodeRevit2027FillGrid(data, 0, data.length, 2023).ok,
     false,
   );
   assert.equal(

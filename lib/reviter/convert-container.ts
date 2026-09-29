@@ -22,6 +22,7 @@ import CFB from "cfb";
 import { revitVersionFromBasicFileInfo } from "./basic-file-info.ts";
 import { scanObjectMarkers } from "./element-objects.ts";
 import { parseElemTable } from "./elem-table.ts";
+import { readContentDocuments, type ContentDocument } from "./content-documents.ts";
 import { decodeElementOwnership } from "./element-relations.ts";
 import {
   decodeRevitDocumentHistory,
@@ -40,6 +41,13 @@ import {
 } from "./revit-container.ts";
 import { summariseSchema, summariseSchemaStream } from "./schema.ts";
 import { readSchema } from "./schema-reader.ts";
+import { elementIdBytesFromSchema, setActiveElementIdBytes } from "./element-id-width.ts";
+import type { ElementIdBytes } from "./element-id-width.ts";
+import {
+  buildClassTagTranslation,
+  setActiveClassTagTranslation,
+} from "./revit-class-tags.ts";
+import type { ClassTagTranslation } from "./revit-class-tags.ts";
 import { measureStream, summariseCoverage } from "./stream-coverage.ts";
 import { parseRevitTransmissionData } from "./transmission-data.ts";
 
@@ -127,7 +135,11 @@ export type OpenedRevitContainer = {
   transmissionData: RevitTransmissionData | undefined;
   coverage: CoverageSummary;
   schema: SchemaSummary | undefined;
+  /** How this file's class indices map onto the 2027 numbering. */
+  classTagTranslation: ClassTagTranslation;
   partitionNames: PartitionName[];
+  /** The loaded families' documents, keyed by GUID (`content-documents.ts`). */
+  contentDocuments: Map<string, ContentDocument>;
 };
 
 /**
@@ -244,11 +256,49 @@ export function openRevitContainer(
   // classes' own. A stream it cannot tile is evidence about the stream, not a
   // partial schema, so the scanner still answers for one — losing the panel
   // entirely would be a worse failure than an incomplete inventory.
+  // Each class's field names go to the class translation only: decoders
+  // ask it for a class's field order, and the summary stays the size it was.
+  let fieldNamesByClass: Map<string, string[]> | undefined;
+  let elementIdBytes: ElementIdBytes | null = null;
   const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
     const strict = readSchema(data);
-    return strict.ok ? summariseSchemaStream(strict.schema) : summariseSchema(data);
+    if (!strict.ok) return summariseSchema(data);
+    elementIdBytes = elementIdBytesFromSchema(strict.schema.classes);
+    fieldNamesByClass = new Map(strict.schema.classes.map((entry) => [
+      entry.name,
+      entry.properties.map((property) => property.name),
+    ]));
+    return summariseSchemaStream(strict.schema);
   });
+  // Everything below reads class indices out of partition bytes, beginning
+  // with the marker sample, so the file's numbering is translated into the
+  // 2027 one the decoders compare against before any of it runs.
+  const classTagTranslation = buildClassTagTranslation(
+    (schema?.taggedClasses ?? []).map((entry) => ({
+      ...entry,
+      fieldNames: fieldNamesByClass?.get(entry.name),
+    })),
+  );
+  setActiveClassTagTranslation(classTagTranslation);
+  // So is the width of an element id, which sets the frame header every
+  // partition object is read with (`element-id-width.ts`). A release before
+  // 2024 is admitted to the record decoders only once its schema has said its
+  // ids are 32-bit, so the plan is drawn again now that it is known.
+  setActiveElementIdBytes(elementIdBytes);
+  if (elementIdBytes === 4) {
+    decoderPlan = decoderPlanForVersion(decoderPlan.revitVersion ?? undefined);
+    // The element table was read before the width was known, and its
+    // ownership rows are 28 bytes rather than 40 where ids are 32-bit.
+    if (elementTableData) {
+      const ownership = decodeElementOwnership(elementTableData);
+      elementOwnership = ownership.format !== "unsupported" ? ownership : undefined;
+    }
+  }
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
+  // Read after the class numbering is installed: its entries are headed by
+  // the file's own ContentMarker and ContentKey classes.
+  const contentDocuments =
+    readStreamSummary(cfb, /\/Global\/ContentDocuments$/i, readContentDocuments) ?? new Map();
 
   const partitions = cfb.FileIndex
     .map((entry, index) => ({ entry, path: cfb.FullPaths[index] ?? "" }))
@@ -295,6 +345,8 @@ export function openRevitContainer(
     transmissionData,
     coverage,
     schema,
+    classTagTranslation,
     partitionNames,
+    contentDocuments,
   };
 }

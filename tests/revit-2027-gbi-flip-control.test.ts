@@ -55,7 +55,7 @@ test("GBiFlipControl decoder fails closed", () => {
     false,
   );
   assert.equal(
-    decodeRevit2027GBiFlipControl(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GBiFlipControl(data, 0, data.byteLength, 2023).ok,
     false,
   );
 

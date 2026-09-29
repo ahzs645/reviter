@@ -82,3 +82,13 @@ test("prefers the wall the door actually sits in", () => {
   const ys = corners.map(([, y]) => y);
   assert.ok(Math.abs((Math.max(...ys) - Math.min(...ys)) - 0.5) < 1e-9, "took the nearer wall's thickness");
 });
+
+test("a door leaf is never deeper than the door's own envelope", () => {
+  // A 0.43 ft door frame set in a 3.28 ft wall, as in the UNBC project: the
+  // wall's depth would put the leaf outside the door's own envelope.
+  const record = doorRecord({ minX: -0.21, minY: -0.21, maxX: 0.21, maxY: 0.21, minZ: 0, maxZ: 7.63 });
+  const corners = doorLeafCorners(record, [wall({ thickness: 3.28 })]);
+  assert.ok(corners);
+  const ys = corners.map(([, y]) => y);
+  assert.ok(Math.abs((Math.max(...ys) - Math.min(...ys)) - 0.42) < 1e-9);
+});

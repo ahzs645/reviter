@@ -28,6 +28,8 @@
  */
 import { dominantMarker } from "./element-objects.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
+import { setActiveClassTagTranslation } from "./revit-class-tags.ts";
+import { setActiveElementIdBytes } from "./element-id-width.ts";
 import { buildMeshes } from "./scene.ts";
 import { buildStairAssemblies } from "./stair-assemblies.ts";
 import {
@@ -47,6 +49,9 @@ import {
 } from "./convert-display-scene.ts";
 import { resolveElementGeometry } from "./convert-element-geometry.ts";
 import { resolveNativeRelations } from "./convert-native-relations.ts";
+import { resolveFamilyTypeNames } from "./family-type-names.ts";
+import { familyDocumentFormsBySymbol } from "./family-forms.ts";
+import { boundlessSceneElements } from "./model-elements.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -88,6 +93,10 @@ export function convertRvtBytes(
   // Fitted-limit counters are module-level, so a previous conversion's tally
   // must not carry into this one.
   resetLimitCensus();
+  // Installed by `openRevitContainer` from this file's schema and removed
+  // below, so one file's class numbering and id width never reach the next.
+  setActiveClassTagTranslation(null);
+  setActiveElementIdBytes(null);
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const maxSegments = options.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const segmentScale = segmentScaleFor(fileName, options.geometryScale);
@@ -108,6 +117,7 @@ export function convertRvtBytes(
       coverage,
       schema,
       partitionNames,
+      contentDocuments,
     } = openRevitContainer(bytes, options);
 
     const scan = scanPartitions({
@@ -118,10 +128,21 @@ export function convertRvtBytes(
       segmentScale,
       maxNativeMeshBytes: options.maxNativeMeshBytes,
       onProgress,
+      contentDocuments,
     });
     const {
       candidates,
       categoryTokens,
+      elementHeaders,
+      levelDefinitions,
+      lightSourceStyleIds,
+      familyDocuments,
+      familyForms,
+      nameEntries,
+      instanceReferences,
+      symbolReferences,
+      wallKinds,
+      wallTypeIds,
       elementBounds,
       elementObjects,
       instancePlacements,
@@ -213,8 +234,9 @@ export function convertRvtBytes(
       categoryTokens,
       elementIndex,
       instancePlacements,
+      elementHeaders,
     });
-    let unplacedRecords = removeDatumPileRecords(elementBounds);
+    let unplacedRecords = removeDatumPileRecords(elementBounds, elementHeaders);
 
     onProgress?.({
       ratio: 0.84,
@@ -223,6 +245,7 @@ export function convertRvtBytes(
     const { nativeCategories, counts } = resolveElementGeometry({
       elementBounds,
       categoryTokens,
+      elementHeaders,
       elementIndex,
       elementOwnership,
       elementParameters,
@@ -251,9 +274,36 @@ export function convertRvtBytes(
     const unique = deduplicate(candidates);
     const focused = trimVerticalOutliers(focusPrimaryCluster(unique));
     const used = sampleEvenly(focused, maxSegments);
-    const categorisedElements = nativeCategories.directElements + nativeCategories.inheritedElements;
+    const categorisedElements =
+      (nativeCategories.headerElements ?? 0) +
+      nativeCategories.directElements +
+      nativeCategories.inheritedElements;
+    for (const record of elementBounds) {
+      const wallKind = wallKinds.get(record.elementId);
+      if (wallKind) record.wallKind = wallKind;
+      const wallTypeId = wallTypeIds.get(record.elementId);
+      const wallTypeName = wallTypeId == null ? undefined : typeNames.get(wallTypeId);
+      if (wallTypeName) {
+        record.typeId = wallTypeId;
+        record.typeName = wallTypeName;
+      }
+    }
+    const familyTypeNames = resolveFamilyTypeNames(
+      instanceReferences,
+      symbolReferences,
+      nameEntries,
+      (elementId) => elementHeaders.get(elementId)?.categoryId,
+    );
+    const familyDocumentForms = familyDocumentFormsBySymbol(
+      instancePlacements.values(),
+      (elementId) => familyTypeNames.get(elementId)?.familyId,
+      familyDocuments,
+      familyForms,
+    );
     const relations = resolveNativeRelations({
       elementBounds,
+      nameEntries,
+      familyTypeNames,
       instancePlacements,
       sharedGeometryIds,
       familyElementIds,
@@ -290,8 +340,9 @@ export function convertRvtBytes(
       markersByElement,
       instancePlacements,
       nativeAssociatedLevelRelations,
+      elementHeaders,
     });
-    const { boundedSolids, nonSceneNativeMeshIds } = drawable;
+    const { boundedSolids, nonSceneNativeMeshIds, nonModelElements } = drawable;
     unplacedRecords += drawable.unplacedRecords;
 
     // The two branches below publish the same decoded file — the same records,
@@ -362,7 +413,13 @@ export function convertRvtBytes(
       ...relations,
     };
 
-    if (boundedSolids.length) {
+    // The bounds branch is the release's own record decoder. Records the
+    // release-independent passes synthesised (a wall solid rebuilt from plane
+    // triples, a sketch ring) are not that decoder, and on a release it does
+    // not cover they once took this branch on their own: four synthesised
+    // boxes turned the 2024 Snowdon sample into a four-element "validated
+    // bounds" scene and dropped its coordinate scan.
+    if (boundedSolids.length && decoderPlan.elementBoundsDecoder) {
       onProgress?.({
         ratio: 0.96,
         message: `Building the display scene · ${boundedSolids.length.toLocaleString()} drawable records`,
@@ -378,6 +435,14 @@ export function convertRvtBytes(
         nativeAssociatedLevelRelations,
         markerByElement,
         nonSceneNativeMeshIds,
+        nonModelElements,
+        levelDefinitions,
+        lightSourceStyleIds,
+        familyDocumentForms,
+        boundlessSceneElements: boundlessSceneElements(
+          elementHeaders,
+          new Set(elementBounds.map((record) => record.elementId)),
+        ),
         materialElementIds,
         nativeMaterialIndexById,
         proxyMaterialIndexByElement,
@@ -440,6 +505,7 @@ export function convertRvtBytes(
           adoptedStairBoxes: counts.adoptedStairBoxes,
           clippedSolids: counts.clippedSolids,
           extendedSolids: counts.extendedSolids,
+          widenedWalls: counts.widenedWalls,
           recoveredWallJoinEnds: counts.recoveredWallJoinEnds,
           shrunkSolids: counts.shrunkSolids,
           narrowedSolidBands: counts.narrowedSolidBands,
@@ -534,5 +600,8 @@ export function convertRvtBytes(
       fileName,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    setActiveClassTagTranslation(null);
+    setActiveElementIdBytes(null);
   }
 }

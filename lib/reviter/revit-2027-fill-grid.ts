@@ -1,4 +1,5 @@
 /** Exact Revit 2027 source-class slot reached from `FillPatternData.m_fillGrids`. */
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 export const REVIT_2027_FILL_GRID_SOURCE_CLASS_SLOT = 2085;
 
 const DOUBLE_BYTES = 8;
@@ -55,7 +56,7 @@ export function decodeRevit2027FillGrid(
   revitVersion: number,
   options: { maxSegments?: number } = {},
 ): Revit2027FillGridDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 FillGrid decoding requires release 2027",

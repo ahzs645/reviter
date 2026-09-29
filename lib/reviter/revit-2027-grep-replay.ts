@@ -1,4 +1,44 @@
 import {
+  REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT,
+  REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT,
+  decodeRevit2027GBitmap,
+  decodeRevit2027GConditionSelected,
+  revit2027GBitmapBytes,
+  revit2027GConditionSelectedBytes,
+} from "./revit-2027-gbitmap.ts";
+import {
+  REVIT_2027_FACETED_TOPOLOGY_FORMS,
+  decodeRevit2027FacetedTopology,
+} from "./revit-2027-faceted-topology.ts";
+import {
+  revit2027GPolyMeshBodyBytes,
+  REVIT_2027_GPOLYMESH_SOURCE_CLASS_SLOT,
+  decodeRevit2027GPolyMesh,
+  type Revit2027GPolyMesh,
+} from "./revit-2027-gpolymesh.ts";
+import {
+  REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS,
+  decodeRevit2027AssetProperty,
+  type Revit2027AssetPropertyClass,
+} from "./revit-2027-asset-properties.ts";
+import {
+  REVIT_2027_GIMPOSTER_BODY_BYTES,
+  REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT,
+  decodeRevit2027GImposter,
+  type Revit2027GImposter,
+} from "./revit-2027-gimposter.ts";
+import {
+  REVIT_2027_GCOMPONENT_REF_BODY_BYTES,
+  REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+  decodeRevit2027GComponentRef,
+  type Revit2027GComponentRef,
+} from "./revit-2027-gcomponent-ref.ts";
+import {
+  REVIT_2027_GELLIPSE_BODY_BYTES,
+  REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+  decodeRevit2027GEllipse,
+} from "./revit-2027-gellipse.ts";
+import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
@@ -76,6 +116,7 @@ import {
 } from "./revit-2027-gline.ts";
 import {
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
+  revit2027GInfoShrink,
 } from "./revit-2027-grep-prefixes.ts";
 import {
   decodeRevit2027GElementStatic,
@@ -85,8 +126,9 @@ import {
   decodeRevit2027GInstanceStatic,
   decodeRevit2027InstanceInfo,
   REVIT_2027_GINSTANCE_SOURCE_CLASS_SLOT,
-  REVIT_2027_INSTANCE_INFO_BODY_BYTES,
   REVIT_2027_INSTANCE_INFO_SOURCE_CLASS_SLOT,
+  revit2027GInstanceLayout,
+  revit2027InstanceInfoBodyBytes,
 } from "./revit-2027-ginstance.ts";
 import {
   decodeRevit2027GGroupStatic,
@@ -97,7 +139,7 @@ import {
 } from "./revit-2027-gpolyline.ts";
 import {
   decodeRevit2027GPoint,
-  REVIT_2027_GPOINT_BODY_BYTES,
+  revit2027GPointBodyBytes,
   REVIT_2027_GPOINT_SOURCE_CLASS_SLOT,
 } from "./revit-2027-gpoint.ts";
 import {
@@ -239,7 +281,8 @@ type PendingEntry = {
 };
 
 function fixedBodyReader(
-  byteLength: number,
+  /** The body size in the current file (a GNode's shrinks with its GInfo). */
+  byteLength: () => number,
   decode: (
     data: Uint8Array,
     byteOffset: number,
@@ -253,7 +296,7 @@ function fixedBodyReader(
   ) => readonly CondInt16QueueEntry[],
 ): Revit2027GRepReplayReader {
   return (data, context) => {
-    const bodyEndOffset = context.byteOffset + byteLength;
+    const bodyEndOffset = context.byteOffset + byteLength();
     if (
       !Number.isSafeInteger(bodyEndOffset) ||
       bodyEndOffset > context.replayEndOffset
@@ -293,12 +336,13 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GInstance",
       read: (data, context) => {
+        const layout = revit2027GInstanceLayout();
         const embedded = decodeCondInt16PropertyDescriptor(
           data,
-          context.byteOffset + 26,
+          context.byteOffset + layout.embeddedSymbolOffset,
         );
         if (!embedded.ok) return embedded;
-        const bodyEndOffset = embedded.descriptor.endOffset + 14;
+        const bodyEndOffset = embedded.descriptor.endOffset + layout.scalarSuffixBytes;
         if (bodyEndOffset > context.replayEndOffset) {
           return {
             ok: false,
@@ -330,7 +374,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027InstanceInfo",
       read: fixedBodyReader(
-        REVIT_2027_INSTANCE_INFO_BODY_BYTES,
+        revit2027InstanceInfoBodyBytes,
         decodeRevit2027InstanceInfo,
         () => [],
       ),
@@ -385,7 +429,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GLine",
       read: fixedBodyReader(
-        REVIT_2027_GLINE_BODY_BYTES,
+        () => REVIT_2027_GLINE_BODY_BYTES - revit2027GInfoShrink(),
         decodeRevit2027GLine,
         () => [],
       ),
@@ -396,7 +440,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GBiFlipControl",
       read: fixedBodyReader(
-        REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES,
+        () => REVIT_2027_GBI_FLIP_CONTROL_BODY_BYTES - revit2027GInfoShrink(),
         decodeRevit2027GBiFlipControl,
         () => [],
       ),
@@ -451,7 +495,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GConditionDir",
       read: fixedBodyReader(
-        REVIT_2027_GCONDITION_DIR_BODY_BYTES,
+        () => REVIT_2027_GCONDITION_DIR_BODY_BYTES,
         decodeRevit2027GConditionDir,
         () => [],
       ),
@@ -462,7 +506,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GConditionCut",
       read: fixedBodyReader(
-        REVIT_2027_GCONDITION_CUT_BODY_BYTES,
+        () => REVIT_2027_GCONDITION_CUT_BODY_BYTES,
         decodeRevit2027GConditionCut,
         () => [],
       ),
@@ -473,7 +517,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GConditionInt",
       read: fixedBodyReader(
-        REVIT_2027_GCONDITION_INT_BODY_BYTES,
+        () => REVIT_2027_GCONDITION_INT_BODY_BYTES,
         decodeRevit2027GConditionInt,
         () => [],
       ),
@@ -550,7 +594,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GPoint",
       read: fixedBodyReader(
-        REVIT_2027_GPOINT_BODY_BYTES,
+        revit2027GPointBodyBytes,
         decodeRevit2027GPoint,
         () => [],
       ),
@@ -561,7 +605,7 @@ const BUILTIN_READERS: readonly [
     {
       id: "Revit2027GCylindricalHelix",
       read: fixedBodyReader(
-        REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES,
+        () => REVIT_2027_GCYLINDRICAL_HELIX_BODY_BYTES - revit2027GInfoShrink(),
         decodeRevit2027GCylindricalHelix,
         () => [],
       ),
@@ -751,6 +795,121 @@ const BUILTIN_READERS: readonly [
           value: decoded.value,
         };
       },
+    },
+  ],
+  [
+    REVIT_2027_GBITMAP_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GBitmap",
+      read: fixedBodyReader(revit2027GBitmapBytes, decodeRevit2027GBitmap, () => []),
+    },
+  ],
+  [
+    REVIT_2027_GCONDITION_SELECTED_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GConditionSelected",
+      read: fixedBodyReader(
+        revit2027GConditionSelectedBytes,
+        decodeRevit2027GConditionSelected,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GPOLYMESH_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GPolyMesh",
+      read: fixedBodyReader(
+        revit2027GPolyMeshBodyBytes,
+        decodeRevit2027GPolyMesh,
+        (value) => [(value as unknown as Revit2027GPolyMesh).topology],
+      ),
+    },
+  ],
+  ...[...REVIT_2027_FACETED_TOPOLOGY_FORMS].map(
+    ([slot, form]): [number, Revit2027GRepReplayReaderRegistration] => [
+      slot,
+      {
+        id: `Revit2027${form.name}`,
+        read: (data, context) => {
+          const decoded = decodeRevit2027FacetedTopology(
+            data,
+            context.byteOffset,
+            context.replayEndOffset,
+            context.revitVersion,
+            slot,
+          );
+          if (!decoded.ok) return decoded;
+          return {
+            ok: true,
+            startOffset: context.byteOffset,
+            endOffset: decoded.value.endOffset,
+            appendedProperties: [],
+            value: decoded.value,
+          };
+        },
+      },
+    ],
+  ),
+  [
+    REVIT_2027_GIMPOSTER_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GImposter",
+      read: fixedBodyReader(
+        () => REVIT_2027_GIMPOSTER_BODY_BYTES - revit2027GInfoShrink(),
+        decodeRevit2027GImposter,
+        (value) => [(value as unknown as Revit2027GImposter).asset],
+      ),
+    },
+  ],
+  ...(Object.entries(REVIT_2027_ASSET_PROPERTY_CLASS_SLOTS) as [
+    Revit2027AssetPropertyClass,
+    number,
+  ][]).map(
+    ([className, slot]): [number, Revit2027GRepReplayReaderRegistration] => [
+      slot,
+      {
+        id: `Revit2027${className}`,
+        read: (data, context) => {
+          const decoded = decodeRevit2027AssetProperty(
+            data,
+            context.byteOffset,
+            context.replayEndOffset,
+            context.revitVersion,
+            className,
+          );
+          if (!decoded.ok) return decoded;
+          return {
+            ok: true,
+            startOffset: context.byteOffset,
+            endOffset: decoded.value.endOffset,
+            appendedProperties: decoded.value.queued,
+            value: decoded.value,
+          };
+        },
+      },
+    ],
+  ),
+  [
+    REVIT_2027_GELLIPSE_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GEllipse",
+      read: fixedBodyReader(
+        () => REVIT_2027_GELLIPSE_BODY_BYTES - revit2027GInfoShrink(),
+        decodeRevit2027GEllipse,
+        () => [],
+      ),
+    },
+  ],
+  [
+    REVIT_2027_GCOMPONENT_REF_SOURCE_CLASS_SLOT,
+    {
+      id: "Revit2027GComponentRef",
+      read: fixedBodyReader(
+        () => REVIT_2027_GCOMPONENT_REF_BODY_BYTES - revit2027GInfoShrink(),
+        decodeRevit2027GComponentRef,
+        (value) => [(value as unknown as Revit2027GComponentRef).instanceInfo],
+      ),
     },
   ],
   [

@@ -1,4 +1,5 @@
 /** Exact Revit 2027 source slot for `HermiteSurf`. */
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 export const REVIT_2027_HERMITE_SURFACE_SOURCE_CLASS_SLOT = 2414;
 
 const SURFACE_BASE_BYTES = 33;
@@ -64,7 +65,7 @@ export function decodeRevit2027HermiteSurface(
   revitVersion: number,
   options: { maxItems?: number } = {},
 ): Revit2027HermiteSurfaceDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 HermiteSurf decoding requires release 2027",

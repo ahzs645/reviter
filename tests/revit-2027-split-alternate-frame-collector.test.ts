@@ -6,6 +6,7 @@ import {
 } from "../lib/reviter/revit-2027-baluster-instances.ts";
 import {
   createRevit2027SplitAlternateFrameCollector,
+  createRevit2027SplitGElementCollector,
 } from "../lib/reviter/revit-2027-split-alternate-frame-collector.ts";
 
 const FRAME_SUFFIX_BYTES = 20;
@@ -45,7 +46,7 @@ test("reassembles only a TopRailType frame split across partition pages", () => 
 
 test("fails closed across releases, partition boundaries, echoes, and limits", () => {
   const expected = frame(1234);
-  const wrongRelease = createRevit2027SplitAlternateFrameCollector(2026);
+  const wrongRelease = createRevit2027SplitAlternateFrameCollector(2023);
   assert.deepEqual(wrongRelease.pushPage(expected.subarray(0, 50)), []);
   assert.deepEqual(wrongRelease.pushPage(expected.subarray(50)), []);
 
@@ -63,4 +64,33 @@ test("fails closed across releases, partition boundaries, echoes, and limits", (
   const bounded = createRevit2027SplitAlternateFrameCollector(2027, 100);
   assert.deepEqual(bounded.pushPage(expected.subarray(0, 50)), []);
   assert.deepEqual(bounded.pushPage(expected.subarray(50)), []);
+});
+
+/** A GElement frame: its id, the id restated at +26, and a length echo. */
+function geometryFrame(elementId: number, objectLength = 120): Uint8Array {
+  const bytes = new Uint8Array(objectLength + FRAME_SUFFIX_BYTES);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, elementId, true);
+  view.setUint32(12, objectLength, true);
+  view.setUint16(16, 0x08c6, true);
+  view.setUint32(26, elementId, true);
+  view.setUint32(objectLength + 16, objectLength, true);
+  return bytes;
+}
+
+test("reassembles a GElement frame only when it crosses a page", () => {
+  const collector = createRevit2027SplitGElementCollector(2025);
+  // Whole on one page, the page scan already has it.
+  assert.deepEqual(collector.pushPage(geometryFrame(988_018)), []);
+  const split = geometryFrame(800_280);
+  assert.deepEqual(collector.pushPage(split.subarray(0, 50)), []);
+  const completed = collector.pushPage(split.subarray(50));
+  assert.equal(completed.length, 1);
+  assert.deepEqual(completed[0], split);
+  // A header without the restated id is not a GElement's.
+  const forged = geometryFrame(7);
+  new DataView(forged.buffer).setUint32(26, 8, true);
+  collector.finishPartition();
+  assert.deepEqual(collector.pushPage(forged.subarray(0, 50)), []);
+  assert.deepEqual(collector.pushPage(forged.subarray(50)), []);
 });

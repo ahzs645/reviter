@@ -13,6 +13,7 @@ import {
   REVIT_2027_GGROUP_SOURCE_CLASS_SLOT,
   type Revit2027GGroupPrefix,
 } from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 const GREP_INITIAL_TOKEN_COUNT = 3;
 
@@ -111,7 +112,7 @@ export function locateRevit2027FirstGGroupNestedFifo(
   root: Revit2027FramedGRepRoot,
   revitVersion: number,
 ): Revit2027FirstGGroupNestedFifoResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GGroup FIFO positioning requires release 2027",

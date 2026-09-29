@@ -2,7 +2,12 @@ import {
   decodeCondInt16PropertyDescriptor,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  revit2027GInfoBytes,
+  readRevit2027GInfo,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 source-class slot for persisted `EdgeLoop`. */
 export const REVIT_2027_EDGE_LOOP_SOURCE_CLASS_SLOT = 1434;
@@ -13,7 +18,6 @@ export const REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT =
 export const REVIT_2027_EDGE_LOOP_REF_SOURCE_CLASS_SLOT =
   REVIT_2027_EDGE_LOOP_WITH_CHAIN_ENVELOPES_SOURCE_CLASS_SLOT;
 
-const GINFO_BYTES = 20;
 const OBJECT_REFERENCE_BYTES = 4;
 const EXTENTS_2D_BYTES = 4 * 8;
 const BOOL_BYTES = 1;
@@ -86,12 +90,7 @@ function bounded(
 }
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
-  return {
-    gStyleElementId: view.getBigInt64(byteOffset, true),
-    tag: view.getInt32(byteOffset + 8, true),
-    controlCommand: view.getInt32(byteOffset + 12, true),
-    flags: view.getUint32(byteOffset + 16, true),
-  };
+  return readRevit2027GInfo(view, byteOffset);
 }
 
 /**
@@ -108,13 +107,13 @@ export function decodeRevit2027EdgeLoopStatic(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027EdgeLoopStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 EdgeLoop decoding requires release 2027",
     };
   }
-  if (!bounded(data, byteOffset, GINFO_BYTES + 4, enclosingEndOffset)) {
+  if (!bounded(data, byteOffset, revit2027GInfoBytes() + 4, enclosingEndOffset)) {
     return {
       ok: false,
       error: "Revit 2027 EdgeLoop/GEdgeLoop prefix is truncated",
@@ -127,7 +126,7 @@ export function decodeRevit2027EdgeLoopStatic(
       : data.subarray(0, enclosingEndOffset);
   const nextLoop = decodeCondInt16PropertyDescriptor(
     boundedData,
-    byteOffset + GINFO_BYTES,
+    byteOffset + revit2027GInfoBytes(),
   );
   if (!nextLoop.ok) {
     return {
@@ -213,7 +212,7 @@ export function decodeRevit2027EdgeLoopWithChainEnvelopesStatic(
   revitVersion: number,
   options: { maxChains?: number } = {},
 ): Revit2027EdgeLoopWithChainEnvelopesStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error:

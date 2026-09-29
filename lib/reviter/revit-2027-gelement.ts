@@ -2,14 +2,27 @@ import {
   decodeCondInt16QueueCollection,
   type CondInt16QueueEntry,
 } from "./dynamic-geometry-queue.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import type { RevitExtents3d } from "./revit-2026-grep-root.ts";
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  readRevit2027GInfo,
+  revit2027GInfoBytes,
+  type Revit2027GInfo,
+} from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Selector-free ObjectPtrInit source slot for a queued Revit 2027 GElement. */
 export const REVIT_2027_GELEMENT_SOURCE_CLASS_SLOT = 2246;
 
-const GINFO_BYTES = 20;
 const GREP_STATIC_SUFFIX_BYTES = 112;
+
+/**
+ * The suffix where ids are 32-bit: the 2019 to 2023 `GRep` (version 5) has no
+ * `m_elementId`, so the two boxes are followed directly by `m_gElemType` and
+ * `m_flags`. The element's id is then the one its `GInfo.m_tag` carries, as
+ * it does at a framed root in every release.
+ */
+const NARROW_GREP_STATIC_SUFFIX_BYTES = 104;
 
 export type Revit2027GElementStatic = {
   byteOffset: number;
@@ -28,12 +41,7 @@ export type Revit2027GElementStaticDecodeResult =
   | { ok: false; error: string };
 
 function decodeGInfo(view: DataView, byteOffset: number): Revit2027GInfo {
-  return {
-    gStyleElementId: view.getBigInt64(byteOffset, true),
-    tag: view.getInt32(byteOffset + 8, true),
-    controlCommand: view.getInt32(byteOffset + 12, true),
-    flags: view.getUint32(byteOffset + 16, true),
-  };
+  return readRevit2027GInfo(view, byteOffset);
 }
 
 function decodeExtents(view: DataView, byteOffset: number): RevitExtents3d {
@@ -72,7 +80,7 @@ export function decodeRevit2027GElementStatic(
   enclosingEndOffset: number,
   revitVersion: number,
 ): Revit2027GElementStaticDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "Revit 2027 GElement decoding requires release 2027",
@@ -83,18 +91,20 @@ export function decodeRevit2027GElementStatic(
     !Number.isSafeInteger(enclosingEndOffset) ||
     byteOffset < 0 ||
     enclosingEndOffset > data.byteLength ||
-    byteOffset > enclosingEndOffset - GINFO_BYTES - 4
+    byteOffset > enclosingEndOffset - revit2027GInfoBytes() - 4
   ) {
     return { ok: false, error: "Revit 2027 GElement boundary is invalid" };
   }
 
+  const narrow = narrowElementIds();
   const decodedChildren = decodeCondInt16QueueCollection(
     data,
-    byteOffset + GINFO_BYTES,
+    byteOffset + revit2027GInfoBytes(),
   );
   if (!decodedChildren.ok) return decodedChildren;
   const suffixOffset = decodedChildren.collection.endOffset;
-  const endOffset = suffixOffset + GREP_STATIC_SUFFIX_BYTES;
+  const endOffset = suffixOffset +
+    (narrow ? NARROW_GREP_STATIC_SUFFIX_BYTES : GREP_STATIC_SUFFIX_BYTES);
   if (
     !Number.isSafeInteger(endOffset) ||
     endOffset > enclosingEndOffset
@@ -118,18 +128,20 @@ export function decodeRevit2027GElementStatic(
     };
   }
 
+  const gInfo = decodeGInfo(view, byteOffset);
+  const tailOffset = suffixOffset + (narrow ? 96 : 104);
   return {
     ok: true,
     value: {
       byteOffset,
       endOffset,
-      gInfo: decodeGInfo(view, byteOffset),
+      gInfo,
       children: decodedChildren.collection.entries,
       localExtents,
       worldExtents,
-      elementId: view.getBigInt64(suffixOffset + 96, true),
-      objectType: view.getInt32(suffixOffset + 104, true),
-      flags: view.getUint32(suffixOffset + 108, true),
+      elementId: narrow ? BigInt(gInfo.tag) : view.getBigInt64(suffixOffset + 96, true),
+      objectType: view.getInt32(tailOffset, true),
+      flags: view.getUint32(tailOffset + 4, true),
     },
   };
 }

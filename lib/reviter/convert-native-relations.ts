@@ -32,6 +32,8 @@ import { resolveAssociatedLevelRelations } from "./level-relations.ts";
 import { buildNativeMaterialPalette } from "./material-palette.ts";
 import { displayMaterials } from "./scene.ts";
 
+import type { FamilyTypeName } from "./family-type-names.ts";
+import type { NameEntry } from "./name-entries.ts";
 import type {
   NativeCompoundLayerMaterialAssignment,
   NativeCompoundStructureDefinition,
@@ -68,6 +70,10 @@ import type {
 export type NativeRelationsInput = {
   /** Records the resolved family identity is written onto. */
   elementBounds: ElementBoundsRecord[];
+  /** The stored name of each loaded family and type, by element id. */
+  nameEntries?: ReadonlyMap<number, NameEntry>;
+  /** Each placed instance's type and family, resolved by name (`family-type-names.ts`). */
+  familyTypeNames?: ReadonlyMap<number, FamilyTypeName>;
   instancePlacements: Map<number, InstancePlacement>;
   /** Local shape ids proven to be referenced by a placement. */
   sharedGeometryIds: Set<number>;
@@ -118,6 +124,8 @@ export function resolveNativeRelations(
 ): NativeRelations {
   const {
     elementBounds,
+    nameEntries,
+    familyTypeNames,
     instancePlacements,
     sharedGeometryIds,
     familyElementIds,
@@ -175,14 +183,26 @@ export function resolveNativeRelations(
     nativeFamilyDefinitions.map((definition) => [definition.familyId, definition]),
   );
   for (const record of elementBounds) {
+    const named = familyTypeNames?.get(record.elementId);
+    if (named) {
+      record.typeName ??= named.typeName;
+      if (named.familyName) record.familyName ??= named.familyName;
+    }
     const placement = instancePlacements.get(record.elementId);
     if (!placement) continue;
     const symbolId = placement.symbolId ?? placement.geometryId;
     record.familySymbolId = symbolId;
+    // The symbol is the instance's type, and the project stores its name
+    // under the instance's own category.
+    const typeEntry = nameEntries?.get(symbolId);
+    if (typeEntry && !record.typeName && (record.categoryId == null || typeEntry.categoryId === record.categoryId)) {
+      record.typeName = typeEntry.name;
+    }
     const relation = familyRelationBySymbol.get(symbolId);
     if (!relation) continue;
     record.familyId = relation.familyId;
-    record.familyName = familyDefinitionById.get(relation.familyId)?.name;
+    record.familyName = familyDefinitionById.get(relation.familyId)?.name ??
+      nameEntries?.get(relation.familyId)?.name;
   }
   const nativeGeometryMaterialAssignments = resolveGeometryMaterialAssignments(
     geometryMaterialCandidates,

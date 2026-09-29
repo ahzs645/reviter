@@ -1,6 +1,9 @@
 import type { CondInt16QueueEntry } from "./dynamic-geometry-queue.ts";
+import { narrowElementIds } from "./element-id-width.ts";
 import type { ElementObject } from "./element-objects.ts";
 import type { Revit2026GInfoStatic } from "./revit-2026-object-dispatch.ts";
+import { readRevit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { canonicalClassTag } from "./revit-class-tags.ts";
 
 /**
  * `Formats/Latest` gives the framed GElement schema tag 2247, whose persisted
@@ -19,6 +22,29 @@ const GINFO_BYTES = 20;
 const EXTENTS_BYTES = 48;
 const GREP_TAIL_BYTES = 16;
 const MAX_CHILDREN = 10_000;
+
+/**
+ * The same prefix where ids are 32-bit (Revit 2023 and older): a 12-byte
+ * frame header, a 16-byte `GInfo`, and a `GRep` tail of `m_gElemType` and
+ * `m_flags` only. The 2023 schema's `GRep` (version 5) has no `m_elementId`;
+ * 2024's (version 6) added it, and the frame's own id stands in for it.
+ */
+const NARROW = {
+  markerOffset: 12,
+  bodyOffset: 14,
+  echoOffset: 12,
+  trailerBytes: 16,
+  gInfoBytes: 16,
+  grepTailBytes: 8,
+} as const;
+const WIDE = {
+  markerOffset: FRAME_MARKER_OFFSET,
+  bodyOffset: BODY_OFFSET,
+  echoOffset: FRAME_ECHO_OFFSET,
+  trailerBytes: FRAME_TRAILER_BYTES,
+  gInfoBytes: GINFO_BYTES,
+  grepTailBytes: GREP_TAIL_BYTES,
+} as const;
 
 export type RevitExtents3d = {
   minimum: readonly [number, number, number];
@@ -96,16 +122,19 @@ export function decodeRevit2026GRepRoot(
   data: Uint8Array,
   frame: ElementObject,
 ): Revit2026GRepRootResult {
+  const narrow = narrowElementIds();
+  const layout = narrow ? NARROW : WIDE;
   if (
     !Number.isSafeInteger(frame.offset) ||
     !Number.isSafeInteger(frame.objectLength) ||
     frame.offset < 0 ||
-    frame.objectLength < BODY_OFFSET + GINFO_BYTES + 4 + 2 * EXTENTS_BYTES + GREP_TAIL_BYTES
+    frame.objectLength <
+      layout.bodyOffset + layout.gInfoBytes + 4 + 2 * EXTENTS_BYTES + layout.grepTailBytes
   ) {
     return { ok: false, error: "GElement frame boundary is invalid" };
   }
   const frameEndOffset = frame.offset + frame.objectLength;
-  const trailerEndOffset = frameEndOffset + FRAME_TRAILER_BYTES;
+  const trailerEndOffset = frameEndOffset + layout.trailerBytes;
   if (
     !Number.isSafeInteger(frameEndOffset) ||
     !fitsWithin(frame.offset, trailerEndOffset - frame.offset, 0, data.byteLength)
@@ -115,20 +144,22 @@ export function decodeRevit2026GRepRoot(
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (
-    view.getUint32(frame.offset + 12, true) !== frame.objectLength ||
-    view.getUint32(frameEndOffset + FRAME_ECHO_OFFSET, true) !== frame.objectLength
+    view.getUint32(frame.offset + layout.markerOffset - 4, true) !== frame.objectLength ||
+    view.getUint32(frameEndOffset + layout.echoOffset, true) !== frame.objectLength
   ) {
     return { ok: false, error: "GElement frame length echo does not match" };
   }
   if (
     frame.marker !== REVIT_2026_GELEMENT_OBJECT_MARKER ||
-    view.getUint16(frame.offset + FRAME_MARKER_OFFSET, true) !==
+    canonicalClassTag(view.getUint16(frame.offset + layout.markerOffset, true)) !==
       REVIT_2026_GELEMENT_OBJECT_MARKER
   ) {
     return { ok: false, error: "frame is not a Revit 2026 GElement" };
   }
 
-  const frameElementId = view.getBigUint64(frame.offset, true);
+  const frameElementId = narrow
+    ? BigInt(view.getUint32(frame.offset, true))
+    : view.getBigUint64(frame.offset, true);
   if (
     frameElementId === 0n ||
     frameElementId > BigInt(Number.MAX_SAFE_INTEGER) ||
@@ -137,18 +168,24 @@ export function decodeRevit2026GRepRoot(
     return { ok: false, error: "GElement frame owner id is invalid or inconsistent" };
   }
 
-  const bodyOffset = frame.offset + BODY_OFFSET;
-  if (!fitsWithin(bodyOffset, GINFO_BYTES + 4, bodyOffset, frameEndOffset)) {
+  const bodyOffset = frame.offset + layout.bodyOffset;
+  if (!fitsWithin(bodyOffset, layout.gInfoBytes + 4, bodyOffset, frameEndOffset)) {
     return { ok: false, error: "GRep static prefix is truncated" };
   }
-  const gInfo: Revit2026GInfoStatic = {
-    gStyleElementId: view.getBigUint64(bodyOffset, true),
-    tag: view.getInt32(bodyOffset + 8, true),
-    controlCommand: view.getInt32(bodyOffset + 12, true),
-    flags: view.getUint32(bodyOffset + 16, true),
-  };
+  const gInfo: Revit2026GInfoStatic = narrow
+    ? {
+        ...readRevit2027GInfo(view, bodyOffset),
+        // Unsigned, as the wide reading takes it.
+        gStyleElementId: BigInt.asUintN(64, BigInt(view.getInt32(bodyOffset + 8, true))),
+      }
+    : {
+        gStyleElementId: view.getBigUint64(bodyOffset, true),
+        tag: view.getInt32(bodyOffset + 8, true),
+        controlCommand: view.getInt32(bodyOffset + 12, true),
+        flags: view.getUint32(bodyOffset + 16, true),
+      };
 
-  const childCountOffset = bodyOffset + GINFO_BYTES;
+  const childCountOffset = bodyOffset + layout.gInfoBytes;
   const childCount = view.getInt32(childCountOffset, true);
   if (childCount < 0 || childCount > MAX_CHILDREN) {
     return { ok: false, error: "GGroup child count is outside the allowed range" };
@@ -167,7 +204,7 @@ export function decodeRevit2026GRepRoot(
       if (!fitsWithin(offset, 2, bodyOffset, frameEndOffset)) {
         return { ok: false, error: "GGroup child source-class slot is truncated" };
       }
-      sourceClassSlot = view.getInt16(offset, true);
+      sourceClassSlot = canonicalClassTag(view.getInt16(offset, true));
       if (sourceClassSlot <= 0) {
         return { ok: false, error: "GGroup child source-class slot is invalid" };
       }
@@ -179,7 +216,7 @@ export function decodeRevit2026GRepRoot(
   if (
     !fitsWithin(
       offset,
-      2 * EXTENTS_BYTES + GREP_TAIL_BYTES,
+      2 * EXTENTS_BYTES + layout.grepTailBytes,
       bodyOffset,
       frameEndOffset,
     )
@@ -191,8 +228,8 @@ export function decodeRevit2026GRepRoot(
   const worldExtents = decodeExtents(view, offset);
   offset += EXTENTS_BYTES;
 
-  const ownerElementId = view.getBigInt64(offset, true);
-  offset += 8;
+  const ownerElementId = narrow ? frameElementId : view.getBigInt64(offset, true);
+  if (!narrow) offset += 8;
   if (ownerElementId <= 0n || ownerElementId !== frameElementId) {
     return { ok: false, error: "GRep owner id does not match its framed element" };
   }

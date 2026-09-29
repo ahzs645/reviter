@@ -21,6 +21,7 @@
  * shared entries keep the relative order both copies had, with the
  * scene-specific entries interleaved at exactly the points they appeared.
  */
+import type { NonModelReason } from "./model-elements.ts";
 import type { NativeCompoundLayerMaterialAssignment, NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type {
@@ -98,6 +99,10 @@ export type ConvertSceneReport = {
   inferredCurtainPanels: number;
   omittedHelperProxies: number;
   omittedCurtainAssemblyProxies: number;
+  /** Terrain and RPC content whose only geometry would have been a box. */
+  omittedTerrainProxies?: number;
+  /** Records of the file that are not part of the 3D model, by reason. */
+  nonModelElements?: Record<NonModelReason, number>;
 };
 
 /** The diagnostic segment scan, which runs when no element record decoded. */
@@ -126,9 +131,10 @@ export function buildDecoderCoverage(
       // The bounds decoder is what makes this the bounds branch, so it is
       // reported unconditionally there and is absent from the other.
       ...(scene ? ["revit-2027-duplicated-bounds-v1"] : []),
+      ...(basis.nativeCategories.headerElements ? ["revit-element-header-category-v1"] : []),
       ...(basis.nativeCategories.tokensFound ? ["revit-builtin-category-token-v1"] : []),
-      ...(basis.elementOwnership ? ["revit-2024-2027-elem-table-ownership-v1"] : []),
-      ...(basis.nativeIdentity ? ["revit-2027-native-identity-v1"] : []),
+      ...(basis.elementOwnership ? [`${basis.elementOwnership.format}-ownership-v1`] : []),
+      ...(basis.nativeIdentity ? [`${basis.nativeIdentity.format}-v1`] : []),
       ...(basis.transmissionData ? ["revit-transmission-data-v1"] : []),
       ...(basis.nativeMaterialDefinitions.length
         ? ["revit-2027-material-element-name-v1"]
@@ -246,6 +252,8 @@ export function buildDecoderCoverage(
           nativeMeshCarrierComposedOutsideEnvelope:
             meshScene.carrierComposedOutsideEnvelope,
           nativeMeshMissingBounds: meshScene.missingBounds,
+          nativeMeshFamilyDocumentElements: meshScene.familyDocumentElements ?? 0,
+          nativeMeshFamilyDocumentMismatches: meshScene.familyDocumentMismatches ?? 0,
           nativeMeshUnrepresentedElements: meshScene.unrepresentedElements,
           nativeMeshNestedDefinitions: meshCollection.nestedDefinitions,
           nativeMeshNestedLinks: meshCollection.nestedLinks,
@@ -324,7 +332,15 @@ export function buildWarnings(
       ? [
           `${scene.drawableRecords.toLocaleString()} native element records supplied duplicated, validated 3D bounds.`,
           basis.categorisedElements
-            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${nativeCategories.directElements.toLocaleString()} from their own category token, ${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus).`
+            ? `${basis.categorisedElements.toLocaleString()} elements carry a Revit category decoded from the file itself (${[
+                nativeCategories.headerElements
+                  ? `${nativeCategories.headerElements.toLocaleString()} stated by their own ElementHeader`
+                  : null,
+                nativeCategories.directElements || !nativeCategories.headerElements
+                  ? `${nativeCategories.directElements.toLocaleString()} from their own category token`
+                  : null,
+                `${nativeCategories.inheritedElements.toLocaleString()} inherited from a record-code consensus`,
+              ].filter(Boolean).join(", ")}).`
             : "No native Revit category tokens were decoded, so element display falls back to record-code clusters.",
         ]
       : [
@@ -399,7 +415,7 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
   return [
     ...(meshScene.meshes.length
       ? [
-          `${meshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit 2027 GRep/BRep face meshes (${meshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
+          `${meshScene.coveredElementIds.size.toLocaleString()} elements use complete certified Revit GRep/BRep face meshes (${meshScene.triangles.toLocaleString()} triangles); their display proxies were removed only after native admission.`,
         ]
       : []),
     ...(meshCollection.incompleteOwners
@@ -425,6 +441,11 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
     ...(meshScene.carrierComposedOutsideEnvelope
       ? [
           `${meshScene.carrierComposedOutsideEnvelope.toLocaleString()} of ${meshScene.carrierComposedItems.toLocaleString()} carrier-composed stringer meshes are drawn outside the element's own RVT envelope; that route composes a sibling's geometry by a state displacement and skips the envelope cross-check.`,
+        ]
+      : []),
+    ...(meshScene.familyDocumentElements || meshScene.familyDocumentMismatches
+      ? [
+          `${(meshScene.familyDocumentElements ?? 0).toLocaleString()} family instances whose type stores no geometry are drawn from their family's own document, which the project carries; ${(meshScene.familyDocumentMismatches ?? 0).toLocaleString()} more keep their box because the document holds the family in a different type's size.`,
         ]
       : []),
     ...(meshScene.missingBounds
@@ -458,6 +479,13 @@ function sceneWarnings(scene: ConvertSceneReport): string[] {
       : []),
     ...(displaySelection.omittedSheetCount
       ? [`${displaySelection.omittedSheetCount.toLocaleString()} sheets are held back from the scene: a floor's own boundary sketch, which Revit stores as its own element and which would otherwise be extruded into a second slab, storey-sized plates that no category claims, and uncategorised records written under the "no class" record code, which the paired export gives geometry to in none of 304 cases.`]
+      : []),
+    ...(scene.nonModelElements &&
+        Object.values(scene.nonModelElements).some((count) => count > 0)
+      ? [`${Object.values(scene.nonModelElements).reduce((sum, count) => sum + count, 0).toLocaleString()} records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: ${scene.nonModelElements["view-owned"].toLocaleString()} owned by a view (annotation, tags, detail items), ${scene.nonModelElements["family-internal"].toLocaleString()} inside a loaded family's own definition, ${(scene.nonModelElements.unplaced ?? 0).toLocaleString()} members of a group type that is not placed, ${(scene.nonModelElements.type ?? 0).toLocaleString()} family types, ${scene.nonModelElements["no-category"].toLocaleString()} with no category, and ${scene.nonModelElements["non-model-category"].toLocaleString()} datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.`]
+      : []),
+    ...(scene.omittedTerrainProxies
+      ? [`${scene.omittedTerrainProxies.toLocaleString()} topography, planting, entourage and reinforcement elements have no decoded mesh and are not drawn: their envelope is not their shape (a terrain's is a block under the whole site, an RPC tree's a solid cube, a rebar set's the slab its bars run through).`]
       : []),
     ...(scene.omittedHelperProxies
       ? [`${scene.omittedHelperProxies.toLocaleString()} unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.`]

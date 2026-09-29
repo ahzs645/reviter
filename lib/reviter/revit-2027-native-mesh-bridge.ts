@@ -1,10 +1,18 @@
 import type { NeutralFaceMesh } from "./brep-tessellator.ts";
+import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import {
+  meshRevit2027PolyMeshReplay,
+  type Revit2027PolyMeshFace,
+} from "./revit-2027-polymesh-owner-mesh.ts";
+import { revit2027UndrawnReplayIndices } from "./revit-2027-undrawn-geometry.ts";
+import { frameHeaderBytes } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
 import {
   meshRevit2027CertifiedOwnerReplay,
   type Revit2027CertifiedOwnerFaceMesh,
 } from "./revit-2027-certified-owner-mesh.ts";
+import { REVIT_2027_TRIMMED_OWNER_MESH_DECODER_ID } from "./revit-2027-trimmed-owner-mesh.ts";
 import {
   decodeRevit2027BalusterInstanceDefinition,
   decodeRevit2027TopRailTypeCurves,
@@ -63,9 +71,21 @@ import {
 import type { RevitTransform3d } from "./dynamic-geometry-queue.ts";
 
 import type { Bounds3, MeshData, Vec3 } from "./types.ts";
+import { canonicalClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 const DEFAULT_MAX_STORED_TRIANGLES = 1_250_000;
-const DEFAULT_MAX_OUTPUT_TRIANGLES = 1_250_000;
+/**
+ * The native scene's triangle budget. Of the four corpus models only the
+ * fourth reaches it: fully meshed, its scene is 1.58M triangles, and at the
+ * former 1.25M budget 97 elements it meshes were left as boxes (78) or not
+ * drawn at all (19, its 17 trees among them). Measured on that model, 2M
+ * costs no conversion time (55-58 s either way), takes its published meshes
+ * from 51.7 to 68.0 MiB and its GLB from 47.5 to 62.1 MiB, and in the studio
+ * rendered in software (SwiftShader, 1600 x 1000) takes the frames drawn
+ * while orbiting from 1.67 to 1.99 s on average. The other three models
+ * (0.19M, 0.38M and 0.90M triangles) are untouched.
+ */
+const DEFAULT_MAX_OUTPUT_TRIANGLES = 2_000_000;
 // The exact UNBC corpus has one framed GRep owner for most persisted elements,
 // including non-scene definitions encountered before a later symbol reference.
 // Keep the cap above that corpus while remaining finite and independently
@@ -108,6 +128,8 @@ export type Revit2027CompactOwnerMesh = {
     mesh: NeutralFaceMesh;
     /** Exact column-major root-local transform for a nested occurrence. */
     nestedTransform?: RevitTransform3d["matrix"];
+    /** The graphics style of the nearest geometry node above the face that names one. */
+    gStyleElementId?: number;
   }[];
   triangles: number;
 };
@@ -123,6 +145,13 @@ export type Revit2027NativeMeshCollection = {
    * the selected state and therefore are not a valid independent mesh gate.
    */
   readonly carrierComposedOwnerIds?: ReadonlySet<number>;
+  /**
+   * Placed types drawn from their family document's forms because the project
+   * stores no geometry for the type itself (`family-forms.ts`). The document
+   * holds the family in one type's dimensions, so the scene admits each only
+   * where it fills the placed element's own envelope.
+   */
+  readonly familyDocumentOwnerIds?: ReadonlySet<number>;
   /**
    * `StairsRun` owners whose body came from `revit-2027-spiral-stair-mesh`.
    *
@@ -298,6 +327,11 @@ export type Revit2027NativeMeshCollector = {
    */
   scanAlternateFrame(data: Uint8Array): void;
   /**
+   * Admit one `GElement` frame reassembled across a page boundary, which the
+   * page scan saw only in part and could not decode.
+   */
+  scanSplitGElementFrame(data: Uint8Array): void;
+  /**
    * Finalize direct scene roots plus only the non-direct definitions proven to
    * be referenced by persisted instance placements.
    */
@@ -305,6 +339,15 @@ export type Revit2027NativeMeshCollector = {
     requestedOwnerIds?: Iterable<number>,
     stairsRuns?: ReadonlyMap<number, Revit2027StairsRunAndLandingAggregate>,
     owningElementByElement?: ReadonlyMap<number, number>,
+    /**
+     * Scene elements whose own geometry root may be composed through its
+     * nested instances: those with no decoded placement of their own.
+     */
+    unplacedElementIds?: ReadonlySet<number>,
+    /** Graphics styles whose geometry is left out of every published mesh. */
+    hiddenStyleIds?: ReadonlySet<number>,
+    /** Each placed type's family-document solid forms, for a type with no stored geometry. */
+    familyDocumentForms?: ReadonlyMap<number, readonly number[]>,
   ): Revit2027NativeMeshCollection;
 };
 
@@ -556,10 +599,29 @@ type CompactFacesResult =
   | { ok: true; value: Revit2027CompactOwnerMesh["faces"] }
   | { ok: false; error: string };
 
+/**
+ * The graphics style a replayed node draws in: its own, or the nearest
+ * ancestor's that names one, since a node without a style draws in its
+ * parent's.
+ */
+function replayStyleId(
+  spans: readonly Revit2027GRepReplaySpan[],
+  replayIndex: number | null,
+): number | undefined {
+  for (let index = replayIndex; index != null; index = spans[index]?.parentReplayIndex ?? null) {
+    const gInfo = (spans[index]?.value as { gInfo?: Revit2027GInfo } | undefined)?.gInfo;
+    const styleId = gInfo ? Number(gInfo.gStyleElementId) : 0;
+    if (styleId > 0 && Number.isSafeInteger(styleId)) return styleId;
+  }
+  return undefined;
+}
+
 function compactFaces(
   faces: readonly Revit2027CertifiedOwnerFaceMesh[],
   faceSpans: Revit2027FaceSpanClassification<Revit2027GRepReplaySpan>,
   bindings: readonly Revit2027GInstanceBinding[],
+  polyMeshes: readonly Revit2027PolyMeshFace[] = [],
+  spans: readonly Revit2027GRepReplaySpan[] = [],
 ): CompactFacesResult {
   if (faceSpans.duplicateToken != null) {
     return {
@@ -582,12 +644,30 @@ function compactFaces(
       span.path,
     );
     if (!embedded.ok) return embedded;
+    const gStyleElementId = replayStyleId(spans, span.parentReplayIndex);
     compact.push({
       faceToken,
       mesh,
       ...(embedded.value == null
         ? {}
         : { nestedTransform: embedded.value }),
+      ...(gStyleElementId == null ? {} : { gStyleElementId }),
+    });
+  }
+  for (const { span, faceToken, mesh } of polyMeshes) {
+    const embedded = composeRevit2027EmbeddedPathTransform(
+      bindings,
+      span.path,
+    );
+    if (!embedded.ok) return embedded;
+    const gStyleElementId = replayStyleId(spans, span.replayIndex);
+    compact.push({
+      faceToken,
+      mesh,
+      ...(embedded.value == null
+        ? {}
+        : { nestedTransform: embedded.value }),
+      ...(gStyleElementId == null ? {} : { gStyleElementId }),
     });
   }
   return { ok: true, value: compact };
@@ -984,7 +1064,44 @@ function finalizeRevit2027NativeMeshCollection(
     Revit2027StairsRunAndLandingAggregate
   > = new Map(),
   owningElementByElement: ReadonlyMap<number, number> = new Map(),
+  unplacedElementIds: ReadonlySet<number> = new Set(),
+  hiddenStyleIds: ReadonlySet<number> = new Set(),
+  familyDocumentForms: ReadonlyMap<number, readonly number[]> = new Map(),
 ): Revit2027NativeMeshCollection {
+  // A light fixture's family carries the shape of its light source, drawn in
+  // the "Light Source" subcategory that Revit hides in model views and the
+  // Autodesk Viewer does not draw. In the 2025 RAC sample's pendants it is a
+  // 1.1 x 1.6 x 2 ft mesh around the lamp, which put the fixture outside its
+  // own envelope. Faces in such a style are left out of what is published.
+  const visibleGeometryByOwner = new Map<number, Revit2027CompactOwnerMesh | null>();
+  const visibleGeometry = (
+    definition: CompactOwnerDefinition,
+  ): Revit2027CompactOwnerMesh | null => {
+    const geometry = definition.geometry;
+    if (!geometry || hiddenStyleIds.size === 0) return geometry;
+    const cached = visibleGeometryByOwner.get(definition.ownerElementId);
+    if (cached !== undefined) return cached;
+    const faces = geometry.faces.filter(
+      (face) =>
+        face.gStyleElementId == null ||
+        !hiddenStyleIds.has(face.gStyleElementId),
+    );
+    const visible =
+      faces.length === geometry.faces.length
+        ? geometry
+        : faces.length === 0
+        ? null
+        : {
+            ...geometry,
+            faces,
+            triangles: faces.reduce(
+              (total, face) => total + face.mesh.indices.length / 3,
+              0,
+            ),
+          };
+    visibleGeometryByOwner.set(definition.ownerElementId, visible);
+    return visible;
+  };
   const requestedOwners = state.enabled
     ? new Set(
         [...requestedOwnerIds].filter(
@@ -996,6 +1113,42 @@ function finalizeRevit2027NativeMeshCollection(
       )
     : new Set<number>();
   const owners = new Map<number, Revit2027CompactOwnerMesh>();
+  // A placed type that stores no geometry of its own is drawn from its family
+  // document's solid forms, each already in the family's coordinates, when
+  // every one of them is complete. In the 2025 RAC sample the "Cabinet 1"
+  // type stores none; its document's 13 solid forms, placed by the cabinet
+  // instance, land on the Autodesk Viewer's box to 0.001 ft.
+  const familyDocumentOwnerIds = new Set<number>();
+  for (const [symbolId, formIds] of familyDocumentForms) {
+    if (
+      state.definitions.has(symbolId) ||
+      state.conflictingOwnerIds.has(symbolId) ||
+      formIds.length === 0
+    ) {
+      continue;
+    }
+    const faces: Revit2027CompactOwnerMesh["faces"][number][] = [];
+    let triangles = 0;
+    let complete = true;
+    for (const formId of formIds) {
+      const form = state.definitions.get(formId);
+      const geometry = form ? visibleGeometry(form) : null;
+      if (
+        !form?.localComplete ||
+        form.nestedInstances.length > 0 ||
+        state.conflictingOwnerIds.has(formId) ||
+        !geometry
+      ) {
+        complete = false;
+        break;
+      }
+      faces.push(...geometry.faces);
+      triangles += geometry.triangles;
+    }
+    if (!complete || faces.length === 0) continue;
+    owners.set(symbolId, { ownerElementId: symbolId, faces, triangles });
+    familyDocumentOwnerIds.add(symbolId);
+  }
   const reconstructedOwnerIds = new Set<number>();
   const carrierComposedOwnerIds = new Set<number>();
   const spiralStairRunOwnerIds = new Set<number>();
@@ -1004,16 +1157,23 @@ function finalizeRevit2027NativeMeshCollection(
   // otherwise an unrelated sibling under the same owner can donate its body.
   // That is how a rectangular curtain panel was copied into a sloped boundary.
   const stringerOwnerIds = decodedStairStringerIds(stairsRuns);
+  // A scene element with no decoded placement is published from its own
+  // complete root as well, whatever the root's shape. In the 2025 RAC sample
+  // that is each pile cap: its root holds the cap body and a reference to its
+  // pile, which is drawn by the pile's own element, so the cap is drawn at its
+  // own 2 x 2 x 1 ft where its envelope, which spans the pile, is 20.7 ft
+  // tall. The scene's envelope gate still checks the result.
   for (const definition of state.definitions.values()) {
     if (
       (definition.directRoot ||
-        requestedOwners.has(definition.ownerElementId)) &&
+        requestedOwners.has(definition.ownerElementId) ||
+        unplacedElementIds.has(definition.ownerElementId)) &&
       definition.nestedInstances.length === 0 &&
       definition.localComplete &&
-      definition.geometry &&
+      visibleGeometry(definition) &&
       !state.conflictingOwnerIds.has(definition.ownerElementId)
     ) {
-      owners.set(definition.ownerElementId, definition.geometry);
+      owners.set(definition.ownerElementId, visibleGeometry(definition)!);
     }
   }
   for (const definition of state.definitions.values()) {
@@ -1134,11 +1294,19 @@ function finalizeRevit2027NativeMeshCollection(
     (definition) =>
       definition.directRoot && definition.nestedInstances.length > 0,
   );
+  // A placed family instance's own GElement is often nothing but a GInstance
+  // of its symbol under the instance's transform. Where the instance's
+  // placement was decoded, the symbol is requested and placed from it. Where
+  // it was not — every one of the 2025 RAC sample's solar panels, whose
+  // symbol decodes complete — the instance's own root says the same thing,
+  // and is composed like a direct root; the scene's envelope gate still
+  // checks the result against the element's own bounds.
   const selectedNestedRoots = [...state.definitions.values()].filter(
     (definition) =>
       definition.nestedInstances.length > 0 &&
       (definition.directRoot ||
-        requestedOwners.has(definition.ownerElementId)),
+        requestedOwners.has(definition.ownerElementId) ||
+        unplacedElementIds.has(definition.ownerElementId)),
   );
   let completeNestedRoots = 0;
   let partialNestedRoots = 0;
@@ -1180,7 +1348,7 @@ function finalizeRevit2027NativeMeshCollection(
       // contains grouping/instance nodes. This lets finalization enforce local
       // coverage for the entire recursive closure, not only mesh-bearing nodes.
       geometry: {
-        mesh: definition.geometry,
+        mesh: visibleGeometry(definition),
         localComplete: definition.localComplete,
       } satisfies NestedGeometryMarker,
       nestedInstances: definition.nestedInstances,
@@ -1322,6 +1490,7 @@ function finalizeRevit2027NativeMeshCollection(
     owners,
     reconstructedOwnerIds,
     carrierComposedOwnerIds,
+    familyDocumentOwnerIds,
     spiralStairRunOwnerIds,
     scannedFrames: state.scannedFrames,
     eligibleRoots: state.eligibleRoots,
@@ -1396,7 +1565,7 @@ export function createRevit2027NativeMeshCollector(
     MAX_INCOMPLETE_SAMPLES,
   );
   const state: MutableCollection = {
-    enabled: release === 2027,
+    enabled: readsElementRecordLayout(release),
     definitions: new Map(),
     definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
@@ -1579,6 +1748,288 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
+  // One framed GElement: its GRep replayed, meshed and stored as a definition.
+  // Shared by the page scan and by frames reassembled across a page boundary.
+  const decodeGElementFrame = (
+    data: Uint8Array,
+    frame: ReturnType<typeof scanFramedElementObjects>[number],
+  ): void => {
+    const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
+    if (!root.ok) {
+      state.definitionFailures.set(
+        frame.elementId,
+        `framed GRep root decode failed: ${root.error}`,
+      );
+      return;
+    }
+    const boundedTessellatorRoot =
+      isRevit2027BoundedTessellatorRoot(root.value);
+    const conditionedGeometryRoot =
+      isRevit2027ConditionedGeometryRoot(root.value);
+    const embeddedGeometryRoot =
+      isRevit2027EmbeddedGeometryRoot(root.value);
+    const directRoot = isRevit2027DirectGeometryRoot(root.value);
+    if (directRoot) state.eligibleRoots += 1;
+    if (boundedTessellatorRoot) {
+      state.boundedTessellatorCandidateRoots += 1;
+    }
+    if (conditionedGeometryRoot) {
+      state.conditionedGeometryCandidateRoots += 1;
+    }
+    if (embeddedGeometryRoot) {
+      state.embeddedGeometryCandidateRoots += 1;
+    }
+
+    const ownerElementId = Number(root.value.ownerElementId);
+    if (
+      !Number.isSafeInteger(ownerElementId) ||
+      ownerElementId <= 0 ||
+      ownerElementId > 0xffff_ffff ||
+      ownerElementId !== frame.elementId
+    ) {
+      if (directRoot) {
+        rememberIncomplete({
+          ownerElementId: null,
+          code: "unsafe-owner-id",
+        });
+      }
+      return;
+    }
+    if (
+      state.definitions.has(ownerElementId) ||
+      state.conflictingOwnerIds.has(ownerElementId)
+    ) {
+      state.conflictingOwnerIds.add(ownerElementId);
+      return;
+    }
+
+    const replayed = replayRevit2027GRepFifo(data, root.value);
+    if (!replayed.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `GRep FIFO replay failed: ${replayed.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    if (directRoot) state.replayedOwners += 1;
+    const bindings = collectRevit2027GInstanceBindings(replayed.value);
+    if (!bindings.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `instance binding replay failed: ${bindings.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const embeddedError = validateEmbeddedBindings(
+      replayed.value,
+      root.value.localExtents,
+      bindings.value,
+    );
+    if (embeddedError) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `embedded-instance validation failed: ${embeddedError}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const nested = collectRevit2027NestedInstances(replayed.value);
+    if (!nested.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `nested-instance replay failed: ${nested.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const meshed = meshRevit2027CertifiedOwnerReplay(replayed.value, {
+      materialForFace: rawFaceStyleId,
+    });
+    if (!meshed.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `certified face meshing failed: ${meshed.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+
+    const polyMeshes = meshRevit2027PolyMeshReplay(replayed.value);
+    if (!polyMeshes.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `polymesh meshing failed: ${polyMeshes.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+
+    // What the saved view leaves undrawn is neither drawn nor owed a mesh.
+    // See `revit-2027-undrawn-geometry.ts`.
+    const undrawn = revit2027UndrawnReplayIndices(replayed.value.spans);
+    if (!undrawn) {
+      state.definitionFailures.set(
+        ownerElementId,
+        "GRep replay parent links do not resolve to its own nodes",
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
+    const drawnTokens = new Set(
+      [...faceSpans.drawableTokens].filter((token) => {
+        const span = faceSpans.spansByToken.get(token);
+        return !span || !undrawn.has(span.replayIndex);
+      }),
+    );
+    const drawnPolyMeshes = polyMeshes.value.filter(
+      (face) => !undrawn.has(face.span.replayIndex),
+    );
+    const nestedInstances = nested.value.filter(
+      (instance) => !undrawn.has(instance.instanceReplayIndex),
+    );
+    const faceCoverage = drawableFaceCoverage(
+      drawnTokens,
+      meshed.value.faceMeshes,
+      meshed.value.issues,
+    );
+    // A polymesh is drawable as stored. An owner whose only geometry is
+    // polymeshes is complete; one that also has faces is complete when they
+    // are.
+    const coverage: Revit2027DrawableFaceCoverage =
+      faceCoverage.code === "no-drawable-faces" && drawnPolyMeshes.length > 0
+        ? { ...faceCoverage, complete: true, code: "complete" }
+        : faceCoverage;
+    if (directRoot) {
+      state.excludedNonTopologicalFaces +=
+        faceSpans.excludedNonTopologicalFaces;
+    }
+
+    const compacted = coverage.complete
+      ? compactFaces(
+          meshed.value.faceMeshes.filter((face) =>
+            drawnTokens.has(face.faceToken),
+          ),
+          faceSpans,
+          bindings.value,
+          drawnPolyMeshes,
+          replayed.value.spans,
+        )
+      : { ok: true as const, value: [] };
+    if (!compacted.ok) {
+      state.definitionFailures.set(
+        ownerElementId,
+        `embedded face association failed: ${compacted.error}`,
+      );
+      if (directRoot) state.failedOwners += 1;
+      return;
+    }
+    const faces = compacted.value;
+    const triangles = coverage.complete
+      ? faces.reduce(
+          (total, face) => total + face.mesh.indices.length / 3,
+          0,
+        )
+      : 0;
+    const geometry =
+      coverage.complete && faces.length > 0
+        ? { ownerElementId, faces, triangles }
+        : null;
+    const localComplete =
+      coverage.complete ||
+      (coverage.code === "no-drawable-faces" &&
+        nestedInstances.length > 0);
+    const meshIssueDetails = [
+      ...new Set(
+        meshed.value.issues
+          .filter(({ issue }) => issue.code !== "material-unresolved")
+          .map(
+            ({ path, issue }) =>
+              `${path}:${issue.code}` +
+              (issue.faceToken == null
+                ? ""
+                : `(face ${issue.faceToken})`),
+          ),
+      ),
+    ];
+    const localFailureDetail = localComplete
+      ? null
+      : coverage.code === "no-drawable-faces"
+      ? "persisted geometry replay contains no drawable topological faces"
+      : `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh` +
+        (meshIssueDetails.length
+          ? `; ${meshIssueDetails.join(", ")}`
+          : "");
+    if (directRoot && !localComplete) {
+      rememberIncomplete(
+        coverage.code === "no-drawable-faces"
+          ? {
+              ownerElementId,
+              code: "no-drawable-faces",
+              drawableFaces: 0,
+              meshedDrawableFaces: 0,
+            }
+          : {
+              ownerElementId,
+              code: "incomplete-drawable-faces",
+              drawableFaces: coverage.drawableFaces,
+              meshedDrawableFaces: coverage.meshedDrawableFaces,
+              detail:
+                `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
+            },
+      );
+    }
+    const definitionBytes = estimatedDefinitionBytes(
+      geometry,
+      nestedInstances,
+    );
+    if (
+      state.definitions.size >= maxOwners ||
+      state.storedTriangles + triangles > maxStoredTriangles ||
+      state.nestedLinks + nestedInstances.length > maxNestedLinks ||
+      state.storedBytes + definitionBytes > maxStoredBytes
+    ) {
+      state.truncated = true;
+      if (directRoot) {
+        rememberIncomplete({
+          ownerElementId,
+          code: "storage-limit",
+          drawableFaces: coverage.drawableFaces,
+          meshedDrawableFaces: coverage.meshedDrawableFaces,
+          detail:
+            `native definition storage cap reached at ${state.storedTriangles} triangles, ` +
+            `${state.nestedLinks} links, and ${state.storedBytes} estimated bytes`,
+        });
+      }
+      return;
+    }
+    state.definitions.set(ownerElementId, {
+      ownerElementId,
+      directRoot,
+      boundedTessellatorRoot,
+      conditionedGeometryRoot,
+      embeddedGeometryRoot,
+      geometry,
+      localComplete,
+      localFailureDetail,
+      nestedInstances,
+      spiralReplay:
+        coverage.code === "no-drawable-faces" &&
+          nestedInstances.length > 0
+          ? replayed.value
+          : null,
+      conditionalStateCarrier:
+        readRevit2027ConditionalStateCarrier(replayed.value),
+    });
+    state.definitionFailures.delete(ownerElementId);
+    if (directRoot && coverage.complete) state.completeOwners += 1;
+    state.storedTriangles += triangles;
+    state.storedBytes += definitionBytes;
+    state.nestedLinks += nestedInstances.length;
+  };
+
   return {
     release: release ?? null,
     scanAlternateFrame(data: Uint8Array): void {
@@ -1590,7 +2041,7 @@ export function createRevit2027NativeMeshCollector(
       );
       const elementId = view.getUint32(0, true);
       const objectLength = view.getUint32(12, true);
-      const marker = view.getUint16(16, true);
+      const marker = canonicalClassTag(view.getUint16(16, true));
       if (
         elementId === 0 ||
         view.getUint32(4, true) !== 0 ||
@@ -1611,6 +2062,32 @@ export function createRevit2027NativeMeshCollector(
         typeCode: view.getUint32(18, true),
       });
     },
+    scanSplitGElementFrame(data: Uint8Array): void {
+      if (!state.enabled || state.truncated || data.byteLength < 60) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      // A 16-byte frame header, or 12 where ids are 32-bit (no high word).
+      const header = frameHeaderBytes();
+      const elementId = view.getUint32(0, true);
+      const objectLength = view.getUint32(header - 4, true);
+      const marker = canonicalClassTag(view.getUint16(header, true));
+      if (
+        elementId === 0 ||
+        (header === 16 && view.getUint32(4, true) !== 0) ||
+        marker !== REVIT_2027_GELEMENT_OBJECT_MARKER ||
+        objectLength + header + 4 !== data.byteLength ||
+        view.getUint32(objectLength + header, true) !== objectLength
+      ) {
+        return;
+      }
+      state.scannedFrames += 1;
+      decodeGElementFrame(data, {
+        offset: 0,
+        elementId,
+        objectLength,
+        marker,
+        typeCode: view.getUint32(header + 2, true),
+      });
+    },
     scanPage(data: Uint8Array): void {
       if (!state.enabled || state.truncated) return;
       for (const frame of scanFramedElementObjects(data)) {
@@ -1619,238 +2096,8 @@ export function createRevit2027NativeMeshCollector(
           collectAlternateDefinition(data, frame);
           continue;
         }
-        const root = decodeRevit2027FramedGRepRoot(data, frame, 2027);
-        if (!root.ok) {
-          state.definitionFailures.set(
-            frame.elementId,
-            `framed GRep root decode failed: ${root.error}`,
-          );
-          continue;
-        }
-        const boundedTessellatorRoot =
-          isRevit2027BoundedTessellatorRoot(root.value);
-        const conditionedGeometryRoot =
-          isRevit2027ConditionedGeometryRoot(root.value);
-        const embeddedGeometryRoot =
-          isRevit2027EmbeddedGeometryRoot(root.value);
-        const directRoot = isRevit2027DirectGeometryRoot(root.value);
-        if (directRoot) state.eligibleRoots += 1;
-        if (boundedTessellatorRoot) {
-          state.boundedTessellatorCandidateRoots += 1;
-        }
-        if (conditionedGeometryRoot) {
-          state.conditionedGeometryCandidateRoots += 1;
-        }
-        if (embeddedGeometryRoot) {
-          state.embeddedGeometryCandidateRoots += 1;
-        }
-
-        const ownerElementId = Number(root.value.ownerElementId);
-        if (
-          !Number.isSafeInteger(ownerElementId) ||
-          ownerElementId <= 0 ||
-          ownerElementId > 0xffff_ffff ||
-          ownerElementId !== frame.elementId
-        ) {
-          if (directRoot) {
-            rememberIncomplete({
-              ownerElementId: null,
-              code: "unsafe-owner-id",
-            });
-          }
-          continue;
-        }
-        if (
-          state.definitions.has(ownerElementId) ||
-          state.conflictingOwnerIds.has(ownerElementId)
-        ) {
-          state.conflictingOwnerIds.add(ownerElementId);
-          continue;
-        }
-
-        const replayed = replayRevit2027GRepFifo(data, root.value);
-        if (!replayed.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `GRep FIFO replay failed: ${replayed.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        if (directRoot) state.replayedOwners += 1;
-        const bindings = collectRevit2027GInstanceBindings(replayed.value);
-        if (!bindings.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `instance binding replay failed: ${bindings.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const embeddedError = validateEmbeddedBindings(
-          replayed.value,
-          root.value.localExtents,
-          bindings.value,
-        );
-        if (embeddedError) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `embedded-instance validation failed: ${embeddedError}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const nested = collectRevit2027NestedInstances(replayed.value);
-        if (!nested.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `nested-instance replay failed: ${nested.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const meshed = meshRevit2027CertifiedOwnerReplay(replayed.value, {
-          materialForFace: rawFaceStyleId,
-        });
-        if (!meshed.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `certified face meshing failed: ${meshed.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-
-        const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
-        const coverage = drawableFaceCoverage(
-          faceSpans.drawableTokens,
-          meshed.value.faceMeshes,
-          meshed.value.issues,
-        );
-        if (directRoot) {
-          state.excludedNonTopologicalFaces +=
-            faceSpans.excludedNonTopologicalFaces;
-        }
-
-        const compacted = coverage.complete
-          ? compactFaces(
-              meshed.value.faceMeshes.filter((face) =>
-                faceSpans.drawableTokens.has(face.faceToken),
-              ),
-              faceSpans,
-              bindings.value,
-            )
-          : { ok: true as const, value: [] };
-        if (!compacted.ok) {
-          state.definitionFailures.set(
-            ownerElementId,
-            `embedded face association failed: ${compacted.error}`,
-          );
-          if (directRoot) state.failedOwners += 1;
-          continue;
-        }
-        const faces = compacted.value;
-        const triangles = coverage.complete
-          ? faces.reduce(
-              (total, face) => total + face.mesh.indices.length / 3,
-              0,
-            )
-          : 0;
-        const geometry =
-          coverage.complete && faces.length > 0
-            ? { ownerElementId, faces, triangles }
-            : null;
-        const localComplete =
-          coverage.complete ||
-          (coverage.code === "no-drawable-faces" &&
-            nested.value.length > 0);
-        const meshIssueDetails = [
-          ...new Set(
-            meshed.value.issues
-              .filter(({ issue }) => issue.code !== "material-unresolved")
-              .map(
-                ({ path, issue }) =>
-                  `${path}:${issue.code}` +
-                  (issue.faceToken == null
-                    ? ""
-                    : `(face ${issue.faceToken})`),
-              ),
-          ),
-        ];
-        const localFailureDetail = localComplete
-          ? null
-          : coverage.code === "no-drawable-faces"
-          ? "persisted geometry replay contains no drawable topological faces"
-          : `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh` +
-            (meshIssueDetails.length
-              ? `; ${meshIssueDetails.join(", ")}`
-              : "");
-        if (directRoot && !localComplete) {
-          rememberIncomplete(
-            coverage.code === "no-drawable-faces"
-              ? {
-                  ownerElementId,
-                  code: "no-drawable-faces",
-                  drawableFaces: 0,
-                  meshedDrawableFaces: 0,
-                }
-              : {
-                  ownerElementId,
-                  code: "incomplete-drawable-faces",
-                  drawableFaces: coverage.drawableFaces,
-                  meshedDrawableFaces: coverage.meshedDrawableFaces,
-                  detail:
-                    `${coverage.missingFaceTokens.length} drawable Face token(s) have no certified mesh`,
-                },
-          );
-        }
-        const definitionBytes = estimatedDefinitionBytes(
-          geometry,
-          nested.value,
-        );
-        if (
-          state.definitions.size >= maxOwners ||
-          state.storedTriangles + triangles > maxStoredTriangles ||
-          state.nestedLinks + nested.value.length > maxNestedLinks ||
-          state.storedBytes + definitionBytes > maxStoredBytes
-        ) {
-          state.truncated = true;
-          if (directRoot) {
-            rememberIncomplete({
-              ownerElementId,
-              code: "storage-limit",
-              drawableFaces: coverage.drawableFaces,
-              meshedDrawableFaces: coverage.meshedDrawableFaces,
-              detail:
-                `native definition storage cap reached at ${state.storedTriangles} triangles, ` +
-                `${state.nestedLinks} links, and ${state.storedBytes} estimated bytes`,
-            });
-          }
-          break;
-        }
-        state.definitions.set(ownerElementId, {
-          ownerElementId,
-          directRoot,
-          boundedTessellatorRoot,
-          conditionedGeometryRoot,
-          embeddedGeometryRoot,
-          geometry,
-          localComplete,
-          localFailureDetail,
-          nestedInstances: nested.value,
-          spiralReplay:
-            coverage.code === "no-drawable-faces" &&
-              nested.value.length > 0
-              ? replayed.value
-              : null,
-          conditionalStateCarrier:
-            readRevit2027ConditionalStateCarrier(replayed.value),
-        });
-        state.definitionFailures.delete(ownerElementId);
-        if (directRoot && coverage.complete) state.completeOwners += 1;
-        state.storedTriangles += triangles;
-        state.storedBytes += definitionBytes;
-        state.nestedLinks += nested.value.length;
+        decodeGElementFrame(data, frame);
+        if (state.truncated) break;
       }
     },
     snapshot(
@@ -1860,6 +2107,9 @@ export function createRevit2027NativeMeshCollector(
         Revit2027StairsRunAndLandingAggregate
       > = new Map(),
       owningElementByElement: ReadonlyMap<number, number> = new Map(),
+      unplacedElementIds: ReadonlySet<number> = new Set(),
+      hiddenStyleIds: ReadonlySet<number> = new Set(),
+      familyDocumentForms: ReadonlyMap<number, readonly number[]> = new Map(),
     ): Revit2027NativeMeshCollection {
       admitAlternateDefinitions();
       return finalizeRevit2027NativeMeshCollection(
@@ -1867,6 +2117,9 @@ export function createRevit2027NativeMeshCollector(
         requestedOwnerIds,
         stairsRuns,
         owningElementByElement,
+        unplacedElementIds,
+        hiddenStyleIds,
+        familyDocumentForms,
       );
     },
   };
@@ -1882,11 +2135,21 @@ export type Revit2027NativeMeshBuildOptions = {
   expectedBoundsByElement?: ReadonlyMap<number, Bounds3>;
   /** Every placed element decoded from the RVT, including zero-volume records. */
   knownElementIds?: ReadonlySet<number>;
+  /**
+   * Elements whose mesh the caller cleans after the scene is built, and
+   * re-checks against the envelope once cleaned. One that escapes its
+   * envelope is admitted provisionally rather than declined.
+   */
+  provisionalElementIds?: ReadonlySet<number>;
   boundsToleranceFeet?: number;
 };
 
 export type Revit2027NativeMeshScene = {
   meshes: MeshData[];
+  /** Placed elements drawn from their family document's forms. */
+  familyDocumentElements?: number;
+  /** Family-document meshes declined for not filling the element's envelope. */
+  familyDocumentMismatches?: number;
   /** Elements replaced only after all of their native triangles were admitted. */
   coveredElementIds: ReadonlySet<number>;
   /** Covered elements whose admitted owner used exact reconstruction. */
@@ -1903,6 +2166,11 @@ export type Revit2027NativeMeshScene = {
   triangles: number;
   truncated: boolean;
   boundsMismatches: number;
+  /**
+   * Of `provisionalElementIds`, those admitted although their mesh escapes
+   * their envelope; the caller declines any that still do once cleaned.
+   */
+  provisionalElementIds: ReadonlySet<number>;
   missingBounds: number;
   /** Complete native owners declined because no placed RVT element names them. */
   unrepresentedElements: number;
@@ -1924,6 +2192,40 @@ type RenderItem = {
   owner: Revit2027CompactOwnerMesh;
   placement?: InstancePlacement;
 };
+
+/**
+ * Order items so that, when the scene cannot hold them all, those with faces
+ * from the trimmed-surface path are admitted last, smallest first.
+ *
+ * Every other item is then admitted exactly as before whenever it fitted,
+ * and trimmed-surface geometry only fills the budget left over. The order is
+ * untouched when everything fits. One larger sample needed 1.53M output
+ * triangles once its curved trims were meshed, against the budget of 1.25M
+ * then, and in arrival order 65 of its natively drawn windows fell back to
+ * boxes.
+ */
+function admitTrimmedSurfaceItemsLast(
+  items: RenderItem[],
+  maxOutputTriangles: number,
+): void {
+  let total = 0;
+  for (const item of items) total += item.owner.triangles;
+  if (total <= maxOutputTriangles) return;
+  const rank = new Map<Revit2027CompactOwnerMesh, number>();
+  for (const item of items) {
+    if (rank.has(item.owner)) continue;
+    const trimmed = item.owner.faces.some((face) =>
+      face.mesh.groups.some(
+        (group) =>
+          group.faceProvenance.decoderId ===
+            REVIT_2027_TRIMMED_OWNER_MESH_DECODER_ID,
+      )
+    );
+    rank.set(item.owner, trimmed ? item.owner.triangles : -1);
+  }
+  // Array.prototype.sort is stable, so equal ranks keep arrival order.
+  items.sort((left, right) => rank.get(left.owner)! - rank.get(right.owner)!);
+}
 
 function materialId(
   mesh: NeutralFaceMesh,
@@ -1983,7 +2285,8 @@ function itemBounds(item: RenderItem): Bounds3 {
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
   for (const face of item.owner.faces) {
-    for (let index = 0; index < face.mesh.positions.length; index += 3) {
+    for (const vertex of face.mesh.indices) {
+      const index = vertex * 3;
       const [x, y, z] = transformFacePoint(
         face,
         face.mesh.positions[index]!,
@@ -2019,6 +2322,46 @@ function containedWithin(
 }
 
 /**
+ * The envelope check's allowance grows with the envelope: 0.2% of its
+ * diagonal where that is more than the fixed tolerance. A record is a stored
+ * box that Revit does not always rewrite when the element is edited, and on a
+ * building-sized element a small edit moves a face by more than a fixed
+ * half-foot. The technical school's main roof is the case: its record spans
+ * 468 ft and ends 0.71 ft short of the roof's certified mesh, which matches
+ * Autodesk's own box for the roof to the hundredth of a foot. Across the four
+ * sample models, no other rejected mesh passes with the allowance.
+ */
+const ENVELOPE_RELATIVE_TOLERANCE = 0.002;
+
+function envelopeTolerance(expected: Bounds3, tolerance: number): number {
+  const diagonal = Math.hypot(
+    expected.max.x - expected.min.x,
+    expected.max.y - expected.min.y,
+    expected.max.z - expected.min.z,
+  );
+  return Math.max(tolerance, diagonal * ENVELOPE_RELATIVE_TOLERANCE);
+}
+
+/** The scene's envelope check: `actual` lies within `expected` and its allowance. */
+export function nativeMeshWithinEnvelope(
+  actual: Bounds3,
+  expected: Bounds3,
+  toleranceFeet = 0.5,
+): boolean {
+  return containedWithin(actual, expected, envelopeTolerance(expected, toleranceFeet));
+}
+
+/** How closely a family-document mesh must fill its element's envelope. */
+const FAMILY_DOCUMENT_TOLERANCE_FEET = 0.05;
+
+/** True when `actual` reaches every side of `expected`, within `tolerance`. */
+function fillsEnvelope(actual: Bounds3, expected: Bounds3, tolerance: number): boolean {
+  return (["x", "y", "z"] as const).every((axis) =>
+    Math.abs(actual.min[axis] - expected.min[axis]) <= tolerance &&
+    Math.abs(actual.max[axis] - expected.max[axis]) <= tolerance);
+}
+
+/**
  * Expand compact owner-local meshes only after the scene origin and all exact
  * instance placements are known. A proxy is replaceable only when every one
  * of its admitted native triangles made it into an output batch.
@@ -2043,6 +2386,7 @@ export function buildRevit2027NativeMeshScene(
       triangles: 0,
       truncated: collection.truncated,
       boundsMismatches: 0,
+      provisionalElementIds: new Set(),
       missingBounds: 0,
       unrepresentedElements: 0,
       carrierComposedItems: 0,
@@ -2075,6 +2419,7 @@ export function buildRevit2027NativeMeshScene(
     const owner = collection.owners.get(placement.geometryId);
     if (owner) items.push({ elementId: placement.elementId, owner, placement });
   }
+  admitTrimmedSurfaceItemsLast(items, maxOutputTriangles);
 
   const meshes: MeshData[] = [];
   const coveredElementIds = new Set<number>();
@@ -2088,10 +2433,13 @@ export function buildRevit2027NativeMeshScene(
   let embeddedGeometryElements = 0;
   let truncated = collection.truncated;
   let boundsMismatches = 0;
+  const provisionalElementIds = new Set<number>();
   let missingBounds = 0;
   let unrepresentedElements = 0;
   let carrierComposedItems = 0;
   let carrierComposedOutsideEnvelope = 0;
+  let familyDocumentElements = 0;
+  let familyDocumentMismatches = 0;
   const boundsMismatchSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const carrierComposedSamples: Revit2027NativeMeshScene["boundsMismatchSamples"][number][] = [];
   const boundsToleranceFeet =
@@ -2146,6 +2494,19 @@ export function buildRevit2027NativeMeshScene(
       unrepresentedElements += 1;
       continue;
     }
+    // A family document holds its family in whichever type it was last
+    // edited in. Its forms are this element's geometry only if they fill the
+    // element's own envelope; fitting inside it is not enough, since a
+    // smaller type fits inside a larger one. The RAC sample's windows are the
+    // case: their document is a 3.3 ft window, the placed ones 4.9 ft.
+    if (collection.familyDocumentOwnerIds?.has(item.owner.ownerElementId)) {
+      const expected = options.expectedBoundsByElement?.get(item.elementId);
+      if (!expected || !fillsEnvelope(itemBounds(item), expected, FAMILY_DOCUMENT_TOLERANCE_FEET)) {
+        familyDocumentMismatches += 1;
+        continue;
+      }
+      familyDocumentElements += 1;
+    }
     const exactCarrierComposition =
       item.placement == null &&
       collection.carrierComposedOwnerIds?.has(item.owner.ownerElementId) ===
@@ -2157,7 +2518,7 @@ export function buildRevit2027NativeMeshScene(
     if (exactCarrierComposition && options.expectedBoundsByElement) {
       carrierComposedItems += 1;
       const expected = options.expectedBoundsByElement.get(item.elementId);
-      if (expected && !containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
+      if (expected && !containedWithin(itemBounds(item), expected, envelopeTolerance(expected, boundsToleranceFeet))) {
         carrierComposedOutsideEnvelope += 1;
         if (carrierComposedSamples.length < MAX_INCOMPLETE_SAMPLES) {
           carrierComposedSamples.push({
@@ -2195,17 +2556,21 @@ export function buildRevit2027NativeMeshScene(
             code: "missing-bounds",
           });
         }
-      } else if (!containedWithin(itemBounds(item), expected, boundsToleranceFeet)) {
-        boundsMismatches += 1;
-        if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
-          boundsMismatchSamples.push({
-            elementId: item.elementId,
-            ownerElementId: item.owner.ownerElementId,
-            placed: item.placement != null,
-            code: "bounds-mismatch",
-          });
+      } else if (!nativeMeshWithinEnvelope(itemBounds(item), expected, boundsToleranceFeet)) {
+        if (!options.provisionalElementIds?.has(item.elementId)) {
+          boundsMismatches += 1;
+          if (boundsMismatchSamples.length < MAX_INCOMPLETE_SAMPLES) {
+            boundsMismatchSamples.push({
+              elementId: item.elementId,
+              ownerElementId: item.owner.ownerElementId,
+              placed: item.placement != null,
+              code: "bounds-mismatch",
+            });
+          }
+          continue;
         }
-        continue;
+        // The caller cleans this mesh and checks it again.
+        provisionalElementIds.add(item.elementId);
       }
     }
     if (triangles + item.owner.triangles > maxOutputTriangles) {
@@ -2308,6 +2673,8 @@ export function buildRevit2027NativeMeshScene(
 
   return {
     meshes,
+    familyDocumentElements,
+    familyDocumentMismatches,
     coveredElementIds,
     reconstructedElementIds,
     ownerElements,
@@ -2319,6 +2686,7 @@ export function buildRevit2027NativeMeshScene(
     triangles,
     truncated,
     boundsMismatches,
+    provisionalElementIds,
     missingBounds,
     unrepresentedElements,
     carrierComposedItems,

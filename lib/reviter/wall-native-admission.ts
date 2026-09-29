@@ -3,6 +3,15 @@ import type { Bounds3, ElementBoundsRecord, MeshData, Vec3 } from "./types.ts";
 
 const WALL_CATEGORY_ID = -2_000_011;
 const PLAN_SPAN_DISAGREEMENT_FEET = 0.5;
+/**
+ * Mesh positions are float32 relative to the scene origin, so two spans that
+ * differ by exactly the threshold land either side of it depending on where
+ * the origin falls. Four Snowdon walls, whose native mesh is the full 12 5/8"
+ * wall and whose recovered solid is only its 0.55 ft core, flipped to the
+ * worse solid when excluding unplaced elements moved the origin. An overfill
+ * must clear the threshold by more than that rounding.
+ */
+const SPAN_ROUNDING_FEET = 1e-3;
 // A quarter foot is still below the viewer/IFC parity gate and under a typical
 // wall half-thickness. On UNBC this admits 178 additional rendered wall proxies
 // after hosted-opening clipping, reducing >=0.5 ft wall mismatches from 343 to
@@ -61,7 +70,7 @@ function solidProxyBounds(record: ElementBoundsRecord): Bounds3 | null {
   return bounds;
 }
 
-function meshBoundsByElement(
+export function meshBoundsByElement(
   meshes: readonly MeshData[],
   origin: Vec3,
   targets: ReadonlySet<number>,
@@ -143,7 +152,7 @@ export function nativeWallProxyReplacementIds(
     );
     const verticalSpanDisagreement = Math.abs(span(native, "z") - span(proxy, "z"));
     if (
-      planOverfill >= PLAN_SPAN_DISAGREEMENT_FEET &&
+      planOverfill >= PLAN_SPAN_DISAGREEMENT_FEET + SPAN_ROUNDING_FEET &&
       centreDisagreement < CENTRE_CORROBORATION_FEET &&
       verticalSpanDisagreement < VERTICAL_SPAN_CORROBORATION_FEET
     ) {

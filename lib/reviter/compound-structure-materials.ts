@@ -8,11 +8,20 @@
  *
  * Each counted layer is exactly 41 bytes, matching the embedded field graph:
  * f64 width, two u64 object ids, four i32 enum/index fields, and one boolean.
+ *
+ * **Where ids are 32-bit** (Revit 2019 to 2023; `element-id-width.ts`) the
+ * schema declares a layer's seven fields in another order, the two ids after
+ * the function and embedding type and four bytes each: `[f64 width][i32
+ * function][i32 embedding][i32 material][i32 profile][i32 layer id][u8 cap]`,
+ * 29 bytes. Read so, the 2023 RAC sample's wall types give the 2025 copy's
+ * layers.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import {
   scanFramedElementObjects,
   type ElementObject,
 } from "./element-objects.ts";
+import { fileClassFieldCount, fileClassTag, readsElementRecordLayout } from "./revit-class-tags.ts";
 
 export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
 
@@ -21,9 +30,26 @@ export const REVIT_2027_BASIC_WALL_TYPE_MARKER = 0x0270;
  * class index `0x11ab`, which the file's own `Formats/Latest` names
  * `VerticalRegionsStructure`.
  */
-const LAYERS_FIELD = [0xff, 0xff, 0xff, 0xff, 0xab, 0x11] as const;
-const LAYERS_FIELD_BYTES = LAYERS_FIELD.length;
+const VERTICAL_REGIONS_STRUCTURE_CLASS = 0x11ab;
+
+/** The layers pointer as this file writes it: its own index for the class. */
+function layersFieldBytes(): readonly number[] | null {
+  const verticalRegions = fileClassTag(VERTICAL_REGIONS_STRUCTURE_CLASS);
+  if (verticalRegions < 0 || verticalRegions > 0xffff) return null;
+  return [0xff, 0xff, 0xff, 0xff, verticalRegions & 0xff, verticalRegions >> 8];
+}
+const LAYERS_FIELD_BYTES = 6;
+/**
+ * `CompoundStructureLayer`, in the 2027 numbering. Its layout grew between
+ * releases: the 2027 schema declares eight fields (version 2), with
+ * `m_layerPriority` after `m_layerFunction`; the 2025 schema declares seven
+ * (version 1) and has no priority. A layer is 41 bytes in one and 37 in the
+ * other, and the file's own declaration says which.
+ */
+const COMPOUND_STRUCTURE_LAYER_CLASS = 872;
 const LAYER_BYTES = 41;
+const LAYER_BYTES_WITHOUT_PRIORITY = 37;
+const NARROW_LAYER_BYTES = 29;
 const MAX_LAYERS = 64;
 const MAX_LAYER_WIDTH_FEET = 100;
 
@@ -92,10 +118,19 @@ function readObjectId(view: DataView, offset: number): ObjectIdRead {
   return { valid: false, value: null };
 }
 
+/** A four-byte object id: -1 for none, otherwise positive. */
+function readNarrowObjectId(view: DataView, offset: number): ObjectIdRead {
+  const id = view.getInt32(offset, true);
+  if (id === -1) return { valid: true, value: null };
+  if (id > 0) return { valid: true, value: id };
+  return { valid: false, value: null };
+}
+
 function readLayer(
   view: DataView,
   offset: number,
   layerIndex: number,
+  hasPriority = true,
 ): CompoundStructureLayerCandidate | null {
   const widthFeet = view.getFloat64(offset, true);
   if (
@@ -105,15 +140,22 @@ function readLayer(
   ) {
     return null;
   }
-  const material = readObjectId(view, offset + 8);
-  const profile = readObjectId(view, offset + 16);
+  const narrow = narrowElementIds();
+  const material = narrow ? readNarrowObjectId(view, offset + 16) : readObjectId(view, offset + 8);
+  const profile = narrow ? readNarrowObjectId(view, offset + 20) : readObjectId(view, offset + 16);
   if (!material.valid || !profile.valid) return null;
 
-  const layerFunction = view.getInt32(offset + 24, true);
-  const priority = view.getInt32(offset + 28, true);
-  const embeddingType = view.getInt32(offset + 32, true);
-  const layerId = view.getInt32(offset + 36, true);
-  const capFlag = view.getUint8(offset + 40);
+  const layerFunction = view.getInt32(offset + (narrow ? 8 : 24), true);
+  // Without the field, a layer has the priority Revit gives its function: the
+  // function's own number, and 999 for a membrane. The 32-bit-id layout has
+  // no priority either, and its embedding type precedes the ids.
+  const tail = hasPriority ? 32 : 28;
+  const priority = hasPriority && !narrow
+    ? view.getInt32(offset + 28, true)
+    : layerFunction === MEMBRANE_FUNCTION ? MEMBRANE_PRIORITY : layerFunction;
+  const embeddingType = view.getInt32(offset + (narrow ? 12 : tail), true);
+  const layerId = view.getInt32(offset + (narrow ? 24 : tail + 4), true);
+  const capFlag = view.getUint8(offset + (narrow ? 28 : tail + 8));
   const ordinary =
     ORDINARY_FUNCTIONS.has(layerFunction) &&
     priority === layerFunction;
@@ -156,23 +198,31 @@ function readCandidate(
   object: ElementObject,
 ): CompoundStructureCandidate | null {
   const objectEnd = object.offset + object.objectLength;
+  const layersField = layersFieldBytes();
+  if (!layersField) return null;
   const fields: number[] = [];
   for (
     let offset = object.offset;
     offset + LAYERS_FIELD_BYTES + 4 <= objectEnd;
     offset += 1
   ) {
-    if (matchesAt(data, offset, LAYERS_FIELD)) fields.push(offset);
+    if (matchesAt(data, offset, layersField)) fields.push(offset);
   }
   if (fields.length !== 1) return null;
 
   const field = fields[0]!;
   const count = view.getUint32(field + LAYERS_FIELD_BYTES, true);
   const layersOffset = field + LAYERS_FIELD_BYTES + 4;
+  // Seven declared fields is the layout without `m_layerPriority`; anything
+  // else, including no schema at all, reads the 2027 layout.
+  const hasPriority = fileClassFieldCount(COMPOUND_STRUCTURE_LAYER_CLASS) !== 7;
+  const layerBytes = narrowElementIds()
+    ? NARROW_LAYER_BYTES
+    : hasPriority ? LAYER_BYTES : LAYER_BYTES_WITHOUT_PRIORITY;
   if (
     count < 1 ||
     count > MAX_LAYERS ||
-    layersOffset + count * LAYER_BYTES > objectEnd
+    layersOffset + count * layerBytes > objectEnd
   ) {
     return null;
   }
@@ -181,8 +231,9 @@ function readCandidate(
   for (let layerIndex = 0; layerIndex < count; layerIndex += 1) {
     const layer = readLayer(
       view,
-      layersOffset + layerIndex * LAYER_BYTES,
+      layersOffset + layerIndex * layerBytes,
       layerIndex,
+      hasPriority,
     );
     if (!layer) return null;
     layers.push(layer);
@@ -201,7 +252,7 @@ export function scanCompoundStructureCandidates(
   data: Uint8Array,
   revitVersion: number,
 ): CompoundStructureCandidate[] {
-  if (revitVersion !== 2027) return [];
+  if (!readsElementRecordLayout(revitVersion)) return [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const result: CompoundStructureCandidate[] = [];
   for (const object of scanFramedElementObjects(data)) {

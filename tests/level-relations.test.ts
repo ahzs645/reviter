@@ -87,7 +87,7 @@ test("resolves every persisted Element.m_assocLevelId layout", () => {
 
 test("requires the 2027 format, framing echo, and Level target marker", () => {
   const data = framedElement(7, 120, 70, 8);
-  assert.deepEqual(scanAssociatedLevelRelationCandidates(data, 2026), []);
+  assert.deepEqual(scanAssociatedLevelRelationCandidates(data, 2023), []);
 
   new DataView(data.buffer).setUint32(136, 119, true);
   assert.deepEqual(scanAssociatedLevelRelationCandidates(data, 2027), []);

@@ -1,4 +1,5 @@
 /** Revit 2027 framed-object marker for persisted `BaseRailing`. */
+import { canonicalClassTag, usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 export const REVIT_2027_BASE_RAILING_MARKER = 598;
 
 const BASE_RAILING_SUFFIX_BYTES = 58;
@@ -85,7 +86,7 @@ export function decodeRevit2027BaseRailingStairsRelation(
   revitVersion: number,
   options: { knownStairsElementIds?: ReadonlySet<number> } = {},
 ): Revit2027BaseRailingStairsDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return {
       ok: false,
       error: "BaseRailing stairs decoding requires Revit 2027",
@@ -111,7 +112,7 @@ export function decodeRevit2027BaseRailingStairsRelation(
     return { ok: false, error: "BaseRailing object length echo does not match" };
   }
   if (
-    view.getUint16(objectOffset + 16, true) !==
+    canonicalClassTag(view.getUint16(objectOffset + 16, true)) !==
     REVIT_2027_BASE_RAILING_MARKER
   ) {
     return { ok: false, error: "BaseRailing marker does not match" };

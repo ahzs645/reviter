@@ -1227,6 +1227,21 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         `${assembly.shape === "spiral" ? ".SPIRAL_STAIR." : ".NOTDEFINED."})`,
       );
       productByElement.set(assembly.stairElementId, container);
+      // Every product states where it came from, and this one has no body of
+      // its own: what it records is the grouping, and where that was read.
+      const recoveryProperties = [
+        integerProperty(writer, "RevitElementId", assembly.stairElementId),
+        textProperty(writer, "CategoryEvidence", assembly.evidence),
+        textProperty(writer, "GeometrySource", "none: an aggregate of its runs, landings, stringers and railings"),
+        textProperty(writer, "GeometryProvenance", "not-rendered-helper"),
+        booleanProperty(writer, "GeometryExact", false),
+      ];
+      const propertySet = writer.add(
+        `IFCPROPERTYSET(${quoted(guid("pset-recovery", assembly.stairElementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
+      );
+      writer.add(
+        `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", assembly.stairElementId))},#${ownerHistory},$,$,(#${container}),#${propertySet})`,
+      );
       // Place the container in the storey its own parts landed in, so it is
       // reachable from the spatial structure like any other product rather
       // than floating outside it.

@@ -67,22 +67,89 @@ export function isPlanPreset(preset: CameraPreset): boolean {
   return preset === "top" || preset === "bottom";
 }
 
+/**
+ * The box a view is framed to, and the lens it is seen through.
+ *
+ * A fixed multiple of the model's longest side put the eye 2.05 of those
+ * away whatever the building's shape, which frames a long, low campus well
+ * and a compact tower badly: under perspective the near corner of the 2024
+ * Snowdon sample (183 x 82 x 95 ft) came out past the edge of the canvas. The
+ * box itself says how far away the eye must be.
+ */
+export type ViewFrame = {
+  /** Half the framed box's size on each axis, centred on the view target. */
+  halfExtents: Vec3;
+  verticalFovDegrees: number;
+  /** Canvas width over height. */
+  aspect: number;
+};
+
+/** Room left around the framed box, as a share of the view. */
+const FRAME_MARGIN = 1.08;
+
+/**
+ * The distance from the target at which every corner of the box lies inside
+ * the view, looking back along `direction` with `up` as the screen's up. Each
+ * corner is tested at its own depth, so a near corner that perspective makes
+ * larger is the one that sets the distance.
+ */
+export function fittedCameraDistance(direction: Vec3, up: Vec3, frame: ViewFrame): number {
+  const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
+  const back = { x: direction.x / length, y: direction.y / length, z: direction.z / length };
+  const rightRaw = {
+    x: up.y * back.z - up.z * back.y,
+    y: up.z * back.x - up.x * back.z,
+    z: up.x * back.y - up.y * back.x,
+  };
+  const rightLength = Math.hypot(rightRaw.x, rightRaw.y, rightRaw.z) || 1;
+  const right = { x: rightRaw.x / rightLength, y: rightRaw.y / rightLength, z: rightRaw.z / rightLength };
+  const screenUp = {
+    x: back.y * right.z - back.z * right.y,
+    y: back.z * right.x - back.x * right.z,
+    z: back.x * right.y - back.y * right.x,
+  };
+  const tanVertical = Math.tan((frame.verticalFovDegrees * Math.PI) / 360) / FRAME_MARGIN;
+  const tanHorizontal = tanVertical * Math.max(frame.aspect, 1e-3);
+  const { x: hx, y: hy, z: hz } = frame.halfExtents;
+  let distance = 1;
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const corner = { x: sx * hx, y: sy * hy, z: sz * hz };
+        const dot = (axis: Vec3) => corner.x * axis.x + corner.y * axis.y + corner.z * axis.z;
+        const toward = dot(back);
+        distance = Math.max(
+          distance,
+          toward + Math.abs(dot(right)) / tanHorizontal,
+          toward + Math.abs(dot(screenUp)) / tanVertical,
+        );
+      }
+    }
+  }
+  return distance;
+}
+
 export function cameraPoseForPreset(
   center: Vec3,
   radius: number,
   preset: CameraPreset,
+  frame?: ViewFrame,
 ): CameraPose {
-  const distance = Math.max(1, radius) * (isPlanPreset(preset) ? 2.25 : 2.05);
   const direction = PRESET_DIRECTION[preset];
+  // Looking straight down an axis leaves "up" undefined along it; north is
+  // the convention every plan view uses.
+  const up = isPlanPreset(preset) ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+  const distance = frame
+    ? fittedCameraDistance(direction, up, frame)
+    : Math.max(1, radius) * (isPlanPreset(preset) ? 2.25 : 2.05);
+  const length = frame ? Math.hypot(direction.x, direction.y, direction.z) : 1;
   return {
     position: {
-      x: center.x + direction.x * distance,
-      y: center.y + direction.y * distance,
-      z: center.z + direction.z * distance,
+      x: center.x + (direction.x / length) * distance,
+      y: center.y + (direction.y / length) * distance,
+      z: center.z + (direction.z / length) * distance,
     },
-    // Looking straight down an axis leaves "up" undefined along it; north is
-    // the convention every plan view uses.
-    up: isPlanPreset(preset) ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 },
+    up,
   };
 }
 

@@ -62,7 +62,7 @@ test("decodes a count-bounded Revit 2027 GHermiteSpline", () => {
 test("GHermiteSpline decoder fails closed", () => {
   const data = fixture();
   assert.equal(
-    decodeRevit2027GHermiteSpline(data, 0, data.byteLength, 2026).ok,
+    decodeRevit2027GHermiteSpline(data, 0, data.byteLength, 2023).ok,
     false,
   );
   assert.equal(
@@ -84,4 +84,38 @@ test("default Revit 2027 FIFO registry includes GHermiteSpline", () => {
     )?.id,
     "Revit2027GHermiteSpline",
   );
+});
+
+test("reads each node in the field order the file's schema declares", async () => {
+  const { buildClassTagTranslation, setActiveClassTagTranslation } = await import(
+    "../lib/reviter/revit-class-tags.ts"
+  );
+  // 2024 and 2025 declare SplineNode's parameter first.
+  setActiveClassTagTranslation(buildClassTagTranslation([
+    { name: "SplineNode", tag: 2180, fieldNames: ["m_iParametr", "m_iPoint", "m_iTangent"] },
+  ]));
+  try {
+    const data = new Uint8Array(41 + 2 * 56);
+    const view = new DataView(data.buffer);
+    view.setFloat64(20, -1, true);
+    view.setFloat64(28, 0, true);
+    view.setInt32(37, 2, true);
+    let cursor = 41;
+    for (const [parameter, point, tangent] of [
+      [-1, [-1, 0.07, 0.08], [1, 0, 0]],
+      [0, [0, 0.05, 0.08], [1, -0.01, 0]],
+    ] as const) {
+      [parameter, ...point, ...tangent].forEach((value, index) => {
+        view.setFloat64(cursor + index * 8, value, true);
+      });
+      cursor += 56;
+    }
+    const decoded = decodeRevit2027GHermiteSpline(data, 0, data.byteLength, 2027);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.deepEqual(decoded.value.nodes.map((node) => node.parameter), [-1, 0]);
+    assert.deepEqual(decoded.value.nodes[1]!.point, [0, 0.05, 0.08]);
+  } finally {
+    setActiveClassTagTranslation(null);
+  }
 });

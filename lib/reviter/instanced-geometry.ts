@@ -38,12 +38,52 @@
  * The shared unit is a per-shape cache, not the family type — panel width and
  * mullion length are baked into the cached shape, so 884 distinct panel widths
  * resolve to about 1,600 geometry objects, reused 4.6 times on average.
+ *
+ * **Where ids are 32-bit** (Revit 2023 and older; `element-id-width.ts`) the
+ * same placements are written with the ids before them narrowed: the fixed
+ * instance object is 276 bytes (still read from its end), the placement
+ * inside an element's own object sits 68 to 74 bytes nearer its start, and a
+ * shape's bounds block follows the narrow field table (`0x00088004` at +26, the
+ * count at +30, as in `bounds-records.ts`). The geometry id is a u32 followed
+ * by a zero word in both layouts. On the 2023 RAC sample, 462 of the 463
+ * placements the 2025 copy yields are there, with the same basis, origin and
+ * geometry id.
+ *
+ * That zero word is `InstInfoBase.m_GRepId`, which the 2019 to 2022 schemas do
+ * not declare: there the id is followed by `m_cda` (1 on every placement of the
+ * 2022 RAC sample), and the fixed instance object is 268 bytes, its transform
+ * ending four bytes nearer the echo. The placements inside element objects sit
+ * where they do in 2023.
  */
+import { narrowElementIds } from "./element-id-width.ts";
 import type { ElementObject } from "./element-objects.ts";
+import { instanceInfoStoresGRepId } from "./revit-2027-ginstance.ts";
 import { collectSurfaces, type PlanePatch, type SurfacePatch } from "./surfaces.ts";
 
 /** Instance objects are exactly this long; anything else is shared geometry. */
 const INSTANCE_OBJECT_LENGTH = 300;
+
+/** The same where ids are 32-bit. */
+const NARROW_INSTANCE_OBJECT_LENGTH = 276;
+
+/** The same where `InstInfoBase` has no `m_GRepId` (2019 to 2022). */
+const NARROW_INSTANCE_OBJECT_LENGTH_WITHOUT_GREP_ID = 268;
+
+function instanceObjectLength(): number {
+  if (!narrowElementIds()) return INSTANCE_OBJECT_LENGTH;
+  return instanceInfoStoresGRepId()
+    ? NARROW_INSTANCE_OBJECT_LENGTH
+    : NARROW_INSTANCE_OBJECT_LENGTH_WITHOUT_GREP_ID;
+}
+
+/**
+ * The word after a placement's geometry id: the id's zero high word, or a zero
+ * `m_GRepId` where ids are 32-bit, or `m_cda` (0 or 1) where there is no
+ * `m_GRepId`.
+ */
+function acceptsWordAfterGeometryId(word: number): boolean {
+  return word === 0 || (word === 1 && !instanceInfoStoresGRepId());
+}
 
 /** Model coordinates in feet stay well inside this bound. */
 const MAX_COORDINATE = 5e4;
@@ -104,6 +144,9 @@ export type LocalBounds = {
 /** Native category of a Revit stair assembly (`OST_Stairs`). */
 const STAIRS_CATEGORY_ID = -2_000_120;
 
+/** Native category of a model group's instance (`OST_IOSModelGroups`). */
+const MODEL_GROUP_CATEGORY_ID = -2_000_095;
+
 /**
  * Resolve the ids that are genuinely reusable local shapes.
  *
@@ -114,8 +157,10 @@ const STAIRS_CATEGORY_ID = -2_000_120;
  * element. Treating those two meanings as interchangeable removed the only
  * `IfcMember` and `IfcStairFlight` products absent from the exact UNBC scene.
  *
- * The exception is gated by the assembly's own persisted `OST_Stairs` token.
- * No IFC class, element id, adjacency, or object-marker singleton participates.
+ * The exception is gated by the assembly's own category, from its
+ * `ElementHeader` or its persisted `OST_Stairs` token. A model group is the
+ * second exception, gated the same way. No IFC class, element id, adjacency,
+ * or object-marker singleton participates.
  */
 export function sharedGeometryIdsForPlacements(
   placements: Iterable<InstancePlacement>,
@@ -123,7 +168,12 @@ export function sharedGeometryIdsForPlacements(
 ): Set<number> {
   const shared = new Set<number>();
   for (const placement of placements) {
-    if (categoryByElement.get(placement.elementId) === STAIRS_CATEGORY_ID) continue;
+    const category = categoryByElement.get(placement.elementId);
+    // A model group's placement points at one of its members the same way:
+    // in the 2025 RAC sample, group 988591 points at bar chair 988462 and
+    // group 800281 at solar panel 800280, both placed elements Autodesk
+    // draws, and removing them as cached shapes lost 6 chairs and 12 panels.
+    if (category === STAIRS_CATEGORY_ID || category === MODEL_GROUP_CATEGORY_ID) continue;
     shared.add(placement.geometryId);
   }
   return shared;
@@ -162,6 +212,13 @@ function finite(value: number): boolean {
  */
 const TAIL_PLACEMENT_FROM_START_FIRST = 408;
 const TAIL_PLACEMENT_FROM_START_LAST = 448;
+
+/**
+ * The same window where ids are 32-bit: the 2023 RAC sample's placements sit
+ * at +352 to +374, 68 to 74 bytes before the 2025 copy's.
+ */
+const NARROW_TAIL_PLACEMENT_FROM_START_FIRST = 334;
+const NARROW_TAIL_PLACEMENT_FROM_START_LAST = 380;
 
 /**
  * Field prefix immediately before the placement embedded deeper in the 15
@@ -227,8 +284,11 @@ function readTailPlacement(
 ): InstancePlacement | null {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const end = object.offset + object.objectLength;
-  const first = object.offset + TAIL_PLACEMENT_FROM_START_FIRST;
-  const last = object.offset + TAIL_PLACEMENT_FROM_START_LAST;
+  const narrow = narrowElementIds();
+  const first = object.offset +
+    (narrow ? NARROW_TAIL_PLACEMENT_FROM_START_FIRST : TAIL_PLACEMENT_FROM_START_FIRST);
+  const last = object.offset +
+    (narrow ? NARROW_TAIL_PLACEMENT_FROM_START_LAST : TAIL_PLACEMENT_FROM_START_LAST);
   for (let at = first; at <= last; at += 1) {
     if (at < object.offset || at + 104 > Math.min(end, data.byteLength)) continue;
     const basis: number[] = [];
@@ -247,7 +307,7 @@ function readTailPlacement(
     // An orthonormal basis alone is not rare — it fires on 99.7% of one other
     // object class. A live geometry reference immediately behind it is what
     // makes the read specific.
-    if (view.getUint32(at + 100, true) !== 0) continue;
+    if (!acceptsWordAfterGeometryId(view.getUint32(at + 100, true))) continue;
     const geometryId = view.getUint32(at + 96, true);
     if (!geometryId) continue;
     return { elementId: object.elementId, basis, origin, geometryId, symbolId: geometryId };
@@ -272,7 +332,8 @@ function readDeepInsertablePlacement(
   data: Uint8Array,
   object: ElementObject,
 ): InstancePlacement | null {
-  if (object.marker !== INSERTABLE_INSTANCE_MARKER) return null;
+  // Its prefix spells 2027 class indices and was measured on one 2027 file.
+  if (object.marker !== INSERTABLE_INSTANCE_MARKER || narrowElementIds()) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const end = Math.min(
     data.byteLength,
@@ -336,7 +397,7 @@ export function readInstancePlacement(
   data: Uint8Array,
   object: ElementObject,
 ): InstancePlacement | null {
-  if (object.objectLength !== INSTANCE_OBJECT_LENGTH) {
+  if (object.objectLength !== instanceObjectLength()) {
     // A shared geometry object is not a placement, and it is told apart by
     // carrying a bounds sub-record. Testing that first keeps every shape the
     // library already reads: without it a shape whose tail happens to hold an
@@ -347,7 +408,9 @@ export function readInstancePlacement(
       readDeepInsertablePlacement(data, object)
     );
   }
-  const end = object.offset + object.objectLength;
+  // The transform ends where the geometry id starts: at the object's length,
+  // or four bytes later where no `m_GRepId` follows the id.
+  const end = object.offset + object.objectLength + (instanceInfoStoresGRepId() ? 0 : 4);
   if (end + 8 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -365,7 +428,7 @@ export function readInstancePlacement(
   if (!origin.every(finite)) return null;
 
   // The first trailer word is the shared geometry object's element id.
-  if (view.getUint32(end + 4, true) !== 0) return null;
+  if (!acceptsWordAfterGeometryId(view.getUint32(end + 4, true))) return null;
   const geometryId = view.getUint32(end, true);
   if (!geometryId) return null;
 
@@ -388,11 +451,13 @@ const BOUNDS_FAMILY_WORD = 0x0008_8004;
 function boundsOffsetWithin(data: Uint8Array, start: number): number | null {
   if (start + 46 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  if (view.getUint32(start + 34, true) !== BOUNDS_FAMILY_WORD) return null;
-  const count = view.getUint32(start + 38, true);
+  // The field table starts at +42, or +34 where ids are 32-bit.
+  const table = narrowElementIds() ? 34 : 42;
+  if (view.getUint32(start + table - 8, true) !== BOUNDS_FAMILY_WORD) return null;
+  const count = view.getUint32(start + table - 4, true);
   if (count < 1 || count > 10_000) return null;
-  if (view.getUint32(start + 42, true) !== 3) return null;
-  const at = start + 42 + count * 6;
+  if (view.getUint32(start + table, true) !== 3) return null;
+  const at = start + table + count * 6;
   if (at + 96 > data.byteLength) return null;
   // The two copies are compared as six doubles, not as 48 bytes. Revit does not
   // always write them byte for byte — they differ in the low mantissa byte,
@@ -442,10 +507,11 @@ const MIN_SHAPE_EXTENT_FEET = 1e-6;
 
 /** Read a shared geometry object's bounds, expressed in the local frame. */
 export function readLocalBounds(data: Uint8Array, object: ElementObject): LocalBounds | null {
-  if (object.objectLength === INSTANCE_OBJECT_LENGTH) return null;
+  if (object.objectLength === instanceObjectLength()) return null;
   if (object.offset + 96 > data.byteLength) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const at = boundsOffsetWithin(data, object.offset) ?? object.offset + 48;
+  const at = boundsOffsetWithin(data, object.offset) ??
+    object.offset + (narrowElementIds() ? 40 : 48);
   const values: number[] = [];
   for (let index = 0; index < 6; index += 1) {
     values.push(view.getFloat64(at + index * 8, true));

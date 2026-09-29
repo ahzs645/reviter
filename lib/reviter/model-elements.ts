@@ -1,0 +1,215 @@
+/**
+ * Which elements are part of the 3D model at all.
+ *
+ * A Revit file holds far more than the building: views and the annotation drawn
+ * in them, datums, sketches, the containers that group other elements, and the
+ * family subcategory projections that only exist inside a family's own
+ * geometry. None of them is drawn in a 3D view, but each can carry a bounds
+ * record or a native mesh, and drawing it puts a text note, a reference plane
+ * or a storey-sized sketch into the building.
+ *
+ * Two kinds of evidence decide it, and both are the file's own statement:
+ *
+ *  - **The element's `ElementHeader`.** An element owned by a view is
+ *    view-specific — a detail item, a tag, a text note, a dimension — an
+ *    element whose header names a family is part of that family's own
+ *    definition, which the project carries for every loaded family, and an
+ *    element whose header states no category is an internal record rather than
+ *    a building element. None of the 111,000 elements the Autodesk Viewer
+ *    lists across the four sample files names a family in its header. Joined to the Autodesk Viewer property database of
+ *    the same files, every element Autodesk draws in a 3D view has no owning
+ *    view and a stated category: 36,283 of 36,283 in the 2027 UNBC project,
+ *    5,404 of 5,404 in the 2025 technical school, 421 of 421 in the 2025 RAC
+ *    sample. So excluding the rest costs no drawn element.
+ *  - **The category.** Revit's own enumeration names what a category is, so
+ *    the list below is by meaning rather than by what one building happened to
+ *    draw: datums and reference geometry, sketch and path lines, spatial
+ *    elements, assemblies whose members are drawn in their own right, massing
+ *    (hidden in Revit views unless masses are switched on), opening voids, and
+ *    family subcategory projections.
+ */
+import type { ElementHeader } from "./element-headers.ts";
+import type { ElementBoundsRecord } from "./types.ts";
+
+export const NON_MODEL_CATEGORY_IDS: ReadonlySet<number> = new Set([
+  // Datums and reference geometry.
+  -2000530, // CLines: reference planes
+  -2000083, // ReferenceLines
+  -2000240, // Levels
+  -2000220, // Grids
+  // Sketch and path lines.
+  -2000045, // SketchLines
+  -2000051, // Lines: model lines, drawn by Revit as lines rather than solids
+  -2000938, // StairsPaths
+  -2000954, // RailingRailPathExtensionLines
+  -2000067, // StairsSketchBoundaryLines
+  -2000068, // StairsSketchRiserLines
+  -2000066, // RoomSeparationLines
+  -2000079, // AreaSchemeLines
+  // Spatial elements: volumes and regions, not built objects.
+  -2000160, // Rooms
+  -2003200, // Areas
+  -2003600, // MEPSpaces
+  // Assemblies whose members are elements drawn in their own right.
+  -2000980, // MultistoryStairs
+  -2000095, // IOSModelGroups
+  -2001327, // StructuralFramingSystem: a beam system; its beams are drawn
+  // Massing, off in Revit's views unless "Show Mass" is on.
+  -2003400, // Mass
+  -2003403, // MassFloor
+  -2003404, // MassForm
+  // Opening voids: they cut their host rather than add to it.
+  // A wall reveal is the same: a profile cut along its wall. The technical
+  // school's 8 were drawn as solids; the Autodesk Viewer lists all 8 and
+  // draws none.
+  -2000182, // Reveals
+  -2000996, // ShaftOpening
+  -2000997, // SWallRectOpening
+  -2000999, // ArcWallRectOpening
+  // Family subcategory projections, never a placed element's own category.
+  -2000025, // DoorsPanelProjection
+  -2000018, // WindowsFrameMullionProjection
+  // A linked model's instance: its geometry lives in the other file, and its
+  // extent is that whole model's (up to 1,877 ft in the Snowdon sample).
+  -2001352, // RvtLinks
+  // Curtain grid lines lay out a curtain wall's panels; the panels and
+  // mullions are the elements.
+  -2000173, // CurtainGrids
+  -2000320, // CurtainGridsRoof
+  -2000321, // CurtainGridsWall
+  -2000322, // CurtainGridsSystem
+  -2000323, // CurtainGridsCurtaSystem
+  // The structural analytical model: nodes, members and panels that stand
+  // for the physical elements in analysis, drawn only in analytical views.
+  -2009645, // AnalyticalNodes
+  -2009646, // AnalyticalNodes_Points
+  -2009647, // AnalyticalNodes_Planes
+  -2009648, // AnalyticalNodes_Lines
+  -2009662, // AnalyticalMember
+  -2009664, // AnalyticalPanel
+  -2009665, // AnalyticalOpening
+  -2009666, // AnalyticalMemberLocalCoordSys
+  -2009667, // AnalyticalPanelLocalCoordSys
+  -2001333, // AnalyticalRigidLinks
+  -2001075, // AnalyticalMemberCrossSection
+  -2000983, // AnalyticalPipeConnections
+  // A lighting fixture's light source subcategory, not a placed element.
+  -2001121, // LightingFixtureSource
+]);
+
+/**
+ * Categories whose envelope is not a usable stand-in for their shape. A native
+ * mesh for one is still drawn; only the envelope or placed-box proxy is not.
+ *
+ * A terrain's bounds enclose its lowest and highest ground, so its box is a
+ * solid block under the whole site (175 x 248 x 35 ft in the RAC sample). A
+ * planting or entourage element is usually RPC content, whose appearance is
+ * generated by the renderer and is not stored in the file: its box is the
+ * tree's whole canopy as a solid cube (up to 60 x 60 x 42 ft there). A rebar
+ * set's, or an area, path or fabric reinforcement's, is the region its bars
+ * are laid through: in the 2026 structural sample, slab-sized plates up to
+ * 44 x 34 ft.
+ */
+export const NO_ENVELOPE_PROXY_CATEGORY_IDS: ReadonlySet<number> = new Set([
+  -2001340, // Topography
+  -2001360, // Planting
+  -2001370, // Entourage
+  -2009000, // Rebar
+  -2009003, // AreaRein
+  -2009009, // PathRein
+  -2009016, // FabricReinforcement
+]);
+
+export type NonModelReason =
+  | "view-owned"
+  | "family-internal"
+  | "unplaced"
+  | "type"
+  | "no-category"
+  | "non-model-category";
+
+/** Why an element is not part of the 3D model, or null when it is. */
+export function nonModelReason(
+  header: ElementHeader | undefined,
+  categoryId: number | undefined,
+): NonModelReason | null {
+  if (header?.ownerViewId != null) return "view-owned";
+  if (header?.familyId != null) return "family-internal";
+  if (header?.unplacedOwnerId != null) return "unplaced";
+  if (header && header.categoryId == null) return "no-category";
+  const category = header?.categoryId ?? categoryId;
+  if (category != null && NON_MODEL_CATEGORY_IDS.has(category)) return "non-model-category";
+  return null;
+}
+
+/**
+ * Every element that must not be drawn, with the reason: from the headers,
+ * which cover elements with no bounds record of their own, and from the
+ * records, whose category may have come from another source.
+ */
+export function nonModelElementIds(
+  records: readonly Pick<ElementBoundsRecord, "elementId" | "categoryId">[],
+  headers: ReadonlyMap<number, ElementHeader> | undefined,
+  /**
+   * The ids whose own record is a `FamilySymbol`: a family type, never a
+   * placed element, though it carries its family's category. The per-host
+   * copy of a door or window type has a bounds record of its own, and was
+   * drawn as a second door: 21 in the 2025 technical school, 64 in the 2024
+   * Snowdon sample. The Autodesk Viewer draws none of them.
+   */
+  typeIds: ReadonlySet<number> = new Set(),
+): Map<number, NonModelReason> {
+  const excluded = new Map<number, NonModelReason>();
+  for (const record of records) {
+    if (typeIds.has(record.elementId)) excluded.set(record.elementId, "type");
+  }
+  for (const [elementId, header] of headers ?? []) {
+    if (excluded.has(elementId)) continue;
+    const reason = nonModelReason(header, undefined);
+    if (reason) excluded.set(elementId, reason);
+  }
+  for (const record of records) {
+    if (excluded.has(record.elementId)) continue;
+    const reason = nonModelReason(headers?.get(record.elementId), record.categoryId ?? undefined);
+    if (reason) excluded.set(record.elementId, reason);
+  }
+  return excluded;
+}
+
+/**
+ * Categories whose elements Revit writes with no bounds record of their own,
+ * yet which are real geometry the Autodesk Viewer draws: slab edges, fascias,
+ * gutters and soffits (sweeps along a host's edge), and placed entourage.
+ * The technical school's 2 slab edges and the RAC sample's 2 entourage
+ * elements (a car and a person) have complete native meshes and no bounds
+ * record, and Autodesk draws all 4. Other model elements in the same state
+ * are mostly not drawn by Autodesk (104 of 106 in the technical school are
+ * balusters inside railings, door type templates and the like), so the list
+ * is kept to these.
+ */
+export const BOUNDLESS_SCENE_CATEGORY_IDS: ReadonlySet<number> = new Set([
+  -2_001_370, // Entourage
+  -2_001_390, // Fascia
+  -2_001_391, // Gutter
+  -2_001_392, // EdgeSlab
+  -2_001_393, // RoofSoffit
+]);
+
+/**
+ * Model elements in those categories that have no bounds record, with their
+ * header's category: the ones whose native mesh the scene may draw without an
+ * envelope to check it against.
+ */
+export function boundlessSceneElements(
+  headers: ReadonlyMap<number, ElementHeader> | undefined,
+  recordedIds: ReadonlySet<number>,
+): Map<number, number> {
+  const elements = new Map<number, number>();
+  for (const [elementId, header] of headers ?? []) {
+    const categoryId = header.categoryId;
+    if (categoryId == null || !BOUNDLESS_SCENE_CATEGORY_IDS.has(categoryId)) continue;
+    if (recordedIds.has(elementId) || nonModelReason(header, undefined) != null) continue;
+    elements.set(elementId, categoryId);
+  }
+  return elements;
+}

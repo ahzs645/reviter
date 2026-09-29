@@ -44,6 +44,9 @@ import {
   type WorkerRequest,
 } from "../lib/reviter";
 import {
+  NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE,
+} from "../lib/reviter/revit-class-tags.ts";
+import {
   WorkerClient,
   type WorkerClientOptions,
   type WorkerRequestEnvelope,
@@ -56,8 +59,7 @@ import {
   formatBytes,
   formatNumber,
   matchesFilter,
-  propertyEvidenceLabel,
-  propertyGeometryLabel,
+  propertyRowsFor,
   propertyClipboardText,
   savedFileName,
 } from "./studio/format.ts";
@@ -827,7 +829,7 @@ export default function ReviterStudio() {
   );
   const visibleModelRecords = useMemo(
     () => solidRecords.filter((record) =>
-      matchesFilter(browserSearch, record.elementId, record.categoryName, record.typeName)),
+      matchesFilter(browserSearch, record.elementId, record.categoryName, record.familyName, record.typeName)),
     [browserSearch, solidRecords],
   );
   const categoryRows = useMemo(() => {
@@ -907,70 +909,10 @@ export default function ReviterStudio() {
    * first; the recovery's own evidence follows, because in this viewer it is a
    * property of the object rather than a footnote about the file.
    */
-  const propertyRows: PropertyRow[] = useMemo(() => {
-    if (!selectedRecord || !selectedDimensions) return [];
-    return [
-      { key: "category", label: "Category", value: selectedRecord.categoryName ?? "Uncategorised" },
-      ...(selectedRecord.typeName ? [{ key: "type", label: "Type", value: selectedRecord.typeName }] : []),
-      { key: "element-id", label: "Element id", value: String(selectedRecord.elementId) },
-      ...(selectedRecord.typeId != null
-        ? [{ key: "type-element", label: "Type element", value: String(selectedRecord.typeId) }]
-        : []),
-      {
-        key: "geometry",
-        label: "Geometry",
-        value: propertyGeometryLabel(selectedRecord),
-      },
-      {
-        key: "evidence",
-        label: "Evidence",
-        value: propertyEvidenceLabel(selectedRecord),
-      },
-      ...(selectedRecord.categoryId != null
-        ? [{
-          key: "category-id",
-          label: "Category ID",
-          value: `${selectedRecord.categoryId}${
-            selectedRecord.categorySource === "record-code-consensus"
-              ? " (record-code consensus)"
-              : selectedRecord.categorySource === "native-object"
-                ? " (native object)"
-                : " (native token)"
-          }`,
-        }]
-        : []),
-      ...(selectedRecord.solid
-        ? [{
-          key: "native-geometry",
-          label: "Native geometry",
-          value: `${Math.hypot(
-            selectedRecord.solid.end.x - selectedRecord.solid.start.x,
-            selectedRecord.solid.end.y - selectedRecord.solid.start.y,
-          ).toFixed(3)} ft long · ${(selectedRecord.solid.thickness * 304.8).toFixed(0)} mm thick`,
-        }]
-        : []),
-      ...(selectedRecord.parameters?.map((parameter) => ({
-        key: `parameter-${parameter.parameterId}`,
-        label: parameter.name,
-        value: typeof parameter.value === "string"
-          ? parameter.value
-          : `${parameter.value.toFixed(4)} ft`,
-      })) ?? []),
-      {
-        key: "bounding-size",
-        label: "Bounding size",
-        value: `${selectedDimensions.x.toFixed(2)} × ${selectedDimensions.y.toFixed(2)} × ${selectedDimensions.z.toFixed(2)} ft`,
-      },
-      { key: "minimum-z", label: "Minimum Z", value: `${selectedRecord.boundsFeet.min.z.toFixed(3)} ft` },
-      { key: "stream", label: "Source stream", value: selectedRecord.stream },
-      ...(selectedRecord.chunkIndex >= 0
-        ? [{ key: "chunk", label: "Chunk", value: selectedRecord.chunkIndex.toLocaleString() }]
-        : []),
-      ...(selectedRecord.recordOffset >= 0
-        ? [{ key: "record-offset", label: "Record offset", value: `0x${selectedRecord.recordOffset.toString(16)}` }]
-        : []),
-    ];
-  }, [selectedDimensions, selectedRecord]);
+  const propertyRows: PropertyRow[] = useMemo(
+    () => propertyRowsFor(selectedRecord, selectedDimensions),
+    [selectedDimensions, selectedRecord],
+  );
 
   const copySelectedProperties = useCallback(async () => {
     if (!selectedRecord || !propertyRows.length) return;
@@ -1320,6 +1262,23 @@ export default function ReviterStudio() {
   // check reads both ends of its range so a legacy file is described the same
   // way rather than silently falling through as if it were supported.
   const isBeyondStandardsReader = versionNumber > 0 && !standardsReaderSupports(versionNumber);
+  // A project whose element records Reviter could not read, so that what the
+  // scene shows is the diagnostic coordinate scan. The file should say so
+  // rather than present that scan as a model. Revit 2019 to 2027 projects are
+  // read (2023 and earlier through their 32-bit element ids); an older release
+  // is the usual reason, and the note names it.
+  const isUndecodedRelease =
+    versionNumber > 0 &&
+    result?.method === "partition-coordinate-recovery" &&
+    /\.rvt$/i.test(result?.fileName ?? file?.name ?? "");
+  const undecodedReleaseNote =
+    (versionNumber < NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE
+      ? `Revit ${versionNumber} projects are not decoded yet: `
+      : `This Revit ${versionNumber} project's element records could not be read: `) +
+    `Reviter reads elements, categories, materials, levels and geometry from Revit ` +
+    `${NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE}–2027 projects. ` +
+    "The lines shown are a diagnostic scan of coordinate-like values in the file, not the building. " +
+    "File metadata is read directly.";
   const referenceModelAvailable = Boolean(referenceModelUrl);
   /**
    * How many objects the file holds.
@@ -1513,11 +1472,13 @@ export default function ReviterStudio() {
         value: materials ? `${materials.toLocaleString()} definitions` : "Not decoded",
         tone: materials ? "warn" : "off",
       },
-      { label: "Openings & textures", value: "Not available", tone: "off" },
+      { label: "Textures", value: "Not decoded", tone: "off" },
     ];
   }, [metadata, result]);
 
-  const evidenceSummary = isBeyondStandardsReader
+  const evidenceSummary = isUndecodedRelease
+    ? undecodedReleaseNote
+    : isBeyondStandardsReader
     ? `Revit ${metadata?.version} is outside the optional Rust reader's verified ${STANDARDS_READER_RANGE_LABEL} range; Reviter's own decoders ran normally. Shapes are approximate; metadata is read directly from the file.`
     : result?.readerDiagnostics?.summary
       ?? "This is a recovery, not a native Revit decode. Shapes are approximate; metadata is read directly from the file.";
@@ -1768,11 +1729,13 @@ export default function ReviterStudio() {
     ? "Only the recovered source carries object ids. Switch back to Recovered to browse objects and categories."
     : browserSearch.trim()
       ? "Nothing in this model matches that filter."
-      : "This file converted into geometry, but no element ids were recovered from it — there is nothing to list. The Report dock has the stream-by-stream detail.";
+      : isUndecodedRelease
+        ? undecodedReleaseNote
+        : "This file converted into geometry, but no element ids were recovered from it — there is nothing to list. The Report dock has the stream-by-stream detail.";
 
   const selectedTitle = selectedRecord ? selectedRecord.categoryName ?? "Uncategorised object" : "No selection";
   const selectedSubtitle = selectedRecord
-    ? [selectedRecord.typeName, `id ${selectedRecord.elementId}`].filter(Boolean).join(" · ")
+    ? [selectedRecord.familyName, selectedRecord.typeName, `id ${selectedRecord.elementId}`].filter(Boolean).join(" · ")
     : "Nothing picked";
 
   const legend = geometrySource === "reference-model"

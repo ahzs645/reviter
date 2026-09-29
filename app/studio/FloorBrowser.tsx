@@ -32,6 +32,7 @@ import {
 import { FloorReferencePlan } from "./FloorReferencePlan.tsx";
 import { acceptedRoomLabels, useArchitecturalPlan } from "./use-architectural-plan.ts";
 import { useTheme } from "./use-theme.ts";
+import { levelNames } from "./format.ts";
 
 export function FloorBrowser({
   result,
@@ -263,6 +264,7 @@ export function FloorBrowser({
           >
             {plans.map((plan) => (
               <option key={plan.primaryLevelId} value={plan.primaryLevelId}>
+                {levelNames(plan.levels) ? `${levelNames(plan.levels)} · ` : ""}
                 {plan.minElevation === plan.maxElevation
                   ? formatFeetInches(plan.minElevation)
                   : `${formatFeetInches(plan.minElevation)}–${formatFeetInches(plan.maxElevation)}`}
@@ -273,6 +275,9 @@ export function FloorBrowser({
         </label>
 
         <dl className={building ? "floor-browser-stale" : undefined}>
+          {levelNames(connected ? selectedPlan!.levels : [selected]) ? (
+            <div><dt>Level{connected ? "s" : ""}</dt><dd>{levelNames(connected ? selectedPlan!.levels : [selected])}</dd></div>
+          ) : null}
           <div><dt>Revit level{connected ? "s" : " ID"}</dt><dd>{connected ? selectedPlan!.levelIds.join(", ") : selected.levelId}</dd></div>
           <div><dt>Elevation{connected ? " range" : ""}</dt><dd>{connected
             ? `${formatFeetInches(selectedPlan!.minElevation)}–${formatFeetInches(selectedPlan!.maxElevation)}`

@@ -162,6 +162,7 @@ test("the enriched counters are what the fixture's populations say they are", ()
     adoptedStairBoxes: 1,
     clippedSolids: 2,
     extendedSolids: 3,
+    widenedWalls: 0,
     recoveredWallJoinEnds: 1,
     shrunkSolids: 1,
     narrowedSolidBands: 1,
@@ -286,14 +287,16 @@ test("the file's own storeys outrank the elevation histogram", () => {
   const result = converted(richModel());
 
   // Twenty-five elements name the same level object; only the level with at
-  // least twenty members is reported, and its elevation is its members' median
-  // base rather than a rounded z band.
+  // least twenty members is reported. The fixture writes no `Level` record of
+  // its own, so the elevation is its members' median base rather than a
+  // rounded z band, and says so.
   assert.equal(result.nativeAssociatedLevelRelations?.length, 25);
   assert.deepEqual(result.levels, [{
     elevation: 0,
     candidates: 24,
     levelId: 47_000,
     source: "assoc-level-id",
+    elevationSource: "member-median",
   }]);
 });
 
@@ -400,4 +403,14 @@ test("the enriched categories are the ones the tokens name", () => {
     result.stats.unplacedRecords,
   );
   assert.equal(result.nativeCategories!.inheritedElements, 0);
+});
+
+test("a release without a bounds decoder never claims one", () => {
+  // The same populations saved as Revit 2023: the release-independent passes
+  // still synthesise records from the plane triples and placements, but no
+  // 2023 record decoder ran, so the result must not be the bounds scene.
+  const result = convertRvtBytes(buildModel({ ...richSpec(), release: "2023" }), "old.rvt");
+  if (!result.ok) return;
+  assert.notEqual(result.method, "partition-bounds-recovery");
+  assert.ok(!result.decoderCoverage.activeDecoders.includes("revit-2027-duplicated-bounds-v1"));
 });

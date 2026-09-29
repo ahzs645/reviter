@@ -21,6 +21,7 @@
  * the element later — the display gate decides separately whether the envelope
  * itself is worth drawing.
  */
+import type { ElementHeader } from "./element-headers.ts";
 import { boundsOfRecords, MIN_SOLID_SPAN_FEET } from "./bounds-records.ts";
 import { sharedGeometryIdsForPlacements } from "./instanced-geometry.ts";
 import { markerCategoryConsensus } from "./element-objects.ts";
@@ -425,8 +426,10 @@ export function removeCachedShapeRecords(input: {
   categoryTokens: CategoryToken[];
   elementIndex: RvtElementIndex | undefined;
   instancePlacements: Map<number, InstancePlacement>;
+  /** Each element's own statement of its category, which outranks a token. */
+  elementHeaders?: ReadonlyMap<number, ElementHeader>;
 }): { sharedGeometryIds: Set<number>; cachedShapeRecords: number } {
-  const { elementBounds, categoryTokens, elementIndex, instancePlacements } = input;
+  const { elementBounds, categoryTokens, elementIndex, instancePlacements, elementHeaders } = input;
   // A cached family shape is not a building element. Its object carries the
   // same bounds sub-record an element does, so it was being decoded into the
   // model as though it were one — and its box is in the family's own local
@@ -455,6 +458,11 @@ export function removeCachedShapeRecords(input: {
     categoryTokens,
     placementCategoryKnownIds,
   );
+  // Files before 2027 carry few or no tokens, so without the headers neither
+  // exception below could fire on them.
+  for (const [elementId, header] of elementHeaders ?? []) {
+    if (header.categoryId != null) placementCategories.set(elementId, header.categoryId);
+  }
   const sharedGeometryIds = sharedGeometryIdsForPlacements(
     instancePlacements.values(),
     placementCategories,
@@ -468,9 +476,41 @@ export function removeCachedShapeRecords(input: {
   return { sharedGeometryIds, cachedShapeRecords };
 }
 
+/**
+ * Host categories: built in the project's own frame, never placed from a
+ * family's local one.
+ */
+const HOST_CATEGORY_IDS: ReadonlySet<number> = new Set([
+  -2_000_011, // Walls
+  -2_000_032, // Floors
+  -2_000_035, // Roofs
+  -2_000_038, // Ceilings
+]);
+
+/**
+ * Whether an element's own header says it is a wall, floor, roof or ceiling
+ * of the project itself: no owning view, and no family whose definition it
+ * belongs to.
+ *
+ * The datum pile is family-local records, and a host element is never one,
+ * but a building can stand on its own datum. The 2025 RAC sample does: its
+ * pile holds 1,594 records, of which exactly two are drawn by Autodesk, a
+ * 7.6 ft wall and a 43.6 ft ceiling that happen to be centred on the origin.
+ * They are the only project host elements in the pile of any of the four
+ * sample files (1,594, 841, 4,251 and 3,272 records).
+ */
+function isProjectHostElement(header: ElementHeader | undefined): boolean {
+  return header != null &&
+    header.familyId == null &&
+    header.ownerViewId == null &&
+    header.categoryId != null &&
+    HOST_CATEGORY_IDS.has(header.categoryId);
+}
+
 /** @returns how many records were removed as unplaced. */
 export function removeDatumPileRecords(
   elementBounds: ElementBoundsRecord[],
+  elementHeaders?: ReadonlyMap<number, ElementHeader>,
 ): number {
   // Elements whose envelope was never placed.
   //
@@ -493,7 +533,8 @@ export function removeDatumPileRecords(
       // The two guards keep their original sense — a record whose centre is
       // not *outside* the radius is removed — so a non-finite centre is
       // removed here exactly as it was before.
-      unplacedRecords += removeRecordsInPlace(elementBounds, ({ boundsFeet }) => {
+      unplacedRecords += removeRecordsInPlace(elementBounds, ({ boundsFeet, elementId }) => {
+        if (isProjectHostElement(elementHeaders?.get(elementId))) return false;
         const { min, max } = boundsFeet;
         if (Math.abs((min.x + max.x) / 2) > DATUM_PILE_RADIUS_FEET) return false;
         if (Math.abs((min.y + max.y) / 2) > DATUM_PILE_RADIUS_FEET) return false;

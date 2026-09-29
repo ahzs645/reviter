@@ -1,0 +1,337 @@
+/**
+ * Class indices, translated between a file's own schema and the 2027 numbering
+ * the decoders were written in.
+ *
+ * A partition object names its class by a `u16` at `+16`, and that number is
+ * the class's position in the same file's `Formats/Latest`. The decoders were
+ * measured on one Revit 2027 project and compare against its numbers: `0x08c6`
+ * for `GElement`, `0x07ef` for `FamilyInstance`, `1825` for `Face`. Those
+ * numbers are not Revit's; they are that schema's. Between the 2027 schema and a
+ * 2025 one, 16 of the 4,553 shared classes keep their index. `GElement` is 2246
+ * in 2027, 2166 in 2025 and 2111 in 2024, and the 2025 file's 2246 is
+ * `GeomPositioningCell`.
+ *
+ * Measured, not assumed: labelling each framed object by the element the
+ * paired Autodesk property database names, a 2025 wall is headed by 3762 and
+ * 2166, the 2025 schema's `SWall` and `GElement`; a 2024 wall by 3669 and 2111,
+ * that schema's `SWall` and `GElement`. The marker follows the file.
+ *
+ * So the decoders keep their 2027 constants, and this module sits where bytes
+ * become class numbers:
+ *
+ *  - a class index **read** from a file goes through `canonicalClassTag`, which
+ *    returns the 2027 index of the class with the same name;
+ *  - a class index **searched for** in a file's bytes goes through
+ *    `fileClassTag`, which returns that file's index for a 2027 class.
+ *
+ * The translation is by class name and is exact for every class both schemas
+ * declare. A file class the 2027 schema lacks translates to a number above any
+ * real index, so it can never be mistaken for one; a 2027 class the file lacks
+ * has no file index, and a search for it finds nothing. Values outside the
+ * schema's range — negatives, the reserved low indices, and runtime slots
+ * beyond the last declared class — pass through unchanged.
+ *
+ * Conversion is synchronous and runs one file at a time in both the worker and
+ * the Node command, so the active translation is module state installed by
+ * `convertRvtBytes` for the length of one conversion, the way the limit census
+ * is.
+ */
+import { narrowElementIds } from "./element-id-width.ts";
+import {
+  REVIT_2027_CLASS_NAMES,
+  REVIT_2027_FIRST_CLASS_INDEX,
+} from "./revit-2027-class-names.data.ts";
+
+/**
+ * Oldest release whose partition records the 2027 decoders read once class
+ * indices are translated.
+ *
+ * The record layouts the decoders depend on are the same from 2024 through
+ * 2027: of the 4,553 classes a 2025 schema shares with 2027, 4,321 keep their
+ * version and field count, including every geometry class (`Face`, `Edge`,
+ * `EdgeLoop`, `Plane`, `CylSurf`, `GArc`, `GInstance`, `Geometry`, `GRep`,
+ * `GPolyMesh`) and `Element` itself. What moved is the numbering, which
+ * `canonicalClassTag` undoes. Each release in the range was checked against an
+ * Autodesk Viewer capture of the same file; see
+ * `docs/older-release-decoding-2026-09-25.md`.
+ */
+export const REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE = 2024;
+
+/** Whether a release's partition records are read by the 2027 decoders. */
+export function usesRevit2027RecordLayout(revitVersion: number | null | undefined): boolean {
+  return (
+    revitVersion != null &&
+    Number.isInteger(revitVersion) &&
+    revitVersion >= REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE &&
+    revitVersion <= 2027
+  );
+}
+
+/**
+ * Oldest release whose 32-bit-id records the decoders with a narrow variant
+ * read. Those releases write every element id in four bytes (see
+ * `element-id-width.ts`), and only the decoders that have been given, and
+ * checked in, a narrow variant are admitted for them: each was compared, id by
+ * id, between Autodesk's 2023 RAC sample and the 2025 copy of the same project.
+ *
+ * Autodesk's 2019, 2020, 2021 and 2022 copies of that project read the same
+ * way. Their schemas declare `Element`, `ElementHeader`, `Level`,
+ * `DatumPlane`, `Material`, `GElement`, `GRep` and the parameter value sets
+ * exactly as 2023 does, and against the 2025 copy each gives the same headers,
+ * bounds, storeys, level relations and type names (398 of 398 Autodesk type
+ * names), names every `MaterialElem` it frames with Autodesk's name and colour
+ * (the materials it lacks, it does not contain), and differs in no parameter
+ * value. The one layout that moved, the class a wall type's name follows, is
+ * handled in `element-types.ts`. 2018 and older are not claimed: no file from
+ * those releases was available.
+ */
+export const NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE = 2019;
+
+/**
+ * Whether a release before 2024 is read by the decoders with a 32-bit-id
+ * variant. True only while the file's own schema declares 32-bit ids, so the
+ * gate follows what the file says rather than its release number alone.
+ */
+export function usesNarrowIdRecordLayout(revitVersion: number | null | undefined): boolean {
+  return (
+    narrowElementIds() &&
+    revitVersion != null &&
+    Number.isInteger(revitVersion) &&
+    revitVersion >= NARROW_ID_RECORD_LAYOUT_FIRST_RELEASE &&
+    revitVersion < REVIT_2027_RECORD_LAYOUT_FIRST_RELEASE
+  );
+}
+
+/**
+ * Whether the element-record decoders that read both id widths — the frame
+ * walk, `ElementHeader`, the bounds records and the others ported so far —
+ * read this release.
+ */
+export function readsElementRecordLayout(revitVersion: number | null | undefined): boolean {
+  return usesRevit2027RecordLayout(revitVersion) || usesNarrowIdRecordLayout(revitVersion);
+}
+
+/** Last index the 2027 schema declares. */
+export const REVIT_2027_LAST_CLASS_INDEX =
+  REVIT_2027_FIRST_CLASS_INDEX + REVIT_2027_CLASS_NAMES.length - 1;
+
+/**
+ * Classes a schema must share with 2027 by name before its numbering is
+ * trusted to translate: half the 2027 table. Real release schemas clear it by
+ * a wide margin (4,447 of the 2024 schema's 4,492 classes are shared).
+ */
+const MIN_RELEASE_SCHEMA_CLASSES = Math.floor(REVIT_2027_CLASS_NAMES.length / 2);
+
+/** Where a file class with no 2027 counterpart is placed: above every index. */
+const UNMATCHED_CLASS_BASE = 0x10000;
+
+export type ClassTagTranslation = {
+  /** True when every shared class already has its 2027 index. */
+  identity: boolean;
+  /** Classes the file declares under the same name as a 2027 class. */
+  matchedClasses: number;
+  /** Of those, how many sit at a different index than in 2027. */
+  movedClasses: number;
+  /** File classes with no 2027 counterpart. */
+  unmatchedFileClasses: number;
+  /** 2027 classes the file does not declare. */
+  missingCanonicalClasses: number;
+  /**
+   * The highest class index the file's schema declares, or -1 when it
+   * declares none. A file's classes run from 12 to this with no gap.
+   */
+  lastFileClass: number;
+  /** File index -> 2027 index, indexed by the raw `u16`. */
+  toCanonical: Int32Array;
+  /** 2027 index -> file index, or -1 when the file lacks the class. */
+  toFile: Int32Array;
+  /**
+   * 2027 index -> the number of fields the file's own schema declares for the
+   * class. A decoder reading a class whose layout grew between releases asks
+   * this rather than assuming 2027's.
+   */
+  declaredFieldCounts: ReadonlyMap<number, number>;
+  /** Each 2027 class's own fields, in the order this file declares them. */
+  declaredFieldNames?: ReadonlyMap<number, readonly string[]>;
+};
+
+let canonicalIndexByName: Map<string, number> | null = null;
+
+function canonicalIndices(): Map<string, number> {
+  if (!canonicalIndexByName) {
+    canonicalIndexByName = new Map();
+    REVIT_2027_CLASS_NAMES.forEach((name, position) => {
+      if (!canonicalIndexByName!.has(name)) {
+        canonicalIndexByName!.set(name, REVIT_2027_FIRST_CLASS_INDEX + position);
+      }
+    });
+  }
+  return canonicalIndexByName;
+}
+
+/**
+ * Build the translation from a file's declared classes, as `SchemaSummary`
+ * reports them. An empty list yields the identity, so a file whose schema did
+ * not read is decoded exactly as before.
+ */
+export function buildClassTagTranslation(
+  classes: ReadonlyArray<{
+    name: string;
+    tag: number;
+    declaredFieldCount?: number;
+    fieldNames?: readonly string[];
+  }>,
+): ClassTagTranslation {
+  const canonical = canonicalIndices();
+  const declaredFieldCounts = new Map<number, number>();
+  const declaredFieldNames = new Map<number, readonly string[]>();
+  for (const entry of classes) {
+    const target = canonical.get(entry.name);
+    if (target != null && entry.declaredFieldCount != null && !declaredFieldCounts.has(target)) {
+      declaredFieldCounts.set(target, entry.declaredFieldCount);
+    }
+    if (target != null && entry.fieldNames && !declaredFieldNames.has(target)) {
+      declaredFieldNames.set(target, entry.fieldNames);
+    }
+  }
+  const targets = new Map<number, number>();
+  const seen = new Set<string>();
+  let movedClasses = 0;
+  let unmatchedFileClasses = 0;
+  for (const entry of classes) {
+    if (entry.tag < 0 || entry.tag > 0xffff) continue;
+    const target = canonical.get(entry.name);
+    if (target == null || seen.has(entry.name)) {
+      unmatchedFileClasses += 1;
+      continue;
+    }
+    seen.add(entry.name);
+    targets.set(entry.tag, target);
+    if (target !== entry.tag) movedClasses += 1;
+  }
+
+  const toCanonical = new Int32Array(0x10000);
+  const toFile = new Int32Array(0x10000);
+  for (let value = 0; value < 0x10000; value += 1) {
+    toCanonical[value] = value;
+    toFile[value] = value;
+  }
+  let fileLast = -1;
+  for (const entry of classes) fileLast = Math.max(fileLast, entry.tag);
+  const summary = {
+    matchedClasses: targets.size,
+    movedClasses,
+    unmatchedFileClasses,
+    missingCanonicalClasses: canonical.size - seen.size,
+    lastFileClass: fileLast,
+  };
+  // A schema that agrees with the 2027 numbering wherever the two share a
+  // class — a 2027 file — is read as written. So is one too small to be a
+  // release's schema at all: a Revit project declares thousands of classes
+  // (4,757 in 2027, 4,600 in 2025, 4,492 in 2024) and shares more than 4,400
+  // of them by name with 2027, while a fixture declaring three classes at
+  // arbitrary indices says nothing about the indices it omits.
+  if (movedClasses === 0 || targets.size < MIN_RELEASE_SCHEMA_CLASSES) {
+    return { identity: true, ...summary, toCanonical, toFile, declaredFieldCounts, declaredFieldNames };
+  }
+
+  // A real file declares every index from 12 to its last with no gap. Then a
+  // 2027 class it does not name is one it does not have, and a 2027-range
+  // index it does not declare is not a class number in this file. A schema
+  // with gaps says nothing about what it omits, so those pass through.
+  const declared = new Set(classes.map((entry) => entry.tag));
+  let complete = fileLast >= REVIT_2027_FIRST_CLASS_INDEX;
+  for (let index = REVIT_2027_FIRST_CLASS_INDEX; complete && index <= fileLast; index += 1) {
+    if (!declared.has(index)) complete = false;
+  }
+  if (complete) {
+    for (let index = REVIT_2027_FIRST_CLASS_INDEX; index <= REVIT_2027_LAST_CLASS_INDEX; index += 1) {
+      toFile[index] = -1;
+      if (index <= fileLast) toCanonical[index] = UNMATCHED_CLASS_BASE + index;
+    }
+  }
+  for (const entry of classes) {
+    if (entry.tag < 0 || entry.tag > 0xffff) continue;
+    const target = targets.get(entry.tag);
+    if (target == null) {
+      toCanonical[entry.tag] = UNMATCHED_CLASS_BASE + entry.tag;
+      continue;
+    }
+    toCanonical[entry.tag] = target;
+    toFile[target] = entry.tag;
+  }
+  return { identity: false, ...summary, toCanonical, toFile, declaredFieldCounts, declaredFieldNames };
+}
+
+let active: ClassTagTranslation | null = null;
+let activeFieldCounts: ReadonlyMap<number, number> | null = null;
+let activeFieldNames: ReadonlyMap<number, readonly string[]> | null = null;
+let activeLastFileClass = -1;
+
+/** Install `translation` for the conversion about to run; `null` restores the identity. */
+export function setActiveClassTagTranslation(translation: ClassTagTranslation | null): void {
+  active = translation && !translation.identity ? translation : null;
+  activeFieldCounts = translation?.declaredFieldCounts ?? null;
+  activeFieldNames = translation?.declaredFieldNames ?? null;
+  activeLastFileClass =
+    translation && translation.matchedClasses >= MIN_RELEASE_SCHEMA_CLASSES
+      ? translation.lastFileClass
+      : -1;
+}
+
+/**
+ * A 2027 class's own fields in the order the current file declares them, or
+ * undefined when no walked schema is installed. Autodesk has reordered a
+ * class's fields between releases: `SplineNode` is parameter, point, tangent
+ * in 2024 and 2025 and point, tangent, parameter in 2027.
+ */
+export function fileClassFieldNames(canonicalIndex: number): readonly string[] | undefined {
+  return activeFieldNames?.get(canonicalIndex);
+}
+
+/**
+ * Whether a raw class index read from the file names a class its schema
+ * declares: 12 through the last declared index. With no release schema
+ * installed (a test fixture, or a file whose schema did not read) nothing is
+ * known about the numbering, and every index is allowed.
+ */
+export function fileClassDeclared(fileIndex: number): boolean {
+  if (activeLastFileClass < 0) return true;
+  return fileIndex >= REVIT_2027_FIRST_CLASS_INDEX && fileIndex <= activeLastFileClass;
+}
+
+/**
+ * How many fields the current file's schema declares for a 2027 class, or
+ * undefined when no schema is installed or the file lacks the class.
+ */
+export function fileClassFieldCount(canonicalIndex: number): number | undefined {
+  return activeFieldCounts?.get(canonicalIndex);
+}
+
+/** The translation currently installed, or `null` when indices are read as written. */
+export function activeClassTagTranslation(): ClassTagTranslation | null {
+  return active;
+}
+
+/** The 2027 index of the class a file's raw index names. */
+export function canonicalClassTag(fileIndex: number): number {
+  if (active === null || fileIndex < 0 || fileIndex > 0xffff) return fileIndex;
+  return active.toCanonical[fileIndex]!;
+}
+
+/**
+ * The file's index for a 2027 class, or -1 when the file does not declare it.
+ *
+ * A value `canonicalClassTag` placed above every index — a file class with no
+ * 2027 counterpart, measured from the file and searched for again — returns
+ * to the file's own number.
+ */
+export function fileClassTag(canonicalIndex: number): number {
+  if (active === null || canonicalIndex < 0) return canonicalIndex;
+  if (canonicalIndex >= UNMATCHED_CLASS_BASE) {
+    return canonicalIndex < UNMATCHED_CLASS_BASE + 0x10000
+      ? canonicalIndex - UNMATCHED_CLASS_BASE
+      : canonicalIndex;
+  }
+  return active.toFile[canonicalIndex]!;
+}

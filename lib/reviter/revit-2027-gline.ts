@@ -1,4 +1,5 @@
-import type { Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
+import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
 /** Exact Revit 2027 schema tag/source slot for `GLine`. */
 export const REVIT_2027_GLINE_SOURCE_CLASS_SLOT = 1973;
@@ -40,7 +41,7 @@ export function decodeRevit2027GLine(
   bodyEndOffset: number,
   revitVersion: number,
 ): Revit2027GLineDecodeResult {
-  if (revitVersion !== 2027) {
+  if (!usesRevit2027RecordLayout(revitVersion)) {
     return { ok: false, error: "Revit 2027 GLine decoding requires release 2027" };
   }
   if (
@@ -48,25 +49,27 @@ export function decodeRevit2027GLine(
     !Number.isSafeInteger(bodyEndOffset) ||
     byteOffset < 0 ||
     bodyEndOffset > data.byteLength ||
-    bodyEndOffset - byteOffset !== REVIT_2027_GLINE_BODY_BYTES
+    bodyEndOffset - byteOffset !== (REVIT_2027_GLINE_BODY_BYTES - revit2027GInfoShrink())
   ) {
     return { ok: false, error: "Revit 2027 GLine body is not exactly 84 bytes" };
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  // Fields after GInfo sit 4 bytes nearer where ids are 32-bit.
+  const fieldBase = byteOffset - revit2027GInfoShrink();
   const endParameters = [
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET, true),
-    view.getFloat64(byteOffset + END_PARAMETERS_OFFSET + 8, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET, true),
+    view.getFloat64(fieldBase + END_PARAMETERS_OFFSET + 8, true),
   ] as const;
   const origin = [
-    view.getFloat64(byteOffset + ORIGIN_OFFSET, true),
-    view.getFloat64(byteOffset + ORIGIN_OFFSET + 8, true),
-    view.getFloat64(byteOffset + ORIGIN_OFFSET + 16, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET + 8, true),
+    view.getFloat64(fieldBase + ORIGIN_OFFSET + 16, true),
   ] as const;
   const direction = [
-    view.getFloat64(byteOffset + DIRECTION_OFFSET, true),
-    view.getFloat64(byteOffset + DIRECTION_OFFSET + 8, true),
-    view.getFloat64(byteOffset + DIRECTION_OFFSET + 16, true),
+    view.getFloat64(fieldBase + DIRECTION_OFFSET, true),
+    view.getFloat64(fieldBase + DIRECTION_OFFSET + 8, true),
+    view.getFloat64(fieldBase + DIRECTION_OFFSET + 16, true),
   ] as const;
   if (
     !finiteTuple(endParameters) ||
@@ -84,12 +87,7 @@ export function decodeRevit2027GLine(
     value: {
       byteOffset,
       endOffset: bodyEndOffset,
-      gInfo: {
-        gStyleElementId: view.getBigInt64(byteOffset, true),
-        tag: view.getInt32(byteOffset + 8, true),
-        controlCommand: view.getInt32(byteOffset + 12, true),
-        flags: view.getUint32(byteOffset + 16, true),
-      },
+      gInfo: readRevit2027GInfo(view, byteOffset),
       endParameters,
       origin,
       direction,

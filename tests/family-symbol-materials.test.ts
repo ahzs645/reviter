@@ -60,7 +60,7 @@ test("is release/class gated and requires every MaterialElem target", () => {
     { geometryTag: 27, materialId: 26 },
     { geometryTag: 46, materialId: 182_549 },
   ]]);
-  assert.deepEqual(scanFamilySymbolMaterialReferenceSets(data, 2026), []);
+  assert.deepEqual(scanFamilySymbolMaterialReferenceSets(data, 2023), []);
   assert.deepEqual(
     scanFamilySymbolMaterialReferenceSets(
       familySymbol([[{ geometryTag: 27, materialId: 26 }]], 0x08c6),

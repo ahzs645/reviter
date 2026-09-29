@@ -186,6 +186,10 @@ export type DecoderCoverage = {
   nativeMeshBoundsMismatches?: number;
   /** Complete native items lacking an independent display-envelope cross-check. */
   nativeMeshMissingBounds?: number;
+  /** Placed elements drawn from their family document's forms. */
+  nativeMeshFamilyDocumentElements?: number;
+  /** Family-document meshes declined for not filling the element's envelope. */
+  nativeMeshFamilyDocumentMismatches?: number;
   nativeMeshUnrepresentedElements?: number;
   /** Framed GRep owner definitions retained for recursive symbol resolution. */
   nativeMeshNestedDefinitions?: number;
@@ -367,15 +371,19 @@ export type ElementBoundsRecord = {
     | "bounds-fallback"
     | "not-rendered-helper";
   boundsFeet: Bounds3;
+  /** Basic, curtain or stacked, from the wall's own type (`wall-kinds.ts`). */
+  wallKind?: "basic" | "curtain" | "stacked";
 };
 
 /**
+ * `element-header` means the element's own `ElementHeader` stated it.
  * `native-token` means the element's own category token was decoded.
  * `native-object` means a schema-specific native object proved the class.
  * `record-code-consensus` means the category was inherited from sibling records
  * that share the element's record code.
  */
 export type NativeCategorySource =
+  | "element-header"
   | "native-token"
   | "native-object"
   | "record-code-consensus";
@@ -397,6 +405,11 @@ export type NativeCategoryCodeConsensus = {
 
 export type NativeCategorySummary = {
   tokensFound: number;
+  /** Element headers read, whatever they state (see `element-headers.ts`). */
+  elementHeadersFound?: number;
+  /** Records whose category their own `ElementHeader` stated. */
+  headerElements?: number;
+  /** Records labelled by their own category token. */
   directElements: number;
   inheritedElements: number;
   /**
@@ -428,6 +441,13 @@ export type LevelBand = {
    * states from one inferred out of a pile of elevations.
    */
   source?: "assoc-level-id" | "elevation-band";
+  /** The level's own name, from its `Level` element. */
+  name?: string;
+  /**
+   * Where `elevation` came from: the `Level` element itself, or the median
+   * base of the level's members when its record did not decode.
+   */
+  elevationSource?: "level-element" | "member-median";
 };
 
 export type ConvertStats = {
@@ -503,6 +523,12 @@ export type ConvertStats = {
    * extension Revit applies to a wall's body without moving its location line.
    */
   extendedSolids?: number;
+  /**
+   * Straight, axis-aligned walls widened from their centre-plane triple to
+   * their own envelope's extent across them, which is the whole layered wall
+   * where the triple is only its core.
+   */
+  widenedWalls?: number;
   /** Wall ends trimmed to a corroborating adjacent native wall face. */
   recoveredWallJoinEnds?: number;
   /**
