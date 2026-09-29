@@ -375,17 +375,29 @@ export function wallArcsFor(elementId: number, cylinders: CylinderPatch[]): Wall
     if (sweep < MIN_SWEEP_RADIANS || sweep > 2 * Math.PI + MIN_SWEEP_RADIANS) continue;
     if (centre.radius < MIN_LENGTH_FEET) continue;
 
+    // A mirrored wall's cylinder has a plan-clockwise frame (xDir × yDir
+    // points down). Every consumer sweeps startAngle → endAngle through
+    // `cos·xDir + sin·yDir` and winds faces assuming that sweep is
+    // counter-clockwise, so flip yDir and negate the angles: the same points,
+    // in a right-handed frame.
+    const clockwise = centre.xDir.x * centre.yDir.y - centre.xDir.y * centre.yDir.x < 0;
+    let startAngle = clockwise ? -Math.max(centre.uMin, centre.uMax) : Math.min(centre.uMin, centre.uMax);
+    let endAngle = clockwise ? -Math.min(centre.uMin, centre.uMax) : Math.max(centre.uMin, centre.uMax);
+    // Keep the start in (-π, π]; the sweep, not the winding count, is the arc.
+    const turns = Math.round(startAngle / (2 * Math.PI));
+    startAngle -= turns * 2 * Math.PI;
+    endAngle -= turns * 2 * Math.PI;
     arcs.push({
       elementId,
       centre: { x: centre.origin.x, y: centre.origin.y },
       radius: centre.radius,
       thickness,
-      startAngle: Math.min(centre.uMin, centre.uMax),
-      endAngle: Math.max(centre.uMin, centre.uMax),
+      startAngle,
+      endAngle,
       baseElevation: centre.origin.z + centre.vMin,
       topElevation: centre.origin.z + centre.vMax,
       xDir: { x: centre.xDir.x, y: centre.xDir.y },
-      yDir: { x: centre.yDir.x, y: centre.yDir.y },
+      yDir: clockwise ? { x: -centre.yDir.x, y: -centre.yDir.y } : { x: centre.yDir.x, y: centre.yDir.y },
     });
     index += 2;
   }

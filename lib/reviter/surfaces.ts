@@ -242,14 +242,21 @@ function readCylinder(view: DataView, offset: number, byteLength: number): Cylin
   if (!origin || !xDir || !yDir || !zDir) return null;
   if (!withinModel(origin) || !isUnit(xDir) || !isUnit(yDir) || !isUnit(zDir)) return null;
   if (Math.abs(dot(xDir, yDir)) > 1e-9) return null;
-  // zDir must be the cross product of the other two: that is what separates a
-  // cylinder from a plane whose trailing bytes happen to read as a basis.
+  // zDir must be the cross product of the other two, up to sign: that is what
+  // separates a cylinder from a plane whose trailing bytes happen to read as a
+  // basis. **Either handedness.** A mirrored curved wall is written with a
+  // left-handed frame — xDir (1,0,0), yDir (0,-1,0), zDir (0,0,1) — and
+  // requiring `+1` rejected every one of them; the plane reader then accepted
+  // the same bytes as a plane whose trim was zDir and whose vMax was the
+  // radius. In the supplied model that cost 10 of 78 curved walls their arc
+  // (elements 690943, 948595, 948610, 948615, 961081, 961090, 961099, 961108,
+  // 1779372, 1785110), and with it their node in the Pascal export.
   const cross = {
     x: xDir.y * yDir.z - xDir.z * yDir.y,
     y: xDir.z * yDir.x - xDir.x * yDir.z,
     z: xDir.x * yDir.y - xDir.y * yDir.x,
   };
-  if (Math.abs(dot(cross, zDir) - 1) > 1e-6) return null;
+  if (Math.abs(Math.abs(dot(cross, zDir)) - 1) > 1e-6) return null;
   const radius = view.getFloat64(offset + 97, true);
   if (!Number.isFinite(radius) || radius <= 0 || radius > MAX_COORDINATE) return null;
   const trim = readTrim(view, offset + 105);
