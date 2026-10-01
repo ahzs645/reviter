@@ -1,4 +1,5 @@
 /** Architectural plan composition from persisted, level-aware RVT geometry. */
+import polygonClipping from "polygon-clipping";
 import { cachedDerivedRoomsForLevel, type DerivedRoomResult } from "./derived-rooms.ts";
 import { floorPlateRecords } from "./export-svg.ts";
 import { formatFeetInches } from "./format-length.ts";
@@ -179,7 +180,7 @@ type ArchitecturalPlanRecords = ArchitecturalPlanSummary & {
   }>;
 };
 
-const planCache = new WeakMap<ConvertResult, Map<number, ArchitecturalPlanRecords>>();
+const planCache = new WeakMap<ConvertResult, Map<string, ArchitecturalPlanRecords>>();
 const connectedPlanCache = new WeakMap<ConvertResult, Map<string, ArchitecturalPlanRecords>>();
 const svgCache = new WeakMap<ConvertResult, Map<string, string>>();
 // Option objects (derived rooms, room labels) are cache-keyed by identity, not
@@ -253,17 +254,18 @@ function isDrawableStairRecord(record: ElementBoundsRecord, low: number, high: n
       Boolean(record.stairTreads?.some((tread) => treadIsInBand(tread, low, high))));
 }
 
-function recordsForLevel(result: ConvertResult, levelId: number): ArchitecturalPlanRecords {
+function recordsForLevel(result: ConvertResult, levelId: number, requireFloors = true): ArchitecturalPlanRecords {
   let resultPlans = planCache.get(result);
   if (!resultPlans) { resultPlans = new Map(); planCache.set(result, resultPlans); }
-  const cached = resultPlans.get(levelId);
-  if (cached) return cached;
+  const cacheKey = `${levelId}:${requireFloors ? "slabs" : "directory"}`;
+  const cached = resultPlans.get(cacheKey);
+  if (cached && (!requireFloors || cached.floorRecords.length)) return cached;
 
   const level = result.levels.find((candidate) => candidate.levelId === levelId);
   if (!level) throw new Error(`Revit level ${levelId} is not present in this model.`);
   const floors = floorPlateRecords(result, levelId);
-  if (!floors.length) throw new Error(`Revit level ${levelId} contains no recovered Floors sketch boundaries.`);
-  const floorPlanBounds = floorBounds(floors);
+  if (requireFloors && !floors.length) throw new Error(`Revit level ${levelId} contains no recovered Floors sketch boundaries.`);
+  const floorPlanBounds = floors.length ? floorBounds(floors) : { minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity };
   const cutElevation = level.elevation + PLAN_CUT_HEIGHT_FEET;
   const sortedElevations = result.levels.map((candidate) => candidate.elevation).sort((a, b) => a - b);
   const nextElevation = sortedElevations.find((elevation) => elevation > level.elevation + 0.1)
@@ -271,7 +273,9 @@ function recordsForLevel(result: ConvertResult, levelId: number): ArchitecturalP
   const members = new Set((result.nativeAssociatedLevelRelations ?? [])
     .filter((relation) => relation.levelId === levelId)
     .map((relation) => relation.elementId));
-  const inPlan = (record: ElementBoundsRecord) => overlaps(recordBounds(record), floorPlanBounds, 3);
+  // Directory callers supply their own building bounds. A level's recovered
+  // slabs may cover only another building, so they cannot clip directory walls.
+  const inPlan = (record: ElementBoundsRecord) => !requireFloors || overlaps(recordBounds(record), floorPlanBounds, 3);
   const atCut = (record: ElementBoundsRecord) => inPlan(record) && intersectsElevation(record, cutElevation);
   const onLevelOrAtCut = (record: ElementBoundsRecord) => inPlan(record) &&
     (members.has(record.elementId) || intersectsElevation(record, cutElevation));
@@ -319,7 +323,7 @@ function recordsForLevel(result: ConvertResult, levelId: number): ArchitecturalP
       stairRecords,
     }],
   };
-  resultPlans.set(levelId, plan);
+  resultPlans.set(cacheKey, plan);
   return plan;
 }
 
@@ -431,11 +435,57 @@ function wallPolygon(solid: WallSolid, corners?: WallCornerOverrides): Point2[] 
   const length = Math.hypot(dx, dy) || 1; const px = -dy / length * solid.thickness / 2;
   const py = dx / length * solid.thickness / 2;
   return [
-    corners?.startLeft ?? [solid.start.x + px, solid.start.y + py],
-    corners?.endLeft ?? [solid.end.x + px, solid.end.y + py],
-    corners?.endRight ?? [solid.end.x - px, solid.end.y - py],
-    corners?.startRight ?? [solid.start.x - px, solid.start.y - py],
+    solid.startCorners ? [solid.startCorners[0].x, solid.startCorners[0].y] : corners?.startLeft ?? [solid.start.x + px, solid.start.y + py],
+    solid.endCorners ? [solid.endCorners[0].x, solid.endCorners[0].y] : corners?.endLeft ?? [solid.end.x + px, solid.end.y + py],
+    solid.endCorners ? [solid.endCorners[1].x, solid.endCorners[1].y] : corners?.endRight ?? [solid.end.x - px, solid.end.y - py],
+    solid.startCorners ? [solid.startCorners[1].x, solid.startCorners[1].y] : corners?.startRight ?? [solid.start.x - px, solid.start.y - py],
   ];
+}
+
+export type ArchitecturalFootprint = { elementId: number; polygon: Point2[]; approximate: boolean };
+export type ArchitecturalPlanGeometry = {
+  walls: ArchitecturalFootprint[];
+  doors: ArchitecturalFootprint[];
+  columns: ArchitecturalFootprint[];
+  floors: Point2[][][];
+  cutElevation: number;
+};
+
+/** The directory and room reconstruction use the same wall faces as the plan renderer. */
+export function architecturalPlanGeometry(result: ConvertResult, levelId: number): ArchitecturalPlanGeometry {
+  const plan = recordsForLevel(result, levelId, false);
+  const miters = miteredWallCorners(wallSolids(plan.wallRecords));
+  const walls: ArchitecturalFootprint[] = [];
+  for (const record of plan.wallRecords) {
+    const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
+    for (const solid of solids) if (solid.baseElevation - .1 <= plan.cutElevation && solid.topElevation + .1 >= plan.cutElevation) {
+      const polygon = wallPolygon(solid, miters.get(solid));
+      const {min,max} = record.boundsFeet;
+      // Some curtain-wall analytical centre lines extend well past their native
+      // element envelope. Do not let that reconstructed extension block a real opening.
+      const inconsistentCurtain = record.wallKind === "curtain" && polygon.some(([x,y]) => x < min.x - 2 || x > max.x + 2 || y < min.y - 2 || y > max.y + 2);
+      if (inconsistentCurtain) {
+        const clipped = polygonClipping.intersection([polygon], [[[min.x,min.y],[max.x,min.y],[max.x,max.y],[min.x,max.y]]]);
+        for (const region of clipped) if (region[0]!.length >= 3) walls.push({elementId:record.elementId,polygon:region[0]! as Point2[],approximate:true});
+      } else walls.push({ elementId: record.elementId, polygon, approximate: false });
+    }
+    for (const arc of record.arcs ?? []) {
+      const sweep = arc.endAngle - arc.startAngle;
+      const steps = Math.max(16, Math.ceil(Math.abs(sweep * arc.radius) / .25));
+      const side = (radius: number): Point2[] => Array.from({ length: steps + 1 }, (_, i) => {
+        const angle = arc.startAngle + sweep * i / steps;
+        return [arc.centre.x + radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
+          arc.centre.y + radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y)];
+      });
+      walls.push({ elementId: record.elementId, polygon: [...side(arc.radius + arc.thickness / 2), ...side(arc.radius - arc.thickness / 2).reverse()], approximate: false });
+    }
+    if (!solids.length && !record.arcs?.length) walls.push({ elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: true });
+  }
+  const footprints = (records: readonly ElementBoundsRecord[]) => records.map((record) => ({
+    elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: !record.orientedBox,
+  }));
+  return { walls, doors: footprints(plan.doorRecords), columns: footprints(plan.columnRecords),
+    floors: plan.floorRecords.map((record) => (record.loops ?? []).map((loop) => loop.map(xy))), cutElevation: plan.cutElevation };
 }
 
 const MITER_JUNCTION_TOLERANCE_FEET = 0.25;

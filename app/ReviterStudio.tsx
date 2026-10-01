@@ -69,6 +69,9 @@ import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
+import type { DirectoryModelFloor } from "./studio/directory-model.ts";
+import { modelImportFiles } from "./studio/model-import.ts";
+import { parseRoomDirectory } from "../lib/reviter/room-directory.ts";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import {
@@ -249,6 +252,9 @@ export default function ReviterStudio() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [privateFileInfo, setPrivateFileInfo] = useState<BasicFileInfoProperties | null>(null);
   const [result, setResult] = useState<ConvertResult | null>(null);
+  const [directoryImport, setDirectoryImport] = useState<{file: File; sequence: number} | null>(null);
+  const directoryImportSequence = useRef(0);
+  const fileSelectionAttempt = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
   const [geometrySource, setGeometrySource] = useState<GeometrySource>("recovered");
@@ -312,6 +318,8 @@ export default function ReviterStudio() {
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
+  const [directoryModel, setDirectoryModel] = useState<DirectoryModelFloor | null>(null);
+  const [directoryRoomRequest, setDirectoryRoomRequest] = useState<{key: string; sequence: number} | null>(null);
   const [storeyFocus, setStoreyFocus] = useState<{ boundsFeet: Bounds3 | null; sequence: number }>(
     { boundsFeet: null, sequence: 0 },
   );
@@ -466,6 +474,7 @@ export default function ReviterStudio() {
   const processFile = useCallback(async (
     nextFile: File,
     knownCache?: CachedRecentModel | null,
+    roomFile?: File | null,
   ) => {
     // A picker/drop is an intentional replacement. Invalidate a pending
     // IndexedDB lookup so it cannot finish later and replace the newer file.
@@ -487,6 +496,9 @@ export default function ReviterStudio() {
     }
 
     const requestId = beginConversionAttempt();
+    fileSelectionAttempt.current++;
+    setDirectoryImport(roomFile ? {file: roomFile, sequence: ++directoryImportSequence.current} : null);
+    setDirectoryModel(null); setDirectoryRoomRequest(null);
     // An IFC pairing still in flight was measured against the outgoing model.
     retireReferencePairing();
     setFile(nextFile);
@@ -605,6 +617,7 @@ export default function ReviterStudio() {
         setGeometrySource("recovered");
         setProgress(1);
         setPhase("ready");
+        if (roomFile) setWorkspace("floors");
         rememberFile(
           nextFile.name,
           nextFile.size,
@@ -683,6 +696,9 @@ export default function ReviterStudio() {
     retireReferencePairing();
     setResult(null);
     setComparison(null);
+    fileSelectionAttempt.current++;
+    setDirectoryImport(null);
+    setDirectoryModel(null); setDirectoryRoomRequest(null);
     setFile(null);
     setMetadata(null);
     setThumbnail((current) => {
@@ -1767,6 +1783,38 @@ export default function ReviterStudio() {
   );
 
   const openPicker = useCallback(() => inputRef.current?.click(), []);
+  const processSelectedFiles = async (selected: readonly File[]) => {
+    const attempt = ++fileSelectionAttempt.current;
+    try {
+      const {model, json} = modelImportFiles(selected);
+      let roomFile: File | null = null;
+      if (json) {
+        if (json.size > 64 * 1024 * 1024) throw new Error("The JSON file exceeds the 64 MB import limit.");
+        const text = await json.text();
+        if (attempt !== fileSelectionAttempt.current) return;
+        if (JSON.parse(text)?.format === "reviter-room-annotations") {
+          parseRoomDirectory(text);
+          roomFile = json;
+        } else if (model) {
+          throw new Error("Select a room annotations JSON with the Revit model. Import comments or markup separately.");
+        } else {
+          await importReviewFile(json);
+          return;
+        }
+      }
+      if (model) {
+        void processFile(model, undefined, roomFile);
+      } else if (roomFile && result) {
+        setDirectoryImport({file: roomFile, sequence: ++directoryImportSequence.current});
+        setWorkspace("floors"); setSheet(null); setError(null);
+      } else {
+        throw new Error("Select the Revit model together with the rooms JSON, or open the model first.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setPhase("error");
+    }
+  };
   const openRecent = useCallback((recent: RecentFile) => {
     if (recentOpenInProgressRef.current) return;
     recentOpenInProgressRef.current = true;
@@ -1831,6 +1879,16 @@ export default function ReviterStudio() {
       onCanvasMenu={setCanvasMenu}
       focusRequest={focusRequest}
       storeyFocusRequest={storeyFocus}
+      directoryFloor={directoryModel}
+      onClearDirectoryFloor={() => {
+        setDirectoryModel(null);
+        setStoreyFocus(current=>({boundsFeet:null,sequence:current.sequence+1}));
+        setCameraRequest(current=>({preset:DEFAULT_CAMERA_PRESET,sequence:current.sequence+1,fit:false}));
+      }}
+      onReviewDirectoryRoom={(key) => {
+        setDirectoryRoomRequest(current=>({key, sequence:(current?.sequence ?? 0)+1}));
+        setWorkspace("floors"); setSheet(null);
+      }}
     />
   ) : null;
 
@@ -1851,10 +1909,11 @@ export default function ReviterStudio() {
         tabIndex={-1}
         aria-hidden="true"
         type="file"
-        accept=".rvt,.rfa,.rte,.rft"
+        accept=".rvt,.rfa,.rte,.rft,.json"
+        multiple
         onChange={(event) => {
-          const selected = event.target.files?.[0];
-          if (selected) void processFile(selected);
+          const selected = Array.from(event.target.files ?? []);
+          if (selected.length) void processSelectedFiles(selected);
           event.currentTarget.value = "";
         }}
       />
@@ -1979,9 +2038,10 @@ export default function ReviterStudio() {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        const dropped = event.dataTransfer.files[0];
+        const selected = Array.from(event.dataTransfer.files);
+        const dropped = selected[0];
         if (!dropped) return;
-        if (/\.json$/i.test(dropped.name)) void importReviewFile(dropped);
+        if (selected.length > 1 || /\.(json|rvt|rfa|rte|rft)$/i.test(dropped.name)) void processSelectedFiles(selected);
         else if (/\.ifc$/i.test(dropped.name)) void processIfcFile(dropped);
         else if (/\.(glb|gltf)$/i.test(dropped.name)) {
           if (result) pairReferenceModel(dropped);
@@ -2028,7 +2088,38 @@ export default function ReviterStudio() {
       </header>
       )}
 
-      {mobile ? (
+      {result && <div className="floor-workspace-host" hidden={workspace !== "floors"}>
+            <FloorWorkspace
+              key={directoryImport?.sequence ?? "manual-directory"}
+              roomFile={directoryImport?.file ?? null}
+              directoryRoomRequest={directoryRoomRequest}
+              onShowDirectoryModel={(floor) => {
+                setDirectoryModel(floor); setPlanLevelId(floor.levelId);
+                setGeometrySource("recovered"); setRenderMode("technical"); setIsolateMapLevel(false);
+                setActionTool(null); handleWalkingChange(false); setSelectedElementId(null); setSheet(null);
+                setStoreyFocus(current=>({boundsFeet: floor.boundsFeet, sequence:current.sequence+1}));
+                setWorkspace("model");
+              }}
+              result={result}
+              selectedLevelId={planLevelId}
+              onSelectedLevelId={setPlanLevelId}
+              showDerivedRooms={showDerivedRooms}
+              onShowDerivedRooms={setShowDerivedRooms}
+              derivedRooms={derivedFloorRooms}
+              roomReview={roomReview}
+              onRoomReview={(next) => {
+                setRoomReview(next);
+                saveRoomReview(result, next);
+              }}
+              onModel={() => setWorkspace("model")}
+              onOpenModelMap={() => {
+                setWorkspace("model");
+                setFloorSideMapOpen(true);
+              }}
+            />
+      </div>}
+
+      {mobile ? (workspace === "floors" && result ? null : (
         <MobileShell
           themeIcons={<ThemeIcons size={16} />}
           onTheme={toggleTheme}
@@ -2072,9 +2163,13 @@ export default function ReviterStudio() {
           ) : null}
           emptyState={emptyState}
           modelOpen={Boolean(result)}
+          onOpenModel={openPicker}
+          onOpenFloorWorkspace={() => { setSheet(null); setWorkspace("floors"); }}
+          onZoomSelection={() => { requestZoomToSelection(); setSheet(null); }}
+          onExportComments={() => exportActions.find(action => action.id === "COMMENTS")?.run()}
           {...commentPanelProps}
         />
-      ) : (
+      )) : (
         <>
           {result && workspace === "model" && (
             <ViewerToolbar
@@ -2103,26 +2198,7 @@ export default function ReviterStudio() {
             />
           )}
 
-          {result && workspace === "floors" ? (
-            <FloorWorkspace
-              result={result}
-              selectedLevelId={planLevelId}
-              onSelectedLevelId={setPlanLevelId}
-              showDerivedRooms={showDerivedRooms}
-              onShowDerivedRooms={setShowDerivedRooms}
-              derivedRooms={derivedFloorRooms}
-              roomReview={roomReview}
-              onRoomReview={(next) => {
-                setRoomReview(next);
-                saveRoomReview(result, next);
-              }}
-              onModel={() => setWorkspace("model")}
-              onOpenModelMap={() => {
-                setWorkspace("model");
-                setFloorSideMapOpen(true);
-              }}
-            />
-          ) : (
+          {(!result || workspace === "model") && (
           <div className="workarea">
             {result && leftOpen && (
               <BrowserDock

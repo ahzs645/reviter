@@ -3,6 +3,11 @@
 /** The WebGL viewport: scene assembly, camera presets, picking, and disposal. */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as THREE from "three";
+import { directoryFloorPlanes, directoryRoomGroup, type DirectoryModelFloor } from "./directory-model.ts";
+import {LocalBuildingConnectionInspector} from "./LocalBuildingConnectionInspector.tsx";
+import type {LocalBuildingConnection} from "../../lib/reviter/building-transitions.ts";
+import {BuildingConnectionInspector} from "./BuildingConnectionInspector.tsx";
+import { AreaInspector } from "./AreaInspector.tsx";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import {
@@ -309,6 +314,9 @@ export function ModelCanvas({
   focusRequest,
   storeyFocusRequest,
   referenceModelUrl,
+  directoryFloor,
+  onClearDirectoryFloor,
+  onReviewDirectoryRoom,
 }: {
   result: ConvertResult;
   comparison: PairedRegressionResult | null;
@@ -357,8 +365,21 @@ export function ModelCanvas({
    * than one picked object.
    */
   storeyFocusRequest: { boundsFeet: Bounds3 | null; sequence: number };
+  directoryFloor: DirectoryModelFloor | null;
+  onClearDirectoryFloor: () => void;
+  onReviewDirectoryRoom: (key: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const directoryOverlayRef = useRef<THREE.Group | null>(null);
+  const [directoryRoomKey, setDirectoryRoomKey] = useState<string | null>(directoryFloor?.selectedKey ?? null);
+  const [directoryCutHeight, setDirectoryCutHeight] = useState(4);
+  const [directoryColors, setDirectoryColors] = useState(true);
+  const [previousDirectoryFloor, setPreviousDirectoryFloor] = useState(directoryFloor);
+  if (previousDirectoryFloor !== directoryFloor) {
+    setPreviousDirectoryFloor(directoryFloor);
+    setDirectoryRoomKey(directoryFloor?.selectedKey ?? null);
+    setDirectoryCutHeight(4); setDirectoryColors(true);
+  }
   const [sourceCache] = useState(() =>
     // One entry for each source in the active visual style. Keeping both
     // Shaded and X-ray copies of every million-triangle root would trade the
@@ -815,8 +836,12 @@ export function ModelCanvas({
       // In the overlay the recovered meshes sit a level deeper, under their own
       // group, and the export's meshes carry no element ids — so the search goes
       // recursive and takes the first hit that can actually name an element.
-      return firstTriangleHit(raycaster, interactionMeshes, (intersection) =>
-        !useOverlay || intersection.object.userData.elementIds != null);
+      return firstTriangleHit(raycaster, interactionMeshes, (intersection) => {
+        if (useOverlay && intersection.object.userData.elementIds == null) return false;
+        const material = (intersection.object as THREE.Mesh).material;
+        const planes = (Array.isArray(material) ? material[0] : material)?.clippingPlanes;
+        return !planes?.some(plane=>plane.distanceToPoint(intersection.point)<0);
+      });
     };
     // glTF declares +Y up, so a reference normally is; but ask the geometry
     // rather than assume, so a z-up reference is not drawn on its side.
@@ -1346,6 +1371,18 @@ export function ModelCanvas({
         const hit = geometryHitAt(event.clientX, event.clientY);
         if (hit) addMeasurementHit(hit.point);
         return;
+      }
+      if (directoryOverlayRef.current) {
+        const rect = canvas.getBoundingClientRect();
+        pointer.set(((event.clientX-rect.left)/rect.width)*2-1, -((event.clientY-rect.top)/rect.height)*2+1);
+        raycaster.setFromCamera(pointer,camera);
+        const roomHit = firstTriangleHit(raycaster, directoryOverlayRef.current.children);
+        const wallHit = geometryHitAt(event.clientX,event.clientY);
+        if (roomHit?.object.userData.roomKey && (!wallHit || roomHit.distance <= wallHit.distance+.05)) {
+          setDirectoryRoomKey(roomHit.object.userData.roomKey as string);
+          onSelectElement(null);
+          return;
+        }
       }
       const hit = geometryHitAt(event.clientX, event.clientY);
       lastSurfaceHit = hit;
@@ -1992,14 +2029,14 @@ export function ModelCanvas({
     const plan = Math.max(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, 25);
     const direction = runtime.camera.position.clone().sub(runtime.controls.target);
     if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
-    direction.normalize().multiplyScalar(plan * runtime.sceneUnitsPerFoot * 0.95);
+    direction.normalize().multiplyScalar(plan * runtime.sceneUnitsPerFoot * (directoryFloor ? 1.45 : .95) / Math.min(1,runtime.camera.aspect));
     runtime.controls.target.copy(target);
     runtime.camera.position.copy(target).add(direction);
     runtime.camera.lookAt(target);
     runtime.camera.updateProjectionMatrix();
     runtime.controls.update();
     runtime.invalidate();
-  }, [referenceLoadState, result, source, storeyFocusRequest]);
+  }, [referenceLoadState, result, source, storeyFocusRequest, directoryFloor, hiddenElementIds, sceneEpoch]);
 
   useEffect(() => {
     const controls = runtimeRef.current?.controls;
@@ -2300,17 +2337,32 @@ export function ModelCanvas({
       disposeGroup(runtime.sectionHelper);
       runtime.sectionHelper = null;
     }
-    const planes = sectioning
+    const planes = directoryFloor && source === "recovered"
+      ? directoryFloorPlanes(directoryFloor, result.origin, directoryCutHeight)
+      : sectioning
       ? sectionPlanes(runtime.bounds, sectionMode, sectionOffset, sectionReverse)
       : [];
     runtime.renderer.localClippingEnabled = Boolean(planes.length);
     applyClippingPlanes(runtime.root, planes);
-    if (sectioning) {
+    if (sectioning && !directoryFloor) {
       runtime.sectionHelper = createSectionHelper(runtime.bounds, sectionMode, sectionOffset);
       runtime.scene.add(runtime.sectionHelper);
     }
     runtime.invalidate();
-  }, [comparison, referenceLoadState, renderMode, result, sectionMode, sectionOffset, sectionReverse, sectioning, source]);
+  }, [comparison, referenceLoadState, renderMode, result, sectionMode, sectionOffset, sectionReverse, sectioning, source, directoryFloor, directoryCutHeight, hiddenElementIds, onCanvasMenu, onCreateComment, onHoverElement, onSelectElement, referenceModelUrl, sceneEpoch]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !directoryFloor || !directoryColors || source !== "recovered") return;
+    const group = directoryRoomGroup(directoryFloor, result.origin, directoryRoomKey, runtime.renderer.capabilities.reversedDepthBuffer);
+    applyClippingPlanes(group, directoryFloorPlanes(directoryFloor, result.origin, directoryCutHeight));
+    directoryOverlayRef.current = group;
+    runtime.scene.add(group); runtime.invalidate();
+    return () => {
+      directoryOverlayRef.current = null;
+      runtime.scene.remove(group); disposeGroup(group); runtime.invalidate();
+    };
+  }, [directoryFloor, directoryCutHeight, directoryColors, directoryRoomKey, result, source, renderMode, referenceLoadState, hiddenElementIds, comparison, sceneEpoch]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -2519,6 +2571,30 @@ export function ModelCanvas({
     setMeasureCalibration(knownFeet / calibrationSample);
   };
 
+  const frameLocalBuildingConnection = (connection:LocalBuildingConnection) => {
+    const runtime=runtimeRef.current;if(!runtime)return;
+    const [minX,minY,maxX,maxY]=connection.bounds;
+    const target=new THREE.Vector3((minX+maxX)/2-result.origin.x,(minY+maxY)/2-result.origin.y,(connection.endpoints[0].elevation+connection.endpoints[1].elevation)/2+1-result.origin.z);
+    const direction=runtime.camera.position.clone().sub(runtime.controls.target);direction.z=Math.max(direction.z,Math.hypot(direction.x,direction.y)*.8);
+    direction.normalize().multiplyScalar(Math.max(18,maxX-minX,maxY-minY)*1.8/Math.min(1,runtime.camera.aspect));
+    runtime.controls.target.copy(target);runtime.camera.position.copy(target).add(direction);runtime.camera.lookAt(target);runtime.controls.update();runtime.invalidate();
+  };
+  const frameDirectoryRoom = () => {
+    const runtime = runtimeRef.current;
+    const room = directoryFloor?.rooms.find(r=>r.key===directoryRoomKey);
+    if (!runtime || !room || !directoryFloor) return;
+    const area=directoryFloor.areas.find(a=>a.roomKeys.includes(room.key));
+    const points=area?.polygons.flatMap(p=>p[0]!) ?? room.polygonFeet;
+    const xs=points.map(p=>p[0]), ys=points.map(p=>p[1]);
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const target=new THREE.Vector3((minX+maxX)/2-result.origin.x,(minY+maxY)/2-result.origin.y,(directoryFloor.roomElevations[room.key]?.elevation ?? directoryFloor.elevation)+1-result.origin.z);
+    const direction=runtime.camera.position.clone().sub(runtime.controls.target);
+    direction.z=Math.max(direction.z,Math.hypot(direction.x,direction.y)*.8);
+    direction.normalize().multiplyScalar(Math.max(18,maxX-minX,maxY-minY)*1.8/Math.min(1,runtime.camera.aspect));
+    runtime.controls.target.copy(target); runtime.camera.position.copy(target).add(direction);
+    runtime.camera.lookAt(target); runtime.controls.update(); runtime.invalidate();
+  };
+
   const projectComment = useCallback((comment: ModelComment): CommentProjection | null => {
     const runtime = runtimeRef.current;
     const canvas = canvasRef.current;
@@ -2702,7 +2778,29 @@ export function ModelCanvas({
           onClear={clearAllMeasurements}
         />
       )}
-      {sectioning && (
+      {directoryFloor && source === "recovered" && (
+        <details className="directory-model-panel" open>
+          <summary>Colored floor · Level #{directoryFloor.levelId}{directoryRoomKey ? ` · ${directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.number ?? "Selected room"}` : ""}</summary>
+          <p>{directoryFloor.title}</p>
+          <p>Level #{directoryFloor.levelId} · {directoryFloor.elevation.toFixed(2)} ft · {directoryFloor.elevationSource}</p>
+          <label>Cut height: {directoryCutHeight.toFixed(1)} ft above this level<input aria-label="Floor cut height" type="range" min="1" max="12" step="0.5" value={directoryCutHeight} onChange={e=>setDirectoryCutHeight(Number(e.target.value))} /></label>
+          <label><input type="checkbox" checked={directoryColors} onChange={e=>setDirectoryColors(e.target.checked)} /> Room colors</label>
+          <label>Area in 3D<select aria-label="Area in 3D" value={directoryFloor.areas.find(a=>a.roomKeys.includes(directoryRoomKey??""))?.roomKeys[0] ?? ""} onChange={e=>setDirectoryRoomKey(e.target.value || null)}><option value="">Select a colored area</option>{directoryFloor.areas.map(area=><option key={area.key} value={area.roomKeys[0]}>Building {area.building} · {directoryFloor.areaMetadata?.[area.key]?.name || area.title}{area.kind!=="room"?` · ${area.roomKeys.length} source records`:""}</option>)}</select></label>
+          {directoryRoomKey && <p>{directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.number} · {directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.name} · Boundary confidence {Math.round((directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.confidence ?? 0)*100)}%</p>}
+          {directoryRoomKey && <p>{directoryFloor.roomElevations[directoryRoomKey]?.elevation.toFixed(2)} ft · {directoryFloor.roomElevations[directoryRoomKey]?.evidence}</p>}
+          <LocalBuildingConnectionInspector connections={directoryFloor.localBuildingConnections??[]} building={directoryFloor.primaryBuilding??""} onFocus={frameLocalBuildingConnection}/>
+          {(!directoryRoomKey||directoryFloor.buildingConnections?.some(c=>c.rooms.some(r=>r.key===directoryRoomKey)))&&<BuildingConnectionInspector modelView connections={directoryFloor.buildingConnections??[]} building={directoryFloor.primaryBuilding??""} onChoose={r=>setDirectoryRoomKey(r.key)}/>}
+          {directoryFloor.areas.filter(area=>area.roomKeys.includes(directoryRoomKey??"")).map(area=><AreaInspector key={area.key} area={area} floor={directoryFloor} members={directoryFloor.rooms.filter(r=>area.roomKeys.includes(r.key))} metadata={directoryFloor.areaMetadata?.[area.key]} modelName={result.fileName} onChoose={r=>setDirectoryRoomKey(r.key)} />)}
+          <div className="directory-model-actions">
+            <button className="rv-button" disabled={!directoryRoomKey} onClick={frameDirectoryRoom}>Focus selected area</button>
+            <button className="rv-button" disabled={!directoryRoomKey} onClick={()=>{ if(directoryRoomKey) onReviewDirectoryRoom(directoryRoomKey); }}>Edit room on map</button>
+            <button className="rv-button" onClick={onClearDirectoryFloor}>Restore full model</button>
+          </div>
+          <div className="directory-legend"><span><i className="room" />Room</span><span><i className="hallway" />Hallway</span><span><i className="staircase" />Stair flights</span><span><i className="local-step" />Same-storey steps</span><span><i className="uncertain" />Review boundary</span></div>
+          <p>Colored surfaces show imported boundaries on matched slabs, not native room volumes. Unmatched rooms use their recorded level. Compare their edges against the model walls; adjust the cut height to inspect door and stair openings.</p>
+        </details>
+      )}
+      {sectioning && !directoryFloor && (
         <SectionToolPanel
           mode={sectionMode}
           offset={sectionOffset}

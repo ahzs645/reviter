@@ -114,6 +114,179 @@ colab --auth=oauth2 run \
 
 ## Local utility workspace
 
+The Revit picker accepts **one model and one room annotations JSON together**,
+in either order. You can also drop both files onto the app. After conversion,
+Reviter opens **Building directory** and imports the room file automatically.
+The folder button in the narrow model header opens the same picker. A room JSON
+can also be selected by itself when its matching model is already open.
+
+In **Building directory**, choose a floor and use **Show this floor in 3D**.
+Choose **Campus map** or **All buildings** to combine mapped buildings at a
+shared native Revit level. **Previous level** and **Next level** step through
+the imported levels; building buttons focus the map without leaving campus
+scope. Room selection keeps its building metadata, reviewed geometry and
+actual slab height. The same combined level can be shown in 3D. Missing source
+plans remain visible in source coverage, and local building crossings do not
+imply a complete route through the campus.
+The viewer frames its room footprint and cuts away geometry above the selected
+level, with a slider for cut height. Room, hallway, and staircase colors match
+the map; enclosed holes remain open. On split levels, room surfaces use the
+recovered slab beneath the label when a slab matches; otherwise they use the
+recorded room level and show that the match needs review. These surfaces are
+imported boundary annotations, not recovered native room volumes. Click a
+colored surface or select **Room in 3D**, then **Focus selected room** or
+**Edit room on map** to inspect and edit its outline. **Restore full model**
+removes the cutaway and returns to the campus view.
+
+In a narrow browser panel, use **Floors → Open floor review → Building directory**.
+Imported annotations and review selections remain available when switching
+between the floor workspace and the model. In the model, **Info → Zoom to object**
+focuses the selection; **Section**, **Measure**, and **Comment** are available in
+the tools beside the viewport. Use **Report → Export comments** to keep feedback.
+Use **Expand map** for a full map with building and floor selectors and the
+current route summary. **Show room review** restores the room list and editors.
+Completed building checks also retain door matches for faster floor switching;
+editing the navigation data clears those cached results.
+
+The **Floors → Building directory** view opens a local version 1
+`reviter-room-annotations` JSON, such as `UNBC.rooms.json`. Search by room
+number, name, or survey sheet, choose a building and floor, and select a room
+to inspect its boundary and recovered door connections. Hallways are
+highlighted; low-confidence boundaries use dashed outlines. **Start here**
+and a second room display a grid route through hallway polygons and matched
+Revit door openings. Missing or ambiguous door matches leave access unresolved.
+The room file must use model feet and levels present in the open RVT; its
+alignment should be checked because older annotation files carry no model
+fingerprint. Routes and distances are approximate. Routes can change floors
+through a matched native staircase or an explicitly reviewed staircase link.
+
+Atrium and hallway labels on the same floor and matched slab elevation display
+as combined areas in the map and colored 3D view. Their union removes internal
+label seams while retaining voids, private-room footprints, real gaps, and the
+original source records. The selected-area panel shows area/floor identities,
+source drawings, slab matches, recovered doors, and related atrium floor records.
+**Associate area metadata** saves an area name, notes, and model element IDs;
+**Export rooms with edits** preserves them in `areaMetadata` alongside the
+unchanged room records. Grouped display areas do not establish new route links.
+**Recover crosswalks** fills missing atrium walkway records from native slabs
+attached to the selected level. Other atrium floors supply a search footprint;
+their geometry is never copied to another storey. Recovery retains slab holes
+and subtracts existing annotations, walls and columns, with precise native door
+openings. Added records retain the building and native slab identity without
+inventing room numbers or drawing records. They appear in the map and colored
+3D view; export the room file to preserve them. Door and landing alignment still
+require review.
+Reported area relationships remain visible across split-level slab heights;
+the inspector shows their height change and preserves the need to review the
+stair or ramp transition. Same-level metadata alone does not flatten a step.
+For a named area, **Walkability → Void / drop · no floor** saves
+`walkability: "void"` and review notes on its source records. Voids remain
+selectable with a hatched map outline, mask overlapping route polygons, cannot
+be route endpoints, and omit colored 3D floor meshes. Export preserves this review.
+Explicit `navigation.openLinks` use registered opening coordinates and a source
+hash. Each opening is checked against current boundaries, drawing walls, native
+wall footprints, columns, and other areas before contributing a route. These
+links have their own identities and do not create Revit door IDs.
+**Connected circulation** highlights atrium/hallway areas joined by recovered
+doors in both the map and colored 3D view. The inspector lists those openings
+and lets you select the adjoining area. Area metadata can record circulation
+doors as usually open or usually closed (user reported); this observation is
+exported with the annotations and does not assert a current door position or
+change route permissions. Source outlines and native door identities remain.
+The map supports zoom buttons, cursor-centered wheel/trackpad zoom, drag to pan,
+and keyboard +/−, arrow keys and Home. **Whole floor** resets the view.
+The wall-source line distinguishes registered drawing segments from native
+wall footprints at the model cut. Missing native walls or slab matches remain
+visible as level-association review items instead of borrowing another storey.
+
+**Edit boundary** exposes draggable corners, arrow-key adjustments, edge
+insertion by double-click, and corner removal by Alt-click or Delete.
+Self-intersecting outlines and edits that exclude the label point are rejected.
+Export the annotations to retain changes and their original provenance; edits
+stay in the directory session until exported. **Restore imported boundary**
+restores the imported record (and its shared hallway aliases).
+
+For annotation files with a verified `boundaryReference`, **Rebuild floor
+boundaries** traces vector wall faces and recovered Revit door footprints.
+The saved DWG anchors and matching source hash recover the original survey
+registration; drawings with residual errors above 0.1 foot are rejected.
+Connected corridor labels share an outer boundary with holes for enclosed
+rooms and columns, so routes can follow the entire corridor without crossing
+those interiors. The **Walls** overlay shows the boundary evidence, and the
+sidebar reports separate hallway networks. Missing barriers or implausible
+area changes retain the imported polygon for review. No connection is
+added across walls or floor voids. **Connect hallway gaps** can trace a missing
+passage across recovered slabs and precise door openings, avoiding private
+rooms and columns. Its dashed blue strip is an inferred route footprint,
+whose full hallway width remains for review. The network count tests actual
+routes between hallway labels, so touching outlines alone do not imply access.
+
+**Adjoining buildings** shows the other side of a precise native doorway between
+two building directories. **Building connections → View connection** focuses both
+spaces and displays their local crossing; **Open Building** switches to the
+adjoining map while keeping the doorway in view. **Door #** inspects both source
+records and the native host. The colored 3D view includes the adjoining room and
+a purple doorway marker. Connections require matching floor heights and precise
+opening evidence; local paths retain private-space and reported void masks.
+They do not establish onward campus routes or assert a current door position.
+
+**Building checks → Check all buildings** runs boundary, anchor, overlap,
+survey alignment, hallway access, door, and staircase checks on every supplied
+building floor. Select a result to show its flagged rooms, or export the checks.
+Changes to boundaries or reviewed connections invalidate the previous results.
+**Doors and staircases** shows recovered openings and their room connections.
+Precise openings extend through their persisted host wall while retaining the
+door width. Ambiguous openings can be reviewed by choosing two nearby rooms;
+remote rooms cannot be joined. Stair links require native assembly and tread
+evidence at both floor elevations. Missing or ambiguous flights remain flagged;
+overlapping staircase entrances on different floors can be explicitly reviewed.
+Reviewed door and stair links persist in the exported annotation file. Route
+instructions include staircase transitions and buttons to view each floor leg.
+
+To attach a reference from an already decoded survey drawing:
+
+```sh
+node --experimental-strip-types scripts/register-room-boundaries.ts \
+  rooms.json entities.json catalog.json rooms.with-walls.json
+```
+
+Audit every supplied building and model level with the same door matching and
+routing used by the directory:
+
+```bash
+node --experimental-strip-types scripts/audit-room-directory.ts \
+  rooms.with-walls.json plan-geometry.json catalog.json work/building-audit
+```
+
+`plan-geometry.json` is a local conversion-result cache containing `levels`,
+`elementBounds`, and `nativeAssociatedLevelRelations`. Include
+`nativeHostRelations` and `nativeStairAssemblies` with tread geometry to check
+door depth and stair connections. The report uses the live Building directory
+check engine and includes
+per-floor SVG overlays, room issue CSV, survey coverage gaps, polygon overlap
+and anchor checks, perimeter alignment candidates, destination access, and
+hallway route networks. It treats overlapping hallway regions as intentional connections.
+A passing raster route does not independently establish physical wall clearance;
+access restrictions and elevator routing are not included.
+
+Area connections are shown for named destinations as well as hallways and
+atriums. `areaRelationships` preserves user-reported access separately from
+recovered doorway links; these reports highlight related areas without creating
+route openings through walls. Export rooms with edits to retain them.
+Click a door marker for its model ID, host, location and connected or candidate
+spaces, including in the expanded map. Double-click the map to pin its model
+coordinates and identify the area under that location. Map selection preserves
+the current zoom and pan; Focus room and Whole floor explicitly reset the view.
+Check all buildings reports drawing-wall coverage, native walls and slab matches
+alongside destination routes and unresolved openings. Registered drawing walls
+provide 2D context; they do not establish a missing native 3D level association.
+
+
+The catalog supplies the DWG hash and named sheet bounds. Import the resulting
+JSON alongside its matching RVT, rebuild a floor, then export to preserve the
+wall reference, room holes, shared hallway identities, and edits. All building
+data stays local and is not bundled in the app.
+
 The browser studio also includes personal tools that never upload or attach
 local identity data to the model export:
 
@@ -330,6 +503,12 @@ The Revit 2027 geometry-replay work — faces, edge loops, analytic surfaces,
 tessellation, ownership — is a further forty-nine entries, grouped by area in
 the index.
 
+## Stair rooms and landings
+
+A source room named `Stair` describes a room envelope, which can include a landing. The building directory colors only recovered native tread projections purple and places the up/down marker on those steps. In the 3D review, tread fills follow their native elevations and the surrounding landing keeps its ordinary room color. Projection alignment and landing boundaries remain reviewable.
+
+Select a stair room to review **Storey connection**. `stairAccess: "local-only"` records local steps or a landing without access to another storey: it suppresses native and reviewed vertical links while preserving same-floor walking access and the source room boundary. `"flight-and-landing"` confirms the distinction but does not manufacture a vertical link. `"unreviewed"` retains the existing native evidence pending review. `"up-flight-only"` permits a bidirectional link to the upper storey while excluding local downward steps from lower-storey links. The 3D colored treads obey the selected floor cut; an overhead flight does not erase landing fill beneath it. `stairAccessNotes` and the review choice survive room JSON export and import.
+
 ## Third-party components
 
 The implementation uses Apache-2.0 [`cfb`](https://github.com/SheetJS/js-cfb) for compound-file parsing, [`fflate`](https://github.com/101arrowz/fflate) for local DEFLATE decoding, [Three.js](https://github.com/mrdoob/three.js) for rendering and GLB export, and [`web-ifc`](https://github.com/ThatOpen/engine_web-ifc) for client-side IFC reference analysis. `web-ifc` reads the ground-truth IFC; it does not decode RVT.
@@ -342,3 +521,13 @@ and isolated from the geometry decoder.
 ## Publication note
 
 The application and dependency licenses are auditable, but this repository itself does not yet declare a license. Choose and add a project license before publishing Reviter as a reusable package.
+
+### Local steps between buildings
+
+Room annotations can preserve `buildingTransitions` reported by a reviewer, including two picked building/level locations, a native stair assembly and the native floor identity at each endpoint. The map exposes **Local building connections**, **View local connection** and an adjoining-building switch. The focused preview draws recovered tread polygons and clipped native landing surfaces, even where the landing has no source room outline. It retains both native elevations in the colored 3D floor section.
+
+The crossing check samples native tread/floor support and rejects surface gaps, slab holes, walls, columns, private rooms and reported voids. It preserves the report separately from storey stair links and door routes; a supported local preview is not a complete campus directory route. Missing landing boundaries and access conditions still require review. Existing room geometry, stair access reviews and export metadata are retained.
+
+Reviewed local steps and their landings use green circulation coloring in both map and 3D. For an upward-flight-only review, native runs terminating at this floor are local steps; the upward storey flight keeps purple. The stair-flight map toggle hides flights while retaining reviewed local floor steps. Native heights and tread shapes are preserved.
+
+The 2D stair overlay uses the same four-foot plan cut as the architectural map, hiding overhead-flight treads while retaining reviewed local downward steps. Wheel zoom accumulates pending deltas at the cursor, normalizes pixel/line/page scrolling, paints the SVG view once per animation frame, and commits room/label overlays after the gesture settles. Reset, selection and drag controls cancel any pending wheel gesture.

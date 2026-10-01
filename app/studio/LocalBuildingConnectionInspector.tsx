@@ -1,0 +1,13 @@
+"use client";
+import type {RoomPoint} from "../../lib/reviter/room-directory.ts";
+import type {LocalBuildingConnection,BuildingLocation} from "../../lib/reviter/building-transitions.ts";
+
+export function LocalBuildingConnectionInspector({connections,building,pickedPoint,onFocus,onChoose}:{connections:readonly LocalBuildingConnection[];building:string;pickedPoint?:RoomPoint;onFocus?:(c:LocalBuildingConnection)=>void;onChoose?:(e:BuildingLocation,c:LocalBuildingConnection)=>void}){
+  if(!connections.length)return null;
+  return <section className="directory-building-connections" aria-label="Local building connections"><strong>Local floor connections</strong>{connections.map(c=>{
+    const local=c.endpoints.find(e=>e.building===building)??c.endpoints[0];
+    const other=c.endpoints.find(e=>e!==local)??c.endpoints[1];
+    const distance=pickedPoint?Math.hypot(pickedPoint[0]-local.point[0],pickedPoint[1]-local.point[1]):null;
+    return <div key={c.report.id}>{distance!=null&&<p>{distance>15?"Elsewhere on this floor":"Near the picked location"} · {(distance*.3048).toFixed(1)} m from the pin (straight line).</p>}<p><strong>{c.endpoints[0].building===c.endpoints[1].building?`${c.endpoints[0].room?.number??"Lower landing"} ↔ ${c.endpoints[1].room?.number??"Upper landing"}`:`Building ${c.endpoints[0].building} ↔ Building ${c.endpoints[1].building}`}</strong><br/>Local steps within the same storey · user reported</p>{c.endpoints.map((e,i)=><p key={i}>{e.room?.number??`Building ${e.building} unassigned landing`} · level #{e.levelId} · {e.elevation.toFixed(2)} ft<br/>X {e.point[0].toFixed(2)} · Y {e.point[1].toFixed(2)} ft</p>)}<p>Native step assembly #{c.report.nativeStairId} · {c.stepBands} recovered step elevations · {Math.abs(c.endpoints[1].elevation-c.endpoints[0].elevation).toFixed(2)} ft height change.</p><p>{c.surfaceSupported?"Native steps and slabs support this reported connection. Green shows same-storey circulation.":"Crossing geometry needs review."}</p>{c.warnings.map(w=><p key={w}>{w}</p>)}{c.report.notes&&<p>{c.report.notes}</p>}<div className="directory-area-chips">{onFocus&&<button className="rv-button" onClick={()=>onFocus(c)}>View local connection</button>}{onChoose&&<button className="rv-button" onClick={()=>onChoose(other,c)}>Open {other.room?.number??`Building ${other.building} landing`}</button>}</div><p className="directory-connection-pending">An unassigned landing can have a native floor without a room outline. This connection preserves native landing elevations; full directory routes still need the missing landing boundary and access review.</p></div>;
+  })}</section>;
+}

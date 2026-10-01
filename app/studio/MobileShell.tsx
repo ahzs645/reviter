@@ -3,7 +3,7 @@
 /**
  * The phone layout.
  *
- * Not the desktop shell stacked: the viewport is full-bleed, three navigation
+ * Not the desktop shell stacked: the viewport is full-bleed, navigation and review
  * tools ride on the canvas as 44px targets, and the browser, comments,
  * properties, floors and report are sheets raised over the model from a five-tab bar.
  * Toolbar, docks and status bar are not rendered here at all.
@@ -18,8 +18,11 @@ import {
   MapPinned,
   Rotate3d,
   Ruler,
+  Scissors,
+  MessageSquarePlus,
   Table,
   X,
+  FolderOpen,
 } from "lucide-react";
 
 import { CommentsPanel } from "./CommentsPanel.tsx";
@@ -34,6 +37,8 @@ const QUICK_TOOLS: readonly { id: ViewerTool; label: string; Icon: typeof Hand }
   { id: "orbit", label: "Orbit", Icon: Rotate3d },
   { id: "pan", label: "Pan", Icon: Hand },
   { id: "measure", label: "Measure", Icon: Ruler },
+  { id: "section", label: "Section", Icon: Scissors },
+  { id: "comment", label: "Comment", Icon: MessageSquarePlus },
 ];
 
 const TABS: readonly { id: MobileSheet; label: string; Icon: typeof Box }[] = [
@@ -81,6 +86,10 @@ export function MobileShell({
   onArmComment,
   emptyState,
   modelOpen,
+  onOpenModel,
+  onOpenFloorWorkspace,
+  onZoomSelection,
+  onExportComments,
 }: {
   /** Both theme icons; the stylesheet shows whichever matches the theme. */
   themeIcons: ReactNode;
@@ -120,6 +129,10 @@ export function MobileShell({
   onArmComment: () => void;
   emptyState: ReactNode;
   modelOpen: boolean;
+  onOpenModel: () => void;
+  onOpenFloorWorkspace: () => void;
+  onZoomSelection: () => void;
+  onExportComments: () => void;
 }) {
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -174,6 +187,7 @@ export function MobileShell({
           <strong>{fileName}</strong>
           <span role="status">{statusLine}</span>
         </div>
+        <button type="button" aria-label="Open model and rooms" title="Select a Revit model and its rooms JSON together" onClick={onOpenModel}><FolderOpen size={16} aria-hidden /></button>
         <button type="button" aria-label="Toggle theme" onClick={onTheme}>{themeIcons}</button>
       </header>
 
@@ -259,7 +273,7 @@ export function MobileShell({
 
               {sheet === "properties" && (
                 properties.length ? (
-                  <dl style={{ margin: 0 }}>
+                  <><button type="button" className="rv-button" onClick={onZoomSelection}>Zoom to object</button><dl style={{ margin: "12px 0 0" }}>
                     {properties.map((row) => (
                       <div className="property-row" data-provenance={row.provenance} key={row.key}>
                         <dt>{row.label}</dt>
@@ -271,7 +285,7 @@ export function MobileShell({
                         </dd>
                       </div>
                     ))}
-                  </dl>
+                  </dl></>
                 ) : (
                   <p className="comment-empty">Pick an object in the viewport to see its properties.</p>
                 )
@@ -279,6 +293,7 @@ export function MobileShell({
 
               {sheet === "report" && (
                 <>
+                  <button type="button" className="rv-button" onClick={onExportComments}>Export comments</button>
                   <div className="mobile-metric-grid">
                     {metricCards.map((card) => (
                       <div className="metric-card" key={card.label}>
@@ -299,7 +314,7 @@ export function MobileShell({
                 </>
               )}
 
-              {sheet === "map" && floorMap}
+              {sheet === "map" && <><button type="button" className="rv-button mobile-floor-review" onClick={onOpenFloorWorkspace}>Open floor review</button><p className="comment-empty">Building checks, room boundaries, doors and staircases.</p>{floorMap}</>}
             </div>
           </div>
         )}

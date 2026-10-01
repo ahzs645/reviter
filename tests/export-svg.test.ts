@@ -10,6 +10,7 @@ import {
 } from "../lib/reviter/export-svg.ts";
 import {
   architecturalPlanSummary,
+  architecturalPlanGeometry,
   makeArchitecturalFloorSvg,
   planDrawingFrame,
   planWorldPoint,
@@ -557,4 +558,33 @@ test("doors whose decoded family name says double get a two-leaf symbol", () => 
   const singleGroup = /<g data-revit-element-id="13"[^>]*>(.*?)<\/g>/u.exec(svg)![1]!;
   assert.equal((singleGroup.match(/class="leaf"/gu) ?? []).length, 1);
   assert.doesNotMatch(svg, /data-revit-element-id="13" data-door-leaves/u);
+});
+
+
+test("directory wall footprints preserve native trimmed corners at the plan cut", () => {
+  const result = resultFixture();
+  const wall = straightWall(11, [0, 5], [20, 5]);
+  wall.solid!.startCorners = [{ x: -.2, y: 5.25 }, { x: .2, y: 4.75 }];
+  wall.solid!.endCorners = [{ x: 20.3, y: 5.25 }, { x: 19.7, y: 4.75 }];
+  result.elementBounds.push(roomTestFloor(10), wall);
+  const geometry = architecturalPlanGeometry(result, result.levels[0]!.levelId!);
+  assert.deepEqual(geometry.walls[0]!.polygon, [[-.2, 5.25], [20.3, 5.25], [19.7, 4.75], [.2, 4.75]]);
+});
+
+test('directory wall recovery is not clipped by another building slab and has a separate plan cache', () => {
+  for (const directoryFirst of [false, true]) {
+    const result = resultFixture();
+    result.elementBounds = [roomTestFloor(20), straightWall(21, [100, 0], [100, 10])];
+    result.nativeAssociatedLevelRelations = [{elementId:20,levelId:100}] as ConvertResult['nativeAssociatedLevelRelations'];
+    if (directoryFirst) assert.equal(architecturalPlanGeometry(result,100).walls.length,1);
+    assert.equal(architecturalPlanSummary(result,100).walls,0);
+    assert.equal(architecturalPlanGeometry(result,100).walls.length,1);
+    assert.equal(architecturalPlanSummary(result,100).walls,0);
+  }
+});
+
+test('directory wall masks constrain overstretched curtain solids to their recovered element envelope',()=>{
+  const curtain:ElementBoundsRecord={...record(10,0),categoryId:-2000011,wallKind:'curtain',boundsFeet:{min:{x:0,y:10,z:0},max:{x:3,y:30,z:10}},solid:{elementId:10,start:{x:1.5,y:-10},end:{x:1.5,y:30},thickness:3,baseElevation:0,topElevation:10}};
+  const model={levels:[{levelId:1,elevation:0,candidates:1}],elementBounds:[curtain],nativeAssociatedLevelRelations:[{elementId:10,levelId:1}]} as unknown as ConvertResult;
+  const walls=architecturalPlanGeometry(model,1).walls;assert.equal(walls.length,1);assert.ok(walls[0]!.polygon.every(p=>p[1]>=10&&p[1]<=30));assert.equal(walls[0]!.approximate,true);
 });

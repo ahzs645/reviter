@@ -48,7 +48,7 @@ export function EmptyState({
             <Upload size={16} aria-hidden />
             Open a Revit file
           </button>
-          <p className="empty-formats">.rvt · .rfa · .rte · .rft — or drop a file anywhere</p>
+          <p className="empty-formats">Select a Revit file and optionally its room annotations .json together, or drop both files anywhere.</p>
           {error && <p className="empty-error" role="alert">{error}</p>}
         </div>
 
