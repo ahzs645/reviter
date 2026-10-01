@@ -63,7 +63,7 @@ export function publicAssetUrl(fileName: string): string {
 }
 
 export function staticWorkerUrl(
-  kind: "rvt" | "ifc" | "dwg" | "plan" | "regions",
+  kind: "rvt" | "ifc" | "dwg" | "plan" | "regions" | "indoor",
 ): string | undefined {
   return (globalThis as ReviterGlobal).__REVITER_STATIC_WORKERS__?.[kind];
 }

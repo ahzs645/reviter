@@ -70,6 +70,7 @@ import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
 import type { DirectoryModelFloor } from "./studio/directory-model.ts";
+import { MAX_PROJECT_PACKAGE_BYTES, readProjectPackage } from "../lib/reviter/project-package.ts";
 import { modelImportFiles } from "./studio/model-import.ts";
 import { parseRoomDirectory } from "../lib/reviter/room-directory.ts";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
@@ -1786,6 +1787,16 @@ export default function ReviterStudio() {
   const processSelectedFiles = async (selected: readonly File[]) => {
     const attempt = ++fileSelectionAttempt.current;
     try {
+      if (selected.some(f => /\.zip$/i.test(f.name))) {
+        if (selected.length !== 1) throw new Error("Open a project ZIP by itself; it already contains its model and floor data.");
+        const archive = selected[0]!;
+        if (archive.size > MAX_PROJECT_PACKAGE_BYTES) throw new Error("Project ZIP exceeds the 900 MB import limit.");
+        setError(null);
+        const project = await readProjectPackage(new Uint8Array(await archive.arrayBuffer()));
+        if (attempt !== fileSelectionAttempt.current) return;
+        void processFile(project.model, undefined, project.roomFile);
+        return;
+      }
       const {model, json} = modelImportFiles(selected);
       let roomFile: File | null = null;
       if (json) {
@@ -1909,7 +1920,7 @@ export default function ReviterStudio() {
         tabIndex={-1}
         aria-hidden="true"
         type="file"
-        accept=".rvt,.rfa,.rte,.rft,.json"
+        accept=".rvt,.rfa,.rte,.rft,.json,.zip"
         multiple
         onChange={(event) => {
           const selected = Array.from(event.target.files ?? []);
@@ -2091,6 +2102,8 @@ export default function ReviterStudio() {
       {result && <div className="floor-workspace-host" hidden={workspace !== "floors"}>
             <FloorWorkspace
               key={directoryImport?.sequence ?? "manual-directory"}
+              modelFile={file}
+              onImportProject={openPicker}
               roomFile={directoryImport?.file ?? null}
               directoryRoomRequest={directoryRoomRequest}
               onShowDirectoryModel={(floor) => {

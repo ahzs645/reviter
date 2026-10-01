@@ -1,6 +1,6 @@
 import type {LocalBuildingConnection} from "../../lib/reviter/building-transitions.ts";
 import polygonClipping from "polygon-clipping";
-import {directoryStairFootprints,isStairArea,type DirectoryStairFootprint} from "../../lib/reviter/directory-stair-geometry.ts";
+import {directoryStairFootprints,isStairArea,type DirectoryStairFootprint,type UpperStairContext} from "../../lib/reviter/directory-stair-geometry.ts";
 import type {BuildingConnection} from "../../lib/reviter/building-connections.ts";
 import type { OpenPassage } from "../../lib/reviter/directory-openings.ts";
 import * as THREE from "three";
@@ -12,6 +12,11 @@ import { directoryAreas, connectedCirculationAreas, type DirectoryArea, type Are
 
 export type DirectoryModelFloor = {
   levelId: number;
+  /** A reviewed campus storey can contain several unchanged native levels. */
+  levelIds?: number[];
+  cutBaseElevation?: number;
+  suggestedCutHeight?: number;
+  upperStairContext?:readonly UpperStairContext[];
   title: string;
   elevation: number;
   elevationSource: string;
@@ -70,6 +75,16 @@ export function directoryModelFloor(result: Pick<ConvertResult, "levels"> & Part
   };
 }
 
+/** Assemble native floors for display; areas, placements and native IDs remain unchanged. */
+export function directoryModelStorey(result: Pick<ConvertResult,"levels"> & Partial<ConvertResult>, rooms: readonly DirectoryRoom[], levelIds: readonly number[], selectedKey: string|null, title: string): DirectoryModelFloor|null {
+  const floors=levelIds.map(id=>directoryModelFloor(result,rooms,id,selectedKey)).filter((f):f is DirectoryModelFloor=>!!f);
+  if(!floors.length)return null;
+  const first=floors[0]!;
+  return {...first,title,levelIds:floors.map(f=>f.levelId),cutBaseElevation:Math.max(...floors.map(f=>f.elevation)),elevationSource:"Campus storey · native elevations retained",
+    rooms:floors.flatMap(f=>f.rooms),areas:floors.flatMap(f=>f.areas),roomElevations:Object.assign({},...floors.map(f=>f.roomElevations)),stairFootprints:floors.flatMap(f=>f.stairFootprints??[]),
+    boundsFeet:{min:{x:Math.min(...floors.map(f=>f.boundsFeet.min.x)),y:Math.min(...floors.map(f=>f.boundsFeet.min.y)),z:Math.min(...floors.map(f=>f.boundsFeet.min.z))},max:{x:Math.max(...floors.map(f=>f.boundsFeet.max.x)),y:Math.max(...floors.map(f=>f.boundsFeet.max.y)),z:Math.max(...floors.map(f=>f.boundsFeet.max.z))}}};
+}
+
 /** Keep both native elevations inside the 3D section box without merging their levels. */
 export function withLocalBuildingContext(floor:DirectoryModelFloor,connections:readonly LocalBuildingConnection[]):DirectoryModelFloor {
   const min={...floor.boundsFeet.min},max={...floor.boundsFeet.max};
@@ -84,6 +99,13 @@ export function directoryRoomColor(room: DirectoryRoom, selected = false): strin
   return isHallway(room) ? "#d7eee3" : "#dfe9f0";
 }
 
+/** Shared circulation still lets reviewers focus one stair source and its real flight. */
+export function directoryRoomFocusPoints(floor: DirectoryModelFloor, room: DirectoryRoom): RoomPoint[] {
+  const upper=(floor.upperStairContext??[]).filter(c=>c.roomKeys.includes(room.key)).flatMap(c=>c.treads.flatMap(t=>t.polygon));
+  if(isStairArea(room))return [...upper,...room.polygonFeet,...(floor.stairFootprints??[]).filter(f=>f.roomKey===room.key).flatMap(f=>f.polygons.flatMap(p=>p[0]!))];
+  return [...upper,...(floor.areas.find(a=>a.roomKeys.includes(room.key))?.polygons.flatMap(p=>p[0]!)??room.polygonFeet)];
+}
+
 /** A section box in the recovered model's translated, Z-up coordinate frame. */
 export function directoryFloorPlanes(floor: DirectoryModelFloor, origin: ConvertResult["origin"], cutHeight: number): THREE.Plane[] {
   const {min, max} = floor.boundsFeet;
@@ -93,7 +115,7 @@ export function directoryFloorPlanes(floor: DirectoryModelFloor, origin: Convert
     new THREE.Plane(new THREE.Vector3(0,1,0), origin.y-min.y),
     new THREE.Plane(new THREE.Vector3(0,-1,0), max.y-origin.y),
     new THREE.Plane(new THREE.Vector3(0,0,1), origin.z-min.z),
-    new THREE.Plane(new THREE.Vector3(0,0,-1), floor.elevation+cutHeight-origin.z),
+    new THREE.Plane(new THREE.Vector3(0,0,-1), (floor.cutBaseElevation??floor.elevation)+cutHeight-origin.z),
   ];
 }
 
@@ -133,7 +155,7 @@ export function directoryRoomGroup(floor: DirectoryModelFloor, origin: ConvertRe
       if (uncertain) line.computeLineDistances();
       outline.add(line);
     }
-    const flightUnrecovered=area.kind==="room"&&isStairArea(room)&&room.stairAccess!=="local-only"&&!steps.length;
+    const flightUnrecovered=area.kind==="room"&&isStairArea(room)&&room.stairAccess!=="local-only"&&!steps.some(f=>f.sourceOverlap!==false);
     if (area.walkability === "void" || flightUnrecovered&&!room.floorOpeningsFeet?.length) {
       mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
       outline.userData.areaKey = area.key; outline.userData.roomKey = room.key;
@@ -150,6 +172,10 @@ export function directoryRoomGroup(floor: DirectoryModelFloor, origin: ConvertRe
     shape.holes=polygon.slice(1).map(h=>new THREE.Path(h.map(p=>new THREE.Vector2(p[0]-origin.x,p[1]-origin.y))));
     const mesh=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color:tread.localToStorey?"#d7eee3":"#bba6df",side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:reverseDepthBuffer?2:-2,polygonOffsetUnits:reverseDepthBuffer?2:-2}));
     mesh.position.z=tread.elevation-origin.z+.15;mesh.userData.roomKey=f.roomKey;mesh.userData.areaKey=`room:${f.roomKey}`;mesh.userData.stairTreadElementId=tread.elementId;mesh.userData.localToStorey=tread.localToStorey;group.add(mesh);
+  }
+  for(const c of floor.upperStairContext??[])for(const t of c.treads){
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([...t.polygon,t.polygon[0]!].map(p=>new THREE.Vector3(p[0]-origin.x,p[1]-origin.y,t.elevation-origin.z+.2))),new THREE.LineDashedMaterial({color:0x79579e,dashSize:.4,gapSize:.25}));
+    line.computeLineDistances();line.userData.upperStairContext=true;line.userData.stairElementId=c.stairElementId;line.userData.runId=t.runId;group.add(line);
   }
   for(const c of floor.buildingConnections??[]){
     const p=c.door.portal!,z=c.elevation-origin.z+.3;

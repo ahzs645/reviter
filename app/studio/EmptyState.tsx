@@ -46,9 +46,9 @@ export function EmptyState({
             onClick={onOpen}
           >
             <Upload size={16} aria-hidden />
-            Open a Revit file
+            Open model or project ZIP
           </button>
-          <p className="empty-formats">Select a Revit file and optionally its room annotations .json together, or drop both files anywhere.</p>
+          <p className="empty-formats">Open a Reviter project .zip to restore the model, floor reviews and GIS references together. You can also select a Revit file and its rooms .json, or drop them here.</p>
           {error && <p className="empty-error" role="alert">{error}</p>}
         </div>
 

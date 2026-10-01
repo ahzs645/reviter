@@ -16,6 +16,8 @@ import type { DirectoryModelFloor } from "./directory-model.ts";
 export function FloorWorkspace({
   result,
   roomFile,
+  modelFile,
+  onImportProject,
   selectedLevelId,
   onSelectedLevelId,
   showDerivedRooms,
@@ -30,6 +32,8 @@ export function FloorWorkspace({
 }: {
   result: ConvertResult;
   roomFile?: File | null;
+  modelFile?: File | null;
+  onImportProject?: () => void;
   selectedLevelId: number | null;
   onSelectedLevelId: (levelId: number) => void;
   showDerivedRooms: boolean;
@@ -66,7 +70,7 @@ export function FloorWorkspace({
       </header>
 
       <div className="floor-workspace-body">
-        <div hidden={view !== "directory"} className="floor-directory-view"><BuildingDirectory result={result} initialRoomFile={roomFile} onShowModel={onShowDirectoryModel} roomRequest={directoryRoomRequest} /></div>
+        <div hidden={view !== "directory"} className="floor-directory-view"><BuildingDirectory modelFile={modelFile} onImportProject={onImportProject} result={result} initialRoomFile={roomFile} onShowModel={onShowDirectoryModel} roomRequest={directoryRoomRequest} /></div>
         <div hidden={view !== "plan"} className="floor-plan-view">
         <FloorBrowser
           result={result}

@@ -23,7 +23,8 @@
     "test:pages": "PAGES_BASE_PATH=/reviter/ npm run build:pages && node --test tests/pages-build.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern dist-pages --ignore-pattern .next --ignore-pattern .vinext --ignore-pattern .output --ignore-pattern lib/rvt-wasm",
     "test:unit": "node --experimental-strip-types --test \"tests/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "indoor:prepare": "node --experimental-strip-types scripts/prepare-indoor-project.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

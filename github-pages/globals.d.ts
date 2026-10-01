@@ -10,6 +10,7 @@ declare global {
         dwg?: string;
         plan?: string;
         regions?: string;
+        indoor?: string;
       }
     | undefined;
 }

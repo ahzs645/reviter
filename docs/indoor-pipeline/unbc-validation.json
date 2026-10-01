@@ -1,0 +1,297 @@
+{
+  "source": {
+    "modelFileName": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+    "modelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "roomsSha256": "a3c0fd2b5f2d5952398a8d95247011307f8701a4cd18d382ea0f7d267bf11055"
+  },
+  "report": {
+    "recordCount": 1860,
+    "routableArrivals": 1610,
+    "components": 137,
+    "largestComponentArrivals": 419,
+    "unmatchedDoors": 411,
+    "cellSizeFeet": 0.6,
+    "omittedSourceLabels": 360
+  },
+  "nodeCount": 5730,
+  "edgeCount": 5459,
+  "edgeKinds": {
+    "walk": 3999,
+    "door": 1428,
+    "opening": 4,
+    "stairs": 26,
+    "local-steps": 2
+  },
+  "routes": [
+    {
+      "name": "Library to Agora native doorway",
+      "expect": "route",
+      "start": {
+        "number": "05-120",
+        "levelId": 311
+      },
+      "end": {
+        "number": "07-101",
+        "levelId": 311
+      },
+      "route": {
+        "metres": 20.793396229548648,
+        "edges": 6,
+        "transitions": []
+      }
+    },
+    {
+      "name": "Library Floor 1 to Floor 2 stair",
+      "expect": "route",
+      "start": {
+        "number": "05-S101",
+        "levelId": 311
+      },
+      "end": {
+        "number": "05-S201",
+        "levelId": 694
+      },
+      "route": {
+        "metres": 5.359351014155087,
+        "edges": 3,
+        "transitions": [
+          "stair:2439748:rm-311-0bdc6d73a3ae:rm-694-ecfa1a619eb2"
+        ]
+      }
+    },
+    {
+      "name": "Tea Lab upstairs flight",
+      "expect": "route",
+      "start": {
+        "number": "08-S101",
+        "levelId": 1487816
+      },
+      "end": {
+        "number": "08-S201",
+        "levelId": 694
+      },
+      "route": {
+        "metres": 8.822690107682803,
+        "edges": 3,
+        "transitions": [
+          "stair:1982431:rm-1487816-1a09473066a2:rm-694-43cb29fdc35f"
+        ]
+      }
+    },
+    {
+      "name": "Upper Rotunda drop is blocked",
+      "expect": "blocked",
+      "start": {
+        "number": "04-124",
+        "levelId": 311
+      },
+      "end": {
+        "number": "04-445",
+        "levelId": 402367
+      },
+      "route": null
+    },
+    {
+      "name": "Library to Waiting Lounge coverage review",
+      "expect": "review",
+      "start": {
+        "number": "05-142",
+        "levelId": 311
+      },
+      "end": {
+        "number": "07-203A",
+        "levelId": 311
+      },
+      "route": null
+    },
+    {
+      "name": "Agora to Tea Lab landing review",
+      "expect": "review",
+      "start": {
+        "number": "07-180",
+        "levelId": 311
+      },
+      "end": {
+        "number": "08-155",
+        "levelId": 1487816
+      },
+      "route": null
+    },
+    {
+      "name": "Agora to Medical local connection review",
+      "expect": "review",
+      "start": {
+        "key": "rm-311-935a520f9690"
+      },
+      "end": {
+        "number": "09-214",
+        "levelId": 1450417
+      },
+      "route": null
+    }
+  ],
+  "roundtrip": {
+    "originalModelPreserved": true,
+    "gisPreserved": true,
+    "staffBlocked": true
+  },
+  "maxGeoDifferenceDegrees": 1.5888218580782548e-14,
+  "floorCoverage": [
+    {
+      "id": "03:311",
+      "records": 28,
+      "arrivals": 27,
+      "unconfirmedAccess": 28
+    },
+    {
+      "id": "03:400176",
+      "records": 88,
+      "arrivals": 83,
+      "unconfirmedAccess": 88
+    },
+    {
+      "id": "03:402367",
+      "records": 92,
+      "arrivals": 88,
+      "unconfirmedAccess": 92
+    },
+    {
+      "id": "03:694",
+      "records": 101,
+      "arrivals": 86,
+      "unconfirmedAccess": 101
+    },
+    {
+      "id": "04:311",
+      "records": 51,
+      "arrivals": 40,
+      "unconfirmedAccess": 51
+    },
+    {
+      "id": "04:400176",
+      "records": 44,
+      "arrivals": 41,
+      "unconfirmedAccess": 44
+    },
+    {
+      "id": "04:402367",
+      "records": 51,
+      "arrivals": 43,
+      "unconfirmedAccess": 51
+    },
+    {
+      "id": "04:694",
+      "records": 69,
+      "arrivals": 65,
+      "unconfirmedAccess": 69
+    },
+    {
+      "id": "05:311",
+      "records": 124,
+      "arrivals": 115,
+      "unconfirmedAccess": 123
+    },
+    {
+      "id": "05:400176",
+      "records": 39,
+      "arrivals": 38,
+      "unconfirmedAccess": 39
+    },
+    {
+      "id": "05:402367",
+      "records": 50,
+      "arrivals": 49,
+      "unconfirmedAccess": 50
+    },
+    {
+      "id": "05:694",
+      "records": 49,
+      "arrivals": 45,
+      "unconfirmedAccess": 49
+    },
+    {
+      "id": "06:1487353",
+      "records": 47,
+      "arrivals": 36,
+      "unconfirmedAccess": 47
+    },
+    {
+      "id": "06:694",
+      "records": 48,
+      "arrivals": 34,
+      "unconfirmedAccess": 48
+    },
+    {
+      "id": "07:311",
+      "records": 194,
+      "arrivals": 166,
+      "unconfirmedAccess": 190
+    },
+    {
+      "id": "08:1487816",
+      "records": 63,
+      "arrivals": 41,
+      "unconfirmedAccess": 63
+    },
+    {
+      "id": "08:400176",
+      "records": 50,
+      "arrivals": 30,
+      "unconfirmedAccess": 50
+    },
+    {
+      "id": "08:402367",
+      "records": 53,
+      "arrivals": 36,
+      "unconfirmedAccess": 53
+    },
+    {
+      "id": "08:694",
+      "records": 71,
+      "arrivals": 43,
+      "unconfirmedAccess": 71
+    },
+    {
+      "id": "09:1450417",
+      "records": 65,
+      "arrivals": 57,
+      "unconfirmedAccess": 65
+    },
+    {
+      "id": "09:694",
+      "records": 61,
+      "arrivals": 53,
+      "unconfirmedAccess": 61
+    },
+    {
+      "id": "10:1487816",
+      "records": 103,
+      "arrivals": 95,
+      "unconfirmedAccess": 103
+    },
+    {
+      "id": "10:2295121",
+      "records": 10,
+      "arrivals": 6,
+      "unconfirmedAccess": 10
+    },
+    {
+      "id": "10:400176",
+      "records": 106,
+      "arrivals": 100,
+      "unconfirmedAccess": 106
+    },
+    {
+      "id": "10:402367",
+      "records": 100,
+      "arrivals": 93,
+      "unconfirmedAccess": 100
+    },
+    {
+      "id": "10:694",
+      "records": 104,
+      "arrivals": 100,
+      "unconfirmedAccess": 104
+    }
+  ]
+}

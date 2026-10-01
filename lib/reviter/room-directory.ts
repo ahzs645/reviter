@@ -2,6 +2,8 @@ import type { DirectoryNavigation } from "./directory-navigation.ts";
 import type { BoundaryReference } from "./room-boundaries.ts";
 import type { AreaMetadata, AreaRelationship } from "./directory-areas.ts";
 import type {ReportedBuildingTransition} from "./building-transitions.ts";
+import {validateCampusStoreys, type CampusStoreyReview} from "./campus-floors.ts";
+import {validateGeoreference,type ModelGeoreference} from "./georeference.ts";
 /** Room annotations stay in model feet; boundaries and original provenance survive export. */
 export type RoomPoint = [number, number];
 export type DirectoryRoom = {
@@ -12,6 +14,7 @@ export type DirectoryRoom = {
   modelSurface?: {kind:"crosswalk"|"circulation";elementId:number;levelId:number;elevationFeet:number};
   name?: string;
   spaceUse?: {kind:"atrium"|"hallway"|"room";evidence:"user-reported";notes?:string};
+  access?: {kind:"public"|"staff";evidence:"user-reported";notes?:string};
   polygonFeet: RoomPoint[];
   holesFeet?: RoomPoint[][];
   circulationGroup?: string;
@@ -19,6 +22,7 @@ export type DirectoryRoom = {
   walkabilityNotes?: string;
   stairAccess?: "unreviewed" | "flight-and-landing" | "up-flight-only" | "local-only";
   stairAccessNotes?: string;
+  /** Reviewed native flight coverage; nearby context alone cannot create a route. */
   stairFlightIds?: number[];
   /** Reviewed navigation arrival, distinct from the original drawing label. */
   routePointFeet?: RoomPoint;
@@ -36,11 +40,15 @@ export type RoomDirectoryData = {
   coordinateSystem: "revit-model-feet";
   model: { fileName: string; [key: string]: unknown };
   annotations: DirectoryRoom[];
+  georeference?:ModelGeoreference;
   boundaryReference?: BoundaryReference;
   navigation?: DirectoryNavigation;
   areaMetadata?: Record<string, AreaMetadata>;
   areaRelationships?: AreaRelationship[];
   buildingTransitions?: ReportedBuildingTransition[];
+  campusStoreys?: CampusStoreyReview[];
+  /** A reported restriction at an unassigned pin does not invent an area boundary. */
+  accessReviewLocations?: {building:string;levelId:number;point:RoomPoint;kind:"staff";evidence:"user-reported";notes?:string}[];
   sourceCoverage?: { sourceSha256: string; omittedSheets: { building: string; sectionId: string; labelCount: number; reason: string }[] };
   [key: string]: unknown;
 };
@@ -56,6 +64,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     throw new Error("Choose a version 1 Reviter room annotations file in model feet (such as UNBC.rooms.json).");
   }
   const reference = data.boundaryReference;
+  if(data.georeference!=null){validateGeoreference(data.georeference);if(data.georeference.modelFileName!==data.model.fileName&&data.georeference.sourceModelFileName!==data.model.fileName)throw new Error("Georeference points must belong to this model filename.");}
   const coverage = data.sourceCoverage;
   if (coverage != null && (typeof coverage.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(coverage.sourceSha256)
     || reference != null && coverage.sourceSha256 !== reference.sourceSha256
@@ -91,6 +100,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
       || (room.walkability != null && !["walkable", "void"].includes(room.walkability))
       || (room.walkabilityNotes != null && (typeof room.walkabilityNotes !== "string" || room.walkabilityNotes.length > 10000))
       || (room.spaceUse != null && (!room.spaceUse || !["atrium","hallway","room"].includes(room.spaceUse.kind) || room.spaceUse.evidence !== "user-reported" || room.spaceUse.notes != null && (typeof room.spaceUse.notes !== "string" || room.spaceUse.notes.length > 10000)))
+      || (room.access != null && (!room.access || !["public","staff"].includes(room.access.kind) || room.access.evidence !== "user-reported" || room.access.notes != null && (typeof room.access.notes !== "string" || room.access.notes.length > 10000)))
       || (room.stairAccess != null && !["unreviewed", "flight-and-landing", "up-flight-only", "local-only"].includes(room.stairAccess))
       || (room.stairFlightIds != null && (!Array.isArray(room.stairFlightIds) || room.stairFlightIds.length > 100 || new Set(room.stairFlightIds).size !== room.stairFlightIds.length || room.stairFlightIds.some(id=>!Number.isSafeInteger(id)||id<=0)))
       || (room.stairAccessNotes != null && (typeof room.stairAccessNotes !== "string" || room.stairAccessNotes.length > 10000))
@@ -115,6 +125,8 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     }
     keys.add(room.key);
   }
+  if(data.accessReviewLocations!=null&&(!Array.isArray(data.accessReviewLocations)||data.accessReviewLocations.length>1000||data.accessReviewLocations.some(r=>!r||typeof r.building!=="string"||!r.building.trim()||!Number.isSafeInteger(r.levelId)||!point(r.point)||r.kind!=="staff"||r.evidence!=="user-reported"||r.notes!=null&&(typeof r.notes!=="string"||r.notes.length>10000))))throw new Error("Access review pins need a building, native level, model point and reported restriction.");
+  if(data.campusStoreys!=null) validateCampusStoreys(data.campusStoreys, data.annotations);
   if(data.buildingTransitions!=null){
     const links=data.buildingTransitions;
     if(!Array.isArray(links)||links.length>5000||new Set(links.map(l=>l?.id)).size!==links.length||links.some(l=>!l||typeof l.id!=="string"||!l.id||l.id.length>200||l.kind!=="local-steps"||l.evidence!=="user-reported"||!Number.isSafeInteger(l.nativeStairId)||l.nativeStairId<=0||!Array.isArray(l.floorElementIds)||l.floorElementIds.length!==2||l.floorElementIds.some(id=>!Number.isSafeInteger(id)||id<=0)||!Array.isArray(l.endpoints)||l.endpoints.length!==2||l.endpoints[0]?.building===l.endpoints[1]?.building&&(l.endpoints.some(e=>!Number.isFinite(e.elevationFeet))||Math.abs(l.endpoints[0].elevationFeet!-l.endpoints[1].elevationFeet!)<.05)||l.endpoints.some(e=>!e||typeof e.building!=="string"||!e.building.trim()||e.building.length>100||!Number.isSafeInteger(e.levelId)||!point(e.point)||e.elevationFeet!=null&&!Number.isFinite(e.elevationFeet)||e.roomKey!=null&&!data.annotations.some(r=>r.key===e.roomKey&&r.levelId===e.levelId&&roomBuilding(r)===e.building&&r.status!=="deleted"))||l.notes!=null&&(typeof l.notes!=="string"||l.notes.length>10000)))throw new Error("Local building connections need two building locations and explicit native stair and floor identities.");
@@ -140,15 +152,16 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     const links=data.navigation.stairLinks;
     if(!Array.isArray(links) || links.length>5000 || links.some(link=>!link || !Array.isArray(link.rooms) || link.rooms.length!==2 || link.rooms[0]===link.rooms[1] || link.rooms.some(key=>typeof key!=="string" || !data.annotations.some(r=>r.key===key && r.status!=="deleted")))) throw new Error("Reviewed stair connections must name two existing staircase entrances.");
     const pairs=new Set<string>();
-    for(const link of links){const [a,b]=link.rooms.map(key=>data.annotations.find(r=>r.key===key)!);const key=[...link.rooms].sort().join(":");if(a!.levelId===b!.levelId || roomBuilding(a!)!==roomBuilding(b!) || ![a,b].every(r=>/\bstair(?:s|case|well)?\b/i.test(r!.name??"")) || pairs.has(key))throw new Error("Stair connections must join different floors of one building without duplicate pairs.");pairs.add(key);}
+    for(const link of links){const [a,b]=link.rooms.map(key=>data.annotations.find(r=>r.key===key)!);const key=[...link.rooms].sort().join(":");if(a!.levelId===b!.levelId || roomBuilding(a!)!==roomBuilding(b!) || ![a,b].every(r=>/\bstair(?:s|case|well)?\b/i.test(r!.name??"")||!!r!.stairFlightIds?.length) || pairs.has(key))throw new Error("Stair connections must join different floors of one building without duplicate pairs.");pairs.add(key);}
   }
   return data;
 }
 
 export const isWalkable = (room: DirectoryRoom) => room.status !== "deleted" && room.walkability !== "void";
+export const isPubliclyAccessible = (room: DirectoryRoom) => room.access?.kind !== "staff";
 
-export const isHallway = (room: DirectoryRoom) => room.spaceUse ? room.spaceUse.kind !== "room" : /\b(corridor|hallway|circulation|vestibule|lobby|atrium|connecting passage)\b/i.test(room.name ?? "")
-  || /^(?:(?:main|entry|entrance|north|south|east|west|central|upper|lower)\s+)?hall$/i.test(room.name ?? "");
+export const isHallway = (room: DirectoryRoom) => isPubliclyAccessible(room) && (room.spaceUse ? room.spaceUse.kind !== "room" : /\b(corridor|hallway|circulation|vestibule|lobby|atrium|connecting passage)\b/i.test(room.name ?? "")
+  || /^(?:(?:main|entry|entrance|north|south|east|west|central|upper|lower)\s+)?hall$/i.test(room.name ?? ""));
 export const roomBuilding = (room: DirectoryRoom) => room.number?.match(/^([^-]+)-/)?.[1] ?? room.building ?? room.dwg?.sectionId?.split(" ")[0] ?? "Unassigned";
 
 export function containsRoomPoint(p: RoomPoint, polygon: readonly RoomPoint[]): boolean {
@@ -267,7 +280,7 @@ export type DirectoryRouteBarriers = {walls:readonly {polygon:RoomPoint[]}[];col
 
 /** Check the whole grid edge, including thin native dividers between cell centres.
  * Only a matched, precise opening footprint can permit crossing a wall. */
-function nativeRouteBlocker(barriers:DirectoryRouteBarriers|undefined, openings:readonly RouteOpening[]) {
+export function nativeRouteBlocker(barriers:DirectoryRouteBarriers|undefined, openings:readonly RouteOpening[]) {
   if(!barriers)return ()=>false;
   const bins=new Map<string,{polygon:RoomPoint[];wall:boolean}[]>(),size=8;
   for(const item of [...barriers.walls.map(w=>({...w,wall:true})),...barriers.columns.map(w=>({...w,wall:false}))]){
@@ -278,7 +291,9 @@ function nativeRouteBlocker(barriers:DirectoryRouteBarriers|undefined, openings:
   }
   const door=(p:RoomPoint)=>openings.some(o=>o.footprint&&containsRoomPoint(p,o.footprint));
   return (a:RoomPoint,b:RoomPoint)=>{
-    const candidates=new Set([...bins.get(`${Math.floor(a[0]/size)}:${Math.floor(a[1]/size)}`)??[],...bins.get(`${Math.floor(b[0]/size)}:${Math.floor(b[1]/size)}`)??[]]);
+    const candidates=new Set<{polygon:RoomPoint[];wall:boolean}>();
+    // Portal checks can span several bins; consider the entire segment envelope.
+    for(let x=Math.floor(Math.min(a[0],b[0])/size);x<=Math.floor(Math.max(a[0],b[0])/size);x++)for(let y=Math.floor(Math.min(a[1],b[1])/size);y<=Math.floor(Math.max(a[1],b[1])/size);y++)for(const item of bins.get(`${x}:${y}`)??[])candidates.add(item);
     const dx=b[0]-a[0],dy=b[1]-a[1];
     for(const item of candidates){
       if([a,b].some(p=>containsRoomPoint(p,item.polygon)&&(!item.wall||!door(p))))return true;
@@ -297,7 +312,7 @@ function nativeRouteBlocker(barriers:DirectoryRouteBarriers|undefined, openings:
  * Four-neighbour movement prevents cutting corners or diagonal wall crossings. */
 export function findDirectoryRoute(rooms: readonly DirectoryRoom[], portals: readonly RouteOpening[], startKey: string, endKey: string, elevations:DirectoryElevations = {},barriers?:DirectoryRouteBarriers): DirectoryRoute | null {
   const start = rooms.find((r) => r.key === startKey); const end = rooms.find((r) => r.key === endKey);
-  if (!start || !end || !isWalkable(start) || !isWalkable(end) || start.levelId !== end.levelId) return null;
+  if (!start || !end || !isWalkable(start) || !isWalkable(end) || !isPubliclyAccessible(start) || !isPubliclyAccessible(end) || start.levelId !== end.levelId) return null;
   const elevation=(r:DirectoryRoom)=>elevations[r.key]?.elevation??r.modelSurface?.elevationFeet;
   const sameHeight=(a:DirectoryRoom,b:DirectoryRoom)=>elevation(a)==null||elevation(b)==null||Math.abs(elevation(a)!-elevation(b)!)<=.05;
   // A shared directory level can contain sunken lounges or raised landings.
@@ -315,7 +330,7 @@ export function findDirectoryRoute(rooms: readonly DirectoryRoom[], portals: rea
   const walkRooms = floorRooms.filter((r, i) => !r.circulationGroup
     || floorRooms.findIndex((other) => other.circulationGroup === r.circulationGroup) === i)
     .sort((a, b) => Number(isWalkable(b)) - Number(isWalkable(a)) || Number(isHallway(b)) - Number(isHallway(a)));
-  const permitted = (r: DirectoryRoom) => isWalkable(r) && sameHeight(start,r) && (!circulationOnly || isHallway(r));
+  const permitted = (r: DirectoryRoom) => isWalkable(r) && isPubliclyAccessible(r) && sameHeight(start,r) && (!circulationOnly || isHallway(r));
   const xs = walkRooms.flatMap((r) => r.polygonFeet.map((p) => p[0])); const ys = walkRooms.flatMap((r) => r.polygonFeet.map((p) => p[1]));
   const minX = Math.min(...xs) - 3; const minY = Math.min(...ys) - 3;
   const spanX = Math.max(...xs) - minX + 3; const spanY = Math.max(...ys) - minY + 3;

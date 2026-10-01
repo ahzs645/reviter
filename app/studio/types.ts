@@ -38,6 +38,7 @@ export type ReviterGlobal = typeof globalThis & {
     dwg?: string;
     plan?: string;
     regions?: string;
+    indoor?: string;
   };
 };
 

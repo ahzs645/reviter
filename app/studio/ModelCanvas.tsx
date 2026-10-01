@@ -3,7 +3,7 @@
 /** The WebGL viewport: scene assembly, camera presets, picking, and disposal. */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as THREE from "three";
-import { directoryFloorPlanes, directoryRoomGroup, type DirectoryModelFloor } from "./directory-model.ts";
+import { directoryFloorPlanes, directoryRoomGroup, directoryRoomFocusPoints, type DirectoryModelFloor } from "./directory-model.ts";
 import {LocalBuildingConnectionInspector} from "./LocalBuildingConnectionInspector.tsx";
 import type {LocalBuildingConnection} from "../../lib/reviter/building-transitions.ts";
 import {BuildingConnectionInspector} from "./BuildingConnectionInspector.tsx";
@@ -372,13 +372,13 @@ export function ModelCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const directoryOverlayRef = useRef<THREE.Group | null>(null);
   const [directoryRoomKey, setDirectoryRoomKey] = useState<string | null>(directoryFloor?.selectedKey ?? null);
-  const [directoryCutHeight, setDirectoryCutHeight] = useState(4);
+  const [directoryCutHeight, setDirectoryCutHeight] = useState(directoryFloor?.suggestedCutHeight??4);
   const [directoryColors, setDirectoryColors] = useState(true);
   const [previousDirectoryFloor, setPreviousDirectoryFloor] = useState(directoryFloor);
   if (previousDirectoryFloor !== directoryFloor) {
     setPreviousDirectoryFloor(directoryFloor);
     setDirectoryRoomKey(directoryFloor?.selectedKey ?? null);
-    setDirectoryCutHeight(4); setDirectoryColors(true);
+    setDirectoryCutHeight(directoryFloor?.suggestedCutHeight??4); setDirectoryColors(true);
   }
   const [sourceCache] = useState(() =>
     // One entry for each source in the active visual style. Keeping both
@@ -2583,8 +2583,7 @@ export function ModelCanvas({
     const runtime = runtimeRef.current;
     const room = directoryFloor?.rooms.find(r=>r.key===directoryRoomKey);
     if (!runtime || !room || !directoryFloor) return;
-    const area=directoryFloor.areas.find(a=>a.roomKeys.includes(room.key));
-    const points=area?.polygons.flatMap(p=>p[0]!) ?? room.polygonFeet;
+    const points=directoryRoomFocusPoints(directoryFloor,room);
     const xs=points.map(p=>p[0]), ys=points.map(p=>p[1]);
     const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
     const target=new THREE.Vector3((minX+maxX)/2-result.origin.x,(minY+maxY)/2-result.origin.y,(directoryFloor.roomElevations[room.key]?.elevation ?? directoryFloor.elevation)+1-result.origin.z);
@@ -2780,17 +2779,17 @@ export function ModelCanvas({
       )}
       {directoryFloor && source === "recovered" && (
         <details className="directory-model-panel" open>
-          <summary>Colored floor · Level #{directoryFloor.levelId}{directoryRoomKey ? ` · ${directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.number ?? "Selected room"}` : ""}</summary>
+          <summary>{directoryFloor.levelIds&&directoryFloor.levelIds.length>1?`Colored campus storey · Levels ${directoryFloor.levelIds.map(id=>`#${id}`).join(" + ")}`:`Colored floor · Level #${directoryFloor.levelId}`}{directoryRoomKey ? ` · ${directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.number ?? "Selected room"}` : ""}</summary>
           <p>{directoryFloor.title}</p>
           <p>Level #{directoryFloor.levelId} · {directoryFloor.elevation.toFixed(2)} ft · {directoryFloor.elevationSource}</p>
-          <label>Cut height: {directoryCutHeight.toFixed(1)} ft above this level<input aria-label="Floor cut height" type="range" min="1" max="12" step="0.5" value={directoryCutHeight} onChange={e=>setDirectoryCutHeight(Number(e.target.value))} /></label>
+          <label>Cut height: {directoryCutHeight.toFixed(1)} ft above {directoryFloor.levelIds&&directoryFloor.levelIds.length>1?"the highest native level":"this level"}<input aria-label="Floor cut height" type="range" min="1" max={Math.max(12,directoryFloor.suggestedCutHeight??4)} step="0.5" value={directoryCutHeight} onChange={e=>setDirectoryCutHeight(Number(e.target.value))} /></label>
           <label><input type="checkbox" checked={directoryColors} onChange={e=>setDirectoryColors(e.target.checked)} /> Room colors</label>
           <label>Area in 3D<select aria-label="Area in 3D" value={directoryFloor.areas.find(a=>a.roomKeys.includes(directoryRoomKey??""))?.roomKeys[0] ?? ""} onChange={e=>setDirectoryRoomKey(e.target.value || null)}><option value="">Select a colored area</option>{directoryFloor.areas.map(area=><option key={area.key} value={area.roomKeys[0]}>Building {area.building} · {directoryFloor.areaMetadata?.[area.key]?.name || area.title}{area.kind!=="room"?` · ${area.roomKeys.length} source records`:""}</option>)}</select></label>
           {directoryRoomKey && <p>{directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.number} · {directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.name} · Boundary confidence {Math.round((directoryFloor.rooms.find(r=>r.key===directoryRoomKey)?.confidence ?? 0)*100)}%</p>}
           {directoryRoomKey && <p>{directoryFloor.roomElevations[directoryRoomKey]?.elevation.toFixed(2)} ft · {directoryFloor.roomElevations[directoryRoomKey]?.evidence}</p>}
           <LocalBuildingConnectionInspector connections={directoryFloor.localBuildingConnections??[]} building={directoryFloor.primaryBuilding??""} onFocus={frameLocalBuildingConnection}/>
           {(!directoryRoomKey||directoryFloor.buildingConnections?.some(c=>c.rooms.some(r=>r.key===directoryRoomKey)))&&<BuildingConnectionInspector modelView connections={directoryFloor.buildingConnections??[]} building={directoryFloor.primaryBuilding??""} onChoose={r=>setDirectoryRoomKey(r.key)}/>}
-          {directoryFloor.areas.filter(area=>area.roomKeys.includes(directoryRoomKey??"")).map(area=><AreaInspector key={area.key} area={area} floor={directoryFloor} members={directoryFloor.rooms.filter(r=>area.roomKeys.includes(r.key))} metadata={directoryFloor.areaMetadata?.[area.key]} modelName={result.fileName} onChoose={r=>setDirectoryRoomKey(r.key)} />)}
+          {directoryFloor.areas.filter(area=>area.roomKeys.includes(directoryRoomKey??"")).map(area=><AreaInspector key={area.key} area={area} floor={directoryFloor} members={directoryFloor.rooms.filter(r=>area.roomKeys.includes(r.key))} selectedRoom={directoryFloor.rooms.find(r=>r.key===directoryRoomKey)} metadata={directoryFloor.areaMetadata?.[area.key]} modelName={result.fileName} onChoose={r=>setDirectoryRoomKey(r.key)} />)}
           <div className="directory-model-actions">
             <button className="rv-button" disabled={!directoryRoomKey} onClick={frameDirectoryRoom}>Focus selected area</button>
             <button className="rv-button" disabled={!directoryRoomKey} onClick={()=>{ if(directoryRoomKey) onReviewDirectoryRoom(directoryRoomKey); }}>Edit room on map</button>

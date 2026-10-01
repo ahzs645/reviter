@@ -22,9 +22,9 @@ test("server-renders the Reviter client-only converter", async () => {
   // The empty state is what a first visit renders: the promise, the one action,
   // and the badge that says where the file goes.
   assert.match(html, /Open a model\. Nothing leaves this machine\./);
-  assert.match(html, /Open a Revit file/);
+  assert.match(html, /Open model or project ZIP/);
   assert.match(html, /Local only/);
-  assert.match(html, /\.rvt · \.rfa · \.rte · \.rft/);
+  assert.match(html, /restore the model, floor reviews and GIS references together/);
   assert.match(html, /<main class="studio" data-phase="idle">/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

@@ -4,6 +4,7 @@ import {isHallway, isWalkable, containsRoomPoint, roomBuilding, roomArea, type D
 export type AreaMetadata = {name?: string; notes?: string; elementIds?: number[]; circulationDoorUse?:'unknown'|'usually-open'|'usually-closed'};
 export type AreaRelationship = {rooms:[string,string];kind:'access'|'open-space';evidence:'user-reported';notes?:string};
 export function directoryAreaKind(room:DirectoryRoom):'atrium'|'hallway'|'room' {
+  if(room.access?.kind==='staff')return 'room';
   if(room.spaceUse)return room.spaceUse.kind;
   if (/\batrium\b/i.test(room.name??'') || /\bAtrium\s+LVL\b/i.test(room.dwg?.sectionId??'') && (/^alcove$/i.test(room.name??'') || isHallway(room))) return 'atrium';
   return isHallway(room)?'hallway':'room';
@@ -50,6 +51,14 @@ export function connectedCirculationAreas(areas:readonly DirectoryArea[], portal
     }
   }
   return keys;
+}
+/** Show explicitly reported access in a circulation review without reclassifying
+ * enclosed rooms or adding doorway, floor-support or routing evidence. */
+export function reportedCirculationRoomKeys(areas:readonly DirectoryArea[],reported:readonly AreaRelationship[]=[]):Set<string> {
+  const connected=new Set(areas.filter(a=>a.kind!=="room"&&a.walkability!=="void").map(a=>a.key));
+  const links=directoryAreaLinks(areas,[],reported);
+  for(const key of connected)for(const link of links)if(link.areas.includes(key))for(const next of link.areas)connected.add(next);
+  return new Set(areas.filter(a=>connected.has(a.key)).flatMap(a=>a.roomKeys));
 }
 /** Display regions retain their source records. Union removes label seams without
  * buffering gaps, filling voids, joining floors, or changing navigation data. */

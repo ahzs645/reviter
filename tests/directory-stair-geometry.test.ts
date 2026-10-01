@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {directoryStairFootprints,nativeStairAtPoint} from '../lib/reviter/directory-stair-geometry.ts';
+import {directoryStairFootprints,nativeStairAtPoint,stairRoomsForSelection} from '../lib/reviter/directory-stair-geometry.ts';
 import {directoryStairs,reviewedStairConnection,findBuildingRoute} from '../lib/reviter/directory-navigation.ts';
-import {directoryModelFloor,directoryRoomGroup,directoryRoomColor} from '../app/studio/directory-model.ts';
+import {directoryModelFloor,directoryRoomGroup,directoryRoomColor,directoryRoomFocusPoints} from '../app/studio/directory-model.ts';
 import {isWalkable,findDirectoryRoute,parseRoomDirectory,type DirectoryRoom} from '../lib/reviter/room-directory.ts';
 import type {ConvertResult} from '../lib/reviter/types.ts';
 const stair:DirectoryRoom={key:'lower',number:'08-S101',name:'Stair',levelId:1,confidence:1,polygonFeet:[[0,0],[10,0],[10,10],[0,10]],labelPointFeet:[5,5]};
@@ -90,6 +90,11 @@ test('a pin outside a source outline identifies a physical overhead tread withou
  assert.equal(hit.stairElementId,100);assert.equal(hit.runId,101);assert.equal(hit.elevation,5);
  assert.equal(hit.lowLevelId,1);assert.equal(hit.highLevelId,2);assert.equal(hit.overhead,true);
  assert.equal(nativeStairAtPoint(model,1,[15,1]),null);
+ assert.equal(nativeStairAtPoint(model,1,[18.7,1]),null);
+ const near=nativeStairAtPoint(model,1,[18.7,1],.75)!;
+ assert.equal(near.stairElementId,100);assert.ok(Math.abs(near.distanceFeet-.3)<1e-8);
+ assert.equal(nativeStairAtPoint(model,1,[15,1],100),null);
+ assert.equal(nativeStairAtPoint(model,1,[19.5,1],.75)?.distanceFeet,0);
  assert.equal(nativeStairAtPoint({...model,levels:[...model.levels,{levelId:3,elevation:5}]} as ConvertResult,3,[19.5,1]),null);
 });
 
@@ -103,6 +108,29 @@ test('an unrecovered stair retains its review outline without painting a flat fl
  assert.equal(isWalkable(stair),true);assert.deepEqual(directoryStairs(unresolvedModel,[stair,upper]),[]);
  const local=directoryRoomGroup(directoryModelFloor(unresolvedModel,[{...stair,stairAccess:'local-only'}],1,null)!,{x:0,y:0,z:0},null);
  assert.ok(local.children.some(o=>o instanceof THREE.Mesh));
+});
+
+test('a reviewed nearby native flight is visible without filling an unsupported landing or inventing a route',()=>{
+ const nearby={...stair,key:'nearby',polygonFeet:[[22,0],[25,0],[25,10],[22,10]] as [number,number][],labelPointFeet:[23,5] as [number,number],stairFlightIds:[100]};
+ const footprint=directoryStairFootprints(model,[nearby])[0]!;
+ assert.equal(footprint.sourceOverlap,false);assert.equal(footprint.treads.length,3);assert.equal(footprint.areaFeet,9);
+ assert.deepEqual(directoryStairs(model,[stair,{...nearby,levelId:2}]),[]);
+ const group=directoryRoomGroup(directoryModelFloor(model,[nearby],1,null)!,{x:0,y:0,z:0},nearby.key);
+ assert.equal(group.children.filter(m=>m instanceof THREE.Mesh&&!m.userData.stairTreadElementId).length,0);
+ assert.ok(group.children.some(m=>m.userData.flightUnrecovered));
+ assert.ok(group.children.some(m=>m.userData.stairTreadElementId===101));
+ assert.deepEqual(directoryStairFootprints(model,[{...nearby,stairFlightIds:undefined}]),[]);
+ const vestibule={...stair,name:'Vestibule',stairFlightIds:[100],spaceUse:{kind:'hallway' as const,evidence:'user-reported' as const}};
+ assert.equal(directoryStairFootprints(model,[vestibule])[0]!.treads.length,3);
+ const saved={...data([vestibule,upper]),navigation:{version:1,doorLinks:[],stairLinks:[{rooms:['lower','upper']}]}};
+ assert.deepEqual(parseRoomDirectory(JSON.stringify(saved)).navigation?.stairLinks,[{rooms:['lower','upper']}]);
+ const corridor={...stair,key:'corridor',name:'Corridor'};
+ assert.deepEqual(stairRoomsForSelection([vestibule,corridor],vestibule.key),[vestibule]);
+ assert.deepEqual(stairRoomsForSelection([vestibule,corridor],corridor.key),[]);
+ const wideCorridor={...corridor,polygonFeet:[[0,0],[100,0],[100,10],[0,10]] as [number,number][],labelPointFeet:[50,5] as [number,number]};
+ const floor=directoryModelFloor(model,[vestibule,wideCorridor],1,null)!;
+ assert.equal(Math.max(...directoryRoomFocusPoints(floor,vestibule).map(p=>p[0])),20);
+ assert.equal(Math.max(...directoryRoomFocusPoints(floor,wideCorridor).map(p=>p[0])),100);
 });
 
 test('a native slab opening preserves the source label but routes to its supported landing and keeps the shaft empty',()=>{
@@ -130,4 +158,36 @@ test('a native opening masks overlapping source fills and blocks a thin gap even
  const right={...left,key:'right',labelPointFeet:[8,5] as [number,number],floorOpeningsFeet:undefined};
  assert.equal(findDirectoryRoute([left,right],[],'left','right'),null);
  assert.equal(directoryAreas([left,right])[0]!.areaFeet,99);
+});
+
+test('upper-flight context retains complete native projections above a non-stair room without adding floor or routes',async()=>{
+ const {directoryUpperStairContext}=await import('../lib/reviter/directory-stair-geometry.ts');
+ const janitor={...stair,key:'janitor',name:'Janitor'},before=structuredClone(janitor);
+ const context=directoryUpperStairContext(model,[janitor]);
+ assert.equal(context.length,1);assert.deepEqual(context[0]!.roomKeys,['janitor']);
+ assert.deepEqual(context[0]!.treads.map(t=>t.elevation),[9,5]);
+ assert.equal(Math.max(...context[0]!.treads.flatMap(t=>t.polygon.map(p=>p[0]))),20);
+ assert.deepEqual(janitor,before);assert.deepEqual(directoryStairFootprints(model,[janitor]),[]);assert.deepEqual(directoryStairs(model,[janitor,upper]),[]);
+ assert.deepEqual(directoryUpperStairContext(model,[{...janitor,holesFeet:[[[0,0],[3,0],[3,4],[0,4]]]}]),[]);
+});
+test('upper stair context uses recovered split-floor heights and does not associate unrelated upper storeys',async()=>{
+ const {directoryUpperStairContext}=await import('../lib/reviter/directory-stair-geometry.ts');
+ const raisedModel={...model,elementBounds:model.elementBounds.map(r=>({...r,boundsFeet:{min:{...r.boundsFeet.min,z:3.28},max:{...r.boundsFeet.max,z:13.28}},stairTreads:r.stairTreads!.map(t=>t.map(p=>[p[0],p[1],p[2]+3.28] as [number,number,number]) as typeof t)}))};
+ assert.deepEqual(directoryUpperStairContext(raisedModel,[stair]),[]);
+ const context=directoryUpperStairContext(raisedModel,[stair],{lower:{elevation:3.28}});
+ assert.equal(context.length,1);assert.equal(context[0]!.floorElevation,3.28);assert.ok(context[0]!.treads.every(t=>t.elevation>7.38));
+ const unrelated={...raisedModel,elementBounds:raisedModel.elementBounds.map(r=>({...r,boundsFeet:{min:{...r.boundsFeet.min,z:30},max:{...r.boundsFeet.max,z:40}}}))};
+ assert.deepEqual(directoryUpperStairContext(unrelated,[stair],{lower:{elevation:3.28}}),[]);
+});
+
+test('3D upper-flight context draws outlines at native heights without adding floor meshes',async()=>{
+ const {directoryUpperStairContext}=await import('../lib/reviter/directory-stair-geometry.ts');
+ const janitor={...stair,key:'janitor',name:'Janitor'},floor=directoryModelFloor(model,[janitor],1,null)!;
+ const original=directoryRoomGroup(floor,{x:0,y:0,z:0},null);
+ const context=directoryUpperStairContext(model,[janitor]);
+ const group=directoryRoomGroup({...floor,upperStairContext:context},{x:0,y:0,z:0},null);
+ assert.equal(group.children.filter(o=>o instanceof THREE.Mesh).length,original.children.filter(o=>o instanceof THREE.Mesh).length);
+ const lines=group.children.filter(o=>o.userData.upperStairContext) as THREE.Line[];
+ assert.equal(lines.length,2);assert.deepEqual(lines.map(l=>Number(l.geometry.getAttribute('position').getZ(0).toFixed(2))),[9.2,5.2]);
+ assert.ok(lines.every(l=>l.userData.stairElementId===100&&l.userData.runId===101));
 });

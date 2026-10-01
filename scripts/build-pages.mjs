@@ -77,6 +77,11 @@ await Promise.all([
     entryPoints: [resolve(projectRoot, "app/studio/floor-regions.worker.ts")],
     outfile: resolve(assetsDirectory, "floor-regions-worker-runtime.js"),
   }),
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "lib/reviter/indoor-worker.ts")],
+    outfile: resolve(assetsDirectory, "indoor-worker-runtime.js"),
+  }),
   cp(resolve(projectRoot, "public"), outputDirectory, { recursive: true }),
 ]);
 

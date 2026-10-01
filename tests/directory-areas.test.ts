@@ -70,3 +70,34 @@ test('a reviewed lower atrium lounge stays associated but cannot create a flat r
   const portal:RoomPortal={doorId:1,rooms:['west','sunken'],point:[5,5],from:[4.9,5],to:[5.1,5],halfWidth:1,halfHeight:1};assert.equal(findDirectoryRoute(rs,[portal],'west','sunken',elevations),null);
   const voidRoom={...rs[1]!,walkability:'void' as const};assert.equal(directoryAreas([voidRoom],elevations)[0]!.kind,'room');assert.equal(findDirectoryRoute([rs[0]!,voidRoom],[],'west','sunken',elevations),null);
 });
+
+test('circulation filter includes reported access without absorbing named rooms or creating routes',async()=>{
+  const {reportedCirculationRoomKeys}=await import('../lib/reviter/directory-areas.ts');
+  const rs=[room('hall','Corridor',0,5),room('print','Print',7,12),room('storage','Storage',14,19),room('office','Office',21,26),room('unrelated','Office',28,33)];
+  const reports:AreaRelationship[]=[{rooms:['storage','print'],kind:'access',evidence:'user-reported'},{rooms:['hall','print'],kind:'access',evidence:'user-reported'},{rooms:['office','storage'],kind:'access',evidence:'user-reported'}];
+  const areas=directoryAreas(rs),before=structuredClone(areas);
+  assert.deepEqual(reportedCirculationRoomKeys(areas,reports),new Set(['hall','print','storage','office']));
+  assert.deepEqual(areas,before);assert.equal(areas.find(a=>a.roomKeys.includes('storage'))!.kind,'room');
+  assert.equal(findDirectoryRoute(rs,[],'hall','storage'),null);
+});
+test('reported circulation display retains local rises and excludes voids and unrelated native levels',async()=>{
+  const {reportedCirculationRoomKeys}=await import('../lib/reviter/directory-areas.ts');
+  const rs=[room('hall','Corridor',0,5),room('rotunda','Rotunda',6,10),{...room('void','Rotunda',12,16),walkability:'void' as const},room('upper','Office',18,22,43)];
+  const reports:AreaRelationship[]=['rotunda','void','upper'].map(k=>({rooms:['hall',k],kind:'access',evidence:'user-reported'}));
+  assert.deepEqual(reportedCirculationRoomKeys(directoryAreas(rs,{rotunda:{elevation:3.28}}),reports),new Set(['hall','rotunda']));
+});
+
+test('staff circulation retains walkable geometry but cannot join public fills or routes',()=>{
+  const staff={...room('staff','Corridor',5,10),access:{kind:'staff' as const,evidence:'user-reported' as const}};
+  const rs=[room('west','Corridor',0,5),staff,room('east','Corridor',10,15)],before=structuredClone(rs),areas=directoryAreas(rs);
+  assert.equal(areas.find(a=>a.roomKeys.includes('staff'))!.kind,'room');
+  assert.deepEqual(areas.find(a=>a.kind==='hallway')!.roomKeys,['west','east']);
+  assert.equal(areas.find(a=>a.kind==='hallway')!.polygons.length,2);
+  const portal=(doorId:number,a:string,b:string):RoomPortal=>({doorId,rooms:[a,b],point:[doorId===1?5:10,5],from:[doorId===1?4:9,5],to:[doorId===1?6:11,5],halfWidth:1,halfHeight:1});
+  assert.equal(findDirectoryRoute(rs,[portal(1,'west','staff'),portal(2,'staff','east')],'west','east'),null);
+  assert.equal(findDirectoryRoute(rs,[],'staff','staff'),null);assert.deepEqual(rs,before);
+  const data={format:'reviter-room-annotations',version:1,coordinateSystem:'revit-model-feet',model:{fileName:'model.rvt'},annotations:rs,accessReviewLocations:[{building:'10',levelId:42,point:[20,5],kind:'staff',evidence:'user-reported'}]};
+  assert.deepEqual(parseRoomDirectory(JSON.stringify(data)),data);
+  assert.throws(()=>parseRoomDirectory(JSON.stringify({...data,annotations:[{...staff,access:{kind:'staff',evidence:'native'}}]})));
+  assert.throws(()=>parseRoomDirectory(JSON.stringify({...data,accessReviewLocations:[{...data.accessReviewLocations[0],point:[null,5]}]})));
+});

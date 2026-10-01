@@ -187,7 +187,7 @@ export function MobileShell({
           <strong>{fileName}</strong>
           <span role="status">{statusLine}</span>
         </div>
-        <button type="button" aria-label="Open model and rooms" title="Select a Revit model and its rooms JSON together" onClick={onOpenModel}><FolderOpen size={16} aria-hidden /></button>
+        <button type="button" aria-label="Open model and rooms" title="Open a Reviter project ZIP, or a Revit model and its rooms JSON together" onClick={onOpenModel}><FolderOpen size={16} aria-hidden /></button>
         <button type="button" aria-label="Toggle theme" onClick={onTheme}>{themeIcons}</button>
       </header>
 

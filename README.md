@@ -114,6 +114,10 @@ colab --auth=oauth2 run \
 
 ## Local utility workspace
 
+The [UNBC campus map review](docs/unbc-campus-map-review.md) records the reviewed
+circulation, split levels, stairs, public access decisions, interface workflow
+and unresolved geometry checks.
+
 The Revit picker accepts **one model and one room annotations JSON together**,
 in either order. You can also drop both files onto the app. After conversion,
 Reviter opens **Building directory** and imports the room file automatically.
@@ -121,13 +125,17 @@ The folder button in the narrow model header opens the same picker. A room JSON
 can also be selected by itself when its matching model is already open.
 
 In **Building directory**, choose a floor and use **Show this floor in 3D**.
-Choose **Campus map** or **All buildings** to combine mapped buildings at a
-shared native Revit level. **Previous level** and **Next level** step through
-the imported levels; building buttons focus the map without leaving campus
+Choose **Campus map** or **All buildings** to combine mapped buildings by
+campus storey. A reviewed `campusStoreys` group in the room directory can place
+several native Revit levels in one view; ungrouped levels keep their own views.
+**Previous level** and **Next level** step through
+these views; building buttons focus the map without leaving campus
 scope. Room selection keeps its building metadata, reviewed geometry and
 actual slab height. The same combined level can be shown in 3D. Missing source
 plans remain visible in source coverage, and local building crossings do not
 imply a complete route through the campus.
+Storey grouping is display metadata: room level IDs, source boundaries, native
+heights, door reviews and stair links remain intact on import and export.
 The viewer frames its room footprint and cuts away geometry above the selected
 level, with a slider for cut height. Room, hallway, and staircase colors match
 the map; enclosed holes remain open. On split levels, room surfaces use the
@@ -531,3 +539,25 @@ The crossing check samples native tread/floor support and rejects surface gaps, 
 Reviewed local steps and their landings use green circulation coloring in both map and 3D. For an upward-flight-only review, native runs terminating at this floor are local steps; the upward storey flight keeps purple. The stair-flight map toggle hides flights while retaining reviewed local floor steps. Native heights and tread shapes are preserved.
 
 The 2D stair overlay uses the same four-foot plan cut as the architectural map, hiding overhead-flight treads while retaining reviewed local downward steps. Wheel zoom accumulates pending deltas at the cursor, normalizes pixel/line/page scrolling, paints the SVG view once per animation frame, and commits room/label overlays after the gesture settles. Reset, selection and drag controls cancel any pending wheel gesture.
+
+### Georeferencing a campus model
+
+In **Floors → Building directory**, choose **Georeference model**. Double-click an identifiable corner or survey marker on the Revit plan, select **Use picked model location**, then click its corresponding location on the geographic map or enter surveyed WGS84 latitude/longitude. Add at least two point pairs; three or more points spread across the campus provide a better alignment check.
+
+The preview registers shared model X/Y coordinates using rotation and translation at 0.3048 metres per Revit foot. **Fit scale from reference points** also estimates scale. Per-point residuals and RMS error compare the selected pairs; map or survey accuracy is separate. The campus-scale local east/north registration preserves original model coordinates, native levels and elevations; it does not assign a vertical survey datum or modify the RVT file.
+
+Reference points can be edited, imported and exported independently, and **Export rooms with edits** includes them with floor reviews. **Export campus GeoJSON** outputs room boundaries and source identities in longitude/latitude. The optional OpenStreetMap basemap fetches visible tiles directly in the browser; model files and point pairs are processed locally.
+
+After pairing reference points, **Show 3D model on map** places the recovered Revit geometry on the optional basemap. Orbit, pan, zoom, or select a north-up top view. **Selected floor cutaway** removes geometry above the selected storey; **Selected floor colors** preserves the reviewed room/circulation surfaces. Change the floor in the directory to compare storeys at the same geographic registration. The model keeps native vertical dimensions even with a fitted horizontal scale. **Map plane elevation** is a display datum in model feet; the basemap is flat and does not represent surveyed terrain or a vertical coordinate system.
+
+### Portable project ZIP
+
+In **Floors → Building directory**, use **Export project ZIP** to download one `.reviter.zip` with the original Revit file, complete room annotations (boundaries, shared circulation, doors, stairs, access reviews, building connections and source provenance), and GIS reference points. The existing **Export rooms with edits** JSON also retains georeferencing, but does not contain the Revit model.
+
+Use **Import project ZIP**, the main Open button, or drag the ZIP into Reviter. Import validates the versioned `manifest.json` and SHA-256 hashes before loading the original model and the reviewed floors together. Model geometry is recovered from the source again; model coordinates and native elevations remain unchanged. The archive includes `model/<original filename>`, `floors/rooms.json`, and, when assigned, `gis/reference-points.json`. Packages remain local. Basemap tiles, browser caches, viewer camera state and separate model comment/markup sidecars are not included.
+
+Version 1 supports a Revit source up to 512 MB, floor JSON up to 64 MB and a ZIP up to 580 MB. Reference points may still be incomplete or require review; saving a package preserves their exact values without claiming survey accuracy.
+
+### OpenIndoorMaps project pipeline
+
+Use **Prepare OpenIndoorMaps project** in the building directory to export a version 2 ZIP with GIS-aligned floor maps, an evidence-backed routing graph and a recovered GLB scene. Import it at OpenIndoorMaps `/projects/indoor`, test routes, review area/connection metadata, and export the reviewed project. The same compiler is available through `npm run indoor:prepare`. See [the complete repeatable workflow](docs/indoor-project-pipeline.md) for input preparation, commands, schema, validation and the UNBC pilot limitations.

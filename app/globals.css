@@ -2413,6 +2413,21 @@ button[data-reason]:focus-visible::after {
 .directory-campus-buildings { display: flex; flex-wrap: wrap; gap: 6px; }
 .directory-campus-buildings button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 11px; }
 .directory-campus-buildings span { font: 9px var(--mono); color: var(--text-3); }
+.campus-floor-editor { display: flex; flex-direction: column; flex: 0 1 auto; max-height: min(60vh, 480px); min-height: 250px; overflow: hidden; padding: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.campus-floor-editor header { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.campus-floor-editor h2 { margin: 0 0 6px; font-size: 15px; }
+.campus-floor-editor p { margin: 6px 0; color: var(--text-2); }
+.campus-floor-fields, .campus-floor-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0; }
+.campus-floor-fields label { display: flex; flex: 1 1 220px; flex-direction: column; gap: 5px; }
+.campus-floor-fields input, .campus-floor-fields select { width: 100%; padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--line); }
+.campus-floor-editor fieldset { min-height: 0; overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--line); }
+.campus-floor-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 6px; }
+.campus-floor-level { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--line); cursor: pointer; }
+.campus-floor-level > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.campus-floor-level input { margin-top: 2px; }
+.campus-floor-plans { color: var(--text-3); font-size: 10px; }
+.campus-floor-level.assigned-elsewhere { opacity: .65; cursor: default; }
+.campus-floor-editor [role="alert"] { color: #db697d; }
 .directory-campus-label { fill: #334e57; stroke: #f5f8fa; stroke-width: .7; paint-order: stroke; font-weight: 700; cursor: pointer; }
 .mobile-viewport .viewer-tool-panel { bottom: 74px; max-width: calc(100% - 28px); max-height: calc(100% - 88px); overflow: auto; }
 .mobile-floor-review { width: 100%; }
@@ -2498,3 +2513,49 @@ button[data-reason]:focus-visible::after {
 .directory-source-coverage article { padding: 8px 0; border-top: 1px solid var(--line); }
 .directory-section-picker { display: flex; gap: 8px; align-items: center; }
 .directory-section-picker select { max-width: 280px; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); font: inherit; }
+
+/* Keep architectural context when showing only identified circulation. */
+.directory-room.directory-room-outline,
+.directory-adjoining-room.directory-room-outline { fill: transparent; fill-opacity: 1; stroke: #a4afb9; stroke-width: .65px; stroke-dasharray: none; vector-effect: non-scaling-stroke; }
+.directory-room.directory-room-outline.selected,
+.directory-room.directory-room-outline:focus,
+.directory-adjoining-room.directory-room-outline:focus { fill: transparent; stroke: #087d7b; stroke-width: 2px; outline: none; }
+.directory-wall-reference.directory-wall-context path { stroke: #85929f; stroke-width: .8px; }
+
+.directory-legend i.reported-access { background: #d5eae5; }
+
+.directory-upper-stair-context path { fill: #dfeaf3; fill-opacity: .9; stroke: #79579e; stroke-width: 1px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+
+.directory-legend i.upper-flight { background: #dfeaf3; border: 1px dashed #79579e; }
+
+.geo-workspace { margin: 12px 0; padding: 16px; border: 1px solid var(--line); background: var(--bg); }
+.geo-workspace header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 14px; }
+.geo-workspace h2 { margin: 0 0 6px; font-size: 18px; }
+.geo-workspace p { font-size: 12px; line-height: 1.5; }
+.geo-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(250px, .65fr); gap: 20px; }
+.geo-map-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+.geo-map-controls label, .geo-point-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.geo-map-controls label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+.geo-workspace input:not([type="checkbox"]), .geo-workspace select { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 7px; min-width: 0; width: 100%; }
+.geo-map-controls input:not([type="checkbox"]) { max-width: 155px; }
+.geo-map { position: relative; border: 1px solid var(--line); }
+.geo-map svg { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+.geo-attribution { position: absolute; right: 0; bottom: 0; padding: 3px 6px; color: #203e54; background: rgba(255,255,255,.95); font-size: 11px; }
+.geo-model-overlay path { fill: #36a6a3; fill-opacity: .22; stroke: #087d7b; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.geo-point-form { display: grid; gap: 10px; }
+.geo-coordinate-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.geo-method { display: block; margin-top: 16px; font-size: 12px; }
+.geo-alignment { border: 1px solid var(--line); padding: 10px; font-size: 12px; }
+.geo-reference-table { overflow-x: auto; margin-top: 16px; }
+.geo-reference-table table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.geo-reference-table th, .geo-reference-table td { padding: 8px; border-bottom: 1px solid var(--line); }
+@media (max-width: 900px) { .geo-layout { grid-template-columns: 1fr; } .geo-workspace header { flex-wrap: wrap; } }
+
+.geo-source-plan { background: #f5f8fa; }
+.geo-source-plan svg { aspect-ratio: 800 / 460; }
+
+.geo-3d-workspace { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.geo-3d-workspace h3 { margin: 0 0 12px; font-size: 17px; }
+.geo-3d-map { position: relative; border: 1px solid var(--line); }
+.geo-3d-canvas { height: clamp(350px, 65vh, 700px); width: 100%; touch-action: none; }
+.geo-3d-canvas canvas { display: block; width: 100%; height: 100%; }

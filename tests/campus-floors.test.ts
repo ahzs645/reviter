@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import pc from "polygon-clipping";
-import { campusFloors, campusFloorLabel } from "../lib/reviter/campus-floors.ts";
-import { directoryModelFloor, directoryRoomGroup, landingWithoutTreads } from "../app/studio/directory-model.ts";
-import { roomArea, type DirectoryRoom } from "../lib/reviter/room-directory.ts";
+import { campusFloors, campusFloorLabel, saveCampusStorey, ungroupCampusStorey } from "../lib/reviter/campus-floors.ts";
+import { directoryModelFloor, directoryModelStorey, directoryFloorPlanes, directoryRoomGroup, landingWithoutTreads } from "../app/studio/directory-model.ts";
+import { roomArea, parseRoomDirectory, findDirectoryRoute, type DirectoryRoom } from "../lib/reviter/room-directory.ts";
+import * as THREE from "three";
 import type { ConvertResult } from "../lib/reviter/types.ts";
 
 const room = (building: string, levelId: number, x: number, name = "Corridor"): DirectoryRoom => ({
@@ -33,6 +34,63 @@ test("same-height native levels and differently numbered source plans are not me
   const floors = campusFloors([a,b,room("08",1487816,30)], levels.map(l=>({...l,elevation:0})));
   assert.equal(floors.length, 2);
   assert.deepEqual(floors.find(f=>f.levelId===311)!.buildings.map(b=>b.sections), [["05 Libr LVL 1"],["07 Agora LVL 1N"]]);
+});
+
+test("a reported campus storey groups split native levels without losing records or creating a flat route", () => {
+  const rooms=[room("05",311,0),room("08",1487816,11),room("10",1487816,22),room("05",694,0)];
+  const review={id:"campus-floor-1",name:"Campus Floor 1",levelIds:[311,1487816],evidence:"user-reported" as const};
+  const before=JSON.stringify(rooms);
+  const catalog=campusFloors(rooms,levels,[review]);
+  assert.deepEqual(catalog.map(f=>f.levelId),[311,694]);
+  assert.deepEqual(catalog[0]!.levelIds,[311,1487816]);
+  assert.equal(catalog[0]!.records,3);
+  assert.deepEqual(catalog[0]!.buildings.map(b=>b.building),["05","08","10"]);
+  assert.equal(campusFloorLabel(catalog[0]!),"Campus Floor 1 · 0.00 / 3.28 ft · #311 + #1487816 · 3 buildings");
+  const floor=directoryModelStorey({levels},rooms,catalog[0]!.levelIds,null,catalog[0]!.name)!;
+  assert.equal(floor.rooms.length,3);
+  assert.deepEqual(floor.areas.map(a=>a.levelId),[311,1487816,1487816]);
+  assert.equal(floor.roomElevations[rooms[1]!.key]!.elevation,3.28);
+  assert.equal(floor.cutBaseElevation,3.28);
+  assert.equal(findDirectoryRoute(floor.rooms,[],rooms[0]!.key,rooms[1]!.key,floor.roomElevations),null);
+  const cut=directoryFloorPlanes(floor,{x:0,y:0,z:0},4);
+  assert.ok(cut.every(p=>p.distanceToPoint(new THREE.Vector3(16,5,6))>=0),"Upper local level is inside the storey cut");
+  assert.ok(cut.some(p=>p.distanceToPoint(new THREE.Vector3(16,5,8))<0),"Higher storey remains cut away");
+  assert.equal(JSON.stringify(rooms),before);
+});
+
+test("campus storey reviews survive import/export and reject duplicate or nonexistent native levels", () => {
+  const data={format:"reviter-room-annotations",version:1,coordinateSystem:"revit-model-feet",model:{fileName:"campus.rvt"},annotations:[room("05",311,0),room("08",1487816,11)],campusStoreys:[{id:"floor-1",name:"Campus Floor 1",levelIds:[311,1487816],evidence:"user-reported"}]};
+  const parsed=parseRoomDirectory(JSON.stringify(data));
+  assert.deepEqual(parseRoomDirectory(JSON.stringify(parsed)).campusStoreys,data.campusStoreys);
+  assert.deepEqual(parsed.annotations,data.annotations);
+  for(const ids of [[311,311],[311,999]])assert.throws(()=>parseRoomDirectory(JSON.stringify({...data,campusStoreys:[{...data.campusStoreys[0],levelIds:ids}]})),/native level|existing native levels/);
+  assert.throws(()=>parseRoomDirectory(JSON.stringify({...data,campusStoreys:[...data.campusStoreys,{id:"other",name:"Other",levelIds:[311,1487816],evidence:"user-reported"}]})),/only one campus storey/);
+});
+
+test("editing shared campus assignments preserves all reviews and native geometry across export, release and ungroup", () => {
+  const data = parseRoomDirectory(JSON.stringify({format:"reviter-room-annotations",version:1,coordinateSystem:"revit-model-feet",model:{fileName:"campus.rvt"},annotations:[room("05",311,0),room("08",1487816,11),room("05",694,0)],
+    navigation:{version:1,doorLinks:[]},areaMetadata:{},reviewNote:"Preserve unrelated review fields"}));
+  const before = JSON.stringify(data);
+  const created = saveCampusStorey(data,{id:"floor-1",name:"  Campus Floor 1  ",levelIds:[311,1487816],evidence:"user-reported"});
+  assert.equal(created.campusStoreys![0]!.name,"Campus Floor 1");
+  assert.equal(created.annotations,data.annotations);
+  assert.equal(created.navigation,data.navigation);
+  assert.equal(created.reviewNote,data.reviewNote);
+  const imported = parseRoomDirectory(JSON.stringify(created));
+  assert.deepEqual(imported.annotations,data.annotations);
+  assert.deepEqual(campusFloors(imported.annotations,levels,imported.campusStoreys)[0]!.nativeLevels,[{levelId:311,elevation:0},{levelId:1487816,elevation:3.28}]);
+  assert.throws(()=>saveCampusStorey(created,{id:"other",name:"Other",levelIds:[311,694],evidence:"user-reported"}),/only one/);
+  for (const ids of [[311],[311,311],[311,999]]) assert.throws(()=>saveCampusStorey(created,{id:"floor-1",name:"Floor 1",levelIds:ids,evidence:"user-reported"}));
+  assert.throws(()=>saveCampusStorey(created,{id:"floor-1",name:" ",levelIds:[311,1487816],evidence:"user-reported"}));
+  const edited = saveCampusStorey(created,{id:"floor-1",name:"Renamed floor",levelIds:[311,694],evidence:"user-reported"});
+  assert.equal(edited.campusStoreys!.length,1);
+  assert.deepEqual(campusFloors(edited.annotations,levels,edited.campusStoreys).map(g=>g.levelIds),[[311,694],[1487816]]);
+  const split = ungroupCampusStorey(edited,"floor-1");
+  assert.deepEqual(parseRoomDirectory(JSON.stringify(split)).campusStoreys,[]);
+  assert.deepEqual(campusFloors(split.annotations,levels,split.campusStoreys).map(g=>g.levelIds),[[311],[1487816],[694]]);
+  assert.equal(split.annotations,data.annotations);
+  assert.equal(split.navigation,data.navigation);
+  assert.equal(JSON.stringify(data),before);
 });
 
 test("combined 3D floor retains building areas, native slab heights and shaft openings", () => {
