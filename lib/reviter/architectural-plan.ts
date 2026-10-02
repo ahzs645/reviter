@@ -1,3 +1,5 @@
+import { recoverNativeCurtainOpenings } from './native-curtain-openings.ts';
+import { routingFloorPlateRecords } from "./routing-floor-support.ts";
 /** Architectural plan composition from persisted, level-aware RVT geometry. */
 import polygonClipping from "polygon-clipping";
 import { cachedDerivedRoomsForLevel, type DerivedRoomResult } from "./derived-rooms.ts";
@@ -442,6 +444,12 @@ function wallPolygon(solid: WallSolid, corners?: WallCornerOverrides): Point2[] 
   ];
 }
 
+/** A physical slice retains the persisted native join faces, including angled
+ * end caps. Reconstructing these as centre-line rectangles opens wall seams. */
+export function nativeWallSolidPolygon(solid: WallSolid): Point2[] {
+  return wallPolygon(solid);
+}
+
 export type ArchitecturalFootprint = { elementId: number; polygon: Point2[]; approximate: boolean };
 export type ArchitecturalPlanGeometry = {
   walls: ArchitecturalFootprint[];
@@ -454,9 +462,13 @@ export type ArchitecturalPlanGeometry = {
 /** The directory and room reconstruction use the same wall faces as the plan renderer. */
 export function architecturalPlanGeometry(result: ConvertResult, levelId: number): ArchitecturalPlanGeometry {
   const plan = recordsForLevel(result, levelId, false);
-  const miters = miteredWallCorners(wallSolids(plan.wallRecords));
-  const walls: ArchitecturalFootprint[] = [];
+  const curtainOpenings = recoverNativeCurtainOpenings(result, plan.cutElevation);
+  const replacedHosts = new Set(curtainOpenings.map(opening => opening.hostId));
+  const memberIds = new Set(curtainOpenings.flatMap(opening => opening.memberIds));
+  const miters = miteredWallCorners(wallSolids(plan.wallRecords.filter(record => !replacedHosts.has(record.elementId))));
+  const walls: ArchitecturalFootprint[] = curtainOpenings.flatMap(opening => opening.barriers);
   for (const record of plan.wallRecords) {
+    if (replacedHosts.has(record.elementId) || memberIds.has(record.elementId)) continue;
     const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
     for (const solid of solids) if (solid.baseElevation - .1 <= plan.cutElevation && solid.topElevation + .1 >= plan.cutElevation) {
       const polygon = wallPolygon(solid, miters.get(solid));
@@ -484,8 +496,11 @@ export function architecturalPlanGeometry(result: ConvertResult, levelId: number
   const footprints = (records: readonly ElementBoundsRecord[]) => records.map((record) => ({
     elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: !record.orientedBox,
   }));
-  return { walls, doors: footprints(plan.doorRecords), columns: footprints(plan.columnRecords),
-    floors: plan.floorRecords.map((record) => (record.loops ?? []).map((loop) => loop.map(xy))), cutElevation: plan.cutElevation };
+  return { walls, doors: footprints(plan.doorRecords).map(door => {
+    const opening = curtainOpenings.find(opening => opening.doorId === door.elementId);
+    return opening ? {...door, polygon: opening.apertureFeet, approximate: false} : door;
+  }), columns: footprints(plan.columnRecords),
+    floors: [...new Map([...plan.floorRecords, ...routingFloorPlateRecords(result, plan.elevation)].map(record => [record.elementId, record])).values()].map((record) => (record.loops ?? []).map((loop) => loop.map(xy))), cutElevation: plan.cutElevation };
 }
 
 const MITER_JUNCTION_TOLERANCE_FEET = 0.25;

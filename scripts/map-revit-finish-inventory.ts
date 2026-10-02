@@ -1,0 +1,14 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { readProjectPackage } from '../lib/reviter/project-package.ts';
+import { mapRevitFinishInventory } from '../lib/reviter/revit-finish-inventory.ts';
+const args = process.argv.slice(2);
+const option = (name: string) => args[args.indexOf(name) + 1];
+for (const name of ['--project', '--inventory', '--mapping', '--out']) if (!args.includes(name) || !option(name) || option(name).startsWith('--')) throw Error('Usage: node --experimental-strip-types scripts/map-revit-finish-inventory.ts --project prepared.reviter.zip --inventory reviter-finish-inventory.json --mapping room-mapping.json --out finish-boundaries.json');
+const output = resolve(option('--out'));
+if (['--project', '--inventory', '--mapping'].some(name => resolve(option(name)) === output)) throw Error('Use a separate output path.');
+const project = await readProjectPackage(new Uint8Array(await readFile(option('--project'))));
+const result = mapRevitFinishInventory(JSON.parse(await readFile(option('--inventory'), 'utf8')), JSON.parse(await readFile(option('--mapping'), 'utf8')), project.rooms, project.manifest.model.sha256);
+await writeFile(output, JSON.stringify(result.input, null, 2), { flag: 'wx' });
+await writeFile(output + '.mapping-review.json', JSON.stringify({ ...result, input: undefined }, null, 2), { flag: 'wx' });
+console.log(`Mapped ${result.mappedRooms}/${result.inventoryRooms} native rooms and ${result.mappedDoors} door relationships. ${result.diagnostics.length} unresolved entries. Apply through indoor:prepare --semantic-boundaries to perform full geometry validation and graph regeneration.`);

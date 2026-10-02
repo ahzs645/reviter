@@ -1,9 +1,11 @@
+import {validateIndoorConnectorReview, type IndoorConnectorReview} from "./indoor-connectors.ts";
 import type { DirectoryNavigation } from "./directory-navigation.ts";
 import type { BoundaryReference } from "./room-boundaries.ts";
 import type { AreaMetadata, AreaRelationship } from "./directory-areas.ts";
 import type {ReportedBuildingTransition} from "./building-transitions.ts";
 import {validateCampusStoreys, type CampusStoreyReview} from "./campus-floors.ts";
 import {validateGeoreference,type ModelGeoreference} from "./georeference.ts";
+import {validateVisitorMetadata, type VisitorMetadata} from "./visitor-metadata.ts";
 /** Room annotations stay in model feet; boundaries and original provenance survive export. */
 export type RoomPoint = [number, number];
 export type DirectoryRoom = {
@@ -24,6 +26,8 @@ export type DirectoryRoom = {
   stairAccessNotes?: string;
   /** Reviewed native flight coverage; nearby context alone cannot create a route. */
   stairFlightIds?: number[];
+  /** Reviewed native steps within a shared room; display does not classify the whole room as stairs. */
+  stairDisplayOnlyFlightIds?: number[];
   /** Reviewed navigation arrival, distinct from the original drawing label. */
   routePointFeet?: RoomPoint;
   /** Native slab openings exclude flat floor; recovered flight treads keep their own height. */
@@ -43,17 +47,19 @@ export type RoomDirectoryData = {
   georeference?:ModelGeoreference;
   boundaryReference?: BoundaryReference;
   navigation?: DirectoryNavigation;
+  indoorConnectors?: IndoorConnectorReview;
   areaMetadata?: Record<string, AreaMetadata>;
   areaRelationships?: AreaRelationship[];
   buildingTransitions?: ReportedBuildingTransition[];
   campusStoreys?: CampusStoreyReview[];
+  visitorMetadata?: VisitorMetadata;
   /** A reported restriction at an unassigned pin does not invent an area boundary. */
   accessReviewLocations?: {building:string;levelId:number;point:RoomPoint;kind:"staff";evidence:"user-reported";notes?:string}[];
   sourceCoverage?: { sourceSha256: string; omittedSheets: { building: string; sectionId: string; labelCount: number; reason: string }[] };
   [key: string]: unknown;
 };
 export type DirectoryDoor = { id: number; point: RoomPoint; halfWidth: number; halfHeight: number; footprint?: RoomPoint[]; normal?: RoomPoint };
-export type RouteOpening = { rooms: [string, string]; point: RoomPoint; from: RoomPoint; to: RoomPoint; halfWidth: number; halfHeight: number; footprint?: RoomPoint[] };
+export type RouteOpening = { normal?: RoomPoint; rooms: [string, string]; point: RoomPoint; from: RoomPoint; to: RoomPoint; halfWidth: number; halfHeight: number; footprint?: RoomPoint[] };
 export type RoomPortal = RouteOpening & {doorId:number; reviewed?:boolean};
 const point = (p: unknown): p is RoomPoint => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) < 1e7);
 
@@ -103,6 +109,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
       || (room.access != null && (!room.access || !["public","staff"].includes(room.access.kind) || room.access.evidence !== "user-reported" || room.access.notes != null && (typeof room.access.notes !== "string" || room.access.notes.length > 10000)))
       || (room.stairAccess != null && !["unreviewed", "flight-and-landing", "up-flight-only", "local-only"].includes(room.stairAccess))
       || (room.stairFlightIds != null && (!Array.isArray(room.stairFlightIds) || room.stairFlightIds.length > 100 || new Set(room.stairFlightIds).size !== room.stairFlightIds.length || room.stairFlightIds.some(id=>!Number.isSafeInteger(id)||id<=0)))
+      || (room.stairDisplayOnlyFlightIds != null && (!Array.isArray(room.stairDisplayOnlyFlightIds) || room.stairDisplayOnlyFlightIds.length > 100 || new Set(room.stairDisplayOnlyFlightIds).size !== room.stairDisplayOnlyFlightIds.length || room.stairDisplayOnlyFlightIds.some(id=>!Number.isSafeInteger(id)||id<=0)))
       || (room.stairAccessNotes != null && (typeof room.stairAccessNotes !== "string" || room.stairAccessNotes.length > 10000))
       || (room.circulationGroup != null && typeof room.circulationGroup !== "string")
       || (room.holesFeet != null && (!Array.isArray(room.holesFeet) || room.holesFeet.length > 1000 || room.holesFeet.some((h) => !Array.isArray(h) || h.length < 3 || h.length > 20000 || !h.every(point))))
@@ -125,6 +132,8 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     }
     keys.add(room.key);
   }
+  if (data.visitorMetadata != null) validateVisitorMetadata(data.visitorMetadata,
+    data.annotations.filter(r => r.status !== "deleted").map(r => ({key: r.key, building: roomBuilding(r)})));
   if(data.accessReviewLocations!=null&&(!Array.isArray(data.accessReviewLocations)||data.accessReviewLocations.length>1000||data.accessReviewLocations.some(r=>!r||typeof r.building!=="string"||!r.building.trim()||!Number.isSafeInteger(r.levelId)||!point(r.point)||r.kind!=="staff"||r.evidence!=="user-reported"||r.notes!=null&&(typeof r.notes!=="string"||r.notes.length>10000))))throw new Error("Access review pins need a building, native level, model point and reported restriction.");
   if(data.campusStoreys!=null) validateCampusStoreys(data.campusStoreys, data.annotations);
   if(data.buildingTransitions!=null){
@@ -154,6 +163,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     const pairs=new Set<string>();
     for(const link of links){const [a,b]=link.rooms.map(key=>data.annotations.find(r=>r.key===key)!);const key=[...link.rooms].sort().join(":");if(a!.levelId===b!.levelId || roomBuilding(a!)!==roomBuilding(b!) || ![a,b].every(r=>/\bstair(?:s|case|well)?\b/i.test(r!.name??"")||!!r!.stairFlightIds?.length) || pairs.has(key))throw new Error("Stair connections must join different floors of one building without duplicate pairs.");pairs.add(key);}
   }
+  if(data.indoorConnectors !== undefined) validateIndoorConnectorReview(data.indoorConnectors);
   return data;
 }
 
@@ -269,7 +279,7 @@ export function roomPortals(rooms: readonly DirectoryRoom[], doors: readonly Dir
       if(sa>.05&&sb>.05 || sa<-.05&&sb<-.05)continue;
     }
     portals.push({ doorId: door.id, rooms: [a!.room.key, b!.room.key], point: door.point,
-      from: a!.point, to: b!.point, halfWidth: door.halfWidth, halfHeight: door.halfHeight, footprint: door.footprint });
+      from: a!.point, to: b!.point, halfWidth: door.halfWidth, halfHeight: door.halfHeight, footprint: door.footprint, normal: door.normal });
   }
   return portals;
 }
@@ -289,19 +299,47 @@ export function nativeRouteBlocker(barriers:DirectoryRouteBarriers|undefined, op
       const key=`${x}:${y}`;if(!bins.has(key))bins.set(key,[]);bins.get(key)!.push(item);
     }
   }
-  const door=(p:RoomPoint)=>openings.some(o=>o.footprint&&containsRoomPoint(p,o.footprint));
+  const doorBins=new Map<string,RoomPoint[][]>();
+  for(const o of openings){
+    if(!o.footprint)continue;
+    const xs=o.footprint.map(p=>p[0]),ys=o.footprint.map(p=>p[1]);
+    for(let x=Math.floor(Math.min(...xs)/size);x<=Math.floor(Math.max(...xs)/size);x++)for(let y=Math.floor(Math.min(...ys)/size);y<=Math.floor(Math.max(...ys)/size);y++){
+      const key=`${x}:${y}`;if(!doorBins.has(key))doorBins.set(key,[]);doorBins.get(key)!.push(o.footprint);
+    }
+  }
+  // Closed native aperture boundaries include exact host/door contacts. The
+  // tiny comparison tolerance handles roundoff in rotated model coordinates;
+  // persisted polygons stay unchanged and intervals outside them still block.
+  const door=(p:RoomPoint)=>(doorBins.get(`${Math.floor(p[0]/size)}:${Math.floor(p[1]/size)}`)??[]).some(r=>containsRoomPoint(p,r)||nearestRoomBoundary(p,r).distance<=1e-8);
   return (a:RoomPoint,b:RoomPoint)=>{
-    const candidates=new Set<{polygon:RoomPoint[];wall:boolean}>();
+    const candidates=new Set<{polygon:RoomPoint[];wall:boolean}>(),apertures=new Set<RoomPoint[]>();
     // Portal checks can span several bins; consider the entire segment envelope.
-    for(let x=Math.floor(Math.min(a[0],b[0])/size);x<=Math.floor(Math.max(a[0],b[0])/size);x++)for(let y=Math.floor(Math.min(a[1],b[1])/size);y<=Math.floor(Math.max(a[1],b[1])/size);y++)for(const item of bins.get(`${x}:${y}`)??[])candidates.add(item);
+    for(let x=Math.floor(Math.min(a[0],b[0])/size);x<=Math.floor(Math.max(a[0],b[0])/size);x++)for(let y=Math.floor(Math.min(a[1],b[1])/size);y<=Math.floor(Math.max(a[1],b[1])/size);y++){for(const item of bins.get(`${x}:${y}`)??[])candidates.add(item);for(const ring of doorBins.get(`${x}:${y}`)??[])apertures.add(ring);}
     const dx=b[0]-a[0],dy=b[1]-a[1];
-    for(const item of candidates){
-      if([a,b].some(p=>containsRoomPoint(p,item.polygon)&&(!item.wall||!door(p))))return true;
-      for(let i=0;i<item.polygon.length;i++){
-        const u=item.polygon[i]!,v=item.polygon[(i+1)%item.polygon.length]!,ex=v[0]-u[0],ey=v[1]-u[1],den=dx*ey-dy*ex;
+    const intersections=(polygon:RoomPoint[])=>{
+      const values:number[]=[];
+      for(let i=0;i<polygon.length;i++){
+        const u=polygon[i]!,v=polygon[(i+1)%polygon.length]!,ex=v[0]-u[0],ey=v[1]-u[1],den=dx*ey-dy*ex;
         if(Math.abs(den)<1e-10)continue;
         const ox=u[0]-a[0],oy=u[1]-a[1],t=(ox*ey-oy*ex)/den,k=(ox*dy-oy*dx)/den;
-        if(t>=0&&t<=1&&k>=0&&k<=1&&(!item.wall||!door([a[0]+t*dx,a[1]+t*dy])))return true;
+        if(t>=0&&t<=1&&k>=0&&k<=1)values.push(t);
+      }
+      return values;
+    };
+    for(const item of candidates){
+      const unsupported=(p:RoomPoint)=>containsRoomPoint(p,item.polygon)&&(!item.wall||!door(p));
+      if([a,b].some(unsupported))return true;
+      const crossings=intersections(item.polygon);
+      for(const t of crossings)
+        if(!item.wall||!door([a[0]+t*dx,a[1]+t*dy]))return true;
+      // A wall entry and exit can each lie in a different real doorway. Test
+      // all intervals against their actual footprints so they cannot jointly
+      // authorize tunnelling through solid wall between those two doorways.
+      const cuts=[...new Set([0,1,...crossings,...(item.wall?[...apertures].flatMap(intersections):[])])].sort((x,y)=>x-y);
+      for(let i=1;i<cuts.length;i++){
+        if(cuts[i]!-cuts[i-1]!<1e-10)continue;
+        const t=(cuts[i]!+cuts[i-1]!)/2;
+        if(unsupported([a[0]+t*dx,a[1]+t*dy]))return true;
       }
     }
     return false;

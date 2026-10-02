@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "modelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "connectors": [
+    {
+      "id": "unbc-04-lift",
+      "kind": "elevator",
+      "nativeElementId": 2103602,
+      "reviewedShaft": {
+        "pinId": "pin-e3c49bf2-b7b8-4309-b1da-2e1a986a97d1",
+        "pointFeet": [
+          -79.05536831396871,
+          372.1780205452524
+        ],
+        "wallElementIds": [
+          2103602,
+          2103657,
+          2103738,
+          2104019,
+          2104157,
+          2104207
+        ]
+      },
+      "evidence": "User-identified elevator pin-e3c49bf2-b7b8-4309-b1da-2e1a986a97d1; native shaft walls, floor slabs and distinct lobby exit anchors reviewed against the exact model. No elevator family exists in the source.",
+      "accessible": "unknown",
+      "direction": "both",
+      "entrances": [
+        {
+          "roomKey": "rm-311-2054e6ddb852",
+          "levelId": 311,
+          "nativeElementId": 1582103,
+          "pointFeet": [
+            -73.35,
+            369.7
+          ]
+        },
+        {
+          "roomKey": "rm-694-3399eaf6e0a1",
+          "levelId": 694,
+          "nativeElementId": 427511,
+          "pointFeet": [
+            -73.35,
+            369.7
+          ]
+        },
+        {
+          "roomKey": "rm-400176-79fc94dd782c",
+          "levelId": 400176,
+          "nativeElementId": 437656,
+          "pointFeet": [
+            -73.35,
+            369.7
+          ]
+        },
+        {
+          "roomKey": "rm-402367-133b24ba6565",
+          "levelId": 402367,
+          "nativeElementId": 501699,
+          "pointFeet": [
+            -73.35,
+            369.7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unbc-agora-conference-lift",
+      "kind": "elevator",
+      "nativeElementId": 1741869,
+      "reviewedShaft": {
+        "pinId": "pin-b1daf04e-fc46-402d-89c1-6ae01355f5d4",
+        "pointFeet": [
+          -68.60123301339843,
+          -41.79542303997869
+        ],
+        "wallElementIds": [
+          1741869,
+          1741648,
+          1741511,
+          1741580,
+          1741099,
+          1741269,
+          1333486,
+          1333415,
+          1779068,
+          1327968,
+          1779069,
+          1779070,
+          1779227,
+          1779363,
+          1778957,
+          1779600
+        ]
+      },
+      "evidence": "User-identified elevator pin-b1daf04e-fc46-402d-89c1-6ae01355f5d4; native shaft walls, floor slabs and distinct lobby exit anchors reviewed against the exact model. No elevator family exists in the source.",
+      "accessible": "unknown",
+      "direction": "both",
+      "entrances": [
+        {
+          "roomKey": "rm-311-89fd150948ca",
+          "levelId": 311,
+          "nativeElementId": 400238,
+          "pointFeet": [
+            -65.2,
+            -38.55
+          ]
+        },
+        {
+          "roomKey": "rm-694-0ca9e8ab63bd",
+          "levelId": 694,
+          "nativeElementId": 1327372,
+          "pointFeet": [
+            -72.4,
+            -45.4
+          ]
+        },
+        {
+          "roomKey": "rm-1487353-4d82d4d786ce",
+          "levelId": 1487353,
+          "nativeElementId": 1779842,
+          "pointFeet": [
+            -72.4,
+            -45.4
+          ]
+        }
+      ]
+    }
+  ]
+}

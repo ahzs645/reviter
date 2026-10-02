@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Name>Reviter Finish Inventory</Name>
+    <Assembly>REPLACE_WITH_ABSOLUTE_PATH_TO_Reviter.SemanticExport.dll</Assembly>
+    <AddInId>6B9A5F27-4704-4F6C-BA1C-BA7A576A2932</AddInId>
+    <FullClassName>Reviter.SemanticExport.ExportFinishInventory</FullClassName>
+    <Text>Export Reviter Finish Inventory</Text>
+    <VendorId>RVTR</VendorId>
+    <VendorDescription>Read-only room boundaries and phase-specific door relationships</VendorDescription>
+  </AddIn>
+</RevitAddIns>

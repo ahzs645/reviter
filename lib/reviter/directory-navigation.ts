@@ -6,12 +6,12 @@ import { containsDirectoryRoomPoint, isWalkable, findDirectoryRoute, nearestRoom
 import { isStairArea } from "./directory-stair-geometry.ts";
 export const isStaircase = (room: DirectoryRoom) => isStairArea(room) && room.stairAccess !== "local-only";
 const allowsStairNeighbour = (room:DirectoryRoom, ownZ:number|undefined, otherZ:number|undefined) => room.stairAccess !== "up-flight-only" || (ownZ != null && otherZ != null && otherZ > ownZ + .05);
-export type ReviewedDoorLink = { doorId: number; levelId: number; rooms: [string, string] };
+export type ReviewedDoorLink = { doorId: number; levelId: number; rooms: [string, string]; semanticEvidence?: import("./semantic-door-links.ts").SemanticDoorEvidence };
 export type ReviewedStairLink = { rooms: [string,string] };
 import type { ReviewedOpenLink } from "./directory-openings.ts";
 export type DirectoryNavigation = { version: 1; doorLinks: ReviewedDoorLink[]; stairLinks?: ReviewedStairLink[]; openLinks?:ReviewedOpenLink[] };
 export type StairConnection = { id: string; stairElementId?: number; evidence: "native-flight" | "reviewed"; rooms: [string,string]; levels: [number,number]; elevationsFeet: [number,number]; riseFeet: number; distanceFeet: number; treadCount: number };
-export type DoorReview = { door: DirectoryDoor; candidates: string[]; state: "connected" | "unmatched" | "ambiguous"; portal?: RoomPortal };
+export type DoorReview = { door: DirectoryDoor; candidates: string[]; state: "connected" | "unmatched" | "ambiguous"; portal?: RoomPortal; hasExplicitReview?:boolean };
 
 /** Door bounds locate the opening; a recovered oriented footprint constrains its bridge. */
 export function directoryDoors(model: ConvertResult, levelId: number): DirectoryDoor[] {
@@ -60,14 +60,17 @@ export function reviewedDoorPortal(rooms:readonly DirectoryRoom[], door:Director
   const candidates=doorCandidates(rooms,door),pair=link.rooms.map(key=>candidates.find(r=>r.key===key));
   if(pair.some(r=>!r || r.levelId!==link.levelId))return null;
   const points=pair.map(r=>[r!.polygonFeet,...r!.holesFeet??[]].map(loop=>nearestRoomBoundary(door.point,loop)).sort((a,b)=>a.distance-b.distance)[0]!.point);
-  return {doorId:door.id,rooms:link.rooms,point:door.point,from:points[0]!,to:points[1]!,halfWidth:door.halfWidth,halfHeight:door.halfHeight,footprint:door.footprint,reviewed:true};
+  return {doorId:door.id,rooms:link.rooms,point:door.point,from:points[0]!,to:points[1]!,halfWidth:door.halfWidth,halfHeight:door.halfHeight,footprint:door.footprint,normal:door.normal,reviewed:true};
 }
-export function directoryDoorReviews(rooms:readonly DirectoryRoom[], doors:readonly DirectoryDoor[], reviewed:readonly ReviewedDoorLink[]=[]):DoorReview[] {
+export function directoryDoorReviews(rooms:readonly DirectoryRoom[], doors:readonly DirectoryDoor[], reviewed:readonly ReviewedDoorLink[]=[], explicitReviews:readonly ReviewedDoorLink[]=reviewed):DoorReview[] {
   const auto=roomPortals(rooms,doors);
   return doors.map(door=>{
     const candidates=doorCandidates(rooms,door).map(r=>r.key),override=reviewed.find(l=>l.doorId===door.id && l.levelId===rooms[0]?.levelId);
     const portal=override ? reviewedDoorPortal(rooms,door,override) ?? undefined : auto.find(p=>p.doorId===door.id);
-    return {door,candidates,portal,state:portal?'connected':candidates.length>2?'ambiguous':'unmatched'};
+    // A semantic link rejected upstream still represents an explicit ownership
+    // decision. Automatic recovery must not replace that decision silently.
+    const explicit=explicitReviews.some(l=>l.doorId===door.id && l.levelId===rooms[0]?.levelId);
+    return {door,candidates,portal,hasExplicitReview:explicit?true:undefined,state:portal?'connected':candidates.length>2?'ambiguous':'unmatched'};
   });
 }
 

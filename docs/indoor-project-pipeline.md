@@ -186,7 +186,7 @@ Entry names are allowlisted; duplicate, unlisted and oversized entries are rejec
 - Edges for walks, precise doors/registered openings, matched stairs and native-supported local steps. Evidence, native ID, room masks, enabled status and accessibility are retained.
 - Architectural footprints and a review/coverage report.
 
-The compiler uses a four-neighbour 0.6 ft raster and tests complete movement segments against native walls, columns and floor-opening masks. Private rooms override overlapping circulation. Degree-two cells are compressed at actual grid bends. A BFS forest connects supported terminals in each circulation surface/room; Dijkstra finds the shortest path in that exported graph. The forest can introduce detours compared with a full navigation mesh. It is an explicit first implementation, not a globally optimal geometric pathfinder. Ordinary rooms cannot serve as shortcuts unless they are the chosen start/destination; stair areas can carry verified stair connections.
+The compiler uses a four-neighbour 0.6 ft raster and tests complete movement segments against native walls, columns and floor-opening masks. Private rooms override overlapping circulation. The grid follows the dominant boundary direction of each circulation surface/room. Multi-source wavefronts connect neighbouring supported terminals; obstacle-tested orthogonal shortcuts remove raster stair-steps. Dijkstra finds the shortest path in the exported sparse graph. This is not a globally optimal continuous geometric pathfinder or a corridor-centre navigation mesh. Ordinary rooms cannot serve as shortcuts unless they are the chosen start/destination; stair areas can carry verified stair connections.
 
 Public review routing excludes explicit staff/voids but allows unknown access with visible warnings. Step-free routing accepts only edges explicitly confirmed step-free. There is no automatic elevator inference, clearance certification, live door position, opening-hours enforcement, emergency routing or guarantee of complete campus coverage.
 
@@ -230,3 +230,470 @@ The selected checks passed: 44 Reviter tests, eight OpenIndoorMaps tests, scoped
 The subsequent Reviter pre-push check on October 1, 2026 passed the full unit suite (1,283 passed, one skipped), production build, four server-rendered interface checks, scoped pipeline TypeScript check, and static Pages build/worker check. The browser ZIP size preflight uses the same 900 MiB package limit as the parser.
 
 For another building/model, repeat sections 1–6, supply that project's own route-case JSON, and retain its report alongside the prepared ZIP. Accept a navigation release only after resolving the relevant coverage gaps, verifying representative routes on site, confirming access/step-free metadata, and checking registration with an independent reference point. The 3D section is visual review context; use the 2D floor route for the current route display.
+
+
+Hospital-style presentation and native entrances — October 1, 2026
+-----------------------------------------------------------------
+
+The pipeline now exports optional native `doors` display records in `viewer/indoor.json`. Each record retains native element/level identity, position, precise oriented footprint when recovered, candidate/source rooms and review state. This comes from the same `directoryDoors`/`directoryDoorReviews` evidence used by compilation; unmatched doors remain display/review objects and do not acquire graph links. The optional field is mirrored in both apps' indoor contracts, keeping older version-1 datasets importable.
+
+Regenerated example: `/Users/ahmadjalil/Downloads/UNBC.indoor.hospital-style.reviter.zip`. It has 1,886 door positions and 1,883 recovered footprints, with the same graph and 411 unmatched-door report. Original model, room, GIS and GLB entry bytes match the earlier prepared ZIP.
+
+OpenIndoorMaps offers **2D rooms**, **3D rooms** and **Source model**. The first two use hospital-style white flat corridors, solid low room blocks that include native wall thickness, and blue native apertures. Room blocks and walls share a display height, removing the raised perimeter shell around an inset volume. Room/wall/door display heights are illustrative; native units/elevations stay in the source data and model view. Amber entrances open source review details. Real upper polygon holes and explicitly reviewed open drops expose clipped lower-floor room context, without adding routing connectivity.
+
+Three source polygons fail precise display subtraction and retain their original geometry; source-boundary cleanup remains necessary. The 411 unmatched doors, 360 omitted source labels and previously disconnected campus cases are unchanged by presentation work.
+
+
+### Wall/column presentation and regenerated routing
+
+`walls[].kind` distinguishes recovered native `wall` and `column` footprints. Both still block routing. OpenIndoorMaps hides columns by default in its room presentation, merges visible wall faces, continues straight walls at their own thickness through touching hidden column footprints, then cuts precise native door apertures. Source RVT/GLB remain unchanged and available in Source model mode. Legacy unclassified footprints require regeneration for the pillar toggle.
+
+Regenerate the current UNBC example:
+
+```sh
+npm run indoor:prepare -- --input /Users/ahmadjalil/Downloads/UNBC.indoor.hospital-style.reviter.zip --out /Users/ahmadjalil/Downloads/UNBC.indoor.clean-routes.reviter.zip --revit-version 2027
+```
+
+This revision exports 4,809 nodes / 5,343 edges and 1,225 column footprints. Library–Agora is 17.484 m instead of 20.793 m, with 11 path vertices instead of 52. The 411 unmatched-door issues remain. Accessibility approvals remain geometry-bound and must be rechecked when paths change. Retain earlier ZIPs as source backups; importing/exporting alone does not recompile a saved routing graph.
+
+
+### Continuous corridor centring in the receiving viewer
+
+OpenIndoorMaps now resolves straight or single-elbow corridor paths after graph search. Native wall directions and corridor cross-sections replace grid stair-stepping and unused side-door visits when the complete candidate is covered by the selected source areas/doors and clears native walls, columns, holes and access masks. Only selected precise native door footprints cut walls. Unverified or complex candidates retain the saved path; confirmed step-free paths retain the geometry to which their approvals apply. Source graph IDs, stair transitions, native model and GIS data are unchanged.
+
+The existing clean-routes ZIP now displays Library–Agora as 15.755 m, two centred straight legs and one 90° right turn (three vertices), versus its saved graph distance of 17.484 m. Independent native checks found zero barrier crossings. Refreshing the receiving viewer is sufficient for this change; recompilation is still required for corrections to source boundaries and connectivity. The 411 unmatched doors remain unresolved. OpenIndoorMaps evidence is in `docs/unbc-centered-route-audit.json` and `docs/unbc-centered-geometry-audit.json`; its 18 unit tests, desktop/mobile browser regressions, TypeScript check and production build passed.
+
+
+### Visitor interface and routes with multiple corners
+
+The receiving OpenIndoorMaps app now defaults to a hospital-style full-map visitor view. It reuses the BC Hospital preview cards and progress controls for source room routes, with responsive search/categories, room details, 2D/3D and floor selection. **Review project** exposes the existing source review/export workspace. Step instructions come from resolved route geometry; stepping through stairs focuses the correct native floor. No elevator or accessible link is inferred.
+
+A continuous, obstacle-tested corridor-lane search extends the earlier single-elbow resolver. The current clean-routes ZIP demonstrates 05-120 → 05-165 as 68.589 m / three straight legs / two turns, and 05-120 → 05-S203 as a 58.585 m route into Floor 2 with the original stair geometry. The latter retains source walking geometry where a centred candidate cannot be validated. Source graph and package bytes remain unchanged; 411 unmatched doors still require source corrections. OpenIndoorMaps checks passed: 20 units, four desktop/mobile regressions, TypeScript, production build, and nine route cases. Its independent geometry report checked 37 centred segments from 18 longer examples with zero native wall/column crossings.
+
+OpenIndoorMaps now derives display room boundaries from complete native wall enclosures where they match a source room identity, using actual recovered door footprints to close thresholds during discovery and cutting them out afterwards. Both 2D and 3D prefer these wall faces. Missing, invalid or ambiguous enclosures retain source polygons; no new room or route is inferred. The current clean-routes package supports 539 such room records, with 1,027 source fallbacks. Native source polygons, model/GIS bytes and graph approvals stay intact. Detailed before/after evidence is in OpenIndoorMaps `docs/unbc-wall-room-boundaries.json`.
+
+OpenIndoorMaps also repairs display-only wall end-cap junction gaps up to 0.02 feet (6.1 mm) against another same-floor classified wall. The 05-107 Meeting / 05-108 WC / 05-109 Kitchen inset blocks were caused by roughly 3.8 mm gaps in exported wall junctions; these now resolve from actual wall faces and absorb adjoining wall material into their roofs. Door apertures and corridors stay open. Larger gaps and ambiguous boundaries still require source review. No package regeneration or graph changes are involved. The latest viewer validation passed 24 units, both prepared-room desktop/mobile cases, TypeScript, focused renderer lint and the production build.
+
+### Room corner fidelity requires boundary preparation before export
+
+Audit of the current clean-routes ZIP found 1,776 of 1,860 annotations with `source.polygon = "derived"`, versus only 76 marked `vector-walls`. The approximate region extractor traces grid-cell contours and simplifies them with a 0.7-cell tolerance (`derived-rooms.ts`); the indoor compiler copies annotation polygons directly to `records[].ringsFeet` (`indoor-pipeline.ts`). Thus recompiling the same annotation JSON preserves inset and chamfered corners. The receiving viewer's 539 recovered wall enclosures are a partial presentation repair, not a completed correction of the source room boundaries.
+
+A diagnostic run of the existing registered-wall rebuild using all annotations in the two relevant Level 1 plan sections and prepared native door footprints rebuilt 33/110 records on `05 Libr LVL 1` and 36/102 on `07 Agora LVL 1C`. It corrected 05-139C Office but left 05-154 Classroom unresolved. The recovered Office outline also contains an arc from drawing linework. This does not validate blanket automatic use of the current survey rebuild: structural wall faces must be distinguished from leaf/swing symbols. No source annotations or graph/package bytes were changed by this probe. The existing six room-boundary unit checks passed, but their fixtures do not establish full-building fidelity.
+
+The required next processing stage should construct structural wall-face topology per native floor, close only supported wall junctions and native door thresholds for cell discovery, assign labels to unambiguous enclosed cells, retain real floor holes and open corridors, and check corner-to-wall agreement. It must preserve stable room identities and expose unresolved cells rather than silently presenting approximate raster contours as exact room blocks. Verified presentation boundaries should be exported separately from source/routing polygons until reviewed geometry corrections have been recompiled and route/access approvals revalidated. Evidence: OpenIndoorMaps `docs/unbc-room-source-processing-audit.json`.
+
+
+## Native wall room presentation (2026-10-01)
+
+The pipeline now adds optional `presentation` geometry. Source `records[].ringsFeet`, room annotations, native geometry and graph remain separate. Model SHA and each source record's floor/polygon serialization bind prepared visual geometry to its source. Imports reject malformed, wrong-floor or stale presentation entries. Metadata review/export preserves valid presentation; marking a room nonwalkable removes its display block.
+
+To add it to an existing prepared archive without re-reading the RVT:
+
+```sh
+cd /Users/ahmadjalil/github/reviter
+npm run indoor:presentation -- --input /Users/ahmadjalil/Downloads/UNBC.indoor.clean-routes.reviter.zip --out /Users/ahmadjalil/Downloads/UNBC.indoor.native-wall-rooms.reviter.zip
+```
+
+Use a new output path. The CLI writes a companion `.presentation-report.json` and verifies source rooms, architectural records and graph are unchanged. Normal `indoor:prepare` also runs this stage.
+
+UNBC: 889 verified native enclosures, 881 retained display blocks out of 1,566 eligible rooms. Eight recovered cells disappear after protected geometry subtraction and are reported instead of guessed. 685 rooms retain fallback display with diagnostics; missing partitions, unclosed cells and ambiguous labels still require source corrections. Viewer partial recovery may improve some fallbacks but does not replace this provenance.
+
+Visitor 2D/3D now share the same block geometry; native doors remain gaps and review metadata, with door volumes hidden in visitor mode. Pillar visibility continues to affect presentation only. Original room holes and explicit open-drop areas remain protected. Lower-floor context is still clipped planar geometry, not a complete physically elevated floor stack.
+
+Validation reports and primary-source research: `/Users/ahmadjalil/github/openindoormaps/docs/indoor-boundary-research.md`, `unbc-native-room-enclosure-audit.json`, `unbc-prepared-room-presentation-audit.json` and `unbc-wall-rooms-route-audit.json`. The geometry audit preserves RVT/scene/annotations/GIS bytes and graph, with no prepared-block overlap above 0.01 ft² against tested protected masks/apertures/holes/other blocks at 0.0001-ft precision.
+
+Actual navigable interiors have **not** been replaced by visual wall-absorbing blocks. Correcting navigable interiors must regenerate native door matching, anchors, regional graph and geometry-bound approvals. The source still reports 411 unmatched doors; elevator/escalator connectors require explicit native or reviewed evidence and a richer contract. See the research document's prioritized work list.
+
+
+Final validation for this change: 33 targeted Reviter unit tests and 31 OpenIndoorMaps unit tests passed. Four real-package desktop/mobile browser workflows passed, covering room geometry, common 2D/3D footprints, visitor door visibility, native pillar toggles, complex right-angle routing, stair floor-following/reversal, consecutive floor milestones and unconfirmed step-free rejection. Both production builds passed. OpenIndoorMaps scoped TypeScript and new geometry-module lint checks passed; Reviter's focused preparation-module TypeScript passed. Full Reviter TypeScript still reports pre-existing errors under `work/**` copies and audit scripts. The first development browser run was invalidated by hot reload; final browser validation ran on a fresh server with watching/HMR disabled.
+
+## Hospital-style preparation upgrade: source interiors, floor depth and visitor information
+
+The repeatable source correction command is now:
+
+```sh
+npm run indoor:prepare -- --input /Users/ahmadjalil/Downloads/UNBC.indoor.native-wall-rooms.reviter.zip --out /Users/ahmadjalil/Downloads/UNBC.indoor.hospital-parity.reviter.zip --revit-version 2027 --native-interiors
+```
+
+`--native-interiors` promotes only independently enclosed native interiors before rebuilding door matching, arrivals and every regional graph. It excludes stairs, ambiguous labels, stale geometry, unsupported anchors, significant native barrier overlap and protected circulation/open drops. Roof footprints never become navigation interiors. Original room rings and boundary element IDs remain in each promoted annotation's `nativeInteriorProvenance`; a companion `.boundary-promotion.json` reports exclusions. Use a new output path. Existing source model/GIS/scene are preserved, and geometry-bound accessibility approvals are revalidated during compilation.
+
+Measured UNBC result: 866 interiors promoted, 1,639 routable arrivals (previously 1,610), 128 graph components (134), and 378 unmatched doors (411). The presentation stage still provides 881 blocks with 685 fallback diagnostics; promoting interior geometry does not recover missing partitions. These source cases remain visible in review. The all-room report identifies 1,611 public destinations with another destination reachable and 849 with a reachable destination on another native floor. Reachability counts are topology evidence, not individually inspected routes.
+
+To import boundaries calculated by an actual Revit exporter, add `--semantic-boundaries /absolute/finish-boundaries.json` to `indoor:prepare`. This validates model identity, Finish-face convention, internal feet, native room/phase identity, floor elevation, topology, source labels, holes and native barriers, then regenerates the graph from accepted corrections. Rejected entries remain unchanged and receive a `.semantic-review.json`. The offline RVT parser cannot run Revit's semantic room API. Export requirements and an illustrative schema are in [room-boundary-preparation.md](room-boundary-preparation.md).
+
+### Visitor information
+
+Use `--visitor /absolute/visitor.json` during preparation, or update a prepared archive without recompiling geometry:
+
+```sh
+node --experimental-strip-types scripts/prepare-visitor-metadata.ts --input /Users/ahmadjalil/Downloads/UNBC.indoor.hospital-parity.reviter.zip --visitor /Users/ahmadjalil/github/openindoormaps/docs/unbc-visitor-metadata-example.json --out /Users/ahmadjalil/Downloads/UNBC.indoor.hospital-review.reviter.zip
+```
+
+The optional version-1 metadata has `buildings` keyed by source building ID (`name`, optional `shortName`) and `places` keyed by source room ID (`displayName`, `description`, `category`, `department`, hex `color`, `landmark`). Categories are study, food, washroom, department, entrance and other. Unknown IDs and malformed values are rejected. OpenIndoorMaps source review exposes an editor under **Visitor names, categories and colors**; export preserves these fields in `floors/rooms.json`, and Reviter carries them through subsequent preparation. Visitor names never rename native source rooms or alter access/geometry.
+
+### Explicit vertical connections
+
+`--connectors /absolute/connectors.json` imports version-1 model-bound connector review metadata into room annotations. Each elevator/escalator requires its exact native identity and explicit native entrance identities, served native floors, room anchors, evidence, direction and accessibility. Entrance elements must actually relate to those native floors. Escalators require one direction and cannot be marked step-free. Elevators may serve several explicit floors; a passing shaft does not add stops. Incorrect evidence produces review issues without adding graph links. No elevators/escalators have been fabricated for UNBC. Existing stairs remain native-supported.
+
+### Rendering and validation limits
+
+The receiving viewer renders consistent 0.6 m room roofs, open halls, hidden visitor door volumes, lighter exposed wall material and the same prepared footprints in 2D/3D. Genuine upper openings show prepared lower rooms/walls at measured negative elevations, masked in perspective to their actual aperture. Column recesses do not become floor openings. 3D room labels are projected above their roofs; native symbols remain in 2D. Named buildings, badge sizing and curated visitor information feed search, cards and the floor picker. An outdoors selector requires exterior data and is not invented for this package.
+
+The compiler's turn/clearance preference and continuous native-barrier checks improve path shape, but raster clearance is not measured accessibility certification. An independent 44-case direction/profile comparison retained all route availability outcomes; 72 final walking segments had zero native wall/column crossings. A stair-approach case improves from an intermediate 14 turns / 59.30 m to 8 turns / 54.87 m; the older source remains 7 turns / 52.15 m, so exact route parity is not claimed. Real floor openings, remaining partitions, door relationships, clearances and confirmed accessible approaches still require source evidence/review.
+
+Reports in OpenIndoorMaps: `docs/unbc-hospital-navigation-upgrade-audit.json`, `docs/unbc-hospital-all-room-routing-audit.json`, `docs/unbc-native-promotion-audit.json` and `docs/unbc-boundary-coverage-audit.json`.
+
+Final upgrade verification: 50 targeted Reviter tests and 50 OpenIndoorMaps tests passed, alongside both scoped typechecks and production builds. Four real-package desktop/mobile workflows passed, including multi-turn paths, three-floor stair journeys, reversed travel and 2D/3D switching. Two additional desktop/mobile browser tests use an explicitly synthetic two-floor package to verify actual lower-room pixels in both 2D/3D, their disappearance when the custom layer is removed, visible roof labels and exclusion of native column recesses. These aperture tests verify the renderer; they do not establish missing UNBC lower-floor coverage. Screenshot evidence is in OpenIndoorMaps `docs/screenshots/unbc-hospital-review-desktop.jpg` and `synthetic-floor-openings-mobile-3d.png`.
+
+Next source work is concentrated on the 685 fallback presentation records and 378 unmatched doors. Export semantic Finish boundaries with native room/phase identity from Revit; correct missing partitions and ambiguous labels rather than expanding blocks blindly. Review actual native door-to-room/floor relationships, then regenerate matching and routes. Export verified elevator entrances, served floors and accessibility evidence before enabling lift navigation. Review curated public names/categories/colors across remaining buildings. Saved semantic provenance is revalidated on every normal preparation, so the sidecar need not be reattached when its accepted geometry and model identity remain current.
+
+
+## Local wall-joint recovery and exhaustive floor review (2026-10-02)
+
+This stage reconstructs visitor rooms without requiring authored Revit Rooms.
+The original RVT, scene and GIS references remain unchanged. Supported repairs
+are derived geometry with native element IDs, gap distances and polygons in
+`docs/unbc-native-junction-repair-review.json`; they are not edits to the RVT.
+
+A rectangular wall end cap may bridge at most 0.08 ft (24.4 mm) to an actual
+recovered wall or column. A single corner wedge is limited to 0.04 ft (12.2 mm).
+Modeled doors exclude repair patches. No room annotation creates a partition,
+and nearby parallel wall faces cannot justify closing an unrelated gap.
+The normal local wall-face graph remains preferred. Unclosed candidates retry
+the complete native floor's barrier union, with actual column islands removed
+from free cells. Acceptance still requires a unique label, substantial source
+overlap and no protected circulation, source hole or wall-material conflict.
+
+The screenshot's 05-122 Studio is now enclosed by native wall IDs 807017,
+807021, 807025, 807929 and 866754 with column 1577221. Small supported seams
+replace the former cut-off drawing corners. Physically touching column
+material may join its roof; detached hallway pillars do not become room roofs.
+The 05-107 Meeting / 05-108 WC shared enclosure remains contested: no
+verified partition separates their labels, so neither receives an invented
+interior. Open stair areas are counted separately from ordinary room failures.
+
+Native source inspection found two independently identified ProjectPhase
+instances (12589, 86961) and no complete RoomElem, Room or RoomTag instances
+in the supported scan. The scan covered all 3,666 inflated partition pages
+without failed pages, but only complete in-page frames of 40–65,535 bytes.
+It supports the account that authored Rooms are absent; it does not certify
+absence from larger or cross-page carriers. Phases already exist. Evidence:
+`docs/unbc-native-room-phase-instance-audit.json`.
+
+Navigation preparation validates entire walking segments against source floor
+coverage, holes, native barriers and derived joint patches, including gaps
+smaller than a raster cell. Separate doorway apertures cannot collectively
+authorize a tunnel through wall material. The viewer prefers fewer turns
+within its distance budget, retaining source stair flights and checked source
+geometry wherever a safe centered replacement cannot be established. This
+can remove a shortcut and increase route distance or split a graph component.
+
+Remaining source cases are itemized by room and native element in
+`docs/unbc-source-model-repair-inventory.json` and
+`docs/unbc-door-lift-source-review.json`. Curtain wall parents normally
+delegate their surfaces to panels/mullions; their missing parent footprint is
+not evidence of a missing partition. The wall with undecoded native floor
+association is already included where its exact solid intersects the prepared
+cut elevations. Lift labels and machine rooms do not establish served stops.
+
+For future Windows/Revit access, `tools/revit-semantic-export/` contains a
+read-only Revit 2027 exporter source and `scripts/map-revit-finish-inventory.ts`
+requires an explicit native Room/phase-to-annotation mapping before import.
+The C# add-in has not been compiled or executed on this Mac. Local room
+recovery does not depend on that tool. See
+[room-boundary-preparation.md](room-boundary-preparation.md) for its contracts.
+
+### Final local package and measured coverage
+
+The current package is
+`/Users/ahmadjalil/Downloads/UNBC.indoor.local-repaired.reviter.zip`. Reproduce it
+from the preceding source review archive:
+
+```sh
+node --experimental-strip-types scripts/prepare-indoor-project.ts --input /Users/ahmadjalil/Downloads/UNBC.indoor.hospital-review.reviter.zip --out /absolute/new-output.reviter.zip --revit-version 2027 --native-interiors
+```
+
+The final package contains 1,042 prepared blocks (881 previously), with 161
+added and no old verified block lost. Strict promotion accepts 1,026 interiors
+(866 previously). Sixteen recovered enclosures remain unsuitable for navigation
+promotion: 11 stair areas, three native-barrier conflicts and two protected
+floor conflicts. Source RVT, scene, GIS and native wall arrays are unchanged.
+
+Of 1,500 ordinary room candidates, 1,031 have prepared blocks and 469 remain
+source fallbacks: 230 lack a verified closed enclosure even with full-floor
+geometry, 233 fail source-overlap ownership checks, five explicitly share an
+enclosure, and one has no local native walls. Separately, 55 of 66 stair areas
+remain open/unresolved. The historical 685 count therefore becomes 524 total
+fallbacks, including those stair areas. No partitions or lift stops are invented.
+
+The compiler reports 1,647 arrivals, 142 components and 351 unmatched doors
+(previously 1,639, 128 and 378). Safer continuous floor checks remove unsupported
+shortcuts; higher component count is not claimed as improved connectivity.
+
+Independent final walking proof checks all 3,919 enabled walking edges and
+8,354 segments with zero native/derived-joint crossings or unsupported-floor
+intervals. Separate walking-plus-door proof checks 5,406 edges and 9,841
+segments with zero failures; door coverage includes the approved side-anchor
+envelope at native clear width, not a physical floor or clearance survey.
+The 36 concrete directional cases retain all 28 available outcomes and have
+582 realized flat segments with zero native/derived-joint crossings. Remaining
+complex journeys may keep multiple bends or safe source geometry.
+
+Evidence in OpenIndoorMaps: `docs/unbc-local-repair-presentation-audit.json`,
+`docs/unbc-local-repair-walking-audit.json`,
+`docs/unbc-local-repair-door-audit.json`,
+`docs/unbc-local-repair-complex-audit.json` and
+`docs/unbc-local-repair-room-topology.json`. Topology counts do not certify
+individually driven routes. UNBC has no confirmed step-free graph or decoded
+lift assembly with verified served-floor entrances.
+
+The earlier `08-161` → `10-4588` demonstration now stops at source review:
+08-161 has no safe prepared doorway anchor within the native jamb width and
+snap limit. Its coarse outline reaches only a 0.022-ft slice of that width;
+the recovered native cell is much larger (99% source coverage but only 8.3%
+cell coverage), so it cannot establish an independent classroom partition.
+A finer grid alone cannot provide reliable source-supported entry. This is a
+reported source limitation, not a passing route. The verified three-flight
+browser journey uses `10-1018` → `10-4018`, then its reverse.
+
+Validation for this package: 71 targeted Reviter tests and both source/viewer
+scoped TypeScript checks and production builds pass. Final saved walking/door
+geometry reports are exhaustive for their stated scopes; complex route cases
+are a concrete directional sample. The C# Revit add-in remains source-only.
+
+Final shared-column rendering assigns only actual native column material inside
+each touching roof's perimeter continuation. Competing claims remain neutral;
+room-key order cannot give one room the entire column. Existing wall roofs,
+door gaps, circulation and genuine floor openings remain protected. The actual
+Studio fixture and rotated two-room/key-order regressions cover this behavior.
+The final targeted suite passes 71 Reviter and 64 OpenIndoorMaps tests, with
+both scoped typechecks and production builds passing. Desktop/mobile Studio
+proofs are `docs/screenshots/unbc-joint-repaired-studio-desktop.png` and
+`unbc-joint-repaired-studio-mobile.png` in OpenIndoorMaps. The retained live
+preview screenshot is `docs/screenshots/unbc-local-repaired-studio-preview.png`.
+
+### October 2: locally recovered doorless entrances
+
+The current working package is `/Users/ahmadjalil/Downloads/UNBC.indoor.open-fronts.reviter.zip`. Reproduce the incremental entrance correction while retaining the existing source promotions:
+
+```sh
+node --experimental-strip-types scripts/prepare-indoor-project.ts --input /Users/ahmadjalil/Downloads/UNBC.indoor.local-repaired.reviter.zip --out /absolute/new-output.reviter.zip --revit-version 2027
+```
+
+`registered-open-fronts.ts` handles ordinary endpoints with no matched entrance. It requires an adjacent circulation area in the same registered drawing section, registration residual at most 0.05 feet, a raster seam at most 0.75 feet, full native-floor coverage of a two-foot swept footprint, and no overlap with native/repaired walls, columns, drawing walls, third-room footprints or recorded holes. Invalid polygon operations reject the candidate. It retains unknown access/accessibility and exports distinct recovered-source evidence, without fabricating a native door or a human-reviewed opening.
+
+Library Services Desk `05-136` reaches `05-137 Open Area` across a 0.038095-foot source seam between native counter/wall elements 2438907 and 2438956. The whole 2.076190-square-foot swept region has native-floor support. Five other source-supported endpoints also recover. The regenerated archive has 1,653 arrivals (six more), 4,922 nodes, 5,460 edges, 142 components and 351 unmatched doors. Original room JSON, RVT, scene and GIS bytes are unchanged; 1,042 prepared blocks and 524 unresolved room/stair outlines remain. This is a partial campus map, not a completed navigation release.
+
+OpenIndoorMaps additionally clips unresolved display roofs to native wall material and removes detached fragments. This corrects the desk's striped rendering without marking its approximate outline as a verified enclosure. Its seven-case route report, independent six-opening proof, exhaustive saved walking/door checks, and current every-destination topology are under OpenIndoorMaps `docs/unbc-library-desk-route-audit.json` and `docs/unbc-open-fronts-*.json`.
+
+#### Architectural footprint quality in the portable viewer
+
+Prepared wall/column records now preserve the architectural plan's `approximate`
+flag. This describes the display footprint; it never removes a routing barrier.
+OpenIndoorMaps omits broad bounds-only wall envelopes from visitor extrusions,
+while source review retains them. Native wall #948595 at UNBC was such an
+unverified envelope, rather than a room-sized wall face.
+
+For an existing prepared archive and its matching local conversion cache,
+`scripts/mark-indoor-wall-quality.ts input.zip native-cache.json output.zip`
+can add this metadata. It matches native element ID, level and the exact rounded
+polygon before copying the flag, refreshes the viewer manifest hash and leaves
+model/GIS/floor/scene entries and routing records intact. This operation does not
+repair the original Revit wall or calculate a new room interior.
+
+
+Native stair display export (2026-10-02): preparation now exports complete native tread projections separately from source room/routing boundaries, including curved flights outside approximate DWG stair outlines. Matches require a physical flight endpoint within 1 ft of the recovered room surface and actual tread polygon overlap. Equally overlapping source stair owners are not assigned. `node --experimental-strip-types scripts/prepare-stair-display.ts input.reviter.zip new-output.reviter.zip` adds this optional display data to an existing prepared project without recomputing its graph. OpenIndoorMaps validates model and source geometry bindings and does not authorize routes through these display projections.
+
+
+### October 2: deep-host native doorway orientation
+
+Preparation now preserves each native door's original unit normal through `RouteOpening.normal`, `GridTerminal.nativeDoorNormal` and optional portable `doors[].normalFeet`. A host-expanded threshold can be deeper than its native clear width; its longest rectangle side therefore cannot reliably identify the jamb axis. Grid snapping uses the axis perpendicular to the native normal while retaining all room containment, jamb width, native barrier and maximum snap constraints. The viewer uses the same exported direction for aperture coverage and implicit doorway access/direction dependencies. Legacy records without normals keep the existing inference.
+
+`/Users/ahmadjalil/Downloads/UNBC.indoor.door-axis.reviter.zip` was regenerated from the native-stairs package with the exact model-bound decoded native geometry. Model, original room JSON, scene and GIS bytes are preserved. Five previously rejected native doorway links recover, including the missing 03-S303 stair arrival. There are now 1,654 prepared arrivals, 1,621 public connected destinations and 772 destinations with other-floor routes; 847 additional unique destination pairs are reachable. The unresolved source/access inventory remains explicit: 201 missing entrances and 33 public-isolated arrivals.
+
+From Reviter, normal preparation includes this change:
+
+```sh
+node --experimental-strip-types scripts/prepare-indoor-project.ts --input /absolute/source.reviter.zip --out /absolute/new-output.reviter.zip --revit-version 2027
+```
+
+OpenIndoorMaps `scripts/indoor/audit-native-door-axis.ts` checks a before/after package and matching model-bound native cache, preserves all source assets, exercises every newly recovered native door in both directions, checks real jamb containment and access restrictions, and records source door/host/unique identities. Reports are under its `docs/unbc-native-door-axis-repair.json` and `docs/unbc-door-axis-*.json`: 9,913 saved walking/door segments and 15,576 resolved/clearance-validated display segments pass independent native geometry checks; 2,382 realized endpoint journeys include 1,568 native stair/local-step transitions. Rotated deep-host unit regressions pass in both apps. This repair does not approve unknown accessibility or inferred lift stops.
+
+Native stair display also preserves `thicknessFeet` on each tread when recovered. Consumers should render tread undersides at top elevation minus thickness, relative to the recovered physical floor, rather than stretching every tread down to the slab. This display evidence does not establish under-stair route clearance or remove native walls.
+
+Native stair display also preserves recovered tread thickness for suspended 3D rendering. Tread elevations and footprints remain source measurements; this display evidence does not create under-stair walking routes or remove walls.
+
+The final continuation validation passes 31 targeted preparation tests, 60 viewer unit tests and both scoped TypeScript checks. OpenIndoorMaps desktop/mobile browser proofs cover the centred Library route and the three-floor 10-1018 → 10-4018 journey in both directions, including Next-step following and automatic floor selection. The machine-readable browser results are `docs/unbc-door-axis-browser-tests.json` in OpenIndoorMaps. Native stair display and prepared source floors are also proven unchanged by the before/after repair audit.
+
+### October 2: remaining-case source review
+
+Three subagents reviewed all 234 previously missing/isolated destinations using the exact embedded 3D model. Normal preparation now recovers uniquely owned recessed native door thresholds with continuous native floor, wall, column and full-width approach checks; accepts genuinely supported coincident registered open boundaries; and recovers obstructed drawing-label destinations via an entrance-connected, native-floor-supported same-room branch. Explicit ownership reviews and route points remain authoritative, including semantic reviews rejected upstream. No access or elevator stops are inferred.
+
+The new `/Users/ahmadjalil/Downloads/UNBC.indoor.connectivity-reviewed.reviter.zip` preserves original model, room JSON, scene and GIS bytes. Twelve native graph edges and seventeen arrivals recover, including seven arrival-label corrections. Eighteen previously unresolved destinations become connected. Missing entrances reduce from 201 to 184 and public isolation from 33 to 32; 3,575 additional unique room pairs become reachable.
+
+OpenIndoorMaps `docs/unbc-connectivity-continuation.md` describes all remaining source/access evidence and reproducible audits. `unbc-connectivity-case-review.json` reconciles every original case; `unbc-connectivity-recovery-proof.json` independently validates new links/arrivals and native source preservation. Remaining isolation comprises 25 retained staff restrictions, three Gallery transit decisions and four unsupported approaches. Elevator assembly, landing ownership and served-floor relations still require a source export. Names and aligned points are insufficient.
+
+
+### October 2: lightweight campus delivery for 2D/3D rooms
+
+Keep the prepared/reviewed Reviter ZIP as the source master. In OpenIndoorMaps,
+choose **Review project → Export campus viewer → Download campus viewer ZIP**
+after applying map reviews and visitor edits. This exports the current map state
+without replacing the full master or regenerating its graph.
+
+From the OpenIndoorMaps repository, the same pipeline is repeatable with:
+
+```sh
+npm run indoor:export-viewer -- /absolute/reviewed-master.reviter.zip /absolute/campus.campus-viewer.zip
+```
+
+The viewer ZIP contains the exact prepared indoor dataset, minimal visitor and
+validation metadata, combined campus floor selections, GIS registration and source hashes. It omits the RVT, GLB
+and duplicated source room authoring data. Import it into OpenIndoorMaps to use
+2D/3D rooms, labels, search, floor switching and navigation. Its versioned
+`openindoormaps-viewer` manifest is a visitor delivery format, not a source
+archive that Reviter can regenerate; reopen the full master for source changes.
+Native stair and lift/accessibility bindings are still validated, and no route
+or accessibility approval is inferred by this export.
+
+The initial UNBC viewer at `/Users/ahmadjalil/Downloads/UNBC.campus-viewer.zip` is
+3.76 MiB (95.58% smaller than its 85.08 MiB master), with unchanged geometry and
+navigation. Its `.report.json` records the exact source hashes and round-trip
+proof. OpenIndoorMaps desktop/mobile tests cover export/reimport, matched visitor
+geometry sources, 2D/3D and a three-floor journey. See its
+`docs/indoor-projects.md` and `docs/indoor-export-reference-comparison.json` for
+the schema, limits and comparison with the downloaded reference viewers.
+
+### Through-navigation preference reviews
+
+OpenIndoorMaps uses existing, physically connected ordinary rooms automatically,
+with a corridor preference cost. A confirmed through passage is optional
+preference metadata, keeping the room's classification and display unchanged.
+The source stores `indoorReviews.records[key].throughNavigation`, notes and
+`throughNavigationGeometryKey`, serialized from
+`[modelSha256, room.key, room.levelId, room.ringsFeet]`.
+Regeneration restores `record.properties.throughNavigationReview` only against
+matching geometry on a walkable, non-staff area. Stale reviews emit
+`through-navigation-review-stale` and restore the ordinary-room penalty.
+Native entrances, closures, directions, staff rules and accessible-profile checks
+still apply. This review creates no graph connections or accessibility approval.
+
+### Physical floor support and overlapping open fronts
+
+`routing-floor-support.ts` supplements associated floors with exact native slab
+sketches whose flat profile and physical top match the routing elevation within
+0.05 feet. Missing Revit level relationships no longer suppress real slabs.
+Hole rings are retained; slopes, other storeys and bounds-only carriers cannot
+create flat support. Room surface recovery uses the same physical slabs.
+
+`registered-open-fronts.ts` handles slightly overlapping registered outlines
+using the room's outward boundary normal. Genuine gaps retain their previous
+nearest-boundary direction. A full two-foot footprint must remain supported by
+native floor and clear of native/source walls, columns, holes and third rooms.
+No native doorway or public/accessibility status is fabricated.
+
+UNBC regeneration recovers 19 arrivals and five native door links, including
+07-244's doorless front. Every previous arrival and native door link is retained;
+source model, rooms/reviews, GIS and scene bytes are preserved. OpenIndoorMaps
+`docs/unbc-systematic-routing.md` contains the current systematic repair queue.
+
+### Native preparation and clean room blocks (2026-10-02)
+
+`prepareIndoorDataset` now recomputes independent native wall cells before entrance
+matching. `indoor-native-prepass.ts` uses only uniquely owned native enclosures and
+exact physical floor profiles. Native inner holes survive; exterior-touching gaps,
+split regions or unsupported source/review anchors reject promotion. Derived
+`nativeRoutingBoundary` and `originalSourceRingsFeet` explain the runtime change
+without altering authoring JSON or its hash.
+
+Presentation uses native enclosure proof first, bounded source-backed native wall
+joins second, registered DWG wall-face enclosures third, then explicit semantic
+overrides. Source-supported display requires exact registered drawing hash and
+section, unique labels, native barrier anchors, exact per-record physical floor
+support and retained holes. Display proof never grants native routing authority.
+
+Registered circulation seams are also prepared for already connected hallways:
+full two-foot continuous floor support and source/native/repaired wall, door,
+column, third-room and void vetoes apply. Native generated stair landing and
+matched stair portal approaches separately use full-width native floor paths and
+retain all traversed room identities.
+
+`rooms.indoorRamps` is now consumed by the generic compiler. Owned native ramp
+triangles, named endpoint floors, explicit bounded endpoint seams, saved review
+evidence and both directions survive regeneration; generic walking does not inherit
+a ramp seam tolerance. Compiled `walkingSupport` retains exact model-bound native
+floor profiles and inner holes for visitor route geometry checks.
+
+OpenIndoorMaps `indoor:regenerate-cache` can recompile an exact-model local cache
+into a new lossless master and optimized 2D/3D viewer, asserting retained arrivals,
+lifts, ramps, source assets and identical portable datasets. Its
+`docs/unbc-systematic-routing.md` records current outputs and residual evidence gaps.
+
+### Fixed source doors and finite circulation apertures
+
+Prepared `openingSpan` metadata records the finite tangent interval and convex
+crossing aperture proved for a doorless hallway seam. Exact model/native level,
+physical floor IDs, floor holes, source/native barriers, columns and third-room
+claims bind that proof. Visitor path refinement may move a crossing only within
+the certified aperture and must recheck the full local two-foot strip. Native
+doors, vertical transitions and uncertified openings retain fixed coordinates.
+
+`registered-source-doors.ts` separately identifies drawing-only doors from both
+jamb faces, paired quarter-circle swings and independent leaf rectangles. Both
+uniquely owned circulation sides require continuous native floor and barrier
+proof. This emits a fixed `door` edge with `sourceDoorProof`, never a guessed
+native inventory entry. The proof retains model/DWG hashes, section/registration,
+native elevation/floor IDs, jamb and symbol indices, convex aperture and strip
+width. `doorSymbolCollection: "wallSegments"` identifies the source collection
+containing those strokes. Unknown public/accessibility metadata remains unknown.
+Native closed doors, missing members, unsupported floor and ambiguous ownership
+veto recovery. The UNBC drawing scan qualifies one such doorway, 08-102 ↔ 08-105.
+
+`room-touch-normalization.ts` repairs only self-contact topology that preserves
+the exact original filled region and holes. Genuine self-crossings or disconnected
+positive cells are not normalized into rooms. This runs in registered display
+presentation, without mutating annotations or granting routing authority.
+OpenIndoorMaps `docs/unbc-source-repair-queue.md` explains the residual source
+groups and distinguishes actual missing partitions from open zones or POIs.
+
+
+Native circulation preparation (October 2)
+------------------------------------------
+
+`prepareIndoorDataset` now derives optional `circulationGeometry` from coplanar native slabs minus native walls/columns/door footprints, floor holes, protected room claims and low stair projections. Whole physical cells are classified using public circulation claims (minimum coverage 0.65); source outlines do not clip their boundaries. Shared stair landings require the explicit reviewed hallway / flight-and-landing metadata. Native floor IDs and a geometry/access binding travel with the cells.
+
+`attachNativeCirculationCellRoutes` rebuilds fixed-anchor walking branches inside those cells, with continuous containment verification. It replaces previously generated cell branches during regeneration and preserves original door and vertical transitions. Clearance/accessibility is still unknown on new edges. The viewer uses the same cells for routing, 2D/3D circulation and source-model overlays; source room records, reviews, source assets and GIS remain preserved. Source/access geometry changes invalidate cells and their derived branches until regenerated. Unclassified native regions remain a review task.
+
+The current preserved reviewed master and visitor example are in `/Users/ahmadjalil/Downloads/UNBC.native-circulation/`. The OpenIndoorMaps `scripts/indoor/rebuild-native-circulation.ts` script can rebuild an existing reviewed master using a cache verified against the original model SHA. Its validator and audit report are in the same repository. The UNBC run yields 144 accepted cells / 1,784 walking branches; this does not certify every campus room or accessible route.
+
+Native slab and fixture recovery (October 2)
+-------------------------------------------
+
+The same preparation stage now classifies persisted profile loops by
+containment: separate native shells, nested holes and islands are distinct.
+Native wall solids retain their measured end faces. Low flat slab fixtures
+obstruct routing with every native exterior footprint and export separate
+solid preview caps in `circulationGeometry.fixtures`; cap display is bound to
+an actual native floor elevation, not a nearby semantic level alias. A slab
+with supported room claims at its top elevation is upper-storey structure,
+not a fixture cap on the lower plane. This prevents a giant overhead floor
+from covering a campus display floor containing several native planes.
+
+If the primary polygon sweep fails, a zero-distance JSTS material overlay
+computes the same native slab-minus-obstacles region. It introduces no
+positive wall dilation or synthetic floor. Rejected giant components are
+separated using a two-foot clearance core and intersected back with exact
+physical floor before circulation ownership classification. Actual native
+holes and explicit reviewed openings remain authoritative; inferred source
+circulation holes are not physical voids. Prepared owner identities and
+physically clipped unresolved surfaces prevent small accepted fragments from
+hiding an entire hallway. The viewer rejects legacy walks outside those
+prepared surfaces as well as stale newly generated branches.
+
+The complete reviewed UNBC example is now in
+`/Users/ahmadjalil/Downloads/UNBC.native-agora/`. The master keeps all source
+assets, room records, fixed nodes, original non-native edges and six pins.
+There are 164 accepted cells, 2,452 regenerated branches and 9,894 continuously
+contained segments. Unclassified cells, source disconnections and accessibility
+verification remain explicit review tasks. Run the same preparation for future
+models; no Agora element IDs or pin coordinates are embedded in the resolver.

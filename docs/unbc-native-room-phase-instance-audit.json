@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "scan": {
+    "inflatedPages": 3666,
+    "failedPages": 0,
+    "salvagedPages": 0,
+    "inflatedBytes": 421867755,
+    "allFramedObjects": 184074,
+    "identityCorroboratedFrames": 136496,
+    "maximumObjectBytes": 65535
+  },
+  "method": "Exact schema class at independently length/echo-framed element-object header; ElementId independently joined to Global/ElemTable.ElementHistory+Global/History.Episode UniqueId. No raw class-word or class-name counting.",
+  "classes": [
+    {
+      "className": "RoomElem",
+      "declaredFileClassIndex": 3841,
+      "framedOccurrences": 0,
+      "uniqueNativeIds": [],
+      "identityCorroboratedIds": []
+    },
+    {
+      "className": "Room",
+      "declaredFileClassIndex": 3831,
+      "framedOccurrences": 0,
+      "uniqueNativeIds": [],
+      "identityCorroboratedIds": []
+    },
+    {
+      "className": "RoomTag",
+      "declaredFileClassIndex": 3845,
+      "framedOccurrences": 0,
+      "uniqueNativeIds": [],
+      "identityCorroboratedIds": []
+    },
+    {
+      "className": "ProjectPhase",
+      "declaredFileClassIndex": 3403,
+      "framedOccurrences": 2,
+      "uniqueNativeIds": [
+        12589,
+        86961
+      ],
+      "identityCorroboratedIds": [
+        12589,
+        86961
+      ]
+    },
+    {
+      "className": "AllProjectPhases",
+      "declaredFileClassIndex": 203,
+      "framedOccurrences": 1,
+      "uniqueNativeIds": [
+        1
+      ],
+      "identityCorroboratedIds": []
+    }
+  ],
+  "instances": [
+    {
+      "className": "ProjectPhase",
+      "fileClassIndex": 3403,
+      "canonicalClassIndex": 3403,
+      "nativeElementId": 12589,
+      "nativeUniqueId": "7175a733-90ff-4e0d-a3e8-3878474a97e7-0000312d",
+      "stream": "Root Entry/Partitions/325",
+      "chunkIndex": 1234,
+      "offset": 76580,
+      "objectLength": 129
+    },
+    {
+      "className": "ProjectPhase",
+      "fileClassIndex": 3403,
+      "canonicalClassIndex": 3403,
+      "nativeElementId": 86961,
+      "nativeUniqueId": "c8c9591b-fcaf-44ac-94c8-6e357de0a0cf-000153b1",
+      "stream": "Root Entry/Partitions/325",
+      "chunkIndex": 1234,
+      "offset": 77125,
+      "objectLength": 133
+    },
+    {
+      "className": "AllProjectPhases",
+      "fileClassIndex": 203,
+      "canonicalClassIndex": 203,
+      "nativeElementId": 1,
+      "nativeUniqueId": null,
+      "stream": "Root Entry/Partitions/325",
+      "chunkIndex": 1350,
+      "offset": 37198,
+      "objectLength": 1009
+    }
+  ],
+  "limitations": [
+    "The broad scanner accepts complete in-page object frames of 40..65535 bytes. Larger objects and frames spanning page boundaries are outside this census.",
+    "A negative class count establishes no matching complete independently framed records in the scanned scope, not unconditional absence from every native serialization carrier.",
+    "These instance headers do not decode Room names/numbers/Finish loops or phase names/order. A ProjectPhase instance proves phase identity, not which view/room uses it."
+  ]
+}

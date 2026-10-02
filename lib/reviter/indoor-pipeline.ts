@@ -1,3 +1,14 @@
+import pc from "polygon-clipping";
+import { containsDirectoryRoomPoint } from "./room-directory.ts";
+import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
+import { attachNativeCirculation } from "./native-circulation-links.ts";
+import { prepareReviewedIndoorRamps } from "./indoor-ramps.ts";
+import { recoverIndoorOpeningSpan } from "./indoor-opening-spans.ts";
+import { prepareNativeRoutingBoundaries } from "./indoor-native-prepass.ts";
+import { prepareNativeCirculationGeometry, attachNativeCirculationCellRoutes } from "./native-circulation-geometry.ts";
+import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
+import {supportedSemanticDoorLinks} from "./semantic-door-links.ts";
+import {supportedIndoorConnectors} from "./indoor-connectors.ts";
 import type { ConvertResult } from "./types.ts";
 import {
   parseRoomDirectory,
@@ -15,6 +26,10 @@ import {
   directoryDoorReviews,
   directoryStairs,
 } from "./directory-navigation.ts";
+import { recoverRegisteredOpenFronts, recoverRegisteredCirculationSeams } from "./registered-open-fronts.ts";
+import { recoverRegisteredSourceDoors } from "./registered-source-doors.ts";
+import { recoverNativeDoorOwnership, recoverRegisteredStairDoorOwnership } from "./native-door-ownership.ts";
+import { nativeArrivalFloorSupport } from "./indoor-arrival-recovery.ts";
 import { directoryOpenPassages } from "./directory-openings.ts";
 import { localBuildingConnections } from "./building-transitions.ts";
 import { architecturalPlanGeometry } from "./architectural-plan.ts";
@@ -22,6 +37,8 @@ import { campusFloors } from "./campus-floors.ts";
 import { directoryModelFloor } from "../../app/studio/directory-model.ts";
 import { fitGeoreference, modelPointToGeographic } from "./georeference.ts";
 import { buildIndoorGrid, type GridTerminal } from "./indoor-grid.ts";
+import { prepareIndoorPresentation } from "./indoor-presentation.ts";
+import { prepareIndoorStairDisplay } from "./indoor-stair-display.ts";
 import type {
   IndoorDataset,
   IndoorEdge,
@@ -102,6 +119,7 @@ export async function prepareIndoorDataset(
       stairAccess: r.stairAccess,
       modelSurface: r.modelSurface,
       notes: r.walkabilityNotes,
+      floorOpeningsFeet: r.floorOpeningsFeet,
     },
   }));
   const byRoom = new Map(sourceRooms.map((r) => [r.key, r])),
@@ -143,6 +161,7 @@ export async function prepareIndoorDataset(
         elevationFeet: l.elevation,
       })),
     records,
+    ...(data.visitorMetadata ? { visitor: structuredClone(data.visitorMetadata) } : {}),
     nodes: [],
     edges: [],
     walls: [],
@@ -168,9 +187,15 @@ export async function prepareIndoorDataset(
     roomKey?: string,
     nativeElementId?: number,
     levelId?: number,
-  ) =>
-    dataset.issues.push({
-      id: `${code}:${roomKey ?? nativeElementId ?? dataset.issues.length}:${levelId ?? ""}`,
+  ) => {
+    const baseId = `${code}:${roomKey ?? nativeElementId ?? dataset.issues.length}:${levelId ?? ""}`;
+    let id = baseId, occurrence = 2;
+    // A room may own several independently recovered seams or diagnostics.
+    // Preserve the original first ID, then deterministic occurrence IDs so no
+    // review entries share a React key or overwrite each other in a queue.
+    while (dataset.issues.some(item => item.id === id)) id = `${baseId}:${occurrence++}`;
+    return dataset.issues.push({
+      id,
       code,
       severity: "review",
       message,
@@ -178,6 +203,7 @@ export async function prepareIndoorDataset(
       nativeElementId,
       levelId,
     });
+  };
   if (data.georeference.points.length < 3)
     issue(
       "alignment-check",
@@ -196,6 +222,49 @@ export async function prepareIndoorDataset(
       undefined,
       pin.levelId,
     );
+  // Supported unlabelled landings participate in native doorway ownership.
+  // Creating them after door review leaves real exterior thresholds unmatched.
+  const localConnections = localBuildingConnections(model, sourceRooms, data.buildingTransitions ?? []);
+  const localEndpointKeys = new Map<string, (string | undefined)[]>();
+  for (const c of localConnections.filter(c => c.surfaceSupported)) {
+    const keys = c.endpoints.map((e, i) => {
+      let key = e.roomKey;
+      if (!key) {
+        key = `landing:${c.report.id}:${i}`;
+        const candidate = c.surfaces[i]?.polygons.find(p => p[0]?.length && containsDirectoryRoomPoint(e.point, { polygonFeet: p[0]!, holesFeet: p.slice(1) } as DirectoryRoom));
+        if (!candidate) return undefined;
+        // Existing source areas retain their own graph ownership. The native
+        // generated landing is precisely the otherwise unlabelled floor patch.
+        const claimed = sourceRooms.filter(r => r.levelId === e.levelId && Math.abs((elevations[r.key]?.elevation ?? 0) - e.elevation) < .05).map(r => [r.polygonFeet, ...(r.holesFeet ?? [])]);
+        const unclaimed = claimed.length ? pc.difference(candidate, ...claimed) as RoomPoint[][][] : [candidate];
+        const loops = unclaimed.find(p => p[0]?.length && containsDirectoryRoomPoint(e.point, { polygonFeet: p[0]!, holesFeet: p.slice(1) } as DirectoryRoom));
+        if (!loops) return undefined;
+        const room: DirectoryRoom = { key, building: e.building, levelId: e.levelId, name: "Native connection landing", polygonFeet: loops[0]!, holesFeet: loops.slice(1), labelPointFeet: e.point, confidence: 1, spaceUse: { kind: "hallway", evidence: "user-reported" } };
+        sourceRooms.push(room); byRoom.set(key, room);
+        elevations[key] = { elevation: e.elevation, evidence: `Native floor #${c.surfaces[i]!.elementId}` };
+        const record: IndoorRecord = { key, number: "", name: room.name!, building: e.building, levelId: e.levelId, elevationFeet: e.elevation, elevationEvidence: elevations[key]!.evidence, surfaceId: surface(room), circulation: true, stair: false, access: "unknown", walkable: true, confidence: 1, ringsFeet: loops, properties: { nativeFloorId: c.surfaces[i]!.elementId, generatedLanding: true } };
+        records.push(record); byRecord.set(key, record);
+      }
+      return key;
+    });
+    localEndpointKeys.set(c.report.id, keys);
+  }
+  const semanticDoors = supportedSemanticDoorLinks(model, data, modelSha256, data.navigation?.doorLinks ?? []);
+  for (const diagnostic of semanticDoors.diagnostics) issue(diagnostic.code, diagnostic.message, undefined, diagnostic.doorId, diagnostic.levelId);
+  progress("Deriving independently enclosed, floor-supported native routing interiors…");
+  const nativePrepass = prepareNativeRoutingBoundaries(model, data, dataset, semanticDoors.links);
+  for (let i = 0; i < sourceRooms.length; i++) {
+    const derived = nativePrepass.rooms.get(sourceRooms[i]!.key);
+    if (!derived) continue;
+    const record = byRecord.get(derived.key)!;
+    record.properties.originalSourceRingsFeet = structuredClone(record.ringsFeet);
+    record.properties.nativeRoutingBoundary = derived.nativeInteriorProvenance;
+    record.ringsFeet = [derived.polygonFeet, ...(derived.holesFeet ?? [])];
+    sourceRooms[i] = derived;
+    byRoom.set(derived.key, derived);
+  }
+  dataset.issues.push({ id: "native-routing-boundaries", code: "native-routing-boundaries", severity: "info",
+    message: `${nativePrepass.report.promoted} native wall-defined routing interiors recovered with complete same-height floor support. Original source rings and saved annotation JSON remain preserved.` });
   const terminals = new Map<string, GridTerminal[]>(),
     nodes = new Map<string, IndoorNode>();
   const addTerminal = (
@@ -204,12 +273,14 @@ export async function prepareIndoorDataset(
     point: RoomPoint,
     kind: IndoorNode["kind"],
     snap: number,
+    nativeClearWidthFootprint?: RoomPoint[],
+    nativeDoorNormal?: RoomPoint,
   ) => {
     const r = byRecord.get(roomKey);
     if (!r || !r.walkable || r.access === "staff") return;
     terminals.set(roomKey, [
       ...(terminals.get(roomKey) ?? []),
-      { id, roomKey, point, maxSnapFeet: snap },
+      { id, roomKey, point, maxSnapFeet: snap, nativeClearWidthFootprint, nativeDoorNormal },
     ]);
     nodes.set(id, {
       id,
@@ -242,18 +313,24 @@ export async function prepareIndoorDataset(
       geometry = architecturalPlanGeometry(model, levelId);
     geometries.set(levelId, geometry);
     dataset.walls.push(
-      ...[...geometry.walls, ...geometry.columns]
+      ...[
+        ...geometry.walls.map((w) => ({ ...w, kind: "wall" as const })),
+        ...geometry.columns.map((w) => ({ ...w, kind: "column" as const })),
+      ]
         .filter((w) => w.polygon.length >= 3)
         .map((w) => ({
           levelId,
           nativeElementId: w.elementId,
+          kind: w.kind,
+          approximate: w.approximate,
           ringsFeet: [w.polygon],
         })),
     );
     const reviews = directoryDoorReviews(
         rooms,
         directoryDoors(model, levelId),
-        data.navigation?.doorLinks,
+        semanticDoors.links,
+        data.navigation?.doorLinks ?? [],
       ),
       passages = directoryOpenPassages(
         rooms,
@@ -261,15 +338,91 @@ export async function prepareIndoorDataset(
         data.boundaryReference,
         geometry,
       );
-    dataset.doors!.push(...reviews.map(({ door, candidates, state, portal }) => ({
-      id: `door:${levelId}:${door.id}`,
-      levelId,
-      nativeElementId: door.id,
-      pointFeet: door.point,
-      footprintFeet: door.footprint,
-      roomKeys: portal?.rooms ?? candidates,
-      state,
-    })));
+    dataset.doors!.push(
+      ...reviews.map(({ door, candidates, state, portal }) => ({
+        id: `door:${levelId}:${door.id}`,
+        levelId,
+        nativeElementId: door.id,
+        pointFeet: door.point,
+        footprintFeet: door.footprint,
+        normalFeet: door.normal,
+        roomKeys: portal?.rooms ?? candidates,
+        state,
+      })),
+    );
+    // Repair only independently supported microscopic native joints for barrier
+    // checks. Raw exported native walls and all source model bytes stay intact.
+    const jointRepairs = recoverNativeWallJunctionRepairs(
+      dataset.walls.filter(w => w.levelId === levelId),
+      dataset.doors!.filter(d => d.levelId === levelId),
+    );
+    geometries.set(levelId, {
+      ...geometry,
+      walls: [...geometry.walls, ...jointRepairs.map(repair => ({
+        elementId: repair.nativeWallElementId,
+        approximate: true,
+        polygon: repair.ringsFeet[0]!,
+      }))],
+    });
+    const recoveredDoorOwnership = recoverNativeDoorOwnership(
+      rooms, reviews, geometries.get(levelId)!,
+    );
+    // The ordinary native doorway recovery retains its existing search bound.
+    // A separate source-registered stair threshold proof may explain a larger
+    // unlabelled approach only with its real frame and exact-height floor.
+    for (const recovered of recoveredDoorOwnership) {
+      const review = reviews.find(r => r.door.id === recovered.portal.doorId);
+      if (review) { review.portal = recovered.portal; review.state = "connected"; }
+    }
+    const exactFloorSupport = new Map(rooms.map(room => {
+      const elevationFeet = byRecord.get(room.key)!.elevationFeet;
+      const floors = routingFloorPlateRecords(model, elevationFeet);
+      return [room.key, { elevationFeet, nativeFloorElementIds: floors.map(floor => floor.elementId), floors: floors.map(floor =>
+        floor.loops!.map(loop => loop.map(p => [p[0], p[1]] as RoomPoint))) }];
+    }));
+    recoveredDoorOwnership.push(...recoverRegisteredStairDoorOwnership(
+      rooms, reviews, geometries.get(levelId)!, data.boundaryReference, exactFloorSupport,
+    ));
+    for (const recovered of recoveredDoorOwnership) {
+      const review = reviews.find(r => r.door.id === recovered.portal.doorId);
+      if (!review) continue;
+      review.portal = recovered.portal;
+      review.state = "connected";
+      const exported = dataset.doors!.find(d => d.levelId === levelId && d.nativeElementId === review.door.id);
+      if (exported) {
+        exported.roomKeys = [...recovered.portal.rooms];
+        exported.state = "connected";
+      }
+      issue(
+        "recovered-native-door-ownership",
+        `Native door-side ownership recovered with continuous floor, jamb, wall/column and third-room checks: ${JSON.stringify(recovered.proof)}. Access and accessibility remain unverified.`,
+        undefined, review.door.id, levelId,
+      );
+    }
+    const matchedKeys = new Set([...reviews.flatMap(d => d.portal?.rooms ?? []), ...passages.flatMap(p => p.rooms)]);
+    const recoveredFronts = recoverRegisteredOpenFronts(
+      rooms, new Set(rooms.filter(r => !matchedKeys.has(r.key)).map(r => r.key)),
+      data.boundaryReference, geometries.get(levelId)!,
+    );
+    recoveredFronts.push(...recoverRegisteredCirculationSeams(
+      rooms, data.boundaryReference, geometries.get(levelId)!,
+      exactFloorSupport,
+    ).filter(front => !passages.some(p => p.rooms.every(key => front.rooms.includes(key)))));
+    passages.push(...recoveredFronts);
+    for (const front of recoveredFronts) issue(
+      "recovered-open-front",
+      `Doorless registered opening recovered at full ${front.proof.widthFeet} ft width across a ${front.proof.boundaryGapFeet.toFixed(4)} ft drawing seam; ${front.proof.floorCoveredSquareFeet.toFixed(4)} square feet continuously covered by native floors. Native/repaired walls, columns, source walls, other rooms and holes were checked. Public access and accessibility remain unverified.`,
+      front.rooms[0], undefined, levelId,
+    );
+    const sourceDoors = recoverRegisteredSourceDoors(
+      rooms, data.boundaryReference, geometries.get(levelId)!, exactFloorSupport,
+      dataset.source.modelSha256,
+    );
+    for (const door of sourceDoors) issue(
+      "recovered-source-door",
+      `Fixed registered drawing doorway ${door.sourceDoorId} recovered from independently proved paired swing/leaf symbols and both jamb wall faces; both exact-height native floors, full 2 ft crossing, native/source walls, columns, existing native doors, third rooms and holes checked. Source model bytes stay intact. Access and accessibility remain unverified.`,
+      door.rooms[0], undefined, levelId,
+    );
     const ports = [
       ...reviews.flatMap((d) =>
         d.portal
@@ -282,6 +435,7 @@ export async function prepareIndoorDataset(
                   ? "reviewed-native-door"
                   : "native-door",
                 nativeElementId: d.door.id,
+                sourceDoorProof: undefined,
               },
             ]
           : [],
@@ -290,8 +444,22 @@ export async function prepareIndoorDataset(
         ...p,
         id: `opening:${p.openingId}`,
         kind: "opening" as const,
-        evidence: p.evidence,
+        evidence: (() => {
+          const recovered = recoveredFronts.find(front => front.openingId === p.openingId);
+          if (!recovered) return p.evidence;
+          const proof = recovered.proof;
+          return `recovered registered source open front; widthFeet=${proof.widthFeet}; boundaryGapFeet=${proof.boundaryGapFeet}; registrationErrorFeet=${proof.registrationErrorFeet}; continuously native-floor-covered squareFeet=${proof.floorCoveredSquareFeet}; native/repaired-wall, column, source-wall, other-room and hole vetoes passed; access/accessibility unverified`;
+        })(),
         nativeElementId: undefined,
+        sourceDoorProof: undefined,
+      })),
+      ...sourceDoors.map(door => ({
+        ...door,
+        id: door.sourceDoorId,
+        kind: "door" as const,
+        evidence: "registered source doorway; paired source leaf/swing symbols and actual jamb wall faces; fixed threshold, exact native floors and full-width obstacle proof; no native door identity inferred; access/accessibility unverified",
+        nativeElementId: undefined,
+        sourceDoorProof: door.proof,
       })),
     ];
     openings.set(levelId, ports);
@@ -300,7 +468,7 @@ export async function prepareIndoorDataset(
         dataset.report.unmatchedDoors++;
         issue(
           "door-unmatched",
-          `${d.state} native door: ${d.candidates.length} candidate areas.`,
+          `${d.state} native door: ${d.candidates.length} candidate areas${d.candidates.length ? ` (${d.candidates.join(", ")})` : ""}. Review the native threshold, floor, room boundaries and explicit door link; proximity alone does not authorize a connection.`,
           undefined,
           d.door.id,
           levelId,
@@ -330,8 +498,8 @@ export async function prepareIndoorDataset(
         continue;
       }
       const ids = [`${p.id}:0`, `${p.id}:1`];
-      addTerminal(ids[0]!, a.key, p.from, "portal", 2);
-      addTerminal(ids[1]!, b.key, p.to, "portal", 2);
+      addTerminal(ids[0]!, a.key, p.from, "portal", 2, p.footprint, p.normal);
+      addTerminal(ids[1]!, b.key, p.to, "portal", 2, p.footprint, p.normal);
       pending.push({
         id: p.id,
         from: ids[0]!,
@@ -344,6 +512,12 @@ export async function prepareIndoorDataset(
         nativeElementId: p.nativeElementId,
         accessible: "unknown",
         enabled: true,
+        ...(p.sourceDoorProof ? { sourceDoorProof: p.sourceDoorProof } : {}),
+        ...(p.kind === "opening" ? (() => {
+          const front = recoveredFronts.find(front => front.openingId === p.openingId);
+          const span = front && recoverIndoorOpeningSpan(model, dataset, rooms, front, data.boundaryReference, geometries.get(levelId)!);
+          return span ? { openingSpan: span } : {};
+        })() : {}),
       });
     }
   }
@@ -377,60 +551,31 @@ export async function prepareIndoorDataset(
       enabled: true,
     });
   }
+  if (data.indoorConnectors) {
+    const review=supportedIndoorConnectors(model,sourceRooms,modelSha256,data.indoorConnectors);
+    dataset.connectors=[];
+    for(const rejected of review.rejected) issue("connector-review", `${rejected.id}: ${rejected.message}`);
+    for(const connector of review.accepted) {
+      const entrances=connector.entrances.map((e,i)=>({nodeId:`connector:${connector.id}:${i}`,roomKey:e.roomKey,levelId:e.levelId}));
+      connector.entrances.forEach((e,i)=>addTerminal(entrances[i]!.nodeId,e.roomKey,e.pointFeet,"connector",cell*2));
+      dataset.connectors.push({id:connector.id,kind:connector.kind,nativeElementId:connector.nativeElementId,...(connector.reviewedShaft ? {reviewedShaft:connector.reviewedShaft} : {}),sourceModelSha256:modelSha256,evidence:connector.evidence,accessible:connector.accessible,direction:connector.direction,entrances});
+      // Elevator entrance pairs use explicit served floor identities; an escalator is one directed pair.
+      for(let i=0;i<entrances.length-1;i++) for(let j=i+1;j<entrances.length;j++) {
+        const from=entrances[i]!,to=entrances[j]!;
+        pending.push({id:`connector:${connector.id}:${i}:${j}`,from:from.nodeId,to:to.nodeId,kind:connector.kind,connectorId:connector.id,direction:connector.direction,lengthMetres:Math.abs(byRecord.get(from.roomKey)!.elevationFeet-byRecord.get(to.roomKey)!.elevationFeet)*0.3048,pointsFeet:[],roomKeys:[from.roomKey,to.roomKey],evidence:connector.evidence,nativeElementId:connector.nativeElementId,accessible:connector.accessible,enabled:true});
+      }
+    }
+  }
   // Local steps can land on a supported slab without a room label. Such landings
   // get their own explicit surface identity; proximity alone never attaches them.
-  for (const c of localBuildingConnections(
-    model,
-    sourceRooms,
-    data.buildingTransitions ?? [],
-  )) {
+  for (const c of localConnections) {
     if (!c.surfaceSupported) {
       issue("local-transition", `${c.report.id}: ${c.warnings.join(" ")}`);
       continue;
     }
     const ids = c.endpoints.map((e, i) => {
-      let key = e.roomKey;
-      if (!key) {
-        key = `landing:${c.report.id}:${i}`;
-        const loops = c.surfaces[i]?.polygons.find((p) => p[0]?.length);
-        if (!loops) return undefined;
-        const room: DirectoryRoom = {
-          key,
-          building: e.building,
-          levelId: e.levelId,
-          name: "Native connection landing",
-          polygonFeet: loops[0]!,
-          holesFeet: loops.slice(1),
-          labelPointFeet: e.point,
-          confidence: 1,
-          spaceUse: { kind: "hallway", evidence: "user-reported" },
-        };
-        sourceRooms.push(room);
-        byRoom.set(key, room);
-        elevations[key] = {
-          elevation: e.elevation,
-          evidence: `Native floor #${c.surfaces[i]!.elementId}`,
-        };
-        const record: IndoorRecord = {
-          key,
-          number: "",
-          name: room.name!,
-          building: e.building,
-          levelId: e.levelId,
-          elevationFeet: e.elevation,
-          elevationEvidence: elevations[key]!.evidence,
-          surfaceId: surface(room),
-          circulation: true,
-          stair: false,
-          access: "unknown",
-          walkable: true,
-          confidence: 1,
-          ringsFeet: loops,
-          properties: { nativeFloorId: c.surfaces[i]!.elementId },
-        };
-        records.push(record);
-        byRecord.set(key, record);
-      }
+      const key = localEndpointKeys.get(c.report.id)?.[i];
+      if (!key) return undefined;
       const id = `local:${c.report.id}:${i}`;
       addTerminal(id, key, e.point, "stair", 1.2);
       return id;
@@ -472,6 +617,7 @@ export async function prepareIndoorDataset(
     scopes.set(id, [...(scopes.get(id) ?? []), r]);
   }
   const connectedTerminals = new Set<string>();
+  const arrivalFloorSupport = new Map<string, ReturnType<typeof nativeArrivalFloorSupport>>();
   let index = 0;
   for (const [scopeId, rooms] of scopes) {
     progress(`Building walkable graph · region ${++index}/${scopes.size}`);
@@ -494,7 +640,14 @@ export async function prepareIndoorDataset(
         Math.min(...r.polygonFeet.map((p) => p[1])) <= maxY &&
         Math.max(...r.polygonFeet.map((p) => p[1])) >= minY,
     );
+    const supportKey = `${reference.levelId}:${reference.elevationFeet}`;
+    if (!arrivalFloorSupport.has(supportKey))
+      arrivalFloorSupport.set(supportKey, nativeArrivalFloorSupport({floors: [
+        ...routingFloorPlateRecords(model, reference.elevationFeet).map(record =>
+          (record.loops ?? []).map(loop => loop.map(p => [p[0], p[1]] as RoomPoint))),
+      ]}));
     const ts = rooms.flatMap((r) => terminals.get(r.key) ?? []),
+      floorSupported = arrivalFloorSupport.get(supportKey),
       grid = buildIndoorGrid(
         rooms,
         masks,
@@ -502,7 +655,26 @@ export async function prepareIndoorDataset(
         geometry,
         openings.get(reference.levelId) ?? [],
         cell,
+        floorSupported ? {
+          arrivalTerminalIds: new Set(ts.filter(t =>
+            nodes.get(t.id)?.kind === "arrival" &&
+            !rooms.find(r => r.key === t.roomKey)?.routePointFeet,
+          ).map(t => t.id)),
+          nativeFloorSupported: floorSupported,
+        } : undefined,
       );
+    for (const recovery of grid.arrivalRecoveries) {
+      const record = byRecord.get(recovery.roomKey);
+      if (record) record.properties.arrivalRecovery = recovery;
+      dataset.issues.push({
+        id: `arrival-label-recovery:${recovery.roomKey}`,
+        code: "arrival-label-recovery",
+        severity: "info",
+        roomKey: recovery.roomKey,
+        levelId: reference.levelId,
+        message: `Obstructed drawing-label arrival replaced by a room-contained, native-floor-supported destination connected to ${recovery.entranceId}; displacement ${recovery.displacementFeet.toFixed(4)} feet. Original source label is preserved.`,
+      });
+    }
     for (const id of grid.missing) {
       nodes.delete(id);
       issue(
@@ -534,6 +706,12 @@ export async function prepareIndoorDataset(
     for (const b of grid.branches) {
       connectedTerminals.add(b.from);
       connectedTerminals.add(b.to);
+      // An arrival and an existing connector can be the identical graph point.
+      // Changing node identity at that point introduces no physical travel or
+      // clearance claim; otherwise an already reviewed ramp ends at an
+      // inaccessible zero-length bookkeeping edge.
+      const stationaryTransfer = b.points.length >= 2 && b.points.every(p =>
+        p[0] === b.points[0]![0] && p[1] === b.points[0]![1]);
       dataset.edges.push({
         id: `walk:${scopeId}:${[b.from, b.to].sort().join("|")}`,
         from: b.from,
@@ -550,8 +728,11 @@ export async function prepareIndoorDataset(
           ),
         pointsFeet: b.points.map((p) => [...p, reference.elevationFeet]),
         roomKeys: b.roomKeys,
-        evidence: "boundary + native-barrier raster",
-        accessible: "unknown",
+        evidence: stationaryTransfer
+          ? "identical same-surface same-height graph point; stationary node identity transfer with no physical travel"
+          : "boundary + continuously checked native barriers + turn/clearance-preferred raster",
+        routingQuality: b.routingQuality,
+        accessible: stationaryTransfer ? "yes" : "unknown",
         enabled: true,
       });
     }
@@ -569,6 +750,13 @@ export async function prepareIndoorDataset(
       continue;
     }
     if (e.kind === "door" || e.kind === "opening") {
+      const involved = e.roomKeys.map(key => sourceRooms.find(r => r.key === key)).filter((r): r is DirectoryRoom => !!r);
+      const holes = involved.flatMap(r => [...r.holesFeet ?? [], ...r.floorOpeningsFeet ?? []]);
+      const voidBlocked = nativeRouteBlocker({ walls: [], columns: holes.map(polygon => ({polygon})) }, []);
+      if (voidBlocked([a.pointFeet[0], a.pointFeet[1]], [b.pointFeet[0], b.pointFeet[1]])) {
+        issue("connection-void", `Connection ${e.id} crosses a source floor opening or room hole; its approach needs review.`, undefined, e.nativeElementId, a.levelId);
+        continue;
+      }
       const geometry = geometries.get(a.levelId)!;
       const blocked = nativeRouteBlocker(
         geometry,
@@ -602,9 +790,25 @@ export async function prepareIndoorDataset(
     connectedTerminals.add(e.to);
   }
   dataset.nodes = [...nodes.values()];
+  progress("Rebuilding source-bound native ramps and supported landing approaches…");
+  const restoredRampReviews = prepareReviewedIndoorRamps(model, dataset, data.indoorRamps, geo, data.indoorReviews);
+  const attachments = attachNativeCirculation(model, dataset);
+  dataset.edges.push(...attachments.edges);
+  for (const message of attachments.diagnostics) issue("native-landing-attachment", message);
+  for (const edge of attachments.edges) {
+    connectedTerminals.add(edge.from);
+    connectedTerminals.add(edge.to);
+  }
+  // Ramps may create a named native landing; generated arrivals must remain
+  // regenerable rather than existing only in an OpenIndoorMaps ZIP mutation.
+  const finalNodes = new Map(dataset.nodes.map(n => [n.id, n]));
   for (const r of records) {
     const id = `arrival:${r.key}`;
-    if (nodes.has(id) && connectedTerminals.has(id)) r.arrivalNodeId = id;
+    if (finalNodes.has(id) && connectedTerminals.has(id)) r.arrivalNodeId = id;
+    else if (r.key.startsWith("landing:")) {
+      const landing = dataset.nodes.find(n => n.roomKey === r.key && dataset.edges.some(e => e.from === n.id || e.to === n.id));
+      if (landing) r.arrivalNodeId = landing.id;
+    }
     else if (r.walkable && r.access !== "staff")
       issue(
         "isolated-arrival",
@@ -622,9 +826,13 @@ export async function prepareIndoorDataset(
         r.levelId,
       );
   }
+  dataset.connectors = dataset.connectors?.filter(c => c.entrances.every(e => nodes.has(e.nodeId)) && dataset.edges.some(e=>e.connectorId===c.id));
   const savedReviews = data.indoorReviews as
     | {
-        records?: Record<string, { name?: string; notes?: string }>;
+        records?: Record<string, {
+          name?: string; notes?: string; throughNavigation?: boolean;
+          throughNavigationGeometryKey?: string;
+        }>;
         edges?: Record<
           string,
           {
@@ -640,6 +848,13 @@ export async function prepareIndoorDataset(
     const review = savedReviews?.records?.[record.key];
     if (review?.name) record.name = review.name;
     if (review?.notes) record.properties.reviewNotes = review.notes;
+    if (review?.throughNavigation === true) {
+      const geometryKey = JSON.stringify([dataset.source.modelSha256, record.key, record.levelId, record.ringsFeet]);
+      if (review.throughNavigationGeometryKey === geometryKey && review.notes?.trim() && record.walkable && record.access !== "staff")
+        record.properties.throughNavigationReview = { geometryKey, notes: review.notes.trim() };
+      else
+        issue("through-navigation-review-stale", `Recheck the confirmed passage after regeneration: ${record.number || record.key}`, record.key, undefined, record.levelId);
+    }
   }
   for (const edge of dataset.edges) {
     const review = savedReviews?.edges?.[edge.id];
@@ -655,8 +870,8 @@ export async function prepareIndoorDataset(
         edge.pointsFeet,
       ]);
       if (
-        review.geometryKey === key &&
-        (["stairs", "local-steps"].includes(edge.kind)
+        (review.geometryKey === key || restoredRampReviews.has(edge.id)) &&
+        (["stairs", "local-steps", "escalator"].includes(edge.kind)
           ? review.accessible !== "yes"
           : true)
       )
@@ -698,5 +913,39 @@ export async function prepareIndoorDataset(
   dataset.report.routableArrivals = arrivals.size;
   dataset.report.components = components.length;
   dataset.report.largestComponentArrivals = Math.max(0, ...components);
+  const exactFloors = new Map([...new Set(records.map(r => r.elevationFeet))]
+    .flatMap(elevation => routingFloorPlateRecords(model, elevation))
+    .map(floor => [floor.elementId, floor]));
+  dataset.walkingSupport = {
+    version: 1,
+    sourceModelSha256: modelSha256,
+    floors: [...exactFloors.values()].sort((a,b) => a.elementId-b.elementId).map(floor => ({
+      nativeElementId: floor.elementId,
+      elevationFeet: floor.boundsFeet.max.z,
+      ringsFeet: nativeFloorPolygons(floor)[0]!,
+      partsFeet: nativeFloorPolygons(floor),
+    })),
+  };
+  progress("Preparing native wall-defined room presentation…");
+  const presentationGeometries = new Map([...geometries].map(([levelId, geometry]) => {
+    const physicalElevation = model.levels.find(l => l.levelId === levelId)?.elevation;
+    return [levelId, { ...geometry, floors: physicalElevation == null ? [] :
+      routingFloorPlateRecords(model, physicalElevation).flatMap(nativeFloorPolygons) }];
+  }));
+  dataset.presentation = prepareIndoorPresentation(dataset, data.annotations, undefined, {
+    boundaryReference: data.boundaryReference,
+    geometries: presentationGeometries,
+    floorsByRecord: new Map(records.map(record => [record.key,
+      routingFloorPlateRecords(model, record.elevationFeet).flatMap(nativeFloorPolygons)
+    ])),
+  });
+  dataset.stairDisplay = prepareIndoorStairDisplay(model, dataset, data.annotations);
+  progress("Deriving native floor-bound circulation cells and rebuilding their walking branches…");
+  const nativeCirculation = prepareNativeCirculationGeometry(model, dataset);
+  dataset.circulationGeometry = nativeCirculation.geometry;
+  const nativeBranches = attachNativeCirculationCellRoutes(dataset);
+  dataset.issues.push({id:"native-circulation-geometry",code:"native-circulation-geometry",severity:"info",message:`${nativeCirculation.report.accepted} native circulation cells; ${nativeBranches} native walking branches. ${nativeCirculation.report.rejected} unclassified cells retained for review. Source identities, door thresholds and vertical connectors preserved.`});
+  for(const [i,message] of nativeCirculation.report.diagnostics.entries())
+    dataset.issues.push({id:`native-circulation-topology:${i}`,code:"native-circulation-topology",severity:"review",message});
   return dataset;
 }

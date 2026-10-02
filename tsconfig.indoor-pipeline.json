@@ -1,1 +1,27 @@
-{"extends":"./tsconfig.json","compilerOptions":{"incremental":false,"types":["node"]},"include":["lib/reviter/indoor-*.ts","lib/reviter/project-package.ts","app/studio/BuildingDirectory.tsx","scripts/prepare-indoor-project.ts","tests/indoor-grid.test.ts","tests/indoor-pipeline.test.ts"],"exclude":["node_modules","work","dist","dist-pages"]}
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "lib/reviter/indoor-*.ts",
+    "lib/reviter/project-package.ts",
+    "app/studio/BuildingDirectory.tsx",
+    "scripts/prepare-indoor-project.ts",
+    "tests/indoor-grid.test.ts",
+    "tests/indoor-pipeline.test.ts",
+    "lib/reviter/revit-finish-inventory.ts",
+    "scripts/map-revit-finish-inventory.ts",
+    "tests/revit-finish-inventory.test.ts",
+    "tests/semantic-door-links.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "work",
+    "dist",
+    "dist-pages"
+  ]
+}

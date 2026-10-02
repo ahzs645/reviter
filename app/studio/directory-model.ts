@@ -1,3 +1,4 @@
+import { routingFloorPlateRecords } from "../../lib/reviter/routing-floor-support.ts";
 import type {LocalBuildingConnection} from "../../lib/reviter/building-transitions.ts";
 import polygonClipping from "polygon-clipping";
 import {directoryStairFootprints,isStairArea,type DirectoryStairFootprint,type UpperStairContext} from "../../lib/reviter/directory-stair-geometry.ts";
@@ -46,10 +47,15 @@ export function directoryModelFloor(result: Pick<ConvertResult, "levels"> & Part
   }
   const roomElevations: DirectoryModelFloor["roomElevations"] = {};
   let minElevation=level.elevation;
-  if (result.elementBounds && result.nativeAssociatedLevelRelations?.length) {
+  if (result.elementBounds) {
     const model=result as ConvertResult;
     const group=connectedFloorPlanGroup(model,levelId);
-    const slabs=(group?.levelIds ?? [levelId]).flatMap(id=>floorPlateRecords(model,id).map(record=>({record,levelId:id})));
+    const slabs=model.nativeAssociatedLevelRelations?.length
+      ? (group?.levelIds ?? [levelId]).flatMap(id=>floorPlateRecords(model,id).map(record=>({record,levelId:id})))
+      : [];
+    const physical = routingFloorPlateRecords(model, level.elevation).map(record => ({record, levelId}));
+    const known = new Set(slabs.map(s => s.record.elementId));
+    slabs.push(...physical.filter(s => !known.has(s.record.elementId)));
     for (const room of floorRooms) {
       const candidates=slabs.filter(({record})=>{
         const {min,max}=record.boundsFeet; const p=room.labelPointFeet;
