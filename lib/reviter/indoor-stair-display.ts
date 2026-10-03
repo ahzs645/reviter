@@ -1,5 +1,6 @@
 import polygonClipping from "polygon-clipping";
 import type { ConvertResult } from "./types.ts";
+import { nativeRampTriangles } from "./indoor-ramps.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import {
   roomArea,
@@ -12,18 +13,34 @@ export function stairFloorOccluders(
   model: Partial<ConvertResult>,
   flight: NonNullable<IndoorDataset["stairDisplay"]>["flights"][number],
 ) {
-  const points=flight.treads.flatMap(t=>t.ringFeet);
-  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
-  const box=[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
-  return (model.elementBounds??[]).filter(r=>
-    r.categoryId===-2000032 && r.loops?.length &&
-    Math.abs(r.boundsFeet.max.z-flight.floorElevationFeet)<0.15 &&
-    r.boundsFeet.min.x<=box[2] && r.boundsFeet.max.x>=box[0] &&
-    r.boundsFeet.min.y<=box[3] && r.boundsFeet.max.y>=box[1]
-  ).map(r=>({
-    nativeElementId:r.elementId,elevationFeet:r.boundsFeet.max.z,
-    ringsFeet:r.loops!.map(ring=>ring.map(p=>[p[0],p[1]] as RoomPoint)),
-  })).filter(s=>s.ringsFeet.every(r=>r.length>=3));
+  const points = flight.treads.flatMap((t) => t.ringFeet);
+  const xs = points.map((p) => p[0]),
+    ys = points.map((p) => p[1]);
+  const box = [
+    Math.min(...xs),
+    Math.min(...ys),
+    Math.max(...xs),
+    Math.max(...ys),
+  ];
+  return (model.elementBounds ?? [])
+    .filter(
+      (r) =>
+        r.categoryId === -2000032 &&
+        r.loops?.length &&
+        Math.abs(r.boundsFeet.max.z - flight.floorElevationFeet) < 0.15 &&
+        r.boundsFeet.min.x <= box[2] &&
+        r.boundsFeet.max.x >= box[0] &&
+        r.boundsFeet.min.y <= box[3] &&
+        r.boundsFeet.max.y >= box[1],
+    )
+    .map((r) => ({
+      nativeElementId: r.elementId,
+      elevationFeet: r.boundsFeet.max.z,
+      ringsFeet: r.loops!.map((ring) =>
+        ring.map((p) => [p[0], p[1]] as RoomPoint),
+      ),
+    }))
+    .filter((s) => s.ringsFeet.every((r) => r.length >= 3));
 }
 
 /** Bind complete native flights to stair places by physical floor endpoint and
@@ -36,6 +53,9 @@ export function prepareIndoorStairDisplay(
 ): NonNullable<IndoorDataset["stairDisplay"]> {
   const elements = new Map(model.elementBounds?.map((r) => [r.elementId, r]));
   const flights: NonNullable<IndoorDataset["stairDisplay"]>["flights"] = [];
+  const sourceFlights: NonNullable<
+    NonNullable<IndoorDataset["stairDisplay"]>["sourceFlights"]
+  > = [];
   const close = (r: RoomPoint[]) => [...r, r[0]!];
   const area = (ps: RoomPoint[][][]) =>
     ps.reduce(
@@ -43,28 +63,117 @@ export function prepareIndoorStairDisplay(
         s + roomArea(p[0]!) - p.slice(1).reduce((h, r) => h + roomArea(r), 0),
       0,
     );
+  const recoveredTreads = (id: number) => {
+    const groups = new Map<number, RoomPoint[][]>();
+    for (const triangle of nativeRampTriangles(model as ConvertResult, id)) {
+      if (
+        Math.max(...triangle.map((p) => p[2])) -
+          Math.min(...triangle.map((p) => p[2])) >
+        0.002
+      )
+        continue;
+      const ring = triangle.map((p) => [p[0], p[1]] as RoomPoint);
+      if (roomArea(ring) < 0.2) continue;
+      const z = Math.round(triangle[0]![2] * 1e6) / 1e6;
+      groups.set(z, [...(groups.get(z) ?? []), ring]);
+    }
+    return [...groups].flatMap(([elevationFeet, rings]) => {
+      const parts = polygonClipping.union(
+        ...(rings.map((r) => [close(r)]) as [
+          polygonClipping.Polygon,
+          ...polygonClipping.Polygon[],
+        ]),
+      ) as RoomPoint[][][];
+      return parts
+        .filter((p) => p.length === 1)
+        .map((p) => ({
+          runElementId: id,
+          elevationFeet,
+          ringFeet: p[0]!.slice(0, -1),
+        }));
+    });
+  };
   for (const assembly of model.nativeStairAssemblies ?? []) {
     const runs = assembly.runAndLandingIds
       .map((id) => elements.get(id))
-      .filter((r) => r?.stairTreads?.length);
+      .filter((r) => !!r);
     if (!runs.length) continue;
     const low = Math.min(...runs.map((r) => r!.boundsFeet.min.z));
     const high = Math.max(...runs.map((r) => r!.boundsFeet.max.z));
+    let recovered = false;
     const treads = runs
       .flatMap((r) =>
-        r!.stairTreads!.map((t) => ({
-          runElementId: r!.elementId,
-          ...(r!.stairTreadThicknessFeet != null &&
-          Number.isFinite(r!.stairTreadThicknessFeet) &&
-          r!.stairTreadThicknessFeet > 0
-            ? { thicknessFeet: r!.stairTreadThicknessFeet }
-            : {}),
-          elevationFeet: t.reduce((s, p) => s + p[2] / t.length, 0),
-          ringFeet: t.map((p) => [p[0], p[1]] as RoomPoint),
-        })),
+        r!.stairTreads?.length
+          ? r!.stairTreads!.map((t) => ({
+              runElementId: r!.elementId,
+              ...(r!.stairTreadThicknessFeet != null &&
+              Number.isFinite(r!.stairTreadThicknessFeet) &&
+              r!.stairTreadThicknessFeet > 0
+                ? { thicknessFeet: r!.stairTreadThicknessFeet }
+                : {}),
+              elevationFeet: t.reduce((s, p) => s + p[2] / t.length, 0),
+              ringFeet: t.map((p) => [p[0], p[1]] as RoomPoint),
+            }))
+          : (() => {
+              const treads = recoveredTreads(r!.elementId);
+              recovered ||= !!treads.length;
+              return treads;
+            })(),
       )
       .filter((t) => roomArea(t.ringFeet) > 0.01);
     if (!treads.length) continue;
+    // Source geometry remains visible even if a drawing outline misses a run.
+    // Inventory membership grants no arrival, stair edge or served stop.
+    const levels = model.levels.filter(
+      (l) => l.levelId != null && Number.isFinite(l.elevation),
+    );
+    const base = elements.get(assembly.stairElementId)?.boundsFeet.min.z ?? low;
+    const bottom = [...levels].sort(
+      (a, b) => Math.abs(a.elevation - base) - Math.abs(b.elevation - base),
+    )[0];
+    const top = [...levels].sort(
+      (a, b) => Math.abs(a.elevation - high) - Math.abs(b.elevation - high),
+    )[0];
+    if (bottom && top) {
+      const levelIds = levels
+        .filter(
+          (l) =>
+            l.elevation >= bottom.elevation - 0.05 &&
+            l.elevation <= top.elevation + 0.05,
+        )
+        .map((l) => l.levelId!);
+      const points = treads.flatMap((t) => t.ringFeet);
+      const centre: RoomPoint = [
+        points.reduce((n, p) => n + p[0] / points.length, 0),
+        points.reduce((n, p) => n + p[1] / points.length, 0),
+      ];
+      const nearby = data.records
+        .filter((r) => levelIds.includes(r.levelId))
+        .map((r) => ({
+          r,
+          distance: Math.min(
+            ...r.ringsFeet
+              .flat()
+              .map((p) => Math.hypot(p[0] - centre[0], p[1] - centre[1])),
+          ),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+      const buildings = [
+        ...new Set(
+          nearby
+            .filter((n) => n.distance <= Math.max(15, nearby[0]?.distance ?? 0))
+            .map((n) => n.r.building),
+        ),
+      ];
+      sourceFlights.push({
+        stairElementId: assembly.stairElementId,
+        levelIds,
+        buildings,
+        floorElevationFeet: bottom.elevation,
+        sourceGeometry: recovered ? "native-brep" : "native-cache",
+        treads,
+      });
+    }
     const polygons = treads.map((t) => [close(t.ringFeet)]);
     const native = polygonClipping.union(polygons[0]!, ...polygons.slice(1));
     const candidates = data.records
@@ -127,11 +236,13 @@ export function prepareIndoorStairDisplay(
       });
     }
   }
-  for(const flight of flights)flight.floorOccluders=stairFloorOccluders(model,flight);
+  for (const flight of flights)
+    flight.floorOccluders = stairFloorOccluders(model, flight);
   return {
     version: 1,
     generator: "reviter/native-stair-display-1",
     sourceModelSha256: data.source.modelSha256,
+    sourceFlights,
     flights,
   };
 }

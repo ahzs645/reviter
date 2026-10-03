@@ -250,6 +250,19 @@ export type IndoorDataset = {
     version: 1;
     generator: "reviter/native-stair-display-1";
     sourceModelSha256: string;
+    sourceFlights?: {
+      stairElementId: number;
+      levelIds: number[];
+      buildings: string[];
+      floorElevationFeet: number;
+      sourceGeometry: "native-cache" | "native-brep";
+      treads: {
+        runElementId: number;
+        elevationFeet: number;
+        thicknessFeet?: number;
+        ringFeet: [number, number][];
+      }[];
+    }[];
     flights: {
       roomKey: string;
       levelId: number;
@@ -277,11 +290,19 @@ export type IndoorDataset = {
     version: 1;
     sourceModelSha256: string;
     ramps: {
-      edgeId: string;
+      edgeId?: string;
+      displayOnly?: true;
+      buildings?: string[];
+      circulation?: boolean;
       nativeElementId: number;
       levelIds: number[];
       anchorPointFeet: [number, number, number];
       trianglesFeet: [number, number, number][][];
+      bodyTrianglesFeet?: [number, number, number][][];
+      platforms?: {
+        nativeElementId: number;
+        trianglesFeet: [number, number, number][][];
+      }[];
     }[];
   };
   connectors?: {
@@ -308,12 +329,7 @@ export type IndoorDataset = {
         displayName?: string;
         description?: string;
         category?:
-          | "study"
-          | "food"
-          | "washroom"
-          | "department"
-          | "entrance"
-          | "other";
+          "study" | "food" | "washroom" | "department" | "entrance" | "other";
         department?: string;
         color?: string;
         landmark?: boolean;

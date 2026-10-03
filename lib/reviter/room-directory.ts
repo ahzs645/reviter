@@ -171,6 +171,7 @@ export const isWalkable = (room: DirectoryRoom) => room.status !== "deleted" && 
 export const isPubliclyAccessible = (room: DirectoryRoom) => room.access?.kind !== "staff";
 
 export const isHallway = (room: DirectoryRoom) => isPubliclyAccessible(room) && (room.spaceUse ? room.spaceUse.kind !== "room" : /\b(corridor|hallway|circulation|vestibule|lobby|atrium|connecting passage)\b/i.test(room.name ?? "")
+  || /^(?:connecting\s+)?link$/i.test(room.name ?? "")
   || /^(?:(?:main|entry|entrance|north|south|east|west|central|upper|lower)\s+)?hall$/i.test(room.name ?? ""));
 export const roomBuilding = (room: DirectoryRoom) => room.number?.match(/^([^-]+)-/)?.[1] ?? room.building ?? room.dwg?.sectionId?.split(" ")[0] ?? "Unassigned";
 

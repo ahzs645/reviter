@@ -74,14 +74,15 @@ const topology = (rings: Rings): Rings =>
   );
 export function isNativeCirculationOwner(record: IndoorRecord): boolean {
   const use = record.properties.spaceUse as
-    | { kind?: string; evidence?: string }
-    | undefined;
+    { kind?: string; evidence?: string } | undefined;
   return (
     record.circulation &&
     record.walkable &&
     record.access !== "staff" &&
     (!record.stair ||
-      (record.properties.stairAccess === "flight-and-landing" &&
+      (["flight-and-landing", "up-flight-only"].includes(
+        String(record.properties.stairAccess),
+      ) &&
         use?.kind === "hallway" &&
         use.evidence === "user-reported"))
   );

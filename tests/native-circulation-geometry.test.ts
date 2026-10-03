@@ -74,6 +74,33 @@ test("complete native floor cells replace an inset trace without changing room i
   assert.equal(JSON.stringify([model, data]), before);
   assert.deepEqual(result.geometry.cells[0]!.nativeFloorIds, [100]);
 });
+
+test("reviewed up-only stairs retain their flat landing without flattening the rising flight", () => {
+  const { model, data } = setup();
+  data.records[0]!.stair = true;
+  data.records[0]!.properties = {
+    stairAccess: "up-flight-only",
+    spaceUse: { kind: "hallway", evidence: "user-reported" },
+  };
+  model.elementBounds.push({
+    elementId: 102,
+    stairTreads: [rect(7, 3, 9, 7).map((p) => [p[0], p[1], 1])],
+  } as never);
+  const before = JSON.stringify(data);
+  const result = prepareNativeCirculationGeometry(model, data);
+  assert.ok(result.geometry.cells.some((c) => inside([2, 5], c.ringsFeet)));
+  assert.ok(!result.geometry.cells.some((c) => inside([8, 5], c.ringsFeet)));
+  assert.equal(
+    JSON.stringify(data),
+    before,
+    "preparation preserves stair direction and graph",
+  );
+  delete data.records[0]!.properties.spaceUse;
+  assert.equal(
+    prepareNativeCirculationGeometry(model, data).geometry.cells.length,
+    0,
+  );
+});
 test("native holes, columns, private rooms and low stair projections stay excluded", () => {
   const { model, data } = setup();
   model.elementBounds[0]!.loops!.push(
@@ -253,9 +280,8 @@ test("regeneration replaces derived branches while preserving original links", (
   assert.deepEqual(data.edges, [], "no derived links survive removed cells");
 });
 test("separate native slab shells and nested voids retain their own geometry", async () => {
-  const { nativeFloorPolygons } = await import(
-    "../lib/reviter/routing-floor-support.ts"
-  );
+  const { nativeFloorPolygons } =
+    await import("../lib/reviter/routing-floor-support.ts");
   const as3 = (r: Point[]) =>
     r.map((p) => [p[0], p[1], 0] as [number, number, number]);
   const parts = nativeFloorPolygons({
@@ -344,9 +370,8 @@ test("a sub-width seam cannot merge native circulation with a large unlabelled s
   );
 });
 test("physical recovery uses persisted native angled wall end caps", async () => {
-  const { nativeWalkingRegion } = await import(
-    "../lib/reviter/native-circulation-links.ts"
-  );
+  const { nativeWalkingRegion } =
+    await import("../lib/reviter/native-circulation-links.ts");
   const { model, data } = setup();
   model.elementBounds.push({
     elementId: 150,

@@ -3,6 +3,7 @@ import { containsDirectoryRoomPoint } from "./room-directory.ts";
 import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
 import { attachNativeCirculation } from "./native-circulation-links.ts";
 import { prepareReviewedIndoorRamps } from "./indoor-ramps.ts";
+import { prepareNativeRampDisplay } from "./native-ramp-display.ts";
 import { recoverIndoorOpeningSpan } from "./indoor-opening-spans.ts";
 import { prepareNativeRoutingBoundaries } from "./indoor-native-prepass.ts";
 import { prepareNativeCirculationGeometry, attachNativeCirculationCellRoutes } from "./native-circulation-geometry.ts";
@@ -940,6 +941,7 @@ export async function prepareIndoorDataset(
     ])),
   });
   dataset.stairDisplay = prepareIndoorStairDisplay(model, dataset, data.annotations);
+  prepareNativeRampDisplay(model, dataset);
   progress("Deriving native floor-bound circulation cells and rebuilding their walking branches…");
   const nativeCirculation = prepareNativeCirculationGeometry(model, dataset);
   dataset.circulationGeometry = nativeCirculation.geometry;

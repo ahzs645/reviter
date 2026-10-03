@@ -78,6 +78,56 @@ test("native curved flight continues beyond source area at its recovered physica
   ]);
   assert.deepEqual(dataset, before); // No source boundary/arrival/route repair implied.
 });
+
+test("native source flights remain visible when their drawing owner misses the steps, without acquiring a route", () => {
+  const unbound = {
+    ...dataset,
+    records: [
+      {
+        ...stair,
+        stair: false,
+        ringsFeet: [
+          [
+            [20, 20],
+            [30, 20],
+            [30, 30],
+            [20, 30],
+          ],
+        ],
+      },
+    ],
+  } as IndoorDataset;
+  const before = structuredClone(unbound);
+  const display = prepareIndoorStairDisplay(model, unbound);
+  assert.equal(display.flights.length, 0);
+  assert.equal(display.sourceFlights!.length, 1);
+  assert.equal(display.sourceFlights![0]!.stairElementId, 100);
+  assert.equal(display.sourceFlights![0]!.treads.length, 3);
+  assert.deepEqual(unbound, before);
+});
+
+test("missing analytic treads are recovered only from certified native faces owned by the run", () => {
+  const native = structuredClone(model);
+  native.origin = { x: 0, y: 0, z: 0 };
+  delete native.elementBounds[0]!.stairTreads;
+  native.meshes = [
+    {
+      source: "native-brep",
+      elementIds: new Uint32Array([101, 101]),
+      positions: new Float32Array([0, 0, 4, 2, 0, 4, 2, 1, 4, 0, 1, 4]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    },
+  ] as never;
+  const display = prepareIndoorStairDisplay(native, dataset);
+  assert.equal(display.sourceFlights![0]!.sourceGeometry, "native-brep");
+  assert.equal(display.sourceFlights![0]!.treads.length, 1);
+  assert.equal(display.sourceFlights![0]!.treads[0]!.elevationFeet, 4);
+  native.meshes[0]!.source = "display-proxy";
+  assert.equal(
+    prepareIndoorStairDisplay(native, dataset).sourceFlights!.length,
+    0,
+  );
+});
 test("overhead unrelated floors, rooms, voids and duplicate ownership do not acquire a flight", () => {
   assert.equal(
     prepareIndoorStairDisplay(model, {
@@ -149,16 +199,30 @@ test("reviewed treads in a shared corridor are display-only and retain native he
   );
 });
 test("stair display retains native slab holes as occluders without inferring openings from treads", () => {
-  const withSlab=structuredClone(model);
+  const withSlab = structuredClone(model);
   withSlab.elementBounds!.push({
-    elementId:200,categoryId:-2000032,
-    boundsFeet:{min:{x:-1,y:-1,z:2.8},max:{x:8,y:9,z:3.28}},
-    loops:[[[ -1,-1,3.28],[8,-1,3.28],[8,9,3.28],[-1,9,3.28]],[[0,0,3.28],[2,0,3.28],[2,1,3.28],[0,1,3.28]]],
-  } as NonNullable<ConvertResult['elementBounds']>[number]);
-  const before=structuredClone(dataset);
-  const display=prepareIndoorStairDisplay(withSlab,dataset);
-  assert.equal(display.flights[0]!.floorOccluders!.length,1);
-  assert.equal(display.flights[0]!.floorOccluders![0]!.nativeElementId,200);
-  assert.equal(display.flights[0]!.floorOccluders![0]!.ringsFeet.length,2);
-  assert.deepEqual(dataset,before);
+    elementId: 200,
+    categoryId: -2000032,
+    boundsFeet: { min: { x: -1, y: -1, z: 2.8 }, max: { x: 8, y: 9, z: 3.28 } },
+    loops: [
+      [
+        [-1, -1, 3.28],
+        [8, -1, 3.28],
+        [8, 9, 3.28],
+        [-1, 9, 3.28],
+      ],
+      [
+        [0, 0, 3.28],
+        [2, 0, 3.28],
+        [2, 1, 3.28],
+        [0, 1, 3.28],
+      ],
+    ],
+  } as NonNullable<ConvertResult["elementBounds"]>[number]);
+  const before = structuredClone(dataset);
+  const display = prepareIndoorStairDisplay(withSlab, dataset);
+  assert.equal(display.flights[0]!.floorOccluders!.length, 1);
+  assert.equal(display.flights[0]!.floorOccluders![0]!.nativeElementId, 200);
+  assert.equal(display.flights[0]!.floorOccluders![0]!.ringsFeet.length, 2);
+  assert.deepEqual(dataset, before);
 });

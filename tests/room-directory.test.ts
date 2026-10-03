@@ -102,6 +102,14 @@ test("dining and multipurpose halls are destinations, not hallway shortcuts", ()
   for (const name of ["Hallway", "Corridor", "Main Hall", "Atrium", "Multi Purpose Circulation Space and Hall"]) assert.equal(isHallway({ ...rooms[0]!, name }), true);
 });
 
+test("standalone links are circulation while private rooms and explicit room reviews remain destinations", () => {
+  for (const name of ["Link", "Connecting Link"])
+    assert.equal(isHallway({ ...rooms[0]!, name }), true);
+  assert.equal(isHallway({ ...rooms[0]!, name: "Data Link Room" }), false);
+  assert.equal(isHallway({ ...rooms[0]!, name: "Link", access: { kind: "staff", evidence: "user-reported" } }), false);
+  assert.equal(isHallway({ ...rooms[0]!, name: "Link", spaceUse: { kind: "room", evidence: "user-reported" } }), false);
+});
+
 test('a void is selectable geometry but cannot be a route endpoint or a shortcut through an overlapping hallway',()=>{
   const hall={...room('hall','Corridor',[[0,0],[20,0],[20,10],[0,10]],[2,5]),circulationGroup:'hall'};
   const end={...hall,key:'right',labelPointFeet:[18,5] as [number,number]};
