@@ -1,3 +1,4 @@
+import {bindConnectorAreaArrivals} from "./connector-area-arrivals.ts";
 import pc from "polygon-clipping";
 import { containsDirectoryRoomPoint } from "./room-directory.ts";
 import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
@@ -557,7 +558,7 @@ export async function prepareIndoorDataset(
     dataset.connectors=[];
     for(const rejected of review.rejected) issue("connector-review", `${rejected.id}: ${rejected.message}`);
     for(const connector of review.accepted) {
-      const entrances=connector.entrances.map((e,i)=>({nodeId:`connector:${connector.id}:${i}`,roomKey:e.roomKey,levelId:e.levelId}));
+      const entrances=connector.entrances.map((e,i)=>({nodeId:`connector:${connector.id}:${i}`,roomKey:e.roomKey,levelId:e.levelId,...(e.areaKey ? {areaKey:e.areaKey} : {})}));
       connector.entrances.forEach((e,i)=>addTerminal(entrances[i]!.nodeId,e.roomKey,e.pointFeet,"connector",cell*2));
       dataset.connectors.push({id:connector.id,kind:connector.kind,nativeElementId:connector.nativeElementId,...(connector.reviewedShaft ? {reviewedShaft:connector.reviewedShaft} : {}),sourceModelSha256:modelSha256,evidence:connector.evidence,accessible:connector.accessible,direction:connector.direction,entrances});
       // Elevator entrance pairs use explicit served floor identities; an escalator is one directed pair.
@@ -886,6 +887,7 @@ export async function prepareIndoorDataset(
         );
     }
   }
+  bindConnectorAreaArrivals(dataset, sourceRooms);
   const adjacency = new Map<string, string[]>();
   for (const e of dataset.edges) {
     adjacency.set(e.from, [...(adjacency.get(e.from) ?? []), e.to]);
@@ -934,6 +936,7 @@ export async function prepareIndoorDataset(
       routingFloorPlateRecords(model, physicalElevation).flatMap(nativeFloorPolygons) }];
   }));
   dataset.presentation = prepareIndoorPresentation(dataset, data.annotations, undefined, {
+    nativeModel: model,
     boundaryReference: data.boundaryReference,
     geometries: presentationGeometries,
     floorsByRecord: new Map(records.map(record => [record.key,

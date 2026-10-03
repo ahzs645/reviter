@@ -1,3 +1,5 @@
+import type { ConvertResult } from './types.ts';
+import { recoverNativeMeshRoomInteriors } from './native-mesh-room-presentation.ts';
 import pc from "polygon-clipping";
 import type { BoundaryReference } from "./room-boundaries.ts";
 import type { ArchitecturalPlanGeometry } from "./architectural-plan.ts";
@@ -14,7 +16,7 @@ export function prepareIndoorPresentation(
   dataset: IndoorDataset,
   annotations: RoomDirectoryData["annotations"],
   semanticBoundaries?: unknown,
-  options?: {boundaryReference?:BoundaryReference;geometries?:ReadonlyMap<number,ArchitecturalPlanGeometry>;floorsByRecord?:ReadonlyMap<string,ArchitecturalPlanGeometry["floors"]>},
+  options?: {nativeModel?:ConvertResult;boundaryReference?:BoundaryReference;geometries?:ReadonlyMap<number,ArchitecturalPlanGeometry>;floorsByRecord?:ReadonlyMap<string,ArchitecturalPlanGeometry["floors"]>},
 ): NonNullable<IndoorDataset["presentation"]> {
   const recovered = recoverNativeRoomInteriors(
     dataset.records, dataset.walls, dataset.doors ?? [],
@@ -49,13 +51,21 @@ export function prepareIndoorPresentation(
   const semantic = {rooms:[...new Map([...persisted.rooms,...explicit.rooms].map(r=>[r.roomKey,r])).values()],
     diagnostics:[...saved.diagnostics,...persisted.diagnostics,...explicit.diagnostics]};
   const semanticKeys = new Set(semantic.rooms.map(r => r.roomKey));
-  const interiors = [...recovered.rooms,...sourceBacked.map(r=>r.room),...registered.rooms].filter(r=>!semanticKeys.has(r.roomKey)).concat(semantic.rooms);
+  const resolvedKeys = new Set([...recovered.rooms,...sourceBacked.map(r=>r.room),...registered.rooms,...semantic.rooms].map(r=>r.roomKey));
+  const mesh = options?.nativeModel && options.floorsByRecord ? recoverNativeMeshRoomInteriors(dataset,annotations,options.nativeModel,new Set(recovered.diagnostics.filter(r=>!resolvedKeys.has(r.roomKey)).map(r=>r.roomKey)),options.floorsByRecord) : {rooms:[],walls:[]};
+  const meshKeys = new Set(mesh.rooms.map(r=>r.roomKey));
+  const meshProofs = new Map(mesh.rooms.map(r=>[r.roomKey,r.meshProof]));
+  const interiors = [...recovered.rooms,...sourceBacked.map(r=>r.room),...registered.rooms,...mesh.rooms].filter(r=>!semanticKeys.has(r.roomKey)).concat(semantic.rooms);
   const protectedAreas = dataset.records.filter(r =>
     r.circulation || (!r.walkable && /open drop|open to (?:below|lower)/i.test(String(r.properties.notes ?? ""))),
   );
   const blocks = prepareRoomBlocks(interiors, dataset.walls, dataset.doors ?? [], protectedAreas);
+  if (mesh.rooms.length) {
+    const meshBlocks = prepareRoomBlocks(interiors,[...dataset.walls,...mesh.walls],dataset.doors??[],protectedAreas);
+    for (const room of mesh.rooms) { const parts=meshBlocks.get(room.roomKey); if(parts?.length)blocks.set(room.roomKey,parts); }
+  }
   const byRoom = new Map(dataset.records.map(r => [r.key, r]));
-  const diagnostics = [...recovered.diagnostics.filter(r => !semanticKeys.has(r.roomKey)&&!sourceBackedKeys.has(r.roomKey)&&!registeredKeys.has(r.roomKey)), ...semantic.diagnostics];
+  const diagnostics = [...recovered.diagnostics.filter(r => !semanticKeys.has(r.roomKey)&&!sourceBackedKeys.has(r.roomKey)&&!registeredKeys.has(r.roomKey)&&!meshKeys.has(r.roomKey)), ...semantic.diagnostics];
   for (const room of interiors) if (!blocks.get(room.roomKey)?.length)
     diagnostics.push({roomKey: room.roomKey, levelId: room.levelId,
       code: "empty-display-block", message: "Protected floor or aperture subtraction left no room block."});
@@ -73,7 +83,8 @@ export function prepareIndoorPresentation(
         sourceGeometryKey: JSON.stringify([record.levelId, record.ringsFeet]),
         interiorRingsFeet: room.ringsFeet,
         blockPartsFeet,
-        boundarySource: semanticKeys.has(room.roomKey) ? "revit-finish-face" as const : registeredKeys.has(room.roomKey)?"registered-source-wall-enclosure" as const:sourceBackedKeys.has(room.roomKey)?"source-backed-native-wall-enclosure" as const:"native-wall-enclosure" as const,
+        boundarySource: semanticKeys.has(room.roomKey) ? "revit-finish-face" as const : meshKeys.has(room.roomKey)?"native-mesh-wall-enclosure" as const: registeredKeys.has(room.roomKey)?"registered-source-wall-enclosure" as const:sourceBackedKeys.has(room.roomKey)?"source-backed-native-wall-enclosure" as const:"native-wall-enclosure" as const,
+        ...(meshProofs.has(room.roomKey)?{meshProof:meshProofs.get(room.roomKey)}:{}),
         ...(sourceProofs.has(room.roomKey)?{sourceProof:sourceProofs.get(room.roomKey)}:{}),
         ...("boundaryEvidence" in room && typeof room.boundaryEvidence === "string" ? { boundaryEvidence: room.boundaryEvidence } : {}),
         boundaryElementIds: room.boundaryElementIds,

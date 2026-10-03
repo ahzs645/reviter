@@ -217,8 +217,8 @@ export function cleanRoomBoundary(polygon: readonly RoomPoint[]): RoomPoint[] {
   }).map((p) => [...p]);
 }
 
-export function validRoomBoundary(polygon: readonly RoomPoint[]): boolean {
-  if (polygon.length < 3 || !polygon.every(point) || roomArea(polygon) < 1) return false;
+export function validRoomBoundary(polygon: readonly RoomPoint[], minimumArea = 1): boolean {
+  if (polygon.length < 3 || !polygon.every(point) || roomArea(polygon) < minimumArea) return false;
   const cross = (a: RoomPoint, b: RoomPoint, c: RoomPoint) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   const on = (a: RoomPoint, b: RoomPoint, p: RoomPoint) => Math.abs(cross(a, b, p)) < 1e-8
     && p[0] >= Math.min(a[0], b[0]) - 1e-8 && p[0] <= Math.max(a[0], b[0]) + 1e-8

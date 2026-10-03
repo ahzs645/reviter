@@ -28,6 +28,8 @@ export type IndoorConnectorReview = {
     /** Ordered by the explicit travel direction, not proximity or floor labels. */
     entrances: {
       roomKey: string;
+      /** Explicit shaft-area identity whose destination is this lobby stop. */
+      areaKey?: string;
       levelId: number;
       nativeElementId: number;
       pointFeet: RoomPoint;
@@ -79,6 +81,11 @@ export function validateIndoorConnectorReview(
           !e ||
           typeof e.roomKey !== "string" ||
           !e.roomKey ||
+          (e.areaKey !== undefined &&
+            (!c.reviewedShaft ||
+              typeof e.areaKey !== "string" ||
+              !e.areaKey.trim() ||
+              e.areaKey.length > 512)) ||
           !Number.isSafeInteger(e.levelId) ||
           !Number.isSafeInteger(e.nativeElementId) ||
           !Array.isArray(e.pointFeet) ||
@@ -151,7 +158,18 @@ export function supportedIndoorConnectors(
                   relation.elementId === c.entrances[i]!.nativeElementId &&
                   relation.levelId === c.entrances[i]!.levelId,
               )) ||
-          !containsDirectoryRoomPoint(c.entrances[i]!.pointFeet, r),
+          !containsDirectoryRoomPoint(c.entrances[i]!.pointFeet, r) ||
+          (c.entrances[i]!.areaKey !== undefined &&
+            !rooms.some(
+              (area) =>
+                area.key === c.entrances[i]!.areaKey &&
+                area.levelId === r.levelId &&
+                area.status !== "deleted" &&
+                isWalkable(area) &&
+                area.access?.kind !== "staff" &&
+                !!c.reviewedShaft &&
+                containsDirectoryRoomPoint(c.reviewedShaft.pointFeet, area),
+            )),
       ) ||
       (!c.reviewedShaft &&
         new Set(linked.map((r) => r && roomBuilding(r))).size !== 1)

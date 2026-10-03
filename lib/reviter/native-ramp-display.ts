@@ -2,6 +2,7 @@ import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import { containsRoomPoint } from "./room-directory.ts";
 import { nativeRampTriangles } from "./indoor-ramps.ts";
+import { rampFacesOutsideWalls } from "./ramp-wall-clearance.ts";
 
 /** Measured ramps remain visible after regeneration. This inventory creates
  * no node, edge, accessibility review or permission to cross another surface. */
@@ -17,7 +18,10 @@ export function prepareNativeRampDisplay(
   for (const record of model.elementBounds.filter(
     (r) => r.categoryId === -2000180 && r.renderGeometryProvenance === "native",
   )) {
-    const trianglesFeet = nativeRampTriangles(model, record.elementId);
+    const trianglesFeet = rampFacesOutsideWalls(
+      model,
+      nativeRampTriangles(model, record.elementId),
+    );
     if (!trianglesFeet.length) continue;
     const low = Math.min(...trianglesFeet.flat().map((p) => p[2]));
     const high = Math.max(...trianglesFeet.flat().map((p) => p[2]));
@@ -49,6 +53,7 @@ export function prepareNativeRampDisplay(
       !!existing?.edgeId ||
       rooms.some((r) => r.circulation && r.walkable && r.access !== "staff");
     if (existing) {
+      existing.trianglesFeet = trianglesFeet;
       existing.buildings = buildings;
       existing.circulation = circulation;
       continue;

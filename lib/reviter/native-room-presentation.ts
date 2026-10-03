@@ -359,9 +359,9 @@ function recoverNativeRoomInteriorsInScope(records: IndoorRecord[], walls: Indoo
  * Retry only unenclosed labels with a wider context; every cell still has to
  * pass the unchanged identity/overlap/barrier/protected-floor checks. Wider
  * context never expands source geometry or relaxes enclosure acceptance. */
-export function recoverNativeRoomInteriors(records: IndoorRecord[], walls: IndoorDataset["walls"], doors: NonNullable<IndoorDataset["doors"]>, seeds: Map<string, Point>): NativeRoomInteriors {
-  const result = recoverNativeRoomInteriorsInScope(records,walls,doors,seeds,3);
-  for(const paddingFeet of [Infinity]) {
+export function recoverNativeRoomInteriors(records: IndoorRecord[], walls: IndoorDataset["walls"], doors: NonNullable<IndoorDataset["doors"]>, seeds: Map<string, Point>, options?: {roomKeys?: Set<string>; exhaustive?: boolean}): NativeRoomInteriors {
+  const result = recoverNativeRoomInteriorsInScope(records,walls,doors,seeds,3,options?.roomKeys);
+  for(const paddingFeet of options?.exhaustive === false ? [] : [Infinity]) {
     const retryKeys=new Set(result.diagnostics.filter(d=>d.code==="unclosed-native-cell").map(d=>d.roomKey));
     if(!retryKeys.size)break;
     const expanded=recoverNativeRoomInteriorsInScope(records,walls,doors,seeds,paddingFeet,retryKeys);

@@ -1,3 +1,4 @@
+import { nativeMeshBarrierCuts } from "./native-mesh-barrier-cuts.ts";
 import type { ConvertResult } from "./types.ts";
 import {
   containsRoomPoint,
@@ -31,6 +32,62 @@ export function validReviewedShaft(value: unknown): value is ReviewedShaft {
   );
 }
 
+const shaftCuts = new WeakMap<
+  ConvertResult,
+  Map<string, ReturnType<typeof nativeMeshBarrierCuts>>
+>();
+function shaftMaterial(
+  model: ConvertResult,
+  shaft: ReviewedShaft,
+  elevation: number,
+) {
+  if (!model.meshes?.length || !model.origin) return [];
+  let cache = shaftCuts.get(model);
+  if (!cache) shaftCuts.set(model, (cache = new Map()));
+  const key = `${elevation}:${[...shaft.wallElementIds].sort((a, b) => a - b).join(",")}`;
+  if (!cache.has(key)) {
+    const ids = new Set(shaft.wallElementIds);
+    const hosts = new Map<number, Set<number>>();
+    for (const relation of model.nativeHostRelations ?? []) {
+      if (relation.evidence !== "persisted") continue;
+      const owners = hosts.get(relation.elementId) ?? new Set<number>();
+      owners.add(relation.hostId);
+      hosts.set(relation.elementId, owners);
+    }
+    // Glass and frame members are physical material too. Require unique native
+    // parentage and closed native BRep cuts; the curtain container is no proof.
+    const curtainHosts = new Set(
+      model.elementBounds
+        .filter((e) => ids.has(e.elementId) && e.wallKind === "curtain")
+        .map((e) => e.elementId),
+    );
+    const memberHost = (id: number) => {
+      const owners = hosts.get(id);
+      return owners?.size === 1 && curtainHosts.has([...owners][0]!)
+        ? [...owners][0]
+        : undefined;
+    };
+    const records = model.elementBounds.filter(
+      (e) =>
+        ids.has(e.elementId) ||
+        (memberHost(e.elementId) !== undefined &&
+          [-2000170, -2000171].includes(e.categoryId ?? 0)),
+    );
+    const cuts = nativeMeshBarrierCuts(
+      { ...model, elementBounds: records },
+      0,
+      elevation + 2,
+    );
+    cache.set(
+      key,
+      cuts.map((c) => ({
+        ...c,
+        nativeElementId: memberHost(c.nativeElementId) ?? c.nativeElementId,
+      })),
+    );
+  }
+  return cache.get(key)!;
+}
 export function supportedShaftStop(
   model: ConvertResult,
   shaft: ReviewedShaft,
@@ -58,34 +115,57 @@ export function supportedShaftStop(
   const walls = shaft.wallElementIds.map((id) =>
     model.elementBounds.find((e) => e.elementId === id),
   );
-  if (walls.some((w) => !w || w.categoryId !== -2000011 || !w.solids?.length))
-    return false;
+  if (walls.some((w) => !w || w.categoryId !== -2000011)) return false;
+  const material = shaftMaterial(model, shaft, elevation).filter(
+    (w) => w.ringsFeet.length === 1,
+  );
+  const materialIds = new Set(material.map((w) => w.nativeElementId));
   const segments = walls.flatMap((w) =>
-    w!
-      .solids!.filter(
+    (materialIds.has(w!.elementId) ? [] : (w!.solids ?? []))
+      .filter(
         (s) =>
           s.baseElevation <= elevation + 0.05 &&
           s.topElevation >= elevation + 2,
       )
       .map((s) => ({ id: w!.elementId, s })),
   );
+  // Certified native BRep sections retain complete wall faces when recovered
+  // centre-plane solids describe only a short return (e.g. a shaft back wall).
+  // Never stretch that return to its bounding box or bridge a lift opening.
+  const rays = [
+    ...segments.map(({ id, s }) => ({
+      id,
+      start: [s.start.x, s.start.y] as RoomPoint,
+      end: [s.end.x, s.end.y] as RoomPoint,
+    })),
+    ...material.flatMap((w) =>
+      w.ringsFeet[0]!.map((a, i, ring) => ({
+        id: w.nativeElementId,
+        start: a,
+        end: ring[(i + 1) % ring.length]!,
+      })),
+    ),
+  ];
   // At least three actual wall pieces must surround the pin on this storey.
-  // Openings may occupy up to three of the eight rays; a roof cannot be a stop.
+  // Sample narrow wall returns between opposing doorways as well as the long
+  // side walls. Eight compass rays can miss those returns in a real shaft.
+  // Preserve the required 5/8 angular enclosure; a roof cannot be a stop.
+  const rayCount = 32;
   const hits = new Set<number>();
   let covered = 0;
-  for (let i = 0; i < 8; i++) {
-    const a = (i * Math.PI) / 4,
+  for (let i = 0; i < rayCount; i++) {
+    const a = (i * Math.PI * 2) / rayCount,
       dx = Math.cos(a),
       dy = Math.sin(a);
     let nearest = Infinity,
       wallId = 0;
-    for (const { id, s } of segments) {
-      const ex = s.end.x - s.start.x,
-        ey = s.end.y - s.start.y,
+    for (const { id, start, end } of rays) {
+      const ex = end[0] - start[0],
+        ey = end[1] - start[1],
         den = dx * ey - dy * ex;
       if (Math.abs(den) < 1e-9) continue;
-      const ox = s.start.x - shaft.pointFeet[0],
-        oy = s.start.y - shaft.pointFeet[1];
+      const ox = start[0] - shaft.pointFeet[0],
+        oy = start[1] - shaft.pointFeet[1];
       const t = (ox * ey - oy * ex) / den,
         u = (ox * dy - oy * dx) / den;
       if (t > 0 && t < nearest && u >= 0 && u <= 1) {
@@ -104,26 +184,29 @@ export function supportedShaftStop(
   );
   const barriers = {
     columns: [],
-    walls: segments.map(({ s }) => {
-      const dx = s.end.x - s.start.x,
-        dy = s.end.y - s.start.y,
-        length = Math.hypot(dx, dy);
-      const nx = ((-dy / length) * s.thickness) / 2,
-        ny = ((dx / length) * s.thickness) / 2;
-      return {
-        polygon: [
-          [s.start.x + nx, s.start.y + ny],
-          [s.end.x + nx, s.end.y + ny],
-          [s.end.x - nx, s.end.y - ny],
-          [s.start.x - nx, s.start.y - ny],
-        ] as RoomPoint[],
-      };
-    }),
+    walls: [
+      ...material.map((w) => ({ polygon: w.ringsFeet[0]! })),
+      ...segments.map(({ s }) => {
+        const dx = s.end.x - s.start.x,
+          dy = s.end.y - s.start.y,
+          length = Math.hypot(dx, dy);
+        const nx = ((-dy / length) * s.thickness) / 2,
+          ny = ((dx / length) * s.thickness) / 2;
+        return {
+          polygon: [
+            [s.start.x + nx, s.start.y + ny],
+            [s.end.x + nx, s.end.y + ny],
+            [s.end.x - nx, s.end.y - ny],
+            [s.start.x - nx, s.start.y - ny],
+          ] as RoomPoint[],
+        };
+      }),
+    ],
   };
   // A nearby lobby behind a solid shaft wall is not a lift exit. Keep the
   // reviewed lobby point on the open side rather than snapping it to the pin.
   return (
-    covered >= 5 &&
+    covered >= Math.ceil((rayCount * 5) / 8) &&
     hits.size >= 3 &&
     distance >= 1 &&
     distance <= 20 &&

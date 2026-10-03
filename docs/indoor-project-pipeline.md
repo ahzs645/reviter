@@ -78,6 +78,18 @@ npm run indoor:prepare -- \
 
 The source archive and review JSON are unchanged. The newer JSON is merged with the archive's two exact GIS pairs. No synthetic survey point is added.
 
+### Optional walking-guide compilation
+
+After the normal Reviter preparation, OpenIndoorMaps can compile reusable native walking segments into the prepared ZIP. Run from the OpenIndoorMaps repository:
+
+```sh
+npm run indoor:prepare-routing -- /absolute/prepared.reviter.zip /absolute/routing-prepared.reviter.zip
+```
+
+Import that output for runtime routing. The additional compiler preserves every model, GLB, room-review and GIS asset byte; it replaces only derived indoor JSON and its manifest checksum. It adds no graph connections and retains doors, restrictions and physical floor transitions. A source/access/door edit invalidates its cache; the viewer uses the existing resolver until compilation is rerun. Step-free routes retain their existing accessibility proofs. Reviter's preparation button does not automatically run this optional postprocessing step.
+
+See [Prepared walking guides](../../openindoormaps/docs/prepared-walking-guides.md) in the sibling OpenIndoorMaps checkout for compilation reports and repeatable multifloor/clearance/browser checks.
+
 ## 4. Open and test in OpenIndoorMaps
 
 From the OpenIndoorMaps repository:

@@ -216,7 +216,9 @@ export type IndoorDataset = {
         | "native-wall-enclosure"
         | "revit-finish-face"
         | "registered-source-wall-enclosure"
-        | "source-backed-native-wall-enclosure";
+        | "source-backed-native-wall-enclosure"
+        | "native-mesh-wall-enclosure";
+      meshProof?: {cutElevationFeet: number; precisionFeet: number; nativeFloorCoveredSquareFeet: number; nativeElementIds: number[]};
       sourceProof?: {
         sourceSha256: string;
         sectionId: string;
@@ -318,7 +320,12 @@ export type IndoorDataset = {
     evidence: string;
     accessible: "yes" | "no" | "unknown";
     direction: "both" | "from-to" | "to-from";
-    entrances: { nodeId: string; roomKey: string; levelId: number }[];
+    entrances: {
+      nodeId: string;
+      roomKey: string;
+      levelId: number;
+      areaKey?: string;
+    }[];
   }[];
   visitor?: {
     version: 1;
