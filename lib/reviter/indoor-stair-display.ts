@@ -1,3 +1,8 @@
+import {
+  nativeStairRunTreads,
+  nativeStairRunEndpoints,
+} from "./indoor-stair-run-surfaces.ts";
+import { nativeStairLandings } from "./indoor-stair-landings.ts";
 import polygonClipping from "polygon-clipping";
 import type { ConvertResult } from "./types.ts";
 import { nativeRampTriangles } from "./indoor-ramps.ts";
@@ -13,7 +18,10 @@ export function stairFloorOccluders(
   model: Partial<ConvertResult>,
   flight: NonNullable<IndoorDataset["stairDisplay"]>["flights"][number],
 ) {
-  const points = flight.treads.flatMap((t) => t.ringFeet);
+  const points = [
+    ...flight.treads.flatMap((t) => t.ringFeet),
+    ...(flight.landings ?? []).flatMap((l) => l.ringsFeet.flat()),
+  ];
   const xs = points.map((p) => p[0]),
     ys = points.map((p) => p[1]);
   const box = [
@@ -51,6 +59,8 @@ export function prepareIndoorStairDisplay(
   data: Pick<IndoorDataset, "source" | "records">,
   sourceRooms: readonly DirectoryRoom[] = [],
 ): NonNullable<IndoorDataset["stairDisplay"]> {
+  const landingInventory = nativeStairLandings(model);
+  const nativeTreads = nativeStairRunTreads(model);
   const elements = new Map(model.elementBounds?.map((r) => [r.elementId, r]));
   const flights: NonNullable<IndoorDataset["stairDisplay"]>["flights"] = [];
   const sourceFlights: NonNullable<
@@ -94,31 +104,34 @@ export function prepareIndoorStairDisplay(
     });
   };
   for (const assembly of model.nativeStairAssemblies ?? []) {
+    const landings = landingInventory.get(assembly.stairElementId) ?? [];
     const runs = assembly.runAndLandingIds
       .map((id) => elements.get(id))
-      .filter((r) => !!r);
+      .filter((r) => !!r && r.categoryId !== -2000920);
     if (!runs.length) continue;
     const low = Math.min(...runs.map((r) => r!.boundsFeet.min.z));
     const high = Math.max(...runs.map((r) => r!.boundsFeet.max.z));
-    let recovered = false;
+    let recovered = runs.some((r) => nativeTreads.has(r!.elementId));
     const treads = runs
       .flatMap((r) =>
-        r!.stairTreads?.length
-          ? r!.stairTreads!.map((t) => ({
-              runElementId: r!.elementId,
-              ...(r!.stairTreadThicknessFeet != null &&
-              Number.isFinite(r!.stairTreadThicknessFeet) &&
-              r!.stairTreadThicknessFeet > 0
-                ? { thicknessFeet: r!.stairTreadThicknessFeet }
-                : {}),
-              elevationFeet: t.reduce((s, p) => s + p[2] / t.length, 0),
-              ringFeet: t.map((p) => [p[0], p[1]] as RoomPoint),
-            }))
-          : (() => {
-              const treads = recoveredTreads(r!.elementId);
-              recovered ||= !!treads.length;
-              return treads;
-            })(),
+        nativeTreads.has(r!.elementId)
+          ? nativeTreads.get(r!.elementId)!
+          : r!.stairTreads?.length
+            ? r!.stairTreads!.map((t) => ({
+                runElementId: r!.elementId,
+                ...(r!.stairTreadThicknessFeet != null &&
+                Number.isFinite(r!.stairTreadThicknessFeet) &&
+                r!.stairTreadThicknessFeet > 0
+                  ? { thicknessFeet: r!.stairTreadThicknessFeet }
+                  : {}),
+                elevationFeet: t.reduce((s, p) => s + p[2] / t.length, 0),
+                ringFeet: t.map((p) => [p[0], p[1]] as RoomPoint),
+              }))
+            : (() => {
+                const treads = recoveredTreads(r!.elementId);
+                recovered ||= !!treads.length;
+                return treads;
+              })(),
       )
       .filter((t) => roomArea(t.ringFeet) > 0.01);
     if (!treads.length) continue;
@@ -172,6 +185,8 @@ export function prepareIndoorStairDisplay(
         floorElevationFeet: bottom.elevation,
         sourceGeometry: recovered ? "native-brep" : "native-cache",
         treads,
+        runs: nativeStairRunEndpoints(model, treads),
+        landings,
       });
     }
     const polygons = treads.map((t) => [close(t.ringFeet)]);
@@ -233,6 +248,8 @@ export function prepareIndoorStairDisplay(
         stairElementId: assembly.stairElementId,
         ...(!r.stair ? { displayOnly: true as const } : {}),
         treads,
+        runs: nativeStairRunEndpoints(model, treads),
+        landings,
       });
     }
   }

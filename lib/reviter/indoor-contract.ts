@@ -217,7 +217,13 @@ export type IndoorDataset = {
         | "revit-finish-face"
         | "registered-source-wall-enclosure"
         | "source-backed-native-wall-enclosure"
-        | "native-mesh-wall-enclosure";
+        | "native-mesh-wall-enclosure"
+        | "reviewed-native-wall-enclosure";
+      reviewProof?: {
+        sourceModelSha256: string;
+        nativeFloorCoveredSquareFeet: number;
+        closures: {nativeWallId: number; reachFeet: number; ringsFeet: [number, number][][]}[];
+      };
       meshProof?: {cutElevationFeet: number; precisionFeet: number; nativeFloorCoveredSquareFeet: number; nativeElementIds: number[]};
       sourceProof?: {
         sourceSha256: string;
@@ -258,6 +264,20 @@ export type IndoorDataset = {
       buildings: string[];
       floorElevationFeet: number;
       sourceGeometry: "native-cache" | "native-brep";
+      /** Owner-tagged native turning platforms; holes and elevation are retained. */
+      landings?: {
+        nativeElementId: number;
+        elevationFeet: number;
+        thicknessFeet: number;
+        ringsFeet: [number, number][][];
+      }[];
+      runs?: {
+        runElementId: number;
+        bottomElevationFeet: number;
+        topElevationFeet: number;
+        beginWithRiser: boolean;
+        endWithRiser: boolean;
+      }[];
       treads: {
         runElementId: number;
         elevationFeet: number;
@@ -277,6 +297,20 @@ export type IndoorDataset = {
         nativeElementId: number;
         elevationFeet: number;
         ringsFeet: [number, number][][];
+      }[];
+      /** Owner-tagged native turning platforms; holes and elevation are retained. */
+      landings?: {
+        nativeElementId: number;
+        elevationFeet: number;
+        thicknessFeet: number;
+        ringsFeet: [number, number][][];
+      }[];
+      runs?: {
+        runElementId: number;
+        bottomElevationFeet: number;
+        topElevationFeet: number;
+        beginWithRiser: boolean;
+        endWithRiser: boolean;
       }[];
       treads: {
         runElementId: number;

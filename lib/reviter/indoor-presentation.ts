@@ -1,3 +1,4 @@
+import { reviewedRoomInteriors } from "./reviewed-room-presentation.ts";
 import type { ConvertResult } from './types.ts';
 import { recoverNativeMeshRoomInteriors } from './native-mesh-room-presentation.ts';
 import pc from "polygon-clipping";
@@ -69,12 +70,16 @@ export function prepareIndoorPresentation(
   for (const room of interiors) if (!blocks.get(room.roomKey)?.length)
     diagnostics.push({roomKey: room.roomKey, levelId: room.levelId,
       code: "empty-display-block", message: "Protected floor or aperture subtraction left no room block."});
+  const reviewed = options?.nativeModel && options.floorsByRecord
+    ? reviewedRoomInteriors(dataset, annotations, options.nativeModel, options.floorsByRecord)
+    : [];
+  const reviewedKeys = new Set(reviewed.map(r => r.roomKey));
   return {
     version: 1,
     generator: "reviter/native-room-presentation-2",
     sourceModelSha256: dataset.source.modelSha256,
     junctionToleranceFeet: NATIVE_ROOM_JUNCTION_TOLERANCE_FEET,
-    rooms: interiors.flatMap(room => {
+    rooms: [...reviewed, ...interiors.filter(r => !reviewedKeys.has(r.roomKey)).flatMap(room => {
       const record = byRoom.get(room.roomKey)!;
       const blockPartsFeet = blocks.get(room.roomKey);
       return blockPartsFeet?.length ? [{
@@ -91,7 +96,7 @@ export function prepareIndoorPresentation(
         sourceCoverage: room.sourceCoverage,
         cellCoverage: room.cellCoverage,
       }] : [];
-    }),
-    diagnostics,
+    })],
+    diagnostics: diagnostics.filter(r => !reviewedKeys.has(r.roomKey)),
   };
 }
