@@ -48,7 +48,7 @@ export function EmptyState({
             <Upload size={16} aria-hidden />
             Open model, DWG or project ZIP
           </button>
-          <p className="empty-formats">Select one or more .dwg drawings to view them directly. Open a Reviter project .zip to restore the model, floor reviews and GIS references together. You can also select a Revit file and its rooms .json, or drop them here.</p>
+          <p className="empty-formats">Select one or more .dwg drawings to view them directly. A CAD analysis .zip opens DWG floor review. A Reviter project .zip restores the model, floor reviews and GIS references together. You can also select a Revit file and its rooms .json, or drop them here.</p>
           {error && <p className="empty-error" role="alert">{error}</p>}
         </div>
 

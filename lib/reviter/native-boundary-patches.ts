@@ -20,6 +20,10 @@ export type NativeBoundaryPatch = {
     targetContactFeet: [Point, Point];
     /** Consecutive certified locally convex column faces across the full cap strip. */
     targetContactPathFeet?: Point[];
+    /** Exact tiny original middle contact; both cap corners must still be outside. */
+    originalCapMiddlePenetrationFeet?: number;
+    /** First finite native wall corner faces, verified exactly as a column chain. */
+    targetWallFaceChain?: true;
     evidenceSha256: string;
   };
   drawingReconstructionProof?: {
@@ -88,6 +92,7 @@ export function validNativeContinuation(p: NativeBoundaryPatch): boolean {
           q.length === 2 &&
           q.every((n) => Number.isFinite(n) && Math.abs(n) < 1e7),
       );
+    if ((proof.originalCapMiddlePenetrationFeet !== undefined || proof.targetWallFaceChain !== undefined) && !proof.targetContactPathFeet) return false;
     if (!pair(proof.sourceCapFeet) || !pair(proof.targetContactFeet))
       return false;
     const source = p.wallEvidence.find(
@@ -173,7 +178,8 @@ export function validNativeContinuation(p: NativeBoundaryPatch): boolean {
     if (proof.targetContactPathFeet) {
       const path = proof.targetContactPathFeet;
       if (
-        target.kind !== "column" ||
+        (target.kind !== "column" && !(target.kind === "wall" && proof.targetWallFaceChain === true)) ||
+        (proof.targetWallFaceChain !== undefined && (proof.targetWallFaceChain !== true || target.kind !== "wall")) ||
         target.ringsFeet.length !== 1 ||
         target.ringsFeet[0].length < 3 ||
         target.ringsFeet[0].length > 128 ||
@@ -223,11 +229,18 @@ export function validNativeContinuation(p: NativeBoundaryPatch): boolean {
       )
         return false;
       const pp = path.map(project);
+      const declaredMiddle = proof.originalCapMiddlePenetrationFeet;
+      const middlePenetration = Math.max(0, ...pp.slice(1, -1).map(q => -q[0]));
+      if (declaredMiddle !== undefined &&
+          (!Number.isFinite(declaredMiddle) || declaredMiddle <= 0 ||
+           declaredMiddle > 0.00025 || Math.abs(declaredMiddle - middlePenetration) > 1e-8 ||
+           contactDepths.some(depth => depth <= 0))) return false;
+      const permittedMiddle = declaredMiddle ?? 0;
       if (
         Math.abs(pp[0][1] + width / 2) > 1e-6 ||
         Math.abs(pp[pp.length - 1][1] - width / 2) > 1e-6 ||
         pp.some((q, i) => i > 0 && q[1] <= pp[i - 1][1] + 1e-10) ||
-        pp.some((q) => q[0] <= 0 || q[0] > gap + 1e-6)
+        pp.some((q, i) => (q[0] <= 0 && (declaredMiddle === undefined || i === 0 || i === pp.length - 1 || q[0] < -permittedMiddle - 1e-10)) || q[0] > gap + 1e-6)
       )
         return false;
       // The cap rays must hit these near faces first, not the far side of a
@@ -247,7 +260,7 @@ export function validNativeContinuation(p: NativeBoundaryPatch): boolean {
           const x=project(col[j]),y=project(col[(j+1)%col.length]);
           if(Math.abs(y[1]-x[1])<1e-12)continue;
           const t=(lateral-x[1])/(y[1]-x[1]);
-          if(t>=-1e-10&&t<=1+1e-10){const h=x[0]+t*(y[0]-x[0]);if(h>0)hits.push(h);}
+          if(t>=-1e-10&&t<=1+1e-10){const h=x[0]+t*(y[0]-x[0]);if(h>0 || (permittedMiddle > 0 && h >= -permittedMiddle - 1e-10))hits.push(h);}
         }
         if(!hits.length||Math.abs(Math.min(...hits)-expected)>1e-6)return false;
       }

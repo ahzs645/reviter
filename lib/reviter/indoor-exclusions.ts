@@ -1,4 +1,8 @@
-import type { IndoorDataset, IndoorExclusions } from "./indoor-contract.ts";
+import type {
+  IndoorDataset,
+  IndoorEdge,
+  IndoorExclusions,
+} from "./indoor-contract.ts";
 
 type XY = readonly number[];
 const ringArea = (r: XY[]) =>
@@ -31,6 +35,11 @@ export function validateIndoorExclusions(
       !a ||
       (a.reason !== undefined &&
         !["outdoor", "off-limits"].includes(a.reason)) ||
+      (a.connectorId !== undefined &&
+        (a.reason !== "off-limits" ||
+          typeof a.connectorId !== "string" ||
+          !a.connectorId.trim() ||
+          a.connectorId.length > 200)) ||
       typeof a.id !== "string" ||
       !a.id ||
       a.id.length > 200 ||
@@ -138,12 +147,95 @@ export function createIndoorExclusionQuery(data: IndoorDataset) {
     data.nativeLevels,
   );
   const areas = data.indoorExclusions?.areas ?? [];
-  return (points: readonly XY[]): string[] => {
+  const edges = new Map(data.edges.map((e) => [e.id, e]));
+  const nodes = new Map(data.nodes.map((n) => [n.id, n]));
+  const samePoint = (a: XY, b: XY) =>
+    a.length === 3 && b.length === 3 && a.every((v, i) => v === b[i]);
+  const samePath = (a: readonly XY[], b: readonly XY[]) =>
+    a.length === b.length && a.every((p, i) => samePoint(p, b[i]!));
+  const areaHit = (a: (typeof areas)[number], p: XY) =>
+    Math.abs(p[2]! - a.elevationFeet) <= 0.15 &&
+    a.partsFeet.some((rs) => contains(p, rs));
+  /** A shaft is unavailable to walking, but the reviewed lift can travel through
+   * its own interior between its existing lobby stops. Context cannot authorize
+   * new geometry, a different connector, or an endpoint inside an exclusion. */
+  const liftTransit = (points: readonly XY[], context?: IndoorEdge) => {
+    if (!context || context.kind !== "elevator") return undefined;
+    const edge = edges.get(context.id);
+    if (
+      !edge ||
+      edge !== context ||
+      !edge.enabled ||
+      edge.pointsFeet.length < 2 ||
+      edge.kind !== "elevator"
+    )
+      return undefined;
+    const connector = data.connectors?.find((c) => c.id === edge.connectorId);
+    const shaft = connector?.reviewedShaft;
+    if (
+      !connector ||
+      connector.kind !== "elevator" ||
+      !shaft ||
+      connector.sourceModelSha256 !== data.source.modelSha256 ||
+      connector.nativeElementId !== edge.nativeElementId ||
+      connector.direction !== edge.direction ||
+      connector.evidence !== edge.evidence ||
+      !Number.isSafeInteger(connector.nativeElementId) ||
+      connector.nativeElementId <= 0 ||
+      !connector.evidence.trim() ||
+      !edge.evidence.trim() ||
+      typeof shaft.pinId !== "string" ||
+      !shaft.pinId.trim() ||
+      shaft.pinId.length > 200 ||
+      shaft.pointFeet.length !== 2 ||
+      !shaft.pointFeet.every((p) => Number.isFinite(p) && Math.abs(p) < 1e7) ||
+      shaft.wallElementIds.length < 3 ||
+      shaft.wallElementIds.length > 100 ||
+      new Set(shaft.wallElementIds).size !== shaft.wallElementIds.length ||
+      !shaft.wallElementIds.every((id) => Number.isSafeInteger(id) && id > 0) ||
+      !shaft.wallElementIds.includes(connector.nativeElementId) ||
+      (!samePath(points, edge.pointsFeet) &&
+        !samePath(points, [...edge.pointsFeet].reverse()))
+    )
+      return undefined;
+    const from = nodes.get(edge.from),
+      to = nodes.get(edge.to);
+    if (
+      !from ||
+      !to ||
+      from.id === to.id ||
+      from.levelId === to.levelId ||
+      from.kind !== "connector" ||
+      to.kind !== "connector" ||
+      !samePoint(edge.pointsFeet[0]!, from.pointFeet) ||
+      !samePoint(edge.pointsFeet.at(-1)!, to.pointFeet) ||
+      Math.abs(from.pointFeet[2] - to.pointFeet[2]) <= 0.15 ||
+      [from, to].some(
+        (n) =>
+          connector.entrances.filter(
+            (e) =>
+              e.nodeId === n.id &&
+              e.levelId === n.levelId &&
+              e.roomKey === n.roomKey,
+          ).length !== 1 || areas.some((a) => areaHit(a, n.pointFeet)),
+      )
+    )
+      return undefined;
+    return connector;
+  };
+  const query = (points: readonly XY[], context?: IndoorEdge): string[] => {
+    const transit = liftTransit(points, context);
     const crossed = new Set<string>();
     for (const a of areas) {
-      const hit = (p: XY) =>
-        Math.abs(p[2]! - a.elevationFeet) <= 0.15 &&
-        a.partsFeet.some((rs) => contains(p, rs));
+      if (
+        transit &&
+        a.reason === "off-limits" &&
+        a.connectorId === transit.id &&
+        transit.entrances.some((e) => e.levelId === a.levelId) &&
+        a.partsFeet.some((rs) => contains(transit.reviewedShaft!.pointFeet, rs))
+      )
+        continue;
+      const hit = (p: XY) => areaHit(a, p);
       if (points.some(hit)) {
         crossed.add(a.id);
         continue;
@@ -191,4 +283,7 @@ export function createIndoorExclusionQuery(data: IndoorDataset) {
     }
     return [...crossed];
   };
+  return Object.assign((points: readonly XY[]) => query(points), {
+    forEdge: (points: readonly XY[], edge: IndoorEdge) => query(points, edge),
+  });
 }

@@ -7,6 +7,8 @@ export type IndoorExclusions = {
     id: string;
     /** Older masks without a reason are confirmed outdoor footprints. */
     reason?: "outdoor" | "off-limits";
+    /** Reviewed lift shaft owner; display centering never moves its lobby stop. */
+    connectorId?: string;
     levelId: number;
     elevationFeet: number;
     label: string;
@@ -126,6 +128,9 @@ export type IndoorIssue = {
   levelId?: number;
 };
 export type IndoorDataset = {
+  nativeMaterialSections?: import("./native-material-sections.ts").NativeMaterialSections;
+  nativeIndoorEnvelopes?: import("./native-indoor-envelopes.ts").NativeIndoorEnvelopes;
+  nativeDisplayScopes?: import("./native-display-scopes.ts").NativeDisplayScopes;
   doorAperturePatchState?: { regenerated: boolean; sourceGeometryKey: string };
   nativeDoorBoundaryClosures?: import("./native-door-boundary-closures.ts").NativeDoorBoundaryClosures;
   nativeWallPositionRepairs?: import("./native-wall-position-repairs.ts").NativeWallPositionRepairs;
@@ -252,6 +257,8 @@ export type IndoorDataset = {
     levelId: number;
     nativeElementId: number;
     pointFeet: [number, number];
+    /** Original persisted InsertableInst host; never inferred from proximity. */
+    hostWallNativeElementId?: number;
     footprintFeet?: [number, number][];
     /** Unit native traversal direction; host depth is not doorway width. */
     normalFeet?: [number, number];

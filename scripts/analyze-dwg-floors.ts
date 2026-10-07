@@ -1,10 +1,11 @@
 /** Reproduce CAD room/stair analysis through Reviter without changing the native master. */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir, mkdtemp, rename, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp, rename, access, copyFile, cp } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeCadFloors, type CadAnalysisFloor, type CadFloorControl } from "../lib/reviter/dwg-floor-analysis.ts";
+import { cadFloorAnalysisPreview } from "../lib/reviter/dwg-floor-analysis-view.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -61,18 +62,41 @@ async function main() {
     sourceSha256: intake.sourceSha256, intakeSha256: hash(intakeBytes), geometrySha256: hash(geometryBytes),
     controlsSha256: controlsBytes ? hash(controlsBytes) : null,
     implementation: { analyzerSha256: hash(await readFile(resolve(root, "lib/reviter/dwg-floor-analysis.ts"))),
+      previewSha256: hash(await readFile(resolve(root, "lib/reviter/dwg-floor-analysis-view.ts"))),
       cliSha256: hash(await readFile(fileURLToPath(import.meta.url))) } };
   const save = async (name: string, data: unknown) => writeFile(resolve(candidate, name), JSON.stringify(data, null, 2) + "\n");
   await save("floor-analysis.json", analysis);
+  if (intake.coverageAudit) await save("coverage-audit.json", { ...intake.coverageAudit,
+    pendingPanels: intake.pendingPanels, buildings: analysis.floors.reduce((result: Record<string, unknown[]>, f) => {
+      (result[f.buildingCode] ??= []).push(f); return result;
+    }, {}) });
   await save("floor-controls.template.json", { format: "reviter-cad-floor-controls", version: 1,
     sourceSha256: intake.sourceSha256, intakeSha256: hash(intakeBytes),
     guidance: "Add at least three distributed original source-stroke control pairs per floor. Coordinates are in geometry.json's existing building-local metres, not raw sheet units. Reference the lowest ordinal drawing directly. Empty pairs intentionally fail validation. These controls do not approve a physical stair route.",
     floors: floors.filter(f => f.ordinal !== Math.min(...floors.filter(v => v.buildingCode === f.buildingCode).map(v => v.ordinal))).map(f => ({ floorId: f.id,
       referenceFloorId: floors.filter(v => v.buildingCode === f.buildingCode).sort((a, b) => a.ordinal - b.ordinal)[0]!.id, pairs: [] })) });
+  try { await copyFile(resolve(intakePath, "source-review.json"), resolve(candidate, "source-review.json")); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  try { await cp(resolve(intakePath, "plans"), resolve(candidate, "plans"), { recursive: true }); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
   if (controlsBytes) await writeFile(resolve(candidate, "floor-controls.reviewed.json"), controlsBytes);
   const viewer = resolve(candidate, "index.html");
-  await writeFile(viewer, (await readFile(viewer, "utf8")).replace('<a href="intake.json" download>', '<a href="floor-analysis.json" download>Reviter floor correspondence analysis</a><br><a href="floor-controls.template.json" download>Floor control template</a><br><a href="intake.json" download>'));
+  await writeFile(viewer, cadFloorAnalysisPreview(await readFile(viewer, "utf8"), analysis).replace('<a href="intake.json" download>', '<a href="floor-analysis.json" download>Reviter floor correspondence analysis</a><br><a href="floor-controls.template.json" download>Floor control template</a><br><a href="intake.json" download>'));
   await writeFile(resolve(candidate, "REVITER-ANALYSIS.txt"), "Reviter drawing-only CAD analysis.\nRun npm run cad:analyze -- --help in the Reviter repository.\nRoom and stair recovery reuses the OpenIndoorMaps CAD analysis helpers and Reviter's current guarded single-door recognizer.\nFloor control fitting reuses Reviter floor-reference-overlay.ts, with dimension-preserving rigid transforms and source contact checks.\nSee floor-analysis.json for unique adjacent-floor correspondences, orientation review and missing/ambiguous matches.\nControl fits and drawing correspondences never create native stops, elevations, campus placement or navigation edges.\n");
+  // Preserve the exact analysis implementation beside the original source files.
+  const snapshot = resolve(candidate, "pipeline/reviter");
+  for (const file of ["scripts/analyze-dwg-floors.ts", "lib/reviter/dwg-floor-analysis.ts", "lib/reviter/dwg-floor-analysis-view.ts", "lib/reviter/dwg-door-display.ts", "lib/reviter/dwg-path-regions.ts", "lib/reviter/dwg-stair-assumptions.ts", "lib/reviter/dwg-drawing-paths.ts", "lib/reviter/dwg-floor-surfaces.ts",
+    "lib/reviter/floor-reference-overlay.ts", "docs/dwg-floor-analysis.md"]) {
+    await mkdir(dirname(resolve(snapshot, file)), { recursive: true });
+    await copyFile(resolve(root, file), resolve(snapshot, file));
+  }
+  for (const file of ["abstract-building-geometry.py", "abstract-door-symbols.mjs", "emit-door-display.mjs", "cad-door-symbols.py", "stair-footprints.py",
+    "build-building-intake.py", "build-campus-floor-intake.py", "recover-room-polygons.py", "stair-symbols.py", "schematic-glb.py", "building-geometry.html", "config.unbc.json", "requirements.txt"]) {
+    await mkdir(resolve(snapshot, "tools/dwg-analysis"), { recursive: true });
+    await copyFile(resolve(root, "tools/dwg-analysis", file), resolve(snapshot, "tools/dwg-analysis", file));
+  }
+  await writeFile(resolve(snapshot, "package.json"), JSON.stringify({ private: true, type: "module", engines: { node: ">=22.13.0" },
+    scripts: { "cad:analyze": "node --experimental-strip-types scripts/analyze-dwg-floors.ts" }, dependencies: { "polygon-clipping": "0.15.7" } }, null, 2) + "\n");
   await checkBindings();
   await run(python, ["-c", "import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('cad',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.package(Path(sys.argv[2]))", resolve(root, "tools/dwg-analysis/abstract-building-geometry.py"), candidate]);
   await rename(candidate, output);

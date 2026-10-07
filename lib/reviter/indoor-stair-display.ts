@@ -4,6 +4,7 @@ import {
 } from "./indoor-stair-run-surfaces.ts";
 import { nativeStairLandings } from "./indoor-stair-landings.ts";
 import polygonClipping from "polygon-clipping";
+import {nativeStairLandingContact} from './native-stair-landing-contact.ts';
 import type { ConvertResult } from "./types.ts";
 import { nativeRampTriangles } from "./indoor-ramps.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
@@ -204,6 +205,10 @@ export function prepareIndoorStairDisplay(
       )
       .map((r) => ({
         r,
+        nativeContact: (() => {
+          const source=sourceRooms.find(s=>s.key===r.key);
+          return !!source&&nativeStairLandingContact(model,source,assembly.stairElementId,runs as NonNullable<typeof runs[number]>[],Math.abs(r.elevationFeet-low)<=Math.abs(r.elevationFeet-high)?'bottom':'top');
+        })(),
         overlap: area(
           polygonClipping.intersection(
             native,
@@ -211,7 +216,7 @@ export function prepareIndoorStairDisplay(
           ) as RoomPoint[][][],
         ),
       }))
-      .filter((c) => c.overlap > 0.5);
+      .filter((c) => c.overlap > 0.5||c.nativeContact);
     // One owner per physical endpoint; similarly overlapping duplicate records
     // remain unresolved rather than assigning the same visible flight twice.
     for (const endpoint of [
@@ -232,8 +237,9 @@ export function prepareIndoorStairDisplay(
               ? "low"
               : "high") === endpoint,
         )
-        .sort((a, b) => b.overlap - a.overlap);
-      if (matches[1] && matches[1].overlap >= matches[0]!.overlap * 0.8)
+        .sort((a, b) => Number(b.nativeContact)-Number(a.nativeContact)||b.overlap - a.overlap);
+      if(matches[0]?.nativeContact&&matches[1]?.nativeContact)continue;
+      if (!matches[0]!.nativeContact&&matches[1] && matches[1].overlap >= matches[0]!.overlap * 0.8)
         continue;
       const r = matches[0]!.r;
       flights.push({

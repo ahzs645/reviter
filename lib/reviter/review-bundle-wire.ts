@@ -1,3 +1,4 @@
+import { MAX_REVIEW_BYTES } from "./review-bundle-limits.ts";
 import { deflateSync } from "fflate";
 import {
   MAX_REVIEW_FILES,
@@ -7,7 +8,7 @@ import {
 import { boundedInflate } from "./review-bundle-inflate.ts";
 
 const MAX_FILE = 32 * 1024 * 1024;
-const MAX_TOTAL = 128 * 1024 * 1024;
+const MAX_TOTAL = MAX_REVIEW_BYTES;
 const MAX_HEADER = 1024 * 1024;
 const MAX_CONTAINER = MAX_TOTAL + MAX_HEADER;
 export const REVIEW_BUNDLE_ARCHIVE_PATH = "review/companions.bin";

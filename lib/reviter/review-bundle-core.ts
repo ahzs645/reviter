@@ -1,3 +1,5 @@
+import { MAX_REVIEW_FILES, MAX_REVIEW_BYTES } from "./review-bundle-limits.ts";
+export { MAX_REVIEW_FILES, MAX_REVIEW_BYTES } from "./review-bundle-limits.ts";
 export type ReviewBundle = {
   version: 1;
   masterSha256: string;
@@ -9,10 +11,9 @@ export type ReviewBundle = {
   }[];
 };
 const MAX_FILE = 32 * 1024 * 1024;
-export const MAX_REVIEW_FILES = 1000;
 // Full authoring masters retain historical evidence alongside current repairs.
 // Keep the individual-file/count limits while allowing a bounded growing ledger.
-const MAX_TOTAL = 128 * 1024 * 1024;
+const MAX_TOTAL = MAX_REVIEW_BYTES;
 const safePath = (p: unknown): p is string =>
   typeof p === "string" &&
   p.length < 256 &&

@@ -133,13 +133,13 @@ test("full-level native barrier union preserves rotated door closures and column
   assert.equal(recoverNativeRoomInteriors([r],barriers,[floating],labels).rooms.length,0);
 });
 
-test("native structural columns and original room openings remain holes", () => {
+test("native structural columns remain holes while old trace holes do not define physical openings", () => {
   const r = room(); r.ringsFeet.push(rect(2,2,3,3));
   const native = walls(); native.push({kind:"column",levelId:1,nativeElementId:90,ringsFeet:[rect(7,7,8,8)]});
   const result = recoverNativeRoomInteriors([r],native,[],seeds());
   assert.equal(result.rooms.length,1); const rings = result.rooms[0]!.ringsFeet;
-  assert.equal(rings.length,3);
-  assert.ok(rings.slice(1).some(h => containsRoomPoint([2.5,2.5],h)));
+  assert.equal(rings.length,2);
+  assert.ok(!rings.slice(1).some(h => containsRoomPoint([2.5,2.5],h)));
   assert.ok(rings.slice(1).some(h => containsRoomPoint([7.5,7.5],h)));
 });
 

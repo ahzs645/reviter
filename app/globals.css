@@ -2626,3 +2626,22 @@ button[data-reason]:focus-visible::after {
 .geo-3d-map { position: relative; border: 1px solid var(--line); }
 .geo-3d-canvas { height: clamp(350px, 65vh, 700px); width: 100%; touch-action: none; }
 .geo-3d-canvas canvas { display: block; width: 100%; height: 100%; }
+
+/* Separate, source-bound DWG review inside the Reviter application. */
+.cad-review-workspace{position:fixed;inset:0;z-index:1000;background:#f4f6f7;color:#173348;display:flex;flex-direction:column}
+.cad-review-workspace>header{display:flex;align-items:center;gap:12px;padding:12px 18px;background:white;flex-wrap:wrap}
+.cad-review-workspace>header strong{margin-right:auto}
+.cad-review-workspace>p{margin:0;padding:8px 18px;font-size:12px;background:#e9f1f5;overflow-wrap:anywhere}
+.cad-review-workspace iframe{border:0;width:100%;flex:1;min-height:0;background:white}
+.cad-review-empty{padding:24px;max-width:650px;line-height:1.6}
+.cad-mobile-entry{position:fixed;right:10px;bottom:65px;z-index:50}
+@media(max-width:700px){.cad-review-workspace>header{padding:8px;gap:8px}.cad-review-workspace>header strong{width:100%}.cad-review-workspace>p{padding:6px 8px}}
+.cad-building-view{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);background:#eef3f6}
+.cad-building-view>aside{padding:16px;overflow:auto;background:#fff;border-right:1px solid #d5e0e7;font-size:13px;line-height:1.5}
+.cad-building-view h2{margin:0 0 16px;font-size:18px}.cad-building-view label{display:block;margin-bottom:12px}
+.cad-building-view select,.cad-building-view input[type=number]{display:block;width:100%;margin-top:4px;padding:7px;border:1px solid #bacbd6;background:#fff;color:#173348}
+.cad-building-view button{padding:8px;margin:0 6px 8px 0;border:1px solid #bacbd6;color:#173348;background:#f4f8fa}
+.cad-building-main{display:flex;min-width:0;min-height:0;flex-direction:column}.cad-building-canvas{flex:1;min-height:0;touch-action:none}.cad-building-canvas canvas{display:block;width:100%;height:100%}
+.cad-building-main>p{padding:8px 14px;margin:0;font-size:12px;background:#fff}
+@media(max-width:700px){.cad-building-view{display:flex;flex-direction:column}.cad-building-main{order:-1;height:46%;min-height:240px;flex-shrink:0}.cad-building-view>aside{flex:1;min-height:0;border-top:1px solid #d5e0e7}}
+.cad-door-buttons{max-height:220px;overflow:auto;display:flex;flex-direction:column;padding-top:8px}.cad-door-buttons button{text-align:left;margin-right:0}

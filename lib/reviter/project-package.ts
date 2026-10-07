@@ -1,3 +1,7 @@
+import {validateNativeMaterialSections,verifyNativeMaterialSections} from "./native-material-sections.ts";
+import { MAX_REVIEW_CONTAINER_BYTES } from "./review-bundle-limits.ts";
+import { validateNativeIndoorEnvelopes, verifyNativeIndoorEnvelopes } from "./native-indoor-envelopes.ts";
+import { validateNativeDisplayScopes } from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
 import {
   zip,
@@ -27,7 +31,7 @@ const limits: Record<string, number> = {
   "gis/reference-points.json": MB,
   "viewer/indoor.json": 128 * MB,
   "model/scene.glb": 256 * MB,
-  "review/companions.bin": 129 * MB,
+  "review/companions.bin": MAX_REVIEW_CONTAINER_BYTES,
 };
 export const MAX_PROJECT_PACKAGE_BYTES = 900 * MB;
 // Only this reader can certify a hydrated standalone File. Its source wire and
@@ -43,6 +47,18 @@ const entryLimit = (path: string) =>
     ? MODEL_LIMIT
     : limits[path];
 type Entry = { path: string; bytes: number; sha256: string };
+function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoor: IndoorDataset) {
+  validateNativeMaterialSections(rooms.nativeMaterialSections, indoor.source.modelSha256);
+  validateNativeMaterialSections(indoor.nativeMaterialSections, indoor.source.modelSha256);
+  if (JSON.stringify(rooms.nativeMaterialSections) !== JSON.stringify(indoor.nativeMaterialSections)) throw new Error("Source and prepared original native materials do not match.");
+  validateNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, indoor.source.modelSha256);
+  validateNativeIndoorEnvelopes(indoor.nativeIndoorEnvelopes, indoor.source.modelSha256);
+  if (JSON.stringify(rooms.nativeIndoorEnvelopes) !== JSON.stringify(indoor.nativeIndoorEnvelopes)) throw new Error("Source and prepared native indoor envelopes do not match.");
+  validateNativeDisplayScopes(rooms.nativeDisplayScopes, indoor.source.modelSha256);
+  validateNativeDisplayScopes(indoor.nativeDisplayScopes, indoor.source.modelSha256);
+  if (JSON.stringify(rooms.nativeDisplayScopes) !== JSON.stringify(indoor.nativeDisplayScopes))
+    throw new Error("Source and prepared native display scopes do not match.");
+}
 export type ProjectManifest = {
   format: "reviter-project";
   version: 1 | 2;
@@ -88,6 +104,9 @@ export async function createProjectPackage(
     },
     floors: await describe("floors/rooms.json", roomBytes),
   };
+  await verifyNativeMaterialSections(parsed.nativeMaterialSections, manifest.model.sha256);
+  await verifyNativeIndoorEnvelopes(parsed.nativeIndoorEnvelopes, manifest.model.sha256);
+  validateNativeDisplayScopes(parsed.nativeDisplayScopes, manifest.model.sha256);
   // RVT is already compressed; store it without another expensive compression pass.
   const files: AsyncZippable = {
     [manifest.model.path]: [modelBytes, { level: 0 }],
@@ -121,6 +140,7 @@ export async function createProjectPackage(
         "Prepared indoor data is stale. Compile it again from this model and these reviews.",
       );
     validateReviewedAreaPartitionBinding(parsed, prepared.indoor);
+    validateNativeDisplayScopeBinding(parsed, prepared.indoor);
     manifest.version = 2;
     const bytes = strToU8(
       JSON.stringify({
@@ -222,6 +242,9 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
   );
   const roomBytes = await verify(files, manifest.floors, "floors/rooms.json");
   const rooms = parseRoomDirectory(strFromU8(roomBytes));
+  await verifyNativeMaterialSections(rooms.nativeMaterialSections, manifest.model.sha256);
+  await verifyNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, manifest.model.sha256);
+  validateNativeDisplayScopes(rooms.nativeDisplayScopes, manifest.model.sha256);
   if (manifest.reviewBundle)
     await verify(files, manifest.reviewBundle, REVIEW_BUNDLE_ARCHIVE_PATH);
   const wire = rooms.reviewBundle as
@@ -266,7 +289,10 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
         "Prepared indoor data does not match its model and reviews.",
       );
   }
-  if (indoor) validateReviewedAreaPartitionBinding(rooms, indoor);
+  if (indoor) {
+    validateReviewedAreaPartitionBinding(rooms, indoor);
+    validateNativeDisplayScopeBinding(rooms, indoor);
+  }
   if (manifest.scene)
     scene = await verify(files, manifest.scene, "model/scene.glb");
   const roomFile = new File(

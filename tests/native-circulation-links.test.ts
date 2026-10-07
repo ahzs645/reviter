@@ -25,7 +25,7 @@ const node=(r:IndoorRecord,x:number):IndoorNode=>({id:`arrival:${r.key}`,roomKey
 const a=record('a',0,10,1),b=record('b',10,20,1),nodes=[node(a,8),node(b,12)];
 const data={source:{modelSha256:'a'.repeat(64)},nativeLevels:[{id:1,name:'A',elevationFeet:0},{id:2,name:'B',elevationFeet:0}],records:[a,b],nodes,edges:[],alignment:{horizontalMetresPerFoot:.3048}} as unknown as IndoorDataset;
 const floor={elementId:10,categoryId:-2000032,boundsFeet:{min:{x:0,y:0,z:-1},max:{x:20,y:10,z:0}},loops:[rect(0,0,20,10).map(p=>[...p,0])]};
-const model={elementBounds:[floor],levels:data.nativeLevels.map(l=>({levelId:l.id,elevation:l.elevationFeet})),nativeAssociatedLevelRelations:[]} as unknown as ConvertResult;
+const model={elementBounds:[floor],levels:data.nativeLevels.map(l=>({levelId:l.id,elevation:l.elevationFeet})),nativeAssociatedLevelRelations:[],nativeHostRelations:[{elementId:30,hostId:20}]} as unknown as ConvertResult;
 test('continuous floor supports explicit doorless seams across surfaces of one native level',()=>{
  const attached=attachNativeCirculation(model,data);assert.equal(attached.edges.length,1);assert.equal(attached.edges[0]!.kind,'opening');assert.deepEqual(attached.edges[0]!.roomKeys,['a','b']);assert.match(attached.edges[0]!.evidence,/full 2 ft/);
  assert.equal(attachNativeCirculation(model,{...data,records:[a,{...b,elevationFeet:3.28}],nodes:[nodes[0]!,{...nodes[1]!,pointFeet:[12,5,3.28]}]}).edges.length,0);
@@ -50,6 +50,11 @@ test('a matched doorway exit can extend on its own floor side while the threshol
  const closed={...d,edges:[{...d.edges[0]!,enabled:false}]};assert.equal(supportedWalkingPath(nativeWalkingRegion(m,closed,0,true,exit),[exit.pointFeet,[8,5,0]]),false);
  const column={elementId:21,categoryId:-2000100,boundsFeet:{min:{x:10.3,y:4.8,z:0},max:{x:10.7,y:5.2,z:8}},solid:{start:{x:10.5,y:4.8},end:{x:10.5,y:5.2},thickness:.4,baseElevation:0,topElevation:8}};
  assert.equal(supportedWalkingPath(nativeWalkingRegion({...m,elementBounds:[...m.elementBounds,column] as ConvertResult['elementBounds']},d,0,true,exit),[exit.pointFeet,[14,5,0]]),false);
+ const foreignWall={...wall,elementId:22};
+ const halfThreshold:[[number,number,number],[number,number,number]]=[[10.1,5,0],[14,5,0]];
+ assert.equal(supportedWalkingPath(region,halfThreshold),true,'the verified own-host aperture supports its original side');
+ assert.equal(supportedWalkingPath(nativeWalkingRegion({...m,elementBounds:[...m.elementBounds,foreignWall] as ConvertResult['elementBounds']},d,0,true,exit),halfThreshold),false,'a verified door aperture cannot cut a different native wall');
+ assert.equal(supportedWalkingPath(nativeWalkingRegion({...m,nativeHostRelations:[]},d,0,true,exit),halfThreshold),false,'a missing original host relation cannot authorize an aperture exception');
 });
 
 test('native stairexit continuation joins an isolated same-room arrival without bypassing its door',()=>{
@@ -79,4 +84,30 @@ test('member-proved curtain sections remove only the gross proxy while retaining
  assert.equal(supportedWalkingPath(nativeWalkingRegion(incomplete,d,z,true),approach),false,'unknown frame retains conservative gross host material');
  const column={elementId:500,categoryId:-2000100,boundsFeet:{min:{x:66,y:479,z},max:{x:67,y:480,z:z+8}},solid:{start:{x:66.5,y:479},end:{x:66.5,y:480},thickness:1,baseElevation:z,topElevation:z+8}};
  assert.equal(supportedWalkingPath(nativeWalkingRegion({...m,elementBounds:[...m.elementBounds,column] as ConvertResult['elementBounds']},d,z,true),approach),false,'native columns cannot be removed by curtain proof');
+});
+
+test('directory level aliases join only with a shared original slab and checked same native indoor face',async()=>{
+ const {nativeIndoorEnvelopeHash}=await import('../lib/reviter/native-indoor-envelopes.ts');
+ const d=structuredClone(data);d.nodes[1]!.levelId=2;d.records[1]!.levelId=2;
+ const source={version:1 as const,sourceModelSha256:d.source.modelSha256,levels:[{levelId:1,elevationFeet:0,partsFeet:[[rect(0,0,20,10)]],sourceElementIds:[10],cutElevationsFeet:[4,8],evidenceSha256:'b'.repeat(64)}]};
+ d.nativeIndoorEnvelopes={...source,geometrySha256:await nativeIndoorEnvelopeHash(source)};
+ assert.equal(attachNativeCirculation(model,d).edges.length,1);
+ assert.equal(attachNativeCirculation(model,{...d,nativeIndoorEnvelopes:undefined}).edges.length,0);
+ const wrong=structuredClone(d);wrong.nativeIndoorEnvelopes!.levels[0]!.sourceElementIds=[99];
+ assert.equal(attachNativeCirculation(model,wrong).edges.length,0);
+ const split=structuredClone(d);split.nativeIndoorEnvelopes!.levels[0]!.partsFeet=[[rect(0,0,9,10)],[rect(11,0,20,10)]];
+ assert.equal(attachNativeCirculation(model,split).edges.length,0);
+});
+
+test('a generated landing can meet an existing enabled door side without crossing its threshold',()=>{
+ const landing={...record('landing:lower',0,9.6,1),properties:{nativeFloorId:10,generatedLanding:true}},outside=record('outside',0,9.6,1),insideRoom=record('inside',10.4,20,2);
+ const start={...node(landing,2),id:'landing:arrival',kind:'connector' as const},entry={...node(outside,9.85),id:'door:2:30:0',kind:'portal' as const},exit={...node(insideRoom,10.6),id:'door:2:30:1',kind:'portal' as const};
+ const door={id:'door:2:30',levelId:2,nativeElementId:30,pointFeet:[10,5] as [number,number],footprintFeet:rect(9.8,3,10.2,7),normalFeet:[1,0] as [number,number],roomKeys:[outside.key,insideRoom.key],state:'connected' as const};
+ const wall={elementId:20,categoryId:-2000011,boundsFeet:{min:{x:9.8,y:0,z:0},max:{x:10.2,y:10,z:8}},solid:{start:{x:10,y:0},end:{x:10,y:10},thickness:.4,baseElevation:0,topElevation:8}};
+ const d={...data,records:[landing,outside,insideRoom],nodes:[start,entry,exit],doors:[door],edges:[{id:door.id,from:entry.id,to:exit.id,kind:'door',enabled:true}]} as IndoorDataset,m={...model,elementBounds:[floor,wall] as ConvertResult['elementBounds']};
+ const recovered=attachNativeCirculation(m,d);assert.equal(recovered.edges.length,1);
+ assert.equal(recovered.edges[0]!.from,start.id);assert.equal(recovered.edges[0]!.to,entry.id);
+ assert.ok(recovered.edges[0]!.pointsFeet.every(p=>p[0]<10));
+ assert.equal(supportedWalkingPath(nativeWalkingRegion(m,d,0,true,entry),recovered.edges[0]!.pointsFeet),true);
+ assert.equal(attachNativeCirculation(m,{...d,edges:[{...d.edges[0]!,enabled:false}]}).edges.length,0);
 });

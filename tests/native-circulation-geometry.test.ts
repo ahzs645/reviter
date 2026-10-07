@@ -480,3 +480,79 @@ test("confirmed exterior is cut from indoor cells while native slab/model identi
   assert.equal(JSON.stringify([model, data]), before);
   assert.ok(result.geometry.cells.every(c => c.nativeFloorIds.includes(100)));
 });
+
+async function sourceEnvelopes(data: IndoorDataset, parts = [[rect(1, 1, 19, 9)]]) {
+  const { nativeIndoorEnvelopeHash } = await import("../lib/reviter/native-indoor-envelopes.ts");
+  const source = { version: 1 as const, sourceModelSha256: data.source.modelSha256,
+    levels: [{levelId:1,elevationFeet:0,partsFeet:parts,sourceElementIds:[100],cutElevationsFeet:[4,8],evidenceSha256:"b".repeat(64)}] };
+  data.nativeIndoorEnvelopes = {...source,geometrySha256:await nativeIndoorEnvelopeHash(source)};
+}
+test("source-certified indoor faces use traces only for identity and discard old contour holes", async () => {
+  const {model,data}=setup();
+  data.records[0]!.circulation=false;
+  data.records[0]!.ringsFeet=[rect(3,3,6,6),rect(4,4,5,5)];
+  await sourceEnvelopes(data);
+  const first=prepareNativeCirculationGeometry(model,data).geometry;
+  assert.equal(first.cells.length,1);
+  assert.deepEqual(first.cells[0]!.ringsFeet,[[[1,1],[19,1],[19,9],[1,9],[1,1]]]);
+  assert.ok(inside([4.5,4.5],first.cells[0]!.ringsFeet));
+  assert.ok(!inside([.5,5],first.cells[0]!.ringsFeet),"real slab outside physical envelope is excluded");
+  data.records[0]!.ringsFeet=[rect(8,2,12,5)];
+  const second=prepareNativeCirculationGeometry(model,data).geometry;
+  assert.deepEqual(second.cells.map(c=>c.ringsFeet),first.cells.map(c=>c.ringsFeet));
+  assert.deepEqual(second.reviewSurfaces,[]);
+});
+test("ambiguous restricted ownership vetoes its whole native face instead of cutting a manual mask", async () => {
+  const {model,data}=setup();
+  await sourceEnvelopes(data);
+  data.records.push({...owner("private",rect(3,3,5,5)),circulation:false,access:"staff"});
+  assert.equal(prepareNativeCirculationGeometry(model,data).geometry.cells.length,0);
+});
+test("strict native regeneration removes unsupported old walks while retaining physical portals", async () => {
+  const {model,data}=setup();
+  await sourceEnvelopes(data);
+  data.edges=[{id:"old-outline-walk",kind:"walk"},{id:"physical-door",kind:"door"},{id:"physical-stair",kind:"stair"}] as IndoorDataset["edges"];
+  data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+  attachNativeCirculationCellRoutes(data);
+  assert.deepEqual(data.edges.map(e=>e.id),["physical-door","physical-stair"]);
+});
+
+test("native cell branches preserve nominal level aliases only on their original shared slab", async()=>{
+ const {model,data}=setup();
+ data.records=[owner("a",rect(1,1,9,9)),{...owner("b",rect(10,1,19,9)),levelId:2}];
+ data.nodes=[{id:"a",roomKey:"a",kind:"connector",levelId:1,surfaceId:"left",pointFeet:[3,5,0]}, {id:"b",roomKey:"b",kind:"arrival",levelId:2,surfaceId:"right",pointFeet:[17,5,0]}] as IndoorDataset["nodes"];
+ data.walkingSupport={version:1,sourceModelSha256:data.source.modelSha256,floors:[{nativeElementId:100,elevationFeet:0,ringsFeet:[rect(0,0,20,10)]}]} as IndoorDataset["walkingSupport"];
+ await sourceEnvelopes(data);
+ data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ const original=JSON.stringify(data.nodes);
+ assert.ok(attachNativeCirculationCellRoutes(data)>0);
+ assert.equal(JSON.stringify(data.nodes),original);
+ assert.ok(data.edges.every(e=>e.nativeCellId&&e.accessible==='unknown'));
+ data.walkingSupport!.floors[0]!.nativeElementId=999;
+ assert.equal(attachNativeCirculationCellRoutes(data),0);
+});
+
+test("strict native branches reach owned door halves and preserve the central portal",async()=>{
+ const {model,data}=setup();data.records=[owner("left",rect(1,1,9,9)),owner("right",rect(11,1,19,9))];
+ for(const [id,y0,y1]of[[110,0,4],[111,6,10]])model.elementBounds.push({elementId:id,categoryId:-2000011,solid:{start:{x:10,y:y0},end:{x:10,y:y1},thickness:.4,baseElevation:0,topElevation:10}} as never);
+ data.doors=[{id:"door",nativeElementId:115,hostWallNativeElementId:110,levelId:1,pointFeet:[10,5],footprintFeet:rect(9.7,4,10.3,6),normalFeet:[1,0],roomKeys:["left","right"],state:"connected"}];
+ data.nodes=[{id:"left-arrival",roomKey:"left",kind:"arrival",levelId:1,surfaceId:"left",pointFeet:[3,5,0]},{id:"left-portal",roomKey:"left",kind:"portal",levelId:1,surfaceId:"left",pointFeet:[9.85,5,0]},{id:"right-portal",roomKey:"right",kind:"portal",levelId:1,surfaceId:"right",pointFeet:[10.15,5,0]},{id:"right-arrival",roomKey:"right",kind:"arrival",levelId:1,surfaceId:"right",pointFeet:[17,5,0]}] as IndoorDataset["nodes"];
+ data.edges=[{id:"door",nativeElementId:115,kind:"door",from:"left-portal",to:"right-portal",roomKeys:["left","right"],enabled:true,pointsFeet:[[9.85,5,0],[10.15,5,0]],lengthMetres:.1,accessible:"unknown",evidence:"native"}];
+ data.walkingSupport={version:1,sourceModelSha256:data.source.modelSha256,floors:[{nativeElementId:100,elevationFeet:0,ringsFeet:[rect(0,0,20,10)]}]} as IndoorDataset["walkingSupport"];
+ await sourceEnvelopes(data);data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ const geometry=JSON.stringify(data.circulationGeometry);
+ assert.equal(data.circulationGeometry.cells.length,2);assert.ok(attachNativeCirculationCellRoutes(data)>=2);
+ assert.equal(JSON.stringify(data.circulationGeometry),geometry,"door half route support does not enlarge saved native rooms");
+ assert.ok(data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("left-portal")));
+ assert.ok(data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("right-portal")));
+ assert.ok(!data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("left-portal")&&[e.from,e.to].includes("right-portal")));
+ data.edges.find(e=>e.id==='door')!.enabled=false;assert.equal(attachNativeCirculationCellRoutes(data),0);
+});
+
+test("a tiny restricted trace fringe does not act as a physical wall across a native hallway",async()=>{
+ const {model,data}=setup();await sourceEnvelopes(data);
+ data.records.push({...owner("private",rect(18.9,3,21,6)),circulation:false,access:"staff"});
+ const cells=prepareNativeCirculationGeometry(model,data).geometry.cells;
+ assert.equal(cells.length,1);assert.ok(!cells[0]!.roomKeys.includes("private"));
+ assert.ok(inside([18.95,5],cells[0]!.ringsFeet));
+});

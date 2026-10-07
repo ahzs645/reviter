@@ -108,7 +108,7 @@ def build(args):
                 if h in seen:continue
                 seen.add(h);entity=doc.entitydb.get(h)
                 if entity is None:raise ValueError('Missing source handle '+h)
-                p=primitive(entity,floor,scale)
+                p=primitive(entity,dict(floor,alignment=l.get('sourceAlignment',floor['alignment'])),scale)
                 if len(p['pointsMetres'])>=2:ps.append(p)
             straight=[]
             for p in ps:
@@ -189,15 +189,17 @@ def build(args):
             if 'closed' in p:r['closed']=p['closed']
             handoff.append(r)
     write(args.out/'reviter.dwg-entities.json',handoff)
-    shutil.copy2(HERE/'building-geometry.html',args.out/'index.html');shutil.copy2(original,args.out/'intake.json')
+    display=subprocess.run(['node','--experimental-strip-types',str(HERE/'emit-door-display.mjs'),str(args.reviter)],check=True,capture_output=True,text=True).stdout
+    (args.out/'index.html').write_text((HERE/'building-geometry.html').read_text().replace('/*DOOR_DISPLAY_HELPER*/',display));shutil.copy2(original,args.out/'intake.json')
     shutil.copytree(args.intake/'source',args.out/'source',dirs_exist_ok=True)
     (args.out/'README.txt').write_text('Separate source-bound CAD shape reconstruction from the saved floor intake.\nServe this directory using python3 -m http.server --bind 127.0.0.1.\ngeometry.json: analytic shapes, guarded door symbols, measured wall-pair candidates, exact treads and closed drawing regions.\nDoor recognition reuses Reviter registered-single-door-swings.ts, supplemented by analytic finite-jamb checks for short jambs and closed leaves. Unmatched arcs remain in source geometry and the review queue.\nreviter.dwg-entities.json: analytic source-coordinate DwgEntity handoff; supply independently reviewed registrations/native floors before preparation. Not an RVT or routed native dataset.\n3D schematic uses an adjustable illustrative wall height. Stair rise/elevations remain unassigned; bounded adjacent drawing cells are possible landing candidates only.\nmodels/ contains review-only floor GLBs with illustrative 2.7 m wall and 2.1 m door heights, measured face pairs, flat tread strokes and provenance extras. They are not native source models.\nReproduce after installing pipeline/requirements.txt: python pipeline/abstract-building-geometry.py --intake . --review . --reviter pipeline/reviter --out ../cad-rerun\nNo model bytes, canonical master, access or routes changed. Original DWGs retained.\n')
     pipeline=args.out/'pipeline';pipeline.mkdir(exist_ok=True)
-    for name in ['abstract-building-geometry.py','abstract-door-symbols.mjs','cad-door-symbols.py','stair-footprints.py','build-building-intake.py','building-geometry.html','recover-room-polygons.py','stair-symbols.py','schematic-glb.py','config.unbc.json']:
+    for name in ['abstract-building-geometry.py','abstract-door-symbols.mjs','emit-door-display.mjs','cad-door-symbols.py','stair-footprints.py','build-building-intake.py','building-geometry.html','recover-room-polygons.py','stair-symbols.py','schematic-glb.py','config.unbc.json']:
         shutil.copy2(HERE/name,pipeline/name)
     (pipeline/'requirements.txt').write_text('ezdxf>=1.4\nshapely>=2.0\nnumpy>=2.0\n')
     helper=pipeline/'reviter/lib/reviter';helper.mkdir(parents=True,exist_ok=True)
     shutil.copy2(args.reviter/'lib/reviter/registered-single-door-swings.ts',helper/'registered-single-door-swings.ts')
+    shutil.copy2(args.reviter/'lib/reviter/dwg-door-display.ts',helper/'dwg-door-display.ts')
     (args.out/'stage').mkdir(exist_ok=True)
     shutil.copy2(args.review/'stage/floorplans.dxf',args.out/'stage/floorplans.dxf')
     shutil.copy2(args.review/'stage/conversion.json',args.out/'stage/conversion.json')

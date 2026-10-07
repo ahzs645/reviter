@@ -5,9 +5,26 @@ import unittest
 HERE=Path(__file__).resolve().parents[1]/'tools/dwg-analysis'
 def load(name):
  spec=importlib.util.spec_from_file_location(name,HERE/(name+'.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
-intake=load('build-building-intake');stairs=load('stair-symbols')
+intake=load('build-building-intake');stairs=load('stair-symbols');campus=load('build-campus-floor-intake')
 
 class CadIntakeTest(unittest.TestCase):
+ def test_saved_panel_registration_preserves_rotation_and_local_translation(self):
+  import copy
+  r={'raw':[100,200],'model':[10,20],'re':0,'im':.001/.3048,'scale':.001/.3048}
+  before=copy.deepcopy(r);a=campus.registration_alignment(r,[1,2])
+  self.assertEqual(intake.local_point([1100,200],a,.001),[2.048,5.096])
+  self.assertEqual(r,before);self.assertEqual(a['status'],'saved-source-registration')
+ def test_composite_panel_requires_unanimous_native_id_and_unique_registration(self):
+  import copy
+  lines=[{'handle':'a','layer':'wall','points':[[0,0],[10000,0],[10000,10000],[0,10000],[0,0]],'type':'LINE'},
+         {'handle':'b','layer':'wall','points':[[0,20000],[10000,20000],[10000,30000],[0,30000],[0,20000]],'type':'LINE'}]
+  sheet={'id':'Composite','candidates':[{'anchor':[5000,5000],'roomNumberFloor':0,'existingKeys':['rm-100-one']},{'anchor':[5000,25000],'roomNumberFloor':1,'existingKeys':['rm-200-two']}]}
+  review={'registrations':{'Composite #1':{'levelId':100},'Composite #2':{'levelId':200}}}
+  self.assertEqual([p['ordinal'] for p in campus.attributed_registered_panels(sheet,lines,review,.001)],[0,1])
+  stale=copy.deepcopy(sheet);stale['candidates'][0]['existingKeys']=[]
+  self.assertEqual(campus.attributed_registered_panels(stale,lines,review,.001),[])
+  review['registrations']['Composite #3']={'levelId':100}
+  self.assertEqual(campus.attributed_registered_panels(sheet,lines,review,.001),[])
  def test_scale_requires_consistent_saved_evidence(self):
   fit={str(i):{'scale':.001/.3048} for i in range(3)}
   self.assertAlmostEqual(intake.unit_scale(fit),.001)

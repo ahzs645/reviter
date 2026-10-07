@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "indoor:prepare": "node --experimental-strip-types scripts/prepare-indoor-project.ts",
     "indoor:presentation": "node --experimental-strip-types scripts/prepare-room-presentation.ts",
-    "cad:analyze": "node --experimental-strip-types scripts/analyze-dwg-floors.ts"
+    "cad:analyze": "node --experimental-strip-types scripts/analyze-dwg-floors.ts",
+    "cad:paths": "node --experimental-strip-types scripts/analyze-dwg-paths.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

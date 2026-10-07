@@ -66,12 +66,14 @@ import {
 import { BrowserDock } from "./studio/BrowserDock.tsx";
 import { EmptyState } from "./studio/EmptyState.tsx";
 import { DwgWorkspace } from "./studio/DwgWorkspace.tsx";
+import { DwgFloorReview } from "./studio/DwgFloorReview.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
 import type { DirectoryModelFloor } from "./studio/directory-model.ts";
 import { MAX_PROJECT_PACKAGE_BYTES, readProjectPackage } from "../lib/reviter/project-package.ts";
+import { isCadReviewArchive } from "../lib/reviter/dwg-review-package.ts";
 import { modelImportFiles } from "./studio/model-import.ts";
 import { parseRoomDirectory } from "../lib/reviter/room-directory.ts";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
@@ -302,6 +304,8 @@ export default function ReviterStudio() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
+  const [cadReviewOpen, setCadReviewOpen] = useState(false);
+  const [cadReviewFile, setCadReviewFile] = useState<File | null>(null);
   const [workspace, setWorkspace] = useState<StudioWorkspace>("model");
   const [drawingFiles, setDrawingFiles] = useState<File[]>([]);
   const [drawingSession, setDrawingSession] = useState(0);
@@ -1803,11 +1807,19 @@ export default function ReviterStudio() {
         return;
       }
       if (selected.some(f => /\.zip$/i.test(f.name))) {
-        if (selected.length !== 1) throw new Error("Open a project ZIP by itself; it already contains its model and floor data.");
+        if (selected.length !== 1) throw new Error("Open one project or CAD analysis ZIP at a time.");
         const archive = selected[0]!;
         if (archive.size > MAX_PROJECT_PACKAGE_BYTES) throw new Error("Project ZIP exceeds the 900 MB import limit.");
         setError(null);
-        const project = await readProjectPackage(new Uint8Array(await archive.arrayBuffer()));
+        const bytes = new Uint8Array(await archive.arrayBuffer());
+        if (attempt !== fileSelectionAttempt.current) return;
+        if (isCadReviewArchive(bytes)) {
+          setPhase(result ? "ready" : "idle");
+          setCadReviewFile(archive);
+          setCadReviewOpen(true);
+          return;
+        }
+        const project = await readProjectPackage(bytes);
         if (attempt !== fileSelectionAttempt.current) return;
         void processFile(project.model, undefined, project.roomFile);
         return;
@@ -2063,6 +2075,8 @@ export default function ReviterStudio() {
       if (event.dataTransfer.files.length) void processSelectedFiles(Array.from(event.dataTransfer.files));
     }}>
       {fileInputs}
+      {cadReviewOpen && <DwgFloorReview initialFile={cadReviewFile} onClose={() => {setCadReviewOpen(false);setCadReviewFile(null);}} />}
+      {mobile && <button type="button" className="rv-button cad-mobile-entry" onClick={() => setCadReviewOpen(true)}>DWG floor review</button>}
       <DwgWorkspace key={drawingSession} files={drawingFiles} onOpen={openPicker} onClose={closeModel}
         onTheme={toggleTheme} themeIcon={<ThemeIcons size={15} />} error={error} />
     </main>
@@ -2088,6 +2102,8 @@ export default function ReviterStudio() {
       }}
     >
       {fileInputs}
+      {cadReviewOpen && <DwgFloorReview initialFile={cadReviewFile} onClose={() => {setCadReviewOpen(false);setCadReviewFile(null);}} />}
+      {mobile && <button type="button" className="rv-button cad-mobile-entry" onClick={() => setCadReviewOpen(true)}>DWG floor review</button>}
 
       {/* The phone layout brings its own 52px header; two of them stacked is
           what the old 760px breakpoint did, and is what this replaces. */}
@@ -2110,6 +2126,7 @@ export default function ReviterStudio() {
           </>
         )}
         <div className="titlebar-right">
+          <button type="button" className="rv-button" onClick={() => setCadReviewOpen(true)}>DWG floor review</button>
           <span className="local-chip">
             <ShieldCheck size={12} aria-hidden />
             Local only

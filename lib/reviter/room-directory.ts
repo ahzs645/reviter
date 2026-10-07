@@ -1,3 +1,6 @@
+import {validateNativeMaterialSections,type NativeMaterialSections} from "./native-material-sections.ts";
+import {validateNativeIndoorEnvelopes,type NativeIndoorEnvelopes} from "./native-indoor-envelopes.ts";
+import {validateNativeDisplayScopes, type NativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitions,type ReviewedAreaPartitions} from "./reviewed-area-partitions.ts";
 import {validateNativeDoorBoundaryClosures,type NativeDoorBoundaryClosures} from "./native-door-boundary-closures.ts";
 import {validateNativeWallPositionRepairs,type NativeWallPositionRepairs} from "./native-wall-position-repairs.ts";
@@ -68,6 +71,9 @@ export type RoomDirectoryData = {
   /** Logical outlining only: never physical walls, portals, access or raised blocks. */
   reviewedAreaPartitions?: ReviewedAreaPartitions;
   indoorExclusions?: IndoorExclusions;
+  nativeDisplayScopes?: NativeDisplayScopes;
+  nativeMaterialSections?: NativeMaterialSections;
+  nativeIndoorEnvelopes?: NativeIndoorEnvelopes;
   nativeBoundaryPatches?: NativeBoundaryPatches;
   /** A reported restriction at an unassigned pin does not invent an area boundary. */
   accessReviewLocations?: {building:string;levelId:number;point:RoomPoint;kind:"staff";evidence:"user-reported";notes?:string}[];
@@ -181,6 +187,9 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     for(const link of links){const [a,b]=link.rooms.map(key=>data.annotations.find(r=>r.key===key)!);const key=[...link.rooms].sort().join(":");if(a!.levelId===b!.levelId || roomBuilding(a!)!==roomBuilding(b!) || ![a,b].every(r=>/\bstair(?:s|case|well)?\b/i.test(r!.name??"")||!!r!.stairFlightIds?.length) || pairs.has(key))throw new Error("Stair connections must join different floors of one building without duplicate pairs.");pairs.add(key);}
   }
   if(data.indoorConnectors !== undefined) validateIndoorConnectorReview(data.indoorConnectors);
+  validateNativeDisplayScopes(data.nativeDisplayScopes);
+  validateNativeMaterialSections(data.nativeMaterialSections);
+  validateNativeIndoorEnvelopes(data.nativeIndoorEnvelopes);
   validateIndoorExclusions(data.indoorExclusions);
   validateNativeDoorBoundaryClosures(data.nativeDoorBoundaryClosures);
   if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);

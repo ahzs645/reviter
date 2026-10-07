@@ -1,5 +1,5 @@
 import { Inflate } from "fflate";
-const MAX_CONTAINER = 129 * 1024 * 1024;
+import { MAX_REVIEW_CONTAINER_BYTES } from "./review-bundle-limits.ts";
 const fail = () => {
   throw new Error("Invalid packed review companion container.");
 };
@@ -8,7 +8,7 @@ export function boundedInflate(bytes: Uint8Array, expected: number) {
   if (
     !Number.isSafeInteger(expected) ||
     expected < 0 ||
-    expected > MAX_CONTAINER
+    expected > MAX_REVIEW_CONTAINER_BYTES
   )
     return fail();
   const out = new Uint8Array(expected);

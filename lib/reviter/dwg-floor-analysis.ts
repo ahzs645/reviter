@@ -12,6 +12,7 @@ export type CadAnalysisFloor = {
   id: string; buildingCode: string; name: string; ordinal: number;
   alignment: { status: string; method?: string; overlapScore?: number; alternativeScore?: number };
   primitives: Primitive[]; stairAreas: Area[];
+  rooms?: { key: string; number: string; name: string; anchorMetres: Point; source?: { handle: string } }[];
   stairs: { id: string; stairAreaId: string | null }[];
   stairReview: unknown[];
   regions: { roomKey: string; number: string; status: string }[];
@@ -48,6 +49,8 @@ export function fitCadFloorControls(floor: CadAnalysisFloor, reference: CadAnaly
   const pairs = control.pairs;
   if (!Array.isArray(pairs) || pairs.length < 3
     || new Set(pairs.map(p => p.id)).size !== pairs.length
+    || new Set(pairs.map(p => JSON.stringify(p.pointMetres))).size !== pairs.length
+    || new Set(pairs.map(p => JSON.stringify(p.referencePointMetres))).size !== pairs.length
     || pairs.some(p => !p.id || !finite(p.pointMetres) || !finite(p.referencePointMetres)
       || !onSource(floor, p.sourceHandle, p.pointMetres)
       || !onSource(reference, p.referenceHandle, p.referencePointMetres))
@@ -138,7 +141,7 @@ export function analyzeCadFloors(floors: CadAnalysisFloor[], controls: CadFloorC
         }
       }
       const controlChecked = [left, right].every(f => f.id === levels[0]!.id || transforms.has(f.id));
-      const weak = [left, right].some(f => !transforms.has(f.id) && !["local-reference", "provisional"].includes(f.alignment.status));
+      const weak = [left, right].some(f => !transforms.has(f.id) && !["local-reference", "provisional", "saved-source-registration"].includes(f.alignment.status));
       for (const { ratio, x, y } of scores) {
         if (scores.filter(s => s.x.id === x.id).length !== 1 || scores.filter(s => s.y.id === y.id).length !== 1) {
           unresolved.push({ floorIds: [left.id, right.id], areaIds: [x.id, y.id], reason: "Multiple overlapping stair footprints; correspondence is ambiguous." });
@@ -160,6 +163,35 @@ export function analyzeCadFloors(floors: CadAnalysisFloor[], controls: CadFloorC
       }
     }
   }
+  // Label families supplement footprint matching without inventing a landing.
+  // A skipped drawing level remains flagged, even when the family reappears.
+  const stairFamilies: { buildingCode: string; family: string; occurrences: {
+    floorId: string; ordinal: number; roomKey: string; number: string; anchorMetres: Point;
+    sourceHandle: string | null; nearbyAreaIds: string[] }[]; missingDrawingOrdinals: number[];
+    status: string; routingEligible: false; servedFloorsVerified: false }[] = [];
+  for (const building of new Set(floors.map(f => f.buildingCode))) {
+    const groups = new Map<string, typeof stairFamilies[number]["occurrences"]>();
+    for (const f of floors.filter(f => f.buildingCode === building).sort((a,b) => a.ordinal-b.ordinal)) {
+      for (const r of f.rooms ?? []) {
+        const match = /^([^-]+)-S\d(\d{2,3}[A-Z]?)$/i.exec(r.number);
+        if (!match || match[1] !== building || !/^stairs?$/i.test(r.name.trim()) || !finite(r.anchorMetres)) continue;
+        const key = building + "-S*" + match[2], values = groups.get(key) ?? [];
+        values.push({ floorId: f.id, ordinal: f.ordinal, roomKey: r.key, number: r.number,
+          anchorMetres: r.anchorMetres, sourceHandle: r.source?.handle ?? null,
+          nearbyAreaIds: f.stairAreas.filter(a => a.ringsMetres.some(ring => ring.some(p => Math.hypot(p[0]-r.anchorMetres[0],p[1]-r.anchorMetres[1]) < 3))).map(a => a.id) });
+        groups.set(key, values);
+      }
+    }
+    for (const [family, occurrences] of groups) {
+      const ordinals = new Set(occurrences.map(o => o.ordinal));
+      const lo = Math.min(...ordinals), hi = Math.max(...ordinals);
+      const missingDrawingOrdinals = Array.from({length: hi-lo+1},(_,i)=>lo+i).filter(n=>!ordinals.has(n));
+      stairFamilies.push({ buildingCode: building, family, occurrences, missingDrawingOrdinals,
+        status: occurrences.length === 1 ? "single-drawing-stair-label" : missingDrawingOrdinals.length
+          ? "label-family-with-unrepresented-intermediate-stop" : "label-family-needs-flight-and-landing-review",
+        routingEligible: false, servedFloorsVerified: false });
+    }
+  }
   return { format: "reviter-cad-floor-analysis", version: 1, coordinateSystem: "building-local-metres",
     registrations, floors: floors.map(f => ({ id: f.id, buildingCode: f.buildingCode, name: f.name,
       ordinal: f.ordinal, alignment: f.alignment, additionalTransform: transforms.get(f.id) ?? identity,
@@ -168,7 +200,7 @@ export function analyzeCadFloors(floors: CadAnalysisFloor[], controls: CadFloorC
       sharedRegions: f.regions.filter(r => r.status === "shared-drawing-region").length,
       missingRegions: f.regions.filter(r => r.status === "not-recovered").length,
       stairFlights: f.stairs.length, boundedFootprints: f.stairAreas.length, stairReview: f.stairReview })),
-    candidates, unresolved, graphEdges: [], appliedToNativeGeometry: false,
+    candidates, unresolved, stairFamilies, graphEdges: [], appliedToNativeGeometry: false,
     limits: ["A drawing match is not a verified stair route.", "No native stops, elevations, access or campus placement inferred.",
       "Original source geometry and polygon holes are retained; controls only define a separate comparison transform."] };
 }

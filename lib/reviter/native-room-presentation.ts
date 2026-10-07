@@ -336,7 +336,9 @@ function recoverNativeRoomInteriorsInScope(records: IndoorRecord[], walls: Indoo
       }
       if (candidates.length !== 1) { fail(candidates.length > 1 ? "ambiguous-native-cell" : rejected, `A unique closed, uncontested native room enclosure could not be verified (best source coverage ${(bestSourceCoverage * 100).toFixed(1)}%, cell coverage ${(bestCellCoverage * 100).toFixed(1)}%; ${thresholds.length}/${context.doorCount} supported native door thresholds; other enclosed room labels: ${bestOtherLabels.join(", ") || "none"}).`); continue; }
       const candidate = candidates[0]!;
-      const holes = room.ringsFeet.slice(1).map(ring => [ring] as Rings);
+      // Source trace holes are annotation geometry; native material/floor holes
+      // alone establish physical voids.
+      const holes: Rings[] = [];
       const parts = holes.length ? polygonClipping.difference(candidate.cell, ...holes) as Rings[] : [candidate.cell];
       if (parts.length !== 1 || !contains(seed, parts[0]!)) { fail("ambiguous-room-holes", "Preserving source holes split the enclosure or excluded its label."); continue; }
       const ringsFeet = parts[0]!.map(cleanRoomBoundary);

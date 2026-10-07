@@ -14,6 +14,7 @@ globalThis.__REVITER_STATIC_WORKERS__ = {
   dwg: new URL("./assets/dwg-worker-runtime.js", document.baseURI).href,
   plan: new URL("./assets/floor-plan-worker-runtime.js", document.baseURI).href,
   regions: new URL("./assets/floor-regions-worker-runtime.js", document.baseURI).href,
+  cadReview: new URL("./assets/cad-review-worker-runtime.js", document.baseURI).href,
   indoor: new URL("./assets/indoor-worker-runtime.js", document.baseURI).href,
 };
 

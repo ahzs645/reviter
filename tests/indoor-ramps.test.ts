@@ -1,3 +1,4 @@
+import {certifyNativeRampCrossfall} from '../lib/reviter/native-ramp-crossfall.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeRampTriangles,prepareReviewedIndoorRamps,validateRampRecipe,type IndoorRampRecipes} from '../lib/reviter/indoor-ramps.ts';
@@ -32,3 +33,5 @@ test('geometry-bound reviewed ramp approaches survive regeneration while wrong-s
  const restored=prepareReviewedIndoorRamps(model,d,metadata,()=>[0,0],reviews);assert.equal(d.edges.length,3);assert.equal(restored.size,2);assert.ok(d.edges.every(e=>e.accessible==='yes'));assert.ok(d.edges.filter(e=>e.kind!=='ramp').every(e=>e.kind==='opening'));
  const bad=dataset();bad.records.push(lower,upper);bad.nodes.push(...d.nodes.filter(n=>n.id.startsWith('arrival:')));const stale=structuredClone(reviews);stale.edges['walk:ramp:300:lower'].geometryKey=stale.edges['walk:ramp:300:lower'].geometryKey.replace(source,'b'.repeat(64));const rejected=prepareReviewedIndoorRamps(model,bad,metadata,()=>[0,0],stale);assert.equal(rejected.has('walk:ramp:300:lower'),false);assert.equal(bad.edges.some(e=>e.id==='walk:ramp:300:lower'),false);assert.ok(bad.issues.some(i=>i.message.includes('stale')));
 });
+
+test('curved width certificates are recomputed from original faces and cannot grant unsupported or tampered support',()=>{const recipe=structuredClone(metadata.ramps[0]!);recipe.surfaceWidthCertificate=certifyNativeRampCrossfall(triangles,model.elementBounds.filter(r=>r.categoryId===-2000032),recipe.pointsFeet)!;assert.ok(recipe.surfaceWidthCertificate);assert.equal(validateRampRecipe(model,dataset(),recipe),undefined);recipe.surfaceWidthCertificate.maximumCrossfallRatio=.9;assert.match(validateRampRecipe(model,dataset(),recipe)!,/certificate does not match/);});

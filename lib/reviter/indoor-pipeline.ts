@@ -1,3 +1,5 @@
+import {verifyNativeIndoorEnvelopes} from "./native-indoor-envelopes.ts";
+import {validateNativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
 import {nativeDoorBoundaryClosureFootprints} from "./native-door-boundary-closures.ts";
 import {nativeWallPositionRepairedWalls,nativeWallPositionRepairedPlanWalls} from "./native-wall-position-repairs.ts";
@@ -10,7 +12,7 @@ import {reviewedBoundaryWalls} from "./native-boundary-patches.ts";
 import pc from "polygon-clipping";
 import { containsDirectoryRoomPoint } from "./room-directory.ts";
 import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
-import { attachNativeCirculation } from "./native-circulation-links.ts";
+import { attachNativeCirculation,createNativeWalkingRegionQuery,supportedWalkingPath } from "./native-circulation-links.ts";
 import { prepareReviewedIndoorRamps } from "./indoor-ramps.ts";
 import { prepareNativeRampDisplay } from "./native-ramp-display.ts";
 import { recoverIndoorOpeningSpan } from "./indoor-opening-spans.ts";
@@ -88,6 +90,8 @@ export async function prepareIndoorDataset(
     throw new Error(
       "Model identity or source digest does not match this project.",
     );
+  validateNativeDisplayScopes(data.nativeDisplayScopes, modelSha256);
+  await verifyNativeIndoorEnvelopes(data.nativeIndoorEnvelopes, modelSha256);
   validateIndoorExclusions(data.indoorExclusions, modelSha256, model.levels.filter(l => l.levelId != null).map(l => ({ id: l.levelId!, elevationFeet: l.elevation })));
   const fit = fitGeoreference(data.georeference),
     cell = 0.6;
@@ -177,6 +181,8 @@ export async function prepareIndoorDataset(
     ...(data.nativeWallPositionRepairs ? {nativeWallPositionRepairs: structuredClone(data.nativeWallPositionRepairs)} : {}),
     ...(data.selectionDoorThresholds ? { selectionDoorThresholds: structuredClone(data.selectionDoorThresholds) } : {}),
     ...(data.reviewedAreaPartitions ? { reviewedAreaPartitions: structuredClone(data.reviewedAreaPartitions) } : {}),
+    ...(data.nativeDisplayScopes ? { nativeDisplayScopes: structuredClone(data.nativeDisplayScopes) } : {}),
+    ...(data.nativeIndoorEnvelopes ? { nativeIndoorEnvelopes: structuredClone(data.nativeIndoorEnvelopes) } : {}),
     ...(data.indoorExclusions ? { indoorExclusions: structuredClone(data.indoorExclusions) } : {}),
     ...(data.visitorMetadata ? { visitor: structuredClone(data.visitorMetadata) } : {}),
     nodes: [],
@@ -360,12 +366,14 @@ export async function prepareIndoorDataset(
         data.navigation?.openLinks ?? [],
         data.boundaryReference,
         correctedGeometry,
+        {nativeOnly:!!dataset.nativeIndoorEnvelopes},
       );
     dataset.doors!.push(
       ...reviews.map(({ door, candidates, state, portal }) => ({
         id: `door:${levelId}:${door.id}`,
         levelId,
         nativeElementId: door.id,
+        hostWallNativeElementId: model.nativeHostRelations?.find(relation => relation.elementId === door.id)?.hostId,
         pointFeet: door.point,
         footprintFeet: door.footprint,
         normalFeet: door.normal,
@@ -497,6 +505,7 @@ export async function prepareIndoorDataset(
           levelId,
         );
       }
+    const nativeWalkingQuery=createNativeWalkingRegionQuery(model,dataset);
     for (const p of ports) {
       const a = byRecord.get(p.rooms[0])!,
         b = byRecord.get(p.rooms[1])!;
@@ -520,6 +529,10 @@ export async function prepareIndoorDataset(
         );
         continue;
       }
+      if(p.kind === "opening" && dataset.nativeIndoorEnvelopes && !supportedWalkingPath(nativeWalkingQuery(a.elevationFeet,true),[[p.from[0],p.from[1],a.elevationFeet],[p.to[0],p.to[1],b.elevationFeet]])) {
+        issue("native-opening-support","An opening seed lacks continuous two-foot support inside the checked native indoor floor and physical barriers; no outline-based route retained.",undefined,p.nativeElementId,levelId);
+        continue;
+      }
       const ids = [`${p.id}:0`, `${p.id}:1`];
       addTerminal(ids[0]!, a.key, p.from, "portal", 2, p.footprint, p.normal);
       addTerminal(ids[1]!, b.key, p.to, "portal", 2, p.footprint, p.normal);
@@ -538,11 +551,12 @@ export async function prepareIndoorDataset(
         ...(p.sourceDoorProof ? { sourceDoorProof: p.sourceDoorProof } : {}),
         ...(p.kind === "opening" ? (() => {
           const front = recoveredFronts.find(front => front.openingId === p.openingId);
-          const span = front && recoverIndoorOpeningSpan(model, dataset, rooms, front, data.boundaryReference, geometries.get(levelId)!);
+          const span = front && recoverIndoorOpeningSpan(model, dataset, rooms, front, data.boundaryReference, geometries.get(levelId)!,nativeWalkingQuery);
           return span ? { openingSpan: span } : {};
         })() : {}),
       });
     }
+    for(const message of nativeWalkingQuery.diagnostics())issue("native-geometry-unclassified",message,undefined,undefined,levelId);
   }
   for (const s of directoryStairs(
     model,

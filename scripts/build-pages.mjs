@@ -25,7 +25,7 @@ const shared = {
   },
   format: "esm",
   legalComments: "none",
-  loader: { ".woff2": "file" },
+  loader: { ".woff2": "file", ".html": "text" },
   minify: true,
   platform: "browser",
   target: "es2022",
@@ -81,6 +81,11 @@ await Promise.all([
     ...shared,
     entryPoints: [resolve(projectRoot, "lib/reviter/indoor-worker.ts")],
     outfile: resolve(assetsDirectory, "indoor-worker-runtime.js"),
+  }),
+  build({
+    ...shared,
+    entryPoints: [resolve(projectRoot, "app/studio/cad-review.worker.ts")],
+    outfile: resolve(assetsDirectory, "cad-review-worker-runtime.js"),
   }),
   cp(resolve(projectRoot, "public"), outputDirectory, { recursive: true }),
 ]);

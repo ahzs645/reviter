@@ -66,6 +66,32 @@ export function nativeFloorUnion(parts: Rings[]): Rings[] {
     ),
   );
 }
+
+/** Coincident source diagonals can defeat a sweep intersection. The independent
+ * zero-distance overlay keeps their exact area; it never closes a gap. */
+export function nativeFloorIntersection(
+  subject: Rings,
+  parts: Rings[],
+): Rings[] {
+  if (!parts.length) return [];
+  try {
+    return pc.intersection(subject, parts) as Rings[];
+  } catch {
+    const reader = new GeoJSONReader(),
+      params = new BufferParameters();
+    const a = BufferOp.bufferOp(
+      reader.read({ type: "Polygon", coordinates: closed(subject) }),
+      0,
+      params,
+    );
+    const b = BufferOp.bufferOp(
+      reader.read({ type: "MultiPolygon", coordinates: parts.map(closed) }),
+      0,
+      params,
+    );
+    return geometryParts(OverlayOp.intersection(a, b));
+  }
+}
 const precise = (rings: Rings): Rings =>
   rings.map((r) =>
     r.map(

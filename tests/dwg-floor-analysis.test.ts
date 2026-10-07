@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { analyzeCadFloors, fitCadFloorControls, type CadAnalysisFloor, type CadFloorControl } from "../lib/reviter/dwg-floor-analysis.ts";
+import { cadFloorAnalysisPreview } from "../lib/reviter/dwg-floor-analysis-view.ts";
 
 const ring: [number, number][] = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]];
 function floor(id: string, ordinal: number): CadAnalysisFloor {
@@ -71,4 +72,40 @@ test("duplicate identities, floor ordinals and chained controls fail closed", ()
   const c = control(); c.referenceFloorId = "middle";
   assert.throws(() => analyzeCadFloors([floor("base", 0), floor("middle", 1), floor("upper", 2)], [c]), /base drawing/);
   assert.throws(() => analyzeCadFloors([floor("base", 0), floor("upper", 1)], [control(), control()]), /Duplicate/);
+});
+test("review preview escapes drawing strings and refuses stale template integration", () => {
+  const f = floor("base", 0); f.name = "</script><script>bad()</script>";
+  const report = analyzeCadFloors([f]);
+  const template = '<p id="facts"></p><script>selection=null;$(\'selectedSpace\')</script></html>';
+  const html = cadFloorAnalysisPreview(template, report);
+  assert.ok(html.includes("Floor alignment and connections"));
+  assert.ok(html.includes("renderFloorAnalysis();selection=null"));
+  assert.ok(!html.includes("</script><script>bad()"));
+  assert.throws(() => cadFloorAnalysisPreview("<html></html>", report), /template changed/);
+});
+
+test("label families retain unrepresented intermediate stops without creating skipped-floor routes", () => {
+  const base=floor('a',0),middle=floor('b',1),upper=floor('c',2);
+  base.rooms=[{key:'r0',number:'14-S103',name:'Stair',anchorMetres:[0,0],source:{handle:'original0'}}];
+  middle.rooms=[];upper.rooms=[{key:'r2',number:'14-S303',name:'Stair',anchorMetres:[0,0],source:{handle:'original2'}}];
+  for(const f of [base,middle,upper])f.buildingCode='14';
+  const report=analyzeCadFloors([upper,base,middle]);
+  assert.equal(report.stairFamilies.length,1);
+  assert.deepEqual(report.stairFamilies[0]!.missingDrawingOrdinals,[1]);
+  assert.equal(report.stairFamilies[0]!.servedFloorsVerified,false);
+  assert.deepEqual(report.graphEdges,[]);
+  assert.ok(!report.candidates.some(c=>c.fromFloorId==='a'&&c.toFloorId==='c'));
+});
+
+test("embedded review uses trusted code and defers inline-data initialization until comparison functions exist", async () => {
+ const {readFile}=await import('node:fs/promises');
+ const {cadFloorReviewDocument}=await import('../lib/reviter/dwg-floor-analysis-view.ts');
+ const template=await readFile(new URL('../tools/dwg-analysis/building-geometry.html',import.meta.url),'utf8');
+ const report=analyzeCadFloors([floor('a',0),floor('b',1)]);
+ const result=cadFloorReviewDocument(template,{floors:[],sourceLabel:'</script><script>unsafe()</script>'},report);
+ assert.ok(result.includes("window.addEventListener('DOMContentLoaded'"));
+ assert.ok(result.includes("}})();});\n</script>"));
+ assert.ok(result.includes('function renderFloorAnalysis()'));
+ assert.ok(!result.includes('unsafe()</script>'));
+ assert.ok(!result.includes("fetch('geometry.json'"));
 });

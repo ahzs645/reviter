@@ -2,6 +2,8 @@
 
 This pipeline prepares a local, portable indoor project, opens it in OpenIndoorMaps, tests routes, saves metadata reviews, and regenerates the project after geometry corrections. It is suitable for review and development. A successful import does not mean every room or campus route is ready for public navigation.
 
+For a separate DWG source analysis, use [`cad:analyze`](dwg-floor-analysis.md). It recovers drawing room/door/stair evidence and adjacent-floor correspondence proposals without assigning native levels, physical elevations, campus placement or route edges. Its output stays separate until the native evidence and placement are reviewed.
+
 ```mermaid
 flowchart LR
   A[Original RVT] --> D[Reviter review]
@@ -778,3 +780,5 @@ The version 1 schema binds the model SHA, native level/elevation, per-level phys
 An elevator `shaft-boundary` is a closed **inspection proposal only**. Do not treat it as a walkable room, fabricate elevator stops, or create a lift connector. Review actual shaft/slab holes and each served landing separately. A confirmed non-traversable footprint uses the existing checked `indoorExclusions` workflow with `reason: "off-limits"`; that explicit geometric application and regeneration are separate from drawing an inspection outline. The shaft descriptor itself cannot change selection or routing.
 
 Focused checks: `node --experimental-strip-types --test tests/reviewed-area-partition-pipeline.test.ts tests/indoor-pipeline.test.ts tests/native-prepass-selection-proof.test.ts`. Compare logical selection previews in OpenIndoorMaps with unchanged physical/visitor/routing geometry and retain the original reviewed proposal/evidence in the authoring master.
+
+An exact native full-cap continuation may declare `targetWallFaceChain: true` when the two first cap rays contact consecutive finite faces at an original basic wall corner. Apply the same local convexity, original-vertex, monotonic width and all-breakpoint first-contact checks as a column chain; do not substitute a target bounding box. Decoded native basic-wall and registered drawing evidence must accompany application. A curved column chain may explicitly declare its exact `originalCapMiddlePenetrationFeet` only for an existing middle contact no deeper than 0.00025 ft, while both original cap corners remain outside. This does not authorize moving the original cap, widening it, deleting a column or choosing its far face. All original physical floors, holes, doors and foreign fixtures remain protected.

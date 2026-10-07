@@ -11,6 +11,7 @@ declare global {
         plan?: string;
         regions?: string;
         indoor?: string;
+    cadReview?: string;
       }
     | undefined;
 }

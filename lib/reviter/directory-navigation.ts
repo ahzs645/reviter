@@ -5,6 +5,7 @@ import { architecturalPlanGeometry } from "./architectural-plan.ts";
 import { containsDirectoryRoomPoint, isWalkable, findDirectoryRoute, nearestRoomBoundary, roomArea, roomBuilding, roomPortals, type DirectoryDoor, type DirectoryRoom, type DirectoryRoute, type DirectoryElevations, type DirectoryRouteBarriers, type RoomPoint, type RoomPortal, type RouteOpening } from "./room-directory.ts";
 
 import { isStairArea } from "./directory-stair-geometry.ts";
+import {nativeStairLandingContact} from './native-stair-landing-contact.ts';
 export const isStaircase = (room: DirectoryRoom) => isStairArea(room) && room.stairAccess !== "local-only";
 const allowsStairNeighbour = (room:DirectoryRoom, ownZ:number|undefined, otherZ:number|undefined) => room.stairAccess !== "up-flight-only" || (ownZ != null && otherZ != null && otherZ > ownZ + .05);
 export type ReviewedDoorLink = { doorId: number; levelId: number; rooms: [string, string]; semanticEvidence?: import("./semantic-door-links.ts").SemanticDoorEvidence };
@@ -81,7 +82,8 @@ export function directoryDoorReviews(rooms:readonly DirectoryRoom[], doors:reado
   });
 }
 
-/** Both floor endpoints must intersect tread geometry of ONE persisted assembly.
+/** Both endpoints must identify ONE persisted assembly by native tread overlap,
+ * or an explicitly bound source-floor landing contacting its terminal cap.
  * Matching room numbers or overlapping stair envelopes alone never create links. */
 export function directoryStairs(model:ConvertResult, rooms:readonly DirectoryRoom[], reviewed:readonly ReviewedStairLink[]=[]):StairConnection[] {
   const elevations=new Map(model.levels.map(l=>[l.levelId,l.elevation]));
@@ -99,8 +101,8 @@ export function directoryStairs(model:ConvertResult, rooms:readonly DirectoryRoo
       const intersection=polygonClipping.intersection([[...polygon,polygon[0]!]], [room.polygonFeet,...room.holesFeet??[]].map(l=>[...l,l[0]!]));
       return intersection.reduce((sum,p)=>sum+roomArea(p[0]! as RoomPoint[])-p.slice(1).reduce((s,h)=>s+roomArea(h as RoomPoint[]),0),0)>.5;
     });
-    const bottom=stairRooms.filter(r=>Math.abs((elevations.get(r.levelId)??Infinity)-low)<=1 && overlaps(r));
-    const top=stairRooms.filter(r=>Math.abs((elevations.get(r.levelId)??Infinity)-high)<=1 && overlaps(r));
+    const bottom=stairRooms.filter(r=>Math.abs((elevations.get(r.levelId)??Infinity)-low)<=1 && (overlaps(r)||nativeStairLandingContact(model,r,assembly.stairElementId,runs as NonNullable<typeof runs[number]>[],'bottom')));
+    const top=stairRooms.filter(r=>Math.abs((elevations.get(r.levelId)??Infinity)-high)<=1 && (overlaps(r)||nativeStairLandingContact(model,r,assembly.stairElementId,runs as NonNullable<typeof runs[number]>[],'top')));
     const buildings=new Set(bottom.map(roomBuilding));
     for(const building of buildings){
       const a=bottom.filter(r=>roomBuilding(r)===building),b=top.filter(r=>roomBuilding(r)===building);

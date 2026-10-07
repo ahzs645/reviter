@@ -1,6 +1,13 @@
 import { indoorExclusionParts } from "./indoor-exclusions.ts";
 import pc from "polygon-clipping";
-import {nativeBarrierTopology,NATIVE_BARRIER_TOPOLOGY_VERSION}from "./native-barrier-topology.ts";
+import {
+  createNativeIndoorEnvelopeIndex,
+  type NativeIndoorEnvelopeIndex,
+} from "./native-indoor-envelopes.ts";
+import {
+  nativeBarrierTopology,
+  NATIVE_BARRIER_TOPOLOGY_VERSION,
+} from "./native-barrier-topology.ts";
 import { nativeWalkingRegion } from "./native-circulation-links.ts";
 import {
   routingFloorPlateRecords,
@@ -11,6 +18,7 @@ import {
   clearanceSeparatedNativeCells,
   nativeFloorDifference,
   nativeFloorUnion,
+  nativeFloorIntersection,
 } from "./native-circulation-clearance.ts";
 import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
 import { buildIndoorGrid } from "./indoor-grid.ts";
@@ -76,7 +84,8 @@ const topology = (rings: Rings): Rings =>
   );
 export function isNativeCirculationOwner(record: IndoorRecord): boolean {
   const use = record.properties.spaceUse as
-    { kind?: string; evidence?: string } | undefined;
+    | { kind?: string; evidence?: string }
+    | undefined;
   return (
     record.circulation &&
     record.walkable &&
@@ -94,6 +103,9 @@ export function nativeCirculationGeometryKey(data: IndoorDataset): string {
   return JSON.stringify([
     data.source.modelSha256,
     NATIVE_BARRIER_TOPOLOGY_VERSION,
+    ...(data.nativeIndoorEnvelopes
+      ? ["native-indoor-envelope-v1", data.nativeIndoorEnvelopes]
+      : []),
     data.records.map((r) => [
       r.key,
       r.levelId,
@@ -131,17 +143,31 @@ export function prepareNativeCirculationGeometry(
   const fixtures: NonNullable<
     IndoorDataset["circulationGeometry"]
   >["fixtures"] = [];
-  const preparedRoomKeys = new Set<string>();
+  const envelopeIndex = createNativeIndoorEnvelopeIndex(
+    data.nativeIndoorEnvelopes,
+    data.source.modelSha256,
+  );
+  const strictNative = !!data.nativeIndoorEnvelopes;
+  const eligible = (r: IndoorRecord) =>
+    strictNative ? r.walkable : isNativeCirculationOwner(r);
+  const preparedRoomKeys = new Set<string>(
+    strictNative ? data.records.map((r) => r.key) : [],
+  );
   for (const z of [
-    ...new Set(
-      data.records.filter(isNativeCirculationOwner).map((r) => r.elevationFeet),
-    ),
+    ...new Set(data.records.filter(eligible).map((r) => r.elevationFeet)),
   ].sort((a, b) => a - b)) {
     const owners = data.records.filter(
-      (r) =>
-        Math.abs(r.elevationFeet - z) < 0.05 && isNativeCirculationOwner(r),
+      (r) => Math.abs(r.elevationFeet - z) < 0.05 && eligible(r),
     );
-    const region = nativeWalkingRegion(model, data, z, true);
+    const region = nativeWalkingRegion(
+      model,
+      data,
+      z,
+      true,
+      undefined,
+      envelopeIndex,
+    );
+    report.diagnostics.push(...(region.diagnostics ?? []));
     if (!region.floors.length) continue;
     owners.forEach((r) => preparedRoomKeys.add(r.key));
     const levels = new Set(owners.map((r) => r.levelId));
@@ -194,19 +220,22 @@ export function prepareNativeCirculationGeometry(
         data.doors?.filter((d) => d.levelId === level) ?? [],
       ).map((r) => r.ringsFeet),
     );
-    const protectedAreas = data.records
-      .filter(
-        (r) =>
-          Math.abs(r.elevationFeet - z) < 0.05 && !isNativeCirculationOwner(r),
-      )
-      .map((r) => r.ringsFeet);
+    const protectedAreas = strictNative
+      ? []
+      : data.records
+          .filter(
+            (r) =>
+              Math.abs(r.elevationFeet - z) < 0.05 &&
+              !isNativeCirculationOwner(r),
+          )
+          .map((r) => r.ringsFeet);
     const thresholds = (data.doors ?? [])
       .filter((d) => levels.has(d.levelId) && d.footprintFeet)
       .map((d) => [d.footprintFeet!] as Rings);
-    const wallBarriers=new Set(region.wallBarriers??[]);
+    const wallBarriers = new Set(region.wallBarriers ?? []);
     const obstacles = [
-      ...nativeBarrierTopology(region.wallBarriers??[]),
-      ...region.barriers.filter(barrier=>!wallBarriers.has(barrier)),
+      ...nativeBarrierTopology(region.wallBarriers ?? []),
+      ...region.barriers.filter((barrier) => !wallBarriers.has(barrier)),
       ...region.masks,
       ...repairs,
       ...thresholds,
@@ -270,9 +299,8 @@ export function prepareNativeCirculationGeometry(
         if (area([rings]) < 1) continue;
         const box = bounds(rings);
         const candidates = ownerBoxes.filter((r) => overlaps(box, r.box));
-        const claims = candidates.flatMap(
-          ({ record }) =>
-            pc.intersection(rings, topology(record.ringsFeet)) as Rings[],
+        const claims = candidates.flatMap(({ record }) =>
+          nativeFloorIntersection(rings, [topology(record.ringsFeet)]),
         );
         if (!claims.length) {
           report.rejected++;
@@ -286,11 +314,23 @@ export function prepareNativeCirculationGeometry(
           .filter(
             ({ record }) =>
               area(
-                pc.intersection(rings, topology(record.ringsFeet)) as Rings[],
-              ) > 0.25,
+                nativeFloorIntersection(rings, [topology(record.ringsFeet)]),
+              ) > 0.25 &&
+              (!strictNative ||
+                (() => {
+                  const overlap = area(
+                    nativeFloorIntersection(rings, [
+                      topology(record.ringsFeet),
+                    ]),
+                  );
+                  return (
+                    overlap / area([record.ringsFeet]) >= 0.5 ||
+                    overlap / area([rings]) >= 0.5
+                  );
+                })()),
           )
           .map((r) => r.record);
-        if (coverage < 0.65) {
+        if (coverage < 0.65 && !strictNative) {
           if (!separated) {
             const separatedCells = clearanceSeparatedNativeCells(rings);
             candidatesToClassify.push(
@@ -316,6 +356,16 @@ export function prepareNativeCirculationGeometry(
           report.rejected++;
           report.diagnostics.push(
             `Elevation ${z}: unclassified native cell (${(coverage * 100).toFixed(1)}% circulation claim; ${area([rings]).toFixed(2)} sq ft); owners ${members.map((r) => r.key).join(",")}.`,
+          );
+          continue;
+        }
+        if (
+          strictNative &&
+          members.some((r) => r.access === "staff" || !r.walkable)
+        ) {
+          report.rejected++;
+          report.diagnostics.push(
+            `Elevation ${z}: shared native face has restricted/unsupported ownership; no public route generated.`,
           );
           continue;
         }
@@ -368,30 +418,228 @@ export function prepareNativeCirculationGeometry(
   };
 }
 
+/** Extend route support only into the owned half of its enabled physical
+ * doorway. Exact slab/column/opening proof remains required and the opposite
+ * side still needs the original door portal. The saved cell stays unchanged. */
+type IndexedApproachPart = {
+  rings: Rings;
+  box: ReturnType<typeof bounds>;
+  nativeId?: number;
+  column?: boolean;
+};
+type DoorApproachContext = {
+  edges: Map<string, IndoorDataset["edges"][number]>;
+  nodes: Map<string, IndoorDataset["nodes"][number]>;
+  records: Map<string, IndoorRecord>;
+  doors: Map<string, NonNullable<IndoorDataset["doors"]>>;
+  envelopes: NativeIndoorEnvelopeIndex;
+  levels: Map<
+    string,
+    {
+      floors: IndexedApproachPart[];
+      envelopes: IndexedApproachPart[];
+      masks: IndexedApproachPart[];
+    }
+  >;
+};
+function nativeDoorLevelParts(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+) {
+  const key = JSON.stringify([cell.elevationFeet, cell.levelIds]);
+  let level = context.levels.get(key);
+  if (level) return level;
+  const indexed = (rings: Rings): IndexedApproachPart => ({
+    rings,
+    box: bounds(rings),
+  });
+  level = {
+    floors:
+      data.walkingSupport?.sourceModelSha256 === data.source.modelSha256
+        ? data.walkingSupport.floors
+            .filter(
+              (f) => Math.abs(f.elevationFeet - cell.elevationFeet) < 0.05,
+            )
+            .flatMap((f) => f.partsFeet ?? [f.ringsFeet])
+            .map(indexed)
+        : [],
+    envelopes: context.envelopes.parts(cell.elevationFeet).map(indexed),
+    masks: [
+      ...data.walls
+        .filter((w) => cell.levelIds.includes(w.levelId))
+        .map((w) => ({
+          ...indexed(w.ringsFeet),
+          nativeId: w.nativeElementId,
+          column: w.kind === "column",
+        })),
+      ...(data.circulationGeometry?.fixtures ?? [])
+        .filter((f) => Math.abs(f.elevationFeet - cell.elevationFeet) < 0.05)
+        .map((f) => indexed(f.ringsFeet)),
+      ...indoorExclusionParts(data, cell.elevationFeet).map(indexed),
+      ...data.records
+        .filter((r) => Math.abs(r.elevationFeet - cell.elevationFeet) < 0.05)
+        .flatMap((r) =>
+          (
+            (r.properties.floorOpeningsFeet as RoomPoint[][] | undefined) ?? []
+          ).map((h) => indexed([h])),
+        ),
+    ],
+  };
+  context.levels.set(key, level);
+  return level;
+}
+function nativeCellDoorApproach(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+): Rings {
+  if (!data.nativeIndoorEnvelopes) return cell.ringsFeet;
+  let rings = cell.ringsFeet;
+  const level = nativeDoorLevelParts(data, context, cell);
+  const candidateDoors = new Set(
+    cell.roomKeys.flatMap((k) => context.doors.get(k) ?? []),
+  );
+  for (const door of candidateDoors) {
+    const edge = context.edges.get(door.id),
+      footprint = door.footprintFeet,
+      normal = door.normalFeet;
+    if (
+      !edge ||
+      edge.kind !== "door" ||
+      !edge.enabled ||
+      edge.nativeElementId !== door.nativeElementId ||
+      door.state !== "connected" ||
+      !door.hostWallNativeElementId ||
+      !footprint ||
+      !normal ||
+      edge.roomKeys.length !== 2 ||
+      edge.roomKeys.some((k) => !door.roomKeys.includes(k))
+    )
+      continue;
+    const pair = [context.nodes.get(edge.from), context.nodes.get(edge.to)];
+    if (
+      pair.some(
+        (n) =>
+          !n ||
+          Math.abs(n.pointFeet[2] - cell.elevationFeet) > 0.05 ||
+          !door.roomKeys.includes(n.roomKey),
+      )
+    )
+      continue;
+    const center = footprint.reduce(
+        (c, p) =>
+          [
+            c[0] + p[0] / footprint.length,
+            c[1] + p[1] / footprint.length,
+          ] as RoomPoint,
+        [0, 0] as RoomPoint,
+      ),
+      side = (p: number[]) =>
+        (p[0]! - center[0]) * normal[0] + (p[1]! - center[1]) * normal[1];
+    if (side(pair[0]!.pointFeet) * side(pair[1]!.pointFeet) >= -1e-10) continue;
+    for (const node of pair) {
+      const owner = context.records.get(node!.roomKey);
+      if (
+        !cell.roomKeys.includes(node!.roomKey) ||
+        !owner ||
+        !owner.walkable ||
+        owner.access === "staff"
+      )
+        continue;
+      const sign = Math.sign(side(node!.pointFeet)),
+        half: RoomPoint[] = [];
+      for (let i = 0; i < footprint.length; i++) {
+        const a = footprint[i]!,
+          b = footprint[(i + 1) % footprint.length]!,
+          sa = side(a) * sign - 0.00001,
+          sb = side(b) * sign - 0.00001;
+        if (sa >= 0) half.push(a);
+        if (sa >= 0 !== sb >= 0) {
+          const t = sa / (sa - sb);
+          half.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+        }
+      }
+      if (half.length < 3) continue;
+      const box = bounds([half]),
+        near = (part: IndexedApproachPart) => overlaps(box, part.box);
+      const floors = level.floors.filter(near).map((p) => p.rings),
+        envelope = level.envelopes.filter(near).map((p) => p.rings);
+      if (!floors.length || !envelope.length) continue;
+      const masks = level.masks
+        .filter(
+          (p) =>
+            (p.column || p.nativeId !== door.hostWallNativeElementId) &&
+            near(p),
+        )
+        .map((p) => p.rings);
+      try {
+        let parts = pc.intersection([half], floors) as Rings[];
+        parts = pc.intersection(parts, envelope) as Rings[];
+        if (masks.length) parts = pc.difference(parts, ...masks) as Rings[];
+        for (const part of parts) {
+          const joined = pc.union(rings, part) as Rings[];
+          if (
+            joined.length === 1 &&
+            contains([node!.pointFeet[0], node!.pointFeet[1]], joined[0]!)
+          )
+            rings = joined[0]!;
+        }
+      } catch {
+        /* Unknown doorway support remains blocked. */
+      }
+    }
+  }
+  return rings;
+}
+
 /** Rebuild walk branches inside each physical cell, keeping all existing fixed
  * door/connector node coordinates. Closed thresholds stay separate graph edges. */
 export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
   // A regeneration replaces its earlier derived branches; it must never revive
   // an old polyline because a rebuilt cell happens to reuse the same ID.
-  const removed = data.edges.some((edge) => !!edge.nativeCellId);
+  const removed = data.edges.some(
+    (edge) =>
+      !!edge.nativeCellId ||
+      (!!data.nativeIndoorEnvelopes && edge.kind === "walk"),
+  );
   for (let i = data.edges.length - 1; i >= 0; i--)
-    if (data.edges[i]!.nativeCellId) data.edges.splice(i, 1);
+    if (
+      data.edges[i]!.nativeCellId ||
+      (data.nativeIndoorEnvelopes && data.edges[i]!.kind === "walk")
+    )
+      data.edges.splice(i, 1);
+  const context: DoorApproachContext = {
+    edges: new Map(data.edges.map((e) => [e.id, e])),
+    nodes: new Map(data.nodes.map((n) => [n.id, n])),
+    records: new Map(data.records.map((r) => [r.key, r])),
+    doors: new Map(),
+    envelopes: createNativeIndoorEnvelopeIndex(
+      data.nativeIndoorEnvelopes,
+      data.source.modelSha256,
+    ),
+    levels: new Map(),
+  };
+  for (const door of data.doors ?? [])
+    for (const key of door.roomKeys)
+      context.doors.set(key, [...(context.doors.get(key) ?? []), door]);
   let added = 0;
   for (const cell of data.circulationGeometry?.cells ?? []) {
+    const routeRings = nativeCellDoorApproach(data, context, cell);
     const selected = data.nodes.filter(
       (n) =>
         cell.roomKeys.includes(n.roomKey) &&
         Math.abs(n.pointFeet[2] - cell.elevationFeet) < 0.05 &&
         n.kind !== "junction" &&
-        contains([n.pointFeet[0], n.pointFeet[1]], cell.ringsFeet),
+        contains([n.pointFeet[0], n.pointFeet[1]], routeRings),
     );
     if (selected.length < 2) continue;
     const scope: DirectoryRoom[] = [
       {
         key: cell.id,
         levelId: cell.levelIds[0]!,
-        polygonFeet: cell.ringsFeet[0]!,
-        holesFeet: cell.ringsFeet.slice(1),
+        polygonFeet: routeRings[0]!,
+        holesFeet: routeRings.slice(1),
         labelPointFeet: [0, 0],
         confidence: 1,
       },
@@ -423,8 +671,29 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
       if (
         fromNode.levelId !== toNode.levelId ||
         fromNode.surfaceId !== toNode.surfaceId
-      )
-        continue;
+      ) {
+        const a: RoomPoint = [fromNode.pointFeet[0], fromNode.pointFeet[1]],
+          b: RoomPoint = [toNode.pointFeet[0], toNode.pointFeet[1]];
+        const sharedNativeSlab =
+          !!data.nativeIndoorEnvelopes &&
+          data.walkingSupport?.sourceModelSha256 === data.source.modelSha256 &&
+          data.walkingSupport.floors.some(
+            (f) =>
+              cell.nativeFloorIds.includes(f.nativeElementId) &&
+              Math.abs(f.elevationFeet - cell.elevationFeet) < 0.05 &&
+              contains(a, f.ringsFeet) &&
+              contains(b, f.ringsFeet) &&
+              data.nativeIndoorEnvelopes!.levels.some(
+                (scope) =>
+                  Math.abs(scope.elevationFeet - cell.elevationFeet) < 0.05 &&
+                  scope.sourceElementIds.includes(f.nativeElementId) &&
+                  scope.partsFeet.some(
+                    (part) => contains(a, part) && contains(b, part),
+                  ),
+              ),
+          );
+        if (!sharedNativeSlab) continue;
+      }
       const a = positions.get(branch.from),
         b = positions.get(branch.to);
       if (!a || !b) continue;
