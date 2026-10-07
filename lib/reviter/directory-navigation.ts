@@ -1,3 +1,4 @@
+import {reviewedDoorOpening,reviewedDoorHostEvidence} from "./reviewed-door-apertures.ts";
 import polygonClipping from "polygon-clipping";
 import type { ConvertResult } from "./types.ts";
 import { architecturalPlanGeometry } from "./architectural-plan.ts";
@@ -19,6 +20,8 @@ export function directoryDoors(model: ConvertResult, levelId: number): Directory
   const geometry=architecturalPlanGeometry(model,levelId);
   const hosts=new Map(model.nativeHostRelations?.map(h=>[h.elementId,h.hostId]));
   const footprints=new Map(geometry.doors.filter(d=>!d.approximate).map(d=>{
+    const reviewed=reviewedDoorOpening(model,levelId,d.elementId);
+    if(reviewed)return [d.elementId,reviewed.apertureFeet] as const;
     let polygon=d.polygon;
     const edges=polygon.map((p,i)=>({p,q:polygon[(i+1)%polygon.length]!,length:Math.hypot(p[0]-polygon[(i+1)%polygon.length]![0],p[1]-polygon[(i+1)%polygon.length]![1])})).sort((a,b)=>b.length-a.length);
     const edge=edges[0]!;
@@ -27,11 +30,15 @@ export function directoryDoors(model: ConvertResult, levelId: number): Directory
       const u=(p:RoomPoint)=>p[0]*ux+p[1]*uy,n=(p:RoomPoint)=>p[0]*nx+p[1]*ny;
       const lo=Math.min(...polygon.map(u)),hi=Math.max(...polygon.map(u));let lower=Math.min(...polygon.map(n)),upper=Math.max(...polygon.map(n));
       const centre:RoomPoint=[polygon.reduce((s,p)=>s+p[0]/polygon.length,0),polygon.reduce((s,p)=>s+p[1]/polygon.length,0)];
-      for(const wall of geometry.walls.filter(w=>w.elementId===hosts.get(d.elementId) && !w.approximate && w.polygon.length===4)){
-        const wallEdge=wall.polygon.map((p,i)=>({p,q:wall.polygon[(i+1)%4]!,length:Math.hypot(p[0]-wall.polygon[(i+1)%4]![0],p[1]-wall.polygon[(i+1)%4]![1])})).sort((a,b)=>b.length-a.length)[0]!;
+      const hostId=hosts.get(d.elementId),hostParts=hostId===undefined?[]:reviewedDoorHostEvidence(model,levelId,hostId)??geometry.walls.filter(w=>w.elementId===hostId);
+      for(const wall of hostParts){
+        const ring=wall.polygon,last=ring[ring.length-1],first=ring[0];
+        const face=last&&first&&last[0]===first[0]&&last[1]===first[1]?ring.slice(0,-1):ring;
+        if(wall.approximate||face.length!==4)continue;
+        const wallEdge=face.map((p,i)=>({p,q:face[(i+1)%4]!,length:Math.hypot(p[0]-face[(i+1)%4]![0],p[1]-face[(i+1)%4]![1])})).sort((a,b)=>b.length-a.length)[0]!;
         const parallel=Math.abs(((wallEdge.q[0]-wallEdge.p[0])*ux+(wallEdge.q[1]-wallEdge.p[1])*uy)/wallEdge.length);
-        const min=Math.min(...wall.polygon.map(n)),max=Math.max(...wall.polygon.map(n));
-        if(parallel<.99 || max-min>6 || (!containsDirectoryRoomPoint(centre,{polygonFeet:wall.polygon} as DirectoryRoom) && nearestRoomBoundary(centre,wall.polygon).distance>.75))continue;
+        const min=Math.min(...face.map(n)),max=Math.max(...face.map(n));
+        if(parallel<.99 || max-min>6 || (!containsDirectoryRoomPoint(centre,{polygonFeet:face} as DirectoryRoom) && nearestRoomBoundary(centre,face).distance>.75))continue;
         lower=Math.min(lower,min);upper=Math.max(upper,max);
       }
       const p=(uu:number,nn:number):RoomPoint=>[uu*ux+nn*nx,uu*uy+nn*ny];polygon=[p(lo,lower),p(hi,lower),p(hi,upper),p(lo,upper)];
@@ -46,7 +53,7 @@ export function directoryDoors(model: ConvertResult, levelId: number): Directory
     const footprint=footprints.get(r.elementId);
     const minX=footprint?Math.min(...footprint.map(p=>p[0])):r.boundsFeet.min.x,maxX=footprint?Math.max(...footprint.map(p=>p[0])):r.boundsFeet.max.x;
     const minY=footprint?Math.min(...footprint.map(p=>p[1])):r.boundsFeet.min.y,maxY=footprint?Math.max(...footprint.map(p=>p[1])):r.boundsFeet.max.y;
-    return {id:r.elementId,point:[(minX+maxX)/2,(minY+maxY)/2] as RoomPoint,halfWidth:(maxX-minX)/2,halfHeight:(maxY-minY)/2,footprint,normal:normals.get(r.elementId)};
+    return {id:r.elementId,point:[(minX+maxX)/2,(minY+maxY)/2] as RoomPoint,halfWidth:(maxX-minX)/2,halfHeight:(maxY-minY)/2,footprint,normal:reviewedDoorOpening(model,levelId,r.elementId)?.normalFeet??normals.get(r.elementId)};
   });
 }
 export function doorCandidates(rooms: readonly DirectoryRoom[], door: DirectoryDoor): DirectoryRoom[] {

@@ -168,7 +168,7 @@ export function boundaryFaces(lines: readonly BoundarySegment[], tolerance = .04
   return faces;
 }
 
-export function rebuildRoomBoundaries(rooms: readonly DirectoryRoom[], reference: BoundaryReference, geometry: ArchitecturalPlanGeometry): { rooms: DirectoryRoom[]; rebuilt: number; unresolved: string[] } {
+export function rebuildRoomBoundaries(rooms: readonly DirectoryRoom[], reference: BoundaryReference, geometry: ArchitecturalPlanGeometry, nativeBarrierFaces = false): { rooms: DirectoryRoom[]; rebuilt: number; unresolved: string[] } {
   const replacements = new Map<string, DirectoryRoom>(); let rebuilt = 0; const unresolved: string[] = [];
   for (const section of reference.sections) {
     const members = rooms.filter((r) => r.levelId === section.levelId && r.dwg?.sectionId === section.sectionId && r.dwg?.sha256 === reference.sourceSha256);
@@ -176,7 +176,13 @@ export function rebuildRoomBoundaries(rooms: readonly DirectoryRoom[], reference
     const points = section.wallSegments.flat(); if (!points.length) continue;
     const minX = Math.min(...points.map((p) => p[0])); const maxX = Math.max(...points.map((p) => p[0])); const minY = Math.min(...points.map((p) => p[1])); const maxY = Math.max(...points.map((p) => p[1]));
     const doors = geometry.doors.filter((d) => d.polygon.some((p) => p[0] >= minX - 1 && p[0] <= maxX + 1 && p[1] >= minY - 1 && p[1] <= maxY + 1));
-    const faces = boundaryFaces([...section.wallSegments, ...section.doorSegments, ...doors.flatMap((d) => edges(d.polygon))]);
+    // Display recovery can compose actual native wall/column faces with the
+    // registered drawing. Do not substitute approximate analytical rectangles:
+    // precise physical faces close missing drawing edges without inventing a
+    // room divider or adding any routing permission. Existing callers retain
+    // their original registered-only face graph unless they request this mode.
+    const nativeFaces = nativeBarrierFaces ? [...geometry.walls,...geometry.columns].filter(w=>!w.approximate&&w.polygon.some(p=>p[0]>=minX-1&&p[0]<=maxX+1&&p[1]>=minY-1&&p[1]<=maxY+1)).flatMap(w=>edges(w.polygon)) : [];
+    const faces = boundaryFaces([...section.wallSegments, ...section.doorSegments, ...doors.flatMap((d) => edges(d.polygon)),...nativeFaces]);
     const positive = faces.filter((f) => f.signedArea > 0 && validRoomBoundary(f.polygon)).sort((a, b) => a.signedArea - b.signedArea);
     const candidates = members.map((r) => ({ room: r, face: positive.find((f) => containsRoomPoint(r.labelPointFeet, f.polygon)) }));
     for (const { room, face } of candidates) {

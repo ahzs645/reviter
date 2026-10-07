@@ -1,3 +1,10 @@
+import {validateReviewedAreaPartitions,type ReviewedAreaPartitions} from "./reviewed-area-partitions.ts";
+import {validateNativeDoorBoundaryClosures,type NativeDoorBoundaryClosures} from "./native-door-boundary-closures.ts";
+import {validateNativeWallPositionRepairs,type NativeWallPositionRepairs} from "./native-wall-position-repairs.ts";
+import {validateReviewedDoorApertures,type ReviewedDoorApertures} from "./reviewed-door-apertures.ts";
+import {validateSelectionDoorThresholds,type SelectionDoorThresholds} from "./selection-door-thresholds.ts";
+import { validateIndoorExclusions } from "./indoor-exclusions.ts";
+import type { IndoorExclusions } from "./indoor-contract.ts";
 import {validateIndoorConnectorReview, type IndoorConnectorReview} from "./indoor-connectors.ts";
 import type { DirectoryNavigation } from "./directory-navigation.ts";
 import type { BoundaryReference } from "./room-boundaries.ts";
@@ -6,6 +13,7 @@ import type {ReportedBuildingTransition} from "./building-transitions.ts";
 import {validateCampusStoreys, type CampusStoreyReview} from "./campus-floors.ts";
 import {validateGeoreference,type ModelGeoreference} from "./georeference.ts";
 import {validateVisitorMetadata, type VisitorMetadata} from "./visitor-metadata.ts";
+import {validateNativeBoundaryPatches,type NativeBoundaryPatches} from "./native-boundary-patches.ts";
 /** Room annotations stay in model feet; boundaries and original provenance survive export. */
 export type RoomPoint = [number, number];
 export type DirectoryRoom = {
@@ -53,6 +61,14 @@ export type RoomDirectoryData = {
   buildingTransitions?: ReportedBuildingTransition[];
   campusStoreys?: CampusStoreyReview[];
   visitorMetadata?: VisitorMetadata;
+  reviewedDoorApertures?: ReviewedDoorApertures;
+  nativeDoorBoundaryClosures?: NativeDoorBoundaryClosures;
+  nativeWallPositionRepairs?: NativeWallPositionRepairs;
+  selectionDoorThresholds?: SelectionDoorThresholds;
+  /** Logical outlining only: never physical walls, portals, access or raised blocks. */
+  reviewedAreaPartitions?: ReviewedAreaPartitions;
+  indoorExclusions?: IndoorExclusions;
+  nativeBoundaryPatches?: NativeBoundaryPatches;
   /** A reported restriction at an unassigned pin does not invent an area boundary. */
   accessReviewLocations?: {building:string;levelId:number;point:RoomPoint;kind:"staff";evidence:"user-reported";notes?:string}[];
   sourceCoverage?: { sourceSha256: string; omittedSheets: { building: string; sectionId: string; labelCount: number; reason: string }[] };
@@ -70,6 +86,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     throw new Error("Choose a version 1 Reviter room annotations file in model feet (such as UNBC.rooms.json).");
   }
   const reference = data.boundaryReference;
+  validateNativeBoundaryPatches(data.nativeBoundaryPatches);
   if(data.georeference!=null){validateGeoreference(data.georeference);if(data.georeference.modelFileName!==data.model.fileName&&data.georeference.sourceModelFileName!==data.model.fileName)throw new Error("Georeference points must belong to this model filename.");}
   const coverage = data.sourceCoverage;
   if (coverage != null && (typeof coverage.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(coverage.sourceSha256)
@@ -164,6 +181,12 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     for(const link of links){const [a,b]=link.rooms.map(key=>data.annotations.find(r=>r.key===key)!);const key=[...link.rooms].sort().join(":");if(a!.levelId===b!.levelId || roomBuilding(a!)!==roomBuilding(b!) || ![a,b].every(r=>/\bstair(?:s|case|well)?\b/i.test(r!.name??"")||!!r!.stairFlightIds?.length) || pairs.has(key))throw new Error("Stair connections must join different floors of one building without duplicate pairs.");pairs.add(key);}
   }
   if(data.indoorConnectors !== undefined) validateIndoorConnectorReview(data.indoorConnectors);
+  validateIndoorExclusions(data.indoorExclusions);
+  validateNativeDoorBoundaryClosures(data.nativeDoorBoundaryClosures);
+  if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);
+  validateSelectionDoorThresholds(data.selectionDoorThresholds);
+  validateReviewedAreaPartitions(data.reviewedAreaPartitions);
+  validateReviewedDoorApertures(data.reviewedDoorApertures);
   return data;
 }
 

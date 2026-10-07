@@ -1,3 +1,20 @@
+/** Explicit reviewed footprints excluded from indoor selection and routing.
+ * Source floors/model geometry remain intact; missing reasons mean outdoors. */
+export type IndoorExclusions = {
+  version: 1;
+  sourceModelSha256: string;
+  areas: {
+    id: string;
+    /** Older masks without a reason are confirmed outdoor footprints. */
+    reason?: "outdoor" | "off-limits";
+    levelId: number;
+    elevationFeet: number;
+    label: string;
+    notes?: string;
+    nativeFloorIds: number[];
+    partsFeet: [number, number][][][];
+  }[];
+};
 /** Portable contract consumed by OpenIndoorMaps. Coordinates never identify a node. */
 export type IndoorNode = {
   id: string;
@@ -109,6 +126,13 @@ export type IndoorIssue = {
   levelId?: number;
 };
 export type IndoorDataset = {
+  doorAperturePatchState?: { regenerated: boolean; sourceGeometryKey: string };
+  nativeDoorBoundaryClosures?: import("./native-door-boundary-closures.ts").NativeDoorBoundaryClosures;
+  nativeWallPositionRepairs?: import("./native-wall-position-repairs.ts").NativeWallPositionRepairs;
+  selectionDoorThresholds?: import("./selection-door-thresholds.ts").SelectionDoorThresholds;
+  /** Authoring selection barriers only; absent from physical routes/presentation. */
+  reviewedAreaPartitions?: import("./reviewed-area-partitions.ts").ReviewedAreaPartitions;
+  indoorExclusions?: IndoorExclusions;
   format: "reviter-indoor";
   version: 1;
   generator: "reviter/indoor-pipeline-1";
@@ -138,6 +162,8 @@ export type IndoorDataset = {
       nativeElementId: number;
       elevationFeet: number;
       ringsFeet: [number, number][][];
+      /** Optional complete native profile parts, preserving separate solids and holes. */
+      partsFeet?: [number, number][][][];
     }[];
   };
   /** Model-derived walking cells. Room records retain semantic/source identities. */
@@ -179,6 +205,7 @@ export type IndoorDataset = {
   nodes: IndoorNode[];
   edges: IndoorEdge[];
   walls: {
+    reviewPatchId?: string;
     kind?: "wall" | "column";
     /** Bounding envelope rather than a verified native wall face. Display only. */
     approximate?: boolean;
@@ -186,6 +213,39 @@ export type IndoorDataset = {
     nativeElementId: number;
     ringsFeet: [number, number][][];
   }[];
+  /** Optional native fenestration comparison. This does not replace routing barriers. */
+  windowDisplay?: {
+    version: 1;
+    sourceModelSha256: string;
+    mode: "native" | "simplified";
+    routing: "original-barriers";
+    elements: {
+      nativeElementId: number;
+      hostId: number;
+      levelId: number;
+      role: "glazing" | "frame" | "opaque-panel" | "unknown-panel";
+      footprintFeet: [number, number][];
+      baseElevationFeet: number;
+      topElevationFeet: number;
+      assemblyTopElevationFeet: number;
+      materialId?: number;
+      transparency?: number;
+      materialColorSrgb?: [number, number, number];
+      materialEvidence: "native-material" | "category-or-type";
+    }[];
+    wallCuts: {
+      hostId: number;
+      nativeWallId: number;
+      levelId: number;
+      wallGeometryKey: string;
+      ringsFeet: [number, number][][];
+      baseElevationFeet: number;
+      topElevationFeet: number;
+      assemblyTopElevationFeet: number;
+    }[];
+    unresolvedNativeElementIds: number[];
+  };
+  boundaryPatchState?: { patchIds: string[]; regenerated: boolean };
   /** Native display geometry; it does not authorize a routing edge. Optional for older ZIPs. */
   doors?: {
     id: string;
@@ -222,9 +282,18 @@ export type IndoorDataset = {
       reviewProof?: {
         sourceModelSha256: string;
         nativeFloorCoveredSquareFeet: number;
-        closures: {nativeWallId: number; reachFeet: number; ringsFeet: [number, number][][]}[];
+        closures: {
+          nativeWallId: number;
+          reachFeet: number;
+          ringsFeet: [number, number][][];
+        }[];
       };
-      meshProof?: {cutElevationFeet: number; precisionFeet: number; nativeFloorCoveredSquareFeet: number; nativeElementIds: number[]};
+      meshProof?: {
+        cutElevationFeet: number;
+        precisionFeet: number;
+        nativeFloorCoveredSquareFeet: number;
+        nativeElementIds: number[];
+      };
       sourceProof?: {
         sourceSha256: string;
         sectionId: string;
@@ -232,6 +301,21 @@ export type IndoorDataset = {
         wallSegmentIndices: number[];
         doorSegmentIndices: number[];
         nativeFloorCoveredSquareFeet: number;
+        /** Registered architectural swing symbols, closed for display only. */
+        omittedNativeEdgeFragments?: {
+          ringsFeet: [number, number][][][];
+          squareFeet: number;
+        };
+        modelReviewedDividerIndices?: number[];
+        closedDoorSwings?: {
+          arcSegmentIndices: number[];
+          leafSegmentIndices: number[];
+          supportingWallSegmentIndices: number[];
+          hingeFeet: [number, number];
+          radiusFeet: number;
+          closedLeafFeet: [[number, number], [number, number]];
+          thresholdSegments: [[number, number], [number, number]][];
+        }[];
         jointRepairs?: {
           nativeWallElementId: number;
           supportingElementId: number;
@@ -370,7 +454,12 @@ export type IndoorDataset = {
         displayName?: string;
         description?: string;
         category?:
-          "study" | "food" | "washroom" | "department" | "entrance" | "other";
+          | "study"
+          | "food"
+          | "washroom"
+          | "department"
+          | "entrance"
+          | "other";
         department?: string;
         color?: string;
         landmark?: boolean;

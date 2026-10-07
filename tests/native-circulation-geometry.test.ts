@@ -462,3 +462,21 @@ test("an upper-storey slab is not exported as a fixture cap on the lower display
     ),
   );
 });
+
+
+test("confirmed exterior is cut from indoor cells while native slab/model identities remain intact", () => {
+  const { model, data } = setup();
+  data.indoorExclusions = {
+    version: 1, sourceModelSha256: data.source.modelSha256,
+    areas: [{ id: "reviewed-outdoor-link", levelId: 1, elevationFeet: 0,
+      label: "Outdoor connection", notes: "Full source facade reviewed", nativeFloorIds: [100],
+      partsFeet: [[rect(9, 0, 11, 10)]] }],
+  };
+  const before = JSON.stringify([model, data]);
+  const result = prepareNativeCirculationGeometry(model, data);
+  assert.ok(result.geometry.cells.some(c => inside([3,5], c.ringsFeet)));
+  assert.ok(result.geometry.cells.some(c => inside([17,5], c.ringsFeet)));
+  assert.ok(!result.geometry.cells.some(c => inside([10,5], c.ringsFeet)));
+  assert.equal(JSON.stringify([model, data]), before);
+  assert.ok(result.geometry.cells.every(c => c.nativeFloorIds.includes(100)));
+});

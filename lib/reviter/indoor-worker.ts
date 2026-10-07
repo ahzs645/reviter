@@ -9,6 +9,7 @@ const scope = self as unknown as {
           model: ConvertResult;
           rooms: RoomDirectoryData;
           source: Uint8Array;
+          windowDetail?: "native" | "simplified";
         }>,
       ) => Promise<void>)
     | null;
@@ -23,6 +24,7 @@ scope.onmessage = async (event) => {
       await sha256Bytes(source),
       (message) => scope.postMessage({ type: "progress", message }),
     );
+    if (indoor.windowDisplay) indoor.windowDisplay.mode = event.data.windowDetail === "native" ? "native" : "simplified";
     scope.postMessage({
       type: "progress",
       message: "Preparing the georeferenced 3D scene…",

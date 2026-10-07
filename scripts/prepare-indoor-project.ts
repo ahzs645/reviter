@@ -25,7 +25,7 @@ const input = option("--input"),
   out = option("--out");
 if (!input || !out) {
   console.error(
-    "Usage: npm run indoor:prepare -- --input project.reviter.zip [--rooms latest-reviews.json] [--native-interiors] [--semantic-boundaries finish-boundaries.json] [--visitor visitor.json] [--connectors connectors.json] --out prepared.reviter.zip [--revit-version 2027] [--no-scene]",
+    "Usage: npm run indoor:prepare -- --input project.reviter.zip [--rooms latest-reviews.json] [--native-interiors] [--semantic-boundaries finish-boundaries.json] [--visitor visitor.json] [--connectors connectors.json] --out prepared.reviter.zip [--revit-version 2027] [--windows native|simplified] [--no-scene]",
   );
   process.exit(1);
 }
@@ -123,6 +123,9 @@ const dataset = await prepareIndoorDataset(
     }
   },
 );
+const windowDetail = option("--windows") ?? "simplified";
+if (!["native", "simplified"].includes(windowDetail)) throw new Error("--windows must be native or simplified");
+if (dataset.windowDisplay) dataset.windowDisplay.mode = windowDetail as "native" | "simplified";
 const scene = args.includes("--no-scene")
   ? undefined
   : original.scene ?? new Uint8Array(makeGlb(result));

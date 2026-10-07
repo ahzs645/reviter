@@ -1,4 +1,6 @@
+import {applyReviewedDoorWallCuts,reviewedDoorOpening} from "./reviewed-door-apertures.ts";
 import { recoverNativeCurtainOpenings } from './native-curtain-openings.ts';
+import { nativeMeshBarrierCuts } from './native-mesh-barrier-cuts.ts';
 import { routingFloorPlateRecords } from "./routing-floor-support.ts";
 /** Architectural plan composition from persisted, level-aware RVT geometry. */
 import polygonClipping from "polygon-clipping";
@@ -451,6 +453,20 @@ export function nativeWallSolidPolygon(solid: WallSolid): Point2[] {
 }
 
 export type ArchitecturalFootprint = { elementId: number; polygon: Point2[]; approximate: boolean };
+
+/** A curtain analytical axis can outlive the placed host extent. Its native
+ * element envelope is an upper bound on material: retain everything inside it,
+ * but never turn a centre-line extension outside that envelope into a wall.
+ * This is not doorway recovery; actual member sections remain authoritative. */
+export function boundedNativeWallFootprints(record: ElementBoundsRecord, polygon: Point2[]): ArchitecturalFootprint[] {
+  if(record.wallKind !== "curtain" || !record.boundsFeet) return [{elementId:record.elementId,polygon,approximate:false}];
+  const {min,max} = record.boundsFeet;
+  const inconsistent = polygon.some(([x,y]) => x < min.x - 2 || x > max.x + 2 || y < min.y - 2 || y > max.y + 2);
+  if (!inconsistent) return [{elementId:record.elementId,polygon,approximate:false}];
+  const clipped = polygonClipping.intersection([polygon], [[[min.x,min.y],[max.x,min.y],[max.x,max.y],[min.x,max.y]]]);
+  return clipped.flatMap(region => region[0]!.length >= 3 ? [{elementId:record.elementId,polygon:region[0]! as Point2[],approximate:true}] : []);
+}
+
 export type ArchitecturalPlanGeometry = {
   walls: ArchitecturalFootprint[];
   doors: ArchitecturalFootprint[];
@@ -458,6 +474,61 @@ export type ArchitecturalPlanGeometry = {
   floors: Point2[][][];
   cutElevation: number;
 };
+
+// A conversion is immutable during compilation. Reuse its certified sections
+// across directory, circulation and presentation passes at the same cut height.
+const curtainCutCache = new WeakMap<ConvertResult, Map<string, ReturnType<typeof nativeMeshBarrierCuts>>>();
+function certifiedCurtainSections(model: ConvertResult, levelId: number, cut: number) {
+  let cache = curtainCutCache.get(model);
+  if (!cache) { cache = new Map(); curtainCutCache.set(model, cache); }
+  const key = `${levelId}:${cut}`;
+  let sections = cache.get(key);
+  if (!sections) { sections = nativeMeshBarrierCuts(model, levelId, cut); cache.set(key, sections); }
+  return sections;
+}
+
+/** Float32 scene vertices can differ from the persisted double-precision
+ * placed member corners by micrometres. Use those corners only when every
+ * vertex of a closed native section matches cyclically (including winding).
+ * A box without independent complete mesh certification stays approximate. */
+function certifiedMemberPolygon(record: ElementBoundsRecord, cut: Point2[]): Point2[] {
+  if (!record.orientedBox) return cut;
+  const precise = distinctPlanPoints(record);
+  if (precise.length !== cut.length) return cut;
+  const tolerance = 0.0001; // 0.0305 mm, scene quantization; never a physical wall gap.
+  for (const direction of [1, -1]) for (let offset = 0; offset < cut.length; offset++) {
+    if (precise.every((p, i) => {
+      const q = cut[(offset + direction * i + cut.length) % cut.length]!;
+      return Math.hypot(p[0] - q[0], p[1] - q[1]) <= tolerance;
+    })) return precise;
+  }
+  return cut;
+}
+
+/** Retain the normal chord samples and exact plan-axis extrema of the persisted
+ * arc. A chord beside an omitted tangent contact can otherwise invent a gap
+ * against a flat native member. These are points on the original curve, not
+ * a tolerance-based wall extension or a widened barrier. */
+export function nativeWallArcPolygon(arc: WallArc): Point2[] {
+  const sweep = arc.endAngle - arc.startAngle;
+  const steps = Math.max(16, Math.ceil(Math.abs(sweep * arc.radius) / .25));
+  const angles = Array.from({ length: steps + 1 }, (_, i) => arc.startAngle + sweep * i / steps);
+  const lo = Math.min(arc.startAngle, arc.endAngle), hi = Math.max(arc.startAngle, arc.endAngle);
+  for (const [x, y] of [[arc.xDir.x, arc.yDir.x], [arc.xDir.y, arc.yDir.y]]) {
+    if (Math.hypot(x!, y!) < 1e-12) continue;
+    const extremum = Math.atan2(y!, x!);
+    for (let turn = Math.ceil((lo - extremum) / Math.PI); turn <= Math.floor((hi - extremum) / Math.PI); turn++) {
+      const angle = extremum + turn * Math.PI;
+      if (angle > lo && angle < hi && !angles.some(existing => Math.abs(existing - angle) < 1e-12)) angles.push(angle);
+    }
+  }
+  angles.sort((a, b) => sweep < 0 ? b - a : a - b);
+  const side = (radius: number): Point2[] => angles.map(angle => [
+    arc.centre.x + radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
+    arc.centre.y + radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y),
+  ]);
+  return [...side(arc.radius + arc.thickness / 2), ...side(arc.radius - arc.thickness / 2).reverse()];
+}
 
 /** The directory and room reconstruction use the same wall faces as the plan renderer. */
 export function architecturalPlanGeometry(result: ConvertResult, levelId: number): ArchitecturalPlanGeometry {
@@ -467,39 +538,53 @@ export function architecturalPlanGeometry(result: ConvertResult, levelId: number
   const memberIds = new Set(curtainOpenings.flatMap(opening => opening.memberIds));
   const miters = miteredWallCorners(wallSolids(plan.wallRecords.filter(record => !replacedHosts.has(record.elementId))));
   const walls: ArchitecturalFootprint[] = curtainOpenings.flatMap(opening => opening.barriers);
+  const recoverableMembers = new Set(plan.wallRecords.filter(record =>
+    [-2000170, -2000171].includes(record.categoryId!) &&
+    !record.solids?.length && !record.solid && !record.arcs?.length &&
+    !memberIds.has(record.elementId),
+  ).map(record => record.elementId));
+  const sections = recoverableMembers.size || plan.columnRecords.length ? certifiedCurtainSections(result, levelId, plan.cutElevation) : [];
+  const memberSections = new Map<number, typeof sections>();
+  for (const section of sections) if (recoverableMembers.has(section.nativeElementId)) {
+    memberSections.set(section.nativeElementId, [...(memberSections.get(section.nativeElementId) ?? []), section]);
+  }
   for (const record of plan.wallRecords) {
     if (replacedHosts.has(record.elementId) || memberIds.has(record.elementId)) continue;
     const solids = record.solids?.length ? record.solids : record.solid ? [record.solid] : [];
     for (const solid of solids) if (solid.baseElevation - .1 <= plan.cutElevation && solid.topElevation + .1 >= plan.cutElevation) {
       const polygon = wallPolygon(solid, miters.get(solid));
-      const {min,max} = record.boundsFeet;
-      // Some curtain-wall analytical centre lines extend well past their native
-      // element envelope. Do not let that reconstructed extension block a real opening.
-      const inconsistentCurtain = record.wallKind === "curtain" && polygon.some(([x,y]) => x < min.x - 2 || x > max.x + 2 || y < min.y - 2 || y > max.y + 2);
-      if (inconsistentCurtain) {
-        const clipped = polygonClipping.intersection([polygon], [[[min.x,min.y],[max.x,min.y],[max.x,max.y],[min.x,max.y]]]);
-        for (const region of clipped) if (region[0]!.length >= 3) walls.push({elementId:record.elementId,polygon:region[0]! as Point2[],approximate:true});
-      } else walls.push({ elementId: record.elementId, polygon, approximate: false });
+      walls.push(...boundedNativeWallFootprints(record, polygon));
     }
     for (const arc of record.arcs ?? []) {
-      const sweep = arc.endAngle - arc.startAngle;
-      const steps = Math.max(16, Math.ceil(Math.abs(sweep * arc.radius) / .25));
-      const side = (radius: number): Point2[] => Array.from({ length: steps + 1 }, (_, i) => {
-        const angle = arc.startAngle + sweep * i / steps;
-        return [arc.centre.x + radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
-          arc.centre.y + radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y)];
-      });
-      walls.push({ elementId: record.elementId, polygon: [...side(arc.radius + arc.thickness / 2), ...side(arc.radius - arc.thickness / 2).reverse()], approximate: false });
+      walls.push({ elementId: record.elementId, polygon: nativeWallArcPolygon(arc), approximate: false });
     }
-    if (!solids.length && !record.arcs?.length) walls.push({ elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: true });
+    if (!solids.length && !record.arcs?.length) {
+      const certified = memberSections.get(record.elementId);
+      // This plan contract carries single rings. Never discard a native hole
+      // or replace an incomplete mesh with a box/hull to claim exact material.
+      if (certified?.length && certified.every(section => section.ringsFeet.length === 1)) {
+        walls.push(...certified.map(section => ({elementId: record.elementId, polygon: certifiedMemberPolygon(record, section.ringsFeet[0]!), approximate: false})));
+      } else walls.push({ elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: true });
+    }
   }
   const footprints = (records: readonly ElementBoundsRecord[]) => records.map((record) => ({
     elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: !record.orientedBox,
   }));
-  return { walls, doors: footprints(plan.doorRecords).map(door => {
+  return { walls: applyReviewedDoorWallCuts(result,levelId,walls), doors: footprints(plan.doorRecords).map(door => {
+    const reviewed=reviewedDoorOpening(result,levelId,door.elementId);
+    if(reviewed)return {...door,polygon:reviewed.apertureFeet,approximate:false};
     const opening = curtainOpenings.find(opening => opening.doorId === door.elementId);
     return opening ? {...door, polygon: opening.apertureFeet, approximate: false} : door;
-  }), columns: footprints(plan.columnRecords),
+  }), columns: plan.columnRecords.flatMap(record => {
+    const certified = sections.filter(section => section.kind === "column" && section.nativeElementId === record.elementId);
+    // Only complete owned native BRep sections replace an approximate column
+    // envelope. Retain the fallback if a native hole cannot fit this single-ring
+    // plan contract; never turn a round member into its bounds rectangle.
+    if (certified.length && certified.every(section => section.ringsFeet.length === 1)) {
+      return certified.map(section => ({elementId: record.elementId, polygon: certifiedMemberPolygon(record, section.ringsFeet[0]!), approximate: false}));
+    }
+    return [{elementId: record.elementId, polygon: distinctPlanPoints(record), approximate: !record.orientedBox}];
+  }),
     floors: [...new Map([...plan.floorRecords, ...routingFloorPlateRecords(result, plan.elevation)].map(record => [record.elementId, record])).values()].map((record) => (record.loops ?? []).map((loop) => loop.map(xy))), cutElevation: plan.cutElevation };
 }
 

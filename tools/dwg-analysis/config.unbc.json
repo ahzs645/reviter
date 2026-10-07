@@ -1,0 +1,191 @@
+{
+  "building": {
+    "id": 7,
+    "name": "UNBC Composite Floor Plan",
+    "description": "Generated from the UNBC campus composite DWG and aligned against the City of Prince George building outlines dataset.",
+    "address": "3333 University Way, Prince George, BC",
+    "campus_id": "unbc-prince-george",
+    "building_id": "UNBC_COMPOSITE",
+    "location": {
+      "latitude": 53.89302694332294,
+      "longitude": -122.81382216376906
+    }
+  },
+  "conversion": {
+    "commandTemplate": "sh scripts/dwg-import/run-oda.sh {input_dir} {output_dir} {input_name}"
+  },
+  "transform": {
+    "mode": "control-points",
+    "controlPoints": [
+      {
+        "cad": [148823.4199286215, -1228317.4929025264],
+        "geo": [-122.81516073819, 53.8913096262931]
+      },
+      {
+        "cad": [446708.13315201376, -1228317.4929025264],
+        "geo": [-122.812449961768, 53.8913096262931]
+      },
+      {
+        "cad": [148823.4199286215, -545686.6597053695],
+        "geo": [-122.81516073819, 53.8947076600108]
+      }
+    ]
+  },
+  "floors": {
+    "default": 0,
+    "rules": [
+      {
+        "source": "text",
+        "pattern": "(?:LEVEL|LVL|FLOOR)[-_ ]?(-?\\d+)",
+        "offset": 0
+      }
+    ]
+  },
+  "layouts": {
+    "usePaperSpaceViewports": true,
+    "requireContext": true
+  },
+  "buildings": {
+    "codeMap": {
+      "ADM": {
+        "id": "unbc-administration",
+        "name": "Administration Building"
+      },
+      "02": {
+        "id": "unbc-02-plant",
+        "name": "Plant"
+      },
+      "03": {
+        "id": "unbc-03-cjmh",
+        "name": "Charles J. McCaffray Hall"
+      },
+      "04": {
+        "id": "unbc-04-research-lab",
+        "name": "Research Laboratory"
+      },
+      "05": {
+        "id": "unbc-05-library",
+        "name": "Geoffrey R. Weller Library"
+      },
+      "06": {
+        "id": "unbc-06-conference-centre",
+        "name": "Conference Centre"
+      },
+      "07": {
+        "id": "unbc-07-agora",
+        "name": "Agora"
+      },
+      "08": {
+        "id": "unbc-08-teaching-lab",
+        "name": "Teaching Laboratory"
+      },
+      "09": {
+        "id": "unbc-09-nhsc",
+        "name": "Northern Health Sciences Centre"
+      },
+      "10": {
+        "id": "unbc-10-teaching-learning-centre",
+        "name": "Teaching and Learning Centre"
+      },
+      "11": {
+        "id": "unbc-11-efl",
+        "name": "Enhanced Forestry Laboratory"
+      },
+      "12": {
+        "id": "unbc-12-maintenance",
+        "name": "Maintenance Building"
+      },
+      "14": {
+        "id": "unbc-14-nsc",
+        "name": "Northern Sport Centre"
+      },
+      "19": {
+        "id": "unbc-19-bioenergy",
+        "name": "Bioenergy Facility"
+      }
+    }
+  },
+  "geometry": {
+    "recoverFromWalls": true,
+    "boundaryLayers": ["1_Wall_Exist"],
+    "layoutMargin": 2000,
+    "flattenDistance": 250,
+    "anchorTolerance": 1200,
+    "minPolygonArea": 50
+  },
+  "campus": {
+    "enabled": true,
+    "referenceDxf": "generated/oda-campus/UNBC campus map.dxf",
+    "referenceLayer": "3_buildings",
+    "componentAreaThreshold": 500,
+    "componentControlPoints": [
+      {
+        "componentIndex": 15,
+        "geo": [-122.8125466750539, 53.88878870300249]
+      },
+      {
+        "componentIndex": 13,
+        "geo": [-122.81762472449806, 53.891587221599394]
+      },
+      {
+        "componentIndex": 11,
+        "geo": [-122.81638028672944, 53.89164976688981]
+      },
+      {
+        "componentIndex": 14,
+        "geo": [-122.81755972176964, 53.8908131448187]
+      },
+      {
+        "componentIndex": 1,
+        "geo": [-122.81350138987526, 53.895047667183974]
+      },
+      {
+        "componentIndex": 8,
+        "geo": [-122.81482707803725, 53.89261099584314]
+      },
+      {
+        "componentIndex": 4,
+        "geo": [-122.81559114726687, 53.893455108987375]
+      }
+    ],
+    "ignoredComponentIndexes": [],
+    "placementComponentMap": {
+      "02": [13],
+      "03": [5],
+      "04": [1],
+      "05": [9],
+      "06": [10],
+      "07": [4, 8],
+      "08": [2],
+      "09": [3],
+      "10": [6, 12],
+      "11": [11],
+      "12": [14],
+      "14": [15],
+      "19": [7]
+    }
+  },
+  "anchors": {
+    "roomDataBlocks": ["room_data"],
+    "roomNumberTag": "ROOMNUM",
+    "roomUseTag": "ROOMUSE"
+  },
+  "layers": {
+    "room": [],
+    "corridor": [],
+    "stairs": ["STAIR"],
+    "elevator": ["ELEV"],
+    "door": ["DOOR", "DOR"],
+    "window": ["WIN", "MULLION", "CURTAIN"],
+    "routing": ["ROUTE", "CENTERLINE", "NAV"],
+    "ignore": ["DEFPOINT", "0_Dim", "0_text", "3_Text", "SHEET", "TITLE"]
+  },
+  "labels": {
+    "roomNumberPatterns": [
+      "^\\d{2}-[A-Z]?\\d{2,4}[A-Z]?$",
+      "^\\d{2}-[A-Z]?S\\d{3,4}[A-Z]?$",
+      "^ADM[ -]?\\d{1,4}[A-Z]?$",
+      "^\\d{4}[A-Z]?$"
+    ]
+  }
+}

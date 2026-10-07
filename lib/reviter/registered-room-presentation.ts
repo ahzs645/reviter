@@ -1,4 +1,7 @@
 import{normalizeRoomTouchRings}from './room-touch-normalization.ts';
+import{registeredNativeInterior}from './registered-native-interior.ts';
+import{sectionForModelBoundaryReview}from './model-boundary-review.ts';
+import { sectionWithClosedSingleDoorSwings, type RegisteredSingleDoorSwing } from './registered-single-door-swings.ts';
 import pc from 'polygon-clipping';
 import type {ArchitecturalPlanGeometry} from './architectural-plan.ts';
 import type {IndoorDataset} from './indoor-contract.ts';
@@ -16,7 +19,7 @@ const area=(parts:pc.MultiPolygon)=>parts.reduce((sum,rings)=>sum+roomArea(rings
 const shape=(room:DirectoryRoom):Rings=>[room.polygonFeet,...room.holesFeet??[]];
 const bounds=(rings:Rings)=>{const points=rings.flat();return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))] as const;};
 const intersects=(a:ReturnType<typeof bounds>,b:ReturnType<typeof bounds>,pad=0)=>a[0]<=b[2]+pad&&a[2]+pad>=b[0]&&a[1]<=b[3]+pad&&a[3]+pad>=b[1];
-export type RegisteredRoomInterior={roomKey:string;levelId:number;ringsFeet:Rings;boundaryElementIds:number[];sourceCoverage:number;cellCoverage:number;boundaryEvidence:string;sourceProof:{sourceSha256:string;sectionId:string;registrationErrorFeet:number;wallSegmentIndices:number[];doorSegmentIndices:number[];nativeFloorCoveredSquareFeet:number}};
+export type RegisteredRoomInterior={roomKey:string;levelId:number;ringsFeet:Rings;boundaryElementIds:number[];sourceCoverage:number;cellCoverage:number;boundaryEvidence:string;sourceProof:{sourceSha256:string;sectionId:string;registrationErrorFeet:number;wallSegmentIndices:number[];doorSegmentIndices:number[];nativeFloorCoveredSquareFeet:number;closedDoorSwings?:RegisteredSingleDoorSwing[];omittedNativeEdgeFragments?:{ringsFeet:Rings[];squareFeet:number};modelReviewedDividerIndices?:number[]}};
 /** Recover visual interiors from actual registered drawing wall faces, never
  * room contours or label interpolation. Native walls/columns and source/native
  * floor holes are subtracted; the complete cell must have native floor support,
@@ -32,23 +35,44 @@ export function recoverRegisteredRoomInteriors(dataset:IndoorDataset,annotations
   if(!g)continue;
   const sections=reference.sections.filter(s=>s.levelId===levelId&&Number.isFinite(s.registrationErrorFeet)&&s.registrationErrorFeet<=.05);
   if(!sections.length)continue;
-  const rebuilt=rebuildRoomBoundaries(rooms,{...reference,sections},g);
+  // Registered wall-layer LINEs can be tessellated door swings. Close only
+  // independently recognised symbols for presentation, using the existing
+  // enclosure, floor, native barrier and competing-room validation below.
+  // Routing and the authored reference retain every original segment.
+  const closedSections=sections.map(section=>{
+   const closed=sectionWithClosedSingleDoorSwings(section),reviewed=sectionForModelBoundaryReview(dataset,annotations,reference,section);
+   const excluded=new Set([...closed.swings.flatMap(s=>s.arcSegmentIndices),...reviewed.applied.flatMap(r=>r.removedWallSegmentIndices)]);
+   return{...closed,section:{...closed.section,wallSegments:section.wallSegments.filter((_,i)=>!excluded.has(i))},modelReviews:reviewed.applied};
+  });
+  const displayReference={...reference,sections:closedSections.map(s=>s.section)};
+  const drawingOnly=rebuildRoomBoundaries(rooms,displayReference,g),unresolvedDrawingKeys=new Set(drawingOnly.unresolved);
+  // A real native wall can close an edge absent from the drawing. Retry only
+  // unresolved identities; keep already recovered drawing cells unchanged.
+  const nativeComposed=[...candidateKeys].some(key=>unresolvedDrawingKeys.has(key))?rebuildRoomBoundaries(rooms,displayReference,g,true):undefined;
+  const nativeUnresolved=new Set(nativeComposed?.unresolved),composedKeys=new Set<string>();
+  const rebuilt={rooms:drawingOnly.rooms.map(room=>{if(nativeComposed&&unresolvedDrawingKeys.has(room.key)&&!nativeUnresolved.has(room.key)){composedKeys.add(room.key);return nativeComposed.rooms.find(r=>r.key===room.key)!;}return room;}),unresolved:drawingOnly.unresolved.filter(key=>!composedKeys.has(key))};
   for(const room of rebuilt.rooms.filter(r=>candidateKeys.has(r.key)&&isWalkable(r)&&!isHallway(r))){
    const fail=(code:string,message:string)=>result.diagnostics.push({roomKey:room.key,levelId,code,message});
    const original=annotations.find(r=>r.key===room.key)!,record=records.get(room.key);
    const section=sections.find(s=>s.sectionId===original.dwg?.sectionId&&original.dwg?.sha256===reference.sourceSha256);
-   if(!record||!section||(room.boundaryReview as {method?:string}|undefined)?.method!=='registered-survey-walls-and-model-doors'){fail('unclosed-source-wall-cell','No uniquely labelled enclosure of registered source walls and source/native door thresholds was found.');continue;}
+   if(!record||!section||rebuilt.unresolved.includes(room.key)||(room.boundaryReview as {method?:string}|undefined)?.method!=='registered-survey-walls-and-model-doors'){fail('unclosed-source-wall-cell','No uniquely labelled enclosure of registered source walls and source/native door thresholds was found.');continue;}
+   const closure=closedSections.find(s=>s.section.sectionId===section.sectionId)!;
+   const modelReviewedDividerIndices=closure.modelReviews.find(r=>r.roomKey===room.key)?.removedWallSegmentIndices;
+   if(original.modelBoundaryReview&&!modelReviewedDividerIndices){fail('stale-model-boundary-review','The reviewed merge divider evidence no longer matches the registered source and native model.');continue;}
+   const mergedLabels=[original,...annotations.filter(a=>a.status==='deleted'&&a.mergedInto===original.key)].map(a=>a.labelPointFeet);
+   const containsMergedLabels=(rings:Rings)=>mergedLabels.every(label=>containsDirectoryRoomPoint(label,{...original,polygonFeet:rings[0]!,holesFeet:rings.slice(1)}));
    try {
     const originalCell=shape(room),box=bounds(originalCell),localWalls=dataset.walls.filter(w=>w.levelId===levelId&&intersects(box,bounds(w.ringsFeet)));
     let parts:pc.MultiPolygon=[originalCell];
     for(const wall of localWalls){parts=difference(parts,wall.ringsFeet);if(!parts.length)break;}
     const holes=[...original.holesFeet??[],...rooms.flatMap(r=>r.floorOpeningsFeet??[])].map(h=>[h] as Rings);
     if(holes.length&&parts.length)parts=difference(parts,...holes);
-    if(parts.length!==1){fail('native-barrier-splits-source-cell','Native material or protected floor openings split the registered cell; it remains unresolved.');continue;}
-    let rings=parts[0]!.map(r=>cleanRoomBoundary(r as RoomPoint[]));
+    const interior=registeredNativeInterior(parts,original.labelPointFeet,originalCell[0]!,rooms.filter(r=>r.key!==original.key).map(r=>r.labelPointFeet));
+    if(!interior){fail('native-barrier-splits-source-cell','Native material or protected floor openings split the registered cell; it remains unresolved.');continue;}
+    let rings=interior.ringsFeet.map(r=>cleanRoomBoundary(r as RoomPoint[]));
     const normalization=!rings.every(validRoomBoundary)?normalizeRoomTouchRings(rings):undefined;
     if(normalization)rings=normalization.ringsFeet;
-    if(!rings.every(validRoomBoundary)||!containsDirectoryRoomPoint(original.labelPointFeet,{...original,polygonFeet:rings[0]!,holesFeet:rings.slice(1)})){fail('source-label-outside-interior','The registered/native intersection excludes the source label.');continue;}
+    if(!rings.every(validRoomBoundary)||!containsMergedLabels(rings)){fail('source-label-outside-interior','The registered/native intersection excludes the source label.');continue;}
     let cellArea=area([rings]);const sourceArea=area([shape(original)]),overlap=area(intersection(rings,shape(original)));
     let sourceCoverage=overlap/sourceArea,cellCoverage=overlap/cellArea;
     if(sourceCoverage<.65||cellCoverage<.65){fail('source-identity-mismatch','Registered cell and original source claim lack bilateral identity overlap.');continue;}
@@ -70,17 +94,19 @@ export function recoverRegisteredRoomInteriors(dataset:IndoorDataset,annotations
      rings=cut[0]!.map(r=>cleanRoomBoundary(r as RoomPoint[]));cellArea=area([rings]);
      const finalOverlap=area(intersection(rings,shape(original)));sourceCoverage=finalOverlap/sourceArea;cellCoverage=finalOverlap/cellArea;
      if(sourceCoverage<.65||cellCoverage<.65){fail('floor-aperture-identity-mismatch','Preserving native floor apertures removes too much of the source room claim.');continue;}
-     if(!containsDirectoryRoomPoint(original.labelPointFeet,{...original,polygonFeet:rings[0]!,holesFeet:rings.slice(1)})){fail('label-in-native-floor-opening','Native floor aperture excludes the source room label.');continue;}
+     if(!containsMergedLabels(rings)){fail('label-in-native-floor-opening','Native floor aperture excludes the source room label.');continue;}
     }
     const touch=(ps:Rings)=>rings.some(r=>r.some(p=>ps.some(s=>nearestRoomBoundary(p,s).distance<=.05)));
     const supports=localWalls.filter(w=>!w.approximate&&touch(w.ringsFeet)).map(w=>w.nativeElementId);
     if(new Set(supports).size<2){fail('unanchored-source-enclosure','Fewer than two precise native barrier elements anchor the registered enclosure.');continue;}
     const segmentIndices=(segments:typeof section.wallSegments)=>segments.flatMap((line,i)=>originalCell.some(r=>r.some(p=>nearestRoomBoundary(p,line).distance<=.05))?[i]:[]);
-    const wallSegmentIndices=segmentIndices(section.wallSegments),doorSegmentIndices=segmentIndices(section.doorSegments);
+    const removed=new Set([...closure.swings.flatMap(s=>s.arcSegmentIndices),...closure.modelReviews.flatMap(r=>r.removedWallSegmentIndices)]);
+    const wallSegmentIndices=segmentIndices(section.wallSegments).filter(i=>!removed.has(i)),doorSegmentIndices=segmentIndices(section.doorSegments);
+    const closedDoorSwings=closure.swings.filter(s=>s.thresholdSegments.some(line=>originalCell.some(r=>r.some(p=>nearestRoomBoundary(p,line).distance<=.05))));
     if(wallSegmentIndices.length<3){fail('insufficient-source-wall-support','Registered wall support does not establish the enclosure.');continue;}
     result.rooms.push({roomKey:room.key,levelId,ringsFeet:rings,boundaryElementIds:[...new Set(supports)].sort((a,b)=>a-b),sourceCoverage,cellCoverage,
-     boundaryEvidence:`Registered source wall enclosure; source ${reference.sourceSha256}; section ${section.sectionId}; registration ${section.registrationErrorFeet.toFixed(6)} ft; native walls/columns and all floor holes retained; complete native floor support; visual evidence only.${normalization?` Contact-only ring normalization (${normalization.contactCount} contacts); unchanged region and void area; actual crossings rejected.`:""}`,
-     sourceProof:{sourceSha256:reference.sourceSha256,sectionId:section.sectionId,registrationErrorFeet:section.registrationErrorFeet,wallSegmentIndices,doorSegmentIndices,nativeFloorCoveredSquareFeet:cellArea}});
+     boundaryEvidence:`Registered source wall enclosure; source ${reference.sourceSha256}; section ${section.sectionId}; registration ${section.registrationErrorFeet.toFixed(6)} ft; native walls/columns and all floor holes retained; complete native floor support; visual evidence only.${composedKeys.has(room.key)?' Precise native wall/column faces close missing registered graph edges; original source and routing unchanged.':''}${closedDoorSwings.length?` ${closedDoorSwings.length} proved architectural single-door swings closed for display; original routing thresholds unchanged.`:""}${interior.omittedEdgeFragments.length?` ${interior.omittedSquareFeet.toFixed(6)} square feet of unlabelled outer-edge pockets separated by native barriers omitted from display; original routing unchanged.`:""}${normalization?` Contact-only ring normalization (${normalization.contactCount} contacts); unchanged region and void area; actual crossings rejected.`:""}`,
+     sourceProof:{sourceSha256:reference.sourceSha256,sectionId:section.sectionId,registrationErrorFeet:section.registrationErrorFeet,wallSegmentIndices,doorSegmentIndices,nativeFloorCoveredSquareFeet:cellArea,...(closedDoorSwings.length?{closedDoorSwings}:{}),...(interior.omittedEdgeFragments.length?{omittedNativeEdgeFragments:{ringsFeet:interior.omittedEdgeFragments,squareFeet:interior.omittedSquareFeet}}:{}),...(modelReviewedDividerIndices?{modelReviewedDividerIndices}:{})}});
    }catch(error){fail('source-wall-topology-error',error instanceof Error?error.message:String(error));}
   }
  }

@@ -212,3 +212,19 @@ test('source-backed joint repair needs both registered faces, facing native caps
  assert.equal(recoverRegisteredWallJunctionRepairs([ws[0]!,{...ws[1]!,ringsFeet:[rect(4.6,0,9,1)]}],[],source).length,0);
  assert.equal(recoverRegisteredWallJunctionRepairs([ws[0]!,{...ws[1]!,ringsFeet:[rect(4.2,0,9,1.1)]}],[],source).length,0);
 });
+
+test("large-origin full-level T contacts retain separate enclosures without inventing a wall correction",()=>{
+ const angle=.5585993153435624;
+ const rotate=([x,y]:Point):Point=>[523456.789+x*Math.cos(angle)-y*Math.sin(angle),941000.123+x*Math.sin(angle)+y*Math.cos(angle)];
+ const left=room("left"),right=room("right");left.ringsFeet=[rect(3,3,8,8).map(rotate)];right.ringsFeet=[rect(151,3,156,8).map(rotate)];
+ const native:IndoorDataset["walls"]=[rect(-1,-1,161,0),rect(-1,100,161,101),rect(-1,0,0,100),rect(160,0,161,100),rect(80,0,80.4,100)].map((ring,i)=>({kind:"wall",levelId:1,nativeElementId:i+1,ringsFeet:[ring.map(rotate)]}));
+ const labels=new Map([[left.key,rotate([5,5])],[right.key,rotate([154,5])]]);
+ const unpatched=recoverNativeRoomInteriors([left,right],native,[],labels);
+ assert.equal(unpatched.rooms.length,2,"already-touching native faces remain separate after precision reduction");
+ const otherLevelPatch={kind:"wall" as const,levelId:2,nativeElementId:90,reviewPatchId:"reviewed-other-level",ringsFeet:[rect(1000,1000,1001,1001)]};
+ assert.deepEqual(recoverNativeRoomInteriors([left,right],[...native,otherLevelPatch],[],labels),unpatched,"a correction on another floor cannot alter this floor's recovery");
+ const patched=native.map((w,i)=>i===4?{...w,reviewPatchId:"reviewed-junction"}:w);
+ const adopted=recoverNativeRoomInteriors([left,right],patched,[],labels);
+ assert.equal(adopted.rooms.length,2);assert.ok(adopted.rooms.every(r=>r.ringsFeet[0].length>=4));
+ assert.ok(!adopted.rooms[0].ringsFeet[0].some(p=>containsRoomPoint(p,adopted.rooms[1].ringsFeet[0]))||adopted.rooms[0].ringsFeet[0].every(p=>!containsRoomPoint(p,adopted.rooms[1].ringsFeet[0])));
+});

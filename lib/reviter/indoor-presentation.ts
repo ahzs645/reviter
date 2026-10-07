@@ -1,3 +1,4 @@
+import {nativeDoorBoundaryClosureFootprints} from "./native-door-boundary-closures.ts";
 import { reviewedRoomInteriors } from "./reviewed-room-presentation.ts";
 import type { ConvertResult } from './types.ts';
 import { recoverNativeMeshRoomInteriors } from './native-mesh-room-presentation.ts';
@@ -17,10 +18,15 @@ export function prepareIndoorPresentation(
   dataset: IndoorDataset,
   annotations: RoomDirectoryData["annotations"],
   semanticBoundaries?: unknown,
-  options?: {nativeModel?:ConvertResult;boundaryReference?:BoundaryReference;geometries?:ReadonlyMap<number,ArchitecturalPlanGeometry>;floorsByRecord?:ReadonlyMap<string,ArchitecturalPlanGeometry["floors"]>},
+  options?: {purpose?:"routing-prepass";nativeModel?:ConvertResult;boundaryReference?:BoundaryReference;geometries?:ReadonlyMap<number,ArchitecturalPlanGeometry>;floorsByRecord?:ReadonlyMap<string,ArchitecturalPlanGeometry["floors"]>},
 ): NonNullable<IndoorDataset["presentation"]> {
+  // Routing promotion uses the physical aperture, not a disposable selection
+  // closure. This early pass has no compiled floor/portal proof yet. Final
+  // presentation defaults to strict closure validation after compilation.
+  const closureOverrides=new Map(options?.purpose === "routing-prepass" || !dataset.nativeDoorBoundaryClosures ? [] : dataset.nativeLevels.flatMap(l=>nativeDoorBoundaryClosureFootprints(dataset,l.id).map(d=>[`${l.id}:${d.nativeElementId}`,d.footprintFeet] as const)));
+  const selectionDoors=(dataset.doors??[]).map(d=>({...d,footprintFeet:closureOverrides.get(`${d.levelId}:${d.nativeElementId}`)??d.footprintFeet}));
   const recovered = recoverNativeRoomInteriors(
-    dataset.records, dataset.walls, dataset.doors ?? [],
+    dataset.records, dataset.walls, selectionDoors,
     new Map(annotations.map(r => [r.key, r.labelPointFeet])),
   );
   const geometries=options?.geometries;
@@ -30,7 +36,7 @@ export function prepareIndoorPresentation(
     const reference=options.boundaryReference,repairs=recoverRegisteredWallJunctionRepairs(dataset.walls,dataset.doors??[],reference);
     if(repairs.length){
       const nativeKeys=new Set(recovered.rooms.map(r=>r.roomKey));
-      const patched=recoverNativeRoomInteriors(dataset.records,[...dataset.walls,...repairs.map(r=>({kind:"wall" as const,levelId:r.levelId,nativeElementId:r.nativeWallElementId,approximate:true,ringsFeet:r.ringsFeet}))],dataset.doors??[],new Map(annotations.map(r=>[r.key,r.labelPointFeet])));
+      const patched=recoverNativeRoomInteriors(dataset.records,[...dataset.walls,...repairs.map(r=>({kind:"wall" as const,levelId:r.levelId,nativeElementId:r.nativeWallElementId,approximate:true,ringsFeet:r.ringsFeet}))],selectionDoors,new Map(annotations.map(r=>[r.key,r.labelPointFeet])));
       for(const room of patched.rooms.filter(r=>!nativeKeys.has(r.roomKey))){
         const annotation=annotations.find(a=>a.key===room.roomKey),section=reference.sections.find(s=>s.levelId===room.levelId&&s.sectionId===annotation?.dwg?.sectionId&&annotation?.dwg?.sha256===reference.sourceSha256&&s.registrationErrorFeet<=.05),geometry=geometries.get(room.levelId);
         if(!section||!geometry)continue;

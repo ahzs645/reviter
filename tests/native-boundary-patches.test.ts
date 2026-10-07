@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {reviewedBoundaryWalls,type NativeBoundaryPatches} from '../lib/reviter/native-boundary-patches.ts';
+import {recoverNativeRoomInteriors} from '../lib/reviter/native-room-presentation.ts';
+import {nativeWalkingRegion,supportedWalkingPath} from '../lib/reviter/native-circulation-links.ts';
+import type {IndoorDataset,IndoorRecord} from '../lib/reviter/indoor-contract.ts';
+import type {ConvertResult} from '../lib/reviter/types.ts';
+import {prepareIndoorDataset} from '../lib/reviter/indoor-pipeline.ts';
+import {architecturalPlanGeometry} from '../lib/reviter/architectural-plan.ts';
+import type {RoomDirectoryData} from '../lib/reviter/room-directory.ts';
+const rect=(a:number,b:number,c:number,d:number):[number,number][]=>[[a,b],[c,b],[c,d],[a,d]];
+const setup=()=>{
+ const walls:IndoorDataset['walls']=[rect(-1,-1,11,0),rect(-1,10,11,11),rect(-1,0,0,10),rect(10,0,11,4),rect(10,6,11,10)].map((r,i)=>({nativeElementId:i+1,levelId:1,kind:'wall',ringsFeet:[r]}));
+ const patches:NativeBoundaryPatches={version:1,patches:[{id:'review-gap',sourceModelSha256:'a'.repeat(64),levelId:1,status:'proposed',widthFeet:2,ringsFeet:[rect(10,3.9998,11,6.0002)],wallEvidence:walls.slice(3).map(w=>({nativeElementId:w.nativeElementId,ringsFeet:w.ringsFeet})),nativeDoorIds:[],notes:'Reviewed missing native partition between the two measured jambs.'}]};
+ return {walls,patches};
+};
+test('only applied model-bound patches close native room enclosures and stale source evidence is rejected',()=>{
+ const {walls,patches}=setup();const before=JSON.stringify(walls);
+ const record={key:'room',number:'room',name:'Office',building:'A',levelId:1,elevationFeet:0,surfaceId:'A:1:0',circulation:false,stair:false,access:'public',walkable:true,confidence:1,properties:{},ringsFeet:[rect(.4,.4,9.6,9.6)]} as IndoorRecord;
+ assert.equal(recoverNativeRoomInteriors([record],walls,[],new Map([['room',[5,5]]])).rooms.length,0);
+ assert.equal(reviewedBoundaryWalls(walls,patches,'a'.repeat(64)).length,0);
+ patches.patches[0].status='applied';const applied=reviewedBoundaryWalls(walls,patches,'a'.repeat(64));
+ assert.equal(applied[0].reviewPatchId,'review-gap');
+ assert.equal(recoverNativeRoomInteriors([record],[...walls,...applied],[],new Map([['room',[5,5]]])).rooms.length,1);
+ assert.equal(JSON.stringify(walls),before);
+ assert.throws(()=>reviewedBoundaryWalls(walls,patches,'b'.repeat(64)),/identity/);
+ const changed=structuredClone(walls);changed[3].ringsFeet[0][0][0]+=1;
+ assert.throws(()=>reviewedBoundaryWalls(changed,patches,'a'.repeat(64)),/stale/);
+});
+test('source compilation consumes applied corrections for presentation and circulation without mutating originals',async()=>{
+ const sourceWalls=[{start:{x:-.5,y:0},end:{x:10.5,y:0}},{start:{x:-.5,y:10},end:{x:10.5,y:10}},{start:{x:0,y:0},end:{x:0,y:10}},{start:{x:10,y:0},end:{x:10,y:4}},{start:{x:10,y:6},end:{x:10,y:10}}];
+ const model={fileName:'fixture.rvt',origin:{x:0,y:0,z:0},levels:[{levelId:1,name:'Floor 1',elevation:0}],nativeAssociatedLevelRelations:sourceWalls.map((_,i)=>({elementId:i+1,levelId:1})),nativeStairAssemblies:[],elementBounds:[...sourceWalls.map((solid,i)=>({elementId:i+1,categoryId:-2000011,boundsFeet:{min:{x:Math.min(solid.start.x,solid.end.x)-.5,y:Math.min(solid.start.y,solid.end.y)-.5,z:0},max:{x:Math.max(solid.start.x,solid.end.x)+.5,y:Math.max(solid.start.y,solid.end.y)+.5,z:10}},solid:{...solid,thickness:1,baseElevation:0,topElevation:10}})),{elementId:100,categoryId:-2000032,boundsFeet:{min:{x:-1,y:-1,z:-1},max:{x:11,y:11,z:0}},loops:[rect(-1,-1,11,11).map(p=>[...p,0])]}]} as unknown as ConvertResult;
+ const native=architecturalPlanGeometry(model,1).walls;
+ const refs=[4,5].map(id=>({nativeElementId:id,ringsFeet:[native.find(w=>w.elementId===id)!.polygon]}));
+ const directory={format:'reviter-room-annotations',version:1,coordinateSystem:'revit-model-feet',model:{fileName:model.fileName},annotations:[{key:'office',levelId:1,number:'01-100',name:'Office',building:'01',polygonFeet:rect(.4,.4,9.6,9.6),labelPointFeet:[5,5],confidence:1}],georeference:{format:'reviter-georeference',version:1,modelFileName:model.fileName,coordinateSystem:'WGS84',method:'fixed-scale',points:[{id:'a',name:'origin',modelFeet:[0,0],levelId:1,geographic:{longitude:-122,latitude:53}},{id:'b',name:'east',modelFeet:[20,0],levelId:1,geographic:{longitude:-121.99990899,latitude:53}}]},nativeBoundaryPatches:{version:1,patches:[{id:'compiled-gap',levelId:1,sourceModelSha256:'a'.repeat(64),status:'applied',widthFeet:2,ringsFeet:[rect(9.5,3.9998,10.5,6.0002)],wallEvidence:refs,nativeDoorIds:[],notes:'Reviewed native cap gap in the synthetic source model.'}]}} as RoomDirectoryData;
+ directory.nativeBoundaryPatches!.patches[0].manualPointsFeet=[[10,4],[10,6]];
+ const before=JSON.stringify([model,directory]);
+ const prepared=await prepareIndoorDataset(model,directory,'a'.repeat(64));
+ assert.deepEqual(prepared.boundaryPatchState,{patchIds:['compiled-gap'],regenerated:true});
+ assert.ok(prepared.walls.some(w=>w.reviewPatchId==='compiled-gap'));
+ assert.ok(prepared.presentation?.rooms.some(r=>r.roomKey==='office'));
+ assert.equal(JSON.stringify([model,directory]),before);
+});
+test('regenerated native walking proof observes applied barriers and retains real floor holes',()=>{
+ const {walls,patches}=setup();patches.patches[0].status='applied';
+ const model={levels:[{levelId:1,elevation:0}],nativeAssociatedLevelRelations:[],elementBounds:[{elementId:100,categoryId:-2000032,boundsFeet:{min:{x:0,y:0,z:-1},max:{x:20,y:20,z:0}},loops:[rect(0,0,20,20).map(p=>[...p,0]),rect(14,14,16,16).map(p=>[...p,0])]}]} as unknown as ConvertResult;
+ const data={source:{modelSha256:'a'.repeat(64)},nativeLevels:[{id:1,elevationFeet:0}],records:[],doors:[],edges:[],walls} as unknown as IndoorDataset;
+ const open=nativeWalkingRegion(model,data,0,true);
+ assert.ok(supportedWalkingPath(open,[[8,5,0],[13,5,0]]));
+ data.walls=[...walls,...reviewedBoundaryWalls(walls,patches,'a'.repeat(64))];
+ const closed=nativeWalkingRegion(model,data,0,true);
+ assert.equal(supportedWalkingPath(closed,[[8,5,0],[13,5,0]]),false);
+ assert.deepEqual(closed.floors,open.floors);
+});

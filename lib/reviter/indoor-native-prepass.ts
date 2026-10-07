@@ -1,4 +1,6 @@
 import pc from 'polygon-clipping';
+import {nativeWallPositionRepairedWalls} from './native-wall-position-repairs.ts';
+import {reviewedBoundaryWalls} from './native-boundary-patches.ts';
 import {prepareIndoorPresentation} from './indoor-presentation.ts';
 import {promoteNativeRoomInteriors} from './native-room-promotion.ts';
 import {routingFloorPlateRecords} from './routing-floor-support.ts';
@@ -14,7 +16,12 @@ export function prepareNativeRoutingBoundaries(model:ConvertResult,source:RoomDi
  const walls:IndoorDataset['walls']=[],doors:NonNullable<IndoorDataset['doors']>=[];
  for(const levelId of [...new Set(source.annotations.map(r=>r.levelId))]){const g=architecturalPlanGeometry(model,levelId);walls.push(...[...g.walls.map(w=>({...w,kind:'wall' as const})),...g.columns.map(w=>({...w,kind:'column' as const}))].filter(w=>w.polygon.length>=3).map(w=>({levelId,nativeElementId:w.elementId,kind:w.kind,approximate:w.approximate,ringsFeet:[w.polygon]})));
  doors.push(...directoryDoorReviews(source.annotations.filter(r=>r.levelId===levelId),directoryDoors(model,levelId),links,source.navigation?.doorLinks??[]).map(({door,candidates,state,portal})=>({id:`door:${levelId}:${door.id}`,levelId,nativeElementId:door.id,pointFeet:door.point,footprintFeet:door.footprint,normalFeet:door.normal,roomKeys:portal?.rooms??candidates,state})));}
- const stage={...dataset,walls,doors};stage.presentation=prepareIndoorPresentation(stage,source.annotations);
+ // Bind every correction to the complete original native wall before adding
+ // reviewed continuations. Floor/door/fixture checks are mandatory on the fully
+ // compiled dataset in indoor-pipeline; those physical proofs do not exist yet.
+ const correctedWalls=nativeWallPositionRepairedWalls({...dataset,walls,doors},{deferPhysicalChecks:true});
+ correctedWalls.push(...reviewedBoundaryWalls(correctedWalls,source.nativeBoundaryPatches,dataset.source.modelSha256,undefined,source.reviewedDoorApertures));
+ const stage={...dataset,walls:correctedWalls,doors};stage.presentation=prepareIndoorPresentation(stage,source.annotations,undefined,{purpose:"routing-prepass"});
  const promoted=promoteNativeRoomInteriors(stage,source),records=new Map(dataset.records.map(r=>[r.key,r])),rooms=new Map<string,DirectoryRoom>();
  for(const item of promoted.report.rooms){const room=promoted.data.annotations.find(r=>r.key===item.roomKey)!,record=records.get(room.key)!;
  const floors=routingFloorPlateRecords(model,record.elevationFeet).map(f=>f.loops!.map(l=>l.map(p=>[p[0],p[1]] as RoomPoint)));

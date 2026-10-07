@@ -1,4 +1,12 @@
+import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
+import {nativeDoorBoundaryClosureFootprints} from "./native-door-boundary-closures.ts";
+import {nativeWallPositionRepairedWalls,nativeWallPositionRepairedPlanWalls} from "./native-wall-position-repairs.ts";
+import {withReviewedDoorApertures} from "./reviewed-door-apertures.ts";
+import {validateSelectionDoorBinding} from "./selection-door-thresholds.ts";
+import {prepareNativeWindowDisplay} from './native-window-display.ts';
+import { validateIndoorExclusions } from "./indoor-exclusions.ts";
 import {bindConnectorAreaArrivals} from "./connector-area-arrivals.ts";
+import {reviewedBoundaryWalls} from "./native-boundary-patches.ts";
 import pc from "polygon-clipping";
 import { containsDirectoryRoomPoint } from "./room-directory.ts";
 import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
@@ -68,6 +76,7 @@ export async function prepareIndoorDataset(
   progress: (message: string) => void = () => {},
 ): Promise<IndoorDataset> {
   const data = parseRoomDirectory(JSON.stringify(input));
+  model=withReviewedDoorApertures(model,data.reviewedDoorApertures,modelSha256,architecturalPlanGeometry);
   if (!data.georeference)
     throw new Error(
       "Save at least two GIS reference points before preparing an indoor project.",
@@ -79,6 +88,7 @@ export async function prepareIndoorDataset(
     throw new Error(
       "Model identity or source digest does not match this project.",
     );
+  validateIndoorExclusions(data.indoorExclusions, modelSha256, model.levels.filter(l => l.levelId != null).map(l => ({ id: l.levelId!, elevationFeet: l.elevation })));
   const fit = fitGeoreference(data.georeference),
     cell = 0.6;
   const sourceRooms = data.annotations
@@ -163,6 +173,11 @@ export async function prepareIndoorDataset(
         elevationFeet: l.elevation,
       })),
     records,
+    ...(data.nativeDoorBoundaryClosures ? {nativeDoorBoundaryClosures: structuredClone(data.nativeDoorBoundaryClosures)} : {}),
+    ...(data.nativeWallPositionRepairs ? {nativeWallPositionRepairs: structuredClone(data.nativeWallPositionRepairs)} : {}),
+    ...(data.selectionDoorThresholds ? { selectionDoorThresholds: structuredClone(data.selectionDoorThresholds) } : {}),
+    ...(data.reviewedAreaPartitions ? { reviewedAreaPartitions: structuredClone(data.reviewedAreaPartitions) } : {}),
+    ...(data.indoorExclusions ? { indoorExclusions: structuredClone(data.indoorExclusions) } : {}),
     ...(data.visitorMetadata ? { visitor: structuredClone(data.visitorMetadata) } : {}),
     nodes: [],
     edges: [],
@@ -313,7 +328,6 @@ export async function prepareIndoorDataset(
     progress(`Checking native walls and doors · level #${levelId}`);
     const rooms = sourceRooms.filter((r) => r.levelId === levelId),
       geometry = architecturalPlanGeometry(model, levelId);
-    geometries.set(levelId, geometry);
     dataset.walls.push(
       ...[
         ...geometry.walls.map((w) => ({ ...w, kind: "wall" as const })),
@@ -328,6 +342,13 @@ export async function prepareIndoorDataset(
           ringsFeet: [w.polygon],
         })),
     );
+    const positioned=nativeWallPositionRepairedWalls(dataset,{deferPhysicalChecks:true});
+    dataset.walls=positioned;
+    const positionedGeometry={...geometry,walls:nativeWallPositionRepairedPlanWalls(geometry.walls,dataset,levelId)};
+    const correctedWalls=reviewedBoundaryWalls(dataset.walls,data.nativeBoundaryPatches,modelSha256,levelId,data.reviewedDoorApertures);
+    dataset.walls.push(...correctedWalls);
+    const correctedGeometry={...positionedGeometry,walls:[...positionedGeometry.walls,...correctedWalls.map(w=>({elementId:w.nativeElementId,approximate:false,polygon:w.ringsFeet[0]!}))]};
+    geometries.set(levelId,correctedGeometry);
     const reviews = directoryDoorReviews(
         rooms,
         directoryDoors(model, levelId),
@@ -338,7 +359,7 @@ export async function prepareIndoorDataset(
         rooms,
         data.navigation?.openLinks ?? [],
         data.boundaryReference,
-        geometry,
+        correctedGeometry,
       );
     dataset.doors!.push(
       ...reviews.map(({ door, candidates, state, portal }) => ({
@@ -359,8 +380,8 @@ export async function prepareIndoorDataset(
       dataset.doors!.filter(d => d.levelId === levelId),
     );
     geometries.set(levelId, {
-      ...geometry,
-      walls: [...geometry.walls, ...jointRepairs.map(repair => ({
+      ...correctedGeometry,
+      walls: [...correctedGeometry.walls, ...jointRepairs.map(repair => ({
         elementId: repair.nativeWallElementId,
         approximate: true,
         polygon: repair.ringsFeet[0]!,
@@ -929,6 +950,11 @@ export async function prepareIndoorDataset(
       partsFeet: nativeFloorPolygons(floor),
     })),
   };
+  validateIndoorExclusions(dataset.indoorExclusions, modelSha256, dataset.nativeLevels);
+  validateSelectionDoorBinding(data,dataset);
+  validateReviewedAreaPartitionBinding(data,dataset);
+  nativeWallPositionRepairedWalls(dataset);
+  for(const level of new Set(dataset.nativeDoorBoundaryClosures?.doors.map(d=>d.levelId)??[]))nativeDoorBoundaryClosureFootprints(dataset,level);
   progress("Preparing native wall-defined room presentation…");
   const presentationGeometries = new Map([...geometries].map(([levelId, geometry]) => {
     const physicalElevation = model.levels.find(l => l.levelId === levelId)?.elevation;
@@ -952,5 +978,10 @@ export async function prepareIndoorDataset(
   dataset.issues.push({id:"native-circulation-geometry",code:"native-circulation-geometry",severity:"info",message:`${nativeCirculation.report.accepted} native circulation cells; ${nativeBranches} native walking branches. ${nativeCirculation.report.rejected} unclassified cells retained for review. Source identities, door thresholds and vertical connectors preserved.`});
   for(const [i,message] of nativeCirculation.report.diagnostics.entries())
     dataset.issues.push({id:`native-circulation-topology:${i}`,code:"native-circulation-topology",severity:"review",message});
+  const applied=(data.nativeBoundaryPatches?.patches??[]).filter(p=>p.status==='applied');
+  if(applied.some(p=>!dataset.walls.some(w=>w.reviewPatchId===p.id)))throw new Error('An applied boundary patch has no compiled native floor. Review its level.');
+  if(applied.length)dataset.boundaryPatchState={patchIds:applied.map(p=>p.id),regenerated:true};
+  prepareNativeWindowDisplay(model, dataset);
+  if(data.reviewedDoorApertures)dataset.doorAperturePatchState={regenerated:true,sourceGeometryKey:JSON.stringify(data.reviewedDoorApertures.patches.map(({notes,...p})=>p))};
   return dataset;
 }

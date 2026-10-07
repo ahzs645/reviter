@@ -2,7 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ConvertResult } from "../../lib/reviter/types.ts";
-import { createProjectPackage, projectPackageName } from "../../lib/reviter/project-package.ts";
+import { createProjectPackage, projectPackageName, isValidatedProjectRoomFile } from "../../lib/reviter/project-package.ts";
 import { downloadBlob } from "../../lib/reviter/export-naming.ts";
 import {staticWorkerUrl} from './reference-model.ts';
 import {
@@ -272,7 +272,7 @@ export function BuildingDirectory({ result, initialRoomFile, modelFile, onImport
   const load = useCallback(async (file: File) => {
     const generation = ++importGeneration.current;
     try {
-      if (file.size > 64 * 1024 * 1024) throw new Error("This room file exceeds the 64 MB import limit.");
+      if (file.size > 64 * 1024 * 1024 && !isValidatedProjectRoomFile(file)) throw new Error("This room file exceeds the 64 MB import limit.");
       const next = parseRoomDirectory(await file.text());
       if (generation !== importGeneration.current) return;
       const levelIds = new Set(result.nativeAssociatedLevelRelations?.map((r) => r.levelId));
@@ -449,6 +449,7 @@ export function BuildingDirectory({ result, initialRoomFile, modelFile, onImport
     finally{setRebuilding(false);}
   }
 
+  const [windowDetail, setWindowDetail] = useState<"native" | "simplified">("simplified");
   const exportProject = async (prepareIndoor=false) => {
     if (!modelFile || !data || packaging) return;
     setPackaging(true); setPackageMessage("Packaging original Revit model, floor reviews and GIS references…");
@@ -461,11 +462,11 @@ export function BuildingDirectory({ result, initialRoomFile, modelFile, onImport
           worker.onmessage=event=>{const message=event.data;if(message.type==='progress')setPackageMessage(message.message);else{worker.terminate();if(message.type==='complete')resolve({indoor:message.indoor,scene:message.scene});else reject(new Error(message.message));}};
           worker.onerror=event=>{worker.terminate();reject(new Error(event.message||'Indoor preparation failed.'));};
           worker.onmessageerror=()=>{worker.terminate();reject(new Error('The indoor worker returned an unreadable result.'));};
-          try{worker.postMessage({model:result,rooms:data,source},[source.buffer]);}catch(error){worker.terminate();reject(error);}
+          try{worker.postMessage({model:result,rooms:data,source,windowDetail},[source.buffer]);}catch(error){worker.terminate();reject(error);}
         });
       }
       const bytes = await createProjectPackage(modelFile, data,prepared);
-      downloadBlob(new Blob([bytes.slice().buffer as ArrayBuffer], {type:"application/zip"}), projectPackageName(modelFile.name));
+      downloadBlob(new Blob([bytes.slice().buffer as ArrayBuffer], {type:"application/zip"}), prepareIndoor ? projectPackageName(modelFile.name).replace(/\.zip$/, `.windows-${windowDetail}.zip`) : projectPackageName(modelFile.name));
       setPackageMessage(`Project exported · ${data.annotations.length.toLocaleString()} source records · ${data.georeference?.points.length ?? 0} GIS reference points.${prepared?` Prepared ${prepared.indoor.nodes.length.toLocaleString()} navigation nodes for OpenIndoorMaps · ${prepared.indoor.issues.length} review items.`:' Open the ZIP to restore the model and reviews together.'}`);
     } catch (error) {
       setPackageMessage(error instanceof Error ? error.message : String(error));
@@ -581,6 +582,7 @@ export function BuildingDirectory({ result, initialRoomFile, modelFile, onImport
           {!campus&&<button className="rv-button" disabled={!walkwayCandidates.length||editing} onClick={recoverCrosswalks}>Recover crosswalks</button>}
           {onImportProject&&<button className="rv-button" onClick={onImportProject} disabled={packaging}>Import project ZIP</button>}
           <button className="rv-button" onClick={()=>void exportProject()} disabled={!modelFile||packaging||editing}>{packaging?"Exporting project…":"Export project ZIP"}</button>
+          <label>Indoor window detail<select aria-label="Indoor window detail" disabled={packaging} value={windowDetail} onChange={e=>setWindowDetail(e.target.value as "native" | "simplified")}><option value="simplified">Current simplified windows</option><option value="native">Preserve native windows</option></select></label>
           <button className="rv-button" onClick={()=>void exportProject(true)} disabled={!modelFile||packaging||editing||(data.georeference?.points.length??0)<2}>Prepare OpenIndoorMaps project</button>
           <button className="rv-button" aria-pressed={georeferenceOpen} disabled={editing} onClick={()=>setGeoreferenceOpen(v=>!v)}>Georeference model</button>
           <button className="rv-button" aria-pressed={campusFloorEditorOpen} disabled={editing} onClick={()=>setCampusFloorEditorOpen(v=>!v)}>Assign campus floors</button>

@@ -2,6 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="./native-room-presentation-jsts.d.ts" />
 import polygonClipping from "polygon-clipping";
+import { nativeBarrierTopology } from "./native-barrier-topology.ts";
 import GeoJSONReader from "jsts/org/locationtech/jts/io/GeoJSONReader.js";
 import GeoJSONWriter from "jsts/org/locationtech/jts/io/GeoJSONWriter.js";
 import PrecisionModel from "jsts/org/locationtech/jts/geom/PrecisionModel.js";
@@ -262,8 +263,7 @@ function recoverNativeRoomInteriorsInScope(records: IndoorRecord[], walls: Indoo
         // same closed free-space cells. Remove barrier islands/columns from the
         // complete hole union so nested circuits cannot produce duplicate cells.
         const box=bounds(barriers.flat()),origin:Point=[box[0],box[1]];
-        const normalized=barriers.map(rings=>rings.map(ring=>ring.map(([x,y])=>
-          [Math.round((x-origin[0])*10000)/10000,Math.round((y-origin[1])*10000)/10000] as Point)));
+        const normalized=[...nativeBarrierTopology(local.map(w=>w.ringsFeet.map(ring=>ring.map(([x,y])=>[x-origin[0],y-origin[1]] as Point))),10000),...[...thresholds,...patches].map(rings=>rings.map(ring=>ring.map(([x,y])=>[Math.round((x-origin[0])*10000)/10000,Math.round((y-origin[1])*10000)/10000] as Point)))];
         const material=polygonClipping.union(normalized[0]!,...normalized.slice(1));
         const holes=material.flatMap(part=>part.slice(1).map(ring=>[ring] as Rings));
         const bounded=holes.length?polygonClipping.union(holes[0]!,...holes.slice(1)):[];
@@ -275,7 +275,7 @@ function recoverNativeRoomInteriorsInScope(records: IndoorRecord[], walls: Indoo
       // JSTS 2.12's GeometryNoder uses the older MCIndexSnapRounder, whose
       // input coordinates must already use its precision model. Keep this
       // microscopic grid separate from supported physical junction repairs.
-      const linework = edges(barriers.flat()).map(edge => edge.map(([x, y]) => [Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]));
+      const linework = edges([...nativeBarrierTopology(local.map(w=>w.ringsFeet),10000),...thresholds,...patches].flat()).map(edge => edge.map(([x, y]) => [Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]));
       const inputs = new ArrayList();
       inputs.add(reader.read({ type: "MultiLineString", coordinates: linework }));
       const noder = new GeometryNoder(new PrecisionModel(10000));

@@ -4,6 +4,8 @@ import { directoryDoors, directoryDoorReviews, directoryStairs, findBuildingRout
 import { auditDirectoryFloor } from '../lib/reviter/directory-audit.ts';
 import { findDirectoryRoute, parseRoomDirectory, roomPortals, type DirectoryRoom, type RoomPoint } from '../lib/reviter/room-directory.ts';
 import type { ConvertResult } from '../lib/reviter/types.ts';
+import {withReviewedDoorApertures,reviewedDoorHostEvidence,type ReviewedDoorApertures} from '../lib/reviter/reviewed-door-apertures.ts';
+import {architecturalPlanGeometry} from '../lib/reviter/architectural-plan.ts';
 const box=(x:number,y:number,w:number,h:number):RoomPoint[]=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
 const room=(key:string,name:string,polygonFeet:RoomPoint[],levelId=1):DirectoryRoom=>({key,number:`B-${key}`,name,levelId,polygonFeet,labelPointFeet:[(polygonFeet[0]![0]+polygonFeet[2]![0])/2,(polygonFeet[0]![1]+polygonFeet[2]![1])/2],confidence:1});
 const a=room('a','Office',box(-6,0,5,5)),hall=room('hall','Corridor',box(0,0,4,5)),stair=room('S101','Stair',box(5,0,5,5));
@@ -48,6 +50,32 @@ test('a precise door opening spans its persisted host wall, without widening alo
  const reviews=directoryDoorReviews(regions,[opening]);assert.equal(reviews[0]!.state,'connected');
  assert.ok(findDirectoryRoute(regions,reviews.flatMap(r=>r.portal?[r.portal]:[]),'left','right'));
  assert.equal(directoryDoorReviews(regions,[noHost])[0]!.state,'unmatched');
+});
+test('reviewed apertures bypass host re-expansion and sibling doors retain original cyclic or closed host evidence',()=>{
+ const sha='a'.repeat(64);
+ const corners=(x0:number,y0:number,x1:number,y1:number,z0:number,z1:number)=>[...box(x0,y0,x1-x0,y1-y0).map(p=>[...p,z0]),...box(x0,y0,x1-x0,y1-y0).map(p=>[...p,z1])];
+ const record=(elementId:number,categoryId:number,c:number[][])=>({elementId,categoryId,orientedBox:c,boundsFeet:{min:{x:Math.min(...c.map(p=>p[0]!)),y:Math.min(...c.map(p=>p[1]!)),z:Math.min(...c.map(p=>p[2]!))},max:{x:Math.max(...c.map(p=>p[0]!)),y:Math.max(...c.map(p=>p[1]!)),z:Math.max(...c.map(p=>p[2]!))}}});
+ const host={...record(10,-2000011,corners(-2,0,2,3,0,10)),solid:{start:{x:-2,y:1.5},end:{x:2,y:1.5},thickness:3,baseElevation:0,topElevation:10}};
+ const frames=[corners(-2,.5,2,2.5,7,7.2),corners(-2,.5,2,2.5,-.2,0),corners(-2,.3,2,.5,-.2,7.2),corners(-2,2.5,2,2.7,-.2,7.2)].map((c,i)=>({...record(i+3,-2000171,c),renderGeometryProvenance:'native'}));
+ const source={levels:[{levelId:1,elevation:0}],elementBounds:[host,record(2,-2000023,corners(-.1,.5,.1,2.5,0,7)),record(20,-2000023,corners(-1.75,.1,1.75,.2,0,7)),...frames],nativeAssociatedLevelRelations:[2,20].map(elementId=>({elementId,levelId:1})),nativeHostRelations:[2,20,...frames.map(f=>f.elementId)].map(elementId=>({elementId,hostId:10,evidence:'persisted'}))} as unknown as ConvertResult;
+ const before=JSON.stringify(source),original=directoryDoors(source,1).find(d=>d.id===20)!;
+ assert.deepEqual(original.point,[0,1.5]);
+ const g=architecturalPlanGeometry(source,1),nativeFace=g.walls.find(w=>w.elementId===10)!.polygon;
+ for(const closed of [false,true])for(let offset=0;offset<4;offset++){
+  const face=[...nativeFace.slice(offset),...nativeFace.slice(0,offset)];if(closed)face.push(face[0]!);
+  const geometry={...g,walls:g.walls.map(w=>w.elementId===10?{...w,polygon:face}:w),floors:[[box(-5,-5,10,11)]]};
+  const value:ReviewedDoorApertures={version:1,sourceModelSha256:sha,patches:[{id:'measured-aperture',levelId:1,nativeDoorId:2,apertureFeet:box(-2,.5,4,2),normalFeet:[1,0],wallEvidence:[{nativeElementId:10,partsFeet:[face]}],frameEvidence:frames.map(f=>({nativeElementId:f.elementId,orientedBox:f.orientedBox})),notes:'Measured native frame aperture; keep other original hosted doors independent.'}]};
+  const prepared=withReviewedDoorApertures(source,value,sha,()=>geometry),doors=directoryDoors(prepared,1);
+  assert.deepEqual(doors.find(d=>d.id===20),original);
+  const own=doors.find(d=>d.id===2)!;
+  assert.deepEqual(own.footprint,value.patches[0]!.apertureFeet);
+  assert.deepEqual(own.normal,value.patches[0]!.normalFeet);
+  assert.deepEqual(own.point,[0,1.5]);assert.equal(own.halfHeight,1);
+  assert.deepEqual(reviewedDoorHostEvidence(prepared,1,10)?.[0]?.polygon,face);
+  assert.equal(reviewedDoorHostEvidence(source,1,10),undefined);
+  assert.equal(reviewedDoorHostEvidence(prepared,2,10),undefined);
+  assert.equal(JSON.stringify(source),before);
+ }
 });
 test('review resolves a three-region door only for boundaries at that opening and survives export/import',()=>{
  const floor=[a,hall,{...a,key:'duplicate',name:'Office'}];

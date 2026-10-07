@@ -1,10 +1,10 @@
 import pc from "polygon-clipping";
 import { containsRoomPoint, type RoomPoint } from "./room-directory.ts";
 import { routingFloorPlateRecords, nativeFloorPolygons, nativeLowSlabRecords } from "./routing-floor-support.ts";
-import { architecturalPlanGeometry, nativeWallSolidPolygon } from "./architectural-plan.ts";
+import { architecturalPlanGeometry, nativeWallSolidPolygon, boundedNativeWallFootprints } from "./architectural-plan.ts";
 import { recoverNativeCurtainMemberSections } from "./native-curtain-openings.ts";
 import type { ConvertResult } from "./types.ts";
-import type { IndoorDataset, IndoorNode, IndoorRecord, IndoorEdge } from "./indoor-contract.ts";
+import type { IndoorDataset, IndoorNode, IndoorEdge } from "./indoor-contract.ts";
 type Point3 = [number, number, number];
 type Polygon = RoomPoint[][];
 const area = (polys: RoomPoint[][][]) => polys.reduce((s,p)=>s+p.reduce((a,r,i)=>a+(i?-1:1)*Math.abs(r.reduce((s,q,j)=>s+q[0]*r[(j+1)%r.length]![1]-q[1]*r[(j+1)%r.length]![0],0)/2),0),0);
@@ -14,7 +14,7 @@ const bounds = (p: Polygon) => {const ps=p.flat();return [Math.min(...ps.map(q=>
 export const walkingStrip = (a: RoomPoint,b: RoomPoint,width=2):Polygon => {const dx=b[0]-a[0],dy=b[1]-a[1],n=Math.hypot(dx,dy),x=-dy/n*width/2,y=dx/n*width/2;return [[[a[0]+x,a[1]+y],[b[0]+x,b[1]+y],[b[0]-x,b[1]-y],[a[0]-x,a[1]-y]]];};
 
 export type NativeWalkingRegion = {
-  elevationFeet:number; floors:Polygon[]; barriers:Polygon[]; masks:Polygon[];
+  elevationFeet:number; floors:Polygon[]; barriers:Polygon[]; masks:Polygon[]; wallBarriers?:Polygon[];
   circulation?:Polygon[]; nativeFloorIds:number[];
 };
 /** Floors are exact profiles at the walking elevation, including all inner holes.
@@ -26,7 +26,8 @@ export function nativeWalkingRegion(model:ConvertResult,dataset:IndoorDataset,el
  const levels=dataset.nativeLevels.filter(l=>Math.abs(l.elevationFeet-elevationFeet)<.05).map(l=>l.id);
  const portal=portalNode&&dataset.doors?.find(d=>portalNode.id===`${d.id}:0`||portalNode.id===`${d.id}:1`);
  const aperture=portal?.state==='connected'&&portal.footprintFeet&&dataset.edges.some(e=>e.id===portal.id&&e.enabled)?[portal.footprintFeet]:undefined;
- const barriers:Polygon[]=[];
+ const barriers:Polygon[]=[],wallBarriers:Polygon[]=[];
+ const addWalls=(parts:Polygon[])=>{barriers.push(...parts);wallBarriers.push(...parts);};
  const curtainSections=recoverNativeCurtainMemberSections(model,elevationFeet+.1);
  const curtainHosts=new Set(curtainSections.map(section=>section.hostId));
  // A proven curtain host is a container, not its gross solid rectangle.
@@ -35,12 +36,18 @@ export function nativeWalkingRegion(model:ConvertResult,dataset:IndoorDataset,el
  // is being continued on its existing side.
  barriers.push(...curtainSections.flatMap(section=>section.barriers.map(member=>[member.polygon])));
  const wallParts=(polygon:RoomPoint[]):Polygon[]=>aperture?pc.difference([polygon],aperture) as Polygon[]:[[polygon]];
- for(const level of levels){if(!model.nativeAssociatedLevelRelations?.length)continue;const g=architecturalPlanGeometry(model,level);barriers.push(...g.walls.filter(w=>!curtainHosts.has(w.elementId)).flatMap(w=>wallParts(w.polygon)),...g.columns.map(w=>[w.polygon]),...g.doors.filter(d=>!aperture||d.elementId!==portal?.nativeElementId).map(w=>[w.polygon]));}
+ addWalls((dataset.walls??[]).filter(w=>w.reviewPatchId&&levels.includes(w.levelId)).flatMap(w=>w.ringsFeet.flatMap(ring=>wallParts(ring))));
+ for(const level of levels){if(!model.nativeAssociatedLevelRelations?.length)continue;const g=architecturalPlanGeometry(model,level);addWalls(g.walls.filter(w=>!curtainHosts.has(w.elementId)).flatMap(w=>wallParts(w.polygon)));barriers.push(...g.columns.map(w=>[w.polygon]),...g.doors.filter(d=>!aperture||d.elementId!==portal?.nativeElementId).map(w=>[w.polygon]));}
  // Physical solids cover associated-level omissions without projecting another storey down.
  for(const r of model.elementBounds.filter(r=>[-2000011,-2000100,-2001330].includes(r.categoryId??0)&&!curtainHosts.has(r.elementId))) for(const s of r.solids??(r.solid?[r.solid]:[])) {
   if(s.baseElevation>elevationFeet+.1||s.topElevation<elevationFeet+.1)continue;
   const dx=s.end.x-s.start.x,dy=s.end.y-s.start.y,n=Math.hypot(dx,dy);if(n<1e-8)continue;
-  const polygon:RoomPoint[]=nativeWallSolidPolygon(s);barriers.push(...(r.categoryId===-2000011?wallParts(polygon):[[polygon]]));
+  const polygon:RoomPoint[]=nativeWallSolidPolygon(s);
+  // Share the plan's native curtain-host envelope constraint. Reintroducing
+  // the raw analytical axis here otherwise blocks floor outside the element,
+  // even after the level-aware plan correctly clipped that extension.
+  const footprints=r.categoryId===-2000011?boundedNativeWallFootprints(r,polygon).map(f=>f.polygon):[polygon];
+  if(r.categoryId===-2000011)addWalls(footprints.flatMap(p=>wallParts(p)));else barriers.push(...footprints.map(p=>[p]));
  }
  for(const tread of model.elementBounds.flatMap(record=>record.stairTreads??[])){const z=Math.min(...tread.map(p=>p[2]));if(z>elevationFeet+.05&&z<elevationFeet+6)barriers.push([tread.map(p=>[p[0],p[1]] as RoomPoint)]);}
  // A low native slab/tabletop is an obstruction, not another walking floor.
@@ -56,7 +63,7 @@ export function nativeWalkingRegion(model:ConvertResult,dataset:IndoorDataset,el
  // threshold centre itself remains blocked: this continuation cannot bypass a
  // disabled entrance or replace the explicit door edge. Columns are never cut.
  if(aperture&&portal?.normalFeet){const n=portal.normalFeet,t:[number,number]=[-n[1],n[0]],c=portal.pointFeet,w=Math.max(...portal.footprintFeet!.map(p=>Math.abs((p[0]-c[0])*t[0]+(p[1]-c[1])*t[1])))+.1;barriers.push([[[c[0]+t[0]*w+n[0]*.01,c[1]+t[1]*w+n[1]*.01],[c[0]-t[0]*w+n[0]*.01,c[1]-t[1]*w+n[1]*.01],[c[0]-t[0]*w-n[0]*.01,c[1]-t[1]*w-n[1]*.01],[c[0]+t[0]*w-n[0]*.01,c[1]+t[1]*w-n[1]*.01]]]);}
- return {elevationFeet,floors,barriers,masks,nativeFloorIds:nativeFloors.map(r=>r.elementId),...(!allowUnlabelled?{circulation:same.filter(r=>r.circulation&&r.walkable&&r.access!=='staff').map(r=>r.ringsFeet)}:{})};
+ return {elevationFeet,floors,barriers,masks,wallBarriers,nativeFloorIds:nativeFloors.map(r=>r.elementId),...(!allowUnlabelled?{circulation:same.filter(r=>r.circulation&&r.walkable&&r.access!=='staff').map(r=>r.ringsFeet)}:{})};
 }
 /** Continuous polygon proof of native support, obstacle clearance and source
  * circulation ownership. Raster searches propose candidates; this authorizes them. */

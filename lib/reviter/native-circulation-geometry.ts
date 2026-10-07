@@ -1,4 +1,6 @@
+import { indoorExclusionParts } from "./indoor-exclusions.ts";
 import pc from "polygon-clipping";
+import {nativeBarrierTopology,NATIVE_BARRIER_TOPOLOGY_VERSION}from "./native-barrier-topology.ts";
 import { nativeWalkingRegion } from "./native-circulation-links.ts";
 import {
   routingFloorPlateRecords,
@@ -91,6 +93,7 @@ export function isNativeCirculationOwner(record: IndoorRecord): boolean {
 export function nativeCirculationGeometryKey(data: IndoorDataset): string {
   return JSON.stringify([
     data.source.modelSha256,
+    NATIVE_BARRIER_TOPOLOGY_VERSION,
     data.records.map((r) => [
       r.key,
       r.levelId,
@@ -200,12 +203,15 @@ export function prepareNativeCirculationGeometry(
     const thresholds = (data.doors ?? [])
       .filter((d) => levels.has(d.levelId) && d.footprintFeet)
       .map((d) => [d.footprintFeet!] as Rings);
+    const wallBarriers=new Set(region.wallBarriers??[]);
     const obstacles = [
-      ...region.barriers,
+      ...nativeBarrierTopology(region.wallBarriers??[]),
+      ...region.barriers.filter(barrier=>!wallBarriers.has(barrier)),
       ...region.masks,
       ...repairs,
       ...thresholds,
       ...protectedAreas,
+      ...indoorExclusionParts(data, z),
     ].map((r) => ({ rings: topology(r), box: bounds(r) }));
     const parts: Rings[] = [];
     for (const rawFloor of region.floors) {

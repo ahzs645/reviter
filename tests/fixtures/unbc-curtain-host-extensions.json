@@ -1,0 +1,218 @@
+{
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "elementBounds": [
+    {
+      "elementId": 1501178,
+      "stream": "Partitions/325",
+      "chunkIndex": 2392,
+      "rawOffset": 47038781,
+      "recordOffset": 110963,
+      "boundsOffset": 90,
+      "recordCode": 30,
+      "recordCount": 8,
+      "boundsFeet": {
+        "min": {
+          "x": 239.17763639143533,
+          "y": 764.2063905966036,
+          "z": 3.2808398950131235
+        },
+        "max": {
+          "x": 247.1613943907879,
+          "y": 767.4872304916167,
+          "z": 13.779527559055119
+        }
+      },
+      "categoryId": -2000011,
+      "categoryName": "Walls",
+      "categorySource": "element-header",
+      "parameters": [
+        {
+          "parameterId": -1012829,
+          "name": "Base Extension Distance",
+          "enumName": "WALL_BOTTOM_EXTENSION_DIST_PARAM",
+          "value": 0
+        },
+        {
+          "parameterId": -1012828,
+          "name": "Top Extension Distance",
+          "enumName": "WALL_TOP_EXTENSION_DIST_PARAM",
+          "value": 0
+        },
+        {
+          "parameterId": -1001116,
+          "name": "cwallFakeEndParamn1",
+          "value": -0.22965879265091882
+        },
+        {
+          "parameterId": -1001111,
+          "name": "wallBaseOffsetComputed",
+          "value": 0
+        },
+        {
+          "parameterId": -1001109,
+          "name": "Top Offset",
+          "enumName": "WALL_TOP_OFFSET",
+          "value": -0.6561679790026247
+        },
+        {
+          "parameterId": -1001108,
+          "name": "Base Offset",
+          "enumName": "WALL_BASE_OFFSET",
+          "value": 0
+        },
+        {
+          "parameterId": -1001105,
+          "name": "Unconnected Height",
+          "enumName": "WALL_USER_HEIGHT_PARAM",
+          "value": 13.123359580052492
+        },
+        {
+          "parameterId": -1001101,
+          "name": "wallHeightParam",
+          "value": 10.498687664041995
+        }
+      ],
+      "solid": {
+        "elementId": 1501178,
+        "start": {
+          "x": 231.42353718473368,
+          "y": 765.8468105441102
+        },
+        "end": {
+          "x": 246.93173559813698,
+          "y": 765.8468105441102
+        },
+        "baseElevation": 3.2808398950131235,
+        "topElevation": 13.779527559055119,
+        "thickness": 3.280839895013173
+      },
+      "solids": [
+        {
+          "elementId": 1501178,
+          "start": {
+            "x": 231.42353718473368,
+            "y": 765.8468105441102
+          },
+          "end": {
+            "x": 246.93173559813698,
+            "y": 765.8468105441102
+          },
+          "baseElevation": 3.2808398950131235,
+          "topElevation": 13.779527559055119,
+          "thickness": 3.280839895013173
+        }
+      ],
+      "typeId": 605480,
+      "wallKind": "curtain"
+    },
+    {
+      "elementId": 1501196,
+      "stream": "Partitions/325",
+      "chunkIndex": 2393,
+      "rawOffset": 47054289,
+      "recordOffset": 36822,
+      "boundsOffset": 90,
+      "recordCode": 30,
+      "recordCount": 8,
+      "boundsFeet": {
+        "min": {
+          "x": 235.37833163458674,
+          "y": 772.6774270471032,
+          "z": 3.2808398950131235
+        },
+        "max": {
+          "x": 238.65917152959986,
+          "y": 775.7140286867863,
+          "z": 13.779527559055119
+        }
+      },
+      "categoryId": -2000011,
+      "categoryName": "Walls",
+      "categorySource": "element-header",
+      "parameters": [
+        {
+          "parameterId": -1012829,
+          "name": "Base Extension Distance",
+          "enumName": "WALL_BOTTOM_EXTENSION_DIST_PARAM",
+          "value": 0
+        },
+        {
+          "parameterId": -1012828,
+          "name": "Top Extension Distance",
+          "enumName": "WALL_TOP_EXTENSION_DIST_PARAM",
+          "value": 0
+        },
+        {
+          "parameterId": -1001116,
+          "name": "cwallFakeEndParamn1",
+          "value": 0
+        },
+        {
+          "parameterId": -1001115,
+          "name": "cwallFakeEndParamn0",
+          "value": 0
+        },
+        {
+          "parameterId": -1001111,
+          "name": "wallBaseOffsetComputed",
+          "value": 0
+        },
+        {
+          "parameterId": -1001109,
+          "name": "Top Offset",
+          "enumName": "WALL_TOP_OFFSET",
+          "value": -0.6561679790026247
+        },
+        {
+          "parameterId": -1001108,
+          "name": "Base Offset",
+          "enumName": "WALL_BASE_OFFSET",
+          "value": 0
+        },
+        {
+          "parameterId": -1001105,
+          "name": "Unconnected Height",
+          "enumName": "WALL_USER_HEIGHT_PARAM",
+          "value": 13.123359580052492
+        },
+        {
+          "parameterId": -1001101,
+          "name": "wallHeightParam",
+          "value": 10.498687664041995
+        }
+      ],
+      "solid": {
+        "elementId": 1501196,
+        "start": {
+          "x": 237.0187515820933,
+          "y": 778.7506303264694
+        },
+        "end": {
+          "x": 237.0187515820933,
+          "y": 772.6774270471032
+        },
+        "baseElevation": 3.2808398950131235,
+        "topElevation": 13.779527559055119,
+        "thickness": 3.2808398950131163
+      },
+      "solids": [
+        {
+          "elementId": 1501196,
+          "start": {
+            "x": 237.0187515820933,
+            "y": 778.7506303264694
+          },
+          "end": {
+            "x": 237.0187515820933,
+            "y": 772.6774270471032
+          },
+          "baseElevation": 3.2808398950131235,
+          "topElevation": 13.779527559055119,
+          "thickness": 3.2808398950131163
+        }
+      ],
+      "typeId": 605480,
+      "wallKind": "curtain"
+    }
+  ]
+}

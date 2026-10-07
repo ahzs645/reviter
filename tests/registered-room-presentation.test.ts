@@ -9,7 +9,7 @@ const setup=()=>{
  const annotations:DirectoryRoom[]=[0,10].map((x,i)=>({key:`room${i}`,number:`Office${i}`,name:'Office',levelId:1,confidence:1,polygonFeet:rect(x+.4,.4,x+9.6,9.6),labelPointFeet:[x+5,5],dwg:{sha256:'survey',sectionId:'sheet'}}));
  const walls:IndoorDataset['walls']=[rect(-1,-1,21,0),rect(-1,10,21,11),rect(-1,0,0,10),rect(20,0,21,10)].map((r,i)=>({kind:'wall',levelId:1,nativeElementId:i+1,ringsFeet:[r]}));
  const records:IndoorRecord[]=annotations.map(a=>({key:a.key,number:a.number!,name:'Office',building:'A',levelId:1,elevationFeet:0,elevationEvidence:'native',surfaceId:'1',circulation:false,stair:false,access:'public',walkable:true,confidence:1,ringsFeet:[a.polygonFeet],properties:{}}));
- const dataset={source:{modelSha256:"a".repeat(64)},records,walls,doors:[]}as unknown as IndoorDataset;
+ const dataset={source:{modelSha256:"a".repeat(64)},nativeLevels:[{id:1,name:'Fixture floor',elevationFeet:0}],records,walls,doors:[]}as unknown as IndoorDataset;
  const reference:BoundaryReference={format:'reviter-boundary-reference',version:1,coordinateSystem:'revit-model-feet',sourceSha256:'survey',sections:[{sectionId:'sheet',levelId:1,registrationErrorFeet:0,wallSegments:[...edges(rect(0,0,20,10)),[[10,0],[10,10]]],doorSegments:[]}]};
  const geometry:ArchitecturalPlanGeometry={cutElevation:4,walls:[],columns:[],doors:[],floors:[[rect(0,0,20,10)]]};
  return{dataset,annotations,reference,geometry,keys:new Set(annotations.map(a=>a.key))};
@@ -19,6 +19,19 @@ test('registered source partitions resolve distinct labels for display while pre
  assert.equal(result.rooms.length,2);assert.equal(result.diagnostics.length,0);assert.equal(JSON.stringify(s),before);
  assert.match(result.rooms[0]!.boundaryEvidence,/visual evidence only/);assert.equal(result.rooms[0]!.sourceProof.sourceSha256,'survey');assert.ok(result.rooms.every(r=>r.boundaryElementIds.length>=2));
  assert.ok(!containsRoomPoint(s.annotations[1]!.labelPointFeet,result.rooms[0]!.ringsFeet[0]!));
+});
+test('precise native faces close a missing drawing edge without changing existing cells or accepting approximate walls',()=>{
+ const s=setup();
+ s.reference.sections[0]!.wallSegments=s.reference.sections[0]!.wallSegments.filter((_,i)=>i!==1);
+ s.geometry.walls=[{elementId:4,polygon:rect(20,0,21,10),approximate:false}];
+ const before=JSON.stringify(s),result=recoverRegisteredRoomInteriors(s.dataset,s.annotations,s.reference,new Map([[1,s.geometry]]),s.keys);
+ assert.equal(result.rooms.length,2);assert.equal(JSON.stringify(s),before);
+ assert.match(result.rooms.find(r=>r.roomKey==='room1')!.boundaryEvidence,/Precise native wall\/column faces/);
+ assert.doesNotMatch(result.rooms.find(r=>r.roomKey==='room0')!.boundaryEvidence,/Precise native wall\/column faces/);
+ const approximate={...s.geometry,walls:s.geometry.walls.map(w=>({...w,approximate:true}))};
+ assert.equal(recoverRegisteredRoomInteriors(s.dataset,s.annotations,s.reference,new Map([[1,approximate]]),s.keys).rooms.filter(r=>r.roomKey==='room1').length,0);
+ const contested=[...s.annotations,{...s.annotations[1]!,key:'third',labelPointFeet:[16,5] as RoomPoint}];
+ assert.equal(recoverRegisteredRoomInteriors(s.dataset,contested,s.reference,new Map([[1,s.geometry]]),s.keys).rooms.filter(r=>r.roomKey==='room1').length,0);
 });
 test('stale registrations, conflicting labels, absent floors and unsupported outer floor edges cannot manufacture room blocks',()=>{
  const s=setup();assert.equal(recoverRegisteredRoomInteriors(s.dataset,s.annotations,{...s.reference,sourceSha256:'stale'},new Map([[1,s.geometry]]),s.keys).rooms.length,0);
