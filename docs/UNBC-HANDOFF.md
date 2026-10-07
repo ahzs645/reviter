@@ -27,6 +27,8 @@ Original canonical location on the old machine: `/Users/ahmadjalil/Downloads/UNB
 
 Extract `UNBC-handoff-20261007.zip` to a data directory. `handoff-current.json` uses paths relative to that directory. `metadata/` preserves the original absolute-path metadata as provenance; it does not designate paths on the new machine. `SHA256SUMS.json` records every payload file. Git push transfers code only; this local ZIP transfers the models, reviews and caches.
 
+Clone both GitHub repositories, or use `git clone -b main /path/to/repositories/openindoormaps.bundle` and the equivalent Reviter bundle. Verify extracted data with `python3 verify-local-handoff.py /path/to/extracted-handoff`. Import the nested master/CAD ZIPs, **not the outer handoff ZIP**.
+
 Use Node **22.13 or later** for both repositories, then run `npm ci` in each. Start each with `npm run dev`; use the printed local URL. For the static apps, use `npm run build:pages` and a local static server / the repository's preview command. OpenIndoorMaps imports `native/UNBC.master.reviter.zip` via **Import project ZIP**. Reviter's CAD review imports `cad/reviter-cad-stair-approaches-20261007-v5/UNBC.cad-geometry.zip`. Keep these separate until placement and merge are reviewed.
 
 For CAD Python tooling, create a fresh virtual environment and install `reviter/tools/dwg-analysis/requirements.txt` (ezdxf, shapely, numpy). No machine-local virtual environment is portable. The CAD ZIP preserves original drawing and derived input files. Extract it into a new folder before running CLI analysis:
