@@ -65,6 +65,7 @@ import {
 } from "./studio/format.ts";
 import { BrowserDock } from "./studio/BrowserDock.tsx";
 import { EmptyState } from "./studio/EmptyState.tsx";
+import { DwgWorkspace } from "./studio/DwgWorkspace.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
@@ -302,6 +303,8 @@ export default function ReviterStudio() {
   const [rightOpen, setRightOpen] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
   const [workspace, setWorkspace] = useState<StudioWorkspace>("model");
+  const [drawingFiles, setDrawingFiles] = useState<File[]>([]);
+  const [drawingSession, setDrawingSession] = useState(0);
   const [browserTab, setBrowserTab] = useState<BrowserTab>("objects");
   const [reportTab, setReportTab] = useState<ReportTab>("summary");
   const [browserSearch, setBrowserSearch] = useState("");
@@ -497,6 +500,7 @@ export default function ReviterStudio() {
     }
 
     const requestId = beginConversionAttempt();
+    setDrawingFiles([]);
     fileSelectionAttempt.current++;
     setDirectoryImport(roomFile ? {file: roomFile, sequence: ++directoryImportSequence.current} : null);
     setDirectoryModel(null); setDirectoryRoomRequest(null);
@@ -688,6 +692,7 @@ export default function ReviterStudio() {
   }, [beginConversionAttempt, rememberFile, retireReferencePairing, rvtClient]);
 
   const closeModel = useCallback(() => {
+    setDrawingFiles([]);
     recentOpenAttemptRef.current += 1;
     recentOpenInProgressRef.current = false;
     beginConversionAttempt();
@@ -1787,6 +1792,16 @@ export default function ReviterStudio() {
   const processSelectedFiles = async (selected: readonly File[]) => {
     const attempt = ++fileSelectionAttempt.current;
     try {
+      if (selected.some(f => /\.dwg$/i.test(f.name))) {
+        if (!selected.every(f => /\.dwg$/i.test(f.name))) {
+          throw new Error("Open DWG drawings by themselves, separately from models and project data.");
+        }
+        if (selected.some(f => !f.size)) throw new Error("The selected drawing is empty.");
+        closeModel();
+        setDrawingFiles([...selected]);
+        setDrawingSession(value => value + 1);
+        return;
+      }
       if (selected.some(f => /\.zip$/i.test(f.name))) {
         if (selected.length !== 1) throw new Error("Open a project ZIP by itself; it already contains its model and floor data.");
         const archive = selected[0]!;
@@ -1920,7 +1935,7 @@ export default function ReviterStudio() {
         tabIndex={-1}
         aria-hidden="true"
         type="file"
-        accept=".rvt,.rfa,.rte,.rft,.json,.zip"
+        accept=".rvt,.rfa,.rte,.rft,.json,.zip,.dwg"
         multiple
         onChange={(event) => {
           const selected = Array.from(event.target.files ?? []);
@@ -2042,6 +2057,17 @@ export default function ReviterStudio() {
     onArmComment: armCommentTool,
   };
 
+  if (drawingFiles.length) return (
+    <main className="studio" onDragOver={event => event.preventDefault()} onDrop={event => {
+      event.preventDefault();
+      if (event.dataTransfer.files.length) void processSelectedFiles(Array.from(event.dataTransfer.files));
+    }}>
+      {fileInputs}
+      <DwgWorkspace key={drawingSession} files={drawingFiles} onOpen={openPicker} onClose={closeModel}
+        onTheme={toggleTheme} themeIcon={<ThemeIcons size={15} />} error={error} />
+    </main>
+  );
+
   return (
     <main
       className="studio"
@@ -2052,7 +2078,7 @@ export default function ReviterStudio() {
         const selected = Array.from(event.dataTransfer.files);
         const dropped = selected[0];
         if (!dropped) return;
-        if (selected.length > 1 || /\.(json|rvt|rfa|rte|rft)$/i.test(dropped.name)) void processSelectedFiles(selected);
+        if (selected.length > 1 || /\.(json|zip|dwg|rvt|rfa|rte|rft)$/i.test(dropped.name)) void processSelectedFiles(selected);
         else if (/\.ifc$/i.test(dropped.name)) void processIfcFile(dropped);
         else if (/\.(glb|gltf)$/i.test(dropped.name)) {
           if (result) pairReferenceModel(dropped);

@@ -20,6 +20,7 @@ import type { DwgBounds, DwgEntity } from "./dwg-plan.ts";
 import { dwgLayoutSheets } from "./dwg-layouts.ts";
 import type { DwgLayoutRecord, DwgViewportRecord } from "./dwg-layouts.ts";
 import type { WorkerEnvelope } from "./worker-client.ts";
+import { dwgExistingBlocks, dwgRepeatedShapes, type DwgInspectionGroup } from "./dwg-inspection.ts";
 
 const context = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -48,6 +49,8 @@ export type DwgWorkerSheet = {
 };
 
 export type DwgWorkerResult = {
+  bounds: DwgBounds;
+  inspection: DwgInspectionGroup[];
   svg: string;
   entityCount: number;
   droppedCount: number;
@@ -79,6 +82,7 @@ const DWG_STAGES = [
   "Building the plan",
   "Reading the sheets",
   "Drawing the plan",
+  "Finding blocks and repeated shapes",
 ] as const;
 
 type DwgStage = (typeof DWG_STAGES)[number];
@@ -193,6 +197,12 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
     }
     const drawn = entitiesWithin(entities, bounds);
     const svg = dwgSectionSvg(drawn, bounds);
+    progress("Finding blocks and repeated shapes");
+    const ownerHandle = modelSpaceHandle(database);
+    const inspection = [
+      ...dwgExistingBlocks(database, ownerHandle),
+      ...dwgRepeatedShapes(convertDwgEntities(raw.filter(record => (record as { type?: unknown }).type !== "INSERT"), { ownerHandle })),
+    ];
 
     const insunits = typeof database.header?.INSUNITS === "number"
       ? database.header.INSUNITS as number
@@ -201,6 +211,8 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
       id: request.id,
       type: "result",
       result: {
+        bounds,
+        inspection,
         svg,
         entityCount: drawn.length,
         droppedCount: raw.length - entities.length,

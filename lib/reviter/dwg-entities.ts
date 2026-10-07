@@ -304,10 +304,11 @@ function readDwgEntity(raw: RawEntity): DwgEntity | null {
     case "TEXT":
     case "MTEXT":
     case "ATTRIB": {
-      const centre = point(raw.startPoint ?? raw.insertionPoint ?? raw.position ?? raw.center);
-      const value = text(raw);
+      const content = raw.text && typeof raw.text === "object" ? raw.text as RawEntity : raw;
+      const centre = point(content.startPoint ?? content.insertionPoint ?? content.position ?? content.center);
+      const value = text(content);
       if (!centre || !value) return null;
-      return { ...base, centre, text: value, height: number(raw.height ?? raw.textHeight) };
+      return { ...base, centre, text: value, height: number(content.height ?? content.textHeight) };
     }
     default:
       // POINT, HATCH, VIEWPORT, DIMENSION and the rest are dropped rather than

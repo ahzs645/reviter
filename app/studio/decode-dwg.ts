@@ -16,10 +16,14 @@ import type {
 } from "../../lib/reviter/dwg-worker.ts";
 import { WorkerClient } from "../../lib/reviter/worker-client.ts";
 import { staticWorkerUrl } from "./reference-model.ts";
+import type { DwgInspectionGroup } from "../../lib/reviter/dwg-inspection.ts";
+import type { DwgBounds } from "../../lib/reviter/dwg-plan.ts";
 
 export type DecodedDwgSheet = DwgWorkerSheet;
 
 export type DecodedDwg = {
+  bounds: DwgBounds;
+  inspection: DwgInspectionGroup[];
   svg: string;
   entityCount: number;
   droppedCount: number;
@@ -34,8 +38,13 @@ export type DecodedDwg = {
 export function decodeDwg(
   bytes: ArrayBuffer,
   onProgress?: (stage: string) => void,
+  signal?: AbortSignal,
 ): Promise<DecodedDwg> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Drawing closed", "AbortError"));
+      return;
+    }
     // One client per decode, terminated on settle, so the worker's lifetime is
     // exactly this promise's. Nothing here is pooled or reused, and the shared
     // client charges nothing for the pooling this call site does not want.
@@ -50,10 +59,18 @@ export function decodeDwg(
       // rather than degrade, so a blocked worker is reported instead.
       deathMessage: "The CAD decoder worker could not start.",
     });
-    const settle = (finish: () => void) => { client.terminate(); finish(); };
+    const settle = (finish: () => void) => {
+      signal?.removeEventListener("abort", abort);
+      client.terminate();
+      finish();
+    };
+    const abort = () => settle(() => reject(new DOMException("Drawing closed", "AbortError")));
+    signal?.addEventListener("abort", abort, { once: true });
     client.send({ type: "dwg", bytes }, {
       onProgress: (progress) => onProgress?.(progress.message),
       onResult: (result) => settle(() => resolve({
+        bounds: result.bounds,
+        inspection: result.inspection,
         svg: result.svg,
         entityCount: result.entityCount,
         droppedCount: result.droppedCount,
