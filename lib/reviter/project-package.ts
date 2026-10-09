@@ -6,6 +6,7 @@ import {
 } from "./prepared-display-cache-container.ts";
 import {validateNativeProvisionalCornerSeals,verifyNativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
 import {nativeIndoorEnvelopeAuthored} from "./native-indoor-envelope-supplement.ts";
+import {validateNativeMaterialSectionSupplement} from "./native-material-section-supplement.ts";
 import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
 import { hydrateRoomNativeMaterials } from "./native-material-wire.ts";
 import {validateNativeSourceStairMaterials} from "./native-source-stair-material.ts";
@@ -86,6 +87,8 @@ async function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoo
   validateNativeMaterialSections(rooms.nativeMaterialSections, indoor.source.modelSha256);
   validateNativeMaterialSections(indoor.nativeMaterialSections, indoor.source.modelSha256);
   if (JSON.stringify(rooms.nativeMaterialSections) !== JSON.stringify(indoor.nativeMaterialSections)) throw new Error("Source and prepared original native materials do not match.");
+  // Derived (compiler-only) supplement: bound to the unchanged original checksum.
+  validateNativeMaterialSectionSupplement(indoor.nativeMaterialSectionSupplement, indoor.nativeMaterialSections, indoor.source.modelSha256);
   validateNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, indoor.source.modelSha256);
   validateNativeIndoorEnvelopes(indoor.nativeIndoorEnvelopes, indoor.source.modelSha256);
   // The prepared envelope may carry a derived supplement (appended parts + records); its authored

@@ -147,6 +147,8 @@ export type IndoorDataset = {
   nativeDerivedFrameReturns?: import("./native-derived-frame-returns.ts").NativeDerivedFrameReturns;
   nativeProvisionalCornerSeals?: import("./native-provisional-corner-seals").NativeProvisionalCornerSeals;
   nativeMaterialSections?: import("./native-material-sections.ts").NativeMaterialSections;
+  /** Derived production-cutter sections of owners the prepared rows omit (compiler-only, re-derived). */
+  nativeMaterialSectionSupplement?: import("./native-material-section-supplement.ts").NativeMaterialSectionSupplement;
   nativeIndoorEnvelopes?: import("./native-indoor-envelopes.ts").NativeIndoorEnvelopes;
   nativeDisplayScopes?: import("./native-display-scopes.ts").NativeDisplayScopes;
   doorAperturePatchState?: { regenerated: boolean; sourceGeometryKey: string };

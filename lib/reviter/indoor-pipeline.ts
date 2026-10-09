@@ -29,6 +29,8 @@ import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-s
 import { attachNativeCirculation,createNativeWalkingRegionQuery,supportedWalkingPath } from "./native-circulation-links.ts";
 import { prepareReviewedIndoorRamps } from "./indoor-ramps.ts";
 import { resolveGeneratedLandingDoorLinks } from "./reviewed-landing-door-links.ts";
+import { deriveNativeMaterialSectionSupplement } from "./native-material-section-supplement-derive.ts";
+import { nativeMaterialSectionsWithSupplement, validateNativeMaterialSectionSupplement } from "./native-material-section-supplement.ts";
 import { prepareNativeRampDisplay } from "./native-ramp-display.ts";
 import { recoverIndoorOpeningSpan } from "./indoor-opening-spans.ts";
 import { prepareNativeRoutingBoundaries } from "./indoor-native-prepass.ts";
@@ -166,6 +168,7 @@ export async function prepareIndoorDataset(
   }));
   const byRoom = new Map(sourceRooms.map((r) => [r.key, r])),
     byRecord = new Map(records.map((r) => [r.key, r]));
+  const issue_pending: [string, string][] = [];
   const dataset: IndoorDataset = {
     format: "reviter-indoor",
     version: 1,
@@ -235,6 +238,22 @@ export async function prepareIndoorDataset(
         ) ?? 0,
     },
   };
+  // Material census repair (derived, never authored): owners in the production cutter categories
+  // whose retained native mesh crosses a prepared cut but which have no section row there get the
+  // unchanged production cutter's sections, tagged with provenance, in a separate descriptor bound to
+  // the original checksum. Original rows stay byte-identical; material readers merge it.
+  if (dataset.nativeMaterialSections) {
+    const derived = deriveNativeMaterialSectionSupplement(model, dataset.nativeMaterialSections);
+    if (derived.supplement) {
+      validateNativeMaterialSectionSupplement(derived.supplement, dataset.nativeMaterialSections, modelSha256);
+      dataset.nativeMaterialSectionSupplement = derived.supplement;
+      const added = derived.supplement.levels.reduce((n, l) => n + l.sections.length, 0);
+      const census = derived.supplement.levels.reduce((n, l) => n + l.sections.filter(s => s.provenance.reason === "census-omission").length, 0);
+      issue_pending.push(["native-material-section-supplement", `${added} original native owner section(s) at prepared cuts were missing from the prepared material rows (${census} census omissions) and were added from the unchanged production mesh cutter; original rows unchanged.`]);
+    }
+    const uncuttable = derived.audit.reduce((n, a) => n + a.uncuttableOwnerIds.length, 0);
+    if (uncuttable) issue_pending.push(["native-material-section-audit", `${uncuttable} owner/cut pair(s) cross a prepared cut without a section and have no closed production cut; they stay absent.`]);
+  }
   if (dataset.nativeIndoorEnvelopes) {
     dataset.nativePhysicalLevels = prepareNativePhysicalLevels(model,dataset);
     for(const alias of dataset.nativePhysicalLevels.displayAliases) {
@@ -265,6 +284,7 @@ export async function prepareIndoorDataset(
       levelId,
     });
   };
+  for (const [code, message] of issue_pending) issue(code, message);
   if (data.georeference.points.length < 3)
     issue(
       "alignment-check",
@@ -360,7 +380,7 @@ export async function prepareIndoorDataset(
     const supplemented = await supplementNativeIndoorEnvelopes({
       envelopes: dataset.nativeIndoorEnvelopes,
       model: modelSha256,
-      materialSections: dataset.nativeMaterialSections as never,
+      materialSections: nativeMaterialSectionsWithSupplement(dataset.nativeMaterialSections, dataset.nativeMaterialSectionSupplement) as never,
       walkingSupportFloors: dataset.walkingSupport.floors.map(f => ({ elevationFeet: f.elevationFeet, partsFeet: f.partsFeet ?? [f.ringsFeet] })),
       doors: envelopeDoors,
       provisionalRows: dataset.nativeProvisionalCornerSeals?.rows as never,

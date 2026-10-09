@@ -1,8 +1,8 @@
-import { nativePositiveMaterialBandPartsAt } from "./native-positive-material-bands";
+import { nativePositiveMaterialBandPartsAt } from "./native-positive-material-bands.ts";
 import {
   createNativeProvisionalCornerSealIndex,
   type NativeProvisionalCornerSeals,
-} from "./native-provisional-corner-seals";
+} from "./native-provisional-corner-seals.ts";
 import {
   createNativeDerivedFrameReturnIndex,
   type NativeDerivedFrameReturns,
@@ -11,6 +11,11 @@ import {
   createNativeMaterialSectionIndex,
   type NativeMaterialSections,
 } from "./native-material-sections.ts";
+import {
+  nativeMaterialSectionSupplementAt,
+  validateNativeMaterialSectionSupplement,
+  type NativeMaterialSectionSupplement,
+} from "./native-material-section-supplement.ts";
 import pc from "polygon-clipping";
 type Point = [number, number];
 type Data = {
@@ -26,6 +31,7 @@ type Data = {
     typeof createNativeDerivedFrameReturnIndex
   >[0]["walkingSupport"];
   nativeMaterialSections?: NativeMaterialSections;
+  nativeMaterialSectionSupplement?: NativeMaterialSectionSupplement;
   nativeWallPositionRepairs?: {
     sourceModelSha256: string;
     walls: {
@@ -50,6 +56,7 @@ export function createNativeRoutingMaterialQuery(data: Data) {
       data.nativeMaterialSections,
       data.source.modelSha256,
     ),
+    supplement = data.nativeMaterialSectionSupplement,
     cache = new Map<
       string,
       {
@@ -65,6 +72,9 @@ export function createNativeRoutingMaterialQuery(data: Data) {
         derivedParts?: Point[][][];
       }
     >();
+  // Derived production-cutter sections of owners the prepared rows omitted; bound to the
+  // original checksum, appended after original rows, never replacing an original owner.
+  validateNativeMaterialSectionSupplement(supplement, data.nativeMaterialSections, data.source.modelSha256);
   const repairs = new Map(
     data.nativeWallPositionRepairs?.sourceModelSha256 ===
     data.source.modelSha256
@@ -77,11 +87,18 @@ export function createNativeRoutingMaterialQuery(data: Data) {
     if (previous) return previous;
     const rows = index.at(z, cut),
       sections = [
-        ...new Map(
-          rows
-            .flatMap((row) => row.sections)
-            .map((section) => [section.nativeElementId, section]),
-        ).values(),
+        ...(() => {
+          const byOwner = new Map(
+            rows
+              .flatMap((row) => row.sections)
+              .map((section) => [section.nativeElementId, section] as const),
+          );
+          for (const row of rows)
+            for (const added of nativeMaterialSectionSupplementAt(supplement, row))
+              if (!byOwner.has(added.nativeElementId))
+                byOwner.set(added.nativeElementId, added as unknown as (typeof row.sections)[number]);
+          return byOwner;
+        })().values(),
       ];
     const parts: {
       nativeElementId: number;
@@ -124,7 +141,10 @@ export function createNativeRoutingMaterialQuery(data: Data) {
       }));
     });
     const value = {
-      known: new Set(rows.flatMap((row) => row.sourceElementIds)),
+      known: new Set([
+        ...rows.flatMap((row) => row.sourceElementIds),
+        ...rows.flatMap((row) => nativeMaterialSectionSupplementAt(supplement, row).map((s) => s.nativeElementId)),
+      ]),
       present: new Set(sections.map((s) => s.nativeElementId)),
       parts: [...parts, ...positiveParts],
       ...(derived || provisional.rows.length
