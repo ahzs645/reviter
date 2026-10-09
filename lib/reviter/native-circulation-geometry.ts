@@ -734,6 +734,67 @@ type DoorApproachContext = {
     }
   >;
 };
+/** A connected, enabled physical portal side may terminate the exact native
+ * cell that physically contains its ORIGINAL point even when majority
+ * metadata association placed its owner in no cell (or another cell). The
+ * portal keeps its identity and coordinates; the owner must be a walkable,
+ * non-staff record on this elevation; its own door edge must be an enabled
+ * connected two-owner physical door. Ownership is never inferred from
+ * proximity: containment is tested against the cell's pure exact face, before
+ * any threshold-half extension. Generic: no venue identifiers. */
+const foreignPortalDoors = new WeakMap<
+  DoorApproachContext,
+  Map<string, { edge: IndoorDataset["edges"][number]; door: NonNullable<IndoorDataset["doors"]>[number] }>
+>();
+function nativeForeignPortalTerminal(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  node: IndoorDataset["nodes"][number] | undefined,
+): boolean {
+  if (!data.nativeIndoorEnvelopes || !node || node.kind !== "portal") return false;
+  if (cell.roomKeys.includes(node.roomKey)) return false;
+  if (Math.abs(node.pointFeet[2] - cell.elevationFeet) > 0.05) return false;
+  const owner = context.records.get(node.roomKey);
+  if (!owner || !owner.walkable || owner.access === "staff" || Math.abs(owner.elevationFeet - cell.elevationFeet) > 0.05) return false;
+  // Cheap broad phase on the cell's IEEE rings (padded for a threshold half)
+  // before any exact predicate; the exact tests below remain authoritative.
+  const x = node.pointFeet[0]!, y = node.pointFeet[1]!;
+  const ring = cell.ringsFeet[0] ?? [];
+  if (!ring.length || x < Math.min(...ring.map((p) => p[0])) - 2 || x > Math.max(...ring.map((p) => p[0])) + 2 ||
+      y < Math.min(...ring.map((p) => p[1])) - 2 || y > Math.max(...ring.map((p) => p[1])) + 2) return false;
+  const pure = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
+  if (!pure) return false;
+  let portals = foreignPortalDoors.get(context);
+  if (!portals) {
+    portals = new Map();
+    const doors = new Map((data.doors ?? []).map((d) => [d.id, d]));
+    for (const e of context.edges.values()) {
+      if (e.kind !== "door" || !e.enabled) continue;
+      const d = doors.get(e.id);
+      if (d && d.nativeElementId === e.nativeElementId)
+        for (const id of [e.from, e.to]) portals.set(id, { edge: e, door: d });
+    }
+    foreignPortalDoors.set(context, portals);
+  }
+  const found = portals.get(node.id), own = found?.edge, door = found?.door;
+  if (!own || !door || door.state !== "connected" || !door.hostWallNativeElementId ||
+      own.roomKeys.length !== 2 || !door.roomKeys.includes(node.roomKey) ||
+      own.roomKeys.some((k) => !door.roomKeys.includes(k)) || context.floorBlockedDoors.has(door.id)) return false;
+  if (nativeRationalPointInParts(node.pointFeet, pure)) return true;
+  // A portal point normally lies on its own threshold half, outside the face
+  // that excludes the doorway footprint. Candidacy then requires that exact
+  // own half to join the pure face as ONE part containing the original point;
+  // the guarded floor/envelope/mask extension below remains the authority.
+  const footprint = nativeDoorClearOpening(data, door, cell.elevationFeet) ?? door.footprintFeet;
+  if (!footprint || !door.normalFeet) return false;
+  try {
+    const joined = nativeRationalOverlay("union", pure, nativeRationalThresholdHalf(footprint, door.normalFeet, node.pointFeet));
+    return joined.length === 1 && nativeRationalPointInParts(node.pointFeet, joined);
+  } catch {
+    return false;
+  }
+}
 function nativeDoorLevelParts(
   data: IndoorDataset,
   context: DoorApproachContext,
@@ -807,6 +868,12 @@ function nativeCellDoorApproach(
   const candidateDoors = new Set(
     cell.roomKeys.flatMap((k) => context.doors.get(k) ?? []),
   );
+  for (const door of data.doors ?? []) {
+    if (candidateDoors.has(door)) continue;
+    const edge = context.edges.get(door.id);
+    if (edge && [edge.from, edge.to].some((id) => nativeForeignPortalTerminal(data, context, cell, context.nodes.get(id))))
+      candidateDoors.add(door);
+  }
   for (const door of candidateDoors) {
     const edge = context.edges.get(door.id),
       footprint =
@@ -858,7 +925,8 @@ function nativeCellDoorApproach(
       if (permittedNodeIds && !permittedNodeIds.has(node!.id)) continue;
       const owner = context.records.get(node!.roomKey);
       if (
-        !cell.roomKeys.includes(node!.roomKey) ||
+        (!cell.roomKeys.includes(node!.roomKey) &&
+          !nativeForeignPortalTerminal(data, context, cell, node)) ||
         !owner ||
         !owner.walkable ||
         owner.access === "staff"
@@ -961,7 +1029,8 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
     const selected = data.nodes.filter(
       (n) =>
         (cell.roomKeys.includes(n.roomKey) ||
-          cell.connectorAnchors?.some((a) => a.nodeId === n.id)) &&
+          cell.connectorAnchors?.some((a) => a.nodeId === n.id) ||
+          nativeForeignPortalTerminal(data, context, cell, n)) &&
         Math.abs(n.pointFeet[2] - cell.elevationFeet) < 0.05 &&
         n.kind !== "junction" &&
         (data.nativeIndoorEnvelopes
@@ -1139,7 +1208,14 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         from: branch.from,
         to: branch.to,
         kind: "walk",
-        roomKeys: cell.roomKeys,
+        // Whole-cell owners always remain; an admitted foreign portal adds its
+        // own owner so that owner's access rules also apply to the branch.
+        roomKeys: [...new Set([
+          ...cell.roomKeys,
+          ...[fromNode, toNode]
+            .filter((n) => !cell.roomKeys.includes(n.roomKey) && nativeForeignPortalTerminal(data, context, cell, n))
+            .map((n) => n.roomKey),
+        ])].sort(),
         pointsFeet: points.map((p) => [p[0], p[1], cell.elevationFeet]),
         lengthMetres: points
           .slice(1)
