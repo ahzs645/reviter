@@ -487,6 +487,18 @@ async function sourceEnvelopes(data: IndoorDataset, parts = [[rect(1, 1, 19, 9)]
     levels: [{levelId:1,elevationFeet:0,partsFeet:parts,sourceElementIds:[100],cutElevationsFeet:[4,8],evidenceSha256:"b".repeat(64)}] };
   data.nativeIndoorEnvelopes = {...source,geometrySha256:await nativeIndoorEnvelopeHash(source)};
 }
+test("strict free faces retain original finite edge coordinates and rebuild exact boundary approaches", async () => {
+  const {model,data}=setup(), edge=19.1234564;
+  await sourceEnvelopes(data, [[rect(1,1,edge,9)]]);
+  data.nodes=[{id:'a',roomKey:'hall',kind:'arrival',levelId:1,pointFeet:[3,5,0]},{id:'b',roomKey:'hall',kind:'connector',levelId:1,pointFeet:[edge,5,0]}] as IndoorDataset['nodes'];
+  data.walkingSupport={version:1,sourceModelSha256:data.source.modelSha256,floors:[{nativeElementId:100,elevationFeet:0,ringsFeet:[rect(0,0,20,10)]}]} as IndoorDataset['walkingSupport'];
+  data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+  assert.equal(Math.max(...data.circulationGeometry.cells[0]!.ringsFeet[0]!.map(p=>p[0])),edge);
+  const originalNodes=JSON.stringify(data.nodes);
+  assert.ok(attachNativeCirculationCellRoutes(data)>0);
+  assert.equal(JSON.stringify(data.nodes),originalNodes);
+  assert.ok(data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes('b')));
+});
 test("source-certified indoor faces use traces only for identity and discard old contour holes", async () => {
   const {model,data}=setup();
   data.records[0]!.circulation=false;
@@ -507,6 +519,10 @@ test("ambiguous restricted ownership vetoes its whole native face instead of cut
   await sourceEnvelopes(data);
   data.records.push({...owner("private",rect(3,3,5,5)),circulation:false,access:"staff"});
   assert.equal(prepareNativeCirculationGeometry(model,data).geometry.cells.length,0);
+  data.records.at(-1)!.ringsFeet=[rect(3,3,3.125,3.125)];
+  assert.equal(prepareNativeCirculationGeometry(model,data).geometry.cells.length,0,"every positive wholly contained restricted identity survives exact majority attribution");
+  data.records.at(-1)!.access="public";data.records.at(-1)!.walkable=false;
+  assert.equal(prepareNativeCirculationGeometry(model,data).geometry.cells.length,0,"positive nonwalkable source identities remain unavailable");
 });
 test("strict native regeneration removes unsupported old walks while retaining physical portals", async () => {
   const {model,data}=setup();
@@ -546,6 +562,9 @@ test("strict native branches reach owned door halves and preserve the central po
  assert.ok(data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("left-portal")));
  assert.ok(data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("right-portal")));
  assert.ok(!data.edges.some(e=>e.nativeCellId&&[e.from,e.to].includes("left-portal")&&[e.from,e.to].includes("right-portal")));
+ const {nativeCirculationWalkBlockers}=await import('../../openindoormaps/app/indoor-project/native-circulation.ts');
+ const {createImmutableRoutingSession}=await import('../../openindoormaps/app/indoor-project/routing-cache.ts');
+ assert.equal(createImmutableRoutingSession(data as never)(()=>nativeCirculationWalkBlockers(data as never)).size,0,'every compiler branch obeys the same terminal-owned doorway halves as runtime');
  data.edges.find(e=>e.id==='door')!.enabled=false;assert.equal(attachNativeCirculationCellRoutes(data),0);
 });
 
@@ -555,4 +574,17 @@ test("a tiny restricted trace fringe does not act as a physical wall across a na
  const cells=prepareNativeCirculationGeometry(model,data).geometry.cells;
  assert.equal(cells.length,1);assert.ok(!cells[0]!.roomKeys.includes("private"));
  assert.ok(inside([18.95,5],cells[0]!.ringsFeet));
+});
+
+test('strict overhead fixture classification follows certified native slab planes independently of old upper room contours',async()=>{
+ const {model,data}=setup();
+ model.elementBounds.push({elementId:140,categoryId:-2000032,boundsFeet:{min:{x:2,y:2,z:2.5},max:{x:12,y:5,z:3}},loops:[rect(2,2,12,5).map(p=>[p[0],p[1],3])]} as never);
+ const {nativeIndoorEnvelopeHash}=await import('../lib/reviter/native-indoor-envelopes.ts');
+ const source={version:1 as const,sourceModelSha256:data.source.modelSha256,levels:[{levelId:1,elevationFeet:0,partsFeet:[[rect(0,0,20,10)]],sourceElementIds:[100],cutElevationsFeet:[4,8],evidenceSha256:'b'.repeat(64)},{levelId:2,elevationFeet:3,partsFeet:[[rect(2,2,12,5)]],sourceElementIds:[140],cutElevationsFeet:[7,11],evidenceSha256:'b'.repeat(64)}]};
+ data.nativeIndoorEnvelopes={...source,geometrySha256:await nativeIndoorEnvelopeHash(source)};
+ assert.ok(!prepareNativeCirculationGeometry(model,data).geometry.fixtures?.some(f=>f.nativeElementId===140&&f.elevationFeet===0));
+ data.records.push({...data.records[0]!,key:'upper',elevationFeet:3,ringsFeet:[rect(80,80,90,90)]});
+ assert.ok(!prepareNativeCirculationGeometry(model,data).geometry.fixtures?.some(f=>f.nativeElementId===140&&f.elevationFeet===0),'moving registered upper metadata cannot manufacture a lower fixture');
+ data.nativeIndoorEnvelopes.levels=data.nativeIndoorEnvelopes.levels.filter(l=>l.elevationFeet===0);
+ assert.ok(prepareNativeCirculationGeometry(model,data).geometry.fixtures?.some(f=>f.nativeElementId===140&&f.elevationFeet===0),'an unproved raised slab remains conservatively obstructive');
 });

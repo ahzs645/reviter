@@ -53,7 +53,10 @@ export function prepareNativeRampDisplay(
       !!existing?.edgeId ||
       rooms.some((r) => r.circulation && r.walkable && r.access !== "staff");
     if (existing) {
-      existing.trianglesFeet = trianglesFeet;
+      // A reviewed route certificate names original owner triangle indices.
+      // Visual wall clipping must never replace/reorder that source inventory.
+      if (existing.edgeId) existing.displayTrianglesFeet = trianglesFeet;
+      else existing.trianglesFeet = trianglesFeet;
       existing.buildings = buildings;
       existing.circulation = circulation;
       continue;

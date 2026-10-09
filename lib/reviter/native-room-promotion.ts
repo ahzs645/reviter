@@ -1,4 +1,5 @@
 import pc from "polygon-clipping";
+import {nativeMaterialPlanWalls} from "./native-material-plan.ts";
 import { recoverNativeRoomInteriors } from "./native-room-presentation.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import type { RoomDirectoryData } from "./room-directory.ts";
@@ -24,7 +25,8 @@ export function promoteNativeRoomInteriors(dataset: IndoorDataset, source: RoomD
   if (dataset.presentation?.sourceModelSha256 !== dataset.source.modelSha256) throw new Error("Native presentation source digest is stale; recover boundaries before promotion.");
   const records = new Map(dataset.records.map(r => [r.key, r]));
   const annotations = new Map(data.annotations.map(r => [r.key, r]));
-  const walls=dataset.walls.map(w=>({wall:w,box:bounds(w.ringsFeet)}));
+  const analyticalWalls=dataset.nativeMaterialSections?dataset.nativeLevels.flatMap(level=>nativeMaterialPlanWalls(dataset,level.id,source.reviewedDoorApertures)):dataset.walls;
+  const walls=analyticalWalls.map(w=>({wall:w,box:bounds(w.ringsFeet)}));
   const protectedAreas=dataset.nativeIndoorEnvelopes ? [] : dataset.records.filter(r=>r.circulation||isVoid(r)).map(r=>({record:r,box:bounds(r.ringsFeet)}));
   let independentlyRecovered: ReturnType<typeof recoverNativeRoomInteriors> | undefined;
   const accepted: { roomKey: string; rings: Rings; evidence: NonNullable<IndoorDataset["presentation"]>["rooms"][number] }[] = [];
@@ -42,11 +44,11 @@ export function promoteNativeRoomInteriors(dataset: IndoorDataset, source: RoomD
         // A saved string/coverage number is not authority to enlarge a room.
         // Recompute the complete native enclosure/sole-label/source-claim proof
         // before admitting an inset contour whose cell coverage is small.
-        independentlyRecovered ??= recoverNativeRoomInteriors(dataset.records,dataset.walls,dataset.doors??[],new Map(data.annotations.map(r=>[r.key,r.labelPointFeet])));
+        independentlyRecovered ??= recoverNativeRoomInteriors(dataset.records,analyticalWalls,dataset.doors??[],new Map(data.annotations.map(r=>[r.key,r.labelPointFeet])));
         const native=independentlyRecovered.rooms.find(r=>r.roomKey===record.key);
         if(!native || native.sourceCoverage<.95 || JSON.stringify(native.ringsFeet)!==JSON.stringify(boundary.interiorRingsFeet)) {fail("unproved-contained-source-cell","Low source-cell coverage requires a recomputed unique native enclosure and uncontested label identity.");continue;}
       }
-      const holes = [...(!dataset.nativeIndoorEnvelopes ? record.ringsFeet.slice(1) : []),...annotation.floorOpeningsFeet ?? []].map(r => [r] as Rings);
+      const holes = (dataset.nativeIndoorEnvelopes ? [] : [...record.ringsFeet.slice(1),...annotation.floorOpeningsFeet ?? []]).map(r => [r] as Rings);
       const clipped = holes.length ? pc.difference(rings,...holes) as Rings[] : [rings];
       if (clipped.length !== 1) { fail("opening-splits-room", "Preserving source apertures splits the native enclosure into disconnected interiors."); continue; }
       rings = clipped[0]!.map(cleanRoomBoundary);

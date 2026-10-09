@@ -3,7 +3,7 @@ import {certifyNativeRampCrossfall,nativeRampTrackHeight,nativeRampTrackJoint,ty
 import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset, IndoorNode, IndoorRecord } from "./indoor-contract.ts";
 import { containsRoomPoint, type RoomPoint } from "./room-directory.ts";
-import { nativeWalkingRegion, supportedWalkingPath } from "./native-circulation-links.ts";
+import { createNativeRampWalkingRegionQuery, nativeWalkingRegion, supportedWalkingPath } from "./native-circulation-links.ts";
 type Point3=[number,number,number];
 type RampRecipe={id:string;nativeRampId:number;floorElementIds:[number,number];evidence:string;accessible:'yes'|'no'|'unknown';pointsFeet:Point3[];trianglesFeet:Point3[][];notes?:string;surfaceWidthCertificate?:NativeRampCrossfallCertificate};
 export type IndoorRampRecipes={version:1;sourceModelSha256:string;ramps:RampRecipe[]};
@@ -20,11 +20,14 @@ export function nativeRampTriangles(model:ConvertResult,id:number):Point3[][] {
  * microscopic modelling joint; only an owner-tagged same-height face and its
  * specifically named slab may justify a seam up to 0.02 ft (6.1 mm). */
 export function rampLandingPoint(model:ConvertResult,r: RampRecipe,i:number):Point3|undefined {
+ return rampLandingPointFromTriangles(model,r,i,nativeRampTriangles(model,r.nativeRampId));
+}
+function rampLandingPointFromTriangles(model:ConvertResult,r:RampRecipe,i:number,triangles:Point3[][]):Point3|undefined {
  const p=i?r.pointsFeet.at(-1)!:r.pointsFeet[0]!,f=model.elementBounds.find(x=>x.elementId===r.floorElementIds[i]);
  if(!f||f.categoryId!==-2000032||Math.abs(f.boundsFeet.max.z-p[2])>.002||!f.loops?.[0])return;
  const inside=(q:Point3)=>containsRoomPoint([q[0],q[1]],f.loops![0]!.map(v=>[v[0],v[1]]))&&!f.loops!.slice(1).some(h=>containsRoomPoint([q[0],q[1]],h.map(v=>[v[0],v[1]])));
  if(inside(p))return p;
- if(!nativeRampTriangles(model,r.nativeRampId).some(t=>{const z=triangleSurfaceHeight(p,t);return z!==undefined&&Math.abs(z-p[2])<.002;}))return;
+ if(!triangles.some(t=>{const z=triangleSurfaceHeight(p,t);return z!==undefined&&Math.abs(z-p[2])<.002;}))return;
  let nearest:{p:Point3;d:number}|undefined;
  const ring=f.loops[0];for(let j=0;j<ring.length;j++){const a=ring[j]!,b=ring[(j+1)%ring.length]!,dx=b[0]-a[0],dy=b[1]-a[1],len2=dx*dx+dy*dy;if(len2<1e-12)continue;const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/len2)),q:Point3=[a[0]+t*dx,a[1]+t*dy,p[2]],d=Math.hypot(q[0]-p[0],q[1]-p[1]);if(!nearest||d<nearest.d)nearest={p:q,d};}
  if(!nearest||nearest.d>.02||nearest.d<1e-10)return;
@@ -56,7 +59,10 @@ function floorIntervals(a:Point3,b:Point3,f:ConvertResult['elementBounds'][numbe
 /** Analytic segment coverage catches sub-sample holes. Only a named slab-to-
  * owner-ramp modelling seam may bridge up to6.1mm; floor holes never qualify. */
 export function rampWalkingSupport(model:ConvertResult,r:RampRecipe,points:readonly Point3[]=r.pointsFeet):{supported:boolean;maximumNativeJointFeet:number} {
- const triangles=nativeRampTriangles(model,r.nativeRampId),floors=r.floorElementIds.map(id=>model.elementBounds.find(f=>f.elementId===id)).filter((f):f is ConvertResult['elementBounds'][number]=>!!f);let maximumNativeJointFeet=0;
+ return rampWalkingSupportFromTriangles(model,r,points,nativeRampTriangles(model,r.nativeRampId));
+}
+function rampWalkingSupportFromTriangles(model:ConvertResult,r:RampRecipe,points:readonly Point3[],triangles:Point3[][]):{supported:boolean;maximumNativeJointFeet:number} {
+ const floors=r.floorElementIds.map(id=>model.elementBounds.find(f=>f.elementId===id)).filter((f):f is ConvertResult['elementBounds'][number]=>!!f);let maximumNativeJointFeet=0;
  for(let i=1;i<points.length;i++){const a=points[i-1]!,b=points[i]!,length=Math.hypot(...b.map((v,k)=>v-a[k]!));if(length<1e-10)continue;const xy=Math.hypot(b[0]-a[0],b[1]-a[1]),nx=xy?-(b[1]-a[1])/xy:0,ny=xy?(b[0]-a[0])/xy:0;
  for(const offset of[-.5,0,.5]){const p:Point3=[a[0]+nx*offset,a[1]+ny*offset,a[2]],q:Point3=[b[0]+nx*offset,b[1]+ny*offset,b[2]],intervals=[...triangles.flatMap(t=>{const x=triangleInterval(p,q,t);return x?[x]:[];}),...floors.flatMap(f=>floorIntervals(p,q,f))].sort((a,b)=>a.start-b.start||b.end-a.end);let end=0,last:'floor'|'ramp'|undefined;
  for(const interval of intervals){if(interval.end<end)continue;const gap=Math.max(0,interval.start-end)*length;if(gap>1e-7){if(last==null||last===interval.kind||gap>.02||Math.abs(q[2]-p[2])*(interval.start-end)>.002)return {supported:false,maximumNativeJointFeet};maximumNativeJointFeet=Math.max(maximumNativeJointFeet,gap);}if(interval.end>end){end=interval.end;last=interval.kind;}}
@@ -64,28 +70,43 @@ export function rampWalkingSupport(model:ConvertResult,r:RampRecipe,points:reado
  }}return {supported:true,maximumNativeJointFeet};
 }
 export function validateRampRecipe(model:ConvertResult,dataset:IndoorDataset,r: RampRecipe):string|undefined {
+ return validateRampRecipeFromTriangles(model,dataset,r,Number.isSafeInteger(r?.nativeRampId)?nativeRampTriangles(model,r.nativeRampId):[]);
+}
+function validateRampRecipeFromTriangles(model:ConvertResult,dataset:IndoorDataset,r:RampRecipe,actual:Point3[][]):string|undefined {
  if(!r||typeof r.id!=='string'||!r.id||!Number.isSafeInteger(r.nativeRampId)||!Array.isArray(r.floorElementIds)||r.floorElementIds.length!==2||!Array.isArray(r.pointsFeet)||r.pointsFeet.length<2||r.pointsFeet.length>1000||r.pointsFeet.some(p=>!Array.isArray(p)||p.length!==3||!p.every(Number.isFinite))||!['yes','no','unknown'].includes(r.accessible))return 'Malformed ramp recipe.';
  const native=model.elementBounds.find(x=>x.elementId===r.nativeRampId);if(native?.categoryId!==-2000180)return 'Source element is not a native ramp.';
- const actual=nativeRampTriangles(model,r.nativeRampId);if(!actual.length||!Array.isArray(r.trianglesFeet)||!r.trianglesFeet.length)return 'Ramp has no certified native walking faces.';
+ if(!actual.length||!Array.isArray(r.trianglesFeet)||!r.trianglesFeet.length)return 'Ramp has no certified native walking faces.';
  const same=(a:Point3[],b:Point3[])=>a.length===3&&a.every(p=>b.some(q=>p.every((v,k)=>Math.abs(v-q[k]!)<.002)));
  if(r.trianglesFeet.some(t=>!Array.isArray(t)||t.length!==3||t.some(p=>!Array.isArray(p)||p.length!==3||!p.every(Number.isFinite)))||r.trianglesFeet.some(t=>!actual.some(a=>same(t,a)))||actual.some(t=>!r.trianglesFeet.some(a=>same(t,a))))return 'Saved ramp faces do not match owner-tagged native geometry.';
  const floors=r.floorElementIds.map(id=>model.elementBounds.find(x=>x.elementId===id));
  const contained=(p:Point3,f:NonNullable<typeof floors[number]>)=>f.categoryId===-2000032&&Math.abs(p[2]-f.boundsFeet.max.z)<.05&&!!f.loops?.[0]&&containsRoomPoint([p[0],p[1]],f.loops[0].map(q=>[q[0],q[1]]))&&!f.loops.slice(1).some(h=>containsRoomPoint([p[0],p[1]],h.map(q=>[q[0],q[1]])));
- if(floors.some((f,i)=>!f||!rampLandingPoint(model,r,i)))return 'Ramp endpoint lacks its exact native landing floor.';
- const registered=[rampLandingPoint(model,r,0)!,...r.pointsFeet,rampLandingPoint(model,r,1)!];
- if(!r.surfaceWidthCertificate&&!rampWalkingSupport(model,r,registered).supported)return 'Ramp path leaves its continuously proved native surfaces or exceeds the bounded native endpoint seam.';
+ const ends=[rampLandingPointFromTriangles(model,r,0,actual),rampLandingPointFromTriangles(model,r,1,actual)];
+ if(floors.some((f,i)=>!f||!ends[i]))return 'Ramp endpoint lacks its exact native landing floor.';
+ const registered=[ends[0]!,...r.pointsFeet,ends[1]!];
+ if(!r.surfaceWidthCertificate&&!rampWalkingSupportFromTriangles(model,r,registered,actual).supported)return 'Ramp path leaves its continuously proved native surfaces or exceeds the bounded native endpoint seam.';
  const certificate=r.surfaceWidthCertificate;
  if(certificate){if(JSON.stringify(registered[0])!==JSON.stringify(r.pointsFeet[0])||JSON.stringify(registered.at(-1))!==JSON.stringify(r.pointsFeet.at(-1)))return 'Curved ramp caps must already lie inside their exact original landing slabs.';const actualCertificate=certifyNativeRampCrossfall(actual,floors.filter((f):f is NonNullable<typeof f>=>!!f),r.pointsFeet);if(!actualCertificate||JSON.stringify(certificate)!==JSON.stringify(actualCertificate))return 'Curved ramp width certificate does not match original continuous native surface profiles.';}
  const treads=model.elementBounds.flatMap(r=>r.stairTreads??[]);
+ // Reuse immutable source enclosure/material bindings across exact height queries.
+ const regionQuery=createNativeRampWalkingRegionQuery(model,dataset);
  for(let i=1;i<r.pointsFeet.length;i++){const a=r.pointsFeet[i-1]!,b=r.pointsFeet[i]!,n=Math.max(1,Math.ceil(Math.hypot(...b.map((v,k)=>v-a[k]!))/.1));if(n>20000)return 'Ramp segment is too long.';
- for(let j=0;j<=n;j++){const p=a.map((v,k)=>v+(b[k]!-v)*j/n) as Point3;const centerRegion=certificate?undefined:nativeWalkingRegion(model,dataset,p[2],true);
+ for(let j=0;j<=n;j++){const p=a.map((v,k)=>v+(b[k]!-v)*j/n) as Point3;const centerRegion=certificate?undefined:regionQuery(p[2],true);
  // Native triangles are checked across both sides as well as the centre. A
  // surviving centre line does not justify cutting a corner outside the ramp.
  const dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy),nx=length?-dy/length:0,ny=length?dx/length:0;
- for(const offset of[-.5,0,.5]){const measuredHeight=certificate?nativeRampTrackHeight(certificate,i-1,offset,j/n):p[2];if(measuredHeight===undefined)return 'Curved ramp track lacks exact native height support.';const q:Point3=[p[0]+nx*offset,p[1]+ny*offset,measuredHeight],region=centerRegion??nativeWalkingRegion(model,dataset,q[2],true);if(!(certificate&&nativeRampTrackJoint(certificate,i-1,offset,j/n))&&!floors.some(f=>f&&contained(q,f))&&!actual.some(t=>{const z=triangleSurfaceHeight(q,t);return z!==undefined&&Math.abs(z-q[2])<.002;}))return 'Ramp path leaves its continuous native walking surfaces.';
+ for(const offset of[-.5,0,.5]){const measuredHeight=certificate?nativeRampTrackHeight(certificate,i-1,offset,j/n):p[2];if(measuredHeight===undefined)return 'Curved ramp track lacks exact native height support.';const q:Point3=[p[0]+nx*offset,p[1]+ny*offset,measuredHeight],region=centerRegion??regionQuery(q[2],true);if(!(certificate&&nativeRampTrackJoint(certificate,i-1,offset,j/n))&&!floors.some(f=>f&&contained(q,f))&&!actual.some(t=>{const z=triangleSurfaceHeight(q,t);return z!==undefined&&Math.abs(z-q[2])<.002;}))return 'Ramp path leaves its continuous native walking surfaces.';
  if(region.barriers.some(poly=>containsRoomPoint([q[0],q[1]],poly[0]!))||region.masks.some(poly=>containsRoomPoint([q[0],q[1]],poly[0]!)&&!poly.slice(1).some(h=>containsRoomPoint([q[0],q[1]],h))))return 'Ramp path intersects native barriers, stair treads or protected source areas.';
  if(treads.some(t=>containsRoomPoint([q[0],q[1]],t.map(v=>[v[0],v[1]]))&&t.some(v=>v[2]>q[2]+.05&&v[2]<q[2]+6)))return 'Ramp path crosses native stair treads.';
  }}}
+}
+/** Bind the certificate to the exact serialized source floor representation.
+ * Original-model geometry is independently checked before this export step;
+ * no tolerant receipt comparison or display-clipped face can authorise a route. */
+export function certifyExportedNativeRampCrossfall(dataset:IndoorDataset,triangles:Point3[][],floorIds:readonly number[],points:readonly Point3[]):NativeRampCrossfallCertificate|undefined {
+ const support=dataset.walkingSupport;
+ if(support?.sourceModelSha256!==dataset.source.modelSha256||floorIds.some(id=>!support.floors.some(f=>f.nativeElementId===id)))return;
+ const floors=floorIds.flatMap(id=>support.floors.filter(f=>f.nativeElementId===id)).map(f=>({elementId:f.nativeElementId,categoryId:-2000032,boundsFeet:{max:{z:f.elevationFeet}},loops:f.ringsFeet.map(r=>r.map(p=>[p[0],p[1],f.elevationFeet] as Point3))}));
+ return certifyNativeRampCrossfall(triangles,floors,points);
 }
 /** Rebuild ramps from immutable model/recipe evidence, before generic native
  * landing attachment. Accessibility comes from the existing specific review;
@@ -98,10 +119,14 @@ export function prepareReviewedIndoorRamps(model:ConvertResult,dataset:IndoorDat
  if(data.version!==1||data.sourceModelSha256!==dataset.source.modelSha256||!Array.isArray(data.ramps)||data.ramps.length>1000){reject('source','Saved ramp source identity or version does not match.');return restoredReviews;}
  dataset.rampDisplay={version:1,sourceModelSha256:dataset.source.modelSha256,ramps:[]};
  const identifiers=new Set<string>();
- for(const r of data.ramps){if(identifiers.has(r?.id)){reject(r.id,'Duplicate ramp identifier.');continue;}if(r?.id)identifiers.add(r.id);const problem=validateRampRecipe(model,dataset,r);if(problem){reject(r?.id??'unknown',problem);continue;}
- const ends=[rampLandingPoint(model,r,0)!,rampLandingPoint(model,r,1)!];
+ for(const r of data.ramps){if(identifiers.has(r?.id)){reject(r.id,'Duplicate ramp identifier.');continue;}if(r?.id)identifiers.add(r.id);
+ // One immutable original-owner mesh extraction for this recipe. No model-wide
+ // cache survives source edits or is accepted from authoring metadata.
+ const actual=Number.isSafeInteger(r?.nativeRampId)?nativeRampTriangles(model,r.nativeRampId):[];
+ const problem=validateRampRecipeFromTriangles(model,dataset,r,actual);if(problem){reject(r?.id??'unknown',problem);continue;}
+ const ends=[rampLandingPointFromTriangles(model,r,0,actual)!,rampLandingPointFromTriangles(model,r,1,actual)!];
  const compiledPath=[ends[0]!,...r.pointsFeet,ends[1]!].filter((p,i,all)=>!i||Math.hypot(...p.map((v,k)=>v-all[i-1]![k]!))>1e-8);
- const widthCertificate=certifyNativeRampCrossfall(nativeRampTriangles(model,r.nativeRampId),r.floorElementIds.map(id=>model.elementBounds.find(f=>f.elementId===id)!),compiledPath);
+ const widthCertificate=certifyExportedNativeRampCrossfall(dataset,actual,r.floorElementIds,compiledPath)??(!dataset.nativeIndoorEnvelopes?certifyNativeRampCrossfall(actual,r.floorElementIds.map(id=>model.elementBounds.find(f=>f.elementId===id)!),compiledPath):undefined);
  if(dataset.nativeIndoorEnvelopes&&!widthCertificate){reject(r.id,'Strict native ramp lacks continuously certified original lateral surface profiles.');continue;}
  const seamFeet=Math.hypot(...ends[0]!.map((v,k)=>v-r.pointsFeet[0]![k]!));
  if(seamFeet>1e-8)dataset.issues.push({id:`ramp-native-seam:${r.id}`,code:"ramp-native-seam",severity:"info",nativeElementId:r.nativeRampId,message:`Native ramp/floor endpoint registered across a ${Math.max(0,seamFeet-.01).toFixed(6)} ft source joint, bounded to 0.02 ft and paired same-height owner-tagged faces. The walking approach node is on the exact slab; the source recipe remains unchanged.`});
@@ -121,7 +146,7 @@ export function prepareReviewedIndoorRamps(model:ConvertResult,dataset:IndoorDat
  if(endpointNodes.some(n=>!n)){reject(r.id,'Ramp has no native floor-level endpoint identity.');continue;}
  const [lower,upper]=endpointNodes as [IndoorNode,IndoorNode];
  dataset.edges.push({id:r.id,from:lower.id,to:upper.id,kind:'ramp',pointsFeet:compiledPath,lengthMetres:compiledPath.slice(1).reduce((s,p,i)=>s+Math.hypot(...p.map((v,k)=>v-compiledPath[i]![k]!))*.3048,0),roomKeys:[lower.roomKey,upper.roomKey],nativeElementId:r.nativeRampId,evidence:'source-bound reviewed ramp + owner-tagged native BRep and continuously checked walking surfaces',accessible:r.accessible,enabled:true,notes:r.notes,...(widthCertificate?{nativeRampSurface:{version:1 as const,sourceModelSha256:dataset.source.modelSha256,nativeRampId:r.nativeRampId,nativeFloorElementIds:r.floorElementIds,pointsFeet:compiledPath,widthCertificate}}:{})});
- dataset.rampDisplay.ramps.push({edgeId:r.id,nativeElementId:r.nativeRampId,levelIds:[lower.levelId,upper.levelId],anchorPointFeet:r.pointsFeet[Math.floor(r.pointsFeet.length/2)]!,trianglesFeet:nativeRampTriangles(model,r.nativeRampId)});
+ dataset.rampDisplay.ramps.push({edgeId:r.id,nativeElementId:r.nativeRampId,levelIds:[lower.levelId,upper.levelId],anchorPointFeet:r.pointsFeet[Math.floor(r.pointsFeet.length/2)]!,trianglesFeet:actual});
  // Earlier versions stored reviewed ramp approaches in geometry-bound edge
  // reviews. Those exact source recipes are authoritative, not a fresh generic
  // accessibility inference. Recompute the complete native walking proof.

@@ -1,6 +1,7 @@
 import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { nativeOverlayBrowserBuildPlugin } from "./native-overlay-browser-build.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const outputDirectory = resolve(projectRoot, "dist-pages");
@@ -18,9 +19,11 @@ const buildVersion = process.env.REVITER_PARSER_VERSION?.trim()
   || packageJson.version;
 const shared = {
   bundle: true,
+  plugins: [nativeOverlayBrowserBuildPlugin(base)],
   conditions: ["style"],
   define: {
     "process.env.NODE_ENV": '"production"',
+    "globalThis.process": "undefined",
     __REVITER_PAGES_BUILD_VERSION__: JSON.stringify(buildVersion),
   },
   format: "esm",
@@ -93,6 +96,7 @@ await Promise.all([
 await Promise.all([
   cp(resolve(projectRoot, "lib/rvt-wasm/rvt_bg.wasm"), resolve(assetsDirectory, "rvt_bg.wasm")),
   cp(resolve(projectRoot, "node_modules/web-ifc/web-ifc.wasm"), resolve(assetsDirectory, "web-ifc.wasm")),
+  cp(resolve(projectRoot, "lib/reviter/vendor/native-exact-geos/native-exact-geos.wasm"), resolve(assetsDirectory, "native-exact-geos.wasm")),
 ]);
 
 const sourceHtml = await readFile(resolve(projectRoot, "github-pages/index.html"), "utf8");

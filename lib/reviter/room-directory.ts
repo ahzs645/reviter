@@ -1,8 +1,13 @@
+import {validateNativeProvisionalCornerSeals,type NativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
+import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns,type NativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
+import {validateNativeSourceStairMaterials, type NativeSourceStairMaterials} from "./native-source-stair-material.ts";
+import {validateNativeFloorOpeningOwnershipShape,type NativeFloorOpeningOwnership} from "./native-floor-opening-ownership.ts";
 import {validateNativeMaterialSections,type NativeMaterialSections} from "./native-material-sections.ts";
 import {validateNativeIndoorEnvelopes,type NativeIndoorEnvelopes} from "./native-indoor-envelopes.ts";
 import {validateNativeDisplayScopes, type NativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitions,type ReviewedAreaPartitions} from "./reviewed-area-partitions.ts";
 import {validateNativeDoorBoundaryClosures,type NativeDoorBoundaryClosures} from "./native-door-boundary-closures.ts";
+import {validateNativeSelectionContactRepairs,type NativeSelectionContactRepairs} from "./native-selection-contact-repairs.ts";
 import {validateNativeWallPositionRepairs,type NativeWallPositionRepairs} from "./native-wall-position-repairs.ts";
 import {validateReviewedDoorApertures,type ReviewedDoorApertures} from "./reviewed-door-apertures.ts";
 import {validateSelectionDoorThresholds,type SelectionDoorThresholds} from "./selection-door-thresholds.ts";
@@ -43,6 +48,7 @@ export type DirectoryRoom = {
   routePointFeet?: RoomPoint;
   /** Native slab openings exclude flat floor; recovered flight treads keep their own height. */
   floorOpeningsFeet?: RoomPoint[][];
+  nativeFloorOpeningOwnership?: NativeFloorOpeningOwnership;
   labelPointFeet: RoomPoint;
   confidence: number;
   status?: string;
@@ -66,13 +72,17 @@ export type RoomDirectoryData = {
   visitorMetadata?: VisitorMetadata;
   reviewedDoorApertures?: ReviewedDoorApertures;
   nativeDoorBoundaryClosures?: NativeDoorBoundaryClosures;
+  nativeSelectionContactRepairs?: NativeSelectionContactRepairs;
   nativeWallPositionRepairs?: NativeWallPositionRepairs;
   selectionDoorThresholds?: SelectionDoorThresholds;
   /** Logical outlining only: never physical walls, portals, access or raised blocks. */
   reviewedAreaPartitions?: ReviewedAreaPartitions;
   indoorExclusions?: IndoorExclusions;
   nativeDisplayScopes?: NativeDisplayScopes;
+  nativeProvisionalCornerSeals?: NativeProvisionalCornerSeals;
+  nativeDerivedFrameReturns?: NativeDerivedFrameReturns;
   nativeMaterialSections?: NativeMaterialSections;
+  nativeSourceStairMaterials?: NativeSourceStairMaterials;
   nativeIndoorEnvelopes?: NativeIndoorEnvelopes;
   nativeBoundaryPatches?: NativeBoundaryPatches;
   /** A reported restriction at an unassigned pin does not invent an area boundary. */
@@ -124,6 +134,8 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   }
   const groups = new Map<string, string>();
   for (const room of data.annotations) {
+    validateNativeFloorOpeningOwnershipShape(room.nativeFloorOpeningOwnership);
+    if(room.nativeFloorOpeningOwnership && room.walkability!=="void") throw new Error("Only an existing non-traversable void can own a native floor opening.");
     if (!room || typeof room.key !== "string" || !room.key || keys.has(room.key) || !Number.isSafeInteger(room.levelId)
       || !Array.isArray(room.polygonFeet) || room.polygonFeet.length < 3 || room.polygonFeet.length > 20_000
       || (room.walkability != null && !["walkable", "void"].includes(room.walkability))
@@ -189,9 +201,13 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   if(data.indoorConnectors !== undefined) validateIndoorConnectorReview(data.indoorConnectors);
   validateNativeDisplayScopes(data.nativeDisplayScopes);
   validateNativeMaterialSections(data.nativeMaterialSections);
+  validateNativeProvisionalCornerSeals(data.nativeProvisionalCornerSeals);
+  validateNativeDerivedFrameReturns(data.nativeDerivedFrameReturns);
+  validateNativeSourceStairMaterials(data.nativeSourceStairMaterials);
   validateNativeIndoorEnvelopes(data.nativeIndoorEnvelopes);
   validateIndoorExclusions(data.indoorExclusions);
   validateNativeDoorBoundaryClosures(data.nativeDoorBoundaryClosures);
+  validateNativeSelectionContactRepairs(data.nativeSelectionContactRepairs);
   if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);
   validateSelectionDoorThresholds(data.selectionDoorThresholds);
   validateReviewedAreaPartitions(data.reviewedAreaPartitions);

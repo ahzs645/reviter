@@ -35,3 +35,13 @@ test('geometry-bound reviewed ramp approaches survive regeneration while wrong-s
 });
 
 test('curved width certificates are recomputed from original faces and cannot grant unsupported or tampered support',()=>{const recipe=structuredClone(metadata.ramps[0]!);recipe.surfaceWidthCertificate=certifyNativeRampCrossfall(triangles,model.elementBounds.filter(r=>r.categoryId===-2000032),recipe.pointsFeet)!;assert.ok(recipe.surfaceWidthCertificate);assert.equal(validateRampRecipe(model,dataset(),recipe),undefined);recipe.surfaceWidthCertificate.maximumCrossfallRatio=.9;assert.match(validateRampRecipe(model,dataset(),recipe)!,/certificate does not match/);});
+
+test('final certificates use exact exported original floor profiles and reject missing source inventory',async()=>{
+ const {certifyExportedNativeRampCrossfall}=await import('../lib/reviter/indoor-ramps.ts');
+ const d=dataset();d.walkingSupport={version:1,sourceModelSha256:source,floors:model.elementBounds.filter(f=>f.categoryId===-2000032).map(f=>({nativeElementId:f.elementId,elevationFeet:f.boundsFeet.max.z,ringsFeet:f.loops!.map(r=>r.map(p=>[p[0],p[1]]))}))};
+ const actual=certifyExportedNativeRampCrossfall(d,triangles,[1,2],metadata.ramps[0]!.pointsFeet);
+ const serialized=JSON.parse(JSON.stringify(d));
+ assert.deepEqual(actual,certifyExportedNativeRampCrossfall(serialized,JSON.parse(JSON.stringify(triangles)),[1,2],JSON.parse(JSON.stringify(metadata.ramps[0]!.pointsFeet))));
+ assert.equal(certifyExportedNativeRampCrossfall(d,triangles,[1,99],metadata.ramps[0]!.pointsFeet),undefined);
+ d.walkingSupport.sourceModelSha256='b'.repeat(64);assert.equal(certifyExportedNativeRampCrossfall(d,triangles,[1,2],metadata.ramps[0]!.pointsFeet),undefined);
+});

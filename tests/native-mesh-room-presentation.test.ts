@@ -198,6 +198,32 @@ test("proxy shells, reconstructed owners, dangling and branched triangle cuts pr
   }
 });
 
+test("coincident owned extrusion sections are noded without losing holes or multipart material", () => {
+  const shell = (ring: [number, number][], top: number) => {
+    const positions: number[] = [], indices: number[] = [];
+    for (const z of [0, top]) for (const [x, y] of ring) positions.push(x, y, z);
+    for (let k = 0; k < ring.length; k++) {
+      const q = (k + 1) % ring.length, n = ring.length;
+      indices.push(k, q, q + n, k, q + n, k + n);
+    }
+    return { source: "native-brep", positions, indices, elementIds: indices.filter((_, i) => i % 3 === 0).map(() => 900) };
+  };
+  const outer = rectangle(0, 0, 4, 4), hole = rectangle(1, 1, 3, 3), detached = rectangle(8, 0, 9, 1);
+  const model = {
+    origin: { x: 0, y: 0, z: 0 },
+    elementBounds: [{ elementId: 900, categoryId: -2000100, renderGeometryProvenance: "native" }],
+    meshes: [shell(outer, 8), shell(outer, 12), shell(hole, 8), shell(hole, 12), shell(detached, 8)],
+  } as unknown as ConvertResult;
+  const cuts = nativeMeshBarrierCuts(model, 311, 4);
+  assert.equal(cuts.length, 2);
+  const main = cuts.find(c => c.ringsFeet.some(r => r.some(([x]) => x === 4)))!;
+  assert.equal(main.ringsFeet.length, 2, "actual nested opening is preserved");
+  assert.equal(cuts.filter(c => c.ringsFeet[0]!.some(([x]) => x >= 8)).length, 1);
+  // An actual dangling source face still cannot become certified by noding.
+  model.meshes.push({ source: "native-brep", positions: [0, 2, 0, 2, 2, 0, 2, 2, 8], indices: [0, 1, 2], elementIds: [900] } as unknown as MeshData);
+  assert.deepEqual(nativeMeshBarrierCuts(model, 311, 4), []);
+});
+
 test("actual UNBC native joins recover four unfinished rooms while the open office remains unclosed", async () => {
   const { readFile } = await import("node:fs/promises");
   const { recoverNativeMeshRoomInteriors } = await import(

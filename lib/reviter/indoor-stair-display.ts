@@ -1,3 +1,4 @@
+import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
 import {
   nativeStairRunTreads,
   nativeStairRunEndpoints,
@@ -57,11 +58,12 @@ export function stairFloorOccluders(
  * This is deliberately independent of route eligibility and room repair. */
 export function prepareIndoorStairDisplay(
   model: Pick<ConvertResult, "levels"> & Partial<ConvertResult>,
-  data: Pick<IndoorDataset, "source" | "records">,
+  data: Pick<IndoorDataset, "source" | "records" | "nativeSourceStairMaterials">,
   sourceRooms: readonly DirectoryRoom[] = [],
 ): NonNullable<IndoorDataset["stairDisplay"]> {
   const landingInventory = nativeStairLandings(model);
   const nativeTreads = nativeStairRunTreads(model);
+  const authoredTreads = nativeAuthoredStairTreads(data.nativeSourceStairMaterials?.authoredTreadRoles, data.source.modelSha256);
   const elements = new Map(model.elementBounds?.map((r) => [r.elementId, r]));
   const flights: NonNullable<IndoorDataset["stairDisplay"]>["flights"] = [];
   const sourceFlights: NonNullable<
@@ -113,7 +115,7 @@ export function prepareIndoorStairDisplay(
     const low = Math.min(...runs.map((r) => r!.boundsFeet.min.z));
     const high = Math.max(...runs.map((r) => r!.boundsFeet.max.z));
     let recovered = runs.some((r) => nativeTreads.has(r!.elementId));
-    const treads = runs
+    const historicalPreparedTreads = runs
       .flatMap((r) =>
         nativeTreads.has(r!.elementId)
           ? nativeTreads.get(r!.elementId)!
@@ -135,6 +137,8 @@ export function prepareIndoorStairDisplay(
               })(),
       )
       .filter((t) => roomArea(t.ringFeet) > 0.01);
+    const treads = runs.flatMap(r => authoredTreads.get(r!.elementId) ?? historicalPreparedTreads.filter(t => t.runElementId === r!.elementId));
+    const hasAuthoredTreads = runs.some(r => authoredTreads.has(r!.elementId));
     if (!treads.length) continue;
     // Source geometry remains visible even if a drawing outline misses a run.
     // Inventory membership grants no arrival, stair edge or served stop.
@@ -186,6 +190,7 @@ export function prepareIndoorStairDisplay(
         floorElevationFeet: bottom.elevation,
         sourceGeometry: recovered ? "native-brep" : "native-cache",
         treads,
+        ...(hasAuthoredTreads ? { authoredTreadRolesSha256: data.nativeSourceStairMaterials!.authoredTreadRoles!.geometrySha256, historicalPreparedTreads } : {}),
         runs: nativeStairRunEndpoints(model, treads),
         landings,
       });
@@ -254,6 +259,7 @@ export function prepareIndoorStairDisplay(
         stairElementId: assembly.stairElementId,
         ...(!r.stair ? { displayOnly: true as const } : {}),
         treads,
+        ...(hasAuthoredTreads ? { authoredTreadRolesSha256: data.nativeSourceStairMaterials!.authoredTreadRoles!.geometrySha256, historicalPreparedTreads } : {}),
         runs: nativeStairRunEndpoints(model, treads),
         landings,
       });

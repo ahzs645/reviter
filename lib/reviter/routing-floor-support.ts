@@ -1,4 +1,5 @@
 import type { ConvertResult, ElementBoundsRecord } from "./types.ts";
+import { strictNativeFloorPolygons } from "./strict-native-floor-polygons.ts";
 import {
   containsRoomPoint,
   roomArea,
@@ -9,7 +10,9 @@ import {
  * a list of holes. Containment depth distinguishes shells, voids and islands. */
 export function nativeFloorPolygons(
   record: Pick<ElementBoundsRecord, "loops">,
+  strict = false,
 ): RoomPoint[][][] {
+  if (strict) return strictNativeFloorPolygons(record);
   const rings = (record.loops ?? [])
     .filter((r) => r.length >= 3)
     .map((r) => r.map((p) => [p[0], p[1]] as RoomPoint));

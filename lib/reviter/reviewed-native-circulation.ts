@@ -38,12 +38,12 @@ export function recoverReviewedNativeCirculation(
     containsRoomPoint(seed.pointFeet, rs[0]!) &&
     !rs.slice(1).some((r) => containsRoomPoint(seed.pointFeet, r));
   const floors = routingFloorPlateRecords(model, level.elevationFeet);
-  if (!floors.some((f) => nativeFloorPolygons(f).some(inside)))
+  if (!floors.some((f) => nativeFloorPolygons(f, !!data.nativeIndoorEnvelopes).some(inside)))
     return {
       reason: "The pin has no flat native floor support at this elevation.",
     };
   const discovered = floors.flatMap((f) =>
-    nativeFloorPolygons(f).map((ringsFeet, i): IndoorRecord => ({
+    nativeFloorPolygons(f, !!data.nativeIndoorEnvelopes).map((ringsFeet, i): IndoorRecord => ({
       key: `discovery:${f.elementId}:${i}`,
       number: "",
       name: "Temporary native floor classification",

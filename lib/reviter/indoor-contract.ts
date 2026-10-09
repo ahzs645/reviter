@@ -1,3 +1,5 @@
+import type { NativeExactPlanarTopology } from "./native-exact-planar-topology";
+import type { NativeContainedCellDisplay } from "./native-contained-cell-display";
 /** Explicit reviewed footprints excluded from indoor selection and routing.
  * Source floors/model geometry remain intact; missing reasons mean outdoors. */
 export type IndoorExclusions = {
@@ -29,6 +31,8 @@ export type IndoorNode = {
   kind: "arrival" | "junction" | "portal" | "stair" | "connector";
 };
 export type IndoorEdge = {
+  /** Original source-owned physical stair flight; no named room is invented for intermediate landings. */
+  nativeSourceStair?: import("./native-source-stair-width").NativeSourceStairReceipt & {foreignMaterial: import("./native-source-stair-material").NativeSourceStairMaterial; walkingBody: import("./native-source-stair-body").NativeSourceStairBody};
   /** Source-bound ramp profile; rechecked independently by each route calculation. */
   nativeRampSurface?: {
     version: 1;
@@ -137,11 +141,18 @@ export type IndoorIssue = {
   levelId?: number;
 };
 export type IndoorDataset = {
+  /** Original physical planes and reversible display grouping; no access grant. */
+  nativeSourceStairMaterials?: import("./native-source-stair-material").NativeSourceStairMaterials;
+  nativePhysicalLevels?: import("./native-physical-levels.ts").NativePhysicalLevels;
+  nativeDerivedFrameReturns?: import("./native-derived-frame-returns.ts").NativeDerivedFrameReturns;
+  nativeProvisionalCornerSeals?: import("./native-provisional-corner-seals").NativeProvisionalCornerSeals;
   nativeMaterialSections?: import("./native-material-sections.ts").NativeMaterialSections;
   nativeIndoorEnvelopes?: import("./native-indoor-envelopes.ts").NativeIndoorEnvelopes;
   nativeDisplayScopes?: import("./native-display-scopes.ts").NativeDisplayScopes;
   doorAperturePatchState?: { regenerated: boolean; sourceGeometryKey: string };
   nativeDoorBoundaryClosures?: import("./native-door-boundary-closures.ts").NativeDoorBoundaryClosures;
+  /** Provisional selection-only native contacts; never physical or routing material. */
+  nativeSelectionContactRepairs?: import("./native-selection-contact-repairs.ts").NativeSelectionContactRepairs;
   nativeWallPositionRepairs?: import("./native-wall-position-repairs.ts").NativeWallPositionRepairs;
   selectionDoorThresholds?: import("./selection-door-thresholds.ts").SelectionDoorThresholds;
   /** Authoring selection barriers only; absent from physical routes/presentation. */
@@ -185,6 +196,10 @@ export type IndoorDataset = {
     version: 1;
     sourceModelSha256: string;
     sourceGeometryKey: string;
+    /** Exact rational authority; numeric rings are representation/search only. */
+    exactTopology?: NativeExactPlanarTopology;
+    /** Every positive omission from numeric drawing, separate from routing. */
+    displayResidualTopology?: NativeExactPlanarTopology;
     /** All source circulation identities assessed on supported native floors. */
     preparedRoomKeys?: string[];
     /** Unclassified source claims clipped to physical floor and obstacles. */
@@ -205,10 +220,14 @@ export type IndoorDataset = {
     }[];
     cells: {
       id: string;
+      exactFaceId?: string;
+      containedDisplay?: NativeContainedCellDisplay;
       levelIds: number[];
       elevationFeet: number;
       roomKeys: string[];
       nativeFloorIds: number[];
+      /** Unchanged enabled native connector identifies an otherwise unclaimed landing. */
+      connectorAnchors?: {edgeId:string;nodeId:string;roomKey:string;nativeElementId:number}[];
       ringsFeet: [number, number][][];
       /** Separate native shells with their own nested holes. */
       partsFeet?: [number, number][][][];
@@ -364,6 +383,9 @@ export type IndoorDataset = {
       buildings: string[];
       floorElevationFeet: number;
       sourceGeometry: "native-cache" | "native-brep";
+      authoredTreadRolesSha256?: string;
+      historicalPreparedTreads?: { runElementId: number; elevationFeet: number; thicknessFeet?: number; ringFeet: [number, number][] }[];
+      context?: "outdoor" | "tiered-seating";
       /** Owner-tagged native turning platforms; holes and elevation are retained. */
       landings?: {
         nativeElementId: number;
@@ -392,6 +414,8 @@ export type IndoorDataset = {
       sourceGeometryKey: string;
       stairElementId: number;
       displayOnly?: true;
+      authoredTreadRolesSha256?: string;
+      historicalPreparedTreads?: { runElementId: number; elevationFeet: number; thicknessFeet?: number; ringFeet: [number, number][] }[];
       /** Actual native solid slab faces near this flight. Holes remain openings. */
       floorOccluders?: {
         nativeElementId: number;
@@ -433,7 +457,10 @@ export type IndoorDataset = {
       nativeElementId: number;
       levelIds: number[];
       anchorPointFeet: [number, number, number];
+      /** Immutable original owner faces used by exact route certificates. */
       trianglesFeet: [number, number, number][][];
+      /** Display-only wall clipping; never a source walking inventory. */
+      displayTrianglesFeet?: [number, number, number][][];
       bodyTrianglesFeet?: [number, number, number][][];
       platforms?: {
         nativeElementId: number;

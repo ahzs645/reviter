@@ -1,0 +1,59 @@
+{
+  "engine": "native-local4ulp-geos-v1",
+  "geosVersion": "3.13.0",
+  "emscriptenVersion": "6.0.3",
+  "sourceArchiveUrl": "https://download.osgeo.org/geos/geos-3.13.0.tar.bz2",
+  "sourceArchiveSha256": "47ec83ff334d672b9e4426695f15da6e6368244214971fabf386ff8ef6df39e4",
+  "files": [
+    {
+      "path": "native-exact-geos.cpp",
+      "sha256": "9d92d35d00b5e995a5463bf95899b2988ad159f8a80a2c5354756868a6e9a1a5",
+      "bytes": 8216
+    },
+    {
+      "path": "SnappingPointIndex.cpp",
+      "sha256": "4acd8e6ab27b022114912a48673d411e0e353fa892c804dab02e39c202e1a5fd",
+      "bytes": 2210
+    },
+    {
+      "path": "SnappingIntersectionAdder.cpp",
+      "sha256": "50a23d85cc45c3b42a4cc9cd0de55c0cc3d8c72f1c7b05d648dc1fe6cba799aa",
+      "bytes": 5239
+    },
+    {
+      "path": "native-exact-geos.mjs",
+      "sha256": "e0c026609abfd711d659a4b3e7aaabe391b7765086c7311ede7ba06ce6a471d2",
+      "bytes": 23207
+    },
+    {
+      "path": "native-exact-geos.wasm",
+      "sha256": "2beb9e41b0d0efd6b9ab6dbb2dad62d96041f3fc1119c0360e855be10a63797a",
+      "bytes": 1068396
+    },
+    {
+      "path": "LICENSE-GEOS",
+      "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+      "bytes": 26530
+    },
+    {
+      "path": "build-native-exact-geos.sh",
+      "sha256": "d9f62884d269d3b3300617e966fece684a10bc3d9ac62675369207facbabb143",
+      "bytes": 1742
+    },
+    {
+      "path": "SnappingPointIndex.h",
+      "sha256": "f429c0219d284b36667b7eedbe952568e887f785564bf365d476d47303a5d1ab",
+      "bytes": 1555
+    }
+  ],
+  "generatedSegmentRenodingMaximumPasses": 8,
+  "renodingPolicy": "Same locally bounded noder; generated segment strings repeat only until exact final noding validation succeeds. No tolerance increase.",
+  "bootstrapAssetNameNormalization": {
+    "originalGeneratedBootstrapSha256": "268102231decf0ed5128498672b232770d3e561fb2aea4891ba14de3eea5a52e",
+    "originalGeneratedAssetName": "native-iterating-candidate.wasm",
+    "publishedAssetName": "native-exact-geos.wasm",
+    "changedOccurrences": 2,
+    "wasmBytesUnchanged": true,
+    "purpose": "Match the unchanged checked published WASM file and the documented reproducible build output basename; no numerical engine code changed."
+  }
+}

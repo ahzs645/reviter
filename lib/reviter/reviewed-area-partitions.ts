@@ -2,6 +2,13 @@ import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import type { RoomDirectoryData } from "./room-directory.ts";
 import { nativeBarrierTopology } from "./native-barrier-topology.ts";
+import { exactNativeSelectionOverlay } from "./native-selection-exact-overlay.ts";
+import { nativeMaterialPlanWalls } from "./native-material-plan.ts";
+import { preparedReviewedDoorApertures } from "./reviewed-door-apertures.ts";
+import {
+  NATIVE_EXACT_GEOS_BINDING,
+  nativeExactGeosOverlay,
+} from "./native-exact-geos-overlay.ts";
 
 type Point = [number, number];
 export const REVIEWED_PARTITION_WIDTH_FEET = 0.0002;
@@ -232,9 +239,11 @@ export async function reviewedAreaPartitionGeometrySha256(
     ),
     data.walls.filter((w) => w.levelId === levelId),
     data.doors?.filter((d) => d.levelId === levelId),
-    data.records
-      .filter((r) => r.levelId === levelId)
-      .map((r) => [r.key, r.properties.floorOpeningsFeet]),
+    data.nativeIndoorEnvelopes
+      ? []
+      : data.records
+          .filter((r) => r.levelId === levelId)
+          .map((r) => [r.key, r.properties.floorOpeningsFeet]),
     data.circulationGeometry?.fixtures?.filter((f) =>
       f.levelIds.includes(levelId),
     ),
@@ -243,6 +252,17 @@ export async function reviewedAreaPartitionGeometrySha256(
     ),
     data.nativeDoorBoundaryClosures,
     data.nativeWallPositionRepairs,
+    ...(data.nativeIndoorEnvelopes
+      ? [
+          "strict-native-area-partition-raw-material-v1",
+          NATIVE_EXACT_GEOS_BINDING,
+          data.nativeIndoorEnvelopes,
+          data.nativeMaterialSections,
+          data.nativeDerivedFrameReturns,
+          data.nativeProvisionalCornerSeals,
+          data.doorAperturePatchState,
+        ]
+      : []),
   ]);
   return Array.from(
     new Uint8Array(
@@ -262,8 +282,13 @@ const area = (parts: pc.MultiPolygon) =>
           ((i ? -1 : 1) *
             Math.abs(
               r.reduce((n, p, j) => {
-                const q = r[(j + 1) % r.length]!;
-                return n + p[0] * q[1] - q[0] * p[1];
+                const q = r[(j + 1) % r.length]!,
+                  origin = r[0]!;
+                return (
+                  n +
+                  (p[0] - origin[0]) * (q[1] - origin[1]) -
+                  (q[0] - origin[0]) * (p[1] - origin[1])
+                );
               }, 0),
             )) /
             2,
@@ -322,9 +347,43 @@ export function checkReviewedAreaPartition(
       : [];
   if (!floors.length)
     errors.push("No model-bound native floor supports this boundary.");
-  const walls = data.walls.filter(
-    (w) => w.levelId === p.levelId && !w.approximate,
-  );
+  const strictNative = !!data.nativeIndoorEnvelopes;
+  const overlay = (
+    kind: "union" | "difference" | "intersection",
+    subject: pc.MultiPolygon,
+    operands: pc.MultiPolygon[] = [],
+  ): pc.MultiPolygon => {
+    if (!strictNative)
+      return kind === "union"
+        ? pc.union(subject, ...operands)
+        : kind === "difference"
+          ? pc.difference(subject, ...operands)
+          : pc.intersection(subject, ...operands);
+    if (kind !== "union")
+      return exactNativeSelectionOverlay(kind, subject, operands);
+    try {
+      return pc.union(subject, ...operands);
+    } catch {
+      return nativeExactGeosOverlay("union", subject, operands);
+    }
+  };
+  const walls = (
+    strictNative
+      ? [
+          nativeMaterialPlanWalls(
+            data,
+            p.levelId,
+            preparedReviewedDoorApertures(data),
+          ),
+          nativeMaterialPlanWalls(
+            data,
+            p.levelId,
+            preparedReviewedDoorApertures(data),
+            0.1,
+          ),
+        ].flat()
+      : data.walls.filter((w) => w.levelId === p.levelId)
+  ).filter((w) => !w.approximate);
   const supports = walls.filter((w) =>
     p.evidence.nativeElementIds.includes(w.nativeElementId),
   );
@@ -369,19 +428,23 @@ export function checkReviewedAreaPartition(
   let footprintsFeet: Point[][] = [];
   try {
     const floorParts = floors.flatMap((f) => f.partsFeet ?? [f.ringsFeet]);
-    const originalContactFloors = nativeBarrierTopology(
-      floorParts,
-      1e10,
-      floorParts[0]?.[0]?.[0] ?? [0, 0],
-      1e-12,
-    );
+    // Strict review retains the original native floor vertices and holes.
+    // The historical rounded contact topology remains legacy-only.
+    const originalContactFloors = strictNative
+      ? floorParts
+      : nativeBarrierTopology(
+          floorParts,
+          1e10,
+          floorParts[0]?.[0]?.[0] ?? [0, 0],
+          1e-12,
+        );
     const floor = originalContactFloors.length
-      ? pc.union(originalContactFloors[0]!, ...originalContactFloors.slice(1))
+      ? overlay("union", originalContactFloors)
       : [];
     const holes = floorParts
       .flatMap((rs) => rs.slice(1))
       .concat(
-        data.records
+        (strictNative ? [] : data.records)
           .filter((r) => r.levelId === p.levelId)
           .flatMap((r) => (r.properties.floorOpeningsFeet ?? []) as Point[][]),
       );
@@ -395,18 +458,31 @@ export function checkReviewedAreaPartition(
       ) ?? [];
     for (const strip of strips) {
       const polygon = [strip];
-      if (area(pc.difference(polygon, floor)) > 1e-7)
+      if (area(overlay("difference", [polygon], [floor])) > 1e-7)
         errors.push("The boundary leaves supported native floor.");
-      if (holes.some((h) => area(pc.intersection(polygon, [h])) > 1e-12))
+      if (
+        holes.some(
+          (h) =>
+            area(overlay("intersection", [polygon], [[[h]]])) >
+            (strictNative ? 0 : 1e-12),
+        )
+      )
         errors.push("The boundary touches a protected floor or stair opening.");
-      if (exclusions.some((rs) => area(pc.intersection(polygon, rs)) > 1e-12))
+      if (
+        exclusions.some(
+          (rs) =>
+            area(overlay("intersection", [polygon], [[rs]])) >
+            (strictNative ? 0 : 1e-12),
+        )
+      )
         errors.push("The boundary touches an excluded footprint.");
       if (
         (data.doors ?? []).some(
           (d) =>
             d.levelId === p.levelId &&
             d.footprintFeet &&
-            area(pc.intersection(polygon, [d.footprintFeet])) > 1e-12,
+            area(overlay("intersection", [polygon], [[[d.footprintFeet]]])) >
+              1e-12,
         )
       )
         errors.push(
@@ -415,21 +491,25 @@ export function checkReviewedAreaPartition(
       if (
         fixtures.some(
           (f) =>
-            area(pc.intersection(polygon, f.ringsFeet)) > width * width * 2,
+            area(overlay("intersection", [polygon], [[f.ringsFeet]])) >
+            width * width * 2,
         )
       )
         errors.push("The boundary crosses a protected fixture.");
       if (
         walls.some(
           (w) =>
-            area(pc.intersection(polygon, w.ringsFeet)) > width * width * 2,
+            area(overlay("intersection", [polygon], [[w.ringsFeet]])) >
+            width * width * 2,
         )
       )
         errors.push(
           "The boundary crosses a physical wall or column instead of its opening.",
         );
       footprintsFeet.push(
-        ...pc.intersection(polygon, floor).map((rs) => rs[0] as Point[]),
+        ...overlay("intersection", [polygon], [floor]).map(
+          (rs) => rs[0] as Point[],
+        ),
       );
     }
   } catch {
@@ -459,9 +539,24 @@ export function snapReviewedAreaPartitionPoints(
     maxFeet > 0.5
   )
     throw new Error("Invalid logical boundary click snap.");
-  const walls = data.walls.filter(
-    (w) => w.levelId === levelId && !w.approximate,
-  );
+  const level = data.nativeLevels.find((l) => l.id === levelId);
+  const walls = (
+    data.nativeIndoorEnvelopes && level
+      ? [
+          nativeMaterialPlanWalls(
+            data,
+            levelId,
+            preparedReviewedDoorApertures(data),
+          ),
+          nativeMaterialPlanWalls(
+            data,
+            levelId,
+            preparedReviewedDoorApertures(data),
+            0.1,
+          ),
+        ].flat()
+      : data.walls.filter((w) => w.levelId === levelId)
+  ).filter((w) => !w.approximate);
   const details = points.map((original) => {
     let best:
       | { pointFeet: Point; nativeElementId: number; distanceFeet: number }

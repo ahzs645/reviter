@@ -239,7 +239,7 @@ export function nativeWallPositionRepairedWalls(
               )
               .flatMap((f) => f.partsFeet ?? [f.ringsFeet])
           : [];
-    const openings = data.records
+    const openings = data.nativeIndoorEnvelopes ? [] : data.records
       .filter((x) => x.levelId === r.levelId)
       .flatMap((x) => (x.properties.floorOpeningsFeet ?? []) as Point[][]);
     if (
@@ -280,14 +280,40 @@ export function nativeWallPositionRepairedWalls(
 
 /** Project only explicitly translated complete walls into plan geometry. Multiple
  * retained parts of an aperture-cut native host must keep their own polygons. */
-export function nativeWallPositionRepairedPlanWalls<T extends {elementId:number;polygon:Point[]}>(
-  walls:T[], data:IndoorDataset, levelId:number,
-):T[]{
-  const moved=new Set(data.nativeWallPositionRepairs?.walls.filter(r=>r.levelId===levelId).map(r=>r.nativeElementId)??[]);
-  return walls.map(w=>{
-    if(!moved.has(w.elementId))return w;
-    const prepared=data.walls.filter(p=>p.levelId===levelId&&p.nativeElementId===w.elementId&&p.kind!=="column");
-    if(prepared.length!==1||prepared[0].ringsFeet.length!==1)throw new Error("A translated native plan wall must retain one complete prepared footprint.");
-    return {...w,polygon:structuredClone(prepared[0].ringsFeet[0])};
+export function nativeWallPositionRepairedPlanWalls<
+  T extends { elementId: number; polygon: Point[] },
+>(walls: T[], data: IndoorDataset, levelId: number): T[] {
+  const moved = new Set(
+    data.nativeWallPositionRepairs?.walls
+      .filter((r) => r.levelId === levelId)
+      .map((r) => r.nativeElementId) ?? [],
+  );
+  return walls.map((w) => {
+    if (!moved.has(w.elementId)) return w;
+    const prepared = data.walls.filter(
+      (p) =>
+        p.levelId === levelId &&
+        p.nativeElementId === w.elementId &&
+        p.kind !== "column",
+    );
+    if (prepared.length !== 1 || prepared[0].ringsFeet.length !== 1)
+      throw new Error(
+        "A translated native plan wall must retain one complete prepared footprint.",
+      );
+    return { ...w, polygon: structuredClone(prepared[0].ringsFeet[0]) };
   });
+}
+
+/** Physical source binding excludes authoring prose only. All original and
+ * translated material, identity, support and evidence bytes remain relevant. */
+export function nativeWallPositionMaterialBinding(
+  value: NativeWallPositionRepairs | undefined,
+) {
+  return (
+    value && {
+      version: value.version,
+      sourceModelSha256: value.sourceModelSha256,
+      walls: value.walls.map(({ notes: _, ...physical }) => physical),
+    }
+  );
 }

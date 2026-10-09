@@ -1,3 +1,4 @@
+import type {IndoorDataset} from './indoor-contract.ts';
 import pc from 'polygon-clipping';
 import type {ConvertResult} from './types.ts';
 import type {RoomPoint} from './room-directory.ts';
@@ -85,4 +86,40 @@ export function reviewedDoorWallSourceEvidence<T extends {levelId:number;nativeE
   for(const r of g.parts)if(!current.some(w=>key(w.ringsFeet)===key([r])))result.push({...current[0]!,ringsFeet:[r]});
  }
  return result;
+}
+
+export function doorApertureGeometryKey(value:ReviewedDoorApertures){return JSON.stringify(value.patches.map(({notes,...p})=>p));}
+// The compiler may change a ring's first corner or winding, but not its
+// coordinates or edge order. Keep sourceGeometryKey byte-exact independently.
+function sameRingVertices(actual:RoomPoint[]|undefined,expected:RoomPoint[]){
+ if(!Array.isArray(actual)||actual.length!==expected.length)return false;
+ return expected.some((_,offset)=>[1,-1].some(direction=>expected.every((_,i)=>{
+  const p=actual[i];
+  const q=expected[(offset+direction*i+expected.length)%expected.length]!;
+  return Array.isArray(p)&&p.length===2&&p[0]===q[0]&&p[1]===q[1];
+ })));
+}
+export function validateDoorApertureBinding(value:unknown,data:IndoorDataset){
+ validateReviewedDoorApertures(value,data.source.modelSha256);const state=data.doorAperturePatchState;
+ if(!value){if(state)throw new Error('Prepared doorway correction has no preserved source patch.');return;}
+ if(!state||state.sourceGeometryKey!==doorApertureGeometryKey(value)||typeof state.regenerated!=='boolean')throw new Error('Doorway source patch and prepared evidence differ. Regenerate the master.');
+ for(const patch of value.patches.filter(p=>p.kind==='basic-host-missing-opening')){
+ const door=data.doors?.find(d=>d.levelId===patch.levelId&&d.nativeElementId===patch.nativeDoorId),proof=patch.preparedDoorEvidence!;
+ if(!door||door.state!=='connected'||JSON.stringify(door.pointFeet)!==JSON.stringify(proof.pointFeet)||JSON.stringify(door.normalFeet)!==JSON.stringify(proof.normalFeet)||JSON.stringify([...door.roomKeys].sort())!==JSON.stringify([...proof.roomKeys].sort())||!data.edges.some(e=>e.id===door.id&&e.kind==='door'&&e.enabled&&e.nativeElementId===patch.nativeDoorId&&JSON.stringify([...e.roomKeys].sort())===JSON.stringify([...proof.roomKeys].sort()))||(!state.regenerated&&!sameRingVertices(door.footprintFeet,proof.footprintFeet)))throw new Error('Reviewed basic host opening differs from the preserved enabled physical door.');
+ }
+ if(!state.regenerated)return;
+ for(const p of value.patches){const door=data.doors?.find(d=>d.levelId===p.levelId&&d.nativeElementId===p.nativeDoorId);if(!door||!sameRingVertices(door.footprintFeet,p.apertureFeet)||JSON.stringify(door.normalFeet)!==JSON.stringify(p.normalFeet))throw new Error('Prepared door does not match the reviewed aperture.');
+ for(const w of p.wallEvidence){const expected=pc.difference(w.partsFeet.map(r=>[r]),[p.apertureFeet]),actual=data.walls.filter(q=>q.levelId===p.levelId&&q.nativeElementId===w.nativeElementId&&!q.reviewPatchId).map(q=>q.ringsFeet);if(area(pc.xor(expected,actual) as RoomPoint[][][])>.000001)throw new Error('Prepared doorway walls differ from the preserved source correction.');}}
+}
+
+
+/** Native preview workers have the exact geometry-only aperture key, while
+ * authoring notes remain in source rooms. Rebind decoded geometry to the current
+ * prepared doors/walls before using it as original support evidence. */
+export function preparedReviewedDoorApertures(data:IndoorDataset):ReviewedDoorApertures|undefined {
+ const state=data.doorAperturePatchState;if(!state)return undefined;
+ let patches:ReviewedDoorApertures['patches'];try{patches=JSON.parse(state.sourceGeometryKey);}catch{throw new Error('Invalid prepared doorway geometry key.');}
+ if(!Array.isArray(patches))throw new Error('Invalid prepared doorway geometry key.');
+ const value:ReviewedDoorApertures={version:1,sourceModelSha256:data.source.modelSha256,patches:patches.map(p=>({...p,notes:'Prepared source-bound aperture geometry; original authoring notes remain in rooms.'}))};
+ validateDoorApertureBinding(value,data);return value;
 }

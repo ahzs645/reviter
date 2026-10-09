@@ -1,4 +1,5 @@
 import { nativeDoorBoundaryClosureFootprints } from "./native-door-boundary-closures.ts";
+import {nativeMaterialPlanWalls} from "./native-material-plan.ts";
 import { reviewedRoomInteriors } from "./reviewed-room-presentation.ts";
 import type { ConvertResult } from "./types.ts";
 import { recoverNativeMeshRoomInteriors } from "./native-mesh-room-presentation.ts";
@@ -31,8 +32,10 @@ export function prepareIndoorPresentation(
     boundaryReference?: BoundaryReference;
     geometries?: ReadonlyMap<number, ArchitecturalPlanGeometry>;
     floorsByRecord?: ReadonlyMap<string, ArchitecturalPlanGeometry["floors"]>;
+    materialDoorApertures?: unknown;
   },
 ): NonNullable<IndoorDataset["presentation"]> {
+  const analyticalWalls=dataset.nativeMaterialSections?dataset.nativeLevels.flatMap(level=>nativeMaterialPlanWalls(dataset,level.id,options?.materialDoorApertures)):dataset.walls;
   // Routing promotion uses the physical aperture, not a disposable selection
   // closure. This early pass has no compiled floor/portal proof yet. Final
   // presentation defaults to strict closure validation after compilation.
@@ -54,7 +57,7 @@ export function prepareIndoorPresentation(
   }));
   const recovered = recoverNativeRoomInteriors(
     dataset.records,
-    dataset.walls,
+    analyticalWalls,
     selectionDoors,
     new Map(annotations.map((r) => [r.key, r.labelPointFeet])),
   );
@@ -78,7 +81,7 @@ export function prepareIndoorPresentation(
   if (options?.boundaryReference && geometries && options?.floorsByRecord) {
     const reference = options.boundaryReference,
       repairs = recoverRegisteredWallJunctionRepairs(
-        dataset.walls,
+        analyticalWalls,
         dataset.doors ?? [],
         reference,
       );
@@ -87,7 +90,7 @@ export function prepareIndoorPresentation(
       const patched = recoverNativeRoomInteriors(
         dataset.records,
         [
-          ...dataset.walls,
+          ...analyticalWalls,
           ...repairs.map((r) => ({
             kind: "wall" as const,
             levelId: r.levelId,
@@ -252,14 +255,14 @@ export function prepareIndoorPresentation(
       );
   const blocks = prepareRoomBlocks(
     interiors,
-    dataset.walls,
+    analyticalWalls,
     dataset.doors ?? [],
     protectedAreas,
   );
   if (mesh.rooms.length) {
     const meshBlocks = prepareRoomBlocks(
       interiors,
-      [...dataset.walls, ...mesh.walls],
+      [...analyticalWalls, ...mesh.walls],
       dataset.doors ?? [],
       protectedAreas,
     );

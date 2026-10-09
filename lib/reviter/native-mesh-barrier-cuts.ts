@@ -10,6 +10,35 @@ type Point = [number, number];
 type Segment = [Point, Point];
 const PRECISION = 0.0001; // 0.0305 mm: tessellation roundoff, not a wall-gap repair.
 const categories = new Set([-2000011, -2000170, -2000171, -2000100, -2000133]);
+/** Two original solids in one owner can have coincident side faces but different
+ * triangle diagonals. Split only at existing collinear source endpoints so the
+ * section graph recognises their common material edge. This is not polygonising
+ * missing faces or connecting endpoints across a model seam. */
+function nodeOwnedCollinearSegments(lines: Segment[]): Segment[] {
+  const tolerance = 1e-8;
+  const points = lines.flatMap(([a, b]) => [a, b]);
+  const result: Segment[] = [];
+  for (const [a, b] of lines) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], squared = dx * dx + dy * dy;
+    if (squared <= tolerance * tolerance) continue;
+    const length = Math.sqrt(squared);
+    const splits: { t: number; point: Point }[] = [{ t: 0, point: a }, { t: 1, point: b }];
+    for (const point of points) {
+      if (point[0] < Math.min(a[0], b[0]) - tolerance || point[0] > Math.max(a[0], b[0]) + tolerance ||
+          point[1] < Math.min(a[1], b[1]) - tolerance || point[1] > Math.max(a[1], b[1]) + tolerance) continue;
+      const t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / squared;
+      if (t * length <= tolerance || (1 - t) * length <= tolerance ||
+          Math.abs((point[0] - a[0]) * dy - (point[1] - a[1]) * dx) / length > tolerance) continue;
+      splits.push({ t, point });
+    }
+    splits.sort((x, y) => x.t - y.t);
+    for (let i = 0; i + 1 < splits.length; i++) {
+      const p = splits[i]!.point, q = splits[i + 1]!.point;
+      if (Math.hypot(p[0] - q[0], p[1] - q[1]) > tolerance) result.push([p, q]);
+    }
+  }
+  return result;
+}
 // JSON-decoded caches serialize typed arrays as indexed objects. Live models
 // retain their typed-array length. The coordinates and triangle ownership agree.
 const length = (array: ArrayLike<number>) =>
@@ -98,7 +127,7 @@ export function nativeMeshBarrierCuts(
       bins.set(key, [...(bins.get(key) ?? []), i]);
       return i;
     };
-    for (const [a, b] of lines) {
+    for (const [a, b] of nodeOwnedCollinearSegments(lines)) {
       const i = node(a),
         j = node(b);
       if (i !== j) {

@@ -15,6 +15,7 @@ import { validateSemanticRoomBoundaries, applySemanticRoomBoundaries } from "../
 import { validateIndoorConnectorReview } from "../lib/reviter/indoor-connectors.ts";
 import { promoteNativeRoomInteriors } from "../lib/reviter/native-room-promotion.ts";
 import { prepareIndoorPresentation } from "../lib/reviter/indoor-presentation.ts";
+import {createNativeParallelCompiler} from './indoor/parallel-native-circulation.ts';
 
 const args = process.argv.slice(2),
   option = (name: string) => {
@@ -25,11 +26,16 @@ const input = option("--input"),
   out = option("--out");
 if (!input || !out) {
   console.error(
-    "Usage: npm run indoor:prepare -- --input project.reviter.zip [--rooms latest-reviews.json] [--native-interiors] [--semantic-boundaries finish-boundaries.json] [--visitor visitor.json] [--connectors connectors.json] --out prepared.reviter.zip [--revit-version 2027] [--windows native|simplified] [--no-scene]",
+    "Usage: npm run indoor:prepare -- --input project.reviter.zip [--rooms latest-reviews.json] [--native-interiors] [--semantic-boundaries finish-boundaries.json] [--visitor visitor.json] [--connectors connectors.json] --out prepared.reviter.zip [--revit-version 2027] [--windows native|simplified] [--no-scene] [--native-workers 1|2 --checkpoint-dir directory]",
   );
   process.exit(1);
 }
 if (resolve(input) === resolve(out)) throw new Error("Use a new output path to retain the source archive.");
+const workerArgument=option('--native-workers'),workerCount=workerArgument===undefined?undefined:Number(workerArgument);
+for(const flag of ['--native-workers','--checkpoint-dir'])if(args.includes(flag)&&(!option(flag)||option(flag)!.startsWith('--')))throw Error(flag+' requires a value.');
+if(workerCount!==undefined&&workerCount!==1&&workerCount!==2)throw Error('--native-workers must be 1 or 2.');
+if(option('--checkpoint-dir')&&!workerCount)throw Error('--checkpoint-dir requires --native-workers.');
+const nativeCirculationCompiler=workerCount?createNativeParallelCompiler({maxWorkers:workerCount as 1|2,checkpointDir:resolve(option('--checkpoint-dir')??out+'.checkpoints'),onProgress:m=>console.log(m)}):undefined;
 const original = await readProjectPackage(
   new Uint8Array(await readFile(resolve(input))),
 );
@@ -85,7 +91,7 @@ let last = "";
 const semanticPath = option("--semantic-boundaries");
 if (args.includes("--native-interiors")) {
   const baseline = reviewPath || !original.indoor
-    ? await prepareIndoorDataset(result, rooms, original.manifest.model.sha256)
+    ? await prepareIndoorDataset(result, rooms, original.manifest.model.sha256, undefined, {physicalDoorSource:original.indoor,nativeCirculationCompiler})
     : original.indoor;
   const current = { ...baseline, presentation: prepareIndoorPresentation(baseline, rooms.annotations) };
   const promoted = promoteNativeRoomInteriors(current, rooms);
@@ -95,7 +101,7 @@ if (args.includes("--native-interiors")) {
 }
 if (semanticPath) {
   const baseline = reviewPath || !original.indoor
-    ? await prepareIndoorDataset(result, rooms, original.manifest.model.sha256)
+    ? await prepareIndoorDataset(result, rooms, original.manifest.model.sha256, undefined, {physicalDoorSource:original.indoor,nativeCirculationCompiler})
     : original.indoor;
   const semanticInput: unknown = JSON.parse(await readFile(resolve(semanticPath), "utf8"));
   const validated = validateSemanticRoomBoundaries(baseline, rooms.annotations, semanticInput);
@@ -122,6 +128,7 @@ const dataset = await prepareIndoorDataset(
       last = m;
     }
   },
+  { physicalDoorSource: original.indoor, nativeCirculationCompiler },
 );
 const windowDetail = option("--windows") ?? "simplified";
 if (!["native", "simplified"].includes(windowDetail)) throw new Error("--windows must be native or simplified");

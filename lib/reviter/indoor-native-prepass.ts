@@ -1,3 +1,4 @@
+import {nativeMaterialPlanWalls} from './native-material-plan.ts';
 import pc from 'polygon-clipping';
 import {nativeWallPositionRepairedWalls} from './native-wall-position-repairs.ts';
 import {reviewedBoundaryWalls} from './native-boundary-patches.ts';
@@ -20,8 +21,9 @@ export function prepareNativeRoutingBoundaries(model:ConvertResult,source:RoomDi
  // reviewed continuations. Floor/door/fixture checks are mandatory on the fully
  // compiled dataset in indoor-pipeline; those physical proofs do not exist yet.
  const correctedWalls=nativeWallPositionRepairedWalls({...dataset,walls,doors},{deferPhysicalChecks:true});
- correctedWalls.push(...reviewedBoundaryWalls(correctedWalls,source.nativeBoundaryPatches,dataset.source.modelSha256,undefined,source.reviewedDoorApertures));
- const stage={...dataset,walls:correctedWalls,doors};stage.presentation=prepareIndoorPresentation(stage,source.annotations,undefined,{purpose:"routing-prepass"});
+ const contactStage={...dataset,walls:correctedWalls,doors};
+ correctedWalls.push(...reviewedBoundaryWalls(correctedWalls,source.nativeBoundaryPatches,dataset.source.modelSha256,undefined,source.reviewedDoorApertures,source.nativeMaterialSections,source.nativeMaterialSections ? levelId=>nativeMaterialPlanWalls(contactStage,levelId,source.reviewedDoorApertures) : undefined));
+ const stage={...dataset,walls:correctedWalls,doors};stage.presentation=prepareIndoorPresentation(stage,source.annotations,undefined,{purpose:"routing-prepass",materialDoorApertures:source.reviewedDoorApertures});
  const promoted=promoteNativeRoomInteriors(stage,source),records=new Map(dataset.records.map(r=>[r.key,r])),rooms=new Map<string,DirectoryRoom>();
  for(const item of promoted.report.rooms){const room=promoted.data.annotations.find(r=>r.key===item.roomKey)!,record=records.get(room.key)!;
  const floors=routingFloorPlateRecords(model,record.elevationFeet).map(f=>f.loops!.map(l=>l.map(p=>[p[0],p[1]] as RoomPoint)));

@@ -4,6 +4,7 @@ interface NativeJstsCollection {
 }
 declare module "jsts/org/locationtech/jts/io/GeoJSONReader.js" {
   export default class GeoJSONReader {
+    constructor(factory?:unknown);
     read(json: unknown): unknown;
   }
 }
@@ -56,5 +57,10 @@ declare module "jsts/org/locationtech/jts/operation/overlay/OverlayOp.js" {
   export default class OverlayOp {
     static difference(a: unknown, b: unknown): unknown;
     static intersection(a: unknown, b: unknown): unknown;
+    static overlayOp(a: unknown, b: unknown, operation: number): unknown;
+    static DIFFERENCE: number;
+    static INTERSECTION: number;
   }
 }
+
+declare module "jsts/org/locationtech/jts/geom/GeometryFactory.js" {export default class GeometryFactory {constructor(precision?:unknown);}}

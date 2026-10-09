@@ -53,6 +53,14 @@ In **Floors → Building directory**, click **Prepare OpenIndoorMaps project**. 
 
 **Export project ZIP** remains the lighter archive-only operation. Version 1 archives can reopen in Reviter, but must be prepared before OpenIndoorMaps can route them.
 
+A reviewed master may also contain pregenerated OpenIndoorMaps display assets.
+Reviter validates their index, compressed byte checksums and bounded inventory
+when reopening the ZIP, then discards this derived cache during source
+compilation. It does not inflate those assets or use them to establish floors,
+room enclosures, routes or access. Fresh exports need a new display preparation
+for the regenerated dataset. Original model and room-review bytes retain their
+existing archive checks.
+
 ### Repeatable CLI workflow
 
 Run from the Reviter repository with Node 22.13 or newer:
@@ -67,6 +75,24 @@ npm run indoor:prepare -- \
 ```
 
 `--rooms` is optional: without it, the saved package reviews are used. `--revit-version` is optional: without it, the converter uses its normal version detection. `--no-scene` produces a smaller map/routing project with no GLB. The CLI writes a separate `<output>.report.json` containing provenance, alignment, floor groups, coverage and review issues. Unsupported or insufficient native geometry causes preparation to fail rather than generating guessed connections.
+
+#### Optional native floor workers and checkpoints
+
+For a project with native source enclosures, add `--native-workers 2` to calculate independent physical floor planes concurrently:
+
+```sh
+npm run indoor:prepare -- \
+  --input /absolute/path/source.reviter.zip \
+  --out /absolute/path/new-prepared.reviter.zip \
+  --native-workers 2 \
+  --checkpoint-dir /absolute/path/native-floor-checkpoints
+```
+
+Without this option, compilation remains sequential. `--native-workers 1` runs the same worker/checkpoint path with one worker for comparison. The default checkpoint directory is `<output>.checkpoints`. Reuse that directory on a restart. Only completed, checksummed plane results with identical model, dataset, resolved compiler, exact geometry engine and Node version bindings are reused; incomplete writes and changed inputs are recomputed. Plane results are merged in the original elevation order with the original face/cell identifiers. Room arrival and route decisions remain sequential.
+
+These checkpoints cover the native physical floor calculation, not the entire preparation pipeline. Conversion and preceding connection checks still rerun. A checkpoint does not approve an enclosure or a route. Output/source guards remain active, and browser preparation does not use Node workers.
+
+Begin with two workers and measure wall time and process memory on the actual project. Each worker loads its own model, dataset and geometry engine, so memory grows and small jobs can be slower because of startup and checkpoint overhead. The controller defaults to a 16 GiB estimated in-flight budget and an 8 GiB JavaScript heap cap per worker; these are not hard limits on total RSS or WASM allocations. The parent also retains completed drafts for the deterministic merge, outside that worker estimate. See [the worker/checkpoint implementation](../scripts/indoor/bounded-worker-checkpoints.md) for integrity, locking and memory details.
 
 For the current UNBC source, the command used was:
 
@@ -782,3 +808,13 @@ An elevator `shaft-boundary` is a closed **inspection proposal only**. Do not tr
 Focused checks: `node --experimental-strip-types --test tests/reviewed-area-partition-pipeline.test.ts tests/indoor-pipeline.test.ts tests/native-prepass-selection-proof.test.ts`. Compare logical selection previews in OpenIndoorMaps with unchanged physical/visitor/routing geometry and retain the original reviewed proposal/evidence in the authoring master.
 
 An exact native full-cap continuation may declare `targetWallFaceChain: true` when the two first cap rays contact consecutive finite faces at an original basic wall corner. Apply the same local convexity, original-vertex, monotonic width and all-breakpoint first-contact checks as a column chain; do not substitute a target bounding box. Decoded native basic-wall and registered drawing evidence must accompany application. A curved column chain may explicitly declare its exact `originalCapMiddlePenetrationFeet` only for an existing middle contact no deeper than 0.00025 ft, while both original cap corners remain outside. This does not authorize moving the original cap, widening it, deleting a column or choosing its far face. All original physical floors, holes, doors and foreign fixtures remain protected.
+
+### Provisional extracted native contacts (selection only)
+
+`nativeSelectionContactRepairs` is optional portable authoring metadata for a strictly positive, source-bound numerical contact gap below the ordinary construction-continuation limit. Each proposal retains the original complete rectangular member cap, first finite support face, exact original numeric rings, model/material hashes, evidence hash and mandatory revisit flag. Application derives the narrow gap using exact rational intersections; it does not snap, buffer, penetrate or mutate the source coordinates. Ordinary physical continuation guards remain unchanged.
+
+After verifying native material bytes, the compiler replays applied descriptors against the completed original walking floors, retained source/target material, physical doors, columns, fixtures, floor/stair openings and exclusions. Any positive intersection or unsupported area is a veto even below 1e-15 square feet. Fresh batch snapshots share current evidence within one immutable replay only. These masks affect native selection; they never enter physical walls, navigation portals, circulation generation or visitor geometry. A `proposed` or `restored` descriptor has no selection effect. Shape parsing does not itself certify an applied repair.
+
+Focused checks: `node --experimental-strip-types --import ./scripts/register-local-typescript.mjs --test tests/native-selection-contact-repairs.test.ts tests/native-selection-contact-guards.test.ts`. OpenIndoorMaps additionally tests cross-compiler rational output and physical veto parity.
+
+An explicitly evidenced selection-only contact can declare `contactMode: "finite-cap-overlap"`. Compiler replay derives the maximal rational interval from the full unchanged original cap and named finite face; per-end trim and normal depth are independently bounded to `1e-7` feet. All target vertices and interval midpoints need first-material contact. Entire original cap retention and floor support, protected holes even under overlapping slabs, complete derived contact intervals, and every door/fixture/foreign-material veto remain mandatory. The absent-field default still requires full-cap contact. This does not alter physical source bodies, routing or access, and cannot fill an extrapolated outside-corner wedge.

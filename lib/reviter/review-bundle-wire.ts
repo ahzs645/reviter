@@ -1,3 +1,4 @@
+import { packRoomNativeMaterials } from "./native-material-wire.ts";
 import { MAX_REVIEW_BYTES } from "./review-bundle-limits.ts";
 import { deflateSync } from "fflate";
 import {
@@ -308,7 +309,8 @@ export async function serializeRoomsForArchive<
     sha256: string;
   };
 }> {
-  const legacy = encoder.encode(JSON.stringify(rooms));
+  const archiveRooms = await packRoomNativeMaterials(rooms);
+  const legacy = encoder.encode(JSON.stringify(archiveRooms));
   if (legacy.length <= maxBytes) {
     await verifyReviewBundleContent(rooms.reviewBundle);
     return { rooms: legacy };
@@ -317,7 +319,7 @@ export async function serializeRoomsForArchive<
     throw new Error("Source rooms JSON exceeds its size limit.");
   const wire = await packReviewBundle(rooms.reviewBundle);
   const inline = encoder.encode(
-    JSON.stringify({ ...rooms, reviewBundle: wire }),
+    JSON.stringify({ ...archiveRooms, reviewBundle: wire }),
   );
   if (inline.length <= maxBytes) return { rooms: inline };
   const bytes = unbase64(wire.compressedBase64);
@@ -332,7 +334,7 @@ export async function serializeRoomsForArchive<
     compressedSha256: sha256,
   };
   const serialized = encoder.encode(
-    JSON.stringify({ ...rooms, reviewBundle: ref }),
+    JSON.stringify({ ...archiveRooms, reviewBundle: ref }),
   );
   if (serialized.length > maxBytes)
     throw new Error(

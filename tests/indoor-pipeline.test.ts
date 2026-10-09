@@ -327,3 +327,67 @@ test("independently recovered circulation seams keep unique deterministic review
   assert.equal(issues[0]!.id,'recovered-open-front:a:1');
   assert.equal(issues[1]!.id,'recovered-open-front:a:1:2');
 });
+
+async function strictNativeTerminalFixture() {
+  const {nativeIndoorEnvelopeHash} = await import('../lib/reviter/native-indoor-envelopes.ts');
+  const {nativeMaterialSectionsHash} = await import('../lib/reviter/native-material-sections.ts');
+  const sha='a'.repeat(64);
+  const rect=(x0:number,y0:number,x1:number,y1:number):[number,number][]=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  const floors=[1,2].map((levelId)=>({elementId:levelId*100,categoryId:-2000032,boundsFeet:{min:{x:0,y:0,z:(levelId-1)*10-.5},max:{x:20,y:10,z:(levelId-1)*10}},loops:[rect(0,0,20,10).map(p=>[...p,(levelId-1)*10])]}));
+  const nativeModel={...model,elementBounds:[...floors,{elementId:900,categoryId:-2001060,boundsFeet:{min:{x:3,y:4,z:0},max:{x:6,y:7,z:20}}},{elementId:301,categoryId:-2000120,boundsFeet:{min:{x:2,y:2,z:0},max:{x:7,y:8,z:10}},stairTreads:[0,10].map(z=>rect(2,2,7,8).map(p=>[...p,z]))}],nativeStairAssemblies:[{stairElementId:300,runAndLandingIds:[301]}]} as unknown as ConvertResult;
+  const envelope={version:1 as const,sourceModelSha256:sha,levels:[1,2].map(levelId=>({levelId,elevationFeet:(levelId-1)*10,partsFeet:[[rect(0,0,20,10)]],sourceElementIds:[levelId*100],cutElevationsFeet:[(levelId-1)*10+4],evidenceSha256:'b'.repeat(64)}))};
+  const material={version:1 as const,sourceModelSha256:sha,levels:[1,2].map(levelId=>({levelId,elevationFeet:(levelId-1)*10,cutElevationFeet:(levelId-1)*10+.1,evidenceSha256:'c'.repeat(64),sourceElementIds:[levelId*100],sections:[]}))};
+  const lower={...room('lower-stair',0),number:'01-S101',name:'Stairs',dwg:{sectionId:'first'},labelPointFeet:[5.13,5.27] as [number,number]};
+  const upper={...lower,key:'upper-stair',number:'01-S201',levelId:2};
+  const hall={...room('hall',10),number:'01-100',labelPointFeet:[15.17,5.31] as [number,number]};
+  const source:RoomDirectoryData={...data,annotations:[lower,upper,hall],boundaryReference:{format:'reviter-boundary-reference',version:1,coordinateSystem:'revit-model-feet',sourceSha256:'d'.repeat(64),sections:[{sectionId:'first',levelId:1,registrationErrorFeet:0,wallSegments:[],doorSegments:[]}]},nativeIndoorEnvelopes:{...envelope,geometrySha256:await nativeIndoorEnvelopeHash(envelope)},nativeMaterialSections:{...material,geometrySha256:await nativeMaterialSectionsHash(material)},indoorConnectors:{version:1,modelSha256:sha,connectors:[{id:'lift',kind:'elevator',nativeElementId:900,evidence:'Original reviewed physical stops',accessible:'unknown',direction:'both',entrances:[{roomKey:lower.key,levelId:1,nativeElementId:100,pointFeet:[4.17,5.29]},{roomKey:upper.key,levelId:2,nativeElementId:200,pointFeet:[4.17,5.29]}]}]},navigation:{version:1,doorLinks:[],openLinks:[{id:'open',levelId:1,rooms:[lower.key,hall.key],from:[9.17,5.29],to:[11.13,5.29],widthFeet:3,evidence:'registered-opening',sourceSha256:'d'.repeat(64)}]}};
+  return {sha,source,nativeModel};
+}
+
+test('strict native regeneration preserves original stair, lift, opening and arrival XYZ instead of contour raster snapping',async()=>{
+  const {sha,source,nativeModel}=await strictNativeTerminalFixture();
+  const messages:string[]=[];
+  const compiled=await prepareIndoorDataset(nativeModel,source,sha,m=>messages.push(m));
+  assert.ok(!messages.some(m=>m.startsWith('Building walkable graph')),'strict preparation never invokes the obsolete contour raster');
+  const lift=compiled.edges.find(e=>e.kind==='elevator');assert.ok(lift);
+  assert.deepEqual(lift.pointsFeet,[[4.17,5.29,0],[4.17,5.29,10]]);
+  assert.equal(lift.accessible,'unknown');
+  const stair=compiled.edges.find(e=>e.kind==='stairs');assert.ok(stair);
+  assert.deepEqual(stair.pointsFeet,[[5.13,5.27,0],[5.13,5.27,10]]);
+  assert.equal(stair.enabled,false,'room-seed endpoints alone never qualify the original flight');
+  assert.ok(compiled.issues.some(i=>i.code==='native-stair-route-review'&&i.nativeElementId===300));
+  const opening=compiled.edges.find(e=>e.id==='opening:open');assert.ok(opening);
+  assert.deepEqual(opening.pointsFeet,[[9.17-.2,5.29,0],[11.13+.2,5.29,0]]);
+  assert.deepEqual(compiled.nodes.find(n=>n.id==='arrival:hall')?.pointFeet,[15.17,5.31,0]);
+  assert.equal(compiled.records.find(r=>r.key==='hall')?.arrivalNodeId,'arrival:hall');
+  assert.ok(compiled.edges.some(e=>e.kind==='walk'&&e.nativeCellId),'physical walking branches are rebuilt from checked native cells');
+  assert.ok(compiled.edges.filter(e=>e.kind==='walk').every(e=>e.nativeCellId),'no obsolete room-contour raster walking branch survives');
+});
+
+test('strict native terminals survive a missing enclosure without invented walking approaches; legacy archives retain raster behavior',async()=>{
+  const {sha,source,nativeModel}=await strictNativeTerminalFixture();
+  const {nativeIndoorEnvelopeHash}=await import('../lib/reviter/native-indoor-envelopes.ts');
+  const outside=structuredClone(source);
+  outside.nativeIndoorEnvelopes!.levels.forEach(l=>{l.partsFeet=[[[[30,0],[50,0],[50,10],[30,10]]]];});
+  outside.nativeIndoorEnvelopes!.geometrySha256=await nativeIndoorEnvelopeHash(outside.nativeIndoorEnvelopes!);
+  const blocked=await prepareIndoorDataset(nativeModel,outside,sha);
+  assert.deepEqual(blocked.nodes.find(n=>n.id==='connector:lift:0')?.pointFeet,[4.17,5.29,0]);
+  assert.equal(blocked.edges.filter(e=>e.kind==='walk').length,0,'unclassified physical approaches remain disconnected');
+  assert.equal(blocked.report.routableArrivals,0,'vertical stop identities alone never count as routable destinations');
+  const messages:string[]=[];
+  const legacy={...source,nativeIndoorEnvelopes:undefined,nativeMaterialSections:undefined};
+  const old=await prepareIndoorDataset(nativeModel,legacy,sha,m=>messages.push(m));
+  assert.ok(messages.some(m=>m.startsWith('Building walkable graph')));
+  assert.notDeepEqual(old.nodes.find(n=>n.id==='connector:lift:0')?.pointFeet,[4.17,5.29,0]);
+});
+
+test('strict local transition recipes remain review metadata and cannot create contour-subtracted landing geometry',async()=>{
+  const {sha,source,nativeModel}=await strictNativeTerminalFixture();
+  source.buildingTransitions=[{id:'original-local',kind:'local-steps',evidence:'user-reported',nativeStairId:300,floorElementIds:[100,200],endpoints:[{building:'01',levelId:1,elevationFeet:0,point:[5.13,5.27],roomKey:'lower-stair'},{building:'01',levelId:2,elevationFeet:10,point:[5.13,5.27]}]}];
+  const before=structuredClone(source);
+  const compiled=await prepareIndoorDataset(nativeModel,source,sha);
+  assert.deepEqual(source,before,'original reviewed transition recipe remains untouched');
+  assert.ok(compiled.issues.some(i=>i.code==='native-local-transition-review'&&i.nativeElementId===300));
+  assert.equal(compiled.records.some(r=>r.key.startsWith('landing:original-local:')),false);
+  assert.equal(compiled.edges.some(e=>e.kind==='local-steps'),false,'unqualified recipe cannot grant a physical crossing');
+});

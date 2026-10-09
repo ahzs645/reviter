@@ -1,5 +1,6 @@
-/** Closed original native BRep material sections intersected with exact physical
- * slab support. Old room contours identify ownership only, never this footprint. */
+/** Native BRep enclosure sections intersected with exact physical slab support.
+ * Explicit provisional corner corrections retain their separate binding;
+ * old room contours identify ownership only, never this footprint. */
 export type NativeIndoorEnvelopes = {
   version: 1;
   sourceModelSha256: string;
@@ -11,6 +12,9 @@ export type NativeIndoorEnvelopes = {
     sourceElementIds: number[];
     cutElevationsFeet: number[];
     evidenceSha256: string;
+    /** Human-authorized construction assumptions, not original source bodies. */
+    provisionalCornerGeometrySha256?: string;
+    provisionalCornerIds?: string[];
   }[];
 };
 const hash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
@@ -24,6 +28,10 @@ export function validateNativeIndoorEnvelopes(value: NativeIndoorEnvelopes | und
     if (!level || !Number.isSafeInteger(level.levelId) || !Number.isFinite(level.elevationFeet) || scopes.has(scope) || !hash(level.evidenceSha256) || !Array.isArray(level.sourceElementIds) || !level.sourceElementIds.length || level.sourceElementIds.length > 100000 || level.sourceElementIds.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(level.sourceElementIds).size !== level.sourceElementIds.length || !Array.isArray(level.cutElevationsFeet) || !level.cutElevationsFeet.length || level.cutElevationsFeet.length > 16 || level.cutElevationsFeet.some(z => !Number.isFinite(z) || z <= level.elevationFeet || z > level.elevationFeet + 20) || !Array.isArray(level.partsFeet) || !level.partsFeet.length || level.partsFeet.length > 10000 || level.partsFeet.some(part => !Array.isArray(part) || !part.length || part.some(ring => !Array.isArray(ring) || ring.length < 3 || ring.length > 100000 || ring.some(point => !Array.isArray(point) || point.length !== 2 || point.some(n => !Number.isFinite(n) || Math.abs(n) > 1e7)))))
       throw new Error("Invalid native indoor enclosure footprint or original evidence.");
     scopes.add(scope);
+    if (level.provisionalCornerGeometrySha256 !== undefined || level.provisionalCornerIds !== undefined) {
+      if (!hash(level.provisionalCornerGeometrySha256) || !Array.isArray(level.provisionalCornerIds) || !level.provisionalCornerIds.length || level.provisionalCornerIds.length > 1000 || level.provisionalCornerIds.some(id => typeof id !== "string" || !id.trim() || id.length > 500) || new Set(level.provisionalCornerIds).size !== level.provisionalCornerIds.length)
+        throw new Error("Invalid provisional native corner enclosure binding.");
+    }
   }
 }
 /** Evidence text/checksum is bound together with all exact geometry and IDs. */

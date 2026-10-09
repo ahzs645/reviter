@@ -1,4 +1,16 @@
+import {
+  preparedDisplayCacheEntryLimit,
+  isPreparedDisplayChunkPath,
+  PREPARED_DISPLAY_ARCHIVE_STORED_LIMIT,
+  validatePreparedDisplayCacheContainer,
+} from "./prepared-display-cache-container.ts";
+import {validateNativeProvisionalCornerSeals,verifyNativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
+import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
+import { hydrateRoomNativeMaterials } from "./native-material-wire.ts";
+import {validateNativeSourceStairMaterials} from "./native-source-stair-material.ts";
 import {validateNativeMaterialSections,verifyNativeMaterialSections} from "./native-material-sections.ts";
+import {validateNativeSelectionContactRepairs,deriveNativeSelectionContactRepairs} from "./native-selection-contact-repairs.ts";
+import {assertNativeSelectionContactRepairsPhysicalGuards} from "./native-selection-contact-guards.ts";
 import { MAX_REVIEW_CONTAINER_BYTES } from "./review-bundle-limits.ts";
 import { validateNativeIndoorEnvelopes, verifyNativeIndoorEnvelopes } from "./native-indoor-envelopes.ts";
 import { validateNativeDisplayScopes } from "./native-display-scopes.ts";
@@ -45,9 +57,29 @@ const MODEL_LIMIT = 512 * MB;
 const entryLimit = (path: string) =>
   path.startsWith("model/") && safeModelName(path.slice(6))
     ? MODEL_LIMIT
-    : limits[path];
+    : limits[path] ?? preparedDisplayCacheEntryLimit(path);
 type Entry = { path: string; bytes: number; sha256: string };
+async function validateNativeSelectionContactBinding(rooms: RoomDirectoryData, indoor: IndoorDataset) {
+  validateNativeSelectionContactRepairs(rooms.nativeSelectionContactRepairs, indoor.source.modelSha256);
+  validateNativeSelectionContactRepairs(indoor.nativeSelectionContactRepairs, indoor.source.modelSha256);
+  if (JSON.stringify(rooms.nativeSelectionContactRepairs) !== JSON.stringify(indoor.nativeSelectionContactRepairs))
+    throw new Error("Source and prepared native selection contacts do not match.");
+  const applied=(indoor.nativeSelectionContactRepairs?.repairs??[]).filter(r=>r.status==='applied');
+  if (!applied.length) return;
+  await verifyNativeMaterialSections(indoor.nativeMaterialSections, indoor.source.modelSha256);
+  assertNativeSelectionContactRepairsPhysicalGuards(indoor, applied, deriveNativeSelectionContactRepairs(indoor, applied));
+}
 function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoor: IndoorDataset) {
+  validateNativeSourceStairMaterials(rooms.nativeSourceStairMaterials,indoor.source.modelSha256);
+  validateNativeSourceStairMaterials(indoor.nativeSourceStairMaterials,indoor.source.modelSha256);
+  if(JSON.stringify(rooms.nativeSourceStairMaterials)!==JSON.stringify(indoor.nativeSourceStairMaterials))throw new Error("Source and prepared native stair materials do not match.");
+  validateNativeProvisionalCornerSeals(rooms.nativeProvisionalCornerSeals,indoor.source.modelSha256);
+  validateNativeProvisionalCornerSeals(indoor.nativeProvisionalCornerSeals,indoor.source.modelSha256);
+  if(JSON.stringify(rooms.nativeProvisionalCornerSeals)!==JSON.stringify(indoor.nativeProvisionalCornerSeals))throw new Error("Source and prepared provisional native corner assumptions do not match.");
+  validateNativeDerivedFrameReturns(rooms.nativeDerivedFrameReturns,indoor.source.modelSha256);
+  validateNativeDerivedFrameReturns(indoor.nativeDerivedFrameReturns,indoor.source.modelSha256);
+  if(JSON.stringify(rooms.nativeDerivedFrameReturns)!==JSON.stringify(indoor.nativeDerivedFrameReturns))throw new Error("Source and prepared derived native frame material do not match.");
+  verifyNativeDerivedFrameReturns(indoor);
   validateNativeMaterialSections(rooms.nativeMaterialSections, indoor.source.modelSha256);
   validateNativeMaterialSections(indoor.nativeMaterialSections, indoor.source.modelSha256);
   if (JSON.stringify(rooms.nativeMaterialSections) !== JSON.stringify(indoor.nativeMaterialSections)) throw new Error("Source and prepared original native materials do not match.");
@@ -69,6 +101,8 @@ export type ProjectManifest = {
   indoor?: Entry;
   scene?: Entry;
   reviewBundle?: Entry;
+  /** Opaque derived cache is validated then discarded by this source reader. */
+  preparedDisplay?: Entry;
 };
 
 /** Keep the original source, rather than a lossy geometry export, in the project. */
@@ -141,6 +175,8 @@ export async function createProjectPackage(
       );
     validateReviewedAreaPartitionBinding(parsed, prepared.indoor);
     validateNativeDisplayScopeBinding(parsed, prepared.indoor);
+    await validateNativeSelectionContactBinding(parsed, prepared.indoor);
+    await verifyNativeProvisionalCornerSeals(prepared.indoor);
     manifest.version = 2;
     const bytes = strToU8(
       JSON.stringify({
@@ -183,7 +219,7 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
   if (!bytes.length || bytes.length > MAX_PACKAGE)
     throw new Error("Project ZIP must be non-empty and no larger than 900 MB.");
   const seen = new Set<string>();
-  let expanded = 0;
+  let expanded = 0, displayStored = 0;
   // Scan central-directory sizes without inflating or starting workers first.
   unzipSync(bytes, {
     filter: (entry) => {
@@ -199,6 +235,11 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
         );
       }
       seen.add(entry.name);
+      if (isPreparedDisplayChunkPath(entry.name)) {
+        displayStored += entry.originalSize;
+        if (displayStored > PREPARED_DISPLAY_ARCHIVE_STORED_LIMIT)
+          throw new Error("Prepared display archive exceeds its stored budget.");
+      }
       expanded += entry.originalSize;
       if (expanded > MAX_PACKAGE)
         throw new Error("Expanded project exceeds the package limit.");
@@ -224,7 +265,11 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
     (manifest.version === 1 && (manifest.indoor || manifest.scene))
   )
     throw new Error("Choose a version 1 or 2 Reviter project ZIP.");
+  // Cache checks cover only container metadata/compressed bytes. No cache
+  // payload is returned or consulted for the new geometry compilation.
+  const displayEntries = validatePreparedDisplayCacheContainer(manifest.preparedDisplay, files);
   const expectedEntries = new Set([
+    ...displayEntries,
     "manifest.json",
     manifest.model.path,
     "floors/rooms.json",
@@ -241,7 +286,7 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
     `model/${manifest.model.fileName}`,
   );
   const roomBytes = await verify(files, manifest.floors, "floors/rooms.json");
-  const rooms = parseRoomDirectory(strFromU8(roomBytes));
+  const rooms = parseRoomDirectory(JSON.stringify(await hydrateRoomNativeMaterials(JSON.parse(strFromU8(roomBytes)))));
   await verifyNativeMaterialSections(rooms.nativeMaterialSections, manifest.model.sha256);
   await verifyNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, manifest.model.sha256);
   validateNativeDisplayScopes(rooms.nativeDisplayScopes, manifest.model.sha256);
@@ -292,6 +337,8 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
   if (indoor) {
     validateReviewedAreaPartitionBinding(rooms, indoor);
     validateNativeDisplayScopeBinding(rooms, indoor);
+    await validateNativeSelectionContactBinding(rooms, indoor);
+    await verifyNativeProvisionalCornerSeals(indoor);
   }
   if (manifest.scene)
     scene = await verify(files, manifest.scene, "model/scene.glb");

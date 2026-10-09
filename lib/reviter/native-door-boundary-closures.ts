@@ -237,7 +237,7 @@ export function closedBoundaryDoors(
     const extension = pc.difference(proposed, original);
     if (area(pc.difference(proposed, ground)) > 1e-6)
       error("threshold crosses a native slab opening or unsupported floor");
-    const holes = data.records
+    const holes = (data.nativeIndoorEnvelopes ? [] : data.records)
       .filter((r) => r.levelId === levelId)
       .flatMap((r) =>
         ((r.properties.floorOpeningsFeet ?? []) as Point[][]).map((h) => [h]),

@@ -1,9 +1,19 @@
+import {add,sub,mul,div} from "./vendor/native-rational-overlay-arithmetic.mjs";
+import { nativeRationalOverlay, nativeRationalScalarToIEEE, rational, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION, type NativeRationalPoint, type NativeRationalParts } from "./native-rational-overlay.ts";
+import { nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare, nativeRationalPointInParts, nativeRationalPathSupported, nativeRationalFootprintSupported,freezeNativeRationalParts } from "./native-exact-planar-topology.ts";
+import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
+import { nativeExactGeosOverlay } from "./native-exact-geos-overlay.ts";
+import { nativeRoomIdentityRings } from "./native-floor-opening-ownership.ts";
+import { createNativeBoundaryMaterialQuery,createNativeExactBoundaryMaterialQuery } from "./native-boundary-material.ts";
+import {
+  createNativeHostApertureQuery,
+  createNativeRoutingMaterialQuery,
+} from "./native-routing-material.ts";
 import pc from "polygon-clipping";
 import {
   createNativeIndoorEnvelopeIndex,
   type NativeIndoorEnvelopeIndex,
 } from "./native-indoor-envelopes.ts";
-import { nativeBarrierTopology } from "./native-barrier-topology.ts";
 import {
   nativeFloorDifference,
   nativeFloorUnion,
@@ -30,6 +40,131 @@ import type {
 } from "./indoor-contract.ts";
 type Point3 = [number, number, number];
 type Polygon = RoomPoint[][];
+const rationalCompare = (a: NativeRationalParts[number][number][number][number], b: NativeRationalParts[number][number][number][number]) => {
+  const difference = a.n * b.d - b.n * a.d;
+  return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+};
+const rationalBounds = (rings: NativeRationalParts[number]) => {
+  const points = rings.flat(), first = points[0]!;
+  let minX = first[0], minY = first[1], maxX = first[0], maxY = first[1];
+  for (const [x,y] of points) {
+    if (rationalCompare(x,minX)<0)minX=x;if(rationalCompare(x,maxX)>0)maxX=x;
+    if (rationalCompare(y,minY)<0)minY=y;if(rationalCompare(y,maxY)>0)maxY=y;
+  }
+  return [minX,minY,maxX,maxY] as const;
+};
+function prepareNativeWalkingUnclippedOwnershipIntersection(face: NativeRationalParts) {
+  const parts = face.map(part => ({ part, holes: part.slice(1).map(ring => ({ ring, box: rationalBounds([ring]) })) }));
+  return (identity: NativeRationalParts) => {
+    if (!identity.length) return [];
+    const box = rationalBounds(identity.flatMap(part => part));
+    // This alters only the intersection's temporary operand. A distant hole
+    // cannot intersect the identity; all touching holes remain. The original
+    // physical face, carrier, and exact majority denominator are never altered.
+    const local = parts.map(({part,holes}) => [part[0]!, ...holes.filter(({box:b}) =>
+      !(rationalCompare(b[2],box[0])<0 || rationalCompare(b[0],box[2])>0 ||
+        rationalCompare(b[3],box[1])<0 || rationalCompare(b[1],box[3])>0)).map(h=>h.ring)]);
+    return nativeRationalOverlay("intersection", local, identity);
+  };
+}
+/** Exact identity-bounds clipping is a temporary metadata operand only.
+ * The complete original face and its exact majority denominator remain unchanged.
+ * Weak clipped walks are resolved by the same exact kernel; if that operation
+ * rejects, retry the prior unchanged-source intersection, retaining its errors. */
+type Scalar=NativeRationalPoint[number];
+const equal=(a:NativeRationalPoint,b:NativeRationalPoint)=>rationalCompare(a[0],b[0])===0&&rationalCompare(a[1],b[1])===0;
+function clip(ring:NativeRationalPoint[],axis:0|1,bound:Scalar,lower:boolean){
+ if(!ring.length)return[];
+ const inside=(p:NativeRationalPoint)=>lower?rationalCompare(p[axis],bound)>=0:rationalCompare(p[axis],bound)<=0;
+ const intersection=(a:NativeRationalPoint,b:NativeRationalPoint):NativeRationalPoint=>{
+  if(rationalCompare(a[axis],bound)===0)return a;if(rationalCompare(b[axis],bound)===0)return b;
+  const other=axis===0?1:0,t=div(sub(bound,a[axis]),sub(b[axis],a[axis]));
+  const value=rational(add(a[other],mul(t,sub(b[other],a[other]))));
+  return axis===0?[bound,value]:[value,bound];
+ };
+ const output:NativeRationalPoint[]=[];
+ const push=(p:NativeRationalPoint)=>{if(!output.length||!equal(output.at(-1)!,p))output.push(p)};
+ let previous=ring.at(-1)!,previousInside=inside(previous);
+ for(const current of ring){const currentInside=inside(current);if(currentInside!==previousInside)push(intersection(previous,current));if(currentInside)push(current);previous=current;previousInside=currentInside;}
+ if(output.length>1&&equal(output[0]!,output.at(-1)!))output.pop();
+ return output;
+}
+function prepareNativeWalkingOwnershipIntersection(face:NativeRationalParts){
+ const fallback=prepareNativeWalkingUnclippedOwnershipIntersection(face);
+ return(identity:NativeRationalParts):NativeRationalParts=>{
+  if(!identity.length)return[];
+  const points=identity.flat(2),first=points[0]!;
+  let x0=first[0],y0=first[1],x1=first[0],y1=first[1];
+  for(const[x,y]of points){if(rationalCompare(x,x0)<0)x0=x;if(rationalCompare(y,y0)<0)y0=y;if(rationalCompare(x,x1)>0)x1=x;if(rationalCompare(y,y1)>0)y1=y;}
+  if(rationalCompare(x0,x1)===0||rationalCompare(y0,y1)===0)return[];
+  const clipRing=(ring:NativeRationalPoint[])=>clip(clip(clip(clip(ring,0,x0,true),0,x1,false),1,y0,true),1,y1,false);
+  const clipped=face.flatMap(part=>{
+   const outer=clipRing(part[0]!);if(outer.length<3)return[];
+   return[[outer,...part.slice(1).map(clipRing).filter(r=>r.length>=3)]];
+  });
+  if(!clipped.length)return[];
+  try { return nativeRationalOverlay('intersection',clipped,identity); }
+  catch { return fallback(identity); }
+ };
+}
+
+export function nativeWalkingOwnershipIntersection(face: NativeRationalParts, identity: NativeRationalParts) {
+  return prepareNativeWalkingOwnershipIntersection(face)(identity);
+}
+/** Bounded exact majority memo for one immutable source calculation. Policy
+ * decisions stay outside this cache; no face is clipped to an identity. */
+/** Bounded content admission for complete exact ownership keys. Hash controls retention only:
+ * every hit still compares the complete exact key, so collisions cannot alias. */
+export function createStableOwnershipMemo(maximumEntries=512,maximumBytes=16*1024*1024){
+ type Entry={key:string;keys:readonly string[];bytes:number;priority:number};
+ const entries=new Map<string,Entry>(),ranked:Entry[]=[];let retainedBytes=0,keyBytes=0,hits=0,misses=0,skipped=0;
+ const priority=(key:string)=>{let h=0x811c9dc5;for(let i=0;i<key.length;i++)h=Math.imul(h^key.charCodeAt(i),0x01000193);return h>>>0;};
+ const compare=(a:Entry,b:Entry)=>a.priority-b.priority||(a.key<b.key?-1:a.key>b.key?1:0);
+ const dropWorst=()=>{const e=ranked.pop();if(e){entries.delete(e.key);retainedBytes-=e.bytes;keyBytes-=2*e.key.length;}};
+ return {
+  get(key:string){const e=entries.get(key);if(e){hits++;return e;}misses++;return undefined;},
+  set(key:string,keys:string[]){
+   if(entries.has(key))return;
+   const bytes=512+2*key.length+keys.reduce((sum,s)=>sum+40+2*s.length,0);
+   const entry:Entry=Object.freeze({key,keys:Object.freeze([...keys]),bytes,priority:priority(key)});
+   if(bytes>maximumBytes||maximumEntries<=0){skipped++;return;}
+   // Retain a stable bounded sample rather than replacing the entire tail on
+   // each long identical face scan. No face or ownership decision is omitted.
+   while(ranked.length&&(ranked.length>=maximumEntries||retainedBytes+bytes>maximumBytes)){
+    if(compare(entry,ranked[ranked.length-1]!)>=0){skipped++;return;}dropWorst();
+   }
+   let lo=0,hi=ranked.length;while(lo<hi){const m=(lo+hi)>>>1;if(compare(ranked[m]!,entry)<0)lo=m+1;else hi=m;}
+   ranked.splice(lo,0,entry);entries.set(key,entry);retainedBytes+=bytes;keyBytes+=2*key.length;
+  },
+  statistics:()=>({hits,misses,entries:entries.size,retainedBytes,keyBytes,maximumEntries,maximumBytes,skipped})
+ };
+}
+
+export function createNativeWalkingOwnershipQuery(dataset: IndoorDataset) {
+  const identities = new WeakMap<IndoorDataset["records"][number], { identity: Polygon; box: number[]; parts?: NativeRationalParts }>();
+  const memo = createStableOwnershipMemo();
+  const classify = (face: NativeRationalParts, box: readonly number[], records: IndoorDataset["records"], onError: (record: IndoorDataset["records"][number], error: unknown) => void) => {
+    const key = JSON.stringify([records.map(r => r.key), face.map(p => p.map(r => r.map(q => q.map(v => `${v.n}/${v.d}`))))]);
+    const cached = memo.get(key);
+    if (cached) { const keys = new Set(cached.keys); return { owners: records.filter(r => keys.has(r.key)), unresolved: false }; }
+    let unresolved = false;
+    const intersection = prepareNativeWalkingOwnershipIntersection(face);
+    const owners = records.filter(record => {
+      let row = identities.get(record);
+      if (!row) { const identity = nativeRoomIdentityRings(dataset, record); const created = { identity, box: [...bounds(identity)] }; identities.set(record, created); row = created; }
+      if (box[0]! > row.box[2]! || box[2]! < row.box[0]! || box[1]! > row.box[3]! || box[3]! < row.box[1]!) return false;
+      try {
+        row.parts ??= freezeNativeRationalParts(nativeRationalOverlay("union", [row.identity]));
+        const overlap = intersection(row.parts);
+        return nativeRationalAreaCompare(overlap, []) > 0 && (nativeRationalAreaCompare(overlap, row.parts, 2n) >= 0 || nativeRationalAreaCompare(overlap, face, 2n) >= 0);
+      } catch (error) { unresolved = true; onError(record, error); return false; }
+    });
+    if (!unresolved) memo.set(key, owners.map(r => r.key));
+    return { owners, unresolved };
+  };
+  classify.statistics = memo.statistics;
+  return classify;
+}
 const area = (polys: RoomPoint[][][]) =>
   polys.reduce(
     (s, p) =>
@@ -87,14 +222,94 @@ export const walkingStrip = (
 
 export type NativeWalkingRegion = {
   elevationFeet: number;
+  /** Exact authority for strict native operations. Numeric arrays only propose/search/render. */
+  exact?: { floors: NativeRationalParts; free: NativeRationalParts; walkable: NativeRationalParts; barriers: NativeRationalParts };
   floors: Polygon[];
   barriers: Polygon[];
   masks: Polygon[];
   wallBarriers?: Polygon[];
   diagnostics?: string[];
   circulation?: Polygon[];
+  /** Whole source-defined free faces and their majority metadata identities. */
+  identityFaces?: { face: Polygon; exactParts?: NativeRationalParts; roomKeys: string[] }[];
   nativeFloorIds: number[];
 };
+/** Complete exact native floor/enclosure intersection for one immutable source
+ * phase. Portal state and metadata are deliberately absent from this cache:
+ * their barriers and ownership are recomputed against the complete floor. */
+export function createNativeWalkingFloorIntersectionQuery(sourceModelSha256: string) {
+  const entries = new Map<string, { parts: NativeRationalParts; bytes: number }>();
+  const maximumEntries = 12, maximumBytes = 16 * 1024 * 1024;
+  let retainedBytes = 0, hits = 0, misses = 0;
+  const compute = (rawFloors: Polygon[], envelopes: Polygon[]) =>
+    freezeNativeRationalParts(rawFloors.length && envelopes.length
+      ? nativeRationalOverlay("intersection", rawFloors, envelopes) : []);
+  const query = (elevationFeet: number, rawFloors: Polygon[], envelopes: Polygon[]) => {
+    if (!Number.isFinite(elevationFeet) || [...rawFloors, ...envelopes].some(part =>
+      part.some(ring => ring.some(point => !point.every(Number.isFinite)))))
+      return compute(rawFloors, envelopes);
+    // Full current operand bytes prevent stale in-place input reuse; no old
+    // declared geometry SHA, rounded bounds, portal key or room contour enters.
+    const key = JSON.stringify([sourceModelSha256, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION, elevationFeet, rawFloors, envelopes]);
+    const cached = entries.get(key);
+    if (cached) { hits++; entries.delete(key); entries.set(key, cached); return cached.parts; }
+    misses++;
+    const parts = compute(rawFloors, envelopes);
+    let bytes = key.length * 2 + 160;
+    for (const part of parts) {
+      bytes += 64;
+      for (const ring of part) {
+        bytes += 64;
+        for (const point of ring) {
+          bytes += 64;
+          for (const scalar of point) bytes += 192 + 2 * (String(scalar.n).length + String(scalar.d).length);
+        }
+      }
+    }
+    if (bytes <= maximumBytes) {
+      while (entries.size && (entries.size >= maximumEntries || retainedBytes + bytes > maximumBytes)) {
+        const first = entries.keys().next().value!;
+        retainedBytes -= entries.get(first)!.bytes; entries.delete(first);
+      }
+      entries.set(key, { parts, bytes }); retainedBytes += bytes;
+    }
+    return parts;
+  };
+  return Object.assign(query, { statistics: () => ({ hits, misses, entries: entries.size,
+    retainedBytes, maximumEntries, maximumBytes }) });
+}
+
+/** Complete-operand memo. No height bucketing or metadata cropping.
+ * Each factory belongs to one unchanged private ramp-validation phase. */
+export function createNativeRampPhysicalOperandMemo() {
+  const entries = new Map<string, {parts: NativeRationalParts; bytes: number}>();
+  const maximumEntries = 8, maximumBytes = 64 * 1024 * 1024;
+  let hits = 0, misses = 0, retainedBytes = 0;
+  const query = (completeAuthority: unknown, compute: () => NativeRationalParts) => {
+    const key = JSON.stringify(completeAuthority);
+    const cached = entries.get(key);
+    if (cached) { hits++; entries.delete(key); entries.set(key, cached); return cached.parts; }
+    misses++;
+    const parts = freezeNativeRationalParts(compute());
+    let bytes = 160 + 2 * key.length;
+    for (const part of parts) { bytes += 64; for (const ring of part) { bytes += 64;
+      for (const point of ring) { bytes += 64;
+        for (const v of point) bytes += 192 + 2 * (String(v.n).length + String(v.d).length);
+      }
+    }}
+    if (bytes <= maximumBytes) {
+      while (entries.size && (entries.size >= maximumEntries || retainedBytes + bytes > maximumBytes)) {
+        const first = entries.keys().next().value!;
+        retainedBytes -= entries.get(first)!.bytes; entries.delete(first);
+      }
+      entries.set(key, {parts, bytes}); retainedBytes += bytes;
+    }
+    return parts;
+  };
+  return Object.assign(query, {statistics: () => ({hits, misses, entries: entries.size,
+    retainedBytes, maximumEntries, maximumBytes})});
+}
+
 /** Floors are exact profiles at the walking elevation, including all inner holes.
  * Solid obstacles are sliced at ankle height; every native doorway is a veto so
  * recovery cannot bypass a disabled door by cutting through a display opening. */
@@ -105,17 +320,32 @@ export function nativeWalkingRegion(
   allowUnlabelled = false,
   portalNode?: IndoorNode,
   envelopeIndex?: NativeIndoorEnvelopeIndex,
+  materialQuery?: ReturnType<typeof createNativeRoutingMaterialQuery>,
+  boundaryQuery?: ReturnType<typeof createNativeBoundaryMaterialQuery>,
+  authoredTreads?: ReturnType<typeof nativeAuthoredStairTreads>,
+  exactBoundaryQuery?: ReturnType<typeof createNativeExactBoundaryMaterialQuery>,
+  ownershipQuery?: ReturnType<typeof createNativeWalkingOwnershipQuery>,
+  privateRampVetoOnly = false,
+  floorIntersectionQuery?: ReturnType<typeof createNativeWalkingFloorIntersectionQuery>,
+  privatePhysicalMemo?: ReturnType<typeof createNativeRampPhysicalOperandMemo>,
 ): NativeWalkingRegion {
   const nativeFloors = routingFloorPlateRecords(model, elevationFeet);
   const strictNative = !!dataset.nativeIndoorEnvelopes;
   const sourceProfiles = nativeFloors.flatMap((source) =>
-    nativeFloorPolygons(source).map((floor) => ({
+    nativeFloorPolygons(source, strictNative).map((floor) => ({
       floor,
       sourceId: source.elementId,
     })),
   );
   const rawFloors = sourceProfiles.map((p) => p.floor);
   const diagnostics: string[] = [];
+  const exactByPolygon = new Map<Polygon, NativeRationalParts>();
+  const proposalParts = (parts: NativeRationalParts): Polygon[] => parts.map((part) => {
+    const proposal = part.map((ring) => ring.map(([x,y]) => [nativeRationalScalarToIEEE(x),nativeRationalScalarToIEEE(y)] as RoomPoint));
+    exactByPolygon.set(proposal, [part]); return proposal;
+  });
+  const exactParts = (parts: Polygon[]): NativeRationalParts => parts.flatMap(p => exactByPolygon.get(p) ?? nativeRationalOverlay("union", [p]));
+  let exact: NativeWalkingRegion["exact"];
   const envelopes = (
     envelopeIndex ??
     createNativeIndoorEnvelopeIndex(
@@ -125,28 +355,22 @@ export function nativeWalkingRegion(
   ).parts(elevationFeet);
   // Envelopes are source-certified physical indoor coverage, never room traces.
   const envelopeParts = envelopes.map((face) => ({ face, box: bounds(face) }));
-  const floors: Polygon[] = strictNative
-    ? sourceProfiles.flatMap(({ floor: f, sourceId }) => {
-        const box = bounds(f),
-          local = envelopeParts
-            .filter(
-              (p) =>
-                box[0] <= p.box[2] &&
-                box[2] >= p.box[0] &&
-                box[1] <= p.box[3] &&
-                box[3] >= p.box[1],
-            )
-            .map((p) => p.face);
-        try {
-          return nativeFloorIntersection(f, local);
-        } catch (error) {
-          diagnostics.push(
-            `Elevation ${elevationFeet}: native slab #${sourceId} support intersection is unclassifiable; its complete profile remains unavailable: ${String(error).slice(0, 300)}`,
-          );
-          return [];
-        }
-      })
-    : rawFloors;
+  const exactFloors = strictNative
+    ? floorIntersectionQuery
+      ? floorIntersectionQuery(elevationFeet, rawFloors, envelopes)
+      : (rawFloors.length && envelopes.length
+        ? nativeRationalOverlay("intersection", rawFloors, envelopes) : [])
+    : undefined;
+  const floors: Polygon[] = exactFloors ? proposalParts(exactFloors) : rawFloors;
+  const material = (materialQuery ?? createNativeRoutingMaterialQuery(dataset))(
+    elevationFeet,
+  );
+  const certifiedMaterialIds = material.known,
+    presentMaterialIds = material.present;
+  const boundaryMaterial =
+    boundaryQuery ?? createNativeBoundaryMaterialQuery(dataset);
+  const exactBoundaries=strictNative?(exactBoundaryQuery??createNativeExactBoundaryMaterialQuery(dataset)):undefined;
+  const ownsAperture = createNativeHostApertureQuery(material);
   const levels = dataset.nativeLevels
     .filter((l) => Math.abs(l.elevationFeet - elevationFeet) < 0.05)
     .map((l) => l.id);
@@ -167,12 +391,32 @@ export function nativeWalkingRegion(
     dataset.edges.some((e) => e.id === portal.id && e.enabled)
       ? [portal.footprintFeet]
       : undefined;
+  const subtractAperture = (parts: Polygon[], opening: Polygon): Polygon[] => strictNative
+    ? proposalParts(nativeRationalOverlay("difference", exactParts(parts), [opening]))
+    : pc.difference(parts, opening) as Polygon[];
   const barriers: Polygon[] = [],
     wallBarriers: Polygon[] = [];
   const addWalls = (parts: Polygon[]) => {
     barriers.push(...parts);
     wallBarriers.push(...parts);
   };
+  // Derived finite source-member continuations remain foreign material; no
+  // original host aperture may erase this separately certified layer.
+  addWalls(material.derivedParts ?? []);
+  for (const part of material.parts) {
+    if (part.column) barriers.push(part.rings);
+    else
+      addWalls(
+        aperture &&
+          ownsAperture(
+            portalHost,
+            portal!.nativeElementId,
+            part.nativeElementId,
+          )
+          ? subtractAperture([part.rings], aperture)
+          : [part.rings],
+      );
+  }
   const curtainSections = recoverNativeCurtainMemberSections(
     model,
     elevationFeet + 0.1,
@@ -185,43 +429,68 @@ export function nativeWalkingRegion(
   // jambs. Door leaves remain separately blocked unless their explicit portal
   // is being continued on its existing side.
   barriers.push(
-    ...curtainSections.flatMap((section) =>
-      section.barriers.map((member) => [member.polygon]),
-    ),
+    ...curtainSections
+      .filter((section) => !certifiedMaterialIds.has(section.hostId))
+      .flatMap((section) =>
+        section.barriers
+          .filter((member) => !certifiedMaterialIds.has(member.elementId))
+          .map((member) => [member.polygon]),
+      ),
   );
   const wallParts = (polygon: RoomPoint[], nativeId: number): Polygon[] =>
     aperture && nativeId === portalHost
-      ? (pc.difference([polygon], aperture) as Polygon[])
+      ? subtractAperture([[polygon]], aperture)
       : [[polygon]];
   addWalls(
     (dataset.walls ?? [])
-      .filter((w) => w.reviewPatchId && levels.includes(w.levelId))
-      .flatMap((w) =>
-        w.ringsFeet.flatMap((ring) => wallParts(ring, w.nativeElementId)),
-      ),
+      .filter(
+        (w) =>
+          w.reviewPatchId &&
+          levels.includes(w.levelId) &&
+          (!certifiedMaterialIds.has(w.nativeElementId) ||
+            presentMaterialIds.has(w.nativeElementId)),
+      )
+      .flatMap((w) => exactBoundaries?proposalParts(exactBoundaries(w)):boundaryMaterial(w)),
   );
-  const originalBodies=new Map(model.elementBounds.map(body=>[body.elementId,body]));
-  const atWalkingHeight=(id:number)=>{
-    if(!strictNative)return true;
-    const body=originalBodies.get(id),z=elevationFeet+.1;
+  const originalBodies = new Map(
+    model.elementBounds.map((body) => [body.elementId, body]),
+  );
+  const atWalkingHeight = (id: number) => {
+    if (!strictNative) return true;
+    const body = originalBodies.get(id),
+      z = elevationFeet + 0.1;
     // A plan cut can project raised material onto a lower walking floor.
     // Unknown bodies retain their conservative footprint; known originals
     // veto only where their physical height interval contains the ankle cut.
-    if(!body)return true;
-    if(body.boundsFeet.min.z>z||body.boundsFeet.max.z<z)return false;
-    const solids=body.solids??(body.solid?[body.solid]:[]);
-    return !solids.length||solids.some(s=>s.baseElevation<=z&&s.topElevation>=z);
+    if (!body) return true;
+    if (body.boundsFeet.min.z > z || body.boundsFeet.max.z < z) return false;
+    const solids = body.solids ?? (body.solid ? [body.solid] : []);
+    return (
+      !solids.length ||
+      solids.some((s) => s.baseElevation <= z && s.topElevation >= z)
+    );
   };
   for (const level of levels) {
     if (!model.nativeAssociatedLevelRelations?.length) continue;
     const g = architecturalPlanGeometry(model, level);
     addWalls(
       g.walls
-        .filter((w) => !curtainHosts.has(w.elementId)&&atWalkingHeight(w.elementId))
+        .filter(
+          (w) =>
+            !curtainHosts.has(w.elementId) &&
+            !certifiedMaterialIds.has(w.elementId) &&
+            atWalkingHeight(w.elementId),
+        )
         .flatMap((w) => wallParts(w.polygon, w.elementId)),
     );
     barriers.push(
-      ...g.columns.filter(w=>atWalkingHeight(w.elementId)).map((w) => [w.polygon]),
+      ...g.columns
+        .filter(
+          (w) =>
+            !certifiedMaterialIds.has(w.elementId) &&
+            atWalkingHeight(w.elementId),
+        )
+        .map((w) => [w.polygon]),
       ...g.doors
         .filter((d) => !aperture || d.elementId !== portal?.nativeElementId)
         .map((w) => [w.polygon]),
@@ -231,7 +500,8 @@ export function nativeWalkingRegion(
   for (const r of model.elementBounds.filter(
     (r) =>
       [-2000011, -2000100, -2001330].includes(r.categoryId ?? 0) &&
-      !curtainHosts.has(r.elementId),
+      !curtainHosts.has(r.elementId) &&
+      !certifiedMaterialIds.has(r.elementId),
   ))
     for (const s of r.solids ?? (r.solid ? [r.solid] : [])) {
       if (
@@ -255,9 +525,13 @@ export function nativeWalkingRegion(
         addWalls(footprints.flatMap((p) => wallParts(p, r.elementId)));
       else barriers.push(...footprints.map((p) => [p]));
     }
-  for (const tread of model.elementBounds.flatMap(
-    (record) => record.stairTreads ?? [],
-  )) {
+  const exactAuthoredTreads = authoredTreads ?? nativeAuthoredStairTreads(
+    dataset.nativeSourceStairMaterials?.authoredTreadRoles, dataset.source.modelSha256,
+  );
+  for (const tread of model.elementBounds.flatMap((record) => {
+    const exact = strictNative && exactAuthoredTreads.get(record.elementId);
+    return exact ? exact.map(t => t.ringFeet.map(p => [p[0], p[1], t.elevationFeet] as [number, number, number])) : record.stairTreads ?? [];
+  })) {
     const z = Math.min(...tread.map((p) => p[2]));
     if (z > elevationFeet + 0.05 && z < elevationFeet + 6)
       barriers.push([tread.map((p) => [p[0], p[1]] as RoomPoint)]);
@@ -265,7 +539,7 @@ export function nativeWalkingRegion(
   // A low native slab/tabletop is an obstruction, not another walking floor.
   // Use its exact separate shells and holes, never its bounds rectangle.
   barriers.push(
-    ...nativeLowSlabRecords(model, elevationFeet).flatMap(nativeFloorPolygons),
+    ...nativeLowSlabRecords(model, elevationFeet).flatMap((slab) => nativeFloorPolygons(slab, strictNative)),
   );
   const same = dataset.records.filter(
     (r) => Math.abs(r.elevationFeet - elevationFeet) < 0.05,
@@ -289,8 +563,10 @@ export function nativeWalkingRegion(
         ...(!strictNative && (!allowUnlabelled || !r.circulation)
           ? r.ringsFeet.slice(1)
           : []),
-        ...((r.properties.floorOpeningsFeet as RoomPoint[][] | undefined) ??
-          []),
+        ...(!strictNative
+          ? ((r.properties.floorOpeningsFeet as RoomPoint[][] | undefined) ??
+            [])
+          : []),
       ].map((h) => [h]),
     ),
   );
@@ -324,72 +600,95 @@ export function nativeWalkingRegion(
     ]);
   }
   let circulation: Polygon[] | undefined;
+  let identityFaces: NativeWalkingRegion["identityFaces"];
   if (strictNative) {
     // Classify complete physical faces. A restricted identity makes its whole
     // shared face unavailable; cutting its old contour would invent access.
     const exactWalls = new Set(wallBarriers);
     const obstacles = [
-      ...nativeBarrierTopology(wallBarriers),
+      ...wallBarriers,
       ...barriers.filter((b) => !exactWalls.has(b)),
       ...masks,
       ...indoorExclusionParts(dataset, elevationFeet),
     ];
-    const overlapBoxes = (a: readonly number[], b: readonly number[]) =>
-      a[0]! <= b[2]! && a[2]! >= b[0]! && a[1]! <= b[3]! && a[3]! >= b[1]!;
-    const indexed = obstacles.map((face) => ({ face, box: bounds(face) }));
-    const parts = floors.flatMap((floor) => {
-      const box = bounds(floor),
-        local = indexed
-          .filter((o) => overlapBoxes(box, o.box))
-          .map((o) => o.face);
-      try {
-        let free = [floor];
-        for (let i = 0; i < local.length; i += 100)
-          if (free.length)
-            free = pc.difference(free, ...local.slice(i, i + 100)) as Polygon[];
-        return free;
-      } catch {
-        return nativeFloorDifference(floor, local);
-      }
-    });
-    let free: Polygon[] = [];
-    try {
-      free = parts.length
-        ? (pc.union(parts[0]!, ...parts.slice(1)) as Polygon[])
-        : [];
-    } catch {
-      free = nativeFloorUnion(parts);
+    if (!exactFloors!.length) {
+      // Ramp triangles are checked independently at intermediate heights.
+      // Keep every material/barrier/mask for that check, but there is no flat
+      // free face to subtract or classify. Exact barrier authority stays lazy
+      // and complete if an exact consumer subsequently requests it.
+      let exactObstacles: NativeRationalParts | undefined;
+      const empty = freezeNativeRationalParts([]);
+      return {
+        elevationFeet, floors, barriers, masks, wallBarriers,
+        nativeFloorIds: nativeFloors.map(r => r.elementId),
+        identityFaces: [],
+        ...(!allowUnlabelled ? { circulation: [] } : {}),
+        ...(diagnostics.length ? { diagnostics } : {}),
+        exact: {
+          floors: empty, free: empty, walkable: empty,
+          get barriers() {
+            return exactObstacles ??= freezeNativeRationalParts(exactParts(obstacles));
+          },
+        },
+      };
     }
-    const owners = same.map((record) => ({
-      record,
-      box: bounds(record.ringsFeet),
-    }));
+    // The private ramp validator checks independently certified ramp/slab
+    // support plus these unchanged physical barriers. Without any protected
+    // identity, no complete free-face ownership decision can add a veto. Defer
+    // that overlay until a caller explicitly requests full exact authority.
+    // Never take this path for general queries, portals, or protected records.
+    if (privateRampVetoOnly && allowUnlabelled && !portalNode && !masks.length &&
+      !same.some(record => !record.walkable || record.access === "staff")) {
+      let deferredFree: NativeRationalParts | undefined;
+      let deferredObstacles: NativeRationalParts | undefined;
+      const completeObstacles = () => deferredObstacles ??= freezeNativeRationalParts(exactParts(obstacles));
+      const completeFree = () => deferredFree ??= freezeNativeRationalParts(
+        nativeRationalOverlay("difference", exactFloors!, completeObstacles()));
+      return {
+        elevationFeet, floors, barriers, masks, wallBarriers,
+        nativeFloorIds: nativeFloors.map(record => record.elementId),
+        ...(diagnostics.length ? {diagnostics} : {}),
+        get identityFaces() { return proposalParts(completeFree()).map(face => ({face, roomKeys: []})); },
+        exact: {
+          floors: freezeNativeRationalParts(exactFloors!),
+          get free() { return completeFree(); },
+          get walkable() { return completeFree(); },
+          get barriers() { return completeObstacles(); },
+        },
+      };
+    }
+    // Retain the exact rational result across all source booleans. A rendered
+    // IEEE corner must never become the next operand or a walking proof.
+    const computeFree = () => nativeRationalOverlay("difference", exactFloors!, exactParts(obstacles));
+    const exactWire = (parts: NativeRationalParts) => parts.map(part => part.map(ring =>
+      ring.map(point => point.map(value => [String(value.n), String(value.d)]))));
+    // z-specific physical construction has already run. Reuse only its COMPLETE
+    // identical original operands and policy, including exact derived repairs.
+    const freeExact = freezeNativeRationalParts(privatePhysicalMemo && privateRampVetoOnly && allowUnlabelled && !portalNode
+      ? privatePhysicalMemo([
+          dataset.source.modelSha256, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION,
+          sourceProfiles.map(p => [p.sourceId, p.floor]), envelopes,
+          dataset.nativeIndoorEnvelopes?.geometrySha256,
+          dataset.nativeMaterialSections?.geometrySha256,
+          material.parts, material.derivedParts ?? [],
+          [...material.known].sort((a,b) => a-b), [...material.present].sort((a,b) => a-b),
+          obstacles.map(p => exactByPolygon.has(p) ? ["exact", exactWire(exactByPolygon.get(p)!)] : ["original-ieee", p]),
+          same.filter(record => !record.walkable || record.access === "staff"),
+          allowUnlabelled, privateRampVetoOnly,
+        ], computeFree)
+      : computeFree());
+    const free = proposalParts(freeExact);
+    const classifyOwnership = ownershipQuery ?? createNativeWalkingOwnershipQuery(dataset);
     const faces = free.map((face) => {
       const box = bounds(face);
-      let unresolved = false;
-      const members = owners
-        .filter((o) => {
-          if (!overlapBoxes(box, o.box)) return false;
-          try {
-            const overlap = area(
-              nativeFloorIntersection(face, [o.record.ringsFeet]),
-            );
-            return (
-              overlap > 0.25 &&
-              (overlap / area([o.record.ringsFeet]) >= 0.5 ||
-                overlap / area([face]) >= 0.5)
-            );
-          } catch (error) {
-            diagnostics.push(
-              `Elevation ${elevationFeet}: native face ownership for ${o.record.key} is unclassifiable; complete face remains unavailable: ${String(error).slice(0, 300)}`,
-            );
-            unresolved = true;
-            return false;
-          }
-        })
-        .map((o) => o.record);
-      return { face, owners: members, unresolved };
+      const membership = classifyOwnership(exactParts([face]), box, same, (record, error) => diagnostics.push(
+        `Elevation ${elevationFeet}: native face ownership for ${record.key} is unclassifiable; complete face remains unavailable: ${String(error).slice(0, 300)}`,
+      ));
+      return { face, ...membership };
     });
+    identityFaces = faces
+      .filter((c) => !c.unresolved)
+      .map((c) => ({ face: c.face, exactParts: freezeNativeRationalParts(exactParts([c.face])), roomKeys: c.owners.map((o) => o.key) }));
     masks.push(
       ...faces
         .filter(
@@ -410,12 +709,17 @@ export function nativeWalkingRegion(
             !c.owners.some((r) => !r.walkable || r.access === "staff"),
         )
         .map((c) => c.face);
+    const accepted = faces.filter(c => !c.unresolved && !c.owners.some(r => !r.walkable || r.access === "staff") &&
+      (allowUnlabelled || c.owners.some(r => r.circulation && r.walkable && r.access !== "staff")));
+    exact = { floors: freezeNativeRationalParts(exactFloors!), free: freezeNativeRationalParts(freeExact),
+      walkable: freezeNativeRationalParts(accepted.flatMap(c => exactParts([c.face]))), barriers: freezeNativeRationalParts(exactParts(obstacles)) };
   } else if (!allowUnlabelled)
     circulation = same
       .filter((r) => r.circulation && r.walkable && r.access !== "staff")
       .map((r) => r.ringsFeet);
   return {
     elevationFeet,
+    ...(exact ? {exact} : {}),
     ...(diagnostics.length ? { diagnostics } : {}),
     floors,
     barriers,
@@ -423,19 +727,32 @@ export function nativeWalkingRegion(
     wallBarriers,
     nativeFloorIds: nativeFloors.map((r) => r.elementId),
     ...(circulation ? { circulation } : {}),
+    ...(identityFaces ? { identityFaces } : {}),
   };
 }
 /** Bounded cache for a compiler phase with unchanged physical walls, doors,
  * source records and exclusions. Terminal/edge creation does not affect a
  * no-portal region. Start a fresh query after physical authoring mutations. */
-export function createNativeWalkingRegionQuery(
+function createSourceNativeWalkingRegionQuery(
   model: ConvertResult,
   dataset: IndoorDataset,
+  protectedOnly = false,
 ) {
+  const completeOwnership = createNativeWalkingOwnershipQuery(dataset);
+  const floorIntersections = createNativeWalkingFloorIntersectionQuery(dataset.source.modelSha256);
+  const privatePhysicalMemo = protectedOnly ? createNativeRampPhysicalOperandMemo() : undefined;
+  const ownership = protectedOnly ? Object.assign(
+    ((face, box, records, onError) => completeOwnership(face, box, records.filter(r => !r.walkable || r.access === "staff"), onError)) as typeof completeOwnership,
+    { statistics: completeOwnership.statistics },
+  ) : completeOwnership;
   const envelopes = createNativeIndoorEnvelopeIndex(
       dataset.nativeIndoorEnvelopes,
       dataset.source.modelSha256,
     ),
+    materials = createNativeRoutingMaterialQuery(dataset),
+    boundaries = createNativeBoundaryMaterialQuery(dataset),
+    exactBoundaries = createNativeExactBoundaryMaterialQuery(dataset),
+    authoredTreads = nativeAuthoredStairTreads(dataset.nativeSourceStairMaterials?.authoredTreadRoles, dataset.source.modelSha256),
     regions = new Map<string, NativeWalkingRegion>(),
     diagnostics = new Set<string>();
   const query = (
@@ -443,16 +760,26 @@ export function createNativeWalkingRegionQuery(
     allowUnlabelled = false,
     portalNode?: IndoorNode,
   ) => {
-    if (portalNode)
-      return nativeWalkingRegion(
-        model,
-        dataset,
-        elevationFeet,
-        allowUnlabelled,
-        portalNode,
-        envelopes,
+    if (protectedOnly && !allowUnlabelled) throw new Error("Ramp physical veto queries must retain explicit unlabelled geometry mode.");
+    const portal =
+      portalNode &&
+      dataset.doors?.find(
+        (d) => portalNode.id === `${d.id}:0` || portalNode.id === `${d.id}:1`,
       );
-    const key = JSON.stringify([elevationFeet, allowUnlabelled]);
+    const key = JSON.stringify([
+      elevationFeet,
+      allowUnlabelled,
+      ...(portalNode
+        ? [
+            portalNode.id,
+            portalNode.pointFeet,
+            portal?.state,
+            portal?.footprintFeet,
+            portal?.normalFeet,
+            dataset.edges.find((e) => e.id === portal?.id)?.enabled,
+          ]
+        : []),
+    ]);
     let region = regions.get(key);
     if (!region) {
       region = nativeWalkingRegion(
@@ -460,15 +787,41 @@ export function createNativeWalkingRegionQuery(
         dataset,
         elevationFeet,
         allowUnlabelled,
-        undefined,
+        portalNode,
         envelopes,
+        materials,
+        boundaries,
+        authoredTreads,
+        exactBoundaries,
+        ownership,
+        protectedOnly,
+        floorIntersections,
+        privatePhysicalMemo,
       );
+      if (regions.size >= 32) regions.delete(regions.keys().next().value!);
       regions.set(key, region);
       for (const message of region.diagnostics ?? []) diagnostics.add(message);
+    } else {
+      // Promote a reused portal to keep nearby candidate approaches warm.
+      regions.delete(key);
+      regions.set(key, region);
     }
     return region;
   };
-  return Object.assign(query, { diagnostics: () => [...diagnostics] });
+  return Object.assign(query, { diagnostics: () => [...diagnostics], ownershipCacheStatistics: ownership.statistics, floorCacheStatistics: floorIntersections.statistics, privatePhysicalMemoStatistics: () => privatePhysicalMemo?.statistics() });
+}
+
+/** General source query always retains complete majority metadata. */
+export function createNativeWalkingRegionQuery(model: ConvertResult, dataset: IndoorDataset) {
+  return createSourceNativeWalkingRegionQuery(model, dataset);
+}
+
+/** Private ramp-validation view: with unlabelled physical geometry, public
+ * labels cannot affect acceptance. Every restricted/nonwalkable identity still
+ * tests the complete original face with the unchanged exact majority rule.
+ * This view does not provide complete room associations for compiler output. */
+export function createNativeRampWalkingRegionQuery(model: ConvertResult, dataset: IndoorDataset) {
+  return createSourceNativeWalkingRegionQuery(model, dataset, true);
 }
 
 /** Continuous polygon proof of native support, obstacle clearance and source
@@ -488,6 +841,18 @@ export function supportedWalkingPath(
     !region.floors.length
   )
     return false;
+  if (region.exact) {
+    try {
+      if (!nativeRationalPathSupported(points, region.exact.walkable)) return false;
+      for (let i=1;i<points.length;i++) {
+        const a=points[i-1]!, b=points[i]!;
+        if (a[0]===b[0] && a[1]===b[1]) continue;
+        const strip=walkingStrip([a[0],a[1]],[b[0],b[1]],width);
+        if (!nativeRationalFootprintSupported(nativeRationalOverlay("union",[strip]),region.exact.walkable)) return false;
+      }
+      return true;
+    } catch { return false; }
+  }
   try {
     const floor = pc.union(region.floors[0]!, ...region.floors.slice(1)),
       owned = region.circulation?.length
@@ -497,7 +862,17 @@ export function supportedWalkingPath(
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1]!,
         b = points[i]!;
-      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-8) continue;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-8) {
+        const point: [number, number] = [a[0], a[1]];
+        if (
+          !region.floors.some((f) => inside(point, f)) ||
+          (region.circulation &&
+            !region.circulation.some((f) => inside(point, f))) ||
+          [...region.barriers, ...region.masks].some((f) => inside(point, f))
+        )
+          return false;
+        continue;
+      }
       const strip = walkingStrip([a[0], a[1]], [b[0], b[1]], width);
       if (area(pc.difference(strip, floor) as RoomPoint[][][]) > 1e-7)
         return false;
@@ -564,7 +939,7 @@ export function findNativeWalkingPath(
       [p[0], p[1] - 1],
       [p[0], p[1] + 1],
     ] as RoomPoint[];
-    const ok = probes.every(
+    const ok = region.exact ? probes.every(q=>nativeRationalPointInParts(q,region.exact!.walkable)) : probes.every(
       (q) =>
         region.floors.some((f) => inside(q, f)) &&
         (!region.circulation || region.circulation.some((f) => inside(q, f))) &&
@@ -728,7 +1103,7 @@ function createNativeFloorAliasQuery(
     if (!memberships.has(key)) {
       const floors = routingFloorPlateRecords(model, p[2]).map((f) => ({
           id: f.elementId,
-          parts: nativeFloorPolygons(f),
+          parts: nativeFloorPolygons(f, !!dataset.nativeIndoorEnvelopes),
         })),
         point: RoomPoint = [p[0], p[1]];
       const owned = floors
@@ -831,12 +1206,35 @@ function nativeRampCapOutward(
   ];
 }
 
+/** Metadata only: retain every positively traversed complete exact face. A
+ * drawing proposal or an area/segment cutoff cannot erase an access identity. */
+export function nativeWalkingTraversedIdentityKeys(
+  faces: NonNullable<NativeWalkingRegion["identityFaces"]>,
+  path: Point3[],
+): string[] {
+  const strips = path.slice(1).flatMap((b, i) => {
+    const a = path[i]!;
+    if (a[0] === b[0] && a[1] === b[1]) return [];
+    return [walkingStrip([a[0], a[1]], [b[0], b[1]])];
+  });
+  const keys = new Set<string>();
+  for (const face of faces) {
+    if (!face.roomKeys.length || !strips.length) continue;
+    if (!face.exactParts) throw new Error("Missing complete exact face for traversed native identity.");
+    if (strips.some(strip => nativeRationalAreaCompare(
+      nativeRationalOverlay("intersection", [strip], face.exactParts!), []
+    ) > 0)) for (const key of face.roomKeys) keys.add(key);
+  }
+  return [...keys];
+}
+
 /** Join only disconnected source circulation surfaces which overlap at a
  * physically supported height, plus native generated landings. Explicit doors,
  * walls, voids, private rooms and another storey's floors remain hard vetoes. */
 export function attachNativeCirculation(
   model: ConvertResult,
   dataset: IndoorDataset,
+  onProgress?: (checkedPairs: number, totalPairs: number, newEdges: number) => void,
 ): { edges: IndoorEdge[]; diagnostics: string[] } {
   const envelopes = createNativeIndoorEnvelopeIndex(
     dataset.nativeIndoorEnvelopes,
@@ -862,20 +1260,9 @@ export function attachNativeCirculation(
   ))
     join(e.from, e.to);
   const edges: IndoorEdge[] = [],
-    diagnostics: string[] = [],
-    regions = new Map<string, NativeWalkingRegion>();
-  const region = (z: number, landing: boolean) => {
-    const key = `${z.toFixed(6)}:${landing}`;
-    if (!regions.has(key))
-      regions.set(
-        key,
-        nativeWalkingRegion(model, dataset, z, landing, undefined, envelopes),
-      );
-    const value = regions.get(key)!;
-    for (const message of value.diagnostics ?? [])
-      if (!diagnostics.includes(message)) diagnostics.push(message);
-    return value;
-  };
+    diagnostics: string[] = [];
+  const walkingQuery = createNativeWalkingRegionQuery(model, dataset);
+  const region = (z: number, landing: boolean) => walkingQuery(z, landing);
   // Existing native-generated landings are the only starts allowed to cross an
   // unlabelled floor patch. All other links must remain source-circulation-owned.
   const starts = nodes.filter(
@@ -916,7 +1303,14 @@ export function attachNativeCirculation(
     }
   }
   pairs.sort((a, b) => a.distance - b.distance);
+  let checkedPairs = 0;
+  onProgress?.(0, pairs.length, 0);
   for (const p of pairs) {
+    // Report completed work without reordering geometry checks or interpreting
+    // the pair count as elapsed-time or route-certification progress.
+    if (checkedPairs > 0 && checkedPairs % 25 === 0)
+      onProgress?.(checkedPairs, pairs.length, edges.length);
+    checkedPairs++;
     if (root(p.a.id) === root(p.b.id)) continue;
     const portal = p.landing
       ? p.a.kind === "portal"
@@ -926,14 +1320,7 @@ export function attachNativeCirculation(
           : undefined
       : undefined;
     const r = portal
-      ? nativeWalkingRegion(
-          model,
-          dataset,
-          portal.pointFeet[2],
-          true,
-          portal,
-          envelopes,
-        )
+      ? walkingQuery(portal.pointFeet[2], true, portal)
       : region(p.a.pointFeet[2], p.landing);
     for (const message of r.diagnostics ?? [])
       if (!diagnostics.includes(message)) diagnostics.push(message);
@@ -1025,6 +1412,40 @@ export function attachNativeCirculation(
         ? [p.a.pointFeet, p.b.pointFeet]
         : undefined;
     if (!path) continue;
+    let traversedKeys: string[];
+    if (dataset.nativeIndoorEnvelopes) {
+      try {
+        traversedKeys = nativeWalkingTraversedIdentityKeys(r.identityFaces ?? [], path);
+      } catch (error) {
+        diagnostics.push(
+          `Native approach ${p.a.id} / ${p.b.id} has unclassifiable whole-face identity; no route generated: ${String(error).slice(0, 300)}`,
+        );
+        continue;
+      }
+    } else
+      traversedKeys = dataset.records
+        .filter(
+          (record) =>
+            Math.abs(record.elevationFeet - r.elevationFeet) < 0.05 &&
+            path!.slice(1).some((point, i) => {
+              try {
+                return (
+                  area(
+                    pc.intersection(
+                      walkingStrip(
+                        [path![i]![0], path![i]![1]],
+                        [point[0], point[1]],
+                      ),
+                      record.ringsFeet,
+                    ) as RoomPoint[][][],
+                  ) > 1e-7
+                );
+              } catch {
+                return false;
+              }
+            }),
+        )
+        .map((record) => record.key);
     edges.push({
       id: `native-circulation:${[p.a.id, p.b.id].sort().join("|")}`,
       from: p.a.id,
@@ -1040,41 +1461,14 @@ export function attachNativeCirculation(
               dataset.alignment.horizontalMetresPerFoot,
           0,
         ),
-      roomKeys: [
-        ...new Set([
-          p.a.roomKey,
-          p.b.roomKey,
-          ...dataset.records
-            .filter(
-              (record) =>
-                Math.abs(record.elevationFeet - r.elevationFeet) < 0.05 &&
-                path.slice(1).some((point, i) => {
-                  try {
-                    return (
-                      area(
-                        pc.intersection(
-                          walkingStrip(
-                            [path[i]![0], path[i]![1]],
-                            [point[0], point[1]],
-                          ),
-                          record.ringsFeet,
-                        ) as RoomPoint[][][],
-                      ) > 1e-7
-                    );
-                  } catch {
-                    return false;
-                  }
-                }),
-            )
-            .map((record) => record.key),
-        ]),
-      ],
+      roomKeys: [...new Set([p.a.roomKey, p.b.roomKey, ...traversedKeys])],
       evidence: `continuously supported full 2 ft native floor approach; exact slabs ${r.nativeFloorIds.join(",")}; walls, columns, doors, voids and staff/nonwalkable masks vetoed; all traversed source room identities retained; ${p.landing ? "generated native landing" : "source circulation overlap"}; access/accessibility remain unverified`,
       accessible: "unknown",
       enabled: true,
     });
     join(p.a.id, p.b.id);
   }
+  onProgress?.(checkedPairs, pairs.length, edges.length);
   for (const n of starts)
     if (!edges.some((e) => e.from === n.id || e.to === n.id))
       diagnostics.push(

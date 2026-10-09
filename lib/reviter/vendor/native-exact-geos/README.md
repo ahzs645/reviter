@@ -1,0 +1,9 @@
+# Checked native floating overlay
+
+GEOS 3.13.0, built with Emscripten 6.0.3. GEOS is licensed under LGPL-2.1 (see LICENSE-GEOS); its corresponding unmodified source is https://download.osgeo.org/geos/geos-3.13.0.tar.bz2. SOURCE.json pins the source archive, custom bridge, two audited source changes, and shipped WASM hashes. The exact changed source files and build script accompany this artifact; the original GEOS archive belongs in the authoring replay companions.
+
+The bridge runs direct OverlayNG FLOATING and an explicit floating UnaryUnionOp strategy. It never invokes OverlayNGRobust, SnapIfNeeded, a precision grid, precision reduction or buffer. Raw topology failure may use a custom SnappingNoder with a 1e-13 ft candidate search radius, which is NOT the accepted movement allowance. Every adjustment is checked against 4*Number.EPSILON*max(1,abs(original coordinates)); greater movement is declined and the exact input coordinate retained. ValidatingNoder checks complete output noding. The TypeScript carrier independently checks each accepted movement and every original pair in cumulative vertex clusters. No numerical component or hole is removed by area.
+
+Initialization is async, checksum verified and cached per worker/compiler module. All operations after initialization are synchronous; a missing/failed module throws. Input/output allocations are freed even after failures. Runtime and sibling compiler ship identical WASM and geometry helper bytes. The npm geos-wasm C API is intentionally not used: grid_size=0 enters adaptive OverlayNGRobust.
+
+Build: `./build-native-exact-geos.sh /path/to/geos-3.13.0.tar.bz2 /temporary/build/path`. Reproduction requires Emscripten 6.0.3 and CMake. The emitted module is standalone for Node and browser workers. Keep original geometry/source packets unchanged; publication requires a fresh source compile and key binding.

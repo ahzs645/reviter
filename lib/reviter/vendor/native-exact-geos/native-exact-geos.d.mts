@@ -1,0 +1,3 @@
+export type NativeModule={_malloc:(bytes:number)=>number;_free:(ptr:number)=>void;lengthBytesUTF8:(text:string)=>number;stringToUTF8:(text:string,ptr:number,size:number)=>void;UTF8ToString:(ptr:number)=>string;_native_union:(ptr:number)=>number;_native_overlay:(a:number,b:number,operation:number)=>number;_native_bounded_snap_union:(ptr:number,tolerance:number)=>number;_native_bounded_snap_overlay:(a:number,b:number,operation:number,tolerance:number)=>number;_native_snap_records:()=>number;_native_last_error:()=>number};
+declare const initialize:(options:{wasmBinary:Uint8Array;locateFile:()=>string;instantiateWasm?:(imports:WebAssembly.Imports,receive:(instance:WebAssembly.Instance)=>void)=>WebAssembly.Exports})=>Promise<NativeModule>;
+export default initialize;
