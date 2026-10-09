@@ -21,10 +21,14 @@ import { createNativeRoutingMaterialQuery } from "./native-routing-material.ts";
 import {
   nativeSelectionContactInterval,
   nativeSelectionOriginalFreeCapMask,
+  nativeSelectionOriginalSimpleTerminalCapMask,
 } from "./native-selection-contact-repairs.ts";
 
 export type ContactPhysicalEvidence = {
-  contactMode?: "finite-cap-overlap" | "original-free-cap";
+  contactMode?:
+    | "finite-cap-overlap"
+    | "original-free-cap"
+    | "original-simple-terminal-cap";
   sourceModelSha256: string;
   sourceMaterialGeometrySha256: string;
   levelId: number;
@@ -88,8 +92,20 @@ export function createNativeSelectionContactPhysicalGuard(
     createNativeRoutingMaterialQuery(data),
   );
   const originalByOwner = new Map<number, NativeRationalParts>();
+  const simpleOriginalByOwner = new Map<number, NativeRationalParts>();
   for (const wall of exactWalls) {
     freezeNativeRationalParts(wall.exactParts);
+    if (
+      wall.kind === "wall" &&
+      !wall.approximate &&
+      !wall.reviewPatchId &&
+      (wall as typeof wall & { geometrySource?: string }).geometrySource ===
+        "original-native-material-section"
+    )
+      simpleOriginalByOwner.set(wall.nativeElementId, [
+        ...(simpleOriginalByOwner.get(wall.nativeElementId) ?? []),
+        ...wall.exactParts,
+      ]);
     if (wall.kind === "wall" && !wall.approximate && !wall.reviewPatchId)
       originalByOwner.set(wall.nativeElementId, [
         ...(originalByOwner.get(wall.nativeElementId) ?? []),
@@ -133,6 +149,7 @@ export function createNativeSelectionContactPhysicalGuard(
       ),
   );
   let floorWithoutOpenings: NativeRationalParts | undefined;
+  let floorWithoutSourceOpenings: NativeRationalParts | undefined;
   return (repair: ContactPhysicalEvidence, mask: NativeRationalParts): void => {
     if (
       repair.sourceModelSha256 !== model ||
@@ -178,7 +195,10 @@ export function createNativeSelectionContactPhysicalGuard(
       );
     if (intersects(sourceParts) || intersects(targetParts))
       fail("gap mask adds overlap inside an original support");
-    if (repair.contactMode === "original-free-cap") {
+    if (
+      repair.contactMode === "original-free-cap" ||
+      repair.contactMode === "original-simple-terminal-cap"
+    ) {
       floorWithoutOpenings ??= freezeNativeRationalParts(
         nativeRationalOverlay("difference", floors, holes),
       );
@@ -191,11 +211,33 @@ export function createNativeSelectionContactPhysicalGuard(
         fail(
           "entire original free cap lacks original floor or crosses an opening",
         );
+      if (repair.contactMode === "original-simple-terminal-cap") {
+        floorWithoutSourceOpenings ??= freezeNativeRationalParts(
+          nativeRationalOverlay("difference", floorWithoutOpenings, openings),
+        );
+        if (
+          !nativeRationalPathSupported(
+            repair.source.capFeet,
+            floorWithoutSourceOpenings,
+          )
+        )
+          fail(
+            "entire original simple terminal cap crosses a source floor or stair opening",
+          );
+      }
       if (!repair.target.faceFeet)
         fail("original free cap lacks the original named target edge");
-      const authoritative = nativeSelectionOriginalFreeCapMask(
-        sourceParts,
-        targetParts,
+      const authoritative = (
+        repair.contactMode === "original-simple-terminal-cap"
+          ? nativeSelectionOriginalSimpleTerminalCapMask
+          : nativeSelectionOriginalFreeCapMask
+      )(
+        repair.contactMode === "original-simple-terminal-cap"
+          ? (simpleOriginalByOwner.get(repair.source.nativeElementId) ?? [])
+          : sourceParts,
+        repair.contactMode === "original-simple-terminal-cap"
+          ? (simpleOriginalByOwner.get(repair.target.nativeElementId) ?? [])
+          : targetParts,
         repair.source.capFeet,
         repair.target.faceFeet!,
       );

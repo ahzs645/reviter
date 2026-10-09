@@ -31,7 +31,10 @@ export type NativeSelectionContactRepair = {
     ringsFeet: Rings;
     faceFeet: [Point, Point];
   };
-  contactMode?: "finite-cap-overlap" | "original-free-cap";
+  contactMode?:
+    | "finite-cap-overlap"
+    | "original-free-cap"
+    | "original-simple-terminal-cap";
   evidenceSha256: string;
   notes: string;
   assumption: {
@@ -117,7 +120,8 @@ export function validateNativeSelectionContactRepairs(
       r.notes.length > 10_000 ||
       (r.contactMode !== undefined &&
         r.contactMode !== "finite-cap-overlap" &&
-        r.contactMode !== "original-free-cap") ||
+        r.contactMode !== "original-free-cap" &&
+        r.contactMode !== "original-simple-terminal-cap") ||
       !r.assumption ||
       r.assumption.kind !== "provisional-extracted-native-contact" ||
       r.assumption.revisitRequired !== true
@@ -229,7 +233,10 @@ function firstHit(
  * maximal exact lateral overlap with the named finite original face. No saved
  * subcap coordinates, snapping, cap extrapolation or polygon wedge is accepted. */
 export function nativeSelectionContactInterval(repair: {
-  contactMode?: "finite-cap-overlap" | "original-free-cap";
+  contactMode?:
+    | "finite-cap-overlap"
+    | "original-free-cap"
+    | "original-simple-terminal-cap";
   source: { capFeet: [number, number][] };
   target: { faceFeet?: [number, number][] };
 }) {
@@ -278,6 +285,7 @@ function originalFreeCapMask(
   c: RP,
   d: RP,
   n: RP,
+  requireEveryFreeInterval = false,
 ): NativeRationalParts {
   const cap = delta(b, a),
     width2 = dot(cap, cap),
@@ -320,7 +328,11 @@ function originalFreeCapMask(
         return hit ? [{ ...hit, p, q }] : [];
       })
       .sort((x, y) => cmp(x.t, y.t));
-    if (hits.length === 0) continue;
+    if (hits.length === 0) {
+      if (requireEveryFreeInterval)
+        fail("unsupported original full-cap interval");
+      continue;
+    }
     const first = hits[0],
       p0 = at(a, cap, lo),
       p1 = at(a, cap, hi);
@@ -405,6 +417,143 @@ export function nativeSelectionOriginalFreeCapMask(
   return originalFreeCapMask(source, target, a, b, c, d, n);
 }
 
+/** Separate full-original two-terminal strip family. This does not relax the
+ * rectangular/convex cap families or certify a reconstructed parent body. */
+function simpleOriginalBody(ring: RP[]): void {
+  if (ring.length < 3 || ring.length > 128)
+    fail("unbounded original simple body");
+  const on = (p: RP, a: RP, b: RP) => {
+    const v = delta(b, a),
+      q = delta(p, a);
+    return (
+      !cross(v, q).n &&
+      cmp(dot(q, v), zero) >= 0 &&
+      cmp(dot(q, v), dot(v, v)) <= 0
+    );
+  };
+  const meets = (a: RP, b: RP, c: RP, d: RP) => {
+    const s = [
+      cross(delta(b, a), delta(c, a)),
+      cross(delta(b, a), delta(d, a)),
+      cross(delta(d, c), delta(a, c)),
+      cross(delta(d, c), delta(b, c)),
+    ].map((v) => cmp(v, zero));
+    return (
+      (s[0] * s[1] < 0 && s[2] * s[3] < 0) ||
+      on(a, c, d) ||
+      on(b, c, d) ||
+      on(c, a, b) ||
+      on(d, a, b)
+    );
+  };
+  let area = zero;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i],
+      b = ring[(i + 1) % ring.length];
+    area = add(area, cross(a, b));
+    if (!cross(delta(b, a), delta(ring[(i + 2) % ring.length], b)).n)
+      fail("inserted or reversing original simple-body vertex");
+    for (let j = i + 1; j < ring.length; j++) {
+      if (eq(a, ring[j])) fail("repeated original simple-body vertex");
+      if (j === i + 1 || (i === 0 && j === ring.length - 1)) continue;
+      if (meets(a, b, ring[j], ring[(j + 1) % ring.length]))
+        fail("self-intersecting original simple body");
+    }
+  }
+  if (!area.n) fail("zero-area original simple body");
+}
+function originalStripNormal(source: RP[], a: RP, b: RP): RP {
+  if (source.length < 6) fail("not a complete original two-chain strip");
+  const lengths = source.map((p, i) =>
+    dot(
+      delta(source[(i + 1) % source.length], p),
+      delta(source[(i + 1) % source.length], p),
+    ),
+  );
+  const ends = lengths.flatMap((v, i) =>
+    v.n > 0n &&
+    cmp(v, rational(4)) <= 0 &&
+    cmp(lengths[(i + source.length - 1) % source.length], v) > 0 &&
+    cmp(lengths[(i + 1) % source.length], v) > 0
+      ? [i]
+      : [],
+  );
+  const ix = source.findIndex(
+    (p, i) =>
+      (eq(p, a) && eq(source[(i + 1) % source.length], b)) ||
+      (eq(p, b) && eq(source[(i + 1) % source.length], a)),
+  );
+  if (ends.length !== 2 || !ends.includes(ix))
+    fail("not one of two actual original terminal caps");
+  const mate = ends.find((i) => i !== ix)!,
+    steps = (mate - ix + source.length) % source.length;
+  if (steps < 3 || source.length - steps < 3)
+    fail("missing complete original side chains");
+  const widest =
+    cmp(lengths[ix], lengths[mate]) > 0 ? lengths[ix] : lengths[mate];
+  if (lengths.some((v, i) => i !== ix && i !== mate && cmp(v, widest) <= 0))
+    fail("ambiguous original short side-chain face");
+  const normals = ends.map((i) => {
+    const p = source[i],
+      q = source[(i + 1) % source.length],
+      v = delta(q, p);
+    let n: RP = [new Rational(-v[1].n, v[1].d), v[0]];
+    const other = source.find((r) => !eq(r, p) && !eq(r, q))!;
+    if (cmp(dot(n, delta(other, p)), zero) > 0)
+      n = [new Rational(-n[0].n, n[0].d), new Rational(-n[1].n, n[1].d)];
+    if (source.some((r) => cmp(dot(n, delta(r, p)), zero) > 0))
+      fail("entire original body crosses terminal free half-plane");
+    return { i, n };
+  });
+  const chosen = normals.find((v) => v.i === ix)!.n;
+  // Descriptor winding may reverse the actual edge; free normal remains unique.
+  return chosen;
+}
+export function nativeSelectionOriginalSimpleTerminalCapMask(
+  sourceParts: NativeRationalParts,
+  targetParts: NativeRationalParts,
+  capFeet: [number, number][],
+  faceFeet: [number, number][],
+): NativeRationalParts {
+  if (!pair(capFeet) || !pair(faceFeet))
+    fail("simple terminal cap requires full original edges");
+  const [a, b] = capFeet.map(rp),
+    [c, d] = faceFeet.map(rp);
+  const sources = sourceParts.filter(
+    (p) => p.length === 1 && edge(openExactRing(p[0]), a, b),
+  );
+  const targets = targetParts.filter(
+    (p) => p.length === 1 && edge(openExactRing(p[0]), c, d),
+  );
+  if (sources.length !== 1 || targets.length !== 1)
+    fail("simple cap requires unique entire original components");
+  const source = openExactRing(sources[0][0]),
+    target = openExactRing(targets[0][0]);
+  simpleOriginalBody(source);
+  simpleOriginalBody(target);
+  const n = originalStripNormal(source, a, b);
+  const mask = originalFreeCapMask(source, target, a, b, c, d, n, true);
+  if (
+    nativeRationalOverlay("intersection", mask, sourceParts).length > 0 ||
+    nativeRationalOverlay("intersection", mask, targetParts).length > 0
+  )
+    fail("simple cap intersects retained original owner sibling material");
+  return mask;
+}
+function sameOriginalProfile(a: Rings, b: Rings): boolean {
+  const x = openNumericRings(a),
+    y = openNumericRings(b);
+  if (x.length !== 1 || y.length !== 1 || x[0].length !== y[0].length)
+    return false;
+  return y[0].some((_, start) =>
+    [1, -1].some((direction) =>
+      x[0].every((p, i) =>
+        same(p, y[0][(start + direction * i + y[0].length) % y[0].length]),
+      ),
+    ),
+  );
+}
+
 /** Derive a rational-only gap polygon from actual current original edges.
  * Coordinates stored in the proposal are evidence, never rounded authority.
  * Whole physical floor/opening/door/foreign-material guards run separately. */
@@ -443,7 +592,9 @@ function deriveCheckedContact(
         w.kind === "wall" &&
         (w as typeof w & { geometrySource?: string }).geometrySource ===
           "original-native-material-section" &&
-        same(openNumericRings(w.ringsFeet), openNumericRings(e.ringsFeet)),
+        (repair.contactMode === "original-simple-terminal-cap"
+          ? sameOriginalProfile(w.ringsFeet, e.ringsFeet)
+          : same(openNumericRings(w.ringsFeet), openNumericRings(e.ringsFeet))),
     );
     if (
       rows.length !== 1 ||
@@ -457,6 +608,13 @@ function deriveCheckedContact(
     target = find(repair.target),
     [a, b] = repair.source.capFeet.map(rp),
     [c, d] = repair.target.faceFeet.map(rp);
+  if (repair.contactMode === "original-simple-terminal-cap")
+    return nativeSelectionOriginalSimpleTerminalCapMask(
+      [[source]],
+      [[target]],
+      repair.source.capFeet,
+      repair.target.faceFeet,
+    );
   if (source.length !== 4 || !edge(source, a, b) || !edge(target, c, d))
     fail("contact is not a full actual original edge");
   convex(source);
