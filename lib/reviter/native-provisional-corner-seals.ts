@@ -574,7 +574,7 @@ export function validateNativeProvisionalCornerSeals(
     !digest(v.geometrySha256) ||
     !digest(v.completeOriginalPhysicalOwnerCensusSha256) ||
     !Array.isArray(v.rows) ||
-    v.rows.length > 1000 ||
+    v.rows.length > 5000 ||
     new Set(v.rows.map((r) => r.id)).size !== v.rows.length ||
     !Array.isArray(v.foreignBodies) ||
     v.foreignBodies.length > 100000 ||
