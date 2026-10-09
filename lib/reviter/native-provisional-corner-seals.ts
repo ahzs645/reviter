@@ -1395,7 +1395,13 @@ function checkDrawingBackedRow(
   // Interior seals/contacts must be wholly floor-supported. An assumed facade
   // wall or column may stand on the slab edge: any unsupported part must lie
   // beyond the original floor OUTER edge, never inside a slab hole or aperture.
-  const facade = d.kind === "dwg-assumed-wall" || d.kind === "dwg-assumed-column";
+  const facade =
+    d.kind === "dwg-assumed-wall" ||
+    d.kind === "dwg-assumed-column" ||
+    r.materialRole === "enclosure-context-only";
+  // Floating clipping of the original slab edge leaves zero-width slivers;
+  // any real aperture or outside-edge overlap is far larger than this bound.
+  const slivers = 1e-9;
   const outer = full.map((p) => [p[0]]) as Parts;
   if (
     floors.length !== r.sourceFloorIds.length ||
@@ -1405,8 +1411,8 @@ function checkDrawingBackedRow(
     floors.some((f) => Math.abs(f.elevationFeet - r.elevationFeet) > 0.05) ||
     (unsupported.length &&
       (!facade ||
-        area(pc.intersection(unsupported, outer) as Parts) > 0 ||
-        area(pc.intersection(r.partsFeet, pc.difference(outer, full) as Parts) as Parts) > 0))
+        area(pc.intersection(unsupported, outer) as Parts) > slivers ||
+        area(pc.intersection(r.partsFeet, pc.difference(outer, full) as Parts) as Parts) > slivers))
   )
     fail("crosses unsupported native floor or an original opening");
   for (const door of data.doors ?? []) {
