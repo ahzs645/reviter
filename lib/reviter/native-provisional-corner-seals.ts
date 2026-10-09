@@ -1388,14 +1388,25 @@ function checkDrawingBackedRow(
             partsFeet: f.partsFeet ?? [f.ringsFeet],
           }))
       : [];
+  const full = floors.flatMap((f) => f.partsFeet);
+  const unsupported = r.partsFeet.flatMap((p) =>
+    exactNativeDoorFloorDifference(p, full),
+  ) as Parts;
+  // Interior seals/contacts must be wholly floor-supported. An assumed facade
+  // wall or column may stand on the slab edge: any unsupported part must lie
+  // beyond the original floor OUTER edge, never inside a slab hole or aperture.
+  const facade = d.kind === "dwg-assumed-wall" || d.kind === "dwg-assumed-column";
+  const outer = full.map((p) => [p[0]]) as Parts;
   if (
     floors.length !== r.sourceFloorIds.length ||
+    !floors.length ||
     !same(floors, r.sourceFloorBindings) ||
     nativeDerivedFrameHash(floors) !== r.sourceFloorPartsSha256 ||
     floors.some((f) => Math.abs(f.elevationFeet - r.elevationFeet) > 0.05) ||
-    r.partsFeet.some(
-      (p) => exactNativeDoorFloorDifference(p, floors.flatMap((f) => f.partsFeet)).length,
-    )
+    (unsupported.length &&
+      (!facade ||
+        area(pc.intersection(unsupported, outer) as Parts) > 0 ||
+        area(pc.intersection(r.partsFeet, pc.difference(outer, full) as Parts) as Parts) > 0))
   )
     fail("crosses unsupported native floor or an original opening");
   for (const door of data.doors ?? []) {
