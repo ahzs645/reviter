@@ -41,7 +41,9 @@ const limits: Record<string, number> = {
   "manifest.json": 64 * 1024,
   "floors/rooms.json": 64 * MB,
   "gis/reference-points.json": MB,
-  "viewer/indoor.json": 128 * MB,
+  // Match the authoring reader: exact native faces and source-bound route
+  // proofs can exceed 128 MiB. The shared 900 MiB expanded archive cap remains.
+  "viewer/indoor.json": 192 * MB,
   "model/scene.glb": 256 * MB,
   "review/companions.bin": MAX_REVIEW_CONTAINER_BYTES,
 };

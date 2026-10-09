@@ -1,5 +1,6 @@
 import type { IndoorDataset } from "./indoor-contract.ts";
 import { nativeMaterialPlanExactWalls } from "./native-material-plan.ts";
+import { nativeRationalPointInParts } from "./native-exact-planar-topology.ts";
 import { createNativeRoutingMaterialQuery } from "./native-routing-material.ts";
 import {
   Rational,
@@ -30,7 +31,7 @@ export type NativeSelectionContactRepair = {
     ringsFeet: Rings;
     faceFeet: [Point, Point];
   };
-  contactMode?: "finite-cap-overlap";
+  contactMode?: "finite-cap-overlap" | "original-free-cap";
   evidenceSha256: string;
   notes: string;
   assumption: {
@@ -69,11 +70,9 @@ const rings = (v: unknown): v is Rings =>
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 const openNumericRings = (rs: Rings): Rings =>
-  rs.map((r) =>
-    r.length > 1 && same(r[0], r[r.length - 1]) ? r.slice(0, -1) : r,
-  );
+  rs.map((r) => (r.length > 1 && same(r[0], r.at(-1)) ? r.slice(0, -1) : r));
 const openExactRing = (r: RP[]): RP[] =>
-  r.length > 1 && eq(r[0], r[r.length - 1]) ? r.slice(0, -1) : r;
+  r.length > 1 && eq(r[0], r.at(-1)!) ? r.slice(0, -1) : r;
 export function validateNativeSelectionContactRepairs(
   value: NativeSelectionContactRepairs | undefined,
   modelSha256?: string,
@@ -85,7 +84,7 @@ export function validateNativeSelectionContactRepairs(
     !hash(value.sourceModelSha256) ||
     (modelSha256 && value.sourceModelSha256 !== modelSha256) ||
     !Array.isArray(value.repairs) ||
-    value.repairs.length > 10000
+    value.repairs.length > 10_000
   )
     fail("source identity or collection");
   const ids = new Set<string>();
@@ -115,8 +114,10 @@ export function validateNativeSelectionContactRepairs(
       !hash(r.evidenceSha256) ||
       typeof r.notes !== "string" ||
       !r.notes.trim() ||
-      r.notes.length > 10000 ||
-      (r.contactMode !== undefined && r.contactMode !== "finite-cap-overlap") ||
+      r.notes.length > 10_000 ||
+      (r.contactMode !== undefined &&
+        r.contactMode !== "finite-cap-overlap" &&
+        r.contactMode !== "original-free-cap") ||
       !r.assumption ||
       r.assumption.kind !== "provisional-extracted-native-contact" ||
       r.assumption.revisitRequired !== true
@@ -220,7 +221,7 @@ function firstHit(
     const v = ray(p, n, q, ring[(i + 1) % ring.length]);
     return v ? [v] : [];
   });
-  if (!hits.length || hits.some((v) => cmp(v.t, chosen.t) < 0))
+  if (hits.length === 0 || hits.some((v) => cmp(v.t, chosen.t) < 0))
     fail("target face is not first original material");
   return chosen;
 }
@@ -228,7 +229,7 @@ function firstHit(
  * maximal exact lateral overlap with the named finite original face. No saved
  * subcap coordinates, snapping, cap extrapolation or polygon wedge is accepted. */
 export function nativeSelectionContactInterval(repair: {
-  contactMode?: "finite-cap-overlap";
+  contactMode?: "finite-cap-overlap" | "original-free-cap";
   source: { capFeet: [number, number][] };
   target: { faceFeet?: [number, number][] };
 }) {
@@ -266,6 +267,144 @@ export function nativeSelectionContactInterval(repair: {
     projectedSpan: mul(sub(end, start), width2),
   };
 }
+/** Exact free intervals of an original convex short cap. Existing intersections
+ * with the target are retained. Every added interval reaches the first original
+ * target edge within the numerical depth limit; no source point is moved. */
+function originalFreeCapMask(
+  source: RP[],
+  target: RP[],
+  a: RP,
+  b: RP,
+  c: RP,
+  d: RP,
+  n: RP,
+): NativeRationalParts {
+  const cap = delta(b, a),
+    width2 = dot(cap, cap),
+    n2 = dot(n, n);
+  const breaks = new Map<string, Rational>();
+  const put = (s: Rational) => {
+    if (cmp(s, zero) >= 0 && cmp(s, one) <= 0) breaks.set(`${s.n}/${s.d}`, s);
+  };
+  put(zero);
+  put(one);
+  for (let i = 0; i < target.length; i++) {
+    const p = target[i],
+      q = target[(i + 1) % target.length];
+    put(div(dot(delta(p, a), cap), width2));
+    // Crossing the original cap switches between retained material and free
+    // space. Preserve the exact crossing rather than trimming numeric corners.
+    const v = delta(q, p),
+      den = cross(cap, v);
+    if (den.n) {
+      const offset = delta(p, a),
+        t = div(cross(offset, cap), den);
+      if (cmp(t, zero) >= 0 && cmp(t, one) <= 0)
+        put(div(cross(offset, v), den));
+    }
+  }
+  const sorted = [...breaks.values()].sort(cmp),
+    masks: NativeRationalParts[] = [];
+  const limit2 = mul(rational(1e-7), rational(1e-7));
+  let namedFirstFace = false;
+  for (let i = 1; i < sorted.length; i++) {
+    const lo = sorted[i - 1],
+      hi = sorted[i];
+    if (!cmp(lo, hi)) continue;
+    const middle = at(a, cap, div(add(lo, hi), rational(2)));
+    if (nativeRationalPointInParts(middle, [[target]])) continue;
+    const hits = target
+      .flatMap((p, j) => {
+        const q = target[(j + 1) % target.length],
+          hit = ray(middle, n, p, q);
+        return hit ? [{ ...hit, p, q }] : [];
+      })
+      .sort((x, y) => cmp(x.t, y.t));
+    if (hits.length === 0) continue;
+    const first = hits[0],
+      p0 = at(a, cap, lo),
+      p1 = at(a, cap, hi);
+    const h0 = firstHit(p0, n, target, first.p, first.q),
+      h1 = firstHit(p1, n, target, first.p, first.q);
+    if (!h0.t.n && !h1.t.n) continue;
+    if ([h0, h1].some((h) => cmp(mul(mul(h.t, h.t), n2), limit2) > 0))
+      fail("non-numerical original free cap interval");
+    const mask = nativeRationalOverlay("union", [
+      [[p0, p1, h1.point, h0.point]],
+    ]);
+    if (mask.length === 0) continue;
+    if (
+      nativeRationalOverlay("intersection", mask, [[source], [target]]).length >
+      0
+    )
+      fail("original free cap overlaps retained native material");
+    if (
+      (eq(first.p, c) && eq(first.q, d)) ||
+      (eq(first.p, d) && eq(first.q, c))
+    )
+      namedFirstFace = true;
+    masks.push(mask);
+  }
+  if (masks.length === 0 || !namedFirstFace)
+    fail("absent positive original free cap or non-first named target face");
+  return nativeRationalOverlay("union", masks[0], ...masks.slice(1));
+}
+
+/** Recheck the independently retained original bodies during physical vetoes.
+ * This helper derives authority, never accepts a serialized mask as proof. */
+export function nativeSelectionOriginalFreeCapMask(
+  sourceParts: NativeRationalParts,
+  targetParts: NativeRationalParts,
+  capFeet: [number, number][],
+  faceFeet: [number, number][],
+): NativeRationalParts {
+  if (capFeet.length !== 2 || faceFeet.length !== 2)
+    fail("free cap requires complete original edge evidence");
+  const [a, b] = capFeet.map(rp),
+    [c, d] = faceFeet.map(rp),
+    sources = sourceParts.filter(
+      (part) => part.length === 1 && edge(openExactRing(part[0]), a, b),
+    ),
+    targets = targetParts.filter(
+      (part) => part.length === 1 && edge(openExactRing(part[0]), c, d),
+    );
+  // Several retained original components may share one owner. Select one whole
+  // uniquely edge-bound component, never crop it or discard sibling material.
+  // Independent physical vetoes still check every original owner component.
+  if (sources.length !== 1 || targets.length !== 1)
+    fail("free cap requires unique complete original material components");
+  const source = openExactRing(sources[0][0]),
+    target = openExactRing(targets[0][0]);
+  if (source.length !== 4 || !edge(source, a, b) || !edge(target, c, d))
+    fail("free cap is not a full actual original edge");
+  convex(source);
+  convex(target);
+  const cap = delta(b, a),
+    width2 = dot(cap, cap),
+    lengths = source.map((p, i) =>
+      dot(delta(source[(i + 1) % 4], p), delta(source[(i + 1) % 4], p)),
+    ),
+    ix = source.findIndex(
+      (p, i) =>
+        (eq(p, a) && eq(source[(i + 1) % 4], b)) ||
+        (eq(p, b) && eq(source[(i + 1) % 4], a)),
+    );
+  if (
+    cmp(width2, rational(4)) > 0 ||
+    [lengths[(ix + 3) % 4], lengths[(ix + 1) % 4]].some(
+      (v) => cmp(v, width2) <= 0,
+    )
+  )
+    fail("free source edge is not a short original member cap");
+  let n: RP = [new Rational(-cap[1].n, cap[1].d), cap[0]];
+  const other = source.find((p) => !eq(p, a) && !eq(p, b))!;
+  if (cmp(dot(n, delta(other, a)), zero) > 0)
+    n = [new Rational(-n[0].n, n[0].d), new Rational(-n[1].n, n[1].d)];
+  if (source.some((p) => cmp(dot(n, delta(p, a)), zero) > 0))
+    fail("free source cap does not face free space");
+  return originalFreeCapMask(source, target, a, b, c, d, n);
+}
+
 /** Derive a rational-only gap polygon from actual current original edges.
  * Coordinates stored in the proposal are evidence, never rounded authority.
  * Whole physical floor/opening/door/foreign-material guards run separately. */
@@ -322,7 +461,8 @@ function deriveCheckedContact(
     fail("contact is not a full actual original edge");
   convex(source);
   convex(target);
-  rectangularSource(openNumericRings(repair.source.ringsFeet)[0]);
+  if (repair.contactMode !== "original-free-cap")
+    rectangularSource(openNumericRings(repair.source.ringsFeet)[0]);
   const cap = delta(b, a),
     width2 = dot(cap, cap);
   // A short end cap of a four-corner basic member, not a long side or a
@@ -348,6 +488,13 @@ function deriveCheckedContact(
     n = [new Rational(-n[0].n, n[0].d), new Rational(-n[1].n, n[1].d)];
   if (source.some((p) => cmp(dot(n, delta(p, a)), zero) > 0))
     fail("source cap does not face free space");
+  if (repair.contactMode === "original-free-cap")
+    return nativeSelectionOriginalFreeCapMask(
+      [[source]],
+      [[target]],
+      repair.source.capFeet,
+      repair.target.faceFeet,
+    );
   const interval = nativeSelectionContactInterval(repair),
     [p0, p1] = interval.sourceContact;
   const h0 = firstHit(p0, n, target, c, d),
@@ -381,9 +528,9 @@ function deriveCheckedContact(
   }
   const mask = nativeRationalOverlay("union", [[[p0, p1, h1.point, h0.point]]]);
   if (
-    !mask.length ||
-    nativeRationalOverlay("intersection", mask, [[source]]).length ||
-    nativeRationalOverlay("intersection", mask, [[target]]).length
+    mask.length === 0 ||
+    nativeRationalOverlay("intersection", mask, [[source]]).length > 0 ||
+    nativeRationalOverlay("intersection", mask, [[target]]).length > 0
   )
     fail("non-positive interval or original material overlap");
   return mask;
@@ -398,7 +545,7 @@ export function deriveNativeSelectionContactRepairs(
     { version: 1, sourceModelSha256: data.source.modelSha256, repairs },
     data.source.modelSha256,
   );
-  if (!repairs.length) return [];
+  if (repairs.length === 0) return [];
   const query = createNativeRoutingMaterialQuery(data),
     levels = new Map<number, ReturnType<typeof nativeMaterialPlanExactWalls>>();
   for (const r of repairs)
@@ -430,7 +577,7 @@ export function deriveNativeSelectionContactRepairAttempts(
     { version: 1, sourceModelSha256: data.source.modelSha256, repairs },
     data.source.modelSha256,
   );
-  if (!repairs.length) return [];
+  if (repairs.length === 0) return [];
   const query = createNativeRoutingMaterialQuery(data),
     levels = new Map<number, ReturnType<typeof nativeMaterialPlanExactWalls>>();
   for (const r of repairs)

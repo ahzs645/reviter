@@ -244,11 +244,20 @@ export function nativeRationalPathSupported(points: readonly (readonly (number |
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], v = delta(b, a);
     if (equal(a, b)) continue;
+    const lo = a.map((q, axis) => cmp(q, b[axis]) < 0 ? q : b[axis]),
+      hi = a.map((q, axis) => cmp(q, b[axis]) > 0 ? q : b[axis]);
     const cuts = new Map<string, Rational>();
     const put = (t: Rational) => { if (cmp(t, zero()) >= 0 && cmp(t, one()) <= 0) cuts.set(`${t.n}/${t.d}`, t); };
     put(zero()); put(one());
     for (const part of parts) for (const ring of part) for (let k = 0; k < ring.length; k++) {
-      const p = ring[k], q = ring[(k + 1) % ring.length], w = delta(q, p), offset = delta(p, a), den = cross(v, w);
+      const p = ring[k], q = ring[(k + 1) % ring.length];
+      // Strict rational disjointness only: finite tangencies, collinear
+      // endpoints and every positive overlap reach the original kernel.
+      if ((cmp(p[0], lo[0]) < 0 && cmp(q[0], lo[0]) < 0) ||
+          (cmp(p[0], hi[0]) > 0 && cmp(q[0], hi[0]) > 0) ||
+          (cmp(p[1], lo[1]) < 0 && cmp(q[1], lo[1]) < 0) ||
+          (cmp(p[1], hi[1]) > 0 && cmp(q[1], hi[1]) > 0)) continue;
+      const w = delta(q, p), offset = delta(p, a), den = cross(v, w);
       if (den.n) {
         const t = div(cross(offset, w), den), u = div(cross(offset, v), den);
         if (cmp(u, zero()) >= 0 && cmp(u, one()) <= 0) put(t);
@@ -269,7 +278,7 @@ export function nativeRationalPathSupported(points: readonly (readonly (number |
 /** A complete positive footprint must fit. No area allowance drops a true void. */
 export function nativeRationalFootprintSupported(footprint: NativeRationalParts, parts: NativeRationalParts): boolean {
   if (!footprint.length || !parts.length) return false;
-  return nativeRationalOverlay("difference", footprint, localExactParts(parts,footprint.flat(2))).length === 0;
+  return nativeRationalOverlay("difference", footprint, localExactParts(parts,footprint.flatMap(part=>part.flat()))).length === 0;
 }
 /** Explicit approximate representation for raster proposals only. Never feed
  * these points back into an exact Boolean or use them as floor authority. */
@@ -314,7 +323,6 @@ function validateExactPartTopology(part: NativeRationalPoint[][]) {
       if(t.r===s.r && (Math.abs(t.i-s.i)===1||Math.abs(t.i-s.i)===s.count-1))continue;
       if(intersects(s.a,s.b,t.a,t.b)){
         const den=cross(delta(s.b,s.a),delta(t.b,t.a));
-        const common=[s.a,s.b].filter(p=>equal(p,t.a)||equal(p,t.b));
         // Canonical polygon topology can retain an isolated shared vertex
         // between shell and hole or between disjoint holes. No edge overlap
         // or crossing is admitted; the exact nesting checks below remain.

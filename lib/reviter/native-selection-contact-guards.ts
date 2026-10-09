@@ -18,10 +18,13 @@ import {
 } from "./native-rational-overlay.ts";
 import { createNativeRoutingMaterialQuery } from "./native-routing-material.ts";
 
-import { nativeSelectionContactInterval } from "./native-selection-contact-repairs.ts";
+import {
+  nativeSelectionContactInterval,
+  nativeSelectionOriginalFreeCapMask,
+} from "./native-selection-contact-repairs.ts";
 
 export type ContactPhysicalEvidence = {
-  contactMode?: "finite-cap-overlap";
+  contactMode?: "finite-cap-overlap" | "original-free-cap";
   sourceModelSha256: string;
   sourceMaterialGeometrySha256: string;
   levelId: number;
@@ -142,7 +145,7 @@ export function createNativeSelectionContactPhysicalGuard(
         elevation
     )
       fail("stale model, material, level or original floor binding");
-    if (!mask.length || nativeRationalArea(mask).n <= 0n)
+    if (mask.length === 0 || nativeRationalArea(mask).n <= 0n)
       fail("no positive exact gap mask");
     const intersects = (operand: NativeRationalOverlayInput) => {
       const local = nativeRationalIntersectionOperand(mask, operand);
@@ -153,8 +156,8 @@ export function createNativeSelectionContactPhysicalGuard(
     };
     const localFloors = nativeRationalIntersectionOperand(mask, floors);
     if (
-      !localFloors.length ||
-      nativeRationalOverlay("difference", mask, localFloors).length
+      localFloors.length === 0 ||
+      nativeRationalOverlay("difference", mask, localFloors).length > 0
     )
       fail("positive gap crosses unsupported original same-height floor");
     // Any original aperture remains protected even when another slab overlaps it.
@@ -164,8 +167,8 @@ export function createNativeSelectionContactPhysicalGuard(
         originalByOwner.get(repair.source.nativeElementId) ?? [],
       targetParts = originalByOwner.get(repair.target.nativeElementId) ?? [];
     if (
-      !sourceParts.length ||
-      !targetParts.length ||
+      sourceParts.length === 0 ||
+      targetParts.length === 0 ||
       repair.source.nativeElementId === repair.target.nativeElementId ||
       repair.source.capFeet.length !== 2 ||
       !nativeRationalPathSupported(repair.source.capFeet, sourceParts)
@@ -175,59 +178,91 @@ export function createNativeSelectionContactPhysicalGuard(
       );
     if (intersects(sourceParts) || intersects(targetParts))
       fail("gap mask adds overlap inside an original support");
-    const interval = nativeSelectionContactInterval(repair);
-    if (repair.contactMode === "finite-cap-overlap") {
-      const fullCap = repair.source.capFeet.map(nativeRationalPoint);
+    if (repair.contactMode === "original-free-cap") {
       floorWithoutOpenings ??= freezeNativeRationalParts(
         nativeRationalOverlay("difference", floors, holes),
       );
-      if (!nativeRationalPathSupported(fullCap, floorWithoutOpenings))
-        fail(
-          "entire original source cap lacks original floor or crosses an opening",
-        );
       if (
-        !nativeRationalPathSupported(interval.sourceContact, sourceParts) ||
         !nativeRationalPathSupported(
-          repair.target.faceFeet!.map(nativeRationalPoint),
-          targetParts,
+          repair.source.capFeet,
+          floorWithoutOpenings,
         )
       )
         fail(
-          "finite contact evidence no longer reaches retained original material",
+          "entire original free cap lacks original floor or crosses an opening",
         );
-      const equal = (a: NativeRationalPoint, b: NativeRationalPoint) =>
-        a[0].n * b[0].d === b[0].n * a[0].d &&
-        a[1].n * b[1].d === b[1].n * a[1].d;
-      if (
-        !mask.some((part) =>
-          part[0].some((p, i) => {
-            const q = part[0][(i + 1) % part[0].length],
-              [a, b] = interval.sourceContact;
-            return (equal(p, a) && equal(q, b)) || (equal(p, b) && equal(q, a));
-          }),
-        )
-      )
-        fail("complete finite source interval is not a mask contact");
-    }
-    const cap = repair.source.capFeet.map(nativeRationalPoint),
-      capDirection = delta(cap[1], cap[0]),
-      capWidthSquared = dot(capDirection, capDirection);
-    if (!capWidthSquared.n) fail("degenerate source cap");
-    const fullTargetContact = mask.some((part) =>
-      part[0].some((point, index) => {
-        const next = part[0][(index + 1) % part[0].length];
-        return (
-          sameAbsolute(
-            dot(delta(next, point), capDirection),
-            interval.projectedSpan,
-          ) && nativeRationalPathSupported([point, next], targetParts)
-        );
-      }),
-    );
-    if (!fullTargetContact)
-      fail(
-        "complete target contact no longer reaches current retained original material",
+      if (!repair.target.faceFeet)
+        fail("original free cap lacks the original named target edge");
+      const authoritative = nativeSelectionOriginalFreeCapMask(
+        sourceParts,
+        targetParts,
+        repair.source.capFeet,
+        repair.target.faceFeet!,
       );
+      if (
+        nativeRationalOverlay("difference", mask, authoritative).length > 0 ||
+        nativeRationalOverlay("difference", authoritative, mask).length > 0
+      )
+        fail(
+          "free cap mask differs from exact original first-material intervals",
+        );
+    } else {
+      const interval = nativeSelectionContactInterval(repair);
+      if (repair.contactMode === "finite-cap-overlap") {
+        const fullCap = repair.source.capFeet.map(nativeRationalPoint);
+        floorWithoutOpenings ??= freezeNativeRationalParts(
+          nativeRationalOverlay("difference", floors, holes),
+        );
+        if (!nativeRationalPathSupported(fullCap, floorWithoutOpenings))
+          fail(
+            "entire original source cap lacks original floor or crosses an opening",
+          );
+        if (
+          !nativeRationalPathSupported(interval.sourceContact, sourceParts) ||
+          !nativeRationalPathSupported(
+            repair.target.faceFeet!.map(nativeRationalPoint),
+            targetParts,
+          )
+        )
+          fail(
+            "finite contact evidence no longer reaches retained original material",
+          );
+        const equal = (a: NativeRationalPoint, b: NativeRationalPoint) =>
+          a[0].n * b[0].d === b[0].n * a[0].d &&
+          a[1].n * b[1].d === b[1].n * a[1].d;
+        if (
+          !mask.some((part) =>
+            part[0].some((p, i) => {
+              const q = part[0][(i + 1) % part[0].length],
+                [a, b] = interval.sourceContact;
+              return (
+                (equal(p, a) && equal(q, b)) || (equal(p, b) && equal(q, a))
+              );
+            }),
+          )
+        )
+          fail("complete finite source interval is not a mask contact");
+      }
+      const cap = repair.source.capFeet.map(nativeRationalPoint),
+        capDirection = delta(cap[1], cap[0]),
+        capWidthSquared = dot(capDirection, capDirection);
+      if (!capWidthSquared.n) fail("degenerate source cap");
+      const fullTargetContact = mask.some((part) =>
+        part[0].some((point, index) => {
+          const next = part[0][(index + 1) % part[0].length];
+          return (
+            sameAbsolute(
+              dot(delta(next, point), capDirection),
+              interval.projectedSpan,
+            ) && nativeRationalPathSupported([point, next], targetParts)
+          );
+        }),
+      );
+      if (!fullTargetContact)
+        fail(
+          "complete target contact no longer reaches current retained original material",
+        );
+    }
     for (const wall of exactWalls) {
       if (
         !wall.reviewPatchId &&
@@ -272,8 +307,7 @@ export function assertNativeSelectionContactRepairsPhysicalGuards(
     number,
     ReturnType<typeof createNativeSelectionContactPhysicalGuard>
   >();
-  for (let i = 0; i < repairs.length; i++) {
-    const repair = repairs[i];
+  for (const [i, repair] of repairs.entries()) {
     let guard = guards.get(repair.levelId);
     if (!guard) {
       guard = createNativeSelectionContactPhysicalGuard(data, repair.levelId);

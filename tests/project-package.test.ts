@@ -78,3 +78,19 @@ test('GIS model binding is checked and independently edited reference files cann
   files['manifest.json'] = strToU8(JSON.stringify(manifest));
   await assert.rejects(readProjectPackage(zipSync(files)), /do not match/);
 });
+
+test('exact native dataset allowance matches the authoring reader and retains expanded ZIP limits', async () => {
+  const declared = (files: Record<string, Uint8Array>, size: number) => {
+    const archive = zipSync(files, {level: 0});
+    const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+    for (let i = 0; i < archive.length - 46; i++)
+      if (view.getUint32(i, true) === 0x02014b50) view.setUint32(i + 24, size, true);
+    return archive;
+  };
+  // Central-directory probes avoid allocating a campus-sized fixture. An
+  // allowed declaration reaches the missing-manifest check after preflight.
+  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 145 * 1024 * 1024)), /missing its Reviter project manifest/);
+  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 193 * 1024 * 1024)), /oversized/);
+  const models = Object.fromEntries(Array.from({length: 5}, (_, i) => [`model/part-${i}.rvt`, strToU8('{}')]));
+  await assert.rejects(readProjectPackage(declared(models, 200 * 1024 * 1024)), /Expanded project exceeds/);
+});

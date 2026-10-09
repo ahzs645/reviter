@@ -11,6 +11,7 @@ import { nativeDoorFloorBlockers } from "./native-door-floor-support.ts";
 import { nativeWallPositionMaterialBinding } from "./native-wall-position-repairs.ts";
 import { nativeCirculationBinding } from "./native-circulation-binding.ts";
 import { nativeRoomIdentityRings } from "./native-floor-opening-ownership.ts";
+import { nativeRationalIntersectionOperand } from "./native-rational-intersection-broadphase.ts";
 import {
   createNativeHostApertureQuery,
   createNativeRoutingMaterialQuery,
@@ -363,7 +364,11 @@ function prepareNativeCirculationElevations(
         // restricted or unlabelled for a public route.
         exactFaces.push({id:faceId,parts:face});
         if (!nativeRationalFootprintSupported(face,region.exact.walkable)) {report.rejected++;continue;}
-        const measured = owners.map(record=>({record,overlap:nativeRationalOverlay("intersection",face,[nativeRoomIdentityRings(data,record)])}));
+        const measured = owners.map(record=>{
+          const identity=[nativeRoomIdentityRings(data,record)];
+          const nearbyFace=nativeRationalIntersectionOperand(identity,face);
+          return {record,overlap:nearbyFace.length?nativeRationalOverlay("intersection",identity,nearbyFace):[]};
+        });
         const claims=measured.flatMap(m=>m.overlap);
         const coverage=claims.length?exactArea(nativeRationalOverlay("union",claims))/exactArea(face):0;
         let members=measured.filter(m=>{
