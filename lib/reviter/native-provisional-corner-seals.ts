@@ -208,7 +208,13 @@ export function drawingBackedAssumptionFootprint(
     if (
       !(thickness > 0) ||
       thickness > DRAWING_BACKED_LIMITS.wallThicknessFeet ||
-      [y0, y1].some((y) => along(y) < -1e-9 || along(y) > lengthB + 1e-9)
+      // A registered face line may stop short at a jamb/frame symbol; its foot
+      // may extend at most the drawing tolerance beyond the cited segment.
+      [y0, y1].some(
+        (y) =>
+          along(y) < -DRAWING_BACKED_LIMITS.dwgToleranceFeet ||
+          along(y) > lengthB + DRAWING_BACKED_LIMITS.dwgToleranceFeet,
+      )
     )
       throw Error("Drawing-backed face pair does not overlap over its interval.");
     return [[[x0, x1, y1, y0]]];
