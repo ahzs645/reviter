@@ -1409,6 +1409,11 @@ function checkDrawingBackedRow(
   // any real aperture or outside-edge overlap is far larger than this bound.
   const slivers = 1e-9;
   const outer = full.map((p) => [p[0]]) as Parts;
+  // Unsupported area inside the floors' outer rings (slab holes/apertures) =
+  // |body - floors| - |body - outer rings|, both by the exact overlay (floating
+  // clipping of near-collinear slab-edge slivers is not robust).
+  const beyondOuter = () =>
+    r.partsFeet.flatMap((p) => exactNativeDoorFloorDifference(p, outer)) as Parts;
   if (
     floors.length !== r.sourceFloorIds.length ||
     !floors.length ||
@@ -1416,9 +1421,7 @@ function checkDrawingBackedRow(
     nativeDerivedFrameHash(floors) !== r.sourceFloorPartsSha256 ||
     floors.some((f) => Math.abs(f.elevationFeet - r.elevationFeet) > 0.05) ||
     (unsupported.length &&
-      (!facade ||
-        area(pc.intersection(unsupported, outer) as Parts) > slivers ||
-        area(pc.intersection(r.partsFeet, pc.difference(outer, full) as Parts) as Parts) > slivers))
+      (!facade || area(unsupported) - area(beyondOuter()) > slivers))
   )
     fail("crosses unsupported native floor or an original opening");
   for (const door of data.doors ?? []) {
@@ -1436,4 +1439,30 @@ function checkDrawingBackedRow(
 }
 export async function verifyNativeProvisionalCornerSeals(data: Data) {
   createNativeProvisionalCornerSealIndex(data);
+}
+/** Compile-time binding of drawing-backed rows to the registered drawing they cite: the project's
+ * boundary reference must be the same DWG (sourceDwgSha256), the cited section must hash to the
+ * row's registrationSha256, and every cited segment must be that section's segment byte for byte.
+ * Runtime consumers (no boundary reference) rely on the compiler having run this. */
+export function verifyDrawingBackedDrawingEvidence(
+  seals: NativeProvisionalCornerSeals | undefined,
+  boundaryReference:
+    | { sourceSha256: string; sections: { sectionId: string; wallSegments: unknown[]; doorSegments?: unknown[] }[] }
+    | undefined,
+) {
+  for (const r of seals?.rows ?? []) {
+    const dwg = r.drawingBacked?.dwg;
+    if (!dwg) continue;
+    const section = boundaryReference?.sections.find((s) => s.sectionId === dwg.sectionId);
+    if (
+      !boundaryReference ||
+      !section ||
+      boundaryReference.sourceSha256 !== dwg.sourceDwgSha256 ||
+      nativeDerivedFrameHash([boundaryReference.sourceSha256, section]) !== dwg.registrationSha256 ||
+      dwg.entities.some(
+        (e) => !same((e.kind === "wallSegments" ? section.wallSegments : e.kind === "doorSegments" ? section.doorSegments ?? [] : [])[e.index], e.segmentFeet),
+      )
+    )
+      throw Error(`Drawing-backed assumption ${r.id} does not cite this project's registered drawing.`);
+  }
 }

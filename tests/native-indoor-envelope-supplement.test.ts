@@ -5,6 +5,9 @@ import {
   mergeNativeIndoorEnvelopeSupplements,
   nativeBoundedFaces,
   nativeEnvelopeBarrierFromDataset,
+  nativeIndoorEnvelopeAuthored,
+  supplementNativeIndoorEnvelopes,
+  validateNativeIndoorEnvelopeSupplements,
 } from "../lib/reviter/native-indoor-envelope-supplement.ts";
 import { nativeIndoorEnvelopeHash, verifyNativeIndoorEnvelopes, type NativeIndoorEnvelopes } from "../lib/reviter/native-indoor-envelopes.ts";
 
@@ -110,6 +113,13 @@ test("merge keeps authored parts byte-identical, appends evidence and passes che
   assert.equal(merged.levels[0]!.partsFeet.length, 1 + s.partsFeet.length);
   assert.ok(Math.abs(area(merged.levels[0]!.partsFeet.slice(1) as P[][][]) - s.areaSqFt) < 1e-9);
   assert.notEqual(merged.geometrySha256, env.geometrySha256);
+  assert.deepEqual(merged.levels[0]!.sourceElementIds, [77], "authored sources stay byte-identical; the supplement records its own");
+  validateNativeIndoorEnvelopeSupplements(merged);
+  assert.equal(JSON.stringify(await nativeIndoorEnvelopeAuthored(merged)), JSON.stringify(env), "authored envelope is recovered exactly (source/prepared parity)");
+  await assert.rejects(mergeNativeIndoorEnvelopeSupplements(merged, [s], MODEL), /never authored/);
+  const tampered = structuredClone(merged) as typeof merged;
+  tampered.levels[0]!.partsFeet[0] = [rect(30, 0, 41, 10)];
+  await assert.rejects(nativeIndoorEnvelopeAuthored(tampered), /does not preserve the authored envelope/);
 });
 
 test("an intermediate-level cut closes another storey's physical door only when its leaf spans the cut", () => {
@@ -132,4 +142,32 @@ test("an intermediate-level cut closes another storey's physical door only when 
   assert.ok(deriveNativeIndoorEnvelopeSupplement({ levelId: 1487816, elevationFeet: upper, cuts: [lowSpanning], walkingSupportPartsFeet: slab, authoredPartsFeet: [] }).areaSqFt > 180);
   const above = nativeEnvelopeBarrierFromDataset(data as never, 1487816, upper + 4, [], { doorVerticalExtentFeet: extent as never });
   assert.equal(above.doorClosures.length, 0, "a cut above the door head does not inherit the closure");
+});
+
+test("compiler step consumes applied reviewed correction rows by height, other storeys' spanning doors and subtracts reviewed exclusions", async () => {
+  const authoredLevel = { levelId: 7, elevationFeet: z, partsFeet: [[rect(30, 0, 40, 10)]], sourceElementIds: [77], cutElevationsFeet: [z + 0.1, z + 4], evidenceSha256: "b".repeat(64) };
+  const base = { version: 1 as const, sourceModelSha256: MODEL, levels: [authoredLevel] };
+  const envelopes = { ...base, geometrySha256: await nativeIndoorEnvelopeHash(base) } as NativeIndoorEnvelopes;
+  const sections = (material: { nativeElementId: number; partsFeet: P[][][] }[]) => ({ levels: [z + 0.1, z + 4].map((c) => ({ levelId: 7, elevationFeet: z, cutElevationFeet: c, sections: material.map((m) => ({ ...m, kind: "wall" })) })) });
+  const seal = { id: "db:7:q1:4-5", state: "applied", baseElevationFeet: z, topElevationFeet: z + 10, partsFeet: [[rect(10 - 1e-5, 9.7, 10 + GAP + 1e-5, 10)]], assumption: { kind: "drawing-backed" } };
+  const common = { envelopes, model: MODEL, materialSections: sections(wallsWithGap(GAP)) as never, walkingSupportFloors: [{ elevationFeet: z, partsFeet: slab }], doors: [] };
+  const none = await supplementNativeIndoorEnvelopes(common);
+  assert.equal(none.envelopes, envelopes, "without the reviewed row nothing is added");
+  const proposed = await supplementNativeIndoorEnvelopes({ ...common, provisionalRows: [{ ...seal, state: "proposed" }] });
+  assert.equal(proposed.envelopes, envelopes, "proposed rows never close an envelope");
+  const lowOnly = await supplementNativeIndoorEnvelopes({ ...common, provisionalRows: [{ ...seal, topElevationFeet: z + 1 }] });
+  assert.equal(lowOnly.envelopes, envelopes, "a row must span every authored cut");
+  const sealed = await supplementNativeIndoorEnvelopes({ ...common, provisionalRows: [seal] });
+  assert.equal(sealed.supplements.length, 1);
+  assert.ok(Math.abs(sealed.supplements[0]!.areaSqFt - 19.4 * 9.4) < 1e-6);
+  assert.deepEqual(sealed.supplements[0]!.assumptionIds, [seal.id]);
+  await verifyNativeIndoorEnvelopes(sealed.envelopes, MODEL);
+  const excluded = await supplementNativeIndoorEnvelopes({ ...common, provisionalRows: [seal], exclusions: [{ id: "pin", levelId: 7, elevationFeet: z, partsFeet: [[rect(0, 0, 5, 10)]] }] });
+  assert.ok(Math.abs(excluded.supplements[0]!.areaSqFt - (19.4 * 9.4 - 4.7 * 9.4)) < 1e-6, "reviewed exclusions stay out");
+  const opening = [{ nativeElementId: 1, partsFeet: [[rect(0, 0, 8, 0.3)]] }, { nativeElementId: 11, partsFeet: [[rect(11, 0, 20, 0.3)]] }, ...wallsWithGap(0).slice(1)];
+  const door = { levelId: 311, nativeElementId: 70, footprintFeet: rect(8, 0, 11, 0.3) };
+  const doorBase = { ...common, materialSections: sections(opening) as never };
+  assert.equal((await supplementNativeIndoorEnvelopes({ ...doorBase, doors: [{ ...door, verticalExtentFeet: [z - 3, z + 2] as [number, number] }] })).envelopes, envelopes, "a doorway below the upper cut stays open there");
+  const spanning = await supplementNativeIndoorEnvelopes({ ...doorBase, doors: [{ ...door, verticalExtentFeet: [z - 3, z + 7] as [number, number] }] });
+  assert.ok(spanning.supplements[0]!.areaSqFt > 180, "another storey's door leaf spanning both cuts closes the enclosure only");
 });

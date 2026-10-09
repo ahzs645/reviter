@@ -186,7 +186,11 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   }
   if (data.navigation != null) {
     const nav=data.navigation;
-    if(nav.version!==1 || !Array.isArray(nav.doorLinks) || nav.doorLinks.length>20000 || nav.doorLinks.some(link=>!link || !Number.isSafeInteger(link.doorId) || !Number.isSafeInteger(link.levelId) || !Array.isArray(link.rooms) || link.rooms.length!==2 || link.rooms[0]===link.rooms[1] || link.rooms.some(key=>typeof key!=="string" || !data.annotations.some(r=>r.key===key && r.levelId===link.levelId && r.status!=="deleted"))) || new Set(nav.doorLinks.map(l=>`${l.levelId}:${l.doorId}`)).size!==nav.doorLinks.length) throw new Error("Reviewed door connections must join two existing rooms on the same floor, with unique model door identities.");
+    // One side may name a generated native ramp landing (`landing:<rampRecipeId>:upper|lower`) of
+    // an existing ramp recipe; it is resolved after the ramp builds that landing.
+    const rampIds=new Set(((data as {indoorRamps?:{ramps?:{id?:unknown}[]}}).indoorRamps?.ramps??[]).map(r=>r?.id));
+    const landingKey=(key:string)=>{const m=/^landing:(.+):(upper|lower)$/.exec(key);return !!m&&rampIds.has(m[1]);};
+    if(nav.version!==1 || !Array.isArray(nav.doorLinks) || nav.doorLinks.length>20000 || nav.doorLinks.some(link=>!link || !Number.isSafeInteger(link.doorId) || !Number.isSafeInteger(link.levelId) || !Array.isArray(link.rooms) || link.rooms.length!==2 || link.rooms[0]===link.rooms[1] || link.rooms.filter(key=>typeof key==="string"&&landingKey(key)).length>1 || link.rooms.some(key=>typeof key!=="string" || !(landingKey(key) || data.annotations.some(r=>r.key===key && r.levelId===link.levelId && r.status!=="deleted")))) || new Set(nav.doorLinks.map(l=>`${l.levelId}:${l.doorId}`)).size!==nav.doorLinks.length) throw new Error("Reviewed door connections must join two existing rooms on the same floor, with unique model door identities.");
   }
   if (data.navigation?.openLinks != null) {
     const links=data.navigation.openLinks;
@@ -545,4 +549,15 @@ export function hallwayRouteComponents(rooms: readonly DirectoryRoom[], portals:
     groups.push(group);
   }
   return groups;
+}
+/** `landing:<rampRecipeId>:upper|lower` names the native landing a reviewed ramp generates. */
+export function generatedLandingDoorLinkKey(key: string): { rampId: string; end: "upper" | "lower" } | undefined {
+  const m = /^landing:(.+):(upper|lower)$/.exec(key);
+  return m ? { rampId: m[1]!, end: m[2] as "upper" | "lower" } : undefined;
+}
+/** Reviewed door links whose one side is a generated ramp landing are resolved after the ramp
+ * builds that landing; every other link is an ordinary room-to-room review. */
+export function splitGeneratedLandingDoorLinks<T extends { rooms: string[] }>(links: readonly T[]) {
+  const deferred = links.filter(l => l.rooms.some(k => !!generatedLandingDoorLinkKey(k)));
+  return { immediate: links.filter(l => !deferred.includes(l)), deferred };
 }

@@ -5,6 +5,7 @@ import {
   validatePreparedDisplayCacheContainer,
 } from "./prepared-display-cache-container.ts";
 import {validateNativeProvisionalCornerSeals,verifyNativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
+import {nativeIndoorEnvelopeAuthored} from "./native-indoor-envelope-supplement.ts";
 import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
 import { hydrateRoomNativeMaterials } from "./native-material-wire.ts";
 import {validateNativeSourceStairMaterials} from "./native-source-stair-material.ts";
@@ -71,7 +72,7 @@ async function validateNativeSelectionContactBinding(rooms: RoomDirectoryData, i
   await verifyNativeMaterialSections(indoor.nativeMaterialSections, indoor.source.modelSha256);
   assertNativeSelectionContactRepairsPhysicalGuards(indoor, applied, deriveNativeSelectionContactRepairs(indoor, applied));
 }
-function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoor: IndoorDataset) {
+async function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoor: IndoorDataset) {
   validateNativeSourceStairMaterials(rooms.nativeSourceStairMaterials,indoor.source.modelSha256);
   validateNativeSourceStairMaterials(indoor.nativeSourceStairMaterials,indoor.source.modelSha256);
   if(JSON.stringify(rooms.nativeSourceStairMaterials)!==JSON.stringify(indoor.nativeSourceStairMaterials))throw new Error("Source and prepared native stair materials do not match.");
@@ -87,7 +88,9 @@ function validateNativeDisplayScopeBinding(rooms: RoomDirectoryData, indoor: Ind
   if (JSON.stringify(rooms.nativeMaterialSections) !== JSON.stringify(indoor.nativeMaterialSections)) throw new Error("Source and prepared original native materials do not match.");
   validateNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, indoor.source.modelSha256);
   validateNativeIndoorEnvelopes(indoor.nativeIndoorEnvelopes, indoor.source.modelSha256);
-  if (JSON.stringify(rooms.nativeIndoorEnvelopes) !== JSON.stringify(indoor.nativeIndoorEnvelopes)) throw new Error("Source and prepared native indoor envelopes do not match.");
+  // The prepared envelope may carry a derived supplement (appended parts + records); its authored
+  // part must still equal the source envelope byte for byte.
+  if (JSON.stringify(rooms.nativeIndoorEnvelopes) !== JSON.stringify(await nativeIndoorEnvelopeAuthored(indoor.nativeIndoorEnvelopes))) throw new Error("Source and prepared native indoor envelopes do not match.");
   validateNativeDisplayScopes(rooms.nativeDisplayScopes, indoor.source.modelSha256);
   validateNativeDisplayScopes(indoor.nativeDisplayScopes, indoor.source.modelSha256);
   if (JSON.stringify(rooms.nativeDisplayScopes) !== JSON.stringify(indoor.nativeDisplayScopes))
@@ -176,7 +179,7 @@ export async function createProjectPackage(
         "Prepared indoor data is stale. Compile it again from this model and these reviews.",
       );
     validateReviewedAreaPartitionBinding(parsed, prepared.indoor);
-    validateNativeDisplayScopeBinding(parsed, prepared.indoor);
+    await validateNativeDisplayScopeBinding(parsed, prepared.indoor);
     await validateNativeSelectionContactBinding(parsed, prepared.indoor);
     await verifyNativeProvisionalCornerSeals(prepared.indoor);
     manifest.version = 2;
@@ -338,7 +341,7 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
   }
   if (indoor) {
     validateReviewedAreaPartitionBinding(rooms, indoor);
-    validateNativeDisplayScopeBinding(rooms, indoor);
+    await validateNativeDisplayScopeBinding(rooms, indoor);
     await validateNativeSelectionContactBinding(rooms, indoor);
     await verifyNativeProvisionalCornerSeals(indoor);
   }

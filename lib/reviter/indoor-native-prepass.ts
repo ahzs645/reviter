@@ -7,7 +7,7 @@ import {promoteNativeRoomInteriors} from './native-room-promotion.ts';
 import {routingFloorPlateRecords} from './routing-floor-support.ts';
 import {architecturalPlanGeometry} from './architectural-plan.ts';
 import {directoryDoorReviews,directoryDoors,type ReviewedDoorLink} from './directory-navigation.ts';
-import {containsDirectoryRoomPoint,type DirectoryRoom,type RoomDirectoryData,type RoomPoint} from './room-directory.ts';
+import {containsDirectoryRoomPoint,splitGeneratedLandingDoorLinks,type DirectoryRoom,type RoomDirectoryData,type RoomPoint} from './room-directory.ts';
 import type{IndoorDataset}from'./indoor-contract.ts';import type{ConvertResult}from'./types.ts';
 const area=(ps:RoomPoint[][][])=>ps.reduce((s,p)=>s+p.reduce((a,r,i)=>a+(i?-1:1)*Math.abs(r.reduce((s,q,j)=>s+q[0]*r[(j+1)%r.length]![1]-q[1]*r[(j+1)%r.length]![0],0)/2),0),0);
 /** Derive routing boundaries in memory from uniquely owned native wall cells.
@@ -16,7 +16,7 @@ const area=(ps:RoomPoint[][][])=>ps.reduce((s,p)=>s+p.reduce((a,r,i)=>a+(i?-1:1)
 export function prepareNativeRoutingBoundaries(model:ConvertResult,source:RoomDirectoryData,dataset:IndoorDataset,links:readonly ReviewedDoorLink[]):{rooms:Map<string,DirectoryRoom>;report:ReturnType<typeof promoteNativeRoomInteriors>['report']} {
  const walls:IndoorDataset['walls']=[],doors:NonNullable<IndoorDataset['doors']>=[];
  for(const levelId of [...new Set(source.annotations.map(r=>r.levelId))]){const g=architecturalPlanGeometry(model,levelId);walls.push(...[...g.walls.map(w=>({...w,kind:'wall' as const})),...g.columns.map(w=>({...w,kind:'column' as const}))].filter(w=>w.polygon.length>=3).map(w=>({levelId,nativeElementId:w.elementId,kind:w.kind,approximate:w.approximate,ringsFeet:[w.polygon]})));
- doors.push(...directoryDoorReviews(source.annotations.filter(r=>r.levelId===levelId),directoryDoors(model,levelId),links,source.navigation?.doorLinks??[]).map(({door,candidates,state,portal})=>({id:`door:${levelId}:${door.id}`,levelId,nativeElementId:door.id,pointFeet:door.point,footprintFeet:door.footprint,normalFeet:door.normal,roomKeys:portal?.rooms??candidates,state})));}
+ doors.push(...directoryDoorReviews(source.annotations.filter(r=>r.levelId===levelId),directoryDoors(model,levelId),links,splitGeneratedLandingDoorLinks(source.navigation?.doorLinks??[]).immediate).map(({door,candidates,state,portal})=>({id:`door:${levelId}:${door.id}`,levelId,nativeElementId:door.id,pointFeet:door.point,footprintFeet:door.footprint,normalFeet:door.normal,roomKeys:portal?.rooms??candidates,state})));}
  // Bind every correction to the complete original native wall before adding
  // reviewed continuations. Floor/door/fixture checks are mandatory on the fully
  // compiled dataset in indoor-pipeline; those physical proofs do not exist yet.

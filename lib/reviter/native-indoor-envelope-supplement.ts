@@ -103,7 +103,7 @@ export function deriveNativeIndoorEnvelopeSupplement(input: {
 
 export type NativeIndoorEnvelopeSupplementRecord = Omit<NativeEnvelopeSupplement, "partsFeet"> & { partStartIndex: number; partCount: number };
 type SupplementedLevel = NativeIndoorEnvelopes["levels"][number] & { supplements?: NativeIndoorEnvelopeSupplementRecord[] };
-type SupplementedEnvelopes = NativeIndoorEnvelopes & { authoredGeometrySha256?: string; levels: SupplementedLevel[] };
+type SupplementedEnvelopes = Omit<NativeIndoorEnvelopes, "levels"> & { authoredGeometrySha256?: string; levels: SupplementedLevel[] };
 
 /** Append supplements. Authored parts, sourceElementIds, cuts, evidence and provisional bindings
  * stay byte-identical; each supplement records its own parts range, sources, correction and
@@ -111,7 +111,7 @@ type SupplementedEnvelopes = NativeIndoorEnvelopes & { authoredGeometrySha256?: 
  * can be recovered exactly (source/prepared parity) and the supplement reversed. */
 export async function mergeNativeIndoorEnvelopeSupplements(envelopes: NativeIndoorEnvelopes, supplements: NativeEnvelopeSupplement[], model: string): Promise<NativeIndoorEnvelopes> {
   await verifyNativeIndoorEnvelopes(envelopes, model);
-  if ((envelopes as SupplementedEnvelopes).authoredGeometrySha256 !== undefined || envelopes.levels.some((l) => (l as SupplementedLevel).supplements !== undefined))
+  if ((envelopes as unknown as SupplementedEnvelopes).authoredGeometrySha256 !== undefined || envelopes.levels.some((l) => (l as SupplementedLevel).supplements !== undefined))
     throw new Error("Authored native indoor envelopes already carry a supplement; supplements are derived, never authored.");
   let changed = false;
   const levels = envelopes.levels.map((level) => {
@@ -128,8 +128,9 @@ export async function mergeNativeIndoorEnvelopeSupplements(envelopes: NativeIndo
     return { ...level, partsFeet: [...level.partsFeet, ...own.flatMap((s) => s.partsFeet)], supplements: records };
   });
   if (!changed) return envelopes;
-  const merged = { version: 1 as const, sourceModelSha256: envelopes.sourceModelSha256, levels };
-  const result = { ...merged, authoredGeometrySha256: envelopes.geometrySha256, geometrySha256: await nativeIndoorEnvelopeHash(merged) } as NativeIndoorEnvelopes;
+  const geometrySha256 = await nativeIndoorEnvelopeHash({ version: 1, sourceModelSha256: envelopes.sourceModelSha256, levels });
+  // Key order follows the authored object so the authored envelope is recovered byte for byte.
+  const result = { ...envelopes, levels, geometrySha256, authoredGeometrySha256: envelopes.geometrySha256 } as NativeIndoorEnvelopes;
   await verifyNativeIndoorEnvelopes(result, model);
   validateNativeIndoorEnvelopeSupplements(result);
   return result;
@@ -137,7 +138,7 @@ export async function mergeNativeIndoorEnvelopeSupplements(envelopes: NativeIndo
 
 /** Structural check of derived supplement records (parts appended contiguously after authored parts). */
 export function validateNativeIndoorEnvelopeSupplements(value: NativeIndoorEnvelopes | undefined) {
-  const v = value as SupplementedEnvelopes | undefined;
+  const v = value as unknown as SupplementedEnvelopes | undefined;
   if (!v) return;
   const any = v.levels.some((l) => l.supplements !== undefined);
   if (!any) { if (v.authoredGeometrySha256 !== undefined) throw new Error("Native envelope supplement binding without supplements."); return; }
@@ -160,7 +161,7 @@ export function validateNativeIndoorEnvelopeSupplements(value: NativeIndoorEnvel
 
 /** Exact authored envelope (supplement parts and records removed), for source/prepared parity. */
 export async function nativeIndoorEnvelopeAuthored(value: NativeIndoorEnvelopes | undefined): Promise<NativeIndoorEnvelopes | undefined> {
-  const v = value as SupplementedEnvelopes | undefined;
+  const v = value as unknown as SupplementedEnvelopes | undefined;
   if (!v || v.authoredGeometrySha256 === undefined) return value;
   validateNativeIndoorEnvelopeSupplements(v);
   const levels = v.levels.map((level) => {
@@ -168,8 +169,9 @@ export async function nativeIndoorEnvelopeAuthored(value: NativeIndoorEnvelopes 
     const { supplements, ...authored } = level;
     return { ...authored, partsFeet: level.partsFeet.slice(0, supplements[0]!.partStartIndex) };
   });
-  const authored = { version: v.version, sourceModelSha256: v.sourceModelSha256, geometrySha256: v.authoredGeometrySha256, levels } as NativeIndoorEnvelopes;
-  if (await nativeIndoorEnvelopeHash(authored) !== v.authoredGeometrySha256) throw new Error("Native envelope supplement does not preserve the authored envelope.");
+  const { authoredGeometrySha256, ...rest } = v;
+  const authored = { ...rest, geometrySha256: authoredGeometrySha256, levels } as unknown as NativeIndoorEnvelopes;
+  if (await nativeIndoorEnvelopeHash(authored) !== authoredGeometrySha256) throw new Error("Native envelope supplement does not preserve the authored envelope.");
   return authored;
 }
 
