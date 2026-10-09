@@ -16,7 +16,8 @@
  * cut. Authored parts are kept byte-identical; supplement parts are appended and carry their own
  * evidence, correction ids and assumption ids. */
 import { nativeRationalOverlay, type NativeRationalParts, type NativeRationalOverlayInput } from "./native-rational-overlay.ts";
-import { nativeExactPartsForProposals } from "./native-exact-planar-topology.ts";
+import { nativeExactPartsForProposals, nativeRationalPointInRing } from "./native-exact-planar-topology.ts";
+import { Rational, add, sub, mul, compare, rationalScalarToIEEE as nativeRationalScalarToIEEE } from "./vendor/native-rational-overlay-arithmetic.mjs";
 import { nativeIndoorEnvelopeHash, verifyNativeIndoorEnvelopes, type NativeIndoorEnvelopes } from "./native-indoor-envelopes.ts";
 import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
@@ -51,13 +52,82 @@ const validParts = (ps: Parts) => Array.isArray(ps) && ps.every((part) => Array.
 const ringArea = (r: Ring) => Math.abs(r.reduce((s, a, i) => { const b = r[(i + 1) % r.length]!; return s + a[0] * b[1] - b[0] * a[1]; }, 0)) / 2;
 const partsArea = (ps: Parts) => ps.reduce((s, p) => s + p.reduce((a, r, i) => a + (i ? -1 : 1) * ringArea(r), 0), 0);
 
-/** Exact bounded faces of the complement of a barrier union. Islands inside a cavity stay solid. */
+/** Exact bounded faces of the complement of a barrier union. Islands inside a cavity stay solid.
+ * Pinch-aware: two material parts that meet only at a point close the free space there (a point
+ * contact is not a passage). The union keeps such parts separate, so faces are traced on the exact
+ * union boundary as a planar graph: every boundary edge with its free side on the left, turning
+ * minimally at each vertex. Counter-clockwise cycles bound faces; clockwise cycles are island or
+ * outer boundaries. Vertex identity is exact (rational); IEEE values only order edge directions. */
 export function nativeBoundedFaces(barrier: Parts): NativeRationalParts {
   if (!barrier.length) return [];
   const union = nativeRationalOverlay("union", [barrier[0]!] as NativeRationalOverlayInput, ...barrier.slice(1).map((p) => [p] as NativeRationalOverlayInput));
-  const cavities = union.flatMap((part) => part.slice(1).map((hole) => [hole]));
-  if (!cavities.length) return [];
-  return nativeRationalOverlay("difference", cavities as NativeRationalOverlayInput, union as NativeRationalOverlayInput);
+  type RP = NativeRationalParts[number][number][number];
+  const key = (p: RP) => `${p[0].n}/${p[0].d},${p[1].n}/${p[1].d}`;
+  const ieeeCache = new Map<RP, Point>();
+  const ieee = (p: RP): Point => { let v = ieeeCache.get(p); if (!v) ieeeCache.set(p, v = [nativeRationalScalarToIEEE(p[0]), nativeRationalScalarToIEEE(p[1])]); return v; };
+  // Orientation: IEEE shoelace when clearly signed, exact rational sum otherwise.
+  const signedArea = (ring: RP[]) => {
+    let f = 0;
+    for (let i = 0; i < ring.length; i++) { const a = ieee(ring[i]!), b = ieee(ring[(i + 1) % ring.length]!); f += a[0] * b[1] - b[0] * a[1]; }
+    if (Math.abs(f) > 1e-6) return Math.sign(f);
+    let s: number | Rational = new Rational(0n);
+    for (let i = 0; i < ring.length; i++) { const a = ring[i]!, b = ring[(i + 1) % ring.length]!; s = add(s, sub(mul(a[0], b[1]), mul(b[0], a[1]))); }
+    return compare(s, new Rational(0n));
+  };
+  type Edge = { from: RP; to: RP; fromKey: string; toKey: string; angle: number; used: boolean };
+  const out = new Map<string, Edge[]>();
+  for (const part of union) part.forEach((ring0, index) => {
+    let ring = ring0.length > 1 && key(ring0[0]!) === key(ring0[ring0.length - 1]!) ? ring0.slice(0, -1) : ring0;
+    if (ring.length < 3) return;
+    const sign = signedArea(ring);
+    // material on the left: exterior counter-clockwise, holes clockwise
+    if ((index === 0 && sign < 0) || (index > 0 && sign > 0)) ring = [...ring].reverse();
+    for (let i = 0; i < ring.length; i++) {
+      // free-side half-edge = reversed material edge
+      const from = ring[(i + 1) % ring.length]!, to = ring[i]!;
+      const fromKey = key(from), toKey = key(to);
+      if (fromKey === toKey) continue;
+      const f = ieee(from), t = ieee(to);
+      const e: Edge = { from, to, fromKey, toKey, angle: Math.atan2(t[1] - f[1], t[0] - f[0]), used: false };
+      out.set(fromKey, [...(out.get(fromKey) ?? []), e]);
+    }
+  });
+  const cycles: RP[][] = [];
+  for (const edges of out.values()) for (const start of edges) {
+    if (start.used) continue;
+    const ring: RP[] = [];
+    let e: Edge | undefined = start, guard = 0;
+    while (e && !e.used && guard++ < 10_000_000) {
+      e.used = true; ring.push(e.from);
+      const f = ieee(e.to), back = ieee(e.from), inAngle = Math.atan2(back[1] - f[1], back[0] - f[0]);
+      let best: Edge | undefined, bestTurn = Infinity;
+      for (const c of out.get(e.toKey) ?? []) {
+        if (c.used && c !== start) continue;
+        let turn = inAngle - c.angle; while (turn <= 0) turn += 2 * Math.PI; while (turn > 2 * Math.PI) turn -= 2 * Math.PI;
+        if (turn < bestTurn) { bestTurn = turn; best = c; }
+      }
+      if (best === start) break;
+      e = best;
+    }
+    if (ring.length >= 3) cycles.push(ring);
+  }
+  const signs = new Map(cycles.map((r) => [r, signedArea(r)]));
+  const faces = cycles.filter((r) => signs.get(r)! > 0);
+  const islands = cycles.filter((r) => signs.get(r)! < 0);
+  const box = (r: RP[]) => { const ps = r.map(ieee); return [Math.min(...ps.map((p) => p[0])), Math.min(...ps.map((p) => p[1])), Math.max(...ps.map((p) => p[0])), Math.max(...ps.map((p) => p[1]))]; };
+  const faceInfo = faces.map((f) => { const b = box(f); return { f, b, area: (b[2] - b[0]) * (b[3] - b[1]) }; }).sort((x, y) => x.area - y.area);
+  const holes = new Map<RP[], RP[][]>(faces.map((f) => [f, []]));
+  for (const island of islands) {
+    const ib = box(island);
+    for (const { f, b } of faceInfo) {
+      if (ib[0] < b[0] || ib[1] < b[1] || ib[2] > b[2] || ib[3] > b[3]) continue;
+      // exact: the first island vertex strictly off the face boundary decides containment
+      let side = 0;
+      for (const p of island) { side = nativeRationalPointInRing(p, f); if (side) break; }
+      if (side === 1) { holes.get(f)!.push(island); break; }
+    }
+  }
+  return faces.map((f) => [f, ...holes.get(f)!]);
 }
 
 export function deriveNativeIndoorEnvelopeSupplement(input: {

@@ -86,7 +86,10 @@ export type NativeDrawingBackedKind =
   | "dwg-continuous-seal"
   | "dwg-assumed-wall"
   | "dwg-assumed-column"
-  | "exact-contact-closure";
+  | "exact-contact-closure"
+  /** Seal across a measured gap that the project owner explicitly decided (named decision, not the
+   * standing policy) where no registered drawing line is continuous; same body and guards. */
+  | "owner-authorized-seal";
 export type NativeDrawingBackedConstruction =
   | {
       /** Bridge between two measured native contact points, extended by a
@@ -140,7 +143,8 @@ export type NativeDrawingBackedAssumption = {
   missingNativeCutEvidence?: { cutElevationsFeet: number[]; evidenceSha256: string };
 };
 export const DRAWING_BACKED_LIMITS = {
-  sealGapFeet: 1.5,
+  /** 1.6 ft: the owner-approved 07-712/07-728 partition stop is 1.568 ft (round-2 f1-1). */
+  sealGapFeet: 1.6,
   sealHalfWidthFeet: 0.05,
   sealOverlapFeet: 0.1,
   exactContactBoundFeet: 2e-5,
@@ -243,7 +247,9 @@ function validateDrawingBackedShape(r: NativeProvisionalCornerSeals["rows"][numb
       "dwg-assumed-wall",
       "dwg-assumed-column",
       "exact-contact-closure",
+      "owner-authorized-seal",
     ].includes(d.kind) ||
+    (d.kind === "owner-authorized-seal" && /#standingPolicy$/.test(d.decisionId)) ||
     typeof d.decisionId !== "string" ||
     !d.decisionId ||
     d.decisionId.length > 200 ||
@@ -258,7 +264,7 @@ function validateDrawingBackedShape(r: NativeProvisionalCornerSeals["rows"][numb
     r.sourceFloorOuterContext !== undefined ||
     r.assumption?.kind !== "drawing-backed" ||
     !c ||
-    (d.kind === "dwg-continuous-seal" || d.kind === "exact-contact-closure"
+    (d.kind === "dwg-continuous-seal" || d.kind === "exact-contact-closure" || d.kind === "owner-authorized-seal"
       ? c.kind !== "bridge" ||
         !pt(c.pointAFeet) ||
         !pt(c.pointBFeet) ||
@@ -288,12 +294,12 @@ function validateDrawingBackedShape(r: NativeProvisionalCornerSeals["rows"][numb
           (c.halfWidthFeet > L.exactContactPadFeet ||
             c.overlapFeet > L.exactContactPadFeet))
       : d.numericalBoundFeet !== undefined) ||
-    (d.kind === "dwg-continuous-seal" &&
+    ((d.kind === "dwg-continuous-seal" || d.kind === "owner-authorized-seal") &&
       (d.measuredGapFeet > L.sealGapFeet ||
         (c.kind === "bridge" &&
           (c.halfWidthFeet > L.sealHalfWidthFeet ||
             c.overlapFeet > L.sealOverlapFeet)))) ||
-    ((d.kind !== "exact-contact-closure" || d.dwg !== undefined) &&
+    (((d.kind !== "exact-contact-closure" && d.kind !== "owner-authorized-seal") || d.dwg !== undefined) &&
       (!d.dwg ||
         !digest(d.dwg.sourceDwgSha256) ||
         !digest(d.dwg.registrationSha256) ||
@@ -336,6 +342,7 @@ export function nativeProvisionalAssumptionCounts(
         "dwg-assumed-wall",
         "dwg-assumed-column",
         "exact-contact-closure",
+        "owner-authorized-seal",
       ].map((k) => [k, drawing.filter((r) => r.drawingBacked!.kind === k).length]),
     ) as Record<NativeDrawingBackedKind, number>,
     sourceVerified: 0,
@@ -1287,7 +1294,7 @@ function checkDrawingBackedRow(
       if (ring.filter(near).length * 2 < ring.length)
         fail("registered drawing does not outline the assumed column");
     }
-  } else if (d.kind !== "exact-contact-closure")
+  } else if (d.kind !== "exact-contact-closure" && d.kind !== "owner-authorized-seal")
     fail("registered drawing evidence is required");
   // Material rows on this level whose cut lies in the body band.
   const bandRows = material.levels.filter(

@@ -171,3 +171,15 @@ test("compiler step consumes applied reviewed correction rows by height, other s
   const spanning = await supplementNativeIndoorEnvelopes({ ...doorBase, doors: [{ ...door, verticalExtentFeet: [z - 3, z + 7] as [number, number] }] });
   assert.ok(spanning.supplements[0]!.areaSqFt > 180, "another storey's door leaf spanning both cuts closes the enclosure only");
 });
+
+test("a point contact between two material parts is not a passage; a gap of 1e-9 ft is", () => {
+  const ring = (gapAtCorner: number) => [
+    [rect(0, 0, 10, 1)], [rect(10 + gapAtCorner, 1, 11, 11)], [rect(0, 10, 10, 11)], [rect(-1, 1, 0, 10)], [rect(-1, 0, 0, 1)], [rect(10, 11, 11, 12)],
+  ];
+  const pinched = nativeBoundedFaces(ring(0));
+  assert.equal(pinched.length, 1, "corner-to-corner contacts close the room");
+  assert.equal(nativeBoundedFaces(ring(1e-9)).length, 0, "no tolerance closes a real gap");
+  const withIsland = nativeBoundedFaces([...ring(0), [rect(4, 4, 5, 5)]]);
+  assert.equal(withIsland.length, 1);
+  assert.equal(withIsland[0]!.length, 2, "an island inside a pinched room stays solid");
+});
