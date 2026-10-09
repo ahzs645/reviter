@@ -5,14 +5,14 @@ import pc from "polygon-clipping";
 import {
   nativePositiveMaterialBandsAcrossLevels,
   nativePositiveMaterialBandOverlapsParts,
-} from "./native-positive-material-bands";
+} from "./native-positive-material-bands.ts";
 import {
   nativeDerivedFrameHash,
   nativeDerivedFramePlacementHash,
-} from "./native-derived-frame-returns";
-import type { NativeMaterialSections } from "./native-material-sections";
-import type { NativeWallPositionRepairs } from "./native-wall-position-repairs";
-import { exactNativeDoorFloorDifference } from "./native-door-exact-overlay";
+} from "./native-derived-frame-returns.ts";
+import type { NativeMaterialSections } from "./native-material-sections.ts";
+import type { NativeWallPositionRepairs } from "./native-wall-position-repairs.ts";
+import { exactNativeDoorFloorDifference } from "./native-door-exact-overlay.ts";
 type P2 = [number, number];
 type P3 = [number, number, number];
 type Parts = P2[][][];
@@ -67,8 +67,12 @@ export type NativeProvisionalCornerSeals = {
       evidenceSha256: string;
       noWalkingMaterial: true;
     };
+    /** Generic drawing-backed assumption family: a registered DWG plan is the
+     * authority where the native model is missing or incomplete. Reversible,
+     * tagged, never source-verified; never alters RVT/GLB/GIS bytes. */
+    drawingBacked?: NativeDrawingBackedAssumption;
     assumption: {
-      kind: "human-authorized-construction-assumption";
+      kind: "human-authorized-construction-assumption" | "drawing-backed";
       authorizationRecorded: boolean;
       authorizationEvidenceSha256: string;
       revisitRequired: true;
@@ -78,6 +82,259 @@ export type NativeProvisionalCornerSeals = {
     evidenceSha256: string;
   }[];
 };
+export type NativeDrawingBackedKind =
+  | "dwg-continuous-seal"
+  | "dwg-assumed-wall"
+  | "dwg-assumed-column"
+  | "exact-contact-closure";
+export type NativeDrawingBackedConstruction =
+  | {
+      /** Bridge between two measured native contact points, extended by a
+       * bounded overlap into both bodies. Point contacts declare a direction. */
+      kind: "bridge";
+      pointAFeet: P2;
+      pointBFeet: P2;
+      directionFeet: P2;
+      halfWidthFeet: number;
+      overlapFeet: number;
+    }
+  | {
+      /** Body between two registered parallel DWG wall-face lines over a
+       * declared interval along the first face. */
+      kind: "dwg-face-pair";
+      faceAFeet: [P2, P2];
+      faceBFeet: [P2, P2];
+      intervalFeet: [number, number];
+    }
+  | {
+      /** Exact native column outline from an existing prepared section. */
+      kind: "native-column-outline";
+      outlineFeet: P2[];
+      sourceLevelId: number;
+      sourceCutElevationFeet: number;
+    };
+export type NativeDrawingBackedAssumption = {
+  version: 1;
+  kind: NativeDrawingBackedKind;
+  /** Owner authorization reference, e.g. "2026-10-09-gap-review#q1a". */
+  decisionId: string;
+  decisionsSha256: string;
+  nativeOwnerIds: number[];
+  measuredGapFeet: number;
+  numericalBoundFeet?: number;
+  construction: NativeDrawingBackedConstruction;
+  dwg?: {
+    sourceDwgSha256: string;
+    /** sha256 of JSON.stringify([boundaryReference.sourceSha256, section]). */
+    registrationSha256: string;
+    sectionId: string;
+    toleranceFeet: number;
+    entities: {
+      kind: "wallSegments" | "doorSegments";
+      index: number;
+      segmentFeet: [P2, P2];
+    }[];
+  };
+  /** Complete set of census bodies without exact parts whose 3D bounds meet the body. */
+  acknowledgedUnverifiedBodyIds: number[];
+  missingNativeCutEvidence?: { cutElevationsFeet: number[]; evidenceSha256: string };
+};
+export const DRAWING_BACKED_LIMITS = {
+  sealGapFeet: 1.5,
+  sealHalfWidthFeet: 0.05,
+  sealOverlapFeet: 0.1,
+  exactContactBoundFeet: 2e-5,
+  exactContactPadFeet: 2e-4,
+  dwgToleranceFeet: 0.25,
+  wallThicknessFeet: 3,
+  wallFaceParallelSine: 0.02,
+} as const;
+const unit = (v: P2): P2 => {
+  const l = Math.hypot(v[0], v[1]);
+  if (!l) throw Error("Invalid drawing-backed direction.");
+  return [v[0] / l, v[1] / l];
+};
+/** Normalized-identical body of a drawing-backed construction. */
+export function drawingBackedAssumptionFootprint(
+  c: NativeDrawingBackedConstruction,
+): Parts {
+  if (c.kind === "bridge") {
+    const u = c.directionFeet,
+      n: P2 = [-u[1], u[0]],
+      h = c.halfWidthFeet,
+      e = c.overlapFeet;
+    if (Math.abs(Math.hypot(u[0], u[1]) - 1) > 1e-12 || !(h > 0) || !(e > 0))
+      throw Error("Invalid drawing-backed bridge construction.");
+    const a: P2 = [c.pointAFeet[0] - e * u[0], c.pointAFeet[1] - e * u[1]],
+      b: P2 = [c.pointBFeet[0] + e * u[0], c.pointBFeet[1] + e * u[1]];
+    return [
+      [
+        [
+          [a[0] - h * n[0], a[1] - h * n[1]],
+          [b[0] - h * n[0], b[1] - h * n[1]],
+          [b[0] + h * n[0], b[1] + h * n[1]],
+          [a[0] + h * n[0], a[1] + h * n[1]],
+        ],
+      ],
+    ];
+  }
+  if (c.kind === "dwg-face-pair") {
+    const [a, b] = c.faceAFeet,
+      [p, q] = c.faceBFeet,
+      length = Math.hypot(b[0] - a[0], b[1] - a[1]),
+      u = unit([b[0] - a[0], b[1] - a[1]]),
+      v = unit([q[0] - p[0], q[1] - p[1]]),
+      [t0, t1] = c.intervalFeet;
+    if (
+      Math.abs(u[0] * v[1] - u[1] * v[0]) >
+        DRAWING_BACKED_LIMITS.wallFaceParallelSine ||
+      !(t0 >= 0) ||
+      !(t1 > t0) ||
+      t1 > length
+    )
+      throw Error("Invalid drawing-backed face-pair construction.");
+    const at = (t: number): P2 => [a[0] + t * u[0], a[1] + t * u[1]],
+      foot = (x: P2): P2 => {
+        const s = (x[0] - p[0]) * v[0] + (x[1] - p[1]) * v[1];
+        return [p[0] + s * v[0], p[1] + s * v[1]];
+      };
+    const x0 = at(t0),
+      x1 = at(t1),
+      y0 = foot(x0),
+      y1 = foot(x1),
+      thickness = Math.hypot(y0[0] - x0[0], y0[1] - x0[1]),
+      lengthB = Math.hypot(q[0] - p[0], q[1] - p[1]),
+      along = (y: P2) => (y[0] - p[0]) * v[0] + (y[1] - p[1]) * v[1];
+    if (
+      !(thickness > 0) ||
+      thickness > DRAWING_BACKED_LIMITS.wallThicknessFeet ||
+      [y0, y1].some((y) => along(y) < -1e-9 || along(y) > lengthB + 1e-9)
+    )
+      throw Error("Drawing-backed face pair does not overlap over its interval.");
+    return [[[x0, x1, y1, y0]]];
+  }
+  if (c.outlineFeet.length < 3) throw Error("Invalid drawing-backed column outline.");
+  return [[c.outlineFeet.map((p) => [p[0], p[1]] as P2)]];
+}
+const segmentDistance = (p: P2, s: [P2, P2]) => {
+  const [a, b] = s,
+    dx = b[0] - a[0],
+    dy = b[1] - a[1],
+    l = dx * dx + dy * dy,
+    t = l ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l)) : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+};
+function validateDrawingBackedShape(r: NativeProvisionalCornerSeals["rows"][number]) {
+  const d = r.drawingBacked!,
+    c = d?.construction,
+    L = DRAWING_BACKED_LIMITS;
+  const pt = (v: unknown) => point(v);
+  const bad =
+    !d ||
+    d.version !== 1 ||
+    ![
+      "dwg-continuous-seal",
+      "dwg-assumed-wall",
+      "dwg-assumed-column",
+      "exact-contact-closure",
+    ].includes(d.kind) ||
+    typeof d.decisionId !== "string" ||
+    !d.decisionId ||
+    d.decisionId.length > 200 ||
+    !digest(d.decisionsSha256) ||
+    !ids(d.nativeOwnerIds) ||
+    !Number.isFinite(d.measuredGapFeet) ||
+    d.measuredGapFeet < 0 ||
+    !Array.isArray(d.acknowledgedUnverifiedBodyIds) ||
+    (d.acknowledgedUnverifiedBodyIds.length > 0 && !ids(d.acknowledgedUnverifiedBodyIds)) ||
+    d.acknowledgedUnverifiedBodyIds.some((id) => d.nativeOwnerIds.includes(id)) ||
+    r.reviewedConstructionShape !== undefined ||
+    r.sourceFloorOuterContext !== undefined ||
+    r.assumption?.kind !== "drawing-backed" ||
+    !c ||
+    (d.kind === "dwg-continuous-seal" || d.kind === "exact-contact-closure"
+      ? c.kind !== "bridge" ||
+        !pt(c.pointAFeet) ||
+        !pt(c.pointBFeet) ||
+        !pt(c.directionFeet) ||
+        !Number.isFinite(c.halfWidthFeet) ||
+        !Number.isFinite(c.overlapFeet)
+      : d.kind === "dwg-assumed-wall"
+        ? c.kind !== "dwg-face-pair" ||
+          ![c.faceAFeet, c.faceBFeet].every(
+            (f) => Array.isArray(f) && f.length === 2 && f.every(pt),
+          ) ||
+          !Array.isArray(c.intervalFeet) ||
+          c.intervalFeet.length !== 2
+        : c.kind !== "native-column-outline" ||
+          !Array.isArray(c.outlineFeet) ||
+          c.outlineFeet.length < 3 ||
+          c.outlineFeet.length > 1000 ||
+          !c.outlineFeet.every(pt) ||
+          !Number.isSafeInteger(c.sourceLevelId) ||
+          !Number.isFinite(c.sourceCutElevationFeet)) ||
+    (d.kind === "exact-contact-closure"
+      ? !Number.isFinite(d.numericalBoundFeet) ||
+        d.numericalBoundFeet! <= 0 ||
+        d.numericalBoundFeet! > L.exactContactBoundFeet ||
+        d.measuredGapFeet > d.numericalBoundFeet! ||
+        (c.kind === "bridge" &&
+          (c.halfWidthFeet > L.exactContactPadFeet ||
+            c.overlapFeet > L.exactContactPadFeet))
+      : d.numericalBoundFeet !== undefined) ||
+    (d.kind === "dwg-continuous-seal" &&
+      (d.measuredGapFeet > L.sealGapFeet ||
+        (c.kind === "bridge" &&
+          (c.halfWidthFeet > L.sealHalfWidthFeet ||
+            c.overlapFeet > L.sealOverlapFeet)))) ||
+    ((d.kind !== "exact-contact-closure" || d.dwg !== undefined) &&
+      (!d.dwg ||
+        !digest(d.dwg.sourceDwgSha256) ||
+        !digest(d.dwg.registrationSha256) ||
+        typeof d.dwg.sectionId !== "string" ||
+        !d.dwg.sectionId ||
+        !Number.isFinite(d.dwg.toleranceFeet) ||
+        d.dwg.toleranceFeet < 0 ||
+        d.dwg.toleranceFeet > L.dwgToleranceFeet ||
+        !Array.isArray(d.dwg.entities) ||
+        !d.dwg.entities.length ||
+        d.dwg.entities.length > 1000 ||
+        d.dwg.entities.some(
+          (e) =>
+            !e ||
+            !["wallSegments", "doorSegments"].includes(e.kind) ||
+            !Number.isSafeInteger(e.index) ||
+            e.index < 0 ||
+            !Array.isArray(e.segmentFeet) ||
+            e.segmentFeet.length !== 2 ||
+            !e.segmentFeet.every(pt),
+        ))) ||
+    (d.missingNativeCutEvidence !== undefined &&
+      (!Array.isArray(d.missingNativeCutEvidence.cutElevationsFeet) ||
+        !d.missingNativeCutEvidence.cutElevationsFeet.every(Number.isFinite) ||
+        !digest(d.missingNativeCutEvidence.evidenceSha256)));
+  if (bad) throw Error("Invalid drawing-backed native assumption: " + (r?.id ?? ""));
+}
+/** Assumption-based enclosures are counted separately from source-verified repairs. */
+export function nativeProvisionalAssumptionCounts(
+  v: NativeProvisionalCornerSeals | undefined,
+) {
+  const applied = (v?.rows ?? []).filter((r) => r.state === "applied");
+  const drawing = applied.filter((r) => r.drawingBacked);
+  return {
+    humanAuthorizedCornerSeals: applied.length - drawing.length,
+    drawingBacked: drawing.length,
+    drawingBackedByKind: Object.fromEntries(
+      [
+        "dwg-continuous-seal",
+        "dwg-assumed-wall",
+        "dwg-assumed-column",
+        "exact-contact-closure",
+      ].map((k) => [k, drawing.filter((r) => r.drawingBacked!.kind === k).length]),
+    ) as Record<NativeDrawingBackedKind, number>,
+    sourceVerified: 0,
+  };
+}
 type Data = {
   source?: { modelSha256: string };
   nativeMaterialSections?: NativeMaterialSections;
@@ -382,7 +639,9 @@ export function validateNativeProvisionalCornerSeals(
       !digest(r.evidenceSha256) ||
       "literalAuthorization" in (r.assumption ?? {}) ||
       "statement" in (r.assumption ?? {}) ||
-      r.assumption?.kind !== "human-authorized-construction-assumption" ||
+      (r.drawingBacked
+        ? r.assumption?.kind !== "drawing-backed"
+        : r.assumption?.kind !== "human-authorized-construction-assumption") ||
       r.assumption.revisitRequired !== true ||
       r.assumption.sourceVerified !== false ||
       !digest(r.assumption.evidenceSha256) ||
@@ -391,6 +650,7 @@ export function validateNativeProvisionalCornerSeals(
       (r.state === "applied" && r.assumption.authorizationRecorded !== true)
     )
       throw Error("Invalid explicit provisional native corner assumption.");
+  for (const r of v.rows) if (r.drawingBacked !== undefined) validateDrawingBackedShape(r);
 }
 export function validateNativeProvisionalEnclosureBinding(data: Data) {
   const v = data.nativeProvisionalCornerSeals;
@@ -532,6 +792,10 @@ export function createNativeProvisionalCornerSealIndex(
       (options?.reviewProposed && r.state === "proposed"),
   );
   for (const r of rows) {
+    if (r.drawingBacked) {
+      checkDrawingBackedRow(data, v, r, positiveBands, shifts, census, hostSkip);
+      continue;
+    }
     const contacts = [
         ...r.carrierContactNativeElementIds,
         r.targetNativeElementId,
@@ -950,6 +1214,202 @@ export function createNativeProvisionalCornerSealIndex(
           r.partsFeet.map((p) => ({ outer: p[0], holes: p.slice(1) })),
         ),
   };
+}
+/** Physical guards of the drawing-backed family. Every original guard is kept:
+ * normalized-identical body, owner contacts, exact foreign material, complete
+ * unverified-body acknowledgement, floor support/openings and physical doors. */
+function checkDrawingBackedRow(
+  data: Data,
+  v: NativeProvisionalCornerSeals,
+  r: NativeProvisionalCornerSeals["rows"][number],
+  positiveBands: ReturnType<typeof nativePositiveMaterialBandsAcrossLevels>,
+  shifts: Map<number, P2>,
+  census: Map<number, NativeProvisionalCornerSeals["foreignBodies"][number]>,
+  hostSkip: Set<number>,
+) {
+  const d = r.drawingBacked!,
+    c = d.construction,
+    fail = (why: string): never => {
+      throw Error(`Drawing-backed assumption ${r.id}: ${why}`);
+    };
+  const material = data.nativeMaterialSections!;
+  const expected = drawingBackedAssumptionFootprint(c);
+  if (area(pc.xor(expected, r.partsFeet) as Parts) > 0)
+    fail("body differs from its declared construction");
+  const scale = (p: P2) => 64 * Number.EPSILON * Math.max(1, Math.abs(p[0]), Math.abs(p[1]));
+  if (c.kind === "bridge") {
+    const gap = Math.hypot(
+      c.pointBFeet[0] - c.pointAFeet[0],
+      c.pointBFeet[1] - c.pointAFeet[1],
+    );
+    if (Math.abs(gap - d.measuredGapFeet) > scale(c.pointAFeet))
+      fail("measured gap does not equal its declared contact points");
+    if (
+      gap > 0 &&
+      Math.abs(
+        (c.pointBFeet[0] - c.pointAFeet[0]) * c.directionFeet[1] -
+          (c.pointBFeet[1] - c.pointAFeet[1]) * c.directionFeet[0],
+      ) > scale(c.pointAFeet) * Math.max(1, gap) ||
+      (gap > 0 &&
+        (c.pointBFeet[0] - c.pointAFeet[0]) * c.directionFeet[0] +
+          (c.pointBFeet[1] - c.pointAFeet[1]) * c.directionFeet[1] <= 0)
+    )
+      fail("bridge direction is not the measured gap direction");
+  }
+  // Registered drawing evidence: the plan must be continuous across the gap,
+  // draw both faces of an assumed wall, or draw the assumed column outline.
+  const dwg = d.dwg;
+  if (dwg) {
+    const segs = dwg.entities.map((e) => e.segmentFeet),
+      near = (p: P2) => segs.some((s) => segmentDistance(p, s) <= dwg.toleranceFeet);
+    if (c.kind === "bridge") {
+      const m: P2 = [
+        (c.pointAFeet[0] + c.pointBFeet[0]) / 2,
+        (c.pointAFeet[1] + c.pointBFeet[1]) / 2,
+      ];
+      if (![c.pointAFeet, c.pointBFeet, m].every(near))
+        fail("registered drawing is not continuous across the measured gap");
+    } else if (c.kind === "dwg-face-pair") {
+      const cited = (f: [P2, P2]) =>
+        segs.some((s) => same(s, f) || same([s[1], s[0]], f));
+      if (!cited(c.faceAFeet) || !cited(c.faceBFeet))
+        fail("assumed wall faces are not cited registered drawing segments");
+    } else {
+      // Columns embedded in a wall have faces hidden in plan drawings; at least
+      // half of the native outline corners must lie on cited drawing lines.
+      const ring = c.outlineFeet;
+      if (ring.filter(near).length * 2 < ring.length)
+        fail("registered drawing does not outline the assumed column");
+    }
+  } else if (d.kind !== "exact-contact-closure")
+    fail("registered drawing evidence is required");
+  // Material rows on this level whose cut lies in the body band.
+  const bandRows = material.levels.filter(
+    (l) =>
+      l.levelId === r.levelId &&
+      l.cutElevationFeet >= r.baseElevationFeet &&
+      l.cutElevationFeet < r.topElevationFeet,
+  );
+  const ownerParts = (id: number, rows = bandRows) =>
+    rows.flatMap((l) =>
+      l.sections.filter((s) => s.nativeElementId === id).flatMap((s) => s.partsFeet),
+    ) as Parts;
+  const ps = r.partsFeet.flat(2),
+    box = {
+      min: [Math.min(...ps.map((p) => p[0])), Math.min(...ps.map((p) => p[1])), r.baseElevationFeet],
+      max: [Math.max(...ps.map((p) => p[0])), Math.max(...ps.map((p) => p[1])), r.topElevationFeet],
+    };
+  const boxMeets = (b: { min: number[]; max: number[] }) =>
+    !(b.max.some((x, i) => x < box.min[i]) || b.min.some((x, i) => x > box.max[i]));
+  for (const id of d.nativeOwnerIds) {
+    const own = ownerParts(id);
+    if (own.length) {
+      if (c.kind === "native-column-outline") continue;
+      if (area(pc.intersection(r.partsFeet, own) as Parts) <= 0)
+        fail(`no positive contact with sectioned native owner ${id}`);
+    } else {
+      const body = census.get(id);
+      if (!body || !boxMeets(body.boundsFeet))
+        fail(`unsectioned native owner ${id} is not a meeting census body`);
+    }
+  }
+  if (d.kind === "dwg-assumed-wall") {
+    const host = d.nativeOwnerIds[0];
+    if (ownerParts(host).length)
+      fail("assumed wall host already has a certified native body at this band");
+    if (!census.has(host)) fail("assumed wall host is not an original physical owner");
+  }
+  if (c.kind === "native-column-outline") {
+    const column = d.nativeOwnerIds[0];
+    const source = material.levels.filter(
+      (l) => l.levelId === c.sourceLevelId && l.cutElevationFeet === c.sourceCutElevationFeet,
+    );
+    const outlines = source.flatMap((l) =>
+      l.sections
+        .filter((s) => s.nativeElementId === column && s.kind === "column")
+        .flatMap((s) => s.partsFeet.map((p) => p[0])),
+    );
+    const norm = (ring: P2[]) =>
+      JSON.stringify(same(ring[0], ring[ring.length - 1]) ? ring.slice(0, -1) : ring);
+    if (!outlines.some((o) => norm(o as P2[]) === norm(c.outlineFeet)))
+      fail("assumed column outline is not the exact native column section");
+  }
+  // Exact original foreign material (non-owners) may never be covered.
+  for (const band of positiveBands)
+    if (
+      !d.nativeOwnerIds.includes(band.nativeElementId) &&
+      !hostSkip.has(band.nativeElementId) &&
+      band.baseElevationFeet < r.topElevationFeet &&
+      band.topElevationFeet > r.baseElevationFeet &&
+      nativePositiveMaterialBandOverlapsParts(
+        band,
+        r.partsFeet,
+        shifts.get(band.nativeElementId) ?? [0, 0],
+      )
+    )
+      fail(`covers exact original foreign material ${band.nativeElementId}`);
+  for (const l of bandRows)
+    for (const sct of l.sections)
+      if (
+        !d.nativeOwnerIds.includes(sct.nativeElementId) &&
+        !hostSkip.has(sct.nativeElementId) &&
+        area(pc.intersection(r.partsFeet, sct.partsFeet as Parts) as Parts) > 0
+      )
+        fail(`covers sectioned foreign native material ${sct.nativeElementId}`);
+  const unverified = v.foreignBodies
+    .filter(
+      (b) =>
+        !d.nativeOwnerIds.includes(b.nativeElementId) &&
+        !hostSkip.has(b.nativeElementId) &&
+        boxMeets({ min: b.boundsFeet.min, max: b.boundsFeet.max }),
+    )
+    .filter((b) => {
+      if (b.partsFeet) {
+        if (area(pc.intersection(r.partsFeet, b.partsFeet) as Parts) > 0)
+          fail(`covers original foreign body ${b.nativeElementId}`);
+        return false;
+      }
+      return true;
+    })
+    .map((b) => b.nativeElementId)
+    .sort((a, b) => a - b);
+  if (!same(unverified, [...d.acknowledgedUnverifiedBodyIds].sort((a, b) => a - b)))
+    fail(
+      "unverified original bodies meeting the body are not completely acknowledged: " +
+        JSON.stringify(unverified),
+    );
+  const floors =
+    data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
+      ? data.walkingSupport.floors
+          .filter((f) => r.sourceFloorIds.includes(f.nativeElementId))
+          .map((f) => ({
+            nativeElementId: f.nativeElementId,
+            elevationFeet: f.elevationFeet,
+            partsFeet: f.partsFeet ?? [f.ringsFeet],
+          }))
+      : [];
+  if (
+    floors.length !== r.sourceFloorIds.length ||
+    !same(floors, r.sourceFloorBindings) ||
+    nativeDerivedFrameHash(floors) !== r.sourceFloorPartsSha256 ||
+    floors.some((f) => Math.abs(f.elevationFeet - r.elevationFeet) > 0.05) ||
+    r.partsFeet.some(
+      (p) => exactNativeDoorFloorDifference(p, floors.flatMap((f) => f.partsFeet)).length,
+    )
+  )
+    fail("crosses unsupported native floor or an original opening");
+  for (const door of data.doors ?? []) {
+    const e = data.edges?.find((e) => e.id === door.id);
+    if (
+      r.materialRole !== "enclosure-context-only" &&
+      e?.enabled &&
+      e.kind === "door" &&
+      door.footprintFeet &&
+      e.pointsFeet.some((p) => p[2] >= r.baseElevationFeet - 0.05 && p[2] <= r.topElevationFeet) &&
+      area(pc.intersection(r.partsFeet, [door.footprintFeet]) as Parts) > 0
+    )
+      fail("intersects a preserved physical doorway; only enclosure-context-only rows may close it");
+  }
 }
 export async function verifyNativeProvisionalCornerSeals(data: Data) {
   createNativeProvisionalCornerSealIndex(data);
