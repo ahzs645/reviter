@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 type Point = readonly number[];
 type Rings = readonly Point[];
 type Parts = readonly (readonly Rings[])[];
@@ -25,7 +26,7 @@ export function nativePlanarPointInRing(p: Point, ring: Rings) {
     if (
       t >= 0 &&
       t <= 1 &&
-      Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy) <= error
+      DMath.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy) <= error
     )
       return true;
     if (

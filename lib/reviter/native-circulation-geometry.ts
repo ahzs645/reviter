@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {nativeRationalOverlay,nativeRationalScalarToIEEE,NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION,type NativeRationalParts} from "./native-rational-overlay.ts";
 import {prepareNativeContainedCellDisplay,validateNativeContainedCellDisplay} from "./native-contained-cell-display.ts";
 import {freezeNativeRationalParts,encodeNativeExactTopology,createNativeExactTopologyIndex,nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare,nativeRationalPointInParts,nativeRationalPathSupported,nativeRationalFootprintSupported,nativeRationalThresholdHalf,nativeExactPartsForProposals} from "./native-exact-planar-topology.ts";
@@ -1049,7 +1050,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
           if (
             a.roomKey !== b.roomKey ||
             a.levelId !== b.levelId ||
-            Math.hypot(...a.pointFeet.map((v, k) => v - b.pointFeet[k]!)) >
+            DMath.hypot(...a.pointFeet.map((v, k) => v - b.pointFeet[k]!)) >
               1e-8 ||
             !nativeRationalPathSupported([a.pointFeet,b.pointFeet],context.exactIndex!.parts(cell.exactFaceId!)!)
           )
@@ -1112,7 +1113,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         toNode = selected.find((n) => n.id === branch.to)!;
       if (
         data.nativeIndoorEnvelopes &&
-        Math.hypot(
+        DMath.hypot(
           ...fromNode.pointFeet.map((v, k) => v - toNode.pointFeet[k]!),
         ) < 1e-8
       )
@@ -1151,7 +1152,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
       if (!a || !b) continue;
       let points = [a, ...branch.points, b].filter(
         (p, i, ps) =>
-          !i || Math.hypot(p[0] - ps[i - 1]![0], p[1] - ps[i - 1]![1]) > 1e-8,
+          !i || DMath.hypot(p[0] - ps[i - 1]![0], p[1] - ps[i - 1]![1]) > 1e-8,
       );
       if (data.nativeIndoorEnvelopes) {
         // Only this branch's own terminal halves may extend its physical face.
@@ -1222,7 +1223,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
           .reduce(
             (s, p, i) =>
               s +
-              Math.hypot(p[0] - points[i]![0], p[1] - points[i]![1]) *
+              DMath.hypot(p[0] - points[i]![0], p[1] - points[i]![1]) *
                 data.alignment.horizontalMetresPerFoot,
             0,
           ),

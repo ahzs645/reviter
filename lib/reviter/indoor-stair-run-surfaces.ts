@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import polygonClipping from "polygon-clipping";
 import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
@@ -138,7 +139,7 @@ function nativeProfileOrder(
     const matched = profile.map(
       (p) =>
         ring
-          .map((q) => ({ q, d: Math.hypot(p[0] - q[0], p[1] - q[1]) }))
+          .map((q) => ({ q, d: DMath.hypot(p[0] - q[0], p[1] - q[1]) }))
           .sort((a, b) => a.d - b.d)[0]!,
     );
     if (

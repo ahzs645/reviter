@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 function containsRoomPoint(p:readonly number[],ring:readonly (readonly number[])[]){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i]!,b=ring[j]!;if((a[1]!>p[1]!)!==(b[1]!>p[1]!)&&p[0]!<(b[0]!-a[0]!)*(p[1]!-a[1]!)/(b[1]!-a[1]!)+a[0]!)inside=!inside;}return inside;}
 type Point3=[number,number,number];
 export type NativeRampCrossfallCertificate={version:1;halfWidthFeet:.5;maximumCrossfallRatio:number;maximumContinuousHeightJointFeet:number;maximumNativeJointFeet:number;tracks:{segmentIndex:number;offsetFeet:number;sections:{start:number;end:number;startHeightFeet:number;endHeightFeet:number;nativeTriangleIndex?:number;nativeFloorId?:number;nativeJoint?:true}[]}[]};
@@ -10,7 +11,7 @@ export function certifyNativeRampCrossfall(triangles:Point3[][],floors:Floor[],p
  const reject=(reason:string)=>{diagnostics?.push(reason);return undefined;};
  const certificate:NativeRampCrossfallCertificate={version:1,halfWidthFeet:.5,maximumCrossfallRatio:0,maximumContinuousHeightJointFeet:0,maximumNativeJointFeet:0,tracks:[]};
  for(let index=1;index<points.length;index++){
-  const a=points[index-1]!,b=points[index]!,dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);if(length<1e-10)continue;
+  const a=points[index-1]!,b=points[index]!,dx=b[0]-a[0],dy=b[1]-a[1],length=DMath.hypot(dx,dy);if(length<1e-10)continue;
   for(const offset of[-.5,0,.5]){
    const p:Point3=[a[0]-dy/length*offset,a[1]+dx/length*offset,a[2]],q:Point3=[b[0]-dy/length*offset,b[1]+dx/length*offset,b[2]],surfaces:Surface[]=[];
    triangles.forEach((triangle,nativeTriangleIndex)=>{

@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { indoorRegionBlocker } from "./indoor-region.ts";
 import {
   containsDirectoryRoomPoint,
@@ -73,15 +74,15 @@ export function buildIndoorGrid(
     for (let i = 0; i < r.polygonFeet.length; i++) {
       const a = r.polygonFeet[i]!,
         b = r.polygonFeet[(i + 1) % r.polygonFeet.length]!;
-      const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-      cosine += length * Math.cos(4 * angle);
-      sine += length * Math.sin(4 * angle);
+      const length = DMath.hypot(b[0] - a[0], b[1] - a[1]);
+      const angle = DMath.atan2(b[1] - a[1], b[0] - a[0]);
+      cosine += length * DMath.cos(4 * angle);
+      sine += length * DMath.sin(4 * angle);
     }
   const angle =
-    Math.hypot(cosine, sine) > 1e-8 ? Math.atan2(sine, cosine) / 4 : 0;
-  const c = Math.cos(angle),
-    s = Math.sin(angle);
+    DMath.hypot(cosine, sine) > 1e-8 ? DMath.atan2(sine, cosine) / 4 : 0;
+  const c = DMath.cos(angle),
+    s = DMath.sin(angle);
   const local = (p: RoomPoint): RoomPoint => [
     p[0] * c + p[1] * s,
     -p[0] * s + p[1] * c,
@@ -226,7 +227,7 @@ export function buildIndoorGrid(
           const footprint = t.nativeClearWidthFootprint;
           let longest = 0, axis: RoomPoint = [1, 0];
           footprint.forEach((a,k) => {
-            const b=footprint[(k+1)%footprint.length]!,length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+            const b=footprint[(k+1)%footprint.length]!,length=DMath.hypot(b[0]-a[0],b[1]-a[1]);
             if(length>longest){longest=length;axis=[(b[0]-a[0])/length,(b[1]-a[1])/length];}
           });
           // Host depth can exceed door width. The original native aperture
@@ -243,7 +244,7 @@ export function buildIndoorGrid(
         const
           room = scope.find((r) => r.key === t.roomKey);
         if (!room || !containsDirectoryRoomPoint(p, room)) continue;
-        const d = Math.hypot(p[0] - t.point[0], p[1] - t.point[1]);
+        const d = DMath.hypot(p[0] - t.point[0], p[1] - t.point[1]);
         // A portal can snap inside the opening; an arrival cannot jump across a divider.
         if (d <= t.maxSnapFeet && d < distance && !blocked(t.point, p)) {
           best = i;
@@ -465,7 +466,7 @@ export function buildIndoorGrid(
       let best = -1, nearest = Infinity;
       for (let head = 0; head < queue.length; head++) {
         const i = queue[head]!, p = world(i);
-        const d = Math.hypot(p[0]-t.point[0],p[1]-t.point[1]);
+        const d = DMath.hypot(p[0]-t.point[0],p[1]-t.point[1]);
         if (d < nearest) { best = i; nearest = d; }
         for (const j of neighbours(i)) {
           if (j < 0 || !usable[j] || previous.has(j)) continue;

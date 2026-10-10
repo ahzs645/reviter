@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 
@@ -98,7 +99,7 @@ export function validateNativeDoorBoundaryClosures(
       !d.originalDoor ||
       !point(d.originalDoor.pointFeet) ||
       !point(d.originalDoor.normalFeet) ||
-      Math.hypot(...d.originalDoor.normalFeet) < 1e-9 ||
+      DMath.hypot(...d.originalDoor.normalFeet) < 1e-9 ||
       !validFoot(d.originalDoor.footprintFeet) ||
       !validFoot(d.footprintFeet) ||
       !Array.isArray(d.originalDoor.roomKeys) ||
@@ -126,7 +127,7 @@ export function validateNativeDoorBoundaryClosures(
       error("geometry evidence or duplicate door");
     ids.add(key);
     const n: Point = d.originalDoor.normalFeet.map(
-      (x) => x / Math.hypot(...d.originalDoor.normalFeet),
+      (x) => x / DMath.hypot(...d.originalDoor.normalFeet),
     ) as Point;
     const t: Point = [-n[1], n[0]];
     const oldT = bounds(d.originalDoor.footprintFeet, t),
@@ -265,7 +266,7 @@ export function closedBoundaryDoors(
     )
       error("threshold crosses a physical fixture");
     const n: Point = saved.originalDoor.normalFeet.map(
-        (x) => x / Math.hypot(...saved.originalDoor.normalFeet),
+        (x) => x / DMath.hypot(...saved.originalDoor.normalFeet),
       ) as Point,
       t: Point = [-n[1], n[0]];
     const tb = bounds(saved.footprintFeet, t),

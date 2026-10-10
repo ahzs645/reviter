@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {applyReviewedDoorWallCuts,reviewedDoorOpening} from "./reviewed-door-apertures.ts";
 import { recoverNativeCurtainOpenings } from './native-curtain-openings.ts';
 import { nativeMeshBarrierCuts } from './native-mesh-barrier-cuts.ts';
@@ -436,7 +437,7 @@ type WallCornerOverrides = {
 
 function wallPolygon(solid: WallSolid, corners?: WallCornerOverrides): Point2[] {
   const dx = solid.end.x - solid.start.x; const dy = solid.end.y - solid.start.y;
-  const length = Math.hypot(dx, dy) || 1; const px = -dy / length * solid.thickness / 2;
+  const length = DMath.hypot(dx, dy) || 1; const px = -dy / length * solid.thickness / 2;
   const py = dx / length * solid.thickness / 2;
   return [
     solid.startCorners ? [solid.startCorners[0].x, solid.startCorners[0].y] : corners?.startLeft ?? [solid.start.x + px, solid.start.y + py],
@@ -499,7 +500,7 @@ function certifiedMemberPolygon(record: ElementBoundsRecord, cut: Point2[]): Poi
   for (const direction of [1, -1]) for (let offset = 0; offset < cut.length; offset++) {
     if (precise.every((p, i) => {
       const q = cut[(offset + direction * i + cut.length) % cut.length]!;
-      return Math.hypot(p[0] - q[0], p[1] - q[1]) <= tolerance;
+      return DMath.hypot(p[0] - q[0], p[1] - q[1]) <= tolerance;
     })) return precise;
   }
   return cut;
@@ -515,8 +516,8 @@ export function nativeWallArcPolygon(arc: WallArc): Point2[] {
   const angles = Array.from({ length: steps + 1 }, (_, i) => arc.startAngle + sweep * i / steps);
   const lo = Math.min(arc.startAngle, arc.endAngle), hi = Math.max(arc.startAngle, arc.endAngle);
   for (const [x, y] of [[arc.xDir.x, arc.yDir.x], [arc.xDir.y, arc.yDir.y]]) {
-    if (Math.hypot(x!, y!) < 1e-12) continue;
-    const extremum = Math.atan2(y!, x!);
+    if (DMath.hypot(x!, y!) < 1e-12) continue;
+    const extremum = DMath.atan2(y!, x!);
     for (let turn = Math.ceil((lo - extremum) / Math.PI); turn <= Math.floor((hi - extremum) / Math.PI); turn++) {
       const angle = extremum + turn * Math.PI;
       if (angle > lo && angle < hi && !angles.some(existing => Math.abs(existing - angle) < 1e-12)) angles.push(angle);
@@ -524,8 +525,8 @@ export function nativeWallArcPolygon(arc: WallArc): Point2[] {
   }
   angles.sort((a, b) => sweep < 0 ? b - a : a - b);
   const side = (radius: number): Point2[] => angles.map(angle => [
-    arc.centre.x + radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
-    arc.centre.y + radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y),
+    arc.centre.x + radius * (DMath.cos(angle) * arc.xDir.x + DMath.sin(angle) * arc.yDir.x),
+    arc.centre.y + radius * (DMath.cos(angle) * arc.xDir.y + DMath.sin(angle) * arc.yDir.y),
   ]);
   return [...side(arc.radius + arc.thickness / 2), ...side(arc.radius - arc.thickness / 2).reverse()];
 }
@@ -611,7 +612,7 @@ function miteredWallCorners(
 ): Map<WallSolid, WallCornerOverrides> {
   const junctions = new Map<string, Array<{ solid: WallSolid; end: "start" | "end" }>>();
   for (const { solid } of candidates) {
-    const length = Math.hypot(solid.end.x - solid.start.x, solid.end.y - solid.start.y);
+    const length = DMath.hypot(solid.end.x - solid.start.x, solid.end.y - solid.start.y);
     if (length < 1e-6) continue;
     for (const end of ["start", "end"] as const) {
       const point = solid[end];
@@ -630,7 +631,7 @@ function miteredWallCorners(
   const geometry = (member: { solid: WallSolid; end: "start" | "end" }) => {
     const { solid, end } = member;
     const dx = solid.end.x - solid.start.x; const dy = solid.end.y - solid.start.y;
-    const length = Math.hypot(dx, dy);
+    const length = DMath.hypot(dx, dy);
     const direction: Point2 = [dx / length, dy / length];
     const normal: Point2 = [-direction[1], direction[0]];
     const half = solid.thickness / 2;
@@ -676,7 +677,7 @@ type ExposedWallEnd = {
 };
 
 function distanceBetween(left: Point2, right: Point2) {
-  return Math.hypot(left[0] - right[0], left[1] - right[1]);
+  return DMath.hypot(left[0] - right[0], left[1] - right[1]);
 }
 
 function distanceToSegment(point: Point2, start: Point2, end: Point2) {
@@ -742,8 +743,8 @@ function floorNear(point: Point2, floors: IndexedFloors) {
     for (let index = 0; index < 16; index += 1) {
       const angle = index * Math.PI / 8;
       if (pointOnFloor([
-        point[0] + Math.cos(angle) * radius,
-        point[1] + Math.sin(angle) * radius,
+        point[0] + DMath.cos(angle) * radius,
+        point[1] + DMath.sin(angle) * radius,
       ], floors)) return true;
     }
   }
@@ -870,8 +871,8 @@ function arcPoints(arc: WallArc): Point2[] {
   return Array.from({ length: steps + 1 }, (_, index) => {
     const angle = arc.startAngle + sweep * index / steps;
     return [
-      arc.centre.x + arc.radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
-      arc.centre.y + arc.radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y),
+      arc.centre.x + arc.radius * (DMath.cos(angle) * arc.xDir.x + DMath.sin(angle) * arc.yDir.x),
+      arc.centre.y + arc.radius * (DMath.cos(angle) * arc.xDir.y + DMath.sin(angle) * arc.yDir.y),
     ];
   });
 }
@@ -883,8 +884,8 @@ function principalFrame(points: readonly Point2[]) {
   ];
   let xx = 0; let xyValue = 0; let yy = 0;
   for (const point of points) { const dx = point[0] - center[0]; const dy = point[1] - center[1]; xx += dx * dx; xyValue += dx * dy; yy += dy * dy; }
-  const angle = 0.5 * Math.atan2(2 * xyValue, xx - yy);
-  let u: Point2 = [Math.cos(angle), Math.sin(angle)]; let v: Point2 = [-u[1], u[0]];
+  const angle = 0.5 * DMath.atan2(2 * xyValue, xx - yy);
+  let u: Point2 = [DMath.cos(angle), DMath.sin(angle)]; let v: Point2 = [-u[1], u[0]];
   const extent = (axis: Point2) => points.reduce<[number, number]>((range, point) => {
     const value = (point[0] - center[0]) * axis[0] + (point[1] - center[1]) * axis[1];
     return [Math.min(range[0], value), Math.max(range[1], value)];
@@ -1099,8 +1100,8 @@ function planAnnotationLayer(
   const radius = Math.min(Math.max(1.6, scale * 0.015), footer * 0.38);
   const northX = width - margin - radius; const northY = height + footer * 0.5;
   const angle = rotationQuarterTurns * Math.PI / 2;
-  const letterX = northX + Math.sin(angle) * radius * 1.8;
-  const letterY = northY - Math.cos(angle) * radius * 1.8;
+  const letterX = northX + DMath.sin(angle) * radius * 1.8;
+  const letterY = northY - DMath.cos(angle) * radius * 1.8;
   const needle = `<g class="north"><g transform="translate(${northX} ${northY}) rotate(${rotationQuarterTurns * 90})">` +
     `<circle r="${radius}"/>` +
     `<path d="M 0 ${-radius * 0.85} L ${radius * 0.34} ${radius * 0.4} L 0 ${radius * 0.14} L ${-radius * 0.34} ${radius * 0.4} Z" fill="${palette.north}"/>` +

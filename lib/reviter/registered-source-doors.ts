@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from 'polygon-clipping';
 import type {ArchitecturalPlanGeometry} from './architectural-plan.ts';
 import type {BoundaryReference,BoundarySection} from './room-boundaries.ts';
@@ -6,7 +7,7 @@ import {containsDirectoryRoomPoint,containsRoomPoint,isHallway,isWalkable,roomAr
 import {isStairArea} from './directory-stair-geometry.ts';
 export type RegisteredSourceDoor=RouteOpening&{sourceDoorId:string;proof:NonNullable<IndoorEdge['sourceDoorProof']>};
 export type SourceDoorFloorSupport={elevationFeet:number;nativeFloorElementIds:number[];floors:ArchitecturalPlanGeometry['floors']};
-const distance=(a:RoomPoint,b:RoomPoint)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+const distance=(a:RoomPoint,b:RoomPoint)=>DMath.hypot(a[0]-b[0],a[1]-b[1]);
 const dot=(a:RoomPoint,b:RoomPoint)=>a[0]*b[0]+a[1]*b[1];
 const sub=(a:RoomPoint,b:RoomPoint):RoomPoint=>[a[0]-b[0],a[1]-b[1]];
 const area=(p:pc.MultiPolygon)=>p.reduce((s,r)=>s+roomArea(r[0]! as RoomPoint[])-r.slice(1).reduce((v,h)=>v+roomArea(h as RoomPoint[]),0),0);
@@ -26,7 +27,7 @@ function swings(section:BoundarySection):Swing[]{
  const capIds=new Set(all.filter(l=>l.len>=.03&&l.len<=.25&&l.ps.every(p=>(longVertices.get(vertexKey(p))??[]).some(v=>Math.abs(dot(sub(v.ps[1],v.ps[0]),sub(l.ps[1],l.ps[0])))/(v.len*l.len)<.01))).map(l=>l.id));
  const short=all.filter(l=>l.len>=.025&&l.len<=.5&&!capIds.has(l.id)),key=(p:RoomPoint)=>`${Math.round(p[0]*1e6)},${Math.round(p[1]*1e6)}`,nodes=new Map<string,Line[]>();
  for(const l of short)for(const p of l.ps){const k=key(p),v=nodes.get(k)??[];v.push(l);nodes.set(k,v);}
- const turn=(a:RoomPoint,b:RoomPoint,c:RoomPoint)=>Math.atan2((b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]),(b[0]-a[0])*(c[0]-b[0])+(b[1]-a[1])*(c[1]-b[1]));
+ const turn=(a:RoomPoint,b:RoomPoint,c:RoomPoint)=>DMath.atan2((b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]),(b[0]-a[0])*(c[0]-b[0])+(b[1]-a[1])*(c[1]-b[1]));
  const used=new Set<number>(),out:Swing[]=[];
  for(const seed of short){if(used.has(seed.id))continue;const ps:RoomPoint[]=[...seed.ps],ids=[seed.id];let sign=0;
   for(const reverse of [false,true]){if(reverse){ps.reverse();ids.reverse();sign=-sign;}for(let k=0;k<100;k++){const a=ps.at(-2)!,b=ps.at(-1)!;const next=(nodes.get(key(b))??[]).filter(l=>!ids.includes(l.id)).map(l=>{const q=key(l.ps[0])===key(b)?l.ps[1]:l.ps[0];return{l,q,t:turn(a,b,q)}}).filter(v=>Math.abs(v.t)>=.01&&Math.abs(v.t)<=.15&&(!sign||Math.sign(v.t)===sign));if(next.length!==1)break;const v=next[0]!;sign=Math.sign(v.t);ps.push(v.q);ids.push(v.l.id);}}
@@ -34,7 +35,7 @@ function swings(section:BoundarySection):Swing[]{
   // Translate before fitting, avoiding cancellation at large model coordinates.
   const a=ps[0]!,b=sub(ps[Math.floor(ps.length/2)]!,a),c=sub(ps.at(-1)!,a),d=2*(b[0]*c[1]-c[0]*b[1]);if(Math.abs(d)<1e-6)continue;const bb=dot(b,b),cc=dot(c,c),local:RoomPoint=[(bb*c[1]-cc*b[1])/d,(cc*b[0]-bb*c[0])/d],centre:RoomPoint=[a[0]+local[0],a[1]+local[1]],radius=distance(a,centre);
   if(radius<.9||radius>8||ps.some(p=>Math.abs(distance(p,centre)-radius)>.005))continue;
-  const sweep=ps.slice(1).reduce((s,p,i)=>{const v=sub(ps[i]!,centre),w=sub(p,centre);return s+Math.abs(Math.atan2(v[0]*w[1]-v[1]*w[0],dot(v,w)))},0);if(sweep<82*Math.PI/180||sweep>98*Math.PI/180)continue;
+  const sweep=ps.slice(1).reduce((s,p,i)=>{const v=sub(ps[i]!,centre),w=sub(p,centre);return s+Math.abs(DMath.atan2(v[0]*w[1]-v[1]*w[0],dot(v,w)))},0);if(sweep<82*Math.PI/180||sweep>98*Math.PI/180)continue;
   for(const end of [ps[0]!,ps.at(-1)!])for(const leaf of all.filter(l=>Math.abs(l.len-radius)<.1&&l.ps.some(p=>distance(p,end)<.05)&&l.ps.some(p=>distance(p,centre)<.25))){
    const hinge=leaf.ps.find(p=>distance(p,centre)<.25)!,open=leaf.ps.find(p=>p!==hinge)!,v=sub(open,hinge),len=distance(open,hinge),direction:RoomPoint=[v[0]/len,v[1]/len];
    const parallel=all.filter(l=>l.id!==leaf.id&&Math.abs(l.len-len)<.01&&Math.abs(dot(sub(l.ps[1],l.ps[0]),direction))/l.len>.99999);

@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import {
   containsDirectoryRoomPoint,
@@ -63,7 +64,7 @@ export function directoryOpenPassages(
       continue;
     const dx = link.to[0] - link.from[0],
       dy = link.to[1] - link.from[1],
-      length = Math.hypot(dx, dy);
+      length = DMath.hypot(dx, dy);
     if (
       length < 0.1 ||
       length > 6 ||

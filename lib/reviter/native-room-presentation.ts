@@ -1,6 +1,7 @@
 // JSTS has no published types; include the checked local ambient declarations.
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="./native-room-presentation-jsts.d.ts" />
+import * as DMath from "./deterministic-math.ts";
 import polygonClipping from "polygon-clipping";
 import { nativeBarrierTopology } from "./native-barrier-topology.ts";
 import GeoJSONReader from "jsts/org/locationtech/jts/io/GeoJSONReader.js";
@@ -45,7 +46,7 @@ const bounds = (rings: Rings): Bounds => {
 const intersects = (a: Bounds, b: Bounds) => a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
 const padded = (b: Bounds, d: number): Bounds => [b[0] - d, b[1] - d, b[2] + d, b[3] + d];
 const edges = (rings: Rings): [Point, Point][] => rings.flatMap(r => r.map((a, i) => [a, r[(i + 1) % r.length]!] as [Point, Point]));
-const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const distance = (a: Point, b: Point) => DMath.hypot(a[0] - b[0], a[1] - b[1]);
 function nearest(p: Point, rings: Rings): Point {
   let best: Point = p; let minimum = Infinity;
   for (const [a, b] of edges(rings)) {

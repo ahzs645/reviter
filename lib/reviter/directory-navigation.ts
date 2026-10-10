@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {
   reviewedDoorOpening,
   reviewedDoorHostEvidence,
@@ -93,7 +94,7 @@ export function directoryDoors(
           .map((p, i) => ({
             p,
             q: polygon[(i + 1) % polygon.length]!,
-            length: Math.hypot(
+            length: DMath.hypot(
               p[0] - polygon[(i + 1) % polygon.length]![0],
               p[1] - polygon[(i + 1) % polygon.length]![1],
             ),
@@ -134,7 +135,7 @@ export function directoryDoors(
               .map((p, i) => ({
                 p,
                 q: face[(i + 1) % 4]!,
-                length: Math.hypot(
+                length: DMath.hypot(
                   p[0] - face[(i + 1) % 4]![0],
                   p[1] - face[(i + 1) % 4]![1],
                 ),
@@ -176,7 +177,7 @@ export function directoryDoors(
           .map((p, i) => ({
             p,
             q: d.polygon[(i + 1) % d.polygon.length]!,
-            length: Math.hypot(
+            length: DMath.hypot(
               p[0] - d.polygon[(i + 1) % d.polygon.length]![0],
               p[1] - d.polygon[(i + 1) % d.polygon.length]![1],
             ),
@@ -455,7 +456,7 @@ export function directoryStairs(
         .reduce(
           (sum, p, i) =>
             sum +
-            Math.hypot(
+            DMath.hypot(
               p[0]! - centres[i]![0]!,
               p[1]! - centres[i]![1]!,
               p[2]! - centres[i]![2]!,

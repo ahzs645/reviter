@@ -19,6 +19,7 @@
  * of the wall it joins. That is the modelled extent, and it is what the file
  * says.
  */
+import * as DMath from "./deterministic-math.ts";
 import { noteLimit } from "./limit-census.ts";
 import type { CylinderPatch, PlanePatch } from "./surfaces.ts";
 
@@ -150,7 +151,7 @@ export function wallSolidsFor(elementId: number, planes: PlanePatch[]): WallSoli
       x: centre.origin.x + centre.uDir.x * centre.uMax,
       y: centre.origin.y + centre.uDir.y * centre.uMax,
     };
-    if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_LENGTH_FEET) continue;
+    if (DMath.hypot(end.x - start.x, end.y - start.y) < MIN_LENGTH_FEET) continue;
 
     solids.push({
       elementId,
@@ -255,7 +256,7 @@ export function facetElevationBand(quads: SurfaceQuad[]): { min: number; max: nu
     const nx = uy * vz - uz * vy;
     const ny = uz * vx - ux * vz;
     const nz = ux * vy - uy * vx;
-    const length = Math.hypot(nx, ny, nz);
+    const length = DMath.hypot(nx, ny, nz);
     if (length > 0) {
       const unitZ = nz / length;
       if (unitZ > CAP_NORMAL_Z) capsAbove = true;

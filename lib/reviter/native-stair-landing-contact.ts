@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from 'polygon-clipping';
 import {architecturalPlanGeometry,type ArchitecturalPlanGeometry} from './architectural-plan.ts';
 import {containsDirectoryRoomPoint,roomArea,type DirectoryRoom,type RoomPoint} from './room-directory.ts';
@@ -25,14 +26,14 @@ export function nativeStairLandingContact(model:NativeModel,room:DirectoryRoom,s
  if(steps.length<2)return false;
  const terminal=end==='bottom'?steps[0]!:steps.at(-1)!,neighbour=end==='bottom'?steps[1]!:steps.at(-2)!;
  if(Math.abs(terminal.z-level.elevation)>1)return false;
- const dx=terminal.c[0]-neighbour.c[0],dy=terminal.c[1]-neighbour.c[1],length=Math.hypot(dx,dy);if(length<1e-6)return false;
+ const dx=terminal.c[0]-neighbour.c[0],dy=terminal.c[1]-neighbour.c[1],length=DMath.hypot(dx,dy);if(length<1e-6)return false;
  const ux=dx/length,uy=dy/length;
  // Select the outward, transverse edge of the first/last persisted tread.
- const edges=terminal.t.map((p,i)=>{const q=terminal.t[(i+1)%terminal.t.length]!,ex=q[0]-p[0],ey=q[1]-p[1],span=Math.hypot(ex,ey);return {a:[p[0],p[1]] as RoomPoint,b:[q[0],q[1]] as RoomPoint,span,transverse:span>0?Math.abs(ex*ux+ey*uy)/span:1,outward:((p[0]+q[0])/2-terminal.c[0])*ux+((p[1]+q[1])/2-terminal.c[1])*uy};}).filter(e=>e.transverse<.1&&e.outward>0).sort((a,b)=>b.outward-a.outward);
+ const edges=terminal.t.map((p,i)=>{const q=terminal.t[(i+1)%terminal.t.length]!,ex=q[0]-p[0],ey=q[1]-p[1],span=DMath.hypot(ex,ey);return {a:[p[0],p[1]] as RoomPoint,b:[q[0],q[1]] as RoomPoint,span,transverse:span>0?Math.abs(ex*ux+ey*uy)/span:1,outward:((p[0]+q[0])/2-terminal.c[0])*ux+((p[1]+q[1])/2-terminal.c[1])*uy};}).filter(e=>e.transverse<.1&&e.outward>0).sort((a,b)=>b.outward-a.outward);
  const cap=edges[0];if(!cap||cap.span<.5)return false;
  const cuts=[0,1],vx=cap.b[0]-cap.a[0],vy=cap.b[1]-cap.a[1];
  for(const ring of owned)for(let i=0;i<ring.length;i++){const a=ring[i]!,b=ring[(i+1)%ring.length]!,ex=b[0]-a[0],ey=b[1]-a[1],den=vx*ey-vy*ex;if(Math.abs(den)<1e-12)continue;const ox=a[0]-cap.a[0],oy=a[1]-cap.a[1],t=(ox*ey-oy*ex)/den,u=(ox*vy-oy*vx)/den;if(t>0&&t<1&&u>=0&&u<=1)cuts.push(t);}
- cuts.sort((a,b)=>a-b);const onOwn=(p:RoomPoint)=>containsDirectoryRoomPoint(p,room)||owned.some(r=>r.some((a,i)=>{const b=r[(i+1)%r.length]!,ex=b[0]-a[0],ey=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*ex+(p[1]-a[1])*ey)/(ex*ex+ey*ey||1)));return Math.hypot(p[0]-a[0]-t*ex,p[1]-a[1]-t*ey)<1e-7;}));
+ cuts.sort((a,b)=>a-b);const onOwn=(p:RoomPoint)=>containsDirectoryRoomPoint(p,room)||owned.some(r=>r.some((a,i)=>{const b=r[(i+1)%r.length]!,ex=b[0]-a[0],ey=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*ex+(p[1]-a[1])*ey)/(ex*ex+ey*ey||1)));return DMath.hypot(p[0]-a[0]-t*ex,p[1]-a[1]-t*ey)<1e-7;}));
  const contact=cuts.slice(1).reduce((sum,t,i)=>{const previous=cuts[i]!,mid=(previous+t)/2;return sum+(onOwn([cap.a[0]+vx*mid,cap.a[1]+vy*mid])?(t-previous)*cap.span:0);},0);
  return contact>=Math.max(.5,cap.span/2)-1e-7;
 }

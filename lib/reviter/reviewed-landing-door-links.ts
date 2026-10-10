@@ -7,6 +7,7 @@
  * reaching it from the landing is left to the exact native cell routes. Both areas must be walkable
  * public areas at one floor height, and the crossing must clear floor voids and native barriers.
  * The physical door becomes a two-owner connected door with its own portal nodes. */
+import * as DMath from "./deterministic-math.ts";
 import type { IndoorDataset, IndoorEdge, IndoorNode } from "./indoor-contract.ts";
 import { generatedLandingDoorLinkKey, type DirectoryDoor, type DirectoryRoom, type RoomPortal, type RoomPoint } from "./room-directory.ts";
 import { doorCandidates } from "./directory-navigation.ts";
@@ -44,9 +45,9 @@ export function resolveGeneratedLandingDoorLinks(input: {
     const areas = owners.map((r) => input.area(r!));
     const landingIndex = link.rooms.findIndex((k) => !!generatedLandingDoorLinkKey(k)), roomIndex = 1 - landingIndex;
     const room = areas[roomIndex]!, n = directoryDoor.normal, footprint = directoryDoor.footprint;
-    if (!footprint || !n || !Math.hypot(n[0], n[1]) || !doorCandidates([room], directoryDoor).length) { fail("the physical door does not adjoin the room."); continue; }
+    if (!footprint || !n || !DMath.hypot(n[0], n[1]) || !doorCandidates([room], directoryDoor).length) { fail("the physical door does not adjoin the room."); continue; }
     const roomPoint = [room.polygonFeet, ...(room.holesFeet ?? [])].map((loop) => nearestRoomBoundary(directoryDoor.point, loop)).sort((a, b) => a.distance - b.distance)[0]!.point;
-    const unit: RoomPoint = [n[0] / Math.hypot(n[0], n[1]), n[1] / Math.hypot(n[0], n[1])];
+    const unit: RoomPoint = [n[0] / DMath.hypot(n[0], n[1]), n[1] / DMath.hypot(n[0], n[1])];
     const along = (p: RoomPoint) => (p[0] - directoryDoor.point[0]) * unit[0] + (p[1] - directoryDoor.point[1]) * unit[1];
     const roomSide = Math.sign(along(roomPoint));
     const reach = Math.max(...footprint.map((p) => Math.abs(along(p)))) + 0.6;
@@ -62,7 +63,7 @@ export function resolveGeneratedLandingDoorLinks(input: {
       return { id: `${door.id}:${i}`, roomKey: key!, kind: "portal", levelId: owners[i]!.levelId, building: owners[i]!.building, surfaceId: owners[i]!.surfaceId, pointFeet: [point[0], point[1], owners[i]!.elevationFeet], geographic: input.geo(point) };
     });
     if (nodes.some((n) => input.existingNodeIds.has(n.id))) { fail("door portal identities already exist."); continue; }
-    const edge: IndoorEdge = { id: door.id, from: nodes[0]!.id, to: nodes[1]!.id, kind: "door", pointsFeet: nodes.map((n) => n.pointFeet), lengthMetres: Math.hypot(portal.from[0] - portal.to[0], portal.from[1] - portal.to[1]) * input.metresPerFoot, roomKeys: keys as string[], evidence: "reviewed-native-door; generated ramp landing association resolved after the reviewed ramp built its landing", nativeElementId: door.nativeElementId, accessible: "unknown", enabled: true };
+    const edge: IndoorEdge = { id: door.id, from: nodes[0]!.id, to: nodes[1]!.id, kind: "door", pointsFeet: nodes.map((n) => n.pointFeet), lengthMetres: DMath.hypot(portal.from[0] - portal.to[0], portal.from[1] - portal.to[1]) * input.metresPerFoot, roomKeys: keys as string[], evidence: "reviewed-native-door; generated ramp landing association resolved after the reviewed ramp built its landing", nativeElementId: door.nativeElementId, accessible: "unknown", enabled: true };
     door.roomKeys = keys as string[];
     door.state = "connected";
     dataset.edges.push(edge);

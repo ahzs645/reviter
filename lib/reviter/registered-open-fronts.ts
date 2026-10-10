@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import { directoryOpenPassages, type OpenPassage, type ReviewedOpenLink } from "./directory-openings.ts";
 import { isStairArea } from "./directory-stair-geometry.ts";
@@ -41,7 +42,7 @@ function recoverRegisteredOpenConnections(
     const candidates: { link: ReviewedOpenLink; gap: number }[] = [];
     for (const hall of nearbyHalls) for (let edge = 0; edge < room.polygonFeet.length; edge++) {
       const p = room.polygonFeet[edge]!, q = room.polygonFeet[(edge + 1) % room.polygonFeet.length]!;
-      const steps = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / .2);
+      const steps = Math.ceil(DMath.hypot(q[0] - p[0], q[1] - p[1]) / .2);
       for (let i = 1; i < steps; i++) {
         const boundary: RoomPoint = [p[0] + (q[0] - p[0]) * i / steps, p[1] + (q[1] - p[1]) * i / steps];
         const nearest = nearestRoomBoundary(boundary, hall.polygonFeet), gap = nearest.distance;
@@ -49,7 +50,7 @@ function recoverRegisteredOpenConnections(
         // Perfectly coincident drawing edges also need a supported opening.
         // Their normal comes from the registered boundary itself; choose only
         // the orientation whose two interior points belong to the room/hall.
-        const length = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        const length = DMath.hypot(q[0] - p[0], q[1] - p[1]);
         if (length < 1e-8) continue;
         // Raster outlines may overlap slightly. The nearest-outline vector then
         // points into the room and rejects an actual open front. Use the source

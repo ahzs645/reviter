@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import initialize, {
@@ -148,7 +149,7 @@ function checkClusters(
     if (
       r.accepted &&
       (r.distance > bound(r.p, r.q) ||
-        Math.hypot(r.p[0] - r.q[0], r.p[1] - r.q[1]) > bound(r.p, r.q))
+        DMath.hypot(r.p[0] - r.q[0], r.p[1] - r.q[1]) > bound(r.p, r.q))
     )
       throw new Error(
         "A native overlay adjustment exceeded its original numerical contact bound.",
@@ -168,7 +169,7 @@ function checkClusters(
       for (let j = i + 1; j < group.length; j++) {
         const p = JSON.parse(group[i]) as Point,
           q = JSON.parse(group[j]) as Point;
-        if (Math.hypot(p[0] - q[0], p[1] - q[1]) > bound(p, q))
+        if (DMath.hypot(p[0] - q[0], p[1] - q[1]) > bound(p, q))
           throw new Error(
             "Cumulative native overlay contacts collapse distinct original vertices.",
           );

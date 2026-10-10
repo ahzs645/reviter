@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
 import type {ConvertResult} from '../../lib/reviter/types.ts';
-import {fitGeoreference,geographicToLocalMetres,georeferencedSceneMatrix,modelPointToGeographic,geoToMapPixel,mapPixelToGeo,type ModelGeoreference} from '../../lib/reviter/georeference.ts';
+import {fitGeoreference,geographicToLocalMetres,georeferencedSceneMatrix,modelPointToGeographic,type ModelGeoreference} from '../../lib/reviter/georeference.ts';import {geoToMapPixel,mapPixelToGeo} from '../../lib/reviter/web-mercator-tiles.ts';
 import {meshGroup} from './three-scene.ts';
 import {directoryFloorPlanes,directoryRoomGroup,type DirectoryModelFloor} from './directory-model.ts';
 

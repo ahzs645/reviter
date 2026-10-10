@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {nativeSourceStairOwnedTerminal,nativeOwnedTerminalPartsForSegment,type NativeOwnedTerminalOptions} from './native-source-stair-owned-terminal.ts';
 import {nativeStairRiserInventoryHash,nativeSourceStairRiserProjections,nativeSourceStairRiserPartsForSegment,type NativeStairRiserInventory,type NativeStairRiserContinuity} from './native-source-stair-riser-continuity.ts';
 import {nativeRationalOverlay} from './native-rational-overlay.ts';
@@ -11,7 +12,7 @@ const areaRing=(r:P2[])=>Math.abs(r.reduce((s,p,i)=>{const q=r[(i+1)%r.length]!;
 const area=(ps:pc.MultiPolygon)=>ps.reduce((s,p)=>s+areaRing(p[0]!as P2[])-p.slice(1).reduce((a,h)=>a+areaRing(h as P2[]),0),0);
 const close=(r:Rings)=>r.map(h=>h.length&&h[0]![0]===h.at(-1)![0]&&h[0]![1]===h.at(-1)![1]?h:[...h,h[0]!]);
 const near=(a:P3,b:P3)=>a.every((n,i)=>Math.abs(n-b[i]!)<1e-8);
-const strip=(a:P3,b:P3,width:number):pc.Polygon=>{const dx=b[0]-a[0],dy=b[1]-a[1],d=Math.hypot(dx,dy);if(d<1e-8)return[];const nx=-dy/d*width/2,ny=dx/d*width/2;return[[[a[0]+nx,a[1]+ny],[b[0]+nx,b[1]+ny],[b[0]-nx,b[1]-ny],[a[0]-nx,a[1]-ny],[a[0]+nx,a[1]+ny]]];};
+const strip=(a:P3,b:P3,width:number):pc.Polygon=>{const dx=b[0]-a[0],dy=b[1]-a[1],d=DMath.hypot(dx,dy);if(d<1e-8)return[];const nx=-dy/d*width/2,ny=dx/d*width/2;return[[[a[0]+nx,a[1]+ny],[b[0]+nx,b[1]+ny],[b[0]-nx,b[1]-ny],[a[0]-nx,a[1]-ny],[a[0]+nx,a[1]+ny]]];};
 /** Mathematical replay only. Caller must independently bind original owners,
  * triangles/profile inventories and check current enclosure/foreign material.
  * Positive exact native tread/landing/floor surfaces support every 2-ft strip;
@@ -27,17 +28,17 @@ export function validateNativeSourceStairWidth(r:NativeSourceStairReceipt,floors
   if(r.landings.some(l=>!Number.isSafeInteger(l.nativeElementId)||!Number.isFinite(l.elevationFeet)||!l.ringsFeet[0]?.length||l.ringsFeet.some(h=>h.length<3||h.some(p=>p.some(n=>!Number.isFinite(n))))))return false;
   const sourceFloors=r.nativeFloorElementIds.map(id=>floors.find(f=>f.nativeElementId===id));if(sourceFloors.some(f=>!f))return false;
   for(const [i,cap]of r.terminalCaps.entries()){
-   if(cap.levelId!==r.levelIds[i]||cap.nativeFloorElementId!==r.nativeFloorElementIds[i]||!ids.has(cap.originalRunElementId)||!(exactNative?JSON.stringify(cap.pointFeet)===JSON.stringify(r.pointsFeet[i? r.pointsFeet.length-1:0]!):near(cap.pointFeet,r.pointsFeet[i? r.pointsFeet.length-1:0]!))||cap.capFeet.length!==2||cap.capFeet.some(p=>p.length!==3||p.some(n=>!Number.isFinite(n)))||Math.hypot(cap.capFeet[1][0]-cap.capFeet[0][0],cap.capFeet[1][1]-cap.capFeet[0][1])<2-1e-8)return false;
+   if(cap.levelId!==r.levelIds[i]||cap.nativeFloorElementId!==r.nativeFloorElementIds[i]||!ids.has(cap.originalRunElementId)||!(exactNative?JSON.stringify(cap.pointFeet)===JSON.stringify(r.pointsFeet[i? r.pointsFeet.length-1:0]!):near(cap.pointFeet,r.pointsFeet[i? r.pointsFeet.length-1:0]!))||cap.capFeet.length!==2||cap.capFeet.some(p=>p.length!==3||p.some(n=>!Number.isFinite(n)))||DMath.hypot(cap.capFeet[1][0]-cap.capFeet[0][0],cap.capFeet[1][1]-cap.capFeet[0][1])<2-1e-8)return false;
    const f=sourceFloors[i]!;if(exactNative?f.elevationFeet!==cap.pointFeet[2]:Math.abs(f.elevationFeet-cap.pointFeet[2])>.05)return false;
    // Landing's full lateral width must be on the named original slab, rather
    // than borrowing a projected tread to hide an unsupported endpoint.
-   const dx=cap.capFeet[1][0]-cap.capFeet[0][0],dy=cap.capFeet[1][1]-cap.capFeet[0][1],len=Math.hypot(dx,dy);const a:P3=[cap.pointFeet[0]-dy/len*.05,cap.pointFeet[1]+dx/len*.05,cap.pointFeet[2]],b:P3=[cap.pointFeet[0]+dy/len*.05,cap.pointFeet[1]-dx/len*.05,cap.pointFeet[2]];
+   const dx=cap.capFeet[1][0]-cap.capFeet[0][0],dy=cap.capFeet[1][1]-cap.capFeet[0][1],len=DMath.hypot(dx,dy);const a:P3=[cap.pointFeet[0]-dy/len*.05,cap.pointFeet[1]+dx/len*.05,cap.pointFeet[2]],b:P3=[cap.pointFeet[0]+dy/len*.05,cap.pointFeet[1]-dx/len*.05,cap.pointFeet[2]];
    const parts=(f.partsFeet??[f.ringsFeet]).map(close);if(i===1&&ownedTerminal){if(nativeRationalOverlay('difference',ownedTerminal.capParts,nativeRationalOverlay('union',parts as [number,number][][][])).length)return false;continue;}if(exactNative){if(nativeRationalOverlay('difference',[strip(a,b,2)] as [number,number][][][],nativeRationalOverlay('union',parts as [number,number][][][])).length)return false;}else{const union=pc.union(parts[0]!,...parts.slice(1));if(area(pc.difference(strip(a,b,2),union))>1e-8)return false;}
   }
   const surfaces:{z:number;rings:Rings;parts?:Rings[]}[]=[...ts.map(t=>({z:t.elevationFeet,rings:[t.ringFeet]})),...r.landings.map(l=>({z:l.elevationFeet,rings:l.ringsFeet})),...sourceFloors.map(f=>({z:f!.elevationFeet,rings:f!.ringsFeet,parts:f!.partsFeet}))];
   const lo=r.pointsFeet[0]![2],hi=r.pointsFeet.at(-1)![2];if(hi-lo<1)return false;
   for(let i=1;i<r.pointsFeet.length;i++){
-   const a=r.pointsFeet[i-1]!,b=r.pointsFeet[i]!;if(b[2]<a[2]-1e-8||b[2]-a[2]>1.2||Math.hypot(b[0]-a[0],b[1]-a[1])<1e-8)return false;
+   const a=r.pointsFeet[i-1]!,b=r.pointsFeet[i]!;if(b[2]<a[2]-1e-8||b[2]-a[2]>1.2||DMath.hypot(b[0]-a[0],b[1]-a[1])<1e-8)return false;
    const ps=surfaces.filter(s=>s.z>=a[2]-.05&&s.z<=b[2]+.05).flatMap(s=>(s.parts??[s.rings]).map(close));if(!ps.length)return false;
    if(exactNative){if(nativeRationalOverlay('difference',[strip(a,b,2)] as [number,number][][][],nativeRationalOverlay('union',ps as [number,number][][][],...[nativeSourceStairRiserPartsForSegment(risers??[],a,b),nativeOwnedTerminalPartsForSegment(ownedTerminal??undefined,a,b)].filter(p=>p.length))).length)return false;}else{const union=pc.union(ps[0]!,...ps.slice(1));if(area(pc.difference(strip(a,b,2),union))>1e-8)return false;}
   }

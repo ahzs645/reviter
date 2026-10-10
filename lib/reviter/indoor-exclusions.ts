@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type {
   IndoorDataset,
   IndoorEdge,
@@ -111,12 +112,12 @@ function onSegment(p: XY, a: XY, b: XY) {
   const dx = b[0]! - a[0]!,
     dy = b[1]! - a[1]!,
     n = dx * dx + dy * dy;
-  if (n < 1e-20) return Math.hypot(p[0]! - a[0]!, p[1]! - a[1]!) < 1e-8;
+  if (n < 1e-20) return DMath.hypot(p[0]! - a[0]!, p[1]! - a[1]!) < 1e-8;
   const t = ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dy) / n;
   return (
     t >= -1e-10 &&
     t <= 1 + 1e-10 &&
-    Math.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy) < 1e-8
+    DMath.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy) < 1e-8
   );
 }
 function inRing(p: XY, r: XY[]) {

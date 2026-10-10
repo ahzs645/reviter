@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {add,sub,mul,div} from "./vendor/native-rational-overlay-arithmetic.mjs";
 import { nativeRationalOverlay, nativeRationalScalarToIEEE, rational, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION, type NativeRationalPoint, type NativeRationalParts } from "./native-rational-overlay.ts";
 import { nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare, nativeRationalPointInParts, nativeRationalPathSupported, nativeRationalFootprintSupported,freezeNativeRationalParts } from "./native-exact-planar-topology.ts";
@@ -207,7 +208,7 @@ export const walkingStrip = (
 ): Polygon => {
   const dx = b[0] - a[0],
     dy = b[1] - a[1],
-    n = Math.hypot(dx, dy),
+    n = DMath.hypot(dx, dy),
     x = ((-dy / n) * width) / 2,
     y = ((dx / n) * width) / 2;
   return [
@@ -511,7 +512,7 @@ export function nativeWalkingRegion(
         continue;
       const dx = s.end.x - s.start.x,
         dy = s.end.y - s.start.y,
-        n = Math.hypot(dx, dy);
+        n = DMath.hypot(dx, dy);
       if (n < 1e-8) continue;
       const polygon: RoomPoint[] = nativeWallSolidPolygon(s);
       // Share the plan's native curtain-host envelope constraint. Reintroducing
@@ -862,7 +863,7 @@ export function supportedWalkingPath(
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1]!,
         b = points[i]!;
-      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-8) {
+      if (DMath.hypot(b[0] - a[0], b[1] - a[1]) < 1e-8) {
         const point: [number, number] = [a[0], a[1]];
         if (
           !region.floors.some((f) => inside(point, f)) ||
@@ -901,7 +902,7 @@ export function findNativeWalkingPath(
 ): Point3[] | undefined {
   if (
     Math.abs(from[2] - to[2]) > 0.05 ||
-    Math.hypot(from[0] - to[0], from[1] - to[1]) > maxDistanceFeet
+    DMath.hypot(from[0] - to[0], from[1] - to[1]) > maxDistanceFeet
   )
     return;
   if (supportedWalkingPath(region, [from, to])) return [from, to];
@@ -1035,7 +1036,7 @@ export function findNativeWalkingPath(
       push({
         id: n,
         score:
-          c + Math.hypot(xx - (end % nx), yy - Math.floor(end / nx)) * cell,
+          c + DMath.hypot(xx - (end % nx), yy - Math.floor(end / nx)) * cell,
       });
     }
   }
@@ -1186,19 +1187,19 @@ function nativeRampCapOutward(
     edge.from === node.id ? edge.pointsFeet : [...edge.pointsFeet].reverse();
   if (
     !points[0] ||
-    Math.hypot(...points[0].map((v, k) => v - node.pointFeet[k]!)) > 1e-7
+    DMath.hypot(...points[0].map((v, k) => v - node.pointFeet[k]!)) > 1e-7
   )
     return;
   const inner = points
     .slice(1)
     .find(
       (p) =>
-        Math.hypot(p[0] - node.pointFeet[0], p[1] - node.pointFeet[1]) > 0.05,
+        DMath.hypot(p[0] - node.pointFeet[0], p[1] - node.pointFeet[1]) > 0.05,
     );
   if (!inner) return;
   const dx = node.pointFeet[0] - inner[0],
     dy = node.pointFeet[1] - inner[1],
-    length = Math.hypot(dx, dy);
+    length = DMath.hypot(dx, dy);
   return [
     node.pointFeet[0] + (dx / length) * 2,
     node.pointFeet[1] + (dy / length) * 2,
@@ -1294,7 +1295,7 @@ export function planNativeApproaches(
         Math.abs(a.pointFeet[2] - b.pointFeet[2]) > 0.05
       )
         continue;
-      const distance = Math.hypot(
+      const distance = DMath.hypot(
         a.pointFeet[0] - b.pointFeet[0],
         a.pointFeet[1] - b.pointFeet[1],
       );
@@ -1416,7 +1417,7 @@ export function createNativeApproachEvaluator(
             ),
           ),
           point: RoomPoint = [a[0] + t * dx, a[1] + t * dy],
-          distance = Math.hypot(
+          distance = DMath.hypot(
             point[0] - p.a.pointFeet[0],
             point[1] - p.a.pointFeet[1],
           );
@@ -1518,7 +1519,7 @@ export function createNativeApproachReplay(
         .reduce(
           (s, q, i) =>
             s +
-            Math.hypot(...q.map((v, k) => v - path[i]![k]!)) *
+            DMath.hypot(...q.map((v, k) => v - path[i]![k]!)) *
               dataset.alignment.horizontalMetresPerFoot,
           0,
         ),

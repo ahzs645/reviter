@@ -1,4 +1,5 @@
 /** Detect split-level floor plates that belong in one architectural plan. */
+import * as DMath from "./deterministic-math.ts";
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon, Polygon } from "polygon-clipping";
 
@@ -83,11 +84,11 @@ function pointSegmentDistance(point: Point2, start: Point2, end: Point2) {
   const dx = end[0] - start[0];
   const dy = end[1] - start[1];
   const lengthSquared = dx * dx + dy * dy;
-  if (!lengthSquared) return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  if (!lengthSquared) return DMath.hypot(point[0] - start[0], point[1] - start[1]);
   const ratio = Math.max(0, Math.min(1,
     ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared,
   ));
-  return Math.hypot(
+  return DMath.hypot(
     point[0] - (start[0] + ratio * dx),
     point[1] - (start[1] + ratio * dy),
   );

@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {
   Rational,
   rational,
@@ -294,8 +295,8 @@ function numericCore(
         nativeRationalScalarToIEEE(sub(next[0], p[0])),
         nativeRationalScalarToIEEE(sub(next[1], p[1])),
       ];
-    const la = Math.hypot(...va),
-      lb = Math.hypot(...vb),
+    const la = DMath.hypot(...va),
+      lb = DMath.hypot(...vb),
       limit = Math.min(maximumMovement, la / 4, lb / 4);
     if (!la || !lb) continue;
     for (let step = ulpBound * 2; step <= limit; step *= 2) {

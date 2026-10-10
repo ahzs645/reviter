@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { containsRoomPoint, type DirectoryRoom, type RoomPoint, type RouteOpening } from "./room-directory.ts";
 
 /** Continuous coverage supplements cell-centre ownership. It cannot bridge a
@@ -20,7 +21,7 @@ export function indoorRegionBlocker(
   const boundary=(p:RoomPoint,ring:RoomPoint[])=>ring.some((a,i)=>{
     const b=ring[(i+1)%ring.length]!,dx=b[0]-a[0],dy=b[1]-a[1];
     const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1);
-    return t>=0&&t<=1&&Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy)<1e-7;
+    return t>=0&&t<=1&&DMath.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy)<1e-7;
   });
   const inside=(p:RoomPoint,rings:RoomPoint[][],allowBoundary:boolean)=>
     (containsRoomPoint(p,rings[0]!)||(allowBoundary&&boundary(p,rings[0]!)))&&

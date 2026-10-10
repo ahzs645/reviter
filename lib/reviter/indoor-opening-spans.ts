@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset, IndoorEdge } from "./indoor-contract.ts";
@@ -72,7 +73,7 @@ export function recoverIndoorOpeningSpan(
   if (!section) return;
   const dx = front.to[0] - front.from[0],
     dy = front.to[1] - front.from[1],
-    len = Math.hypot(dx, dy);
+    len = DMath.hypot(dx, dy);
   if (len < 0.1 || len > 6) return;
   const n: RoomPoint = [dx / len, dy / len],
     t: RoomPoint = [-n[1], n[0]],

@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type {ConvertResult,ElementBoundsRecord} from './types.ts';
 import type {RoomPoint} from './room-directory.ts';
 export type NativeCurtainOpening={hostId:number;doorId:number;memberIds:number[];cutElevationFeet:number;apertureFeet:RoomPoint[];barriers:{elementId:number;polygon:RoomPoint[];approximate:false}[];evidence:'persisted-curtain-frame-members'};
@@ -18,7 +19,7 @@ export function recoverNativeCurtainOpenings(model:ConvertResult,cutElevationFee
   if(members.some(r=>index!.owners.get(r.elementId)?.size!==1||![-2000023,-2000170,-2000171].includes(r.categoryId??0)||r.orientedBox?.length!==8))continue;
   const doors=members.filter(r=>r.categoryId===-2000023);if(doors.length!==1)continue;const door=doors[0]!;
   const bottom=min(door.orientedBox!.map(p=>p[2])),top=max(door.orientedBox!.map(p=>p[2]));if(cutElevationFeet<=bottom+.01||cutElevationFeet>=top-.01)continue;
-  const points=door.orientedBox!.slice(0,4).map(([x,y])=>[x,y]as RoomPoint),edges=points.map((p,i)=>{const q=points[(i+1)%4]!;return{p,q,len:Math.hypot(q[0]-p[0],q[1]-p[1])}}).sort((a,b)=>b.len-a.len),edge=edges[0]!;
+  const points=door.orientedBox!.slice(0,4).map(([x,y])=>[x,y]as RoomPoint),edges=points.map((p,i)=>{const q=points[(i+1)%4]!;return{p,q,len:DMath.hypot(q[0]-p[0],q[1]-p[1])}}).sort((a,b)=>b.len-a.len),edge=edges[0]!;
   if(edge.len<2||edges[1]!.len<edge.len-.00001)continue;const u:RoomPoint=[(edge.q[0]-edge.p[0])/edge.len,(edge.q[1]-edge.p[1])/edge.len],n:RoomPoint=[-u[1],u[0]],project=(p:readonly number[],v:RoomPoint)=>p[0]!*v[0]+p[1]!*v[1];
   const bounds=(r:ElementBoundsRecord)=>{const ps=r.orientedBox!;const us=ps.map(p=>project(p,u)),ns=ps.map(p=>project(p,n));return{r,lo:min(us),hi:max(us),near:min(ns),far:max(ns),bottom:min(ps.map(p=>p[2])),top:max(ps.map(p=>p[2]))}};
   const leaf=bounds(door),parts=members.filter(r=>r!==door).map(bounds),mullions=parts.filter(p=>p.r.categoryId===-2000171),near=(a:number,b:number)=>Math.abs(a-b)<=.05;

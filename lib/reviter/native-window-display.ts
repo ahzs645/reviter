@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from 'polygon-clipping';
 import type {ConvertResult,ElementBoundsRecord} from './types.ts';
 import type {IndoorDataset} from './indoor-contract.ts';
@@ -51,13 +52,13 @@ export function prepareNativeWindowDisplay(model:ConvertResult,data:IndoorDatase
     const native=records.get(w.nativeElementId);if(!native||native.wallKind==='curtain')continue;
     const solid=native.solids?.length===1?native.solids[0]:native.solid;
     if(!solid||solid.thickness<=0)continue;
-    const dx=solid.end.x-solid.start.x,dy=solid.end.y-solid.start.y,len=Math.hypot(dx,dy);if(len<.1)continue;
+    const dx=solid.end.x-solid.start.x,dy=solid.end.y-solid.start.y,len=DMath.hypot(dx,dy);if(len<.1)continue;
     const u:P=[dx/len,dy/len],normal:P=[-u[1],u[0]];
     const along=(p:P)=>(p[0]-solid.start.x)*u[0]+(p[1]-solid.start.y)*u[1];
     const across=(p:P)=>(p[0]-solid.start.x)*normal[0]+(p[1]-solid.start.y)*normal[1];
     if(points.some(p=>Math.abs(across(p))>solid.thickness/2+.03))continue;
     // Panel long edges must run along the parent wall; avoid perpendicular joins.
-    if(panels.some(p=>{const q=footprint(p)!;const edges=q.map((v,i)=>{const t=q[(i+1)%q.length]!;return [t[0]-v[0],t[1]-v[1]]as P}).sort((a,b)=>Math.hypot(...b)-Math.hypot(...a));return Math.abs(edges[0]![0]*normal[0]+edges[0]![1]*normal[1])>.02}))continue;
+    if(panels.some(p=>{const q=footprint(p)!;const edges=q.map((v,i)=>{const t=q[(i+1)%q.length]!;return [t[0]-v[0],t[1]-v[1]]as P}).sort((a,b)=>DMath.hypot(...b)-DMath.hypot(...a));return Math.abs(edges[0]![0]*normal[0]+edges[0]![1]*normal[1])>.02}))continue;
     const low=Math.min(...points.map(along)),high=Math.max(...points.map(along));if(low<.02||high>len-.02||high-low<.3)continue;
     const at=(a:number,b:number):P=>[solid.start.x+a*u[0]+b*normal[0],solid.start.y+a*u[1]+b*normal[1]];
     const aperture=[at(low,-solid.thickness/2),at(high,-solid.thickness/2),at(high,solid.thickness/2),at(low,solid.thickness/2)];

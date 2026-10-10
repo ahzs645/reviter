@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {validateNativeProvisionalCornerSeals,type NativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
 import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns,type NativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
 import {validateNativeSourceStairMaterials, type NativeSourceStairMaterials} from "./native-source-stair-material.ts";
@@ -246,7 +247,7 @@ export function nearestRoomBoundary(p: RoomPoint, polygon: readonly RoomPoint[])
     const dx = b[0] - a[0]; const dy = b[1] - a[1]; const length = dx * dx + dy * dy;
     const t = length ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length)) : 0;
     const candidate: RoomPoint = [a[0] + t * dx, a[1] + t * dy];
-    const d = Math.hypot(p[0] - candidate[0], p[1] - candidate[1]);
+    const d = DMath.hypot(p[0] - candidate[0], p[1] - candidate[1]);
     if (d < distance) { closest = candidate; distance = d; }
   }
   return { point: closest, distance };
@@ -260,8 +261,8 @@ export function roomArea(polygon: readonly RoomPoint[]): number {
 
 /** Remove only redundant collinear vertices, never smooth over a wall corner. */
 export function cleanRoomBoundary(polygon: readonly RoomPoint[]): RoomPoint[] {
-  const points = polygon.filter((p, i) => i === 0 || Math.hypot(p[0] - polygon[i - 1]![0], p[1] - polygon[i - 1]![1]) > 1e-7);
-  if (points.length > 1 && Math.hypot(points[0]![0] - points.at(-1)![0], points[0]![1] - points.at(-1)![1]) < 1e-7) points.pop();
+  const points = polygon.filter((p, i) => i === 0 || DMath.hypot(p[0] - polygon[i - 1]![0], p[1] - polygon[i - 1]![1]) > 1e-7);
+  if (points.length > 1 && DMath.hypot(points[0]![0] - points.at(-1)![0], points[0]![1] - points.at(-1)![1]) < 1e-7) points.pop();
   return points.filter((b, i) => {
     const a = points[(i + points.length - 1) % points.length]!; const c = points[(i + 1) % points.length]!;
     return Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) > 1e-7
@@ -277,7 +278,7 @@ export function validRoomBoundary(polygon: readonly RoomPoint[], minimumArea = 1
     && p[1] >= Math.min(a[1], b[1]) - 1e-8 && p[1] <= Math.max(a[1], b[1]) + 1e-8;
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i]!; const b = polygon[(i + 1) % polygon.length]!;
-    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-7) return false;
+    if (DMath.hypot(a[0] - b[0], a[1] - b[1]) < 1e-7) return false;
     for (let j = i + 2; j < polygon.length; j++) {
       if (i === 0 && j === polygon.length - 1) continue;
       const c = polygon[j]!; const d = polygon[(j + 1) % polygon.length]!;
@@ -466,7 +467,7 @@ export function findDirectoryRoute(rooms: readonly DirectoryRoom[], portals: rea
       const dx = portal.to[0] - portal.from[0]; const dy = portal.to[1] - portal.from[1];
       const length = dx * dx + dy * dy;
       const t = length ? Math.max(0, Math.min(1, ((p[0] - portal.from[0]) * dx + (p[1] - portal.from[1]) * dy) / length)) : 0;
-      if (Math.hypot(p[0] - portal.from[0] - t * dx, p[1] - portal.from[1] - t * dy) > Math.max(.45, cell * .75)) continue;
+      if (DMath.hypot(p[0] - portal.from[0] - t * dx, p[1] - portal.from[1] - t * dy) > Math.max(.45, cell * .75)) continue;
       if (owner[i]! >= 0 && !portal.rooms.includes(walkRooms[owner[i]!]!.key)) continue;
       doorAt[i] = index;
     }
@@ -490,7 +491,7 @@ export function findDirectoryRoute(rooms: readonly DirectoryRoom[], portals: rea
   const endpoint = (room: DirectoryRoom): number => {
     const index = walkRooms.findIndex((r) => r.key === room.key || !!room.circulationGroup && r.circulationGroup === room.circulationGroup); let best = -1; let distance = Infinity;
     for (let i = 0; i < size; i++) if (owner[i] === index && !blocked(world(i),world(i))) {
-      const p = world(i); const d = Math.hypot(p[0] - (room.routePointFeet??room.labelPointFeet)[0], p[1] - (room.routePointFeet??room.labelPointFeet)[1]);
+      const p = world(i); const d = DMath.hypot(p[0] - (room.routePointFeet??room.labelPointFeet)[0], p[1] - (room.routePointFeet??room.labelPointFeet)[1]);
       if (d < distance) { best = i; distance = d; }
     }
     return distance <= 2 * cell ? best : -1;

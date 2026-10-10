@@ -1,4 +1,5 @@
 /** Plan-view SVG of the recovered model or one persisted Revit level. */
+import * as DMath from "./deterministic-math.ts";
 import type { ConvertResult, ElementBoundsRecord, LevelBand, Segment } from "./types.ts";
 import { cachedDerivedRoomsForLevel, type DerivedRoomResult } from "./derived-rooms.ts";
 
@@ -210,7 +211,7 @@ export function makeFloorPlateSvg(
       const spacing = Math.max(width, height) / 55;
       if (
         labels.length < 60 &&
-        labels.every((label) => Math.hypot(
+        labels.every((label) => DMath.hypot(
           label.centroid[0] - room.centroid[0],
           label.centroid[1] - room.centroid[1],
         ) >= spacing)

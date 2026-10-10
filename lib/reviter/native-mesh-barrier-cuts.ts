@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import {
@@ -34,7 +35,7 @@ function nodeOwnedCollinearSegments(lines: Segment[]): Segment[] {
     splits.sort((x, y) => x.t - y.t);
     for (let i = 0; i + 1 < splits.length; i++) {
       const p = splits[i]!.point, q = splits[i + 1]!.point;
-      if (Math.hypot(p[0] - q[0], p[1] - q[1]) > tolerance) result.push([p, q]);
+      if (DMath.hypot(p[0] - q[0], p[1] - q[1]) > tolerance) result.push([p, q]);
     }
   }
   return result;
@@ -96,7 +97,7 @@ export function nativeMeshBarrierCuts(
       }
       if (
         hits.length !== 2 ||
-        Math.hypot(hits[0]![0] - hits[1]![0], hits[0]![1] - hits[1]![1]) < 1e-8
+        DMath.hypot(hits[0]![0] - hits[1]![0], hits[0]![1] - hits[1]![1]) < 1e-8
       )
         continue;
       const list = segments.get(id) ?? [];
@@ -115,7 +116,7 @@ export function nativeMeshBarrierCuts(
         for (let dy = -1; dy <= 1; dy++)
           for (const i of bins.get(`${x + dx}:${y + dy}`) ?? [])
             if (
-              Math.hypot(
+              DMath.hypot(
                 nodes[i]!.point[0] - p[0],
                 nodes[i]!.point[1] - p[1],
               ) <= PRECISION

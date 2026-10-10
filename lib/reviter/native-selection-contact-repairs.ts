@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import { nativeMaterialPlanExactWalls } from "./native-material-plan.ts";
 import { nativeRationalPointInParts } from "./native-exact-planar-topology.ts";
@@ -186,12 +187,12 @@ function rectangularSource(ring: Point[]): void {
     const a = edges[i],
       b = edges[(i + 1) % 4],
       opposite = edges[(i + 2) % 4];
-    const length = Math.hypot(...a),
-      nextLength = Math.hypot(...b);
+    const length = DMath.hypot(...a),
+      nextLength = DMath.hypot(...b);
     if (
       Math.abs(a[0] * b[0] + a[1] * b[1]) >
         coordinateError * (length + nextLength) ||
-      Math.hypot(a[0] + opposite[0], a[1] + opposite[1]) > 2 * coordinateError
+      DMath.hypot(a[0] + opposite[0], a[1] + opposite[1]) > 2 * coordinateError
     )
       fail("source member is not rectangular at native coordinate precision");
   }

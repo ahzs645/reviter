@@ -15,6 +15,7 @@
  * ENCLOSURE only (portals/access unchanged), and explicitly reviewed correction rows active at the
  * cut. Authored parts are kept byte-identical; supplement parts are appended and carry their own
  * evidence, correction ids and assumption ids. */
+import * as DMath from "./deterministic-math.ts";
 import { nativeRationalOverlay, type NativeRationalParts, type NativeRationalOverlayInput } from "./native-rational-overlay.ts";
 import { nativeExactPartsForProposals, nativeRationalPointInRing } from "./native-exact-planar-topology.ts";
 import { Rational, add, sub, mul, compare, rationalScalarToIEEE as nativeRationalScalarToIEEE } from "./vendor/native-rational-overlay-arithmetic.mjs";
@@ -88,7 +89,7 @@ export function nativeBoundedFaces(barrier: Parts): NativeRationalParts {
       const fromKey = key(from), toKey = key(to);
       if (fromKey === toKey) continue;
       const f = ieee(from), t = ieee(to);
-      const e: Edge = { from, to, fromKey, toKey, angle: Math.atan2(t[1] - f[1], t[0] - f[0]), used: false };
+      const e: Edge = { from, to, fromKey, toKey, angle: DMath.atan2(t[1] - f[1], t[0] - f[0]), used: false };
       out.set(fromKey, [...(out.get(fromKey) ?? []), e]);
     }
   });
@@ -99,7 +100,7 @@ export function nativeBoundedFaces(barrier: Parts): NativeRationalParts {
     let e: Edge | undefined = start, guard = 0;
     while (e && !e.used && guard++ < 10_000_000) {
       e.used = true; ring.push(e.from);
-      const f = ieee(e.to), back = ieee(e.from), inAngle = Math.atan2(back[1] - f[1], back[0] - f[0]);
+      const f = ieee(e.to), back = ieee(e.from), inAngle = DMath.atan2(back[1] - f[1], back[0] - f[0]);
       let best: Edge | undefined, bestTurn = Infinity;
       for (const c of out.get(e.toKey) ?? []) {
         if (c.used && c !== start) continue;

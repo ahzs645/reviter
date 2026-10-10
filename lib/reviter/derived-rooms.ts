@@ -1,4 +1,5 @@
 /** Approximate floor regions inferred from native slabs and recovered vertical barriers. */
+import * as DMath from "./deterministic-math.ts";
 import type { ConvertResult, ElementBoundsRecord, WallArc, WallSolid } from "./types.ts";
 
 const REVIT_FLOORS_CATEGORY_ID = -2_000_032;
@@ -105,9 +106,9 @@ function floorBounds(records: readonly ElementBoundsRecord[]) {
 function distanceToSegment(x: number, y: number, start: Point2, end: Point2) {
   const dx = end[0] - start[0]; const dy = end[1] - start[1];
   const lengthSquared = dx * dx + dy * dy;
-  if (!lengthSquared) return Math.hypot(x - start[0], y - start[1]);
+  if (!lengthSquared) return DMath.hypot(x - start[0], y - start[1]);
   const t = Math.max(0, Math.min(1, ((x - start[0]) * dx + (y - start[1]) * dy) / lengthSquared));
-  return Math.hypot(x - (start[0] + t * dx), y - (start[1] + t * dy));
+  return DMath.hypot(x - (start[0] + t * dx), y - (start[1] + t * dy));
 }
 
 function solidSegment(solid: WallSolid): Segment2 {
@@ -121,8 +122,8 @@ function arcSegments(arc: WallArc, cellSize: number): Segment2[] {
   for (let step = 0; step <= steps; step += 1) {
     const angle = arc.startAngle + (sweep * step) / steps;
     points.push([
-      arc.centre.x + arc.radius * (Math.cos(angle) * arc.xDir.x + Math.sin(angle) * arc.yDir.x),
-      arc.centre.y + arc.radius * (Math.cos(angle) * arc.xDir.y + Math.sin(angle) * arc.yDir.y),
+      arc.centre.x + arc.radius * (DMath.cos(angle) * arc.xDir.x + DMath.sin(angle) * arc.yDir.x),
+      arc.centre.y + arc.radius * (DMath.cos(angle) * arc.xDir.y + DMath.sin(angle) * arc.yDir.y),
     ]);
   }
   return points.slice(1).map((point, index) => ({ start: points[index]!, end: point, thickness: arc.thickness }));
@@ -144,8 +145,8 @@ function fallbackSegment(record: ElementBoundsRecord): Segment2 | null {
     const cy = corners.reduce((sum, point) => sum + point[1], 0) / corners.length;
     let xx = 0; let xy = 0; let yy = 0;
     for (const [x, y] of corners) { const dx = x - cx; const dy = y - cy; xx += dx * dx; xy += dx * dy; yy += dy * dy; }
-    const angle = 0.5 * Math.atan2(2 * xy, xx - yy);
-    const ux = Math.cos(angle); const uy = Math.sin(angle); const vx = -uy; const vy = ux;
+    const angle = 0.5 * DMath.atan2(2 * xy, xx - yy);
+    const ux = DMath.cos(angle); const uy = DMath.sin(angle); const vx = -uy; const vy = ux;
     let minU = Infinity; let maxU = -Infinity; let minV = Infinity; let maxV = -Infinity;
     for (const [x, y] of corners) { const dx = x - cx; const dy = y - cy; const u = dx * ux + dy * uy; const v = dx * vx + dy * vy; minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v); }
     const length = maxU - minU; const thickness = maxV - minV;
@@ -285,7 +286,7 @@ function collectRooms(
     }
     const areaSquareFeet = cells.length * cellSize * cellSize; if (areaSquareFeet < minimumArea) continue;
     const mean: Point2 = [sumX / cells.length, sumY / cells.length]; let labelCell = cells[0]!; let labelDistance = Infinity;
-    for (const cell of cells) { const column = cell % columns; const row = Math.floor(cell / columns); const x = minX + (column + 0.5) * cellSize; const y = minY + (row + 0.5) * cellSize; const distance = (x - mean[0]) ** 2 + (y - mean[1]) ** 2; if (distance < labelDistance) { labelDistance = distance; labelCell = cell; } }
+    for (const cell of cells) { const column = cell % columns; const row = Math.floor(cell / columns); const x = minX + (column + 0.5) * cellSize; const y = minY + (row + 0.5) * cellSize; const dx = x - mean[0], dy = y - mean[1]; const distance = dx * dx + dy * dy; if (distance < labelDistance) { labelDistance = distance; labelCell = cell; } }
     const loops = traceLoops(cells, columns, cellSize, minX, minY);
     if (loops.length) candidates.push({ cells, centroid: [minX + (labelCell % columns + 0.5) * cellSize, minY + (Math.floor(labelCell / columns) + 0.5) * cellSize], areaSquareFeet, loops });
   }
@@ -378,7 +379,7 @@ export function deriveRoomsForLevel(result: ConvertResult, levelId: number, opti
   for (const barrier of barriers) {
     const exact = nativeSegments(barrier, cellSize); for (const segment of exact) mark(segment);
     const fallback = fallbackSegment(barrier);
-    if (fallback) { const fallbackLength = Math.hypot(fallback.end[0] - fallback.start[0], fallback.end[1] - fallback.start[1]); const exactSpan = exact.reduce((longest, segment) => Math.max(longest, Math.hypot(segment.end[0] - segment.start[0], segment.end[1] - segment.start[1])), 0); if (!exact.length || exactSpan < fallbackLength * 0.7) mark(fallback); }
+    if (fallback) { const fallbackLength = DMath.hypot(fallback.end[0] - fallback.start[0], fallback.end[1] - fallback.start[1]); const exactSpan = exact.reduce((longest, segment) => Math.max(longest, DMath.hypot(segment.end[0] - segment.start[0], segment.end[1] - segment.start[1])), 0); if (!exact.length || exactSpan < fallbackLength * 0.7) mark(fallback); }
   }
   const minimumArea = options.minRoomAreaSquareFeet ?? DEFAULT_MIN_REGION_AREA_SQUARE_FEET;
   const strict = collectRooms(inside, blocked, floodExterior(blocked, columns, rows), columns, rows, cellSize, minX, minY, minimumArea);

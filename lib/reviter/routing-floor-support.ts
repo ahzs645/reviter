@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { ConvertResult, ElementBoundsRecord } from "./types.ts";
 import { strictNativeFloorPolygons } from "./strict-native-floor-polygons.ts";
 import {
@@ -29,7 +30,7 @@ export function nativeFloorPolygons(
       return (
         t >= 0 &&
         t <= 1 &&
-        Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy) < 1e-7
+        DMath.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy) < 1e-7
       );
     });
   const parents = rings.map((ring, index) => {

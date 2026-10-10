@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
 import {
   nativeStairRunTreads,
@@ -172,7 +173,7 @@ export function prepareIndoorStairDisplay(
           distance: Math.min(
             ...r.ringsFeet
               .flat()
-              .map((p) => Math.hypot(p[0] - centre[0], p[1] - centre[1])),
+              .map((p) => DMath.hypot(p[0] - centre[0], p[1] - centre[1])),
           ),
         }))
         .sort((a, b) => a.distance - b.distance);

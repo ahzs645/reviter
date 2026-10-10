@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { IndoorDataset } from "./indoor-contract";
 export type NativeDoorClearOpeningProfile = {
   nativeDoorElementId: number;
@@ -110,7 +111,7 @@ export function nativeDoorClearOpening(
       )
     )
       return;
-    const length = Math.hypot(...door.normalFeet),
+    const length = DMath.hypot(...door.normalFeet),
       origin = door.pointFeet;
     if (!length || !origin) return;
     const n: Point = [door.normalFeet[0] / length, door.normalFeet[1] / length],

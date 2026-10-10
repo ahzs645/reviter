@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import type { RoomDirectoryData } from "./room-directory.ts";
@@ -122,7 +123,7 @@ export function reviewedRoomInteriors(
         for (const endpoint of ["start", "end"] as const) {
           const a = solid[endpoint],
             b = solid[endpoint === "start" ? "end" : "start"],
-            len = Math.hypot(a.x - b.x, a.y - b.y);
+            len = DMath.hypot(a.x - b.x, a.y - b.y);
           if (len < 0.1) continue;
           const u: Point = [(a.x - b.x) / len, (a.y - b.y) / len],
             v: Point = [-u[1], u[0]],

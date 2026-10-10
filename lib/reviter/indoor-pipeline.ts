@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {initializeNativeExactGeosOverlay} from "./native-exact-geos-overlay.ts";
 import {nativeProvisionalAssumptionCounts,verifyDrawingBackedDrawingEvidence,verifyNativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
 import {createNativePortalFloorVoidQuery} from "./native-portal-floor-voids.ts";
@@ -777,7 +778,7 @@ export async function prepareIndoorDataset(
         .reduce(
           (s, p, i) =>
             s +
-            Math.hypot(
+            DMath.hypot(
               p.point[0] - c.samples[i]!.point[0],
               p.point[1] - c.samples[i]!.point[1],
               p.elevation - c.samples[i]!.elevation,
@@ -913,7 +914,7 @@ export async function prepareIndoorDataset(
           .reduce(
             (s, p, k) =>
               s +
-              Math.hypot(p[0] - b.points[k]![0], p[1] - b.points[k]![1]) *
+              DMath.hypot(p[0] - b.points[k]![0], p[1] - b.points[k]![1]) *
                 fit.scaleMetresPerFoot,
             0,
           ),
@@ -978,7 +979,7 @@ export async function prepareIndoorDataset(
     else e.pointsFeet = [a.pointFeet, ...e.pointsFeet, b.pointFeet];
     if (e.kind === "door" || e.kind === "opening")
       e.lengthMetres =
-        Math.hypot(
+        DMath.hypot(
           a.pointFeet[0] - b.pointFeet[0],
           a.pointFeet[1] - b.pointFeet[1],
         ) * fit.scaleMetresPerFoot;

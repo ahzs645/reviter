@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { strictNativeFloorPolygons } from "./strict-native-floor-polygons.ts";
@@ -147,7 +148,7 @@ function lineEnds(line: Line): P3[] {
     !point(line.origin) ||
     !point(line.direction) ||
     line.direction[2] !== 0 ||
-    Math.hypot(line.direction[0], line.direction[1]) === 0 ||
+    DMath.hypot(line.direction[0], line.direction[1]) === 0 ||
     !Array.isArray(line.endParameters) ||
     line.endParameters.length !== 2 ||
     !line.endParameters.every(Number.isFinite) ||

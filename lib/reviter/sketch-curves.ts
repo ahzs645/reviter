@@ -58,6 +58,7 @@
  * and `assembleRings` can be asked for the bare corners instead.
  */
 
+import * as DMath from "./deterministic-math.ts";
 import { narrowElementIds } from "./element-id-width.ts";
 import { noteLimit } from "./limit-census.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
@@ -179,9 +180,9 @@ function readCurve(view: DataView, offset: number, byteLength: number): SketchCu
       [cx, cy, cz].every(coordinateLike)
     ) {
       const at = (t: number): Point3 => [
-        cx + radius * (Math.cos(t) * ax + Math.sin(t) * bx),
-        cy + radius * (Math.cos(t) * ay + Math.sin(t) * by),
-        cz + radius * (Math.cos(t) * az + Math.sin(t) * bz),
+        cx + radius * (DMath.cos(t) * ax + DMath.sin(t) * bx),
+        cy + radius * (DMath.cos(t) * ay + DMath.sin(t) * by),
+        cz + radius * (DMath.cos(t) * az + DMath.sin(t) * bz),
       ];
       const steps = Math.max(1, Math.ceil((tMax - tMin) / ARC_STEP));
       const interior: Point3[] = [];
@@ -255,7 +256,7 @@ export function collectSketchCurves(data: Uint8Array): SketchCurve[] {
 }
 
 function distance(a: Point3, b: Point3): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  return DMath.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
 /** A point's own grid cell first, then the 26 that can hold a nearer vertex. */

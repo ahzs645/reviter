@@ -104,6 +104,7 @@
  *   median 10.1 ft worst-vertex error with none inside a foot. Those surfaces
  *   are not wall bodies.
  */
+import * as DMath from "./deterministic-math.ts";
 import { narrowElementIds } from "./element-id-width.ts";
 import { fileClassTag } from "./revit-class-tags.ts";
 
@@ -184,7 +185,7 @@ function readVector(view: DataView, offset: number): Vector3 | null {
 }
 
 function isUnit(vector: Vector3): boolean {
-  const length = Math.hypot(vector.x, vector.y, vector.z);
+  const length = DMath.hypot(vector.x, vector.y, vector.z);
   return Math.abs(length - 1) <= UNIT_TOLERANCE;
 }
 

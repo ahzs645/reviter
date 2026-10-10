@@ -1,6 +1,7 @@
 /** Reversible human assumptions at independently measured native corners.
  * These are newly assumed finite opaque bodies, never source-axis continuations,
  * translated native walls, or source-verified construction. */
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import {
   nativePositiveMaterialBandsAcrossLevels,
@@ -154,7 +155,7 @@ export const DRAWING_BACKED_LIMITS = {
   wallFaceParallelSine: 0.02,
 } as const;
 const unit = (v: P2): P2 => {
-  const l = Math.hypot(v[0], v[1]);
+  const l = DMath.hypot(v[0], v[1]);
   if (!l) throw Error("Invalid drawing-backed direction.");
   return [v[0] / l, v[1] / l];
 };
@@ -167,7 +168,7 @@ export function drawingBackedAssumptionFootprint(
       n: P2 = [-u[1], u[0]],
       h = c.halfWidthFeet,
       e = c.overlapFeet;
-    if (Math.abs(Math.hypot(u[0], u[1]) - 1) > 1e-12 || !(h > 0) || !(e > 0))
+    if (Math.abs(DMath.hypot(u[0], u[1]) - 1) > 1e-12 || !(h > 0) || !(e > 0))
       throw Error("Invalid drawing-backed bridge construction.");
     const a: P2 = [c.pointAFeet[0] - e * u[0], c.pointAFeet[1] - e * u[1]],
       b: P2 = [c.pointBFeet[0] + e * u[0], c.pointBFeet[1] + e * u[1]];
@@ -185,7 +186,7 @@ export function drawingBackedAssumptionFootprint(
   if (c.kind === "dwg-face-pair") {
     const [a, b] = c.faceAFeet,
       [p, q] = c.faceBFeet,
-      length = Math.hypot(b[0] - a[0], b[1] - a[1]),
+      length = DMath.hypot(b[0] - a[0], b[1] - a[1]),
       u = unit([b[0] - a[0], b[1] - a[1]]),
       v = unit([q[0] - p[0], q[1] - p[1]]),
       [t0, t1] = c.intervalFeet;
@@ -206,8 +207,8 @@ export function drawingBackedAssumptionFootprint(
       x1 = at(t1),
       y0 = foot(x0),
       y1 = foot(x1),
-      thickness = Math.hypot(y0[0] - x0[0], y0[1] - x0[1]),
-      lengthB = Math.hypot(q[0] - p[0], q[1] - p[1]),
+      thickness = DMath.hypot(y0[0] - x0[0], y0[1] - x0[1]),
+      lengthB = DMath.hypot(q[0] - p[0], q[1] - p[1]),
       along = (y: P2) => (y[0] - p[0]) * v[0] + (y[1] - p[1]) * v[1];
     if (
       !(thickness > 0) ||
@@ -232,7 +233,7 @@ const segmentDistance = (p: P2, s: [P2, P2]) => {
     dy = b[1] - a[1],
     l = dx * dx + dy * dy,
     t = l ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l)) : 0;
-  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  return DMath.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
 };
 function validateDrawingBackedShape(r: NativeProvisionalCornerSeals["rows"][number]) {
   const d = r.drawingBacked!,
@@ -449,10 +450,10 @@ export function provisionalCornerFootprint(
   const [a, b] = face,
     dx = b[0] - a[0],
     dy = b[1] - a[1],
-    length = Math.hypot(dx, dy),
+    length = DMath.hypot(dx, dy),
     gx = target[0] - carrier[0],
     gy = target[1] - carrier[1],
-    gap = Math.hypot(gx, gy);
+    gap = DMath.hypot(gx, gy);
   if (
     !length ||
     !gap ||
@@ -505,8 +506,8 @@ export function reviewedFiniteContactFootprint(
     padding <= 0 ||
     padding > 0.0002 ||
     Math.max(
-      Math.hypot(c[0] - a[0], c[1] - a[1]),
-      Math.hypot(d[0] - b[0], d[1] - b[1]),
+      DMath.hypot(c[0] - a[0], c[1] - a[1]),
+      DMath.hypot(d[0] - b[0], d[1] - b[1]),
     ) >
       1 / 3
   )
@@ -531,7 +532,7 @@ export function reviewedFiniteContactFootprint(
   }
   const u = shape.paddingDirectionFeet;
   if (
-    Math.abs(Math.hypot(...u) - 1) > Number.EPSILON * 16 ||
+    Math.abs(DMath.hypot(...u) - 1) > Number.EPSILON * 16 ||
     same(a, b) ||
     same(c, d) ||
     [
@@ -706,7 +707,7 @@ const distance = (p: P2, a: P2, b: P2) => {
       : 0;
   return {
     point: [a[0] + t * dx, a[1] + t * dy] as P2,
-    distance: Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy),
+    distance: DMath.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy),
   };
 };
 const segments = (ps: Parts) =>
@@ -953,7 +954,7 @@ export function createNativeProvisionalCornerSealIndex(
                         ...c.map(Math.abs),
                         ...d.map(Math.abs),
                       )) /
-                    Math.hypot(vx, vy);
+                    DMath.hypot(vx, vy);
                   return t >= 0 && q >= -round && q <= 1 + round
                     ? [
                         [
@@ -965,8 +966,8 @@ export function createNativeProvisionalCornerSealIndex(
                 })
                 .sort(
                   (c, d) =>
-                    Math.hypot(c[0] - a[0], c[1] - a[1]) -
-                    Math.hypot(d[0] - a[0], d[1] - a[1]),
+                    DMath.hypot(c[0] - a[0], c[1] - a[1]) -
+                    DMath.hypot(d[0] - a[0], d[1] - a[1]),
                 );
               const first = hits[0];
               if (
@@ -1251,7 +1252,7 @@ function checkDrawingBackedRow(
     fail("body differs from its declared construction");
   const scale = (p: P2) => 64 * Number.EPSILON * Math.max(1, Math.abs(p[0]), Math.abs(p[1]));
   if (c.kind === "bridge") {
-    const gap = Math.hypot(
+    const gap = DMath.hypot(
       c.pointBFeet[0] - c.pointAFeet[0],
       c.pointBFeet[1] - c.pointAFeet[1],
     );
