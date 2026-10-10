@@ -409,7 +409,18 @@ function minimumWidth(ring: P2[]) {
   }
   return best;
 }
-/** Material the registered drawing draws, from the entities a dwg-drawn-material row cites:
+/** First segment of an outline chain, oriented so the chain continues from its second point. */
+const orientedStart = (first: [P2, P2], next: [P2, P2]): P2[] => {
+  const d = (p: P2) =>
+    Math.min(
+      DMath.hypot(p[0] - next[0][0], p[1] - next[0][1]),
+      DMath.hypot(p[0] - next[1][0], p[1] - next[1][1]),
+    );
+  return d(first[0]) < d(first[1])
+    ? [first[1], first[0]]
+    : [first[0], first[1]];
+};
+/** Material the registered drawing draws, as overlapping pieces, from the entities a dwg-drawn-material row cites:
  * the band between each cited pair of parallel wall-face lines (over their common span; the
  * separation is positive and at most a wall thickness) and the inside of each cited closed
  * outline whose minimum width is at most a wall thickness, every region grown by the row's
@@ -472,7 +483,7 @@ export function drawingBackedDrawnMaterial(
   }
   for (const o of m.closedOutlines) {
     const first = seg(o[0]);
-    const ring: P2[] = [first[0], first[1]];
+    const ring: P2[] = orientedStart(first, seg(o[1]));
     for (const i of o.slice(1)) {
       const [p, q] = seg(i),
         end = ring.at(-1)!,
@@ -495,15 +506,107 @@ export function drawingBackedDrawnMaterial(
         `cited drawn outline ${o.map(label).join(",")} is ${width.toFixed(3)} ft wide, not wall or column material`,
       );
     regions.push(
-      pc.union(
-        [[ring]],
-        ...ring.map((p, k) =>
-          segmentCapsule([p, ring[(k + 1) % ring.length]], t),
-        ),
-      ) as Parts,
+      [[ring]],
+      ...ring.map((p, k) =>
+        segmentCapsule([p, ring[(k + 1) % ring.length]], t),
+      ),
     );
   }
-  return pc.union(regions[0], ...regions.slice(1)) as Parts;
+  // Pieces, not a union: containment subtracts them all with the exact overlay.
+  return regions.flat();
+}
+/** Drawn material is solid: no other registered wall line of the cited section runs through the
+ * part of the body that a cited band or outline is meant to cover. Two parallel lines that bound
+ * something else (a doorway, a gap, a room strip) have linework between them; a drawn wall or
+ * casing is empty between its faces. Returns the first stated reason, or undefined. */
+export function drawingBackedDrawnMaterialSolidity(
+  dwg: NonNullable<NativeDrawingBackedAssumption["dwg"]>,
+  sectionWallSegments: [P2, P2][],
+  body: Parts,
+): string | undefined {
+  const t = dwg.toleranceFeet,
+    m = dwg.drawnMaterial!,
+    seg = (i: number) => dwg.entities[i].segmentFeet,
+    label = (i: number) => `wallSegments#${dwg.entities[i].index}`;
+  const ps = body.flat(PARTS_VERTEX_DEPTH),
+    pad = DRAWING_BACKED_LIMITS.wallThicknessFeet,
+    box = [
+      Math.min(...ps.map((p) => p[0])) - pad,
+      Math.min(...ps.map((p) => p[1])) - pad,
+      Math.max(...ps.map((p) => p[0])) + pad,
+      Math.max(...ps.map((p) => p[1])) + pad,
+    ];
+  const nearby = sectionWallSegments
+    .map((g, index) => ({ g, index }))
+    .filter(
+      ({ g }) =>
+        Math.max(g[0][0], g[1][0]) >= box[0] &&
+        Math.min(g[0][0], g[1][0]) <= box[2] &&
+        Math.max(g[0][1], g[1][1]) >= box[1] &&
+        Math.min(g[0][1], g[1][1]) <= box[3],
+    );
+  const check = (inside: Parts, own: [P2, P2][], what: string) => {
+    let region: Parts;
+    try {
+      region = pc.intersection(inside, body) as Parts;
+    } catch {
+      region = inside;
+    }
+    if (region.length === 0) return;
+    for (const { g, index } of nearby)
+      if (
+        !own.some((o) => same(o, g) || same([o[1], o[0]], g)) &&
+        segmentLengthInside(g, region) > t
+      )
+        return `${what} is not solid drawn material: registered line wallSegments#${index} runs inside it`;
+  };
+  for (const [i, j] of m.faceLinePairs) {
+    const [a0, a1] = seg(i),
+      [b0, b1] = seg(j),
+      la = DMath.hypot(a1[0] - a0[0], a1[1] - a0[1]),
+      u = unit(sub2(a1, a0)),
+      n: P2 = [-u[1], u[0]],
+      sb = [dot2(sub2(b0, a0), u), dot2(sub2(b1, a0), u)],
+      db = [dot2(sub2(b0, a0), n), dot2(sub2(b1, a0), n)],
+      t0 = Math.max(0, Math.min(...sb)),
+      t1 = Math.min(la, Math.max(...sb)),
+      off = (q: number) =>
+        db[0] + ((q - sb[0]) * (db[1] - db[0])) / (sb[1] - sb[0]),
+      lo = (q: number) => Math.min(0, off(q)) + t,
+      hi = (q: number) => Math.max(0, off(q)) - t,
+      P = (q: number, w: number): P2 => [
+        a0[0] + q * u[0] + w * n[0],
+        a0[1] + q * u[1] + w * n[1],
+      ];
+    if (!(t1 > t0) || hi(t0) <= lo(t0) || hi(t1) <= lo(t1)) continue;
+    const why = check(
+      [[[P(t0, lo(t0)), P(t1, lo(t1)), P(t1, hi(t1)), P(t0, hi(t0))]]],
+      [seg(i), seg(j)],
+      `drawn band ${label(i)}/${label(j)}`,
+    );
+    if (why) return why;
+  }
+  for (const o of m.closedOutlines) {
+    const ring: P2[] = orientedStart(seg(o[0]), seg(o[1]));
+    for (const i of o.slice(1)) {
+      const [p, q] = seg(i),
+        end = ring.at(-1)!;
+      ring.push(
+        DMath.hypot(p[0] - end[0], p[1] - end[1]) <=
+          DMath.hypot(q[0] - end[0], q[1] - end[1])
+          ? q
+          : p,
+      );
+    }
+    ring.pop();
+    const why = check(
+      [[ring]],
+      o.map(seg),
+      `drawn outline ${o.map(label).join(",")}`,
+    );
+    if (why) return why;
+  }
+  return undefined;
 }
 /** Length of a segment strictly inside a body (any parts). */
 function segmentLengthInside(s: [P2, P2], body: Parts) {
@@ -1893,12 +1996,31 @@ function checkDrawnMaterialEvidence(
   const unsupported = r.partsFeet.flatMap((p) =>
     exactNativeDoorFloorDifference(p, floors),
   ) as Parts;
-  const uncovered = pc.difference(r.partsFeet, drawn) as Parts;
+  // Only new material needs drawing evidence: the parts of the body already inside its declared
+  // owners' native sections at a cut (the overlap into the wall and its target) are native.
+  const uncoveredAt = (l?: NativeMaterialSections["levels"][number]) => {
+    const own = l
+      ? (l.sections
+          .filter((x) => d.nativeOwnerIds.includes(x.nativeElementId))
+          .flatMap((x) => x.partsFeet) as Parts)
+      : [];
+    return r.partsFeet.flatMap((p) =>
+      exactNativeDoorFloorDifference(p, [...own, ...drawn]),
+    ) as Parts;
+  };
+  const uncovered = (bandRows.length > 0 ? bandRows : [undefined])
+    .map(uncoveredAt)
+    .reduce((worst, u) => (area(u) > area(worst) ? u : worst));
   const outside = area(uncovered);
   if (outside > tiny) {
+    // the uncovered part that is not over the bound floor (an opening, void or beyond the slab)
     const overVoid =
       unsupported.length > 0
-        ? area(pc.intersection(uncovered, unsupported) as Parts)
+        ? area(
+            uncovered.flatMap((p) =>
+              exactNativeDoorFloorDifference(p, floors),
+            ) as Parts,
+          )
         : 0;
     fail(
       overVoid > tiny
@@ -2044,6 +2166,14 @@ export function verifyDrawingBackedDrawingEvidence(
       );
     // dwg-drawn-material: no registered DWG door segment of the cited section or of any section
     // registered to the row's level may cross the body.
+    if (r.drawingBacked!.kind === "dwg-drawn-material") {
+      const why = drawingBackedDrawnMaterialSolidity(
+        dwg,
+        section.wallSegments as [P2, P2][],
+        r.partsFeet,
+      );
+      if (why) throw new Error(`Drawing-backed assumption ${r.id}: ${why}`);
+    }
     if (r.drawingBacked!.kind === "dwg-drawn-material")
       for (const s of boundaryReference.sections)
         if (s === section || s.levelId === r.levelId)
