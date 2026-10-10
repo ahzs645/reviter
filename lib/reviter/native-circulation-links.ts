@@ -1231,11 +1231,33 @@ export function nativeWalkingTraversedIdentityKeys(
 /** Join only disconnected source circulation surfaces which overlap at a
  * physically supported height, plus native generated landings. Explicit doors,
  * walls, voids, private rooms and another storey's floors remain hard vetoes. */
-export function attachNativeCirculation(
+export type NativeApproachPair = {
+  a: IndoorNode;
+  b: IndoorNode;
+  landing: boolean;
+  distance: number;
+};
+/** Order-independent result of one candidate pair. It retains the region
+ * diagnostics observed for that pair so an ordered replay can reproduce the
+ * original first-seen diagnostic sequence exactly. */
+export type NativeApproachCandidate = {
+  regionDiagnostics: string[];
+  nativeFloorIds?: number[];
+  path?: Point3[];
+  traversedKeys?: string[];
+  traversalError?: string;
+};
+export type NativeApproachPlan = {
+  pairs: NativeApproachPair[];
+  starts: IndoorNode[];
+  /** Union-find parents after joining existing enabled walk/door/opening edges. */
+  initialParents: [string, string][];
+};
+/** Candidate enumeration, in the original deterministic distance order. */
+export function planNativeApproaches(
   model: ConvertResult,
   dataset: IndoorDataset,
-  onProgress?: (checkedPairs: number, totalPairs: number, newEdges: number) => void,
-): { edges: IndoorEdge[]; diagnostics: string[] } {
+): NativeApproachPlan {
   const envelopes = createNativeIndoorEnvelopeIndex(
     dataset.nativeIndoorEnvelopes,
     dataset.source.modelSha256,
@@ -1246,23 +1268,13 @@ export function attachNativeCirculation(
       const r = records.get(n.roomKey);
       return r?.circulation && r.walkable && r.access !== "staff";
     });
-  const parent = new Map(dataset.nodes.map((n) => [n.id, n.id]));
-  const root = (id: string): string => {
-    const p = parent.get(id)!;
-    if (p === id) return id;
-    const r = root(p);
-    parent.set(id, r);
-    return r;
-  };
-  const join = (a: string, b: string) => parent.set(root(a), root(b));
+  const unions = createApproachUnionFind(
+    dataset.nodes.map((n) => [n.id, n.id] as [string, string]),
+  );
   for (const e of dataset.edges.filter(
     (e) => e.enabled && ["walk", "door", "opening"].includes(e.kind),
   ))
-    join(e.from, e.to);
-  const edges: IndoorEdge[] = [],
-    diagnostics: string[] = [];
-  const walkingQuery = createNativeWalkingRegionQuery(model, dataset);
-  const region = (z: number, landing: boolean) => walkingQuery(z, landing);
+    unions.join(e.from, e.to);
   // Existing native-generated landings are the only starts allowed to cross an
   // unlabelled floor patch. All other links must remain source-circulation-owned.
   const starts = nodes.filter(
@@ -1270,12 +1282,7 @@ export function attachNativeCirculation(
       n.roomKey.startsWith("landing:") ||
       (records.get(n.roomKey)?.stair && n.kind === "portal"),
   );
-  const pairs: {
-    a: IndoorNode;
-    b: IndoorNode;
-    landing: boolean;
-    distance: number;
-  }[] = [];
+  const pairs: NativeApproachPair[] = [];
   for (const a of nodes) {
     const landing = starts.includes(a);
     for (const b of nodes) {
@@ -1283,7 +1290,7 @@ export function attachNativeCirculation(
         (a.id >= b.id && !landing) ||
         a.id === b.id ||
         (a.roomKey === b.roomKey && !landing) ||
-        root(a.id) === root(b.id) ||
+        unions.root(a.id) === unions.root(b.id) ||
         Math.abs(a.pointFeet[2] - b.pointFeet[2]) > 0.05
       )
         continue;
@@ -1303,27 +1310,50 @@ export function attachNativeCirculation(
     }
   }
   pairs.sort((a, b) => a.distance - b.distance);
-  let checkedPairs = 0;
-  onProgress?.(0, pairs.length, 0);
-  for (const p of pairs) {
-    // Report completed work without reordering geometry checks or interpreting
-    // the pair count as elapsed-time or route-certification progress.
-    if (checkedPairs > 0 && checkedPairs % 25 === 0)
-      onProgress?.(checkedPairs, pairs.length, edges.length);
-    checkedPairs++;
-    if (root(p.a.id) === root(p.b.id)) continue;
-    const portal = p.landing
-      ? p.a.kind === "portal"
-        ? p.a
-        : p.b.kind === "portal"
-          ? p.b
-          : undefined
-      : undefined;
+  return { pairs, starts, initialParents: unions.snapshot() };
+}
+export function createApproachUnionFind(parents: Iterable<[string, string]>) {
+  const parent = new Map(parents);
+  const root = (id: string): string => {
+    const p = parent.get(id)!;
+    if (p === id) return id;
+    const r = root(p);
+    parent.set(id, r);
+    return r;
+  };
+  return {
+    root,
+    join: (a: string, b: string) => parent.set(root(a), root(b)),
+    snapshot: (): [string, string][] => [...parent],
+  };
+}
+/** Region key used by the walking-region query for this pair (portal or plain). */
+export function nativeApproachPortal(p: NativeApproachPair): IndoorNode | undefined {
+  return p.landing
+    ? p.a.kind === "portal"
+      ? p.a
+      : p.b.kind === "portal"
+        ? p.b
+        : undefined
+    : undefined;
+}
+/** Pure per-pair evaluation. It depends only on the unchanged model/dataset and
+ * the pair; region memos are complete-operand caches and never change results. */
+export function createNativeApproachEvaluator(
+  model: ConvertResult,
+  dataset: IndoorDataset,
+) {
+  const records = new Map(dataset.records.map((r) => [r.key, r]));
+  const walkingQuery = createNativeWalkingRegionQuery(model, dataset);
+  const region = (z: number, landing: boolean) => walkingQuery(z, landing);
+  return (p: NativeApproachPair): NativeApproachCandidate => {
+    const portal = nativeApproachPortal(p);
     const r = portal
       ? walkingQuery(portal.pointFeet[2], true, portal)
       : region(p.a.pointFeet[2], p.landing);
-    for (const message of r.diagnostics ?? [])
-      if (!diagnostics.includes(message)) diagnostics.push(message);
+    const candidate: NativeApproachCandidate = {
+      regionDiagnostics: [...(r.diagnostics ?? [])],
+    };
     let path: Point3[] | undefined;
     if (portal) {
       const door = dataset.doors?.find(
@@ -1336,7 +1366,7 @@ export function attachNativeCirculation(
         door.state !== "connected" ||
         !dataset.edges.some((e) => e.id === door.id && e.enabled)
       )
-        continue;
+        return candidate;
       const side =
           (portal.pointFeet[0] - door.pointFeet[0]) * n[0] +
           (portal.pointFeet[1] - door.pointFeet[1]) * n[1],
@@ -1346,7 +1376,7 @@ export function attachNativeCirculation(
           portal.pointFeet[1] + n[1] * sign * 2,
           portal.pointFeet[2],
         ];
-      if (!supportedWalkingPath(r, [portal.pointFeet, out])) continue;
+      if (!supportedWalkingPath(r, [portal.pointFeet, out])) return candidate;
       const other = portal === p.a ? p.b : p.a,
         capOut = nativeRampCapOutward(dataset, other);
       let rest: Point3[] | undefined;
@@ -1411,16 +1441,14 @@ export function attachNativeCirculation(
       path = supportedWalkingPath(r, [p.a.pointFeet, p.b.pointFeet])
         ? [p.a.pointFeet, p.b.pointFeet]
         : undefined;
-    if (!path) continue;
+    if (!path) return candidate;
     let traversedKeys: string[];
     if (dataset.nativeIndoorEnvelopes) {
       try {
         traversedKeys = nativeWalkingTraversedIdentityKeys(r.identityFaces ?? [], path);
       } catch (error) {
-        diagnostics.push(
-          `Native approach ${p.a.id} / ${p.b.id} has unclassifiable whole-face identity; no route generated: ${String(error).slice(0, 300)}`,
-        );
-        continue;
+        candidate.traversalError = String(error).slice(0, 300);
+        return candidate;
       }
     } else
       traversedKeys = dataset.records
@@ -1446,6 +1474,39 @@ export function attachNativeCirculation(
             }),
         )
         .map((record) => record.key);
+    candidate.path = path;
+    candidate.traversedKeys = traversedKeys;
+    candidate.nativeFloorIds = [...r.nativeFloorIds];
+    return candidate;
+  };
+}
+/** Ordered replay: the only order dependence of the original stage is the
+ * union-find skip before evaluation and the join after acceptance, plus
+ * first-seen region diagnostic de-duplication. Candidates for pairs that the
+ * replay skips are never consulted, so speculative evaluation cannot add
+ * diagnostics or edges. */
+export function createNativeApproachReplay(
+  dataset: IndoorDataset,
+  plan: NativeApproachPlan,
+  onProgress?: (checkedPairs: number, totalPairs: number, newEdges: number) => void,
+) {
+  const unions = createApproachUnionFind(plan.initialParents);
+  const edges: IndoorEdge[] = [],
+    diagnostics: string[] = [];
+  let next = 0,
+    reported = 0;
+  onProgress?.(0, plan.pairs.length, 0);
+  const apply = (p: NativeApproachPair, c: NativeApproachCandidate) => {
+    for (const message of c.regionDiagnostics)
+      if (!diagnostics.includes(message)) diagnostics.push(message);
+    if (c.traversalError !== undefined) {
+      diagnostics.push(
+        `Native approach ${p.a.id} / ${p.b.id} has unclassifiable whole-face identity; no route generated: ${c.traversalError}`,
+      );
+      return;
+    }
+    const path = c.path;
+    if (!path) return;
     edges.push({
       id: `native-circulation:${[p.a.id, p.b.id].sort().join("|")}`,
       from: p.a.id,
@@ -1461,18 +1522,62 @@ export function attachNativeCirculation(
               dataset.alignment.horizontalMetresPerFoot,
           0,
         ),
-      roomKeys: [...new Set([p.a.roomKey, p.b.roomKey, ...traversedKeys])],
-      evidence: `continuously supported full 2 ft native floor approach; exact slabs ${r.nativeFloorIds.join(",")}; walls, columns, doors, voids and staff/nonwalkable masks vetoed; all traversed source room identities retained; ${p.landing ? "generated native landing" : "source circulation overlap"}; access/accessibility remain unverified`,
+      roomKeys: [...new Set([p.a.roomKey, p.b.roomKey, ...c.traversedKeys!])],
+      evidence: `continuously supported full 2 ft native floor approach; exact slabs ${c.nativeFloorIds!.join(",")}; walls, columns, doors, voids and staff/nonwalkable masks vetoed; all traversed source room identities retained; ${p.landing ? "generated native landing" : "source circulation overlap"}; access/accessibility remain unverified`,
       accessible: "unknown",
       enabled: true,
     });
-    join(p.a.id, p.b.id);
-  }
-  onProgress?.(checkedPairs, pairs.length, edges.length);
-  for (const n of starts)
-    if (!edges.some((e) => e.from === n.id || e.to === n.id))
-      diagnostics.push(
-        `Native landing ${n.id} has no new continuously supported attachment; retained existing graph connections.`,
-      );
-  return { edges, diagnostics };
+    unions.join(p.a.id, p.b.id);
+  };
+  return {
+    /** Index of the next pair to replay, or plan.pairs.length when done. */
+    get next() {
+      return next;
+    },
+    /** True when pair i (>= next) is currently unconnected, i.e. would be
+     * evaluated if replay reached it with the present joins. */
+    open: (i: number) =>
+      unions.root(plan.pairs[i]!.a.id) !== unions.root(plan.pairs[i]!.b.id),
+    /** Advance through skipped pairs; returns the next pair needing a candidate. */
+    advance(): number {
+      while (next < plan.pairs.length) {
+        const p = plan.pairs[next]!;
+        // Report completed work exactly once per 25 pairs, as before, without
+        // reordering geometry checks or implying route certification.
+        if (next > reported && next % 25 === 0) {
+          reported = next;
+          onProgress?.(next, plan.pairs.length, edges.length);
+        }
+        if (unions.root(p.a.id) !== unions.root(p.b.id)) return next;
+        next++;
+      }
+      return next;
+    },
+    /** Apply the candidate for the pair returned by advance(). */
+    accept(candidate: NativeApproachCandidate) {
+      apply(plan.pairs[next]!, candidate);
+      next++;
+    },
+    finish() {
+      onProgress?.(plan.pairs.length, plan.pairs.length, edges.length);
+      for (const n of plan.starts)
+        if (!edges.some((e) => e.from === n.id || e.to === n.id))
+          diagnostics.push(
+            `Native landing ${n.id} has no new continuously supported attachment; retained existing graph connections.`,
+          );
+      return { edges, diagnostics };
+    },
+  };
+}
+export function attachNativeCirculation(
+  model: ConvertResult,
+  dataset: IndoorDataset,
+  onProgress?: (checkedPairs: number, totalPairs: number, newEdges: number) => void,
+): { edges: IndoorEdge[]; diagnostics: string[] } {
+  const plan = planNativeApproaches(model, dataset);
+  const evaluate = createNativeApproachEvaluator(model, dataset);
+  const replay = createNativeApproachReplay(dataset, plan, onProgress);
+  while (replay.advance() < plan.pairs.length)
+    replay.accept(evaluate(plan.pairs[replay.next]!));
+  return replay.finish();
 }

@@ -99,6 +99,8 @@ export async function prepareIndoorDataset(
     /** CLI may offload independent physical planes; route decisions below
      * remain in the original order. Browser/default compilation is unchanged. */
     nativeCirculationCompiler?: (model: ConvertResult, dataset: IndoorDataset) => Promise<ReturnType<typeof prepareNativeCirculationGeometry>>;
+    /** CLI resumable/parallel landing-approach stage with byte-identical output. */
+    nativeLandingApproaches?: (model: ConvertResult, dataset: IndoorDataset, onProgress: (checked: number, total: number, edges: number) => void) => Promise<ReturnType<typeof attachNativeCirculation>>;
   } = {},
 ): Promise<IndoorDataset> {
   const data = parseRoomDirectory(JSON.stringify(input));
@@ -1014,8 +1016,13 @@ export async function prepareIndoorDataset(
   }
   if (landingDoors.applied.length) dataset.nodes = [...nodes.values()];
 
-  const attachments = attachNativeCirculation(model, dataset, (checked, total, edges) =>
-    progress(`Checking native landing approaches · ${checked}/${total} candidate pairs · ${edges} supported connections`));
+  const landingProgress = (checked: number, total: number, edges: number) =>
+    progress(`Checking native landing approaches · ${checked}/${total} candidate pairs · ${edges} supported connections`);
+  // CLI may checkpoint/offload the pure per-pair evaluations; the ordered
+  // union-find replay and diagnostics are identical to the default path.
+  const attachments = options.nativeLandingApproaches
+    ? await options.nativeLandingApproaches(model, dataset, landingProgress)
+    : attachNativeCirculation(model, dataset, landingProgress);
   dataset.edges.push(...attachments.edges);
   for (const message of attachments.diagnostics) issue("native-landing-attachment", message);
   for (const edge of attachments.edges) {
