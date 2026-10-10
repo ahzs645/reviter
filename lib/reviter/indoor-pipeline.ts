@@ -361,7 +361,7 @@ export async function prepareIndoorDataset(
   {
     const counts = nativeProvisionalAssumptionCounts(dataset.nativeProvisionalCornerSeals);
     if (counts.drawingBacked)
-      issue("drawing-backed-assumptions", `${counts.drawingBacked} drawing-backed construction assumption(s) are applied (DWG-continuous seals ${counts.drawingBackedByKind["dwg-continuous-seal"]}, assumed walls ${counts.drawingBackedByKind["dwg-assumed-wall"]}, assumed columns ${counts.drawingBackedByKind["dwg-assumed-column"]}, exact-contact closures ${counts.drawingBackedByKind["exact-contact-closure"]}, owner-authorized seals ${counts.drawingBackedByKind["owner-authorized-seal"]}), separate from ${counts.humanAuthorizedCornerSeals} human-authorized corner seal(s); none is source-verified construction.`);
+      issue("drawing-backed-assumptions", `${counts.drawingBacked} drawing-backed construction assumption(s) are applied (DWG-continuous seals ${counts.drawingBackedByKind["dwg-continuous-seal"]}, assumed walls ${counts.drawingBackedByKind["dwg-assumed-wall"]}, assumed columns ${counts.drawingBackedByKind["dwg-assumed-column"]}, exact-contact closures ${counts.drawingBackedByKind["exact-contact-closure"]}, owner-authorized seals ${counts.drawingBackedByKind["owner-authorized-seal"]}, DWG drawn-material bodies ${counts.drawingBackedByKind["dwg-drawn-material"]}), separate from ${counts.humanAuthorizedCornerSeals} human-authorized corner seal(s); none is source-verified construction.`);
   }
   verifyNativeDerivedFrameReturns(dataset);
   // Derived envelope supplement: once the reviewed correction rows above are verified, spaces they
