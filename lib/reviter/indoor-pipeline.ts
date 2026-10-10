@@ -712,6 +712,7 @@ export async function prepareIndoorDataset(
     model,
     sourceRooms,
     data.navigation?.stairLinks,
+    dataset,
   )) {
     const ids = s.rooms.map((key, i) => `${s.id}:${i}`);
     s.rooms.forEach((key, i) => {

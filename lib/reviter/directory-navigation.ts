@@ -26,7 +26,10 @@ import {
 
 import { isStairArea } from "./directory-stair-geometry.ts";
 import { nativeStairLandingContact } from "./native-stair-landing-contact.ts";
-import { roomInternalStairOwner } from "./native-room-internal-stairs.ts";
+import {
+  roomInternalStairOwner,
+  type RoomInternalStairLandingData,
+} from "./native-room-internal-stairs.ts";
 export const isStaircase = (room: DirectoryRoom) =>
   isStairArea(room) && room.stairAccess !== "local-only";
 const allowsStairNeighbour = (
@@ -350,6 +353,7 @@ export function directoryStairs(
   model: ConvertResult,
   rooms: readonly DirectoryRoom[],
   reviewed: readonly ReviewedStairLink[] = [],
+  landings?: RoomInternalStairLandingData,
 ): StairConnection[] {
   const elevations = new Map(model.levels.map((l) => [l.levelId, l.elevation]));
   const records = new Map(model.elementBounds.map((r) => [r.elementId, r]));
@@ -376,6 +380,7 @@ export function directoryStairs(
         },
         rooms,
         (id) => elevations.get(id),
+        landings,
       )
     )
       continue;

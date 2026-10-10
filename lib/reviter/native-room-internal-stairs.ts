@@ -3,12 +3,23 @@ import type { ConvertResult } from "./types.ts";
 import type { IndoorDataset, IndoorRecord } from "./indoor-contract.ts";
 import { roomArea, type DirectoryRoom, type RoomPoint } from "./room-directory.ts";
 import { isStairArea } from "./directory-stair-geometry.ts";
-import { nativePhysicalLevelAssignment, type NativePhysicalLevelData } from "./native-physical-level-records.ts";
+import {
+  nativePhysicalLevelAssignment,
+  nativePhysicalLevelAssignments,
+  type NativePhysicalLevelData,
+} from "./native-physical-level-records.ts";
 
 /** Steps inside one room (theatre seating, a raised dais) belong to that room.
  * They never become a stair connector or an inter-floor link. */
-export const NATIVE_ROOM_INTERNAL_STAIRS_VERSION = "native-room-internal-stairs-v1";
+export const NATIVE_ROOM_INTERNAL_STAIRS_VERSION = "native-room-internal-stairs-v2";
 export const ROOM_INTERNAL_STAIR_FRACTION = 0.7;
+/** An end tread lands on a slab within this horizontal distance. */
+export const ROOM_INTERNAL_STAIR_LANDING_CONTACT_FEET = 0.5;
+/** The head slab is at most one riser above the top tread. */
+const LANDING_RISER_FEET = 1;
+/** The run solid starts on its foot slab. */
+const FOOT_PLANE_FEET = 0.1;
+const SAME_PLANE_FEET = 0.05;
 
 type Ring = RoomPoint[];
 type Point3 = [number, number, number];
@@ -19,6 +30,82 @@ const roomGeom = (room: DirectoryRoom) =>
   [room.polygonFeet, ...(room.holesFeet ?? [])].map(closed);
 
 export type NativeStairTreads = { stairElementId: number; treads: Point3[][]; lowFeet: number; highFeet: number };
+/** Walking slabs and the physical levels that list them. */
+export type RoomInternalStairLandingData = NativePhysicalLevelData;
+
+const segDistanceSq = (p: RoomPoint, a: RoomPoint, b: RoomPoint) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy;
+  const t = l ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l)) : 0;
+  const ex = p[0] - a[0] - t * dx, ey = p[1] - a[1] - t * dy;
+  return ex * ex + ey * ey;
+};
+const crosses = (a: RoomPoint, b: RoomPoint, c: RoomPoint, d: RoomPoint) => {
+  const o = (p: RoomPoint, q: RoomPoint, r: RoomPoint) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+};
+const inRing = (p: RoomPoint, ring: readonly RoomPoint[]) => {
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]!, b = ring[j]!;
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < a[0] + ((p[1] - a[1]) * (b[0] - a[0])) / (b[1] - a[1])) c = !c;
+  }
+  return c;
+};
+const inPart = (p: RoomPoint, part: readonly RoomPoint[][]) => inRing(p, part[0]!) && !part.slice(1).some(h => inRing(p, h));
+const edges = (ring: readonly RoomPoint[]) => ring.map((a, i) => [a, ring[(i + 1) % ring.length]!] as const);
+/** Squared horizontal distance between a tread and a slab part (outer ring plus holes). */
+function treadSlabDistanceSq(tread: readonly RoomPoint[], part: readonly RoomPoint[][]): number {
+  if (tread.some(p => inPart(p, part)) || part[0]!.some(p => inRing(p, tread))) return 0;
+  let best = Infinity;
+  for (const ring of part)
+    for (const [c, d] of edges(ring))
+      for (const [a, b] of edges(tread)) {
+        if (crosses(a, b, c, d)) return 0;
+        best = Math.min(best, segDistanceSq(a, c, d), segDistanceSq(b, c, d), segDistanceSq(c, a, b), segDistanceSq(d, a, b));
+      }
+  return best;
+}
+
+/** Levels other than the owner room's own and assigned physical level whose
+ * listed walking slab carries one end of the flight. The foot is the slab the
+ * run starts on (its lowest point) touching the lowest tread; the head is a slab
+ * at most one riser above the top tread touching it. Slabs no level lists are
+ * not evidence either way. */
+export function roomInternalStairForeignLandingLevels(
+  stair: NativeStairTreads,
+  owner: Pick<DirectoryRoom, "key" | "levelId">,
+  data: RoomInternalStairLandingData,
+): number[] {
+  const floors = data.walkingSupport?.floors, levels = data.nativePhysicalLevels?.levels;
+  if (!floors || !levels) return [];
+  const treads = stair.treads.filter(t => t.length >= 3);
+  if (!treads.length) return [];
+  const zs = treads.map(t => Math.max(...t.map(p => p[2])));
+  const low = Math.min(...zs), high = Math.max(...zs);
+  const foot = treads.filter((_, i) => zs[i]! - low < 0.01), head = treads.filter((_, i) => high - zs[i]! < 0.01);
+  const own = new Set([owner.levelId]);
+  const physical = nativePhysicalLevelAssignments(data).get(owner.key)?.physicalLevelId;
+  if (physical !== undefined) own.add(physical);
+  const out = new Set<number>();
+  const ends: [Point3[][], (z: number) => boolean][] = [
+    [foot, z => Math.abs(z - stair.lowFeet) <= FOOT_PLANE_FEET],
+    [head, z => z >= high - SAME_PLANE_FEET && z <= high + LANDING_RISER_FEET],
+  ];
+  for (const [end, atEnd] of ends)
+    for (const f of floors) {
+      if (!atEnd(f.elevationFeet)) continue;
+      const listing = levels.filter(l => l.nativeFloorElementIds.includes(f.nativeElementId) &&
+        Math.abs(l.elevationFeet - f.elevationFeet) < SAME_PLANE_FEET).map(l => l.nativeLevelId);
+      if (!listing.length || listing.some(id => own.has(id))) continue;
+      const parts = (f.partsFeet ?? [f.ringsFeet]).filter(p => p[0]?.length >= 3) as RoomPoint[][][];
+      const touches = end.some(t => {
+        const ring = t.map(p => [p[0], p[1]] as RoomPoint);
+        return parts.some(part => treadSlabDistanceSq(ring, part) <= ROOM_INTERNAL_STAIR_LANDING_CONTACT_FEET * ROOM_INTERNAL_STAIR_LANDING_CONTACT_FEET);
+      });
+      if (touches) listing.forEach(id => out.add(id));
+    }
+  return [...out].sort((a, b) => a - b);
+}
 
 /** Persisted assemblies with retained native tread topology. */
 export function nativeStairTreadSets(model: Pick<ConvertResult, "elementBounds" | "nativeStairAssemblies">): NativeStairTreads[] {
@@ -39,11 +126,15 @@ export function nativeStairTreadSets(model: Pick<ConvertResult, "elementBounds" 
 
 /** The ONE non-stair room holding >=70% of the stair's tread footprint, provided
  * no stair room of its own lists or overlaps the flight. Rooms are restricted to
- * levels within the flight's vertical span (1 ft tolerance). */
+ * levels within the flight's vertical span (1 ft tolerance). With landing data,
+ * a flight joining two native levels is never room-internal: an end landing on a
+ * walking slab of a level that is neither the owner's level nor its assigned
+ * physical level keeps it a flight. */
 export function roomInternalStairOwner(
   stair: NativeStairTreads,
   rooms: readonly DirectoryRoom[],
   levelElevation: (levelId: number) => number | undefined,
+  landings?: RoomInternalStairLandingData,
 ): DirectoryRoom | undefined {
   const polygons = stair.treads
     .map(t => t.map(p => [p[0], p[1]] as RoomPoint))
@@ -70,7 +161,9 @@ export function roomInternalStairOwner(
     if (inRange.some(r => isStairArea(r) && overlap(r) > 0.5))
       return undefined;
     const owners = inRange.filter(r => !isStairArea(r) && overlap(r) >= ROOM_INTERNAL_STAIR_FRACTION * total);
-    return owners.length === 1 ? owners[0] : undefined;
+    if (owners.length !== 1) return undefined;
+    if (landings && roomInternalStairForeignLandingLevels(stair, owners[0]!, landings).length) return undefined;
+    return owners[0];
   } catch {
     return undefined;
   }
@@ -121,7 +214,7 @@ export function nativeSteppedRoomArrivals(
   const stairs = nativeStairTreadSets(model);
   const internal = new Map<string, number[]>();
   for (const stair of stairs) {
-    const owner = roomInternalStairOwner(stair, rooms, elevation);
+    const owner = roomInternalStairOwner(stair, rooms, elevation, dataset as unknown as NativePhysicalLevelData);
     if (owner) internal.set(owner.key, [...internal.get(owner.key) ?? [], stair.stairElementId]);
   }
   for (const record of dataset.records as IndoorRecord[]) {
