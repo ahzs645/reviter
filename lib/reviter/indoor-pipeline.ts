@@ -5,6 +5,7 @@ import {verifyNativeDerivedFrameReturns} from "./native-derived-frame-returns.ts
 import {validateNativeSourceStairMaterials} from "./native-source-stair-material.ts";
 import {nativeStairRouteQualified} from "./native-source-stair.ts";
 import {prepareNativePhysicalLevels,nativePhysicalWorkingLevelIds} from "./native-physical-levels.ts";
+import { nativeSteppedRoomArrivals } from "./native-room-internal-stairs.ts";
 import {nativeMaterialPlanWalls} from "./native-material-plan.ts";
 import {preservedNativeDoorPortals} from "./preserved-native-door-portals.ts";
 import {validateNativeFloorOpeningOwnershipBinding} from "./native-floor-opening-ownership.ts";
@@ -427,6 +428,7 @@ export async function prepareIndoorDataset(
     snap: number,
     nativeClearWidthFootprint?: RoomPoint[],
     nativeDoorNormal?: RoomPoint,
+    elevationFeet?: number,
   ) => {
     const r = byRecord.get(roomKey);
     if (!r || !r.walkable || r.access === "staff") return;
@@ -441,18 +443,29 @@ export async function prepareIndoorDataset(
       levelId: r.levelId,
       building: r.building,
       surfaceId: r.surfaceId,
-      pointFeet: [...point, r.elevationFeet],
+      pointFeet: [...point, elevationFeet ?? r.elevationFeet],
       geographic: geo(point),
     });
   };
-  for (const r of sourceRooms)
+  // A stepped room (theatre seating descending to an offset physical slab) is
+  // entered from its identity level: arrive on its top aisle. The steps stay
+  // inside the room; no route descends them and access is not inferred.
+  const steppedArrivals = nativeSteppedRoomArrivals(model, dataset, sourceRooms);
+  for (const a of steppedArrivals.values())
+    issue("native-stepped-room-arrival", `Arrival on the top aisle (native floor ${a.aisleNativeFloorIds.map(id => `#${id}`).join(", ")} at ${a.elevationFeet.toFixed(2)} ft); room-internal steps ${a.stairElementIds.map(id => `#${id}`).join(", ")} are part of the room, not a connector. Accessibility unknown.`, a.roomKey, undefined, a.levelId);
+  for (const r of sourceRooms) {
+    const stepped = steppedArrivals.get(r.key);
     addTerminal(
       `arrival:${r.key}`,
       r.key,
-      r.routePointFeet ?? r.labelPointFeet,
+      stepped?.pointFeet ?? r.routePointFeet ?? r.labelPointFeet,
       "arrival",
       cell * 2,
+      undefined,
+      undefined,
+      stepped?.elevationFeet,
     );
+  }
   const geometries = new Map<
       number,
       ReturnType<typeof architecturalPlanGeometry>

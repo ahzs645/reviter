@@ -25,6 +25,7 @@ import {
 
 import { isStairArea } from "./directory-stair-geometry.ts";
 import { nativeStairLandingContact } from "./native-stair-landing-contact.ts";
+import { roomInternalStairOwner } from "./native-room-internal-stairs.ts";
 export const isStaircase = (room: DirectoryRoom) =>
   isStairArea(room) && room.stairAccess !== "local-only";
 const allowsStairNeighbour = (
@@ -362,6 +363,21 @@ export function directoryStairs(
       high = Math.max(...runs.map((r) => r!.boundsFeet.max.z));
     if (high - low < 1) continue;
     const treads = runs.flatMap((r) => r!.stairTreads!);
+    // Steps held by ONE non-stair room (theatre seating) belong to that room:
+    // never a stair connector or inter-floor link.
+    if (
+      roomInternalStairOwner(
+        {
+          stairElementId: assembly.stairElementId,
+          treads: treads as [number, number, number][][],
+          lowFeet: low,
+          highFeet: high,
+        },
+        rooms,
+        (id) => elevations.get(id),
+      )
+    )
+      continue;
     const overlaps = (room: DirectoryRoom) =>
       treads.some((t) => {
         const polygon = t.map((p) => [p[0], p[1]] as RoomPoint);
