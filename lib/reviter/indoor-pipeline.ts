@@ -1,6 +1,6 @@
 import * as DMath from "./deterministic-math.ts";
 import {initializeNativeExactGeosOverlay} from "./native-exact-geos-overlay.ts";
-import {nativeProvisionalAssumptionCounts,verifyDrawingBackedDrawingEvidence,verifyNativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
+import {nativeProvisionalAssumptionCounts,verifyDrawingBackedDrawingEvidence,verifyNativeProvisionalCornerSeals,type DwgDerivedOutlines} from "./native-provisional-corner-seals.ts";
 import {createNativePortalFloorVoidQuery} from "./native-portal-floor-voids.ts";
 import {verifyNativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
 import {validateNativeSourceStairMaterials} from "./native-source-stair-material.ts";
@@ -357,7 +357,7 @@ export async function prepareIndoorDataset(
   };
   await verifyNativeProvisionalCornerSeals(dataset);
   // Drawing-backed rows must cite this project's own registered drawing, byte for byte.
-  verifyDrawingBackedDrawingEvidence(dataset.nativeProvisionalCornerSeals, data.boundaryReference);
+  verifyDrawingBackedDrawingEvidence(dataset.nativeProvisionalCornerSeals, data.boundaryReference, data.dwgDerivedOutlines as DwgDerivedOutlines | undefined);
   {
     const counts = nativeProvisionalAssumptionCounts(dataset.nativeProvisionalCornerSeals);
     if (counts.drawingBacked)

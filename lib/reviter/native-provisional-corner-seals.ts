@@ -151,7 +151,9 @@ export type NativeDrawingBackedAssumption = {
     sectionId: string;
     toleranceFeet: number;
     entities: {
-      kind: "wallSegments" | "doorSegments";
+      /** derivedOutlineSegments (dwg-drawn-material only): an edge of a closed outline derived
+       * from a raw DWG entity (circle, closed polyline) in the receipt-bound DwgDerivedOutlines. */
+      kind: "wallSegments" | "doorSegments" | "derivedOutlineSegments";
       index: number;
       segmentFeet: [P2, P2];
     }[];
@@ -165,6 +167,9 @@ export type NativeDrawingBackedAssumption = {
      * explicit owner decision applies it to this one. Never implicit: without this record the
      * cited section must be registered to the row's own level. The native material near the body
      * must line up vertically with the source level's within the tolerance. */
+    /** sha256 of JSON.stringify([sourceDwgSha256, derived outline section]) when any
+     * derivedOutlineSegments entity is cited. */
+    derivedOutlinesSha256?: string;
     crossLevel?: {
       decisionId: string;
       sourceLevelId: number;
@@ -190,6 +195,9 @@ export const DRAWING_BACKED_LIMITS = {
   wallFaceParallelSine: 0.02,
   /** dwg-drawn-material: the body may lie at most this far outside the drawn material. */
   drawnMaterialToleranceFeet: 0.05,
+  /** dwg-drawn-material: widest closed outline (a column casing) that counts as drawn material;
+   * the outline must also enclose part of a declared native owner. */
+  drawnOutlineWidthFeet: 4,
 } as const;
 const unit = (v: P2): P2 => {
   const l = DMath.hypot(v[0], v[1]);
@@ -316,6 +324,12 @@ function drawnMaterialShapeValid(
     (i as number) >= 0 &&
     (i as number) < n &&
     d.dwg!.entities[i as number]?.kind === "wallSegments";
+  const outlinePos = (i: unknown) =>
+    pos(i) ||
+    (Number.isSafeInteger(i) &&
+      (i as number) >= 0 &&
+      (i as number) < n &&
+      d.dwg!.entities[i as number]?.kind === "derivedOutlineSegments");
   const shape =
     c.kind === "bridge"
       ? point(c.pointAFeet) &&
@@ -380,7 +394,14 @@ function drawnMaterialShapeValid(
         o.length >= 3 &&
         o.length <= 1000 &&
         new Set(o).size === o.length &&
-        o.every(pos),
+        o.every(outlinePos),
+    ) &&
+    (!d.dwg.entities.some((e) => e.kind === "derivedOutlineSegments") ||
+      digest(d.dwg.derivedOutlinesSha256)) &&
+    !d.dwg.entities.some(
+      (e, i) =>
+        e.kind === "derivedOutlineSegments" &&
+        !m.closedOutlines.some((o) => o.includes(i)),
     )
   );
 }
@@ -439,6 +460,32 @@ const orientedStart = (first: [P2, P2], next: [P2, P2]): P2[] => {
     ? [first[1], first[0]]
     : [first[0], first[1]];
 };
+/** The rings of a row's cited closed outlines, in chain order (validated by drawingBackedDrawnMaterial). */
+function drawnOutlineRings(
+  dwg: NonNullable<NativeDrawingBackedAssumption["dwg"]>,
+): { ring: P2[]; label: string }[] {
+  const seg = (i: number) => dwg.entities[i].segmentFeet;
+  return dwg.drawnMaterial!.closedOutlines.map((o) => {
+    const ring = orientedStart(seg(o[0]), seg(o[1]));
+    for (const i of o.slice(1)) {
+      const [p, q] = seg(i),
+        end = ring.at(-1)!;
+      ring.push(
+        DMath.hypot(p[0] - end[0], p[1] - end[1]) <=
+          DMath.hypot(q[0] - end[0], q[1] - end[1])
+          ? q
+          : p,
+      );
+    }
+    ring.pop();
+    return {
+      ring,
+      label: o
+        .map((i) => `${dwg.entities[i].kind}#${dwg.entities[i].index}`)
+        .join(","),
+    };
+  });
+}
 /** Material the registered drawing draws, as overlapping pieces, from the entities a dwg-drawn-material row cites:
  * the band between each cited pair of parallel wall-face lines (over their common span; the
  * separation is positive and at most a wall thickness) and the inside of each cited closed
@@ -451,7 +498,7 @@ export function drawingBackedDrawnMaterial(
     t = dwg.toleranceFeet,
     m = dwg.drawnMaterial!,
     seg = (i: number) => dwg.entities[i].segmentFeet,
-    label = (i: number) => `wallSegments#${dwg.entities[i].index}`,
+    label = (i: number) => `${dwg.entities[i].kind}#${dwg.entities[i].index}`,
     regions: Parts[] = [];
   for (const [i, j] of m.faceLinePairs) {
     const [a0, a1] = seg(i),
@@ -520,7 +567,7 @@ export function drawingBackedDrawnMaterial(
         `cited drawn outline ${o.map(label).join(",")} does not close`,
       );
     const width = minimumWidth(ring);
-    if (!(width > 0) || width > L.wallThicknessFeet)
+    if (!(width > 0) || width > L.drawnOutlineWidthFeet)
       throw new Error(
         `cited drawn outline ${o.map(label).join(",")} is ${width.toFixed(3)} ft wide, not wall or column material`,
       );
@@ -546,7 +593,7 @@ export function drawingBackedDrawnMaterialSolidity(
   const t = dwg.toleranceFeet,
     m = dwg.drawnMaterial!,
     seg = (i: number) => dwg.entities[i].segmentFeet,
-    label = (i: number) => `wallSegments#${dwg.entities[i].index}`;
+    label = (i: number) => `${dwg.entities[i].kind}#${dwg.entities[i].index}`;
   const ps = body.flat(PARTS_VERTEX_DEPTH),
     pad = DRAWING_BACKED_LIMITS.wallThicknessFeet,
     box = [
@@ -575,7 +622,7 @@ export function drawingBackedDrawnMaterialSolidity(
     for (const { g, index } of nearby)
       if (
         !own.some((o) => same(o, g) || same([o[1], o[0]], g)) &&
-        segmentLengthInside(g, region) > t
+        segmentLengthInside(g, region, t) > t
       )
         return `${what} is not solid drawn material: registered line wallSegments#${index} runs inside it`;
   };
@@ -628,7 +675,9 @@ export function drawingBackedDrawnMaterialSolidity(
   return undefined;
 }
 /** Length of a segment strictly inside a body (any parts). */
-function segmentLengthInside(s: [P2, P2], body: Parts) {
+/** Length of a segment strictly inside a body (any parts); with a clearance, only the parts
+ * farther than it from every body edge count (a line drawn on the boundary is not inside). */
+function segmentLengthInside(s: [P2, P2], body: Parts, clearance = 0) {
   const [a, b] = s,
     d = sub2(b, a),
     l = DMath.hypot(d[0], d[1]);
@@ -660,11 +709,19 @@ function segmentLengthInside(s: [P2, P2], body: Parts) {
       };
       return wind(part[0]) && !part.slice(1).some(wind);
     });
+  const edges = clearance > 0 ? segments(body) : [];
+  const deep = (p: P2) =>
+    inside(p) && edges.every((e) => distance(p, ...e).distance > clearance);
+  const samples = clearance > 0 ? 9 : 1;
   let total = 0;
   for (let k = 1; k < ts.length; k++) {
-    const m = (ts[k] + ts[k - 1]) / 2;
-    if (ts[k] > ts[k - 1] && inside([a[0] + m * d[0], a[1] + m * d[1]]))
-      total += (ts[k] - ts[k - 1]) * l;
+    if (!(ts[k] > ts[k - 1])) continue;
+    let hit = 0;
+    for (let j = 0; j < samples; j++) {
+      const m = ts[k - 1] + ((j + 0.5) / samples) * (ts[k] - ts[k - 1]);
+      if (deep([a[0] + m * d[0], a[1] + m * d[1]])) hit++;
+    }
+    total += (hit / samples) * (ts[k] - ts[k - 1]) * l;
   }
   return total;
 }
@@ -761,7 +818,13 @@ function validateDrawingBackedShape(
         d.dwg.entities.some(
           (e) =>
             !e ||
-            !["wallSegments", "doorSegments"].includes(e.kind) ||
+            ![
+              "wallSegments",
+              "doorSegments",
+              ...(d.kind === "dwg-drawn-material"
+                ? ["derivedOutlineSegments"]
+                : []),
+            ].includes(e.kind) ||
             !Number.isSafeInteger(e.index) ||
             e.index < 0 ||
             !Array.isArray(e.segmentFeet) ||
@@ -2006,6 +2069,28 @@ function checkDrawnMaterialEvidence(
   } catch (error) {
     return fail(String((error as Error).message));
   }
+  // A closed outline is wall or column material only where it draws a declared native owner
+  // (a casing round its column, a wall polygon round its wall), never an empty room or closet.
+  const ownMaterial = bandRows.flatMap((l) =>
+    l.sections
+      .filter((x) => d.nativeOwnerIds.includes(x.nativeElementId))
+      .flatMap((x) => x.partsFeet),
+  ) as Parts;
+  for (const { ring, label } of drawnOutlineRings(dwg)) {
+    let encloses = false;
+    for (const part of ownMaterial) {
+      try {
+        encloses = area(pc.intersection([[ring]], [part]) as Parts) > tiny;
+      } catch {
+        encloses = false;
+      }
+      if (encloses) break;
+    }
+    if (!encloses)
+      fail(
+        `cited drawn outline ${label} encloses no declared native owner material`,
+      );
+  }
   const floors =
     data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
       ? data.walkingSupport.floors
@@ -2210,6 +2295,124 @@ const censusBounds = (v: NativeProvisionalCornerSeals, id: number) =>
 export async function verifyNativeProvisionalCornerSeals(data: Data) {
   createNativeProvisionalCornerSealIndex(data);
 }
+/** Closed outlines derived from raw DWG entities that the registered boundary reference does not
+ * carry (circles, closed polylines, casings closed by a raw line), transformed by each section's
+ * verified registration and tessellated deterministically. Separate, receipt-bound evidence: every
+ * outline keeps its raw entity handle; the source drawing and ZIP are never edited. */
+export type DwgDerivedOutlines = {
+  format: "reviter-dwg-derived-outlines";
+  version: 1;
+  sourceDwgSha256: string;
+  derivation: {
+    rawExtract: { file: string; sha256: string }[];
+    layers: string[];
+    circleSegments: number;
+    arcSegmentsPerQuarterTurn: number;
+    maxOutlineWidthFeet: number;
+    registrationToleranceFeet: number;
+    math: "reviter-deterministic-math";
+  };
+  sections: {
+    sectionId: string;
+    levelId: number;
+    /** sha256 of JSON.stringify([sourceDwgSha256, registered boundary section]). */
+    boundarySectionSha256: string;
+    registration: { re: number; im: number; t: [number, number] };
+    registrationCheck: {
+      matchedSegments: number;
+      maxEndpointErrorFeet: number;
+    };
+    outlines: {
+      handle: string;
+      entityType: string;
+      layer: string;
+      closure: "circle" | "closed-polyline" | "closing-edge-on-raw-line";
+      closingLineHandle?: string;
+      ringFeet: P2[];
+      firstSegment: number;
+    }[];
+    outlineSegments: [P2, P2][];
+  }[];
+  geometrySha256: string;
+};
+export const dwgDerivedOutlinesHash = (
+  v: DwgDerivedOutlines | Omit<DwgDerivedOutlines, "geometrySha256">,
+) =>
+  nativeDerivedFrameHash(
+    Object.fromEntries(
+      Object.entries(v).filter(([k]) => k !== "geometrySha256"),
+    ),
+  );
+/** Structure, receipts and internal consistency of derived DWG outlines. */
+export function validateDwgDerivedOutlines(
+  v: DwgDerivedOutlines,
+  boundaryReference:
+    | { sourceSha256: string; sections: { sectionId: string }[] }
+    | undefined,
+) {
+  const bad =
+    !v ||
+    v.format !== "reviter-dwg-derived-outlines" ||
+    v.version !== 1 ||
+    !digest(v.sourceDwgSha256) ||
+    !digest(v.geometrySha256) ||
+    v.geometrySha256 !== dwgDerivedOutlinesHash(v) ||
+    !v.derivation ||
+    !Array.isArray(v.derivation.rawExtract) ||
+    v.derivation.rawExtract.length === 0 ||
+    v.derivation.rawExtract.some((f) => !f || !digest(f.sha256)) ||
+    !(v.derivation.registrationToleranceFeet > 0) ||
+    v.derivation.registrationToleranceFeet > 1e-6 ||
+    !(v.derivation.maxOutlineWidthFeet > 0) ||
+    v.derivation.maxOutlineWidthFeet >
+      DRAWING_BACKED_LIMITS.drawnOutlineWidthFeet ||
+    !Array.isArray(v.sections) ||
+    (boundaryReference !== undefined &&
+      v.sourceDwgSha256 !== boundaryReference.sourceSha256) ||
+    v.sections.some(
+      (s) =>
+        !s ||
+        !digest(s.boundarySectionSha256) ||
+        (boundaryReference !== undefined &&
+          !boundaryReference.sections.some(
+            (b) =>
+              b.sectionId === s.sectionId &&
+              nativeDerivedFrameHash([boundaryReference.sourceSha256, b]) ===
+                s.boundarySectionSha256,
+          )) ||
+        !(s.registrationCheck?.matchedSegments > 0) ||
+        !(
+          s.registrationCheck.maxEndpointErrorFeet <=
+          v.derivation.registrationToleranceFeet
+        ) ||
+        !Array.isArray(s.outlines) ||
+        !Array.isArray(s.outlineSegments) ||
+        s.outlines.some(
+          (o) =>
+            !o ||
+            typeof o.handle !== "string" ||
+            !o.handle ||
+            !["circle", "closed-polyline", "closing-edge-on-raw-line"].includes(
+              o.closure,
+            ) ||
+            (o.closure === "closing-edge-on-raw-line") !==
+              (typeof o.closingLineHandle === "string") ||
+            !Array.isArray(o.ringFeet) ||
+            o.ringFeet.length < 3 ||
+            !o.ringFeet.every((p) => point(p)) ||
+            o.ringFeet.some(
+              (p, k) =>
+                !same(s.outlineSegments[o.firstSegment + k], [
+                  p,
+                  o.ringFeet[(k + 1) % o.ringFeet.length],
+                ]),
+            ),
+        ) ||
+        s.outlineSegments.length !==
+          s.outlines.reduce((n, o) => n + o.ringFeet.length, 0),
+    );
+  if (bad) throw new Error("Invalid derived DWG outline evidence.");
+}
 /** Compile-time binding of drawing-backed rows to the registered drawing they cite: the project's
  * boundary reference must be the same DWG (sourceDwgSha256), the cited section must hash to the
  * row's registrationSha256, and every cited segment must be that section's segment byte for byte.
@@ -2227,7 +2430,10 @@ export function verifyDrawingBackedDrawingEvidence(
         }[];
       }
     | undefined,
+  derivedOutlines?: DwgDerivedOutlines,
 ) {
+  if (derivedOutlines !== undefined)
+    validateDwgDerivedOutlines(derivedOutlines, boundaryReference);
   for (const r of seals?.rows ?? []) {
     const dwg = r.drawingBacked?.dwg;
     if (!dwg) continue;
@@ -2242,6 +2448,7 @@ export function verifyDrawingBackedDrawingEvidence(
         dwg.registrationSha256 ||
       dwg.entities.some(
         (e) =>
+          e.kind !== "derivedOutlineSegments" &&
           !same(
             (e.kind === "wallSegments"
               ? section.wallSegments
@@ -2258,6 +2465,27 @@ export function verifyDrawingBackedDrawingEvidence(
     // dwg-drawn-material: the cited section is registered to the row's level unless an explicit
     // cross-level decision names its level; no registered DWG door segment of the cited section or
     // of any section registered to the row's level may cross the body.
+    if (dwg.entities.some((e) => e.kind === "derivedOutlineSegments")) {
+      const derived = derivedOutlines?.sections.find(
+        (x) => x.sectionId === dwg.sectionId,
+      );
+      if (
+        !derivedOutlines ||
+        !derived ||
+        derivedOutlines.sourceDwgSha256 !== boundaryReference.sourceSha256 ||
+        derived.boundarySectionSha256 !== dwg.registrationSha256 ||
+        nativeDerivedFrameHash([derivedOutlines.sourceDwgSha256, derived]) !==
+          dwg.derivedOutlinesSha256 ||
+        dwg.entities.some(
+          (e) =>
+            e.kind === "derivedOutlineSegments" &&
+            !same(derived.outlineSegments[e.index], e.segmentFeet),
+        )
+      )
+        throw new Error(
+          `Drawing-backed assumption ${r.id} does not cite this project's derived DWG outlines.`,
+        );
+    }
     if (r.drawingBacked!.kind === "dwg-drawn-material") {
       const sourceLevel = dwg.crossLevel?.sourceLevelId ?? r.levelId;
       if (section.levelId !== undefined && section.levelId !== sourceLevel)
