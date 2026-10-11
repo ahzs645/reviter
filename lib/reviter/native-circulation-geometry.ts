@@ -13,6 +13,7 @@ import { nativeWallPositionMaterialBinding } from "./native-wall-position-repair
 import { nativeCirculationBinding } from "./native-circulation-binding.ts";
 import { nativeRoomIdentityRings } from "./native-floor-opening-ownership.ts";
 import { nativeRationalIntersectionOperand } from "./native-rational-intersection-broadphase.ts";
+import { createNativeLocalFace, nativeLocalFaceJoins, acceptNativeLocalFacePiece, nativeLocalFaceParts, type NativeLocalFace } from "./native-local-face-join.ts";
 import {
   createNativeHostApertureQuery,
   createNativeRoutingMaterialQuery,
@@ -778,6 +779,20 @@ const foreignPortalDoors = new WeakMap<
   DoorApproachContext,
   Map<string, { edge: IndoorDataset["edges"][number]; door: NonNullable<IndoorDataset["doors"]>[number] }>
 >();
+// Exact tiles of a large cell's pure face, built once per attach pass (see
+// native-local-face-join.ts); null marks a face that keeps the global overlay.
+const largeCellFaces = new WeakMap<DoorApproachContext, Map<string, NativeLocalFace | null>>();
+function nativeLargeCellFace(
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  pure: NativeRationalParts,
+): NativeLocalFace | undefined {
+  let faces = largeCellFaces.get(context);
+  if (!faces) largeCellFaces.set(context, faces = new Map());
+  let local = faces.get(cell.id);
+  if (local === undefined) faces.set(cell.id, local = createNativeLocalFace(pure) ?? null);
+  return local ? { face: local.face, tiles: local.tiles, accepted: [] } : undefined;
+}
 // The decision depends only on the cell's pure face and the portal's own door,
 // never on a door approach grown so far, so one attach pass asks it once per
 // (cell, portal): node selection and both door-approach loops reuse it.
@@ -838,7 +853,10 @@ function nativeForeignPortalTerminalDecision(
   const footprint = nativeDoorClearOpening(data, door, cell.elevationFeet) ?? door.footprintFeet;
   if (!footprint || !door.normalFeet) return false;
   try {
-    const joined = nativeRationalOverlay("union", pure, nativeRationalThresholdHalf(footprint, door.normalFeet, node.pointFeet));
+    const half = nativeRationalThresholdHalf(footprint, door.normalFeet, node.pointFeet);
+    const local = nativeLargeCellFace(context, cell, pure);
+    if (local) return nativeLocalFaceJoins(local, half, node.pointFeet);
+    const joined = nativeRationalOverlay("union", pure, half);
     return joined.length === 1 && nativeRationalPointInParts(node.pointFeet, joined);
   } catch {
     return false;
@@ -913,6 +931,7 @@ function nativeCellDoorApproach(
   let exactParts = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
   if(!exactParts) throw new Error("Missing exact native cell authority.");
   context.exactApproaches.set(rings,exactParts);
+  const local = nativeLargeCellFace(context, cell, exactParts);
   const level = nativeDoorLevelParts(data, context, cell);
   const candidateDoors = new Set(
     cell.roomKeys.flatMap((k) => context.doors.get(k) ?? []),
@@ -1022,6 +1041,11 @@ function nativeCellDoorApproach(
         parts=nativeRationalOverlay("intersection",parts,envelope);
         if(masks.length)parts=nativeRationalOverlay("difference",parts,masks);
         for(const part of parts){
+          if(local){
+            // Same exact decision as the global union below, made in a window.
+            if(nativeLocalFaceJoins(local,[part],node!.pointFeet))acceptNativeLocalFacePiece(local,[part]);
+            continue;
+          }
           const joined=nativeRationalOverlay("union",exactParts,[part]);
           if(joined.length===1&&nativeRationalPointInParts(node!.pointFeet,joined)){
             exactParts=freezeNativeRationalParts(joined);rings=nativeExactPartsForProposals(joined)[0];context.exactApproaches.set(rings,exactParts);
@@ -1029,6 +1053,12 @@ function nativeCellDoorApproach(
         }
       } catch { /* Unknown exact doorway support remains blocked. */ }
     }
+  }
+  if (local?.accepted.length) {
+    const joined = nativeLocalFaceParts(local);
+    exactParts = freezeNativeRationalParts(joined);
+    rings = nativeExactPartsForProposals(joined)[0]!;
+    context.exactApproaches.set(rings, exactParts);
   }
   return rings;
 }
