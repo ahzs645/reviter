@@ -50,6 +50,38 @@ const delta = (
 const sameAbsolute = (a: Rational, b: Rational) =>
   (a.n < 0n ? -a.n : a.n) * b.d === (b.n < 0n ? -b.n : b.n) * a.d;
 
+/** An applied drawing-backed row that closes the same joint as a contact repair. */
+export type NativeSelectionContactDuplicateClosure = {
+  repairId: string;
+  rowId: string;
+  /** The closure of record for the joint: the repair's exact original-edge gap
+   * mask. The row is a duplicate closure there, never foreign material. */
+  closure: "contact-repair";
+};
+type ClosureRow = {
+  id: string;
+  levelId: number;
+  state: string;
+  drawingBacked?: { nativeOwnerIds: number[] };
+};
+/** Joint identity of a drawing-backed closure and a contact repair: the same
+ * level and both repair owners among the row's owners. Position is the third
+ * test, decided by the caller: the row body meets the repair's gap mask. */
+export function nativeSelectionContactSameJoint(
+  repair: Pick<ContactPhysicalEvidence, "levelId" | "source" | "target">,
+  row: ClosureRow | undefined,
+): boolean {
+  return (
+    !!row &&
+    row.state === "applied" &&
+    !!row.drawingBacked &&
+    row.levelId === repair.levelId &&
+    repair.source.nativeElementId !== repair.target.nativeElementId &&
+    row.drawingBacked.nativeOwnerIds.includes(repair.source.nativeElementId) &&
+    row.drawingBacked.nativeOwnerIds.includes(repair.target.nativeElementId)
+  );
+}
+
 /** Fresh operation-local physical snapshot, shared across one immutable repair set.
  * Never retain this factory across import/edit/application or use object identity
  * as a lasting approval. Caller independently verifies material checksums first. */
@@ -150,7 +182,14 @@ export function createNativeSelectionContactPhysicalGuard(
   );
   let floorWithoutOpenings: NativeRationalParts | undefined;
   let floorWithoutSourceOpenings: NativeRationalParts | undefined;
-  return (repair: ContactPhysicalEvidence, mask: NativeRationalParts): void => {
+  const closureRows = new Map<string, ClosureRow>(
+    (data.nativeProvisionalCornerSeals?.rows ?? []).map((r) => [r.id, r]),
+  );
+  /** Returns the ids of applied drawing-backed rows that close this same joint. */
+  return (
+    repair: ContactPhysicalEvidence,
+    mask: NativeRationalParts,
+  ): string[] => {
     if (
       repair.sourceModelSha256 !== model ||
       data.source.modelSha256 !== model ||
@@ -305,6 +344,7 @@ export function createNativeSelectionContactPhysicalGuard(
           "complete target contact no longer reaches current retained original material",
         );
     }
+    const duplicates = new Set<string>();
     for (const wall of exactWalls) {
       if (
         !wall.reviewPatchId &&
@@ -312,8 +352,22 @@ export function createNativeSelectionContactPhysicalGuard(
           wall.nativeElementId === repair.target.nativeElementId)
       )
         continue;
-      if (intersects(wall.exactParts))
-        fail("positive gap intersects a foreign wall or column");
+      if (!intersects(wall.exactParts)) continue;
+      // An applied drawing-backed row that closes this same joint (same
+      // owners, body inside the gap) is a second closure of the gap, not
+      // foreign material in it. Every other body is still foreign.
+      if (
+        (wall as typeof wall & { geometrySource?: string }).geometrySource ===
+          "provisional-native-corner-seal" &&
+        nativeSelectionContactSameJoint(
+          repair,
+          closureRows.get(wall.reviewPatchId ?? ""),
+        )
+      ) {
+        duplicates.add(wall.reviewPatchId!);
+        continue;
+      }
+      fail("positive gap intersects a foreign wall or column");
     }
     if (intersects(doors)) fail("positive gap intersects a physical doorway");
     if (intersects(fixtures))
@@ -322,6 +376,7 @@ export function createNativeSelectionContactPhysicalGuard(
       fail("positive gap intersects a reviewed excluded footprint");
     if (intersects(openings))
       fail("positive gap intersects a source floor or stair opening");
+    return [...duplicates].sort();
   };
 }
 
@@ -329,18 +384,27 @@ export function createNativeSelectionContactPhysicalGuard(
  * No buffering, area epsilon, raw coordinate edit, route or access approval. */
 export function assertNativeSelectionContactPhysicalGuards(
   data: IndoorDataset,
-  repair: ContactPhysicalEvidence,
+  repair: ContactPhysicalEvidence & { id?: string },
   mask: NativeRationalParts,
-): void {
-  createNativeSelectionContactPhysicalGuard(data, repair.levelId)(repair, mask);
+): NativeSelectionContactDuplicateClosure[] {
+  return createNativeSelectionContactPhysicalGuard(data, repair.levelId)(
+    repair,
+    mask,
+  ).map((rowId) => ({
+    repairId: repair.id ?? "",
+    rowId,
+    closure: "contact-repair",
+  }));
 }
 /** Batched checks share only a fresh calculation's original physical snapshot.
- * All masks must pass before application; no persistent identity trust/cache. */
+ * All masks must pass before application; no persistent identity trust/cache.
+ * Returns every joint closed by both a repair and an applied drawing-backed row,
+ * with the closure of record for it. */
 export function assertNativeSelectionContactRepairsPhysicalGuards(
   data: IndoorDataset,
-  repairs: readonly ContactPhysicalEvidence[],
+  repairs: readonly (ContactPhysicalEvidence & { id?: string })[],
   masks: readonly NativeRationalParts[],
-): void {
+): NativeSelectionContactDuplicateClosure[] {
   if (repairs.length !== masks.length)
     throw new Error(
       "Native selection contact repair: mismatched physical check inventory.",
@@ -349,12 +413,19 @@ export function assertNativeSelectionContactRepairsPhysicalGuards(
     number,
     ReturnType<typeof createNativeSelectionContactPhysicalGuard>
   >();
+  const duplicates: NativeSelectionContactDuplicateClosure[] = [];
   for (const [i, repair] of repairs.entries()) {
     let guard = guards.get(repair.levelId);
     if (!guard) {
       guard = createNativeSelectionContactPhysicalGuard(data, repair.levelId);
       guards.set(repair.levelId, guard);
     }
-    guard(repair, masks[i]);
+    for (const rowId of guard(repair, masks[i]))
+      duplicates.push({
+        repairId: repair.id ?? "",
+        rowId,
+        closure: "contact-repair",
+      });
   }
+  return duplicates;
 }
