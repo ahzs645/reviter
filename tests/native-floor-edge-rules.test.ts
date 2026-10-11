@@ -121,6 +121,12 @@ test("void-edge rule: an unfilled own-slab hole is a barrier at every cut up to 
   const yielded = deriveNativeFloorEdgeRows({ levelId: 7, elevationFeet: e, cutElevationsFeet: CUTS, floors: [slab], connectors: [stairWell], settings: settings(["void-edge"]) });
   assert.deepEqual(yielded[0]!.yieldedConnectorIds, ["stair:960"]);
   assert.ok(Math.abs(yielded[0]!.areaSqFt - 70) < 1e-9);
+  // a flight whose last tread stops a tread thickness (0.164 ft) short of the slab top it arrives on
+  // still ends at this edge; one that stops 0.6 ft short (a landing below) does not
+  const short = (dz: number) => deriveNativeFloorEdgeRows({ levelId: 7, elevationFeet: e, cutElevationsFeet: CUTS, floors: [slab], settings: settings(["void-edge"]),
+    connectors: [{ ...stairWell, id: "stair:961", topElevationFeet: e - dz }] })[0]!.yieldedConnectorIds;
+  assert.deepEqual(short(0.164), ["stair:961"]);
+  assert.deepEqual(short(0.6), []);
 });
 
 test("rows are deterministic: input order does not change ids, geometry or checksum", () => {

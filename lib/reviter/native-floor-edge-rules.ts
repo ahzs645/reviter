@@ -41,6 +41,10 @@ export const NATIVE_FLOOR_EDGE_RULE_NAMES = Object.keys(NATIVE_FLOOR_EDGE_RULE_I
 /** Rule constants (feet). They are part of the rule versions above; changing one is a new rule. */
 export const NATIVE_FLOOR_EDGE_CONSTANTS = Object.freeze({
   ownLevelFeet: 0.05,
+  /** A stair or ramp whose end lies within this of an edge height ends at that edge: the source run
+   * can stop a tread or finish thickness short of the slab top it arrives on (the same
+   * walkable-step allowance as dropMinFeet / voidBelowFeet). */
+  connectorEndFeet: 0.5,
   stepRiseFeet: 4,
   dropMinFeet: 0.5,
   dropMaxFeet: 8,
@@ -151,13 +155,13 @@ export function deriveNativeFloorEdgeRows(input: {
   const active = (base: number, top: number) => input.cutElevationsFeet.some((c) => base <= c && c < top);
   const connectorBoxes = new Map(connectors.map((c) => [c.id, boxOf([...c.footprintFeet, ...(c.attachmentsFeet ?? [])])]));
   /** Remove the footprint/attachment of every connector that spans the whole height change [lo, hi]
-   * (it climbs across this edge) and overlaps the row. */
+   * (it climbs across this edge, or ends at it within connectorEndFeet) and overlaps the row. */
   const yieldTo = (parts: Parts, lo: number, hi: number) => {
     const yielded: string[] = [];
     let out = parts;
     for (const c of connectors) {
       if (!out.length) break;
-      if (!(c.bottomElevationFeet <= lo + K.ownLevelFeet && c.topElevationFeet >= hi - K.ownLevelFeet)) continue;
+      if (!(c.bottomElevationFeet <= lo + K.connectorEndFeet && c.topElevationFeet >= hi - K.connectorEndFeet)) continue;
       if (!boxesOverlap(boxOf(out), connectorBoxes.get(c.id)!)) continue;
       const cut = [...c.footprintFeet, ...(c.attachmentsFeet ?? [])];
       if (!overlay("intersection", out, cut).some((p) => partArea(p) > 0)) continue;
