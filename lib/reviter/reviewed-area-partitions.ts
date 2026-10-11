@@ -10,6 +10,23 @@ import {
   NATIVE_EXACT_GEOS_BINDING,
   nativeExactGeosOverlay,
 } from "./native-exact-geos-overlay.ts";
+import {
+  REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+  diffReviewedAreaPartitionEvidence,
+  reviewedAreaPartitionLocalEvidence,
+  type ReviewedAreaPartitionEvidenceDifference,
+  type ReviewedAreaPartitionLocalEvidence,
+} from "./reviewed-area-partition-evidence.ts";
+export {
+  REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+  REVIEWED_PARTITION_EVIDENCE_MARGIN_FEET,
+  diffReviewedAreaPartitionEvidence,
+  reviewedAreaPartitionEvidenceWindow,
+  reviewedAreaPartitionLocalEvidence,
+} from "./reviewed-area-partition-evidence.ts";
+/** The original level-wide binding: every wall and descriptor on the level. */
+export const REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE =
+  "logical-area-partition-physical-v1" as const;
 
 type Point = [number, number];
 export const REVIEWED_PARTITION_WIDTH_FEET = 0.0002;
@@ -25,7 +42,19 @@ export type ReviewedAreaPartition = {
   id: string;
   levelId: number;
   elevationFeet: number;
+  /** Physical evidence digest. Level-wide when evidenceBinding is absent (legacy);
+   * otherwise the partition's local evidence (reviewed-area-partition-evidence.ts). */
   geometrySha256: string;
+  evidenceBinding?: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+  /** Migration receipt: a level-bound review re-bound to its unchanged local evidence. */
+  reboundFrom?: {
+    rule: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+    previousRule: typeof REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE;
+    /** The stored level-wide digest the review was made against. */
+    geometrySha256: string;
+    /** The published master or compile in which that digest still matched. */
+    sourceDatasetSha256: string;
+  };
   kind: keyof typeof reviewedAreaPartitionKinds;
   pointsFeet: Point[];
   closed: boolean;
@@ -46,7 +75,7 @@ export type ReviewedAreaPartitions = {
   partitions: ReviewedAreaPartition[];
   /** Append-only authoring transitions. Archived descriptors retain their original evidence. */
   history?: {
-    action: "propose" | "apply" | "restore" | "remove";
+    action: "propose" | "apply" | "restore" | "remove" | "rebind";
     id: string;
     at: string;
     before?: ReviewedAreaPartition;
@@ -152,7 +181,17 @@ export function validateReviewedAreaPartitions(
         !p.evidence.nativeElementIds.length) ||
       p.selection !== "closed" ||
       p.navigation !== "unchanged" ||
-      (p.kind === "shaft-boundary" && (!p.closed || p.status === "applied"))
+      (p.kind === "shaft-boundary" && (!p.closed || p.status === "applied")) ||
+      (p.evidenceBinding !== undefined &&
+        p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE) ||
+      (p.reboundFrom !== undefined &&
+        (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+          !p.reboundFrom ||
+          p.reboundFrom.rule !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+          p.reboundFrom.previousRule !==
+            REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE ||
+          !sha(p.reboundFrom.geometrySha256) ||
+          !sha(p.reboundFrom.sourceDatasetSha256)))
     )
       throw new Error(
         "Invalid logical boundary. Shaft outlines are proposed inspection metadata only.",
@@ -191,7 +230,9 @@ export function validateReviewedAreaPartitions(
     for (const h of v.history) {
       if (
         !h ||
-        !["propose", "apply", "restore", "remove"].includes(h.action) ||
+        !["propose", "apply", "restore", "remove", "rebind"].includes(
+          h.action,
+        ) ||
         typeof h.id !== "string" ||
         !h.id ||
         h.id.length > 200 ||
@@ -207,7 +248,14 @@ export function validateReviewedAreaPartitions(
           (!h.before || h.after?.status !== "applied")) ||
         (h.action === "restore" &&
           (!h.before || h.after?.status !== "proposed")) ||
-        (h.action === "propose" && h.after?.status !== "proposed")
+        (h.action === "propose" && h.after?.status !== "proposed") ||
+        (h.action === "rebind" &&
+          (!h.before ||
+            h.before.evidenceBinding !== undefined ||
+            h.after?.status !== h.before.status ||
+            h.after.evidenceBinding !==
+              REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+            h.after.reboundFrom?.geometrySha256 !== h.before.geometrySha256))
       )
         throw new Error("Invalid logical boundary history transition.");
       validateReviewedAreaPartitions({
@@ -223,7 +271,10 @@ export function validateReviewedAreaPartitions(
     }
   }
 }
-/** Deliberately excludes authoring notes and logical boundaries: applying a second boundary cannot stale the first. */
+/** Legacy level-wide binding. Any change anywhere on the level (or in a
+ * campus-wide descriptor) stales every partition bound this way; new and
+ * re-bound partitions use reviewedAreaPartitionLocalEvidence instead.
+ * Deliberately excludes authoring notes and logical boundaries: applying a second boundary cannot stale the first. */
 export async function reviewedAreaPartitionGeometrySha256(
   data: IndoorDataset,
   levelId: number,
@@ -272,6 +323,53 @@ export async function reviewedAreaPartitionGeometrySha256(
   )
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("");
+}
+/** The current digest of whatever evidence this partition is bound to. */
+export async function reviewedAreaPartitionEvidenceSha256(
+  data: IndoorDataset,
+  p: ReviewedAreaPartition,
+): Promise<string> {
+  return p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+    ? reviewedAreaPartitionLocalEvidence(data, p).then((e) => e.sha256)
+    : reviewedAreaPartitionGeometrySha256(data, p.levelId);
+}
+/** Current evidence digests by partition id; a level-wide digest is computed once per level. */
+export async function reviewedAreaPartitionEvidenceHashes(
+  data: IndoorDataset,
+  partitions: readonly ReviewedAreaPartition[],
+): Promise<Record<string, string>> {
+  const levels = new Map<number, Promise<string>>();
+  const out: Record<string, string> = {};
+  for (const p of partitions) {
+    if (p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE) {
+      const evidence = await reviewedAreaPartitionLocalEvidence(data, p);
+      out[p.id] = evidence.sha256;
+      continue;
+    }
+    if (!levels.has(p.levelId))
+      levels.set(
+        p.levelId,
+        reviewedAreaPartitionGeometrySha256(data, p.levelId),
+      );
+    out[p.id] = await levels.get(p.levelId)!;
+  }
+  return out;
+}
+/** Binds a new or edited proposal to its current local evidence. */
+export async function bindReviewedAreaPartitionEvidence(
+  data: IndoorDataset,
+  p: ReviewedAreaPartition,
+): Promise<ReviewedAreaPartition> {
+  const { reboundFrom: _, ...rest } = p;
+  const bound = {
+    ...rest,
+    evidenceBinding: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+  };
+  const evidence = await reviewedAreaPartitionLocalEvidence(data, bound);
+  return {
+    ...bound,
+    geometrySha256: evidence.sha256,
+  };
 }
 const area = (parts: pc.MultiPolygon) =>
   parts.reduce(
@@ -331,7 +429,9 @@ export function checkReviewedAreaPartition(
   }
   if (p.geometrySha256 !== physicalGeometrySha256)
     errors.push(
-      "Physical evidence changed; review this logical boundary again.",
+      p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+        ? "Physical evidence changed within 6 ft of this boundary; review this logical boundary again."
+        : "Physical evidence changed; review this logical boundary again. It is bound to every wall on its level, so an unrelated change also stales it; re-bind it to its local evidence after review.",
     );
   const level = data.nativeLevels.find((l) => l.id === p.levelId);
   if (!level || Math.abs(level.elevationFeet - p.elevationFeet) > 1e-8)
@@ -618,4 +718,147 @@ export function validateReviewedAreaPartitionBinding(
       )
     )
       throw new Error("Logical boundary belongs to a missing native level.");
+}
+/** One candidate master/compile, evaluated for one partition. */
+export type ReviewedAreaPartitionRebindSource = {
+  sha256: string;
+  label: string;
+  /** reviewedAreaPartitionGeometrySha256 of the partition's level in that source. */
+  levelEvidenceSha256: string;
+  localEvidence: ReviewedAreaPartitionLocalEvidence;
+};
+export type ReviewedAreaPartitionRebindOutcome =
+  | { id: string; outcome: "already-local" }
+  | {
+      id: string;
+      outcome: "rebound";
+      partition: ReviewedAreaPartition;
+      source: { sha256: string; label: string };
+    }
+  | {
+      id: string;
+      outcome: "needs-review";
+      reason: string;
+      source?: { sha256: string; label: string };
+      differences: ReviewedAreaPartitionEvidenceDifference[];
+    };
+/**
+ * Re-binding keeps the review authority only where it provably still holds:
+ * some candidate in which the stored level-wide digest still matches (so the
+ * review's evidence is recovered) must show the same local evidence as now.
+ * Anything else stays bound as it was and is listed for owner review.
+ */
+export function decideReviewedAreaPartitionRebind(
+  p: ReviewedAreaPartition,
+  sources: readonly ReviewedAreaPartitionRebindSource[],
+  current: ReviewedAreaPartitionLocalEvidence,
+): ReviewedAreaPartitionRebindOutcome {
+  if (p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE)
+    return { id: p.id, outcome: "already-local" };
+  const matches = sources.filter(
+    (s) => s.levelEvidenceSha256 === p.geometrySha256,
+  );
+  if (!matches.length)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason: `No available master or compile reproduces the stored level-wide evidence digest ${p.geometrySha256.slice(0, 8)}…, so the evidence this boundary was reviewed against cannot be recovered. Review it again on the current map.`,
+      differences: [],
+    };
+  const same = matches.find((s) => s.localEvidence.sha256 === current.sha256);
+  if (same)
+    return {
+      id: p.id,
+      outcome: "rebound",
+      source: { sha256: same.sha256, label: same.label },
+      partition: {
+        ...p,
+        evidenceBinding: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+        geometrySha256: current.sha256,
+        reboundFrom: {
+          rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+          previousRule: REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE,
+          geometrySha256: p.geometrySha256,
+          sourceDatasetSha256: same.sha256,
+        },
+      },
+    };
+  const differences = diffReviewedAreaPartitionEvidence(
+    matches[0]!.localEvidence.records,
+    current.records,
+  );
+  return {
+    id: p.id,
+    outcome: "needs-review",
+    source: { sha256: matches[0]!.sha256, label: matches[0]!.label },
+    reason: `Evidence within 6 ft of this boundary changed since it was reviewed (in ${matches[0]!.label}): ${differences.length} element${differences.length === 1 ? "" : "s"} differ. Review it again before re-binding.`,
+    differences,
+  };
+}
+/** Applies rebound outcomes, recording each as an auditable history transition. */
+export function rebindReviewedAreaPartitions(
+  value: ReviewedAreaPartitions,
+  outcomes: readonly ReviewedAreaPartitionRebindOutcome[],
+  at = new Date().toISOString(),
+): ReviewedAreaPartitions {
+  const rebound = new Map(
+    outcomes.flatMap((o) =>
+      o.outcome === "rebound" ? [[o.id, o.partition] as const] : [],
+    ),
+  );
+  const history = [...(value.history ?? [])];
+  const partitions = value.partitions.map((p) => {
+    const next = rebound.get(p.id);
+    if (!next) return p;
+    if (next.reboundFrom?.geometrySha256 !== p.geometrySha256)
+      throw new Error(`${p.label}: re-binding was decided for another review.`);
+    history.push({
+      action: "rebind",
+      id: p.id,
+      at,
+      before: structuredClone(p),
+      after: structuredClone(next),
+    });
+    return structuredClone(next);
+  });
+  const out: ReviewedAreaPartitions = { ...value, partitions, history };
+  validateReviewedAreaPartitions(out, value.sourceModelSha256);
+  return out;
+}
+export type ReviewedAreaPartitionAuditEntry = {
+  id: string;
+  levelId: number;
+  label: string;
+  status: ReviewedAreaPartition["status"];
+  binding: "level" | "local";
+  valid: boolean;
+  errors: string[];
+};
+/** Every saved boundary with its current check. An applied boundary that is
+ * invalid is omitted from selection; the count keeps such drops visible. */
+export async function auditReviewedAreaPartitions(data: IndoorDataset) {
+  const partitions = data.reviewedAreaPartitions?.partitions ?? [];
+  const digests = await reviewedAreaPartitionEvidenceHashes(data, partitions);
+  const entries: ReviewedAreaPartitionAuditEntry[] = partitions.map((p) => {
+    const check = checkReviewedAreaPartition(data, p, digests[p.id]!);
+    return {
+      id: p.id,
+      levelId: p.levelId,
+      label: p.label,
+      status: p.status,
+      binding:
+        p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+          ? "local"
+          : "level",
+      valid: check.valid,
+      errors: check.errors,
+    };
+  });
+  return {
+    entries,
+    appliedCount: entries.filter((e) => e.status === "applied").length,
+    appliedOmittedCount: entries.filter(
+      (e) => e.status === "applied" && !e.valid,
+    ).length,
+  };
 }
