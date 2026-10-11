@@ -8,6 +8,7 @@ import {
   decideReviewedAreaPartitionRebind,
   rebindReviewedAreaPartitions,
   reviewedAreaPartitionEvidenceSha256,
+  reviewedAreaPartitionEvidenceStatuses,
   reviewedAreaPartitionGeometrySha256,
   reviewedAreaPartitionLocalEvidence,
   validateReviewedAreaPartitions,
@@ -76,11 +77,16 @@ test("mirrored local binding ignores far drift, stales on local change and re-bi
   const far = drift(reviewed, 900, 2 ** -48);
   assert.notEqual(await reviewedAreaPartitionGeometrySha256(far, 1), level);
   assert.equal(await reviewedAreaPartitionEvidenceSha256(far, local), local.geometrySha256);
-  const near = drift(reviewed, 201, 2 ** -48);
+  // One ulp at a cited return: digest differs, the stored snapshot holds within 1e-6 ft.
+  const noisy = drift(reviewed, 201, 2 ** -48);
+  const tolerant = (await reviewedAreaPartitionEvidenceStatuses(noisy, [local]))[local.id]!;
+  assert.equal(tolerant.test, "tolerance");
+  assert.equal(checkReviewedAreaPartition(noisy, local, tolerant.digest).valid, true);
+  // 1e-4 ft is a real move.
+  const near = drift(reviewed, 201, 1e-4);
   const digest = await reviewedAreaPartitionEvidenceSha256(near, local);
   assert.notEqual(digest, local.geometrySha256);
   assert.match(checkReviewedAreaPartition(near, local, digest).errors.join(" "), /evidence window/);
-
   const source = {
     sha256: "5".repeat(64),
     label: "reviewed master",
@@ -107,7 +113,7 @@ test("mirrored local binding ignores far drift, stales on local change and re-bi
   );
   assert.equal(refused.outcome, "needs-review");
   assert.deepEqual(refused.outcome === "needs-review" ? refused.differences : [], [
-    { collection: "walls", key: "201", change: "changed" },
+    { collection: "walls", key: "201", change: "changed", detail: "geometry" },
   ]);
   assert.equal(decideReviewedAreaPartitionRebind(legacy, [], source.localEvidence).outcome, "needs-review");
 });

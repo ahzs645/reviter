@@ -38,11 +38,29 @@ export type ReviewedAreaPartitionEvidenceRecord = {
   key: string;
   value: string;
 };
+/** The hashed local evidence itself. Stored with a partition so a later
+ * comparison can tolerate floating-point noise; its digest is geometrySha256. */
+export type ReviewedAreaPartitionEvidenceSnapshot = {
+  rule: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+  marginFeet: number;
+  bandFeet: number;
+  windowFeet: ReviewedAreaPartitionEvidenceWindow;
+  header: Record<string, unknown>;
+  /** [collection, key, canonical value] in canonical order. */
+  records: [string, string, string][];
+};
+/** Largest snapshot stored with a partition (serialised bytes). Larger local
+ * evidence is still bound exactly, just without the tolerant fallback. */
+export const REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES = 512 * 1024;
+/** Vertex tolerance of the snapshot comparison: 0.0003 mm, far below any
+ * modelling change and far above compiler/runtime floating-point drift. */
+export const REVIEWED_PARTITION_EVIDENCE_TOLERANCE_FEET = 1e-6;
 export type ReviewedAreaPartitionLocalEvidence = {
   rule: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
   windowFeet: ReviewedAreaPartitionEvidenceWindow;
   sha256: string;
   records: ReviewedAreaPartitionEvidenceRecord[];
+  snapshot: ReviewedAreaPartitionEvidenceSnapshot;
 };
 type PartitionShape = {
   id: string;
@@ -146,19 +164,19 @@ function windowGeometry(w: ReviewedAreaPartitionEvidenceWindow) {
       ry1 = Math.max(ry1, p[1]!);
     }
     // Disjoint bounds: no window edge and no window corner inside.
-    if (rx1 < x0 || rx0 > x1 || ry1 < y0 || ry0 > y1) return undefined;
+    if (rx1 < x0 || rx0 > x1 || ry1 < y0 || ry0 > y1) return;
     const edges: number[][][] = [];
     for (let i = 0; i < r.length; i++) {
       const a = r[i]!,
         b = r[(i + 1) % r.length]!;
-      if (r.length > 2 || i === 0)
-        if (segment(a, b)) edges.push(compare(a, b) <= 0 ? [a, b] : [b, a]);
+      if ((r.length > 2 || i === 0) && segment(a, b))
+        edges.push(compare(a, b) <= 0 ? [a, b] : [b, a]);
     }
     const mask =
       r.length > 2
         ? corners.reduce((m, c, i) => m | (contains(r, c) ? 1 << i : 0), 0)
         : 0;
-    if (!edges.length && !mask) return undefined;
+    if (edges.length === 0 && !mask) return;
     edges.sort((a, b) => compare(a[0]!, b[0]!) || compare(a[1]!, b[1]!));
     return [role, mask, edges] as const;
   };
@@ -177,7 +195,7 @@ function windowGeometry(w: ReviewedAreaPartitionEvidenceWindow) {
           : trace(x),
       )
       .filter((x) => x !== undefined);
-    return out.length ? out.sort(byJson) : undefined;
+    return out.length > 0 ? out.sort(byJson) : undefined;
   };
   return { trace };
 }
@@ -535,21 +553,217 @@ export async function reviewedAreaPartitionLocalEvidence(
         }
       : {}),
   };
+  const snapshot: ReviewedAreaPartitionEvidenceSnapshot = {
+    rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+    marginFeet: REVIEWED_PARTITION_EVIDENCE_MARGIN_FEET,
+    bandFeet: REVIEWED_PARTITION_EVIDENCE_BAND_FEET,
+    windowFeet,
+    header,
+    records: records.map((r) => [r.collection, r.key, r.value]),
+  };
   return {
     rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
     windowFeet,
-    sha256: await sha256(
-      JSON.stringify([
-        REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
-        REVIEWED_PARTITION_EVIDENCE_MARGIN_FEET,
-        REVIEWED_PARTITION_EVIDENCE_BAND_FEET,
-        windowFeet,
-        header,
-        records.map((r) => [r.collection, r.key, r.value]),
-      ]),
-    ),
+    sha256: await reviewedAreaPartitionEvidenceSnapshotSha256(snapshot),
     records,
+    snapshot,
   };
+}
+/** The digest a snapshot stands for (equal to the partition's geometrySha256). */
+export function reviewedAreaPartitionEvidenceSnapshotSha256(
+  s: ReviewedAreaPartitionEvidenceSnapshot,
+): Promise<string> {
+  return sha256(
+    JSON.stringify([
+      s.rule,
+      s.marginFeet,
+      s.bandFeet,
+      s.windowFeet,
+      s.header,
+      s.records,
+    ]),
+  );
+}
+export const reviewedAreaPartitionEvidenceSnapshotBytes = (
+  s: ReviewedAreaPartitionEvidenceSnapshot,
+) => new TextEncoder().encode(JSON.stringify(s)).length;
+export function validReviewedAreaPartitionEvidenceSnapshot(
+  s: unknown,
+): s is ReviewedAreaPartitionEvidenceSnapshot {
+  const v = s as ReviewedAreaPartitionEvidenceSnapshot;
+  return (
+    !!v &&
+    v.rule === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE &&
+    v.marginFeet === REVIEWED_PARTITION_EVIDENCE_MARGIN_FEET &&
+    v.bandFeet === REVIEWED_PARTITION_EVIDENCE_BAND_FEET &&
+    Array.isArray(v.windowFeet) &&
+    v.windowFeet.length === 4 &&
+    v.windowFeet.every((n) => typeof n === "number" && Number.isFinite(n)) &&
+    !!v.header &&
+    typeof v.header === "object" &&
+    !Array.isArray(v.header) &&
+    Array.isArray(v.records) &&
+    v.records.every(
+      (r) =>
+        Array.isArray(r) &&
+        r.length === 3 &&
+        r.every((x) => typeof x === "string"),
+    ) &&
+    reviewedAreaPartitionEvidenceSnapshotBytes(v) <=
+      REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES
+  );
+}
+
+export type ReviewedAreaPartitionEvidenceComparison = {
+  equal: boolean;
+  /** Largest coordinate difference among matched elements (0 when bit-identical). */
+  maxDeltaFeet: number;
+  differences: (ReviewedAreaPartitionEvidenceDifference & {
+    detail?: "geometry" | "topology" | "attributes";
+  })[];
+};
+/**
+ * Tolerant comparison of two local evidence snapshots. Identical element sets
+ * (collection, key) and identical structure are required: the same attributes
+ * and kinds, the same number of window edges per ring, the same window-corner
+ * membership and outer/hole roles. Only numbers may differ, by at most the
+ * tolerance. Anything else is a change.
+ */
+export function compareReviewedAreaPartitionEvidence(
+  stored: ReviewedAreaPartitionEvidenceSnapshot,
+  current: ReviewedAreaPartitionEvidenceSnapshot,
+  toleranceFeet = REVIEWED_PARTITION_EVIDENCE_TOLERANCE_FEET,
+): ReviewedAreaPartitionEvidenceComparison {
+  let maxDeltaFeet = 0;
+  type Detail = "geometry" | "topology" | "attributes";
+  /** undefined when equal within tolerance; otherwise why not. */
+  const same = (
+    a: unknown,
+    b: unknown,
+    delta: number[],
+  ): Detail | undefined => {
+    if (typeof a === "number" && typeof b === "number") {
+      const d = Math.abs(a - b);
+      // Corner-membership masks and counts are integers: a different one is topology.
+      if (!(d <= toleranceFeet))
+        return Number.isInteger(a) && Number.isInteger(b)
+          ? "topology"
+          : "geometry";
+      if (d > delta[0]!) delta[0] = d;
+      return undefined;
+    }
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+        return "topology";
+      let worst: Detail | undefined;
+      for (let i = 0; i < a.length; i++) {
+        const r = same(a[i], b[i], delta);
+        if (r === "topology" || r === "attributes") return r;
+        worst ??= r;
+      }
+      return worst;
+    }
+    if (a && b && typeof a === "object" && typeof b === "object") {
+      const ka = Object.keys(a),
+        kb = Object.keys(b);
+      if (ka.length !== kb.length || ka.some((k, i) => k !== kb[i]))
+        return "attributes";
+      let worst: Detail | undefined;
+      for (const k of ka) {
+        const r = same(
+          (a as Record<string, unknown>)[k],
+          (b as Record<string, unknown>)[k],
+          delta,
+        );
+        if (r === "topology" || r === "attributes") return r;
+        worst ??= r;
+      }
+      return worst;
+    }
+    // Strings (ids, kinds, roles, digests), booleans and null are exact.
+    return a === b ? undefined : "attributes";
+  };
+  const differences: ReviewedAreaPartitionEvidenceComparison["differences"] =
+    [];
+  const delta = [0];
+  const head = same(
+    [
+      stored.rule,
+      stored.marginFeet,
+      stored.bandFeet,
+      stored.windowFeet,
+      stored.header,
+    ],
+    [
+      current.rule,
+      current.marginFeet,
+      current.bandFeet,
+      current.windowFeet,
+      current.header,
+    ],
+    delta,
+  );
+  if (head)
+    differences.push({
+      collection: "header",
+      key: "",
+      change: "changed",
+      detail: head,
+    });
+  const group = (rs: readonly [string, string, string][]) => {
+    const m = new Map<string, unknown[]>();
+    for (const [c, k, v] of rs) {
+      const id = JSON.stringify([c, k]);
+      m.set(id, [...(m.get(id) ?? []), JSON.parse(v)]);
+    }
+    return m;
+  };
+  const a = group(stored.records),
+    b = group(current.records);
+  for (const id of [...new Set([...a.keys(), ...b.keys()])].sort()) {
+    const [collection, key] = JSON.parse(id) as [string, string];
+    const x = a.get(id),
+      y = b.get(id);
+    if (!x || !y) {
+      differences.push({ collection, key, change: x ? "removed" : "added" });
+      continue;
+    }
+    if (x.length !== y.length) {
+      differences.push({
+        collection,
+        key,
+        change: "changed",
+        detail: "topology",
+      });
+      continue;
+    }
+    // Several pieces may share a key; match each stored piece to one current piece.
+    const free = y.map((_, i) => i);
+    let detail: Detail | undefined;
+    for (const piece of x) {
+      let hit = -1;
+      let why: Detail | undefined;
+      for (const [n, i] of free.entries()) {
+        const d = [0];
+        const r = same(piece, y[i], d);
+        if (r === undefined) {
+          hit = n;
+          if (d[0]! > delta[0]!) delta[0] = d[0]!;
+          break;
+        }
+        why ??= r;
+      }
+      if (hit < 0) {
+        detail = why ?? "topology";
+        break;
+      }
+      free.splice(hit, 1);
+    }
+    if (detail)
+      differences.push({ collection, key, change: "changed", detail });
+  }
+  maxDeltaFeet = delta[0]!;
+  return { equal: differences.length === 0, maxDeltaFeet, differences };
 }
 
 export type ReviewedAreaPartitionEvidenceDifference = {
@@ -582,7 +796,7 @@ export function diffReviewedAreaPartitionEvidence(
       {
         collection,
         key,
-        change: !x ? "added" : !y ? "removed" : "changed",
+        change: x ? (y ? "changed" : "removed") : "added",
       } as const,
     ];
   });
