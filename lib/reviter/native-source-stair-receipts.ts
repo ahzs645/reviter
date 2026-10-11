@@ -1,3 +1,4 @@
+import * as DMath from './deterministic-math.ts';
 import {nativeAuthoredStairTreads} from './native-authored-stair-treads.ts';
 import type{ConvertResult}from'./types.ts';
 import type{IndoorDataset}from'./indoor-contract.ts';
@@ -30,7 +31,7 @@ export function prepareNativeSourceStairReceipts(model:ConvertResult,data:Indoor
   // not the authority.
   const brepRuns=authoredRuns.length?[]:(assembly?.runAndLandingIds.filter(id=>brep.has(id))??[]);
   const originalTreads=authoredRuns.length?authoredRuns.flatMap(id=>authored.get(id)!):brepRuns.length?brepRuns.flatMap(id=>brep.get(id)!):cachedOriginalTreads;
-  const sameRing=(a:P2[],b:P2[])=>a.length===b.length&&a.some((_,offset)=>[1,-1].some(direction=>a.every((p,i)=>{const q=b[(offset+direction*i+b.length*2)%b.length]!;return Math.hypot(p[0]-q[0],p[1]-q[1])<1e-8})));
+  const sameRing=(a:P2[],b:P2[])=>a.length===b.length&&a.some((_,offset)=>[1,-1].some(direction=>a.every((p,i)=>{const q=b[(offset+direction*i+b.length*2)%b.length]!;return DMath.hypot(p[0]-q[0],p[1]-q[1])<1e-8})));
   if(!assembly||!originalRuns.length||originalTreads.length!==flight.treads.length||flight.treads.some(t=>!originalTreads.some(o=>o.runElementId===t.runElementId&&Math.abs(o.elevationFeet-t.elevationFeet)<1e-8&&sameRing(o.ringFeet,t.ringFeet)))) {diagnostics.push({nativeStairId:flight.stairElementId,reason:'Prepared flight lacks exact independently replayed original typed owner/profile inventory'});continue;}
   const treads=flight.treads.toSorted((a,b)=>a.elevationFeet-b.elevationFeet||a.runElementId-b.runElementId);
   if(treads.length<2||treads.some(t=>area(t.ringFeet)<.01)){diagnostics.push({nativeStairId:flight.stairElementId,reason:'Incomplete positive original walking tread inventory'});continue;}
@@ -41,14 +42,14 @@ export function prepareNativeSourceStairReceipts(model:ConvertResult,data:Indoor
   if(lev.some(l=>!l)||lev[0]!.levelId===lev[1]!.levelId){diagnostics.push({nativeStairId:flight.stairElementId,reason:'Original terminal heights do not match distinct original levels'});continue;}
   const caps=([0,1]as const).map(i=>{
    const terminal=i?treads.at(-1)!:treads[0]!,neighbour=i?treads.at(-2)!:treads[1]!;
-   const c=center(terminal.ringFeet),n=center(neighbour.ringFeet),dx=c[0]-n[0],dy=c[1]-n[1],len=Math.hypot(dx,dy);if(len<1e-8)return[];
-   const ux=dx/len,uy=dy/len,edges=terminal.ringFeet.map((p,j)=>{const q=terminal.ringFeet[(j+1)%terminal.ringFeet.length]!,ex=q[0]-p[0],ey=q[1]-p[1],span=Math.hypot(ex,ey);return{a:p,b:q,span,transverse:Math.abs(ex*ux+ey*uy)/(span||1),outward:((p[0]+q[0])/2-c[0])*ux+((p[1]+q[1])/2-c[1])*uy}}).filter(e=>e.transverse<.1&&e.outward>0&&e.span>=2-1e-8).sort((a,b)=>b.outward-a.outward);
+   const c=center(terminal.ringFeet),n=center(neighbour.ringFeet),dx=c[0]-n[0],dy=c[1]-n[1],len=DMath.hypot(dx,dy);if(len<1e-8)return[];
+   const ux=dx/len,uy=dy/len,edges=terminal.ringFeet.map((p,j)=>{const q=terminal.ringFeet[(j+1)%terminal.ringFeet.length]!,ex=q[0]-p[0],ey=q[1]-p[1],span=DMath.hypot(ex,ey);return{a:p,b:q,span,transverse:Math.abs(ex*ux+ey*uy)/(span||1),outward:((p[0]+q[0])/2-c[0])*ux+((p[1]+q[1])/2-c[1])*uy}}).filter(e=>e.transverse<.1&&e.outward>0&&e.span>=2-1e-8).sort((a,b)=>b.outward-a.outward);
    // A curved terminal edge is many short native segments: use an outward
    // chord between two of its own vertices, 2-3 ft apart, across the flight.
    if(!edges.length){
     const ring=terminal.ringFeet,chords:typeof edges=[];
     for(let j=0;j<ring.length;j++)for(let k=j+1;k<ring.length;k++){
-     const p=ring[j]!,q=ring[k]!,ex=q[0]-p[0],ey=q[1]-p[1],span=Math.hypot(ex,ey);
+     const p=ring[j]!,q=ring[k]!,ex=q[0]-p[0],ey=q[1]-p[1],span=DMath.hypot(ex,ey);
      if(span<2-1e-8||span>3)continue;
      const transverse=Math.abs(ex*ux+ey*uy)/span,outward=((p[0]+q[0])/2-c[0])*ux+((p[1]+q[1])/2-c[1])*uy;
      if(transverse<.1&&outward>0)chords.push({a:p,b:q,span,transverse,outward});

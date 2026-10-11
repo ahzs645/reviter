@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { Rational, rational, nativeRationalOverlay, nativeRationalScalarToIEEE, type NativeRationalParts } from "./native-rational-overlay.ts";
 
 /** Mirror of openindoormaps app/indoor-project/native-slab-join-closures.ts (keep identical). */
@@ -29,7 +30,7 @@ const dot = (a: RP, b: RP) => add(mul(a[0], b[0]), mul(a[1], b[1]));
 const cross = (a: RP, b: RP) => sub(mul(a[0], b[1]), mul(a[1], b[0]));
 const minus = (a: RP, b: RP): RP => [sub(a[0], b[0]), sub(a[1], b[1])];
 const exact = (p: P2): RP => [rational(p[0]), rational(p[1])];
-const distance = (a: RP, b: RP) => Math.hypot(toNumber(sub(a[0], b[0])), toNumber(sub(a[1], b[1])));
+const distance = (a: RP, b: RP) => DMath.hypot(toNumber(sub(a[0], b[0])), toNumber(sub(a[1], b[1])));
 
 function segments(floors: readonly NativeSlabJoinFloor[]): Segment[] {
   const out: Segment[] = [];
@@ -101,7 +102,7 @@ export function nativeSlabJoinClosures(floors: readonly NativeSlabJoinFloor[]): 
         if (s.box[0] > t.box[2] + tol || t.box[0] > s.box[2] + tol || s.box[1] > t.box[3] + tol || t.box[1] > s.box[3] + tol) continue;
         // Floating broad phase: both ends of the shorter edge must be near the
         // other edge's line; the exact construction below decides the rest.
-        const dx = s.b[0] - s.a[0], dy = s.b[1] - s.a[1], len = Math.hypot(dx, dy);
+        const dx = s.b[0] - s.a[0], dy = s.b[1] - s.a[1], len = DMath.hypot(dx, dy);
         const off = (p: P2) => Math.abs((p[0] - s.a[0]) * dy - (p[1] - s.a[1]) * dx) / len;
         if (Math.min(off(t.a), off(t.b)) > 1e-6) continue;
         pieces.push(...closure(s, t));
