@@ -13,6 +13,8 @@ import {validateNativeFloorOpeningOwnershipBinding} from "./native-floor-opening
 import {verifyNativeMaterialSections} from "./native-material-sections.ts";
 import {verifyNativeIndoorEnvelopes} from "./native-indoor-envelopes.ts";
 import {supplementNativeIndoorEnvelopes,validateNativeIndoorEnvelopeSupplements} from "./native-indoor-envelope-supplement.ts";
+import { validateNativeFloorEdgeRules, type NativeFloorEdgeRules } from "./native-floor-edge-rules.ts";
+import { nativeFloorEdgeConnectors } from "./native-floor-edge-connectors.ts";
 import {validateNativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
 import {nativeDoorBoundaryClosureFootprints} from "./native-door-boundary-closures.ts";
@@ -380,6 +382,8 @@ export async function prepareIndoorDataset(
     if (!doors) directoryDoorCache.set(levelId, doors = directoryDoors(model, levelId));
     return doors;
   };
+  const floorEdgeRules = data.nativeFloorEdgeRules as NativeFloorEdgeRules | undefined;
+  validateNativeFloorEdgeRules(floorEdgeRules, modelSha256);
   if (dataset.nativeIndoorEnvelopes && dataset.nativeMaterialSections) {
     progress("Supplementing native indoor envelopes from reviewed corrections…");
     const doorBounds = new Map(model.elementBounds.filter(r => r.categoryId === -2000023).map(r => [r.elementId, [r.boundsFeet.min.z, r.boundsFeet.max.z] as [number, number]]));
@@ -391,13 +395,19 @@ export async function prepareIndoorDataset(
       envelopes: dataset.nativeIndoorEnvelopes,
       model: modelSha256,
       materialSections: nativeMaterialSectionsWithSupplement(dataset.nativeMaterialSections, dataset.nativeMaterialSectionSupplement) as never,
-      walkingSupportFloors: dataset.walkingSupport.floors.map(f => ({ elevationFeet: f.elevationFeet, partsFeet: f.partsFeet ?? [f.ringsFeet] })),
+      walkingSupportFloors: dataset.walkingSupport.floors.map(f => ({ nativeElementId: f.nativeElementId, elevationFeet: f.elevationFeet, partsFeet: f.partsFeet ?? [f.ringsFeet] })),
       doors: envelopeDoors,
       provisionalRows: dataset.nativeProvisionalCornerSeals?.rows as never,
       frameReturnRows: dataset.nativeDerivedFrameReturns?.rows as never,
       wallPositionRepairs: dataset.nativeWallPositionRepairs?.walls as never,
       exclusions: dataset.indoorExclusions?.areas,
+      ...(floorEdgeRules ? { floorEdge: { settings: floorEdgeRules, connectors: nativeFloorEdgeConnectors(model, {
+        localStairIds: (data.buildingTransitions ?? []).filter(t => t.kind === "local-steps").map(t => t.nativeStairId),
+        rampIds: ((data.indoorRamps as { ramps?: { nativeRampId?: unknown }[] } | undefined)?.ramps ?? []).map(r => r.nativeRampId).filter((id): id is number => Number.isSafeInteger(id)),
+      }) } } : {}),
     });
+    if (supplemented.floorEdgeRows.length)
+      issue("native-floor-edge-rules", `${supplemented.floorEdgeRows.length} floor-edge boundary row(s) (${floorEdgeRules!.rules.join(", ")}; decision ${floorEdgeRules!.decisionId}) are in the envelope barrier; ${new Set(supplemented.floorEdgeRows.flatMap(r => r.yieldedConnectorIds)).size} stair/ramp connector(s) were left untouched where they cross a rule edge.`);
     if (supplemented.envelopes !== dataset.nativeIndoorEnvelopes) {
       await verifyNativeIndoorEnvelopes(supplemented.envelopes, modelSha256);
       validateNativeIndoorEnvelopeSupplements(supplemented.envelopes);

@@ -14,7 +14,10 @@
  * excluded, matching the authored envelope evidence), every physical door footprint closed for
  * ENCLOSURE only (portals/access unchanged), and explicitly reviewed correction rows active at the
  * cut. Authored parts are kept byte-identical; supplement parts are appended and carry their own
- * evidence, correction ids and assumption ids. */
+ * evidence, correction ids and assumption ids.
+ * Owner-adopted floor-edge rules (native-floor-edge-rules.ts: step, drop-edge, void-edge) add derived
+ * barrier rows when the project names them; each supplement then records the rule rows it used
+ * (`floorEdge`: decision id, rule ids, row ids, row checksum, connectors the rules yielded to). */
 import * as DMath from "./deterministic-math.ts";
 import { nativeRationalOverlay, type NativeRationalParts, type NativeRationalOverlayInput } from "./native-rational-overlay.ts";
 import { nativeExactPartsForProposals, nativeRationalPointInRing } from "./native-exact-planar-topology.ts";
@@ -22,6 +25,8 @@ import { Rational, add, sub, mul, compare, rationalScalarToIEEE as nativeRationa
 import { nativeIndoorEnvelopeHash, verifyNativeIndoorEnvelopes, type NativeIndoorEnvelopes } from "./native-indoor-envelopes.ts";
 import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
+import { deriveNativeFloorEdgeRows, nativeFloorEdgeCorrectionsAt, nativeFloorEdgeRowsSha256, nativeFloorEdgeRuleOfRowId, validateNativeFloorEdgeConnectors, validateNativeFloorEdgeRules,
+  NATIVE_FLOOR_EDGE_RULE_IDS, type NativeFloorEdgeConnector, type NativeFloorEdgeRow, type NativeFloorEdgeRules } from "./native-floor-edge-rules.ts";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
@@ -35,6 +40,14 @@ export type NativeEnvelopeCutBarrier = {
   doorClosures: { nativeElementId: number; footprintFeet: Ring }[];
   corrections: NativeEnvelopeCorrection[];
 };
+/** Provenance of the owner-adopted floor-edge rule rows in one supplement's barrier. */
+export type NativeEnvelopeFloorEdgeProvenance = {
+  decisionId: string;
+  rules: string[];
+  rowIds: string[];
+  rowsSha256: string;
+  yieldedConnectorIds: string[];
+};
 export type NativeEnvelopeSupplement = {
   version: 1;
   method: "bounded-faces-intersection-over-cuts-v1";
@@ -46,6 +59,7 @@ export type NativeEnvelopeSupplement = {
   sourceElementIds: number[];
   correctionIds: string[];
   assumptionIds: string[];
+  floorEdge?: NativeEnvelopeFloorEdgeProvenance;
   evidenceSha256: string;
 };
 const finite = (p: unknown): p is Point => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e7);
@@ -224,10 +238,26 @@ export function validateNativeIndoorEnvelopeSupplements(value: NativeIndoorEnvel
         !/^[a-f0-9]{64}$/.test(s.evidenceSha256) || !Array.isArray(s.correctionIds) || !Array.isArray(s.assumptionIds) || s.assumptionIds.some((id) => !s.correctionIds.includes(id)) ||
         !Array.isArray(s.cutElevationsFeet) || s.cutElevationsFeet.some((z) => !level.cutElevationsFeet.includes(z)))
         throw new Error("Invalid native envelope supplement records.");
+      validateNativeEnvelopeFloorEdgeProvenance(s);
       next += s.partCount;
     }
     if (next !== level.partsFeet.length || level.supplements[0]!.partStartIndex < 1) throw new Error("Native envelope supplement parts must follow every authored part.");
   }
+}
+
+/** Floor-edge rows are tagged: every rule row in the barrier is listed under `floorEdge` and nothing else is. */
+export function validateNativeEnvelopeFloorEdgeProvenance(s: Pick<NativeEnvelopeSupplement, "correctionIds" | "assumptionIds" | "floorEdge">) {
+  const ruleRows = s.correctionIds.filter((id) => nativeFloorEdgeRuleOfRowId(id) !== undefined);
+  const f = s.floorEdge;
+  if (f === undefined) { if (ruleRows.length) throw new Error("Native envelope supplement uses floor-edge rule rows without their provenance."); return; }
+  const known = Object.values(NATIVE_FLOOR_EDGE_RULE_IDS) as string[];
+  const sortedUnique = (a: unknown[]) => a.every((x, i) => typeof x === "string" && x.length > 0 && x.length <= 300 && (i === 0 || (a[i - 1] as string) < x));
+  if (!f || typeof f.decisionId !== "string" || !f.decisionId.trim() || f.decisionId.length > 200 || !/^[a-f0-9]{64}$/.test(f.rowsSha256) ||
+    !Array.isArray(f.rules) || !f.rules.length || !sortedUnique(f.rules) || f.rules.some((r) => !known.includes(r)) ||
+    !Array.isArray(f.rowIds) || !f.rowIds.length || !sortedUnique(f.rowIds) || f.rowIds.length !== ruleRows.length || ruleRows.some((id) => !f.rowIds.includes(id)) ||
+    f.rowIds.some((id) => !f.rules.some((rule) => id.startsWith(`${rule}:`)) || s.assumptionIds.includes(id)) ||
+    !Array.isArray(f.yieldedConnectorIds) || !sortedUnique(f.yieldedConnectorIds))
+    throw new Error("Invalid native envelope floor-edge provenance.");
 }
 
 /** Exact authored envelope (supplement parts and records removed), for source/prepared parity. */
@@ -297,28 +327,45 @@ export async function supplementNativeIndoorEnvelopes(input: {
   envelopes: NativeIndoorEnvelopes | undefined;
   model: string;
   materialSections: Parameters<typeof nativeEnvelopeBarrierFromDataset>[0]["nativeMaterialSections"];
-  walkingSupportFloors: { elevationFeet: number; partsFeet: Parts }[];
+  walkingSupportFloors: { nativeElementId?: number; elevationFeet: number; partsFeet: Parts }[];
   doors: { levelId: number; nativeElementId: number; footprintFeet?: Ring; verticalExtentFeet?: [number, number] }[];
   provisionalRows?: ZRow[];
   frameReturnRows?: ZRow[];
   wallPositionRepairs?: { id: string; levelId: number; ringsFeet: Ring[] }[];
   exclusions?: { id: string; levelId: number; elevationFeet: number; partsFeet: Parts }[];
-}): Promise<{ envelopes: NativeIndoorEnvelopes | undefined; supplements: NativeEnvelopeSupplement[] }> {
+  /** Owner-adopted floor-edge rules (step, drop-edge, void-edge) over the original walking slabs
+   * (`nativeElementId` required), yielding to native/recipe stairs and ramps. Omitted = off. */
+  floorEdge?: { settings: NativeFloorEdgeRules; connectors: NativeFloorEdgeConnector[] };
+}): Promise<{ envelopes: NativeIndoorEnvelopes | undefined; supplements: NativeEnvelopeSupplement[]; floorEdgeRows: NativeFloorEdgeRow[] }> {
   const { envelopes, model } = input;
-  if (!envelopes || !input.materialSections) return { envelopes, supplements: [] };
+  if (!envelopes || !input.materialSections) return { envelopes, supplements: [], floorEdgeRows: [] };
   const supplements: NativeEnvelopeSupplement[] = [];
+  const floorEdgeRows: NativeFloorEdgeRow[] = [];
+  let edgeFloors: { nativeElementId: number; elevationFeet: number; partsFeet: Parts }[] = [];
+  if (input.floorEdge) {
+    validateNativeFloorEdgeRules(input.floorEdge.settings, model);
+    validateNativeFloorEdgeConnectors(input.floorEdge.connectors);
+    edgeFloors = input.walkingSupportFloors.map((f) => {
+      const id = f.nativeElementId;
+      if (id === undefined || !Number.isSafeInteger(id) || id <= 0) throw new Error("Floor-edge rules need the native element id of every original walking slab.");
+      return { nativeElementId: id, elevationFeet: f.elevationFeet, partsFeet: f.partsFeet };
+    });
+  }
   const doorExtent = new Map(input.doors.map((d) => [d, d.verticalExtentFeet] as const));
   for (const level of envelopes.levels) {
     const cuts = level.cutElevationsFeet.filter((z) => input.materialSections!.levels.some((l) => l.levelId === level.levelId && Math.abs(l.cutElevationFeet - z) < 1e-6));
     if (!cuts.length) continue;
     const support = input.walkingSupportFloors.filter((f) => Math.abs(f.elevationFeet - level.elevationFeet) < 0.05).flatMap((f) => f.partsFeet);
     if (!support.length) continue;
+    const edgeRows = input.floorEdge ? deriveNativeFloorEdgeRows({ levelId: level.levelId, elevationFeet: level.elevationFeet, cutElevationsFeet: cuts, floors: edgeFloors, connectors: input.floorEdge.connectors, settings: input.floorEdge.settings }) : [];
+    floorEdgeRows.push(...edgeRows);
     const barriers = cuts.map((cut) => {
       const active = (r: ZRow) => (r.state === undefined || r.state === "applied") && r.baseElevationFeet <= cut && cut < r.topElevationFeet && r.partsFeet.length > 0;
       const corrections: NativeEnvelopeCorrection[] = [
         ...(input.provisionalRows ?? []).filter(active).map((r) => ({ id: r.id, assumption: true, partsFeet: r.partsFeet })),
         ...(input.frameReturnRows ?? []).filter(active).map((r) => ({ id: r.id, assumption: false, partsFeet: r.partsFeet })),
         ...(input.wallPositionRepairs ?? []).filter((w) => w.levelId === level.levelId).map((w) => ({ id: w.id, assumption: false, partsFeet: [w.ringsFeet] })),
+        ...nativeFloorEdgeCorrectionsAt(edgeRows, cut),
       ];
       return nativeEnvelopeBarrierFromDataset({ doors: input.doors as never, nativeMaterialSections: input.materialSections }, level.levelId, cut, corrections, {
         productionJunctionRepairs: true,
@@ -330,9 +377,17 @@ export async function supplementNativeIndoorEnvelopes(input: {
     const excluded = (input.exclusions ?? []).filter((a) => a.levelId === level.levelId && Math.abs(a.elevationFeet - level.elevationFeet) < 0.15).flatMap((a) => a.partsFeet);
     if (parts.length && excluded.length) parts = nativeExactPartsForProposals(nativeRationalOverlay("difference", parts as NativeRationalOverlayInput, excluded as NativeRationalOverlayInput)) as Parts;
     if (!parts.length) continue;
-    if (parts === s.partsFeet) { supplements.push(s); continue; }
-    const body = { levelId: s.levelId, elevationFeet: s.elevationFeet, cutElevationsFeet: s.cutElevationsFeet, partsFeet: parts, sourceElementIds: s.sourceElementIds, correctionIds: s.correctionIds, assumptionIds: s.assumptionIds };
+    const used = edgeRows.filter((r) => s.correctionIds.includes(r.id));
+    const floorEdge: NativeEnvelopeFloorEdgeProvenance | undefined = used.length ? {
+      decisionId: input.floorEdge!.settings.decisionId,
+      rules: [...new Set(used.map((r) => r.rule))].sort(),
+      rowIds: used.map((r) => r.id).sort(),
+      rowsSha256: nativeFloorEdgeRowsSha256(used),
+      yieldedConnectorIds: [...new Set(used.flatMap((r) => r.yieldedConnectorIds))].sort(),
+    } : undefined;
+    if (parts === s.partsFeet && !floorEdge) { supplements.push(s); continue; }
+    const body = { levelId: s.levelId, elevationFeet: s.elevationFeet, cutElevationsFeet: s.cutElevationsFeet, partsFeet: parts, sourceElementIds: s.sourceElementIds, correctionIds: s.correctionIds, assumptionIds: s.assumptionIds, ...(floorEdge ? { floorEdge } : {}) };
     supplements.push({ version: 1, method: s.method, ...body, areaSqFt: partsArea(parts), evidenceSha256: bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(body)))) });
   }
-  return { envelopes: supplements.length ? await mergeNativeIndoorEnvelopeSupplements(envelopes, supplements, model) : envelopes, supplements };
+  return { envelopes: supplements.length ? await mergeNativeIndoorEnvelopeSupplements(envelopes, supplements, model) : envelopes, supplements, floorEdgeRows };
 }
