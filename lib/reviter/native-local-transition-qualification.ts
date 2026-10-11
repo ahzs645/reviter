@@ -142,8 +142,12 @@ export function qualifyNativeLocalTransitions(
     if ([...receipt.nativeFloorElementIds].sort((a, b) => a - b).join() !== [...transition.floorElementIds].sort((a, b) => a - b).join()) { fail(`receipt lands on slabs ${receipt.nativeFloorElementIds.join("/")} but the recipe names ${transition.floorElementIds.join("/")}`); continue; }
     const assembly = model.nativeStairAssemblies?.find((a) => a.stairElementId === transition.nativeStairId);
     const own = assembly ? [...assembly.runAndLandingIds] : [];
-    // Run finish/symbol children hosted on the runs are part of the walking body.
-    for (const relation of model.nativeHostRelations ?? []) if (own.includes(relation.hostId) && elements.get(relation.elementId)?.categoryId === -2000921) own.push(relation.elementId);
+    // A run's Treads/Risers finish element is part of its walking body: hosted on
+    // the run, or occupying exactly the run's own bounds.
+    const runs = own.map((id) => elements.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
+    const within = (r: (typeof runs)[number], b: (typeof runs)[number]) => (["x", "y", "z"] as const).every((k) => r.boundsFeet.min[k] >= b.boundsFeet.min[k] - 0.05 && r.boundsFeet.max[k] <= b.boundsFeet.max[k] + 0.05);
+    for (const r of model.elementBounds)
+      if (r.categoryId === -2000921 && ((model.nativeHostRelations ?? []).some((h) => h.elementId === r.elementId && own.includes(h.hostId)) || runs.some((run) => within(r, run)))) own.push(r.elementId);
     const foreignMaterial = prepareNativeLocalStairMaterial(model, dataset, receipt, own);
     const collisions = foreignMaterial.bands.flatMap((band) => band.sections.filter((section) => {
       const a = receipt.pointsFeet[band.segmentIndex]!, b = receipt.pointsFeet[band.segmentIndex + 1]!, d = DMath.hypot(b[0] - a[0], b[1] - a[1]);

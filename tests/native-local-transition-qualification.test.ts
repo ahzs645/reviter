@@ -28,11 +28,13 @@ function mesh(owned: [number, number[][][]][]) {
  * high; its native BRep up-faces carry the true heights 0.5 and 1.0. The top
  * tread stops 0.05 ft short of slab 101; a 0.15 ft native nosing lip at 1.25 ft
  * spans that riser line. */
-function fixture(options: { lip?: boolean; wall?: boolean } = {}) {
+function fixture(options: { lip?: boolean; wall?: boolean; finish?: boolean } = {}) {
   const lip = options.lip ?? true;
   const t1 = ring(0.5, 1.5), t2 = ring(1.5, 2.45), nosing = ring(2.4, 2.55);
   const owned: [number, number[][][]][] = [[11, [...top(t1, 0.5), ...top(t2, 1), ...(lip ? top(nosing, 1.25) : [])]]];
   if (options.wall) owned.push([300, box(1.0, 0.5, 1.2, 2.5, 0, 3)]);
+  // The run's Treads/Risers finish occupies the run's own bounds: walking body, not foreign.
+  if (options.finish) owned.push([12, box(0.5, 0, 2.55, 3, 0, 1.25)]);
   const floors = [{ elementId: 100, z: 0, r: ring(-2, 0.5) }, { elementId: 101, z: 1.5, r: ring(2.5, 5) }];
   const model = {
     origin: { x: 0, y: 0, z: 0 },
@@ -41,6 +43,7 @@ function fixture(options: { lip?: boolean; wall?: boolean } = {}) {
       ...floors.map((f) => ({ elementId: f.elementId, categoryId: -2000032, boundsFeet: { min: { x: f.r[0]![0], y: 0, z: f.z - 0.5 }, max: { x: f.r[2]![0], y: 3, z: f.z } }, loops: [f.r.map((p) => [...p, f.z])] })),
       { elementId: 10, categoryId: -2000120, boundsFeet: { min: { x: 0.5, y: 0, z: 0 }, max: { x: 2.55, y: 3, z: 1.5 } } },
       { elementId: 11, categoryId: -2000919, boundsFeet: { min: { x: 0.5, y: 0, z: 0 }, max: { x: 2.55, y: 3, z: 1.25 } }, stairTreads: [ring(0.5, 1.5), ring(1.5, 2.5)].map((r, i) => r.map((p) => [...p, 1 + 0.5 * i])), stairBeginWithRiser: true, stairEndWithRiser: true },
+      ...(options.finish ? [{ elementId: 12, categoryId: -2000921, boundsFeet: { min: { x: 0.5, y: 0, z: 0 }, max: { x: 2.55, y: 3, z: 1.25 } } }] : []),
       ...(options.wall ? [{ elementId: 300, categoryId: -2000011, boundsFeet: { min: { x: 1.0, y: 0.5, z: 0 }, max: { x: 1.2, y: 2.5, z: 3 } } }] : []),
     ],
     meshes: [mesh(owned)],
@@ -96,6 +99,12 @@ test("a reviewed local-steps recipe qualifies as a not-step-free native stair co
   tampered.nativeSourceStair!.supportFaces![0]!.ringFeet[0]![0] -= 0.2;
   assert.equal(validNativeSourceStairBinding({ ...d, edges: [tampered] } as IndoorDataset, tampered), false, "a support lip must be the flight's own native face");
   assert.equal(runtime.validNativeSourceStairBinding({ ...d, edges: [tampered] } as never, tampered as never), false);
+});
+test("the run's own Treads/Risers finish is walking body, not foreign material", async () => {
+  const f = fixture({ finish: true });
+  const out = qualifyNativeLocalTransitions(f.model as never, await dataset(f), [recipe as never], () => [0, 0]);
+  assert.equal(out.qualified.length, 1, JSON.stringify(out.refused));
+  assert.ok(!out.qualified[0]!.edge.nativeSourceStair!.foreignMaterial.sourceElementIds.includes(12));
 });
 test("a riser line without its native lip, foreign material in the path or a wrong recipe slab is refused", async () => {
   for (const [why, f, r] of [
