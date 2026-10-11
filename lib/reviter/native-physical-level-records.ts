@@ -215,3 +215,16 @@ export function nativePhysicalLevelRecords<R extends RecordLike>(
     (r) => (moved.get(r.key)?.physicalLevelId ?? r.levelId) === levelId,
   );
 }
+/** A door on a native level may join a room labelled on that physical level
+ * even when the room's identity level differs (a raised Floor 1.25 office
+ * registered on Floor 1). The record's identity level stays unchanged. */
+export function nativeRecordOnPhysicalLevel(
+  data: NativePhysicalLevelData,
+  record: RecordLike,
+  levelId: number,
+) {
+  return (
+    record.levelId === levelId ||
+    nativeRecordPhysicalLevelId(data, record) === levelId
+  );
+}

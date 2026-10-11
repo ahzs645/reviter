@@ -23,6 +23,8 @@ import {validateCampusStoreys, type CampusStoreyReview} from "./campus-floors.ts
 import {validateGeoreference,type ModelGeoreference} from "./georeference.ts";
 import {validateVisitorMetadata, type VisitorMetadata} from "./visitor-metadata.ts";
 import {validateNativeBoundaryPatches,type NativeBoundaryPatches} from "./native-boundary-patches.ts";
+import {validateNativeAccessZones,type NativeAccessZones} from "./native-access-zones.ts";
+import {validateReviewedCirculationLinks,type ReviewedCirculationLinks} from "./reviewed-circulation-links.ts";
 /** Room annotations stay in model feet; boundaries and original provenance survive export. */
 export type RoomPoint = [number, number];
 export type DirectoryRoom = {
@@ -78,6 +80,10 @@ export type RoomDirectoryData = {
   selectionDoorThresholds?: SelectionDoorThresholds;
   /** Logical outlining only: never physical walls, portals, access or raised blocks. */
   reviewedAreaPartitions?: ReviewedAreaPartitions;
+  /** Reviewed staff/non-walkable carve-outs of shared native walking faces. */
+  nativeAccessZones?: NativeAccessZones;
+  /** Owner-reviewed walking links between existing graph nodes; physically rechecked. */
+  reviewedCirculationLinks?: ReviewedCirculationLinks;
   indoorExclusions?: IndoorExclusions;
   nativeDisplayScopes?: NativeDisplayScopes;
   nativeProvisionalCornerSeals?: NativeProvisionalCornerSeals;
@@ -216,6 +222,8 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);
   validateSelectionDoorThresholds(data.selectionDoorThresholds);
   validateReviewedAreaPartitions(data.reviewedAreaPartitions);
+  validateNativeAccessZones(data.nativeAccessZones);
+  validateReviewedCirculationLinks(data.reviewedCirculationLinks);
   validateReviewedDoorApertures(data.reviewedDoorApertures);
   return data;
 }

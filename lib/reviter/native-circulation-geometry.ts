@@ -19,6 +19,7 @@ import {
 } from "./native-routing-material.ts";
 import { createNativeBoundaryMaterialQuery,createNativeExactBoundaryMaterialQuery } from "./native-boundary-material.ts";
 import { nativeConnectorAnchors } from "./native-connector-anchors.ts";
+import { nativeAccessZonesAt, nativeAccessZoneById, nativeAccessZoneSplit, NATIVE_ACCESS_ZONES_VERSION } from "./native-access-zones.ts";
 import { nativeMaterialPlanWalls } from "./native-material-plan.ts";
 import { indoorExclusionParts } from "./indoor-exclusions.ts";
 import pc from "polygon-clipping";
@@ -137,6 +138,7 @@ export function nativeCirculationGeometryKey(data: IndoorDataset): string {
             NATIVE_EXACT_GEOS_BINDING,
             nativeConnectorAnchors(data),
             ...(data.nativePhysicalLevels ? [data.nativePhysicalLevels] : []),
+            ...(data.nativeAccessZones ? [NATIVE_ACCESS_ZONES_VERSION, data.nativeAccessZones] : []),
           ]
         : []),
       ...(data.nativeMaterialSections
@@ -359,12 +361,36 @@ function prepareNativeCirculationElevations(
       if (!region.exact) throw new Error("Missing original exact native walking authority.");
       const physicalFaces = nativeRationalOverlay("difference", region.exact.free, thresholds);
       const exactArea = nativeRationalMeasuredArea;
-      for (const part of physicalFaces) {
+      // Reviewed access zones (native-access-zones.ts) carve their exact parts
+      // out of each shared physical face. The remainder is classified by the
+      // unchanged majority rule; a staff zone piece becomes restricted
+      // circulation that carries every zone identity; a non-walkable piece
+      // stays a face without a cell. No floor, wall or door is created.
+      for (const { part, zone } of nativeAccessZoneSplit(physicalFaces, nativeAccessZonesAt(data, z))) {
         const faceId=`native-face:${z.toFixed(6)}:${exactFaces.length}`, face:NativeRationalParts=[part];
         // Every true positive source piece survives, even when too small,
         // restricted or unlabelled for a public route.
         exactFaces.push({id:faceId,parts:face});
-        if (!nativeRationalFootprintSupported(face,region.exact.walkable)) {report.rejected++;continue;}
+        // A staff zone piece is restricted (never publicly walkable) but must
+        // still be original physical free floor.
+        if (!nativeRationalFootprintSupported(face,zone?region.exact.free:region.exact.walkable)) {report.rejected++;continue;}
+        if (zone) {
+          if (zone.zone.access !== "staff") { report.rejected++; continue; }
+          const zoneMembers = zone.zone.memberRoomKeys.map(k => recordsByKey.get(k)!).filter(Boolean);
+          const zoneAnchors = anchors.filter(a=>Math.abs(a.pointFeet[2]-z)<.05 && (a.roomKey===''||zone.zone.memberRoomKeys.includes(a.roomKey)) && nativeRationalPointInParts(a.pointFeet,face) && routingFloorPlateRecords(model,z).some(f=>nativeRationalPointInParts(a.pointFeet,nativeRationalOverlay("union",nativeFloorPolygons(f,true)))));
+          const nativeFloorIds=routingFloorPlateRecords(model,z).filter(f=>nativeRationalOverlay("intersection",face,nativeFloorPolygons(f,true)).length>0).map(f=>f.elementId);
+          const rings=part.map(r=>r.map(([x,y])=>[nativeRationalScalarToIEEE(x),nativeRationalScalarToIEEE(y)] as RoomPoint));
+          const id=`native-cell:${z.toFixed(6)}:${cells.length}`;
+          const drawing=prepareNativeContainedCellDisplay(id,face);
+          if(drawing.residual)displayResidualFaces.push(drawing.residual);
+          cells.push({id,exactFaceId:faceId,containedDisplay:drawing.display,accessZoneId:zone.zone.id,
+            levelIds:[...new Set([...zoneMembers.map(r=>r.levelId),...zoneAnchors.map(a=>a.levelId),...data.nativeLevels.filter(l=>Math.abs(l.elevationFeet-z)<.05).map(l=>l.id)])].sort((a,b)=>a-b),
+            elevationFeet:z,roomKeys:zoneMembers.map(r=>r.key).sort(),nativeFloorIds,
+            ...(zoneAnchors.length?{connectorAnchors:zoneAnchors.map(({edgeId,nodeId,roomKey,nativeElementId})=>({edgeId,nodeId,roomKey,nativeElementId}))}:{}),
+            ringsFeet:rings,sourceCoverage:1});
+          report.diagnostics.push(`Elevation ${z}: reviewed ${zone.zone.access} access zone ${zone.zone.id} is restricted circulation (${zoneMembers.length} identities); no public route generated through it.`);
+          continue;
+        }
         const measured = owners.map(record=>{
           const identity=[nativeRoomIdentityRings(data,record)];
           const nearbyFace=nativeRationalIntersectionOperand(identity,face);
@@ -683,7 +709,12 @@ export function mergeNativeCirculationPlaneDrafts(data: IndoorDataset, drafts: r
       if(cell.id!==expected||!exactFaceId||!cell.containedDisplay)throw Error("Native plane cell identity changed.");
       const source=index.parts(cell.exactFaceId!)!;
       const cellAnchors=(cell.connectorAnchors??[]).map(a=>sourceAnchors.find(s=>s.edgeId===a.edgeId&&s.nodeId===a.nodeId&&s.roomKey===a.roomKey&&s.nativeElementId===a.nativeElementId&&Math.abs(s.pointFeet[2]-z)<.05&&nativeRationalPointInParts(s.pointFeet,source)));
-      if(cellAnchors.some(a=>!a)||cell.roomKeys.some(k=>!data.records.some(r=>r.key===k&&r.walkable&&r.access!=="staff"&&(Math.abs(r.elevationFeet-z)<.05||cellAnchors.some(a=>a?.roomKey===k)))))
+      // A reviewed access-zone cell carries its restricted members; every other
+      // cell owner remains a walkable non-staff record on this plane.
+      const zone=cell.accessZoneId!==undefined?nativeAccessZoneById(data,cell.accessZoneId):undefined;
+      if(cell.accessZoneId!==undefined&&(!zone||Math.abs(zone.zone.elevationFeet-z)>=.05||JSON.stringify(cell.roomKeys)!==JSON.stringify([...zone.zone.memberRoomKeys].sort())))
+        throw Error("Native plane draft names a missing or changed reviewed access zone.");
+      if(cellAnchors.some(a=>!a)||cell.roomKeys.some(k=>!data.records.some(r=>r.key===k&&(zone?zone.zone.memberRoomKeys.includes(k):r.walkable&&r.access!=="staff")&&(Math.abs(r.elevationFeet-z)<.05||cellAnchors.some(a=>a?.roomKey===k)))))
         throw Error("Native plane draft has an unknown, restricted or unsupported source owner.");
       validateNativeContainedCellDisplay(cell.containedDisplay,source,residual);
       const id=`native-cell:${z.toFixed(6)}:${cells.length}`,display=structuredClone(cell.containedDisplay),oldResidual=display.exactResidualFaceId;
@@ -925,12 +956,15 @@ function nativeCellDoorApproach(
     for (const node of pair) {
       if (permittedNodeIds && !permittedNodeIds.has(node!.id)) continue;
       const owner = context.records.get(node!.roomKey);
+      // Inside a reviewed staff access zone its own staff members' door sides
+      // are terminals too; their branches keep every zone identity.
+      const zoneMember = cell.accessZoneId !== undefined && cell.roomKeys.includes(node!.roomKey);
       if (
         (!cell.roomKeys.includes(node!.roomKey) &&
           !nativeForeignPortalTerminal(data, context, cell, node)) ||
         !owner ||
         !owner.walkable ||
-        owner.access === "staff"
+        (owner.access === "staff" && !zoneMember)
       )
         continue;
       const sign = Math.sign(side(node!.pointFeet)),
@@ -987,17 +1021,14 @@ function nativeCellDoorApproach(
 export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
   // A regeneration replaces its earlier derived branches; it must never revive
   // an old polyline because a rebuilt cell happens to reuse the same ID.
-  const removed = data.edges.some(
-    (edge) =>
-      !!edge.nativeCellId ||
-      (!!data.nativeIndoorEnvelopes && edge.kind === "walk"),
-  );
+  // Reviewed owner links (reviewed-circulation-links.ts) are not derived
+  // branches: they keep their identity and are replayed separately.
+  const derived = (edge: IndoorDataset["edges"][number]) =>
+    !!edge.nativeCellId ||
+    (!!data.nativeIndoorEnvelopes && edge.kind === "walk" && edge.reviewedCirculationLinkId === undefined);
+  const removed = data.edges.some(derived);
   for (let i = data.edges.length - 1; i >= 0; i--)
-    if (
-      data.edges[i]!.nativeCellId ||
-      (data.nativeIndoorEnvelopes && data.edges[i]!.kind === "walk")
-    )
-      data.edges.splice(i, 1);
+    if (derived(data.edges[i]!)) data.edges.splice(i, 1);
   if(data.nativeIndoorEnvelopes && (!data.circulationGeometry?.exactTopology || data.circulationGeometry.sourceModelSha256!==data.source.modelSha256 || data.circulationGeometry.sourceGeometryKey!==nativeCirculationGeometryKey(data))) return 0;
   const context: DoorApproachContext = {
     floorBlockedDoors: nativeDoorFloorBlockers(data),

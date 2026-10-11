@@ -6,6 +6,7 @@ import {indoorExclusionParts} from './indoor-exclusions';
 import {nativeRationalOverlay,type NativeRationalParts} from './native-rational-overlay';
 import {freezeNativeRationalParts} from './native-exact-planar-topology';
 import {nativeAuthoredStairTreads} from './native-authored-stair-treads';
+import {nativeWalkingFloorsWithSlabJoins} from './native-slab-join-closures';
 /** Recheck current original physical facts independently of a prepared face's
  * declared checksum. This is operation-local; no mutable dataset is cached. */
 export function createNativeExactRoutingAuthority(data:IndoorDataset){
@@ -24,7 +25,8 @@ export function createNativeExactRoutingAuthority(data:IndoorDataset){
   const envelope=envelopes.parts(z);
   // Empty flat support cannot admit a cell. No material obstacle is waived:
   // ramp/body certification uses its separate physical barrier query.
-  const support=floors.length&&envelope.length?nativeRationalOverlay('intersection',floors,envelope):[];
+  // Numerical joins between distinct original slab profiles stay walkable (native-slab-join-closures).
+  const support=nativeWalkingFloorsWithSlabJoins(floors,envelope);
   if(!support.length){const empty=freezeNativeRationalParts([]);levels.set(z,empty);return empty;}
   const material=materialQuery(z),ids=new Set(data.nativeLevels.filter(l=>Math.abs(l.elevationFeet-z)<.05).map(l=>l.id));
   const masks=[

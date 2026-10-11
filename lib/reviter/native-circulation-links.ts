@@ -3,6 +3,8 @@ import {add,sub,mul,div} from "./vendor/native-rational-overlay-arithmetic.mjs";
 import { nativeRationalOverlay, nativeRationalScalarToIEEE, rational, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION, type NativeRationalPoint, type NativeRationalParts } from "./native-rational-overlay.ts";
 import { nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare, nativeRationalPointInParts, nativeRationalPathSupported, nativeRationalFootprintSupported,freezeNativeRationalParts } from "./native-exact-planar-topology.ts";
 import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
+import { nativeWalkingFloorsWithSlabJoins } from "./native-slab-join-closures.ts";
+import { nativeAccessZonesAt, nativeAccessZoneSplit } from "./native-access-zones.ts";
 import { nativeExactGeosOverlay } from "./native-exact-geos-overlay.ts";
 import { nativeRoomIdentityRings } from "./native-floor-opening-ownership.ts";
 import { createNativeBoundaryMaterialQuery,createNativeExactBoundaryMaterialQuery } from "./native-boundary-material.ts";
@@ -242,9 +244,10 @@ export function createNativeWalkingFloorIntersectionQuery(sourceModelSha256: str
   const entries = new Map<string, { parts: NativeRationalParts; bytes: number }>();
   const maximumEntries = 12, maximumBytes = 16 * 1024 * 1024;
   let retainedBytes = 0, hits = 0, misses = 0;
+  // Numerical joins between distinct original slab profiles are closed here,
+  // once per complete operand set (native-slab-join-closures.ts).
   const compute = (rawFloors: Polygon[], envelopes: Polygon[]) =>
-    freezeNativeRationalParts(rawFloors.length && envelopes.length
-      ? nativeRationalOverlay("intersection", rawFloors, envelopes) : []);
+    freezeNativeRationalParts(nativeWalkingFloorsWithSlabJoins(rawFloors, envelopes));
   const query = (elevationFeet: number, rawFloors: Polygon[], envelopes: Polygon[]) => {
     if (!Number.isFinite(elevationFeet) || [...rawFloors, ...envelopes].some(part =>
       part.some(ring => ring.some(point => !point.every(Number.isFinite)))))
@@ -278,6 +281,18 @@ export function createNativeWalkingFloorIntersectionQuery(sourceModelSha256: str
   };
   return Object.assign(query, { statistics: () => ({ hits, misses, entries: entries.size,
     retainedBytes, maximumEntries, maximumBytes }) });
+}
+
+const sharedFloorQueries = new Map<string, ReturnType<typeof createNativeWalkingFloorIntersectionQuery>>();
+/** One bounded cache per source model for callers without their own query;
+ * identical results to a fresh computation (complete operands are the key). */
+function sharedNativeWalkingFloorQuery(sourceModelSha256: string) {
+  let query = sharedFloorQueries.get(sourceModelSha256);
+  if (!query) {
+    if (sharedFloorQueries.size >= 4) sharedFloorQueries.delete(sharedFloorQueries.keys().next().value!);
+    sharedFloorQueries.set(sourceModelSha256, (query = createNativeWalkingFloorIntersectionQuery(sourceModelSha256)));
+  }
+  return query;
 }
 
 /** Complete-operand memo. No height bucketing or metadata cropping.
@@ -357,10 +372,7 @@ export function nativeWalkingRegion(
   // Envelopes are source-certified physical indoor coverage, never room traces.
   const envelopeParts = envelopes.map((face) => ({ face, box: bounds(face) }));
   const exactFloors = strictNative
-    ? floorIntersectionQuery
-      ? floorIntersectionQuery(elevationFeet, rawFloors, envelopes)
-      : (rawFloors.length && envelopes.length
-        ? nativeRationalOverlay("intersection", rawFloors, envelopes) : [])
+    ? (floorIntersectionQuery ?? sharedNativeWalkingFloorQuery(dataset.source.modelSha256))(elevationFeet, rawFloors, envelopes)
     : undefined;
   const floors: Polygon[] = exactFloors ? proposalParts(exactFloors) : rawFloors;
   const material = (materialQuery ?? createNativeRoutingMaterialQuery(dataset))(
@@ -678,7 +690,10 @@ export function nativeWalkingRegion(
           allowUnlabelled, privateRampVetoOnly,
         ], computeFree)
       : computeFree());
-    const free = proposalParts(freeExact);
+    // Reviewed access zones split shared free faces before ownership, so a
+    // public remainder is classified on its own (native-access-zones.ts).
+    const zones = nativeAccessZonesAt(dataset, elevationFeet);
+    const free = proposalParts(zones.length ? nativeAccessZoneSplit(freeExact, zones).map(p => p.part) : freeExact);
     const classifyOwnership = ownershipQuery ?? createNativeWalkingOwnershipQuery(dataset);
     const faces = free.map((face) => {
       const box = bounds(face);

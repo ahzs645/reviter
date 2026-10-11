@@ -17,6 +17,10 @@ import { validateNativeFloorEdgeRules, type NativeFloorEdgeRules } from "./nativ
 import { nativeFloorEdgeConnectors } from "./native-floor-edge-connectors.ts";
 import {validateNativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
+import {validateNativeAccessZones,applyNativeAccessZoneMetadata} from "./native-access-zones.ts";
+import {physicalLevelDoorReviews} from "./native-physical-level-doors.ts";
+import {qualifyNativeLocalTransitions} from "./native-local-transition-qualification.ts";
+import {validateReviewedCirculationLinks,applyReviewedCirculationLinks} from "./reviewed-circulation-links.ts";
 import {nativeDoorBoundaryClosureFootprints} from "./native-door-boundary-closures.ts";
 import {deriveNativeSelectionContactRepairs} from "./native-selection-contact-repairs.ts";
 import {assertNativeSelectionContactRepairsPhysicalGuards} from "./native-selection-contact-guards.ts";
@@ -131,6 +135,8 @@ export async function prepareIndoorDataset(
   await verifyNativeMaterialSections(data.nativeMaterialSections,modelSha256);
   if(data.nativeIndoorEnvelopes)await initializeNativeExactGeosOverlay();
   validateNativeSourceStairMaterials(data.nativeSourceStairMaterials,modelSha256);
+  validateNativeAccessZones(data.nativeAccessZones as never, modelSha256);
+  validateReviewedCirculationLinks(data.reviewedCirculationLinks as never, modelSha256);
   validateIndoorExclusions(data.indoorExclusions, modelSha256, model.levels.filter(l => l.levelId != null).map(l => ({ id: l.levelId!, elevationFeet: l.elevation })));
   const fit = fitGeoreference(data.georeference),
     cell = 0.6;
@@ -223,6 +229,8 @@ export async function prepareIndoorDataset(
     ...(data.nativeWallPositionRepairs ? {nativeWallPositionRepairs: structuredClone(data.nativeWallPositionRepairs)} : {}),
     ...(data.selectionDoorThresholds ? { selectionDoorThresholds: structuredClone(data.selectionDoorThresholds) } : {}),
     ...(data.reviewedAreaPartitions ? { reviewedAreaPartitions: structuredClone(data.reviewedAreaPartitions) } : {}),
+    ...(data.nativeAccessZones ? { nativeAccessZones: structuredClone(data.nativeAccessZones) as IndoorDataset["nativeAccessZones"] } : {}),
+    ...(data.reviewedCirculationLinks ? { reviewedCirculationLinks: structuredClone(data.reviewedCirculationLinks) as IndoorDataset["reviewedCirculationLinks"] } : {}),
     ...(data.nativeDisplayScopes ? { nativeDisplayScopes: structuredClone(data.nativeDisplayScopes) } : {}),
     ...(data.nativeIndoorEnvelopes ? { nativeIndoorEnvelopes: structuredClone(data.nativeIndoorEnvelopes) } : {}),
     ...(data.nativeProvisionalCornerSeals?{nativeProvisionalCornerSeals:structuredClone(data.nativeProvisionalCornerSeals)}:{}),
@@ -527,6 +535,10 @@ export async function prepareIndoorDataset(
     ) : promotedDoorReviews;
     for(const review of reviews) if(review.portal && !promotedDoorReviews.find(r=>r.door.id===review.door.id)?.portal)
       issue("native-promotion-preserved-physical-door", "The native main-room label no longer includes this entry recess. Its unchanged original physical doorway, ownership and portal points are retained; exact current native cells/own-host approaches must independently support any walking attachment.", undefined, review.door.id, levelId);
+    // Raised rooms labelled on this physical level (native-physical-level-records)
+    // are entered through this level's doors.
+    for (const changed of physicalLevelDoorReviews(dataset, sourceRooms, levelId, reviews, nativeDoors, semanticDoors.links, reviewedDoorLinks.immediate))
+      issue("physical-level-door", `Native door joins ${changed.roomKeys.join(" and ")}, labelled on physical level #${levelId}; their identity levels are unchanged. Access and accessibility remain unverified.`, undefined, changed.doorId, levelId);
     const
       passages = directoryOpenPassages(
         rooms,
@@ -1211,6 +1223,18 @@ export async function prepareIndoorDataset(
     ])),
   });
   dataset.stairDisplay = prepareIndoorStairDisplay(model, dataset, data.annotations);
+  if (strictNativeRouting && data.buildingTransitions?.length) {
+    // Reviewed local-steps recipes qualify through native-source-stair receipts
+    // (native-local-transition-qualification.ts); refusals keep the recipe for review.
+    const local = qualifyNativeLocalTransitions(model, dataset, data.buildingTransitions, geo);
+    for (const q of local.qualified) {
+      dataset.nodes.push(...q.nodes);
+      dataset.edges.push(q.edge);
+      dataset.issues = dataset.issues.filter(i => !(i.code === "native-local-transition-review" && i.nativeElementId === q.transition.nativeStairId));
+      issue("native-local-transition-qualified", `Local steps ${q.transition.id} are a native stair connector (#${q.transition.nativeStairId}, ${q.edge.nativeSourceStair!.treads.length} original treads; recorded sketch profiles ${q.reconciliation.relation}${q.reconciliation.relation === "one-riser-offset" ? ` by ${q.reconciliation.offsetFeet.toFixed(4)} ft` : ""}); not step-free, access unverified.`, undefined, q.transition.nativeStairId);
+    }
+    for (const r of local.refused) issue("native-local-transition-refused", `Local steps ${r.transition.id} are not qualified: ${r.reason}`, undefined, r.transition.nativeStairId);
+  }
   if (strictNativeRouting)
     for (const edge of dataset.edges.filter(e => e.kind === "stairs" || e.kind === "local-steps"))
       if (!nativeStairRouteQualified(dataset, edge)) {
@@ -1218,16 +1242,28 @@ export async function prepareIndoorDataset(
         issue("native-stair-route-review", `Native ${edge.kind} connection ${edge.id} retains its original identity and terminal coordinates for review, but lacks the complete original owned flight, foreign-material and terminal-cap routing proof. No room-contour jump is enabled.`, undefined, edge.nativeElementId);
       }
   prepareNativeRampDisplay(model, dataset);
+  {
+    // Reviewed access zones carve shared native faces (native-access-zones.ts).
+    const zones = applyNativeAccessZoneMetadata(dataset);
+    for (const z of zones.zones) issue("native-access-zone", `Reviewed ${z.zone.access} access zone ${z.zone.id} (${z.zone.decision.source}#${z.zone.decision.id}) is carved out of its shared native walking face; ${z.zone.memberRoomKeys.length} member identities keep their access; the remainder is classified independently.`, undefined, undefined, z.zone.levelId);
+    for (const z of zones.issues) issue("native-access-zone-refused", `Reviewed access zone ${z.zoneId} is not applied: ${z.reason}`);
+  }
   progress("Deriving native floor-bound circulation cells and rebuilding their walking branches…");
   const nativeCirculation = options.nativeCirculationCompiler
     ? await options.nativeCirculationCompiler(model, dataset)
     : prepareNativeCirculationGeometry(model, dataset);
   dataset.circulationGeometry = nativeCirculation.geometry;
   const nativeBranches = attachNativeCirculationCellRoutes(dataset);
+  {
+    // Owner-reviewed links between existing nodes, replayed physically.
+    const links = applyReviewedCirculationLinks(dataset);
+    for (const edge of links.applied) issue("reviewed-circulation-link", `Reviewed link ${edge.reviewedCirculationLinkId} joins ${edge.from} and ${edge.to} along its drawn path; access and accessibility remain unverified.`);
+    for (const r of links.rejected) issue("reviewed-circulation-link-refused", `Reviewed link ${r.id} is not applied: ${r.reason}`);
+  }
   if (strictNativeRouting) {
     // The final native cells, not an obsolete raster or vertical edge alone,
     // decide whether an unchanged destination has a real lateral approach.
-    const approached = new Set(dataset.edges.filter(e => e.enabled && e.kind === "walk" && e.nativeCellId).flatMap(e => [e.from, e.to]));
+    const approached = new Set(dataset.edges.filter(e => e.enabled && e.kind === "walk" && (e.nativeCellId || e.reviewedCirculationLinkId)).flatMap(e => [e.from, e.to]));
     const finalNodeIds = new Set(dataset.nodes.map(n => n.id));
     const connectedKeys = new Set<string>();
     for (const record of records) {

@@ -14,18 +14,16 @@ const values = (a: unknown): number[] =>
       : a && typeof a === "object"
         ? Object.values(a)
         : [];
-/** Native faces resolve analytic sketch riser offsets. Only full horizontal
- * walking faces of the run qualify; narrow underside/support lips do not. */
-export function nativeStairRunTreads(
+function nativeStairRunFaceGroups(
   model: Partial<ConvertResult>,
-): Map<number, Tread[]> {
+): { runs: Map<number, ConvertResult["elementBounds"][number]>; groups: Map<number, Map<number, RoomPoint[][]>> } {
   const runs = new Map(
     model.elementBounds
       ?.filter((e) => e.categoryId === -2000919)
       .map((e) => [e.elementId, e]),
   );
   const groups = new Map<number, Map<number, RoomPoint[][]>>();
-  if (!model.origin) return new Map();
+  if (!model.origin) return { runs: runs as never, groups };
   for (const mesh of model.meshes ?? []) {
     if (mesh.source !== "native-brep" || !mesh.elementIds) continue;
     const ids = values(mesh.elementIds);
@@ -62,6 +60,14 @@ export function nativeStairRunTreads(
       groups.set(id, byZ);
     }
   }
+  return { runs: runs as never, groups };
+}
+/** Native faces resolve analytic sketch riser offsets. Only full horizontal
+ * walking faces of the run qualify; narrow underside/support lips do not. */
+export function nativeStairRunTreads(
+  model: Partial<ConvertResult>,
+): Map<number, Tread[]> {
+  const { runs, groups } = nativeStairRunFaceGroups(model);
   const out = new Map<number, Tread[]>();
   for (const [id, byZ] of groups) {
     const r = runs.get(id)!;
@@ -94,9 +100,17 @@ export function nativeStairRunTreads(
       })
       .sort((a, b) => a.elevationFeet - b.elevationFeet);
     // A partial native replay cannot silently delete steps from the sketch.
+    // A curved tread the sketch recovered as several straight profiles is one
+    // native face per height: the step heights must still match one for one.
+    const sketchHeights = new Set(
+      (r.stairTreads ?? []).map((t) => Math.round((t.reduce((z, q) => z + q[2], 0) / t.length) * 1e4) / 1e4),
+    );
     if (
       treads.length &&
-      (!r.stairTreads?.length || treads.length === r.stairTreads.length)
+      (!r.stairTreads?.length ||
+        treads.length === r.stairTreads.length ||
+        (new Set(treads.map((t) => t.elevationFeet)).size === treads.length &&
+          treads.length === sketchHeights.size))
     )
       out.set(id, treads);
   }
@@ -149,4 +163,27 @@ function nativeProfileOrder(
       return matched.map((m) => m.q);
   }
   return ring;
+}
+
+/** Every up-facing horizontal native BRep face of a run, at its own height,
+ * including the narrow nosing and support lips that are not treads. Plan
+ * support only: a receipt never visits these or counts them as steps. */
+export function nativeStairRunSupportFaces(
+  model: Partial<ConvertResult>,
+): Map<number, Tread[]> {
+  const { groups } = nativeStairRunFaceGroups(model);
+  const out = new Map<number, Tread[]>();
+  for (const [id, byZ] of groups) {
+    const faces = [...byZ]
+      .flatMap(([elevationFeet, triangles]) => {
+        const polys = triangles.map((t) => [[...t, t[0]!]] as polygonClipping.Polygon);
+        return polygonClipping
+          .union(polys[0]!, ...polys.slice(1))
+          .filter((p) => p.length === 1 && roomArea(p[0]!) >= 1e-4)
+          .map((p) => ({ runElementId: id, elevationFeet, ringFeet: p[0]!.slice(0, -1) as RoomPoint[] }));
+      })
+      .sort((a, b) => a.elevationFeet - b.elevationFeet);
+    if (faces.length) out.set(id, faces);
+  }
+  return out;
 }
