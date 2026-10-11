@@ -118,7 +118,7 @@ export function nativeAccessZoneBinding(data: IndoorDataset): NativeAccessZoneBi
       if (members.some((r) => !inside(r!))) { fail("a member's identity lies mostly outside the zone"); continue; }
       const unlisted = data.records.find((r) => !zone.memberRoomKeys.includes(r.key) && Math.abs(r.elevationFeet - zone.elevationFeet) < 0.05 && inside(r));
       if (unlisted) { fail(`unlisted record ${unlisted.key} lies mostly inside the zone`); continue; }
-      const overlap = binding.zones.find((z) => Math.abs(z.zone.elevationFeet - zone.elevationFeet) < 0.05 && nativeRationalOverlay("intersection", z.parts, parts).length);
+      const overlap = binding.zones.find((z) => Math.abs(z.zone.elevationFeet - zone.elevationFeet) < 0.05 && nativeRationalOverlay("intersection", z.parts, parts).length > 0);
       if (overlap) { fail(`it overlaps zone ${overlap.zone.id}`); continue; }
       binding.zones.push({ zone, parts });
     } catch (error) {
