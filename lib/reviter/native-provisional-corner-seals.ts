@@ -161,6 +161,15 @@ export type NativeDrawingBackedAssumption = {
       faceLinePairs: [number, number][];
       closedOutlines: number[][];
     };
+    /** dwg-drawn-material only: the cited section is registered to another native level and an
+     * explicit owner decision applies it to this one. Never implicit: without this record the
+     * cited section must be registered to the row's own level. The native material near the body
+     * must line up vertically with the source level's within the tolerance. */
+    crossLevel?: {
+      decisionId: string;
+      sourceLevelId: number;
+      alignmentToleranceFeet: number;
+    };
   };
   /** Complete set of census bodies without exact parts whose 3D bounds meet the body. */
   acknowledgedUnverifiedBodyIds: number[];
@@ -346,6 +355,16 @@ function drawnMaterialShapeValid(
     !!d.dwg &&
     Number.isFinite(d.dwg.toleranceFeet) &&
     d.dwg.toleranceFeet <= L.drawnMaterialToleranceFeet &&
+    (d.dwg.crossLevel === undefined ||
+      (typeof d.dwg.crossLevel.decisionId === "string" &&
+        /#/.test(d.dwg.crossLevel.decisionId) &&
+        d.dwg.crossLevel.decisionId.length <= 200 &&
+        Number.isSafeInteger(d.dwg.crossLevel.sourceLevelId) &&
+        d.dwg.crossLevel.sourceLevelId !== r.levelId &&
+        Number.isFinite(d.dwg.crossLevel.alignmentToleranceFeet) &&
+        d.dwg.crossLevel.alignmentToleranceFeet > 0 &&
+        d.dwg.crossLevel.alignmentToleranceFeet <=
+          L.drawnMaterialToleranceFeet)) &&
     !!m &&
     Array.isArray(m.faceLinePairs) &&
     Array.isArray(m.closedOutlines) &&
@@ -2095,6 +2114,15 @@ function checkDrawnMaterialEvidence(
         );
     }
   }
+  if (dwg.crossLevel) {
+    const why = crossLevelMisalignment(
+      data.nativeMaterialSections!,
+      r,
+      bandRows,
+      dwg.crossLevel,
+    );
+    if (why) fail(why);
+  }
   for (const e of dwg.entities)
     if (
       e.kind === "doorSegments" &&
@@ -2113,6 +2141,69 @@ function checkDrawnMaterialEvidence(
     )
       fail(`crosses native door footprint ${door.nativeElementId}`);
   }
+}
+/** A cross-level drawing applies only where the floors stack: within 1.5 ft of the body, every
+ * vertex of native material at each band cut lies within the tolerance of native material
+ * boundaries at the source level's cut of the same height above its level, and vice versa. */
+function crossLevelMisalignment(
+  material: NativeMaterialSections,
+  r: NativeProvisionalCornerSeals["rows"][number],
+  bandRows: NativeMaterialSections["levels"],
+  x: NonNullable<
+    NonNullable<NativeDrawingBackedAssumption["dwg"]>["crossLevel"]
+  >,
+): string | undefined {
+  const ps = r.partsFeet.flat(PARTS_VERTEX_DEPTH),
+    w = 1.5,
+    box = [
+      Math.min(...ps.map((p) => p[0])) - w,
+      Math.min(...ps.map((p) => p[1])) - w,
+      Math.max(...ps.map((p) => p[0])) + w,
+      Math.max(...ps.map((p) => p[1])) + w,
+    ];
+  const inBox = (p: P2) =>
+    p[0] >= box[0] && p[0] <= box[2] && p[1] >= box[1] && p[1] <= box[3];
+  const local = (l: NativeMaterialSections["levels"][number]) => {
+    const parts = l.sections.flatMap((s) => s.partsFeet) as Parts;
+    return {
+      vertices: parts.flat(PARTS_VERTEX_DEPTH).filter(inBox),
+      edges: segments(parts).filter(([a, b]) => inBox(a) || inBox(b)),
+    };
+  };
+  if (bandRows.length === 0)
+    return "cross-level drawing has no native cut in the row band to align";
+  for (const l of bandRows) {
+    const offset = l.cutElevationFeet - l.elevationFeet;
+    const source = material.levels.find(
+      (m) =>
+        m.levelId === x.sourceLevelId &&
+        Math.abs(m.cutElevationFeet - m.elevationFeet - offset) <= 1e-6,
+    );
+    if (!source)
+      return `cross-level source level ${x.sourceLevelId} has no cut ${offset.toFixed(2)} ft above its floor`;
+    const a = local(l),
+      b = local(source);
+    const off = (vs: P2[], es: [P2, P2][]) =>
+      vs.reduce(
+        (worst, v) =>
+          Math.max(
+            worst,
+            es.reduce(
+              (d, e) => Math.min(d, distance(v, ...e).distance),
+              Infinity,
+            ),
+          ),
+        0,
+      );
+    const worst = Math.max(off(a.vertices, b.edges), off(b.vertices, a.edges));
+    if (
+      a.vertices.length === 0 ||
+      b.vertices.length === 0 ||
+      worst > x.alignmentToleranceFeet
+    )
+      return `cross-level drawing from level ${x.sourceLevelId} does not line up vertically here (native material differs by ${Number.isFinite(worst) ? worst.toFixed(3) : "all"} ft at cut ${offset.toFixed(2)} ft)`;
+  }
+  return undefined;
 }
 const censusBounds = (v: NativeProvisionalCornerSeals, id: number) =>
   v.foreignBodies.find((b) => b.nativeElementId === id)?.boundsFeet;
@@ -2164,9 +2255,15 @@ export function verifyDrawingBackedDrawingEvidence(
       throw new Error(
         `Drawing-backed assumption ${r.id} does not cite this project's registered drawing.`,
       );
-    // dwg-drawn-material: no registered DWG door segment of the cited section or of any section
-    // registered to the row's level may cross the body.
+    // dwg-drawn-material: the cited section is registered to the row's level unless an explicit
+    // cross-level decision names its level; no registered DWG door segment of the cited section or
+    // of any section registered to the row's level may cross the body.
     if (r.drawingBacked!.kind === "dwg-drawn-material") {
+      const sourceLevel = dwg.crossLevel?.sourceLevelId ?? r.levelId;
+      if (section.levelId !== undefined && section.levelId !== sourceLevel)
+        throw new Error(
+          `Drawing-backed assumption ${r.id}: cites section ${section.sectionId} registered to level ${section.levelId}${dwg.crossLevel ? ` (cross-level record names ${sourceLevel})` : " without a cross-level owner decision"}`,
+        );
       const why = drawingBackedDrawnMaterialSolidity(
         dwg,
         section.wallSegments as [P2, P2][],
