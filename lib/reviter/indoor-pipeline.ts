@@ -20,6 +20,8 @@ import {deriveNativeSelectionContactRepairs} from "./native-selection-contact-re
 import {assertNativeSelectionContactRepairsPhysicalGuards} from "./native-selection-contact-guards.ts";
 import {nativeWallPositionRepairedWalls,nativeWallPositionRepairedPlanWalls} from "./native-wall-position-repairs.ts";
 import {withReviewedDoorApertures} from "./reviewed-door-apertures.ts";
+import {DRAWING_BACKED_DOOR_EVIDENCE,dwgDrawnDoorDatasetId,verifyDwgDrawnDoorDrawing,type DwgDrawnDoorPatch} from "./reviewed-drawn-doors.ts";
+import {dwgDrawnDoorDatasetDoor,dwgDrawnDoorPortal} from "./reviewed-drawn-door-compile.ts";
 import {validateSelectionDoorBinding} from "./selection-door-thresholds.ts";
 import {prepareNativeWindowDisplay} from './native-window-display.ts';
 import { validateIndoorExclusions } from "./indoor-exclusions.ts";
@@ -107,6 +109,10 @@ export async function prepareIndoorDataset(
 ): Promise<IndoorDataset> {
   const data = parseRoomDirectory(JSON.stringify(input));
   model=withReviewedDoorApertures(model,data.reviewedDoorApertures,modelSha256,architecturalPlanGeometry);
+  // Drawing-backed doors (owner-approved assumption): each applied record must be what the
+  // registered drawing draws, through this project's receipt-bound section registration.
+  const drawnDoors=((data.reviewedDoorApertures?.patches??[]).filter(p=>p.kind==="dwg-drawn-door"&&p.state==="applied") as unknown as DwgDrawnDoorPatch[])
+    .map(patch=>({patch,proof:verifyDwgDrawnDoorDrawing(patch,data.boundaryReference,data.dwgDerivedOutlines as DwgDerivedOutlines|undefined)}));
   if (!data.georeference)
     throw new Error(
       "Save at least two GIS reference points before preparing an indoor project.",
@@ -580,7 +586,18 @@ export async function prepareIndoorDataset(
         undefined, review.door.id, levelId,
       );
     }
-    const matchedKeys = new Set([...reviews.flatMap(d => d.portal?.rooms ?? []), ...passages.flatMap(p => p.rooms)]);
+    // A drawing-backed door joins its two rooms through the checked aperture like a reviewed native
+    // door; it has a synthetic identity, one door edge and unknown access.
+    const drawnPorts = drawnDoors.filter(d => d.patch.levelId === levelId).map(({ patch, proof }) => {
+      const portal = dwgDrawnDoorPortal(patch, rooms, proof),
+        owners = patch.roomKeys.map(key => byRecord.get(key));
+      if (owners.some(r => !r || !r.walkable || r.levelId !== levelId) || Math.abs(owners[0]!.elevationFeet - owners[1]!.elevationFeet) > 0.05)
+        throw new Error(`Drawing-backed door ${patch.id} refused: both rooms must be walkable areas at one floor height.`);
+      dataset.doors!.push(dwgDrawnDoorDatasetDoor(patch));
+      issue("drawing-backed-door", `Drawing-backed door ${patch.id} (${patch.assumption.decisionId}) is applied from registered DWG ${patch.dwgEvidence.sectionId} ARC ${patch.dwgEvidence.arc.handle}: ${proof.roughOpeningFeet.toFixed(3)} ft drawn rough opening cut through native wall #${patch.hostWallNativeElementId}, ${proof.radiusFeet.toFixed(3)} ft leaf into ${patch.swing.intoRoomKey}. No native door element exists; access and accessibility remain unknown.`, patch.roomKeys[0], portal.doorId, levelId);
+      return { ...portal, id: dwgDrawnDoorDatasetId(patch), kind: "door" as const, evidence: DRAWING_BACKED_DOOR_EVIDENCE, nativeElementId: portal.doorId, sourceDoorProof: undefined };
+    });
+    const matchedKeys = new Set([...reviews.flatMap(d => d.portal?.rooms ?? []), ...passages.flatMap(p => p.rooms), ...drawnPorts.flatMap(p => p.rooms)]);
     const recoveredFronts = recoverRegisteredOpenFronts(
       rooms, new Set(rooms.filter(r => !matchedKeys.has(r.key)).map(r => r.key)),
       data.boundaryReference, geometries.get(levelId)!,
@@ -605,6 +622,7 @@ export async function prepareIndoorDataset(
       door.rooms[0], undefined, levelId,
     );
     const ports = [
+      ...drawnPorts,
       ...reviews.flatMap((d) =>
         d.portal
           ? [

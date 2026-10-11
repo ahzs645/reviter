@@ -294,6 +294,9 @@ export type IndoorDataset = {
     normalFeet?: [number, number];
     roomKeys: string[];
     state: "connected" | "unmatched" | "ambiguous";
+    /** Drawing-backed door (reviewedDoorApertures kind "dwg-drawn-door"): no native door
+     * element exists; nativeElementId is the record's synthetic identity. */
+    drawingBackedPatchId?: string;
   }[];
   /** Prepared visual geometry. It never authorizes a graph edge or replaces source routing polygons. */
   presentation?: {

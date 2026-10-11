@@ -2,6 +2,7 @@ import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import {validateNativeMaterialSections, type NativeMaterialSections} from "./native-material-sections";
 import {validateReviewedDoorApertures, reviewedDoorWallSourceEvidence} from "./reviewed-door-apertures";
+import {activeDoorAperturePatch} from "./reviewed-drawn-doors.ts";
 /** Portable source sidecar. Keep this wire schema and validation in sync with
  * Reviter/lib/reviter/native-boundary-patches.ts. The RVT itself is preserved. */
 type Point = [number, number];
@@ -651,7 +652,7 @@ const geometryKey = (r: Rings) =>
 export function boundaryPatchMaterialParts(patch: NativeBoundaryPatch, doorCuts: unknown, modelSha: string): Rings[] {
   validateReviewedDoorApertures(doorCuts, modelSha);
   const owner = patch.continuationProof?.sourceWallId ?? patch.wallEvidence[0].nativeElementId;
-  const cuts = (doorCuts?.patches ?? []).filter(p => p.levelId === patch.levelId && p.wallEvidence.some(w => w.nativeElementId === owner));
+  const cuts = (doorCuts?.patches ?? []).filter(p => activeDoorAperturePatch(p) && p.levelId === patch.levelId && p.wallEvidence.some(w => w.nativeElementId === owner));
   return cuts.length ? pc.difference(patch.ringsFeet, ...cuts.map(p => [p.apertureFeet])) as Rings[] : [patch.ringsFeet];
 }
 /** Bind historical provenance separately from actual current material contact. */

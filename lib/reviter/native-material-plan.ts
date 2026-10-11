@@ -4,6 +4,7 @@ import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import { createNativeRoutingMaterialQuery } from "./native-routing-material.ts";
 import { validateReviewedDoorApertures, preparedReviewedDoorApertures } from "./reviewed-door-apertures.ts";
+import { activeDoorAperturePatch } from "./reviewed-drawn-doors.ts";
 /** Source analytical material only; original prepared jambs stay unchanged for
  * correction binding. The explicit source aperture is checked separately by
  * the compiler before this exact original-material composition is used. */
@@ -23,7 +24,7 @@ export function nativeMaterialPlanWalls(
   );
   const cuts = new Map<number, [number, number][][]>();
   for (const patch of doorCuts?.patches ?? [])
-    if (patch.levelId === levelId)
+    if (patch.levelId === levelId && activeDoorAperturePatch(patch))
       for (const wall of patch.wallEvidence) {
         const existing = cuts.get(wall.nativeElementId) ?? [];
         existing.push(patch.apertureFeet);
