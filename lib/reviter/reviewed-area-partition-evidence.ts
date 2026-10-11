@@ -202,17 +202,58 @@ function windowGeometry(w: ReviewedAreaPartitionEvidenceWindow) {
 
 /** Directions, translations and elevations are values, not plan positions. */
 const VECTOR_KEY = /normal|direction|elevation|translation/i;
+/** How one collection's rows are reduced. Paths are dotted object keys
+ * (array positions add no segment). */
+type RowReduction = {
+  /** Fields left out entirely. */
+  omit?: readonly string[];
+  /** Subtrees that enter only as their window trace and never make a row local. */
+  context?: readonly string[];
+};
+/**
+ * Rows standing on a source floor (provisional / drawing-backed seals and
+ * derived frame returns) carry the full parts of that floor in their floor
+ * binding, plus digests of the floor and of the whole row. A level-wide slab
+ * meets every window, so a row's contribution is its own body and
+ * construction: the row is local only when that geometry meets the window.
+ * Its floor binding (and the drawing lines it cites) then enter as their window
+ * trace like any polygon; the digests of the full floor and of the whole row
+ * never enter, so a floor edit away from the window changes nothing here.
+ */
+export const REVIEWED_PARTITION_FLOOR_BOUND_ROW_REDUCTION: RowReduction = {
+  omit: [
+    "evidenceSha256",
+    "sourceFloorPartsSha256",
+    "sourceFloorOuterContext.evidenceSha256",
+    "sourceFloorOuterContext.sourceFloorOuterPartsSha256",
+  ],
+  context: ["sourceFloorBindings", "drawingBacked.dwg"],
+};
+const FLOOR_BOUND_COLLECTIONS: ReadonlySet<string> = new Set([
+  "derivedFrameReturns",
+  "provisionalCornerSeals",
+]);
+const isPlanKey = (key: string) =>
+  key.endsWith("Feet") && !VECTOR_KEY.test(key);
+const childPath = (path: string, k: string) => (path ? `${path}.${k}` : k);
 /** Copies a source row, replacing every plan geometry by its window trace.
  * Authoring notes are never evidence. Returns undefined when no geometry is local. */
 function localRow(
   row: unknown,
   trace: (v: unknown) => unknown,
-  omit: readonly string[] = [],
+  reduction: RowReduction = {},
 ): unknown {
+  const omit = reduction.omit ?? [],
+    context = reduction.context ?? [];
   let local = false;
-  const walk = (v: unknown, key: string): unknown => {
+  const walk = (
+    v: unknown,
+    key: string,
+    path: string,
+    inContext: boolean,
+  ): unknown => {
     if (v === null || typeof v !== "object") return v;
-    if (key.endsWith("Feet") && !VECTOR_KEY.test(key)) {
+    if (isPlanKey(key)) {
       const geometry =
         key === "boundsFeet" && !Array.isArray(v)
           ? (() => {
@@ -226,20 +267,86 @@ function localRow(
             })()
           : v;
       const t = trace(geometry);
-      if (t !== undefined) local = true;
+      if (t !== undefined && !inContext) local = true;
       return t ?? null;
     }
-    if (Array.isArray(v)) return v.map((x) => walk(x, key));
+    if (Array.isArray(v)) return v.map((x) => walk(x, key, path, inContext));
     return Object.fromEntries(
       Object.keys(v)
-        .filter((k) => k !== "notes" && !omit.includes(k))
+        .filter((k) => k !== "notes" && !omit.includes(childPath(path, k)))
         .sort()
-        .map((k) => [k, walk((v as Record<string, unknown>)[k], k)]),
+        .map((k) => {
+          const at = childPath(path, k);
+          return [
+            k,
+            walk(
+              (v as Record<string, unknown>)[k],
+              k,
+              at,
+              inContext || context.includes(at),
+            ),
+          ];
+        }),
     );
   };
-  const value = walk(row, "");
+  const value = walk(row, "", "", false);
   return local ? value : undefined;
 }
+/**
+ * Reads a stored record through the current row reduction. A snapshot bound
+ * before floor-bound rows were reduced holds every such row of the level (each
+ * met the window through its floor) and their full-floor digests; on reading,
+ * a row whose own geometry has no trace in the window is dropped and the
+ * omitted fields are removed. Already reduced records are returned unchanged.
+ */
+function reducedStoredRecord(
+  record: readonly [string, string, string],
+): [string, string, string] | undefined {
+  const [collection, key, value] = record;
+  if (!FLOOR_BOUND_COLLECTIONS.has(collection)) return [collection, key, value];
+  const { omit = [], context = [] } =
+    REVIEWED_PARTITION_FLOOR_BOUND_ROW_REDUCTION;
+  let local = false;
+  const walk = (
+    v: unknown,
+    key: string,
+    path: string,
+    inContext: boolean,
+  ): unknown => {
+    if (v === null || typeof v !== "object") return v;
+    // A non-null plan value is a window trace (absent traces are null).
+    if (isPlanKey(key)) {
+      if (!inContext) local = true;
+      return v;
+    }
+    if (Array.isArray(v)) return v.map((x) => walk(x, key, path, inContext));
+    return Object.fromEntries(
+      Object.keys(v)
+        .filter((k) => !omit.includes(childPath(path, k)))
+        .map((k) => {
+          const at = childPath(path, k);
+          return [
+            k,
+            walk(
+              (v as Record<string, unknown>)[k],
+              k,
+              at,
+              inContext || context.includes(at),
+            ),
+          ];
+        }),
+    );
+  };
+  const reduced = walk(JSON.parse(value), "", "", false);
+  return local ? [collection, key, JSON.stringify(reduced)] : undefined;
+}
+const reducedStoredRecords = (
+  records: readonly (readonly [string, string, string])[],
+) =>
+  records.flatMap((r) => {
+    const x = reducedStoredRecord(r);
+    return x ? [x] : [];
+  });
 
 const near = (a: number, b: number) => Math.abs(a - b) < 0.15;
 async function sha256(value: string) {
@@ -279,10 +386,10 @@ export async function reviewedAreaPartitionLocalEvidence(
     collection: string,
     rows: readonly unknown[] | undefined,
     key: (row: never) => unknown,
-    omit: readonly string[] = [],
+    reduction?: RowReduction,
   ) => {
     for (const row of rows ?? []) {
-      const value = localRow(row, trace, omit);
+      const value = localRow(row, trace, reduction);
       if (value === undefined) continue;
       const id = (row as { nativeElementId?: unknown }).nativeElementId;
       if (typeof id === "number") localIds.add(id);
@@ -411,11 +518,13 @@ export async function reviewedAreaPartitionLocalEvidence(
       "derivedFrameReturns",
       data.nativeDerivedFrameReturns?.rows.filter(banded),
       (r: { id: string }) => r.id,
+      REVIEWED_PARTITION_FLOOR_BOUND_ROW_REDUCTION,
     );
     add(
       "provisionalCornerSeals",
       data.nativeProvisionalCornerSeals?.rows.filter(banded),
       (r: { id: string }) => r.id,
+      REVIEWED_PARTITION_FLOOR_BOUND_ROW_REDUCTION,
     );
     add(
       "foreignBodies",
@@ -718,8 +827,10 @@ export function compareReviewedAreaPartitionEvidence(
     }
     return m;
   };
-  const a = group(stored.records),
-    b = group(current.records);
+  // Both sides are read through the current row reduction, so a snapshot
+  // bound before it compares on the same local content.
+  const a = group(reducedStoredRecords(stored.records)),
+    b = group(reducedStoredRecords(current.records));
   for (const id of [...new Set([...a.keys(), ...b.keys()])].sort()) {
     const [collection, key] = JSON.parse(id) as [string, string];
     const x = a.get(id),

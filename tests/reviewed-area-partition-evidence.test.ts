@@ -117,3 +117,38 @@ test("mirrored local binding ignores far drift, stales on local change and re-bi
   ]);
   assert.equal(decideReviewedAreaPartitionRebind(legacy, [], source.localEvidence).outcome, "needs-review");
 });
+
+test("mirrored floor-bound rows: a far row on the same slab is not local, a row at the boundary and a slab edit inside the window are", async () => {
+  const slab = (ring: Point[]) => [[ring]];
+  const full = rect(0, 0, 100, 20);
+  const row = (id: string, body: Point[], ring: Point[] = full) => {
+    const binding = [{ nativeElementId: 100, elevationFeet: 0, partsFeet: slab(ring) }];
+    return {
+      id, levelId: 1, elevationFeet: 0, baseElevationFeet: 0, topElevationFeet: 9, state: "applied",
+      partsFeet: [[body]], sourceFloorIds: [100], sourceFloorBindings: binding,
+      sourceFloorPartsSha256: JSON.stringify(binding).length.toString(16).padStart(64, "0"),
+      drawingBacked: { version: 1, kind: "exact-contact-closure", nativeOwnerIds: [200, 201] },
+      evidenceSha256: String(JSON.stringify(ring).length).padStart(64, "1"),
+    };
+  };
+  const strict = (rows: unknown[], ring: Point[] = full) =>
+    ({
+      ...dataset(walls),
+      walkingSupport: { version: 1, sourceModelSha256: model, floors: [{ nativeElementId: 100, elevationFeet: 0, ringsFeet: [ring] }] },
+      nativeIndoorEnvelopes: { version: 1, sourceModelSha256: model, geometrySha256: "3".repeat(64), levels: [] },
+      nativeProvisionalCornerSeals: {
+        version: 1, sourceModelSha256: model, sourceMaterialGeometrySha256: "c".repeat(64), sourceWallPositionRepairsSha256: "d".repeat(64),
+        geometrySha256: `${rows.length}`.padStart(64, "e"), completeOriginalPhysicalOwnerCensusSha256: "1".repeat(64), foreignBodies: [], rows,
+      },
+    }) as unknown as IndoorDataset;
+  const body = rect(16, 9, 0.1, 2);
+  const local = await bindReviewedAreaPartitionEvidence(strict([row("db:near", body)]), partition("0".repeat(64)));
+  const test = async (d: IndoorDataset) => (await reviewedAreaPartitionEvidenceStatuses(d, [local]))[local.id]!.test;
+  assert.equal(await test(strict([row("db:near", body), row("db:far", rect(80, 10, 0.1, 0.1))])), "exact");
+  assert.equal(await test(strict([])), "changed");
+  assert.equal(await test(strict([row("db:near", body), row("db:new", rect(17, 9, 0.1, 2))])), "changed");
+  const moved: Point[] = [[0, 0], [100, -1], [100, 20], [0, 20]];
+  assert.equal(await test(strict([row("db:near", body, moved)], moved)), "exact");
+  const notched: Point[] = [[0, 0], [18, 0], [18, 4], [19, 4], [19, 0], ...full.slice(1)];
+  assert.equal(await test(strict([row("db:near", body, notched)], notched)), "changed");
+});
