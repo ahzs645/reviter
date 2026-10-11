@@ -778,6 +778,10 @@ const foreignPortalDoors = new WeakMap<
   DoorApproachContext,
   Map<string, { edge: IndoorDataset["edges"][number]; door: NonNullable<IndoorDataset["doors"]>[number] }>
 >();
+// The decision depends only on the cell's pure face and the portal's own door,
+// never on a door approach grown so far, so one attach pass asks it once per
+// (cell, portal): node selection and both door-approach loops reuse it.
+const foreignPortalDecisions = new WeakMap<DoorApproachContext, Map<string, boolean>>();
 function nativeForeignPortalTerminal(
   data: IndoorDataset,
   context: DoorApproachContext,
@@ -785,6 +789,19 @@ function nativeForeignPortalTerminal(
   node: IndoorDataset["nodes"][number] | undefined,
 ): boolean {
   if (!data.nativeIndoorEnvelopes || !node || node.kind !== "portal") return false;
+  let decisions = foreignPortalDecisions.get(context);
+  if (!decisions) foreignPortalDecisions.set(context, decisions = new Map());
+  const key = `${cell.id}\u0000${node.id}`;
+  let decided = decisions.get(key);
+  if (decided === undefined) decisions.set(key, decided = nativeForeignPortalTerminalDecision(data, context, cell, node));
+  return decided;
+}
+function nativeForeignPortalTerminalDecision(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  node: IndoorDataset["nodes"][number],
+): boolean {
   if (cell.roomKeys.includes(node.roomKey)) return false;
   if (Math.abs(node.pointFeet[2] - cell.elevationFeet) > 0.05) return false;
   const owner = context.records.get(node.roomKey);
