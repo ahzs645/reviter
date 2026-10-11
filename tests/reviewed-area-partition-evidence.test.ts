@@ -79,7 +79,7 @@ test("mirrored local binding ignores far drift, stales on local change and re-bi
   const near = drift(reviewed, 201, 2 ** -48);
   const digest = await reviewedAreaPartitionEvidenceSha256(near, local);
   assert.notEqual(digest, local.geometrySha256);
-  assert.match(checkReviewedAreaPartition(near, local, digest).errors.join(" "), /within 6 ft/);
+  assert.match(checkReviewedAreaPartition(near, local, digest).errors.join(" "), /evidence window/);
 
   const source = {
     sha256: "5".repeat(64),

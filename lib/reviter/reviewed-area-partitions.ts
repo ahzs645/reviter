@@ -430,7 +430,7 @@ export function checkReviewedAreaPartition(
   if (p.geometrySha256 !== physicalGeometrySha256)
     errors.push(
       p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
-        ? "Physical evidence changed within 6 ft of this boundary; review this logical boundary again."
+        ? "Physical evidence changed in this boundary's evidence window (its bounds plus 6 ft); review this logical boundary again."
         : "Physical evidence changed; review this logical boundary again. It is bound to every wall on its level, so an unrelated change also stales it; re-bind it to its local evidence after review.",
     );
   const level = data.nativeLevels.find((l) => l.id === p.levelId);
@@ -791,7 +791,7 @@ export function decideReviewedAreaPartitionRebind(
     id: p.id,
     outcome: "needs-review",
     source: { sha256: matches[0]!.sha256, label: matches[0]!.label },
-    reason: `Evidence within 6 ft of this boundary changed since it was reviewed (in ${matches[0]!.label}): ${differences.length} element${differences.length === 1 ? "" : "s"} differ. Review it again before re-binding.`,
+    reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed since it was reviewed (in ${matches[0]!.label}): ${differences.length} element${differences.length === 1 ? "" : "s"} differ. Review it again before re-binding.`,
     differences,
   };
 }
