@@ -14,6 +14,8 @@ import {
 import type { NativeMaterialSections } from "./native-material-sections.ts";
 import type { NativeWallPositionRepairs } from "./native-wall-position-repairs.ts";
 import { exactNativeDoorFloorDifference } from "./native-door-exact-overlay.ts";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 type P2 = [number, number];
 type P3 = [number, number, number];
 type Parts = P2[][][];
@@ -1235,6 +1237,130 @@ const segments = (ps: Parts) =>
   );
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
+/**
+ * In-process memo of passed drawing-backed row checks, so repeated material-query builds in
+ * one run do not re-validate unchanged rows. The key is a content digest of the row and of
+ * every input checkDrawingBackedRow reads: the seal descriptor (rows, foreign-body census,
+ * nonphysical curtain hosts), the original material levels, the wall placement shifts, the
+ * walking floors the row binds, and every door footprint with its edge. The descriptor and
+ * material enter as the digests this same call has just recomputed and verified against their
+ * content (an exact digest replaces each where its JSON form would hide -0, a non-finite number
+ * or an undefined entry); floors and doors are digested here. Object identity never enters a
+ * key, so an edited or in-place mutated input is a new key and is checked again. Only passes
+ * are remembered: a failing row is always re-checked and throws its own error. The memo lives
+ * in this module only: never serialised, never shared with another process or worker, and gone
+ * with the process. A run may clear it with resetDrawingBackedRowMemo().
+ */
+export const DRAWING_BACKED_ROW_MEMO_RULE =
+  "drawing-backed-row-check-memo-v1" as const;
+const DRAWING_BACKED_ROW_MEMO_MAX_ENTRIES = 100_000;
+const drawingBackedRowMemo = new Set<string>();
+const drawingBackedRowMemoState = { enabled: true, hits: 0, misses: 0 };
+/** Turns the memo on or off for this process (off also clears it). */
+export function setDrawingBackedRowMemoEnabled(enabled: boolean) {
+  drawingBackedRowMemoState.enabled = enabled;
+  if (!enabled) resetDrawingBackedRowMemo();
+}
+/** Forgets every remembered pass and resets the counters. */
+export function resetDrawingBackedRowMemo() {
+  drawingBackedRowMemo.clear();
+  drawingBackedRowMemoState.hits = 0;
+  drawingBackedRowMemoState.misses = 0;
+}
+export const drawingBackedRowMemoStats = () => ({
+  enabled: drawingBackedRowMemoState.enabled,
+  entries: drawingBackedRowMemo.size,
+  hits: drawingBackedRowMemoState.hits,
+  misses: drawingBackedRowMemoState.misses,
+});
+const notJsonExact = (x: unknown) =>
+  x === undefined ||
+  (typeof x === "number" && (!Number.isFinite(x) || (x === 0 && 1 / x < 0)));
+/** JSON that keeps the sign of zero, non-finite numbers and undefined entries. */
+const exactContentDigest = (value: unknown) =>
+  bytesToHex(
+    sha256(
+      new TextEncoder().encode(
+        JSON.stringify(value, (_key, x) =>
+          notJsonExact(x) ? `\u0000${Object.is(x, -0) ? "-0" : String(x)}` : x,
+        ),
+      ),
+    ),
+  );
+/** A digest just verified as nativeDerivedFrameHash(value) names value exactly unless its JSON
+ * form hides a value; then the exact digest is used instead. */
+const verifiedContentDigest = (value: unknown, verified: string) => {
+  let hidden = false;
+  JSON.stringify(value, (_key, x) => {
+    if (!hidden && notJsonExact(x)) hidden = true;
+    return x;
+  });
+  return hidden ? `exact:${exactContentDigest(value)}` : `json:${verified}`;
+};
+function drawingBackedRowMemoKeys(
+  data: Data,
+  v: NativeProvisionalCornerSeals,
+  hostSkip: Set<number>,
+  shifts: Map<number, P2>,
+) {
+  const material = data.nativeMaterialSections!;
+  const edges = new Map<string, NonNullable<Data["edges"]>[number]>();
+  for (const e of data.edges ?? []) if (!edges.has(e.id)) edges.set(e.id, e);
+  const floors =
+    data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
+      ? data.walkingSupport.floors
+      : [];
+  const floorDigests = floors.map((f) =>
+    exactContentDigest([
+      f.nativeElementId,
+      f.elevationFeet,
+      f.partsFeet ?? [f.ringsFeet],
+    ]),
+  );
+  const floorsById = new Map<number, number[]>();
+  floors.forEach((f, i) =>
+    floorsById.set(f.nativeElementId, [
+      ...(floorsById.get(f.nativeElementId) ?? []),
+      i,
+    ]),
+  );
+  const inputs = exactContentDigest([
+    DRAWING_BACKED_ROW_MEMO_RULE,
+    // Verified by createNativeProvisionalCornerSealIndex before any row is checked.
+    verifiedContentDigest(
+      Object.fromEntries(
+        Object.entries(v).filter(([k]) => k !== "geometrySha256"),
+      ),
+      v.geometrySha256,
+    ),
+    verifiedContentDigest(
+      [material.version, material.sourceModelSha256, material.levels],
+      material.geometrySha256,
+    ),
+    [...hostSkip].sort((a, b) => a - b),
+    [...shifts.entries()].sort((a, b) => a[0] - b[0]),
+    data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256,
+    exactContentDigest(
+      (data.doors ?? []).map((d) => {
+        const e = edges.get(d.id);
+        return [
+          d.id,
+          d.nativeElementId,
+          d.footprintFeet ?? null,
+          e ? [e.kind, e.enabled, e.pointsFeet] : null,
+        ];
+      }),
+    ),
+  ]);
+  return (r: NativeProvisionalCornerSeals["rows"][number]) => {
+    const bound = [...new Set(r.sourceFloorIds)]
+      .flatMap((id) => floorsById.get(id) ?? [])
+      .sort((a, b) => a - b)
+      .map((i) => floorDigests[i]);
+    // Row ids are unique in a valid descriptor, and the descriptor digest covers the row.
+    return exactContentDigest([inputs, r.id, bound]);
+  };
+}
 export function createNativeProvisionalCornerSealIndex(
   data: Data,
   options?: { reviewProposed?: boolean },
@@ -1324,8 +1450,17 @@ export function createNativeProvisionalCornerSealIndex(
       r.state === "applied" ||
       (options?.reviewProposed && r.state === "proposed"),
   );
+  const memoKey =
+    drawingBackedRowMemoState.enabled && rows.some((r) => r.drawingBacked)
+      ? drawingBackedRowMemoKeys(data, v, hostSkip, shifts)
+      : undefined;
   for (const r of rows) {
     if (r.drawingBacked) {
+      const key = memoKey?.(r);
+      if (key !== undefined && drawingBackedRowMemo.has(key)) {
+        drawingBackedRowMemoState.hits++;
+        continue;
+      }
       checkDrawingBackedRow(
         data,
         v,
@@ -1335,6 +1470,12 @@ export function createNativeProvisionalCornerSealIndex(
         census,
         hostSkip,
       );
+      if (key !== undefined) {
+        drawingBackedRowMemoState.misses++;
+        if (drawingBackedRowMemo.size >= DRAWING_BACKED_ROW_MEMO_MAX_ENTRIES)
+          drawingBackedRowMemo.clear();
+        drawingBackedRowMemo.add(key);
+      }
       continue;
     }
     const contacts = [

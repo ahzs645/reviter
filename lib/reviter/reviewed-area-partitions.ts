@@ -37,6 +37,99 @@ export {
 /** The original level-wide binding: every wall and descriptor on the level. */
 export const REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE =
   "logical-area-partition-physical-v1" as const;
+/** reboundFrom.reason of a partition re-bound because only owner-approved changes differ. */
+export const REVIEWED_PARTITION_APPROVED_CHANGE_REBIND =
+  "rebound-after-approved-changes" as const;
+/** One owner-approved change of a build (a row, drawn door or record listed in the build
+ * manifest with its decision id) and the local evidence elements it may add, alter or remove. */
+export type ReviewedAreaPartitionApprovedChange = {
+  id: string;
+  kind: string;
+  decisionId: string;
+  /** sha256 of the change as listed in the manifest. */
+  sha256: string;
+  elements: { collection: string; key: string }[];
+};
+export type ReviewedAreaPartitionApprovedChangeSet = {
+  /** sha256 of the build manifest that lists the changes (the receipt). */
+  manifestSha256: string;
+  changes: ReviewedAreaPartitionApprovedChange[];
+};
+export type ReviewedAreaPartitionApprovedChangeReceipt = {
+  manifestSha256: string;
+  elements: {
+    collection: string;
+    key: string;
+    change: "added" | "removed" | "changed";
+    changeIds: string[];
+    decisionIds: string[];
+  }[];
+};
+/** Evidence of the partition itself is never an approved change: editing the line is a new review. */
+const UNAPPROVABLE_COLLECTIONS: ReadonlySet<string> = new Set([
+  "header",
+  "partition",
+  "cited",
+]);
+const text = (s: unknown, max = 200) =>
+  typeof s === "string" && s.length > 0 && s.length <= max;
+export function validateReviewedAreaPartitionApprovedChangeSet(
+  value: unknown,
+): asserts value is ReviewedAreaPartitionApprovedChangeSet {
+  const v = value as ReviewedAreaPartitionApprovedChangeSet;
+  if (
+    !v ||
+    !sha(v.manifestSha256) ||
+    !Array.isArray(v.changes) ||
+    v.changes.length > 100_000 ||
+    new Set(v.changes.map((c) => c?.id)).size !== v.changes.length ||
+    v.changes.some(
+      (c) =>
+        !c ||
+        !text(c.id, 300) ||
+        !text(c.kind) ||
+        !text(c.decisionId) ||
+        !sha(c.sha256) ||
+        !Array.isArray(c.elements) ||
+        c.elements.length === 0 ||
+        c.elements.length > 1000 ||
+        c.elements.some(
+          (e) =>
+            !e ||
+            !text(e.collection, 300) ||
+            typeof e.key !== "string" ||
+            e.key.length > 300 ||
+            UNAPPROVABLE_COLLECTIONS.has(e.collection),
+        ),
+    )
+  )
+    throw new Error("Invalid approved change set for logical boundary re-binding.");
+}
+const validApprovedChangeReceipt = (r: unknown) => {
+  const v = r as ReviewedAreaPartitionApprovedChangeReceipt;
+  return (
+    !!v &&
+    sha(v.manifestSha256) &&
+    Array.isArray(v.elements) &&
+    v.elements.length > 0 &&
+    v.elements.length <= 10_000 &&
+    v.elements.every(
+      (e) =>
+        !!e &&
+        text(e.collection, 300) &&
+        !UNAPPROVABLE_COLLECTIONS.has(e.collection) &&
+        typeof e.key === "string" &&
+        e.key.length <= 300 &&
+        ["added", "removed", "changed"].includes(e.change) &&
+        Array.isArray(e.changeIds) &&
+        e.changeIds.length > 0 &&
+        e.changeIds.every((x) => text(x, 300)) &&
+        Array.isArray(e.decisionIds) &&
+        e.decisionIds.length > 0 &&
+        e.decisionIds.every((x) => text(x)),
+    )
+  );
+};
 
 type Point = [number, number];
 export const REVIEWED_PARTITION_WIDTH_FEET = 0.0002;
@@ -61,17 +154,25 @@ export type ReviewedAreaPartition = {
    * vertex tolerance and identical elements and topology. Omitted when larger
    * than REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES (exact binding only). */
   evidenceSnapshot?: ReviewedAreaPartitionEvidenceSnapshot;
-  /** Migration receipt: a level-bound review re-bound to its unchanged local evidence. */
+  /** Re-binding receipt. Without `reason`: a level-bound review re-bound to its unchanged
+   * local evidence (migration). With reason "rebound-after-approved-changes": a locally bound
+   * review whose window changed only by owner-approved changes of a build manifest. */
   reboundFrom?: {
     rule: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
-    previousRule: typeof REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE;
-    /** The stored level-wide digest the review was made against. */
+    previousRule:
+      | typeof REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE
+      | typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+    reason?: typeof REVIEWED_PARTITION_APPROVED_CHANGE_REBIND;
+    /** The stored digest the review was made against. */
     geometrySha256: string;
-    /** The published master or compile in which that digest still matched. */
+    /** The published master or compile in which that digest still matched (for an approved-change
+     * re-bind: the build's base dataset). */
     sourceDatasetSha256: string;
-    /** How that source's local evidence matched the evidence re-bound to. */
+    /** How the unchanged local evidence matched the evidence re-bound to. */
     evidenceTest?: "exact" | "tolerance";
     maxVertexDeltaFeet?: number;
+    /** Every local element that differed, with the approved change(s) that account for it. */
+    approvedChanges?: ReviewedAreaPartitionApprovedChangeReceipt;
   };
   kind: keyof typeof reviewedAreaPartitionKinds;
   pointsFeet: Point[];
@@ -206,8 +307,15 @@ export function validateReviewedAreaPartitions(
         (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
           !p.reboundFrom ||
           p.reboundFrom.rule !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
-          p.reboundFrom.previousRule !==
-            REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE ||
+          (p.reboundFrom.reason === undefined
+            ? p.reboundFrom.previousRule !==
+                REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE ||
+              p.reboundFrom.approvedChanges !== undefined
+            : p.reboundFrom.reason !==
+                REVIEWED_PARTITION_APPROVED_CHANGE_REBIND ||
+              p.reboundFrom.previousRule !==
+                REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+              !validApprovedChangeReceipt(p.reboundFrom.approvedChanges)) ||
           !sha(p.reboundFrom.geometrySha256) ||
           !sha(p.reboundFrom.sourceDatasetSha256) ||
           (p.reboundFrom.evidenceTest !== undefined &&
@@ -279,7 +387,11 @@ export function validateReviewedAreaPartitions(
         (h.action === "propose" && h.after?.status !== "proposed") ||
         (h.action === "rebind" &&
           (!h.before ||
-            h.before.evidenceBinding !== undefined ||
+            (h.after?.reboundFrom?.reason ===
+            REVIEWED_PARTITION_APPROVED_CHANGE_REBIND
+              ? h.before.evidenceBinding !==
+                REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+              : h.before.evidenceBinding !== undefined) ||
             h.after?.status !== h.before.status ||
             h.after.evidenceBinding !==
               REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
@@ -907,10 +1019,141 @@ export function decideReviewedAreaPartitionRebind(
     differences,
   };
 }
+export type ReviewedAreaPartitionApprovedChangeOutcome =
+  | ReviewedAreaPartitionRebindOutcome
+  | {
+      id: string;
+      outcome: "evidence-holds";
+      evidenceTest: "exact" | "tolerance";
+    };
+/**
+ * Re-binding after a build's owner-approved changes. A locally bound partition whose evidence
+ * window changed is re-bound only when every element that differs (added, removed or changed,
+ * beyond the 1e-6 ft tolerance) is listed by some approved change of the build manifest. Its
+ * receipt names each such element with the change ids and decision ids that account for it.
+ * Anything else that differs (another element, the header, the partition itself, or a snapshot
+ * that cannot speak for the stored digest) keeps the partition stale and lists it for review.
+ */
+export async function decideReviewedAreaPartitionApprovedChangeRebind(
+  p: ReviewedAreaPartition,
+  current: ReviewedAreaPartitionLocalEvidence,
+  changeSet: ReviewedAreaPartitionApprovedChangeSet,
+  sourceDatasetSha256: string,
+): Promise<ReviewedAreaPartitionApprovedChangeOutcome> {
+  validateReviewedAreaPartitionApprovedChangeSet(changeSet);
+  if (!sha(sourceDatasetSha256))
+    throw new Error("Approved-change re-binding needs the build's base dataset digest.");
+  if (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "Only a boundary bound to its local evidence can be re-bound after approved changes; migrate the level-wide binding first.",
+      differences: [],
+    };
+  if (current.sha256 === p.geometrySha256)
+    return { id: p.id, outcome: "evidence-holds", evidenceTest: "exact" };
+  const stored = p.evidenceSnapshot;
+  if (
+    !stored ||
+    !validReviewedAreaPartitionEvidenceSnapshot(stored) ||
+    (await reviewedAreaPartitionEvidenceSnapshotSha256(stored)) !==
+      p.geometrySha256
+  )
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "The stored evidence snapshot does not reproduce this boundary's digest, so the reviewed evidence cannot be compared element by element. Review it again.",
+      differences: [],
+    };
+  const comparison = compareReviewedAreaPartitionEvidence(
+    stored,
+    current.snapshot,
+  );
+  if (comparison.equal)
+    return { id: p.id, outcome: "evidence-holds", evidenceTest: "tolerance" };
+  const owners = new Map<string, ReviewedAreaPartitionApprovedChange[]>();
+  for (const c of changeSet.changes)
+    for (const e of c.elements) {
+      const k = JSON.stringify([e.collection, e.key]);
+      owners.set(k, [...(owners.get(k) ?? []), c]);
+    }
+  const unexplained = comparison.differences.filter(
+    (d) =>
+      UNAPPROVABLE_COLLECTIONS.has(d.collection) ||
+      !owners.has(JSON.stringify([d.collection, d.key])),
+  );
+  if (unexplained.length > 0)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed outside the build's approved changes: ${unexplained.length === 1 ? "1 element differs" : `${unexplained.length} elements differ`} that no approved row, door or record accounts for. Review it again before re-binding.`,
+      differences: unexplained,
+    };
+  // The elements that did not change must still agree within tolerance: compare the stored
+  // snapshot with the current one with the approved elements left out of both.
+  const approved = new Set(
+    comparison.differences.map((d) => JSON.stringify([d.collection, d.key])),
+  );
+  const rest = (s: ReviewedAreaPartitionEvidenceSnapshot) => ({
+    ...s,
+    records: s.records.filter(
+      ([c, k]) => !approved.has(JSON.stringify([c, k])),
+    ),
+  });
+  const unchanged = compareReviewedAreaPartitionEvidence(
+    rest(stored),
+    rest(current.snapshot),
+  );
+  if (!unchanged.equal)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "Evidence outside the approved changes does not agree within 1e-6 ft. Review it again before re-binding.",
+      differences: unchanged.differences,
+    };
+  const sorted = (xs: string[]) => [...new Set(xs)].sort();
+  return {
+    id: p.id,
+    outcome: "rebound",
+    source: {
+      sha256: changeSet.manifestSha256,
+      label: "build manifest (approved changes)",
+    },
+    partition: {
+      ...p,
+      ...reviewedAreaPartitionEvidenceBinding(current),
+      reboundFrom: {
+        rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+        previousRule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+        reason: REVIEWED_PARTITION_APPROVED_CHANGE_REBIND,
+        geometrySha256: p.geometrySha256,
+        sourceDatasetSha256,
+        evidenceTest: unchanged.maxDeltaFeet === 0 ? "exact" : "tolerance",
+        maxVertexDeltaFeet: unchanged.maxDeltaFeet,
+        approvedChanges: {
+          manifestSha256: changeSet.manifestSha256,
+          elements: comparison.differences.map((d) => {
+            const by = owners.get(JSON.stringify([d.collection, d.key]))!;
+            return {
+              collection: d.collection,
+              key: d.key,
+              change: d.change,
+              changeIds: sorted(by.map((c) => c.id)),
+              decisionIds: sorted(by.map((c) => c.decisionId)),
+            };
+          }),
+        },
+      },
+    },
+  };
+}
 /** Applies rebound outcomes, recording each as an auditable history transition. */
 export function rebindReviewedAreaPartitions(
   value: ReviewedAreaPartitions,
-  outcomes: readonly ReviewedAreaPartitionRebindOutcome[],
+  outcomes: readonly ReviewedAreaPartitionApprovedChangeOutcome[],
   at = new Date().toISOString(),
 ): ReviewedAreaPartitions {
   const rebound = new Map(

@@ -22,6 +22,7 @@ import type {ReportedBuildingTransition} from "./building-transitions.ts";
 import {validateCampusStoreys, type CampusStoreyReview} from "./campus-floors.ts";
 import {validateGeoreference,type ModelGeoreference} from "./georeference.ts";
 import {validateVisitorMetadata, type VisitorMetadata} from "./visitor-metadata.ts";
+import {validateReviewedPlaceLabels, type ReviewedPlaceLabels} from "./reviewed-place-labels.ts";
 import {validateNativeBoundaryPatches,type NativeBoundaryPatches} from "./native-boundary-patches.ts";
 import {validateNativeAccessZones,type NativeAccessZones} from "./native-access-zones.ts";
 import {validateReviewedCirculationLinks,type ReviewedCirculationLinks} from "./reviewed-circulation-links.ts";
@@ -80,6 +81,8 @@ export type RoomDirectoryData = {
   selectionDoorThresholds?: SelectionDoorThresholds;
   /** Logical outlining only: never physical walls, portals, access or raised blocks. */
   reviewedAreaPartitions?: ReviewedAreaPartitions;
+  /** Owner-reviewed aliases and retired place labels: metadata only, never boundaries or routes. */
+  reviewedPlaceLabels?: ReviewedPlaceLabels;
   /** Reviewed staff/non-walkable carve-outs of shared native walking faces. */
   nativeAccessZones?: NativeAccessZones;
   /** Owner-reviewed walking links between existing graph nodes; physically rechecked. */
@@ -222,6 +225,8 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);
   validateSelectionDoorThresholds(data.selectionDoorThresholds);
   validateReviewedAreaPartitions(data.reviewedAreaPartitions);
+  validateReviewedPlaceLabels(data.reviewedPlaceLabels,
+    data.annotations.filter(r => r.status !== "deleted").map(r => ({key: r.key, number: r.number, levelId: r.levelId})));
   validateNativeAccessZones(data.nativeAccessZones);
   validateReviewedCirculationLinks(data.reviewedCirculationLinks);
   validateReviewedDoorApertures(data.reviewedDoorApertures);

@@ -17,6 +17,7 @@ import { validateNativeFloorEdgeRules, type NativeFloorEdgeRules } from "./nativ
 import { nativeFloorEdgeConnectors } from "./native-floor-edge-connectors.ts";
 import {validateNativeDisplayScopes} from "./native-display-scopes.ts";
 import {validateReviewedAreaPartitionBinding} from "./reviewed-area-partitions.ts";
+import {validateReviewedPlaceLabels} from "./reviewed-place-labels.ts";
 import {validateNativeAccessZones,applyNativeAccessZoneMetadata} from "./native-access-zones.ts";
 import {physicalLevelDoorReviews} from "./native-physical-level-doors.ts";
 import {qualifyNativeLocalTransitions} from "./native-local-transition-qualification.ts";
@@ -138,6 +139,7 @@ export async function prepareIndoorDataset(
   validateNativeAccessZones(data.nativeAccessZones as never, modelSha256);
   validateReviewedCirculationLinks(data.reviewedCirculationLinks as never, modelSha256);
   validateIndoorExclusions(data.indoorExclusions, modelSha256, model.levels.filter(l => l.levelId != null).map(l => ({ id: l.levelId!, elevationFeet: l.elevation })));
+  validateReviewedPlaceLabels(data.reviewedPlaceLabels, data.annotations.filter(r => r.status !== "deleted").map(r => ({ key: r.key, number: r.number, levelId: r.levelId })), modelSha256);
   const fit = fitGeoreference(data.georeference),
     cell = 0.6;
   const sourceRooms = data.annotations
@@ -229,6 +231,7 @@ export async function prepareIndoorDataset(
     ...(data.nativeWallPositionRepairs ? {nativeWallPositionRepairs: structuredClone(data.nativeWallPositionRepairs)} : {}),
     ...(data.selectionDoorThresholds ? { selectionDoorThresholds: structuredClone(data.selectionDoorThresholds) } : {}),
     ...(data.reviewedAreaPartitions ? { reviewedAreaPartitions: structuredClone(data.reviewedAreaPartitions) } : {}),
+    ...(data.reviewedPlaceLabels ? { reviewedPlaceLabels: structuredClone(data.reviewedPlaceLabels) } : {}),
     ...(data.nativeAccessZones ? { nativeAccessZones: structuredClone(data.nativeAccessZones) as IndoorDataset["nativeAccessZones"] } : {}),
     ...(data.reviewedCirculationLinks ? { reviewedCirculationLinks: structuredClone(data.reviewedCirculationLinks) as IndoorDataset["reviewedCirculationLinks"] } : {}),
     ...(data.nativeDisplayScopes ? { nativeDisplayScopes: structuredClone(data.nativeDisplayScopes) } : {}),
