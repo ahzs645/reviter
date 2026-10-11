@@ -791,7 +791,7 @@ export function decideReviewedAreaPartitionRebind(
     id: p.id,
     outcome: "needs-review",
     source: { sha256: matches[0]!.sha256, label: matches[0]!.label },
-    reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed since it was reviewed (in ${matches[0]!.label}): ${differences.length} element${differences.length === 1 ? "" : "s"} differ. Review it again before re-binding.`,
+    reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed since it was reviewed (in ${matches[0]!.label}): ${differences.length === 1 ? "1 element differs" : `${differences.length} elements differ`}. Review it again before re-binding.`,
     differences,
   };
 }
