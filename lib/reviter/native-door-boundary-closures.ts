@@ -300,13 +300,22 @@ export function closedBoundaryDoors(
       error(
         "both exact threshold ends must meet distinct named original jambs",
       );
-    // A tiny overlap makes the native mask robust; it cannot bury a jamb.
+    // A rectangular end cannot meet an oblique or offset jamb face without
+    // entering it. The extension may enter a named jamb (whose material the
+    // selection subtracts anyway) only within the checked tangent limit, and
+    // no part of it may lie beyond a jamb: what remains outside the jambs
+    // stays one piece with the original doorway.
+    const limit = saved.measuredTangentLimitFeet ?? 0.15;
+    const outside = pc
+      .difference(extension, ...jambs.map((j) => j.ringsFeet))
+      .filter((part) => area([part]) > 1e-9);
     if (
       jambs.some(
         (j) =>
           area(pc.intersection(extension, j.ringsFeet)) >
-          (nb[1] - nb[0]) * 0.002,
-      )
+          (nb[1] - nb[0]) * limit,
+      ) ||
+      pc.union(original, outside).length !== 1
     )
       error("extension penetrates a jamb beyond contact overlap");
     virtual.set(saved.nativeElementId, saved.footprintFeet);
