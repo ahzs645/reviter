@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {registeredDoubleDoorSwingSegments} from './registered-door-symbols.ts';
 import pc from 'polygon-clipping';
 import type {ArchitecturalPlanGeometry} from './architectural-plan.ts';
@@ -24,7 +25,7 @@ function recoverDoorOwnership(rooms:readonly DirectoryRoom[], reviews:readonly D
   const reject=(reason:string)=>onReview?.({doorId:door.id,status:'review',reason});
   if(review.hasExplicitReview){reject('An explicit doorway ownership review must be corrected rather than overridden.');continue;}
   if(!door.footprint||!door.normal||!geometry.floors.length){reject('Precise native threshold, direction and floor coverage are required.');continue;}
-  const [nx,ny]=door.normal;if(Math.abs(Math.hypot(nx,ny)-1)>1e-5){reject('Native threshold direction is invalid.');continue;}
+  const [nx,ny]=door.normal;if(Math.abs(DMath.hypot(nx,ny)-1)>1e-5){reject('Native threshold direction is invalid.');continue;}
   const ux=-ny,uy=nx,proj=(p:RoomPoint,x:number,y:number)=>p[0]*x+p[1]*y;
   const ns=door.footprint.map(p=>proj(p,nx,ny)),us=door.footprint.map(p=>proj(p,ux,uy));
   const lo=Math.min(...ns),hi=Math.max(...ns),left=Math.min(...us),right=Math.max(...us),mid=(left+right)/2;

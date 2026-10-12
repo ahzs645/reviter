@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {
   reviewedDoorOpening,
   reviewedDoorHostEvidence,
@@ -25,6 +26,10 @@ import {
 
 import { isStairArea } from "./directory-stair-geometry.ts";
 import { nativeStairLandingContact } from "./native-stair-landing-contact.ts";
+import {
+  roomInternalStairOwner,
+  type RoomInternalStairLandingData,
+} from "./native-room-internal-stairs.ts";
 export const isStaircase = (room: DirectoryRoom) =>
   isStairArea(room) && room.stairAccess !== "local-only";
 const allowsStairNeighbour = (
@@ -92,7 +97,7 @@ export function directoryDoors(
           .map((p, i) => ({
             p,
             q: polygon[(i + 1) % polygon.length]!,
-            length: Math.hypot(
+            length: DMath.hypot(
               p[0] - polygon[(i + 1) % polygon.length]![0],
               p[1] - polygon[(i + 1) % polygon.length]![1],
             ),
@@ -133,7 +138,7 @@ export function directoryDoors(
               .map((p, i) => ({
                 p,
                 q: face[(i + 1) % 4]!,
-                length: Math.hypot(
+                length: DMath.hypot(
                   p[0] - face[(i + 1) % 4]![0],
                   p[1] - face[(i + 1) % 4]![1],
                 ),
@@ -175,7 +180,7 @@ export function directoryDoors(
           .map((p, i) => ({
             p,
             q: d.polygon[(i + 1) % d.polygon.length]!,
-            length: Math.hypot(
+            length: DMath.hypot(
               p[0] - d.polygon[(i + 1) % d.polygon.length]![0],
               p[1] - d.polygon[(i + 1) % d.polygon.length]![1],
             ),
@@ -348,6 +353,7 @@ export function directoryStairs(
   model: ConvertResult,
   rooms: readonly DirectoryRoom[],
   reviewed: readonly ReviewedStairLink[] = [],
+  landings?: RoomInternalStairLandingData,
 ): StairConnection[] {
   const elevations = new Map(model.levels.map((l) => [l.levelId, l.elevation]));
   const records = new Map(model.elementBounds.map((r) => [r.elementId, r]));
@@ -362,6 +368,22 @@ export function directoryStairs(
       high = Math.max(...runs.map((r) => r!.boundsFeet.max.z));
     if (high - low < 1) continue;
     const treads = runs.flatMap((r) => r!.stairTreads!);
+    // Steps held by ONE non-stair room (theatre seating) belong to that room:
+    // never a stair connector or inter-floor link.
+    if (
+      roomInternalStairOwner(
+        {
+          stairElementId: assembly.stairElementId,
+          treads: treads as [number, number, number][][],
+          lowFeet: low,
+          highFeet: high,
+        },
+        rooms,
+        (id) => elevations.get(id),
+        landings,
+      )
+    )
+      continue;
     const overlaps = (room: DirectoryRoom) =>
       treads.some((t) => {
         const polygon = t.map((p) => [p[0], p[1]] as RoomPoint);
@@ -439,7 +461,7 @@ export function directoryStairs(
         .reduce(
           (sum, p, i) =>
             sum +
-            Math.hypot(
+            DMath.hypot(
               p[0]! - centres[i]![0]!,
               p[1]! - centres[i]![1]!,
               p[2]! - centres[i]![2]!,

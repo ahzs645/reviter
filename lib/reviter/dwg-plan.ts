@@ -12,6 +12,7 @@
  * Everything here is pure and takes plain entities, so it is testable without
  * loading a 4 MB WASM decoder; `dwg-worker.ts` supplies the entities.
  */
+import * as DMath from "./deterministic-math.ts";
 import { noteLimit } from "./limit-census.ts";
 
 /** The entity subset the plan renderer understands, flattened from LibreDWG. */
@@ -65,7 +66,7 @@ export function entityBounds(entity: DwgEntity): DwgBounds | null {
     grow(bounds, entity.centre[0] + radius, entity.centre[1] + radius);
   }
   if (entity.majorAxis && entity.centre) {
-    const reach = Math.hypot(entity.majorAxis[0], entity.majorAxis[1]);
+    const reach = DMath.hypot(entity.majorAxis[0], entity.majorAxis[1]);
     grow(bounds, entity.centre[0] - reach, entity.centre[1] - reach);
     grow(bounds, entity.centre[0] + reach, entity.centre[1] + reach);
   }
@@ -310,12 +311,12 @@ function arcPath(
   let sweep = endAngle - startAngle;
   while (sweep <= 0) sweep += Math.PI * 2;
   const from: [number, number] = [
-    centre[0] + radius * Math.cos(startAngle),
-    centre[1] + radius * Math.sin(startAngle),
+    centre[0] + radius * DMath.cos(startAngle),
+    centre[1] + radius * DMath.sin(startAngle),
   ];
   const to: [number, number] = [
-    centre[0] + radius * Math.cos(startAngle + sweep),
-    centre[1] + radius * Math.sin(startAngle + sweep),
+    centre[0] + radius * DMath.cos(startAngle + sweep),
+    centre[1] + radius * DMath.sin(startAngle + sweep),
   ];
   const large = sweep > Math.PI ? 1 : 0;
   return `M${round(from[0])} ${round(from[1])}A${round(radius)} ${round(radius)} 0 ${large} 1 ${round(to[0])} ${round(to[1])}`;

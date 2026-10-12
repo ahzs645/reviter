@@ -4,7 +4,7 @@ import type {ConvertResult} from '../../lib/reviter/types.ts';
 import type {DirectoryModelFloor} from './directory-model.ts';
 import GeoreferencedModelMap from './GeoreferencedModelMap.tsx';
 import {downloadBlob} from '../../lib/reviter/export-naming.ts';
-import {fitGeoreference,geoToMapPixel,mapPixelToGeo,modelPointToGeographic,parseGeoreference,validateGeoreference,georeferencedRoomsGeoJSON,type ModelGeoreference,type GeoPoint} from '../../lib/reviter/georeference.ts';
+import {fitGeoreference,modelPointToGeographic,parseGeoreference,validateGeoreference,georeferencedRoomsGeoJSON,type ModelGeoreference,type GeoPoint} from '../../lib/reviter/georeference.ts';import {geoToMapPixel,mapPixelToGeo} from '../../lib/reviter/web-mercator-tiles.ts';
 import {containsDirectoryRoomPoint,type DirectoryRoom,type RoomPoint} from '../../lib/reviter/room-directory.ts';
 const W=800,H=460;
 type ModelView=[number,number,number,number];

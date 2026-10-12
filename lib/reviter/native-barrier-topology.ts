@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 type Point = [number, number];
 export const NATIVE_BARRIER_TOPOLOGY_VERSION = "native-wall-contact-noding-v2";
 type Rings = Point[][];
@@ -72,7 +73,7 @@ export function nativeBarrierTopology(
             ((point[0] - edge.a[0]) * dx + (point[1] - edge.a[1]) * dy) / l2;
           if (t <= 0 || t >= 1) continue;
           if (
-            Math.hypot(
+            DMath.hypot(
               point[0] - edge.a[0] - t * dx,
               point[1] - edge.a[1] - t * dy,
             ) > contact
@@ -105,7 +106,7 @@ export function nativeBarrierTopology(
       const ex = other.b[0] - other.a[0],
         ey = other.b[1] - other.a[1],
         den = dx * ey - dy * ex;
-      if (Math.abs(den) < 1e-14 * Math.hypot(dx, dy) * Math.hypot(ex, ey))
+      if (Math.abs(den) < 1e-14 * DMath.hypot(dx, dy) * DMath.hypot(ex, ey))
         continue;
       const ax = other.a[0] - edge.a[0],
         ay = other.a[1] - edge.a[1],

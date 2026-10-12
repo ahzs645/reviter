@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 
@@ -98,7 +99,7 @@ export function validateNativeDoorBoundaryClosures(
       !d.originalDoor ||
       !point(d.originalDoor.pointFeet) ||
       !point(d.originalDoor.normalFeet) ||
-      Math.hypot(...d.originalDoor.normalFeet) < 1e-9 ||
+      DMath.hypot(...d.originalDoor.normalFeet) < 1e-9 ||
       !validFoot(d.originalDoor.footprintFeet) ||
       !validFoot(d.footprintFeet) ||
       !Array.isArray(d.originalDoor.roomKeys) ||
@@ -126,7 +127,7 @@ export function validateNativeDoorBoundaryClosures(
       error("geometry evidence or duplicate door");
     ids.add(key);
     const n: Point = d.originalDoor.normalFeet.map(
-      (x) => x / Math.hypot(...d.originalDoor.normalFeet),
+      (x) => x / DMath.hypot(...d.originalDoor.normalFeet),
     ) as Point;
     const t: Point = [-n[1], n[0]];
     const oldT = bounds(d.originalDoor.footprintFeet, t),
@@ -265,7 +266,7 @@ export function closedBoundaryDoors(
     )
       error("threshold crosses a physical fixture");
     const n: Point = saved.originalDoor.normalFeet.map(
-        (x) => x / Math.hypot(...saved.originalDoor.normalFeet),
+        (x) => x / DMath.hypot(...saved.originalDoor.normalFeet),
       ) as Point,
       t: Point = [-n[1], n[0]];
     const tb = bounds(saved.footprintFeet, t),
@@ -299,13 +300,22 @@ export function closedBoundaryDoors(
       error(
         "both exact threshold ends must meet distinct named original jambs",
       );
-    // A tiny overlap makes the native mask robust; it cannot bury a jamb.
+    // A rectangular end cannot meet an oblique or offset jamb face without
+    // entering it. The extension may enter a named jamb (whose material the
+    // selection subtracts anyway) only within the checked tangent limit, and
+    // no part of it may lie beyond a jamb: what remains outside the jambs
+    // stays one piece with the original doorway.
+    const limit = saved.measuredTangentLimitFeet ?? 0.15;
+    const outside = pc
+      .difference(extension, ...jambs.map((j) => j.ringsFeet))
+      .filter((part) => area([part]) > 1e-9);
     if (
       jambs.some(
         (j) =>
           area(pc.intersection(extension, j.ringsFeet)) >
-          (nb[1] - nb[0]) * 0.002,
-      )
+          (nb[1] - nb[0]) * limit,
+      ) ||
+      pc.union(original, outside).length !== 1
     )
       error("extension penetrates a jamb beyond contact overlap");
     virtual.set(saved.nativeElementId, saved.footprintFeet);

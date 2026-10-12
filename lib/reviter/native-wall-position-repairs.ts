@@ -1,5 +1,6 @@
 /** Source-bound analytic wall placement corrections. Native model bytes and the
  * complete original footprint remain preserved in this portable sidecar. */
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import { nativeBarrierTopology } from "./native-barrier-topology.ts";
@@ -102,12 +103,12 @@ export function validateNativeWallPositionRepairs(
       b = r.ringsFeet[0],
       dx = b[0][0] - a[0][0],
       dy = b[0][1] - a[0][1],
-      length = Math.hypot(dx, dy);
+      length = DMath.hypot(dx, dy);
     if (
       length < 1e-9 ||
       length > 0.01 ||
       b.some(
-        (p, i) => Math.hypot(p[0] - a[i][0] - dx, p[1] - a[i][1] - dy) > 1e-8,
+        (p, i) => DMath.hypot(p[0] - a[i][0] - dx, p[1] - a[i][1] - dy) > 1e-8,
       )
     )
       throw new Error(
@@ -118,7 +119,7 @@ export function validateNativeWallPositionRepairs(
       return {
         x: q[0] - p[0],
         y: q[1] - p[1],
-        length: Math.hypot(q[0] - p[0], q[1] - p[1]),
+        length: DMath.hypot(q[0] - p[0], q[1] - p[1]),
       };
     });
     const axis = es.reduce((p, q) => (p.length > q.length ? p : q));
@@ -196,20 +197,20 @@ export function nativeWallPositionRepairedWalls(
       b = r.ringsFeet[0],
       dx = b[0][0] - a[0][0],
       dy = b[0][1] - a[0][1],
-      distance = Math.hypot(dx, dy);
+      distance = DMath.hypot(dx, dy);
     // An original parallel side must be separated by less than the proposed
     // translation, with positive overlap along that original side.
     const parallelContact = a.some((p, i) => {
       const q = a[(i + 1) % 4],
         vx = q[0] - p[0],
         vy = q[1] - p[1],
-        len = Math.hypot(vx, vy);
+        len = DMath.hypot(vx, vy);
       if (Math.abs(vx * dx + vy * dy) > 1e-8 * len) return false;
       return r.supportEvidence.ringsFeet[0].some((s, j) => {
         const t = r.supportEvidence.ringsFeet[0][(j + 1) % 4],
           wx = t[0] - s[0],
           wy = t[1] - s[1];
-        if (Math.abs(vx * wy - vy * wx) > 1e-8 * len * Math.hypot(wx, wy))
+        if (Math.abs(vx * wy - vy * wx) > 1e-8 * len * DMath.hypot(wx, wy))
           return false;
         const gap = ((s[0] - p[0]) * dx + (s[1] - p[1]) * dy) / distance;
         const u = ((s[0] - p[0]) * vx + (s[1] - p[1]) * vy) / len,

@@ -1,5 +1,6 @@
 /** Separately preserved continuations of independently recovered finite native
  * frame members. These never turn a sill into a full-height wall or alter a door. */
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import {
   nativePositiveMaterialBandsAcrossLevels,
@@ -164,12 +165,12 @@ export function validateNativeOriginalMemberSection(
     !Number.isFinite(v.sourceWidthFeet) ||
     v.sourceWidthFeet <= 0 ||
     !point(v.sourceAxisDirectionFeet) ||
-    Math.abs(Math.hypot(...v.sourceAxisDirectionFeet) - 1) > 1e-6 ||
+    Math.abs(DMath.hypot(...v.sourceAxisDirectionFeet) - 1) > 1e-6 ||
     !Array.isArray(v.sourceCapFeet) ||
     v.sourceCapFeet.length !== 2 ||
     !v.sourceCapFeet.every(point) ||
     Math.abs(
-      Math.hypot(
+      DMath.hypot(
         v.sourceCapFeet[1][0] - v.sourceCapFeet[0][0],
         v.sourceCapFeet[1][1] - v.sourceCapFeet[0][1],
       ) - v.sourceWidthFeet,
@@ -218,7 +219,7 @@ export function validateNativeDerivedFrameReturns(
       r.topElevationFeet <= r.baseElevationFeet ||
       r.sourceWidthFeet <= 0 ||
       !point(r.sourceAxisDirectionFeet) ||
-      Math.abs(Math.hypot(...r.sourceAxisDirectionFeet) - 1) > 1e-6 ||
+      Math.abs(DMath.hypot(...r.sourceAxisDirectionFeet) - 1) > 1e-6 ||
       ![r.sourceCapFeet, r.targetContactFeet].every(
         (a) => Array.isArray(a) && a.length === 2 && a.every(point),
       ) ||
@@ -317,7 +318,7 @@ const edgeDistance = (p: Point, ps: Parts) =>
                   (dx * dx + dy * dy || 1),
               ),
             );
-          return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+          return DMath.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
         }),
       ),
     ),

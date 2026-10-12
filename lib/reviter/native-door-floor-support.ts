@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { nativeDoorClearOpening } from "./native-door-clear-opening";
 import pc from "polygon-clipping";
 import { exactNativeDoorFloorDifference } from "./native-door-exact-overlay";
@@ -21,12 +22,12 @@ const distance = (p: Point, [a, b]: [Point, Point]) => {
   const dx = b[0] - a[0],
     dy = b[1] - a[1],
     length = dx * dx + dy * dy;
-  if (!length) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  if (!length) return DMath.hypot(p[0] - a[0], p[1] - a[1]);
   const t = Math.max(
     0,
     Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length),
   );
-  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  return DMath.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
 };
 /** Overlay residue is exempt only at one identical finite subject/native OUTER
  * edge contact. Four IEEE relative ulps bound numerical cancellation; this is
@@ -49,7 +50,7 @@ function analyticalOuterContact(
         const [a, b] = edge,
           dx = b[0] - a[0],
           dy = b[1] - a[1],
-          l = Math.hypot(dx, dy);
+          l = DMath.hypot(dx, dy);
         return {
           edge,
           owner,

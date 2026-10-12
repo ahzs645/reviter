@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 
@@ -20,7 +21,7 @@ const dot = (p: Point, axis: Point) => p[0] * axis[0] + p[1] * axis[1];
 const subtract = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1]];
 const edges = (ring: Ring): [Point, Point][] => ring.flatMap((a, i) => {
   const b = ring[(i + 1) % ring.length];
-  return Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6 ? [[a, b] as [Point, Point]] : [];
+  return DMath.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6 ? [[a, b] as [Point, Point]] : [];
 });
 function normalize(rings: Rings, origin: Point): Rings {
   if (!rings.length || rings.some(r => r.length < 3 || r.some(p => p.length !== 2 || !p.every(Number.isFinite))))
@@ -34,7 +35,7 @@ function normalize(rings: Rings, origin: Point): Rings {
 }
 function contact(a: Point, b: Point, c: Point, d: Point): boolean {
   const ab = subtract(b, a), cd = subtract(d, c);
-  const length = Math.hypot(...ab), other = Math.hypot(...cd);
+  const length = DMath.hypot(...ab), other = DMath.hypot(...cd);
   if (length < 0.05 || other < 0.05) return false;
   const axis: Point = [ab[0] / length, ab[1] / length], normal: Point = [-axis[1], axis[0]];
   if (Math.abs(dot(cd, axis)) / other < 0.99999 ||
@@ -43,7 +44,7 @@ function contact(a: Point, b: Point, c: Point, d: Point): boolean {
   return Math.min(length, Math.max(start, end)) - Math.max(0, Math.min(start, end)) > 0.05;
 }
 function band([a, b]: [Point, Point]): Rings {
-  const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const length = DMath.hypot(b[0] - a[0], b[1] - a[1]);
   const dx = (b[0] - a[0]) * REACH / length, dy = (b[1] - a[1]) * REACH / length;
   return [[[a[0] - dx - dy, a[1] - dy + dx], [b[0] + dx - dy, b[1] + dy + dx],
     [b[0] + dx + dy, b[1] + dy - dx], [a[0] - dx + dy, a[1] - dy - dx]]];
@@ -58,8 +59,8 @@ function rectangle(rings: Rings): Rectangle | null {
   if (rings.length !== 1 || rings[0].length !== 4) return null;
   const segments = edges(rings[0]);
   if (segments.length !== 4) return null;
-  const longest = segments.map(([a, b]) => subtract(b, a)).sort((a, b) => Math.hypot(...b) - Math.hypot(...a))[0];
-  const length = Math.hypot(...longest);
+  const longest = segments.map(([a, b]) => subtract(b, a)).sort((a, b) => DMath.hypot(...b) - DMath.hypot(...a))[0];
+  const length = DMath.hypot(...longest);
   const axis: Point = [longest[0] / length, longest[1] / length], normal: Point = [-axis[1], axis[0]];
   const projected = rings[0].map(p => [dot(p, axis), dot(p, normal)] as Point);
   const [u0, v0, u1, v1] = bounds([projected]);
@@ -72,7 +73,7 @@ function rectangle(rings: Rings): Rectangle | null {
 function side(rect: Rectangle, touching: [Point, Point][]): -1 | 1 | null {
   const sides = new Set<number>();
   for (const [a, b] of touching) {
-    const direction = subtract(b, a), length = Math.hypot(...direction);
+    const direction = subtract(b, a), length = DMath.hypot(...direction);
     if (Math.abs(dot(direction, rect.axis)) / length < 0.99999) continue;
     const v = (dot(a, rect.normal) + dot(b, rect.normal)) / 2;
     if (Math.abs(v - rect.v0) <= CONTACT) sides.add(-1);

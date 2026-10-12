@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import type { RoomDirectoryData } from "./room-directory.ts";
@@ -9,6 +10,126 @@ import {
   NATIVE_EXACT_GEOS_BINDING,
   nativeExactGeosOverlay,
 } from "./native-exact-geos-overlay.ts";
+import {
+  REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+  REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES,
+  compareReviewedAreaPartitionEvidence,
+  reviewedAreaPartitionEvidenceSnapshotBytes,
+  reviewedAreaPartitionEvidenceSnapshotSha256,
+  reviewedAreaPartitionLocalEvidence,
+  validReviewedAreaPartitionEvidenceSnapshot,
+  type ReviewedAreaPartitionEvidenceComparison,
+  type ReviewedAreaPartitionEvidenceDifference,
+  type ReviewedAreaPartitionEvidenceSnapshot,
+  type ReviewedAreaPartitionLocalEvidence,
+} from "./reviewed-area-partition-evidence.ts";
+export {
+  REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+  REVIEWED_PARTITION_EVIDENCE_MARGIN_FEET,
+  REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES,
+  REVIEWED_PARTITION_EVIDENCE_TOLERANCE_FEET,
+  compareReviewedAreaPartitionEvidence,
+  diffReviewedAreaPartitionEvidence,
+  reviewedAreaPartitionEvidenceSnapshotBytes,
+  reviewedAreaPartitionEvidenceWindow,
+  reviewedAreaPartitionLocalEvidence,
+} from "./reviewed-area-partition-evidence.ts";
+/** The original level-wide binding: every wall and descriptor on the level. */
+export const REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE =
+  "logical-area-partition-physical-v1" as const;
+/** reboundFrom.reason of a partition re-bound because only owner-approved changes differ. */
+export const REVIEWED_PARTITION_APPROVED_CHANGE_REBIND =
+  "rebound-after-approved-changes" as const;
+/** One owner-approved change of a build (a row, drawn door or record listed in the build
+ * manifest with its decision id) and the local evidence elements it may add, alter or remove. */
+export type ReviewedAreaPartitionApprovedChange = {
+  id: string;
+  kind: string;
+  decisionId: string;
+  /** sha256 of the change as listed in the manifest. */
+  sha256: string;
+  elements: { collection: string; key: string }[];
+};
+export type ReviewedAreaPartitionApprovedChangeSet = {
+  /** sha256 of the build manifest that lists the changes (the receipt). */
+  manifestSha256: string;
+  changes: ReviewedAreaPartitionApprovedChange[];
+};
+export type ReviewedAreaPartitionApprovedChangeReceipt = {
+  manifestSha256: string;
+  elements: {
+    collection: string;
+    key: string;
+    change: "added" | "removed" | "changed";
+    changeIds: string[];
+    decisionIds: string[];
+  }[];
+};
+/** Evidence of the partition itself is never an approved change: editing the line is a new review. */
+const UNAPPROVABLE_COLLECTIONS: ReadonlySet<string> = new Set([
+  "header",
+  "partition",
+  "cited",
+]);
+const text = (s: unknown, max = 200) =>
+  typeof s === "string" && s.length > 0 && s.length <= max;
+export function validateReviewedAreaPartitionApprovedChangeSet(
+  value: unknown,
+): asserts value is ReviewedAreaPartitionApprovedChangeSet {
+  const v = value as ReviewedAreaPartitionApprovedChangeSet;
+  if (
+    !v ||
+    !sha(v.manifestSha256) ||
+    !Array.isArray(v.changes) ||
+    v.changes.length > 100_000 ||
+    new Set(v.changes.map((c) => c?.id)).size !== v.changes.length ||
+    v.changes.some(
+      (c) =>
+        !c ||
+        !text(c.id, 300) ||
+        !text(c.kind) ||
+        !text(c.decisionId) ||
+        !sha(c.sha256) ||
+        !Array.isArray(c.elements) ||
+        c.elements.length === 0 ||
+        c.elements.length > 1000 ||
+        c.elements.some(
+          (e) =>
+            !e ||
+            !text(e.collection, 300) ||
+            typeof e.key !== "string" ||
+            e.key.length > 300 ||
+            UNAPPROVABLE_COLLECTIONS.has(e.collection),
+        ),
+    )
+  )
+    throw new Error("Invalid approved change set for logical boundary re-binding.");
+}
+const validApprovedChangeReceipt = (r: unknown) => {
+  const v = r as ReviewedAreaPartitionApprovedChangeReceipt;
+  return (
+    !!v &&
+    sha(v.manifestSha256) &&
+    Array.isArray(v.elements) &&
+    v.elements.length > 0 &&
+    v.elements.length <= 10_000 &&
+    v.elements.every(
+      (e) =>
+        !!e &&
+        text(e.collection, 300) &&
+        !UNAPPROVABLE_COLLECTIONS.has(e.collection) &&
+        typeof e.key === "string" &&
+        e.key.length <= 300 &&
+        ["added", "removed", "changed"].includes(e.change) &&
+        Array.isArray(e.changeIds) &&
+        e.changeIds.length > 0 &&
+        e.changeIds.every((x) => text(x, 300)) &&
+        Array.isArray(e.decisionIds) &&
+        e.decisionIds.length > 0 &&
+        e.decisionIds.every((x) => text(x)),
+    )
+  );
+};
 
 type Point = [number, number];
 export const REVIEWED_PARTITION_WIDTH_FEET = 0.0002;
@@ -24,7 +145,35 @@ export type ReviewedAreaPartition = {
   id: string;
   levelId: number;
   elevationFeet: number;
+  /** Physical evidence digest. Level-wide when evidenceBinding is absent (legacy);
+   * otherwise the partition's local evidence (reviewed-area-partition-evidence.ts). */
   geometrySha256: string;
+  evidenceBinding?: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+  /** The local evidence geometrySha256 stands for. An exact digest match is
+   * the fast path; on a mismatch this snapshot is compared with a 1e-6 ft
+   * vertex tolerance and identical elements and topology. Omitted when larger
+   * than REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES (exact binding only). */
+  evidenceSnapshot?: ReviewedAreaPartitionEvidenceSnapshot;
+  /** Re-binding receipt. Without `reason`: a level-bound review re-bound to its unchanged
+   * local evidence (migration). With reason "rebound-after-approved-changes": a locally bound
+   * review whose window changed only by owner-approved changes of a build manifest. */
+  reboundFrom?: {
+    rule: typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+    previousRule:
+      | typeof REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE
+      | typeof REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE;
+    reason?: typeof REVIEWED_PARTITION_APPROVED_CHANGE_REBIND;
+    /** The stored digest the review was made against. */
+    geometrySha256: string;
+    /** The published master or compile in which that digest still matched (for an approved-change
+     * re-bind: the build's base dataset). */
+    sourceDatasetSha256: string;
+    /** How the unchanged local evidence matched the evidence re-bound to. */
+    evidenceTest?: "exact" | "tolerance";
+    maxVertexDeltaFeet?: number;
+    /** Every local element that differed, with the approved change(s) that account for it. */
+    approvedChanges?: ReviewedAreaPartitionApprovedChangeReceipt;
+  };
   kind: keyof typeof reviewedAreaPartitionKinds;
   pointsFeet: Point[];
   closed: boolean;
@@ -45,7 +194,7 @@ export type ReviewedAreaPartitions = {
   partitions: ReviewedAreaPartition[];
   /** Append-only authoring transitions. Archived descriptors retain their original evidence. */
   history?: {
-    action: "propose" | "apply" | "restore" | "remove";
+    action: "propose" | "apply" | "restore" | "remove" | "rebind";
     id: string;
     at: string;
     before?: ReviewedAreaPartition;
@@ -59,7 +208,7 @@ const point = (p: unknown): p is Point =>
   p.every(
     (n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e7,
   );
-const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const distance = (a: Point, b: Point) => DMath.hypot(a[0] - b[0], a[1] - b[1]);
 function closest(p: Point, a: Point, b: Point): Point {
   const dx = b[0] - a[0],
     dy = b[1] - a[1],
@@ -134,12 +283,12 @@ export function validateReviewedAreaPartitions(
       p.label.length > 200 ||
       typeof p.notes !== "string" ||
       !p.notes.trim() ||
-      p.notes.length > 10000 ||
+      p.notes.length > 10_000 ||
       !p.evidence ||
       !["native-endpoints", "reviewed-assumption"].includes(p.evidence.kind) ||
       typeof p.evidence.reason !== "string" ||
       !p.evidence.reason.trim() ||
-      p.evidence.reason.length > 10000 ||
+      p.evidence.reason.length > 10_000 ||
       !Array.isArray(p.evidence.nativeElementIds) ||
       p.evidence.nativeElementIds.length > 100 ||
       new Set(p.evidence.nativeElementIds).size !==
@@ -148,10 +297,37 @@ export function validateReviewedAreaPartitions(
         (id) => !Number.isSafeInteger(id) || id <= 0,
       ) ||
       (p.evidence.kind === "native-endpoints" &&
-        !p.evidence.nativeElementIds.length) ||
+        p.evidence.nativeElementIds.length === 0) ||
       p.selection !== "closed" ||
       p.navigation !== "unchanged" ||
-      (p.kind === "shaft-boundary" && (!p.closed || p.status === "applied"))
+      (p.kind === "shaft-boundary" && (!p.closed || p.status === "applied")) ||
+      (p.evidenceBinding !== undefined &&
+        p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE) ||
+      (p.reboundFrom !== undefined &&
+        (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+          !p.reboundFrom ||
+          p.reboundFrom.rule !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+          (p.reboundFrom.reason === undefined
+            ? p.reboundFrom.previousRule !==
+                REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE ||
+              p.reboundFrom.approvedChanges !== undefined
+            : p.reboundFrom.reason !==
+                REVIEWED_PARTITION_APPROVED_CHANGE_REBIND ||
+              p.reboundFrom.previousRule !==
+                REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+              !validApprovedChangeReceipt(p.reboundFrom.approvedChanges)) ||
+          !sha(p.reboundFrom.geometrySha256) ||
+          !sha(p.reboundFrom.sourceDatasetSha256) ||
+          (p.reboundFrom.evidenceTest !== undefined &&
+            !["exact", "tolerance"].includes(p.reboundFrom.evidenceTest)) ||
+          (p.reboundFrom.maxVertexDeltaFeet !== undefined &&
+            !(
+              p.reboundFrom.maxVertexDeltaFeet >= 0 &&
+              p.reboundFrom.maxVertexDeltaFeet <= 1e-6
+            )))) ||
+      (p.evidenceSnapshot !== undefined &&
+        (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+          !validReviewedAreaPartitionEvidenceSnapshot(p.evidenceSnapshot)))
     )
       throw new Error(
         "Invalid logical boundary. Shaft outlines are proposed inspection metadata only.",
@@ -185,12 +361,14 @@ export function validateReviewedAreaPartitions(
     ids.add(p.id);
   }
   if (v.history !== undefined) {
-    if (!Array.isArray(v.history) || v.history.length > 10000)
+    if (!Array.isArray(v.history) || v.history.length > 10_000)
       throw new Error("Invalid logical boundary history.");
     for (const h of v.history) {
       if (
         !h ||
-        !["propose", "apply", "restore", "remove"].includes(h.action) ||
+        !["propose", "apply", "restore", "remove", "rebind"].includes(
+          h.action,
+        ) ||
         typeof h.id !== "string" ||
         !h.id ||
         h.id.length > 200 ||
@@ -206,7 +384,18 @@ export function validateReviewedAreaPartitions(
           (!h.before || h.after?.status !== "applied")) ||
         (h.action === "restore" &&
           (!h.before || h.after?.status !== "proposed")) ||
-        (h.action === "propose" && h.after?.status !== "proposed")
+        (h.action === "propose" && h.after?.status !== "proposed") ||
+        (h.action === "rebind" &&
+          (!h.before ||
+            (h.after?.reboundFrom?.reason ===
+            REVIEWED_PARTITION_APPROVED_CHANGE_REBIND
+              ? h.before.evidenceBinding !==
+                REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+              : h.before.evidenceBinding !== undefined) ||
+            h.after?.status !== h.before.status ||
+            h.after.evidenceBinding !==
+              REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE ||
+            h.after.reboundFrom?.geometrySha256 !== h.before.geometrySha256))
       )
         throw new Error("Invalid logical boundary history transition.");
       validateReviewedAreaPartitions({
@@ -222,7 +411,10 @@ export function validateReviewedAreaPartitions(
     }
   }
 }
-/** Deliberately excludes authoring notes and logical boundaries: applying a second boundary cannot stale the first. */
+/** Legacy level-wide binding. Any change anywhere on the level (or in a
+ * campus-wide descriptor) stales every partition bound this way; new and
+ * re-bound partitions use reviewedAreaPartitionLocalEvidence instead.
+ * Deliberately excludes authoring notes and logical boundaries: applying a second boundary cannot stale the first. */
 export async function reviewedAreaPartitionGeometrySha256(
   data: IndoorDataset,
   levelId: number,
@@ -272,6 +464,119 @@ export async function reviewedAreaPartitionGeometrySha256(
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("");
 }
+export type ReviewedAreaPartitionEvidenceTest =
+  /** Legacy level-wide digest equal. */
+  | "level"
+  /** Local evidence digest bit-identical. */
+  | "exact"
+  /** Digest differs; stored snapshot equal within 1e-6 ft, same elements and topology. */
+  | "tolerance"
+  /** The evidence changed. */
+  | "changed";
+export type ReviewedAreaPartitionEvidenceStatus = {
+  /** Equal to the partition's geometrySha256 exactly when its evidence still holds. */
+  digest: string;
+  test: ReviewedAreaPartitionEvidenceTest;
+  maxVertexDeltaFeet?: number;
+  differences?: ReviewedAreaPartitionEvidenceComparison["differences"];
+};
+/** Checks a partition's evidence: exact digest first, then the tolerant snapshot. */
+async function localEvidenceStatus(
+  data: IndoorDataset,
+  p: ReviewedAreaPartition,
+): Promise<ReviewedAreaPartitionEvidenceStatus> {
+  const current = await reviewedAreaPartitionLocalEvidence(data, p);
+  if (current.sha256 === p.geometrySha256)
+    return { digest: current.sha256, test: "exact", maxVertexDeltaFeet: 0 };
+  const stored = p.evidenceSnapshot;
+  // The snapshot only speaks for the digest it hashes to.
+  if (
+    !stored ||
+    !validReviewedAreaPartitionEvidenceSnapshot(stored) ||
+    (await reviewedAreaPartitionEvidenceSnapshotSha256(stored)) !==
+      p.geometrySha256
+  )
+    return { digest: current.sha256, test: "changed" };
+  const c = compareReviewedAreaPartitionEvidence(stored, current.snapshot);
+  return c.equal
+    ? {
+        digest: p.geometrySha256,
+        test: "tolerance",
+        maxVertexDeltaFeet: c.maxDeltaFeet,
+      }
+    : { digest: current.sha256, test: "changed", differences: c.differences };
+}
+/** Current evidence status by partition id; a level-wide digest is computed once per level. */
+export async function reviewedAreaPartitionEvidenceStatuses(
+  data: IndoorDataset,
+  partitions: readonly ReviewedAreaPartition[],
+): Promise<Record<string, ReviewedAreaPartitionEvidenceStatus>> {
+  const levels = new Map<number, Promise<string>>();
+  const out: Record<string, ReviewedAreaPartitionEvidenceStatus> = {};
+  for (const p of partitions) {
+    if (p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE) {
+      out[p.id] = await localEvidenceStatus(data, p);
+      continue;
+    }
+    if (!levels.has(p.levelId))
+      levels.set(
+        p.levelId,
+        reviewedAreaPartitionGeometrySha256(data, p.levelId),
+      );
+    const digest = await levels.get(p.levelId)!;
+    out[p.id] = {
+      digest,
+      test: digest === p.geometrySha256 ? "level" : "changed",
+    };
+  }
+  return out;
+}
+/** The digest to check a partition against: its own when its evidence still holds. */
+export async function reviewedAreaPartitionEvidenceSha256(
+  data: IndoorDataset,
+  p: ReviewedAreaPartition,
+): Promise<string> {
+  const statuses = await reviewedAreaPartitionEvidenceStatuses(data, [p]);
+  return statuses[p.id]!.digest;
+}
+/** Digests by partition id for checkReviewedAreaPartition / apply. */
+export async function reviewedAreaPartitionEvidenceHashes(
+  data: IndoorDataset,
+  partitions: readonly ReviewedAreaPartition[],
+): Promise<Record<string, string>> {
+  const statuses = await reviewedAreaPartitionEvidenceStatuses(
+    data,
+    partitions,
+  );
+  return Object.fromEntries(
+    Object.entries(statuses).map(([id, s]) => [id, s.digest]),
+  );
+}
+/** The local-evidence binding fields for evidence computed on the bound data. */
+export function reviewedAreaPartitionEvidenceBinding(
+  evidence: ReviewedAreaPartitionLocalEvidence,
+): Pick<
+  ReviewedAreaPartition,
+  "evidenceBinding" | "geometrySha256" | "evidenceSnapshot"
+> {
+  return {
+    evidenceBinding: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+    geometrySha256: evidence.sha256,
+    ...(reviewedAreaPartitionEvidenceSnapshotBytes(evidence.snapshot) <=
+    REVIEWED_PARTITION_EVIDENCE_SNAPSHOT_MAX_BYTES
+      ? { evidenceSnapshot: evidence.snapshot }
+      : {}),
+  };
+}
+/** Binds a new or edited proposal to its current local evidence. */
+export async function bindReviewedAreaPartitionEvidence(
+  data: IndoorDataset,
+  p: ReviewedAreaPartition,
+): Promise<ReviewedAreaPartition> {
+  const { reboundFrom: _, evidenceSnapshot: __, ...rest } = p;
+  const evidence = await reviewedAreaPartitionLocalEvidence(data, rest);
+  return { ...rest, ...reviewedAreaPartitionEvidenceBinding(evidence) };
+}
 const area = (parts: pc.MultiPolygon) =>
   parts.reduce(
     (sum, rings) =>
@@ -318,8 +623,8 @@ export function checkReviewedAreaPartition(
       },
       data.source.modelSha256,
     );
-  } catch (e) {
-    errors.push(e instanceof Error ? e.message : String(e));
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
     return {
       valid: false,
       errors,
@@ -330,7 +635,9 @@ export function checkReviewedAreaPartition(
   }
   if (p.geometrySha256 !== physicalGeometrySha256)
     errors.push(
-      "Physical evidence changed; review this logical boundary again.",
+      p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+        ? "Physical evidence changed in this boundary's evidence window (its bounds plus 6 ft); review this logical boundary again."
+        : "Physical evidence changed; review this logical boundary again. It is bound to every wall on its level, so an unrelated change also stales it; re-bind it to its local evidence after review.",
     );
   const level = data.nativeLevels.find((l) => l.id === p.levelId);
   if (!level || Math.abs(level.elevationFeet - p.elevationFeet) > 1e-8)
@@ -345,7 +652,7 @@ export function checkReviewedAreaPartition(
           (f) => Math.abs(f.elevationFeet - p.elevationFeet) < 0.15,
         )
       : [];
-  if (!floors.length)
+  if (floors.length === 0)
     errors.push("No model-bound native floor supports this boundary.");
   const strictNative = !!data.nativeIndoorEnvelopes;
   const overlay = (
@@ -401,7 +708,7 @@ export function checkReviewedAreaPartition(
             r.some(
               (a, i) =>
                 distance(end, closest(end, a, r[(i + 1) % r.length]!)) <=
-                0.00011,
+                0.000_11,
             ),
           ),
         )
@@ -425,7 +732,7 @@ export function checkReviewedAreaPartition(
       [a[0] - dx * half - nx, a[1] - dy * half - ny],
     ] as Point[];
   });
-  let footprintsFeet: Point[][] = [];
+  const footprintsFeet: Point[][] = [];
   try {
     const floorParts = floors.flatMap((f) => f.partsFeet ?? [f.ringsFeet]);
     // Strict review retains the original native floor vertices and holes.
@@ -438,9 +745,10 @@ export function checkReviewedAreaPartition(
           floorParts[0]?.[0]?.[0] ?? [0, 0],
           1e-12,
         );
-    const floor = originalContactFloors.length
-      ? overlay("union", originalContactFloors)
-      : [];
+    const floor =
+      originalContactFloors.length > 0
+        ? overlay("union", originalContactFloors)
+        : [];
     const holes = floorParts
       .flatMap((rs) => rs.slice(1))
       .concat(
@@ -520,7 +828,7 @@ export function checkReviewedAreaPartition(
   return {
     valid: errors.length === 0,
     errors: [...new Set(errors)],
-    footprintsFeet: errors.length ? [] : footprintsFeet,
+    footprintsFeet: errors.length > 0 ? [] : footprintsFeet,
     nativeFloorIds: floors.map((f) => f.nativeElementId),
     provisional: p.evidence.kind === "reviewed-assumption",
   };
@@ -617,4 +925,308 @@ export function validateReviewedAreaPartitionBinding(
       )
     )
       throw new Error("Logical boundary belongs to a missing native level.");
+}
+/** History keeps each transition's digest; the bulky evidence snapshot stays on the live entry only. */
+function historyCopy(p: ReviewedAreaPartition): ReviewedAreaPartition {
+  const { evidenceSnapshot: _, ...rest } = structuredClone(p);
+  return rest;
+}
+/** One candidate master/compile, evaluated for one partition. */
+export type ReviewedAreaPartitionRebindSource = {
+  sha256: string;
+  label: string;
+  /** reviewedAreaPartitionGeometrySha256 of the partition's level in that source. */
+  levelEvidenceSha256: string;
+  localEvidence: ReviewedAreaPartitionLocalEvidence;
+};
+export type ReviewedAreaPartitionRebindOutcome =
+  | { id: string; outcome: "already-local" }
+  | {
+      id: string;
+      outcome: "rebound";
+      partition: ReviewedAreaPartition;
+      source: { sha256: string; label: string };
+    }
+  | {
+      id: string;
+      outcome: "needs-review";
+      reason: string;
+      source?: { sha256: string; label: string };
+      differences: (ReviewedAreaPartitionEvidenceDifference & {
+        detail?: "geometry" | "topology" | "attributes";
+      })[];
+    };
+/**
+ * Re-binding keeps the review authority only where it provably still holds:
+ * some candidate in which the stored level-wide digest still matches (so the
+ * review's evidence is recovered) must show the same local evidence as now.
+ * Anything else stays bound as it was and is listed for owner review.
+ */
+export function decideReviewedAreaPartitionRebind(
+  p: ReviewedAreaPartition,
+  sources: readonly ReviewedAreaPartitionRebindSource[],
+  current: ReviewedAreaPartitionLocalEvidence,
+): ReviewedAreaPartitionRebindOutcome {
+  if (p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE)
+    return { id: p.id, outcome: "already-local" };
+  const matches = sources.filter(
+    (s) => s.levelEvidenceSha256 === p.geometrySha256,
+  );
+  if (matches.length === 0)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason: `No available master or compile reproduces the stored level-wide evidence digest ${p.geometrySha256.slice(0, 8)}…, so the evidence this boundary was reviewed against cannot be recovered. Review it again on the current map.`,
+      differences: [],
+    };
+  // Exact first; otherwise the same elements and topology within 1e-6 ft.
+  const exact = matches.find((s) => s.localEvidence.sha256 === current.sha256);
+  const compared = exact
+    ? undefined
+    : matches.map((s) => ({
+        source: s,
+        comparison: compareReviewedAreaPartitionEvidence(
+          s.localEvidence.snapshot,
+          current.snapshot,
+        ),
+      }));
+  const tolerant = compared?.find((c) => c.comparison.equal);
+  const same = exact ?? tolerant?.source;
+  if (same)
+    return {
+      id: p.id,
+      outcome: "rebound",
+      source: { sha256: same.sha256, label: same.label },
+      partition: {
+        ...p,
+        ...reviewedAreaPartitionEvidenceBinding(current),
+        reboundFrom: {
+          rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+          previousRule: REVIEWED_PARTITION_LEVEL_EVIDENCE_RULE,
+          geometrySha256: p.geometrySha256,
+          sourceDatasetSha256: same.sha256,
+          evidenceTest: exact ? "exact" : "tolerance",
+          maxVertexDeltaFeet: exact ? 0 : tolerant!.comparison.maxDeltaFeet,
+        },
+      },
+    };
+  const differences = compared![0]!.comparison.differences;
+  return {
+    id: p.id,
+    outcome: "needs-review",
+    source: { sha256: matches[0]!.sha256, label: matches[0]!.label },
+    reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed since it was reviewed (in ${matches[0]!.label}) by more than 1e-6 ft or in its elements or topology: ${differences.length === 1 ? "1 element differs" : `${differences.length} elements differ`}. Review it again before re-binding.`,
+    differences,
+  };
+}
+export type ReviewedAreaPartitionApprovedChangeOutcome =
+  | ReviewedAreaPartitionRebindOutcome
+  | {
+      id: string;
+      outcome: "evidence-holds";
+      evidenceTest: "exact" | "tolerance";
+    };
+/**
+ * Re-binding after a build's owner-approved changes. A locally bound partition whose evidence
+ * window changed is re-bound only when every element that differs (added, removed or changed,
+ * beyond the 1e-6 ft tolerance) is listed by some approved change of the build manifest. Its
+ * receipt names each such element with the change ids and decision ids that account for it.
+ * Anything else that differs (another element, the header, the partition itself, or a snapshot
+ * that cannot speak for the stored digest) keeps the partition stale and lists it for review.
+ */
+export async function decideReviewedAreaPartitionApprovedChangeRebind(
+  p: ReviewedAreaPartition,
+  current: ReviewedAreaPartitionLocalEvidence,
+  changeSet: ReviewedAreaPartitionApprovedChangeSet,
+  sourceDatasetSha256: string,
+): Promise<ReviewedAreaPartitionApprovedChangeOutcome> {
+  validateReviewedAreaPartitionApprovedChangeSet(changeSet);
+  if (!sha(sourceDatasetSha256))
+    throw new Error("Approved-change re-binding needs the build's base dataset digest.");
+  if (p.evidenceBinding !== REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "Only a boundary bound to its local evidence can be re-bound after approved changes; migrate the level-wide binding first.",
+      differences: [],
+    };
+  if (current.sha256 === p.geometrySha256)
+    return { id: p.id, outcome: "evidence-holds", evidenceTest: "exact" };
+  const stored = p.evidenceSnapshot;
+  if (
+    !stored ||
+    !validReviewedAreaPartitionEvidenceSnapshot(stored) ||
+    (await reviewedAreaPartitionEvidenceSnapshotSha256(stored)) !==
+      p.geometrySha256
+  )
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "The stored evidence snapshot does not reproduce this boundary's digest, so the reviewed evidence cannot be compared element by element. Review it again.",
+      differences: [],
+    };
+  const comparison = compareReviewedAreaPartitionEvidence(
+    stored,
+    current.snapshot,
+  );
+  if (comparison.equal)
+    return { id: p.id, outcome: "evidence-holds", evidenceTest: "tolerance" };
+  const owners = new Map<string, ReviewedAreaPartitionApprovedChange[]>();
+  for (const c of changeSet.changes)
+    for (const e of c.elements) {
+      const k = JSON.stringify([e.collection, e.key]);
+      owners.set(k, [...(owners.get(k) ?? []), c]);
+    }
+  const unexplained = comparison.differences.filter(
+    (d) =>
+      UNAPPROVABLE_COLLECTIONS.has(d.collection) ||
+      !owners.has(JSON.stringify([d.collection, d.key])),
+  );
+  if (unexplained.length > 0)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason: `Evidence in this boundary's evidence window (its bounds plus 6 ft) changed outside the build's approved changes: ${unexplained.length === 1 ? "1 element differs" : `${unexplained.length} elements differ`} that no approved row, door or record accounts for. Review it again before re-binding.`,
+      differences: unexplained,
+    };
+  // The elements that did not change must still agree within tolerance: compare the stored
+  // snapshot with the current one with the approved elements left out of both.
+  const approved = new Set(
+    comparison.differences.map((d) => JSON.stringify([d.collection, d.key])),
+  );
+  const rest = (s: ReviewedAreaPartitionEvidenceSnapshot) => ({
+    ...s,
+    records: s.records.filter(
+      ([c, k]) => !approved.has(JSON.stringify([c, k])),
+    ),
+  });
+  const unchanged = compareReviewedAreaPartitionEvidence(
+    rest(stored),
+    rest(current.snapshot),
+  );
+  if (!unchanged.equal)
+    return {
+      id: p.id,
+      outcome: "needs-review",
+      reason:
+        "Evidence outside the approved changes does not agree within 1e-6 ft. Review it again before re-binding.",
+      differences: unchanged.differences,
+    };
+  const sorted = (xs: string[]) => [...new Set(xs)].sort();
+  return {
+    id: p.id,
+    outcome: "rebound",
+    source: {
+      sha256: changeSet.manifestSha256,
+      label: "build manifest (approved changes)",
+    },
+    partition: {
+      ...p,
+      ...reviewedAreaPartitionEvidenceBinding(current),
+      reboundFrom: {
+        rule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+        previousRule: REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE,
+        reason: REVIEWED_PARTITION_APPROVED_CHANGE_REBIND,
+        geometrySha256: p.geometrySha256,
+        sourceDatasetSha256,
+        evidenceTest: unchanged.maxDeltaFeet === 0 ? "exact" : "tolerance",
+        maxVertexDeltaFeet: unchanged.maxDeltaFeet,
+        approvedChanges: {
+          manifestSha256: changeSet.manifestSha256,
+          elements: comparison.differences.map((d) => {
+            const by = owners.get(JSON.stringify([d.collection, d.key]))!;
+            return {
+              collection: d.collection,
+              key: d.key,
+              change: d.change,
+              changeIds: sorted(by.map((c) => c.id)),
+              decisionIds: sorted(by.map((c) => c.decisionId)),
+            };
+          }),
+        },
+      },
+    },
+  };
+}
+/** Applies rebound outcomes, recording each as an auditable history transition. */
+export function rebindReviewedAreaPartitions(
+  value: ReviewedAreaPartitions,
+  outcomes: readonly ReviewedAreaPartitionApprovedChangeOutcome[],
+  at = new Date().toISOString(),
+): ReviewedAreaPartitions {
+  const rebound = new Map(
+    outcomes.flatMap((o) =>
+      o.outcome === "rebound" ? [[o.id, o.partition] as const] : [],
+    ),
+  );
+  const history = [...(value.history ?? [])];
+  const partitions = value.partitions.map((p) => {
+    const next = rebound.get(p.id);
+    if (!next) return p;
+    if (next.reboundFrom?.geometrySha256 !== p.geometrySha256)
+      throw new Error(`${p.label}: re-binding was decided for another review.`);
+    history.push({
+      action: "rebind",
+      id: p.id,
+      at,
+      before: historyCopy(p),
+      after: historyCopy(next),
+    });
+    return structuredClone(next);
+  });
+  const out: ReviewedAreaPartitions = { ...value, partitions, history };
+  validateReviewedAreaPartitions(out, value.sourceModelSha256);
+  return out;
+}
+export type ReviewedAreaPartitionAuditEntry = {
+  id: string;
+  levelId: number;
+  label: string;
+  status: ReviewedAreaPartition["status"];
+  binding: "level" | "local";
+  /** Which evidence test passed (or "changed"). */
+  evidenceTest: ReviewedAreaPartitionEvidenceTest;
+  maxVertexDeltaFeet?: number;
+  differences?: ReviewedAreaPartitionEvidenceComparison["differences"];
+  valid: boolean;
+  errors: string[];
+};
+/** Every saved boundary with its current check. An applied boundary that is
+ * invalid is omitted from selection; the count keeps such drops visible. */
+export async function auditReviewedAreaPartitions(data: IndoorDataset) {
+  const partitions = data.reviewedAreaPartitions?.partitions ?? [];
+  const statuses = await reviewedAreaPartitionEvidenceStatuses(
+    data,
+    partitions,
+  );
+  const entries: ReviewedAreaPartitionAuditEntry[] = partitions.map((p) => {
+    const status = statuses[p.id]!;
+    const check = checkReviewedAreaPartition(data, p, status.digest);
+    return {
+      id: p.id,
+      levelId: p.levelId,
+      label: p.label,
+      status: p.status,
+      binding:
+        p.evidenceBinding === REVIEWED_PARTITION_LOCAL_EVIDENCE_RULE
+          ? "local"
+          : "level",
+      evidenceTest: status.test,
+      ...(status.maxVertexDeltaFeet === undefined
+        ? {}
+        : { maxVertexDeltaFeet: status.maxVertexDeltaFeet }),
+      ...(status.differences ? { differences: status.differences } : {}),
+      valid: check.valid,
+      errors: check.errors,
+    };
+  });
+  return {
+    entries,
+    appliedCount: entries.filter((e) => e.status === "applied").length,
+    appliedOmittedCount: entries.filter(
+      (e) => e.status === "applied" && !e.valid,
+    ).length,
+  };
 }

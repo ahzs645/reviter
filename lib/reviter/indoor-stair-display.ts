@@ -1,6 +1,8 @@
+import * as DMath from "./deterministic-math.ts";
 import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
 import {
   nativeStairRunTreads,
+  nativeStairRunSupportFaces,
   nativeStairRunEndpoints,
 } from "./indoor-stair-run-surfaces.ts";
 import { nativeStairLandings } from "./indoor-stair-landings.ts";
@@ -63,6 +65,8 @@ export function prepareIndoorStairDisplay(
 ): NonNullable<IndoorDataset["stairDisplay"]> {
   const landingInventory = nativeStairLandings(model);
   const nativeTreads = nativeStairRunTreads(model);
+  // Up-facing native lips (nosings) beside the treads: plan support for receipts only.
+  const supportFaces = nativeStairRunSupportFaces(model);
   const authoredTreads = nativeAuthoredStairTreads(data.nativeSourceStairMaterials?.authoredTreadRoles, data.source.modelSha256);
   const elements = new Map(model.elementBounds?.map((r) => [r.elementId, r]));
   const flights: NonNullable<IndoorDataset["stairDisplay"]>["flights"] = [];
@@ -172,7 +176,7 @@ export function prepareIndoorStairDisplay(
           distance: Math.min(
             ...r.ringsFeet
               .flat()
-              .map((p) => Math.hypot(p[0] - centre[0], p[1] - centre[1])),
+              .map((p) => DMath.hypot(p[0] - centre[0], p[1] - centre[1])),
           ),
         }))
         .sort((a, b) => a.distance - b.distance);
@@ -193,6 +197,10 @@ export function prepareIndoorStairDisplay(
         ...(hasAuthoredTreads ? { authoredTreadRolesSha256: data.nativeSourceStairMaterials!.authoredTreadRoles!.geometrySha256, historicalPreparedTreads } : {}),
         runs: nativeStairRunEndpoints(model, treads),
         landings,
+        ...(() => {
+          const lips = runs.flatMap((r) => (supportFaces.get(r!.elementId) ?? []).filter((f) => !treads.some((t) => t.runElementId === f.runElementId && t.elevationFeet === f.elevationFeet)));
+          return recovered && lips.length ? { supportFaces: lips } : {};
+        })(),
       });
     }
     const polygons = treads.map((t) => [close(t.ringFeet)]);
@@ -262,6 +270,10 @@ export function prepareIndoorStairDisplay(
         ...(hasAuthoredTreads ? { authoredTreadRolesSha256: data.nativeSourceStairMaterials!.authoredTreadRoles!.geometrySha256, historicalPreparedTreads } : {}),
         runs: nativeStairRunEndpoints(model, treads),
         landings,
+        ...(() => {
+          const lips = runs.flatMap((r) => (supportFaces.get(r!.elementId) ?? []).filter((f) => !treads.some((t) => t.runElementId === f.runElementId && t.elevationFeet === f.elevationFeet)));
+          return recovered && lips.length ? { supportFaces: lips } : {};
+        })(),
       });
     }
   }

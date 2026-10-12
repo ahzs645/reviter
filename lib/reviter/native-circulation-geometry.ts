@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {nativeRationalOverlay,nativeRationalScalarToIEEE,NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION,type NativeRationalParts} from "./native-rational-overlay.ts";
 import {prepareNativeContainedCellDisplay,validateNativeContainedCellDisplay} from "./native-contained-cell-display.ts";
 import {freezeNativeRationalParts,encodeNativeExactTopology,createNativeExactTopologyIndex,nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare,nativeRationalPointInParts,nativeRationalPathSupported,nativeRationalFootprintSupported,nativeRationalThresholdHalf,nativeExactPartsForProposals} from "./native-exact-planar-topology.ts";
@@ -12,12 +13,14 @@ import { nativeWallPositionMaterialBinding } from "./native-wall-position-repair
 import { nativeCirculationBinding } from "./native-circulation-binding.ts";
 import { nativeRoomIdentityRings } from "./native-floor-opening-ownership.ts";
 import { nativeRationalIntersectionOperand } from "./native-rational-intersection-broadphase.ts";
+import { createNativeLocalFace, nativeLocalFaceJoins, acceptNativeLocalFacePiece, nativeLocalFaceParts, type NativeLocalFace } from "./native-local-face-join.ts";
 import {
   createNativeHostApertureQuery,
   createNativeRoutingMaterialQuery,
 } from "./native-routing-material.ts";
 import { createNativeBoundaryMaterialQuery,createNativeExactBoundaryMaterialQuery } from "./native-boundary-material.ts";
 import { nativeConnectorAnchors } from "./native-connector-anchors.ts";
+import { nativeAccessZonesAt, nativeAccessZoneById, nativeAccessZoneSplit, NATIVE_ACCESS_ZONES_VERSION } from "./native-access-zones.ts";
 import { nativeMaterialPlanWalls } from "./native-material-plan.ts";
 import { indoorExclusionParts } from "./indoor-exclusions.ts";
 import pc from "polygon-clipping";
@@ -136,6 +139,7 @@ export function nativeCirculationGeometryKey(data: IndoorDataset): string {
             NATIVE_EXACT_GEOS_BINDING,
             nativeConnectorAnchors(data),
             ...(data.nativePhysicalLevels ? [data.nativePhysicalLevels] : []),
+            ...(data.nativeAccessZones ? [NATIVE_ACCESS_ZONES_VERSION, data.nativeAccessZones] : []),
           ]
         : []),
       ...(data.nativeMaterialSections
@@ -358,12 +362,36 @@ function prepareNativeCirculationElevations(
       if (!region.exact) throw new Error("Missing original exact native walking authority.");
       const physicalFaces = nativeRationalOverlay("difference", region.exact.free, thresholds);
       const exactArea = nativeRationalMeasuredArea;
-      for (const part of physicalFaces) {
+      // Reviewed access zones (native-access-zones.ts) carve their exact parts
+      // out of each shared physical face. The remainder is classified by the
+      // unchanged majority rule; a staff zone piece becomes restricted
+      // circulation that carries every zone identity; a non-walkable piece
+      // stays a face without a cell. No floor, wall or door is created.
+      for (const { part, zone } of nativeAccessZoneSplit(physicalFaces, nativeAccessZonesAt(data, z))) {
         const faceId=`native-face:${z.toFixed(6)}:${exactFaces.length}`, face:NativeRationalParts=[part];
         // Every true positive source piece survives, even when too small,
         // restricted or unlabelled for a public route.
         exactFaces.push({id:faceId,parts:face});
-        if (!nativeRationalFootprintSupported(face,region.exact.walkable)) {report.rejected++;continue;}
+        // A staff zone piece is restricted (never publicly walkable) but must
+        // still be original physical free floor.
+        if (!nativeRationalFootprintSupported(face,zone?region.exact.free:region.exact.walkable)) {report.rejected++;continue;}
+        if (zone) {
+          if (zone.zone.access !== "staff") { report.rejected++; continue; }
+          const zoneMembers = zone.zone.memberRoomKeys.map(k => recordsByKey.get(k)!).filter(Boolean);
+          const zoneAnchors = anchors.filter(a=>Math.abs(a.pointFeet[2]-z)<.05 && (a.roomKey===''||zone.zone.memberRoomKeys.includes(a.roomKey)) && nativeRationalPointInParts(a.pointFeet,face) && routingFloorPlateRecords(model,z).some(f=>nativeRationalPointInParts(a.pointFeet,nativeRationalOverlay("union",nativeFloorPolygons(f,true)))));
+          const nativeFloorIds=routingFloorPlateRecords(model,z).filter(f=>nativeRationalOverlay("intersection",face,nativeFloorPolygons(f,true)).length>0).map(f=>f.elementId);
+          const rings=part.map(r=>r.map(([x,y])=>[nativeRationalScalarToIEEE(x),nativeRationalScalarToIEEE(y)] as RoomPoint));
+          const id=`native-cell:${z.toFixed(6)}:${cells.length}`;
+          const drawing=prepareNativeContainedCellDisplay(id,face);
+          if(drawing.residual)displayResidualFaces.push(drawing.residual);
+          cells.push({id,exactFaceId:faceId,containedDisplay:drawing.display,accessZoneId:zone.zone.id,
+            levelIds:[...new Set([...zoneMembers.map(r=>r.levelId),...zoneAnchors.map(a=>a.levelId),...data.nativeLevels.filter(l=>Math.abs(l.elevationFeet-z)<.05).map(l=>l.id)])].sort((a,b)=>a-b),
+            elevationFeet:z,roomKeys:zoneMembers.map(r=>r.key).sort(),nativeFloorIds,
+            ...(zoneAnchors.length?{connectorAnchors:zoneAnchors.map(({edgeId,nodeId,roomKey,nativeElementId})=>({edgeId,nodeId,roomKey,nativeElementId}))}:{}),
+            ringsFeet:rings,sourceCoverage:1});
+          report.diagnostics.push(`Elevation ${z}: reviewed ${zone.zone.access} access zone ${zone.zone.id} is restricted circulation (${zoneMembers.length} identities); no public route generated through it.`);
+          continue;
+        }
         const measured = owners.map(record=>{
           const identity=[nativeRoomIdentityRings(data,record)];
           const nearbyFace=nativeRationalIntersectionOperand(identity,face);
@@ -682,7 +710,12 @@ export function mergeNativeCirculationPlaneDrafts(data: IndoorDataset, drafts: r
       if(cell.id!==expected||!exactFaceId||!cell.containedDisplay)throw Error("Native plane cell identity changed.");
       const source=index.parts(cell.exactFaceId!)!;
       const cellAnchors=(cell.connectorAnchors??[]).map(a=>sourceAnchors.find(s=>s.edgeId===a.edgeId&&s.nodeId===a.nodeId&&s.roomKey===a.roomKey&&s.nativeElementId===a.nativeElementId&&Math.abs(s.pointFeet[2]-z)<.05&&nativeRationalPointInParts(s.pointFeet,source)));
-      if(cellAnchors.some(a=>!a)||cell.roomKeys.some(k=>!data.records.some(r=>r.key===k&&r.walkable&&r.access!=="staff"&&(Math.abs(r.elevationFeet-z)<.05||cellAnchors.some(a=>a?.roomKey===k)))))
+      // A reviewed access-zone cell carries its restricted members; every other
+      // cell owner remains a walkable non-staff record on this plane.
+      const zone=cell.accessZoneId!==undefined?nativeAccessZoneById(data,cell.accessZoneId):undefined;
+      if(cell.accessZoneId!==undefined&&(!zone||Math.abs(zone.zone.elevationFeet-z)>=.05||JSON.stringify(cell.roomKeys)!==JSON.stringify([...zone.zone.memberRoomKeys].sort())))
+        throw Error("Native plane draft names a missing or changed reviewed access zone.");
+      if(cellAnchors.some(a=>!a)||cell.roomKeys.some(k=>!data.records.some(r=>r.key===k&&(zone?zone.zone.memberRoomKeys.includes(k):r.walkable&&r.access!=="staff")&&(Math.abs(r.elevationFeet-z)<.05||cellAnchors.some(a=>a?.roomKey===k)))))
         throw Error("Native plane draft has an unknown, restricted or unsupported source owner.");
       validateNativeContainedCellDisplay(cell.containedDisplay,source,residual);
       const id=`native-cell:${z.toFixed(6)}:${cells.length}`,display=structuredClone(cell.containedDisplay),oldResidual=display.exactResidualFaceId;
@@ -734,6 +767,101 @@ type DoorApproachContext = {
     }
   >;
 };
+/** A connected, enabled physical portal side may terminate the exact native
+ * cell that physically contains its ORIGINAL point even when majority
+ * metadata association placed its owner in no cell (or another cell). The
+ * portal keeps its identity and coordinates; the owner must be a walkable,
+ * non-staff record on this elevation; its own door edge must be an enabled
+ * connected two-owner physical door. Ownership is never inferred from
+ * proximity: containment is tested against the cell's pure exact face, before
+ * any threshold-half extension. Generic: no venue identifiers. */
+const foreignPortalDoors = new WeakMap<
+  DoorApproachContext,
+  Map<string, { edge: IndoorDataset["edges"][number]; door: NonNullable<IndoorDataset["doors"]>[number] }>
+>();
+// Exact tiles of a large cell's pure face, built once per attach pass (see
+// native-local-face-join.ts); null marks a face that keeps the global overlay.
+const largeCellFaces = new WeakMap<DoorApproachContext, Map<string, NativeLocalFace | null>>();
+function nativeLargeCellFace(
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  pure: NativeRationalParts,
+): NativeLocalFace | undefined {
+  let faces = largeCellFaces.get(context);
+  if (!faces) largeCellFaces.set(context, faces = new Map());
+  let local = faces.get(cell.id);
+  if (local === undefined) faces.set(cell.id, local = createNativeLocalFace(pure) ?? null);
+  return local ? { face: local.face, tiles: local.tiles, accepted: [] } : undefined;
+}
+// The decision depends only on the cell's pure face and the portal's own door,
+// never on a door approach grown so far, so one attach pass asks it once per
+// (cell, portal): node selection and both door-approach loops reuse it.
+const foreignPortalDecisions = new WeakMap<DoorApproachContext, Map<string, boolean>>();
+function nativeForeignPortalTerminal(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  node: IndoorDataset["nodes"][number] | undefined,
+): boolean {
+  if (!data.nativeIndoorEnvelopes || !node || node.kind !== "portal") return false;
+  let decisions = foreignPortalDecisions.get(context);
+  if (!decisions) foreignPortalDecisions.set(context, decisions = new Map());
+  const key = `${cell.id}\u0000${node.id}`;
+  let decided = decisions.get(key);
+  if (decided === undefined) decisions.set(key, decided = nativeForeignPortalTerminalDecision(data, context, cell, node));
+  return decided;
+}
+function nativeForeignPortalTerminalDecision(
+  data: IndoorDataset,
+  context: DoorApproachContext,
+  cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number],
+  node: IndoorDataset["nodes"][number],
+): boolean {
+  if (cell.roomKeys.includes(node.roomKey)) return false;
+  if (Math.abs(node.pointFeet[2] - cell.elevationFeet) > 0.05) return false;
+  const owner = context.records.get(node.roomKey);
+  if (!owner || !owner.walkable || owner.access === "staff" || Math.abs(owner.elevationFeet - cell.elevationFeet) > 0.05) return false;
+  // Cheap broad phase on the cell's IEEE rings (padded for a threshold half)
+  // before any exact predicate; the exact tests below remain authoritative.
+  const x = node.pointFeet[0]!, y = node.pointFeet[1]!;
+  const ring = cell.ringsFeet[0] ?? [];
+  if (!ring.length || x < Math.min(...ring.map((p) => p[0])) - 2 || x > Math.max(...ring.map((p) => p[0])) + 2 ||
+      y < Math.min(...ring.map((p) => p[1])) - 2 || y > Math.max(...ring.map((p) => p[1])) + 2) return false;
+  const pure = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
+  if (!pure) return false;
+  let portals = foreignPortalDoors.get(context);
+  if (!portals) {
+    portals = new Map();
+    const doors = new Map((data.doors ?? []).map((d) => [d.id, d]));
+    for (const e of context.edges.values()) {
+      if (e.kind !== "door" || !e.enabled) continue;
+      const d = doors.get(e.id);
+      if (d && d.nativeElementId === e.nativeElementId)
+        for (const id of [e.from, e.to]) portals.set(id, { edge: e, door: d });
+    }
+    foreignPortalDoors.set(context, portals);
+  }
+  const found = portals.get(node.id), own = found?.edge, door = found?.door;
+  if (!own || !door || door.state !== "connected" || !door.hostWallNativeElementId ||
+      own.roomKeys.length !== 2 || !door.roomKeys.includes(node.roomKey) ||
+      own.roomKeys.some((k) => !door.roomKeys.includes(k)) || context.floorBlockedDoors.has(door.id)) return false;
+  if (nativeRationalPointInParts(node.pointFeet, pure)) return true;
+  // A portal point normally lies on its own threshold half, outside the face
+  // that excludes the doorway footprint. Candidacy then requires that exact
+  // own half to join the pure face as ONE part containing the original point;
+  // the guarded floor/envelope/mask extension below remains the authority.
+  const footprint = nativeDoorClearOpening(data, door, cell.elevationFeet) ?? door.footprintFeet;
+  if (!footprint || !door.normalFeet) return false;
+  try {
+    const half = nativeRationalThresholdHalf(footprint, door.normalFeet, node.pointFeet);
+    const local = nativeLargeCellFace(context, cell, pure);
+    if (local) return nativeLocalFaceJoins(local, half, node.pointFeet);
+    const joined = nativeRationalOverlay("union", pure, half);
+    return joined.length === 1 && nativeRationalPointInParts(node.pointFeet, joined);
+  } catch {
+    return false;
+  }
+}
 function nativeDoorLevelParts(
   data: IndoorDataset,
   context: DoorApproachContext,
@@ -803,10 +931,17 @@ function nativeCellDoorApproach(
   let exactParts = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
   if(!exactParts) throw new Error("Missing exact native cell authority.");
   context.exactApproaches.set(rings,exactParts);
+  const local = nativeLargeCellFace(context, cell, exactParts);
   const level = nativeDoorLevelParts(data, context, cell);
   const candidateDoors = new Set(
     cell.roomKeys.flatMap((k) => context.doors.get(k) ?? []),
   );
+  for (const door of data.doors ?? []) {
+    if (candidateDoors.has(door)) continue;
+    const edge = context.edges.get(door.id);
+    if (edge && [edge.from, edge.to].some((id) => nativeForeignPortalTerminal(data, context, cell, context.nodes.get(id))))
+      candidateDoors.add(door);
+  }
   for (const door of candidateDoors) {
     const edge = context.edges.get(door.id),
       footprint =
@@ -857,11 +992,15 @@ function nativeCellDoorApproach(
     for (const node of pair) {
       if (permittedNodeIds && !permittedNodeIds.has(node!.id)) continue;
       const owner = context.records.get(node!.roomKey);
+      // Inside a reviewed staff access zone its own staff members' door sides
+      // are terminals too; their branches keep every zone identity.
+      const zoneMember = cell.accessZoneId !== undefined && cell.roomKeys.includes(node!.roomKey);
       if (
-        !cell.roomKeys.includes(node!.roomKey) ||
+        (!cell.roomKeys.includes(node!.roomKey) &&
+          !nativeForeignPortalTerminal(data, context, cell, node)) ||
         !owner ||
         !owner.walkable ||
-        owner.access === "staff"
+        (owner.access === "staff" && !zoneMember)
       )
         continue;
       const sign = Math.sign(side(node!.pointFeet)),
@@ -902,6 +1041,11 @@ function nativeCellDoorApproach(
         parts=nativeRationalOverlay("intersection",parts,envelope);
         if(masks.length)parts=nativeRationalOverlay("difference",parts,masks);
         for(const part of parts){
+          if(local){
+            // Same exact decision as the global union below, made in a window.
+            if(nativeLocalFaceJoins(local,[part],node!.pointFeet))acceptNativeLocalFacePiece(local,[part]);
+            continue;
+          }
           const joined=nativeRationalOverlay("union",exactParts,[part]);
           if(joined.length===1&&nativeRationalPointInParts(node!.pointFeet,joined)){
             exactParts=freezeNativeRationalParts(joined);rings=nativeExactPartsForProposals(joined)[0];context.exactApproaches.set(rings,exactParts);
@@ -909,6 +1053,12 @@ function nativeCellDoorApproach(
         }
       } catch { /* Unknown exact doorway support remains blocked. */ }
     }
+  }
+  if (local?.accepted.length) {
+    const joined = nativeLocalFaceParts(local);
+    exactParts = freezeNativeRationalParts(joined);
+    rings = nativeExactPartsForProposals(joined)[0]!;
+    context.exactApproaches.set(rings, exactParts);
   }
   return rings;
 }
@@ -918,17 +1068,14 @@ function nativeCellDoorApproach(
 export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
   // A regeneration replaces its earlier derived branches; it must never revive
   // an old polyline because a rebuilt cell happens to reuse the same ID.
-  const removed = data.edges.some(
-    (edge) =>
-      !!edge.nativeCellId ||
-      (!!data.nativeIndoorEnvelopes && edge.kind === "walk"),
-  );
+  // Reviewed owner links (reviewed-circulation-links.ts) are not derived
+  // branches: they keep their identity and are replayed separately.
+  const derived = (edge: IndoorDataset["edges"][number]) =>
+    !!edge.nativeCellId ||
+    (!!data.nativeIndoorEnvelopes && edge.kind === "walk" && edge.reviewedCirculationLinkId === undefined);
+  const removed = data.edges.some(derived);
   for (let i = data.edges.length - 1; i >= 0; i--)
-    if (
-      data.edges[i]!.nativeCellId ||
-      (data.nativeIndoorEnvelopes && data.edges[i]!.kind === "walk")
-    )
-      data.edges.splice(i, 1);
+    if (derived(data.edges[i]!)) data.edges.splice(i, 1);
   if(data.nativeIndoorEnvelopes && (!data.circulationGeometry?.exactTopology || data.circulationGeometry.sourceModelSha256!==data.source.modelSha256 || data.circulationGeometry.sourceGeometryKey!==nativeCirculationGeometryKey(data))) return 0;
   const context: DoorApproachContext = {
     floorBlockedDoors: nativeDoorFloorBlockers(data),
@@ -961,7 +1108,8 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
     const selected = data.nodes.filter(
       (n) =>
         (cell.roomKeys.includes(n.roomKey) ||
-          cell.connectorAnchors?.some((a) => a.nodeId === n.id)) &&
+          cell.connectorAnchors?.some((a) => a.nodeId === n.id) ||
+          nativeForeignPortalTerminal(data, context, cell, n)) &&
         Math.abs(n.pointFeet[2] - cell.elevationFeet) < 0.05 &&
         n.kind !== "junction" &&
         (data.nativeIndoorEnvelopes
@@ -980,7 +1128,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
           if (
             a.roomKey !== b.roomKey ||
             a.levelId !== b.levelId ||
-            Math.hypot(...a.pointFeet.map((v, k) => v - b.pointFeet[k]!)) >
+            DMath.hypot(...a.pointFeet.map((v, k) => v - b.pointFeet[k]!)) >
               1e-8 ||
             !nativeRationalPathSupported([a.pointFeet,b.pointFeet],context.exactIndex!.parts(cell.exactFaceId!)!)
           )
@@ -1043,7 +1191,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         toNode = selected.find((n) => n.id === branch.to)!;
       if (
         data.nativeIndoorEnvelopes &&
-        Math.hypot(
+        DMath.hypot(
           ...fromNode.pointFeet.map((v, k) => v - toNode.pointFeet[k]!),
         ) < 1e-8
       )
@@ -1082,7 +1230,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
       if (!a || !b) continue;
       let points = [a, ...branch.points, b].filter(
         (p, i, ps) =>
-          !i || Math.hypot(p[0] - ps[i - 1]![0], p[1] - ps[i - 1]![1]) > 1e-8,
+          !i || DMath.hypot(p[0] - ps[i - 1]![0], p[1] - ps[i - 1]![1]) > 1e-8,
       );
       if (data.nativeIndoorEnvelopes) {
         // Only this branch's own terminal halves may extend its physical face.
@@ -1139,14 +1287,21 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         from: branch.from,
         to: branch.to,
         kind: "walk",
-        roomKeys: cell.roomKeys,
+        // Whole-cell owners always remain; an admitted foreign portal adds its
+        // own owner so that owner's access rules also apply to the branch.
+        roomKeys: [...new Set([
+          ...cell.roomKeys,
+          ...[fromNode, toNode]
+            .filter((n) => !cell.roomKeys.includes(n.roomKey) && nativeForeignPortalTerminal(data, context, cell, n))
+            .map((n) => n.roomKey),
+        ])].sort(),
         pointsFeet: points.map((p) => [p[0], p[1], cell.elevationFeet]),
         lengthMetres: points
           .slice(1)
           .reduce(
             (s, p, i) =>
               s +
-              Math.hypot(p[0] - points[i]![0], p[1] - points[i]![1]) *
+              DMath.hypot(p[0] - points[i]![0], p[1] - points[i]![1]) *
                 data.alignment.horizontalMetresPerFoot,
             0,
           ),

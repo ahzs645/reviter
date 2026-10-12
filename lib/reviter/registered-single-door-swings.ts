@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { BoundarySection, BoundarySegment } from "./room-boundaries.ts";
 import type { RoomPoint } from "./room-directory.ts";
 
@@ -11,7 +12,7 @@ export type RegisteredSingleDoorSwing = {
   thresholdSegments: BoundarySegment[];
 };
 const distance = (a: RoomPoint, b: RoomPoint) =>
-  Math.hypot(a[0] - b[0], a[1] - b[1]);
+  DMath.hypot(a[0] - b[0], a[1] - b[1]);
 const cross = (a: RoomPoint, b: RoomPoint) => a[0] * b[1] - a[1] * b[0];
 const key = (p: RoomPoint) =>
   `${Math.round(p[0] * 1e6)},${Math.round(p[1] * 1e6)}`;
@@ -38,7 +39,7 @@ export function registeredSingleDoorSwings(
   const used = new Set<number>(),
     result: RegisteredSingleDoorSwing[] = [];
   const turn = (a: RoomPoint, b: RoomPoint, c: RoomPoint) =>
-    Math.atan2(
+    DMath.atan2(
       cross([b[0] - a[0], b[1] - a[1]], [c[0] - b[0], c[1] - b[1]]),
       (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]),
     );
@@ -92,8 +93,8 @@ export function registeredSingleDoorSwings(
           v: RoomPoint = [c[0] - a[0], c[1] - a[1]],
           det = 2 * cross(u, v);
         if (Math.abs(det) < 1e-8) continue;
-        const uu = u[0] ** 2 + u[1] ** 2,
-          vv = v[0] ** 2 + v[1] ** 2;
+        const uu = u[0] * u[0] + u[1] * u[1],
+          vv = v[0] * v[0] + v[1] * v[1];
         const hinge: RoomPoint = [
             a[0] + (uu * v[1] - vv * u[1]) / det,
             a[1] + (u[0] * vv - v[0] * uu) / det,
@@ -110,7 +111,7 @@ export function registeredSingleDoorSwings(
             u: RoomPoint = [q[0] - hinge[0], q[1] - hinge[1]],
             v: RoomPoint = [p[0] - hinge[0], p[1] - hinge[1]];
           return (
-            s + Math.abs(Math.atan2(cross(u, v), u[0] * v[0] + u[1] * v[1]))
+            s + Math.abs(DMath.atan2(cross(u, v), u[0] * v[0] + u[1] * v[1]))
           );
         }, 0);
         if (sweep < (Math.PI / 180) * 82 || sweep > (Math.PI / 180) * 98)

@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 /**
  * Browser-safe decoding of the scalar arrays behind Revit faceted topology.
  *
@@ -429,7 +430,7 @@ export function decodeFacetedTopologyFields(
       const x = normals[index * 3]!;
       const y = normals[index * 3 + 1]!;
       const z = normals[index * 3 + 2]!;
-      const length = Math.hypot(x, y, z);
+      const length = DMath.hypot(x, y, z);
       if (Math.abs(length - 1) > 1e-4) {
         return { ok: false, error: `normal vector ${index} is not unit length` };
       }

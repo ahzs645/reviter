@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { nativeMeshBarrierCuts } from "./native-mesh-barrier-cuts.ts";
 import type { ConvertResult } from "./types.ts";
 import {
@@ -155,8 +156,8 @@ export function supportedShaftStop(
   let covered = 0;
   for (let i = 0; i < rayCount; i++) {
     const a = (i * Math.PI * 2) / rayCount,
-      dx = Math.cos(a),
-      dy = Math.sin(a);
+      dx = DMath.cos(a),
+      dy = DMath.sin(a);
     let nearest = Infinity,
       wallId = 0;
     for (const { id, start, end } of rays) {
@@ -178,7 +179,7 @@ export function supportedShaftStop(
       hits.add(wallId);
     }
   }
-  const distance = Math.hypot(
+  const distance = DMath.hypot(
     entrance[0] - shaft.pointFeet[0],
     entrance[1] - shaft.pointFeet[1],
   );
@@ -189,7 +190,7 @@ export function supportedShaftStop(
       ...segments.map(({ s }) => {
         const dx = s.end.x - s.start.x,
           dy = s.end.y - s.start.y,
-          length = Math.hypot(dx, dy);
+          length = DMath.hypot(dx, dy);
         const nx = ((-dy / length) * s.thickness) / 2,
           ny = ((dx / length) * s.thickness) / 2;
         return {

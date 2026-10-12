@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {
   nativeExactGeosOverlay,
   nativeExactGeosOverlayInitialized,
@@ -145,7 +146,7 @@ function analyticalOverlay(
               4 *
               Number.EPSILON *
               Math.max(1, ...p.map(Math.abs), ...other.map(Math.abs));
-            if (Math.hypot(p[0] - other[0], p[1] - other[1]) > ulp)
+            if (DMath.hypot(p[0] - other[0], p[1] - other[1]) > ulp)
               valid = false;
           }
           previous.push(p);

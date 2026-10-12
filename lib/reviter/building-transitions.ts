@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import {architecturalPlanGeometry} from "./architectural-plan.ts";
 import {containsDirectoryRoomPoint,containsRoomPoint,isWalkable,isHallway,roomBuilding,type DirectoryRoom,type RoomPoint} from "./room-directory.ts";
@@ -32,7 +33,7 @@ export function localBuildingConnections(model:ConvertResult,rooms:readonly Dire
     const masks=obstacles.map(r=>[r.polygonFeet,...r.holesFeet??[]]).filter(p=>p[0]!.length>=3);
     const surfaces=originalSurfaces.map(s=>({elementId:s.elementId,elevation:s.elevation,polygons:s.loops[0]?(masks.length?pc.difference(pc.intersection(s.loops,scope),...masks):pc.intersection(s.loops,scope)) as RoomPoint[][][]:[]}));
     if(ends.some(e=>e.room&&!containsDirectoryRoomPoint(e.point,e.room)))warnings.push("Picked endpoint is outside its associated source room boundary.");
-    const length=Math.hypot(ends[1].point[0]-ends[0].point[0],ends[1].point[1]-ends[0].point[1]),count=Math.max(1,Math.ceil(length/.1)),samples:LocalBuildingConnection["samples"]=[];
+    const length=DMath.hypot(ends[1].point[0]-ends[0].point[0],ends[1].point[1]-ends[0].point[1]),count=Math.max(1,Math.ceil(length/.1)),samples:LocalBuildingConnection["samples"]=[];
     if(length>30)warnings.push("Picked locations are too far apart for this local preview.");
     let hasSteps=false,missing=false,blocked=false,previous=ends[0].elevation;
     for(let i=0;i<=Math.min(count,1000);i++){

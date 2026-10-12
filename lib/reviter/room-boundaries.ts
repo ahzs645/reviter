@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { cleanRoomBoundary, containsRoomPoint, directoryRoomArea, isHallway, roomArea, validRoomBoundary, type DirectoryRoom, type RoomPoint } from "./room-directory.ts";
 import type { ArchitecturalPlanGeometry } from "./architectural-plan.ts";
 import type { DwgEntity, DwgBounds } from "./dwg-plan.ts";
@@ -6,7 +7,7 @@ export type BoundarySegment = [RoomPoint, RoomPoint];
 export type BoundarySection = { sectionId: string; levelId: number; registrationErrorFeet: number; wallSegments: BoundarySegment[]; doorSegments: BoundarySegment[] };
 export type BoundaryReference = { format: "reviter-boundary-reference"; version: 1; coordinateSystem: "revit-model-feet"; sourceSha256: string; sections: BoundarySection[] };
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
-const length = ([a, b]: BoundarySegment) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+const length = ([a, b]: BoundarySegment) => DMath.hypot(b[0] - a[0], b[1] - a[1]);
 const edges = (ps: RoomPoint[]): BoundarySegment[] => ps.map((p, i) => [p, ps[(i + 1) % ps.length]!]);
 
 /** Recover the saved registration from matching DWG anchors, without estimating a new alignment. */
@@ -31,10 +32,10 @@ export function registerBoundaryReference(rooms: readonly DirectoryRoom[], entit
       }
       re /= denominator; im /= denominator;
       const transform = (p: readonly number[]): RoomPoint => [model[0] + re * (p[0]! - raw[0]) - im * (p[1]! - raw[1]), model[1] + im * (p[0]! - raw[0]) + re * (p[1]! - raw[1])];
-      return { transform, scale: Math.hypot(re, im) };
+      return { transform, scale: DMath.hypot(re, im) };
     }
     let fitted = fit(matches);
-    const residual = (s: typeof matches[number]) => { const p = fitted.transform(s.raw); return Math.hypot(p[0] - s.model[0], p[1] - s.model[1]); };
+    const residual = (s: typeof matches[number]) => { const p = fitted.transform(s.raw); return DMath.hypot(p[0] - s.model[0], p[1] - s.model[1]); };
     // A few manually moved labels should not distort the original survey registration.
     const median = matches.map(residual).sort((a, b) => a - b)[Math.floor(matches.length / 2)]!;
     const inliers = matches.filter((s) => residual(s) <= Math.max(.1, median * 3));
@@ -53,7 +54,7 @@ export function registerBoundaryReference(rooms: readonly DirectoryRoom[], entit
       }
       if (entity.centre && entity.radius && entity.type === "ARC" && entity.startAngle != null && entity.endAngle != null) {
         const radius = entity.radius * fitted.scale;
-        const end = (angle: number) => fitted.transform([entity.centre![0] + entity.radius! * Math.cos(angle), entity.centre![1] + entity.radius! * Math.sin(angle)]);
+        const end = (angle: number) => fitted.transform([entity.centre![0] + entity.radius! * DMath.cos(angle), entity.centre![1] + entity.radius! * DMath.sin(angle)]);
         let sweep = entity.endAngle - entity.startAngle; while (sweep < 0) sweep += Math.PI * 2;
         if (radius >= .9 && radius <= 8 && Math.abs(sweep - Math.PI / 2) < .05) swings.push({ centre: fitted.transform(entity.centre), radius, ends: [end(entity.startAngle), end(entity.endAngle)] });
         else {
@@ -70,7 +71,7 @@ export function registerBoundaryReference(rooms: readonly DirectoryRoom[], entit
         const dx = (p[0] - swing.centre[0]) / swing.radius; const dy = (p[1] - swing.centre[1]) / swing.radius;
         let left = 0; let right = 0;
         for (const [a, b] of wallSegments) {
-          const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          const l = DMath.hypot(b[0] - a[0], b[1] - a[1]);
           if (l < .4 || Math.abs(cross(dx, dy, b[0] - a[0], b[1] - a[1])) / l > .01) continue;
           if (Math.abs(cross(a[0] - swing.centre[0], a[1] - swing.centre[1], dx, dy)) > .5) continue;
           const ta = (a[0] - swing.centre[0]) * dx + (a[1] - swing.centre[1]) * dy; const tb = (b[0] - swing.centre[0]) * dx + (b[1] - swing.centre[1]) * dy;
@@ -84,7 +85,7 @@ export function registerBoundaryReference(rooms: readonly DirectoryRoom[], entit
       const end = swing.ends[closed]!; const dx = (end[0] - swing.centre[0]) / swing.radius; const dy = (end[1] - swing.centre[1]) / swing.radius;
       const offsets = new Set<number>();
       for (const [a, b] of wallSegments) {
-        const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const l = DMath.hypot(b[0] - a[0], b[1] - a[1]);
         if (l < 1 || Math.abs(cross(dx, dy, b[0] - a[0], b[1] - a[1])) / l > .01) continue;
         const off = cross(a[0] - swing.centre[0], a[1] - swing.centre[1], dx, dy);
         const ta = (a[0] - swing.centre[0]) * dx + (a[1] - swing.centre[1]) * dy; const tb = (b[0] - swing.centre[0]) * dx + (b[1] - swing.centre[1]) * dy;
@@ -115,7 +116,7 @@ export function boundaryFaces(lines: readonly BoundarySegment[], tolerance = .04
       continue;
     }
     const dx = b.a[0] - a.a[0]; const dy = b.a[1] - a.a[1]; const t = cross(dx, dy, b.dx, b.dy) / denominator; const u = cross(dx, dy, a.dx, a.dy) / denominator;
-    const ta = tolerance / Math.hypot(a.dx, a.dy); const tb = tolerance / Math.hypot(b.dx, b.dy);
+    const ta = tolerance / DMath.hypot(a.dx, a.dy); const tb = tolerance / DMath.hypot(b.dx, b.dy);
     if (t >= -ta && t <= 1 + ta && u >= -tb && u <= 1 + tb) { a.ts.push(Math.max(0, Math.min(1, t))); b.ts.push(Math.max(0, Math.min(1, u))); }
   }
   const nodes: { p: RoomPoint; adjacent: Set<number>; ordered: number[] }[] = []; const hash = new Map<string, number[]>();
@@ -123,7 +124,7 @@ export function boundaryFaces(lines: readonly BoundarySegment[], tolerance = .04
   function node(p: RoomPoint) {
     const gx = Math.floor(p[0] / tolerance); const gy = Math.floor(p[1] / tolerance);
     for (let x = gx - 1; x <= gx + 1; x++) for (let y = gy - 1; y <= gy + 1; y++) for (const n of hash.get(key(x, y)) ?? []) {
-      if (Math.hypot(nodes[n]!.p[0] - p[0], nodes[n]!.p[1] - p[1]) < tolerance) return n;
+      if (DMath.hypot(nodes[n]!.p[0] - p[0], nodes[n]!.p[1] - p[1]) < tolerance) return n;
     }
     const id = nodes.length; nodes.push({ p, adjacent: new Set(), ordered: [] });
     const k = key(gx, gy); hash.set(k, [...hash.get(k) ?? [], id]); return id;
@@ -132,7 +133,7 @@ export function boundaryFaces(lines: readonly BoundarySegment[], tolerance = .04
     s.ts.sort((a, b) => a - b); const ids = s.ts.map((t) => node([s.a[0] + t * s.dx, s.a[1] + t * s.dy]));
     for (let i = 1; i < ids.length; i++) { const a = ids[i - 1]!; const b = ids[i]!; if (a !== b) { nodes[a]!.adjacent.add(b); nodes[b]!.adjacent.add(a); } }
   }
-  for (const n of nodes) n.ordered = [...n.adjacent].sort((a, b) => Math.atan2(nodes[a]!.p[1] - n.p[1], nodes[a]!.p[0] - n.p[0]) - Math.atan2(nodes[b]!.p[1] - n.p[1], nodes[b]!.p[0] - n.p[0]));
+  for (const n of nodes) n.ordered = [...n.adjacent].sort((a, b) => DMath.atan2(nodes[a]!.p[1] - n.p[1], nodes[a]!.p[0] - n.p[0]) - DMath.atan2(nodes[b]!.p[1] - n.p[1], nodes[b]!.p[0] - n.p[0]));
   const used = new Set<string>(); const faces: { polygon: RoomPoint[]; signedArea: number }[] = [];
   for (let a = 0; a < nodes.length; a++) for (const b of nodes[a]!.ordered) {
     if (used.has(key(a, b))) continue;
@@ -162,7 +163,7 @@ export function boundaryFaces(lines: readonly BoundarySegment[], tolerance = .04
     for(const loop of simple){
       const polygon = cleanRoomBoundary(loop.map((n) => nodes[n]!.p));
       const signedArea = polygon.reduce((sum, p, i) => { const q = polygon[(i + 1) % polygon.length]!; return sum + cross(p[0], p[1], q[0], q[1]); }, 0) / 2;
-      if (Math.abs(signedArea) > 1 && !faces.some(f=>Math.sign(f.signedArea)===Math.sign(signedArea) && f.polygon.length===polygon.length && Math.abs(f.signedArea-signedArea)<1e-7 && f.polygon.every(p=>polygon.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<1e-7)))) faces.push({ polygon, signedArea });
+      if (Math.abs(signedArea) > 1 && !faces.some(f=>Math.sign(f.signedArea)===Math.sign(signedArea) && f.polygon.length===polygon.length && Math.abs(f.signedArea-signedArea)<1e-7 && f.polygon.every(p=>polygon.some(q=>DMath.hypot(p[0]-q[0],p[1]-q[1])<1e-7)))) faces.push({ polygon, signedArea });
     }
   }
   return faces;

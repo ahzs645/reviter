@@ -79,6 +79,19 @@ export function validNativeSourceStairBinding(
       if (index < 0) return false;
       unmatched.splice(index, 1);
     }
+    // Support lips (nosings) must be the flight's own recorded native faces.
+    if (
+      (proof.supportFaces ?? []).some(
+        (f) =>
+          !flight.supportFaces?.some(
+            (o) =>
+              o.runElementId === f.runElementId &&
+              o.elevationFeet === f.elevationFeet &&
+              sameRing(o.ringFeet, f.ringFeet),
+          ),
+      )
+    )
+      return false;
     if (
       proof.landings.some(
         (l) =>

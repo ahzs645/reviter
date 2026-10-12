@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {fitGeoreference,geographicToLocalMetres,georeferencedSceneMatrix,parseGeoreference,modelPointToGeographic,geographicToModelPoint,geoToMapPixel,mapPixelToGeo,georeferencedRoomsGeoJSON,type ModelGeoreference} from '../lib/reviter/georeference.ts';
+import {fitGeoreference,geographicToLocalMetres,georeferencedSceneMatrix,parseGeoreference,modelPointToGeographic,geographicToModelPoint,georeferencedRoomsGeoJSON,type ModelGeoreference} from '../lib/reviter/georeference.ts';import {geoToMapPixel,mapPixelToGeo} from '../lib/reviter/web-mercator-tiles.ts';
 import {parseRoomDirectory,type DirectoryRoom} from '../lib/reviter/room-directory.ts';
 const R=6378137,rad=Math.PI/180,origin={latitude:53.89,longitude:-122.814};
 const registration=(scale=.3048,rotation=30):ModelGeoreference=>({format:'reviter-georeference',version:1,modelFileName:'model.rvt',coordinateSystem:'WGS84',method:'fixed-scale',points:([[-100,-50],[100,-50],[0,100]] as [number,number][]).map((modelFeet,i)=>{const a=rotation*rad,e=scale*(Math.cos(a)*modelFeet[0]-Math.sin(a)*modelFeet[1]),n=scale*(Math.sin(a)*modelFeet[0]+Math.cos(a)*modelFeet[1]);return{id:String(i),name:`Corner ${i}`,modelFeet,levelId:i===2?694:311,geographic:{latitude:origin.latitude+n/R/rad,longitude:origin.longitude+e/(R*Math.cos(origin.latitude*rad))/rad}};})});
