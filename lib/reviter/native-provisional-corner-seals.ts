@@ -164,6 +164,10 @@ export type NativeDrawingBackedAssumption = {
     drawnMaterial?: {
       faceLinePairs: [number, number][];
       closedOutlines: number[][];
+      /** Two cited bands (positions in `faceLinePairs`) that the drawing joins at a mitred
+       * corner: one face line of each ends at a shared outer corner and the other two at a
+       * shared inner corner, so the block between the four lines is drawn wall too. */
+      cornerJoins?: [number, number][];
     };
     /** dwg-drawn-material only: the cited section is registered to another native level and an
      * explicit owner decision applies it to this one. Never implicit: without this record the
@@ -200,6 +204,8 @@ export const DRAWING_BACKED_LIMITS = {
   /** dwg-drawn-material: widest closed outline (a column casing) that counts as drawn material;
    * the outline must also enclose part of a declared native owner. */
   drawnOutlineWidthFeet: 4,
+  /** dwg-drawn-material corner joins: the two bands meet at 30 degrees or more. */
+  cornerJoinMinSine: 0.5,
 } as const;
 const unit = (v: P2): P2 => {
   const l = DMath.hypot(v[0], v[1]);
@@ -398,6 +404,20 @@ function drawnMaterialShapeValid(
         new Set(o).size === o.length &&
         o.every(outlinePos),
     ) &&
+    (m.cornerJoins === undefined ||
+      (Array.isArray(m.cornerJoins) &&
+        m.cornerJoins.length > 0 &&
+        m.cornerJoins.length <= 100 &&
+        m.cornerJoins.every(
+          (q) =>
+            Array.isArray(q) &&
+            q.length === 2 &&
+            q[0] !== q[1] &&
+            q.every(
+              (k) =>
+                Number.isSafeInteger(k) && k >= 0 && k < m.faceLinePairs.length,
+            ),
+        ))) &&
     (!d.dwg.entities.some((e) => e.kind === "derivedOutlineSegments") ||
       digest(d.dwg.derivedOutlinesSha256)) &&
     !d.dwg.entities.some(
@@ -488,11 +508,62 @@ function drawnOutlineRings(
     };
   });
 }
+/** The corner block of a cited corner join, in ring order: the four intersections of the two
+ * bands' face lines. The drawing must draw the corner: one face line of each band ends (within
+ * the row's tolerance) at their shared outer corner, and the other two at the shared inner
+ * corner. Lines that only cross (a T or an unrelated wall) do not join. Throws a stated reason. */
+function drawnCornerJoinRing(
+  dwg: NonNullable<NativeDrawingBackedAssumption["dwg"]>,
+  join: [number, number],
+): { ring: P2[]; lines: [P2, P2][]; label: string } {
+  const L = DRAWING_BACKED_LIMITS,
+    t = dwg.toleranceFeet,
+    pairs = dwg.drawnMaterial!.faceLinePairs,
+    seg = (i: number) => dwg.entities[i].segmentFeet,
+    label = (i: number) => `${dwg.entities[i].kind}#${dwg.entities[i].index}`,
+    [a1, a2] = pairs[join[0]].map(seg),
+    [b1, b2] = pairs[join[1]].map(seg),
+    name = [...pairs[join[0]], ...pairs[join[1]]].map(label).join(",");
+  const ua = unit(sub2(a1[1], a1[0])),
+    ub = unit(sub2(b1[1], b1[0]));
+  if (Math.abs(cross2(ua, ub)) < L.cornerJoinMinSine)
+    throw new Error(`cited corner join ${name} does not turn a corner`);
+  const meet = (p: [P2, P2], q: [P2, P2]): P2 => {
+    const d = sub2(p[1], p[0]),
+      e = sub2(q[1], q[0]),
+      s = cross2(sub2(q[0], p[0]), e) / cross2(d, e);
+    return [p[0][0] + s * d[0], p[0][1] + s * d[1]];
+  };
+  const ends = (s: [P2, P2], x: P2) =>
+    Math.min(
+      DMath.hypot(s[0][0] - x[0], s[0][1] - x[1]),
+      DMath.hypot(s[1][0] - x[0], s[1][1] - x[1]),
+    ) <= t;
+  const x11 = meet(a1, b1),
+    x12 = meet(a1, b2),
+    x21 = meet(a2, b1),
+    x22 = meet(a2, b2),
+    drawn =
+      (ends(a1, x11) && ends(b1, x11) && ends(a2, x22) && ends(b2, x22)) ||
+      (ends(a1, x12) && ends(b2, x12) && ends(a2, x21) && ends(b1, x21));
+  if (!drawn)
+    throw new Error(
+      `cited bands ${name} do not meet at a drawn corner (their face lines do not end at shared corners)`,
+    );
+  const ring: P2[] = [x11, x12, x22, x21],
+    width = minimumWidth(ring);
+  if (!(width > 0) || width > L.wallThicknessFeet)
+    throw new Error(
+      `cited corner join ${name} is ${width.toFixed(3)} ft wide, not a wall corner`,
+    );
+  return { ring, lines: [a1, a2, b1, b2], label: name };
+}
 /** Material the registered drawing draws, as overlapping pieces, from the entities a dwg-drawn-material row cites:
  * the band between each cited pair of parallel wall-face lines (over their common span; the
- * separation is positive and at most a wall thickness) and the inside of each cited closed
- * outline whose minimum width is at most a wall thickness, every region grown by the row's
- * drawing tolerance. Throws a stated evidence reason. */
+ * separation is positive and at most a wall thickness), the corner block of each cited corner
+ * join of two such bands, and the inside of each cited closed outline whose minimum width is
+ * at most a wall thickness, every region grown by the row's drawing tolerance. Throws a stated
+ * evidence reason. */
 export function drawingBackedDrawnMaterial(
   dwg: NonNullable<NativeDrawingBackedAssumption["dwg"]>,
 ): Parts {
@@ -548,6 +619,15 @@ export function drawingBackedDrawnMaterial(
     regions.push([
       [[P(s0, lo(s0)), P(s1, lo(s1)), P(s1, hi(s1)), P(s0, hi(s0))]],
     ]);
+  }
+  for (const join of m.cornerJoins ?? []) {
+    const { ring } = drawnCornerJoinRing(dwg, join);
+    regions.push(
+      [[ring]],
+      ...ring.map((p, k) =>
+        segmentCapsule([p, ring[(k + 1) % ring.length]], t),
+      ),
+    );
   }
   for (const o of m.closedOutlines) {
     const first = seg(o[0]);
@@ -652,6 +732,11 @@ export function drawingBackedDrawnMaterialSolidity(
       [seg(i), seg(j)],
       `drawn band ${label(i)}/${label(j)}`,
     );
+    if (why) return why;
+  }
+  for (const join of m.cornerJoins ?? []) {
+    const { ring, lines, label: name } = drawnCornerJoinRing(dwg, join);
+    const why = check([[ring]], lines, `drawn corner ${name}`);
     if (why) return why;
   }
   for (const o of m.closedOutlines) {
