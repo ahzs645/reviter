@@ -16,6 +16,7 @@ import {
   validateNativeMaterialSectionSupplement,
   type NativeMaterialSectionSupplement,
 } from "./native-material-section-supplement.ts";
+import { NATIVE_FENESTRATION_CATEGORY_IDS } from "./native-material-supplement-closures.ts";
 import pc from "polygon-clipping";
 type Point = [number, number];
 type Data = {
@@ -62,6 +63,8 @@ export function createNativeRoutingMaterialQuery(data: Data) {
       {
         known: Set<number>;
         present: Set<number>;
+        censusOmissionSupplementIds: Set<number>;
+        fenestrationIds: Set<number>;
         parts: {
           nativeElementId: number;
           column: boolean;
@@ -146,6 +149,28 @@ export function createNativeRoutingMaterialQuery(data: Data) {
         ...rows.flatMap((row) => nativeMaterialSectionSupplementAt(supplement, row).map((s) => s.nativeElementId)),
       ]),
       present: new Set(sections.map((s) => s.nativeElementId)),
+      /** Owners supplied by a census-omission supplement section (selection closes
+       * their hosted window/curtain openings; routing reads parts unchanged). */
+      censusOmissionSupplementIds: new Set(
+        sections.flatMap((s) =>
+          (s as { provenance?: { reason?: string } }).provenance?.reason ===
+          "census-omission"
+            ? [s.nativeElementId]
+            : [],
+        ),
+      ),
+      /** Original fenestration owners: windows, curtain panels/mullions and verified
+       * curtain assemblies. */
+      fenestrationIds: new Set(
+        sections.flatMap((s) =>
+          !(s as { provenance?: unknown }).provenance &&
+          (NATIVE_FENESTRATION_CATEGORY_IDS.has(s.categoryId) ||
+            (s.kind as string) === "window" ||
+            (s.sourceNativeHostRelationsVerified && s.sourceAssemblyChildIds?.length))
+            ? [s.nativeElementId]
+            : [],
+        ),
+      ),
       parts: [...parts, ...positiveParts],
       ...(derived || provisional.rows.length
         ? {
