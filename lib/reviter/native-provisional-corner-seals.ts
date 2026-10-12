@@ -206,6 +206,8 @@ export const DRAWING_BACKED_LIMITS = {
   drawnOutlineWidthFeet: 4,
   /** dwg-drawn-material corner joins: the two bands meet at 30 degrees or more. */
   cornerJoinMinSine: 0.5,
+  /** dwg-drawn-material solidity: a joint line's ends lie this close to the two cited faces. */
+  jointEndToleranceFeet: 0.01,
 } as const;
 const unit = (v: P2): P2 => {
   const l = DMath.hypot(v[0], v[1]);
@@ -666,7 +668,9 @@ export function drawingBackedDrawnMaterial(
 /** Drawn material is solid: no other registered wall line of the cited section runs through the
  * part of the body that a cited band or outline is meant to cover. Two parallel lines that bound
  * something else (a doorway, a gap, a room strip) have linework between them; a drawn wall or
- * casing is empty between its faces. Returns the first stated reason, or undefined. */
+ * casing is empty between its faces. A joint line drawn from one face of a band to the other
+ * (where wall pieces or a frame meet) is not such linework. Returns the first stated reason, or
+ * undefined. */
 export function drawingBackedDrawnMaterialSolidity(
   dwg: NonNullable<NativeDrawingBackedAssumption["dwg"]>,
   sectionWallSegments: [P2, P2][],
@@ -693,7 +697,22 @@ export function drawingBackedDrawnMaterialSolidity(
         Math.max(g[0][1], g[1][1]) >= box[1] &&
         Math.min(g[0][1], g[1][1]) <= box[3],
     );
-  const check = (inside: Parts, own: [P2, P2][], what: string) => {
+  /** A joint line runs from one cited face line to the other (one end on each, within
+   * jointEndToleranceFeet): it marks where wall pieces meet (a joint, a frame end), not linework
+   * that two parallel lines bound. It does not make a band unsolid. */
+  const j = DRAWING_BACKED_LIMITS.jointEndToleranceFeet;
+  const joint = (g: [P2, P2], faces?: [[P2, P2], [P2, P2]]) =>
+    !!faces &&
+    ((segmentDistance(g[0], faces[0]) <= j &&
+      segmentDistance(g[1], faces[1]) <= j) ||
+      (segmentDistance(g[0], faces[1]) <= j &&
+        segmentDistance(g[1], faces[0]) <= j));
+  const check = (
+    inside: Parts,
+    own: [P2, P2][],
+    what: string,
+    faces?: [[P2, P2], [P2, P2]],
+  ) => {
     let region: Parts;
     try {
       region = pc.intersection(inside, body) as Parts;
@@ -704,6 +723,7 @@ export function drawingBackedDrawnMaterialSolidity(
     for (const { g, index } of nearby)
       if (
         !own.some((o) => same(o, g) || same([o[1], o[0]], g)) &&
+        !joint(g, faces) &&
         segmentLengthInside(g, region, t) > t
       )
         return `${what} is not solid drawn material: registered line wallSegments#${index} runs inside it`;
@@ -731,6 +751,7 @@ export function drawingBackedDrawnMaterialSolidity(
       [[[P(t0, lo(t0)), P(t1, lo(t1)), P(t1, hi(t1)), P(t0, hi(t0))]]],
       [seg(i), seg(j)],
       `drawn band ${label(i)}/${label(j)}`,
+      [seg(i), seg(j)],
     );
     if (why) return why;
   }
