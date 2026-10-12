@@ -62,20 +62,31 @@ type ClosureRow = {
   id: string;
   levelId: number;
   state: string;
+  baseElevationFeet: number;
+  topElevationFeet: number;
   drawingBacked?: { nativeOwnerIds: number[] };
 };
-/** Joint identity of a drawing-backed closure and a contact repair: the same
- * level and both repair owners among the row's owners. Position is the third
- * test, decided by the caller: the row body meets the repair's gap mask. */
+/** Plan cut of the exact material the contact guard reads at a level. */
+const contactCutOffsetFeet = 4;
+/** Joint identity of a drawing-backed closure and a contact repair: the row is
+ * material at the repair level's plan cut (its height band covers the cut,
+ * whichever level authored it) and both repair owners are among the row's
+ * owners. Position is the third test, decided by the caller: the row body
+ * meets the repair's gap mask. */
 export function nativeSelectionContactSameJoint(
-  repair: Pick<ContactPhysicalEvidence, "levelId" | "source" | "target">,
+  repair: Pick<
+    ContactPhysicalEvidence,
+    "levelId" | "elevationFeet" | "source" | "target"
+  >,
   row: ClosureRow | undefined,
+  cutElevationFeet = repair.elevationFeet + contactCutOffsetFeet,
 ): boolean {
   return (
     !!row &&
     row.state === "applied" &&
     !!row.drawingBacked &&
-    row.levelId === repair.levelId &&
+    row.baseElevationFeet <= cutElevationFeet &&
+    row.topElevationFeet > cutElevationFeet &&
     repair.source.nativeElementId !== repair.target.nativeElementId &&
     row.drawingBacked.nativeOwnerIds.includes(repair.source.nativeElementId) &&
     row.drawingBacked.nativeOwnerIds.includes(repair.target.nativeElementId)
@@ -118,10 +129,12 @@ export function createNativeSelectionContactPhysicalGuard(
   const holes = freezeNativeRationalParts(
     floors.flatMap((part) => part.slice(1).map((ring) => [ring])),
   );
+  const cut = elevation + contactCutOffsetFeet;
   const exactWalls = nativeMaterialPlanExactWalls(
     data,
     levelId,
     createNativeRoutingMaterialQuery(data),
+    cut,
   );
   const originalByOwner = new Map<number, NativeRationalParts>();
   const simpleOriginalByOwner = new Map<number, NativeRationalParts>();
@@ -362,6 +375,7 @@ export function createNativeSelectionContactPhysicalGuard(
         nativeSelectionContactSameJoint(
           repair,
           closureRows.get(wall.reviewPatchId ?? ""),
+          cut,
         )
       ) {
         duplicates.add(wall.reviewPatchId!);

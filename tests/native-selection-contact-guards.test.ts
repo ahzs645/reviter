@@ -10,6 +10,7 @@ import {
   assertNativeSelectionContactPhysicalGuards,
   assertNativeSelectionContactRepairsPhysicalGuards,
   createNativeSelectionContactPhysicalGuard,
+  nativeSelectionContactSameJoint,
 } from "../lib/reviter/native-selection-contact-guards.ts";
 
 type Point = [number, number];
@@ -345,4 +346,49 @@ test("a tagged foreign repair sharing a supporting owner is never waived as orig
     () => assertNativeSelectionContactPhysicalGuards(data, repair, mask),
     /foreign wall or column/,
   );
+});
+
+test("a drawing-backed row closes a contact repair's joint where its height band covers the repair level's cut", () => {
+  // The repair is on a level at elevation 24.28 ft (plan cut 28.28 ft); the
+  // row was authored on another level and spans 3.28 to 43.31 ft.
+  const repair = {
+    levelId: 400176,
+    elevationFeet: 24.278215223097114,
+    source: { nativeElementId: 2103657, capFeet: [] },
+    target: { nativeElementId: 2104019 },
+  };
+  const row = {
+    id: "db:1487816:q2:2103657-2104019",
+    levelId: 1487816,
+    state: "applied",
+    baseElevationFeet: 3.2808398950131235,
+    topElevationFeet: 43.31,
+    drawingBacked: { nativeOwnerIds: [2103657, 2104019] },
+  };
+  assert.equal(nativeSelectionContactSameJoint(repair, row), true);
+  // Band ending at or below the cut: not material on this level.
+  assert.equal(
+    nativeSelectionContactSameJoint(repair, {
+      ...row,
+      topElevationFeet: 28.278215223097114,
+    }),
+    false,
+  );
+  assert.equal(
+    nativeSelectionContactSameJoint(repair, {
+      ...row,
+      baseElevationFeet: 28.3,
+    }),
+    false,
+  );
+  // Another owner pair, or a row that is not applied drawing-backed material.
+  for (const other of [
+    { ...row, drawingBacked: { nativeOwnerIds: [2103657, 40] } },
+    { ...row, state: "proposed" },
+    { ...row, drawingBacked: undefined },
+    undefined,
+  ])
+    assert.equal(nativeSelectionContactSameJoint(repair, other), false);
+  // An explicit cut decides the same way as the default plan cut.
+  assert.equal(nativeSelectionContactSameJoint(repair, row, 44), false);
 });
