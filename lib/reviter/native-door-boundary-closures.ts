@@ -108,8 +108,11 @@ export function validateNativeDoorBoundaryClosures(
       new Set(d.originalDoor.roomKeys).size !== d.originalDoor.roomKeys.length ||
       d.originalDoor.roomKeys.some((k) => typeof k !== "string" || !k) ||
       !Array.isArray(d.jambEvidence) ||
-      d.jambEvidence.length !== 2 ||
-      new Set(d.jambEvidence.map((j) => j.nativeElementId)).size !== 2 ||
+      // Two jambs, or up to four where a door end meets a wall corner.
+      d.jambEvidence.length < 2 ||
+      d.jambEvidence.length > 4 ||
+      new Set(d.jambEvidence.map((j) => j.nativeElementId)).size !==
+        d.jambEvidence.length ||
       d.jambEvidence.some(
         (j) =>
           !j ||
@@ -290,12 +293,10 @@ export function closedBoundaryDoors(
         return projected[1] - projected[0];
       }),
     );
+    const half = (nb[1] - nb[0]) * 0.5;
     if (
-      !(
-        (support[0]![0]! > (nb[1] - nb[0]) * 0.5 &&
-          support[1]![1]! > (nb[1] - nb[0]) * 0.5) ||
-        (support[0]![1]! > (nb[1] - nb[0]) * 0.5 &&
-          support[1]![0]! > (nb[1] - nb[0]) * 0.5)
+      !support[0]!.some(
+        (a, i) => a > half && support[1]!.some((b, j) => j !== i && b > half),
       )
     )
       error(
