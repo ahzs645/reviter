@@ -16,7 +16,7 @@ export type NativeDoorBoundaryClosures = {
     nativeElementId: number;
     /** Closes an evidenced unmatched threshold for selection only; admits no route. */
     selectionBarrierOnly?: true;
-    /** Explicit measured exception for a supported two-sided portal; default 0.15 ft. */
+    /** Explicit measured exception for a supported two-sided portal (0.15 to 0.3 ft); default 0.15 ft. */
     measuredTangentLimitFeet?: number;
     originalDoor: {
       pointFeet: Point;
@@ -94,7 +94,7 @@ export function validateNativeDoorBoundaryClosures(
         (typeof d.measuredTangentLimitFeet !== "number" ||
           !Number.isFinite(d.measuredTangentLimitFeet) ||
           d.measuredTangentLimitFeet < 0.15 ||
-          d.measuredTangentLimitFeet > 0.2 ||
+          d.measuredTangentLimitFeet > 0.3 ||
           d.selectionBarrierOnly === true)) ||
       !d.originalDoor ||
       !point(d.originalDoor.pointFeet) ||
