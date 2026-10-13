@@ -227,10 +227,11 @@ export function closedBoundaryDoors(
           w.nativeElementId === j.nativeElementId &&
           !w.reviewPatchId &&
           !w.approximate &&
-          w.kind === "wall",
+          // A door may end on a native column as well as on a wall (its jamb).
+          (w.kind === "wall" || w.kind === "column"),
       );
       if (!wall || !same(wall.ringsFeet, j.ringsFeet))
-        error("stale or non-wall jamb evidence");
+        error("stale jamb evidence or a jamb that is not a wall or column");
       return wall!;
     });
     const proposed: Rings = [saved.footprintFeet],
