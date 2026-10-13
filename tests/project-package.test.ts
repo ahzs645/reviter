@@ -62,7 +62,7 @@ test('missing entries, unsupported versions, unexpected paths and excessive decl
   // Change only the central-directory uncompressed size; no large allocation required.
   const view = new DataView(huge.buffer);
   for (let i = 0; i < huge.length - 46; i++) {
-    if (view.getUint32(i, true) === 0x02014b50) { view.setUint32(i + 24, 65 * 1024 * 1024, true); break; }
+    if (view.getUint32(i, true) === 0x02014b50) { view.setUint32(i + 24, 129 * 1024 * 1024, true); break; }
   }
   await assert.rejects(readProjectPackage(huge), /oversized/);
 });

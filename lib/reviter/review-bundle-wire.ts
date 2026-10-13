@@ -14,7 +14,7 @@ const MAX_HEADER = 1024 * 1024;
 const MAX_CONTAINER = MAX_TOTAL + MAX_HEADER;
 export const REVIEW_BUNDLE_ARCHIVE_PATH = "review/companions.bin";
 export const REVIEW_BUNDLE_ARCHIVE_LIMIT = MAX_CONTAINER;
-const JSON_LIMIT = 64 * 1024 * 1024;
+const JSON_LIMIT = 128 * 1024 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const fail = () => {

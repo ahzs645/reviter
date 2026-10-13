@@ -41,7 +41,7 @@ import type { ReviewBundle } from "./review-bundle-core.ts";
 const MB = 1024 * 1024;
 const limits: Record<string, number> = {
   "manifest.json": 64 * 1024,
-  "floors/rooms.json": 64 * MB,
+  "floors/rooms.json": 128 * MB,
   "gis/reference-points.json": MB,
   // Match the authoring reader: exact native faces and source-bound route
   // proofs can exceed 128 MiB. The shared 900 MiB expanded archive cap remains.
