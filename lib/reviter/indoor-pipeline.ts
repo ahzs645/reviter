@@ -39,7 +39,7 @@ import { containsDirectoryRoomPoint, generatedLandingDoorLinkKey, splitGenerated
 import { routingFloorPlateRecords, nativeFloorPolygons } from "./routing-floor-support.ts";
 import { attachNativeCirculation,createNativeWalkingRegionQuery,supportedWalkingPath } from "./native-circulation-links.ts";
 import { prepareReviewedIndoorRamps } from "./indoor-ramps.ts";
-import { resolveGeneratedLandingDoorLinks } from "./reviewed-landing-door-links.ts";
+import { adoptDatasetNodes, resolveGeneratedLandingDoorLinks } from "./reviewed-landing-door-links.ts";
 import { deriveNativeMaterialSectionSupplement } from "./native-material-section-supplement-derive.ts";
 import { nativeMaterialSectionsWithSupplement, validateNativeMaterialSectionSupplement } from "./native-material-section-supplement.ts";
 import { prepareNativeRampDisplay } from "./native-ramp-display.ts";
@@ -1044,6 +1044,9 @@ export async function prepareIndoorDataset(
   if(data.reviewedDoorApertures)dataset.doorAperturePatchState={regenerated:true,sourceGeometryKey:JSON.stringify(data.reviewedDoorApertures.patches.map(({notes,...p})=>p))};
   progress("Rebuilding source-bound native ramps and supported landing approaches…");
   const restoredRampReviews = prepareReviewedIndoorRamps(model, dataset, data.indoorRamps, geo, data.indoorReviews);
+  // The ramp rebuild pushes its connector nodes onto dataset.nodes; adopt them into the node map before
+  // the landing door links below rebuild dataset.nodes from that map.
+  adoptDatasetNodes(nodes, dataset.nodes);
   // Reviewed door links whose one side is a generated ramp landing: the landing record exists only
   // now. The same reviewed-portal rule (door adjoins both areas), floor-void and native barrier
   // checks as every other door apply; the physical door becomes a two-owner connected door.

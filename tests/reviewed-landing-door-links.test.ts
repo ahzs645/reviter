@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseRoomDirectory, splitGeneratedLandingDoorLinks, type DirectoryDoor, type DirectoryRoom } from "../lib/reviter/room-directory.ts";
-import { resolveGeneratedLandingDoorLinks } from "../lib/reviter/reviewed-landing-door-links.ts";
-import type { IndoorDataset } from "../lib/reviter/indoor-contract.ts";
+import { adoptDatasetNodes, resolveGeneratedLandingDoorLinks } from "../lib/reviter/reviewed-landing-door-links.ts";
+import type { IndoorDataset, IndoorNode } from "../lib/reviter/indoor-contract.ts";
 
 type P = [number, number];
 const rect = (x0: number, y0: number, x1: number, y1: number): P[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
@@ -68,4 +68,21 @@ test("unbuilt landings, non-adjoining doors and blocked crossings are rejected w
   const offSlab = fixture();
   assert.match(resolve(offSlab, false, door, rect(-1, -1, 3, 5)).rejected[0]!.reason, /not on the landing's original native slab/);
   assert.equal(offSlab.doors![0]!.state, "unmatched");
+});
+
+test("nodes a step pushed onto dataset.nodes survive a rebuild of dataset.nodes from the node map", () => {
+  // the ramp rebuild pushes its connector nodes onto dataset.nodes; the landing door links then rebuild
+  // dataset.nodes from the compiler's map, which must have adopted them (otherwise the ramp ends vanish)
+  const d = fixture();
+  const kept = { id: "arrival:stair", roomKey: "stair", levelId: 1, building: "08", surfaceId: "s:stair", kind: "arrival", pointFeet: [7, 2, 3.28], geographic: [0, 0] } as IndoorNode;
+  const map = new Map<string, IndoorNode>([[kept.id, kept]]);
+  d.nodes.push(kept);
+  adoptDatasetNodes(map, d.nodes);
+  const r = resolve(d);
+  assert.equal(r.applied.length, 1);
+  for (const a of r.applied) for (const n of a.nodes) map.set(n.id, n);
+  d.nodes = [...map.values()];
+  assert.ok(d.nodes.some((n) => n.id === "ramp:300:upper"), "ramp connector node kept");
+  assert.equal(d.nodes.filter((n) => n.id === kept.id).length, 1);
+  assert.strictEqual(map.get(kept.id), kept, "existing ids are not replaced");
 });

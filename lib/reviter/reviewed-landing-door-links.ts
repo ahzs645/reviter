@@ -71,3 +71,10 @@ export function resolveGeneratedLandingDoorLinks(input: {
   }
   return { applied, rejected };
 }
+
+/** Keep the compiler's node map in step with nodes that a step pushed straight onto `dataset.nodes`
+ * (the ramp rebuild adds its connector nodes there), so that a later `dataset.nodes = [...map.values()]`
+ * does not drop them. Ids already in the map are left as they are. */
+export function adoptDatasetNodes(nodes: Map<string, IndoorNode>, list: readonly IndoorNode[]): void {
+  for (const n of list) if (!nodes.has(n.id)) nodes.set(n.id, n);
+}
