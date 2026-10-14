@@ -754,6 +754,8 @@ export type RvtRegressionInput = {
 };
 
 export type ConvertResult = {
+  /** Native primary-option evidence. Scene alternatives remain included. */
+  designOptions?: import("./design-options.ts").DesignOptionsDecode;
   ok: true;
   fileName: string;
   byteLength: number;

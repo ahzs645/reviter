@@ -33,6 +33,7 @@
  */
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
+import { DesignOptionsCollector } from "./design-options.ts";
 import {
   REVIT_2027_BASIC_WALL_TYPE_MARKER,
   resolveCompoundStructureDefinitions,
@@ -179,6 +180,7 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
 const MAX_SKETCH_CURVES = 400_000;
 
 export type PartitionScanInput = {
+  schema?: import("./schema.ts").SchemaSummary;
   partitions: OpenedRevitContainer["partitions"];
   decoderPlan: OpenedRevitContainer["decoderPlan"];
   objectMarkers: number[];
@@ -193,6 +195,7 @@ export type PartitionScanInput = {
 };
 
 export type PartitionScan = {
+  designOptions: import("./design-options.ts").DesignOptionsDecode;
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
@@ -262,6 +265,7 @@ export type PartitionScan = {
 };
 
 export function scanPartitions(input: PartitionScanInput): PartitionScan {
+  const designOptions = new DesignOptionsCollector({ revitVersion: input.decoderPlan.revitVersion, schema: input.schema });
   const {
     partitions,
     decoderPlan,
@@ -398,6 +402,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       // prefix is not allowed to seed the next chunk's window because it is
       // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
       const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (read) designOptions.pushPage(read);
+      else designOptions.invalidatePartition();
       const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
       if (!inflated) continue;
       if (read) window = revitWindowTail(read);
@@ -754,6 +760,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
     }
     for (const consumer of pageConsumers) consumer.finishPartition();
+    designOptions.finishPartition();
   }
   const stairsRuns = stairsRunCollector.snapshot();
   const stairsAggregates = stairsRunCollector.stairsSnapshot();
@@ -772,6 +779,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     ]),
   );
   return {
+    designOptions: designOptions.finish(elementHeaders.values()),
     candidates,
     categoryTokens,
     elementHeaders,

@@ -121,6 +121,7 @@ export function convertRvtBytes(
     } = openRevitContainer(bytes, options);
 
     const scan = scanPartitions({
+      schema,
       partitions,
       decoderPlan,
       objectMarkers,
@@ -349,6 +350,7 @@ export function convertRvtBytes(
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
     const decodedFile = {
+      designOptions: scan.designOptions,
       elementBounds,
       nativeProfiles,
       nativeCategories,
