@@ -17,7 +17,12 @@
 import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
 import { stairAssemblyParts } from "./stair-assemblies.ts";
+import { resolveIfcClass, commonIfcPropertySets } from "./ifc-export-semantics.ts";
 import { spacePredefinedType } from "./room-review.ts";
+import { designOptionExportDecision, type DesignOptionSelectionMode } from "./design-options.ts";
+import { emitNativeMepIfc } from "./export-ifc-mep.ts";
+import { emitNativeRoomsIfc } from "./export-ifc-native-rooms.ts";
+import { nativeIfcGlobalIds } from "./ifc-global-id.ts";
 
 import type {
   ConvertResult,
@@ -48,6 +53,12 @@ type IfcClass = {
 };
 
 export type IfcExportOptions = {
+  /** Include source-authored room identities/outlines separately from reviewed spaces. */
+  nativeRooms?: boolean;
+  /** All alternatives by default; primary selection requires proven source evidence. */
+  designOptions?: DesignOptionSelectionMode;
+  /** Opt into system-reference candidates and measured connector joins. */
+  mep?: boolean;
   /** Only accepted rooms with `ifc.export` enabled become IfcSpace entities. */
   rooms?: readonly ReviewedRoom[];
 };
@@ -685,7 +696,7 @@ function emitProduct(
       ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
-      `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".DOOR.", ".NOTDEFINED.", "$"].join(",")})`,
+      `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ifcClass.predefinedType, ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCWINDOW") {
@@ -693,7 +704,7 @@ function emitProduct(
       ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
-      `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".WINDOW.", ".NOTDEFINED.", "$"].join(",")})`,
+      `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ifcClass.predefinedType, ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCSTAIRFLIGHT") {
@@ -705,7 +716,7 @@ function emitProduct(
     );
   }
   if (ifcClass.entity === "IFCBUILDINGELEMENTPROXY") {
-    return writer.add(`IFCBUILDINGELEMENTPROXY(${common.join(",")},.NOTDEFINED.)`);
+    return writer.add(`IFCBUILDINGELEMENTPROXY(${common.join(",")},${ifcClass.predefinedType})`);
   }
   return writer.add(`${ifcClass.entity}(${common.join(",")},${ifcClass.predefinedType})`);
 }
@@ -732,13 +743,13 @@ function emitTypeObject(
     quoted(element.type?.name ?? name),
   ];
   if (ifcClass.typeEntity === "IFCDOORTYPE") {
-    return writer.add(`IFCDOORTYPE(${[...common, ".DOOR.", ".NOTDEFINED.", ".F.", "$"].join(",")})`);
+    return writer.add(`IFCDOORTYPE(${[...common, ifcClass.predefinedType, ".NOTDEFINED.", ".F.", "$"].join(",")})`);
   }
   if (ifcClass.typeEntity === "IFCWINDOWTYPE") {
-    return writer.add(`IFCWINDOWTYPE(${[...common, ".WINDOW.", ".NOTDEFINED.", ".F.", "$"].join(",")})`);
+    return writer.add(`IFCWINDOWTYPE(${[...common, ifcClass.predefinedType, ".NOTDEFINED.", ".F.", "$"].join(",")})`);
   }
   if (ifcClass.typeEntity === "IFCFURNITURETYPE") {
-    return writer.add(`IFCFURNITURETYPE(${[...common, ".NOTDEFINED.", ".NOTDEFINED."].join(",")})`);
+    return writer.add(`IFCFURNITURETYPE(${[...common, ".NOTDEFINED.", ifcClass.predefinedType].join(",")})`);
   }
   return writer.add(`${ifcClass.typeEntity}(${common.join(",")},${ifcClass.predefinedType})`);
 }
@@ -813,6 +824,21 @@ function emitElementProperties(
     `IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-recovery", element.elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
   );
 
+  const ifcClass = resolveIfcClass(ifcClassFor(element), source?.parameters, source?.typeParameters);
+  for (const set of ifcClass ? commonIfcPropertySets(ifcClass.entity, source?.parameters ?? [], source?.typeParameters) : []) {
+    const commonProperties = set.properties.map(property => writer.add(
+      `IFCPROPERTYSINGLEVALUE(${quoted(property.name)},$,${property.type}(${typeof property.value === "boolean" ? property.value ? ".T." : ".F." : quoted(property.value)}),$)`,
+    ));
+    const setId = writer.add(`IFCPROPERTYSET(${quoted(guidFor(namespace, `pset-common-${set.name}`, element.elementId))},#${ownerHistory},${quoted(set.name)},$,${writer.refs(commonProperties)})`);
+    writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, `rel-common-${set.name}`, element.elementId))},#${ownerHistory},$,$,(#${product}),#${setId})`);
+  }
+  if (source?.typeParameters?.length) {
+    const typeProperties = source.typeParameters.map(parameter => typeof parameter.value === "string"
+      ? textProperty(writer, `${parameter.name} [${parameter.parameterId}]`, parameter.value)
+      : realProperty(writer, `${parameter.name} [${parameter.parameterId}]`, parameter.value));
+    const typeParameterSet = writer.add(`IFCPROPERTYSET(${quoted(guidFor(namespace, "pset-type-parameters", element.elementId))},#${ownerHistory},'Reviter_RevitTypeParameters','Source type values in Revit internal units',${writer.refs(typeProperties)})`);
+    writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-type-parameters", element.elementId))},#${ownerHistory},$,$,(#${product}),#${typeParameterSet})`);
+  }
   if (!element.parameters.length) return;
   // Revit stores a parameter as a double, an integer or a string depending on
   // which of its value sets holds it, so the property follows the value.
@@ -838,12 +864,51 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
   const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
+  const nativeGuids = nativeIfcGlobalIds(result.nativeIdentity?.identities ?? []);
+  const usedNativeGuids = new Set<string>();
+  const rootGuid = (kind: string, key: string | number, nativeElementId?: number | null): string => {
+    const native = nativeElementId == null ? undefined : nativeGuids.get(nativeElementId);
+    if (native && !usedNativeGuids.has(native)) {
+      usedNativeGuids.add(native);
+      return native;
+    }
+    return guid(kind, key);
+  };
   const manifest = elementManifest(result);
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
   const hostAxes = hostAxesByOpening(result);
   const sourceByElement = new Map<number, ElementBoundsRecord>();
   for (const source of result.elementBounds) {
     if (!sourceByElement.has(source.elementId)) sourceByElement.set(source.elementId, source);
+  }
+  // A native type projected into multiple IFC types needs exporter-specific
+  // sub-element identity rules; do not assign its single own id to one of them
+  // merely because that instance happened to be encountered first.
+  const nativeTypeProjections = new Map<number, Set<string>>();
+  for (const element of manifest) {
+    const typeId = element.type?.elementId;
+    if (typeId == null) continue;
+    const source = sourceByElement.get(element.elementId);
+    const ifcClass = resolveIfcClass(ifcClassFor(element), source?.parameters, source?.typeParameters);
+    if (!ifcClass) continue;
+    const projections = nativeTypeProjections.get(typeId) ?? new Set<string>();
+    projections.add(JSON.stringify([ifcClass.typeEntity, ifcClass.predefinedType, element.type?.elementId, element.type?.symbolId ?? null, element.type?.familyId ?? null, element.type?.familyName ?? null, element.type?.name ?? null]));
+    nativeTypeProjections.set(typeId, projections);
+  }
+
+  const suppressedElementIds = new Set(manifest.filter(element => {
+    const source = sourceByElement.get(element.elementId);
+    return resolveIfcClass(ifcClassFor(element), source?.parameters, source?.typeParameters) == null;
+  }).map(element => element.elementId));
+  for (const membership of result.nativeDesignOptionMembership ?? []) {
+    if (!designOptionExportDecision(membership, result.nativeDesignOptions, options.designOptions).include) {
+      suppressedElementIds.add(membership.elementId);
+    }
+  }
+  for (const source of result.elementBounds) {
+    if (source.designOptionId !== undefined && !designOptionExportDecision({ designOptionId: source.designOptionId }, result.nativeDesignOptions, options.designOptions).include) {
+      suppressedElementIds.add(source.elementId);
+    }
   }
 
   const ownerPerson = writer.add("IFCPERSON($,$,'Reviter',$,$,$,$,$)");
@@ -911,7 +976,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       ? `Recovered level ${index + 1}`
       : `Revit level ${level.levelId}`;
     const storey = writer.add(
-      `IFCBUILDINGSTOREY(${quoted(guid("storey", levelKey))},#${ownerHistory},${quoted(name)},$,$,#${placement},$,$,.ELEMENT.,${feet(level.elevation)})`,
+      `IFCBUILDINGSTOREY(${quoted(rootGuid("storey", levelKey, level.levelId))},#${ownerHistory},${quoted(name)},$,$,#${placement},$,$,.ELEMENT.,${feet(level.elevation)})`,
     );
     storeys.push({ id: storey, elevation: level.elevation, ...(level.levelId == null ? {} : { levelId: level.levelId }) });
     if (level.levelId != null) storeyByLevelId.set(level.levelId, storey);
@@ -989,6 +1054,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
    * only some of those occurrences are proven.
    */
   const shapedClass = (ifcClass: IfcClass, elementId: number): IfcClass => {
+    if (ifcClass.predefinedType !== ".NOTDEFINED.") return ifcClass;
     if (ifcClass.entity === "IFCSTAIR" && spiralStairElementIds.has(elementId)) {
       return { ...ifcClass, predefinedType: ".SPIRAL_STAIR." };
     }
@@ -1015,10 +1081,13 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   };
 
   for (const element of manifest) {
+    if (suppressedElementIds.has(element.elementId)) continue;
     const hasSemanticIdentity = Boolean(element.category || element.type);
     if (!element.displayed && element.geometry.finalProvenance === "not-rendered-helper") continue;
     if (!element.displayed && !hasSemanticIdentity && !noMeshScene) continue;
-    const ifcClass = ifcClassFor(element);
+    const source = sourceByElement.get(element.elementId);
+    const ifcClass = resolveIfcClass(ifcClassFor(element), source?.parameters, source?.typeParameters);
+    if (!ifcClass) continue;
     const fragments = fragmentsByElement.get(element.elementId) ?? [];
     const shape = fragments.length
       ? emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial)
@@ -1029,7 +1098,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const product = emitProduct(
       writer,
       shapedClass(ifcClass, element.elementId),
-      guid("element", identity),
+      rootGuid("element", identity, element.elementId),
       ownerHistory,
       element,
       modelPlacement,
@@ -1061,6 +1130,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       // types stay distinct.
       const typeKey = JSON.stringify([
         ifcClass.typeEntity,
+        ifcClass.predefinedType,
         element.type.elementId ?? null,
         element.type.symbolId ?? null,
         element.type.familyId ?? null,
@@ -1073,7 +1143,14 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
           type: emitTypeObject(
             writer,
             ifcClass,
-            guid("type", typeKey),
+            // Family symbols, flipped doors/windows and instance-as-type ids
+            // require exporter evidence we do not yet decode. Their identity
+            // remains distinct from the ordinary system type's native id.
+            rootGuid("type", typeKey,
+              element.type.symbolId == null && element.type.familyId == null &&
+              nativeTypeProjections.get(element.type.elementId ?? -1)?.size === 1 &&
+              ifcClass.entity !== "IFCDOOR" && ifcClass.entity !== "IFCWINDOW"
+                ? element.type.elementId : null),
             ownerHistory,
             element,
           ),
@@ -1091,12 +1168,12 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // is still a real persisted Revit element id. Export the body and tag as an
   // honest proxy, preserving visual completeness without guessing a category.
   for (const [elementId, fragments] of fragmentsByElement) {
-    if (productByElement.has(elementId) || !fragments.length) continue;
+    if (suppressedElementIds.has(elementId) || productByElement.has(elementId) || !fragments.length) continue;
     const shape = emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
     if (!shape) continue;
     const identity = identityByElement.get(elementId) ?? elementId;
     const product = writer.add(
-      `IFCBUILDINGELEMENTPROXY(${quoted(guid("element", identity))},#${ownerHistory},${quoted(fragments[0]!.name ?? `Recovered element ${elementId}`)},'Certified recovered triangles without a resolved semantic record','Reviter unclassified element',#${modelPlacement},#${shape},${quoted(String(elementId))},.NOTDEFINED.)`,
+      `IFCBUILDINGELEMENTPROXY(${quoted(rootGuid("element", identity, elementId))},#${ownerHistory},${quoted(fragments[0]!.name ?? `Recovered element ${elementId}`)},'Certified recovered triangles without a resolved semantic record','Reviter unclassified element',#${modelPlacement},#${shape},${quoted(String(elementId))},.NOTDEFINED.)`,
     );
     productByElement.set(elementId, product);
     classByElement.set(elementId, ifcClassFor({ category: null } as ManifestElement));
@@ -1143,6 +1220,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // spaces. They stay under their exact raw Revit storey even when the floor
   // workspace visually composes several split levels.
   const spacesByStorey = new Map<number, number[]>();
+  const representedSourceRoomKeys = new Set<string>();
   for (const room of options.rooms ?? []) {
     if (room.disposition !== "accepted" || !room.ifc.export) continue;
     const storey = storeyByLevelId.get(room.levelId);
@@ -1183,6 +1261,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     );
     writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-room-review", room.roomId))},#${ownerHistory},$,$,(#${space}),#${propertySet})`);
     const spaces = spacesByStorey.get(storey) ?? [];
+    representedSourceRoomKeys.add(room.candidateKey);
     spaces.push(space);
     spacesByStorey.set(storey, spaces);
   }
@@ -1210,6 +1289,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // straight run from a half-turn, so absence of the helical reading stays
   // absence rather than becoming a second claim.
   for (const assembly of result.nativeStairAssemblies ?? []) {
+    if (suppressedElementIds.has(assembly.stairElementId)) continue;
     const parts = stairAssemblyParts(assembly)
       .map((elementId) => productByElement.get(elementId))
       .filter((product): product is number => product != null);
@@ -1220,7 +1300,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       const identity = identityByElement.get(assembly.stairElementId)
         ?? assembly.stairElementId;
       container = writer.add(
-        `IFCSTAIR(${quoted(guid("element", identity))},#${ownerHistory},` +
+        `IFCSTAIR(${quoted(rootGuid("element", identity, assembly.stairElementId))},#${ownerHistory},` +
         `${quoted(`Stairs ${assembly.stairElementId}`)},` +
         `${quoted(`Recovered stair assembly; parts joined from ${assembly.evidence}.`)},` +
         `$,#${modelPlacement},$,${quoted(String(assembly.stairElementId))},` +
@@ -1262,6 +1342,29 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         `railings ${assembly.railingIds.length}, supports ${assembly.supportIds.length}`)},` +
       `#${container},${writer.refs(parts)})`,
     );
+  }
+
+  if (options.nativeRooms === true && result.nativeSourceRooms) {
+    const rooms = result.nativeSourceRooms.filter(room =>
+      !suppressedElementIds.has(room.elementId) &&
+      designOptionExportDecision(room, result.nativeDesignOptions, options.designOptions).include);
+    emitNativeRoomsIfc(writer, rooms, {
+      ownerHistory, modelPlacement, bodyContext, extrusionDirection,
+      buildingEntity: building, origin: result.origin, storeyByLevelId,
+      levelByElementId: levelByElement,
+      representedSourceElementIds: new Set(productByElement.keys()),
+      representedSourceRoomKeys,
+      suppressedElementIds,
+      globalId: elementId => rootGuid("native-space", elementId, elementId),
+      guid, quoted,
+    });
+  }
+  if (options.mep === true && result.nativeMepEvidence) {
+    emitNativeMepIfc(writer, result.nativeMepEvidence, {
+      ownerHistory, elementEntities: productByElement, quoted,
+      guid: (kind, key) => kind === "mep-system" && typeof key === "number"
+        ? rootGuid(kind, key, key) : guid(kind, key),
+    });
   }
 
   for (const [storey, products] of productsByStorey) {

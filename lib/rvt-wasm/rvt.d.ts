@@ -56,6 +56,17 @@ export function elementInfoPanel(model: any, entity_index: number): any;
 export function encodeToFragment(state: any): string;
 
 /**
+ * Document identity — release, worksharing, central model, last saved
+ * (time and user), document GUID, save counter, and every
+ * `BasicFileInfo` `Key: value` line — as a
+ * [`rvt::metadata::FileMetadata`] JS object. Reads only the two
+ * identity streams straight from `bytes` (no copy of the file), so it
+ * returns instantly on any file size. Errors when `bytes` is not a
+ * readable Revit file.
+ */
+export function fileMetadata(bytes: Uint8Array): any;
+
+/**
  * Render `model` as a glTF 2.0 binary. Returns a `Uint8Array`
  * the frontend feeds into Three.js's `GLTFLoader`.
  */
@@ -89,6 +100,23 @@ export function openRvtBytesWithDiagnostics(bytes: Uint8Array): any;
 export function openRvtBytesWithDiagnosticsAndLimits(bytes: Uint8Array, limits: any): any;
 
 /**
+ * Open an RVT / RFA byte slice with an IFC export quality mode and
+ * return `{ model, diagnostics }`.
+ *
+ * `mode` is one of `scaffold`, `typed-no-geometry`, `geometry`, or
+ * `strict` (Lane Seven). Stronger modes fail closed when the decoded
+ * coverage cannot satisfy the requested bar — the viewer uses this to
+ * surface honest confidence rather than over-claiming geometry.
+ */
+export function openRvtBytesWithDiagnosticsMode(bytes: Uint8Array, mode: string): any;
+
+/**
+ * Open an RVT / RFA byte slice with an IFC export quality mode and
+ * explicit walker scan limits.
+ */
+export function openRvtBytesWithDiagnosticsModeAndLimits(bytes: Uint8Array, mode: string, limits: any): any;
+
+/**
  * Open an RVT / RFA byte slice with explicit walker scan limits.
  */
 export function openRvtBytesWithLimits(bytes: Uint8Array, limits: any): any;
@@ -98,7 +126,7 @@ export function openRvtBytesWithLimits(bytes: Uint8Array, limits: any): any;
  * PartAtom + stream inventory) and returns instantly even for
  * multi-hundred-megabyte RFAs. Used by the viewer for the
  * progressive-loading splash before the full model parse
- * completes. Returns a [`crate::reader::Summary`] as a JS object.
+ * completes. Returns a [`rvt::reader::Summary`] as a JS object.
  */
 export function quickSummary(bytes: Uint8Array): any;
 
@@ -107,6 +135,15 @@ export function quickSummary(bytes: Uint8Array): any;
  * dimensions + labels + background; pass `null` for defaults.
  */
 export function renderPlanSvg(model: any, options: any): string;
+
+/**
+ * Spreadsheet schedule of an exported model as CSV
+ * ([`rvt::ifc::schedule_csv`]): `kind` is `"elements"` (every building
+ * element) or `"rooms"`; `metric` switches lengths to metres; `excel`
+ * prefixes a UTF-8 byte-order mark so Excel on Windows reads non-ASCII
+ * names correctly.
+ */
+export function scheduleCsv(model: any, kind: string, metric: boolean, excel: boolean): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -122,14 +159,18 @@ export interface InitOutput {
     readonly distinctIfcTypes: (a: number, b: number) => void;
     readonly elementInfoPanel: (a: number, b: number, c: number) => void;
     readonly encodeToFragment: (a: number, b: number) => void;
+    readonly fileMetadata: (a: number, b: number, c: number) => void;
     readonly modelToGlb: (a: number, b: number) => void;
     readonly modelToIfcStep: (a: number, b: number) => void;
     readonly openRvtBytes: (a: number, b: number, c: number) => void;
     readonly openRvtBytesWithDiagnostics: (a: number, b: number, c: number) => void;
     readonly openRvtBytesWithDiagnosticsAndLimits: (a: number, b: number, c: number, d: number) => void;
+    readonly openRvtBytesWithDiagnosticsMode: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly openRvtBytesWithDiagnosticsModeAndLimits: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly openRvtBytesWithLimits: (a: number, b: number, c: number, d: number) => void;
     readonly quickSummary: (a: number, b: number, c: number) => void;
     readonly renderPlanSvg: (a: number, b: number, c: number) => void;
+    readonly scheduleCsv: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

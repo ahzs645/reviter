@@ -267,6 +267,10 @@ export function makeReport(
       modelTree: modelTreeReport(result),
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],
+      nativeSourceRooms: result.nativeSourceRooms ?? [],
+      nativeMepEvidence: result.nativeMepEvidence ?? null,
+      nativeDesignOptions: result.nativeDesignOptions ?? null,
+      nativeDesignOptionMembership: result.nativeDesignOptionMembership ?? [],
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       elementManifest: {

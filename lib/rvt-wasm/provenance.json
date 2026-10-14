@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/helenkwok/rvt-rs.git",
+  "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "packageVersion": "0.4.0",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "wasmBindgen": "0.2.118",
+  "target": "web",
+  "wasmOpt": false,
+  "build": "cargo build --locked --release --target wasm32-unknown-unknown -p rvt-wasm",
+  "hashes": {
+    "rvt.js": "6ab0a2b3d388f202f7dc585634b6ccce87c9b20f68e80e4155d8bd033ad769e1",
+    "rvt.d.ts": "950b044a0a88b1f7997209773eb3b6ab529cc78bbb33f1114eb77429d7555178",
+    "rvt_bg.wasm": "dff0170996bfbeeb76b4a176b34235e20b5ebd676173284caee4d646b1464b06",
+    "rvt_bg.wasm.d.ts": "828f23ecabb3fae1ae1e75a35a9c31d170294476fd22c052c80d6e13650e14ef"
+  }
+}

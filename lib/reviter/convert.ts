@@ -120,7 +120,14 @@ export function convertRvtBytes(
       contentDocuments,
     } = openRevitContainer(bytes, options);
 
+    // A structurally recognized table can still have no parsed rows. In that
+    // case use the independently validated history inventory, not an empty set.
+    const declaredElementIds = new Set(elementIndex?.uniqueElementIds.length
+      ? elementIndex.uniqueElementIds
+      : nativeIdentity?.identities.map(identity => identity.elementId) ?? []);
     const scan = scanPartitions({
+      schema,
+      declaredElementIds,
       partitions,
       decoderPlan,
       objectMarkers,
@@ -148,6 +155,7 @@ export function convertRvtBytes(
       instancePlacements,
       localBounds,
       elementParameters,
+      ifcExportParameters,
       surfaceCounts,
       planesByElement,
       cylindersByElement,
@@ -279,6 +287,8 @@ export function convertRvtBytes(
       nativeCategories.directElements +
       nativeCategories.inheritedElements;
     for (const record of elementBounds) {
+      const header = elementHeaders.get(record.elementId);
+      if (header) record.designOptionId = header.designOptionId;
       const wallKind = wallKinds.get(record.elementId);
       if (wallKind) record.wallKind = wallKind;
       const wallTypeId = wallTypeIds.get(record.elementId);
@@ -288,6 +298,7 @@ export function convertRvtBytes(
         record.typeName = wallTypeName;
       }
     }
+
     const familyTypeNames = resolveFamilyTypeNames(
       instanceReferences,
       symbolReferences,
@@ -335,6 +346,25 @@ export function convertRvtBytes(
       nativeHostRelations,
       nativeAssociatedLevelRelations,
     } = relations;
+    for (const record of elementBounds) {
+      const ownOverrides = ifcExportParameters.get(record.elementId);
+      if (ownOverrides?.length) {
+        const parameters = [...(record.parameters ?? [])];
+        for (const parameter of ownOverrides) {
+          if (!parameters.some(existing => existing.parameterId === parameter.parameterId && existing.value === parameter.value)) parameters.push(parameter);
+        }
+        record.parameters = parameters;
+      }
+      const typeId = record.typeId ?? record.familySymbolId;
+      if (typeId != null) {
+        const typeValues = [...(elementParameters.get(typeId)?.values() ?? [])];
+        for (const parameter of ifcExportParameters.get(typeId) ?? []) {
+          if (!typeValues.some(existing => existing.parameterId === parameter.parameterId && existing.value === parameter.value)) typeValues.push(parameter);
+        }
+        if (typeValues.length) record.typeParameters = typeValues;
+      }
+    }
+
     const drawable = selectDrawableRecords({
       elementBounds,
       markersByElement,
@@ -349,6 +379,16 @@ export function convertRvtBytes(
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
     const decodedFile = {
+      nativeSourceRooms: scan.nativeRoomCollector.resolve({
+        elementHeaders,
+        elementBounds,
+        declaredElementIds: declaredElementIds.size ? declaredElementIds : undefined,
+        levelIds: new Set(levelDefinitions.keys()),
+      }),
+      nativeMepEvidence: scan.nativeMepEvidence,
+      nativeDesignOptions: scan.nativeDesignOptions,
+      nativeDesignOptionMembership: [...elementHeaders.values()].flatMap(header =>
+        header.designOptionId == null ? [] : [{ elementId: header.elementId, designOptionId: header.designOptionId }]),
       elementBounds,
       nativeProfiles,
       nativeCategories,

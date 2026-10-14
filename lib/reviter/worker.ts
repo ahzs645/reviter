@@ -18,7 +18,7 @@ type RvtWasmModule = {
     class_name_count?: number;
     partatom?: unknown;
   };
-  openRvtBytesWithDiagnostics: (bytes: Uint8Array) => {
+  openRvtBytesWithDiagnosticsModeAndLimits: (bytes: Uint8Array, mode: string, limits: Record<string, number>) => {
     diagnostics?: Record<string, unknown>;
     model?: {
       materials?: Array<{
@@ -51,7 +51,15 @@ async function readStandardsEvidence(bytes: Uint8Array): Promise<StandardsEviden
           partAtom,
         }, materials: [] };
     }
-    const result = wasm.openRvtBytesWithDiagnostics(bytes);
+    // Reviter has already built the scene. Bound this optional diagnostics
+    // walk independently and keep its quality mode explicit.
+    const result = wasm.openRvtBytesWithDiagnosticsModeAndLimits(bytes, "scaffold", {
+      max_scan_bytes: 16 * 1024 * 1024,
+      max_candidates: 10_000,
+      max_trial_offsets: 1_000_000,
+      max_record_decode_bytes: 1024 * 1024,
+      max_container_records: 256,
+    });
     const diagnostics = (result.diagnostics ?? {}) as {
       input?: { revit_version?: number };
       decoded?: { production_walker_elements?: number; diagnostic_proxy_candidates?: number };

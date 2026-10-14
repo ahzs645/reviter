@@ -31,6 +31,7 @@
  * it for a snapshot once it knows which shapes were placed — so it is returned
  * rather than snapshotted here.
  */
+import { createIfcExportParameterCollector } from "./native-ifc-export-parameters.ts";
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
 import {
@@ -112,6 +113,10 @@ import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-colle
 import { scanSegments } from "./segment-scan.ts";
 import { collectOwnedSurfaces } from "./surfaces.ts";
 import { collectSketchCurves } from "./sketch-curves.ts";
+import { createNativeRoomCollector } from "./native-source-rooms.ts";
+import { createNativeMepCollector, type NativeMepEvidence } from "./native-mep.ts";
+import { createDesignOptionCollector, type NativeDesignOptions } from "./design-options.ts";
+import type { SchemaSummary } from "./schema.ts";
 
 import type { OpenedRevitContainer } from "./convert-container.ts";
 import type { NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
@@ -179,6 +184,7 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
 const MAX_SKETCH_CURVES = 400_000;
 
 export type PartitionScanInput = {
+  schema?: SchemaSummary;
   partitions: OpenedRevitContainer["partitions"];
   decoderPlan: OpenedRevitContainer["decoderPlan"];
   objectMarkers: number[];
@@ -190,9 +196,13 @@ export type PartitionScanInput = {
   onProgress?: (update: ProgressUpdate) => void;
   /** The loaded families' documents, from `Global/ContentDocuments`. */
   contentDocuments?: ReadonlyMap<string, ContentDocument>;
+  declaredElementIds?: ReadonlySet<number>;
 };
 
 export type PartitionScan = {
+  nativeRoomCollector: ReturnType<typeof createNativeRoomCollector>;
+  nativeMepEvidence: NativeMepEvidence;
+  nativeDesignOptions: NativeDesignOptions;
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
@@ -225,6 +235,7 @@ export type PartitionScan = {
   instancePlacements: Map<number, InstancePlacement>;
   localBounds: Map<number, LocalBounds>;
   elementParameters: Map<number, Map<number, ElementParameter>>;
+  ifcExportParameters: Map<number, ElementParameter[]>;
   surfaceCounts: { planes: number; cylinders: number; verticalPlanes: number };
   planesByElement: Map<number, PlanePatch[]>;
   cylindersByElement: Map<number, CylinderPatch[]>;
@@ -272,6 +283,14 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     onProgress,
     contentDocuments,
   } = input;
+  const ifcExportCollector = createIfcExportParameterCollector(decoderPlan.revitVersion, input.declaredElementIds ?? new Set());
+  const nativeRoomCollector = createNativeRoomCollector(decoderPlan.revitVersion);
+  const nativeMepCollector = createNativeMepCollector({
+    revitVersion: decoderPlan.revitVersion ?? 0,
+    classes: input.schema?.taggedClasses ?? [],
+    elementIds: input.declaredElementIds ?? new Set(),
+  });
+  const designOptionCollector = createDesignOptionCollector(decoderPlan.revitVersion);
   const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
@@ -399,7 +418,12 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
       const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
       const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (!read) designOptionCollector.invalidate();
       if (!inflated) continue;
+      const semanticLocation = { stream: partition.path.replace(/^Root Entry\//, ""), chunkIndex: index, rawOffset: offsets[index]!, complete: Boolean(read) };
+      nativeRoomCollector.consumePage(inflated, semanticLocation);
+      nativeMepCollector.pushPage(inflated, semanticLocation);
+      designOptionCollector.pushPage(semanticLocation.stream, inflated);
       if (read) window = revitWindowTail(read);
       gzipChunks += 1;
       inflatedBytes += inflated.byteLength;
@@ -617,6 +641,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           else curvesByOwner.set(curve.owner, [curve]);
         }
       }
+      ifcExportCollector.pushPage(inflated);
       for (const table of collectElementParameters(inflated)) {
         const existing = elementParameters.get(table.elementId);
         if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
@@ -771,7 +796,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       definition.layers.reduce((sum, layer) => sum + layer.widthFeet, 0),
     ]),
   );
+  nativeMepCollector.observeElementHeaders(elementHeaders.values());
   return {
+    nativeRoomCollector,
+    nativeMepEvidence: nativeMepCollector.finish(),
+    nativeDesignOptions: designOptionCollector.finish(),
     candidates,
     categoryTokens,
     elementHeaders,
@@ -789,6 +818,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     instancePlacements,
     localBounds,
     elementParameters,
+    ifcExportParameters: ifcExportCollector.snapshot(),
     surfaceCounts,
     planesByElement,
     cylindersByElement,

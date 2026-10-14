@@ -26,6 +26,9 @@ import type {
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
+import type { NativeSourceRoom } from "./native-source-rooms.ts";
+import type { NativeMepEvidence } from "./native-mep.ts";
+import type { NativeDesignOptions } from "./design-options.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -271,8 +274,12 @@ export type ElementBoundsRecord = {
   categoryId?: number;
   categoryName?: string;
   categorySource?: NativeCategorySource;
+  /** Exact ElementHeader membership; null is the main model, absent is unknown. */
+  designOptionId?: number | null;
   /** Instance parameters decoded from the element's own parameter table. */
   parameters?: ElementParameter[];
+  /** Parameters recovered from the resolved native type, never inferred from its name. */
+  typeParameters?: ElementParameter[];
   /** Element id of this element's type element. */
   typeId?: number;
   /** Type name read from that type element, for system families. */
@@ -788,6 +795,12 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
+  /** Source-authored rooms; these do not certify navigation boundaries. */
+  nativeSourceRooms?: NativeSourceRoom[];
+  nativeMepEvidence?: NativeMepEvidence;
+  nativeDesignOptions?: NativeDesignOptions;
+  /** Exact alternative membership, including owners without a bounds record. */
+  nativeDesignOptionMembership?: Array<{ elementId: number; designOptionId: number }>;
   /** Persisted material identities/names and optional packed render colour. */
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
   /** Loadable-family symbol to family relationships persisted in partition objects. */
