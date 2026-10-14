@@ -403,3 +403,14 @@ test("unknown IFC override targets are reported without changing an admitted cat
   assert.match(source, /'IfcExportAsStatus',\$,IFCTEXT\('unsupported-override'\)/);
   assert.match(source, /'IfcPredefinedTypeStatus',\$,IFCTEXT\('unsupported'\)/);
 });
+
+test("a rejected native setting cannot reappear through the raw parameter fallback", () => {
+  const result = fixture();
+  result.elementBounds[0]!.parameters!.push({ parameterId: -1019014, name: "Export to IFC As", value: "IfcShadingDevice" });
+  // An explicit empty decoded inventory means the owned-table collector already
+  // resolved conflicts. Raw instance parameters still expose a last-seen value.
+  result.nativeIfcExportParameters = [];
+  const source = makeIfc(result);
+  assert.match(source, /IFCWALL\(/);
+  assert.doesNotMatch(source, /IFCSHADINGDEVICE\(/);
+});
