@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { unzipSync, gunzipSync } from "fflate";
 import { openRevitContainer } from "../lib/reviter/convert-container.ts";
-import { scanContainerNativeMep } from "../lib/reviter/native-mep.ts";
+import { scanContainerNativeMep } from "../lib/reviter/native-mep-container.ts";
 
 const args = process.argv.slice(2);
 const referenceAt = args.indexOf("--reference-svf");

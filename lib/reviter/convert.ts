@@ -1,5 +1,5 @@
 import { resolveNativeRooms } from './native-rooms.ts';
-import { scanContainerNativeMep } from "./native-mep.ts";
+import { scanContainerNativeMep } from "./native-mep-container.ts";
 /**
  * The conversion pipeline.
  *
