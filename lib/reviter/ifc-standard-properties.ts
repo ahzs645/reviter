@@ -18,6 +18,8 @@ export type IfcStandardPropertySet = { name: string; properties: IfcStandardProp
 export type IfcStandardPropertySource = {
   parameters?: readonly ElementParameter[];
   typeName?: string;
+  /** Explicit lifecycle fields from the independently framed native Element. */
+  nativePhase?: { createdPhaseId: number | null; demolishedPhaseId: number | null };
 };
 
 const COMMON: Readonly<Record<string, string>> = {
@@ -96,9 +98,14 @@ export function standardIfcPropertySets(
   // native name may enter Revit's nonstandard Phasing interoperability set.
   for (const [name, id] of [["Phase Created", -1_012_100], ["Phase Demolished", -1_012_101]] as const) {
     const phase = parameter(id);
-    if (!phase || typeof phase.value !== "number" || !Number.isSafeInteger(phase.value) || phase.value <= 0) continue;
-    const phaseName = phaseNames?.get(phase.value);
-    if (phaseName?.trim()) add("Phasing", name, "IFCLABEL", phaseName, `Revit BuiltInParameter ${id}; phase element ${phase.value} resolved to native name`);
+    const nativeId = name === "Phase Created" ? source.nativePhase?.createdPhaseId : source.nativePhase?.demolishedPhaseId;
+    if (nativeId !== undefined && phase && phase.value !== nativeId) continue;
+    const phaseId = nativeId === undefined ? phase?.value : nativeId;
+    if (typeof phaseId !== "number" || !Number.isSafeInteger(phaseId) || phaseId <= 0) continue;
+    const phaseName = phaseNames?.get(phaseId);
+    const field = name === "Phase Created" ? "m_createdPhaseId" : "m_demolishedPhaseId";
+    if (phaseName?.trim()) add("Phasing", name, "IFCLABEL", phaseName,
+      `${nativeId === undefined ? `Revit BuiltInParameter ${id}` : `Native Element.${field}`}; phase element ${phaseId} resolved to native name`);
   }
   return Array.from(sets, ([name, properties]) => ({ name, properties }));
 }

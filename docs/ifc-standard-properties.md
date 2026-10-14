@@ -14,7 +14,7 @@ ids; translated display labels never select a mapping.
 | `FLOOR_PARAM_IS_STRUCTURAL` (-1001954) | `Pset_SlabCommon.LoadBearing` | Explicit integer 0 or 1 only |
 | `FUNCTION_PARAM` (-1001006) | Wall/door common `IsExternal` | 0 interior or 1 exterior; other enum values omitted |
 | Stair run parameters (-1151305 through -1151308) | `Pset_StairFlightCommon.NumberOfRiser`, `NumberOfTreads`, `RiserHeight`, `TreadLength` | Counts are integral nonnegative `IfcCountMeasure`; lengths are positive `IfcPositiveLengthMeasure`, feet converted to metres |
-| `PHASE_CREATED` / `PHASE_DEMOLISHED` (-1012100 / -1012101), explicitly joined phase-name map | Revit interoperability `Phasing` set | A positive native phase id must resolve to a nonempty native name. `Phasing` is not a buildingSMART standard set. |
+| Native `Element.m_createdPhaseId` / `m_demolishedPhaseId`, or `PHASE_CREATED` / `PHASE_DEMOLISHED` (-1012100 / -1012101), joined phase-name map | Revit interoperability `Phasing` set | A positive native phase id must resolve to a nonempty native name. Conflicting native/parameter ids are omitted. `Phasing` is not a buildingSMART standard set. |
 
 Each exported property carries its source evidence in its IFC description.
 Conflicting duplicate parameter values are omitted; empty, nonfinite and
@@ -24,8 +24,8 @@ geometry, structural status from category, or a lifecycle status from phase ids.
 Type parameters not already recovered by Reviter remain unavailable; this change
 does not independently decode family type parameter tables. In particular, type
 fire ratings and Function values cannot be claimed present merely because the
-mapping exists. A phase name table must be supplied by a separately validated
-native decoder; numeric ids or enum labels are not names.
+mapping exists. Phase names come from the independently validated
+`native-phases.ts` collector; numeric ids or enum labels are not names.
 
 Reference and resolved Phasing interoperability conventions were reviewed against
 [rvt-rs export_content.rs at 1c3d337](https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/ifc/export_content.rs)

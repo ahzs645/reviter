@@ -1,0 +1,247 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "model": "RAC.rvt",
+      "sha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "version": 2025,
+      "schemaAdmitted": true,
+      "pages": 1157,
+      "failures": 0,
+      "salvaged": 0,
+      "declaredIds": 8326,
+      "phaseCategoryIds": [
+        86961,
+        961604,
+        12589
+      ],
+      "phases": [
+        {
+          "stream": "Root Entry/Partitions/14",
+          "chunkIndex": 106,
+          "recordOffset": 23351,
+          "elementId": 86961,
+          "name": "Working Drawings",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/14",
+          "chunkIndex": 106,
+          "recordOffset": 23536,
+          "elementId": 961604,
+          "name": "Learning Content",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/14",
+          "chunkIndex": 113,
+          "recordOffset": 57849,
+          "elementId": 12589,
+          "name": "Existing",
+          "evidence": "framed-ProjectPhase"
+        }
+      ],
+      "lifecycleRelations": 515,
+      "resolvedCreated": 515,
+      "resolvedDemolished": 0,
+      "comparison": {
+        "source": "RAC-svf.zip",
+        "join": "Native Global/ElemTable + Global/History UniqueId to SVF objects_ids",
+        "referenceCreated": 516,
+        "referenceDemolished": 0,
+        "matched": 509,
+        "different": 0,
+        "unavailable": 7,
+        "mismatchExamples": [],
+        "sha256": "bc00271e20e2d39e5ecb3a7dd84f82c5408dd7a2e2f0409393d5dd7e76219100"
+      },
+      "limitations": [
+        "Complete in-page frames only; broad frame ceiling 65535 bytes.",
+        "No phase order, active view phase, lifecycle status or phase filtering inferred.",
+        "Only 2024/2025/2027 schemas measured by this collector.",
+        "Salvaged pages excluded from evidence."
+      ]
+    },
+    {
+      "model": "School.rvt",
+      "sha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "version": 2025,
+      "schemaAdmitted": true,
+      "pages": 1000,
+      "failures": 0,
+      "salvaged": 0,
+      "declaredIds": 17523,
+      "phaseCategoryIds": [
+        86961,
+        12589
+      ],
+      "phases": [
+        {
+          "stream": "Root Entry/Partitions/15",
+          "chunkIndex": 258,
+          "recordOffset": 106943,
+          "elementId": 86961,
+          "name": "New Construction",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/15",
+          "chunkIndex": 260,
+          "recordOffset": 20867,
+          "elementId": 12589,
+          "name": "Existing",
+          "evidence": "framed-ProjectPhase"
+        }
+      ],
+      "lifecycleRelations": 6119,
+      "resolvedCreated": 6119,
+      "resolvedDemolished": 0,
+      "comparison": {
+        "source": "School-svf.zip",
+        "join": "Native Global/ElemTable + Global/History UniqueId to SVF objects_ids",
+        "referenceCreated": 6120,
+        "referenceDemolished": 0,
+        "matched": 6118,
+        "different": 0,
+        "unavailable": 2,
+        "mismatchExamples": [],
+        "sha256": "13d25c97aa40ea4f36f151d3bd4708e7aa3adcc0baeca8a0ead9a7497a3c6f86"
+      },
+      "limitations": [
+        "Complete in-page frames only; broad frame ceiling 65535 bytes.",
+        "No phase order, active view phase, lifecycle status or phase filtering inferred.",
+        "Only 2024/2025/2027 schemas measured by this collector.",
+        "Salvaged pages excluded from evidence."
+      ]
+    },
+    {
+      "model": "Snowdon.rvt",
+      "sha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "version": 2024,
+      "schemaAdmitted": true,
+      "pages": 4622,
+      "failures": 0,
+      "salvaged": 0,
+      "declaredIds": 47232,
+      "phaseCategoryIds": [
+        2287613,
+        32440,
+        118390,
+        1712900,
+        1788397,
+        1711552,
+        1715781,
+        1714806,
+        1717231,
+        1715455,
+        629732,
+        1090988,
+        2262183,
+        1711220,
+        1716486,
+        1711869,
+        2260741,
+        1790012,
+        2262723,
+        1717580,
+        1089613,
+        2261866,
+        1715138,
+        1814958,
+        1790329,
+        1090616,
+        1089930,
+        1712195,
+        1090243
+      ],
+      "phases": [
+        {
+          "stream": "Root Entry/Partitions/68",
+          "chunkIndex": 993,
+          "recordOffset": 32483,
+          "elementId": 2287613,
+          "name": "Legends",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/68",
+          "chunkIndex": 1104,
+          "recordOffset": 101179,
+          "elementId": 32440,
+          "name": "Existing",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/68",
+          "chunkIndex": 1106,
+          "recordOffset": 106101,
+          "elementId": 118390,
+          "name": "New Construction",
+          "evidence": "framed-ProjectPhase"
+        }
+      ],
+      "lifecycleRelations": 7177,
+      "resolvedCreated": 7177,
+      "resolvedDemolished": 6,
+      "comparison": {
+        "source": "Snowdon-svf.zip",
+        "join": "Native Global/ElemTable + Global/History UniqueId to SVF objects_ids",
+        "referenceCreated": 6897,
+        "referenceDemolished": 6,
+        "matched": 6813,
+        "different": 0,
+        "unavailable": 90,
+        "mismatchExamples": [],
+        "sha256": "fa0593c433b15194722a46ff51ac1a70e641366c0cb73b3062cfb7e8ad9b535d"
+      },
+      "limitations": [
+        "Complete in-page frames only; broad frame ceiling 65535 bytes.",
+        "No phase order, active view phase, lifecycle status or phase filtering inferred.",
+        "Only 2024/2025/2027 schemas measured by this collector.",
+        "Salvaged pages excluded from evidence."
+      ]
+    },
+    {
+      "model": "UNBC.rvt",
+      "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "version": 2027,
+      "schemaAdmitted": true,
+      "pages": 3666,
+      "failures": 0,
+      "salvaged": 0,
+      "declaredIds": 74437,
+      "phaseCategoryIds": [
+        12589,
+        86961
+      ],
+      "phases": [
+        {
+          "stream": "Root Entry/Partitions/325",
+          "chunkIndex": 1234,
+          "recordOffset": 76580,
+          "elementId": 12589,
+          "name": "Existing",
+          "evidence": "framed-ProjectPhase"
+        },
+        {
+          "stream": "Root Entry/Partitions/325",
+          "chunkIndex": 1234,
+          "recordOffset": 77125,
+          "elementId": 86961,
+          "name": "New Design",
+          "evidence": "framed-ProjectPhase"
+        }
+      ],
+      "lifecycleRelations": 41337,
+      "resolvedCreated": 41337,
+      "resolvedDemolished": 0,
+      "comparison": null,
+      "limitations": [
+        "Complete in-page frames only; broad frame ceiling 65535 bytes.",
+        "No phase order, active view phase, lifecycle status or phase filtering inferred.",
+        "Only 2024/2025/2027 schemas measured by this collector.",
+        "Salvaged pages excluded from evidence."
+      ]
+    }
+  ]
+}

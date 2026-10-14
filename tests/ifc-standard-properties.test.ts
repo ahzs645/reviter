@@ -59,6 +59,11 @@ test("phasing requires a positive native id joined to an explicit phase-name tab
   assert.match(phases[0]!.properties[0]!.evidence, /phase element 100/);
   // The parameter value enum-label helper is not a native phase-name lookup.
   assert.deepEqual(standardIfcPropertySets("IFCWALL", { parameters: [{ ...param(-1_012_100, 100), valueName: "Guess" }] }), []);
+  const explicit = standardIfcPropertySets("IFCWALL", { nativePhase: { createdPhaseId:100,demolishedPhaseId:200 } },new Map([[100,"Existing"],[200,"Demolition"]]));
+  assert.equal(explicit[0]!.properties.length,2);
+  assert.match(explicit[0]!.properties[0]!.evidence,/Native Element.m_createdPhaseId/);
+  assert.match(explicit[0]!.properties[1]!.evidence,/Native Element.m_demolishedPhaseId/);
+  assert.deepEqual(standardIfcPropertySets("IFCWALL", { ...source,nativePhase:{createdPhaseId:200,demolishedPhaseId:null} },new Map([[100,"Existing"],[200,"Different"]])),[]);
 });
 
 test("independent IFC reader recovers typed properties, SI measures and raw recovery together", async () => {
