@@ -29,8 +29,31 @@ The manifest keeps the three bands independent:
 `tests/capabilities.test.ts` exercises boundary releases, noninteger/unknown
 versions, actual native-plan eligibility with both id widths, independent
 metadata/WASM gates and the existence of evidence files. A matching year is
-never promoted to a universal converter-grade claim. New semantic modules
-should be declared only with their own release gates and test/corpus evidence.
+never promoted to a universal converter-grade claim.
+
+The optional third argument to `capabilityManifest(release, narrowIds, source)`
+accepts **already decoded source evidence**, never raw file bytes. Two-argument
+calls remain compatible and leave all new semantic features ineligible. The CLI
+reports this conservative snapshot because it does not parse a model itself.
+
+| Contract | Required evidence and ceiling |
+| --- | --- |
+| Revit IFC GlobalIds | A valid UniqueId already joined to native creation episode and original id; missing/invalid identity retains deterministic fallback. |
+| IFC export settings | Recognized owned instance/type parameter entries; conflicting values do not qualify. Only exporter-supported classes/enums can be emitted. |
+| Standard IFC properties | A supported IFC entity and explicit supported owned parameter or decoded native type name; native phase names are required to resolve phase references. |
+| Native phases | 2024, 2025 or 2027 and the exact Element/ProjectPhase/CellList field declarations accepted by `nativePhaseLayout`. Class names alone are insufficient. |
+| Design options | The actual collector's measured 2024–2026 schema admission. Selection remains explicit and unresolved evidence remains visible. |
+| Native room identities | An admitted native layout and a native room-category header without family/view/unplaced ownership. Boxless rooms still qualify as identities. |
+| Stored room outlines | Identity plus matching source room-record bounds, only 2023–2025. Experimental; unsupported faces/rings remain unresolved. |
+| MEP membership candidates | 2024–2027 system schema classes and independently categorized native endpoint elements. Experimental exact object references, not a proven membership field. |
+| MEP connector packets | Only the measured 2025 connector manager schema and independently categorized native endpoints. Experimental; does not establish complete topology. |
+| MEP family connector graphs | Always unsupported. |
+
+The report does not scan partitions, infer missing values or count model elements.
+Native room evidence never certifies indoor enclosure/access or modifies
+navigation. MEP collection requires `experimentalMep`; IFC MEP relationship
+emission separately requires `includeExperimentalMep`, both disabled by default.
+Actual source findings and paired-corpus parity remain separate from eligibility.
 
 ## Deterministic fuzz regressions
 
