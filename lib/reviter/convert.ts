@@ -1,4 +1,5 @@
 import { resolveNativeRooms } from './native-rooms.ts';
+import { scanContainerNativeMep } from "./native-mep.ts";
 /**
  * The conversion pipeline.
  *
@@ -105,6 +106,7 @@ export function convertRvtBytes(
 
   try {
     onProgress?.({ ratio: 0.03, message: "Opening Revit container" });
+    const opened = openRevitContainer(bytes, options);
     const {
       cfb,
       decoderPlan,
@@ -119,9 +121,11 @@ export function convertRvtBytes(
       schema,
       partitionNames,
       contentDocuments,
-    } = openRevitContainer(bytes, options);
+    } = opened;
 
     const scan = scanPartitions({
+      nativePhaseLayout: opened.nativePhaseLayout,
+      phaseDeclaredIds: new Set(nativeIdentity?.identities.map(identity => identity.elementId) ?? []),
       schema,
       partitions,
       decoderPlan,
@@ -356,6 +360,8 @@ export function convertRvtBytes(
       parameters: elementParameters, levels: nativeAssociatedLevelRelations, evidence: scan.nativeRoomEvidence,
     });
     const decodedFile = {
+      nativePhases: scan.nativePhases,
+      ...(options.experimentalMep ? { nativeMep: scanContainerNativeMep(opened, elementBounds) } : {}),
       designOptions: scan.designOptions,
       nativeIfcExportParameters,
       ...nativeRoomData,

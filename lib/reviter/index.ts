@@ -18,6 +18,14 @@
 // The entry point and the vocabulary its result is written in.
 
 export { convertRvtBytes } from "./convert.ts";
+export { capabilityManifest, type CapabilityManifest, type CapabilityContract, type CapabilitySourceEvidence } from "./capabilities.ts";
+export { revitIfcGlobalId, revitIfcGlobalIdFromUniqueId } from "./revit-ifc-semantics.ts";
+export type { NativeIfcExportParameters } from "./revit-ifc-semantics.ts";
+export { createDesignOptionSelector, createDesignOptionElementSelector } from "./design-options.ts";
+export type { DesignOptionsDecode, DesignOptionSelectionMode, NativeDesignOptionSet } from "./design-options.ts";
+export type { NativeRoom, NativeRoomOutline, NativeRoomCoverage } from "./native-rooms.ts";
+export type { NativePhaseEvidence } from "./native-phases.ts";
+export type { NativeMepDecode } from "./native-mep.ts";
 export type {
   Bounds3,
   ConvertFailure,

@@ -97,9 +97,9 @@ export function convertModel(rvtPath: string): ConvertResult {
   const outcome = convertRvtBytes(
     new Uint8Array(rvt.buffer, rvt.byteOffset, rvt.byteLength),
     rvtPath.split("/").pop() ?? "model.rvt",
-    // The release drives decoder selection; the studio reads it from
-    // BasicFileInfo, and the supplied project is a 2027 file.
-    { revitVersion: 2027 },
+    // Use the file's BasicFileInfo, as the studio does. Forcing the original
+    // 2027 fixture's release here invalidates audits of the older corpus.
+    {},
   );
   if (!outcome.ok) throw new Error(`conversion failed: ${outcome.error}`);
   return outcome;

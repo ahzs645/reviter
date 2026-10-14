@@ -58,6 +58,18 @@ const report = {
   elementBounds: result.elementBounds.length,
   identities: result.nativeIdentity?.decodedIdentityCount ?? 0,
   decoderCoverage: result.decoderCoverage,
+  nativeRooms: result.nativeRoomCoverage ?? null,
+  nativePhases: {
+    names: result.nativePhases?.phases.length ?? 0,
+    created: result.nativePhases?.relations.filter(relation => relation.createdPhaseId != null).length ?? 0,
+    demolished: result.nativePhases?.relations.filter(relation => relation.demolishedPhaseId != null).length ?? 0,
+  },
+  designOptions: {
+    status: result.designOptions?.status ?? "unavailable",
+    sets: result.designOptions?.sets.length ?? 0,
+    unresolvedSets: result.designOptions?.unresolvedSets.length ?? 0,
+  },
+  ifcExportSettingOwners: result.nativeIfcExportParameters?.length ?? 0,
   preservation,
   referenceSurface: surface && {
     cellMetres: surface.cellMetres,

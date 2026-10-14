@@ -15,6 +15,10 @@
  * exact native geometry.
  */
 import { elementManifest } from "./export-report.ts";
+import { emitStandardIfcPropertySets, standardIfcPropertySets } from "./ifc-standard-properties.ts";
+import { createDesignOptionElementSelector, type DesignOptionSelectionMode } from "./design-options.ts";
+import { emitNativeRooms } from "./export-ifc-native-rooms.ts";
+import { emitNativeMep } from "./export-ifc-mep.ts";
 import { outputName } from "./export-naming.ts";
 import { stairAssemblyParts } from "./stair-assemblies.ts";
 import { spacePredefinedType } from "./room-review.ts";
@@ -50,6 +54,12 @@ type IfcClass = {
 };
 
 export type IfcExportOptions = {
+  /** Candidate MEP membership/connector emission is explicitly experimental. */
+  includeExperimentalMep?: boolean;
+  /** Source-authored spaces remain labelled unreviewed; no room heights inferred. */
+  includeNativeRooms?: boolean;
+  /** Explicitly omit proven non-primary alternatives; unresolved evidence stays. */
+  designOptionSelection?: DesignOptionSelectionMode;
   /** Only accepted rooms with `ifc.export` enabled become IfcSpace entities. */
   rooms?: readonly ReviewedRoom[];
 };
@@ -799,6 +809,8 @@ function emitElementProperties(
   element: ManifestElement,
   source: ElementBoundsRecord | undefined,
   exportDecision?: IfcExportDecision,
+  nativePhase?: { createdPhaseId: number | null; demolishedPhaseId: number | null },
+  phaseNames?: ReadonlyMap<number, string>,
 ): void {
   const exact =
     element.geometry.finalProvenance === "native" ||
@@ -834,6 +846,11 @@ function emitElementProperties(
     `IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-recovery", element.elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
   );
 
+  if (source && exportDecision) emitStandardIfcPropertySets(
+    writer, standardIfcPropertySets(exportDecision.ifcClass.entity, { ...source, nativePhase }, phaseNames), ownerHistory, product,
+    { quoted, number: ifcNumber, guid: kind => guidFor(namespace, kind, element.elementId) },
+  );
+
   if (!element.parameters.length) return;
   // Revit stores a parameter as a double, an integer or a string depending on
   // which of its value sets holds it, so the property follows the value.
@@ -856,6 +873,9 @@ function emitElementProperties(
  * CLI. Its output is no longer limited to centerlines or bounding boxes.
  */
 export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOptions = {}): string {
+  const phaseNames = new Map(result.nativePhases?.phases.map(phase => [phase.elementId, phase.name]) ?? []);
+  const phaseRelations = new Map(result.nativePhases?.relations.map(relation => [relation.elementId, relation]) ?? []);
+  const selectDesignOption = createDesignOptionElementSelector(result.designOptions, options.designOptionSelection ?? "all");
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
   const guid = (kind: string, key: string | number) =>
@@ -1045,6 +1065,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   };
 
   for (const element of manifest) {
+    if (!selectDesignOption(element.elementId).include) continue;
     const hasSemanticIdentity = Boolean(element.category || element.type);
     if (!element.displayed && element.geometry.finalProvenance === "not-rendered-helper") continue;
     if (!element.displayed && !hasSemanticIdentity && !noMeshScene) continue;
@@ -1088,6 +1109,8 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       element,
       sourceByElement.get(element.elementId),
       exportDecision,
+      phaseRelations.get(element.elementId),
+      phaseNames,
     );
 
     if (element.type) {
@@ -1129,6 +1152,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // is still a real persisted Revit element id. Export the body and tag as an
   // honest proxy, preserving visual completeness without guessing a category.
   for (const [elementId, fragments] of fragmentsByElement) {
+    if (!selectDesignOption(elementId).include) continue;
     if (productByElement.has(elementId) || !fragments.length) continue;
     const shape = emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
     if (!shape) continue;
@@ -1176,7 +1200,19 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     productsByStorey.set(contextStorey, contextProducts);
   }
 
-  // Room recovery remains a review workflow, not an inference shortcut: only
+  if (options.includeNativeRooms !== false) emitNativeRooms({
+    writer, rooms: result.nativeRooms ?? [], ownerHistory, building, modelPlacement,
+    context, origin: result.origin, storeyByLevelId, uniqueIds: identityByElement,
+    includeElement: elementId => selectDesignOption(elementId).include,
+    guid, elementGuid: elementId => guid("element", identityByElement.get(elementId) ?? elementId),
+    emitAdditionalProperties: (product, elementId) => emitStandardIfcPropertySets(
+      writer, standardIfcPropertySets("IFCSPACE", { nativePhase: phaseRelations.get(elementId) }, phaseNames),
+      ownerHistory, product, { quoted, number: ifcNumber, guid: kind => guidFor(namespace, kind, elementId) },
+    ),
+    quoted, number: ifcNumber,
+  });
+
+  // Reviewed room recovery remains a review workflow, not an inference shortcut: only
   // explicitly accepted, export-enabled records become authoritative IFC
   // spaces. They stay under their exact raw Revit storey even when the floor
   // workspace visually composes several split levels.
@@ -1248,6 +1284,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // straight run from a half-turn, so absence of the helical reading stays
   // absence rather than becoming a second claim.
   for (const assembly of result.nativeStairAssemblies ?? []) {
+    if (!selectDesignOption(assembly.stairElementId).include) continue;
     const parts = stairAssemblyParts(assembly)
       .map((elementId) => productByElement.get(elementId))
       .filter((product): product is number => product != null);
@@ -1404,6 +1441,13 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       `IFCRELFILLSELEMENT(${quoted(guid("fill", relation.elementId))},#${ownerHistory},$,$,#${opening},#${filling})`,
     );
   }
+
+  emitNativeMep({
+    writer, nativeMep: result.nativeMep, includeExperimentalMep: options.includeExperimentalMep,
+    ownerHistory, building, productByElement,
+    entityByElement: new Map([...classByElement].map(([id, value]) => [id, value.entity])),
+    guid, quoted,
+  });
 
   const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "");
   return `ISO-10303-21;

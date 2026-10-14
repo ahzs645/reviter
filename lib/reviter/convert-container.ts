@@ -29,6 +29,7 @@ import {
   decodeRevitNativeIdentities,
 } from "./native-identity.ts";
 import { decoderPlanForVersion } from "./native-decoder.ts";
+import { nativePhaseLayout, type NativePhaseLayout } from "./native-phases.ts";
 import { parsePartAtomXml } from "./part-atom.ts";
 import { parsePartitionNames } from "./partition-names.ts";
 import { parseProjectInformationArchive } from "./project-information.ts";
@@ -121,6 +122,7 @@ type ContainerEntry = {
 };
 
 export type OpenedRevitContainer = {
+  nativePhaseLayout?: NativePhaseLayout | null;
   cfb: ReturnType<typeof CFB.read>;
   /** Which record decoders this release admits; see `native-decoder.ts`. */
   decoderPlan: ReturnType<typeof decoderPlanForVersion>;
@@ -260,9 +262,11 @@ export function openRevitContainer(
   // ask it for a class's field order, and the summary stays the size it was.
   let fieldNamesByClass: Map<string, string[]> | undefined;
   let elementIdBytes: ElementIdBytes | null = null;
+  let phaseLayout: NativePhaseLayout | null = null;
   const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
     const strict = readSchema(data);
     if (!strict.ok) return summariseSchema(data);
+    phaseLayout = nativePhaseLayout(decoderPlan.revitVersion ?? 0, strict.schema.classes);
     elementIdBytes = elementIdBytesFromSchema(strict.schema.classes);
     fieldNamesByClass = new Map(strict.schema.classes.map((entry) => [
       entry.name,
@@ -334,6 +338,7 @@ export function openRevitContainer(
   }
 
   return {
+    nativePhaseLayout: phaseLayout,
     cfb,
     decoderPlan,
     partitions,

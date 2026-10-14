@@ -35,6 +35,7 @@ import { createNativeRoomEvidence, scanNativeRoomEvidence, scanNativeRoomRecords
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
 import { DesignOptionsCollector } from "./design-options.ts";
+import { collectNativePhaseEvidence, resolveNativePhaseEvidence, type NativePhaseEvidence, type NativePhaseLayout } from "./native-phases.ts";
 import {
   REVIT_2027_BASIC_WALL_TYPE_MARKER,
   resolveCompoundStructureDefinitions,
@@ -182,6 +183,8 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
 const MAX_SKETCH_CURVES = 400_000;
 
 export type PartitionScanInput = {
+  nativePhaseLayout?: NativePhaseLayout | null;
+  phaseDeclaredIds?: ReadonlySet<number>;
   partitions: OpenedRevitContainer["partitions"];
   decoderPlan: OpenedRevitContainer["decoderPlan"];
   objectMarkers: number[];
@@ -197,6 +200,7 @@ export type PartitionScanInput = {
 };
 
 export type PartitionScan = {
+  nativePhases: NativePhaseEvidence;
   designOptions: import("./design-options.ts").DesignOptionsDecode;
   nativeRoomEvidence: NativeRoomEvidence;
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
@@ -269,6 +273,7 @@ export type PartitionScan = {
 };
 
 export function scanPartitions(input: PartitionScanInput): PartitionScan {
+  const phaseEvidence: NativePhaseEvidence[] = [];
   const designOptions = new DesignOptionsCollector({ revitVersion: input.decoderPlan.revitVersion, schema: input.schema });
   const {
     partitions,
@@ -409,6 +414,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       // prefix is not allowed to seed the next chunk's window because it is
       // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
       const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (read && input.nativePhaseLayout && input.phaseDeclaredIds) phaseEvidence.push(
+        collectNativePhaseEvidence(read, input.nativePhaseLayout, input.phaseDeclaredIds, {
+          stream: partition.path.replace(/^Root Entry\//, ""), chunkIndex: index,
+        }),
+      );
       if (read) designOptions.pushPage(read);
       else designOptions.invalidatePartition();
       const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
@@ -798,6 +808,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     ]),
   );
   return {
+    nativePhases: resolveNativePhaseEvidence(phaseEvidence, new Set(
+      [...elementHeaders.values()].filter(header => header.categoryId === -2_000_112).map(header => header.elementId),
+    )),
     designOptions: designOptions.finish(elementHeaders.values()),
     nativeRoomEvidence,
     candidates,

@@ -18,6 +18,7 @@ import { makeDxf, makeObj } from "../lib/reviter/export-mesh-text.ts";
 import { makePascalSceneJson, type PascalExtraElements } from "../lib/reviter/export-pascal.ts";
 import { makeReport } from "../lib/reviter/export-report.ts";
 import { makeFloorPlateSvg, makePlanSvg } from "../lib/reviter/export-svg.ts";
+import type { DesignOptionSelectionMode } from "../lib/reviter/design-options.ts";
 
 type Format = "glb" | "obj" | "dxf" | "svg" | "ifc" | "json" | "pascal";
 
@@ -30,6 +31,8 @@ export type ExtractArguments = {
   floorPlates?: boolean;
   extras?: PascalExtraElements;
   mirrorPlan?: boolean;
+  designOptionSelection?: DesignOptionSelectionMode;
+  experimentalMep?: boolean;
 };
 
 const FORMATS = new Set<Format>(["glb", "obj", "dxf", "svg", "ifc", "json", "pascal"]);
@@ -89,6 +92,13 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     throw new Error(`Invalid --extras value "${rawExtras}". Use none, curtain-panels, or all.`);
   }
   const mirrorPlan = hasFlag("--mirror-plan", arguments_);
+  const designOptionSelection = optionValue("--design-options", arguments_);
+  if (designOptionSelection != null && designOptionSelection !== "all" && designOptionSelection !== "primary") {
+    throw new Error("--design-options must be all or primary.");
+  }
+  if (designOptionSelection != null && requestedFormat !== "ifc") throw new Error("--design-options is available only for IFC exports.");
+  const experimentalMep = hasFlag("--experimental-mep", arguments_);
+  if (experimentalMep && requestedFormat !== "ifc" && requestedFormat !== "json") throw new Error("--experimental-mep requires IFC or JSON output.");
   if ((rawExtras != null || mirrorPlan) && requestedFormat !== "pascal") {
     throw new Error("--extras and --mirror-plan are available only for Pascal scene exports.");
   }
@@ -102,6 +112,8 @@ export function parseExtractArguments(arguments_: string[]): ExtractArguments {
     floorPlates,
     extras: (rawExtras ?? undefined) as PascalExtraElements | undefined,
     mirrorPlan: mirrorPlan || undefined,
+    ...(designOptionSelection == null ? {} : { designOptionSelection }),
+    ...(experimentalMep ? { experimentalMep: true } : {}),
   };
 }
 
@@ -110,7 +122,7 @@ type SuccessfulConversion = Extract<ReturnType<typeof convertRvtBytes>, { ok: tr
 function outputFor(
   format: Format,
   result: SuccessfulConversion,
-  options: Pick<ExtractArguments, "planLevelId" | "floorPlates" | "extras" | "mirrorPlan"> = {},
+  options: Pick<ExtractArguments, "planLevelId" | "floorPlates" | "extras" | "mirrorPlan" | "designOptionSelection" | "experimentalMep"> = {},
 ): Uint8Array | string {
   switch (format) {
     case "glb": return new Uint8Array(makeGlb(result));
@@ -119,7 +131,10 @@ function outputFor(
     case "svg": return options.floorPlates
       ? makeFloorPlateSvg(result, options.planLevelId!)
       : makePlanSvg(result, { levelId: options.planLevelId });
-    case "ifc": return makeIfcCenterlines(result);
+    case "ifc": return makeIfcCenterlines(result, {
+      designOptionSelection: options.designOptionSelection,
+      includeExperimentalMep: options.experimentalMep,
+    });
     case "pascal": return makePascalSceneJson(result, {
       extras: options.extras,
       mirrorPlan: options.mirrorPlan,
@@ -134,7 +149,8 @@ export function extractGeometry(arguments_: string[]): void {
   const outcome = convertRvtBytes(
     new Uint8Array(input.buffer, input.byteOffset, input.byteLength),
     options.input.split("/").pop() ?? "model.rvt",
-    options.revitVersion == null ? {} : { revitVersion: options.revitVersion },
+    { ...(options.revitVersion == null ? {} : { revitVersion: options.revitVersion }),
+      ...(options.experimentalMep ? { experimentalMep: true } : {}) },
     ({ ratio, message }) => {
       process.stderr.write(
         `\r${String(Math.round(ratio * 100)).padStart(3)}% ${message.padEnd(52)}`,

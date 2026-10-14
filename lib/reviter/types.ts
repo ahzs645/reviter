@@ -756,6 +756,10 @@ export type RvtRegressionInput = {
 };
 
 export type ConvertResult = {
+  /** Native named phases and explicit created/demolished lifecycle fields. */
+  nativePhases?: import("./native-phases.ts").NativePhaseEvidence;
+  /** Experimental MEP candidates, collected only when explicitly requested. */
+  nativeMep?: import("./native-mep.ts").NativeMepDecode;
   /** Native primary-option evidence. Scene alternatives remain included. */
   designOptions?: import("./design-options.ts").DesignOptionsDecode;
   /** Source-authored rooms, independent of reviewed indoor enclosures/navigation. */
@@ -842,6 +846,8 @@ export type ConvertFailure = {
 export type ConvertOutcome = ConvertResult | ConvertFailure;
 
 export type ConvertOptions = {
+  /** Collect bounded experimental system/connector evidence in additional passes. */
+  experimentalMep?: boolean;
   maxSegments?: number;
   /**
    * Optional browser/runtime cap for cached native Revit mesh definitions.
