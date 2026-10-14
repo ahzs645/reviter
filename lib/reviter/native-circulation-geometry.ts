@@ -920,6 +920,23 @@ function nativeDoorLevelParts(
   context.levels.set(key, level);
   return level;
 }
+// Shortest exact string pull of a planned walking path: from each kept point,
+// keep the farthest later point joined by one exactly supported straight
+// segment. Returns undefined when a step has no supported segment.
+export function nativeSupportedPull(
+  points: readonly RoomPoint[],
+  parts: Parameters<typeof nativeRationalPathSupported>[1],
+): RoomPoint[] | undefined {
+  const out: RoomPoint[] = [points[0]!];
+  for (let i = 0; i < points.length - 1; ) {
+    let j = points.length - 1;
+    while (j > i && !nativeRationalPathSupported([points[i]!, points[j]!], parts)) j--;
+    if (j === i) return undefined;
+    out.push(points[j]!);
+    i = j;
+  }
+  return out;
+}
 function nativeCellDoorApproach(
   data: IndoorDataset,
   context: DoorApproachContext,
@@ -1181,12 +1198,13 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         [n.pointFeet[0], n.pointFeet[1]] as RoomPoint,
       ]),
     );
-    for (const branch of grid.branches) {
+    // One grid branch becomes a checked walking edge (or is refused); stitching below reuses this.
+    const accept = (branch: (typeof grid.branches)[number]): boolean => {
       if (
         data.nativeIndoorEnvelopes &&
         physicalDoorPairs.has([branch.from, branch.to].sort().join("|"))
       )
-        continue;
+        return false;
       const fromNode = selected.find((n) => n.id === branch.from)!,
         toNode = selected.find((n) => n.id === branch.to)!;
       if (
@@ -1195,7 +1213,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
           ...fromNode.pointFeet.map((v, k) => v - toNode.pointFeet[k]!),
         ) < 1e-8
       )
-        continue;
+        return false;
       // Existing explicit campus/split-level transitions retain their identities.
       if (
         fromNode.levelId !== toNode.levelId ||
@@ -1223,11 +1241,11 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
                   ),
               ),
           );
-        if (!sharedNativeSlab) continue;
+        if (!sharedNativeSlab) return false;
       }
       const a = positions.get(branch.from),
         b = positions.get(branch.to);
-      if (!a || !b) continue;
+      if (!a || !b) return false;
       let points = [a, ...branch.points, b].filter(
         (p, i, ps) =>
           !i || DMath.hypot(p[0] - ps[i - 1]![0], p[1] - ps[i - 1]![1]) > 1e-8,
@@ -1263,11 +1281,19 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
             [],
             0.6,
           ).branches[0];
-          if (!rebuilt) continue;
+          if (!rebuilt) return false;
           const start = positions.get(rebuilt.from)!,
             end = positions.get(rebuilt.to)!;
-          const rebuiltPoints = [start, ...rebuilt.points, end];
-          if (!nativeRationalPathSupported(rebuiltPoints,context.exactApproaches.get(ownRings)!)) continue;
+          const ownParts = context.exactApproaches.get(ownRings)!;
+          let rebuiltPoints = [start, ...rebuilt.points, end];
+          // Grid snapping can move a terminal onto a neighbouring cell point that
+          // its own exact face does not reach (e.g. into a door frame). Pull the
+          // path tight through exactly supported straight segments only.
+          if (!nativeRationalPathSupported(rebuiltPoints,ownParts)) {
+            const pulled = nativeSupportedPull(rebuiltPoints, ownParts);
+            if (!pulled) return false;
+            rebuiltPoints = pulled;
+          }
           points =
             rebuilt.from === branch.from
               ? rebuiltPoints
@@ -1278,9 +1304,9 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         points.length < 2 ||
         points.slice(1).some((p, i) => blocked(points[i]!, p))
       )
-        continue;
+        return false;
       const id = `${cell.id}:walk:${[branch.from, branch.to].sort().join("|")}`;
-      if (data.edges.some((e) => e.id === id)) continue;
+      if (data.edges.some((e) => e.id === id)) return false;
       data.edges.push({
         id,
         nativeCellId: cell.id,
@@ -1310,6 +1336,44 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         evidence: `Native floor-bound circulation cell ${cell.id}; slab profiles ${cell.nativeFloorIds.join(",")}; walls, columns, all native doors, holes and low stair projections excluded; fixed connector coordinates preserved; body clearance/accessibility remain unverified.`,
       });
       added++;
+      return true;
+    };
+    const accepted = new Set<string>();
+    for (const branch of grid.branches) if (accept(branch)) accepted.add(`${branch.from}|${branch.to}`);
+    // The grid branches are sparse: when the checks above refuse one, the cell's nodes can fall
+    // into separate pieces although the cell is one floor. Join the pieces through their closest node
+    // pairs, each planned inside the cell and checked exactly like any branch; never by a shortcut.
+    if (data.nativeIndoorEnvelopes) {
+      const ids = new Set(selected.map((n) => n.id));
+      const parent = new Map(selected.map((n) => [n.id, n.id]));
+      const root = (x: string): string => { while (parent.get(x) !== x) x = parent.get(x)!; return x; };
+      for (const e of data.edges)
+        if (e.enabled && ids.has(e.from) && ids.has(e.to) && (e.nativeCellId === cell.id || e.kind === "door" || e.kind === "opening")) parent.set(root(e.from), root(e.to));
+      for (let round = 0; round < selected.length; round++) {
+        const pieces = new Map<string, typeof selected>();
+        for (const n of selected) pieces.set(root(n.id), [...(pieces.get(root(n.id)) ?? []), n]);
+        if (pieces.size < 2) break;
+        const list = [...pieces.values()];
+        const pairs: { a: (typeof selected)[number]; b: (typeof selected)[number]; d: number }[] = [];
+        for (let i = 0; i < list.length; i++)
+          for (let j = i + 1; j < list.length; j++)
+            for (const a of list[i]!)
+              for (const b of list[j]!)
+                if (!accepted.has(`${a.id}|${b.id}`) && !accepted.has(`${b.id}|${a.id}`))
+                  pairs.push({ a, b, d: DMath.hypot(a.pointFeet[0] - b.pointFeet[0], a.pointFeet[1] - b.pointFeet[1]) });
+        pairs.sort((x, y) => x.d - y.d || (x.a.id + x.b.id < y.a.id + y.b.id ? -1 : 1));
+        let joined = false;
+        for (const { a, b } of pairs.slice(0, 24)) {
+          // A terminal the grid cannot snap (e.g. deep in a wide door half) is
+          // offered as one straight segment; accept() still checks it exactly.
+          const planned = buildIndoorGrid(scope, [], [a, b].map((n) => ({ id: n.id, roomKey: cell.id, point: [n.pointFeet[0], n.pointFeet[1]] as RoomPoint, maxSnapFeet: 1.2 })), { walls: [], columns: [] }, [], 0.6).branches[0] ??
+            { from: a.id, to: b.id, points: [], roomKeys: [cell.id], routingQuality: { turnCount: 0, estimatedRasterClearanceFeet: 0, clearanceCertified: false } };
+          accepted.add(`${a.id}|${b.id}`);
+          const ok = accept(planned);
+          if (ok) { parent.set(root(a.id), root(b.id)); joined = true; break; }
+        }
+        if (!joined) break;
+      }
     }
   }
   if (added || removed) {
