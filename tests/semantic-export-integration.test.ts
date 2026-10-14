@@ -30,14 +30,17 @@ test("native room spaces retain boxless metadata and stored curves without fabri
   model.nativeRooms = [{
     elementId: 30, categoryId: NATIVE_ROOM_CATEGORY, source: "Partitions/ElementHeader.m_categoryId",
     number: "A'1", name: "Office", levelId: model.levels[0]?.levelId,
+    boundsFeet: { min: {x:100,y:200,z:10}, max:{x:104,y:204,z:20} },
     outlineStatus: "decoded", enclosure: "unreviewed-source",
     outline: { source: "partition-room-solid-faces", units: "feet", outer: [[100,200],[104,200],[104,204],[100,204]],
       holes: [[[101,201],[101,202],[102,202],[102,201]]], elevationFeet: 10, areaSquareFeet: 15,
       location: {stream: "Partitions/1", chunkIndex: 0, offset: 0}},
   }, {
-    elementId: 31, categoryId: NATIVE_ROOM_CATEGORY, source: "Partitions/ElementHeader.m_categoryId",
+    elementId: 11, categoryId: NATIVE_ROOM_CATEGORY, source: "Partitions/ElementHeader.m_categoryId",
     name: "Boxless source", levelId: 99999, outlineStatus: "missing-record-bounds", enclosure: "unreviewed-source",
   }];
+  model.elementBounds[1]!.categoryId = NATIVE_ROOM_CATEGORY;
+  model.elementBounds[1]!.categoryName = "Rooms";
   const before = structuredClone(model);
   const text = makeIfc(model);
   assert.equal((text.match(/=IFCSPACE\(/g) ?? []).length, 2);
@@ -46,6 +49,9 @@ test("native room spaces retain boxless metadata and stored curves without fabri
   assert.match(text, /'FootPrint','GeometricCurveSet'/);
   assert.match(text, /'metadata-only'/);
   assert.match(text, /unreviewed-source/);
+  assert.doesNotMatch(text, /=IFCDOOR\(|=IFCBUILDINGELEMENTPROXY\(/, "the native-space ID cannot also emit a product or triangle fallback");
+  const guids = [...text.matchAll(/=(?:IFCSPACE|IFCWALL)\('([^']+)'/g)].map(match => match[1]);
+  assert.equal(new Set(guids).size, guids.length, "each native occurrence GlobalId is unique");
   assert.equal((makeIfc(model, { includeNativeRooms: false }).match(/=IFCSPACE\(/g) ?? []).length, 0);
   assert.deepEqual(model, before);
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
@@ -103,4 +109,24 @@ test("CLI semantic switches validate their formats and leave the plain invocatio
   assert.throws(() => parseExtractArguments([...base, "--design-options", "guess"]), /all or primary/);
   assert.throws(() => parseExtractArguments(["model.rvt", "--out", "out.glb", "--experimental-mep"]), /IFC or JSON/);
   assert.throws(() => parseExtractArguments(["model.rvt", "--out", "out.glb", "--design-options", "primary"]), /only for IFC/);
+});
+
+test("standard properties use the same strongest duplicate evidence as the raw manifest", () => {
+  const model = ifcExportFixture();
+  model.elementBounds.push({ ...model.elementBounds[0]!, parameters: [
+    ...model.elementBounds[0]!.parameters!, {parameterId:-1001596,name:"Structural",value:1},
+  ] });
+  const text = makeIfc(model);
+  assert.match(text, /'LoadBearing','[^']*',IFCBOOLEAN\(\.T\.\)/);
+});
+
+test("synthetic stair wrappers honor admitted stair enums and disclose unsupported class changes", () => {
+  const model = ifcExportFixture();
+  model.nativeStairAssemblies = [{stairElementId: 40, runAndLandingIds: [10,11], stringerIds: [], railingIds: [], supportIds: [], evidence: "runs", spiralRunIds: [], shape: "undetermined"}];
+  model.nativeIfcExportParameters = [{elementId:40,predefinedType:"HALF_TURN_STAIR",provenance:"owned-element-parameter-table"}];
+  assert.match(makeIfc(model), /IFCSTAIR\([^\n]+\.HALF_TURN_STAIR\.\)/);
+  model.nativeIfcExportParameters[0]!.exportAs = "IfcWall";
+  const changed = makeIfc(model);
+  assert.match(changed, /IFCSTAIR\(/);
+  assert.match(changed, /unsupported-aggregate-wrapper/);
 });

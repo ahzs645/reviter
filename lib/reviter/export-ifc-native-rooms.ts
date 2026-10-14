@@ -33,13 +33,25 @@ export function emitNativeRooms(input: {
     if (seen.has(room.elementId) || input.includeElement?.(room.elementId) === false) continue;
     seen.add(room.elementId);
     let shape: number | undefined;
-    if (room.outline && room.outlineStatus === "decoded") {
+    if (room.outline && room.outlineStatus === "decoded" && !room.outlineIssue &&
+      room.outline.source === "partition-room-solid-faces" && room.outline.units === "feet" &&
+      (!room.location || room.location.stream === room.outline.location.stream)) {
       const elevation = room.outline.elevationFeet;
       const rings = [room.outline.outer, ...room.outline.holes];
       // The collector checks closed simple rings. Recheck finite shape at this
       // public export boundary for direct API callers and stale serialized data.
-      if (Number.isFinite(elevation) && rings.every(ring => ring.length >= 3 &&
-        ring.every(p => p.length === 2 && p.every(Number.isFinite)))) {
+      const finite = Number.isFinite(elevation) && rings.every(ring => ring.length >= 3 &&
+        ring.every(p => p.length === 2 && p.every(Number.isFinite)));
+      const points = rings.flat();
+      const extent = points.reduce((box, point) => ({
+        minX: Math.min(box.minX, point[0]), maxX: Math.max(box.maxX, point[0]),
+        minY: Math.min(box.minY, point[1]), maxY: Math.max(box.maxY, point[1]),
+      }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+      const bounds = room.boundsFeet;
+      const boundsAgree = bounds && finite && Math.abs(elevation - bounds.min.z) <= 1e-3 &&
+        Math.abs(extent.minX - bounds.min.x) <= 1e-3 && Math.abs(extent.maxX - bounds.max.x) <= 1e-3 &&
+        Math.abs(extent.minY - bounds.min.y) <= 1e-3 && Math.abs(extent.maxY - bounds.max.y) <= 1e-3;
+      if (boundsAgree) {
         const lines = rings.map(ring => {
           const closed = [...ring, ring[0]!];
           const points = closed.map(([x, y]) => writer.add(

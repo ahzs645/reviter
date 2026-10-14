@@ -274,6 +274,7 @@ export type PartitionScan = {
 
 export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const phaseEvidence: NativePhaseEvidence[] = [];
+  const phaseCategories = new Map<number, number | null>();
   const designOptions = new DesignOptionsCollector({ revitVersion: input.decoderPlan.revitVersion, schema: input.schema });
   const {
     partitions,
@@ -654,6 +655,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
       if (readsElementRecordLayout(decoderPlan.revitVersion)) {
         for (const header of scanElementHeaders(inflated)) {
+          if (read) {
+            const previous = phaseCategories.get(header.elementId);
+            phaseCategories.set(header.elementId, previous === undefined ? header.categoryId :
+              previous === header.categoryId ? previous : null);
+          }
           if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
           if (header.categoryId === -2000160) roomIds.add(header.elementId);
         }
@@ -809,7 +815,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   );
   return {
     nativePhases: resolveNativePhaseEvidence(phaseEvidence, new Set(
-      [...elementHeaders.values()].filter(header => header.categoryId === -2_000_112).map(header => header.elementId),
+      [...phaseCategories].filter(([, categoryId]) => categoryId === -2_000_112).map(([elementId]) => elementId),
     )),
     designOptions: designOptions.finish(elementHeaders.values()),
     nativeRoomEvidence,

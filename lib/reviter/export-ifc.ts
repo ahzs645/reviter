@@ -846,8 +846,12 @@ function emitElementProperties(
     `IFCRELDEFINESBYPROPERTIES(${quoted(guidFor(namespace, "rel-recovery", element.elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
   );
 
-  if (source && exportDecision) emitStandardIfcPropertySets(
-    writer, standardIfcPropertySets(exportDecision.ifcClass.entity, { ...source, nativePhase }, phaseNames), ownerHistory, product,
+  if (exportDecision) emitStandardIfcPropertySets(
+    writer, standardIfcPropertySets(exportDecision.ifcClass.entity, {
+      typeName: element.type?.name ?? undefined,
+      parameters: element.parameters.map(parameter => ({ parameterId: parameter.id, name: parameter.name, value: parameter.value })),
+      nativePhase,
+    }, phaseNames), ownerHistory, product,
     { quoted, number: ifcNumber, guid: kind => guidFor(namespace, kind, element.elementId) },
   );
 
@@ -889,6 +893,10 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     (result.nativeIfcExportParameters ?? parameterCollector.entries()).map((entry) => [entry.elementId, entry]),
   );
   const manifest = elementManifest(result);
+  // A source room has one semantic occurrence. Its element envelope or mesh
+  // must not also emit a proxy with the same native GlobalId.
+  const nativeRoomIds = new Set(options.includeNativeRooms === false ? [] :
+    (result.nativeRooms ?? []).map(room => room.elementId));
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
   const hostAxes = hostAxesByOpening(result);
   const sourceByElement = new Map<number, ElementBoundsRecord>();
@@ -1065,6 +1073,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   };
 
   for (const element of manifest) {
+    if (nativeRoomIds.has(element.elementId)) continue;
     if (!selectDesignOption(element.elementId).include) continue;
     const hasSemanticIdentity = Boolean(element.category || element.type);
     if (!element.displayed && element.geometry.finalProvenance === "not-rendered-helper") continue;
@@ -1152,6 +1161,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // is still a real persisted Revit element id. Export the body and tag as an
   // honest proxy, preserving visual completeness without guessing a category.
   for (const [elementId, fragments] of fragmentsByElement) {
+    if (nativeRoomIds.has(elementId)) continue;
     if (!selectDesignOption(elementId).include) continue;
     if (productByElement.has(elementId) || !fragments.length) continue;
     const shape = emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
@@ -1179,6 +1189,10 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     );
     writer.add(
       `IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-recovery", elementId))},#${ownerHistory},$,$,(#${product}),#${propertySet})`,
+    );
+    emitStandardIfcPropertySets(
+      writer, standardIfcPropertySets("IFCBUILDINGELEMENTPROXY", { nativePhase: phaseRelations.get(elementId) }, phaseNames),
+      ownerHistory, product, { quoted, number: ifcNumber, guid: kind => guidFor(namespace, kind, elementId) },
     );
   }
 
@@ -1284,6 +1298,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // straight run from a half-turn, so absence of the helical reading stays
   // absence rather than becoming a second claim.
   for (const assembly of result.nativeStairAssemblies ?? []) {
+    if (nativeRoomIds.has(assembly.stairElementId)) continue;
     if (!selectDesignOption(assembly.stairElementId).include) continue;
     const parts = stairAssemblyParts(assembly)
       .map((elementId) => productByElement.get(elementId))
@@ -1292,6 +1307,16 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
 
     let container = productByElement.get(assembly.stairElementId);
     if (container == null) {
+      const wrapperDecision = resolveIfcExportClass(
+        { entity: "IFCSTAIR", typeEntity: "IFCSTAIRTYPE", predefinedType: assembly.shape === "spiral" ? ".SPIRAL_STAIR." : ".NOTDEFINED." },
+        exportParametersByElement.get(assembly.stairElementId), undefined, false,
+      );
+      // The synthetic wrapper records stair decomposition, rather than a
+      // recovered occurrence shape. Keep that class when a setting requests a
+      // different entity, and explicitly report the unimplemented override.
+      const wrapperType = wrapperDecision.ifcClass.entity === "IFCSTAIR"
+        ? wrapperDecision.ifcClass.predefinedType
+        : assembly.shape === "spiral" ? ".SPIRAL_STAIR." : ".NOTDEFINED.";
       const identity = identityByElement.get(assembly.stairElementId)
         ?? assembly.stairElementId;
       container = writer.add(
@@ -1299,7 +1324,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         `${quoted(`Stairs ${assembly.stairElementId}`)},` +
         `${quoted(`Recovered stair assembly; parts joined from ${assembly.evidence}.`)},` +
         `$,#${modelPlacement},$,${quoted(String(assembly.stairElementId))},` +
-        `${assembly.shape === "spiral" ? ".SPIRAL_STAIR." : ".NOTDEFINED."})`,
+        `${wrapperType})`,
       );
       productByElement.set(assembly.stairElementId, container);
       // Every product states where it came from, and this one has no body of
@@ -1310,6 +1335,14 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
         textProperty(writer, "GeometrySource", "none: an aggregate of its runs, landings, stringers and railings"),
         textProperty(writer, "GeometryProvenance", "not-rendered-helper"),
         booleanProperty(writer, "GeometryExact", false),
+        ...(wrapperDecision.requestedEntity ? [
+          textProperty(writer, "IfcExportAsRequested", wrapperDecision.requestedEntity),
+          textProperty(writer, "IfcExportAsStatus", wrapperDecision.ifcClass.entity === "IFCSTAIR" ? wrapperDecision.entityStatus : "unsupported-aggregate-wrapper"),
+        ] : []),
+        ...(wrapperDecision.requestedPredefinedType ? [
+          textProperty(writer, "IfcPredefinedTypeRequested", wrapperDecision.requestedPredefinedType),
+          textProperty(writer, "IfcPredefinedTypeStatus", wrapperDecision.ifcClass.entity === "IFCSTAIR" ? wrapperDecision.predefinedTypeStatus : "unsupported-aggregate-wrapper"),
+        ] : []),
       ];
       const propertySet = writer.add(
         `IFCPROPERTYSET(${quoted(guid("pset-recovery", assembly.stairElementId))},#${ownerHistory},'Reviter_Recovery','Recovered-model fidelity and source evidence',${writer.refs(recoveryProperties)})`,
@@ -1448,6 +1481,18 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     entityByElement: new Map([...classByElement].map(([id, value]) => [id, value.entity])),
     guid, quoted,
   });
+
+  const optionSourceIds = [...new Set(result.designOptions?.elementOptions.map(entry => entry.elementId) ?? [])];
+  const selectionProperties = [
+    textProperty(writer, "DesignOptionSelection", options.designOptionSelection ?? "all"),
+    textProperty(writer, "DesignOptionDecodeStatus", result.designOptions?.status ?? "unavailable"),
+    integerProperty(writer, "ExcludedOptionBearingSourceElements", optionSourceIds.filter(id => !selectDesignOption(id).include).length),
+    integerProperty(writer, "UnresolvedOptionBearingSourceElements", optionSourceIds.filter(id => selectDesignOption(id).state === "unresolved").length),
+    booleanProperty(writer, "NativeSourceRoomsIncluded", options.includeNativeRooms !== false),
+    booleanProperty(writer, "ExperimentalMepRequested", options.includeExperimentalMep === true),
+  ];
+  const selectionSet = writer.add(`IFCPROPERTYSET(${quoted(guid("pset-export-selection", 1))},#${ownerHistory},'Reviter_ExportSelection','Selection counts describe source option members, including non-product dependencies',${writer.refs(selectionProperties)})`);
+  writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-export-selection", 1))},#${ownerHistory},$,$,(#${building}),#${selectionSet})`);
 
   const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "");
   return `ISO-10303-21;
