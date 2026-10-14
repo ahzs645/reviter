@@ -1,0 +1,125 @@
+{
+  "scope": "Metadata-only native MEP inventory; no member or connection parity claim",
+  "corpus": [
+    {
+      "fileName": "RAC.rvt",
+      "byteLength": 19750912,
+      "revitVersion": 2025,
+      "schemaClasses": 4600,
+      "systems": [
+        {
+          "elementId": 693257,
+          "className": "RbsElectricalSystem",
+          "name": "<unnamed>",
+          "nativeRecords": 1
+        }
+      ],
+      "coverage": {
+        "systemLayout": "supported",
+        "connectorLayout": "supported",
+        "familyConnectorGraphs": "not-decoded",
+        "systemMembership": "candidate-object-id-references",
+        "invalidSystemObjects": 0,
+        "incompleteObjects": 0,
+        "conflictingSystems": 0,
+        "conflictingPorts": 0,
+        "limitReached": false,
+        "skippedPartitions": []
+      },
+      "membershipAndConnectionParity": "not-measured-metadata-only-audit",
+      "elapsedSeconds": 1.77,
+      "pairedSystemInventory": {
+        "source": "RAC-svf.zip",
+        "referenceSystems": 1,
+        "nativeSystems": 1,
+        "identityMatches": 1,
+        "nameMatches": 1,
+        "missingNativeIds": [],
+        "missingReferenceIds": []
+      },
+      "sha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293"
+    },
+    {
+      "fileName": "School.rvt",
+      "byteLength": 17035264,
+      "revitVersion": 2025,
+      "schemaClasses": 4600,
+      "systems": [],
+      "coverage": {
+        "systemLayout": "supported",
+        "connectorLayout": "supported",
+        "familyConnectorGraphs": "not-decoded",
+        "systemMembership": "candidate-object-id-references",
+        "invalidSystemObjects": 0,
+        "incompleteObjects": 0,
+        "conflictingSystems": 0,
+        "conflictingPorts": 0,
+        "limitReached": false,
+        "skippedPartitions": []
+      },
+      "membershipAndConnectionParity": "not-measured-metadata-only-audit",
+      "elapsedSeconds": 1.25,
+      "sha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742"
+    },
+    {
+      "fileName": "Snowdon.rvt",
+      "byteLength": 94691328,
+      "revitVersion": 2024,
+      "schemaClasses": 4492,
+      "systems": [],
+      "coverage": {
+        "systemLayout": "supported",
+        "connectorLayout": "unsupported-release",
+        "familyConnectorGraphs": "not-decoded",
+        "systemMembership": "candidate-object-id-references",
+        "invalidSystemObjects": 0,
+        "incompleteObjects": 0,
+        "conflictingSystems": 0,
+        "conflictingPorts": 0,
+        "limitReached": false,
+        "skippedPartitions": []
+      },
+      "membershipAndConnectionParity": "not-measured-metadata-only-audit",
+      "elapsedSeconds": 6.93,
+      "sha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1"
+    },
+    {
+      "fileName": "UNBC.rvt",
+      "byteLength": 70336512,
+      "revitVersion": 2027,
+      "schemaClasses": 4757,
+      "systems": [],
+      "coverage": {
+        "systemLayout": "supported",
+        "connectorLayout": "unsupported-release",
+        "familyConnectorGraphs": "not-decoded",
+        "systemMembership": "candidate-object-id-references",
+        "invalidSystemObjects": 0,
+        "incompleteObjects": 0,
+        "conflictingSystems": 0,
+        "conflictingPorts": 0,
+        "limitReached": false,
+        "skippedPartitions": []
+      },
+      "membershipAndConnectionParity": "not-measured-metadata-only-audit",
+      "elapsedSeconds": 5.28,
+      "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178"
+    }
+  ],
+  "referenceIfc": {
+    "fileName": "UNBC.ifc",
+    "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+    "entityCounts": {
+      "IfcSystem": 0,
+      "IfcDistributionPort": 0,
+      "IfcRelConnectsPorts": 0,
+      "IfcRelAssignsToGroup": 0,
+      "IfcRelServicesBuildings": 0
+    }
+  },
+  "remaining": [
+    "Nonempty system membership and port-connection parity needs a paired MEP Revit/IFC model.",
+    "Native family-symbol and family-instance connector graphs are not decoded.",
+    "System memberships are payload-id-reference candidates, not named schema fields."
+  ]
+}

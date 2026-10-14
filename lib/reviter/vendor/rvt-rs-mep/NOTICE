@@ -1,0 +1,9 @@
+Portions of native-mep.ts are adapted from rvt-rs by Helen Kwok and contributors.
+https://github.com/helenkwok/rvt-rs
+Source revision: 1c3d337
+Source modules: partition_mep_systems.rs, partition_connector_pairs.rs,
+partition_room_parameters.rs (checksum-verified object framing).
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Modified for Reviter: TypeScript implementation, bounded streaming, reference
+validation, explicit release gates, provenance and conflict diagnostics.
