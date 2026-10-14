@@ -79,6 +79,13 @@ export function modelToGlb(model: any): Uint8Array;
 export function modelToIfcStep(model: any): string;
 
 /**
+ * Advanced, opt-in source metadata/owner-graph extraction. Does not export
+ * geometry or certify rooms. Resource limits and partial/unsupported results
+ * are returned explicitly; large native integers retain exact decimal text.
+ */
+export function openNativeEvidence(bytes: Uint8Array, options: any): any;
+
+/**
  * Open an RVT / RFA byte slice and return the raw `IfcModel` as
  * a JS object. The viewer passes this around and then calls the
  * other bindings to derive scene graph / glTF / schedule / etc.
@@ -162,6 +169,7 @@ export interface InitOutput {
     readonly fileMetadata: (a: number, b: number, c: number) => void;
     readonly modelToGlb: (a: number, b: number) => void;
     readonly modelToIfcStep: (a: number, b: number) => void;
+    readonly openNativeEvidence: (a: number, b: number, c: number, d: number) => void;
     readonly openRvtBytes: (a: number, b: number, c: number) => void;
     readonly openRvtBytesWithDiagnostics: (a: number, b: number, c: number) => void;
     readonly openRvtBytesWithDiagnosticsAndLimits: (a: number, b: number, c: number, d: number) => void;

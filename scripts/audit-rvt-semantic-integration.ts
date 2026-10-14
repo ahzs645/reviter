@@ -15,7 +15,9 @@ import { basename } from "node:path";
 import { IfcAPI } from "web-ifc";
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
 import type { ConvertResult } from "../lib/reviter/types.ts";
+import { enrichConvertResultWithStandardsReader, type RvtWasmModule } from "../lib/reviter/standards-reader.ts";
 import { analyzeGlbDocument, readGlbDocument } from "./glb-statistics.ts";
+import { compareIfcTypeGlobalIds } from "./lib/ifc-type-comparison.ts";
 import { declareUsage, hasFlag, isEntryPoint, optionValue, positionals, splitStepArgs, writeJsonReport } from "./lib/rvt-harness.ts";
 
 type TaggedRoot = { entity: string; tag: string; globalId: string; kind: "product" | "type" };
@@ -151,6 +153,11 @@ async function run() {
   // Release detection is intentionally automatic, including narrow-id models.
   const result = convertRvtBytes(inputBytes, basename(input), {});
   if (!result.ok) throw new Error(result.error);
+  await enrichConvertResultWithStandardsReader(result, inputBytes, async () => {
+    const wasm = await import("../lib/rvt-wasm/rvt.js");
+    await wasm.default({ module_or_path: readFileSync(new URL("../lib/rvt-wasm/rvt_bg.wasm", import.meta.url)) });
+    return wasm as unknown as RvtWasmModule;
+  });
   const geometryHash = semanticAuditGeometryHash(result);
   const triangles = result.meshes.reduce((n, mesh) => n + mesh.indices.length / 3, 0);
   const { makeIfc } = await import("../lib/reviter/export-ifc.ts");
@@ -165,6 +172,7 @@ async function run() {
   const baselinePath = optionValue("--baseline");
   const baseline = baselinePath ? JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, unknown> : null;
   const referencePath = optionValue("--reference-ifc");
+  const referenceText = referencePath ? readFileSync(referencePath, "utf8") : null;
   const glbPath = optionValue("--reference-glb");
   const evidence = result as unknown as Record<string, unknown>;
   const sourceSummary = { file: input, sourceSha256, byteLength: result.byteLength, version: result.decoderCoverage.revitVersion, method: result.method, geometryHash, meshes: result.meshes.length, triangles, bounds: result.elementBounds.length, origin: result.origin, bbox: result.bbox, identities: result.nativeIdentity?.identities.length ?? 0 };
@@ -196,9 +204,25 @@ async function run() {
   };
   const evidencePath = optionValue("--evidence");
   const roomIds = new Set(rooms.map(room => room.elementId));
+  const typeIdentityEvidence = result.nativeIfcTypeIdentityEvidence ?? [];
+  const typeIdentityIds = new Set(typeIdentityEvidence.flatMap(item => item.originalSymbolId == null ? [item.elementId] : [item.elementId, item.originalSymbolId]));
+  const guidParameters = result.nativeIfcGuidParameters ?? [];
+  const ifcIdentitySummary = {
+    originalSymbolReferences: typeIdentityEvidence.filter(item => item.originalSymbolId != null).length,
+    instanceGeometryReferences: typeIdentityEvidence.filter(item => item.originalSymbolId === null).length,
+    resolvedDoorWindowFlips: typeIdentityEvidence.filter(item => typeof item.flipped === "boolean").length,
+    storedGuidOwners: guidParameters.length,
+    storedGuidValues: guidParameters.reduce((count, table) => count + table.parameters.length, 0),
+    conflictingStoredGuidOwners: guidParameters.filter(table =>
+      [-1019000, -1019001].some(id => table.parameters.filter(parameter => parameter.parameterId === id).length > 1)).length,
+    scope: "Original-symbol references are source evidence; only actual exported product/type relationships determine comparison coverage. Stored GUID strings affect export only when parameter overrides are explicitly enabled.",
+  };
   if (evidencePath) writeJsonReport(evidencePath, {
     schemaVersion: 1, source: sourceSummary, nativeSourceRooms: rooms,
     nativeRoomIdentities: result.nativeIdentity?.identities.filter(identity => roomIds.has(identity.elementId)) ?? [],
+    nativeIfcTypeIdentityEvidence: typeIdentityEvidence,
+    nativeTypeIdentities: result.nativeIdentity?.identities.filter(identity => typeIdentityIds.has(identity.elementId)) ?? [],
+    nativeIfcGuidParameters: guidParameters,
     levels: result.levels, nativeDesignOptions: result.nativeDesignOptions,
     nativeDesignOptionMembership: result.nativeDesignOptionMembership,
   });
@@ -206,9 +230,9 @@ async function run() {
   const report = {
     schemaVersion: 1, generatedBy: "scripts/audit-rvt-semantic-integration.ts", source: sourceSummary,
     baseline: baselinePath ? { path: baselinePath, checks: baselineChecks } : null,
-    semantics: { rooms: roomSummary, parameters, designOptions: evidenceSummary(evidence.nativeDesignOptions), mep: evidenceSummary(evidence.nativeMepEvidence), coverage: result.decoderCoverage },
+    semantics: { rooms: roomSummary, parameters, ifcIdentities: ifcIdentitySummary, designOptions: evidenceSummary(evidence.nativeDesignOptions), mep: evidenceSummary(evidence.nativeMepEvidence), coverage: result.decoderCoverage },
     output: { path: outPath, bytes: Buffer.byteLength(ifc), exportOptions, evidencePath, propertySetNames, standardPropertySets: Object.fromEntries(Object.entries(propertySetNames).filter(([name]) => name.startsWith("Pset_"))), readerValidation: await reopenIfc(ifc) },
-    referenceIfc: referencePath ? { path: referencePath, ...compareIfcGlobalIds(ifc, readFileSync(referencePath, "utf8")) } : null,
+    referenceIfc: referencePath && referenceText ? { path: referencePath, ...compareIfcGlobalIds(ifc, referenceText), typeIdentities: compareIfcTypeGlobalIds(ifc, referenceText) } : null,
     referenceGlb: glbPath ? referenceGlb(glbPath) : null,
     elapsedMs: Date.now() - started,
   };

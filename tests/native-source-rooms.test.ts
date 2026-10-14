@@ -190,6 +190,21 @@ test("counted room regeneration history retains exact owner and record bounds", 
   assert.equal(room!.boundsSource, "partition_room_record"); assert.equal(room!.record!.offset, 0); assert.equal(room!.outlineStatus, "recovered");
 });
 
+test("room record Level reference agrees with exact associated-level edges", () => {
+  const own = Buffer.alloc(148);
+  own.writeBigUInt64LE(42n, 0); own.writeBigInt64LE(BigInt(NATIVE_ROOM_CATEGORY_ID), 0x12);
+  own.fill(255, 0x32, 0x3a); own.writeUInt32LE(0xffffef7f, 0x42); own.writeUInt32LE(0xffffffff, 0x4c);
+  own.set([0x46, 1, 255, 255, 255, 255, 0xab, 5], 0x50);
+  [0, 0, 4, 10, 10, 14].forEach((value, index) => own.writeDoubleLE(value, 0x58 + 8 * index));
+  own.writeUInt32LE(1, 136); own.writeBigUInt64LE(311n, 140);
+  const collector = createNativeRoomCollector(2024); collector.consumePage(own, source);
+  const context = { elementHeaders: new Map([[42, header()]]), elementBounds: [], declaredElementIds: new Set([42]), levelIds: new Set([311, 694]) };
+  const [room] = collector.resolve({ ...context, associatedLevelRelations: [{ elementId: 42, levelId: 311 }] });
+  assert.equal(room!.levelId, 311); assert.equal(room!.levelStatus, "recovered"); assert.deepEqual(room!.levelSources, ["partition_room_record_reference_list", "Element.m_assocLevelId"]);
+  const [conflict] = collector.resolve({ ...context, associatedLevelRelations: [{ elementId: 42, levelId: 694 }] });
+  assert.equal(conflict!.levelId, undefined); assert.equal(conflict!.levelStatus, "conflicting");
+});
+
 test("room names use release-width parameter entries; conflicting copies lose labels", () => {
   for (const year of [2023, 2024, 2025]) {
     const [room] = resolve(entries("01", "Café \u{1f600}", year), year, []);
@@ -229,6 +244,15 @@ test("native IFC spaces retain GlobalId, holes and explicit source-only provenan
   assert.ok(lines.some((line) => line.startsWith("IFCSPACE('1234567890123456789012'")));
   assert.ok(lines.some((line) => line.includes("'CertifiedForRouting',$,IFCBOOLEAN(.F.)")));
   assert.ok(lines.some((line) => line.startsWith("IFCRELAGGREGATES") && line.includes(",#6,")));
+  assert.ok(lines.some((line) => line.includes("'Reference',$,IFCIDENTIFIER('Room R42')")));
+});
+
+test("room common FloorCovering requires preserved source evidence", () => {
+  const [room] = resolve(entries("42", "Office"));
+  room!.floorFinish = "Wood";
+  assert.ok(!emit([room!]).lines.some((line) => line.includes("'FloorCovering'")));
+  room!.floorFinishEvidence = { ...source, offset: 123 };
+  assert.ok(emit([room!]).lines.some((line) => line.includes("'FloorCovering',$,IFCLABEL('Wood')")));
 });
 test("boxless or invalid native IFC rooms export identity only and never infer a storey", () => {
   const [room] = resolve(Buffer.alloc(0), 2024, []);

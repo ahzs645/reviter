@@ -5,7 +5,7 @@
  * data window. Conflicting values remain rejected across all scanned pages.
  */
 import { parameterDisplayName } from "./built-in-parameters.ts";
-import type { ElementParameter } from "./element-parameters.ts";
+import type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
 import { IFC_EXPORT_PARAMETER_IDS } from "./ifc-export-semantics.ts";
 
 export function createIfcExportParameterCollector(revitVersion: number | null | undefined, declared: ReadonlySet<number>) {
@@ -13,8 +13,27 @@ export function createIfcExportParameterCollector(revitVersion: number | null | 
   // Retain two distinct conflict witnesses so downstream instance/type
   // precedence can distinguish ambiguity from a missing instance value.
   // Further distinct values cannot resolve that ambiguity and need no storage.
-  const collected = new Map<number, Map<number, Set<string>>>();
+  const collected = new Map<number, Map<number, Set<number | string>>>();
+  const add = (owner: number, key: number, value: number | string) => {
+    let values = collected.get(owner);
+    if (!values) collected.set(owner, values = new Map());
+    let witnesses = values.get(key);
+    if (!witnesses) values.set(key, witnesses = new Set());
+    if (witnesses.size < 2) witnesses.add(value);
+  };
   return {
+    /** The generic owned integer tables carry Export to IFC enum flags.
+     * Preserve conflicts before their last-value parameter map is populated;
+     * a later No flag cannot resolve an earlier Yes/ByType witness. */
+    consumeOwnedParameters(table: ElementParameterTable) {
+      if (revitVersion == null || revitVersion < 2024 || revitVersion > 2027 ||
+        !Number.isSafeInteger(table.elementId) || !declared.has(table.elementId)) return;
+      for (const parameter of table.parameters) {
+        if (parameter.parameterId === -1019012 || parameter.parameterId === -1019013) {
+          add(table.elementId, parameter.parameterId, parameter.value);
+        }
+      }
+    },
     pushPage(bytes: Uint8Array) {
       if (classTag == null || !declared.size || bytes.length < 18) return;
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -39,11 +58,7 @@ export function createIfcExportParameterCollector(revitVersion: number | null | 
         for (let index = 0; index < units; index++) value += String.fromCharCode(view.getUint16(at + 12 + index * 2, true));
         const isEntity = key === -1019014 || key === -1019015;
         if (isEntity ? !/^(?:Ifc[A-Za-z0-9]+|NotExported)$/i.test(value) : !/^[A-Za-z0-9_]+$/.test(value)) continue;
-        let values = collected.get(owner);
-        if (!values) collected.set(owner, values = new Map());
-        let witnesses = values.get(key);
-        if (!witnesses) values.set(key, witnesses = new Set());
-        if (witnesses.size < 2) witnesses.add(value);
+        add(owner, key, value);
       }
     },
     snapshot(): Map<number, ElementParameter[]> {

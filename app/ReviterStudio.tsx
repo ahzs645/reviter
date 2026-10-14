@@ -3,6 +3,10 @@
 import { basicFileInfo, openFile, tryThumbnail, type FileInfo } from "@phi-ag/rvt";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
+import type { IfcExportOptions } from "../lib/reviter/export-ifc.ts";
+import { IfcExportControls } from "./studio/IfcExportControls.tsx";
+import type { NativeEvidenceRequest } from "../lib/reviter/native-evidence-worker.ts";
+import type { NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
 
 import {
   applyIfcReferenceRepairs,
@@ -22,6 +26,9 @@ import {
   makePascalScene,
   makePlanSvg,
   makeReport,
+  makeElementsCsv,
+  makeNativeRoomsCsv,
+  makeParametersCsv,
   meshBoundsByElement,
   outputName,
   packMeshSurfaceOrientationSignatures,
@@ -69,6 +76,12 @@ import { DwgWorkspace } from "./studio/DwgWorkspace.tsx";
 import { DwgFloorReview } from "./studio/DwgFloorReview.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { ViewpointLinkControls } from "./studio/ViewpointLinkControls.tsx";
+import {
+  makeViewpointModelIdentity, portableViewpoint, resolveViewpointImport,
+  viewpointSourceFingerprint,
+  VIEWPOINT_FRAGMENT_PREFIX, type PortableViewpoint,
+} from "./studio/viewpoint-links.ts";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
 import type { DirectoryModelFloor } from "./studio/directory-model.ts";
@@ -127,6 +140,7 @@ import {
   type MarkupStroke,
   type MarkupTool,
   type ModelComment,
+  type ModelViewpoint,
   type NavigationTool,
   type NewMarkupStroke,
   type NewModelComment,
@@ -321,8 +335,14 @@ export default function ReviterStudio() {
     commentId: null,
     sequence: 0,
   });
+  const [portableViewpointRequest, setPortableViewpointRequest] = useState<{ viewpoint: PortableViewpoint | null; sequence: number }>({ viewpoint: null, sequence: 0 });
+  const cameraCaptureRef = useRef<(() => ModelViewpoint | null) | null>(null);
+  const [viewpointFragment, setViewpointFragment] = useState("");
+  const [viewpointImportMessage, setViewpointImportMessage] = useState<string | null>(null);
+  const appliedViewpointFragmentRef = useRef<string | null>(null);
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [ifcExportOptions, setIfcExportOptions] = useState<IfcExportOptions>({ nativeRooms: false, mep: false, designOptions: "all" });
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
@@ -364,11 +384,71 @@ export default function ReviterStudio() {
     setNavTool(enabled ? "firstPerson" : "orbit");
   }, []);
 
+  const viewpointIdentity = useMemo(() => {
+    if (!result?.sourceSha256) return null;
+    try { return makeViewpointModelIdentity(result, result.sourceSha256); }
+    catch { return null; }
+  }, [result]);
+  const bindCameraCapture = useCallback((capture: (() => ModelViewpoint | null) | null) => {
+    cameraCaptureRef.current = capture;
+  }, []);
+  const captureViewpointCamera = useCallback(() => cameraCaptureRef.current?.() ?? null, []);
+  const restorePortableCamera = useCallback((camera: ModelViewpoint) => {
+    if (!viewpointIdentity) return;
+    try {
+      const viewpoint = portableViewpoint(viewpointIdentity, camera);
+      setNavTool("orbit");
+      setActionTool(null);
+      setGeometrySource("recovered");
+      setWorkspace("model");
+      setSheet(null);
+      setPortableViewpointRequest(current => ({ viewpoint, sequence: current.sequence + 1 }));
+      setViewpointImportMessage("Restoring viewpoint on the matching RVT model…");
+    } catch (caught) {
+      setViewpointImportMessage(caught instanceof Error ? caught.message : "This viewpoint could not be restored.");
+    }
+  }, [viewpointIdentity]);
+  const portableViewpointApplied = useCallback((sequence: number) => {
+    setPortableViewpointRequest(current => current.sequence === sequence ? { ...current, viewpoint: null } : current);
+    setViewpointImportMessage("Viewpoint restored on the matching RVT model.");
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const readFragment = () => {
+      if (!active) return;
+      const hash = window.location.hash;
+      setViewpointFragment(hash.startsWith(VIEWPOINT_FRAGMENT_PREFIX) ? hash : "");
+    };
+    queueMicrotask(readFragment);
+    window.addEventListener("hashchange", readFragment);
+    return () => { active = false; window.removeEventListener("hashchange", readFragment); };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || !viewpointFragment) return;
+      const key = `${viewpointFragment}:${viewpointIdentity?.fingerprint ?? "pending"}`;
+      if (appliedViewpointFragmentRef.current === key) return;
+      const imported = resolveViewpointImport(viewpointFragment, viewpointIdentity);
+      if (imported.status === "ready") {
+        appliedViewpointFragmentRef.current = key;
+        restorePortableCamera(imported.camera);
+      } else {
+        appliedViewpointFragmentRef.current = null;
+        setViewpointImportMessage(result && !viewpointIdentity
+          ? "The source model fingerprint is unavailable. Reopen the RVT source file to use this viewpoint link."
+          : imported.message);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [result, restorePortableCamera, viewpointFragment, viewpointIdentity]);
+
   const rvtClient = useWorkerClient<WorkerRequest, ConvertOutcome>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("rvt") ?? new URL("../lib/reviter/worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("rvt");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("../lib/reviter/worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "The conversion worker could not be prepared.",
     deathMessage: "The local conversion worker stopped unexpectedly.",
     unreadableMessage: "The local conversion worker returned an unreadable result.",
@@ -377,10 +457,11 @@ export default function ReviterStudio() {
     latestOnly: true,
   }));
   const ifcClient = useWorkerClient<IfcWorkerRequest, PairedRegressionResult>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("ifc") ?? new URL("../lib/reviter/ifc-worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("ifc");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("../lib/reviter/ifc-worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "The local IFC worker could not be started.",
     deathMessage: "The local IFC worker stopped unexpectedly.",
     unreadableMessage: "The local IFC worker returned an unreadable result.",
@@ -388,10 +469,11 @@ export default function ReviterStudio() {
     latestOnly: true,
   }));
   const floorRegionClient = useWorkerClient<FloorRegionsRequest, DerivedRoomResult>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("regions") ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("regions");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("./studio/floor-regions.worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "This browser blocked the room worker.",
     deathMessage: "The room worker stopped unexpectedly.",
     // Only the floor on screen is worth deriving. An earlier floor's answer is
@@ -511,7 +593,9 @@ export default function ReviterStudio() {
     // An IFC pairing still in flight was measured against the outgoing model.
     retireReferencePairing();
     setFile(nextFile);
+    setIfcExportOptions({ nativeRooms: false, mep: false, designOptions: "all" });
     setResult(null);
+    setPortableViewpointRequest(current => ({ viewpoint: null, sequence: current.sequence + 1 }));
     setPlanLevelId(null);
     setComparison(null);
     setGeometrySource("recovered");
@@ -637,7 +721,15 @@ export default function ReviterStudio() {
       };
 
       if (cached?.result) {
-        acceptResult(cached.result);
+        let converted = cached.result;
+        if (!converted.sourceSha256) {
+          const sourceSha256 = (await viewpointSourceFingerprint(new Uint8Array(await nextFile.arrayBuffer()))).replace(/^sha256-/u, "");
+          if (requestId !== requestIdRef.current) return;
+          converted = { ...converted, sourceSha256 };
+          void cacheRecentModel(nextFile, converted);
+        }
+        if (requestId !== requestIdRef.current) return;
+        acceptResult(converted);
         return;
       }
 
@@ -936,8 +1028,8 @@ export default function ReviterStudio() {
    * property of the object rather than a footnote about the file.
    */
   const propertyRows: PropertyRow[] = useMemo(
-    () => propertyRowsFor(selectedRecord, selectedDimensions),
-    [selectedDimensions, selectedRecord],
+    () => propertyRowsFor(selectedRecord, selectedDimensions, result),
+    [selectedDimensions, selectedRecord, result],
   );
 
   const copySelectedProperties = useCallback(async () => {
@@ -1585,8 +1677,50 @@ export default function ReviterStudio() {
         detail: referenceAssistedResult
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
           : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
+        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { ...ifcExportOptions, rooms: roomReview.rooms }), "application/x-step"),
       },
+      {
+        id: "ELEMENTS_CSV", format: "Elements CSV", detail: "Recovered inventory, types and geometry provenance",
+        run: () => exportText("ELEMENTS_CSV", "elements.csv", () => makeElementsCsv(geometryResult, { unit: "metres", designOptions: ifcExportOptions.designOptions }), "text/csv;charset=utf-8"),
+      },
+      ...((geometryResult.nativeSourceRooms?.length ?? 0) ? [{
+        id: "NATIVE_ROOMS_CSV", format: "Source rooms CSV", detail: "Source room identities, names and stored outline areas",
+        run: () => exportText("NATIVE_ROOMS_CSV", "source-rooms.csv", () => makeNativeRoomsCsv(geometryResult, { unit: "metres", designOptions: ifcExportOptions.designOptions }), "text/csv;charset=utf-8"),
+      }] : []),
+      {
+        id: "PARAMETERS_CSV", format: "Parameters CSV", detail: "Raw instance and type values in source units",
+        run: () => exportText("PARAMETERS_CSV", "parameters.csv", () => makeParametersCsv(geometryResult), "text/csv;charset=utf-8"),
+      },
+      ...(file ? [{
+        id: "NATIVE_EVIDENCE", format: "Source evidence JSON", detail: "On-demand stored graphs, definitions and storage catalog",
+        run: async () => {
+          setExporting("NATIVE_EVIDENCE");
+          const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
+            spawn: () => {
+              const deployed = staticWorkerUrl("evidence");
+              return deployed ? new Worker(deployed, { type: "module" })
+                : new Worker(new URL("../lib/reviter/native-evidence-worker.ts", import.meta.url), { type: "module" });
+            },
+            startFailureMessage: "The source evidence worker could not start.",
+            deathMessage: "The source evidence reader stopped.",
+          });
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const bytes = await file.arrayBuffer();
+            const report = await new Promise<NativeEvidenceReport>((resolve, reject) => {
+              timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 120_000);
+              client.send({ type: "inspect", bytes }, { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
+            });
+            downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), outputName(file.name, "source-evidence.json"));
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          } finally {
+            if (timer) clearTimeout(timer);
+            client.terminate();
+            setExporting(null);
+          }
+        },
+      }] : []),
       {
         id: "PASCAL",
         format: "Pascal",
@@ -1646,7 +1780,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
+  }, [exportText, file, ifcExportOptions, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1655,7 +1789,7 @@ export default function ReviterStudio() {
         : result.method === "partition-bounds-recovery"
           ? "native-ID element envelopes"
           : "the recovered geometry"
-    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable. Comments and markup export as separate review sidecars and can be imported after opening the matching source model.`
+    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments. Source semantics and approximate bodies retain their evidence in the audit. Comments and markup export as separate review sidecars and can be imported after opening the matching source model.`
     : "";
 
   // --- Chrome ------------------------------------------------------------
@@ -1903,6 +2037,9 @@ export default function ReviterStudio() {
       onActiveComment={activateComment}
       onCreateComment={createModelComment}
       viewpointRequest={viewpointRequest}
+      portableViewpointRequest={portableViewpointRequest}
+      onPortableViewpointApplied={portableViewpointApplied}
+      onCameraCaptureReady={bindCameraCapture}
       markup={markup}
       markupSettings={markupSettings}
       onCreateMarkup={createMarkupStroke}
@@ -2142,6 +2279,12 @@ export default function ReviterStudio() {
       </header>
       )}
 
+      {(result || viewpointFragment) && <details className="viewer-viewpoint-panel" open={Boolean(viewpointImportMessage)} style={{ flexShrink: 0, padding: "8px 12px", borderBottom: "1px solid var(--line)" }}>
+        <summary style={{ cursor: "pointer" }}>Viewpoint links</summary>
+        <ViewpointLinkControls identity={viewpointIdentity} captureCamera={captureViewpointCamera} onRestore={restorePortableCamera} />
+        {viewpointImportMessage && <p role="status">{viewpointImportMessage}</p>}
+      </details>}
+
       {result && <div className="floor-workspace-host" hidden={workspace !== "floors"}>
             <FloorWorkspace
               key={directoryImport?.sequence ?? "manual-directory"}
@@ -2223,6 +2366,14 @@ export default function ReviterStudio() {
           onOpenFloorWorkspace={() => { setSheet(null); setWorkspace("floors"); }}
           onZoomSelection={() => { requestZoomToSelection(); setSheet(null); }}
           onExportComments={() => exportActions.find(action => action.id === "COMMENTS")?.run()}
+          exportPanel={result && <>
+            <IfcExportControls result={result} value={ifcExportOptions} onChange={setIfcExportOptions} disabled={Boolean(exporting)} />
+            <div className="export-grid">
+              {exportActions.map(action => <button key={action.id} type="button" className="export-card" disabled={Boolean(exporting)} onClick={action.run}>
+                <span><strong>{action.format}</strong></span><small>{exporting === action.id ? "Writing…" : action.detail}</small>
+              </button>)}
+            </div>
+          </>}
           {...commentPanelProps}
         />
       )) : (
@@ -2449,6 +2600,8 @@ export default function ReviterStudio() {
                   fileRecord={fileRecord}
                   exports={exportActions}
                   exporting={exporting}
+                  ifcExportOptions={ifcExportOptions}
+                  onIfcExportOptions={setIfcExportOptions}
                   recoveredElementIds={recoveredElementIds}
                   drawnElementIds={displayedElementIds}
                   exportDisclaimer={exportDisclaimer}

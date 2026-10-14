@@ -65,6 +65,10 @@ export type NativeSourceRoom = {
   parameterEvidence?: NativeRoomEvidenceSource;
   /** Only supplied when the persisted slot names a known native Level. */
   levelId?: number;
+  levelSources?: string[];
+  levelStatus?: "recovered" | "not-recovered" | "conflicting";
+  floorFinish?: string;
+  floorFinishEvidence?: NativeRoomEvidenceSource;
   outline?: NativeRoomOutline;
   outlineStatus: "unsupported-release" | "no-record-bounds" | "not-recovered" | "conflicting-solids" | "recovered";
   /** This metadata must never directly admit an indoor area or navigation edge. */
@@ -77,7 +81,7 @@ export type NativeRoomFace = {
   v: [number, number, number];
 };
 type SolidCandidate = { elementId: number; faces: NativeRoomFace[]; evidence: NativeRoomEvidenceSource };
-type RoomRecordCandidate = { elementId: number; boundsFeet: Bounds3; evidence: NativeRoomEvidenceSource };
+type RoomRecordCandidate = { elementId: number; boundsFeet: Bounds3; references?: number[]; evidence: NativeRoomEvidenceSource };
 type ParameterCandidate = {
   elementId: number; number: string; name: string;
   levelSlot?: number; source: NonNullable<NativeSourceRoom["parameterSource"]>;
@@ -281,6 +285,10 @@ export type NativeRoomResolveInput = {
   elementBounds: readonly ElementBoundsRecord[];
   declaredElementIds?: ReadonlySet<number>;
   levelIds?: ReadonlySet<number>;
+  /** Already resolved exact native Element.m_assocLevelId edges. */
+  associatedLevelRelations?: readonly { elementId: number; levelId: number }[];
+  /** RE-153 checksum-verified owning data object, joined to native room category. */
+  roomFloorFinishes?: readonly { elementId: number; value: string; evidence: NativeRoomEvidenceSource }[];
 };
 export type NativeRoomCollector = {
   consumePage(data: Uint8Array, source: NativeRoomPageSource): void;
@@ -354,7 +362,11 @@ export function createNativeRoomCollector(revitVersion: number | null | undefine
           const owner = narrow ? undefined : ownersByCategory.get(categoryAt);
           const start = owner?.start ?? prologueStart;
           const elementId = owner?.elementId ?? validId(view, start, narrow ? 4 : 8);
-          if (!elementId || roomRecords.has(elementId) || markerAt + 56 > data.length || !matches(data, markerAt, marker)) continue;
+          if (!elementId || roomRecords.get(elementId)?.references || markerAt + 56 > data.length || !matches(data, markerAt, marker)) continue;
+          const heldRecord = roomRecords.get(elementId);
+          // Complete a split list for the selected record without switching to
+          // another partition's potentially different copy of the room box.
+          if (heldRecord && locationKey(heldRecord.evidence) !== locationKey(evidence(start))) continue;
           if (narrow && (start + 10 > data.length || view.getUint16(start + 8, true) !== headerClass)) continue;
           if (!narrow && (view.getUint16(prologueStart + 0x10, true) !== 0 || view.getUint32(prologueStart + 0x4c, true) !== 0xffff_ffff)) continue;
           const base = markerAt - 0x50;
@@ -362,7 +374,13 @@ export function createNativeRoomCollector(revitVersion: number | null | undefine
           const values = floats(view, markerAt + 8, 6);
           if (!values || values.some((value) => Math.abs(value) > 50_000) || values.slice(0, 3).some((value, axis) => value > values[axis + 3]!)) continue;
           if (roomRecords.size >= MAX_CANDIDATES) { truncated = true; continue; }
-          roomRecords.set(elementId, { elementId, boundsFeet: { min: { x: values[0]!, y: values[1]!, z: values[2]! }, max: { x: values[3]!, y: values[4]!, z: values[5]! } }, evidence: evidence(start) });
+          const referenceCount = markerAt + 60 <= data.length ? view.getUint32(markerAt + 56, true) : undefined;
+          let references: number[] | undefined;
+          if (referenceCount != null && referenceCount >= 1 && referenceCount <= 1024 && markerAt + 60 + referenceCount * width <= data.length) {
+            references = [];
+            for (let index = 0; index < referenceCount; index++) { const reference = validId(view, markerAt + 60 + index * width, width); if (reference != null) references.push(reference); }
+          }
+          roomRecords.set(elementId, { elementId, boundsFeet: { min: { x: values[0]!, y: values[1]!, z: values[2]! }, max: { x: values[3]!, y: values[4]!, z: values[5]! } }, references, evidence: evidence(start) });
         }
       }
       if (solidRelease) {
@@ -446,6 +464,8 @@ export function createNativeRoomCollector(revitVersion: number | null | undefine
     },
     resolve(input) {
       const byBounds = new Map(input.elementBounds.map((record) => [record.elementId, record]));
+      const associatedByElement = new Map<number, number[]>();
+      for (const relation of input.associatedLevelRelations ?? []) { const targets = associatedByElement.get(relation.elementId) ?? []; targets.push(relation.levelId); associatedByElement.set(relation.elementId, targets); }
       const bySolid = new Map<number, SolidCandidate[]>(), byParameters = new Map<number, ParameterCandidate[]>();
       for (const solid of solids) { const held = bySolid.get(solid.elementId) ?? []; held.push(solid); bySolid.set(solid.elementId, held); }
       for (const parameter of parameters) { const held = byParameters.get(parameter.elementId) ?? []; held.push(parameter); byParameters.set(parameter.elementId, held); }
@@ -469,7 +489,18 @@ export function createNativeRoomCollector(revitVersion: number | null | undefine
         // A contradictory entry pair must not silently fall back to a weaker block.
         const chosen = entries.length ? (agreed(entries) ? entries[0] : undefined) : (agreed(blocks) ? blocks[0] : undefined);
         if (chosen) { room.number = chosen.number; room.name = chosen.name; room.parameterSource = chosen.source; room.parameterEvidence = chosen.evidence; }
-        if (blocks.length && blocks[0]!.levelSlot != null && blocks.every((block) => block.levelSlot === blocks[0]!.levelSlot) && input.levelIds?.has(blocks[0]!.levelSlot!)) room.levelId = blocks[0]!.levelSlot;
+        const levelTargets = new Map<number, Set<string>>();
+        const addLevel = (levelId: number, source: string) => { if (!input.levelIds?.has(levelId)) return; const sources = levelTargets.get(levelId) ?? new Set<string>(); sources.add(source); levelTargets.set(levelId, sources); };
+        const blockConflict = blocks.some((block) => block.levelSlot !== blocks[0]!.levelSlot);
+        if (!blockConflict && blocks[0]?.levelSlot != null) addLevel(blocks[0].levelSlot, "partition_room_parameter_block");
+        const referenced = [...new Set(sourceRecord?.references?.filter((level) => input.levelIds?.has(level)) ?? [])];
+        // A list containing several Levels does not prove which one hosts the room.
+        if (referenced.length === 1) addLevel(referenced[0]!, "partition_room_record_reference_list");
+        for (const levelId of associatedByElement.get(elementId) ?? []) addLevel(levelId, "Element.m_assocLevelId");
+        room.levelStatus = blockConflict || levelTargets.size > 1 ? "conflicting" : levelTargets.size === 1 ? "recovered" : "not-recovered";
+        if (room.levelStatus === "recovered") { room.levelId = [...levelTargets.keys()][0]!; room.levelSources = [...[...levelTargets.values()][0]!]; }
+        const finishValues = (input.roomFloorFinishes ?? []).filter((value) => value.elementId === elementId);
+        if (finishValues.length && finishValues.every((value) => value.value === finishValues[0]!.value)) { room.floorFinish = finishValues[0]!.value; room.floorFinishEvidence = finishValues[0]!.evidence; }
         if (solidRelease && record) {
           let found: NativeRoomOutline | undefined, signature: string | undefined;
           for (const solid of bySolid.get(elementId) ?? []) {

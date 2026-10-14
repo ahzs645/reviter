@@ -1,0 +1,9 @@
+{
+  "baseCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "patches": [
+    {
+      "file": "native-evidence.patch",
+      "purpose": "Expose bounded opt-in native owner graphs, parameter definitions, units, annotations and extensible-storage metadata through openNativeEvidence."
+    }
+  ]
+}

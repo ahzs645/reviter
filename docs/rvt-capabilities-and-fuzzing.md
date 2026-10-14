@@ -22,7 +22,9 @@ fails this contract.
 | Source room identities | Admitted header releases | Explicit room category and placed project ownership; boxless identity is retained |
 | Stored room outlines | 2023, 2024, 2025 | Upstream measured solid layouts; ownership and valid topology required, never routing certification |
 | MEP systems | 2024, 2025, 2026, 2027 | Upstream 2025 record observations; schema, owner, frame echo and checksum required |
-| MEP connector joins | 2025 | Measured joins only; native graph and unconnected symbol ports remain unresolved |
+| MEP byte-list connector joins | 2025 | Measured direct-reader joins only; graph projection is a separate contract |
+| Pinned-model MEP ports/joins | 2024, 2025, 2026 | Exact entity-index to declared-owner joins; positive Mechanical/Plumbing/Electrical witnesses are 2025, no binary graph-span claim |
+| MEP source dimensions | 2025 | Measured owner/anchor/extent evidence; nominal dimensions do not replace physical bodies |
 | Primary design options | 2024, 2025 | Positive upstream option evidence is 2024; explicit flag and unambiguous set required |
 
 The native IFC parameter collector currently reads class and predefined-type

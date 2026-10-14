@@ -458,7 +458,8 @@ export function BuildingDirectory({ result, initialRoomFile, modelFile, onImport
       if(prepareIndoor){
         const source=new Uint8Array(await modelFile.arrayBuffer());
         prepared=await new Promise<NonNullable<Parameters<typeof createProjectPackage>[2]>>((resolve,reject)=>{
-          const worker=new Worker(staticWorkerUrl('indoor')??new URL('../../lib/reviter/indoor-worker.ts',import.meta.url),{type:'module'});
+          const deployed=staticWorkerUrl('indoor');
+          const worker=deployed?new Worker(deployed,{type:'module'}):new Worker(new URL('../../lib/reviter/indoor-worker.ts',import.meta.url),{type:'module'});
           worker.onmessage=event=>{const message=event.data;if(message.type==='progress')setPackageMessage(message.message);else{worker.terminate();if(message.type==='complete')resolve({indoor:message.indoor,scene:message.scene});else reject(new Error(message.message));}};
           worker.onerror=event=>{worker.terminate();reject(new Error(event.message||'Indoor preparation failed.'));};
           worker.onmessageerror=()=>{worker.terminate();reject(new Error('The indoor worker returned an unreadable result.'));};

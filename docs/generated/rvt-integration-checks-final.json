@@ -1,0 +1,49 @@
+{
+  "unitTests": {
+    "passed": 1976,
+    "skipped": 2,
+    "failed": 0
+  },
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "githubPagesBuild": "passed",
+  "renderedHtmlChecks": {
+    "passed": 4,
+    "failed": 0
+  },
+  "githubPagesChecks": {
+    "passed": 1,
+    "failed": 0
+  },
+  "seededMalformedInput": {
+    "cases": 256,
+    "targetRuns": 2560,
+    "failures": 0
+  },
+  "nativeWasmChecks": {
+    "passed": 7
+  },
+  "nativeRustAdapterChecks": {
+    "passed": 5
+  },
+  "vanillaRebuild": {
+    "pinnedCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "allFourOutputHashesMatchOriginalBaseline": true
+  },
+  "changedSourceLint": {
+    "newDiagnostics": 0,
+    "inheritedDiagnostics": [
+      {
+        "file": "app/studio/DwgFloorReview.tsx",
+        "rule": "react-hooks/set-state-in-effect",
+        "severity": "error",
+        "scope": "Unchanged auto-open effect, confirmed against the requested base checkout."
+      }
+    ]
+  },
+  "repositoryLintBaseline": {
+    "errors": 113,
+    "warnings": 75,
+    "scope": "Earlier unchanged-base and initial-integration runs; repository-wide lint is not claimed clean."
+  }
+}

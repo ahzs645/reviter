@@ -29,6 +29,11 @@ import type { PersistedCadFileName } from "./cad-files.ts";
 import type { NativeSourceRoom } from "./native-source-rooms.ts";
 import type { NativeMepEvidence } from "./native-mep.ts";
 import type { NativeDesignOptions } from "./design-options.ts";
+import type { NativePhaseSpatialEvidence } from "./native-phase-spatial.ts";
+import type { NativeIfcTypeIdentityEvidence } from "./native-ifc-type-identity.ts";
+import type { ElementParameterTable } from "./element-parameters.ts";
+import type { DocumentMetadata } from "./document-metadata.ts";
+import type { NativeIfcSemanticEvidence } from "./native-ifc-semantic-model.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -761,6 +766,8 @@ export type RvtRegressionInput = {
 };
 
 export type ConvertResult = {
+  /** Exact source byte identity, computed asynchronously by the app reader. */
+  sourceSha256?: string;
   ok: true;
   fileName: string;
   byteLength: number;
@@ -790,6 +797,8 @@ export type ConvertResult = {
   warnings: string[];
   method: "native-profile-recovery" | "partition-bounds-recovery" | "partition-coordinate-recovery";
   readerDiagnostics?: ReaderDiagnostics;
+  /** Unjoined optional-reader definitions; never overwrite scene materials. */
+  standardsReaderMaterials?: MaterialData[];
   elementIndex?: RvtElementIndex;
   /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
   elementOwnership?: ElementOwnershipDecode;
@@ -799,6 +808,11 @@ export type ConvertResult = {
   nativeSourceRooms?: NativeSourceRoom[];
   nativeMepEvidence?: NativeMepEvidence;
   nativeDesignOptions?: NativeDesignOptions;
+  nativePhaseEvidence?: NativePhaseSpatialEvidence;
+  nativeIfcTypeIdentityEvidence?: NativeIfcTypeIdentityEvidence[];
+  nativeIfcGuidParameters?: ElementParameterTable[];
+  documentMetadata?: DocumentMetadata;
+  nativeIfcSemanticEvidence?: NativeIfcSemanticEvidence;
   /** Exact alternative membership, including owners without a bounds record. */
   nativeDesignOptionMembership?: Array<{ elementId: number; designOptionId: number }>;
   /** Persisted material identities/names and optional packed render colour. */

@@ -309,7 +309,7 @@ const IFC_CLASS_EXPECTATIONS: readonly (readonly [number, string])[] = [
   [-2_000_014, "IFCWINDOW"],
   [-2_000_100, "IFCCOLUMN"],
   [-2_001_330, "IFCCOLUMN"],
-  [-2_001_320, "IFCMEMBER"],
+  [-2_001_320, "IFCBEAM"],
   [-2_000_171, "IFCMEMBER"],
   [-2_000_170, "IFCPLATE"],
   [-2_000_120, "IFCSTAIR"],

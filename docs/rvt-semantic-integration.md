@@ -1,105 +1,51 @@
-# rvt-rs semantic integration — 2026-10-14
+# rvt-rs integration and comparison
 
-This branch adds native IFC identities, conservative IFC semantics and
-source-authored room/MEP/design-option evidence to Reviter while preserving its
-geometry pipeline. It starts from `claude/unbc-candidate4-rules` at `4c13fd0` and
-pins upstream to `helenkwok/rvt-rs@1c3d337`. Six agents implemented and reviewed
-the seven areas; the integration was tested on real source files.
+This branch starts from `claude/unbc-candidate4-rules` at `4c13fd0`. The source review covers Helen Kwok's rvt-rs commit `1c3d337dbd2a6810e9dfad68fe99857843d67387`. Reviter keeps its own geometry pipeline and imports source-backed semantics through measured native readers and a pinned optional WASM reader.
 
-## Implemented behavior
+The [upstream comparison](rvt-upstream-comparison.md) contains the final four-model export populations, exact geometry baseline checks, identity matches and disagreements. The [complete inventory](rvt-upstream-capability-inventory.md) accounts for every upstream Rust module, CLI, binding/viewer asset, research example and fuzz target, with a machine-readable source/test disposition. Inventory completeness does not imply that every upstream behavior is implemented or every shape is accurate.
 
-| Area | Result | Limits |
-| --- | --- | --- |
-| Revit IFC GlobalIds | Products, exact levels, supported ordinary types and opted-in native room/system roots use validated creation identities | Explicit stored IfcGUID overrides, synthesized sub-elements and exporter-specific family/type variants still fall back |
-| Export overrides | Instance/type precedence, supported entity/predefined-type mappings, explicit No/NotExported suppression and conflict-safe fallback | Native keyed string framing is admitted 2024–2026; numeric flags are honored only when the existing parameter decoder actually recovers them; arbitrary entities and USERDEFINED are unsupported |
-| Common property sets | Typed Reference, FireRating, IsExternal, LoadBearing and supported covering Finish values; raw instance/type parameters retained | No inferred phase Status: phase-name and export-phase evidence is insufficient |
-| Native source rooms | Boxless identity retention, names, own record bounds and measured stored-solid outlines; opt-in source IfcSpaces | Outline layouts are admitted 2023–2025; unresolved outlines remain identity-only; source rooms never certify routing boundaries; vertical extrusions explicitly record approximate ceiling geometry |
-| MEP | Schema/owner/checksum-bound system-reference evidence, measured 2025 connections, opt-in IFC systems/ports/relations | Membership remains payload-reference evidence with documented extra references; connection recovery is partial; unknown placement/direction and unconnected/native-graph ports remain unresolved |
-| Design options | Bounded streaming primary-option decoding, explicit all/main-and-primary export choice | Positive evidence is 2024; 2025 admits the upstream layout without a positive set fixture; other releases and unresolved choices retain geometry |
-| Capability contracts/fuzzing | Executable release/evidence contracts and bounded seeded parser/converter mutations | Contracts describe decoder admission, not complete geometry support; fuzzing excludes WASM and arbitrary CFB allocation-table mutations |
+## Implemented capabilities
 
-Reports now retain room, MEP and design-option evidence. Rooms and MEP export
-are explicit library/CLI options, without changes to indoor review or routing:
+| Capability | Result and evidence |
+| --- | --- |
+| IFC product/type identity | Creation-history product IDs, original family-symbol type IDs, supported type projections and measured door/window variants. Raw stored GUID overrides are optional; conflicting witnesses and root collisions retain safe native/default identity. [Source-only type validation](generated/rvt-family-type-source-validation.json) reports 25,723/25,723 source-only compared family type IDs matching their Revit IFCs; unresolved flips and absent relations are excluded explicitly. |
+| IFC classes and properties | Instance/type export overrides, predefined types, curtain-wall refinement, broader architectural/MEP mappings, typed common property sets, source type values and explicitly named native computed quantities. Conflicting values remain unresolved; producer default booleans do not become source facts. |
+| Rooms, phases and levels | Source room identities, stored outlines, exact associated levels, floor finishes, native creation/demolition phase references and level constraints. Default IFC can include source rooms through a control; source outlines remain separate from reviewed room and navigation boundaries. Lifecycle status needs proven phase order and a selected phase. |
+| MEP graph and dimensions | Source system reference candidates, measured ports/joins, same-byte native graph projection, unconnected ports and release-bounded duct/pipe/fitting dimensions. All 73 mechanical and 126 plumbing connections represented by the positive paired IFCs are recovered; two additional plumbing joins have a native owner absent from the reference. [Detailed validation](native-mep-integration.md) records the distinction. |
+| Optional IFC pipe bodies | Verified native axes and inner/outer diameters can reconstruct eligible proxy or missing pipe bodies as hollow sweeps. Certified native/reference bodies stay intact. All 69 source pipe witnesses reopen and tessellate; explicit 64-segment tessellation has a worst six-face bounds error of 0.071 mm. These bodies remain reconstructed, never exact native BReps. |
+| Design options | Source option sets and primary selections, with all-options or main-and-primary IFC export. Unresolved alternatives remain included. |
+| Document metadata and CSV | Geometry-independent safe BasicFileInfo/Atom metadata, project properties, element inventory, native room schedules and raw instance/type parameter CSV. CSV text is formula-neutralized and source units are explicit. These inventories do not claim native authored schedule/formula evaluation. |
+| Native source evidence | A declared WASM-only patch exposes bounded selected owner graphs, saved metadata, parameter definitions, units, bindings and stored extensible-storage catalogs. RAC yields 774 definitions; Snowdon yields 1,604 and nine stored ES schemas. [Inspector documentation](native-source-evidence.md) describes actual witnesses and partial/unsupported states. |
+| Browser workflow | Desktop/mobile IFC controls and CSV/evidence downloads, source properties/report inspection, and exact-source-SHA-bound portable camera links. Capture uses the live camera; links defer until the matching RVT opens and refuse different bytes. Production worker construction is fixed so Vite emits compiled worker modules. |
+| Validation | Executable release/capability contracts, seeded bounded malformed-input testing and an isolated reader comparison command with separate original/patched WASM provenance, exact source hashes, resource limits and timeout/failure reporting. |
 
-```ts
-makeIfc(result, { nativeRooms: true, mep: true, designOptions: "main-and-primary" });
-```
-
-The optional WASM was rebuilt as 0.4.0 from the pinned commit. Its adapter uses
-an explicit scaffold quality mode and bounded walker limits. Revit 2027
-metadata opens, but its full optional-reader path remains excluded. The WASM
-grew from 0.9 MB to 4.1 MB; source commit, toolchain and output hashes are in
-`lib/rvt-wasm/provenance.json`. The JavaScript geometry pipeline is independent.
-
-## Model verification
-
-Models and reference conversions came from the user's
-[Drive folder](https://drive.google.com/drive/folders/1Dx_v2v6M1LI02E4sngLyoyVMdnohijLT).
-The files remain outside Git. Complete observations, source SHA-256 hashes,
-reference metadata, export choices and scope are in
-[the validation summary](generated/rvt-semantic-integration-2026-10-14/summary.json).
-
-| Model | Release | Scene triangles | Scene hash vs base | Rooms / outlines |
-| --- | ---: | ---: | --- | ---: |
-| RAC Basic | 2025 | 195,555 | Identical | 14 / 14 |
-| Technical School | 2025 | 393,145 | Identical | 91 / 85 |
-| Snowdon Towers | 2024 | 1,596,168 | Identical | 54 / 47 |
-| UNBC | 2027 | 901,903 | Identical | No native rooms recovered |
-
-Every model also matches the base mesh count, bounds count, origin and scene
-extent. Hashes include positions, indices, colors and triangle ownership. This
-proves scene preservation, not geometric equivalence to every Revit export.
-All generated IFCs reopened as IFC4 with web-ifc; this check validates readable
-schema/entity populations and does not constitute complete EXPRESS-rule or
-geometric conformance validation.
-
-UNBC has **35,161 unambiguous shared numeric IFC Tags, all with matching Revit
-GlobalIds**. The comparison excludes 2,945 ambiguous Tag groups and records 266
-output-only and 2,367 reference-only groups. IFC class mappings can differ even
-where identities agree. The supplied Autodesk GLBs were inspected for metadata,
-instancing and bounds. Their Autodesk dbIds are not assumed to be Revit IDs,
-and Snowdon's coordinated walls view is not treated as a full-model export.
-
-Snowdon resolves Bandstand Options primary `1500724` and Bleacher Seating
-primary `2059970`. Its final audit requests main-and-primary IFC selection while
-the source scene remains unchanged. RAC, School and Snowdon opt-in room exports
-reopen with 14, 91 and 54 IfcSpaces respectively. Missing level evidence is kept
-under the building rather than assigning a nearest storey. Supplied models
-produced no positive keyed IFC override values, so those mappings are covered
-by synthetic framing, conflict/precedence and independent-reader tests rather
-than claimed real-model override parity.
-
-Additional SHA-verified MIT mechanical/plumbing witnesses from upstream's
-registry provide positive MEP validation. Mechanical recovers 5 systems and
-69 of 73 reference connections with no extra connections. Its full Reviter
-conversion with `--mep` reopens with 5 IfcSystems, 138 ports and 69 connections;
-74 unambiguous product GlobalIds match the reference. Plumbing recovers 120 of
-126 reference connections plus one native join to an owner absent from the
-reference IFC. Raw membership totals include the documented reference-candidate
-ambiguity. See [the MEP evidence details](native-mep-integration.md).
-
-## Checks and reproduction
-
-- Unit suite: **1,871 passed, 2 skipped, 0 failed**.
-- Typecheck and production build: passed.
-- Rendered HTML: 4 passed; an inherited `restore`/`restores` assertion typo was corrected.
-- ESLint on all changed source/tests: passed. Repository-wide lint retains the base's **113 errors and 75 warnings**, confirmed by running lint on the unchanged base checkout.
-- Seeded malformed-input run: 256 inputs, 2,560 target runs, 0 failures; exact corpus digest is retained in the generated report.
-- WASM provenance/network-import checks and actual model metadata/diagnostics smoke checks: passed.
+## Reproduction
 
 ```sh
-node --experimental-strip-types --import ./scripts/register-test-typescript.mjs \
-  scripts/audit-rvt-semantic-integration.ts model.rvt \
-  --reference-ifc revit.ifc --baseline baseline.json \
-  --native-rooms --mep --design-options main-and-primary \
-  --json audit.json --out recovered.ifc --evidence room-evidence.json
+npm run compare:rvt-readers -- --input model.rvt \
+  --upstream-wasm /path/to/vanilla/rvt.js \
+  --reviter-wasm /path/to/reviter/lib/rvt-wasm/rvt.js \
+  --reference-ifc paired.ifc --output comparison.json
 
+npm run inspect:rvt-evidence -- model.rvt --out evidence.json
+npm run inspect:rvt-evidence -- model.rvt --ids 123,456 --out owners.json
+npm run inspect:rvt-evidence -- model.rvt --classes TextNote,Dimension --out annotations.json
+
+node scripts/rebuild-rvt-wasm.mjs
+node scripts/rebuild-rvt-wasm.mjs --vanilla --out /path/to/vanilla
 npm run test:capabilities
 npm run test:fuzz
 npm run fuzz:rvt -- --seed 5396052 --cases 256 --output fuzz.json
-node scripts/rebuild-rvt-wasm.mjs
 ```
 
-[Attribution and Apache-2.0 notices](rvt-semantic-attribution.md) identify adapted
-upstream files and Reviter's changes. No geometry/viewer replacement, navigation
-promotion, deployment, or source-model replacement is part of this branch.
+The vanilla rebuild uses a clean pinned upstream checkout and a separate output directory. The vendored package records the exact local patch and generated file hashes. Uploaded source RVTs, paired IFC/GLB exports and raw native graph dumps remain outside Git. [Licence and attribution](rvt-semantic-attribution.md) identify upstream inputs and substantive adaptations.
+
+The initial seven-area audit reports remain under `docs/generated/rvt-semantic-integration-2026-10-14/` as earlier evidence. Their initial MEP counts and unsupported-feature statements are superseded by the expanded comparison and witnesses above.
+
+## Remaining limits
+
+Final [checks](generated/rvt-integration-checks-final.json): 1,976 unit tests passed, two skipped; typecheck, production/GitHub Pages builds, four rendered-HTML checks and the Pages check passed. The seeded malformed-input run has 256 cases, 2,560 target runs and zero failures. [Desktop/mobile export checks](generated/rvt-export-browser-validation.json) and [RAC camera-link checks](generated/rvt-viewpoint-browser-validation.json) passed. Changed-source lint has no new diagnostics; one unchanged auto-open effect error in the touched DWG component is confirmed against the base. Repository-wide lint remains an inherited baseline limitation.
+
+UNBC matches all 35,117 unambiguous shared product GlobalIds. Full product-to-type identity parity remains incomplete: 36,886 of 37,132 relationships match Revit's paired IFC (99.34%), with 246 differences. The source-only original-symbol proof remains separate from full type parity. The remaining 224 column and 22 door/window differences need additional geometry-bearing type or flip decoding; the comparison retains their populations and examples.
+
+Full native drawing reconstruction, native schedule/formula evaluation, every parametric/mapped IFC representation and complete filter/section/annotation URL state remain narrower or unresolved. General native graph access preserves serialized evidence and diagnostics; it does not turn unknown graph fields into evaluated BIM facts. Native RVT writing, Python packaging and research-only oracle/remapping tools are accounted for separately from this browser converter. See the inventory for each remaining gap.

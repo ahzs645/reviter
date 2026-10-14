@@ -2,15 +2,28 @@
   "upstream": "https://github.com/helenkwok/rvt-rs.git",
   "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
   "packageVersion": "0.4.0",
+  "localPatches": [
+    {
+      "path": "lib/rvt-wasm/patches/native-evidence.patch",
+      "sha256": "cf468bbcb0c0aa573fda9390f856b2d8bbd30c3b240eb4e1a40d4f7198755c13",
+      "purpose": "Expose bounded opt-in native owner graphs, parameter definitions, units, annotations and extensible-storage metadata through openNativeEvidence.",
+      "files": [
+        "Cargo.lock",
+        "rvt-wasm/Cargo.toml",
+        "rvt-wasm/src/lib.rs",
+        "rvt-wasm/src/native_evidence.rs"
+      ]
+    }
+  ],
   "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
   "wasmBindgen": "0.2.118",
   "target": "web",
   "wasmOpt": false,
   "build": "cargo build --locked --release --target wasm32-unknown-unknown -p rvt-wasm",
   "hashes": {
-    "rvt.js": "6ab0a2b3d388f202f7dc585634b6ccce87c9b20f68e80e4155d8bd033ad769e1",
-    "rvt.d.ts": "950b044a0a88b1f7997209773eb3b6ab529cc78bbb33f1114eb77429d7555178",
-    "rvt_bg.wasm": "dff0170996bfbeeb76b4a176b34235e20b5ebd676173284caee4d646b1464b06",
-    "rvt_bg.wasm.d.ts": "828f23ecabb3fae1ae1e75a35a9c31d170294476fd22c052c80d6e13650e14ef"
+    "rvt.js": "9b0672a2a83543e5888cfb879247a397eb13c33a9b0e32a2d2dc8bf9e6d604f7",
+    "rvt.d.ts": "ee1dd426c1d264cde4bbb2c98961f011ebbed941f173970590fb43b1f34b1d24",
+    "rvt_bg.wasm": "c99646e6ede3b1bb58b45d13df8fd11e28b860527ec48d34758ef822d88d6662",
+    "rvt_bg.wasm.d.ts": "093f89cdf6a1d6c6a0f1f87642c6adb5e6baa09486bb68c56a2362bb95ab5c8d"
   }
 }

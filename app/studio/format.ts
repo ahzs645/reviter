@@ -1,7 +1,7 @@
 /** Display formatting helpers for the studio shell. */
 
 import { presentedParameters } from "../../lib/reviter/parameter-specs.ts";
-import type { ElementBoundsRecord, Vec3 } from "../../lib/reviter/types.ts";
+import type { ConvertResult, ElementBoundsRecord, Vec3 } from "../../lib/reviter/types.ts";
 import type { CanvasMenuRequest, PropertyProvenance, PropertyRow } from "./types.ts";
 
 export type PropertyTextRow = {
@@ -150,6 +150,7 @@ export function levelNames(levels: readonly { name?: string }[]): string {
 export function propertyRowsFor(
   record: ElementBoundsRecord | null,
   dimensions: Vec3 | null,
+  result?: ConvertResult | null,
 ): PropertyRow[] {
   if (!record || !dimensions) return [];
 
@@ -254,12 +255,9 @@ export function propertyRowsFor(
     // 6,278 walls. These are read, not derived. Each is shown in the unit its
     // parameter declares; parameters Revit never shows, and values that cannot
     // be what their parameter declares, are left out rather than printed as feet.
-    ...presentedParameters(record.parameters ?? []).map((parameter) => ({
-      key: `parameter-${parameter.parameterId}`,
-      label: parameter.label,
-      value: parameter.value,
-      provenance: "decoded" as const,
-    })),
+    ...parameterRows(record.parameters ?? [], "parameter", ""),
+    ...parameterRows(record.typeParameters ?? [], "type-parameter", "Type · "),
+    ...sourceElementRows(record, result),
     // Both of these restate the element's own bounds record.
     {
       key: "bounding-size",
@@ -296,4 +294,102 @@ export function propertyRowsFor(
       }]
       : []),
   ];
+}
+
+
+function parameterRows(parameters: NonNullable<ElementBoundsRecord["parameters"]>, prefix: string, labelPrefix: string): PropertyRow[] {
+  const grouped = new Map<number, { label: string; values: Set<string> }>();
+  for (const parameter of presentedParameters(parameters)) {
+    const entry = grouped.get(parameter.parameterId) ?? { label: parameter.label, values: new Set<string>() };
+    entry.values.add(parameter.value); grouped.set(parameter.parameterId, entry);
+  }
+  return [...grouped].map(([id, entry]) => ({ key: `${prefix}-${id}`, label: `${labelPrefix}${entry.label}`, value: `${[...entry.values].join(" / ")}${entry.values.size > 1 ? " (source conflict)" : ""}`, provenance: "decoded" }));
+}
+
+/** Selected-element source facts: memberships and stored rooms never grant
+ * navigation access, served stops or an indoor enclosure certificate. */
+export function sourceElementRows(record: ElementBoundsRecord, result?: ConvertResult | null): PropertyRow[] {
+  if (!result) return [];
+  const rows: PropertyRow[] = [];
+  const add = (key: string, label: string, value: string) => rows.push({ key, label, value, provenance: "decoded" });
+  const levelName = (id: number) => result.levels.find(level => level.levelId === id)?.name ?? `Level ${id}`;
+  const sem = result.nativeIfcSemanticEvidence?.elements.find(element => element.elementId === record.elementId);
+  if (sem) {
+    add("source-ifc-class", "IFC source class", sem.ifcClass.entity);
+    if (!record.typeName && sem.typeName) add("source-type-name", "Recovered type name", sem.typeName);
+    const helpful = new Set(["Shape", "Length", "NominalDiameter", "FireRating", "IsExternal", "LoadBearing", "NumberOfRiser", "RiserHeight", "TreadLength", "Finish", "SerialNumber"]);
+    const seen = new Set<string>();
+    for (const set of sem.propertySets) for (const property of set.properties) {
+      if (!helpful.has(property.name)) continue;
+      const identity = `${property.name}:${JSON.stringify(property.value)}:${property.type}`;
+      if (seen.has(identity)) continue; seen.add(identity);
+      const label = property.name.replace(/([a-z])([A-Z])/g, "$1 $2").replace("Number Of Riser", "Risers");
+      const format = (value: string | number | boolean) => typeof value === "boolean" ? value ? "Yes" : "No" : typeof value === "number"
+        ? property.type === "IFCPOSITIVELENGTHMEASURE" || property.type === "IFCLENGTHMEASURE" ? `${formatNumber(value)} m` : String(value)
+        : value;
+      const values = Array.isArray(property.value) ? property.value.map(format).join(" / ") : format(property.value as string | number | boolean);
+      add(`source-property-${set.name}-${property.name}`, `IFC · ${label}`, values);
+    }
+  }
+  const phase = result.nativePhaseEvidence?.elementPhases.find(element => element.elementId === record.elementId);
+  if (phase) {
+    const name = (id: number | null) => id == null ? "None recorded" : result.nativePhaseEvidence?.phases.find(phase => phase.phaseId === id)?.name ?? `Phase ${id} (name unavailable)`;
+    add("created-phase", "Creation phase", name(phase.createdPhaseId));
+    add("demolished-phase", "Demolition phase", phase.demolitionKnown ? name(phase.demolishedPhaseId) : "Not recovered");
+    add("phase-lifecycle", "Lifecycle", "Phase order and selected export phase required");
+  }
+  const level = result.nativeAssociatedLevelRelations?.find(relation => relation.elementId === record.elementId);
+  if (level) add("source-level", "Source level", levelName(level.levelId));
+  const room = result.nativeSourceRooms?.find(room => room.elementId === record.elementId);
+  if (room) {
+    if (room.number) add("source-room-number", "Room number", room.number);
+    if (room.name) add("source-room-name", "Room name", room.name);
+    if (room.floorFinish) add("source-room-floor-finish", "Floor finish", room.floorFinish);
+    add("source-room-outline", "Stored room outline", room.outlineStatus === "recovered" ? "Recovered · routing needs indoor review" : "Not recovered");
+  }
+  const systems = result.nativeMepEvidence?.systems.filter(system => system.members.includes(record.elementId)) ?? [];
+  if (systems.length) add("source-mep-systems", "System references", systems.map(system => system.name || `Unnamed system ${system.elementId}`).join("; "));
+  const ports = result.nativeMepEvidence?.ports?.filter(port => port.elementId === record.elementId) ?? [];
+  if (ports.length) add("source-mep-ports", "Recovered ports", String(ports.length));
+  const connections = result.nativeMepEvidence?.connections.filter(connection => connection.elementId === record.elementId || connection.otherElementId === record.elementId) ?? [];
+  if (connections.length) add("source-mep-connections", "Connector joins", `${connections.length} · direction and port positions unavailable`);
+  const dims = result.nativeMepEvidence?.dimensions?.find(dimensions => dimensions.elementId === record.elementId);
+  if (dims) for (const [key, label, value, unit] of [
+    ["mep-width", "Section width/diameter", dims.widthFeet, "mm"], ["mep-height", "Section height", dims.heightFeet, "mm"],
+    ["mep-length", "Source length", dims.lengthFeet, "ft"], ["mep-inner-diameter", "Inside diameter", dims.pipeInnerDiameterFeet, "mm"],
+    ["mep-outer-diameter", "Outside diameter", dims.pipeOuterDiameterFeet, "mm"], ["mep-nominal-diameter", "Nominal diameter", dims.nominalDiameterFeet, "mm"],
+  ] as const) if (value != null && Number.isFinite(value) && value > 0) add(key, label, `${formatNumber(unit === "mm" ? value * 304.8 : value)} ${unit}`);
+  const membership = result.nativeDesignOptionMembership?.find(entry => entry.elementId === record.elementId);
+  if (membership) {
+    const set = result.nativeDesignOptions?.sets.find(set => set.optionIds.includes(membership.designOptionId));
+    add("source-design-option", "Design option", `${set?.name ?? "Option set not recovered"} · option ${membership.designOptionId}${set?.primaryOptionId === membership.designOptionId ? " (primary)" : ""}`);
+  }
+  return rows;
+}
+
+export function sourceSemanticReport(result: ConvertResult): { rows: { label: string; value: string }[]; notes: string[] } {
+  const rows: { label: string; value: string }[] = [], notes: string[] = [];
+  const own = result.elementBounds.filter(element => element.parameters?.length), type = result.elementBounds.filter(element => element.typeParameters?.length);
+  if (own.length) rows.push({ label: "Instance parameters", value: `${own.reduce((count, element) => count + element.parameters!.length, 0).toLocaleString()} values · ${own.length.toLocaleString()} elements` });
+  if (type.length) rows.push({ label: "Type parameters", value: `${type.length.toLocaleString()} elements with recovered type values` });
+  if (result.nativeIfcSemanticEvidence?.elements.length) rows.push({ label: "IFC source properties", value: `${result.nativeIfcSemanticEvidence.elements.length.toLocaleString()} element identities` });
+  if (result.nativeSourceRooms?.length) {
+    rows.push({ label: "Native rooms", value: `${result.nativeSourceRooms.length.toLocaleString()} identities · ${result.nativeSourceRooms.filter(room => room.outline).length.toLocaleString()} stored outlines` });
+    notes.push("Room routing requires indoor review.");
+  }
+  if (result.nativePhaseEvidence?.elementPhases.length) {
+    rows.push({ label: "Phase records", value: `${result.nativePhaseEvidence.phases.length.toLocaleString()} named phases · ${result.nativePhaseEvidence.elementPhases.length.toLocaleString()} elements` });
+    notes.push("Lifecycle requires proven phase order and a selected export phase.");
+  }
+  if (result.nativeMepEvidence) {
+    rows.push({ label: "Building systems", value: `${result.nativeMepEvidence.systems.length.toLocaleString()} system records · ${result.nativeMepEvidence.connections.length.toLocaleString()} connector joins` });
+    notes.push("System membership uses source references; some may include nonphysical records. Flow direction and port positions are unavailable.");
+  }
+  if (result.nativeDesignOptions?.sets.length) rows.push({ label: "Design alternatives", value: `${result.nativeDesignOptions.sets.length} option sets · ${result.nativeDesignOptions.unresolvedSets.length} unresolved` });
+  const metadata = result.documentMetadata;
+  if (metadata?.title) rows.push({ label: "Document title", value: metadata.title });
+  if (metadata?.workshared != null) rows.push({ label: "Worksharing", value: metadata.workshared ? "Workshared" : "Single document" });
+  if (metadata?.projectParameters.length) rows.push({ label: "Project properties", value: `${metadata.projectParameters.length} source values` });
+  if (result.nativeIfcSemanticEvidence?.limitations.some(note => /disagreed|conflict|omitted|outside/.test(note))) notes.push("Some IFC property values could not be established or had conflicting source evidence.");
+  return { rows, notes };
 }

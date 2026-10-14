@@ -12,6 +12,7 @@ import { decoderPlanForVersion } from "../lib/reviter/native-decoder.ts";
 import { decodeRevitDocumentHistory } from "../lib/reviter/native-identity.ts";
 import { NATIVE_ROOM_SOLID_RELEASES } from "../lib/reviter/native-source-rooms.ts";
 import { MEP_SYSTEM_RELEASES, MEP_CONNECTION_RELEASES } from "../lib/reviter/native-mep.ts";
+import { MEP_MODEL_RELEASES } from "../lib/reviter/native-mep-model.ts";
 import { decodeNativeDesignOptions } from "../lib/reviter/design-options.ts";
 
 test("element-record contract agrees with executable decoder admission across release boundaries", () => {
@@ -110,6 +111,7 @@ test("semantic admission contracts agree with the decoders' exact release gates"
   assert.deepEqual(releases("stored-room-outlines"), NATIVE_ROOM_SOLID_RELEASES);
   assert.deepEqual(releases("mep-systems"), MEP_SYSTEM_RELEASES);
   assert.deepEqual(releases("mep-connectors"), MEP_CONNECTION_RELEASES);
+  assert.deepEqual(releases("mep-model-ports-and-joins"), MEP_MODEL_RELEASES);
   for (const version of [2023, 2024, 2025, 2026, 2027]) {
     assert.equal(decodeNativeDesignOptions([], version).status !== "unsupported-release", releases("primary-design-options").includes(version));
   }

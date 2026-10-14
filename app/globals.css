@@ -1171,6 +1171,11 @@ button[data-reason]:focus-visible::after {
 .coverage-bar i { background: var(--accent); }
 
 .export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ifc-export-controls { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 14px; padding: 12px; display: grid; gap: 10px; }
+.ifc-export-controls legend { color: var(--text); font-size: 12px; padding: 0 5px; }
+.ifc-export-controls label { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+.ifc-export-controls select { max-width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px; }
+.ifc-export-controls p { margin: 0; color: var(--text-3); font-size: 11px; }
 .export-card {
   padding: 12px 13px;
   display: block;
@@ -2645,3 +2650,5 @@ button[data-reason]:focus-visible::after {
 .cad-building-main>p{padding:8px 14px;margin:0;font-size:12px;background:#fff}
 @media(max-width:700px){.cad-building-view{display:flex;flex-direction:column}.cad-building-main{order:-1;height:46%;min-height:240px;flex-shrink:0}.cad-building-view>aside{flex:1;min-height:0;border-top:1px solid #d5e0e7}}
 .cad-door-buttons{max-height:220px;overflow:auto;display:flex;flex-direction:column;padding-top:8px}.cad-door-buttons button{text-align:left;margin-right:0}
+
+.mobile-sheet .export-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

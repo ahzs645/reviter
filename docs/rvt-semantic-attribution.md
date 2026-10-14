@@ -15,8 +15,21 @@ attribution. Vendored WASM also carries the licence, notice and build provenance
 | `native-mep.ts` | `partition_mep_systems.rs`, `partition_connector_pairs.rs`, RE-162/138/141 | File-local schema indices, checksums, bounded references, measured connector lists and late fitting-category joins |
 | `design-options.ts` | `partition_design_options.rs`, `partition_element_records.rs`, RE-40 | Bounded streaming record/name evidence and explicit unresolved alternatives |
 | `capabilities.ts`, fuzz harness | Upstream capability/fuzzing approach | Independent Reviter contracts and deterministic parser/converter mutation corpus |
+| `native-ifc-type-identity.ts`, GUID witness collectors | `revit_global_ids.rs`, original-symbol and exporter recipes | Measured source-class/checksum gates, exact type joins and retained conflicting raw values |
+| `native-ifc-semantic-model.ts`, `ifc-category-map.ts` | Upstream IFC entity/property projection | Exact declared-owner joins, IFC4 allowlists, typed units and rejection of unproven defaults |
+| `native-mep-model.ts`, `native-mep-dimensions.ts` | RE-134/157/165, native connector graph projection | Same-byte pinned-model joins, dimension witnesses and disagreement suppression |
+| `export-ifc-mep-geometry.ts` | RE-131/157 pipe axes and diameters | Optional IFC-only hollow sweep with six-face bounds checks and explicit reconstruction provenance |
+| `native-phase-spatial.ts` | Native phase, associated-level and room-finish readers | Source references and release-bounded fields; lifecycle order remains separately proved |
+| `document-metadata.ts`, `export-schedules.ts` | `rvt-info`, `rvt-schedule`, Atom/ProjectInformation metadata | Independent bounded safe-container inspection and formula-neutralized inventory CSV |
+| `viewpoint-links.ts` | Upstream viewer URL-fragment concept | Independent versioned SHA-256 binding using Reviter's existing live-camera/model-coordinate helpers |
+| `lib/rvt-wasm/patches/native-evidence.patch` | `native_document`, native definitions, metadata and storage catalog | Reviter-owned WASM-only bridge; core Rust decoders unchanged, explicit source/output budgets and exact integer strings |
 
 New IFC room and MEP emitters consume the recovered evidence without replacing
 Reviter's geometry or indoor review algorithms. Individual source files identify
 their provenance and substantive changes. The existing IFC semantic notice is
 also retained under `lib/reviter/vendor/`.
+
+The expanded inventory retains Apache attribution for upstream declaration
+excerpts. The vendor patch manifest and provenance record both the unmodified
+upstream revision and local patch hash; the comparison uses a separately built
+unmodified bundle as its upstream baseline.

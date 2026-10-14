@@ -52,6 +52,8 @@ import { resolveNativeRelations } from "./convert-native-relations.ts";
 import { resolveFamilyTypeNames } from "./family-type-names.ts";
 import { familyDocumentFormsBySymbol } from "./family-forms.ts";
 import { boundlessSceneElements } from "./model-elements.ts";
+import { nativeOriginalSymbolElementIds, resolveNativeIfcTypeIdentityEvidence } from "./native-ifc-type-identity.ts";
+import { readDocumentMetadataContainer } from "./document-metadata.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -128,6 +130,7 @@ export function convertRvtBytes(
     const scan = scanPartitions({
       schema,
       declaredElementIds,
+      nativeTypeIdentityElementIds: nativeOriginalSymbolElementIds(declaredElementIds, nativeIdentity?.identities ?? []),
       partitions,
       decoderPlan,
       objectMarkers,
@@ -378,12 +381,22 @@ export function convertRvtBytes(
     // The two branches below publish the same decoded file — the same records,
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
+    const nativePhaseEvidence = scan.nativePhaseCollector.resolve({ elementHeaders, levelIds: new Set(levelDefinitions.keys()) });
     const decodedFile = {
+      documentMetadata: readDocumentMetadataContainer(cfb, partitionNames),
+      nativeIfcGuidParameters: scan.nativeIfcGuidParameters,
+      nativePhaseEvidence,
+      nativeIfcTypeIdentityEvidence: resolveNativeIfcTypeIdentityEvidence({
+        references: scan.nativeOriginalSymbols, placements: instancePlacements.values(),
+        elementBounds, hostRelations: nativeHostRelations, revitVersion: decoderPlan.revitVersion ?? 0,
+      }),
       nativeSourceRooms: scan.nativeRoomCollector.resolve({
         elementHeaders,
         elementBounds,
         declaredElementIds: declaredElementIds.size ? declaredElementIds : undefined,
         levelIds: new Set(levelDefinitions.keys()),
+        associatedLevelRelations: nativeAssociatedLevelRelations,
+        roomFloorFinishes: nativePhaseEvidence.roomFloorFinishes,
       }),
       nativeMepEvidence: scan.nativeMepEvidence,
       nativeDesignOptions: scan.nativeDesignOptions,

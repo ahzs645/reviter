@@ -49,10 +49,11 @@ export function decodeDwg(
     // exactly this promise's. Nothing here is pooled or reused, and the shared
     // client charges nothing for the pooling this call site does not want.
     const client = new WorkerClient<DwgWorkerRequest, DwgWorkerResult>({
-      spawn: () => new Worker(
-        staticWorkerUrl("dwg") ?? new URL("../../lib/reviter/dwg-worker.ts", import.meta.url),
-        { type: "module" },
-      ),
+      spawn: () => {
+        const deployed = staticWorkerUrl("dwg");
+        return deployed ? new Worker(deployed, { type: "module" })
+          : new Worker(new URL("../../lib/reviter/dwg-worker.ts", import.meta.url), { type: "module" });
+      },
       startFailureMessage: "This browser blocked the CAD decoder worker.",
       // No main-thread fallback on purpose. Decoding this drawing takes nine
       // seconds of uninterruptible WASM; running it here would freeze the tab

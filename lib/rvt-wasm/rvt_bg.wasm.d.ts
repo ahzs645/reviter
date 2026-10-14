@@ -14,6 +14,7 @@ export const encodeToFragment: (a: number, b: number) => void;
 export const fileMetadata: (a: number, b: number, c: number) => void;
 export const modelToGlb: (a: number, b: number) => void;
 export const modelToIfcStep: (a: number, b: number) => void;
+export const openNativeEvidence: (a: number, b: number, c: number, d: number) => void;
 export const openRvtBytes: (a: number, b: number, c: number) => void;
 export const openRvtBytesWithDiagnostics: (a: number, b: number, c: number) => void;
 export const openRvtBytesWithDiagnosticsAndLimits: (a: number, b: number, c: number, d: number) => void;

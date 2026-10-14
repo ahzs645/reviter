@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { openRevitContainer } from "../lib/reviter/convert-container.ts";
 import { asBytes, stripRevitPageChecksums, gzipOffsets, inflateRevitChunk, revitWindowTail } from "../lib/reviter/revit-container.ts";
 import { scanElementHeaders } from "../lib/reviter/element-headers.ts";
+import { detectDuplicatedBoundsRecords } from "../lib/reviter/bounds-records.ts";
 import { createNativeMepCollector } from "../lib/reviter/native-mep.ts";
 
 const args = process.argv.slice(2);
@@ -30,6 +31,7 @@ for (const partition of container.partitions) {
     if (!page) continue;
     window = revitWindowTail(page);
     collector.observeElementHeaders(scanElementHeaders(page));
+    collector.observeElementBounds(detectDuplicatedBoundsRecords(page).filter((r) => r.duplicated).map((r) => ({ ...r, stream: partition.path })));
     collector.pushPage(page, { stream: partition.path, chunkIndex: index, complete: true });
     pages++;
   }
@@ -49,6 +51,6 @@ if (referencePath) {
   const actual = new Set(evidence.connections.map((c) => canonical(`${c.elementId}:${c.connectorIndex}`, `${c.otherElementId}:${c.otherConnectorIndex}`)));
   comparison = { referenceSha256: createHash("sha256").update(text).digest("hex"), referenceConnections: reference.size, recoveredConnections: actual.size, matching: [...actual].filter((c) => reference.has(c)).length, unexpected: [...actual].filter((c) => !reference.has(c)).sort(), missing: [...reference].filter((c) => !actual.has(c)).sort() };
 }
-const report = { file: path, sha256: createHash("sha256").update(bytes).digest("hex"), pages, milliseconds: Math.round(performance.now() - start), systemCount: evidence.systems.length, membershipCount: evidence.systems.reduce((n, s) => n + s.members.length, 0), connectionCount: evidence.connections.length, comparison, evidence };
+const report = { file: path, sha256: createHash("sha256").update(bytes).digest("hex"), pages, milliseconds: Math.round(performance.now() - start), systemCount: evidence.systems.length, membershipCount: evidence.systems.reduce((n, s) => n + s.members.length, 0), connectionCount: evidence.connections.length, dimensionalElementCount: evidence.dimensions?.length ?? 0, comparison, evidence };
 if (out) writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
 console.log(JSON.stringify({ ...report, evidence: { limitations: evidence.limitations } }, null, 2));

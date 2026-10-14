@@ -107,6 +107,15 @@ export function emitNativeRoomsIfc(writer: Writer, rooms: readonly NativeSourceR
     ];
     const pset = writer.add(`IFCPROPERTYSET(${quoted(guid("pset-native-room", room.elementId))},#${ownerHistory},'Reviter_NativeRoom','Source evidence only; extrusion does not reproduce ceiling steps',${refs(properties)})`);
     writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-native-room-evidence", room.elementId))},#${ownerHistory},$,$,(#${space}),#${pset})`);
+    // RE-153: Revit's source space Reference is its name plus number; its
+    // FloorCovering is ROOM_FINISH_FLOOR from the checksum-verified owner.
+    const common: number[] = [];
+    if (room.name && room.number) common.push(writer.add(`IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER(${quoted(`${room.name} ${room.number}`)}),$)`));
+    if (room.floorFinish && room.floorFinishEvidence) common.push(writer.add(`IFCPROPERTYSINGLEVALUE('FloorCovering',$,IFCLABEL(${quoted(room.floorFinish)}),$)`));
+    if (common.length) {
+      const spaceCommon = writer.add(`IFCPROPERTYSET(${quoted(guid("pset-space-common", room.elementId))},#${ownerHistory},'Pset_SpaceCommon',$,${refs(common)})`);
+      writer.add(`IFCRELDEFINESBYPROPERTIES(${quoted(guid("rel-space-common", room.elementId))},#${ownerHistory},$,$,(#${space}),#${spaceCommon})`);
+    }
     const levelId = room.levelId ?? context.levelByElementId?.get(room.elementId);
     // Unknown levels aggregate under the building: no inferred storey assignment.
     const parent = levelId == null ? buildingEntity : context.storeyByLevelId.get(levelId) ?? buildingEntity;

@@ -13,6 +13,8 @@ export type CapabilityId =
   | "stored-room-outlines"
   | "mep-systems"
   | "mep-connectors"
+  | "mep-model-ports-and-joins"
+  | "mep-source-dimensions"
   | "primary-design-options";
 
 export type CapabilityContract = {
@@ -56,7 +58,7 @@ export const REVITER_CAPABILITY_CONTRACTS: readonly CapabilityContract[] = [
     measuredReleases: [2024, 2025],
     requiredEvidence: ["ifc-parameter-header", "declared-parameter-owner", "bounded-ifc-override"],
     evidence: "rvt-rs RE-45 documents measured 2024/2025 scanning; the 2026 header is supplied upstream and tested synthetically. This contract does not claim positive override counts on paired full models.",
-    limitations: "The native collector recovers only class/predefined-type strings, not Export to IFC numeric flags; flags can come from the generic parameter decoder when recovered. Declared-ID ownership, bounded owner window and allowlisted values are required. Two conflicting values are retained as ambiguity evidence and cannot authorize an override; unknown entities/predefined types are not emitted.",
+    limitations: "The native byte scanner recovers class/predefined-type strings; numeric Export to IFC flags come from owned generic parameter tables, with conflicting witnesses preserved before parameter merging. Declared-ID ownership, bounded owner window and allowlisted values are required. Two conflicting values are retained as ambiguity evidence and cannot authorize an override; unknown entities/predefined types are not emitted.",
     tests: ["tests/ifc-export-semantics.test.ts"],
   },
   {
@@ -92,8 +94,26 @@ export const REVITER_CAPABILITY_CONTRACTS: readonly CapabilityContract[] = [
     measuredReleases: [2025],
     requiredEvidence: ["owner-confirmed-connector", "validated-connector-layout"],
     evidence: "rvt-rs 1c3d337 native connector byte-layout evidence is measured in 2025; cross-release connector layout support is not inferred.",
-    limitations: "Only the measured 2025 joins are admitted. RE-171 native graph records and unconnected family-symbol ports remain unsupported; geometry proximity does not create connectivity.",
+    limitations: "This is the direct byte-list reader, admitted only for measured 2025 joins. RE-171 graph and family-symbol ports use a separate pinned-model projection contract; no general native graph is decoded by this TS reader. Geometry proximity does not create connectivity.",
     tests: ["tests/native-mep.test.ts"],
+  },
+  {
+    id: "mep-model-ports-and-joins",
+    admittedReleases: [2024, 2025, 2026],
+    measuredReleases: [2025],
+    requiredEvidence: ["pinned-reader-commit", "same-source-model", "declared-entity-owner", "unambiguous-connector-endpoints"],
+    evidence: "Pinned rvt-rs model production uses RE-169/171 with counted-list fallback. Mechanical/Plumbing/Electrical 2025 fixtures provide positive port/join witnesses; 2024/2026 admission is not a paired positive claim here.",
+    limitations: "Model indices map to exact declared BuildingElement IDs; binary byte spans and the individual producer decoder path are not exposed. Flow direction, placement and general raw native graph coverage remain unresolved.",
+    tests: ["tests/native-mep-model.test.ts"],
+  },
+  {
+    id: "mep-source-dimensions",
+    admittedReleases: [2025],
+    measuredReleases: [2025],
+    requiredEvidence: ["measured-dimension-layout", "declared-dimension-owner", "dimension-extent-agreement"],
+    evidence: "Native source curve/fitting dimension readers RE-134/157/165 and RE-131 pipe-axis proof are measured in 2025, with positive Mechanical/Plumbing reference witnesses.",
+    limitations: "Nominal dimensions are separate from body radius/width. Conflicting ownership/extent evidence is omitted, and source dimension metadata does not replace the geometry pipeline.",
+    tests: ["tests/native-mep-dimensions.test.ts"],
   },
   {
     id: "primary-design-options",

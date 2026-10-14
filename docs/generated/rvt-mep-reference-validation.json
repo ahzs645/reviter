@@ -1,0 +1,191 @@
+{
+  "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "scope": "Native source evidence and pinned model projection; final IFC emits only owners present in Reviter output. No upstream geometry imported.",
+  "fixtures": [
+    {
+      "name": "mechanical",
+      "revitVersion": 2025,
+      "nativeDeclaredIdentities": 4742,
+      "inputs": [
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Mechanical.rvt",
+          "sha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+          "license": "MIT"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Mechanical.ifc",
+          "sha256": "9e56cf7246ce86ef73646dd588a1efb8a4756e5e102b30e28b3b58577a454db0",
+          "license": "MIT"
+        }
+      ],
+      "checks": {
+        "referenceJoins": 73,
+        "matchingReferenceJoins": 73,
+        "missingReferenceJoins": [],
+        "additionalNativeJoins": [],
+        "referencePorts": 150,
+        "matchingReferencePorts": 150,
+        "nativePorts": 150,
+        "dimensions": {
+          "model": "mechanical",
+          "lengths": {
+            "reference": 31,
+            "recovered": 31,
+            "matching": 31,
+            "mismatches": [],
+            "source_only_ids": []
+          },
+          "nominal_diameters": {
+            "reference": 0,
+            "recovered": 3,
+            "matching": 0,
+            "mismatches": [],
+            "source_only_ids": [
+              442037,
+              442040,
+              442191
+            ]
+          },
+          "pipe_outside_radius": {
+            "reference": 6,
+            "recovered": 6,
+            "matching": 6,
+            "mismatches": [],
+            "source_only_ids": []
+          },
+          "duct_section_and_length": {
+            "reference": 25,
+            "matching": 25
+          }
+        }
+      }
+    },
+    {
+      "name": "plumbing",
+      "revitVersion": 2025,
+      "nativeDeclaredIdentities": 4826,
+      "inputs": [
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Plumbing.rvt",
+          "sha256": "03689df2aa426031a216e65051b9f19d3265d6fe96884dd47373b17435f9e54c",
+          "license": "MIT"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Plumbing.ifc",
+          "sha256": "294490b222632509779910345f27a4eeda3645956138a593298c241495f7b8b6",
+          "license": "MIT"
+        }
+      ],
+      "checks": {
+        "referenceJoins": 126,
+        "matchingReferenceJoins": 126,
+        "missingReferenceJoins": [],
+        "additionalNativeJoins": [
+          "442378:1/444674:0",
+          "442378:2/444124:0"
+        ],
+        "referencePorts": 260,
+        "matchingReferencePorts": 260,
+        "nativePorts": 264,
+        "dimensions": {
+          "model": "plumbing",
+          "lengths": {
+            "reference": 63,
+            "recovered": 63,
+            "matching": 63,
+            "mismatches": [],
+            "source_only_ids": []
+          },
+          "nominal_diameters": {
+            "reference": 42,
+            "recovered": 46,
+            "matching": 42,
+            "mismatches": [],
+            "source_only_ids": [
+              444676,
+              444721,
+              447845,
+              447864
+            ]
+          },
+          "pipe_outside_radius": {
+            "reference": 63,
+            "recovered": 63,
+            "matching": 63,
+            "mismatches": [],
+            "source_only_ids": []
+          },
+          "duct_section_and_length": {
+            "reference": 0,
+            "matching": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "electrical",
+      "revitVersion": 2025,
+      "nativeDeclaredIdentities": 10265,
+      "inputs": [
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Electrical.rvt",
+          "sha256": "9875e765c9f47893808c47b845a8379b8777b92510e3e0284f763cb457c9630b",
+          "license": "MIT"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/Drshelden/IFC-ECS/main/data/RE1/RE1-Electrical.ifc",
+          "sha256": "c7002a10c8e10ab2fca64ff61dcf38db04da652924f65ce53c2064827dfa9e16",
+          "license": "MIT"
+        }
+      ],
+      "checks": {
+        "referenceJoins": 0,
+        "matchingReferenceJoins": 0,
+        "missingReferenceJoins": [],
+        "additionalNativeJoins": [],
+        "referencePorts": 53,
+        "matchingReferencePorts": 53,
+        "nativePorts": 53
+      }
+    }
+  ],
+  "limitations": [
+    "Model connector output has no exposed binary byte spans and may use upstream legacy fallback.",
+    "The 2027 model connector projection is not admitted.",
+    "Fixed dimension layouts are admitted only for 2025.",
+    "Additional native Plumbing tank joins and source nominal sizes are preserved separately from reference parity."
+  ],
+  "optionalPipeReconstruction": {
+    "enabledByDefault": false,
+    "sceneBuffersModified": false,
+    "geometryProvenance": "reconstructed",
+    "geometryExact": false,
+    "roundtrip": [
+      {
+        "name": "mechanical",
+        "circleSegments": 64,
+        "sourceAxes": 6,
+        "accepted": 6,
+        "rejected": 0,
+        "webIfcTriangulated": 6,
+        "triangles": 3048,
+        "nonfinite": [],
+        "worstBoundsErrorFeet": 6.474036370107683e-05,
+        "independentReaderProductsWithGeometry": 6
+      },
+      {
+        "name": "plumbing",
+        "circleSegments": 64,
+        "sourceAxes": 63,
+        "accepted": 63,
+        "rejected": 0,
+        "webIfcTriangulated": 63,
+        "triangles": 32004,
+        "nonfinite": [],
+        "worstBoundsErrorFeet": 0.0002330799697179975,
+        "independentReaderProductsWithGeometry": 63
+      }
+    ],
+    "defaultWebIfcWorstChordBoundsErrorFeet": 0.007595072459963603
+  }
+}

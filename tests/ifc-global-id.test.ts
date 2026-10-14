@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nativeIfcGlobalId, nativeIfcGlobalIds } from "../lib/reviter/ifc-global-id.ts";
+import { nativeIfcGlobalId, nativeIfcGlobalIds, revitProjectedTypeGlobalId } from "../lib/reviter/ifc-global-id.ts";
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
 import { ifcExportFixture } from "./fixtures/ifc-export-fixture.ts";
 import type { NativeElementIdentity } from "../lib/reviter/native-identity.ts";
@@ -82,14 +82,30 @@ test("missing and inconsistent native evidence keeps deterministic fallback ids"
   assert.doesNotMatch(makeIfc(inconsistent), new RegExp(`IFCWALL\\('${nativeIfcGlobalId(ifcExportFixture().nativeIdentity!.identities[0]!)}'`));
 });
 
-test("a native type projected into differing IFC classes never claims one projection as native", () => {
+test("B73 gives the lowest-instance projection the own type id and hashes alternate classes", () => {
   const result = ifcExportFixture();
   result.nativeIdentity!.identities.push(identity(20));
   Object.assign(result.elementBounds[1]!, {
     categoryId: -2_000_032, categoryName: "Floors", typeId: 20,
+    typeName: result.elementBounds[0]!.typeName,
     familyId: undefined, familyName: undefined,
   });
   const source = makeIfc(result);
-  assert.ok(!source.includes(`IFCWALLTYPE('${nativeIfcGlobalId(identity(20))}'`));
-  assert.ok(!source.includes(`IFCSLABTYPE('${nativeIfcGlobalId(identity(20))}'`));
+  const own = nativeIfcGlobalId(identity(20))!;
+  assert.ok(source.includes(`IFCWALLTYPE('${own}'`));
+  assert.ok(source.includes(`IFCSLABTYPE('${revitProjectedTypeGlobalId(own, "IFCSLABTYPE", ".FLOOR.", 2027)}'`));
+  result.elementBounds.reverse();
+  const reversed = makeIfc(result);
+  assert.ok(reversed.includes(`IFCWALLTYPE('${own}'`));
+  assert.ok(reversed.includes(`IFCSLABTYPE('${revitProjectedTypeGlobalId(own, "IFCSLABTYPE", ".FLOOR.", 2027)}'`));
+});
+
+test("unexported helpers cannot steal the native identity of an emitted type projection", () => {
+  const result = ifcExportFixture();
+  result.nativeIdentity!.identities.push(identity(20));
+  result.elementBounds.unshift({
+    ...structuredClone(result.elementBounds[0]!), elementId: 9,
+    categoryId: -2_000_032, categoryName: "Floors", renderGeometryProvenance: "not-rendered-helper",
+  });
+  assert.ok(makeIfc(result).includes(`IFCWALLTYPE('${nativeIfcGlobalId(identity(20))}'`));
 });

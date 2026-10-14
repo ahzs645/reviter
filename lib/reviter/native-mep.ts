@@ -4,19 +4,30 @@
  * Systems are data objects, not geometry. Joins are native counted references,
  * never inferred from spatial proximity. See docs/rvt-semantic-attribution.md.
  */
+import { createNativeMepDimensionCollector, type MepBoundsEvidence } from "./native-mep-dimensions.ts";
 export const MEP_SYSTEM_RELEASES = [2024, 2025, 2026, 2027] as const;
 export const MEP_CONNECTION_RELEASES = [2025] as const;
 const SYSTEM_CLASSES = new Set(["RbsHvacSystem", "RbsPipingSystem", "RbsElectricalSystem"]);
 const MAX_REFERENCES = 1_000_000;
 const MAX_CHECKSUM_BYTES_PER_PAGE = 32 * 1024 * 1024;
 
-export type MepSource = { stream: string; chunkIndex: number; byteOffset: number; revitVersion: number; decoder: "RE-162" | "RE-138" | "RE-141" };
+export type MepPartitionSource = { stream: string; chunkIndex: number; byteOffset: number; revitVersion: number; decoder: "RE-162" | "RE-138" | "RE-141" | "RE-134" | "RE-157" | "RE-165" | "RE-131" };
+/** A model projection has no exposed binary locator. Nulls prevent a fabricated
+ * byte offset from masquerading as a partition measurement. */
+export type MepModelSource = { stream: null; chunkIndex: null; byteOffset: null; revitVersion: number; decoder: "rvt-rs-connectors" | "rvt-rs-symbol-ports"; readerCommit: string; readerMode: string; entityIndex: number; sourceKind: "reader-model" };
+export type MepSource = MepPartitionSource | MepModelSource;
 export type NativeMepSystem = { elementId: number; className: string; name?: string; members: number[]; memberSources: { elementId: number; source: MepSource }[]; sources: MepSource[] };
 export type NativeMepConnection = { elementId: number; connectorIndex: number; otherElementId: number; otherConnectorIndex: number; sources: MepSource[] };
+export type NativeMepPort = { elementId: number; connectorIndex: number; sources: MepSource[] };
+export type NativeMepDimensions = { elementId: number; typeId?: number; widthFeet?: number; heightFeet?: number; lengthFeet?: number; pipeInnerDiameterFeet?: number; pipeOuterDiameterFeet?: number; nominalDiameterFeet?: number; pipeAxis?: { startFeet: [number, number, number]; endFeet: [number, number, number]; radiusFeet: number }; sources: MepPartitionSource[] };
 export type NativeMepEvidence = {
   revitVersion: number;
   systems: NativeMepSystem[];
   connections: NativeMepConnection[];
+  ports?: NativeMepPort[];
+  dimensions?: NativeMepDimensions[];
+  /** Prevent a legacy fallback from reintroducing explicitly ambiguous joins. */
+  suppressedConnectorKeys?: string[];
   limitations: string[];
 };
 export type MepCollectorOptions = {
@@ -97,6 +108,8 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
   const manager = options.classes.find((c) => c.name === "RbsCurveConnectorManager")?.tag;
   const curveTags = new Set(options.classes.filter((c) => c.name === "RbsDuctCurve" || c.name === "RbsPipeCurve").map((c) => c.tag));
   const curveIds = new Set(options.curveIds);
+  const dimensionCollector = createNativeMepDimensionCollector(options);
+  const classNames = new Map(options.classes.map((c) => [c.tag, c.name]));
   const fittingIds = new Set(options.fittingIds);
   const systems = new Map<number, NativeMepSystem>();
   const disagreements = new Set<number>();
@@ -127,8 +140,11 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
     /** Headers may appear after connector lists; decide fitting ownership only
      * once the caller has gathered the complete native category evidence. */
     observeElementHeaders(headers: Iterable<{ elementId: number; categoryId: number | null }>) {
-      for (const header of headers) if (elementIds.has(header.elementId) && (header.categoryId === -2008010 || header.categoryId === -2008049)) fittingIds.add(header.elementId);
+      const collected = [...headers];
+      dimensionCollector.observeElementHeaders(collected);
+      for (const header of collected) if (elementIds.has(header.elementId) && (header.categoryId === -2008010 || header.categoryId === -2008049)) fittingIds.add(header.elementId);
     },
+    observeElementBounds(records: Iterable<MepBoundsEvidence>) { dimensionCollector.observeElementBounds(records); },
     pushPage(page: Uint8Array, location: { stream: string; chunkIndex: number; complete?: boolean }) {
       if (!admitted) return;
       const prior = location.complete && previous?.stream === location.stream && previous.chunkIndex + 1 === location.chunkIndex ? previous : undefined;
@@ -139,7 +155,7 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
       previous = location.complete ? { bytes: page.slice(page.length - kept), stream: location.stream, chunkIndex: location.chunkIndex, byteOffset: page.length - kept } : undefined;
       const view = viewOf(bytes);
       const budget = { remaining: Math.min(MAX_CHECKSUM_BYTES_PER_PAGE, Math.max(1_048_576, bytes.length * 4)), exhausted: false };
-      const source = (at: number, decoder: MepSource["decoder"]): MepSource => prior && at < prefix
+      const source = (at: number, decoder: MepPartitionSource["decoder"]): MepPartitionSource => prior && at < prefix
         ? { stream: prior.stream, chunkIndex: prior.chunkIndex, byteOffset: prior.byteOffset + at, revitVersion, decoder }
         : { stream: location.stream, chunkIndex: location.chunkIndex, byteOffset: at - prefix, revitVersion, decoder };
       for (let p = 0; p + 20 <= bytes.length; p++) {
@@ -148,6 +164,7 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
         if (p + 20 + view.getUint32(p + 12, true) <= prefix) continue;
         const object = verifiedObject(bytes, view, p, budget);
         if (!object || !elementIds.has(object.id)) continue;
+        dimensionCollector.observeVerifiedObject(bytes.subarray(p, object.end), object.id, classNames.get(object.tag) ?? "", source(p, "RE-162"));
         if (curveTags.has(object.tag)) curveIds.add(object.id);
         const className = systemTags.get(object.tag);
         if (className) {
@@ -181,6 +198,7 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
           else capped = true;
         }
         if (manager == null || view.getUint16(p, true) !== manager || u32(view, p + 2) !== 0xffff_ffff || view.getUint16(p + 6, true) !== ((manager + 1) & 0xffff)) continue;
+        dimensionCollector.observeCurveAnchor(bytes, p, source(p, "RE-134"));
         const lists: { own: number; other: number; index: number; otherIndex: number; at: number }[] = [];
         for (let q = p + 900; q < Math.min(p + 1600, bytes.length - 35); q++) {
           const join = rawJoin(view, q);
@@ -212,7 +230,8 @@ export function createNativeMepCollector(options: MepCollectorOptions) {
       if (capped) limitations.push("MEP reference limit reached; evidence is partial.");
       if (checksumCapped) limitations.push("MEP checksum work limit reached; evidence is partial.");
       if (disagreements.size) limitations.push(`${disagreements.size} conflicting system names/class records suppressed.`);
-      return { revitVersion, systems: out, connections: [...connections.values()].sort((a, b) => a.elementId - b.elementId || a.connectorIndex - b.connectorIndex || a.otherElementId - b.otherElementId || a.otherConnectorIndex - b.otherConnectorIndex), limitations };
+      const dimensional = dimensionCollector.finish();
+      return { revitVersion, systems: out, connections: [...connections.values()].sort((a, b) => a.elementId - b.elementId || a.connectorIndex - b.connectorIndex || a.otherElementId - b.otherElementId || a.otherConnectorIndex - b.otherConnectorIndex), dimensions: dimensional.dimensions, limitations: [...limitations, ...dimensional.limitations] };
     },
   };
 }

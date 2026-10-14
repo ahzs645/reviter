@@ -74,6 +74,8 @@ import {
   REVIT_2027_GSTYLE_ELEMENT_MARKER,
 } from "./revit-2027-gstyle-material.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import type { ElementParameterTable } from "./element-parameters.ts";
+import { createIfcGuidParameterWitnessCollector } from "./ifc-guid-parameter-witnesses.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
 import {
@@ -117,6 +119,8 @@ import { createNativeRoomCollector } from "./native-source-rooms.ts";
 import { createNativeMepCollector, type NativeMepEvidence } from "./native-mep.ts";
 import { createDesignOptionCollector, type NativeDesignOptions } from "./design-options.ts";
 import type { SchemaSummary } from "./schema.ts";
+import { createNativePhaseSpatialCollector } from "./native-phase-spatial.ts";
+import { createNativeOriginalSymbolCollector, type NativeOriginalSymbolReference } from "./native-ifc-type-identity.ts";
 
 import type { OpenedRevitContainer } from "./convert-container.ts";
 import type { NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
@@ -197,9 +201,13 @@ export type PartitionScanInput = {
   /** The loaded families' documents, from `Global/ContentDocuments`. */
   contentDocuments?: ReadonlyMap<string, ContentDocument>;
   declaredElementIds?: ReadonlySet<number>;
+  /** Current ids plus validated creation histories, for original symbols only. */
+  nativeTypeIdentityElementIds?: ReadonlySet<number>;
 };
 
 export type PartitionScan = {
+  nativePhaseCollector: ReturnType<typeof createNativePhaseSpatialCollector>;
+  nativeOriginalSymbols: NativeOriginalSymbolReference[];
   nativeRoomCollector: ReturnType<typeof createNativeRoomCollector>;
   nativeMepEvidence: NativeMepEvidence;
   nativeDesignOptions: NativeDesignOptions;
@@ -235,6 +243,7 @@ export type PartitionScan = {
   instancePlacements: Map<number, InstancePlacement>;
   localBounds: Map<number, LocalBounds>;
   elementParameters: Map<number, Map<number, ElementParameter>>;
+  nativeIfcGuidParameters: ElementParameterTable[];
   ifcExportParameters: Map<number, ElementParameter[]>;
   surfaceCounts: { planes: number; cylinders: number; verticalPlanes: number };
   planesByElement: Map<number, PlanePatch[]>;
@@ -291,6 +300,15 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     elementIds: input.declaredElementIds ?? new Set(),
   });
   const designOptionCollector = createDesignOptionCollector(decoderPlan.revitVersion);
+  const nativePhaseCollector = createNativePhaseSpatialCollector({
+    revitVersion: decoderPlan.revitVersion, schema: input.schema,
+    declaredElementIds: input.declaredElementIds ?? new Set(),
+  });
+  const originalSymbolCollector = createNativeOriginalSymbolCollector({
+    revitVersion: decoderPlan.revitVersion, classes: input.schema?.taggedClasses ?? [],
+    elementIds: input.declaredElementIds ?? new Set(),
+    historyElementIds: input.nativeTypeIdentityElementIds,
+  });
   const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
@@ -355,6 +373,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const instancePlacements = new Map<number, InstancePlacement>();
   const localBounds = new Map<number, LocalBounds>();
   const elementParameters = new Map<number, Map<number, ElementParameter>>();
+  const ifcGuidWitnessCollector = createIfcGuidParameterWitnessCollector(input.declaredElementIds);
   const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
   const planesByElement = new Map<number, PlanePatch[]>();
   const cylindersByElement = new Map<number, CylinderPatch[]>();
@@ -447,6 +466,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const pageFrames = decoderPlan.elementBoundsDecoder
         ? indexPageFrames(inflated)
         : null;
+      nativePhaseCollector.pushPage(inflated, semanticLocation, pageFrames ?? undefined);
+      if (pageFrames) originalSymbolCollector.consumeObjects(inflated, semanticLocation, pageFrames.frames);
       if (
         pageFrames &&
         (pageFrames.hasMarker(REVIT_2027_FAMILY_INSTANCE_CLASS) ||
@@ -643,6 +664,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
       ifcExportCollector.pushPage(inflated);
       for (const table of collectElementParameters(inflated)) {
+        ifcGuidWitnessCollector.consume(table, semanticLocation);
+        ifcExportCollector.consumeOwnedParameters(table);
         const existing = elementParameters.get(table.elementId);
         if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
         else elementParameters.set(
@@ -797,7 +820,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     ]),
   );
   nativeMepCollector.observeElementHeaders(elementHeaders.values());
+  nativeMepCollector.observeElementBounds(elementBounds);
   return {
+    nativeIfcGuidParameters: ifcGuidWitnessCollector.snapshot(),
+    nativePhaseCollector,
+    nativeOriginalSymbols: originalSymbolCollector.finish(),
     nativeRoomCollector,
     nativeMepEvidence: nativeMepCollector.finish(),
     nativeDesignOptions: designOptionCollector.finish(),

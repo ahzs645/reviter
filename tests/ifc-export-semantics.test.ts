@@ -27,6 +27,32 @@ test("published Export to IFC flags apply instance/type precedence without guess
   assert.deepEqual(resolveIfcClass(slab, [parameter(-1019012, 0), parameter(-1019012, 1)], [parameter(-1019013, 2)]), slab);
 });
 
+test("owned IFC enum flag conflicts survive last-value parameter merging", () => {
+  for (const version of [2024, 2025, 2026, 2027]) {
+    const collector = createIfcExportParameterCollector(version, new Set([10, 20]));
+    for (const value of [1, 2, 2, 0, 2]) collector.consumeOwnedParameters({
+      elementId: 10, parameters: [parameter(-1019012, value)],
+    });
+    for (const value of [1, 2, 2]) collector.consumeOwnedParameters({
+      elementId: 20, parameters: [parameter(-1019013, value)],
+    });
+    collector.consumeOwnedParameters({ elementId: 99, parameters: [parameter(-1019012, 2)] });
+    const held = collector.snapshot();
+    assert.deepEqual(held.get(10)?.map(p => p.value), [1, 2]);
+    assert.deepEqual(held.get(20)?.map(p => p.value), [1, 2]);
+    assert.equal(held.has(99), false);
+    // convert.ts unions these retained witnesses with the last-value map.
+    const own = [parameter(-1019012, 2), ...held.get(10)!];
+    const type = [parameter(-1019013, 2), ...held.get(20)!];
+    assert.deepEqual(resolveIfcClass(slab, own, [parameter(-1019013, 2)]), slab);
+    assert.deepEqual(resolveIfcClass(slab, [], type), slab);
+    const fixture = ifcExportFixture();
+    fixture.elementBounds[0]!.parameters = own;
+    fixture.elementBounds[0]!.typeParameters = type;
+    assert.match(makeIfc(fixture), /IFCWALL\(/, "unresolved enum witnesses must preserve the source product");
+  }
+});
+
 test("conflicting instance class evidence cannot inherit a type omission or type class override", () => {
   const own = [parameter(-1019014, "IfcSlab"), parameter(-1019014, "IfcCovering")];
   assert.deepEqual(resolveIfcClass(slab, own, [parameter(-1019015, "NotExported")]), slab);
@@ -44,7 +70,7 @@ test("common properties require native parameter IDs and validated value domains
   const properties = commonIfcPropertySets("IFCSLAB", [parameter(-1001954, 1), parameter(-1001206, "60 minutes")], [parameter(-1001006, 1), parameter(-1001405, "S-01")])[0]!;
   assert.equal(properties.name, "Pset_SlabCommon");
   assert.deepEqual(properties.properties, [
-    { name: "Reference", value: "S-01", type: "IFCLABEL" },
+    { name: "Reference", value: "S-01", type: "IFCIDENTIFIER" },
     { name: "FireRating", value: "60 minutes", type: "IFCLABEL" },
     { name: "IsExternal", value: true, type: "IFCBOOLEAN" },
     { name: "LoadBearing", value: true, type: "IFCBOOLEAN" },
