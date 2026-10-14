@@ -351,3 +351,55 @@ test("an unmapped category exports as a proxy", () => {
   result.meshes = [{ ...result.meshes[0], elementIds: new Uint32Array([10, 10]) }];
   assert.match(makeIfc(result), /#\d+=IFCBUILDINGELEMENTPROXY\(/);
 });
+
+test("native product IDs retain original handles and survive a changed recovered population", () => {
+  const result = fixture();
+  const identity = result.nativeIdentity!.identities[0]!;
+  identity.episodeGuid = "50f92000-82f8-4258-b6a8-bb42c01b00a0";
+  identity.originalElementId = 619340;
+  identity.uniqueId = `${identity.episodeGuid}-0009734c`;
+  const source = makeIfc(result);
+  assert.match(source, /IFCWALL\('1G_I00WlX2MBQekqB04dFi'/);
+  // Shrinking the recovered population changes the fallback namespace. A native
+  // product still keeps Revit's identity rather than hashing that namespace.
+  result.nativeIdentity!.identities.pop();
+  result.elementBounds.pop();
+  assert.match(makeIfc(result), /IFCWALL\('1G_I00WlX2MBQekqB04dFi'/);
+});
+
+test("IFC class and enum overrides round-trip with distinct types for distinct occurrence choices", async () => {
+  const result = fixture();
+  result.elementBounds[1]!.typeId = 20;
+  result.elementBounds[1]!.typeName = result.elementBounds[0]!.typeName;
+  result.elementBounds[1]!.familyId = undefined;
+  result.elementBounds[1]!.familyName = undefined;
+  result.nativeIfcExportParameters = [
+    { elementId: 20, typeExportAs: "IfcSlabType", typePredefinedType: "FLOOR", provenance: "owned-element-parameter-table" },
+    { elementId: 11, predefinedType: "ROOF", provenance: "owned-element-parameter-table" },
+  ];
+  const source = makeIfc(result);
+  const api = new IfcAPI();
+  await api.Init();
+  const model = api.OpenModel(new TextEncoder().encode(source));
+  try {
+    const types = api.GetAllTypesOfModel(model);
+    const slabCode = types.find((type) => type.typeName.toUpperCase() === "IFCSLAB")!.typeID;
+    const slabTypeCode = types.find((type) => type.typeName.toUpperCase() === "IFCSLABTYPE")!.typeID;
+    const slabs = api.GetLineIDsWithType(model, slabCode);
+    assert.equal(slabs.size(), 2);
+    assert.equal(api.GetLineIDsWithType(model, slabTypeCode).size(), 2);
+    const predefinedTypes = Array.from({ length: slabs.size() }, (_, index) => api.GetLine(model, slabs.get(index)).PredefinedType.value).sort();
+    assert.deepEqual(predefinedTypes, ["FLOOR", "ROOF"]);
+  } finally { api.CloseModel(model); api.Dispose(); }
+});
+
+test("unknown IFC override targets are reported without changing an admitted category class", () => {
+  const result = fixture();
+  result.nativeIfcExportParameters = [{ elementId: 10, exportAs: "IfcSpace", predefinedType: "ROOF", provenance: "owned-element-parameter-table" }];
+  const source = makeIfc(result);
+  assert.match(source, /IFCWALL\(/);
+  assert.doesNotMatch(source, /IFCSPACE\(/);
+  assert.match(source, /'IfcExportAsRequested',\$,IFCTEXT\('IfcSpace'\)/);
+  assert.match(source, /'IfcExportAsStatus',\$,IFCTEXT\('unsupported-override'\)/);
+  assert.match(source, /'IfcPredefinedTypeStatus',\$,IFCTEXT\('unsupported'\)/);
+});

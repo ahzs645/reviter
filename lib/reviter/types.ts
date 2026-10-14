@@ -1,3 +1,4 @@
+import type { NativeIfcExportParameters } from "./revit-ifc-semantics.ts";
 import type { ElementParameter } from "./element-parameters.ts";
 import type { LimitCensusEntry } from "./limit-census.ts";
 import type { SchemaSummary } from "./schema.ts";
@@ -790,6 +791,8 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
+  /** IFC instance/type export settings from each owner's own parameter table. */
+  nativeIfcExportParameters?: NativeIfcExportParameters[];
   /** Persisted material identities/names and optional packed render colour. */
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
   /** Loadable-family symbol to family relationships persisted in partition objects. */

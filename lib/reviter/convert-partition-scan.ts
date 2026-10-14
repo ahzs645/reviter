@@ -74,6 +74,7 @@ import {
   REVIT_2027_GSTYLE_ELEMENT_MARKER,
 } from "./revit-2027-gstyle-material.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import { IfcExportParameterCollector } from "./revit-ifc-semantics.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
 import {
@@ -228,6 +229,7 @@ export type PartitionScan = {
   instancePlacements: Map<number, InstancePlacement>;
   localBounds: Map<number, LocalBounds>;
   elementParameters: Map<number, Map<number, ElementParameter>>;
+  nativeIfcExportParameters: ReturnType<IfcExportParameterCollector["entries"]>;
   surfaceCounts: { planes: number; cylinders: number; verticalPlanes: number };
   planesByElement: Map<number, PlanePatch[]>;
   cylindersByElement: Map<number, CylinderPatch[]>;
@@ -340,6 +342,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const instancePlacements = new Map<number, InstancePlacement>();
   const localBounds = new Map<number, LocalBounds>();
   const elementParameters = new Map<number, Map<number, ElementParameter>>();
+  const ifcExportParameters = new IfcExportParameterCollector();
   const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
   const planesByElement = new Map<number, PlanePatch[]>();
   const cylindersByElement = new Map<number, CylinderPatch[]>();
@@ -624,6 +627,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
         }
       }
       for (const table of collectElementParameters(inflated)) {
+        ifcExportParameters.add(table.elementId, table.parameters);
         const existing = elementParameters.get(table.elementId);
         if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
         else elementParameters.set(
@@ -797,6 +801,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     instancePlacements,
     localBounds,
     elementParameters,
+    nativeIfcExportParameters: ifcExportParameters.entries(),
     surfaceCounts,
     planesByElement,
     cylindersByElement,

@@ -164,3 +164,54 @@ test("the export satisfies the recovery-evidence IDS", async () => {
     );
   }
 });
+
+test("an independent reader preserves Revit GlobalIds and separates per-instance IFC override types", async () => {
+  const result = ifcExportFixture();
+  // Both instances use the same Revit type, but export different IFC classes.
+  result.elementBounds[1]!.typeId = 20;
+  result.elementBounds[1]!.typeName = result.elementBounds[0]!.typeName;
+  result.elementBounds[1]!.familyId = undefined;
+  result.elementBounds[1]!.familyName = undefined;
+  result.nativeIfcExportParameters = [
+    { elementId: 20, typeExportAs: "IfcCoveringType", typePredefinedType: "CLADDING", provenance: "owned-element-parameter-table" },
+    { elementId: 11, exportAs: "IfcShadingDevice", predefinedType: "AWNING", provenance: "owned-element-parameter-table" },
+  ];
+  const source = makeIfc(result);
+  const store = await parseQuietly(new TextEncoder().encode(source).buffer);
+  const table = store.entities;
+  const idForType = (name: string) => {
+    const ids = Array.from(table.expressId).filter((id) => table.getTypeName(id) === name);
+    assert.equal(ids.length, 1, name);
+    return ids[0]!;
+  };
+  const covering = idForType("IfcCovering");
+  const shading = idForType("IfcShadingDevice");
+  idForType("IfcCoveringType");
+  idForType("IfcShadingDeviceType");
+  // These values are the canonical UUID interpreted as an integer, XOR 10/11,
+  // encoded in the independent standard IFC base64 alphabet.
+  assert.equal(table.getGlobalId(covering), "0H4H4H8Y8pCqH4LLLLLLLV");
+  assert.equal(table.getGlobalId(shading), "0H4H4H8Y8pCqH4LLLLLLLU");
+  assert.match(source, /IFCCOVERING\([^\n]+,\.CLADDING\.\);/);
+  assert.match(source, /IFCSHADINGDEVICE\([^\n]+,\.AWNING\.\);/);
+  assert.equal(properties(store, covering).get("Reviter_Recovery")?.get("IfcExportAsStatus"), "type-override");
+  assert.equal(properties(store, shading).get("Reviter_Recovery")?.get("IfcExportAsStatus"), "instance-override");
+});
+
+test("supported MEP categories produce schema-readable occurrences and matching type objects", async () => {
+  const mapped: [number, string][] = [
+    [-2008000, "IfcDuctSegment"], [-2008044, "IfcPipeSegment"],
+    [-2008010, "IfcDuctFitting"], [-2008049, "IfcPipeFitting"],
+    [-2008013, "IfcAirTerminal"], [-2001160, "IfcSanitaryTerminal"],
+    [-2001120, "IfcLightFixture"], [-2001040, "IfcElectricDistributionBoard"],
+    [-2001060, "IfcElectricAppliance"],
+  ];
+  for (const [categoryId, expected] of mapped) {
+    const result = ifcExportFixture();
+    result.elementBounds[0]!.categoryId = categoryId;
+    const store = await parseQuietly(new TextEncoder().encode(makeIfc(result)).buffer);
+    const names = Array.from(store.entities.expressId).map((id) => store.entities.getTypeName(id));
+    assert.ok(names.includes(expected), expected);
+    assert.ok(names.includes(`${expected}Type`), `${expected}Type`);
+  }
+});

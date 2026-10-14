@@ -149,6 +149,7 @@ export function convertRvtBytes(
       instancePlacements,
       localBounds,
       elementParameters,
+      nativeIfcExportParameters,
       surfaceCounts,
       planesByElement,
       cylindersByElement,
@@ -351,6 +352,7 @@ export function convertRvtBytes(
     // drawn from it. Named once so the two result literals cannot drift.
     const decodedFile = {
       designOptions: scan.designOptions,
+      nativeIfcExportParameters,
       elementBounds,
       nativeProfiles,
       nativeCategories,

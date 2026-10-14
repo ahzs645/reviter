@@ -18,6 +18,8 @@ import { elementManifest } from "./export-report.ts";
 import { outputName } from "./export-naming.ts";
 import { stairAssemblyParts } from "./stair-assemblies.ts";
 import { spacePredefinedType } from "./room-review.ts";
+import { IfcExportParameterCollector, resolveIfcExportClass, revitIfcGlobalIdFromUniqueId } from "./revit-ifc-semantics.ts";
+import type { IfcExportDecision } from "./revit-ifc-semantics.ts";
 
 import type {
   ConvertResult,
@@ -224,6 +226,15 @@ const IFC_CLASS_BY_CATEGORY: ReadonlyMap<number, readonly [string, string?]> = n
   [-2_000_080, ["IFCFURNITURE"]],
   [-2_001_100, ["IFCFURNITURE"]],
   [-2_000_180, ["IFCRAMP"]],
+  [-2_008_000, ["IFCDUCTSEGMENT"]],
+  [-2_008_044, ["IFCPIPESEGMENT"]],
+  [-2_008_010, ["IFCDUCTFITTING"]],
+  [-2_008_049, ["IFCPIPEFITTING"]],
+  [-2_008_013, ["IFCAIRTERMINAL"]],
+  [-2_001_160, ["IFCSANITARYTERMINAL"]],
+  [-2_001_120, ["IFCLIGHTFIXTURE"]],
+  [-2_001_040, ["IFCELECTRICDISTRIBUTIONBOARD"]],
+  [-2_001_060, ["IFCELECTRICAPPLIANCE"]],
 ]);
 
 function ifcClassFor(element: ManifestElement): IfcClass {
@@ -685,7 +696,7 @@ function emitProduct(
       ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
-      `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".DOOR.", ".NOTDEFINED.", "$"].join(",")})`,
+      `IFCDOOR(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ifcClass.predefinedType, ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCWINDOW") {
@@ -693,7 +704,7 @@ function emitProduct(
       ?? planarWidthFeet(fragments)
       ?? Math.max(dimensions.width, dimensions.depth);
     return writer.add(
-      `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ".WINDOW.", ".NOTDEFINED.", "$"].join(",")})`,
+      `IFCWINDOW(${[...common, optionalPositiveFeet(dimensions.height), optionalPositiveFeet(planar), ifcClass.predefinedType, ".NOTDEFINED.", "$"].join(",")})`,
     );
   }
   if (ifcClass.entity === "IFCSTAIRFLIGHT") {
@@ -705,7 +716,7 @@ function emitProduct(
     );
   }
   if (ifcClass.entity === "IFCBUILDINGELEMENTPROXY") {
-    return writer.add(`IFCBUILDINGELEMENTPROXY(${common.join(",")},.NOTDEFINED.)`);
+    return writer.add(`IFCBUILDINGELEMENTPROXY(${common.join(",")},${ifcClass.predefinedType})`);
   }
   return writer.add(`${ifcClass.entity}(${common.join(",")},${ifcClass.predefinedType})`);
 }
@@ -732,13 +743,13 @@ function emitTypeObject(
     quoted(element.type?.name ?? name),
   ];
   if (ifcClass.typeEntity === "IFCDOORTYPE") {
-    return writer.add(`IFCDOORTYPE(${[...common, ".DOOR.", ".NOTDEFINED.", ".F.", "$"].join(",")})`);
+    return writer.add(`IFCDOORTYPE(${[...common, ifcClass.predefinedType, ".NOTDEFINED.", ".F.", "$"].join(",")})`);
   }
   if (ifcClass.typeEntity === "IFCWINDOWTYPE") {
-    return writer.add(`IFCWINDOWTYPE(${[...common, ".WINDOW.", ".NOTDEFINED.", ".F.", "$"].join(",")})`);
+    return writer.add(`IFCWINDOWTYPE(${[...common, ifcClass.predefinedType, ".NOTDEFINED.", ".F.", "$"].join(",")})`);
   }
   if (ifcClass.typeEntity === "IFCFURNITURETYPE") {
-    return writer.add(`IFCFURNITURETYPE(${[...common, ".NOTDEFINED.", ".NOTDEFINED."].join(",")})`);
+    return writer.add(`IFCFURNITURETYPE(${[...common, ".NOTDEFINED.", ifcClass.predefinedType].join(",")})`);
   }
   return writer.add(`${ifcClass.typeEntity}(${common.join(",")},${ifcClass.predefinedType})`);
 }
@@ -787,12 +798,22 @@ function emitElementProperties(
   product: number,
   element: ManifestElement,
   source: ElementBoundsRecord | undefined,
+  exportDecision?: IfcExportDecision,
 ): void {
   const exact =
     element.geometry.finalProvenance === "native" ||
     element.geometry.finalProvenance === "reference-assisted";
   const properties = [
     integerProperty(writer, "RevitElementId", element.elementId),
+    textProperty(writer, "GlobalIdSource", revitIfcGlobalIdFromUniqueId(element.uniqueId) ? "revit-creation-episode-original-id" : "reviter-deterministic-fallback"),
+    ...(exportDecision?.requestedEntity ? [
+      textProperty(writer, "IfcExportAsRequested", exportDecision.requestedEntity),
+      textProperty(writer, "IfcExportAsStatus", exportDecision.entityStatus),
+    ] : []),
+    ...(exportDecision?.requestedPredefinedType ? [
+      textProperty(writer, "IfcPredefinedTypeRequested", exportDecision.requestedPredefinedType),
+      textProperty(writer, "IfcPredefinedTypeStatus", exportDecision.predefinedTypeStatus),
+    ] : []),
     ...(element.uniqueId ? [textProperty(writer, "RevitUniqueId", element.uniqueId)] : []),
     ...(element.category?.id == null ? [] : [integerProperty(writer, "RevitCategoryId", element.category.id)]),
     ...(element.category?.name ? [textProperty(writer, "RevitCategory", element.category.name)] : []),
@@ -837,7 +858,16 @@ function emitElementProperties(
 export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOptions = {}): string {
   const writer = new StepWriter();
   const namespace = guidNamespace(result);
-  const guid = (kind: string, key: string | number) => guidFor(namespace, kind, key);
+  const guid = (kind: string, key: string | number) =>
+    (kind === "element" && typeof key === "string" ? revitIfcGlobalIdFromUniqueId(key) : null)
+    ?? guidFor(namespace, kind, key);
+  const parameterCollector = new IfcExportParameterCollector();
+  if (result.nativeIfcExportParameters === undefined) {
+    for (const element of result.elementBounds) parameterCollector.add(element.elementId, element.parameters ?? []);
+  }
+  const exportParametersByElement = new Map(
+    (result.nativeIfcExportParameters ?? parameterCollector.entries()).map((entry) => [entry.elementId, entry]),
+  );
   const manifest = elementManifest(result);
   const { byElement: fragmentsByElement, unowned: unownedFragments } = collectGeometry(result);
   const hostAxes = hostAxesByOpening(result);
@@ -1018,7 +1048,13 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const hasSemanticIdentity = Boolean(element.category || element.type);
     if (!element.displayed && element.geometry.finalProvenance === "not-rendered-helper") continue;
     if (!element.displayed && !hasSemanticIdentity && !noMeshScene) continue;
-    const ifcClass = ifcClassFor(element);
+    const exportDecision = resolveIfcExportClass(
+      ifcClassFor(element),
+      exportParametersByElement.get(element.elementId),
+      exportParametersByElement.get(element.type?.elementId ?? element.type?.symbolId ?? -1),
+      Boolean(element.type?.name || element.type?.familyName),
+    );
+    const ifcClass = exportDecision.ifcClass;
     const fragments = fragmentsByElement.get(element.elementId) ?? [];
     const shape = fragments.length
       ? emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial)
@@ -1028,7 +1064,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     const identity = identityByElement.get(element.elementId) ?? element.uniqueId ?? element.elementId;
     const product = emitProduct(
       writer,
-      shapedClass(ifcClass, element.elementId),
+      exportDecision.predefinedTypeStatus === "accepted" ? ifcClass : shapedClass(ifcClass, element.elementId),
       guid("element", identity),
       ownerHistory,
       element,
@@ -1051,6 +1087,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       product,
       element,
       sourceByElement.get(element.elementId),
+      exportDecision,
     );
 
     if (element.type) {
@@ -1061,6 +1098,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
       // types stay distinct.
       const typeKey = JSON.stringify([
         ifcClass.typeEntity,
+        ifcClass.predefinedType,
         element.type.elementId ?? null,
         element.type.symbolId ?? null,
         element.type.familyId ?? null,

@@ -265,6 +265,7 @@ export function makeReport(
       transmissionData: result.transmissionData ?? null,
       persistedCadFileNames: result.persistedCadFileNames ?? [],
       modelTree: modelTreeReport(result),
+      nativeIfcExportParameters: result.nativeIfcExportParameters ?? [],
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],
       streamCoverage: result.coverage ?? null,
