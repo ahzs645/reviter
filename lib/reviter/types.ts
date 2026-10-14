@@ -1,4 +1,5 @@
 import type { NativeIfcExportParameters } from "./revit-ifc-semantics.ts";
+import type { NativeRoom, NativeRoomCoverage } from './native-rooms.ts';
 import type { ElementParameter } from "./element-parameters.ts";
 import type { LimitCensusEntry } from "./limit-census.ts";
 import type { SchemaSummary } from "./schema.ts";
@@ -757,6 +758,9 @@ export type RvtRegressionInput = {
 export type ConvertResult = {
   /** Native primary-option evidence. Scene alternatives remain included. */
   designOptions?: import("./design-options.ts").DesignOptionsDecode;
+  /** Source-authored rooms, independent of reviewed indoor enclosures/navigation. */
+  nativeRooms?: NativeRoom[];
+  nativeRoomCoverage?: NativeRoomCoverage;
   ok: true;
   fileName: string;
   byteLength: number;

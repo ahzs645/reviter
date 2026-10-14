@@ -1,3 +1,4 @@
+import { resolveNativeRooms } from './native-rooms.ts';
 /**
  * The conversion pipeline.
  *
@@ -350,9 +351,14 @@ export function convertRvtBytes(
     // The two branches below publish the same decoded file — the same records,
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
+    const nativeRoomData = resolveNativeRooms({
+      revitVersion: decoderPlan.revitVersion, headers: elementHeaders, bounds: elementBounds,
+      parameters: elementParameters, levels: nativeAssociatedLevelRelations, evidence: scan.nativeRoomEvidence,
+    });
     const decodedFile = {
       designOptions: scan.designOptions,
       nativeIfcExportParameters,
+      ...nativeRoomData,
       elementBounds,
       nativeProfiles,
       nativeCategories,

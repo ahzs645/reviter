@@ -1,3 +1,4 @@
+import { createNativeRoomEvidence, scanNativeRoomEvidence, scanNativeRoomRecords, type NativeRoomEvidence } from './native-rooms.ts';
 /**
  * The page walk: one pass over every inflated page of every partition stream.
  *
@@ -181,7 +182,6 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
 const MAX_SKETCH_CURVES = 400_000;
 
 export type PartitionScanInput = {
-  schema?: import("./schema.ts").SchemaSummary;
   partitions: OpenedRevitContainer["partitions"];
   decoderPlan: OpenedRevitContainer["decoderPlan"];
   objectMarkers: number[];
@@ -193,10 +193,12 @@ export type PartitionScanInput = {
   onProgress?: (update: ProgressUpdate) => void;
   /** The loaded families' documents, from `Global/ContentDocuments`. */
   contentDocuments?: ReadonlyMap<string, ContentDocument>;
+  schema?: OpenedRevitContainer["schema"];
 };
 
 export type PartitionScan = {
   designOptions: import("./design-options.ts").DesignOptionsDecode;
+  nativeRoomEvidence: NativeRoomEvidence;
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
@@ -325,6 +327,8 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     },
     stairsRunCollector,
   ];
+  const nativeRoomEvidence = createNativeRoomEvidence();
+  const roomIds = new Set<number>();
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
   const elementHeaders = new Map<number, ElementHeader>();
@@ -641,9 +645,20 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       if (readsElementRecordLayout(decoderPlan.revitVersion)) {
         for (const header of scanElementHeaders(inflated)) {
           if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
+          if (header.categoryId === -2000160) roomIds.add(header.elementId);
         }
         for (const entry of scanNameEntries(inflated)) rawNameEntries.push(entry);
       }
+      if (readsElementRecordLayout(decoderPlan.revitVersion)) scanNativeRoomRecords(
+        inflated, decoderPlan.revitVersion, input.schema,
+        { stream: partition.path.replace(/^Root Entry\//, ''), chunkIndex: index },
+        nativeRoomEvidence, roomIds,
+      );
+      if (readsElementRecordLayout(decoderPlan.revitVersion)) scanNativeRoomEvidence(
+        inflated, decoderPlan.revitVersion,
+        { stream: partition.path.replace(/^Root Entry\//, ''), chunkIndex: index },
+        nativeRoomEvidence, roomIds,
+      );
       const detectedBoundsRecords = decoderPlan.elementBoundsDecoder
         ? detectDuplicatedBoundsRecords(inflated)
         : [];
@@ -784,6 +799,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   );
   return {
     designOptions: designOptions.finish(elementHeaders.values()),
+    nativeRoomEvidence,
     candidates,
     categoryTokens,
     elementHeaders,
