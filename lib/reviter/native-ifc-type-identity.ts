@@ -13,6 +13,10 @@ import type { ElementBoundsRecord } from "./types.ts";
 import { nativeIfcGlobalIds, revitDoorWindowTypeGlobalId, revitIfcSubElementGlobalId } from "./ifc-global-id.ts";
 import type { NativeElementIdentity } from "./native-identity.ts";
 import { hypot } from "./deterministic-math.ts";
+import { canonicalClassTag } from "./revit-class-tags.ts";
+import { decodeRevit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
+import { replayRevit2027GRepFifo } from "./revit-2027-grep-replay.ts";
+import type { Revit2027GInstance, Revit2027InstanceInfo } from "./revit-2027-ginstance.ts";
 
 export type NativeOriginalSymbolReference = {
   elementId: number;
@@ -24,12 +28,43 @@ export type NativeOriginalSymbolReference = {
   chunkIndex: number;
   rawOffset: number;
   objectOffset: number;
+  /** Exact field position obtained by following the owning graphics FIFO. */
+  symbolFieldOffset?: number;
+  /** Embedded instance geometry needs a separately proven exporter recipe. */
+  embeddedSymbolGeometry?: boolean;
 };
 export type NativeIfcTypeIdentityEvidence = NativeOriginalSymbolReference & {
   flipped?: boolean;
   flipSource?: "native-instance-facing+native-host-wall-axis";
 };
 type Location = { stream: string; chunkIndex: number; rawOffset: number; complete: boolean };
+
+/** The end−20 recipe only reads the symbol when InstanceInfo is the last
+ * deferred object. Follow the existing certified FIFO for larger records.
+ * Only the first direct GInstance of the owner is eligible; nested graphics
+ * and reused pointers cannot borrow another instance's symbol. */
+export function nativeOriginalSymbolFromFifo(data: Uint8Array, frame: ElementObject, revitVersion: number): {
+  originalSymbolId: number | null; symbolFieldOffset: number; embeddedSymbolGeometry: boolean;
+} | null {
+  const verified = verifiedOriginalSymbolObject(data, frame.offset);
+  if (!verified || verified.elementId !== frame.elementId || canonicalClassTag(verified.classTag) !== 2246) return null;
+  const root = decodeRevit2027FramedGRepRoot(data, { ...frame, marker: 2246 }, revitVersion);
+  if (!root.ok || root.value.children.length > 64 || root.value.children[0]?.sourceClassSlot !== 2215) return null;
+  const replay = replayRevit2027GRepFifo(data, root.value, undefined, { maxReplayEntries: 512, maxDescriptors: 2048 });
+  if (!replay.ok) return null;
+  const instanceSpan = replay.value.spans.find(span => span.path.length === 1 && span.path[0] === 0 && span.readerId === "Revit2027GInstance");
+  const infoSpan = replay.value.spans.find(span => span.parentReplayIndex === instanceSpan?.replayIndex && span.path.length === 2 && span.path[1] === 0 && span.readerId === "Revit2027InstanceInfo");
+  if (!instanceSpan || !infoSpan) return null;
+  const instance = instanceSpan.value as Revit2027GInstance;
+  const info = infoSpan.value as Revit2027InstanceInfo;
+  const symbol = info.symbolElementId;
+  if (symbol !== -1n && (symbol < 1n || symbol > 0xffff_fffen)) return null;
+  return {
+    originalSymbolId: symbol === -1n ? null : Number(symbol),
+    symbolFieldOffset: info.byteOffset + 96,
+    embeddedSymbolGeometry: instance.embeddedSymbolGRep.token !== 0,
+  };
+}
 
 /** Original symbols can survive outside the current ElemTable inventory.
  * Admit their validated creation histories for this identity reader only;
@@ -70,9 +105,11 @@ export function createNativeOriginalSymbolCollector(options: {
   const instances = new Set<number>();
   const held = new Map<number, { partition: number; references: Map<number, NativeOriginalSymbolReference> }>();
   let checksumWork = 0;
+  let fifoWork = 0;
   let capped = false;
   const MAX_CHECKSUM_BYTES = 128 * 1024 * 1024;
   const MAX_ELEMENTS = 200_000;
+  const MAX_FIFO_BYTES = 16 * 1024 * 1024;
   return {
     consumeObjects(data: Uint8Array, location: Location, objects: readonly ElementObject[]): void {
       if (!admitted || !location.complete || capped) return;
@@ -115,14 +152,26 @@ export function createNativeOriginalSymbolCollector(options: {
         if (isSymbol) { symbols.add(frame.elementId); continue; }
         const at = verified.end - 20;
         if (at < frame.offset + 20) continue;
-        const originalSymbolId = view.getUint32(at, true);
+        const tailSymbolId = view.getUint32(at, true);
+        // Preserve the measured fixed-instance path. Larger complete records
+        // can append geometry after InstanceInfo and need structural replay.
+        let fifo: ReturnType<typeof nativeOriginalSymbolFromFifo> = null;
+        if (size > 300 && instances.has(frame.elementId) && fifoWork + size <= MAX_FIFO_BYTES && checksumWork + size <= MAX_CHECKSUM_BYTES) {
+          fifoWork += size;
+          checksumWork += size; // The standalone structural helper re-verifies.
+          fifo = nativeOriginalSymbolFromFifo(data, frame, options.revitVersion!);
+        }
+        const originalSymbolId = fifo ? fifo.originalSymbolId ?? 0xffff_ffff : tailSymbolId;
         const previous = held.get(frame.elementId);
         if (previous && previous.partition > partition) continue;
         const current = previous?.partition === partition ? previous : { partition, references: new Map<number, NativeOriginalSymbolReference>() };
+        const previousReference = current.references.get(originalSymbolId);
         current.references.set(originalSymbolId, {
           elementId: frame.elementId, originalSymbolId: originalSymbolId === 0xffff_ffff ? null : originalSymbolId,
           source: "checksum-verified-GElement.original-symbol", revitVersion: options.revitVersion!,
           stream: location.stream, chunkIndex: location.chunkIndex, rawOffset: location.rawOffset, objectOffset: frame.offset,
+          ...(fifo ? { symbolFieldOffset: fifo.symbolFieldOffset, embeddedSymbolGeometry: fifo.embeddedSymbolGeometry } : {}),
+          ...(previousReference?.embeddedSymbolGeometry ? { embeddedSymbolGeometry: true } : {}),
         });
         held.set(frame.elementId, current);
       }
@@ -203,6 +252,7 @@ export function nativeFamilyTypeGlobalId(options: {
 }): string | null {
   const evidence = options.evidence;
   if (!evidence || evidence.source !== "checksum-verified-GElement.original-symbol" ||
+    evidence.embeddedSymbolGeometry === true ||
     !Number.isInteger(evidence.revitVersion) || evidence.revitVersion < 2024 || evidence.revitVersion > 2027 ||
     !Number.isSafeInteger(evidence.elementId) || evidence.elementId < 1 ||
     (evidence.originalSymbolId !== null && (!Number.isSafeInteger(evidence.originalSymbolId) || evidence.originalSymbolId < 1 || evidence.originalSymbolId > 0xffff_fffe))) return null;

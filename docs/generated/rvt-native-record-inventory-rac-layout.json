@@ -1,0 +1,43 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2025,
+  "sourceStatus": "complete",
+  "inventoryStatus": "complete",
+  "retainedSourceRecords": 65,
+  "projectedRecords": 65,
+  "fallbackRecords": 0,
+  "comparedFields": 965,
+  "comparedPointerEdges": 0,
+  "mismatches": 0,
+  "classCounts": {
+    "Viewport": 63,
+    "ViewSheetSet": 2
+  },
+  "classFieldCounts": {
+    "Viewport": 945,
+    "ViewSheetSet": 20
+  },
+  "projectedValueAndWitnessSha256": "5b8fdfbcb4b8f4630b13b8801528bfc8825b8b1f899dfd9b8183f30d901d7097",
+  "sourceClassCoverage": {
+    "ViewSheetSet": {
+      "body_bytes": 406,
+      "complete_graph_body_bytes": 406,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "Viewport": {
+      "body_bytes": 13934,
+      "complete_graph_body_bytes": 13934,
+      "complete_graphs": 63,
+      "diagnostics": {},
+      "records": 63,
+      "unsupported_graphs": 0
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

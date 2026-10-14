@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-ifc-mapped-geometry.ts",
+  "upstream": {
+    "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "source": "src/ifc/step_writer.rs::representation map and mapped item emission"
+  },
+  "positiveFixture": {
+    "test": "tests/export-ifc-mapped-geometry.test.ts",
+    "instances": 16,
+    "representationMaps": 1,
+    "mappedItems": 16,
+    "byteReductionPercentVerifiedAtLeast": 20,
+    "worldTriangleAndMaterialComparison": "identical at 0.00001 metre quantization",
+    "independentSchemaReader": "@ifc-lite/parser IFC4"
+  },
+  "models": [
+    {
+      "schemaVersion": 1,
+      "generatedBy": "scripts/audit-ifc-mapped-geometry.ts",
+      "input": {
+        "fileName": "rac.rvt",
+        "sha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293"
+      },
+      "policy": "Optional translation-only maps; explicit native type, owner, all ordered local vertices/topology/materials verified. Default exporter unchanged.",
+      "before": {
+        "bytes": 14609124,
+        "representationMaps": 0,
+        "mappedItems": 0,
+        "tessellatedFaceSets": 695,
+        "schema": "IFC4",
+        "reopenedTriangles": 195434,
+        "reopenedTaggedProducts": 461
+      },
+      "after": {
+        "bytes": 14609124,
+        "representationMaps": 0,
+        "mappedItems": 0,
+        "tessellatedFaceSets": 695,
+        "schema": "IFC4",
+        "reopenedTriangles": 195434,
+        "reopenedTaggedProducts": 461
+      },
+      "byteReductionPercent": 0,
+      "maxBoundsErrorMetres": 0,
+      "mismatches": [],
+      "geometryEquivalent": true,
+      "scope": "Same-scene exporter comparison. All tagged product bounds/counts/materials and total reader triangles checked; reference IFC geometry is not assumed identical."
+    },
+    {
+      "schemaVersion": 1,
+      "generatedBy": "scripts/audit-ifc-mapped-geometry.ts",
+      "input": {
+        "fileName": "school.rvt",
+        "sha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742"
+      },
+      "policy": "Optional translation-only maps; explicit native type, owner, all ordered local vertices/topology/materials verified. Default exporter unchanged.",
+      "before": {
+        "bytes": 47322231,
+        "representationMaps": 0,
+        "mappedItems": 0,
+        "tessellatedFaceSets": 6008,
+        "schema": "IFC4",
+        "reopenedTriangles": 392838,
+        "reopenedTaggedProducts": 5507
+      },
+      "after": {
+        "bytes": 47311812,
+        "representationMaps": 7,
+        "mappedItems": 14,
+        "tessellatedFaceSets": 5994,
+        "schema": "IFC4",
+        "reopenedTriangles": 392838,
+        "reopenedTaggedProducts": 5507
+      },
+      "byteReductionPercent": 0.02201713608980249,
+      "maxBoundsErrorMetres": 2.000177801164682e-11,
+      "mismatches": [],
+      "geometryEquivalent": true,
+      "scope": "Same-scene exporter comparison. All tagged product bounds/counts/materials and total reader triangles checked; reference IFC geometry is not assumed identical."
+    }
+  ],
+  "limitations": [
+    "Translation-only reuse, ordered topology/vertices/materials and explicit same type required.",
+    "Model numbers measure exporter preservation from one scene, not equivalence to source Revit IFC view.",
+    "No reusable body in RAC under exact local geometry gates; School saves 10,419 bytes (0.022%)."
+  ]
+}

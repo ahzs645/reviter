@@ -15,116 +15,71 @@
   },
   "reviter": {
     "repository": "https://github.com/ahzs645/reviter",
-    "baseCommit": "b403c4259edbaaae780dfdb00afe99507d5d4603",
+    "baseCommit": "dd4c6d3672606b5c01ac7162f969b68f3485d133",
     "workingTreeChanges": [
       "M app/ReviterStudio.tsx",
-      " M app/globals.css",
-      " M app/studio/BuildingDirectory.tsx",
-      " M app/studio/DwgFloorReview.tsx",
-      " M app/studio/MobileShell.tsx",
+      " M app/studio/IfcExportControls.tsx",
       " M app/studio/ModelCanvas.tsx",
-      " M app/studio/ReportDock.tsx",
-      " M app/studio/decode-dwg.ts",
+      " M app/studio/ViewpointLinkControls.tsx",
       " M app/studio/format.ts",
-      " M app/studio/reference-model.ts",
-      " M app/studio/types.ts",
-      " M app/studio/use-architectural-plan.ts",
-      " M docs/native-mep-integration.md",
-      " M docs/rvt-capabilities-and-fuzzing.md",
+      " M app/studio/viewpoint-links.ts",
+      " M docs/generated/rvt-integration-checks-final.json",
+      " M docs/generated/rvt-reader-comparison-final.json",
+      " M docs/native-source-evidence.md",
       " M docs/rvt-semantic-attribution.md",
       " M docs/rvt-semantic-integration.md",
-      " M github-pages/globals.d.ts",
-      " M github-pages/main.tsx",
-      " M lib/reviter/capabilities.ts",
-      " M lib/reviter/convert-partition-scan.ts",
+      " M docs/rvt-upstream-capability-inventory.json",
+      " M docs/rvt-upstream-capability-inventory.md",
+      " M docs/rvt-upstream-comparison.md",
+      " M lib/reviter/convert-container.ts",
       " M lib/reviter/convert.ts",
-      " M lib/reviter/export-ifc-mep.ts",
-      " M lib/reviter/export-ifc-native-rooms.ts",
+      " M lib/reviter/elem-table.ts",
       " M lib/reviter/export-ifc.ts",
       " M lib/reviter/export-report.ts",
-      " M lib/reviter/exports.ts",
-      " M lib/reviter/ifc-export-semantics.ts",
-      " M lib/reviter/ifc-global-id.ts",
-      " M lib/reviter/index.ts",
-      " M lib/reviter/native-ifc-export-parameters.ts",
-      " M lib/reviter/native-mep.ts",
-      " M lib/reviter/native-source-rooms.ts",
+      " M lib/reviter/native-evidence-reader.ts",
+      " M lib/reviter/native-ifc-type-identity.ts",
+      " M lib/reviter/revit-2027-garc.ts",
+      " M lib/reviter/revit-2027-gcondition-dir.ts",
+      " M lib/reviter/revit-2027-gellipse.ts",
+      " M lib/reviter/revit-2027-gline.ts",
       " M lib/reviter/types.ts",
-      " M lib/reviter/worker.ts",
-      " M lib/rvt-wasm/package.json",
-      " M lib/rvt-wasm/provenance.json",
-      " M lib/rvt-wasm/rvt.d.ts",
-      " M lib/rvt-wasm/rvt.js",
-      " M lib/rvt-wasm/rvt_bg.wasm",
-      " M lib/rvt-wasm/rvt_bg.wasm.d.ts",
-      " M package.json",
-      " M scripts/audit-native-mep.ts",
-      " M scripts/audit-rvt-semantic-integration.ts",
-      " M scripts/build-pages.mjs",
-      " M scripts/rebuild-rvt-wasm.mjs",
-      " M tests/capabilities.test.ts",
-      " M tests/export-ifc.test.ts",
-      " M tests/ifc-export-semantics.test.ts",
-      " M tests/ifc-global-id.test.ts",
-      " M tests/native-source-rooms.test.ts",
-      " M vite.config.ts",
-      "?? app/studio/IfcExportControls.tsx",
-      "?? app/studio/ViewpointLinkControls.tsx",
-      "?? app/studio/viewpoint-links.ts",
-      "?? docs/generated/rvt-export-browser-validation.json",
-      "?? docs/generated/rvt-family-type-source-validation.json",
-      "?? docs/generated/rvt-integration-checks-final.json",
-      "?? docs/generated/rvt-malformed-fuzz-expanded.json",
-      "?? docs/generated/rvt-mep-reference-validation.json",
-      "?? docs/generated/rvt-native-evidence-validation.json",
-      "?? docs/generated/rvt-native-pipe-roundtrip-validation.json",
-      "?? docs/generated/rvt-rac-ifc-enum-conflicts.json",
-      "?? docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json",
-      "?? docs/generated/rvt-reader-comparison-final.json",
-      "?? docs/generated/rvt-unbc-original-symbol-owner-proof.json",
-      "?? docs/generated/rvt-viewpoint-browser-validation.json",
-      "?? docs/native-source-evidence.md",
-      "?? docs/rvt-upstream-capability-inventory.json",
-      "?? docs/rvt-upstream-capability-inventory.md",
-      "?? docs/rvt-upstream-comparison.md",
-      "?? lib/reviter/document-metadata.ts",
-      "?? lib/reviter/export-ifc-mep-geometry.ts",
-      "?? lib/reviter/export-ifc-phase-spatial.ts",
-      "?? lib/reviter/export-schedules.ts",
-      "?? lib/reviter/ifc-category-map.ts",
-      "?? lib/reviter/ifc-guid-parameter-witnesses.ts",
-      "?? lib/reviter/native-evidence-reader.ts",
-      "?? lib/reviter/native-evidence-worker.ts",
-      "?? lib/reviter/native-ifc-semantic-model.ts",
-      "?? lib/reviter/native-ifc-type-identity.ts",
-      "?? lib/reviter/native-mep-dimensions.ts",
-      "?? lib/reviter/native-mep-model.ts",
-      "?? lib/reviter/native-phase-spatial.ts",
-      "?? lib/reviter/standards-reader.ts",
-      "?? lib/rvt-wasm/patches/",
-      "?? scripts/compare-rvt-readers.ts",
-      "?? scripts/inspect-native-evidence.ts",
-      "?? scripts/inventory-rvt-upstream-capabilities.py",
-      "?? scripts/lib/ifc-comparison-stats.ts",
-      "?? scripts/lib/ifc-type-comparison.ts",
-      "?? scripts/summarize-rvt-reader-comparison.ts",
-      "?? tests/document-metadata.test.ts",
-      "?? tests/export-ifc-mep-geometry.test.ts",
-      "?? tests/export-schedules.test.ts",
-      "?? tests/ifc-comparison-stats.test.ts",
-      "?? tests/ifc-export-semantics-expanded.test.ts",
-      "?? tests/ifc-guid-parameter-witnesses.test.ts",
-      "?? tests/ifc-type-comparison.test.ts",
-      "?? tests/ifc-type-identity.test.ts",
-      "?? tests/native-evidence-wasm.test.ts",
-      "?? tests/native-ifc-semantic-model.test.ts",
-      "?? tests/native-mep-dimensions.test.ts",
-      "?? tests/native-mep-model.test.ts",
-      "?? tests/native-phase-spatial.test.ts",
-      "?? tests/rvt-reader-comparison-cli.test.ts",
-      "?? tests/rvt-upstream-capability-inventory.test.ts",
-      "?? tests/standards-reader.test.ts",
-      "?? tests/viewpoint-links.test.ts"
+      " M scripts/inspect-native-evidence.ts",
+      " M scripts/inventory-rvt-upstream-capabilities.py",
+      " M tests/ifc-type-identity.test.ts",
+      " M tests/rvt-upstream-capability-inventory.test.ts",
+      " M tests/viewpoint-links.test.ts",
+      "?? docs/full-elem-table-inventory-audit.json",
+      "?? docs/generated/rvt-mapped-geometry-validation.json",
+      "?? docs/generated/rvt-native-parameter-validation.json",
+      "?? docs/generated/rvt-native-record-inventory-rac-layout.json",
+      "?? docs/generated/rvt-native-record-inventory-rac.json",
+      "?? docs/generated/rvt-native-record-inventory-school.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-all.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-context.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-layout.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-other-views.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-plans.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon-schedules.json",
+      "?? docs/generated/rvt-native-record-inventory-snowdon.json",
+      "?? docs/generated/rvt-type-identity-fifo-validation.json",
+      "?? docs/generated/rvt-viewpoint-state-browser-validation.json",
+      "?? docs/ifc-mapped-geometry.md",
+      "?? docs/native-ifc-type-field-evidence.md",
+      "?? docs/native-parameter-inventory.md",
+      "?? docs/native-record-inventory.md",
+      "?? docs/rvt-upstream-continuation.md",
+      "?? docs/viewpoint-links.md",
+      "?? lib/reviter/export-ifc-mapped-geometry.ts",
+      "?? lib/reviter/native-parameter-inventory.ts",
+      "?? lib/reviter/native-record-inventory.ts",
+      "?? scripts/audit-ifc-mapped-geometry.ts",
+      "?? scripts/audit-native-parameter-inventory.ts",
+      "?? scripts/audit-native-record-inventory.ts",
+      "?? scripts/inspect-native-records.ts",
+      "?? tests/elem-table-inventory.test.ts",
+      "?? tests/export-ifc-mapped-geometry.test.ts",
+      "?? tests/native-parameter-inventory.test.ts",
+      "?? tests/native-record-inventory.test.ts"
     ]
   },
   "scope": "Every pinned src/**/*.rs module, every CLI, all viewer/Python/WASM package files, Rust examples and fuzz entry points are enumerated. Capability equivalence is assessed by behavior and evidence, not matching names.",
@@ -276,7 +231,7 @@
         },
         {
           "path": "lib/reviter/convert-container.ts",
-          "sha256": "ba514942e22acdebbe1ffcd065f63b9d1f8fd9810b0d321abc2c8d5256e9a232",
+          "sha256": "c3d6b83e00eb18e680105f9fb805e4aaab49b234a092311ffd12285ab740e254",
           "exportedSymbols": [
             "OpenedRevitContainer",
             "openRevitContainer"
@@ -472,15 +427,17 @@
         "lib/reviter/native-identity.ts",
         "lib/reviter/ifc-global-id.ts",
         "lib/reviter/element-relations.ts",
-        "lib/reviter/native-ifc-type-identity.ts"
+        "lib/reviter/native-ifc-type-identity.ts",
+        "lib/reviter/elem-table.ts"
       ],
       "regressionSuites": [
+        "tests/elem-table-inventory.test.ts",
         "tests/native-identity.test.ts",
         "tests/ifc-global-id.test.ts",
         "tests/ifc-type-identity.test.ts",
         "tests/ifc-type-comparison.test.ts"
       ],
-      "behavior": "Existing creation-history/native-table joins and default Revit-compatible IFC IDs are extended with evidence-driven stored-ID, original-symbol and exporter sub-element rules. Original-symbol admission uses checksum-verified named instance/symbol witnesses and publishes only physical source owners, compensating for a narrower generic table inventory without widening other decoder domains.",
+      "behavior": "Existing creation-history/native-table joins and default Revit-compatible IFC IDs are extended with evidence-driven stored-ID, original-symbol and exporter sub-element rules. Original-symbol admission uses checksum-verified named instance/symbol witnesses and publishes only physical source owners, compensating for a narrower generic table inventory without widening other decoder domains. A separate complete schema-validated ElemTable inventory retains u32 counts, exact IDs, source aliases and acyclic owner slots; bounded FIFO symbol reading handles deferred geometry while withholding embedded exporter recipes.",
       "limitations": "Document-scoped ES identity contracts are not equivalent to recovered BIM identities. Exporter configuration, assembly/level/material splits and unknown flip/host evidence remain unresolved.",
       "nextAction": "Verify source-only original-symbol witnesses separately from actual full-export type relationships; never guess missing flip/configuration inputs.",
       "upstreamEvidence": [
@@ -558,7 +515,8 @@
         "lib/reviter/native-identity.ts",
         "lib/reviter/ifc-global-id.ts",
         "lib/reviter/element-relations.ts",
-        "lib/reviter/native-ifc-type-identity.ts"
+        "lib/reviter/native-ifc-type-identity.ts",
+        "lib/reviter/elem-table.ts"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -609,10 +567,11 @@
         },
         {
           "path": "lib/reviter/native-ifc-type-identity.ts",
-          "sha256": "1a6bf270a906d8a6c5a6425c30fc2216f8f46d4fdbe93f997cbfd68dad17896d",
+          "sha256": "c51c85f044eef6ec4c480e120de220d71c8e65956c4214fb803114ff41bf3ba0",
           "exportedSymbols": [
             "NativeOriginalSymbolReference",
             "NativeIfcTypeIdentityEvidence",
+            "nativeOriginalSymbolFromFifo",
             "nativeOriginalSymbolElementIds",
             "verifiedOriginalSymbolObject",
             "createNativeOriginalSymbolCollector",
@@ -620,9 +579,22 @@
             "resolveNativeIfcTypeIdentityEvidence",
             "nativeFamilyTypeGlobalId"
           ]
+        },
+        {
+          "path": "lib/reviter/elem-table.ts",
+          "sha256": "caf6eecd0de8ce174f86ee8f844b52bbbd08e7c296f7729b365ecc0061db10bf",
+          "exportedSymbols": [
+            "detectElemTableLayout",
+            "parseElemTable",
+            "FULL_ELEM_TABLE_MAX_RECORDS",
+            "FullElemTableInventory",
+            "FullElemTableInventoryFailure",
+            "parseFullElemTableInventory"
+          ]
         }
       ],
       "regressionSuitesPresent": [
+        "tests/elem-table-inventory.test.ts",
         "tests/native-identity.test.ts",
         "tests/ifc-global-id.test.ts",
         "tests/ifc-type-identity.test.ts",
@@ -1021,7 +993,7 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "195f070b511b89e2c6591edc20beaca9e79c305ab0d39d8e73a96478e2ced2da",
+          "sha256": "e99add485120aaf29ff5e50a59e0a0eb3ea73f7398a997cf3c25c6120961bce8",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
@@ -1036,7 +1008,7 @@
         },
         {
           "path": "scripts/inspect-native-evidence.ts",
-          "sha256": "b97cb910cf90d0f88fec89f5cba0667575a05df6afd0230f8130454a79bcba6f",
+          "sha256": "cf9932cc73a4b052ac349b2e33ef3ab148bd8cb2dd31d81d93891fe4f74bc495",
           "exportedSymbols": []
         }
       ],
@@ -1063,14 +1035,17 @@
         "lib/reviter/shared-parameters.ts",
         "lib/reviter/built-in-parameters.ts",
         "lib/reviter/parameter-specs.ts",
-        "lib/reviter/native-evidence-reader.ts"
+        "lib/reviter/native-evidence-reader.ts",
+        "lib/reviter/native-parameter-inventory.ts",
+        "scripts/audit-native-parameter-inventory.ts"
       ],
       "regressionSuites": [
-        "tests/revit-text-formats.test.ts"
+        "tests/revit-text-formats.test.ts",
+        "tests/native-parameter-inventory.test.ts"
       ],
-      "behavior": "On-demand source evidence exposes native parameter-definition registries, unit and binding context from the pinned upstream parser, alongside existing raw values and shared-parameter imports.",
+      "behavior": "On-demand source evidence adds typed definition storage/spec identities, backlink-validated category bindings and direct-pointer owner values. RAC 543 and Snowdon 32 stored values agree with pinned serialized projections; conflicting native family ownership and project units remain withheld.",
       "limitations": "The evidence dump does not evaluate formulas, join every family value slot into the selected-element property panel or replace unresolved storage/namespace semantics with captions.",
-      "nextAction": "Use source definition identities and storage/unit context for future individually tested slot projections; preserve unresolved values explicitly.",
+      "nextAction": "Extend positive source-pointer owner/storage witnesses individually; retain raw internal units, expression pointers and unresolved built-ins/formulas.",
       "upstreamEvidence": [
         {
           "path": "src/native_parameter_definitions.rs",
@@ -1131,7 +1106,9 @@
         "lib/reviter/shared-parameters.ts",
         "lib/reviter/built-in-parameters.ts",
         "lib/reviter/parameter-specs.ts",
-        "lib/reviter/native-evidence-reader.ts"
+        "lib/reviter/native-evidence-reader.ts",
+        "lib/reviter/native-parameter-inventory.ts",
+        "scripts/audit-native-parameter-inventory.ts"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -1187,17 +1164,43 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "195f070b511b89e2c6591edc20beaca9e79c305ab0d39d8e73a96478e2ced2da",
+          "sha256": "e99add485120aaf29ff5e50a59e0a0eb3ea73f7398a997cf3c25c6120961bce8",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
             "NativeEvidenceReport",
             "readNativeSourceEvidence"
           ]
+        },
+        {
+          "path": "lib/reviter/native-parameter-inventory.ts",
+          "sha256": "3ca42d7ea7ef29e76475c920caed34ed0b836c43873e03b0543c76d12e93623d",
+          "exportedSymbols": [
+            "NativeParameterStorage",
+            "NativeParameterSource",
+            "NativeParameterDefinition",
+            "NativeParameterBinding",
+            "NativeParameterValue",
+            "NativeUnresolvedParameterSlot",
+            "NativeParameterInventory",
+            "NATIVE_PARAMETER_DEFINITION_CLASSES",
+            "NATIVE_PARAMETER_OWNER_CLASSES",
+            "NATIVE_PARAMETER_INVENTORY_CLASSES",
+            "buildNativeParameterInventory",
+            "makeNativeParameterInventoryCsv"
+          ]
+        },
+        {
+          "path": "scripts/audit-native-parameter-inventory.ts",
+          "sha256": "5cb5ab5b162a7ba4b7d92401e472dff3bfaf057d7bdabc4f290338fd2345ba68",
+          "exportedSymbols": [
+            "auditNativeParameterInventory"
+          ]
         }
       ],
       "regressionSuitesPresent": [
-        "tests/revit-text-formats.test.ts"
+        "tests/revit-text-formats.test.ts",
+        "tests/native-parameter-inventory.test.ts"
       ],
       "regressionSuitesMissing": [],
       "verificationState": "referenced sources/suites exist; execution results are tracked separately"
@@ -1298,7 +1301,7 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "195f070b511b89e2c6591edc20beaca9e79c305ab0d39d8e73a96478e2ced2da",
+          "sha256": "e99add485120aaf29ff5e50a59e0a0eb3ea73f7398a997cf3c25c6120961bce8",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
@@ -1975,10 +1978,11 @@
         },
         {
           "path": "lib/reviter/native-ifc-type-identity.ts",
-          "sha256": "1a6bf270a906d8a6c5a6425c30fc2216f8f46d4fdbe93f997cbfd68dad17896d",
+          "sha256": "c51c85f044eef6ec4c480e120de220d71c8e65956c4214fb803114ff41bf3ba0",
           "exportedSymbols": [
             "NativeOriginalSymbolReference",
             "NativeIfcTypeIdentityEvidence",
+            "nativeOriginalSymbolFromFifo",
             "nativeOriginalSymbolElementIds",
             "verifiedOriginalSymbolObject",
             "createNativeOriginalSymbolCollector",
@@ -2103,7 +2107,7 @@
         },
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -2120,7 +2124,7 @@
     {
       "id": "source-drafting",
       "capability": "Native drawings, grids, annotation and reference planes",
-      "disposition": "gap",
+      "disposition": "narrower",
       "upstreamSources": [
         "src/elements/annotations.rs",
         "src/elements/drafting.rs",
@@ -2130,10 +2134,14 @@
       "reviterSources": [
         "app/studio/viewer-tools.ts",
         "lib/reviter/cad-files.ts",
-        "lib/reviter/dwg-inspection.ts"
+        "lib/reviter/dwg-inspection.ts",
+        "lib/reviter/native-record-inventory.ts",
+        "scripts/inspect-native-records.ts"
       ],
-      "regressionSuites": [],
-      "behavior": "Upstream typed views expose saved Revit View/Sheet/Schedule/Grid/Dimension/Tag/TextNote/ReferencePlane metadata. Reviter viewer markups and DWG review are separate user-authored or CAD features.",
+      "regressionSuites": [
+        "tests/native-record-inventory.test.ts"
+      ],
+      "behavior": "A bounded typed stored-record inventory now projects exact schema fields for views, schedules, grids, reference planes, text notes, revision/area-scheme/workset-visibility records and base points, with root-owner and pointer provenance. Positive RAC/School/Snowdon projections retain partial scope and raw fallbacks; viewer markups remain separately authored.",
       "limitations": "Upstream comments explicitly say many of these are not emitted as native IFC annotations; typed accessor presence is not model-wide recovery or drafting reproduction.",
       "nextAction": "Add source Revit drafting metadata only through owner/view-scoped native graph records; do not treat user annotations as recovered Revit annotations.",
       "upstreamEvidence": [
@@ -2189,7 +2197,9 @@
       "localEvidencePresent": [
         "app/studio/viewer-tools.ts",
         "lib/reviter/cad-files.ts",
-        "lib/reviter/dwg-inspection.ts"
+        "lib/reviter/dwg-inspection.ts",
+        "lib/reviter/native-record-inventory.ts",
+        "scripts/inspect-native-records.ts"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -2245,9 +2255,29 @@
             "dwgBoundsOverlap",
             "dwgHighlightSvg"
           ]
+        },
+        {
+          "path": "lib/reviter/native-record-inventory.ts",
+          "sha256": "6a11166d5e513b190fd4ee998261d8bc622c2b0c30a128bda1d29711ec8410b4",
+          "exportedSymbols": [
+            "NATIVE_RECORD_INVENTORY_CLASSES",
+            "NativeRecordPointer",
+            "NativeRecordField",
+            "NativeInventoryRecord",
+            "NativeRecordInventory",
+            "buildNativeRecordInventory",
+            "makeNativeRecordInventoryCsv"
+          ]
+        },
+        {
+          "path": "scripts/inspect-native-records.ts",
+          "sha256": "e79c791d4fa056d76383bb553d899d149ecc07c38aaa00f398933cb40196c1b1",
+          "exportedSymbols": []
         }
       ],
-      "regressionSuitesPresent": [],
+      "regressionSuitesPresent": [
+        "tests/native-record-inventory.test.ts"
+      ],
       "regressionSuitesMissing": [],
       "verificationState": "referenced sources/suites exist; execution results are tracked separately"
     },
@@ -2642,7 +2672,7 @@
         },
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -3061,7 +3091,7 @@
         },
         {
           "path": "lib/reviter/convert.ts",
-          "sha256": "92e00312afc63314d6e5e9b5007ef190955b66bb55e04dcb840668f4da37c692",
+          "sha256": "493f539351521720740b4228f7489850706d03132ab667f00853d74ddf4c3534",
           "exportedSymbols": [
             "convertRvtBytes"
           ]
@@ -3758,7 +3788,7 @@
         },
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -4719,7 +4749,7 @@
         },
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -4764,15 +4794,18 @@
       "reviterSources": [
         "lib/reviter/export-ifc.ts",
         "lib/reviter/export-glb.ts",
-        "lib/reviter/export-ifc-mep-geometry.ts"
+        "lib/reviter/export-ifc-mep-geometry.ts",
+        "lib/reviter/export-ifc-mapped-geometry.ts",
+        "scripts/audit-ifc-mapped-geometry.ts"
       ],
       "regressionSuites": [
         "tests/export-ifc.test.ts",
-        "tests/export-ifc-mep-geometry.test.ts"
+        "tests/export-ifc-mep-geometry.test.ts",
+        "tests/export-ifc-mapped-geometry.test.ts"
       ],
-      "behavior": "Upstream serializer supports extrusion/profile/revolved/swept/boolean/BRep descriptors, reusable representation maps, material layer/profile/constituent sets and openings. Reviter emits recovered tessellated bodies, source room/profile extrusions and materials/layers/constituents; a new opt-in hollow-pipe extrusion uses measured native axis/inner/outer diameter evidence only for eligible missing/proxy bodies.",
-      "limitations": "A tessellated shape can be accurate while losing authoring-level parametric representation or compact mapped instancing. Recovered meshes do not prove named IFC profile dimensions. The narrow 2025 pipe reconstruction is labeled reconstructed and does not replace certified native/reference bodies; reusable representation maps and general material-profile support remain missing.",
-      "nextAction": "Add mapped representations and source material-profile entities only where native type/section evidence exists; do not infer profiles from mesh envelopes.",
+      "behavior": "Upstream serializer supports extrusion/profile/revolved/swept/boolean/BRep descriptors, reusable representation maps, material layer/profile/constituent sets and openings. Reviter emits recovered tessellated bodies, source room/profile extrusions and materials/layers/constituents; a new opt-in hollow-pipe extrusion uses measured native axis/inner/outer diameter evidence only for eligible missing/proxy bodies. Optional representation maps share only native typed bodies with identical topology/materials/relative vertices; School has seven maps/fourteen occurrences with matching independent geometry and placement.",
+      "limitations": "A tessellated shape can be accurate while losing authoring-level parametric representation or compact mapped instancing. Recovered meshes do not prove named IFC profile dimensions. The narrow 2025 pipe reconstruction is labeled reconstructed and does not replace certified native/reference bodies; rotated/nonidentical geometry sharing and general material-profile support remain missing.",
+      "nextAction": "Extend mapped representations and source material-profile entities only where native type/section evidence exists; do not infer profiles from mesh envelopes.",
       "upstreamEvidence": [
         {
           "path": "src/ifc/entities.rs",
@@ -4823,13 +4856,15 @@
       "localEvidencePresent": [
         "lib/reviter/export-ifc.ts",
         "lib/reviter/export-glb.ts",
-        "lib/reviter/export-ifc-mep-geometry.ts"
+        "lib/reviter/export-ifc-mep-geometry.ts",
+        "lib/reviter/export-ifc-mapped-geometry.ts",
+        "scripts/audit-ifc-mapped-geometry.ts"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -4851,11 +4886,26 @@
             "NativePipeShape",
             "emitNativePipeShape"
           ]
+        },
+        {
+          "path": "lib/reviter/export-ifc-mapped-geometry.ts",
+          "sha256": "a1bb3a23b329d8b6b4a520c9a37823b91727a64eb7ec1f7138f4acb7a6c7e30f",
+          "exportedSymbols": [
+            "MappableFragment",
+            "MappedGeometryPlan",
+            "planMappedGeometry"
+          ]
+        },
+        {
+          "path": "scripts/audit-ifc-mapped-geometry.ts",
+          "sha256": "9c26b6e3e19566644df97382e7eda00ec25c721e8f2a78b0b7298f1de0bd9634",
+          "exportedSymbols": []
         }
       ],
       "regressionSuitesPresent": [
         "tests/export-ifc.test.ts",
-        "tests/export-ifc-mep-geometry.test.ts"
+        "tests/export-ifc-mep-geometry.test.ts",
+        "tests/export-ifc-mapped-geometry.test.ts"
       ],
       "regressionSuitesMissing": [],
       "verificationState": "referenced sources/suites exist; execution results are tracked separately"
@@ -5000,7 +5050,7 @@
         },
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -5161,7 +5211,7 @@
         },
         {
           "path": "lib/reviter/export-report.ts",
-          "sha256": "a2e834395c3a08931f9ca99245f5a56824912ec7bc3bebcf60d786bacbcb12d6",
+          "sha256": "c9ca27558ab2bdc3608ade78d08aa0e0de26f4da7edc71efe709107d5eb3d2f8",
           "exportedSymbols": [
             "elementManifest",
             "makeReport"
@@ -5482,8 +5532,8 @@
       "regressionSuites": [
         "tests/viewpoint-links.test.ts"
       ],
-      "behavior": "Upstream serializes camera/category/section/annotation state into a URL fragment. New Reviter v1 camera viewpoint links bind canonical source-model-foot coordinates to the source SHA-256; preferences/review bundles remain separate exchange surfaces.",
-      "limitations": "Camera links do not carry all upstream category/clip/annotation state or embed a private/local model. Unsupported unregistered GLB and wrong model hashes are refused.",
+      "behavior": "Upstream serializes camera/category/section/annotation state into a URL fragment. Reviter v2 viewpoint links bind camera, bounded category visibility and normalized section controls to source SHA-256 and review fingerprint, while preserving v1 camera imports; preferences/review bundles remain separate exchange surfaces.",
+      "limitations": "Viewpoint links omit selected objects, markup, annotations and render modes or embed a private/local model. Unsupported unregistered GLB and wrong model hashes are refused.",
       "nextAction": "Keep the source hash and coordinate provenance when extending filter/clip/annotation state; do not restore unrelated-model viewpoints.",
       "upstreamEvidence": [
         {
@@ -5508,11 +5558,15 @@
       "localEvidence": [
         {
           "path": "app/studio/viewpoint-links.ts",
-          "sha256": "9e75ce47a839de61e998c23215f7bb9e09b0d7affc1d01c980871e9b3bbe90b5",
+          "sha256": "eadc5bd386a20a6c99926fb28ef1757b44dd4d656ab4d9e91d17ba1c6172de74",
           "exportedSymbols": [
             "VIEWPOINT_FRAGMENT_PREFIX",
             "VIEWPOINT_FRAGMENT_MAX_CHARS",
             "ViewpointModelIdentity",
+            "PortableSectionState",
+            "PortableViewerState",
+            "VIEWPOINT_MAX_HIDDEN_CATEGORIES",
+            "VIEWPOINT_MAX_CATEGORY_CHARS",
             "PortableViewpoint",
             "ViewpointImport",
             "viewpointSourceFingerprint",
@@ -5526,7 +5580,7 @@
         },
         {
           "path": "app/studio/ViewpointLinkControls.tsx",
-          "sha256": "74834499455dcc0f8e3565b046c384acba087376ee08aa97f56cddfb2b52ff73",
+          "sha256": "c95ba1b30e17d80a07a5afa9b9a33c511ebe573da3e306cb3f0d0f4df9dd1bb0",
           "exportedSymbols": [
             "ViewpointLinkControls"
           ]
@@ -5961,7 +6015,7 @@
       "localEvidence": [
         {
           "path": "lib/reviter/export-ifc.ts",
-          "sha256": "325f9bf49dce370a926a7d54038ec76f332e40d6b50a19912bc32e3893c594f4",
+          "sha256": "d4c534b0a8d338c187622323bd5479ac705e407c0e70c5b2ecca72251f43ec72",
           "exportedSymbols": [
             "IfcExportOptions",
             "makeIfcCenterlines",
@@ -6065,14 +6119,14 @@
         },
         {
           "path": "lib/reviter/convert.ts",
-          "sha256": "92e00312afc63314d6e5e9b5007ef190955b66bb55e04dcb840668f4da37c692",
+          "sha256": "493f539351521720740b4228f7489850706d03132ab667f00853d74ddf4c3534",
           "exportedSymbols": [
             "convertRvtBytes"
           ]
         },
         {
           "path": "lib/reviter/types.ts",
-          "sha256": "82e70d46f7e216c6b61ac31c21724b5ff2964b7e6cf1ec9ee4e4f45d256fdfb7",
+          "sha256": "53ffc01b0eeb987b2e51704ce56715f27cb97a82aab7ead8e7b7bb4a057c74df",
           "exportedSymbols": [
             "Vec3",
             "Segment",
@@ -8971,8 +9025,8 @@
       "publicSymbols": [],
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/bin/rvt_doc.rs#L1",
       "feature": "native-records",
-      "disposition": "gap",
-      "interpretation": "General ADocument/native object field dump is not exposed by Reviter."
+      "disposition": "narrower",
+      "interpretation": "Bounded selected native graphs and typed inventory are exposed; complete ADocument recovery is not claimed."
     },
     {
       "path": "src/bin/rvt_dump.rs",
@@ -8992,7 +9046,7 @@
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/bin/rvt_elem_table.rs#L1",
       "feature": "identity",
       "disposition": "existing",
-      "interpretation": "ElemTable/ownership/native identity decoders and audit data already exist."
+      "interpretation": "Complete schema-validated ElemTable/source ownership inventory supplements legacy scene admission and native identities."
     },
     {
       "path": "src/bin/rvt_elements.rs",
@@ -9072,7 +9126,7 @@
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/bin/rvt_schedule.rs#L1",
       "feature": "scene-export",
       "disposition": "new-port",
-      "interpretation": "CSV source inventories added; native authored schedule definitions remain unsupported."
+      "interpretation": "CSV inventories and selected stored ScheduleSchema fields exist; recalculated authored schedules remain unsupported."
     },
     {
       "path": "src/bin/rvt_schema.rs",
@@ -9116,7 +9170,7 @@
       "path": "rvt-wasm/src/lib.rs",
       "sha256": "fe5fe466f11c7d374caed42d5c245a3ca2611f20f00a901b1e145bd16b589b7e",
       "disposition": "existing",
-      "interpretation": "Pinned JS/WASM public IFC/metadata API is integrated; native graph/ES APIs are not exposed here."
+      "interpretation": "Pinned JS/WASM public IFC/metadata API is integrated. A separately declared Reviter-only binding patch exposes bounded native graph/ES evidence; this pinned vanilla API remains unchanged."
     },
     {
       "path": "rvt-py/Cargo.toml",

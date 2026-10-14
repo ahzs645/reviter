@@ -14,11 +14,15 @@ export function IfcExportControls({ result, value, onChange, disabled }: {
   const ports = result.nativeMepEvidence?.ports?.length ?? 0;
   const pipes = result.nativeMepEvidence?.dimensions?.filter(dimension => dimension.pipeAxis && dimension.pipeInnerDiameterFeet != null && dimension.pipeOuterDiameterFeet != null).length ?? 0;
   const alternatives = result.nativeDesignOptionMembership?.length ?? 0;
+  const hasMeshes = result.meshes.length > 0;
   const storedGuids = (result.nativeIfcGuidParameters?.length ?? 0) > 0 || result.elementBounds.some(record =>
     [...record.parameters ?? [], ...record.typeParameters ?? []].some(parameter => parameter.parameterId === -1019000 || parameter.parameterId === -1019001));
-  if (!rooms && !systems && !joins && !ports && !alternatives && !storedGuids && !pipes) return null;
+  if (!rooms && !systems && !joins && !ports && !alternatives && !storedGuids && !pipes && !hasMeshes) return null;
   return <fieldset className="ifc-export-controls" disabled={disabled}>
     <legend>IFC content</legend>
+    {hasMeshes && <label><input type="checkbox" checked={value.reuseMappedGeometry === true}
+      onChange={event => onChange({ ...value, reuseMappedGeometry: event.target.checked })} />
+      Share identical source type geometry in IFC</label>}
     {storedGuids && <label><input type="checkbox" checked={value.allowGuidParameterOverride === true}
       onChange={event => onChange({ ...value, allowGuidParameterOverride: event.target.checked })} />
       Use stored IFC GUID overrides where valid</label>}

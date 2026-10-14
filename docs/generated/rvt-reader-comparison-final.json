@@ -9,7 +9,7 @@
       "/workspace/models/snowdon.rvt",
       "/workspace/models/unbc.rvt"
     ],
-    "output": "/workspace/scratch/head-to-head-symbol-domain-final.json",
+    "output": "/workspace/scratch/head-to-head-continuation.json",
     "upstreamMode": "scaffold",
     "timeoutMs": 900000,
     "heapMiB": 6144,
@@ -31,8 +31,8 @@
       "mep": true,
       "designOptions": "all"
     },
-    "baselineDirectory": "/workspace/models",
-    "reuseUpstream": "/workspace/reviter/docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json"
+    "reuseUpstream": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
+    "baselineDirectory": "/workspace/models"
   },
   "models": [
     {
@@ -47,13 +47,13 @@
             "byteLength": 19750912,
             "release": 2025
           },
-          "elapsedMs": 245.22062200000002,
+          "elapsedMs": 559.108322,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json",
-            "proofSha256": "2bacc5041e57356176a3775e2e7f9717e95fb55e3e64194c11f35c17dfb0b520",
-            "sourceIfc": "/workspace/scratch/head-to-head-final.json.artifacts/0-rac.rvt/upstream.ifc",
+            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
+            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
+            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/0-rac.rvt/upstream.ifc",
             "ifcSha256": "926451fc6d4e445c5b82af2e24b6d339c2c9588a1b4524dc64bb059eafd4cb82",
-            "originalElapsedMs": 14623.523928999999,
+            "originalElapsedMs": 245.22062200000002,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -834,7 +834,7 @@
             "byteLength": 19750912,
             "release": 2025
           },
-          "elapsedMs": 62548.095632000004,
+          "elapsedMs": 89605.71076399999,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -937,7 +937,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 47163.12111
+              "durationMs": 65098.495267000006
             },
             "decoderCoverage": {
               "revitVersion": 2025,
@@ -1313,7 +1313,7 @@
           },
           "ifc": {
             "byteLength": 14751288,
-            "sha256": "5327463a93ffd97c7e0882e421178a618306ce42780b89e37ff7c00855e8c95f"
+            "sha256": "83ecb05f0dd93bb8f46e628383d8325b421b305308ecaa22b753011a3cccc486"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -1852,13 +1852,13 @@
             "byteLength": 17035264,
             "release": 2025
           },
-          "elapsedMs": 934.3087579999992,
+          "elapsedMs": 1266.5017589999916,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json",
-            "proofSha256": "2bacc5041e57356176a3775e2e7f9717e95fb55e3e64194c11f35c17dfb0b520",
-            "sourceIfc": "/workspace/scratch/head-to-head-final.json.artifacts/1-school.rvt/upstream.ifc",
+            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
+            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
+            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/1-school.rvt/upstream.ifc",
             "ifcSha256": "2c82cad0075bb2cd27524e3eff116e76fd95c826136380b86a7191936b289308",
-            "originalElapsedMs": 15457.427213000003,
+            "originalElapsedMs": 934.3087579999992,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -2589,7 +2589,7 @@
             "byteLength": 17035264,
             "release": 2025
           },
-          "elapsedMs": 73801.509787,
+          "elapsedMs": 127687.558665,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -2692,7 +2692,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 43285.439338000004
+              "durationMs": 83227.342015
             },
             "decoderCoverage": {
               "revitVersion": 2025,
@@ -3061,7 +3061,7 @@
           },
           "ifc": {
             "byteLength": 48895756,
-            "sha256": "f7be5e85047b9b6e8f5bbd8b5eb6999bb31d8549aae1456f6bd74095573310dd"
+            "sha256": "46802aef3ae53cd8ec2a174e81f223fdae6dc9d902ef950111d1f1bb1dab08fd"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -3667,13 +3667,13 @@
             "byteLength": 94691328,
             "release": 2024
           },
-          "elapsedMs": 4137.424586000008,
+          "elapsedMs": 3597.513191999984,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json",
-            "proofSha256": "2bacc5041e57356176a3775e2e7f9717e95fb55e3e64194c11f35c17dfb0b520",
-            "sourceIfc": "/workspace/scratch/head-to-head-final.json.artifacts/2-snowdon.rvt/upstream.ifc",
+            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
+            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
+            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/2-snowdon.rvt/upstream.ifc",
             "ifcSha256": "5713005a22552d1beb64d68f54d51f2580a846bce7b61b19b71ae7cb907154f0",
-            "originalElapsedMs": 90120.527038,
+            "originalElapsedMs": 4137.424586000008,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -4541,7 +4541,7 @@
             "byteLength": 94691328,
             "release": 2024
           },
-          "elapsedMs": 341015.057669,
+          "elapsedMs": 354843.70252299996,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -4644,7 +4644,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 227061.588195
+              "durationMs": 248585.233781
             },
             "decoderCoverage": {
               "revitVersion": 2024,
@@ -4815,7 +4815,7 @@
             }
           },
           "inventory": {
-            "totalInstances": 392980,
+            "totalInstances": 392560,
             "classes": {
               "IFCPERSON": 1,
               "IFCORGANIZATION": 1,
@@ -4845,8 +4845,8 @@
               "IFCSHAPEREPRESENTATION": 8978,
               "IFCPRODUCTDEFINITIONSHAPE": 8978,
               "IFCWALL": 1086,
-              "IFCPROPERTYSINGLEVALUE": 198099,
-              "IFCPROPERTYSET": 58456,
+              "IFCPROPERTYSINGLEVALUE": 197889,
+              "IFCPROPERTYSET": 58386,
               "IFCRELDEFINESBYPROPERTIES": 57211,
               "IFCWALLTYPE": 49,
               "IFCSTAIRFLIGHT": 43,
@@ -4882,7 +4882,7 @@
               "IFCELECTRICAPPLIANCE": 26,
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCCOLUMN": 118,
-              "IFCCOLUMNTYPE": 89,
+              "IFCCOLUMNTYPE": 19,
               "IFCLIGHTFIXTURE": 447,
               "IFCLIGHTFIXTURETYPE": 41,
               "IFCCOVERING": 68,
@@ -4895,7 +4895,7 @@
               "IFCDISTRIBUTIONPORT": 533,
               "IFCRELNESTS": 364,
               "IFCRELCONTAINEDINSPATIALSTRUCTURE": 13,
-              "IFCRELDEFINESBYTYPE": 1245,
+              "IFCRELDEFINESBYTYPE": 1175,
               "IFCMATERIALLAYER": 125,
               "IFCMATERIALLAYERSET": 34,
               "IFCMATERIALLAYERSETUSAGE": 910,
@@ -4913,7 +4913,7 @@
               "IFCRELAGGREGATES": 33,
               "IFCBUILDINGSTOREY": 19,
               "IFCWALL": 1086,
-              "IFCPROPERTYSET": 58456,
+              "IFCPROPERTYSET": 58386,
               "IFCRELDEFINESBYPROPERTIES": 57211,
               "IFCWALLTYPE": 49,
               "IFCSTAIRFLIGHT": 43,
@@ -4949,7 +4949,7 @@
               "IFCELECTRICAPPLIANCE": 26,
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCCOLUMN": 118,
-              "IFCCOLUMNTYPE": 89,
+              "IFCCOLUMNTYPE": 19,
               "IFCLIGHTFIXTURE": 447,
               "IFCLIGHTFIXTURETYPE": 41,
               "IFCCOVERING": 68,
@@ -4958,7 +4958,7 @@
               "IFCDISTRIBUTIONPORT": 533,
               "IFCRELNESTS": 364,
               "IFCRELCONTAINEDINSPATIALSTRUCTURE": 13,
-              "IFCRELDEFINESBYTYPE": 1245,
+              "IFCRELDEFINESBYTYPE": 1175,
               "IFCRELASSOCIATESMATERIAL": 6648,
               "IFCOPENINGELEMENT": 195,
               "IFCRELVOIDSELEMENT": 195,
@@ -5002,7 +5002,7 @@
               "Pset_WallCommon": 1072,
               "Pset_QuantityTakeOff": 8629,
               "Pset_ReinforcementBarPitchOfWall": 1072,
-              "Other": 10248,
+              "Other": 10178,
               "Reviter_RevitInstanceParameters": 1555,
               "Pset_StairFlightCommon": 43,
               "Pset_MemberCommon": 1595,
@@ -5028,7 +5028,7 @@
               "Reviter_LevelParameters": 5201
             },
             "bodySources": {},
-            "roots": 135452,
+            "roots": 135242,
             "products": 9825,
             "productsWithRepresentation": 8978,
             "taggedElements": 9043,
@@ -5039,13 +5039,13 @@
               "ElementId joins use decimal common IfcElement.Tag only; source IDs stored exclusively in property sets are not joined.",
               "A representation reference or geometry entity count is not proof of a correct, complete or native-authored shape."
             ],
-            "uniqueRootGlobalIds": 135452,
+            "uniqueRootGlobalIds": 135242,
             "uniqueProductGlobalIds": 9825,
             "uniqueElementIds": 9043
           },
           "ifc": {
-            "byteLength": 132701255,
-            "sha256": "e64a4b064e5c5c5171c6e2b33e40260c37910ef255ced77fdd2907e77d4ccc47"
+            "byteLength": 132663175,
+            "sha256": "995f8cf60cf955132fe8cff33d9ba8051bc3cf0fb876ffb638e162b97eb963fc"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -5057,7 +5057,7 @@
               "IFCRELAGGREGATES": 33,
               "IFCUNITASSIGNMENT": 1,
               "IFCMATERIALLAYER": 125,
-              "IFCCOLUMNTYPE": 89,
+              "IFCCOLUMNTYPE": 19,
               "IFCSTAIR": 22,
               "IFCSTAIRTYPE": 4,
               "IFCDOOR": 141,
@@ -5068,7 +5068,7 @@
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCPRODUCTDEFINITIONSHAPE": 8978,
               "IFCCOLOURRGB": 234,
-              "IFCRELDEFINESBYTYPE": 1245,
+              "IFCRELDEFINESBYTYPE": 1175,
               "IFCCOLUMN": 118,
               "IFCSURFACESTYLESHADING": 234,
               "IFCSTAIRFLIGHTTYPE": 7,
@@ -5081,7 +5081,7 @@
               "IFCSURFACESTYLE": 234,
               "IFCMATERIALLAYERSETUSAGE": 910,
               "IFCRELVOIDSELEMENT": 195,
-              "IFCPROPERTYSET": 58456,
+              "IFCPROPERTYSET": 58386,
               "IFCCURTAINWALLTYPE": 8,
               "IFCRAMPTYPE": 2,
               "IFCFURNITURE": 340,
@@ -5123,7 +5123,7 @@
               "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
               "IFCCURTAINWALL": 42,
               "IFCOPENINGELEMENT": 195,
-              "IFCPROPERTYSINGLEVALUE": 198099,
+              "IFCPROPERTYSINGLEVALUE": 197889,
               "IFCMATERIALCONSTITUENT": 2029,
               "IFCPOLYLINE": 77,
               "IFCARBITRARYCLOSEDPROFILEDEF": 31,
@@ -5211,7 +5211,7 @@
         }
       },
       "identities": {
-        "sharedRootGlobalIds": 6914,
+        "sharedRootGlobalIds": 6841,
         "sharedProductGlobalIds": 5958,
         "sharedTaggedElementIds": 5941,
         "sharedProductGlobalIdSample": [
@@ -5324,8 +5324,8 @@
         "reviterAgainstUpstream": {
           "join": "IfcRelDefinesByType -> product's exact decimal Tag; duplicate products/relations excluded",
           "compared": 5823,
-          "matched": 5636,
-          "mismatched": 187,
+          "matched": 5563,
+          "mismatched": 260,
           "ambiguous": 0,
           "outputOnly": 3007,
           "referenceOnly": 119,
@@ -5419,8 +5419,8 @@
             },
             "IFCCOLUMNTYPE -> IFCCOLUMNTYPE": {
               "compared": 118,
-              "matched": 110,
-              "mismatched": 8
+              "matched": 37,
+              "mismatched": 81
             },
             "IFCLIGHTFIXTURETYPE -> IFCLIGHTFIXTURETYPE": {
               "compared": 447,
@@ -5696,13 +5696,13 @@
             "byteLength": 70336512,
             "release": 2027
           },
-          "elapsedMs": 650.7399329999462,
+          "elapsedMs": 505.37570199999027,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json",
-            "proofSha256": "2bacc5041e57356176a3775e2e7f9717e95fb55e3e64194c11f35c17dfb0b520",
-            "sourceIfc": "/workspace/scratch/head-to-head-final.json.artifacts/3-unbc.rvt/upstream.ifc",
+            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
+            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
+            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/3-unbc.rvt/upstream.ifc",
             "ifcSha256": "b152c6669b4cd822e1d3bd1a391e0413f6c4af1df20743695cea3a6e6f58ba24",
-            "originalElapsedMs": 15670.064807000104,
+            "originalElapsedMs": 650.7399329999462,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -6088,7 +6088,7 @@
             "byteLength": 70336512,
             "release": 2027
           },
-          "elapsedMs": 133213.49799200002,
+          "elapsedMs": 205638.40934500005,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -6188,7 +6188,7 @@
                   "description": "stair runs drawn as solid terraces by the fitted monumental depth/rise rule"
                 }
               ],
-              "durationMs": 94387.41436
+              "durationMs": 163391.40600000002
             },
             "decoderCoverage": {
               "revitVersion": 2027,
@@ -6526,7 +6526,7 @@
           },
           "ifc": {
             "byteLength": 198754585,
-            "sha256": "0b24f8d234fd9b10cca8f69e2b2b1d8ff5e2ac9c05af4d074a59c32e9c9542ff"
+            "sha256": "ebfae4cd8af620f946d3d6325a522386a5ba2587b88f57e557840a3776cbad3a"
           },
           "reopened": {
             "reader": "web-ifc",

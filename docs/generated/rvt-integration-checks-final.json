@@ -1,7 +1,7 @@
 {
   "unitTests": {
-    "passed": 1976,
-    "skipped": 2,
+    "passed": 2017,
+    "skipped": 3,
     "failed": 0
   },
   "typecheck": "passed",
@@ -32,18 +32,40 @@
   },
   "changedSourceLint": {
     "newDiagnostics": 0,
-    "inheritedDiagnostics": [
-      {
-        "file": "app/studio/DwgFloorReview.tsx",
-        "rule": "react-hooks/set-state-in-effect",
-        "severity": "error",
-        "scope": "Unchanged auto-open effect, confirmed against the requested base checkout."
-      }
-    ]
+    "inheritedDiagnostics": [],
+    "scope": "All changed/new continuation TypeScript and test sources passed scoped ESLint; repository baseline is retained separately."
   },
   "repositoryLintBaseline": {
     "errors": 113,
     "warnings": 75,
     "scope": "Earlier unchanged-base and initial-integration runs; repository-wide lint is not claimed clean."
+  },
+  "finalInventoryChecks": {
+    "passed": 25,
+    "failed": 0
+  },
+  "modelComparison": {
+    "freshReviterModels": 4,
+    "verifiedUnchangedUpstreamReuses": 4,
+    "sceneBaselineMatches": 24,
+    "independentIfcReopens": 8
+  },
+  "nativeTableInventory": {
+    "exactUpstreamDeclarationMatches": 4,
+    "actualCorpusAndMalformedChecksPassed": 10
+  },
+  "viewpointStateBrowser": {
+    "passed": 9,
+    "errors": 0,
+    "desktopAndMobile": true
+  },
+  "scope": "Continuation execution; native WASM/Rust/fuzz/vanilla rebuild results below are carried from the earlier integration because their binaries/core/harness were unchanged.",
+  "nativeInventoryBrowser": {
+    "passed": true,
+    "desktopAndMobile": true,
+    "errors": 0,
+    "csvDownloads": 3,
+    "jsonDownloads": 1,
+    "mobileCsvMatchesDesktop": true
   }
 }

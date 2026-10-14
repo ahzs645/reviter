@@ -21,7 +21,7 @@ import CFB from "cfb";
 
 import { revitVersionFromBasicFileInfo } from "./basic-file-info.ts";
 import { scanObjectMarkers } from "./element-objects.ts";
-import { parseElemTable } from "./elem-table.ts";
+import { parseElemTable, parseFullElemTableInventory, type FullElemTableInventory, type FullElemTableInventoryFailure } from "./elem-table.ts";
 import { readContentDocuments, type ContentDocument } from "./content-documents.ts";
 import { decodeElementOwnership } from "./element-relations.ts";
 import {
@@ -130,6 +130,7 @@ export type OpenedRevitContainer = {
   objectMarkers: number[];
   partAtom: PartAtomMetadata | undefined;
   elementIndex: RvtElementIndex | undefined;
+  fullElementInventory: FullElemTableInventory | FullElemTableInventoryFailure | undefined;
   elementOwnership: ElementOwnershipDecode | undefined;
   nativeIdentity: NativeIdentityDecode | undefined;
   transmissionData: RevitTransmissionData | undefined;
@@ -295,6 +296,13 @@ export function openRevitContainer(
     }
   }
   const partitionNames = readStreamSummary(cfb, /\/Global\/PartitionTable$/i, parsePartitionNames) ?? [];
+  // Complete source inventory is separate from the legacy geometry-admission
+  // set, so an inventory correction cannot admit speculative shape decoders.
+  const fullElementInventory = elementTableData && decoderPlan.revitVersion != null
+    ? parseFullElemTableInventory(elementTableData, {
+        revitVersion: decoderPlan.revitVersion,
+        expectedSchemaTag: schema?.taggedClasses.find(entry => entry.name === "ElemTable")?.tag,
+      }) : undefined;
   // Read after the class numbering is installed: its entries are headed by
   // the file's own ContentMarker and ContentKey classes.
   const contentDocuments =
@@ -340,6 +348,7 @@ export function openRevitContainer(
     objectMarkers,
     partAtom,
     elementIndex,
+    fullElementInventory,
     elementOwnership,
     nativeIdentity,
     transmissionData,

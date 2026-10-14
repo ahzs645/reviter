@@ -1,8 +1,9 @@
 /**
- * Local fragment camera links, inspired by rvt-rs ifc/share.rs (1c3d337,
+ * Local fragment viewer links, inspired by rvt-rs ifc/share.rs (1c3d337,
  * Apache-2.0; docs/third-party/rvt-rs). Uses Reviter's comment camera frame.
  * Unlike upstream optional identity, matching source-byte SHA256 is required.
  * No filename, local path, source bytes, comment text or asset URL is encoded.
+ * V2 adds bounded category visibility and existing model-bounds section controls.
  */
 import type { ConvertResult } from "../../lib/reviter/types.ts";
 import { roomModelFingerprint } from "./review-exchange.ts";
@@ -14,14 +15,20 @@ const MAX_WORLD_FEET = 100_000_000;
 const HASH = /^sha256-[0-9a-f]{64}$/;
 const REVIEW_HASH = /^fnv1a32-[0-9a-f]{8}$/;
 export type ViewpointModelIdentity = { fingerprint: string; reviewFingerprint: string; originFeet: Point3Tuple };
+export type PortableSectionState = { enabled: boolean; mode: "x" | "y" | "z" | "box"; offset: number; reverse: boolean };
+export type PortableViewerState = { hiddenCategories: string[]; section: PortableSectionState };
+export const VIEWPOINT_MAX_HIDDEN_CATEGORIES = 64;
+export const VIEWPOINT_MAX_CATEGORY_CHARS = 96;
 export type PortableViewpoint = {
   format: "reviter-viewpoint";
-  version: 1;
+  version: 1 | 2;
   sourceFingerprint: string;
   reviewFingerprint: string;
   coordinateSystem: "revit-model-feet";
   sourceOriginFeet: Point3Tuple;
   camera: { positionFeet: Point3Tuple; targetFeet: Point3Tuple; up: Point3Tuple; fov: number };
+  /** Present only in v2; v1 remains camera-only. */
+  viewer?: PortableViewerState;
 };
 export type ViewpointImport =
   | { status: "empty"; message: string }
@@ -58,30 +65,46 @@ function normalizeCamera(camera: unknown): PortableViewpoint["camera"] | undefin
   if (alignment > 1 - 1e-8) return undefined;
   return { positionFeet: [...row.positionFeet], targetFeet: [...row.targetFeet], up, fov: Math.min(120, Math.max(5, row.fov)) };
 }
+function normalizeViewer(value: unknown): PortableViewerState | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Partial<PortableViewerState>;
+  if (!Array.isArray(row.hiddenCategories) || row.hiddenCategories.length > VIEWPOINT_MAX_HIDDEN_CATEGORIES ||
+      row.hiddenCategories.some(category => typeof category !== "string" || category.length === 0 || category.length > VIEWPOINT_MAX_CATEGORY_CHARS || /[\u0000-\u001f\u007f]/u.test(category))) return undefined;
+  const section = row.section;
+  if (!section || typeof section !== "object" || typeof section.enabled !== "boolean" || typeof section.reverse !== "boolean" ||
+      !["x", "y", "z", "box"].includes(section.mode) || typeof section.offset !== "number" || !Number.isFinite(section.offset) || section.offset < 0 || section.offset > 1) return undefined;
+  return { hiddenCategories: [...new Set(row.hiddenCategories)].sort(),
+    section: { enabled: section.enabled, mode: section.mode, offset: section.offset, reverse: section.reverse } };
+}
 function normalizeViewpoint(value: unknown): PortableViewpoint | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Partial<PortableViewpoint>;
-  if (row.format !== "reviter-viewpoint" || row.version !== 1 || row.coordinateSystem !== "revit-model-feet" ||
+  if (row.format !== "reviter-viewpoint" || (row.version !== 1 && row.version !== 2) || row.coordinateSystem !== "revit-model-feet" ||
       typeof row.sourceFingerprint !== "string" || !HASH.test(row.sourceFingerprint) ||
       typeof row.reviewFingerprint !== "string" || !REVIEW_HASH.test(row.reviewFingerprint) || !point(row.sourceOriginFeet)) return undefined;
   const camera = normalizeCamera(row.camera);
   if (!camera) return undefined;
+  const viewer = row.version === 2 ? normalizeViewer(row.viewer) : undefined;
+  if (row.version === 2 && !viewer) return undefined;
   // Return a new whitelist projection; unknown keys never enter application state.
-  return { format: "reviter-viewpoint", version: 1, sourceFingerprint: row.sourceFingerprint,
-    reviewFingerprint: row.reviewFingerprint, coordinateSystem: "revit-model-feet", sourceOriginFeet: [...row.sourceOriginFeet], camera };
+  return { format: "reviter-viewpoint", version: row.version, sourceFingerprint: row.sourceFingerprint,
+    reviewFingerprint: row.reviewFingerprint, coordinateSystem: "revit-model-feet", sourceOriginFeet: [...row.sourceOriginFeet], camera, ...(viewer ? { viewer } : {}) };
 }
 
 /** Reuse the same scene/model conversion used by comment viewpoints. */
-export function portableViewpoint(identity: ViewpointModelIdentity, camera: ModelViewpoint): PortableViewpoint {
+export function portableViewpoint(identity: ViewpointModelIdentity, camera: ModelViewpoint, viewerState?: PortableViewerState): PortableViewpoint {
   if (!HASH.test(identity.fingerprint) || !REVIEW_HASH.test(identity.reviewFingerprint) || !point(identity.originFeet)) throw new Error("Invalid source model identity.");
   if (!["recovered", "reference-assisted", "overlay", "reference"].includes(camera.source)) throw new Error("This reference model has no registered Revit camera frame. Switch to the RVT view to copy a viewpoint link.");
+  if (viewerState !== undefined && camera.source !== "recovered") throw new Error("Switch to the RVT view before copying category and section state.");
   if (!point(camera.position) || !point(camera.target)) throw new Error("The current camera cannot be shared.");
   const positionFeet = scenePointToModelFeet(camera.position, camera.source, identity.originFeet);
   const targetFeet = scenePointToModelFeet(camera.target, camera.source, identity.originFeet);
   const normalized = normalizeCamera({ positionFeet, targetFeet, up: camera.up, fov: camera.fov });
   if (!normalized) throw new Error("The current camera cannot be shared.");
-  return { format: "reviter-viewpoint", version: 1, sourceFingerprint: identity.fingerprint,
-    reviewFingerprint: identity.reviewFingerprint, coordinateSystem: "revit-model-feet", sourceOriginFeet: [...identity.originFeet], camera: normalized };
+  const viewer = viewerState === undefined ? undefined : normalizeViewer(viewerState);
+  if (viewerState !== undefined && !viewer) throw new Error("The current category or section state cannot be shared.");
+  return { format: "reviter-viewpoint", version: viewer ? 2 : 1, sourceFingerprint: identity.fingerprint,
+    reviewFingerprint: identity.reviewFingerprint, coordinateSystem: "revit-model-feet", sourceOriginFeet: [...identity.originFeet], camera: normalized, ...(viewer ? { viewer } : {}) };
 }
 
 export function encodeViewpointFragment(viewpoint: PortableViewpoint): string {
@@ -116,8 +139,9 @@ export function resolveViewpointImport(fragmentOrUrl: string, identity?: Viewpoi
   if (!fragmentOrUrl || fragmentOrUrl === "#") return { status: "empty", message: "No viewpoint link is present." };
   const viewpoint = decodeViewpointFragment(fragmentOrUrl);
   if (!viewpoint) return { status: "invalid", message: "This viewpoint link is invalid or uses an unsupported version." };
-  if (!identity) return { status: "pending-model", message: "Open the source RVT model to restore this viewpoint. The link contains the camera only.", viewpoint };
+  if (!identity) return { status: "pending-model", message: "Open the source RVT model to restore this viewpoint. The link contains a saved view, without model files.", viewpoint };
   if (!HASH.test(identity.fingerprint) || viewpoint.sourceFingerprint !== identity.fingerprint) return { status: "wrong-model", message: "This viewpoint belongs to different model bytes. Open the source RVT model to restore it." };
+  if (viewpoint.version === 2 && viewpoint.reviewFingerprint !== identity.reviewFingerprint) return { status: "invalid", message: "This saved view uses a different recovered model layout. Copy a new link from the current model." };
   if (!point(identity.originFeet)) return { status: "invalid", message: "The open model has an invalid source origin." };
   const position = modelFeetToScenePoint(viewpoint.camera.positionFeet, "recovered", identity.originFeet)!;
   const target = modelFeetToScenePoint(viewpoint.camera.targetFeet, "recovered", identity.originFeet)!;

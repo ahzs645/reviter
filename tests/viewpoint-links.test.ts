@@ -76,7 +76,7 @@ test("malformed, oversized, noncanonical and unsupported fragments never restore
   const valid = portableViewpoint(identity(), camera);
   for (const fragment of [
     "#reviter-view=", "#reviter-view=abc$", "#reviter-view=a", "#reviter-view=@@@@", "#v=AAAA", rawFragment({}),
-    rawFragment({ ...valid, version: 2 }), rawFragment({ ...valid, coordinateSystem: "scene-units" }),
+    rawFragment({ ...valid, version: 3 }), rawFragment({ ...valid, coordinateSystem: "scene-units" }),
     rawFragment({ ...valid, sourceFingerprint: "fnv1a32-12345678" }),
     rawFragment({ ...valid, camera: { ...valid.camera, fov: null } }),
     rawFragment({ ...valid, camera: { ...valid.camera, positionFeet: [1e99,0,0] } }),
@@ -103,4 +103,41 @@ test("unknown decoded fields are discarded and encoding stays deterministic", ()
   const malicious = rawFragment({ ...view, filename: "secret.rvt", camera: { ...view.camera, projectionMatrix: [1,2,3] } });
   assert.deepEqual(decodeViewpointFragment(malicious), view);
   assert.equal(encodeViewpointFragment(view), encodeViewpointFragment(view));
+});
+
+const viewer = { hiddenCategories: ["Windows", "Doors", "Windows"], section: { enabled: true, mode: "x" as const, offset: 0.37, reverse: true } };
+test("v2 preserves bounded category and section state while v1 remains camera-only", () => {
+  const v2 = portableViewpoint(identity(), camera, viewer);
+  assert.throws(() => portableViewpoint(identity(), { ...camera, source: "reference" }, viewer), /Switch to the RVT view/u);
+  assert.equal(v2.version, 2);
+  const imported = resolveViewpointImport(encodeViewpointFragment(v2), identity());
+  assert.equal(imported.status, "ready");
+  if (imported.status !== "ready") throw Error("expected ready");
+  assert.deepEqual(imported.viewpoint.viewer, { ...viewer, hiddenCategories: ["Doors", "Windows"] });
+  assert.deepEqual(imported.camera, camera);
+  const v1 = portableViewpoint(identity(), camera);
+  assert.equal(v1.version, 1);
+  assert.equal(decodeViewpointFragment(encodeViewpointFragment(v1))?.viewer, undefined);
+  const dirty = rawFragment({ ...v2, viewer: { ...viewer, assetUrl: "private.rvt", section: { ...viewer.section, planes: [1,2,3] } } });
+  assert.deepEqual(decodeViewpointFragment(dirty), v2);
+});
+
+test("v2 rejects invalid section state, category budgets and changed recovered layout before applying", () => {
+  const v2 = portableViewpoint(identity(), camera, viewer);
+  for (const state of [
+    { ...viewer, hiddenCategories: Array.from({ length: 65 }, (_, index) => `Category ${index}`) },
+    { ...viewer, hiddenCategories: ["x".repeat(97)] },
+    { ...viewer, hiddenCategories: ["Category\nName"] },
+    { ...viewer, hiddenCategories: [123] },
+    { ...viewer, section: { ...viewer.section, offset: -0.1 } },
+    { ...viewer, section: { ...viewer.section, offset: 1.01 } },
+    { ...viewer, section: { ...viewer.section, mode: "planes" } },
+    { ...viewer, section: { ...viewer.section, enabled: "true" } },
+    { ...viewer, section: null },
+  ]) assert.equal(resolveViewpointImport(rawFragment({ ...v2, viewer: state }), identity()).status, "invalid");
+  assert.equal(resolveViewpointImport(rawFragment({ ...v2, viewer: undefined }), identity()).status, "invalid");
+  assert.equal(resolveViewpointImport(encodeViewpointFragment(v2), { ...identity(), reviewFingerprint: "fnv1a32-12345678" }).status, "invalid");
+  assert.equal(resolveViewpointImport(encodeViewpointFragment(v2), { ...identity(), fingerprint: SHA_B }).status, "wrong-model");
+  const excessive = portableViewpoint(identity(), camera, { ...viewer, hiddenCategories: Array.from({ length: 64 }, (_, index) => `${index}${"x".repeat(92)}`) });
+  assert.throws(() => encodeViewpointFragment(excessive), /size limit/u);
 });

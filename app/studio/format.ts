@@ -369,6 +369,8 @@ export function sourceElementRows(record: ElementBoundsRecord, result?: ConvertR
 
 export function sourceSemanticReport(result: ConvertResult): { rows: { label: string; value: string }[]; notes: string[] } {
   const rows: { label: string; value: string }[] = [], notes: string[] = [];
+  if (result.fullElementInventory?.status === "decoded") rows.push({ label: "Source table records",
+    value: `${result.fullElementInventory.parsedRecordCount.toLocaleString()} rows · ${result.fullElementInventory.declaredElementIds.length.toLocaleString()} declared IDs` });
   const own = result.elementBounds.filter(element => element.parameters?.length), type = result.elementBounds.filter(element => element.typeParameters?.length);
   if (own.length) rows.push({ label: "Instance parameters", value: `${own.reduce((count, element) => count + element.parameters!.length, 0).toLocaleString()} values · ${own.length.toLocaleString()} elements` });
   if (type.length) rows.push({ label: "Type parameters", value: `${type.length.toLocaleString()} elements with recovered type values` });

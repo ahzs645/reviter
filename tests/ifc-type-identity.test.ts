@@ -9,7 +9,7 @@ import {
 import {
   createNativeOriginalSymbolCollector, doorWindowSymbolFlipped,
   nativeFamilyTypeGlobalId, verifiedOriginalSymbolObject,
-  nativeOriginalSymbolElementIds,
+  nativeOriginalSymbolElementIds, nativeOriginalSymbolFromFifo,
   resolveNativeIfcTypeIdentityEvidence,
   type NativeIfcTypeIdentityEvidence,
 } from "../lib/reviter/native-ifc-type-identity.ts";
@@ -258,4 +258,75 @@ test("instance-owned geometry creates one distinct native sub-element type per i
   for (const identity of result.nativeIdentity!.identities.slice(0, 2)) {
     assert.ok(source.includes(`IFCDOORTYPE('${revitIfcSubElementGlobalId(nativeIfcGlobalId(identity)!, 2048)}'`));
   }
+});
+
+
+/** Complete framed graphics with InstanceInfo followed by a queued GLine.
+ * The symbol field is not at end−20; this is the deferred-body regression. */
+function deferredSymbolObject(symbol: bigint, embedded = false) {
+  const rootEnd = 166, instanceBytes = embedded ? 46 : 44, groupEnd = rootEnd + instanceBytes + 30;
+  const infoEnd = groupEnd + 112, lineEnd = infoEnd + 84, end = lineEnd + (embedded ? 136 : 0);
+  const bytes = new Uint8Array(end + 4), view = new DataView(bytes.buffer);
+  const size = bytes.length - 20;
+  view.setUint32(0, 100, true); view.setUint32(12, size, true); view.setUint16(16, 2246, true);
+  const ginfo = (p: number, tag = 0) => { view.setBigInt64(p, -1n, true); view.setInt32(p + 8, tag, true); view.setUint32(p + 16, 0x00088004, true); };
+  const descriptor = (p: number, token: number, slot: number) => { view.setInt32(p, token, true); if (token) view.setInt16(p + 4, slot, true); };
+  ginfo(18, 100); view.setInt32(38, 2, true); descriptor(42, 3, 2215); descriptor(48, 4, 2248);
+  view.setBigInt64(150, 100n, true); // two valid zero bounds at54; root owner tail
+  ginfo(rootEnd); descriptor(rootEnd + 20, -1, 2513); descriptor(rootEnd + 26, embedded ? 5 : 0, 2246);
+  ginfo(rootEnd + instanceBytes); view.setInt32(rootEnd + instanceBytes + 20, 1, true);
+  descriptor(rootEnd + instanceBytes + 24, embedded ? 6 : 5, 1973);
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 20, 30].forEach((v, i) => view.setFloat64(groupEnd + i * 8, v, true));
+  view.setBigInt64(groupEnd + 96, symbol, true); view.setInt32(groupEnd + 108, 1, true);
+  // FIFO: InstanceInfo, optional embedded GElement, then sibling's GLine.
+  let lineStart = infoEnd;
+  if (embedded) { ginfo(infoEnd); view.setBigInt64(infoEnd + 120, -1n, true); lineStart += 136; }
+  ginfo(lineStart); view.setFloat64(lineStart + 20 + 6 * 8, 1, true);
+  view.setUint32(bytes.length - 4, size, true);
+  let a = 1, b = 0;
+  for (const byte of bytes.subarray(16, bytes.length - 4)) { a = (a + byte) % 65521; b = (b + a) % 65521; }
+  view.setUint32(8, (b * 65536 + a) >>> 0, true);
+  return { bytes, frame: { offset: 0, elementId: 100, objectLength: size, marker: 2246, typeCode: 0 } satisfies ElementObject };
+}
+
+test("structural symbol decoding follows FIFO siblings rather than a geometry tail", () => {
+  const fixture = deferredSymbolObject(200n);
+  assert.notEqual(new DataView(fixture.bytes.buffer).getUint32(fixture.bytes.length - 20, true), 200);
+  const symbol = nativeOriginalSymbolFromFifo(fixture.bytes, fixture.frame, 2027);
+  assert.equal(symbol?.originalSymbolId, 200);
+  assert.equal(symbol?.symbolFieldOffset, 336);
+  assert.equal(symbol?.embeddedSymbolGeometry, false);
+  const damaged = fixture.bytes.slice(); damaged[200] ^= 1;
+  assert.equal(nativeOriginalSymbolFromFifo(damaged, fixture.frame, 2027), null);
+  assert.equal(nativeOriginalSymbolFromFifo(fixture.bytes, fixture.frame, 2023), null);
+  assert.equal(nativeOriginalSymbolFromFifo(fixture.bytes, { ...fixture.frame, elementId: 101 }, 2027), null);
+});
+
+test("embedded instance geometry retains the stored symbol but withholds its IFC recipe", () => {
+  const fixture = deferredSymbolObject(200n, true);
+  const symbol = nativeOriginalSymbolFromFifo(fixture.bytes, fixture.frame, 2027);
+  assert.equal(symbol?.originalSymbolId, 200);
+  assert.equal(symbol?.embeddedSymbolGeometry, true);
+  const evidence: NativeIfcTypeIdentityEvidence = { elementId: 100, source: "checksum-verified-GElement.original-symbol", revitVersion: 2027, ...location(1), objectOffset: 0, ...symbol! };
+  assert.equal(nativeFamilyTypeGlobalId({ evidence, nativeGuids: new Map([[100, GLOBAL_ID], [200, GLOBAL_ID]]), instanceEntity: "IFCCOLUMN", exporterVersion: 2027 }), null);
+  assert.equal(nativeFamilyTypeGlobalId({ evidence: { ...evidence, originalSymbolId: null }, nativeGuids: new Map([[100, GLOBAL_ID]]), instanceEntity: "IFCCOLUMN", exporterVersion: 2027 }), null);
+});
+
+
+test("the original-symbol collector retains FIFO field provenance and embedded ambiguity", () => {
+  for (const embedded of [false, true]) {
+    const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
+    for (const own of [object(100, 11), object(200, 12), deferredSymbolObject(200n, embedded)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+    const reference = collector.finish()[0];
+    assert.equal(reference?.originalSymbolId, 200);
+    assert.equal(reference?.embeddedSymbolGeometry, embedded);
+    assert.equal(typeof reference?.symbolFieldOffset, "number");
+  }
+});
+
+
+test("a same-partition embedded graphics copy cannot lose its recipe ambiguity", () => {
+  const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
+  for (const own of [object(100, 11), object(200, 12), deferredSymbolObject(200n, true), deferredSymbolObject(200n, false)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+  assert.equal(collector.finish()[0]?.embeddedSymbolGeometry, true);
 });

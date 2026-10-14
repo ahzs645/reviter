@@ -7,6 +7,8 @@ import type { IfcExportOptions } from "../lib/reviter/export-ifc.ts";
 import { IfcExportControls } from "./studio/IfcExportControls.tsx";
 import type { NativeEvidenceRequest } from "../lib/reviter/native-evidence-worker.ts";
 import type { NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
+import { NATIVE_RECORD_INVENTORY_CLASSES, makeNativeRecordInventoryCsv } from "../lib/reviter/native-record-inventory.ts";
+import { NATIVE_PARAMETER_DEFINITION_CLASSES, makeNativeParameterInventoryCsv } from "../lib/reviter/native-parameter-inventory.ts";
 
 import {
   applyIfcReferenceRepairs,
@@ -80,7 +82,7 @@ import { ViewpointLinkControls } from "./studio/ViewpointLinkControls.tsx";
 import {
   makeViewpointModelIdentity, portableViewpoint, resolveViewpointImport,
   viewpointSourceFingerprint,
-  VIEWPOINT_FRAGMENT_PREFIX, type PortableViewpoint,
+  VIEWPOINT_FRAGMENT_PREFIX, type PortableViewpoint, type PortableViewerState, type PortableSectionState,
 } from "./studio/viewpoint-links.ts";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
@@ -337,6 +339,7 @@ export default function ReviterStudio() {
   });
   const [portableViewpointRequest, setPortableViewpointRequest] = useState<{ viewpoint: PortableViewpoint | null; sequence: number }>({ viewpoint: null, sequence: 0 });
   const cameraCaptureRef = useRef<(() => ModelViewpoint | null) | null>(null);
+  const sectionCaptureRef = useRef<(() => PortableSectionState) | null>(null);
   const [viewpointFragment, setViewpointFragment] = useState("");
   const [viewpointImportMessage, setViewpointImportMessage] = useState<string | null>(null);
   const appliedViewpointFragmentRef = useRef<string | null>(null);
@@ -393,12 +396,20 @@ export default function ReviterStudio() {
     cameraCaptureRef.current = capture;
   }, []);
   const captureViewpointCamera = useCallback(() => cameraCaptureRef.current?.() ?? null, []);
-  const restorePortableCamera = useCallback((camera: ModelViewpoint) => {
+  const bindSectionCapture = useCallback((capture: (() => PortableSectionState) | null) => { sectionCaptureRef.current = capture; }, []);
+  const captureViewpointState = useCallback((): PortableViewerState => {
+    if (directoryModel || isolateMapLevel) throw new Error("Close the floor view and level isolation before copying a viewpoint link.");
+    const section = sectionCaptureRef.current?.();
+    if (!section) throw new Error("The model section controls are not ready yet.");
+    return { hiddenCategories: [...hiddenCategories], section };
+  }, [directoryModel, hiddenCategories, isolateMapLevel]);
+  const restorePortableCamera = useCallback((camera: ModelViewpoint, viewer?: PortableViewerState) => {
     if (!viewpointIdentity) return;
     try {
-      const viewpoint = portableViewpoint(viewpointIdentity, camera);
+      const viewpoint = portableViewpoint(viewpointIdentity, camera, viewer);
       setNavTool("orbit");
-      setActionTool(null);
+      setActionTool(viewer?.section.enabled ? "section" : null);
+      if (viewer) { setHiddenCategories(new Set(viewer.hiddenCategories)); setIsolateMapLevel(false); setDirectoryModel(null); }
       setGeometrySource("recovered");
       setWorkspace("model");
       setSheet(null);
@@ -432,7 +443,7 @@ export default function ReviterStudio() {
       const imported = resolveViewpointImport(viewpointFragment, viewpointIdentity);
       if (imported.status === "ready") {
         appliedViewpointFragmentRef.current = key;
-        restorePortableCamera(imported.camera);
+        restorePortableCamera(imported.camera, imported.viewpoint.viewer);
       } else {
         appliedViewpointFragmentRef.current = null;
         setViewpointImportMessage(result && !viewpointIdentity
@@ -1618,6 +1629,48 @@ export default function ReviterStudio() {
     }
   }, [result]);
 
+  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions") => {
+    if (!file) return;
+    const id = kind === "json" ? "NATIVE_EVIDENCE" : kind === "records" ? "NATIVE_RECORDS_CSV" : "NATIVE_DEFINITIONS_CSV";
+    setExporting(id);
+    const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
+      spawn: () => {
+        const deployed = staticWorkerUrl("evidence");
+        return deployed ? new Worker(deployed, { type: "module" })
+          : new Worker(new URL("../lib/reviter/native-evidence-worker.ts", import.meta.url), { type: "module" });
+      },
+      startFailureMessage: "The source evidence worker could not start.",
+      deathMessage: "The source evidence reader stopped.",
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const bytes = await file.arrayBuffer();
+      const report = await new Promise<NativeEvidenceReport>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 120_000);
+        const selectedClasses = kind === "records" ? [...NATIVE_RECORD_INVENTORY_CLASSES]
+          : kind === "definitions" ? [...NATIVE_PARAMETER_DEFINITION_CLASSES]
+          : [...new Set([...NATIVE_RECORD_INVENTORY_CLASSES, ...NATIVE_PARAMETER_DEFINITION_CLASSES])];
+        client.send({ type: "inspect", bytes, options: { selectedClasses,
+          selectedIds: selectedElementId == null ? undefined : [selectedElementId] } },
+          { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
+      });
+      if (kind === "json") {
+        downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), outputName(file.name, "source-evidence.json"));
+      } else {
+        const content = kind === "records"
+          ? makeNativeRecordInventoryCsv(report.recordInventory!)
+          : makeNativeParameterInventoryCsv(report.parameterInventory!);
+        downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8" }), outputName(file.name, kind === "records" ? "source-records.csv" : "parameter-definitions.csv"));
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      if (timer) clearTimeout(timer);
+      client.terminate();
+      setExporting(null);
+    }
+  }, [file, selectedElementId]);
+
   const exportActions: ExportAction[] = useMemo(() => {
     if (!result) return [];
     const geometryResult = referenceAssistedResult ?? result;
@@ -1693,33 +1746,13 @@ export default function ReviterStudio() {
       },
       ...(file ? [{
         id: "NATIVE_EVIDENCE", format: "Source evidence JSON", detail: "On-demand stored graphs, definitions and storage catalog",
-        run: async () => {
-          setExporting("NATIVE_EVIDENCE");
-          const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
-            spawn: () => {
-              const deployed = staticWorkerUrl("evidence");
-              return deployed ? new Worker(deployed, { type: "module" })
-                : new Worker(new URL("../lib/reviter/native-evidence-worker.ts", import.meta.url), { type: "module" });
-            },
-            startFailureMessage: "The source evidence worker could not start.",
-            deathMessage: "The source evidence reader stopped.",
-          });
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          try {
-            const bytes = await file.arrayBuffer();
-            const report = await new Promise<NativeEvidenceReport>((resolve, reject) => {
-              timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 120_000);
-              client.send({ type: "inspect", bytes }, { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
-            });
-            downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), outputName(file.name, "source-evidence.json"));
-          } catch (caught) {
-            setError(caught instanceof Error ? caught.message : String(caught));
-          } finally {
-            if (timer) clearTimeout(timer);
-            client.terminate();
-            setExporting(null);
-          }
-        },
+        run: () => exportNativeSource("json"),
+      }, {
+        id: "NATIVE_RECORDS_CSV", format: "Source records CSV", detail: "Stored views, grids, annotations and project records",
+        run: () => exportNativeSource("records"),
+      }, {
+        id: "NATIVE_DEFINITIONS_CSV", format: "Parameter definitions CSV", detail: "Definitions, bindings and supported values for the picked element",
+        run: () => exportNativeSource("definitions"),
       }] : []),
       {
         id: "PASCAL",
@@ -1780,7 +1813,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, file, ifcExportOptions, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
+  }, [exportNativeSource, exportText, file, ifcExportOptions, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -2040,6 +2073,7 @@ export default function ReviterStudio() {
       portableViewpointRequest={portableViewpointRequest}
       onPortableViewpointApplied={portableViewpointApplied}
       onCameraCaptureReady={bindCameraCapture}
+      onSectionCaptureReady={bindSectionCapture}
       markup={markup}
       markupSettings={markupSettings}
       onCreateMarkup={createMarkupStroke}
@@ -2281,7 +2315,7 @@ export default function ReviterStudio() {
 
       {(result || viewpointFragment) && <details className="viewer-viewpoint-panel" open={Boolean(viewpointImportMessage)} style={{ flexShrink: 0, padding: "8px 12px", borderBottom: "1px solid var(--line)" }}>
         <summary style={{ cursor: "pointer" }}>Viewpoint links</summary>
-        <ViewpointLinkControls identity={viewpointIdentity} captureCamera={captureViewpointCamera} onRestore={restorePortableCamera} />
+        <ViewpointLinkControls identity={viewpointIdentity} captureCamera={captureViewpointCamera} captureViewerState={captureViewpointState} onRestore={restorePortableCamera} />
         {viewpointImportMessage && <p role="status">{viewpointImportMessage}</p>}
       </details>}
 

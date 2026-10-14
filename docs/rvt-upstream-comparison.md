@@ -4,7 +4,7 @@ Reviter retains its native scene pipeline and adds source semantics and selected
 upstream evidence. The integration extends the initial seven priorities with
 native graph inspection, parameter/Extensible Storage inventories, source
 metadata, CSV schedules, source dimensions, optional pipe reconstruction and
-source-bound camera links. The exhaustive [source inventory](rvt-upstream-capability-inventory.md)
+source-bound viewer links. The [continuation](rvt-upstream-continuation.md) adds typed document records, exact stored parameter joins, complete source table inventories, deferred symbol fields, optional IFC maps and category/section exchange. The exhaustive [source inventory](rvt-upstream-capability-inventory.md)
 records remaining narrower behavior and unresolved geometry differences. This is
 a measured selective integration, not complete parity with every Rust research,
 native-writer or typed-view API.
@@ -37,10 +37,9 @@ design alternatives. Optional pipe reconstruction and stored GUID overrides
 remain off in this batch. Ordinary app export provides explicit controls for
 these choices. No paired reference geometry enters either conversion. The
 final IFC outputs are independently reopened with `web-ifc`; no RVT is
-reconverted for the reopens or reference-ID comparisons. After the original-symbol
-owner correction below, every Reviter model was freshly reconverted. The
+reconverted for the reopens or reference-ID comparisons. After the continuation source-table and FIFO changes, every Reviter model was freshly reconverted. The
 unchanged upstream outputs were reused from the
-[earlier independently reopened report](generated/rvt-reader-comparison-before-symbol-domain-fix.json),
+[prior final report at dd4c6d3](https://github.com/ahzs645/reviter/blob/dd4c6d3672606b5c01ac7162f969b68f3485d133/docs/generated/rvt-reader-comparison-final.json),
 with exact input/binary/output hashes and mode/walker settings checked before
 copying; reuse provenance and original elapsed times are retained.
 
@@ -53,18 +52,18 @@ npm run compare:rvt-readers -- \
   --upstream-wasm /workspace/rvt-rs-vanilla-pkg/rvt.js \
   --reviter-wasm /workspace/reviter/lib/rvt-wasm/rvt.js \
   --baseline-dir /workspace/models \
-  --output /workspace/scratch/head-to-head-symbol-domain-final.json \
+  --output /workspace/scratch/head-to-head-continuation.json \
   --timeout-ms 900000 --heap-mib 6144
 node --experimental-strip-types --max-old-space-size=6144 \
   --import ./scripts/register-test-typescript.mjs \
   scripts/summarize-rvt-reader-comparison.ts \
-  /workspace/scratch/head-to-head-symbol-domain-final.json \
+  /workspace/scratch/head-to-head-continuation.json \
   docs/generated/rvt-reader-comparison-final.json \
   /workspace/models/unbc-reference.ifc
 ```
 
 The commands above reproduce both readers from scratch. The recorded updated
-run additionally passed `--reuse-upstream docs/generated/rvt-reader-comparison-before-symbol-domain-fix.json`;
+run additionally passed `--reuse-upstream docs/generated/rvt-reader-comparison-final.json` using that file before replacing it with the new summary; its original SHA-256 is retained in every reuse proof.
 that optimization requires its prior external `.artifacts` directory and is
 optional when reproducing from a clean checkout.
 
@@ -83,11 +82,11 @@ are off.
 | IFC semantics | Instance/type export settings, broader classes/predefined types, allowlisted common properties and source quantities | Native parameter IDs and strict same-byte pinned model joins. No caption-derived built-ins, hardcoded upstream booleans or guessed Net/Gross meaning |
 | Source rooms | Native identities including boxless rooms, stored outlines, exact supported level joins and finishes; opt-in IFC spaces | Source room copies remain separate from reviewed navigation rooms. Stored-outline extrusion does not certify enclosure, ceiling shape or routing |
 | MEP | Native systems, physical joins, unconnected ports, ducts/pipes/fitting dimensions and exact supported axes | Mechanical 73/73 paired joins and 150/150 ports; Plumbing 126/126 joins and 260/260 ports plus two source tank joins/four ports absent from its paired IFC; Electrical 53/53 unconnected ports |
-| Pipe representations | Opt-in hollow-circle IFC extrusion for eligible missing/proxy pipe bodies | 69 measured pipes; 64-segment independent IFC reopen maximum bound error below 0.071 mm. Reconstruction stays labeled approximate and preserves certified native/reference bodies |
+| Pipe representations | Opt-in hollow-circle IFC extrusion for eligible missing/proxy pipe bodies | 69 measured pipes; 64-segment independent IFC reopen maximum bound error below 0.072 mm. Reconstruction stays labeled approximate and preserves certified native/reference bodies |
 | Source organization | Primary design-option selection, phase IDs/names, supported level/top/base constraints | Unknown options remain visible. Raw created/demolished phase IDs do not establish chronological lifecycle status |
 | Source evidence | On-demand worker/CLI inspection of selected stored graphs, parameter registries, units/bindings, saved metadata and ES summary | Budgets/partial/blocked states explicit; unsafe integers use decimal strings. No formula evaluation, ES remapping or drafting reconstruction |
 | Metadata and schedules | Safe metadata-only inventory and source element/room/raw parameter CSV downloads | 40/40 project/family metadata fields matched native upstream inspection on supplied models; RAC 14/14 room area values agree within 0.0001 m². CSV is an inventory, not an evaluated authored Revit Schedule |
-| Viewer exchange | SHA-256-bound canonical-coordinate camera URL links | Wrong model/source frame refused; full category/clip/annotation fragment interchange remains narrower |
+| Viewer exchange | SHA-256-bound canonical-coordinate camera/category/section URL links | Wrong model/source frame refused; annotation, selected objects and render modes remain separate |
 | Validation | Executable capability gates, bounded malformed-input campaigns, isolated same-input reader comparison | Test execution, source inventory completeness and geometric accuracy are reported as different claims |
 
 The positive MEP evidence includes 94 matching native lengths, 69 matching pipe
@@ -155,7 +154,7 @@ mismatches and ambiguity exclusions retained in the report.
 
 ## Validation and remaining scope
 
-The final repository suite passed **1,976 tests with two skips**. Typecheck,
+The continuation repository suite passed **2,017 tests with three skips**; the final hardened inventories also passed 25 focused checks. Typecheck,
 production and GitHub Pages builds passed; four rendered-page and one Pages
 artifact checks passed. The native evidence patch also passed seven WASM and
 five Rust focused checks. A pristine separate vanilla rebuild reproduced all
@@ -173,9 +172,11 @@ Every one of the pinned repo's 158 Rust source modules, 19 CLIs, 28 binding/view
 files, 203 research examples and 11 native fuzz entry points is classified in
 the source inventory, with zero orphan modules. This does not mean every
 function has been ported or works on every release. Important remaining limits
-include native Area/MEP Space and all authored drafting semantics, native
-survey/shared-coordinate parity, complete family parameter-slot evaluation,
-reusable mapped IFC/material-profile representations, full URL-fragment state,
+include spatial Area/MEP Space classification, full authored drawings/evaluated schedules,
+native shared-coordinate transforms, family formula/inheritance evaluation,
+rotated IFC maps/material-profile authoring and annotation/selection URL state,
 and owner-level comparison of saved-graphics selection, joins/cuts and
 parametric surfaces. Native RVT editing and research remapping contracts remain
 outside this source-preserving converter integration.
+
+The continuation additionally matches exact upstream source-table declarations on all four models, normalizes 575 supported stored parameter values with zero serialized-projection disagreements, and verifies 42,368 typed fields across RAC, School and bounded disjoint Snowdon queries. Those source projection checks do not establish Revit API-evaluated semantics. School's optional IFC sharing saves 10,419 bytes with matching independently reopened geometry/placements; its default IFC output remains the ordinary export. UNBC product/type identity results above remain unchanged after recovering 201 additional ambiguous embedded symbol references. The reader outputs were independently reopened again for this continuation.

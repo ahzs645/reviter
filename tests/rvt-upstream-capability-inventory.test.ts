@@ -41,7 +41,7 @@ test("concrete source gaps and native fuzz boundaries cannot be presented as com
   for (const id of ["native-records", "parameter-definitions", "extensible-storage", "ifc-representations"]) {
     assert.equal(inventory.features.find(feature => feature.id === id)?.disposition, "narrower", id);
   }
-  assert.equal(inventory.features.find(feature => feature.id === "source-drafting")?.disposition, "gap");
+  assert.equal(inventory.features.find(feature => feature.id === "source-drafting")?.disposition, "narrower");
   assert.match(inventory.features.find(feature => feature.id === "native-records")!.limitations, /not all document objects/);
   assert.match(inventory.features.find(feature => feature.id === "extensible-storage")!.limitations, /not full entity evaluation/);
   assert.match(inventory.features.find(feature => feature.id === "ifc-representations")!.limitations, /remain missing/);

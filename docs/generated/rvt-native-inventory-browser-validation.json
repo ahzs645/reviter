@@ -1,0 +1,29 @@
+{
+  "source": "rac.rvt",
+  "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "sourceStatus": "partial",
+  "recordInventoryStatus": "partial",
+  "retainedTypedRecords": 10,
+  "definitions": 774,
+  "bindings": 2,
+  "downloads": [
+    {
+      "label": "Source records CSV",
+      "fileName": "rac-recovered.source-records.csv"
+    },
+    {
+      "label": "Parameter definitions CSV",
+      "fileName": "rac-recovered.parameter-definitions.csv"
+    },
+    {
+      "label": "Source evidence JSON",
+      "fileName": "rac-recovered.source-evidence.json"
+    }
+  ],
+  "desktopControls": true,
+  "mobileControls": true,
+  "mobileHorizontalOverflow": false,
+  "browserErrors": [],
+  "scope": "Actual production worker and downloads; default bounded selections retain partial scope. Source graph and owner-value fidelity are checked separately."
+}

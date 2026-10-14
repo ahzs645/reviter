@@ -23,6 +23,10 @@ attribution. Vendored WASM also carries the licence, notice and build provenance
 | `document-metadata.ts`, `export-schedules.ts` | `rvt-info`, `rvt-schedule`, Atom/ProjectInformation metadata | Independent bounded safe-container inspection and formula-neutralized inventory CSV |
 | `viewpoint-links.ts` | Upstream viewer URL-fragment concept | Independent versioned SHA-256 binding using Reviter's existing live-camera/model-coordinate helpers |
 | `lib/rvt-wasm/patches/native-evidence.patch` | `native_document`, native definitions, metadata and storage catalog | Reviter-owned WASM-only bridge; core Rust decoders unchanged, explicit source/output budgets and exact integer strings |
+| `native-parameter-inventory.ts` | `native_parameter_definitions.rs`, `native_metadata.rs` | Concrete storage and owner-edge contracts, stricter family ownership and conflicting-unit gates; formula-neutralized CSV |
+| `native-record-inventory.ts` | `native_document.rs`, `native_parameters.rs`, typed drafting/organization modules | File-local schema fields, exact root owners and source pointer paths; serialized inventory and raw fallbacks |
+| `elem-table.ts::parseFullElemTableInventory` | `elem_table.rs` | Complete u32 source inventory with exact framing, source aliases and acyclic owners; scene admission retained separately |
+| `export-ifc-mapped-geometry.ts`, exporter mapping emitter | `ifc/step_writer.rs` | Optional representation maps; native type, exact ordered vertices/topology/materials and translation gates |
 
 New IFC room and MEP emitters consume the recovered evidence without replacing
 Reviter's geometry or indoor review algorithms. Individual source files identify

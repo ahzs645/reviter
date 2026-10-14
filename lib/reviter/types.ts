@@ -12,6 +12,7 @@ import type { RevitTransmissionData } from "./transmission-data.ts";
 import type { WorkerEnvelope, WorkerProgress } from "./worker-client.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
+import type { FullElemTableInventory, FullElemTableInventoryFailure } from "./elem-table.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import type {
   NativeFamilyDefinition,
@@ -800,6 +801,8 @@ export type ConvertResult = {
   /** Unjoined optional-reader definitions; never overwrite scene materials. */
   standardsReaderMaterials?: MaterialData[];
   elementIndex?: RvtElementIndex;
+  /** Complete validated source table, separate from scene decoder admission. */
+  fullElementInventory?: FullElemTableInventory | FullElemTableInventoryFailure;
   /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */

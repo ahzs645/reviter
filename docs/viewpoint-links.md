@@ -1,0 +1,15 @@
+# Source-bound viewpoint links
+
+The viewer's **Copy viewpoint link** control captures the live camera, hidden categories, and section cut. A recipient opens the same RVT file locally and chooses **Restore viewpoint**, or opens the link before loading that file. The URL contains no model bytes, source filename, annotation text, asset URL, or private page query parameters.
+
+Version 2 extends the camera-only version 1 contract with category visibility and Reviter's existing section controls: enabled state, X/Y/Z plane or box mode, model-bounds offset between zero and one, and reverse side. Version 1 links still restore their camera without changing category visibility. Both versions require an exact SHA-256 match of the source RVT bytes. Version 2 also verifies the existing review fingerprint before restoring model-bounds display controls. Camera coordinates remain canonical Revit model feet and use the existing source-origin conversion.
+
+The category list is a whitelist projection, deduplicated and sorted, with at most 64 names of 96 characters each. Control characters, invalid numeric values, unsupported versions, and malformed sections are rejected. The entire fragment remains limited to 4,096 characters; the overall size budget can therefore refuse a valid but long category list. Decoding never evaluates or fetches a pasted URL. Unknown JSON fields are discarded.
+
+Version 2 state capture requires the recovered RVT view so its section fractions use native model bounds. Camera-only version 1 still supports existing registered reference camera frames. Copying from floor review or an isolated level asks the user to close that display first, because these links do not encode floor-specific display state. Restoring a version 2 link exits floor display and level isolation before applying its categories, section controls, and camera to the recovered RVT view. Review comments, markups, selected objects, saved render modes, and user preference state are outside this link contract and remain in their existing review exchanges.
+
+The source design is `rvt-rs/src/ifc/share.rs` at commit `1c3d337dbd2a6810e9dfad68fe99857843d67387` (Apache-2.0, existing attribution in `docs/rvt-semantic-attribution.md`). Its optional source identity and section-box representation are adapted to Reviter's required source hash and existing section controls. Source-bound links do not modify geometry or navigation.
+
+Validation covers backwards-compatible camera links, canonical camera conversion, wrong-source refusal, deferred local loading, category and fragment budgets, invalid sections, review fingerprint disagreement, and unknown-field projection. Browser validation uses the supplied RAC RVT on desktop and mobile and compares the actual rendered canvas before changing visibility/clipping and after restoring the saved view.
+
+[Production browser validation](generated/rvt-viewpoint-state-browser-validation.json) passed all nine checks with zero browser errors and zero horizontal mobile overflow. Changing category visibility and section clipping changed the rendered canvas pixels; restoration reproduced the original canvas PNG SHA-256 exactly.

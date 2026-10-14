@@ -29,6 +29,7 @@ import { emitNativePhaseSpatialIfc } from "./export-ifc-phase-spatial.ts";
 import { emitNativePipeShape, type NativePipeShape } from "./export-ifc-mep-geometry.ts";
 import { IFC_GUID_PARAMETER, IFC_TYPE_GUID_PARAMETER, isIfcGlobalId, nativeIfcGlobalIds, revitProjectedTypeGlobalId, storedIfcGlobalId } from "./ifc-global-id.ts";
 import { nativeFamilyTypeGlobalId } from "./native-ifc-type-identity.ts";
+import { planMappedGeometry, type MappedGeometryPlan } from "./export-ifc-mapped-geometry.ts";
 
 import type {
   ConvertResult,
@@ -70,6 +71,8 @@ export type IfcExportOptions = {
   allowGuidParameterOverride?: boolean;
   /** IFC-only hollow pipe sweeps from measured axes and diameters; default off. */
   reconstructPipeGeometry?: boolean;
+  /** Share identical owned native tessellations of the same decoded type; default off. */
+  reuseMappedGeometry?: boolean;
   /** Exporter generation used for the measured 2024 vs 2025+ type hash suffix. */
   guidExporterVersion?: number;
   /** Only accepted rooms with `ifc.export` enabled become IfcSpace entities. */
@@ -327,6 +330,16 @@ function emitTessellatedShape(
   fragments: readonly GeometryFragment[],
   styleByMaterial: ReadonlyMap<number, number>,
 ): number | null {
+  const representation = emitTessellatedRepresentation(writer, context, fragments, styleByMaterial);
+  return representation == null ? null : writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
+}
+
+function emitTessellatedRepresentation(
+  writer: StepWriter,
+  context: number,
+  fragments: readonly GeometryFragment[],
+  styleByMaterial: ReadonlyMap<number, number>,
+): number | null {
   const items: number[] = [];
   for (const fragment of fragments) {
     const points: string[] = [];
@@ -349,9 +362,35 @@ function emitTessellatedShape(
     items.push(faceSet);
   }
   if (!items.length) return null;
-  const representation = writer.add(
+  return writer.add(
     `IFCSHAPEREPRESENTATION(#${context},'Body','Tessellation',${writer.refs(items)})`,
   );
+}
+
+function emitMappedTessellatedShape(
+  writer: StepWriter,
+  context: number,
+  fragments: readonly GeometryFragment[],
+  styleByMaterial: ReadonlyMap<number, number>,
+  plan: MappedGeometryPlan,
+  maps: Map<number, number>,
+): number | null {
+  let representationMap = maps.get(plan.group);
+  if (representationMap == null) {
+    const local = fragments.map(fragment => ({ ...fragment,
+      positions: fragment.positions.map((position, index) => position - plan.translation[index % 3]!),
+    }));
+    const representation = emitTessellatedRepresentation(writer, context, local, styleByMaterial);
+    if (representation == null) return null;
+    const point = writer.add("IFCCARTESIANPOINT((0.,0.,0.))");
+    const axis = writer.add(`IFCAXIS2PLACEMENT3D(#${point},$,$)`);
+    representationMap = writer.add(`IFCREPRESENTATIONMAP(#${axis},#${representation})`);
+    maps.set(plan.group, representationMap);
+  }
+  const point = writer.add(`IFCCARTESIANPOINT((${plan.translation.map(ifcNumber).join(",")}))`);
+  const transformation = writer.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${point},1.,$)`);
+  const mapped = writer.add(`IFCMAPPEDITEM(#${representationMap},#${transformation})`);
+  const representation = writer.add(`IFCSHAPEREPRESENTATION(#${context},'Body','MappedRepresentation',(#${mapped}))`);
   return writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
 }
 
@@ -1067,6 +1106,14 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   result.materials.forEach((material, index) => {
     styleByMaterial.set(index, emitStyle(writer, material));
   });
+  const mappedPlans = options.reuseMappedGeometry ? planMappedGeometry(result, fragmentsByElement) : new Map<number, MappedGeometryPlan>();
+  const representationMaps = new Map<number, number>();
+  const tessellatedShape = (elementId: number, fragments: readonly GeometryFragment[]) => {
+    const plan = mappedPlans.get(elementId);
+    return plan
+      ? emitMappedTessellatedShape(writer, bodyContext, fragments, styleByMaterial, plan, representationMaps)
+      : emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
+  };
 
   const materialEntityById = new Map<number, number>();
   for (const material of result.nativeMaterialDefinitions ?? []) {
@@ -1178,7 +1225,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
           ? styleByMaterial.get(fragments[0]!.materialIndex) : undefined,
       }) : null;
     const shape = pipeShape?.shapeId ?? (fragments.length
-      ? emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial)
+      ? tessellatedShape(element.elementId, fragments)
       : noMeshScene
         ? emitBoundsShape(writer, bodyContext, extrusionDirection, element, result.origin)
         : null);
@@ -1289,7 +1336,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   // honest proxy, preserving visual completeness without guessing a category.
   for (const [elementId, fragments] of fragmentsByElement) {
     if (suppressedElementIds.has(elementId) || productByElement.has(elementId) || !fragments.length) continue;
-    const shape = emitTessellatedShape(writer, bodyContext, fragments, styleByMaterial);
+    const shape = tessellatedShape(elementId, fragments);
     if (!shape) continue;
     const identity = identityByElement.get(elementId) ?? elementId;
     const product = writer.add(

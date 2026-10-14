@@ -87,7 +87,7 @@ import {
   SectionToolPanel,
 } from "./ViewerToolPanels.tsx";
 import { ModelCommentLayer, type CommentProjection } from "./ModelCommentLayer.tsx";
-import { encodeViewpointFragment, makeViewpointModelIdentity, resolveViewpointImport, type PortableViewpoint } from "./viewpoint-links.ts";
+import { encodeViewpointFragment, makeViewpointModelIdentity, resolveViewpointImport, type PortableViewpoint, type PortableSectionState } from "./viewpoint-links.ts";
 import { MarkupLayer, type MarkupProjection, type ScreenPoint } from "./MarkupLayer.tsx";
 import type {
   CameraRequest,
@@ -304,6 +304,7 @@ export function ModelCanvas({
   portableViewpointRequest,
   onPortableViewpointApplied,
   onCameraCaptureReady,
+  onSectionCaptureReady,
   markup,
   markupSettings,
   onCreateMarkup,
@@ -350,10 +351,11 @@ export function ModelCanvas({
    * no-op, exactly as `focusRequest` does for framing an object.
    */
   viewpointRequest: { commentId: string | null; sequence: number };
-  /** Camera-only links are verified against source bytes again at application. */
+  /** Viewpoint links are verified against source bytes again at application. */
   portableViewpointRequest?: { viewpoint: PortableViewpoint | null; sequence: number };
   onPortableViewpointApplied?: (sequence: number) => void;
   onCameraCaptureReady?: (capture: (() => ModelViewpoint | null) | null) => void;
+  onSectionCaptureReady?: (capture: (() => PortableSectionState) | null) => void;
   /** Strokes already committed to this model, in scene coordinates. */
   markup: readonly MarkupStroke[];
   markupSettings: MarkupSettings;
@@ -2719,6 +2721,12 @@ export function ModelCanvas({
     return () => onCameraCaptureReady?.(null);
   }, [captureCurrentCamera, onCameraCaptureReady]);
 
+  const captureSectionState = useCallback((): PortableSectionState => ({ enabled: sectioning, mode: sectionMode, offset: sectionOffset, reverse: sectionReverse }), [sectioning, sectionMode, sectionOffset, sectionReverse]);
+  useEffect(() => {
+    onSectionCaptureReady?.(captureSectionState);
+    return () => onSectionCaptureReady?.(null);
+  }, [captureSectionState, onSectionCaptureReady]);
+
   const portableViewpointSequenceRef = useRef(0);
   useEffect(() => {
     const request = portableViewpointRequest;
@@ -2730,16 +2738,26 @@ export function ModelCanvas({
       imported = resolveViewpointImport(encodeViewpointFragment(request.viewpoint), makeViewpointModelIdentity(result, result.sourceSha256));
     } catch { return; }
     if (imported.status !== "ready") return;
-    portableViewpointSequenceRef.current = request.sequence;
-    runtime.camera.position.set(...imported.camera.position);
-    runtime.camera.up.set(...imported.camera.up);
-    runtime.camera.fov = imported.camera.fov;
-    runtime.controls.target.set(...imported.camera.target);
-    runtime.camera.lookAt(runtime.controls.target);
-    runtime.camera.updateProjectionMatrix();
-    runtime.controls.update();
-    runtime.invalidate();
-    onPortableViewpointApplied?.(request.sequence);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || runtimeRef.current !== runtime) return;
+      portableViewpointSequenceRef.current = request.sequence;
+      if (imported.viewpoint.viewer) {
+        setSectionMode(imported.viewpoint.viewer.section.mode);
+        setSectionOffset(imported.viewpoint.viewer.section.offset);
+        setSectionReverse(imported.viewpoint.viewer.section.reverse);
+      }
+      runtime.camera.position.set(...imported.camera.position);
+      runtime.camera.up.set(...imported.camera.up);
+      runtime.camera.fov = imported.camera.fov;
+      runtime.controls.target.set(...imported.camera.target);
+      runtime.camera.lookAt(runtime.controls.target);
+      runtime.camera.updateProjectionMatrix();
+      runtime.controls.update();
+      runtime.invalidate();
+      onPortableViewpointApplied?.(request.sequence);
+    });
+    return () => { cancelled = true; };
   }, [onPortableViewpointApplied, portableViewpointRequest, result, sceneEpoch, source, walking]);
 
   return (
