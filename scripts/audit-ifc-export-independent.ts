@@ -41,7 +41,6 @@ import { tmpdir } from "node:os";
 import {
   IfcParser,
   extractPropertiesOnDemand,
-  getInheritanceChainForEntity,
 } from "@ifc-lite/parser";
 import { parseIDS, validateIDS, createTranslationService } from "@ifc-lite/ids";
 import { createDataAccessor } from "@ifc-lite/ids/bridge";
@@ -57,6 +56,7 @@ import {
   writeJsonReport,
 } from "./lib/rvt-harness.ts";
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
+import { isRecoveryTaggedProduct } from "./lib/ifc-recovery-scope.ts";
 
 const RECOVERY_IDS = new URL("../tests/fixtures/reviter-recovery.ids", import.meta.url);
 
@@ -83,7 +83,7 @@ if (!rvtPath && !existingIfc) {
  * material layer is not something a recovery has provenance about.
  *
  * `IfcProduct` is the right root: it covers every element with a placement and
- * a shape. Two branches below it are excluded, and for the same reason — they
+ * a shape. Three branches below it are excluded, and for the same reason — they
  * are things the exporter *synthesises*, not things it recovered, so demanding
  * recovery evidence from them would be demanding provenance for a fact that has
  * no source record.
@@ -97,13 +97,13 @@ if (!rvtPath && !existingIfc) {
  * elements rather than a third recovered element. The first run of this script
  * reported "1 of 3 products carry no Reviter_Recovery evidence" and the one was
  * `Opening for 11`, which is correct behaviour being counted as a defect.
+ *
+ * `IfcPort` — experimental native connector endpoints are generated from
+ * measured connector indices and relationship packets. They are not separate
+ * recovered element occurrences and have neither an independent Revit element
+ * identity nor a recovered body. Dedicated MEP tests check their source
+ * evidence, parent-product nesting, connection endpoints and opt-in gate.
  */
-function isTaggableProduct(type: string): boolean {
-  const chain = getInheritanceChainForEntity(type);
-  if (!chain.includes("IfcProduct")) return false;
-  if (chain.includes("IfcSpatialElement") || chain.includes("IfcSpatialStructureElement")) return false;
-  return !chain.includes("IfcFeatureElement");
-}
 
 /**
  * The reader writes `[parseLite] <phase>: <n>ms` and `[IfcParser] Fast scan:
@@ -168,7 +168,7 @@ try {
   for (let row = 0; row < table.count; row += 1) {
     const expressId = table.expressId[row]!;
     const type = table.getTypeName(expressId);
-    if (!isTaggableProduct(type)) continue;
+    if (!isRecoveryTaggedProduct(type)) continue;
     products += 1;
     increment(productTypes, type);
     if (table.hasGeometry(expressId)) withGeometry += 1;
