@@ -34,7 +34,7 @@ export const STANDARDS_READER_RANGE_LABEL =
 /** True when the vendored standards-aware reader claims to handle `version`. */
 export function standardsReaderSupports(version: number): boolean {
   return (
-    Number.isFinite(version) &&
+    Number.isInteger(version) &&
     version >= STANDARDS_READER_MIN_VERSION &&
     version <= STANDARDS_READER_MAX_VERSION
   );

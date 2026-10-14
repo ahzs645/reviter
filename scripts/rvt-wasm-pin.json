@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/helenkwok/rvt-rs",
+  "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "cargoLockSha256": "f7c4bb397ac46aa825a2af179fb932e6afd48c716df4336a26d023de2d833ef6",
+  "rustToolchain": "1.90.0",
+  "wasmBindgenCli": "0.2.118",
+  "target": "wasm32-unknown-unknown",
+  "status": "staging-only",
+  "shipped": {
+    "version": "0.1.2",
+    "sourceCommit": null,
+    "note": "Existing vendored source commit is not recorded; retain binary until candidate adapter and paired corpus checks pass.",
+    "sha256": {
+      "rvt.js": "d30bd7ba6187d5c7df66041b11b43fa6e674e5f12ff7ae1bb8f9f0c4d6b3bec0",
+      "rvt.d.ts": "ec3c4053147b4dad34ef8448b6ff44daa4e28213c14215d12c2a8b696fee2244",
+      "rvt_bg.wasm": "510010f63094a578b9532d04f47d2c3f4ebeac522f78596d959438c7e4944c3e",
+      "rvt_bg.wasm.d.ts": "f71826401182deea0364a1df363375404b5b3fcdeb5c70caabfc5b5462c9a182"
+    }
+  }
+}
