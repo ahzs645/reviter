@@ -54,6 +54,12 @@ test("native room spaces retain boxless metadata and stored curves without fabri
   assert.equal(new Set(guids).size, guids.length, "each native occurrence GlobalId is unique");
   assert.equal((makeIfc(model, { includeNativeRooms: false }).match(/=IFCSPACE\(/g) ?? []).length, 0);
   assert.deepEqual(model, before);
+  const stale = structuredClone(model);
+  stale.nativeRooms![0]!.location = { stream: "Partitions/different", chunkIndex: 0, offset: 0 };
+  assert.doesNotMatch(makeIfc(stale), /'FootPrint','GeometricCurveSet'/, "stale outlines cannot cross source partitions");
+  stale.nativeRooms![0]!.location = undefined;
+  stale.nativeRooms![0]!.outlineIssue = "unsupported-curved-face";
+  assert.doesNotMatch(makeIfc(stale), /'FootPrint','GeometricCurveSet'/, "a stale decoded status cannot override unsupported geometry evidence");
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
   for (const match of text.matchAll(/#(\d+)=IFCSPACE\(/g)) {
     const properties = extractPropertiesOnDemand(store, Number(match[1])) ?? [];

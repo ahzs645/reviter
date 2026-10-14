@@ -1,5 +1,16 @@
 # Third-party source adaptations
 
+The semantic integration also adapts GlobalId reconstruction and IFC export
+precedence (`revit-ifc-semantics.ts`), primary design options
+(`design-options.ts`), and experimental MEP evidence (`native-mep.ts`) from
+the same upstream revision. The respective modules and topic documents identify
+their source files, changes and scope. Standard property and phase modules use
+independently implemented decoders informed by the upstream observations.
+
+Full upstream notices are retained in [docs/rvt-rs-NOTICE.txt](docs/rvt-rs-NOTICE.txt),
+[lib/rvt-wasm/NOTICE](lib/rvt-wasm/NOTICE), and the adapted modules' vendor
+directories. Apache-2.0 license texts remain with those distributions.
+
 `lib/reviter/native-rooms.ts` adapts the measured room solid face layout,
 constants and adjacent room parameter entry layout from
 [helenkwok/rvt-rs](https://github.com/helenkwok/rvt-rs), commit

@@ -62,6 +62,26 @@ measurements behind it.
 
 ## Development
 
+### Native semantics and IFC interoperability
+
+Conversion now also retains source-authored rooms, explicit phase lifecycle
+fields, and supported primary design-option evidence. IFC exports reconstruct
+native occurrence GlobalIds and apply supported owned IFC export settings and
+standard property mappings. Native rooms remain labelled unreviewed; stored
+plan outlines do not create room heights, navigation or access certification.
+
+```sh
+# Keep all design alternatives (the default), or omit proven non-primary ones.
+npm run extract -- model.rvt --out model.ifc --design-options primary
+
+# Opt in to candidate MEP systems/connectors; family connector graphs are unresolved.
+npm run extract -- model.rvt --out model.ifc --experimental-mep
+```
+
+JSON audit output includes the underlying source evidence. Release gates,
+paired-model measurements and remaining limitations are in
+[the rvt-rs integration record](docs/rvt-rs-integration.md).
+
 ```bash
 npm install
 npm run dev

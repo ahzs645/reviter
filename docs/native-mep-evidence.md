@@ -84,15 +84,17 @@ and web-ifc's independent reading of the emitted port/system relationships.
 
 ## Integration contract
 
-The conversion caller should add optional `ConvertResult.nativeMep` with type
-`NativeMepDecode`, and invoke `scanContainerNativeMep(openedContainer,
-elementBounds)` only when the conversion's experimental MEP option is enabled.
+The converter exposes optional `ConvertResult.nativeMep` with type
+`NativeMepDecode` and invokes `scanContainerNativeMep(openedContainer,
+elementBounds)` from `native-mep-container.ts` only when
+`ConvertOptions.experimentalMep` is enabled.
 This is a separate optional semantic scan, so ordinary conversions incur no
 extra partition inflation. It should not be coupled to geometry recovery.
 
-Call `emitNativeMep` after all products exist, passing the STEP writer,
+The IFC exporter calls `emitNativeMep` after all products exist, passing the STEP writer,
 `ownerHistory`, `building`, `productByElement`, actual `entityByElement`, and
 the existing `guid`/`quoted` helpers. Pass the explicit experimental export
-option to `includeExperimentalMep`. The actual emitted class map must include
+option to `includeExperimentalMep`. The actual emitted class map includes
 export overrides. Supported concrete category/type mappings belong to the
-existing IFC class mapper, rather than this relationship helper.
+existing IFC class mapper, rather than this relationship helper. The CLI
+`--experimental-mep` switch requests collection and, for IFC output, emission.

@@ -1,0 +1,517 @@
+{
+  "schemaVersion": 1,
+  "baseBranch": "claude/unbc-candidate4-rules",
+  "baseCommit": "4c13fd03e1ef994311f55e2312ef2590b898fb53",
+  "referenceRepository": "helenkwok/rvt-rs",
+  "referenceCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "corpusGeometryCheckCommit": "99f2668",
+  "notes": [
+    "Subsequent container adapter move preserves the scanner body and keeps compiler dependencies deterministic.",
+    "No raw models, references, source room names or conversion derivatives are included.",
+    "Byte identity proves preservation of the requested baseline output, not converter completeness."
+  ],
+  "models": [
+    {
+      "model": "RAC.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "geometrySha256": "ebd4e6adf5a6ab7f8f7d18b8a841e384d7efa93bee919d06be7352ceed04dfc8",
+      "glbSha256": "ad687131d8cdebdb19c3cc08ce99a1b65ec7dc83195d5fda4abb8ef5651024df",
+      "triangles": 195555,
+      "drawnElements": 461,
+      "nativeRooms": {
+        "revitVersion": 2025,
+        "semanticRooms": 14,
+        "boxlessRooms": 0,
+        "namedRooms": 14,
+        "outlines": 13,
+        "outlineSupported": true,
+        "evidenceLimitReached": false
+      },
+      "nativePhases": {
+        "names": 3,
+        "created": 515,
+        "demolished": 0
+      },
+      "designOptions": {
+        "status": "supported",
+        "sets": 0,
+        "unresolvedSets": 0
+      },
+      "ifcExportSettingOwners": 0,
+      "baselineGeometrySha256": "ebd4e6adf5a6ab7f8f7d18b8a841e384d7efa93bee919d06be7352ceed04dfc8",
+      "baselineGlbSha256": "ad687131d8cdebdb19c3cc08ce99a1b65ec7dc83195d5fda4abb8ef5651024df",
+      "preservation": {
+        "sameSource": true,
+        "identicalGeometry": true
+      },
+      "byteIdenticalGlb": true,
+      "independentIfc": {
+        "reader": "@ifc-lite/parser",
+        "recoveredProducts": 473,
+        "productsWithRecoveryEvidence": 473,
+        "missingRecoveryEvidenceCount": 0,
+        "ids": [
+          {
+            "name": "Walls carry Revit identity",
+            "applicable": 56,
+            "passed": 56,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls state whether the body is exact",
+            "applicable": 56,
+            "passed": 56,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls name the evidence behind their category",
+            "applicable": 56,
+            "passed": 56,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors carry Revit identity",
+            "applicable": 16,
+            "passed": 16,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors state whether the body is exact",
+            "applicable": 16,
+            "passed": 16,
+            "failed": 0,
+            "passRate": 100
+          }
+        ]
+      }
+    },
+    {
+      "model": "School.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "geometrySha256": "6a2c9b7434979e7478900c459301c9a62aad47b32ba20d222622b507d047d0d5",
+      "glbSha256": "3dec3d41652dd444710a585ac5891058c09aee6b118b500cd04955f67e022fec",
+      "triangles": 393145,
+      "drawnElements": 5507,
+      "nativeRooms": {
+        "revitVersion": 2025,
+        "semanticRooms": 91,
+        "boxlessRooms": 0,
+        "namedRooms": 91,
+        "outlines": 42,
+        "outlineSupported": true,
+        "evidenceLimitReached": false
+      },
+      "nativePhases": {
+        "names": 2,
+        "created": 6119,
+        "demolished": 0
+      },
+      "designOptions": {
+        "status": "supported",
+        "sets": 0,
+        "unresolvedSets": 0
+      },
+      "ifcExportSettingOwners": 0,
+      "baselineGeometrySha256": "6a2c9b7434979e7478900c459301c9a62aad47b32ba20d222622b507d047d0d5",
+      "baselineGlbSha256": "3dec3d41652dd444710a585ac5891058c09aee6b118b500cd04955f67e022fec",
+      "preservation": {
+        "sameSource": true,
+        "identicalGeometry": true
+      },
+      "byteIdenticalGlb": true,
+      "independentIfc": {
+        "reader": "@ifc-lite/parser",
+        "recoveredProducts": 5542,
+        "productsWithRecoveryEvidence": 5542,
+        "missingRecoveryEvidenceCount": 0,
+        "ids": [
+          {
+            "name": "Walls carry Revit identity",
+            "applicable": 180,
+            "passed": 180,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls state whether the body is exact",
+            "applicable": 180,
+            "passed": 180,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls name the evidence behind their category",
+            "applicable": 180,
+            "passed": 180,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors carry Revit identity",
+            "applicable": 100,
+            "passed": 100,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors state whether the body is exact",
+            "applicable": 100,
+            "passed": 100,
+            "failed": 0,
+            "passRate": 100
+          }
+        ]
+      }
+    },
+    {
+      "model": "Snowdon.rvt",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "geometrySha256": "768b828d17ff228509ce36853ed5eeb7ead55e3754f7a70d1af47fb546c81433",
+      "glbSha256": "d39021ff2ee9a843272c02f2ec45a2a1b98d9d10ae8463cb0ed7081527d9efc4",
+      "triangles": 1596168,
+      "drawnElements": 8931,
+      "nativeRooms": {
+        "revitVersion": 2024,
+        "semanticRooms": 54,
+        "boxlessRooms": 0,
+        "namedRooms": 54,
+        "outlines": 45,
+        "outlineSupported": true,
+        "evidenceLimitReached": false
+      },
+      "nativePhases": {
+        "names": 3,
+        "created": 7177,
+        "demolished": 6
+      },
+      "designOptions": {
+        "status": "supported",
+        "sets": 2,
+        "unresolvedSets": 0
+      },
+      "ifcExportSettingOwners": 0,
+      "baselineGeometrySha256": "768b828d17ff228509ce36853ed5eeb7ead55e3754f7a70d1af47fb546c81433",
+      "baselineGlbSha256": "d39021ff2ee9a843272c02f2ec45a2a1b98d9d10ae8463cb0ed7081527d9efc4",
+      "preservation": {
+        "sameSource": true,
+        "identicalGeometry": true
+      },
+      "byteIdenticalGlb": true,
+      "independentIfc": {
+        "reader": "@ifc-lite/parser",
+        "recoveredProducts": 9043,
+        "productsWithRecoveryEvidence": 9043,
+        "missingRecoveryEvidenceCount": 0,
+        "ids": [
+          {
+            "name": "Walls carry Revit identity",
+            "applicable": 1128,
+            "passed": 1128,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls state whether the body is exact",
+            "applicable": 1128,
+            "passed": 1128,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls name the evidence behind their category",
+            "applicable": 1128,
+            "passed": 1128,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors carry Revit identity",
+            "applicable": 141,
+            "passed": 141,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors state whether the body is exact",
+            "applicable": 141,
+            "passed": 141,
+            "failed": 0,
+            "passRate": 100
+          }
+        ]
+      }
+    },
+    {
+      "model": "UNBC.rvt",
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "geometrySha256": "e73f250e7546aa217d319d7ddca88294484824601e06b16a88e2b2d86c42bd5f",
+      "glbSha256": "44ecd7ee09165ef471c6d4d6c10aefa8170f90ef8d2743cb6688503e1356a62a",
+      "triangles": 901903,
+      "drawnElements": 36415,
+      "nativeRooms": {
+        "revitVersion": 2027,
+        "semanticRooms": 0,
+        "boxlessRooms": 0,
+        "namedRooms": 0,
+        "outlines": 0,
+        "outlineSupported": false,
+        "evidenceLimitReached": false
+      },
+      "nativePhases": {
+        "names": 2,
+        "created": 41337,
+        "demolished": 0
+      },
+      "designOptions": {
+        "status": "unsupported",
+        "sets": 0,
+        "unresolvedSets": 0
+      },
+      "ifcExportSettingOwners": 0,
+      "baselineGeometrySha256": "e73f250e7546aa217d319d7ddca88294484824601e06b16a88e2b2d86c42bd5f",
+      "baselineGlbSha256": "44ecd7ee09165ef471c6d4d6c10aefa8170f90ef8d2743cb6688503e1356a62a",
+      "preservation": {
+        "sameSource": true,
+        "identicalGeometry": true
+      },
+      "byteIdenticalGlb": true,
+      "independentIfc": {
+        "reader": "@ifc-lite/parser",
+        "recoveredProducts": 38327,
+        "productsWithRecoveryEvidence": 38327,
+        "missingRecoveryEvidenceCount": 0,
+        "ids": [
+          {
+            "name": "Walls carry Revit identity",
+            "applicable": 9364,
+            "passed": 9364,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls state whether the body is exact",
+            "applicable": 9364,
+            "passed": 9364,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Walls name the evidence behind their category",
+            "applicable": 9364,
+            "passed": 9364,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors carry Revit identity",
+            "applicable": 1912,
+            "passed": 1912,
+            "failed": 0,
+            "passRate": 100
+          },
+          {
+            "name": "Doors state whether the body is exact",
+            "applicable": 1912,
+            "passed": 1912,
+            "failed": 0,
+            "passRate": 100
+          }
+        ]
+      }
+    }
+  ],
+  "nativeGlobalIdWitness": {
+    "nativeElementsWithMatchingGlobalId": 38061,
+    "uniqueNativeTags": 38187,
+    "matchingGlobalIds": 38061,
+    "nativeTaggedProducts": 41293,
+    "mismatchesByEntity": {
+      "IfcStair": 10,
+      "IfcMember": 57,
+      "IfcSlab": 67,
+      "IfcRailing": 14,
+      "IfcOpeningElement": 3071,
+      "IfcStairFlight": 13
+    },
+    "sourceRevisionAgreement": "unverified: creation identity is stable across revisions; the IFC export revision has not been joined to the RVT save revision"
+  },
+  "roomWitness": {
+    "pairedModels": [
+      "RAC",
+      "School",
+      "Snowdon"
+    ],
+    "nativeRooms": 159,
+    "matchingNamesAndNumbers": 159,
+    "emittedPlanarOutlines": 100,
+    "areaToleranceFraction": 0.001,
+    "unresolvedOutlines": 59
+  },
+  "phaseWitness": {
+    "equal": 13440,
+    "different": 0,
+    "source": "docs/generated/native-phases-corpus.json"
+  },
+  "primarySelection": {
+    "model": "Snowdon",
+    "allTaggedElementIds": 9043,
+    "primaryTaggedElementIds": 9016,
+    "removed": [
+      {
+        "elementId": 2062316,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062359,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062375,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062387,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062399,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062411,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062423,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062435,
+        "ifcType": "IfcWall"
+      },
+      {
+        "elementId": 2062310,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062318,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062353,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062369,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062381,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062393,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062405,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062417,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 2062429,
+        "ifcType": "IfcSlab"
+      },
+      {
+        "elementId": 1500895,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062315,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062323,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062358,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062374,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062386,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062398,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062410,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062422,
+        "ifcType": "IfcBuildingElementProxy"
+      },
+      {
+        "elementId": 2062434,
+        "ifcType": "IfcBuildingElementProxy"
+      }
+    ],
+    "removedByType": {
+      "IfcWall": 8,
+      "IfcSlab": 9,
+      "IfcBuildingElementProxy": 10
+    },
+    "unexpectedAdded": []
+  },
+  "checks": {
+    "unitTests": {
+      "tests": 1884,
+      "passed": 1882,
+      "failed": 0,
+      "skipped": 2
+    },
+    "typecheck": "passed",
+    "changedCodeLint": "passed",
+    "pagesBuildAndTest": "passed",
+    "independentIfcModels": 4,
+    "baselineLint": {
+      "errors": 113,
+      "warnings": 75,
+      "sameFindingsOnIntegration": true
+    },
+    "npmTest": "Vinext build passes; rendered-html assertion fails identically on untouched base before unit suite",
+    "renderedHtmlExpectedObsoletePhrase": "restore the model, floor reviews and GIS references together",
+    "wasmBuild": "candidate not compiled; existing shipped artifacts unchanged",
+    "browserSemanticSmoke": {
+      "ready": true,
+      "source": "RAC.rvt",
+      "nativeSpaces": 14,
+      "storedFootprints": 13,
+      "hasPhasing": true,
+      "pageErrors": []
+    },
+    "broadRacBrowserCheck": "Reached Ready; stopped at derived-floor-region overlay count 0; not a passing review/navigation check",
+    "cliExperimentalMep": {
+      "model": "RAC",
+      "nativeSystems": 1,
+      "ports": 0,
+      "connections": 0,
+      "membership": "candidate-object-id-references"
+    },
+    "shippedWasmHashes": "all four artifacts match pin"
+  }
+}

@@ -19,6 +19,10 @@ tried and rejected, and what is still not reachable.
 For what Reviter currently claims to do, read the [README](../README.md). For why
 a rule exists, read here.
 
+The [rvt-rs semantic integration record](rvt-rs-integration.md) describes the
+native identity, IFC property, room, MEP, design-option and capability additions,
+with paired-source validation and explicit unsupported cases.
+
 ## The 2026-07/08 audit of the supplied Revit 2027 project
 
 These eleven entries were the README's investigation narrative until 2026-08-12.
