@@ -1,0 +1,1097 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Fresh scripts/compare-rvt-readers.ts campaign, scripts/summarize-rvt-reader-comparison.ts and independent scripts/audit-ifc-owner-geometry.ts/source frame audits",
+  "baseline": {
+    "commit": "2d42a9c",
+    "scope": "This continuation only; earlier body-selection results are historical in rvt-native-geometry-four-models.json.",
+    "privateComparison": {
+      "fileName": "head-to-head-final-geometry-selection.json",
+      "sha256": "d3bf3d11ed475eb03600b8d1e5595ba1291b1f5f0f28a074e55791add8924227"
+    }
+  },
+  "currentCampaign": {
+    "privateComparison": {
+      "fileName": "head-to-head-large-whole-frames-priority.json",
+      "sha256": "1e154b03a9c112ac2853dab8771e2dfe7c9d6ab8ce855250575d7c53e0247761"
+    },
+    "publicReaderSummary": "rvt-reader-comparison-final.json",
+    "freshReviterConversions": 4,
+    "validatedReusedUpstreamOutputs": 4,
+    "independentIfcReopens": 8,
+    "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "baselineChecks": {
+      "preserved": 12,
+      "deliberatelyChanged": 12,
+      "preservedFields": [
+        "bounds",
+        "origin",
+        "bbox"
+      ],
+      "changedFields": [
+        "geometryHash",
+        "triangles",
+        "meshes"
+      ]
+    },
+    "strictComparisonExit": 1,
+    "strictExitReason": "The existing baseline intentionally rejects changed geometry hashes/counts. All four conversions and IFC reopens completed. New source bodies require explicit owner evidence, rather than treating that expected comparison exit as a passing unchanged baseline.",
+    "flagOnlyReuseScope": "The final output-pressure truncation reporting fix at2026-10-15T04:01:50Z changes only the boolean when supplemental own geometry is withheld. RAC/School/Snowdon workers loaded immediately before it; their final geometry is reusable. Snowdon already reports nativeMeshTruncated=true. UNBC loaded after the fix. No admission order or geometry changed."
+  },
+  "models": [
+    {
+      "model": "rac",
+      "inputSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "release": 2025,
+      "prior": {
+        "geometryHash": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
+        "triangles": 195167,
+        "meshes": 97
+      },
+      "current": {
+        "geometryHash": "4a603e3eda80d81f12a8732d351a4121794695c93d2f74fbe794b8e9695f31ff",
+        "triangles": 209174,
+        "meshes": 94
+      },
+      "baselineChecks": {
+        "geometryHash": false,
+        "triangles": false,
+        "meshes": false,
+        "bounds": true,
+        "origin": true,
+        "bbox": true
+      },
+      "geometryPreservedByEnrichment": true,
+      "recoveredBounds": 959,
+      "largeWholeGElementFrames": {
+        "admitted": 30,
+        "rejectedChecksum": 0,
+        "skippedChecksumBudget": 0,
+        "checksumBytes": 2644868,
+        "checksumLimitPerPartition": 134217728,
+        "nativeCompilation": {
+          "queued": 30,
+          "replayed": 30,
+          "existingOwnerPreserved": 0,
+          "supersededWholeFrames": 0,
+          "skippedBufferBudget": 0,
+          "skippedDefinitionBudget": 0,
+          "peakBufferedBytes": 2645468,
+          "bufferLimitBytes": 67108864
+        }
+      },
+      "nativeMeshTruncated": false,
+      "elapsedMs": 138831.643703,
+      "productIdentityPreservation": {
+        "name": "rac",
+        "priorProducts": 578,
+        "currentProducts": 578,
+        "lostProductGlobalIds": [],
+        "gainedProductGlobalIds": [],
+        "lostTags": [],
+        "gainedTags": []
+      },
+      "products": {
+        "prior": 578,
+        "current": 578,
+        "representedPrior": 475,
+        "representedCurrent": 475
+      },
+      "exactOwnerGeometry": {
+        "coverage": {
+          "compared": 461,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 0,
+          "referenceOnly": 0
+        },
+        "changedOwners": 29,
+        "changedDefinition": "triangle count differs, or corner error >1e-6ft, or relative area difference >1e-5. Comparison is against prior output, not a reference accuracy score."
+      },
+      "privateAudit": {
+        "fileName": "rac-owner-large-priority-before-after.json",
+        "sha256": "955da2603e44282ffeca109477983eac934f895356141b832912b7475c1187d9"
+      }
+    },
+    {
+      "model": "school",
+      "inputSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "release": 2025,
+      "prior": {
+        "geometryHash": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
+        "triangles": 378957,
+        "meshes": 47
+      },
+      "current": {
+        "geometryHash": "03fd2f72eb831f6c62f895ce4302b4a45b2bee382244ab29785c04b96058a406",
+        "triangles": 438508,
+        "meshes": 49
+      },
+      "baselineChecks": {
+        "geometryHash": false,
+        "triangles": false,
+        "meshes": false,
+        "bounds": true,
+        "origin": true,
+        "bbox": true
+      },
+      "geometryPreservedByEnrichment": true,
+      "recoveredBounds": 6420,
+      "largeWholeGElementFrames": {
+        "admitted": 23,
+        "rejectedChecksum": 0,
+        "skippedChecksumBudget": 0,
+        "checksumBytes": 1937856,
+        "checksumLimitPerPartition": 134217728,
+        "nativeCompilation": {
+          "queued": 23,
+          "replayed": 23,
+          "existingOwnerPreserved": 0,
+          "supersededWholeFrames": 0,
+          "skippedBufferBudget": 0,
+          "skippedDefinitionBudget": 0,
+          "peakBufferedBytes": 1938316,
+          "bufferLimitBytes": 67108864
+        }
+      },
+      "nativeMeshTruncated": false,
+      "elapsedMs": 111446.47933,
+      "productIdentityPreservation": {
+        "name": "school",
+        "priorProducts": 5752,
+        "currentProducts": 5758,
+        "lostProductGlobalIds": [],
+        "gainedProductGlobalIds": [
+          "06bOOBatjAFflKi98Awoa7",
+          "06bOOBatjAFflKi98AwoaN",
+          "06bOOBatjAFflKi98AwoaP",
+          "06bOOBatjAFflKi98AwoaT",
+          "06bOOBatjAFflKi98Awoaf",
+          "06bOOBatjAFflKi98Awoaj"
+        ],
+        "lostTags": [],
+        "gainedTags": [
+          "135386",
+          "135390",
+          "135392",
+          "135402",
+          "135406",
+          "135408"
+        ]
+      },
+      "products": {
+        "prior": 5752,
+        "current": 5758,
+        "representedPrior": 5592,
+        "representedCurrent": 5598
+      },
+      "exactOwnerGeometry": {
+        "coverage": {
+          "compared": 5507,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 6,
+          "referenceOnly": 0
+        },
+        "changedOwners": 21,
+        "changedDefinition": "triangle count differs, or corner error >1e-6ft, or relative area difference >1e-5. Comparison is against prior output, not a reference accuracy score."
+      },
+      "privateAudit": {
+        "fileName": "school-owner-large-priority-before-after.json",
+        "sha256": "262c9d3cdf81a48dfcded7249de3c9a9b0c7491ffd028d7cb90edf9204a40faa"
+      }
+    },
+    {
+      "model": "snowdon",
+      "inputSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "release": 2024,
+      "prior": {
+        "geometryHash": "f8ec1a37de7b41db30938517ae1375630a31287dc27d4315f2f89e8a17865e72",
+        "triangles": 1594784,
+        "meshes": 143
+      },
+      "current": {
+        "geometryHash": "e87d06ba6112c49e39edff0b5b7757983a0a13d072e64b9c9f3a25c37e3f4549",
+        "triangles": 1759255,
+        "meshes": 148
+      },
+      "baselineChecks": {
+        "geometryHash": false,
+        "triangles": false,
+        "meshes": false,
+        "bounds": true,
+        "origin": true,
+        "bbox": true
+      },
+      "geometryPreservedByEnrichment": true,
+      "recoveredBounds": 12386,
+      "largeWholeGElementFrames": {
+        "admitted": 316,
+        "rejectedChecksum": 0,
+        "skippedChecksumBudget": 0,
+        "checksumBytes": 28956805,
+        "checksumLimitPerPartition": 134217728,
+        "nativeCompilation": {
+          "queued": 316,
+          "replayed": 316,
+          "existingOwnerPreserved": 0,
+          "supersededWholeFrames": 0,
+          "skippedBufferBudget": 0,
+          "skippedDefinitionBudget": 0,
+          "peakBufferedBytes": 28963125,
+          "bufferLimitBytes": 67108864
+        }
+      },
+      "nativeMeshTruncated": true,
+      "elapsedMs": 323092.310614,
+      "productIdentityPreservation": {
+        "name": "snowdon",
+        "priorProducts": 9825,
+        "currentProducts": 9831,
+        "lostProductGlobalIds": [],
+        "gainedProductGlobalIds": [
+          "05kLx2kqSpXT2xtenzq4hg",
+          "0p_ez7$kb1fQ0sr1Uds03R",
+          "2wYho76PDA9vn_AFRLvQz$",
+          "2wYho76PDA9vn_AFRLvR99",
+          "3cDXZBnmTjIKxlKtSBJYQI",
+          "3scyhg1aT4f8EoxA1HN$Gd"
+        ],
+        "lostTags": [],
+        "gainedTags": [
+          "1644692",
+          "1866108",
+          "1867639",
+          "688457",
+          "695423",
+          "700016"
+        ]
+      },
+      "products": {
+        "prior": 9825,
+        "current": 9831,
+        "representedPrior": 8978,
+        "representedCurrent": 9003
+      },
+      "exactOwnerGeometry": {
+        "coverage": {
+          "compared": 8931,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 25,
+          "referenceOnly": 0
+        },
+        "changedOwners": 325,
+        "changedDefinition": "triangle count differs, or corner error >1e-6ft, or relative area difference >1e-5. Comparison is against prior output, not a reference accuracy score."
+      },
+      "privateAudit": {
+        "fileName": "snowdon-owner-large-priority-before-after.json",
+        "sha256": "1d334c414afc0aaa316ba3b3575964583910819371cceaac0dd1e6e9acd0080a"
+      }
+    },
+    {
+      "model": "unbc",
+      "inputSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "release": 2027,
+      "prior": {
+        "geometryHash": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+        "triangles": 858388,
+        "meshes": 32
+      },
+      "current": {
+        "geometryHash": "b7f1cb9d4f7026995c8ee81736d1dadb24703a2539c238aca757287eaa8b111e",
+        "triangles": 898491,
+        "meshes": 31
+      },
+      "baselineChecks": {
+        "geometryHash": false,
+        "triangles": false,
+        "meshes": false,
+        "bounds": true,
+        "origin": true,
+        "bbox": true
+      },
+      "geometryPreservedByEnrichment": true,
+      "recoveredBounds": 40611,
+      "largeWholeGElementFrames": {
+        "admitted": 109,
+        "rejectedChecksum": 0,
+        "skippedChecksumBudget": 0,
+        "checksumBytes": 9859231,
+        "checksumLimitPerPartition": 134217728,
+        "nativeCompilation": {
+          "queued": 109,
+          "replayed": 108,
+          "existingOwnerPreserved": 1,
+          "supersededWholeFrames": 0,
+          "skippedBufferBudget": 0,
+          "skippedDefinitionBudget": 0,
+          "peakBufferedBytes": 9861411,
+          "bufferLimitBytes": 67108864
+        }
+      },
+      "nativeMeshTruncated": false,
+      "elapsedMs": 154545.994156,
+      "productIdentityPreservation": {
+        "name": "unbc",
+        "priorProducts": 40259,
+        "currentProducts": 40259,
+        "lostProductGlobalIds": [],
+        "gainedProductGlobalIds": [],
+        "lostTags": [],
+        "gainedTags": []
+      },
+      "products": {
+        "prior": 40259,
+        "current": 40259,
+        "representedPrior": 36415,
+        "representedCurrent": 36434
+      },
+      "exactOwnerGeometry": {
+        "coverage": {
+          "compared": 36415,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 19,
+          "referenceOnly": 0
+        },
+        "changedOwners": 102,
+        "changedDefinition": "triangle count differs, or corner error >1e-6ft, or relative area difference >1e-5. Comparison is against prior output, not a reference accuracy score."
+      },
+      "privateAudit": {
+        "fileName": "unbc-owner-large-priority-before-after.json",
+        "sha256": "a8a8c56a79f4a2dee5904c2ac79508201fac91be11665c356fe67495d3ef36d2"
+      }
+    }
+  ],
+  "admissionSafety": {
+    "frameLimitBytes": 8388608,
+    "checksumLimitBytesPerPartition": 134217728,
+    "deferredWholeFrameBufferLimitBytes": 67108864,
+    "nativeOutputTriangleLimit": 2000000,
+    "originalDefinitionPriority": true,
+    "existingOwnDefinitionPreserved": true,
+    "latestQueuedSourceOccurrenceWins": true,
+    "oversizedNewerReplacementCannotReviveOlderBytes": true,
+    "originalOutputPriorityUnderPressure": true,
+    "noReferenceGeometryUsedToRepair": true,
+    "snowdonOutputCap": "Still reached. The 1,759,255 final visible triangles follow exclusions/cleanup after bounded output admission, so a visible count below2M does not imply an uncapped conversion. Separate checksum, buffering and deferred-definition skips are zero."
+  },
+  "snowdonRejectedIntermediate": {
+    "reason": "Immediate whole-frame compilation changed output admission order and displaced13 real native planting owners and degraded7 railings. The rejected campaign was not accepted as an accuracy improvement. Deferred supplemental priority restores their exact owners. Definition cache exhaustion was not the cause.",
+    "privateComparison": {
+      "fileName": "head-to-head-large-whole-frames.json",
+      "sha256": "3fe84d57e4c1c9d495816d26867e8e865181857cc43fe3d8f48ae62bb6b061a1"
+    },
+    "restoration": [
+      {
+        "tag": "1233428",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233404",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1415397",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 7609,
+        "currentTriangles": 7609,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233135",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1415398",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 7609,
+        "currentTriangles": 7609,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233388",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233380",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233374",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233438",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233412",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233420",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1415399",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 7609,
+        "currentTriangles": 7609,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1233396",
+        "entity": "IfcBuildingElementProxy",
+        "priorTriangles": 10889,
+        "currentTriangles": 10889,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "1981444",
+        "entity": "IfcRailing",
+        "priorTriangles": 11788,
+        "currentTriangles": 11788,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "2111484",
+        "entity": "IfcRailing",
+        "priorTriangles": 25924,
+        "currentTriangles": 25924,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "2111488",
+        "entity": "IfcRailing",
+        "priorTriangles": 8734,
+        "currentTriangles": 8734,
+        "boundsCornerErrorFeet": 7.954785274932874e-08
+      },
+      {
+        "tag": "2111493",
+        "entity": "IfcRailing",
+        "priorTriangles": 8733,
+        "currentTriangles": 8733,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "2111498",
+        "entity": "IfcRailing",
+        "priorTriangles": 8735,
+        "currentTriangles": 8735,
+        "boundsCornerErrorFeet": 7.954785274932874e-08
+      },
+      {
+        "tag": "2111503",
+        "entity": "IfcRailing",
+        "priorTriangles": 8731,
+        "currentTriangles": 8731,
+        "boundsCornerErrorFeet": 0
+      },
+      {
+        "tag": "2235608",
+        "entity": "IfcRailing",
+        "priorTriangles": 9297,
+        "currentTriangles": 9297,
+        "boundsCornerErrorFeet": 0
+      }
+    ]
+  },
+  "snowdonSourceDiagnosis": {
+    "stairsWithIndependentRunProperties": [
+      {
+        "elementId": 621695,
+        "stairsId": 621690,
+        "baseRiserIndex": 13,
+        "bottomElevationFeet": 26.055555555555326,
+        "topElevationFeet": 32.16666666666644
+      },
+      {
+        "elementId": 622038,
+        "stairsId": 622037,
+        "baseRiserIndex": 0,
+        "bottomElevationFeet": -5.916666666666664,
+        "topElevationFeet": 1.3633333333332134
+      },
+      {
+        "elementId": 622042,
+        "stairsId": 622037,
+        "baseRiserIndex": 13,
+        "bottomElevationFeet": 1.3633333333332134,
+        "topElevationFeet": 8.083333333333101
+      },
+      {
+        "elementId": 882255,
+        "stairsId": 882250,
+        "baseRiserIndex": 13,
+        "bottomElevationFeet": 26.055555555555326,
+        "topElevationFeet": 32.16666666666644
+      },
+      {
+        "elementId": 1616456,
+        "stairsId": 1616455,
+        "baseRiserIndex": 0,
+        "bottomElevationFeet": 45.49999999999977,
+        "topElevationFeet": 52.722222222221994
+      },
+      {
+        "elementId": 1621006,
+        "stairsId": 1620391,
+        "baseRiserIndex": 0,
+        "bottomElevationFeet": 45.49999999999977,
+        "topElevationFeet": 52.722222222221994
+      }
+    ],
+    "runScope": "Six measured flight intervals are supported independently by source run records.622038/622042 share stairs622037 and distinct base-riser indices; the prior approximation spanned the aggregate. This does not establish paired-reference physical accuracy.",
+    "sourceCompleteButPhysicalEquivalenceUnproven": [
+      {
+        "tag": "688520",
+        "symbolElementId": "1693803",
+        "sourceObjectLength": 67942,
+        "sourceEchoAndChecksumValid": true,
+        "fifoComplete": true,
+        "sourceBRepFaces": 116,
+        "compiledBRepFaces": 116,
+        "compiledTriangles": 232,
+        "nestedInstances": 0,
+        "normalExternalBinding": true,
+        "currentTriangles": 232,
+        "currentBoundaryEdges": 12,
+        "currentNonManifoldEdges": 18,
+        "currentInconsistentWindingEdges": 27,
+        "boundsChangeFromPriorFeet": 11.381943548754467,
+        "classification": "All stored BRep faces compile; source representation recovered. Physical completeness and equivalence to the supplied Autodesk GLB remain unproven."
+      },
+      {
+        "tag": "701095",
+        "symbolElementId": "1693817",
+        "sourceObjectLength": 73524,
+        "sourceEchoAndChecksumValid": true,
+        "fifoComplete": true,
+        "sourceBRepFaces": 126,
+        "compiledBRepFaces": 126,
+        "compiledTriangles": 252,
+        "nestedInstances": 0,
+        "normalExternalBinding": true,
+        "currentTriangles": 252,
+        "currentBoundaryEdges": 0,
+        "currentNonManifoldEdges": 20,
+        "currentInconsistentWindingEdges": 30,
+        "boundsChangeFromPriorFeet": 7.222221442531811,
+        "classification": "All stored BRep faces compile; source representation recovered. Physical completeness and equivalence to the supplied Autodesk GLB remain unproven."
+      },
+      {
+        "tag": "1644693",
+        "symbolElementId": "1693836",
+        "sourceObjectLength": 88894,
+        "sourceEchoAndChecksumValid": true,
+        "fifoComplete": true,
+        "sourceBRepFaces": 152,
+        "compiledBRepFaces": 152,
+        "compiledTriangles": 308,
+        "nestedInstances": 0,
+        "normalExternalBinding": true,
+        "currentTriangles": 307,
+        "currentBoundaryEdges": 3,
+        "currentNonManifoldEdges": 24,
+        "currentInconsistentWindingEdges": 36,
+        "boundsChangeFromPriorFeet": 7.2430571715075445,
+        "classification": "All stored BRep faces compile; source representation recovered. Physical completeness and equivalence to the supplied Autodesk GLB remain unproven."
+      },
+      {
+        "tag": "1135921",
+        "symbolElementId": "1106524",
+        "sourceObjectLength": 85860,
+        "sourceEchoAndChecksumValid": true,
+        "fifoComplete": true,
+        "sourceBRepFaces": 88,
+        "compiledBRepFaces": 88,
+        "compiledTriangles": 852,
+        "nestedInstances": 0,
+        "normalExternalBinding": true,
+        "currentTriangles": 851,
+        "currentBoundaryEdges": 3,
+        "currentNonManifoldEdges": 1,
+        "currentInconsistentWindingEdges": 7,
+        "boundsChangeFromPriorFeet": 1.1668051919230642,
+        "classification": "All stored BRep faces compile; source representation recovered. Physical completeness and equivalence to the supplied Autodesk GLB remain unproven."
+      },
+      {
+        "tag": "1135923",
+        "symbolElementId": "1106526",
+        "sourceObjectLength": 66957,
+        "sourceEchoAndChecksumValid": true,
+        "fifoComplete": true,
+        "sourceBRepFaces": 74,
+        "compiledBRepFaces": 74,
+        "compiledTriangles": 416,
+        "nestedInstances": 0,
+        "normalExternalBinding": true,
+        "currentTriangles": 416,
+        "currentBoundaryEdges": 0,
+        "currentNonManifoldEdges": 0,
+        "currentInconsistentWindingEdges": 0,
+        "boundsChangeFromPriorFeet": 0.6143398502299817,
+        "classification": "All stored BRep faces compile; source representation recovered. Physical completeness and equivalence to the supplied Autodesk GLB remain unproven."
+      }
+    ],
+    "evidence": [
+      {
+        "fileName": "snowdon-underfill-symbol-frames.json",
+        "sha256": "2bed138122bf43dbf6e1166505b2bc30abbea5f6cc58df48e0499dad87e2df2e"
+      },
+      {
+        "fileName": "snowdon-unresolved-owner-bindings.json",
+        "sha256": "54ca4569b6abb2d97f39575f98bdd40d31199411b4aa8f1a31ca387354cda185"
+      },
+      {
+        "fileName": "snowdon-source-run-properties.json",
+        "sha256": "249ff34230ccaf1130e96d8cacde477bd96aa7b2d8231799a8d122c956594b09"
+      }
+    ],
+    "glbScope": "Autodesk dbId/fragmentId values are not proven Revit IDs. The supplied GLB adds a recentering transform and no exact shared RVT-world registration has been established. No fitted registration or owner accuracy assertion is used."
+  },
+  "unbcPairedReference": {
+    "scope": "Rendered IFC products with one exact decimal Tag on each side and identical GlobalId. Duplicate Tags and identity disagreements excluded; no name, shape, aggregation or GLB dbId identity inference.",
+    "frame": "Both IFCs reopened with COORDINATE_TO_ORIGIN=false; explicit placed geometry mapped from Y-up metres to (x,-z,y)/0.3048 Z-up feet; no estimated translation/rotation/scale.",
+    "coverage": {
+      "compared": 36048,
+      "ambiguous": 92,
+      "identityDisagreements": 2,
+      "outputOnly": 292,
+      "referenceOnly": 2
+    },
+    "priorCoverage": {
+      "compared": 36048,
+      "ambiguous": 92,
+      "identityDisagreements": 2,
+      "outputOnly": 273,
+      "referenceOnly": 2
+    },
+    "areaImprovementThreshold": 1e-05,
+    "areaImprovedOwners": 82,
+    "areaWorsenedOwners": 8,
+    "worsenedSlabs": [
+      {
+        "tag": "400238",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 6.741851130386145e-06,
+        "currentRelativeAreaError": 2.292896207712979e-05
+      },
+      {
+        "tag": "427511",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 2.1373827334873438e-05,
+        "currentRelativeAreaError": 3.5429506775293485e-05
+      },
+      {
+        "tag": "437656",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 2.7159579261072562e-05,
+        "currentRelativeAreaError": 0.00011941617459771264
+      },
+      {
+        "tag": "501699",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 0.0001022834485303142,
+        "currentRelativeAreaError": 0.00019435556268253225
+      },
+      {
+        "tag": "1513098",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 2.0104295175912883e-05,
+        "currentRelativeAreaError": 4.650393155784355e-05
+      },
+      {
+        "tag": "1521516",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 2.0302779628009527e-05,
+        "currentRelativeAreaError": 4.032508148469355e-05
+      },
+      {
+        "tag": "1779842",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 0.0002504284888341547,
+        "currentRelativeAreaError": 0.00032728703668296466
+      },
+      {
+        "tag": "1785600",
+        "entity": "IfcSlab",
+        "priorRelativeAreaError": 0.000351505117898008,
+        "currentRelativeAreaError": 0.0006799306449751273
+      }
+    ],
+    "maximumCurrentWorsenedRelativeAreaError": 0.0006799306449751273,
+    "ownersWithBoundsErrorWorseningAbove00001Feet": [],
+    "perEntity": {
+      "IfcSlab -> IfcSlab": {
+        "prior": {
+          "compared": 87,
+          "boundsWithin001Feet": 81,
+          "areaWithinOnePercent": 87,
+          "closedVolumePairs": 7,
+          "closedVolumeWithinOnePercent": 7
+        },
+        "current": {
+          "compared": 87,
+          "boundsWithin001Feet": 81,
+          "areaWithinOnePercent": 87,
+          "closedVolumePairs": 7,
+          "closedVolumeWithinOnePercent": 7
+        }
+      },
+      "IfcColumn -> IfcColumn": {
+        "prior": {
+          "compared": 311,
+          "boundsWithin001Feet": 261,
+          "areaWithinOnePercent": 249,
+          "closedVolumePairs": 54,
+          "closedVolumeWithinOnePercent": 54
+        },
+        "current": {
+          "compared": 311,
+          "boundsWithin001Feet": 261,
+          "areaWithinOnePercent": 262,
+          "closedVolumePairs": 54,
+          "closedVolumeWithinOnePercent": 54
+        }
+      },
+      "IfcWallStandardCase -> IfcWall": {
+        "prior": {
+          "compared": 7381,
+          "boundsWithin001Feet": 7344,
+          "areaWithinOnePercent": 7345,
+          "closedVolumePairs": 762,
+          "closedVolumeWithinOnePercent": 747
+        },
+        "current": {
+          "compared": 7381,
+          "boundsWithin001Feet": 7351,
+          "areaWithinOnePercent": 7367,
+          "closedVolumePairs": 743,
+          "closedVolumeWithinOnePercent": 743
+        }
+      },
+      "IfcWall -> IfcWall": {
+        "prior": {
+          "compared": 140,
+          "boundsWithin001Feet": 137,
+          "areaWithinOnePercent": 134,
+          "closedVolumePairs": 3,
+          "closedVolumeWithinOnePercent": 2
+        },
+        "current": {
+          "compared": 140,
+          "boundsWithin001Feet": 137,
+          "areaWithinOnePercent": 136,
+          "closedVolumePairs": 2,
+          "closedVolumeWithinOnePercent": 2
+        }
+      },
+      "IfcStairFlight -> IfcStairFlight": {
+        "prior": {
+          "compared": 96,
+          "boundsWithin001Feet": 67,
+          "areaWithinOnePercent": 67,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "current": {
+          "compared": 96,
+          "boundsWithin001Feet": 92,
+          "areaWithinOnePercent": 95,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        }
+      },
+      "IfcRoof -> IfcRoof": {
+        "prior": {
+          "compared": 6,
+          "boundsWithin001Feet": 6,
+          "areaWithinOnePercent": 6,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "current": {
+          "compared": 6,
+          "boundsWithin001Feet": 6,
+          "areaWithinOnePercent": 6,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        }
+      },
+      "IfcRamp -> IfcRamp": {
+        "prior": {
+          "compared": 11,
+          "boundsWithin001Feet": 11,
+          "areaWithinOnePercent": 10,
+          "closedVolumePairs": 9,
+          "closedVolumeWithinOnePercent": 9
+        },
+        "current": {
+          "compared": 11,
+          "boundsWithin001Feet": 11,
+          "areaWithinOnePercent": 10,
+          "closedVolumePairs": 9,
+          "closedVolumeWithinOnePercent": 9
+        }
+      },
+      "IfcRailing -> IfcRailing": {
+        "prior": {
+          "compared": 202,
+          "boundsWithin001Feet": 197,
+          "areaWithinOnePercent": 198,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "current": {
+          "compared": 202,
+          "boundsWithin001Feet": 197,
+          "areaWithinOnePercent": 198,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        }
+      },
+      "IfcPlate -> IfcPlate": {
+        "prior": {
+          "compared": 6235,
+          "boundsWithin001Feet": 6233,
+          "areaWithinOnePercent": 6232,
+          "closedVolumePairs": 6229,
+          "closedVolumeWithinOnePercent": 6229
+        },
+        "current": {
+          "compared": 6235,
+          "boundsWithin001Feet": 6233,
+          "areaWithinOnePercent": 6232,
+          "closedVolumePairs": 6229,
+          "closedVolumeWithinOnePercent": 6229
+        }
+      },
+      "IfcWindow -> IfcWindow": {
+        "prior": {
+          "compared": 20,
+          "boundsWithin001Feet": 9,
+          "areaWithinOnePercent": 0,
+          "closedVolumePairs": 10,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "current": {
+          "compared": 20,
+          "boundsWithin001Feet": 20,
+          "areaWithinOnePercent": 0,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        }
+      },
+      "IfcCovering -> IfcCovering": {
+        "prior": {
+          "compared": 46,
+          "boundsWithin001Feet": 45,
+          "areaWithinOnePercent": 46,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "current": {
+          "compared": 46,
+          "boundsWithin001Feet": 45,
+          "areaWithinOnePercent": 46,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        }
+      },
+      "IfcDoor -> IfcDoor": {
+        "prior": {
+          "compared": 1912,
+          "boundsWithin001Feet": 1801,
+          "areaWithinOnePercent": 187,
+          "closedVolumePairs": 1855,
+          "closedVolumeWithinOnePercent": 3
+        },
+        "current": {
+          "compared": 1912,
+          "boundsWithin001Feet": 1801,
+          "areaWithinOnePercent": 187,
+          "closedVolumePairs": 1855,
+          "closedVolumeWithinOnePercent": 3
+        }
+      },
+      "IfcMember -> IfcMember": {
+        "prior": {
+          "compared": 19601,
+          "boundsWithin001Feet": 19601,
+          "areaWithinOnePercent": 15227,
+          "closedVolumePairs": 57,
+          "closedVolumeWithinOnePercent": 57
+        },
+        "current": {
+          "compared": 19601,
+          "boundsWithin001Feet": 19601,
+          "areaWithinOnePercent": 15227,
+          "closedVolumePairs": 57,
+          "closedVolumeWithinOnePercent": 57
+        }
+      }
+    },
+    "selectedFiniteSurfaceSamples": {
+      "scope": "Exact-identity selected owners only. Every triangle's vertices, edge midpoints and centroid tested against all opposing triangles; a finite sample diagnostic, not a continuous Hausdorff bound.",
+      "maxTags": 32,
+      "maxTrianglesPerOwner": 2000,
+      "requestedTags": [
+        "1185924",
+        "801614",
+        "2236110"
+      ],
+      "unmatchedRequestedTags": [],
+      "results": [
+        {
+          "tag": "2236110",
+          "globalId": "3$80Jb4C96ThbKDugcWiHp",
+          "outputToReference": {
+            "maximumFeet": 1.0683356139139268e-05,
+            "samples": 406
+          },
+          "referenceToOutput": {
+            "maximumFeet": 1.19845263328114e-05,
+            "samples": 420
+          }
+        },
+        {
+          "tag": "801614",
+          "globalId": "3j5UD8SwDBcRETZaO4YP6Z",
+          "outputToReference": {
+            "maximumFeet": 0.8002203057058352,
+            "samples": 294
+          },
+          "referenceToOutput": {
+            "maximumFeet": 5.2329667737052005e-05,
+            "samples": 406
+          }
+        },
+        {
+          "tag": "1185924",
+          "globalId": "3NnPElt$TDiP3TKZm8fKQt",
+          "outputToReference": {
+            "maximumFeet": 3.830459928793004e-06,
+            "samples": 252
+          },
+          "referenceToOutput": {
+            "maximumFeet": 3.938770423421556e-06,
+            "samples": 252
+          }
+        }
+      ]
+    },
+    "priorSelectedFiniteSurfaceSamples": {
+      "scope": "Exact-identity selected owners only. Every triangle's vertices, edge midpoints and centroid tested against all opposing triangles; a finite sample diagnostic, not a continuous Hausdorff bound.",
+      "maxTags": 32,
+      "maxTrianglesPerOwner": 2000,
+      "requestedTags": [
+        "694201",
+        "694735",
+        "1185924",
+        "801614",
+        "2236110"
+      ],
+      "unmatchedRequestedTags": [],
+      "results": [
+        {
+          "tag": "2236110",
+          "globalId": "3$80Jb4C96ThbKDugcWiHp",
+          "outputToReference": {
+            "maximumFeet": 0.4866388322993251,
+            "samples": 84
+          },
+          "referenceToOutput": {
+            "maximumFeet": 0.48663709953438167,
+            "samples": 420
+          }
+        },
+        {
+          "tag": "801614",
+          "globalId": "3j5UD8SwDBcRETZaO4YP6Z",
+          "outputToReference": {
+            "maximumFeet": 0.8002203057058352,
+            "samples": 294
+          },
+          "referenceToOutput": {
+            "maximumFeet": 5.2329667737052005e-05,
+            "samples": 406
+          }
+        },
+        {
+          "tag": "1185924",
+          "globalId": "3NnPElt$TDiP3TKZm8fKQt",
+          "outputToReference": {
+            "maximumFeet": 23.303759407117063,
+            "samples": 504
+          },
+          "referenceToOutput": {
+            "maximumFeet": 0.36909353763083175,
+            "samples": 252
+          }
+        }
+      ]
+    },
+    "slabLocalSurfaceScope": "The area residuals and unchanged corner agreement do not bound local surface/cut differences. No finite local-surface sampling was performed for the eight slabs.",
+    "materialAssignments": {
+      "scope": "Product IfcRelAssociatesMaterial assignments recursively resolved through material layer/profile/list containers. Raw STEP names preserve encoded Unicode. Surface styles and material-layer geometric thicknesses are outside this check.",
+      "checkedOwners": 11,
+      "priorCurrentAllEqual": true,
+      "remainingGaps": "Eight sampled slabs and column2236110 have no product material association in both Reviter exports, while the reference does. Wall1185924 retains Gypsum Wallboard. Surface styles, colours, inherited type materials and layer geometric thicknesses are outside this check."
+    },
+    "privateAudits": [
+      {
+        "fileName": "unbc-owner-large-priority-reference.json",
+        "sha256": "625f6d005127dafdd95ba0537f2226d809b8da91d7e2b8b58e01a71e3273a7ff"
+      },
+      {
+        "fileName": "unbc-fresh-final-owner-audit.json",
+        "sha256": "c80c95e34f71ab70c58ee1e20fcf5ec834096a35ddf88b99d758c6eb0fcf05c5"
+      },
+      {
+        "fileName": "unbc-priority-material-relations.json",
+        "sha256": "d1e44cf3bfcc0904009a640ab5d4eadfa230b16bb6a90dd5a6c73eb2e139c77f"
+      },
+      {
+        "fileName": "unbc-slab-area-source-witnesses.json",
+        "sha256": "fdbc5431cb2832431326e44bd228defbe5a32fddb43b287f092090793dfe0199"
+      }
+    ]
+  },
+  "limits": [
+    "Triangle counts and source envelopes do not measure physical accuracy.",
+    "Complete BRep replay does not establish watertightness; open/nonmanifold outputs and unproven source joins remain visible diagnostics.",
+    "Wall801614 remains unresolved; upstream group flags cannot safely distinguish its extra shell from required bodies in other models.",
+    "No saved native body is trimmed a second time by box-based upstream wall/column/beam repair heuristics.",
+    "The optional historical-symbol-envelope identity scan reaches its separate32MiB cap on UNBC; legacy identity admission is not capped. Identity relation agreement is tracked separately in the reader/type reports and is not claimed preserved by this geometry campaign."
+  ]
+}

@@ -101,6 +101,7 @@ const OUTPUT_BATCH_TRIANGLES = 100_000;
 const MAX_INCOMPLETE_SAMPLES = 100;
 
 export type Revit2027NativeMeshLimits = {
+  maxDeferredWholeFrameBytes?: number;
   maxStoredTriangles?: number;
   maxOutputTriangles?: number;
   maxOwners?: number;
@@ -137,6 +138,8 @@ export type Revit2027CompactOwnerMesh = {
 
 export type Revit2027NativeMeshCollection = {
   readonly enabled: boolean;
+  /** Supplemental definitions and every owner whose nested body uses one. */
+  readonly supplementalOwnerIds?: ReadonlySet<number>;
   readonly owners: ReadonlyMap<number, Revit2027CompactOwnerMesh>;
   /** Owner ids produced by an exact reconstruction rather than face replay. */
   readonly reconstructedOwnerIds: ReadonlySet<number>;
@@ -284,6 +287,7 @@ export type Revit2027ConditionalStateCarrier = {
 
 type MutableCollection = {
   enabled: boolean;
+  supplementalDefinitionIds: Set<number>;
   definitions: Map<number, CompactOwnerDefinition>;
   /** Exact pre-definition decode/replay failures keyed by framed owner id. */
   definitionFailures: Map<number, string>;
@@ -332,6 +336,14 @@ export type Revit2027NativeMeshCollector = {
    * page scan saw only in part and could not decode.
    */
   scanSplitGElementFrame(data: Uint8Array): void;
+  /** Queue checksum-verified large whole frames behind all ordinary sources. */
+  deferWholeGElementFrame(data: Uint8Array): void;
+  finishDeferredWholeGElementFrames(): void;
+  readonly deferredWholeFrameDiagnostics: Readonly<{
+    queued: number; replayed: number; existingOwnerPreserved: number;
+    supersededWholeFrames: number; skippedBufferBudget: number;
+    skippedDefinitionBudget: number; peakBufferedBytes: number; bufferLimitBytes: number;
+  }>;
   /**
    * Finalize direct scene roots plus only the non-direct definitions proven to
    * be referenced by persisted instance placements.
@@ -1069,6 +1081,7 @@ function finalizeRevit2027NativeMeshCollection(
   hiddenStyleIds: ReadonlySet<number> = new Set(),
   familyDocumentForms: ReadonlyMap<number, readonly number[]> = new Map(),
 ): Revit2027NativeMeshCollection {
+  const supplementalCompositionEdges: Array<readonly [number, number]> = [];
   // A light fixture's family carries the shape of its light source, drawn in
   // the "Light Source" subcategory that Revit hides in model views and the
   // Autodesk Viewer does not draw. In the 2025 RAC sample's pendants it is a
@@ -1287,6 +1300,7 @@ function finalizeRevit2027NativeMeshCollection(
         targetCarrier.displacement,
       ),
     );
+    supplementalCompositionEdges.push([candidates[0]!.geometry.ownerElementId, target.ownerElementId]);
     reconstructedOwnerIds.add(target.ownerElementId);
     carrierComposedOwnerIds.add(target.ownerElementId);
   }
@@ -1486,8 +1500,27 @@ function finalizeRevit2027NativeMeshCollection(
     0,
   );
 
+  // Propagate source priority through symbol composition without recursively
+  // walking the graph once per owner. Cycles cannot make this queue grow.
+  const parentsBySymbol = new Map<number, number[]>();
+  const addParent = (symbol: number, parent: number) => {
+    const parents = parentsBySymbol.get(symbol) ?? [];
+    parents.push(parent); parentsBySymbol.set(symbol, parents);
+  };
+  for (const definition of state.definitions.values()) for (const instance of definition.nestedInstances) {
+    addParent(Number(instance.symbolElementId), definition.ownerElementId);
+  }
+  for (const [symbol, forms] of familyDocumentForms) if (familyDocumentOwnerIds.has(symbol)) for (const form of forms) addParent(form, symbol);
+  for (const [source, target] of supplementalCompositionEdges) addParent(source, target);
+  const supplementalOwnerIds = new Set(state.supplementalDefinitionIds);
+  const supplementalQueue = [...supplementalOwnerIds];
+  for (let index = 0; index < supplementalQueue.length; index++) for (const parent of parentsBySymbol.get(supplementalQueue[index]!) ?? []) {
+    if (!supplementalOwnerIds.has(parent)) { supplementalOwnerIds.add(parent); supplementalQueue.push(parent); }
+  }
+
   return {
     enabled: state.enabled,
+    supplementalOwnerIds,
     owners,
     reconstructedOwnerIds,
     carrierComposedOwnerIds,
@@ -1548,6 +1581,12 @@ export function createRevit2027NativeMeshCollector(
   alternateDefinitionProvider: Revit2027AlternateDefinitionProvider =
     defaultRevit2027AlternateDefinitionProvider,
 ): Revit2027NativeMeshCollector {
+  const bufferLimitBytes = Math.min(64 * 1024 * 1024, safeLimit(limits.maxDeferredWholeFrameBytes, 64 * 1024 * 1024));
+  const deferredWholeFrames = new Map<number, Uint8Array>();
+  let bufferedWholeBytes = 0;
+  const deferredDiagnostics = { queued: 0, replayed: 0, existingOwnerPreserved: 0,
+    supersededWholeFrames: 0, skippedBufferBudget: 0, skippedDefinitionBudget: 0,
+    peakBufferedBytes: 0, bufferLimitBytes };
   const maxStoredTriangles = safeLimit(
     limits.maxStoredTriangles,
     DEFAULT_MAX_STORED_TRIANGLES,
@@ -1567,6 +1606,7 @@ export function createRevit2027NativeMeshCollector(
   );
   const state: MutableCollection = {
     enabled: readsElementRecordLayout(release),
+    supplementalDefinitionIds: new Set(),
     definitions: new Map(),
     definitionFailures: new Map(),
     conflictingOwnerIds: new Set(),
@@ -1655,10 +1695,13 @@ export function createRevit2027NativeMeshCollector(
     }
   };
 
-  const admitAlternateDefinitions = (): void => {
-    if (state.alternateDefinitionsFinalized) return;
+  const admitAlternateDefinitions = (supplemental = false): void => {
+    if (state.alternateDefinitionsFinalized && !supplemental) return;
     state.alternateDefinitionsFinalized = true;
     for (const input of state.alternateDefinitionInputs) {
+      if (supplemental && (state.definitions.has(input.ownerElementId) ||
+        ![...input.requiredCompleteSymbolMeshIds, input.owningRailingElementId]
+          .some(id => id != null && state.supplementalDefinitionIds.has(id)))) continue;
       const owningRailing =
         input.owningRailingElementId == null
           ? null
@@ -1741,6 +1784,7 @@ export function createRevit2027NativeMeshCollector(
         spiralReplay: null,
         conditionalStateCarrier: null,
       });
+      if (supplemental) state.supplementalDefinitionIds.add(input.ownerElementId);
       state.definitionFailures.delete(input.ownerElementId);
       state.storedTriangles += triangles;
       state.nestedLinks += input.nestedInstances.length;
@@ -2034,6 +2078,55 @@ export function createRevit2027NativeMeshCollector(
 
   return {
     release: release ?? null,
+    get deferredWholeFrameDiagnostics() { return deferredDiagnostics; },
+    deferWholeGElementFrame(data): void {
+      if (!state.enabled || data.byteLength < frameHeaderBytes() + 4) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const header = frameHeaderBytes(), length = view.getUint32(header - 4, true);
+      const owner = view.getUint32(0, true);
+      if (!owner || length <= 0xffff || length + header + 4 !== data.byteLength ||
+        canonicalClassTag(view.getUint16(header, true)) !== REVIT_2027_GELEMENT_OBJECT_MARKER ||
+        view.getUint32(header + length, true) !== length) return;
+      const prior = deferredWholeFrames.get(owner);
+      if (prior) {
+        bufferedWholeBytes -= prior.byteLength;
+        deferredWholeFrames.delete(owner);
+        deferredDiagnostics.supersededWholeFrames++;
+      }
+      // A newer candidate that does not fit must not revive its older bytes.
+      if (bufferedWholeBytes + data.byteLength > bufferLimitBytes) {
+        deferredDiagnostics.skippedBufferBudget++; return;
+      }
+      deferredWholeFrames.set(owner, data);
+      bufferedWholeBytes += data.byteLength;
+      deferredDiagnostics.queued++;
+      deferredDiagnostics.peakBufferedBytes = Math.max(deferredDiagnostics.peakBufferedBytes, bufferedWholeBytes);
+    },
+    finishDeferredWholeGElementFrames(): void {
+      // Alternate definitions can depend on ordinary GElements and are part
+      // of the original source path, so finalize them before supplemental work.
+      admitAlternateDefinitions();
+      const primaryTruncated = state.truncated;
+      let supplementalStopped = primaryTruncated;
+      for (const [owner, data] of deferredWholeFrames) {
+        if (state.definitions.has(owner)) { deferredDiagnostics.existingOwnerPreserved++; continue; }
+        if (supplementalStopped) { deferredDiagnostics.skippedDefinitionBudget++; continue; }
+        this.scanSplitGElementFrame(data);
+        deferredDiagnostics.replayed++;
+        if (state.truncated) {
+          supplementalStopped = true;
+          deferredDiagnostics.skippedDefinitionBudget++;
+          // Primary nested composition uses this flag as a stop condition;
+          // optional work must never invalidate the original definitions.
+          state.truncated = primaryTruncated;
+        }
+        if (state.definitions.has(owner)) state.supplementalDefinitionIds.add(owner);
+      }
+      admitAlternateDefinitions(true);
+      if (state.truncated && !primaryTruncated) deferredDiagnostics.skippedDefinitionBudget++;
+      state.truncated = primaryTruncated;
+      deferredWholeFrames.clear(); bufferedWholeBytes = 0;
+    },
     scanAlternateFrame(data: Uint8Array): void {
       if (!state.enabled || state.truncated || data.byteLength < 60) return;
       const view = new DataView(
@@ -2422,6 +2515,22 @@ export function buildRevit2027NativeMeshScene(
     if (owner) items.push({ elementId: placement.elementId, owner, placement });
   }
   admitTrimmedSurfaceItemsLast(items, maxOutputTriangles);
+  let supplementalOwnBodyWithheld = false;
+  if (collection.supplementalOwnerIds?.size && items.reduce((sum, item) => sum + item.owner.triangles, 0) > maxOutputTriangles) {
+    // Only supplemental bodies spend the output budget remaining after every
+    // original direct/placed item. Preserve the established order within each.
+    const supplemental = collection.supplementalOwnerIds;
+    const originalElementIds = new Set(items.filter(item => !supplemental.has(item.owner.ownerElementId)).map(item => item.elementId));
+    // Under output pressure keep an existing shared fallback rather than
+    // drawing a new own body after it, which would duplicate that element.
+    for (let index = items.length - 1; index >= 0; index--) {
+      const item = items[index]!;
+      if (supplemental.has(item.owner.ownerElementId) && originalElementIds.has(item.elementId)) {
+        items.splice(index, 1); supplementalOwnBodyWithheld = true;
+      }
+    }
+    items.sort((left, right) => Number(supplemental.has(left.owner.ownerElementId)) - Number(supplemental.has(right.owner.ownerElementId)));
+  }
 
   const meshes: MeshData[] = [];
   const coveredElementIds = new Set<number>();
@@ -2434,7 +2543,7 @@ export function buildRevit2027NativeMeshScene(
   let boundedTessellatorElements = 0;
   let conditionedGeometryElements = 0;
   let embeddedGeometryElements = 0;
-  let truncated = collection.truncated;
+  let truncated = collection.truncated || supplementalOwnBodyWithheld;
   let boundsMismatches = 0;
   const provisionalElementIds = new Set<number>();
   let missingBounds = 0;

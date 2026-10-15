@@ -53,6 +53,7 @@ import { resolveFamilyTypeNames } from "./family-type-names.ts";
 import { familyDocumentFormsBySymbol } from "./family-forms.ts";
 import { boundlessSceneElements } from "./model-elements.ts";
 import { nativeOriginalSymbolElementIds, resolveNativeIfcTypeIdentityEvidence } from "./native-ifc-type-identity.ts";
+import { resolveNativeSectionFamilyRelations } from "./native-structural-profiles.ts";
 import { readDocumentMetadataContainer } from "./document-metadata.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
@@ -385,12 +386,17 @@ export function convertRvtBytes(
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
     const nativePhaseEvidence = scan.nativePhaseCollector.resolve({ elementHeaders, levelIds: new Set(levelDefinitions.keys()) });
+    // Metadata-only classification links include declared source types even
+    // when they have no shared render-geometry object. The separate resolver
+    // keeps all family contradictions visible without changing scene admission.
+    const nativeSectionOwnerIds = new Set(fullElementInventory?.status === "decoded" ?
+      fullElementInventory.declaredElementIds : nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds);
+    const nativeSectionFamilyRelations = resolveNativeSectionFamilyRelations(familySymbolCandidates, familySymbolReferenceSets, familyElementIds, nativeSectionOwnerIds);
     const decodedFile = {
       documentMetadata: readDocumentMetadataContainer(cfb, partitionNames),
       nativeIfcGuidParameters: scan.nativeIfcGuidParameters,
       nativePhaseEvidence,
-      nativeStructuralSections: scan.nativeStructuralSectionCollector.finish(new Set(fullElementInventory?.status === "decoded" ?
-        fullElementInventory.declaredElementIds : nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds)),
+      nativeStructuralSections: scan.nativeStructuralSectionCollector.finish(nativeSectionOwnerIds, nativeSectionFamilyRelations),
       nativeIfcTypeIdentityEvidence: resolveNativeIfcTypeIdentityEvidence({
         references: scan.nativeOriginalSymbols, placements: instancePlacements.values(),
         elementBounds, hostRelations: nativeHostRelations, revitVersion: decoderPlan.revitVersion ?? 0,
@@ -472,6 +478,17 @@ export function convertRvtBytes(
       nativeCompoundStructureDefinitions,
       ...relations,
     };
+    const largeFrameWarnings = [
+      ...(scan.largeWholeGElementFrames.skippedChecksumBudget
+        ? ["Large whole-page GElement checksum work exceeded its partition budget; additional large bodies were withheld."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedBufferBudget
+        ? ["Supplemental whole-page GElement buffers reached their 64 MiB limit; additional large bodies were withheld while original geometry retained priority."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedDefinitionBudget
+        ? ["Supplemental whole-page GElements reached the native definition budget; original native geometry retained priority and remaining large bodies were withheld."] : []),
+    ];
+    if (scan.nativeOriginalSymbolDiagnostics.legacyCapped) largeFrameWarnings.push("Native original-symbol identity reads reached their scan limit; source type recipes were withheld.");
+    if (scan.nativeOriginalSymbolDiagnostics.historicalEnvelope.capped) largeFrameWarnings.push("Stored original-symbol envelope comparisons reached their scan limit; some type flip conflicts could not be checked.");
+    if (scan.nativeOriginalSymbolDiagnostics.largeObjects.capped) largeFrameWarnings.push("Large original-symbol identity reads reached their scan limit; additional type recipes could not be checked.");
 
     // The bounds branch is the release's own record decoder. Records the
     // release-independent passes synthesised (a wall solid rebuilt from plane
@@ -529,8 +546,10 @@ export function convertRvtBytes(
         ...decodedRelations(
           scene.report.meshCollection.spiralStairRunOwnerIds,
         ),
-        warnings: [...buildWarnings(basis, scene.report), ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
+        warnings: [...buildWarnings(basis, scene.report), ...largeFrameWarnings, ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
         stats: {
+          largeWholeGElementFrames: scan.largeWholeGElementFrames,
+          nativeOriginalSymbolDiagnostics: scan.nativeOriginalSymbolDiagnostics,
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
           gzipChunks,
@@ -633,8 +652,10 @@ export function convertRvtBytes(
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
       ...decodedRelations(),
-      warnings: [...buildWarnings(basis, coordinateReport), ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
+      warnings: [...buildWarnings(basis, coordinateReport), ...largeFrameWarnings, ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
       stats: {
+        largeWholeGElementFrames: scan.largeWholeGElementFrames,
+        nativeOriginalSymbolDiagnostics: scan.nativeOriginalSymbolDiagnostics,
         streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
         partitionStreams: partitions.length,
         gzipChunks,

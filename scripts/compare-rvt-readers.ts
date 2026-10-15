@@ -216,6 +216,9 @@ async function worker(engine: Engine, path: string, output: string, config: Conf
         nativeIfcSemanticElements: converted.nativeIfcSemanticEvidence?.elements.length ?? 0,
         geometrySources: sources, geometryProvenance: provenance,
       };
+      // Private comparison artifacts retain decoded field provenance so owner
+      // identity investigations do not require another full RVT conversion.
+      writeFileSync(join(dirname(output), "reviter-native-type-evidence.json"), `${json(converted.nativeIfcTypeIdentityEvidence ?? [])}\n`);
       text = makeIfc(converted, config.ifcOptions);
     }
     if (engine !== "reference") { writeFileSync(output, text); result.outputIfc = output; }

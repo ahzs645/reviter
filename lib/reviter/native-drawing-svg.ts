@@ -2,6 +2,7 @@
  * not a regenerated Revit sheet, crop result, family glyph or indoor boundary.
  * Native ownership/provenance gates are centralized in native-record-inventory.
  */
+import { nativeDetailArc, type NativeDetailArc } from "./native-drawing-arcs.ts";
 import * as DMath from "./deterministic-math.ts";
 import type { NativeEvidenceReport } from "./native-evidence-reader.ts";
 import { buildNativeRecordInventory, type NativeInventoryRecord } from "./native-record-inventory.ts";
@@ -13,7 +14,7 @@ export type NativeDrawingPreview = {
   svg: string | null; renderedElementIds: string[];
   sourceSelection: { status: string; retainedRecords: number; projectedRecords: number; schemaSha256: string | null; revitVersion: number | null };
   viewSource: NativeInventoryRecord["source"] | null;
-  primitives: { elementId: string; kind: "straight-leader" | "text" | "tag-head-marker" | "bounded-dimension-line" | "source-detail-line"; pointsFeet: number[][]; sourceFields: string[]; rawRecordIndex: number; recordSource: NativeInventoryRecord["source"]; text?: string }[];
+  primitives: { elementId: string; kind: "straight-leader" | "text" | "tag-head-marker" | "bounded-dimension-line" | "source-detail-line" | "source-detail-arc" | "source-detail-circle"; pointsFeet: number[][]; sourceFields: string[]; rawRecordIndex: number; recordSource: NativeInventoryRecord["source"]; text?: string; curve?: Pick<NativeDetailArc,"centerFeet"|"xDirection"|"yDirection"|"radiusFeet"|"storedIntervalRadians"|"evaluatedIntervalRadians"> }[];
   omitted: { elementId: string; reason: string }[]; diagnostics: string[];
 };
 const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
@@ -140,6 +141,17 @@ export function makeNativeDrawingSvg(report: NativeEvidenceReport, options: { vi
         shapes.push(`<polyline data-element-id="${xml(record.elementId)}" fill="none" stroke="currentColor" vector-effect="non-scaling-stroke" points="${coordinates(ends)}"/>`);
         retain(record, record.kind === "source-curve" ? "source-detail-line" : "bounded-dimension-line", ends, ["storedLineOriginFeet", "storedLineDirection", "storedLineEndParameters"]);
       }
+    }
+    if (record.kind === "source-curve" && scalar(record,"storedArcRadiusFeet") !== undefined) {
+      const recovered = nativeDetailArc(record,{origin,right:x,up:y,normal:z});
+      if(recovered.curve){
+        const curve=recovered.curve;
+        if(curve.svgCircle){const [cx,cy,r]=curve.svgCircle;shapes.push(`<circle data-element-id="${xml(record.elementId)}" data-kind="source-detail-circle" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" vector-effect="non-scaling-stroke"/>`);}
+        else shapes.push(`<path data-element-id="${xml(record.elementId)}" data-kind="source-detail-arc" d="${curve.svgPath}" fill="none" stroke="currentColor" vector-effect="non-scaling-stroke"/>`);
+        retain(record,curve.kind,curve.pointsFeet,curve.sourceFields);
+        output.primitives.at(-1)!.curve={centerFeet:curve.centerFeet,xDirection:curve.xDirection,yDirection:curve.yDirection,radiusFeet:curve.radiusFeet,storedIntervalRadians:curve.storedIntervalRadians,evaluatedIntervalRadians:curve.evaluatedIntervalRadians};
+        bounds.push(...curve.bounds2d);
+      } else output.omitted.push({elementId:record.elementId,reason:recovered.reason??"Source detail arc is unresolved."});
     }
     if (output.primitives.length === before && !output.omitted.some(o => o.elementId === record.elementId)) output.omitted.push({ elementId: record.elementId, reason: "No supported finite source annotation primitive; reference points and dimensions are not regenerated." });
   });

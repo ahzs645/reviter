@@ -58,3 +58,30 @@ test("missing/template/unsupported native views stop before annotation scanning;
  const invalid=mock([]);for(const viewId of ["0","-1","01","1.2","18446744073709551616"]){await assert.rejects(readNativeDrawingEvidence(new Uint8Array([1]),viewId,invalid.loader),/positive exact/);}
  assert.equal(invalid.calls.length,0);
 });
+
+test("opt-in detail curves use an independent bounded selection from the same bytes",async()=>{
+ const curves=source([record("CurveElem",60,{m_ownerDBViewId:id(45),m_detail:true,m_useOffsetPos:false})]);
+ const loader=mock([view(),annotation(),curves]);
+ const report=await readNativeDrawingEvidence(new Uint8Array([4,5]),"45",loader.loader,{includeDetailCurves:true});
+ assert.equal(loader.calls.length,3);assert.deepEqual(loader.calls[2].options.selectedClasses,["CurveElem"]);
+ assert.equal(loader.calls[2].options.maxRecords,2048);assert.equal(loader.calls[2].options.maxDecodedRecords,4096);
+ assert.deepEqual(loader.calls[0].bytes,loader.calls[2].bytes);
+ assert.equal(report.source.records.length,3);assert.equal(report.source.status,"complete");
+ assert.equal(report.drawingPreview?.primitives.find(p=>p.text)?.text,"source text");
+ assert.equal((report.source.diagnostics as {detailCurveSelection:{accepted:boolean}}).detailCurveSelection.accepted,true);
+});
+
+test("blocked optional curves cannot erase validated text or borrow a source context",async()=>{
+ for(const status of ["budget-blocked","unsupported"] as const){
+  const curves=source([record("CurveElem",60,{})]);curves.status=status;curves.summary=null;
+  const report=await readNativeDrawingEvidence(new Uint8Array([1]),"45",mock([view(),annotation(),curves]).loader,{includeDetailCurves:true});
+  assert.equal(report.source.records.length,2);assert.equal(report.source.status,"partial");
+  assert.equal(report.drawingPreview?.primitives.find(p=>p.text)?.text,"source text");
+  assert.equal((report.source.diagnostics as {detailCurveSelection:{accepted:boolean}}).detailCurveSelection.accepted,false);
+ }
+});
+
+test("detail-curve schema mismatches are refused before records merge",async()=>{
+ const curves=source([]);curves.summary={revit_version:2025,schema_sha256:"b".repeat(64)};
+ await assert.rejects(readNativeDrawingEvidence(new Uint8Array([1]),"45",mock([view(),annotation(),curves]).loader,{includeDetailCurves:true}),/detail-curve.*contexts disagree/);
+});

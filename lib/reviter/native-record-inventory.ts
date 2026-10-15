@@ -187,12 +187,13 @@ export function buildNativeRecordInventory(report: NativeEvidenceReport): Native
     if (className === "Grid" || className === "RefPlane") through("m_pSurface", "Plane", [["storedPlaneOriginFeet", "m_origin", "point-feet"], ["storedPlaneXDirection", "m_xVec", "vector"], ["storedPlaneYDirection", "m_yVec", "vector"]]);
     if (className === "DBViewSchedule") through("m_pSchema", "ScheduleSchema", [["categoryId", "m_categoryId", "element-id"], ["areaSchemeId", "m_areaSchemeId", "element-id"], ["includeLinkedFiles", "m_bIncludeLinkedFiles", "boolean"], ["materialSchedule", "m_bMaterialSchedule", "boolean"], ["alternateTitle", "m_altScheduleTitle", "string"]]);
     if (className === "CurveElem") {
+      through("m_pCurveDriver", "CurveElemDriver", [["curveDriverFlip", "m_flip", "boolean"]]);
       const driver = owned(0, "m_pCurveDriver", "CurveElemDriver");
       const pointer = driver && object(object(nodes[driver.objectIndex]?.fields)?.m_pCrv);
       const edge = driver && (graph.edges as unknown[]).map(object).find(e => e?.source_object_index === driver.objectIndex && e.pointer_offset === pointer?.offset);
       const index = edge?.target_object_index, curveClass = natural(index) ? nodes[index]?.class_name : null;
       if (driver && curveClass === "GLine") through("m_pCrv", "GLine", [["storedLineOriginFeet", "m_origin", "point-feet"], ["storedLineDirection", "m_dirVec", "vector"], ["storedLineEndParameters", "m_endParams", "number-list"]], driver.objectIndex, driver.path);
-      if (driver && curveClass === "GArc") through("m_pCrv", "GArc", [["storedArcCenterFeet", "m_center", "point-feet"], ["storedArcXDirection", "m_xVec", "vector"], ["storedArcYDirection", "m_yVec", "vector"], ["storedArcRadiusFeet", "m_radius", "number"], ["storedArcEndParameters", "m_endParams", "number-list"]], driver.objectIndex, driver.path);
+      if (driver && curveClass === "GArc") through("m_pCrv", "GArc", [["storedArcFlags", "m_GInfo.m_flags", "integer"], ["storedArcFilled", "m_bFilled", "boolean"], ["storedArcCenterFeet", "m_center", "point-feet"], ["storedArcXDirection", "m_xVec", "vector"], ["storedArcYDirection", "m_yVec", "vector"], ["storedArcRadiusFeet", "m_radius", "number"], ["storedArcEndParameters", "m_endParams", "number-list"]], driver.objectIndex, driver.path);
     }
     if (className === "TextNote" && Array.isArray(fields.m_leaders) && fields.m_leaders.length <= 256) fields.m_leaders.forEach((_, i) => through(`m_leaders.${i}`, "Leader", [[`leader${i}AnchorFeet`, "m_anchor", "point-feet"], [`leader${i}ElbowFeet`, "m_elbow", "point-feet"], [`leader${i}EndFeet`, "m_end", "point-feet"], [`leader${i}Straight`, "m_bStraight", "boolean"]]));
     if (["IndependentTag", "RoomTag", "AreaTag"].includes(className!)) {

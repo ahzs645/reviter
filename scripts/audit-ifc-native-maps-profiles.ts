@@ -20,9 +20,11 @@ await enrichConvertResultWithStandardsReader(result, input, async () => {
 });
 const profiles = planNativeMaterialProfiles(result);
 const ordinary = makeIfc(result), mapped = makeIfc(result, { reuseMappedGeometry: true });
+const unprofiled = makeIfc({ ...result, nativeStructuralSections: [] });
 const api = new IfcAPI(); await api.Init();
 const one = api.OpenModel(new TextEncoder().encode(ordinary), { COORDINATE_TO_ORIGIN: false });
 const two = api.OpenModel(new TextEncoder().encode(mapped), { COORDINATE_TO_ORIGIN: false });
+const three = api.OpenModel(new TextEncoder().encode(unprofiled), { COORDINATE_TO_ORIGIN: false });
 type Part = { color: string; faces: number[][] };
 function compareVector(a: readonly number[], b: readonly number[]): number {
   for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > 1e-9) return a[i]! - b[i]!;
@@ -90,7 +92,7 @@ function roots(source: string, model: number) {
   const map = new Map<number, number>();
   for (const product of products(source)) { const line = api.GetLine(model, product.express); const tag = Number(line.Tag?.value); if (Number.isSafeInteger(tag) && line.ObjectPlacement && line.Representation) map.set(tag, product.express); } return map;
 }
-const left = roots(ordinary, one), right = roots(mapped, two);
+const left = roots(ordinary, one), right = roots(mapped, two), withoutProfiles = roots(unprofiled, three);
 let mappedProducts = 0, compared = 0, maxCoordinateDifferenceMetres = 0, maxAttributeCoordinateDifferenceMetres = 0; const mismatches: number[] = [];
 const mismatchDetails: Array<{ elementId: number; maxCoordinateDifferenceMetres: number }> = [];
 for (const [tag, express] of right) {
@@ -112,6 +114,14 @@ for (const [tag, express] of right) {
     mismatches.push(tag); mismatchDetails.push({ elementId: tag, maxCoordinateDifferenceMetres: comparison.maxCoordinateDifferenceMetres });
   }
 }
+let profileBodyCompared = 0, maxProfileBodyCoordinateDifferenceMetres = 0; const profileBodyMismatches: number[] = [];
+for (const plan of profiles) {
+  const profiled = left.get(plan.elementId), original = withoutProfiles.get(plan.elementId);
+  if (profiled === undefined || original === undefined) continue;
+  const comparison = compareGeometry(geometry(one, profiled), geometry(three, original)); profileBodyCompared++;
+  maxProfileBodyCoordinateDifferenceMetres = Math.max(maxProfileBodyCoordinateDifferenceMetres, comparison.maxCoordinateDifferenceMetres);
+  if (comparison.maxCoordinateDifferenceMetres > 1e-9) profileBodyMismatches.push(plan.elementId);
+}
 const basesByMap = new Map<number, Set<string>>();
 const mappedIds = api.GetLineIDsWithType(two, IFCMAPPEDITEM);
 for (let i = 0; i < mappedIds.size(); i++) {
@@ -121,7 +131,7 @@ for (let i = 0; i < mappedIds.size(); i++) {
 }
 const mapsWithDifferentRotations = [...basesByMap.values()].filter(bases => bases.size > 1).length;
 const mapCount = api.GetLineIDsWithType(two, IFCREPRESENTATIONMAP).size();
-const sourceProfileDimensions = profiles.map(plan => ({ elementId: plan.elementId, typeId: plan.section.typeId, materialId: plan.materialId, widthMetres: plan.section.widthFeet * .3048, depthMetres: plan.section.depthFeet * .3048, webMetres: plan.section.webFeet * .3048, flangeMetres: plan.section.flangeFeet * .3048 }));
+const sourceProfileDimensions = profiles.map(plan => ({ elementId: plan.elementId, typeId: plan.section.typeId, materialId: plan.materialId, shapeOwnerElementId: plan.section.shapeOwnerElementId, shapeResolution: plan.section.shapeResolution, shapeFamilyRelation: plan.section.shapeFamilyRelation, shapeWitnesses: plan.section.shapeWitnesses, widthMetres: plan.section.widthFeet * .3048, depthMetres: plan.section.depthFeet * .3048, webMetres: plan.section.webFeet * .3048, flangeMetres: plan.section.flangeFeet * .3048 }));
 let profileOwnersCompared = 0; const profileMismatches: number[] = [];
 const plansByElement = new Map(profiles.map(plan => [plan.elementId, plan]));
 const associationIds = api.GetLineIDsWithType(two, IFCRELASSOCIATESMATERIAL);
@@ -142,6 +152,6 @@ for (let i = 0; i < associationIds.size(); i++) {
   }
 }
 const parsed = await new IfcParser().parseColumnar(new TextEncoder().encode(mapped).buffer);
-const report = { fileName: basename(path), sourceSha256: createHash("sha256").update(input).digest("hex"), nativePlacements: result.nativeInstancePlacements?.length ?? 0, nativeSections: result.nativeStructuralSections?.length ?? 0, shapeResolvedSections: result.nativeStructuralSections?.filter(section => section.shape === "symmetric-I").length ?? 0, profileCandidates: profiles.length, emittedProfiles: api.GetLineIDsWithType(two, IFCISHAPEPROFILEDEF).size(), profileUsages: api.GetLineIDsWithType(two, IFCMATERIALPROFILESETUSAGE).size(), materialAssociations: api.GetLineIDsWithType(two, IFCRELASSOCIATESMATERIAL).size(), sourceProfileDimensions, profileOwnersCompared, profileMismatches, representationMaps: mapCount, mapsWithDifferentRotations, mappedItems: api.GetLineIDsWithType(two, IFCMAPPEDITEM).size(), mappedProducts, compared, mismatches, mismatchDetails, maxCoordinateDifferenceMetres, maxAttributeCoordinateDifferenceMetres, ordinaryIfcBytes: Buffer.byteLength(ordinary), mappedIfcBytes: Buffer.byteLength(mapped), reader: "web-ifc 0.0.77 double-attribute world triangles(1nm gate) and Float32preview triangles+materials(10um gate), actualmaximumdifferences reported; IFC-Lite schema/entity parse", independentSchema: parsed.schemaVersion, limitations: ["Mapping validates unchanged mesh placement, not source-model geometry equivalence.", "Material profile associations retain measured type section parameters; body tessellation remains unchanged.", "No missing profile or cardinal point is synthesized."] };
-api.CloseModel(one); api.CloseModel(two); api.Dispose(); writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ maps: mapCount, mappedProducts, compared, mismatches: mismatches.length, profiles: report.emittedProfiles, output })); if (mismatches.length || profileMismatches.length) process.exitCode = 1;
+const report = { fileName: basename(path), sourceSha256: createHash("sha256").update(input).digest("hex"), nativePlacements: result.nativeInstancePlacements?.length ?? 0, nativeSections: result.nativeStructuralSections?.length ?? 0, shapeResolvedSections: result.nativeStructuralSections?.filter(section => section.shape === "symmetric-I").length ?? 0, profileCandidates: profiles.length, emittedProfiles: api.GetLineIDsWithType(two, IFCISHAPEPROFILEDEF).size(), profileUsages: api.GetLineIDsWithType(two, IFCMATERIALPROFILESETUSAGE).size(), materialAssociations: api.GetLineIDsWithType(two, IFCRELASSOCIATESMATERIAL).size(), sourceProfileDimensions, profileOwnersCompared, profileMismatches, profileBodyCompared, profileBodyMismatches, maxProfileBodyCoordinateDifferenceMetres, representationMaps: mapCount, mapsWithDifferentRotations, mappedItems: api.GetLineIDsWithType(two, IFCMAPPEDITEM).size(), mappedProducts, compared, mismatches, mismatchDetails, maxCoordinateDifferenceMetres, maxAttributeCoordinateDifferenceMetres, ordinaryIfcBytes: Buffer.byteLength(ordinary), mappedIfcBytes: Buffer.byteLength(mapped), reader: "web-ifc 0.0.77 double-attribute world triangles(1nm gate) and Float32preview triangles+materials(10um gate), actualmaximumdifferences reported; IFC-Lite schema/entity parse", independentSchema: parsed.schemaVersion, limitations: ["Mapping validates unchanged mesh placement, not source-model geometry equivalence.", "Material profile associations retain measured type section parameters; body tessellation remains unchanged.", "No missing profile or cardinal point is synthesized."] };
+api.CloseModel(one); api.CloseModel(two); api.CloseModel(three); api.Dispose(); writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
+console.log(JSON.stringify({ maps: mapCount, mappedProducts, compared, mismatches: mismatches.length, profiles: report.emittedProfiles, output })); if (mismatches.length || profileMismatches.length || profileBodyMismatches.length) process.exitCode = 1;

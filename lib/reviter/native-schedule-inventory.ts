@@ -9,12 +9,17 @@ export type ScheduleWitness = { objectIndex: number; className: string; pointerP
 export type StoredScheduleField = { fieldId: string; position: number; parameterId: string; heading: string; hidden: boolean; sourceTypeCode: number; displayTypeCode: number; columnWidthFeet: number; format: ObjectFields | null; expression: StoredScheduleExpression | null; source: ScheduleWitness };
 export type StoredScheduleExpression = { className: string; objectIndex: number; fields: ObjectFields; children: StoredScheduleExpression[]; semantics: "serialized-not-evaluated" };
 export type StoredScheduleCell = { sectionCode: number; row: number; column: number; text: string; cellTypeCode: number; parameterId: string | null; categoryId: string | null; storedCoverOffsets: { top: number; bottom: number; left: number; right: number }; source: ScheduleWitness };
+export type StoredScheduleDimension = { valueFeet: number; source: ScheduleWitness };
+export type StoredScheduleSection = {
+  sectionCode: number; storedHidden: boolean | null; layoutComplete: boolean;
+  rows: StoredScheduleDimension[]; columns: StoredScheduleDimension[]; source: ScheduleWitness;
+};
 export type StoredNativeSchedule = {
   elementId: string; name: string; title: string | null; categoryId: string; schemaObjectIndex: number;
   source: { stream: string; groupRecordOffset: number; bodySha256: string; rawRecordIndex: number };
   settings: ObjectFields; fields: StoredScheduleField[]; sorting: Array<{ fieldId: string; sortOrderCode: number; groupingFlags: number; source: ScheduleWitness }>;
   filters: Array<{ fieldId: string; filterTypeCode: number; storageTypeCode: number; storedSlots: ObjectFields; source: ScheduleWitness }>;
-  cells: StoredScheduleCell[]; diagnostics: string[];
+  cells: StoredScheduleCell[]; sections: StoredScheduleSection[]; diagnostics: string[];
 };
 export type NativeScheduleInventory = {
   apiVersion: 1; kind: "native-schedule-inventory"; sourceSha256: string | null; schemaSha256: string | null; readerCommit: string;
@@ -90,7 +95,7 @@ export function buildNativeScheduleInventory(report: NativeEvidenceReport): Nati
     if (categoryId === null) { diagnostic(`Schedule ${elementId} has invalid schema category identity.`); return; }
     const schedule: StoredNativeSchedule = { elementId, name: fields.m_viewName as string, title: text(sf.m_altScheduleTitle) ? sf.m_altScheduleTitle : null, categoryId, schemaObjectIndex: si,
       source: { stream: source.stream, groupRecordOffset: source.group_record_offset, bodySha256: source.body_sha256, rawRecordIndex },
-      settings: scalarRecord(sf, ["m_bIncludeLinkedFiles", "m_bMaterialSchedule", "m_bInstanceSchedule", "m_bFilterBySheet", "m_isEmbedded", "m_showGrandTotal", "m_showGrandTotalCount", "m_showGrandTotalTitle", "m_showHeaders", "m_showTitle", "m_grandTotalTitle", "m_areaSchemeId", "m_familyId", "m_roomScheduleFilter"]), fields: [], sorting: [], filters: [], cells: [], diagnostics: problems };
+      settings: scalarRecord(sf, ["m_bIncludeLinkedFiles", "m_bMaterialSchedule", "m_bInstanceSchedule", "m_bFilterBySheet", "m_isEmbedded", "m_showGrandTotal", "m_showGrandTotalCount", "m_showGrandTotalTitle", "m_showHeaders", "m_showTitle", "m_grandTotalTitle", "m_areaSchemeId", "m_familyId", "m_roomScheduleFilter"]), fields: [], sorting: [], filters: [], cells: [], sections: [], diagnostics: problems };
     const path = [schemaLink.witness];
     const ownedArray = (owner: number, field: string, className: string, max: number, parent: ScheduleWitness["pointerPath"], visit: (target: number, witness: ScheduleWitness) => void) => {
       const saved = object(objects[owner].fields)[field]; if (!Array.isArray(saved) || saved.length > max) { problem(`${owner}.${field}: missing/over-budget pointer array.`); return; }
@@ -137,6 +142,23 @@ export function buildNativeScheduleInventory(report: NativeEvidenceReport): Nati
     if (dataLink) ownedArray(dataLink.target, "m_SectionData", "ScheduleSectionData", 64, [dataLink.witness], (section, sectionWitness) => {
       const sectionFields = object(objects[section].fields), sectionCode = sectionFields.m_index;
       if (!integer(sectionCode)) { problem("Table section lacks an exact serialized index."); return; }
+      const projectedSection: StoredScheduleSection = { sectionCode, storedHidden: typeof sectionFields.m_hideSection === "boolean" ? sectionFields.m_hideSection : null,
+        layoutComplete: true, rows: [], columns: [], source: sectionWitness };
+      if (projectedSection.storedHidden === null) { projectedSection.layoutComplete = false; problem(`Section ${sectionCode} lacks stored visibility.`); }
+      for (const [field, className, valueField, dimensions, max] of [
+        ["m_rows", "TableRowData", "m_dHeight", projectedSection.rows, LIMITS.cellsPerSchedule],
+        ["m_cols", "TableColumnData", "m_dWidth", projectedSection.columns, LIMITS.fieldsPerSchedule],
+      ] as const) {
+        const saved = sectionFields[field];
+        if (!Array.isArray(saved)) projectedSection.layoutComplete = false;
+        ownedArray(section, field, className, max, sectionWitness.pointerPath, (target, witness) => {
+          const value = object(objects[target].fields)[valueField];
+          if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1000) { projectedSection.layoutComplete = false; problem(`Section ${sectionCode} ${valueField} is not a supported finite positive paper-space length.`); return; }
+          dimensions.push({ valueFeet: value, source: witness });
+        });
+        if (!Array.isArray(saved) || dimensions.length !== saved.length) { projectedSection.layoutComplete = false; problem(`Section ${sectionCode} ${field} lacks a complete owned dimension sequence.`); }
+      }
+      schedule.sections.push(projectedSection);
       const coordinates = new Set<string>();
       const cell = (target: number, witness: ScheduleWitness) => {
         const f = object(objects[target].fields), coordinate = `${f.m_row}:${f.m_column}`;
@@ -159,6 +181,7 @@ export function makeNativeScheduleInventoryCsv(inventory: NativeScheduleInventor
     for (const f of s.fields) push(s, "field", [f.position, f.fieldId, f.parameterId, f.heading, f.hidden, JSON.stringify({ sourceTypeCode: f.sourceTypeCode, displayTypeCode: f.displayTypeCode, columnWidthFeet: f.columnWidthFeet, format: f.format, expression: f.expression })], f.source);
     for (const f of s.sorting) push(s, "sort", [null, f.fieldId, null, null, null, JSON.stringify({ sortOrderCode: f.sortOrderCode, groupingFlags: f.groupingFlags })], f.source);
     for (const f of s.filters) push(s, "filter", [null, f.fieldId, null, null, null, JSON.stringify({ filterTypeCode: f.filterTypeCode, storageTypeCode: f.storageTypeCode, storedSlots: f.storedSlots })], f.source);
+    for (const section of s.sections) push(s, "stored-section", [section.sectionCode, null, null, null, section.storedHidden, JSON.stringify({ layoutComplete: section.layoutComplete, rowHeightsFeet: section.rows.map(d => d.valueFeet), columnWidthsFeet: section.columns.map(d => d.valueFeet) })], section.source);
     for (const c of s.cells) push(s, "stored-cell", [c.sectionCode, c.row, c.column, c.text, null, JSON.stringify({ cellTypeCode: c.cellTypeCode, parameterId: c.parameterId, categoryId: c.categoryId, storedCoverOffsets: c.storedCoverOffsets })], c.source);
   }
   if (rows.length === 1) rows.push(["inventory", inventory.sourceSha256, inventory.schemaSha256, inventory.status, null, null, null, null, null, null, inventory.scope]);

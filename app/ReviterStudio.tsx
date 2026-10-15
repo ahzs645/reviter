@@ -6,7 +6,8 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import type { IfcExportOptions } from "../lib/reviter/export-ifc.ts";
 import { IfcExportControls } from "./studio/IfcExportControls.tsx";
 import type { NativeEvidenceRequest } from "../lib/reviter/native-evidence-worker.ts";
-import { makeNativeScheduleInventoryCsv } from "../lib/reviter/native-schedule-inventory.ts";
+import { makeNativeScheduleHtml } from "../lib/reviter/native-schedule-html.ts";
+import { makeNativeScheduleInventoryCsv, type NativeScheduleInventory } from "../lib/reviter/native-schedule-inventory.ts";
 import { NATIVE_SPATIAL_ORGANIZATION_CLASSES, makeNativeSpatialOrganizationCsv, type NativeSpatialOrganization } from "../lib/reviter/native-spatial-organization.ts";
 import { listNativeDrawingViews } from "../lib/reviter/native-drawing-svg.ts";
 import type { NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
@@ -350,7 +351,11 @@ export default function ReviterStudio() {
   const [exporting, setExporting] = useState<string | null>(null);
   const [nativeSpatialState, setNativeSpatialState] = useState<{ file: File; inventory: NativeSpatialOrganization } | null>(null);
   const [nativeViewState, setNativeViewState] = useState<{ file: File; views: ReturnType<typeof listNativeDrawingViews> } | null>(null);
+  const [nativeScheduleState, setNativeScheduleState] = useState<{ file: File; inventory: NativeScheduleInventory } | null>(null);
+  const [nativeScheduleId, setNativeScheduleId] = useState("");
+  const [includeHiddenScheduleSections, setIncludeHiddenScheduleSections] = useState(false);
   const [nativeDrawingViewId, setNativeDrawingViewId] = useState("");
+  const [includeSourceDetailCurves, setIncludeSourceDetailCurves] = useState(false);
   const [ifcExportOptions, setIfcExportOptions] = useState<IfcExportOptions>({ nativeRooms: false, mep: false, designOptions: "all" });
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
@@ -1640,9 +1645,9 @@ export default function ReviterStudio() {
     }
   }, [result]);
 
-  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions" | "schedules" | "spatial" | "views" | "drawing") => {
+  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions" | "schedules" | "schedules-view" | "spatial" | "views" | "drawing") => {
     if (!file) return;
-    const id = ({ json: "NATIVE_EVIDENCE", records: "NATIVE_RECORDS_CSV", definitions: "NATIVE_DEFINITIONS_CSV", schedules: "NATIVE_SCHEDULES_CSV", spatial: "NATIVE_SPATIAL_CSV", views: "NATIVE_VIEWS", drawing: "NATIVE_DRAWING_SVG" })[kind];
+    const id = ({ json: "NATIVE_EVIDENCE", records: "NATIVE_RECORDS_CSV", definitions: "NATIVE_DEFINITIONS_CSV", schedules: "NATIVE_SCHEDULES_CSV", "schedules-view": "NATIVE_SCHEDULES_PREVIEW", spatial: "NATIVE_SPATIAL_CSV", views: "NATIVE_VIEWS", drawing: "NATIVE_DRAWING_SVG" })[kind];
     setExporting(id);
     const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
       spawn: () => {
@@ -1660,7 +1665,7 @@ export default function ReviterStudio() {
         timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 240_000);
         const selectedClasses = kind === "records" ? [...NATIVE_RECORD_INVENTORY_CLASSES]
           : kind === "definitions" ? [...NATIVE_PARAMETER_DEFINITION_CLASSES]
-          : kind === "schedules" ? ["DBViewSchedule"]
+          : (kind === "schedules" || kind === "schedules-view") ? ["DBViewSchedule"]
           : kind === "spatial" ? [...NATIVE_SPATIAL_ORGANIZATION_CLASSES]
           : kind === "views" ? ["DBViewPlan", "DBViewSection", "DBViewDrafting", "DBViewLegend"]
           : [...new Set([...NATIVE_RECORD_INVENTORY_CLASSES, ...NATIVE_PARAMETER_DEFINITION_CLASSES])];
@@ -1673,13 +1678,19 @@ export default function ReviterStudio() {
             if (familyIds.size === 1) pickedIds.push([...familyIds][0]!);
           }
         }
-        client.send({ type: "inspect", bytes, drawingViewId: kind === "drawing" ? nativeDrawingViewId : undefined,
+        client.send({ type: "inspect", bytes, drawingViewId: kind === "drawing" ? nativeDrawingViewId : undefined, drawingOptions: { includeDetailCurves: includeSourceDetailCurves },
           options: { selectedClasses, selectedIds: ["json", "records", "definitions"].includes(kind) ? pickedIds : undefined,
-            maxRecords: ["schedules", "spatial", "views"].includes(kind) ? 2048 : undefined,
-            maxOutputBytes: ["schedules", "spatial", "views"].includes(kind) ? 64 * 1024 * 1024 : undefined } },
+            maxRecords: ["schedules", "schedules-view", "spatial", "views"].includes(kind) ? 2048 : undefined,
+            maxOutputBytes: ["schedules", "schedules-view", "spatial", "views"].includes(kind) ? 64 * 1024 * 1024 : undefined } },
           { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
       });
-      if (kind === "views") {
+      if ((kind === "schedules" || kind === "schedules-view") && report.scheduleInventory) {
+        setNativeScheduleState({ file, inventory: report.scheduleInventory });
+        setNativeScheduleId(report.scheduleInventory.schedules[0]?.elementId ?? "");
+      }
+      if (kind === "schedules-view") {
+        if (!report.scheduleInventory?.schedules.length) throw new Error("No supported stored schedules were recovered within the selection budget.");
+      } else if (kind === "views") {
         const views = listNativeDrawingViews(report);
         setNativeViewState({ file, views });
         setNativeDrawingViewId(views[0]?.elementId ?? "");
@@ -1706,8 +1717,28 @@ export default function ReviterStudio() {
       client.terminate();
       setExporting(null);
     }
-  }, [file, selectedElementId, selectedRecord, result, nativeDrawingViewId]);
+  }, [file, selectedElementId, selectedRecord, result, nativeDrawingViewId, includeSourceDetailCurves]);
 
+  const nativeScheduleInventory = nativeScheduleState?.file === file && nativeScheduleState.inventory.sourceSha256 === result?.sourceSha256 ? nativeScheduleState.inventory : null;
+  const exportCachedSchedule = () => {
+    if (!file || !nativeScheduleInventory) return;
+    setExporting("NATIVE_SCHEDULE_HTML");
+    try {
+      const preview = makeNativeScheduleHtml(nativeScheduleInventory, { scheduleId: nativeScheduleId, includeHiddenSections: includeHiddenScheduleSections });
+      if (!preview.html) throw new Error("This schedule has no supported stored cell layout. Export its source CSV for the available evidence.");
+      downloadBlob(new Blob([preview.html], { type: "text/html;charset=utf-8" }), outputName(file.name, `stored-schedule-${nativeScheduleId}.html`));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    finally { setExporting(null); }
+  };
+  const sourceScheduleControls = nativeScheduleInventory?.schedules.length ? <fieldset className="ifc-export-controls" disabled={Boolean(exporting)}>
+    <legend>Stored schedule cells</legend>
+    <label>Schedule <select aria-label="Stored schedule" value={nativeScheduleId} onChange={event => setNativeScheduleId(event.target.value)}>
+      {nativeScheduleInventory.schedules.map(schedule => <option key={schedule.elementId} value={schedule.elementId}>{schedule.name} · {schedule.elementId}</option>)}
+    </select></label>
+    <label><input type="checkbox" checked={includeHiddenScheduleSections} onChange={event => setIncludeHiddenScheduleSections(event.target.checked)} /> Include source-hidden sections</label>
+    <button type="button" onClick={exportCachedSchedule} disabled={!nativeScheduleId || Boolean(exporting)}>Download stored schedule HTML</button>
+    <p>Preserves cached text, merged cells and stored dimensions. Values and formulas are not recalculated.</p>
+  </fieldset> : null;
   const sourceOrganization = nativeSpatialState?.file === file && nativeSpatialState.inventory.sourceSha256 === result?.sourceSha256 ? nativeSpatialState.inventory : undefined;
   const sourceExportResult = result ? { ...result, nativeSpatialOrganization: sourceOrganization } : null;
   const sourceViewControls = nativeViewState?.file === file ? <fieldset className="ifc-export-controls" disabled={Boolean(exporting)}>
@@ -1715,8 +1746,9 @@ export default function ReviterStudio() {
     <label>Source view <select aria-label="Source view" value={nativeDrawingViewId} onChange={event => setNativeDrawingViewId(event.target.value)}>
       {nativeViewState.views.map(view => <option key={view.elementId} value={view.elementId}>{view.name} · {view.elementId}</option>)}
     </select></label>
+    <label><input type="checkbox" checked={includeSourceDetailCurves} onChange={event => setIncludeSourceDetailCurves(event.target.checked)} /> Include stored detail curves</label>
     <button type="button" disabled={!nativeDrawingViewId || Boolean(exporting)} onClick={() => exportNativeSource("drawing")}>Download source annotations SVG</button>
-    <p>Partial stored text, leaders and tag markers; model geometry and sheet layout are omitted.</p>
+    <p>Partial stored text, leaders, tag markers and optional detail curves; model geometry and sheet layout are omitted.</p>
   </fieldset> : null;
 
   const exportActions: ExportAction[] = useMemo(() => {
@@ -1804,6 +1836,9 @@ export default function ReviterStudio() {
       }, {
         id: "NATIVE_SCHEDULES_CSV", format: "Source schedules CSV", detail: "Stored fields, cells, filters and unevaluated formulas",
         run: () => exportNativeSource("schedules"),
+      }, {
+        id: "NATIVE_SCHEDULES_PREVIEW", format: "Load stored schedules", detail: "Choose a cached schedule table for HTML export",
+        run: () => exportNativeSource("schedules-view"),
       }, {
         id: "NATIVE_SPATIAL_CSV", format: "Source organization CSV", detail: "Rooms, Areas, MEP spaces, active coordinates and revisions",
         run: () => exportNativeSource("spatial"),
@@ -2460,6 +2495,7 @@ export default function ReviterStudio() {
           exportPanel={result && <>
             <IfcExportControls result={sourceExportResult!} value={ifcExportOptions} onChange={setIfcExportOptions} disabled={Boolean(exporting)} />
             {sourceViewControls}
+            {sourceScheduleControls}
             <div className="export-grid">
               {exportActions.map(action => <button key={action.id} type="button" className="export-card" disabled={Boolean(exporting)} onClick={action.run}>
                 <span><strong>{action.format}</strong></span><small>{exporting === action.id ? "Writing…" : action.detail}</small>
@@ -2685,7 +2721,7 @@ export default function ReviterStudio() {
                   onTab={setReportTab}
                   onClose={() => setDockOpen(false)}
                   result={sourceExportResult!}
-                  sourceViewControls={sourceViewControls}
+                  sourceViewControls={<>{sourceViewControls}{sourceScheduleControls}</>}
                   comparison={comparison}
                   privateFileInfo={privateFileInfo}
                   metricCards={metricCards}

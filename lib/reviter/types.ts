@@ -467,6 +467,15 @@ export type LevelBand = {
 };
 
 export type ConvertStats = {
+  /** Newly admitted >64-KiB whole-page GElement frames; final mesh admission
+   * remains subject to complete FIFO, face coverage, storage and bounds gates. */
+  largeWholeGElementFrames?: { admitted: number; rejectedChecksum: number; skippedChecksumBudget: number; checksumBytes: number; checksumLimitPerPartition: number;
+    nativeCompilation: { queued: number; replayed: number; existingOwnerPreserved: number; supersededWholeFrames: number; skippedBufferBudget: number; skippedDefinitionBudget: number; peakBufferedBytes: number; bufferLimitBytes: number } };
+  nativeOriginalSymbolDiagnostics?: {
+    legacyCapped: boolean;
+    historicalEnvelope: { checksumBytes: number; capped: boolean };
+    largeObjects: { checksumBytes: number; fifoBytes: number; capped: boolean };
+  };
   streamCount: number;
   partitionStreams: number;
   gzipChunks: number;

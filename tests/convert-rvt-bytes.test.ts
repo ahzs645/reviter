@@ -470,6 +470,8 @@ test("the counters agree with what the container was given", () => {
   const { durationMs, ...counters } = result.stats;
   assert.ok(durationMs >= 0);
   assert.deepEqual(counters, {
+    largeWholeGElementFrames: { admitted: 0, rejectedChecksum: 0, skippedChecksumBudget: 0, checksumBytes: 0, checksumLimitPerPartition: 128 * 1024 * 1024, nativeCompilation: { queued: 0, replayed: 0, existingOwnerPreserved: 0, supersededWholeFrames: 0, skippedBufferBudget: 0, skippedDefinitionBudget: 0, peakBufferedBytes: 0, bufferLimitBytes: 64 * 1024 * 1024 } },
+    nativeOriginalSymbolDiagnostics: { legacyCapped: false, historicalEnvelope: { checksumBytes: 0, capped: false }, largeObjects: { checksumBytes: 0, fifoBytes: 0, capped: false } },
     streamCount: 6 + CONTAINER_OWN_STREAMS,
     partitionStreams: 2,
     gzipChunks: 3,

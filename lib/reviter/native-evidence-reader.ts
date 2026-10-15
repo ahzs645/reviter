@@ -1,7 +1,7 @@
 /** On-demand source graphs and definitions, separate from the render pipeline. */
 import { listNativeDrawingViews, makeNativeDrawingSvg, type NativeDrawingPreview } from "./native-drawing-svg.ts";
 import type { StandardsReaderLoader } from "./standards-reader.ts";
-import { buildNativeRecordInventory, NATIVE_DRAWING_ANNOTATION_CLASSES, type NativeRecordInventory } from "./native-record-inventory.ts";
+import { buildNativeRecordInventory, NATIVE_DRAWING_ANNOTATION_CLASSES, NATIVE_DRAWING_CURVE_CLASSES, type NativeRecordInventory } from "./native-record-inventory.ts";
 import { buildNativeParameterInventory, type NativeParameterInventory } from "./native-parameter-inventory.ts";
 import { buildNativeScheduleInventory, type NativeScheduleInventory } from "./native-schedule-inventory.ts";
 import { buildNativeSpatialOrganization, type NativeSpatialOrganization } from "./native-spatial-organization.ts";
@@ -61,7 +61,8 @@ export async function readNativeSourceEvidence(bytes: Uint8Array, options: Nativ
 /** Separate bounded view/annotation selections prevent a busy document from
  * evicting its selected view frame. Unsupported/budget-blocked passes are never
  * merged into a valid source context. All adapters rebuild after the merge. */
-export async function readNativeDrawingEvidence(bytes: Uint8Array, viewId: string, loader?: StandardsReaderLoader): Promise<NativeEvidenceReport> {
+export type NativeDrawingReadOptions = { includeDetailCurves?: boolean };
+export async function readNativeDrawingEvidence(bytes: Uint8Array, viewId: string, loader?: StandardsReaderLoader, options: NativeDrawingReadOptions = {}): Promise<NativeEvidenceReport> {
   if (!/^[1-9]\d{0,19}$/.test(viewId) || BigInt(viewId) > (1n << 64n) - 1n) throw new Error("A positive exact native view ID is required.");
   if (bytes.byteLength > 256 * 1024 * 1024) throw new Error("Source drawing file budget exceeded.");
   const immutable = bytes.slice();
@@ -81,14 +82,23 @@ export async function readNativeDrawingEvidence(bytes: Uint8Array, viewId: strin
   }, loader);
   if (!context(annotations)) return finish(annotations);
   if (context(view) !== context(annotations)) throw new Error("Native view and annotation source SHA, reader, schema or release contexts disagree.");
+  // Detailed curves use a separate bounded pass. A crowded curve selection
+  // cannot evict an already verified view or discard its supported text/tags.
+  const curves = options.includeDetailCurves ? await readNativeSourceEvidenceRaw(immutable, {
+    selectedClasses: [...NATIVE_DRAWING_CURVE_CLASSES], maxRecords: 2048, maxDecodedRecords: 4096, maxOutputBytes: 64 * 1024 * 1024,
+  }, loader) : null;
+  const curveContext = curves ? context(curves) : null;
+  if (curveContext && context(view) !== curveContext) throw new Error("Native view and detail-curve source SHA, reader, schema or release contexts disagree.");
+  const acceptedCurves = curveContext ? curves : null;
   const report: NativeEvidenceReport = {
     ...annotations,
     scope: `${annotations.scope} The selected view and annotation records use separate bounded selections from identical bytes/schema. The partial SVG does not regenerate a Revit drawing or certify navigation.`,
     source: {
       ...annotations.source,
-      status: view.source.status === "complete" && annotations.source.status === "complete" ? "complete" : "partial",
-      records: [...view.source.records, ...annotations.source.records],
-      diagnostics: { viewSelection: view.source.diagnostics, annotationSelection: annotations.source.diagnostics, sameByteSchemaContext: true },
+      status: view.source.status === "complete" && annotations.source.status === "complete" && (!curves || acceptedCurves?.source.status === "complete") ? "complete" : "partial",
+      records: [...view.source.records, ...annotations.source.records, ...acceptedCurves?.source.records ?? []],
+      diagnostics: { viewSelection: view.source.diagnostics, annotationSelection: annotations.source.diagnostics, sameByteSchemaContext: true,
+        ...(curves ? { detailCurveSelection: { status: curves.source.status, accepted: acceptedCurves !== null, diagnostics: curves.source.diagnostics } } : {}) },
     },
   };
   return finish(report);

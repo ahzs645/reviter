@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNativeStructuralSectionCollector, STRUCTURAL_SECTION_PARAMETERS } from "../lib/reviter/native-structural-profiles.ts";
+import { createNativeStructuralSectionCollector, resolveNativeSectionFamilyRelations, STRUCTURAL_SECTION_PARAMETERS } from "../lib/reviter/native-structural-profiles.ts";
 function block(owner = 42, values: number[] = [2, 3, .2, .3, 1, 1.5]) {
   const bytes = new Uint8Array(8 + 59 + 24 * values.length); const view = new DataView(bytes.buffer);
   view.setBigUint64(0, BigInt(owner), true); bytes.fill(255, 8, 64);
@@ -54,4 +54,46 @@ test("section parameter ownership survives consecutive complete pages and cross-
   const tiny = collector(); for (let at = 0; at < source.length; at += 28) tiny.consume(source.subarray(at, at + 28), { ...location, chunkIndex: at / 28 }); assert.equal(tiny.finish(new Set([42])).length, 1); assert.ok(tiny.finish(new Set([42]))[0]!.witnesses.every(w => w.valueOffset >= 0 && w.valueOffset < 28));
   const missing = collector(); missing.consume(source.subarray(0, 70), location); missing.consume(source.subarray(70), { ...location, chunkIndex: 2 }); assert.equal(missing.finish(new Set([42])).length, 0);
   const partial = collector(); partial.consume(source.subarray(0, 70), location); partial.consume(new Uint8Array(), { ...location, chunkIndex: 1, complete: false }); partial.consume(source.subarray(70), { ...location, chunkIndex: 2 }); assert.equal(partial.finish(new Set([42])).length, 0);
+});
+
+test("family-wide shape classification follows only the exact source symbol-family edge", () => {
+  const c = createNativeStructuralSectionCollector({ revitVersion: 2025, elementIds: new Set([42, 70, 71]) });
+  c.consume(block(), location); c.consumeOwnedParameters({ elementId: 70, parameters: [{ parameterId: -1005501, name: "not a caption join", value: 6 }] }, location);
+  const relation = { symbolId: 42, familyId: 70, recordOffset: 32, objectLength: 500, objectMarker: 0x0810 as const, evidence: "framed-family-symbol-family-id" as const };
+  const [section] = c.finish(new Set([42]), [relation]); assert.equal(section?.shape, "symmetric-I");
+  assert.equal(section?.shapeOwnerElementId, 70); assert.equal(section?.shapeResolution, "inherited-family"); assert.equal(section?.shapeSource, "native-symbol-family-owned-STRUCTURAL_SECTION_SHAPE");
+  assert.deepEqual(section?.shapeFamilyRelation, relation); assert.equal(section?.shapeWitnesses?.[0]?.rawOffset, 128);
+  assert.equal(c.finish(new Set([42]), [{ ...relation, symbolId: 71 }])[0]?.shape, "unresolved");
+  assert.equal(c.finish(new Set([42]), [relation, { ...relation, familyId: 71 }])[0]?.shape, "unresolved");
+});
+
+test("present invalid, explicit NotDefined, conflicting symbol values and invalid links block family classification", () => {
+  const relation = { symbolId: 42, familyId: 70, recordOffset: 32, objectLength: 500, objectMarker: 0x0810 as const, evidence: "framed-family-symbol-family-id" as const };
+  for (const own of [0, -1, "bad", 1.5]) {
+    const c = createNativeStructuralSectionCollector({ revitVersion: 2025, elementIds: new Set([42, 70]) }); c.consume(block(), location);
+    c.consumeOwnedParameters({ elementId: 70, parameters: [{ parameterId: -1005501, name: "shape", value: 8 }] });
+    c.consumeOwnedParameters({ elementId: 42, parameters: [{ parameterId: -1005501, name: "shape", value: own }] });
+    assert.equal(c.finish(new Set([42]), [relation])[0]?.shape, "unresolved", String(own));
+  }
+  const c = createNativeStructuralSectionCollector({ revitVersion: 2025, elementIds: new Set([42, 70]) }); c.consume(block(), location); c.consumeOwnedParameters({ elementId: 70, parameters: [{ parameterId: -1005501, name: "shape", value: 8 }] });
+  assert.equal(c.finish(new Set([42]), [{ ...relation, familyId: -1 }, relation])[0]?.shape, "unresolved");
+  c.consumeOwnedParameters({ elementId: 42, parameters: [{ parameterId: -1005501, name: "shape", value: 6 }, { parameterId: -1005501, name: "shape", value: 0 }] });
+  assert.equal(c.finish(new Set([42]), [relation])[0]?.shape, "unresolved");
+});
+
+test("explicit symbol classification cannot hide a contradictory known family classification", () => {
+  const c = createNativeStructuralSectionCollector({ revitVersion: 2025, elementIds: new Set([42, 70]) }); c.consume(block(), location);
+  c.consumeOwnedParameters({ elementId: 42, parameters: [{ parameterId: -1005501, name: "shape", value: 8 }] });
+  c.consumeOwnedParameters({ elementId: 70, parameters: [{ parameterId: -1005501, name: "shape", value: 14 }] });
+  assert.equal(c.finish(new Set([42]), [{ symbolId: 42, familyId: 70, recordOffset: 0, objectLength: 500, objectMarker: 0x0810, evidence: "framed-family-symbol-family-id" }])[0]?.shape, "unresolved");
+});
+
+test("section-only family links cover declared types outside geometry-cache ownership and reject all source conflicts", () => {
+  const candidate = { symbolId: 42, familyId: 70, recordOffset: 32, objectLength: 500, objectMarker: 0x0810 as const };
+  const set = { symbolId: 42, recordOffset: 32, objectLength: 500, objectMarker: 0x0810 as const, referencePairs: new Uint32Array(), staticTailReferencePairs: new Uint32Array([70, 449]) };
+  const ids = new Set([42, 70, 71]), families = new Set([70, 71]);
+  assert.equal(resolveNativeSectionFamilyRelations([candidate], [set], families, ids).length, 2);
+  assert.equal(resolveNativeSectionFamilyRelations([candidate, { ...candidate, familyId: 71 }], [set], families, ids).length, 0);
+  assert.equal(resolveNativeSectionFamilyRelations([candidate], [{ ...set, staticTailReferencePairs: new Uint32Array([70, 449, 71, 512]) }], families, ids).length, 0);
+  assert.equal(resolveNativeSectionFamilyRelations([candidate], [set], families, new Set([70, 71])).length, 0);
 });

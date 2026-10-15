@@ -50,3 +50,14 @@ test("a source-proven section descriptor remains useful with explicitly unresolv
   } finally { api.CloseModel(model); api.Dispose(); }
   const parsed = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer); assert.equal(parsed.schemaVersion, "IFC4");
 });
+
+test("family classification plans retain the exact owning edge and owned integer witness", () => {
+  const result = fixture(), section = result.nativeStructuralSections![0]!;
+  section.shapeSource = "native-symbol-family-owned-STRUCTURAL_SECTION_SHAPE"; section.shapeResolution = "inherited-family"; section.shapeOwnerElementId = 70;
+  section.shapeFamilyRelation = { symbolId: 20, familyId: 70, recordOffset: 128, objectLength: 500, objectMarker: 0x0810, evidence: "framed-family-symbol-family-id" };
+  section.shapeWitnesses = [{ ownerElementId: 70, parameterId: -1005501, value: 8 }];
+  assert.equal(planNativeMaterialProfiles(result).length, 1);
+  section.shapeFamilyRelation.familyId = 71; assert.equal(planNativeMaterialProfiles(result).length, 0);
+  section.shapeFamilyRelation.familyId = 70; section.shapeWitnesses[0]!.ownerElementId = 71; assert.equal(planNativeMaterialProfiles(result).length, 0);
+  section.shapeWitnesses[0]!.ownerElementId = 70; section.shapeWitnesses[0]!.value = 14; assert.equal(planNativeMaterialProfiles(result).length, 0);
+});

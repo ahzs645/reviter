@@ -37,7 +37,21 @@ requires the exact owned integer `STRUCTURAL_SECTION_SHAPE` (`-1005501`) to
 be 6 (IParallelFlange) or 8 (IWideFlange), with centered centroids. Autodesk's
 [Revit 2025 API enumeration](https://github.com/ADN-DevTech/revit-api-chms/blob/main/html/2025/html/daaa1d33-7ee8-738a-5ab7-b93f056deaf8.htm)
 defines these codes, and Reviter's parameter descriptor declares Integer
-storage for that ID. Centered dimensions alone cannot classify the shape.
+storage for that ID. Centered dimensions alone cannot classify the shape. A family-owned shape code may classify its
+symbols through the exact native `FamilySymbol.m_familyId` edge. Autodesk's
+[Family.StructuralSectionShape property](https://github.com/ADN-DevTech/revit-api-chms/blob/main/html/2025/html/dd92fb5d-7aca-13c1-7402-2f67efba64ec.htm)
+is explicitly the family's structural section shape; this is a family-wide
+classification, not substitution of an arbitrary family parameter default.
+The six dimensions remain owned by the actual symbol and are never inherited.
+Section links resolve independently of the render geometry-cache domain, so a
+valid type without its own cached render object can retain its classification.
+Every link still requires a framed source FamilySymbol, an exact fixed-field or
+native static-tail family reference, and an independently framed Family target.
+Conflicting source frames and ambiguous family targets withhold inheritance.
+An explicit symbol NotDefined/invalid/malformed value, contradictory symbol
+values, or disagreement with a known family classification also withhold the
+profile. Each resolved section retains the shape owner, resolution, source
+family relation and integer-parameter witnesses.
 Incomplete or contradictory values are withheld; unsupported/missing shape
 codes remain unresolved. The collector's release contract is 2024–2027, bounded at 512 MiB
 processed pages and 100,000 owners. Up to 96 trailing bytes and the current
@@ -90,39 +104,64 @@ and compares all emitted profile dimensions/material names against source
 plans. These checks establish export preservation; they do not claim complete
 RVT geometry equivalence or Revit-export parity.
 
+Both model audits below were repeated after the deferred whole-frame allocation
+and output-priority correction. Each profile-disabled control is a fresh export
+from the same conversion result with `nativeStructuralSections` empty. All
+reported counts, source witnesses, export byte counts and geometry differences
+were unchanged by that correction.
+
 ### Actual Autodesk structural sample
 
 The official [Snowdon Towers Sample Structural RVT](https://revit.downloads.autodesk.com/download/2024RVT_RTM/Docs/InProd/Samples/Snowdon%20Towers%20Sample%20Structural.rvt)
 was downloaded for local verification only. Its SHA-256
 `6dc833f9fe9fa702607265f2e3d581a6d2a928ea56133db8225c9b5e0f79a44f`
-matches the pinned upstream witness registry. With the same optional semantic
-reader enrichment used by the app, 141 maps cover 460 source-owned products;
-all 460 independently reopened transformed-triangle/material digests equal the
-ordinary export. The IFC decreases from 45,607,686 to 25,904,087 bytes. These
-actual maps reuse translations; the rotated path has the separate asymmetric
-quarter-turn fixture described above. IFC-Lite also reopens this complete model.
+matches the pinned upstream witness registry.
 
-The source scanner recovers 287 complete six-parameter section candidates from
-this structural model. **None has a recovered owned Section Shape enum**, so
-zero material profiles are emitted. This documents the remaining source
-contract rather than classifying symmetric dimensions as an I shape. The
-2025 Autodesk basic structural sample likewise emits no invented I profiles.
-The parameter-backed profile writer is verified by the independent-reader
-fixture. This specific structural model has no qualified positive profile
-coverage until its owned shape code or certified native section profile is recovered.
+Of 287 complete six-parameter candidates, 261 now have source-proven I-shape
+classification. **427 actual products receive 11 material-profile definitions
+and 427 usages.** All 427 independently reopened owner/dimension/material
+checks pass. Every product's geometry and colors match the profile-disabled
+export exactly (maximum coordinate difference zero). Material remains explicitly
+unresolved (`$`) for these products; no material identity is invented.
 
-### Actual School rotated maps
+The optional mapped export covers 463 products with 142 maps. All pass the
+double-attribute and Float32-preview geometry checks; maximum differences are
+`9.50e-11 m` and `2.98e-8 m`, respectively. IFC-Lite reopens the complete file.
+The ordinary/mapped exports contain 45,985,836 / 26,127,303 bytes in this
+working-tree audit; these are compression comparisons, not source-fidelity scores.
 
-With app semantic enrichment, the supplied School RVT has 78 representation
-maps covering 250 owned products, including **four groups with different native
-rotation bases**. All 250 products pass the independent double-attribute
-comparison: maximum persisted-coordinate difference is `9.73e-11 m`. The
-web-ifc Float32 preview cache introduces at most `1.907 micrometres` of
-recentring roundoff; triangle counts and colors agree. IFC-Lite reopens the
-full model. The IFC decreases from 47,868,153 to 46,446,458 bytes.
+web-ifc 0.0.77 logs nullable-material color/reference warnings on some products
+when following the valid `Material=$` usage. Repeated mesh reads produced 507
+of each REF0/GetLineType0/GetColor message. The reader still returns identical
+geometry and colors for all 427 products, and IFC-Lite parses the complete IFC.
+This is a measured reader limitation; the exporter retains the valid unknown
+material instead of substituting a fictitious material.
 
-School retains 13 section candidates, three with proved I-shape enum codes.
-No candidate has an eligible source occurrence/category/type/material join,
-so no orphan or guessed profile is emitted. Known source shape alone does not
-create an occurrence relationship. The [compact audit](generated/rvt-native-maps-profiles-validation.json)
-records all model counts, reader scopes, hashes and measured errors.
+### Actual School profiles and rotated maps
+
+School's eight structural occurrences reference native types 207176 and
+208294. Those symbols own the six cross-section metrics, while their exact
+native family references lead to Family 331701 and 332703, each owning integer
+Section Shape code 6. Complete independent native source graphs confirm the
+symbol-family edge and the Family's owned `ParamValueSetInt` pointer/value.
+The earlier three directly classified candidate records were Family definitions,
+not unused symbol types: requiring the code on each symbol hid the proper
+family-wide classification.
+
+**Eight products now receive two profile definitions and eight usages.** All
+owned dimensions, source joins and explicitly unresolved materials pass the
+independent reader checks. All eight bodies and colors are identical to the
+profile-disabled export (maximum coordinate difference zero).
+
+The optional mapped IFC contains 79 maps covering 252 products, including four
+groups with different native rotation bases. All 252 pass double-attribute
+comparison (maximum difference `9.73e-11 m`) and preview/color comparison
+(maximum Float32 recentering difference `1.907 micrometres`). IFC-Lite also
+reopens the complete file. The ordinary/mapped exports contain 52,371,957 /
+50,866,350 bytes in this working-tree audit.
+
+The [compact family-classification validation](generated/rvt-structural-profile-family-validation.json)
+records source hashes, independent native-graph witnesses, exact relationships,
+deduplicated profile dimensions, product IDs, preservation checks and reader
+limits. Only source-proven symmetric I sections are authored. Other section
+shapes, radii/fillets, cardinal points and profile-derived extrusion bodies remain unsupported.

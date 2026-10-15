@@ -263,9 +263,9 @@ test("instance-owned geometry creates one distinct native sub-element type per i
 
 /** Complete framed graphics with InstanceInfo followed by a queued GLine.
  * The symbol field is not at end−20; this is the deferred-body regression. */
-function deferredSymbolObject(symbol: bigint, embedded = false) {
-  const rootEnd = 166, instanceBytes = embedded ? 46 : 44, groupEnd = rootEnd + instanceBytes + 30;
-  const infoEnd = groupEnd + 112, lineEnd = infoEnd + 84, end = lineEnd + (embedded ? 136 : 0);
+function deferredSymbolObject(symbol: bigint, embedded = false, lineCount = 1) {
+  const rootEnd = 166, instanceBytes = embedded ? 46 : 44, groupEnd = rootEnd + instanceBytes + 24 + lineCount * 6;
+  const infoEnd = groupEnd + 112, lineEnd = infoEnd + lineCount * 84, end = lineEnd + (embedded ? 136 : 0);
   const bytes = new Uint8Array(end + 4), view = new DataView(bytes.buffer);
   const size = bytes.length - 20;
   view.setUint32(0, 100, true); view.setUint32(12, size, true); view.setUint16(16, 2246, true);
@@ -274,14 +274,14 @@ function deferredSymbolObject(symbol: bigint, embedded = false) {
   ginfo(18, 100); view.setInt32(38, 2, true); descriptor(42, 3, 2215); descriptor(48, 4, 2248);
   view.setBigInt64(150, 100n, true); // two valid zero bounds at54; root owner tail
   ginfo(rootEnd); descriptor(rootEnd + 20, -1, 2513); descriptor(rootEnd + 26, embedded ? 5 : 0, 2246);
-  ginfo(rootEnd + instanceBytes); view.setInt32(rootEnd + instanceBytes + 20, 1, true);
-  descriptor(rootEnd + instanceBytes + 24, embedded ? 6 : 5, 1973);
+  ginfo(rootEnd + instanceBytes); view.setInt32(rootEnd + instanceBytes + 20, lineCount, true);
+  for (let index = 0; index < lineCount; index++) descriptor(rootEnd + instanceBytes + 24 + index * 6, (embedded ? 6 : 5) + index, 1973);
   [1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 20, 30].forEach((v, i) => view.setFloat64(groupEnd + i * 8, v, true));
   view.setBigInt64(groupEnd + 96, symbol, true); view.setInt32(groupEnd + 108, 1, true);
   // FIFO: InstanceInfo, optional embedded GElement, then sibling's GLine.
   let lineStart = infoEnd;
   if (embedded) { ginfo(infoEnd); view.setBigInt64(infoEnd + 120, -1n, true); lineStart += 136; }
-  ginfo(lineStart); view.setFloat64(lineStart + 20 + 6 * 8, 1, true);
+  for (let index = 0; index < lineCount; index++) { const start = lineStart + index * 84; ginfo(start); view.setFloat64(start + 20 + 6 * 8, 1, true); }
   view.setUint32(bytes.length - 4, size, true);
   let a = 1, b = 0;
   for (const byte of bytes.subarray(16, bytes.length - 4)) { a = (a + byte) % 65521; b = (b + a) % 65521; }
@@ -347,4 +347,107 @@ test("type resolution distinguishes missing, unsupported and unproven exporter e
   assert.deepEqual(resolveNativeFamilyTypeIdentity(options), { status: "resolved", globalId: GLOBAL_ID, recipe: "original-symbol" });
   assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, evidence: { ...evidence, originalSymbolId: null } }),
     { status: "resolved", globalId: revitIfcSubElementGlobalId(GLOBAL_ID, 2048), recipe: "instance-as-type" });
+});
+
+
+test("large identity records require full checksum and FIFO instead of geometry-tail bytes", () => {
+  const fixture = deferredSymbolObject(200n, true, 800);
+  assert.ok(fixture.frame.objectLength > 65535);
+  const reference = nativeOriginalSymbolFromFifo(fixture.bytes, fixture.frame, 2027);
+  assert.equal(reference?.originalSymbolId, 200);
+  assert.equal(reference?.embeddedSymbolGeometry, true);
+  const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
+  for (const own of [object(100, 11), object(200, 12)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+  const damaged = fixture.bytes.slice(); damaged[60000] ^= 1;
+  collector.consumeLargeObjects(damaged, location(1), [fixture.frame]);
+  assert.deepEqual(collector.finish(), []);
+  collector.consumeLargeObjects(fixture.bytes, { ...location(1), complete: false }, [fixture.frame]);
+  assert.deepEqual(collector.finish(), []);
+  collector.consumeLargeObjects(fixture.bytes, location(1), [fixture.frame]);
+  assert.equal(collector.finish()[0]?.originalSymbolId, 200);
+  assert.equal(collector.finish()[0]?.embeddedSymbolGeometry, true);
+  assert.equal(collector.finish()[0]?.symbolFieldOffset, reference?.symbolFieldOffset);
+});
+
+test("optional large-object work cannot erase previous small-object identity evidence", () => {
+  const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
+  for (const own of [object(100, 11), object(200, 12), deferredSymbolObject(200n)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+  const large = deferredSymbolObject(200n, false, 800);
+  for (let count = 0; count < 130 && !collector.largeObjectWork.capped; count++) collector.consumeLargeObjects(large.bytes, location(1), [large.frame]);
+  assert.equal(collector.largeObjectWork.capped, true);
+  assert.equal(collector.capped, false);
+  assert.equal(collector.finish()[0]?.originalSymbolId, 200);
+});
+
+
+function flipEnvelopeFixture() {
+  const result = ifcExportFixture();
+  const own = { ...result.elementBounds[1]!, elementId: 100, boundsFeet: { min: { x: 0, y: 1, z: 0 }, max: { x: 1, y: 2, z: 1 } } };
+  const host = { ...result.elementBounds[0]!, elementId: 300, solid: { elementId: 300, start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, baseElevation: 0, topElevation: 10, thickness: 1 } };
+  const reference: NativeIfcTypeIdentityEvidence = { elementId: 100, originalSymbolId: 200,
+    source: "checksum-verified-GElement.original-symbol", revitVersion: 2027, ...location(1), objectOffset: 0,
+    originalSymbolEnvelope: { source: "checksum-verified-original-symbol-GElement.m_bBox", apiGeometryOptionsEquivalent: false,
+      minimum: [0, -4, 0], maximum: [1, -2, 1], ...location(1), objectOffset: 10 } };
+  const options = { references: [reference], placements: [{ elementId: 100, geometryId: 200, origin: [0, 0, 0] as [number, number, number], basis: [1, 0, 0, 0, 1, 0, 0, 0, 1] }],
+    elementBounds: [own, host], hostRelations: [{ elementId: 100, hostId: 300, kind: "host" as const, source: "Partitions/InsertableInst.m_hostId" as const, evidence: "persisted" as const,
+      fieldOffset: 151 as const, recordOffset: 0, objectLength: 80, objectMarker: 0x07ef as const }], revitVersion: 2027 };
+  return { reference, options };
+}
+
+test("conflicting instance and original-symbol envelopes withhold the flip instead of choosing a candidate", () => {
+  const { options, reference } = flipEnvelopeFixture();
+  reference.flipped = true; reference.flipSource = "native-instance-facing+native-host-wall-axis";
+  const evidence = resolveNativeIfcTypeIdentityEvidence(options)[0]!;
+  assert.equal(evidence.flipped, undefined);
+  assert.deepEqual(evidence.flipEnvelopeComparison, { status: "conflict", instanceEnvelopeCandidate: false, originalSymbolEnvelopeCandidate: true, apiGeometryOptionsEquivalent: false });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ evidence, nativeGuids: new Map([[200, GLOBAL_ID]]), instanceEntity: "IFCDOOR", exporterVersion: 2027 }),
+    { status: "withheld", reason: "original-geometry-envelope-conflict" });
+  options.placements[0]!.basis = [-1, 0, 0, 0, -1, 0, 0, 0, 1];
+  const mirrored = resolveNativeIfcTypeIdentityEvidence(options)[0]!;
+  assert.equal(mirrored.flipEnvelopeComparison?.status, "agree");
+  assert.equal(mirrored.flipped, true);
+  assert.equal(mirrored.flipEnvelopeComparison?.apiGeometryOptionsEquivalent, false);
+});
+
+test("partial original-symbol envelopes cannot invent a conflict or a replacement flip", () => {
+  const { reference, options } = flipEnvelopeFixture();
+  reference.originalSymbolEnvelope!.minimum = [0, NaN, 0];
+  const evidence = resolveNativeIfcTypeIdentityEvidence(options)[0]!;
+  assert.equal(evidence.flipped, false);
+  assert.equal(evidence.flipEnvelopeComparison, undefined);
+});
+
+function symbolGraphicsEnvelope(minimumY: number, lineCount = 1) {
+  const fixture = deferredSymbolObject(200n, false, lineCount), view = new DataView(fixture.bytes.buffer);
+  view.setUint32(0, 200, true); view.setInt32(26, 200, true); view.setBigInt64(150, 200n, true); view.setUint32(158, 3, true);
+  view.setFloat64(62, minimumY, true); view.setFloat64(86, minimumY + 2, true);
+  let a = 1, b = 0;
+  for (const byte of fixture.bytes.subarray(16, fixture.bytes.length - 4)) { a = (a + byte) % 65521; b = (b + a) % 65521; }
+  view.setUint32(8, (b * 65536 + a) >>> 0, true);
+  return { bytes: fixture.bytes, frame: { ...fixture.frame, elementId: 200 } };
+}
+
+test("stored symbol envelopes need verified named owners and unique source bounds", () => {
+  const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
+  for (const own of [object(100, 11), object(200, 12), symbolGraphicsEnvelope(-4), deferredSymbolObject(200n)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+  assert.deepEqual(collector.finish()[0]?.originalSymbolEnvelope?.minimum, [0, -4, 0]);
+  assert.equal(collector.finish()[0]?.originalSymbolEnvelope?.apiGeometryOptionsEquivalent, false);
+  const conflicting = symbolGraphicsEnvelope(2);
+  collector.consumeObjects(conflicting.bytes, location(1), [conflicting.frame]);
+  assert.equal(collector.finish()[0]?.originalSymbolEnvelope, undefined, "same-partition graphics alternatives remain ambiguous");
+  collector.consumeObjects(conflicting.bytes, location(2), [conflicting.frame]);
+  assert.deepEqual(collector.finish()[0]?.originalSymbolEnvelope?.minimum, [0, 2, 0]);
+});
+
+
+test("historical symbol envelopes have separate bounded work and cannot erase native identities", () => {
+  const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100]), historyElementIds: new Set([200]) });
+  for (const own of [object(100, 11), object(200, 12), deferredSymbolObject(200n), symbolGraphicsEnvelope(-4)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
+  assert.deepEqual(collector.finish()[0]?.originalSymbolEnvelope?.minimum, [0, -4, 0]);
+  const largeEnvelope = symbolGraphicsEnvelope(-4, 600);
+  for (let count = 0; count < 650 && !collector.historicalEnvelopeWork.capped; count++) collector.consumeObjects(largeEnvelope.bytes, location(1), [largeEnvelope.frame]);
+  assert.equal(collector.historicalEnvelopeWork.capped, true);
+  assert.equal(collector.capped, false);
+  assert.equal(collector.finish()[0]?.originalSymbolId, 200);
+  assert.deepEqual(collector.finish()[0]?.originalSymbolEnvelope?.minimum, [0, -4, 0]);
 });

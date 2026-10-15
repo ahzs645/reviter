@@ -15,107 +15,77 @@
   },
   "reviter": {
     "repository": "https://github.com/ahzs645/reviter",
-    "baseCommit": "b1cff569253de54457731e23f66e7b3c63a332d8",
+    "baseCommit": "2d42a9ceb3c65e2a2a68657486746faae1f9ded4",
     "workingTreeChanges": [
-      "M app/ReviterStudio.tsx",
-      " M app/studio/IfcExportControls.tsx",
-      " M app/studio/ReportDock.tsx",
-      " M app/studio/ViewpointLinkControls.tsx",
-      " M app/studio/viewpoint-links.ts",
-      " M docs/generated/rvt-integration-checks-final.json",
-      " M docs/generated/rvt-native-inventory-browser-validation.json",
-      " M docs/generated/rvt-reader-comparison-final.json",
-      " M docs/native-ifc-type-field-evidence.md",
-      " M docs/native-parameter-inventory.md",
-      " M docs/rvt-semantic-attribution.md",
-      " M docs/rvt-upstream-capability-inventory.json",
-      " M docs/rvt-upstream-capability-inventory.md",
-      " M docs/rvt-upstream-comparison.md",
-      " M docs/rvt-upstream-continuation.md",
-      " M docs/viewpoint-links.md",
-      " M lib/reviter/convert-partition-scan.ts",
-      " M lib/reviter/convert.ts",
-      " M lib/reviter/export-ifc-mapped-geometry.ts",
-      " M lib/reviter/export-ifc.ts",
-      " M lib/reviter/export-report.ts",
-      " M lib/reviter/model-boundary-review.ts",
-      " M lib/reviter/native-evidence-reader.ts",
-      " M lib/reviter/native-evidence-worker.ts",
-      " M lib/reviter/native-ifc-type-identity.ts",
-      " M lib/reviter/native-parameter-inventory.ts",
-      " M lib/reviter/native-record-inventory.ts",
-      " M lib/reviter/registered-native-interior.ts",
-      " M lib/reviter/revit-2027-native-mesh-bridge.ts",
-      " M lib/reviter/room-touch-normalization.ts",
-      " M lib/reviter/types.ts",
-      " M package.json",
-      " M scripts/audit-native-parameter-inventory.ts",
-      " M scripts/compare-rvt-readers.ts",
-      " M scripts/inventory-rvt-upstream-capabilities.py",
-      " M scripts/summarize-rvt-reader-comparison.ts",
-      " M tests/deterministic-math.test.ts",
-      " M tests/export-ifc-mapped-geometry.test.ts",
-      " M tests/ifc-type-identity.test.ts",
-      " M tests/native-parameter-inventory.test.ts",
-      " M tests/revit-2027-native-mesh-bridge.test.ts",
-      " M tests/viewpoint-links.test.ts",
-      "?? docs/generated/rvt-ifc-type-recipe-triage.json",
-      "?? docs/generated/rvt-native-authored-schedules-rac.json",
-      "?? docs/generated/rvt-native-authored-schedules-school.json",
-      "?? docs/generated/rvt-native-authored-schedules-snowdon.json",
-      "?? docs/generated/rvt-native-drawing-reader-validation.json",
-      "?? docs/generated/rvt-native-drawing-validation.json",
-      "?? docs/generated/rvt-native-geometry-four-models.json",
-      "?? docs/generated/rvt-native-maps-profiles-validation.json",
-      "?? docs/generated/rvt-native-parameter-inheritance-rac.json",
-      "?? docs/generated/rvt-owner-geometry-audit.json",
-      "?? docs/generated/rvt-source-organization-ifc-validation.json",
-      "?? docs/generated/rvt-spatial-organization-validation.json",
-      "?? docs/generated/rvt-upstream-geometry-mode-validation.json",
-      "?? docs/generated/rvt-viewpoint-v3-browser-validation.json",
-      "?? docs/native-authored-schedules.md",
-      "?? docs/native-ifc-maps-profiles.md",
-      "?? docs/native-source-drawings.md",
-      "?? docs/native-spatial-organization.md",
-      "?? docs/revit-ifc-exporter-identity-contract.md",
-      "?? docs/rvt-native-geometry-selection.md",
-      "?? docs/rvt-upstream-geometry-mode-comparison.md",
-      "?? lib/reviter/export-ifc-material-profiles.ts",
-      "?? lib/reviter/export-ifc-source-organization.ts",
-      "?? lib/reviter/native-drawing-svg.ts",
-      "?? lib/reviter/native-schedule-inventory.ts",
-      "?? lib/reviter/native-spatial-categories.ts",
-      "?? lib/reviter/native-spatial-organization.ts",
-      "?? lib/reviter/native-structural-profiles.ts",
-      "?? lib/reviter/revit-2027-default-3d-selection.ts",
-      "?? scripts/audit-ifc-native-maps-profiles.ts",
-      "?? scripts/audit-ifc-owner-geometry.ts",
-      "?? scripts/audit-ifc-source-organization.ts",
-      "?? scripts/audit-ifc-type-recipes.ts",
-      "?? scripts/audit-native-drawing.ts",
-      "?? scripts/audit-native-schedules.ts",
-      "?? scripts/export-native-drawing.ts",
-      "?? scripts/inspect-native-schedules.ts",
-      "?? scripts/inspect-native-spatial-organization.ts",
-      "?? scripts/lib/geometry-baseline.ts",
-      "?? scripts/lib/ifc-owner-geometry.ts",
-      "?? tests/export-ifc-material-profiles.test.ts",
-      "?? tests/export-ifc-source-organization.test.ts",
-      "?? tests/geometry-baseline.test.ts",
-      "?? tests/ifc-owner-geometry.test.ts",
-      "?? tests/native-drawing-reader.test.ts",
-      "?? tests/native-drawing-svg.test.ts",
-      "?? tests/native-schedule-inventory.test.ts",
-      "?? tests/native-spatial-categories.test.ts",
-      "?? tests/native-spatial-organization.test.ts",
-      "?? tests/native-structural-profiles.test.ts",
-      "?? tests/revit-2027-default-3d-selection.test.ts"
+      "M  app/ReviterStudio.tsx",
+      "A  docs/generated/rvt-group-visibility-rejection.json",
+      "M  docs/generated/rvt-integration-checks-final.json",
+      "A  docs/generated/rvt-native-cached-schedule-html-browser-validation.json",
+      "A  docs/generated/rvt-native-cached-schedule-negative-validation.json",
+      "A  docs/generated/rvt-native-cached-schedules-layout-rac.json",
+      "A  docs/generated/rvt-native-cached-schedules-layout-school.json",
+      "A  docs/generated/rvt-native-cached-schedules-layout-snowdon.json",
+      "A  docs/generated/rvt-native-circular-detail-validation.json",
+      "A  docs/generated/rvt-native-identity-envelope-validation.json",
+      "A  docs/generated/rvt-native-large-frame-validation.json",
+      "A  docs/generated/rvt-native-source-continuation-browser-validation.json",
+      "A  docs/generated/rvt-native-type-envelope-census.json",
+      "M  docs/generated/rvt-reader-comparison-final.json",
+      "A  docs/generated/rvt-structural-profile-family-validation.json",
+      "M  docs/native-authored-schedules.md",
+      "A  docs/native-cached-schedule-html.md",
+      "M  docs/native-ifc-maps-profiles.md",
+      "M  docs/native-ifc-type-field-evidence.md",
+      "M  docs/native-source-drawings.md",
+      "M  docs/revit-ifc-exporter-identity-contract.md",
+      "M  docs/rvt-native-geometry-selection.md",
+      "M  docs/rvt-semantic-attribution.md",
+      "MM docs/rvt-upstream-capability-inventory.json",
+      "MM docs/rvt-upstream-capability-inventory.md",
+      "M  docs/rvt-upstream-comparison.md",
+      "MM docs/rvt-upstream-continuation.md",
+      "M  lib/reviter/convert-partition-scan.ts",
+      "M  lib/reviter/convert.ts",
+      "M  lib/reviter/export-ifc-material-profiles.ts",
+      "A  lib/reviter/native-drawing-arcs.ts",
+      "M  lib/reviter/native-drawing-svg.ts",
+      "M  lib/reviter/native-evidence-reader.ts",
+      "M  lib/reviter/native-evidence-worker.ts",
+      "M  lib/reviter/native-ifc-type-identity.ts",
+      "M  lib/reviter/native-record-inventory.ts",
+      "A  lib/reviter/native-schedule-html.ts",
+      "M  lib/reviter/native-schedule-inventory.ts",
+      "M  lib/reviter/native-structural-profiles.ts",
+      "M  lib/reviter/revit-2027-native-mesh-bridge.ts",
+      "M  lib/reviter/revit-2027-split-alternate-frame-collector.ts",
+      "M  lib/reviter/split-frame-stream.ts",
+      "M  lib/reviter/types.ts",
+      "M  scripts/audit-ifc-native-maps-profiles.ts",
+      "M  scripts/audit-native-schedules.ts",
+      "A  scripts/audit-rvt-owner-frames.ts",
+      "M  scripts/compare-rvt-readers.ts",
+      "M  scripts/inspect-native-schedules.ts",
+      "MM scripts/inventory-rvt-upstream-capabilities.py",
+      "A  scripts/prepare-native-schedule-html-browser.ts",
+      "A  scripts/summarize-native-type-envelopes.ts",
+      "A  scripts/validate-native-schedule-html-browser.mjs",
+      "M  tests/convert-rvt-bytes-rich.test.ts",
+      "M  tests/convert-rvt-bytes.test.ts",
+      "M  tests/export-ifc-material-profiles.test.ts",
+      "M  tests/ifc-type-identity.test.ts",
+      "A  tests/native-drawing-arcs.test.ts",
+      "M  tests/native-drawing-reader.test.ts",
+      "A  tests/native-schedule-html.test.ts",
+      "M  tests/native-schedule-inventory.test.ts",
+      "M  tests/native-structural-profiles.test.ts",
+      "A  tests/revit-2027-deferred-whole-geometry.test.ts",
+      "M  tests/revit-2027-split-alternate-frame-collector.test.ts"
     ]
   },
   "scope": "Every pinned src/**/*.rs module, every CLI, all viewer/Python/WASM package files, Rust examples and fuzz entry points are enumerated. Capability equivalence is assessed by behavior and evidence, not matching names.",
   "statusDefinitions": {
     "existing": "Behavior overlaps existing Reviter functionality; not byte/layout/coverage parity.",
-    "new-port": "A concrete new integration is being implemented; local source/test availability and final execution evidence are reported separately.",
+    "new-port": "A concrete new integration exists; local source/test availability and execution evidence are reported separately.",
     "narrower": "Overlap exists, but upstream exposes additional semantic fields/surfaces or different release/quality gates.",
     "gap": "Concrete upstream capability lacks a faithful Reviter equivalent within current source evidence.",
     "unresolved": "Both have independent implementations; owner/corpus comparisons are required before claiming equivalence or a useful port.",
@@ -459,7 +429,10 @@
         "lib/reviter/element-relations.ts",
         "lib/reviter/native-ifc-type-identity.ts",
         "lib/reviter/elem-table.ts",
-        "scripts/audit-ifc-type-recipes.ts"
+        "scripts/audit-ifc-type-recipes.ts",
+        "scripts/summarize-native-type-envelopes.ts",
+        "docs/generated/rvt-native-identity-envelope-validation.json",
+        "docs/generated/rvt-native-type-envelope-census.json"
       ],
       "regressionSuites": [
         "tests/elem-table-inventory.test.ts",
@@ -468,9 +441,9 @@
         "tests/ifc-type-identity.test.ts",
         "tests/ifc-type-comparison.test.ts"
       ],
-      "behavior": "Existing creation-history/native-table joins and default Revit-compatible IFC IDs are extended with evidence-driven stored-ID, original-symbol and exporter sub-element rules. Original-symbol admission uses checksum-verified named instance/symbol witnesses and publishes only physical source owners, compensating for a narrower generic table inventory without widening other decoder domains. A separate complete schema-validated ElemTable inventory retains u32 counts, exact IDs, source aliases and acyclic owner slots; bounded FIFO symbol reading handles deferred geometry while withholding embedded exporter recipes.",
-      "limitations": "The prior full-export comparison retains 246 unresolved column/door/window type recipes. Complete saved FIFO/embedded pointers and a matching reference hash do not establish Autodesk UsesInstanceGeometry summaries or the curved/slanted-wall flip rule. Exporter cache, assembly, level/material and split variants remain unresolved.",
-      "nextAction": "Use the documented Autodesk exporter contract and per-case source diagnostics; never select recipes from paired reference hashes or equate native tessellation counts with API geometry summaries.",
+      "behavior": "Creation-history/native-table joins and default Revit-compatible IFC IDs include checksum-verified original-symbol and exporter sub-element rules. Complete schema-validated ElemTable inventory retains u32 counts, exact IDs, aliases and acyclic owner slots without widening unrelated scene decoders. Bounded FIFO reading also admits verified objects above 65,535 bytes, up to 1 MiB, with separate checksum/FIFO budgets. Final four-model retained-evidence census records 38 source-envelope contradiction vetoes (RAC 0, School 18, Snowdon 17, UNBC 3); no previously matching upstream relationship is lost, and the three UNBC vetoes were already reference mismatches. Current UNBC product IDs match 35,117/35,117 and type relationships 36,886/37,132.",
+      "limitations": "UNBC retains 246 unresolved column/door/window type relationships. The separate 32 MiB historical-symbol envelope checksum budget is reached on UNBC while legacy identity collection remains uncapped, so retained envelope metadata is partial. Native envelope agreement does not establish Autodesk GetOriginalGeometry(options) equivalence or UsesInstanceGeometry summaries. Embedded-symbol, curved/slanted-wall, exporter-cache, assembly, level/material and split recipes remain unresolved. Paired reference IDs never select a recipe.",
+      "nextAction": "Inspect source-envelope conflicts and bounded large-object diagnostics separately; require the actual Autodesk API geometry contract before admitting unresolved type recipes.",
       "upstreamEvidence": [
         {
           "path": "src/native_index.rs",
@@ -548,7 +521,10 @@
         "lib/reviter/element-relations.ts",
         "lib/reviter/native-ifc-type-identity.ts",
         "lib/reviter/elem-table.ts",
-        "scripts/audit-ifc-type-recipes.ts"
+        "scripts/audit-ifc-type-recipes.ts",
+        "scripts/summarize-native-type-envelopes.ts",
+        "docs/generated/rvt-native-identity-envelope-validation.json",
+        "docs/generated/rvt-native-type-envelope-census.json"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -599,10 +575,12 @@
         },
         {
           "path": "lib/reviter/native-ifc-type-identity.ts",
-          "sha256": "d01b760e7380c08aa6d8b4c290407abe84470b7ba35dae716fc8951ebc1b3277",
+          "sha256": "6c2e131e7026bb0c7202bd45e3f2f92657958c62a0fb4d04a3579ab17eded91d",
           "exportedSymbols": [
+            "NativeOriginalSymbolEnvelope",
             "NativeOriginalSymbolReference",
             "NativeIfcTypeIdentityEvidence",
+            "MAX_NATIVE_IDENTITY_OBJECT_BYTES",
             "nativeOriginalSymbolFromFifo",
             "nativeOriginalSymbolElementIds",
             "verifiedOriginalSymbolObject",
@@ -630,6 +608,21 @@
         {
           "path": "scripts/audit-ifc-type-recipes.ts",
           "sha256": "7d8156cccc6c1f34eb6466c94079e5a9a6f7a8bcce60646e3a331998d6ca1d8a",
+          "exportedSymbols": []
+        },
+        {
+          "path": "scripts/summarize-native-type-envelopes.ts",
+          "sha256": "1fd7d557d22db9803d36cd2370039906ebdef0f596be57fcc1ec6c4528e231ff",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-identity-envelope-validation.json",
+          "sha256": "eca86d993358bdc85827affaf97a3451f54a2402807cc92b6467937f05bc1c98",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-type-envelope-census.json",
+          "sha256": "7ef95413472d989e1d08e3595f26511ab87ce0c8390bf0e4de65c77ac5fca67a",
           "exportedSymbols": []
         }
       ],
@@ -1024,7 +1017,7 @@
         },
         {
           "path": "lib/reviter/convert-partition-scan.ts",
-          "sha256": "1107c9bd64ab131b3c018f2a1f1c0caa8447cb97452630b90c84ef79c212e540",
+          "sha256": "0832a5776e8bc5671aa156175c1b283a4b2353333db0807c4af995ed138158eb",
           "exportedSymbols": [
             "PartitionScanInput",
             "PartitionScan",
@@ -1033,12 +1026,13 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "e1239834d7b085dfab62503712e55eacc5903577b8f89576c509fc3af13e9271",
+          "sha256": "cd44eca9bb23548d2e4ae3868ceb2b059b878e93315122d801c397bf728edb21",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
             "NativeEvidenceReport",
             "readNativeSourceEvidence",
+            "NativeDrawingReadOptions",
             "readNativeDrawingEvidence"
           ]
         },
@@ -1205,12 +1199,13 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "e1239834d7b085dfab62503712e55eacc5903577b8f89576c509fc3af13e9271",
+          "sha256": "cd44eca9bb23548d2e4ae3868ceb2b059b878e93315122d801c397bf728edb21",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
             "NativeEvidenceReport",
             "readNativeSourceEvidence",
+            "NativeDrawingReadOptions",
             "readNativeDrawingEvidence"
           ]
         },
@@ -1345,12 +1340,13 @@
         },
         {
           "path": "lib/reviter/native-evidence-reader.ts",
-          "sha256": "e1239834d7b085dfab62503712e55eacc5903577b8f89576c509fc3af13e9271",
+          "sha256": "cd44eca9bb23548d2e4ae3868ceb2b059b878e93315122d801c397bf728edb21",
           "exportedSymbols": [
             "NativeEvidenceOptions",
             "NativeSourceEvidence",
             "NativeEvidenceReport",
             "readNativeSourceEvidence",
+            "NativeDrawingReadOptions",
             "readNativeDrawingEvidence"
           ]
         }
@@ -2099,10 +2095,12 @@
         },
         {
           "path": "lib/reviter/native-ifc-type-identity.ts",
-          "sha256": "d01b760e7380c08aa6d8b4c290407abe84470b7ba35dae716fc8951ebc1b3277",
+          "sha256": "6c2e131e7026bb0c7202bd45e3f2f92657958c62a0fb4d04a3579ab17eded91d",
           "exportedSymbols": [
+            "NativeOriginalSymbolEnvelope",
             "NativeOriginalSymbolReference",
             "NativeIfcTypeIdentityEvidence",
+            "MAX_NATIVE_IDENTITY_OBJECT_BYTES",
             "nativeOriginalSymbolFromFifo",
             "nativeOriginalSymbolElementIds",
             "verifiedOriginalSymbolObject",
@@ -2253,24 +2251,30 @@
         "src/elements/annotations.rs",
         "src/elements/drafting.rs",
         "src/elements/grid.rs",
-        "src/elements/reference_planes.rs"
+        "src/elements/reference_planes.rs",
+        "src/partition_beam_axes.rs",
+        "src/native_parametric_surface.rs"
       ],
       "reviterSources": [
         "lib/reviter/native-record-inventory.ts",
         "lib/reviter/native-drawing-svg.ts",
+        "lib/reviter/native-drawing-arcs.ts",
         "scripts/inspect-native-records.ts",
         "scripts/export-native-drawing.ts",
         "scripts/audit-native-drawing.ts",
+        "docs/generated/rvt-native-circular-detail-validation.json",
         "app/studio/viewer-tools.ts",
         "lib/reviter/cad-files.ts"
       ],
       "regressionSuites": [
         "tests/native-record-inventory.test.ts",
-        "tests/native-drawing-svg.test.ts"
+        "tests/native-drawing-svg.test.ts",
+        "tests/native-drawing-arcs.test.ts",
+        "tests/native-drawing-reader.test.ts"
       ],
-      "behavior": "Source-owned drawing/view/viewport records, tags, stored dimension values and exact owned leaders/curves supplement typed grids/reference planes/text records. Bounded native-view SVG previews render supported RTF plain text, straight leaders, tag-head points and finite detail lines; five supplied-model views were independently source-audited and rendered in Chromium.",
-      "limitations": "Every successful preview is partial. Full regenerated sheets, native tag family glyphs/labels, dimension formatting/evaluation, view crop/template/filter inheritance and viewport-to-sheet layout remain missing. Unbounded lines and budget-blocked source contexts cannot invent graphics; user markup remains separately authored.",
-      "nextAction": "Admit additional primitives only with exact view/owner/frame and pointer evidence; retain partial source annotation preview rather than claim regenerated Revit drawings.",
+      "behavior": "Owned view/viewport records, tags, stored dimension values and exact leaders/curves supplement typed grids/reference planes/text. Partial native-view SVGs render supported text, straight leaders, tag-head points and finite detail lines. Exact native flags, interval and in-plane orthonormal basis now admit full circles and bounded arcs. Actual RAC owner 941493 renders one source-owned circle; independent Chromium radial samples differ by at most 0.000003126 feet. Unsupported School offset-family arcs remain withheld.",
+      "limitations": "Every successful preview is partial. Full regenerated sheets, native tag family glyphs/labels, dimension formatting/evaluation, crop/template/filter inheritance and viewport-to-sheet layout remain missing. Actual positive arc coverage is one full circle; bounded arcs have owned-source fixture coverage. Unsupported flags, offsets, reversed drivers, filled arcs and budget-blocked contexts cannot invent graphics; user markup remains separate.",
+      "nextAction": "Keep exact source-owner/view/pointer/flag/frame witnesses and omitted reasons for every additional primitive; do not equate a cached partial SVG with regenerated Revit sheets.",
       "upstreamEvidence": [
         {
           "path": "src/elements/annotations.rs",
@@ -2319,14 +2323,56 @@
             "ReferencePlane"
           ],
           "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/elements/reference_planes.rs#L34"
+        },
+        {
+          "path": "src/partition_beam_axes.rs",
+          "sha256": "fcc6a45b6911d284a2cd33573b734c07c4c225d2d07c170bd52b99520f96fad0",
+          "declarationExcerpt": "Beam location lines from their serialised element data (RE-49).  A structural-framing element's data (its element-data header and ElementId, see [`crate::partition_names::element_data_header`]) carries its location line as a bounded line:  ```text +0   04 00 08 01   BOUNDED_LINE_TAG +4   f64           start parameter, feet +12  f64           end parameter, feet +20  f64 \u00d7 3       origin, model feet +44  f64 \u00d7 3       unit direction ```  The line runs from `origin + start \u00b7 direction` to `origin + end \u00b7 direction`. On Autodesk's Snowdon Towers 2024 structural sample, the data of every one of the 942 structural-framing elements rvt-rs exports has one, and on 940 both ends lie inside the element's record box (the other two lie far outside it and are not read). The same record appears in the data of walls, model lines and sketch lines; only framing is read here.  [`beam_body`] turns the line and the record's box into the beam's solid: a box `length \u00d7 width \u00d7 depth` along the line. The length is the line's. The section is what the box leaves once the line's own extent is taken out of it: ",
+          "publicSymbols": [
+            "supports_revit_version",
+            "BoundedLine",
+            "bounded_line_at",
+            "first_bounded_line",
+            "BoundedArc",
+            "bounded_arc_at",
+            "arc_values_at",
+            "first_bounded_arc",
+            "first_circle",
+            "scan_sketch_circles",
+            "SketchCurve",
+            "first_sketch_curve",
+            "scan_sketch_curves",
+            "scan_bounded_lines",
+            "scan_first_bounded_lines",
+            "scan_first_bounded_arcs",
+            "BeamBody",
+            "i_section_body",
+            "beam_body"
+          ],
+          "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/partition_beam_axes.rs#L46"
+        },
+        {
+          "path": "src/native_parametric_surface.rs",
+          "sha256": "ea35305b85a48d82ce9bbb949e734e460bd36198a6a425abc0c0ebfd30184761",
+          "declarationExcerpt": "Typed evaluators for the non-planar surfaces observed in saved graphs.",
+          "publicSymbols": [
+            "Point",
+            "surface_of_revolution_point",
+            "ruled_surface_point",
+            "Curve",
+            "ParametricSurface"
+          ],
+          "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/native_parametric_surface.rs#L7"
         }
       ],
       "localEvidencePresent": [
         "lib/reviter/native-record-inventory.ts",
         "lib/reviter/native-drawing-svg.ts",
+        "lib/reviter/native-drawing-arcs.ts",
         "scripts/inspect-native-records.ts",
         "scripts/export-native-drawing.ts",
         "scripts/audit-native-drawing.ts",
+        "docs/generated/rvt-native-circular-detail-validation.json",
         "app/studio/viewer-tools.ts",
         "lib/reviter/cad-files.ts"
       ],
@@ -2334,7 +2380,7 @@
       "localEvidence": [
         {
           "path": "lib/reviter/native-record-inventory.ts",
-          "sha256": "eb89a0920bcd859f70b7831c8824a55acf9d57bf80aa7c777669eff1d8e20ae3",
+          "sha256": "728b27b82a5af08bc33441cda4179bea05722f8654ea334823c82dbc3785f656",
           "exportedSymbols": [
             "NATIVE_RECORD_INVENTORY_CLASSES",
             "NATIVE_DRAWING_ANNOTATION_CLASSES",
@@ -2349,12 +2395,21 @@
         },
         {
           "path": "lib/reviter/native-drawing-svg.ts",
-          "sha256": "d6effe5a9a1d6617cc057c39cb800fec351084997be316ec40ef9eeb17076b38",
+          "sha256": "048533fe19c9492d04428b304fb96cba66f0e9f84b0655959c43d3034e1430e8",
           "exportedSymbols": [
             "NativeDrawingPreview",
             "extractNativeRtfPlainText",
             "listNativeDrawingViews",
             "makeNativeDrawingSvg"
+          ]
+        },
+        {
+          "path": "lib/reviter/native-drawing-arcs.ts",
+          "sha256": "dfd92846c4f2ccf2b0eeecefeda25d01737793b9d2f01b0c596e0ef3ffa6caa9",
+          "exportedSymbols": [
+            "NativeDrawingFrame",
+            "NativeDetailArc",
+            "nativeDetailArc"
           ]
         },
         {
@@ -2373,6 +2428,11 @@
           "exportedSymbols": [
             "auditNativeDrawingEvidence"
           ]
+        },
+        {
+          "path": "docs/generated/rvt-native-circular-detail-validation.json",
+          "sha256": "a64a4e1492ef47fddcb2bedcec129506d36bac7ed46e3e68df4b178ba100b390",
+          "exportedSymbols": []
         },
         {
           "path": "app/studio/viewer-tools.ts",
@@ -2418,7 +2478,9 @@
       ],
       "regressionSuitesPresent": [
         "tests/native-record-inventory.test.ts",
-        "tests/native-drawing-svg.test.ts"
+        "tests/native-drawing-svg.test.ts",
+        "tests/native-drawing-arcs.test.ts",
+        "tests/native-drawing-reader.test.ts"
       ],
       "regressionSuitesMissing": [],
       "verificationState": "referenced sources/suites exist; execution results are tracked separately"
@@ -3272,7 +3334,7 @@
         },
         {
           "path": "lib/reviter/convert.ts",
-          "sha256": "c4b0c81e9c6c580f02d99d52f7cd7b2cea80f81092f4584e927625e0cc12b4d4",
+          "sha256": "e9c20e40d14c6ab1cdf914608db25f52f284bca049500cf7b0bb2a3ae7993a4b",
           "exportedSymbols": [
             "convertRvtBytes"
           ]
@@ -3598,17 +3660,23 @@
         "lib/reviter/export-glb.ts",
         "lib/reviter/revit-2027-default-3d-selection.ts",
         "scripts/audit-ifc-owner-geometry.ts",
-        "scripts/lib/ifc-owner-geometry.ts"
+        "scripts/lib/ifc-owner-geometry.ts",
+        "lib/reviter/revit-2027-split-alternate-frame-collector.ts",
+        "lib/reviter/split-frame-stream.ts",
+        "scripts/audit-rvt-owner-frames.ts",
+        "docs/generated/rvt-native-large-frame-validation.json"
       ],
       "regressionSuites": [
         "tests/convert-rvt-bytes-rich.test.ts",
         "tests/revit-2027-native-mesh-bridge.test.ts",
         "tests/revit-2027-default-3d-selection.test.ts",
-        "tests/ifc-owner-geometry.test.ts"
+        "tests/ifc-owner-geometry.test.ts",
+        "tests/revit-2027-split-alternate-frame-collector.test.ts",
+        "tests/revit-2027-deferred-whole-geometry.test.ts"
       ],
-      "behavior": "Reviter now withholds a duplicate reusable-symbol fallback after a qualified instance-specific native body is admitted and applies descriptor-owned default-3D GConditionCut comparisons 6-8 with FIFO ancestry/shared-occurrence protection. Independent UNBC owner measurements show 357 surface-area errors improve and none worsen beyond the declared relative threshold; source scene triangles intentionally change from 901903 to 858388.",
-      "limitations": "This is measured source-body selection, not an unchanged-scene hash claim or complete graphics-selection parity. Unknown view/filter/formula semantics, external instances, detail levels, native API geometry-summary equivalence and full symbol closure remain missing. Native wall residuals are retained and four small bounds residuals increase below 0.00311 feet.",
-      "nextAction": "The final four-model campaign records 16 preserved baseline fields and 8 expected digest/triangle changes, with unchanged exact-owner/identity coverage and eight IFC reopens. Extend saved predicates only from source witnesses; preserve unresolved wall/column residuals and never feed reference surfaces into conversion.",
+      "behavior": "Native saved mesh/BRep replay retains source material provenance and qualified own-body/default-3D selection. Same-page frames above 65,535 bytes require source header, restated owner, echoed length and Adler-32 under a 128 MiB per-partition checksum ceiling. Bounded 64 MiB raw buffering defers supplemental compilation until ordinary/crossing definitions; original own definitions and final output priority are preserved under pressure. Final campaign admits 478 frames, retains 12 bounds/origin/extents fields and intentionally changes 12 mesh/hash/triangle fields. Paired UNBC owner area error improves 82 times and worsens 8 times; maximum current error among those eight slabs is 0.0679931%.",
+      "limitations": "Snowdon still reaches the unchanged native output cap; visible triangle count below 2M follows cleanup and is not uncapped recovery. Separate checksum/buffer/definition/output-pressure diagnostics remain explicit. Finite saved bodies and triangle counts do not prove shape accuracy. Unknown view predicates/formulas, unsupported graphics and native wall 801614 remain unresolved. General material/color equivalence is not established by owner area checks.",
+      "nextAction": "Retain ordinary/split definition and output priority, exact source checksum/owner provenance and explicit truncation diagnostics; assess current same-owner shape and semantics independently.",
       "upstreamEvidence": [
         {
           "path": "src/native_graphics_traversal.rs",
@@ -3693,13 +3761,17 @@
         "lib/reviter/export-glb.ts",
         "lib/reviter/revit-2027-default-3d-selection.ts",
         "scripts/audit-ifc-owner-geometry.ts",
-        "scripts/lib/ifc-owner-geometry.ts"
+        "scripts/lib/ifc-owner-geometry.ts",
+        "lib/reviter/revit-2027-split-alternate-frame-collector.ts",
+        "lib/reviter/split-frame-stream.ts",
+        "scripts/audit-rvt-owner-frames.ts",
+        "docs/generated/rvt-native-large-frame-validation.json"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
         {
           "path": "lib/reviter/revit-2027-native-mesh-bridge.ts",
-          "sha256": "a691d7c2dd3568a3c665b53dea59337ea2a47fcba402e4f4b799c5af24f1e484",
+          "sha256": "dce1c3c261d3a40d709e4bd7c158388df32c0303ae91c6093c6cd9607a89662d",
           "exportedSymbols": [
             "Revit2027NativeMeshLimits",
             "Revit2027IncompleteOwnerReason",
@@ -3803,13 +3875,45 @@
             "summarizeParts",
             "compareOwnerShapes"
           ]
+        },
+        {
+          "path": "lib/reviter/revit-2027-split-alternate-frame-collector.ts",
+          "sha256": "c369ff9ebcff22615e1a8048b44a73555148baac07ef3f053e1f53205ca258b3",
+          "exportedSymbols": [
+            "Revit2027SplitAlternateFrameCollector",
+            "createRevit2027SplitAlternateFrameCollector",
+            "Revit2027SplitGElementCollector",
+            "createRevit2027SplitGElementCollector"
+          ]
+        },
+        {
+          "path": "lib/reviter/split-frame-stream.ts",
+          "sha256": "92084a61b93210a2bc9c5b246258cc4a1579fafeb0474bf0ba1d6581b90e41ea",
+          "exportedSymbols": [
+            "StreamedFrame",
+            "SplitFrameStreamOptions",
+            "SplitFrameStream",
+            "createSplitFrameStream"
+          ]
+        },
+        {
+          "path": "scripts/audit-rvt-owner-frames.ts",
+          "sha256": "efe7aa2f0c474a4488e944b121cd2888dfa047e6ee893b578f1cc9f313aea1c3",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-large-frame-validation.json",
+          "sha256": "0115ce3a5ea64f5b9989912e715b3f155b5322c57f2aaa40b82d338293cca3ae",
+          "exportedSymbols": []
         }
       ],
       "regressionSuitesPresent": [
         "tests/convert-rvt-bytes-rich.test.ts",
         "tests/revit-2027-native-mesh-bridge.test.ts",
         "tests/revit-2027-default-3d-selection.test.ts",
-        "tests/ifc-owner-geometry.test.ts"
+        "tests/ifc-owner-geometry.test.ts",
+        "tests/revit-2027-split-alternate-frame-collector.test.ts",
+        "tests/revit-2027-deferred-whole-geometry.test.ts"
       ],
       "regressionSuitesMissing": [],
       "verificationState": "referenced sources/suites exist; execution results are tracked separately"
@@ -4045,9 +4149,9 @@
         "tests/revit-2027-native-mesh-bridge.test.ts",
         "tests/ifc-owner-geometry.test.ts"
       ],
-      "behavior": "Source-specific own-body precedence and default-3D representation selection improve paired UNBC column and railing agreement. Independent placed-owner audits measure bounds, area, exact-weld topology, closed-shell diagnostic volume and explicitly selected bidirectional surface samples without coordinate fitting.",
-      "limitations": "Saved body selection does not recover general native join/cut order or justify applying upstream record-box trims twice. Native walls retain large sampled discrepancies, including 23.30 feet despite similar bounds. Sampled distances are not continuous Hausdorff guarantees; diagnostic closed-shell volume is not non-overlapping material-union volume.",
-      "nextAction": "Preserve unresolved wall/beam/layer witnesses and require source-owned cut/selection semantics before changing a repaired native body.",
+      "behavior": "Source-owned whole-frame recovery and qualified own-body/default-3D selection improve paired UNBC shapes. Current selected wall 1185924 and column 2236110 bidirectional sampled discrepancies fall below 3.94e-6 and 1.199e-5 feet. Independent placed-owner audits retain area/topology/closed-shell diagnostics and exact identity/frame joins without coordinate fitting.",
+      "limitations": "Saved body selection does not recover general native join/cut order or justify applying record-box trims twice. Wall801614 retains a 0.8002203-foot extra portion. Eight slabs have small aggregate area-error worsening (maximum current relative error 0.0679931%) without local surface sampling. Finite distances are not continuous Hausdorff guarantees; diagnostic closed-shell volume is not material-union volume.",
+      "nextAction": "Preserve unresolved wall/beam/layer witnesses; require source-owned cut/selection semantics before modifying native bodies and distinguish source completeness from physical shape accuracy.",
       "upstreamEvidence": [
         {
           "path": "src/element_record_wall_joins.rs",
@@ -4156,7 +4260,7 @@
         },
         {
           "path": "lib/reviter/revit-2027-native-mesh-bridge.ts",
-          "sha256": "a691d7c2dd3568a3c665b53dea59337ea2a47fcba402e4f4b799c5af24f1e484",
+          "sha256": "dce1c3c261d3a40d709e4bd7c158388df32c0303ae91c6093c6cd9607a89662d",
           "exportedSymbols": [
             "Revit2027NativeMeshLimits",
             "Revit2027IncompleteOwnerReason",
@@ -5058,7 +5162,8 @@
         "lib/reviter/export-ifc-mapped-geometry.ts",
         "lib/reviter/native-structural-profiles.ts",
         "lib/reviter/export-ifc-material-profiles.ts",
-        "scripts/audit-ifc-native-maps-profiles.ts"
+        "scripts/audit-ifc-native-maps-profiles.ts",
+        "docs/generated/rvt-structural-profile-family-validation.json"
       ],
       "regressionSuites": [
         "tests/export-ifc.test.ts",
@@ -5067,9 +5172,9 @@
         "tests/native-structural-profiles.test.ts",
         "tests/export-ifc-material-profiles.test.ts"
       ],
-      "behavior": "Optional maps now admit identical native typed bodies in verified translation/orthonormal rotation frames with matching geometry identity, ordered topology and materials. School has 78 maps/250 products including four rotated groups; the official Snowdon structural sample has 141 maps/460 products. An owned-source structural profile writer requires exact section shape enum plus six consistent dimensions and eligible occurrence/type/material joins.",
-      "limitations": "Actual audited models emit zero material profiles: Snowdon structural has 287 six-metric candidates without a proved shape code; School has three proved shapes without eligible occurrence joins. Positive profile emission is independently reopened only in owned-source fixtures. Scaled/reflected/nonidentical sharing, arbitrary authored profiles/fillets and general profile recovery remain missing. Optional pipe sweeps stay labeled reconstructed and cannot replace certified bodies.",
-      "nextAction": "Recover missing owned shape/occurrence/material evidence before claiming real-model profile coverage; keep optional map preservation distinct from native geometry accuracy.",
+      "behavior": "Optional maps require identical native typed bodies, proper rigid source frames and ordered topology/material agreement. Current same-working-tree audits reopen 79 maps/252 School products including four rotated groups and 142 maps/463 official structural Snowdon products. Exact native symbol-to-family links can resolve family-wide StructuralSectionShape classification; all six dimensions remain symbol-owned. School emits two distinct material profiles used by eight products; structural Snowdon emits 11 used by 427. All 435 profile-enabled versus disabled body/style comparisons agree exactly in the independent reader.",
+      "limitations": "Family-wide shape classification is not arbitrary parameter/default inheritance. Present invalid/conflicting symbol values or family links block resolution. Unknown material remains explicit IFC $, with nullable-color reader warnings retained in the report. Scaled/reflected/nonidentical sharing, general authored profiles, fillets and profile-based body reconstruction remain missing. Optional pipe sweeps stay labeled reconstructed and cannot replace certified bodies; map preservation is not source-shape accuracy.",
+      "nextAction": "Extend only proved family classifications, owned dimensions and eligible occurrence/material joins; independently reopen actual optional exports and retain unresolved shapes.",
       "upstreamEvidence": [
         {
           "path": "src/ifc/entities.rs",
@@ -5124,7 +5229,8 @@
         "lib/reviter/export-ifc-mapped-geometry.ts",
         "lib/reviter/native-structural-profiles.ts",
         "lib/reviter/export-ifc-material-profiles.ts",
-        "scripts/audit-ifc-native-maps-profiles.ts"
+        "scripts/audit-ifc-native-maps-profiles.ts",
+        "docs/generated/rvt-structural-profile-family-validation.json"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -5165,17 +5271,18 @@
         },
         {
           "path": "lib/reviter/native-structural-profiles.ts",
-          "sha256": "ab519c0071d502caba7ca0dd0c78930576059cfe0e95aaad668e0e088537fbb4",
+          "sha256": "ae318b5718d7289613ad1c3d339b87e232ba8d218f8f3a05969777838aa6acd5",
           "exportedSymbols": [
             "STRUCTURAL_SECTION_SHAPE_PARAMETER",
             "STRUCTURAL_SECTION_PARAMETERS",
             "NativeStructuralSection",
+            "resolveNativeSectionFamilyRelations",
             "createNativeStructuralSectionCollector"
           ]
         },
         {
           "path": "lib/reviter/export-ifc-material-profiles.ts",
-          "sha256": "bff754377d8ed34c6fc07efe23b8fbf8e6613221005d70c315d3dc86601707ab",
+          "sha256": "43b81b9be90afcc0c05e66d6420b429b0c87f18346e179eb9bc156a7c7b4ba18",
           "exportedSymbols": [
             "NativeMaterialProfilePlan",
             "planNativeMaterialProfiles"
@@ -5183,7 +5290,12 @@
         },
         {
           "path": "scripts/audit-ifc-native-maps-profiles.ts",
-          "sha256": "5f0f30f24c5ff733f0d30f5efbf6ad7dc9a67def38e6774535e8ede504fd91c1",
+          "sha256": "ded899ac0d0e0ab80e128507dfa18a1fdd036bda1b81a1e6ea8d1dc6441cfcfe",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-structural-profile-family-validation.json",
+          "sha256": "1611e80fd009b9fb7bc15ab5d698639e17ef1a308fa73e3bba512a8a4075fa49",
           "exportedSymbols": []
         }
       ],
@@ -5422,19 +5534,26 @@
         "lib/reviter/export-report.ts",
         "lib/reviter/viewer.ts",
         "lib/reviter/native-schedule-inventory.ts",
+        "lib/reviter/native-schedule-html.ts",
         "lib/reviter/native-drawing-svg.ts",
         "scripts/inspect-native-schedules.ts",
-        "scripts/audit-native-schedules.ts"
+        "scripts/audit-native-schedules.ts",
+        "scripts/prepare-native-schedule-html-browser.ts",
+        "scripts/validate-native-schedule-html-browser.mjs",
+        "docs/generated/rvt-native-cached-schedule-html-browser-validation.json",
+        "docs/generated/rvt-native-cached-schedule-negative-validation.json",
+        "docs/generated/rvt-native-source-continuation-browser-validation.json"
       ],
       "regressionSuites": [
         "tests/export-schedules.test.ts",
         "tests/export-ifc.test.ts",
         "tests/native-schedule-inventory.test.ts",
+        "tests/native-schedule-html.test.ts",
         "tests/native-drawing-svg.test.ts"
       ],
-      "behavior": "Generated element/room/parameter CSVs are supplemented by source-authored schedule definitions, aligned field/order/filter/sort records, bounded expression trees and owned cached cell text. RAC/School/Snowdon recover 8/10/79 complete schedules with zero source-graph disagreements; optional exact-view SVG annotation previews remain separate from model plan exports.",
-      "limitations": "Private native operator/function/storage codes are retained without guessed mappings or execution. Stored cached text is not refreshed schedule body values, row membership, filtering/sorting execution, formulas/totals or native layout; 13 Snowdon schedule graphs remain unresolved and UNBC 2027 is outside this schedule adapter contract.",
-      "nextAction": "Preserve authored schedule structure and expression pointers; add evaluated behavior only with actual native/API semantics and paired evidence.",
+      "behavior": "Generated element/room/parameter CSVs are supplemented by authored schedule fields/order/filter/sort records, bounded expressions and owned cached cells. Qualified cached HTML preserves native row heights, column widths, stored visibility and reciprocal rectangular merges. Chromium independently reopened all 97 real RAC/School/Snowdon schedules plus one adversarial-text fixture; nine corrupted-layout mutations were explicitly refused. App and CLI offer schedule selection and optional inclusion of source-hidden sections. An actual production RAC desktop/mobile audit independently reopens three HTML downloads and the source-circle SVG with no browser errors, remote artifact requests or overflow; its selected schedule has no hidden section, so positive hidden-section fidelity belongs to the 97-schedule corpus audit.",
+      "limitations": "Cached text/layout is not refreshed row membership, grouping/filter/sort execution, formulas/totals, native fonts/styles/wrapping or print pagination. Private operator/function/storage codes remain unevaluated. Thirteen Snowdon schedule graphs remain unresolved; UNBC 2027 is outside this schedule adapter contract. Partial sections, HTML size budgets and omission reasons remain explicit; source-hidden sections default to omitted.",
+      "nextAction": "Preserve native dimensions/merge/visibility pointer witnesses and bounded escaped HTML; implement recalculation only after actual operator and row-membership semantics are proved.",
       "upstreamEvidence": [
         {
           "path": "src/ifc/gltf.rs",
@@ -5519,9 +5638,15 @@
         "lib/reviter/export-report.ts",
         "lib/reviter/viewer.ts",
         "lib/reviter/native-schedule-inventory.ts",
+        "lib/reviter/native-schedule-html.ts",
         "lib/reviter/native-drawing-svg.ts",
         "scripts/inspect-native-schedules.ts",
-        "scripts/audit-native-schedules.ts"
+        "scripts/audit-native-schedules.ts",
+        "scripts/prepare-native-schedule-html-browser.ts",
+        "scripts/validate-native-schedule-html-browser.mjs",
+        "docs/generated/rvt-native-cached-schedule-html-browser-validation.json",
+        "docs/generated/rvt-native-cached-schedule-negative-validation.json",
+        "docs/generated/rvt-native-source-continuation-browser-validation.json"
       ],
       "localEvidenceMissing": [],
       "localEvidence": [
@@ -5589,12 +5714,14 @@
         },
         {
           "path": "lib/reviter/native-schedule-inventory.ts",
-          "sha256": "8a326478bdfd59ec6879cc835ef75c1ce9fe1d74df93cc6c600645d211d478f9",
+          "sha256": "6db8415d3f77e6faf72ab929480d195642439004c0f293880fe97ec4e0159272",
           "exportedSymbols": [
             "ScheduleWitness",
             "StoredScheduleField",
             "StoredScheduleExpression",
             "StoredScheduleCell",
+            "StoredScheduleDimension",
+            "StoredScheduleSection",
             "StoredNativeSchedule",
             "NativeScheduleInventory",
             "buildNativeScheduleInventory",
@@ -5602,8 +5729,21 @@
           ]
         },
         {
+          "path": "lib/reviter/native-schedule-html.ts",
+          "sha256": "748b684ab077b9766a67cd2111710134fa5a4beb0e59484f8a4f6b0c562dcecd",
+          "exportedSymbols": [
+            "CachedScheduleMerge",
+            "CachedScheduleSection",
+            "CachedScheduleLayout",
+            "NativeScheduleHtmlOptions",
+            "NativeScheduleHtmlPreview",
+            "buildNativeCachedScheduleLayout",
+            "makeNativeScheduleHtml"
+          ]
+        },
+        {
           "path": "lib/reviter/native-drawing-svg.ts",
-          "sha256": "d6effe5a9a1d6617cc057c39cb800fec351084997be316ec40ef9eeb17076b38",
+          "sha256": "048533fe19c9492d04428b304fb96cba66f0e9f84b0655959c43d3034e1430e8",
           "exportedSymbols": [
             "NativeDrawingPreview",
             "extractNativeRtfPlainText",
@@ -5613,21 +5753,48 @@
         },
         {
           "path": "scripts/inspect-native-schedules.ts",
-          "sha256": "d731ac76b2e78464a27edc7248e79fc32f65b544700479aaefda8572dfaaf8bc",
+          "sha256": "a26a7f92aefdf1b91b0e405432f73eb76f39fdfb3c86b62f534c1d56731eff35",
           "exportedSymbols": []
         },
         {
           "path": "scripts/audit-native-schedules.ts",
-          "sha256": "6bdc8fc585945712d06fa4151b47143001c62b32ec4dc58494d92c219cec60d0",
+          "sha256": "a79bae468c0802389075dac801235a0e8c881ef9a57f4469e677d31d84a74e8d",
           "exportedSymbols": [
-            "auditNativeSchedules"
+            "auditNativeSchedules",
+            "auditNativeScheduleNegativeLayouts"
           ]
+        },
+        {
+          "path": "scripts/prepare-native-schedule-html-browser.ts",
+          "sha256": "095dac377e8ed588d36d0b0b734c58a6c16c24b3fd690fe66f4a6e9f1ae53929",
+          "exportedSymbols": []
+        },
+        {
+          "path": "scripts/validate-native-schedule-html-browser.mjs",
+          "sha256": "41e818c3e874ca1f54040ffec93555cb950856a6e66d9a85a00007dfd2cea415",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-cached-schedule-html-browser-validation.json",
+          "sha256": "83bdc833002902af8dc3d6a1ab651ede58b6c7a63ff8bf8550cf6a24f625b1d5",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-cached-schedule-negative-validation.json",
+          "sha256": "576b13bdd0d2a3d69077206bc175d708988806cefed400a2c32d3b5ee90e096a",
+          "exportedSymbols": []
+        },
+        {
+          "path": "docs/generated/rvt-native-source-continuation-browser-validation.json",
+          "sha256": "901300a60b640f0bd99a228aa11a0fe6877e9a5d59bdf4c726c2bb98f54a5dd1",
+          "exportedSymbols": []
         }
       ],
       "regressionSuitesPresent": [
         "tests/export-schedules.test.ts",
         "tests/export-ifc.test.ts",
         "tests/native-schedule-inventory.test.ts",
+        "tests/native-schedule-html.test.ts",
         "tests/native-drawing-svg.test.ts"
       ],
       "regressionSuitesMissing": [],
@@ -6077,7 +6244,7 @@
       "localEvidence": [
         {
           "path": "scripts/compare-rvt-readers.ts",
-          "sha256": "a204b052556265d80cabd4278405dabb06c394cc43d15ff21d43ccf25988241b",
+          "sha256": "dbd57f357c3d893842a2f6e5bcd229b4654950f312734a65171303347585a641",
           "exportedSymbols": []
         },
         {
@@ -6147,7 +6314,7 @@
         },
         {
           "path": "scripts/audit-ifc-native-maps-profiles.ts",
-          "sha256": "5f0f30f24c5ff733f0d30f5efbf6ad7dc9a67def38e6774535e8ede504fd91c1",
+          "sha256": "ded899ac0d0e0ab80e128507dfa18a1fdd036bda1b81a1e6ea8d1dc6441cfcfe",
           "exportedSymbols": []
         }
       ],
@@ -6551,14 +6718,14 @@
         },
         {
           "path": "lib/reviter/convert.ts",
-          "sha256": "c4b0c81e9c6c580f02d99d52f7cd7b2cea80f81092f4584e927625e0cc12b4d4",
+          "sha256": "e9c20e40d14c6ab1cdf914608db25f52f284bca049500cf7b0bb2a3ae7993a4b",
           "exportedSymbols": [
             "convertRvtBytes"
           ]
         },
         {
           "path": "lib/reviter/types.ts",
-          "sha256": "2dd24a2dc15c38c0ac78718615783af2444f669e8389daaf18af38d2fe383da8",
+          "sha256": "bab8f06bae2633e4cae9415dd3b08ec481683f5065e4eae87f8917829ab7ecbf",
           "exportedSymbols": [
             "Vec3",
             "Segment",
@@ -8347,6 +8514,7 @@
       ],
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/native_parametric_surface.rs#L7",
       "featureIds": [
+        "source-drafting",
         "parametric-surfaces"
       ]
     },
@@ -8524,6 +8692,7 @@
       ],
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/partition_beam_axes.rs#L46",
       "featureIds": [
+        "source-drafting",
         "beam-roof-shapes"
       ]
     },
@@ -9558,7 +9727,7 @@
       "sourceUrl": "https://github.com/helenkwok/rvt-rs/blob/1c3d337dbd2a6810e9dfad68fe99857843d67387/src/bin/rvt_schedule.rs#L1",
       "feature": "scene-export",
       "disposition": "new-port",
-      "interpretation": "Generated CSV inventories plus authored definitions/order/filter/sort/formula trees and owned cached table text exist; refreshed rows/formulas/native layout remain unresolved."
+      "interpretation": "Generated CSV inventories plus authored definitions/order/filter/sort/formula trees and owned cached table text exist; qualified cached HTML layout is available; refreshed rows/formulas/fonts/pagination remain unresolved."
     },
     {
       "path": "src/bin/rvt_schema.rs",
@@ -10840,6 +11009,6 @@
     "Declaration excerpts and public symbols are source witnesses, not proof of positive real-model decoder coverage.",
     "Missing local evidence is explicitly pending; a suite path in this inventory is not a claim it ran or passed.",
     "Counts of modules/features are inventory completeness measures, not supported-element, geometry or semantic completeness percentages.",
-    "Stored source graphs, parameter inheritance, authored schedule structure, partial annotation previews and spatial/site projections are qualified separately from evaluated Revit APIs. Actual audited material-profile emission is zero; current source-body selection intentionally changes geometry: its completed campaign records 16 preserved fields and eight expected digest/triangle changes. Pinned WASM content policies do not invoke the CLI/Python quality validator. Unknown formula, wall, view-filter and exporter type recipes remain unresolved."
+    "Stored source graphs, parameter inheritance, authored schedule structure, partial annotation previews and spatial/site projections are qualified separately from evaluated Revit APIs. Current actual optional profile audits emit two profiles/eight School usages and 11 profiles/427 structural Snowdon usages. Cached schedule HTML preserves qualified stored layout, not refreshed Revit results. Current four-model large-frame measurement records 478 admitted frames, 12 preserved bounds/origin/extents fields and 12 intentional mesh/hash/triangle changes; the earlier 16/eight benchmark remains historical. Current retained source-envelope census has 38 vetoes and no previously matching upstream type relationship lost. Pinned WASM content policies do not invoke the CLI/Python quality validator. Unknown formula, wall, view-filter and exporter type recipes remain unresolved."
   ]
 }

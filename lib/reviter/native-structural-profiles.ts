@@ -1,5 +1,7 @@
 /** RE-103 type-owned section parameters from rvt-rs partition_type_parameters.rs
  * at 1c3d337 (Apache-2.0). No section is derived from a name or bounds. */
+import { resolveFamilySymbolRelations, resolveUniqueFamilySymbolTargets } from "./family-material-relations.ts";
+import type { NativeFamilySymbolRelation, FamilySymbolCandidate, FamilySymbolReferenceSet } from "./family-material-relations.ts";
 import type { ElementParameterTable } from "./element-parameters.ts";
 
 export const STRUCTURAL_SECTION_SHAPE_PARAMETER = -1005501;
@@ -10,26 +12,64 @@ export const STRUCTURAL_SECTION_PARAMETERS = {
 type Field = keyof typeof STRUCTURAL_SECTION_PARAMETERS;
 export type NativeStructuralSection = {
   typeId: number; shape: "symmetric-I" | "unresolved"; shapeCode: number | null;
-  shapeSource?: "owned-integer-STRUCTURAL_SECTION_SHAPE"; widthFeet: number; depthFeet: number; webFeet: number; flangeFeet: number;
+  shapeSource?: "owned-integer-STRUCTURAL_SECTION_SHAPE" | "native-symbol-family-owned-STRUCTURAL_SECTION_SHAPE";
+  shapeOwnerElementId?: number;
+  shapeResolution?: "present-type" | "inherited-family";
+  shapeFamilyRelation?: NativeFamilySymbolRelation;
+  shapeWitnesses?: Array<{ ownerElementId: number; parameterId: typeof STRUCTURAL_SECTION_SHAPE_PARAMETER; value: number; stream?: string; chunkIndex?: number; rawOffset?: number }>;
+ widthFeet: number; depthFeet: number; webFeet: number; flangeFeet: number;
   centroidXFeet: number; centroidYFeet: number; revitVersion: number;
   source: "declared-type-value-block-six-section-parameters";
   witnesses: Array<{ parameterId: number; stream: string; chunkIndex: number; rawOffset: number; valueOffset: number }>;
 };
+/** Class/field-verified links for section owners use the declared source domain,
+ * independently of the geometry-cache admission domain used for face materials.
+ * Resolve every complete source frame; historical/conflicting targets cannot be
+ * silently replaced by the first or a stronger-looking later candidate. */
+export function resolveNativeSectionFamilyRelations(
+  candidates: readonly FamilySymbolCandidate[], referenceSets: readonly FamilySymbolReferenceSet[],
+  familyIds: ReadonlySet<number>, sectionOwnerIds: ReadonlySet<number>,
+): NativeFamilySymbolRelation[] {
+  if (candidates.length + referenceSets.length > 200_000) return [];
+  const links: NativeFamilySymbolRelation[] = [], blocked = new Set<number>();
+  for (const candidate of candidates) links.push(...resolveFamilySymbolRelations([candidate], familyIds, sectionOwnerIds));
+  for (const set of referenceSets) {
+    if (!sectionOwnerIds.has(set.symbolId)) continue;
+    if (set.staticTailReferencePairs.length % 2) { blocked.add(set.symbolId); continue; }
+    const targets = new Set<number>();
+    for (let i = 0; i < set.staticTailReferencePairs.length; i += 2) if (familyIds.has(set.staticTailReferencePairs[i]!)) targets.add(set.staticTailReferencePairs[i]!);
+    if (targets.size > 1) { blocked.add(set.symbolId); continue; }
+    links.push(...resolveUniqueFamilySymbolTargets([set], familyIds, sectionOwnerIds));
+  }
+  const families = new Map<number, number>();
+  for (const link of links) {
+    const previous = families.get(link.symbolId);
+    if (previous !== undefined && previous !== link.familyId) blocked.add(link.symbolId);
+    families.set(link.symbolId, link.familyId);
+  }
+  return links.filter(link => !blocked.has(link.symbolId));
+}
+
 export function createNativeStructuralSectionCollector(options: { revitVersion: number | null; elementIds: ReadonlySet<number> }) {
   const held = new Map<number, Map<Field, { value: number | null; witnesses: NativeStructuralSection["witnesses"] }>>();
   const fields = new Map<number, Field>(Object.entries(STRUCTURAL_SECTION_PARAMETERS).map(([key, value]) => [value, key as Field]));
   const shapes = new Map<number, number | null>();
+  const shapeWitnesses = new Map<number, NonNullable<NativeStructuralSection["shapeWitnesses"]>>();
   type Segment = { from: number; to: number; chunkIndex: number; rawOffset: number; valueOffset: number };
   const tails = new Map<string, { chunkIndex: number; tail: Uint8Array; ownerBeforeTail: number | null; segments: Segment[] }>();
   let work = 0, capped = false;
   return {
-    consumeOwnedParameters(table: ElementParameterTable): void {
+    consumeOwnedParameters(table: ElementParameterTable, location?: { stream: string; chunkIndex: number; rawOffset: number }): void {
       if (!options.elementIds.has(table.elementId) || ![2024, 2025, 2026, 2027].includes(options.revitVersion ?? 0)) return;
       for (const parameter of table.parameters) {
-        if (parameter.parameterId !== STRUCTURAL_SECTION_SHAPE_PARAMETER || typeof parameter.value !== "number" || !Number.isSafeInteger(parameter.value)) continue;
+        if (parameter.parameterId !== STRUCTURAL_SECTION_SHAPE_PARAMETER) continue;
+        if (shapes.size >= 100_000 && !shapes.has(table.elementId)) { capped = true; return; }
+        if (typeof parameter.value !== "number" || !Number.isSafeInteger(parameter.value)) { shapes.set(table.elementId, null); continue; }
         const previous = shapes.get(table.elementId);
-        if (shapes.size >= 100_000 && previous === undefined) { capped = true; return; }
         shapes.set(table.elementId, previous === undefined || previous === parameter.value ? parameter.value : null);
+        const witnesses = shapeWitnesses.get(table.elementId) ?? [];
+        if (witnesses.length < 16) witnesses.push({ ownerElementId: table.elementId, parameterId: STRUCTURAL_SECTION_SHAPE_PARAMETER, value: parameter.value, ...(location ? { stream: location.stream, chunkIndex: location.chunkIndex, rawOffset: location.rawOffset } : {}) });
+        shapeWitnesses.set(table.elementId, witnesses);
       }
     },
     consume(data: Uint8Array, location: { stream: string; chunkIndex: number; rawOffset: number; complete: boolean }): void {
@@ -74,19 +114,41 @@ export function createNativeStructuralSectionCollector(options: { revitVersion: 
       if (!checkpointed) ownerBeforeTail = owner;
       tails.set(location.stream, { chunkIndex: location.chunkIndex, tail: data.slice(cut), ownerBeforeTail, segments: segments.filter(segment => segment.to > cut).map(segment => ({ ...segment, from: Math.max(0, segment.from - cut), to: segment.to - cut, valueOffset: segment.valueOffset + Math.max(0, cut - segment.from) })) });
     },
-    finish(typeIds: ReadonlySet<number>): NativeStructuralSection[] {
-      if (capped) return [];
+    finish(typeIds: ReadonlySet<number>, relations: readonly NativeFamilySymbolRelation[] = []): NativeStructuralSection[] {
+      if (capped || relations.length > 200_000) return [];
+      const familyBySymbol = new Map<number, NativeFamilySymbolRelation | null>();
+      for (const relation of relations) {
+        if (!Number.isSafeInteger(relation.symbolId) || relation.symbolId <= 0 || !options.elementIds.has(relation.symbolId)) continue;
+        if (!Number.isSafeInteger(relation.familyId) || relation.familyId <= 0 || !options.elementIds.has(relation.familyId) ||
+          !["framed-family-symbol-family-id", "framed-family-symbol-static-tail"].includes(relation.evidence)) { familyBySymbol.set(relation.symbolId, null); continue; }
+        const previous = familyBySymbol.get(relation.symbolId);
+        if (previous === undefined) familyBySymbol.set(relation.symbolId, relation);
+        else if (previous && previous.familyId !== relation.familyId) familyBySymbol.set(relation.symbolId, null);
+      }
       const result: NativeStructuralSection[] = [];
       for (const [typeId, row] of held) {
         if (!typeIds.has(typeId)) continue;
         const values = Object.fromEntries([...row].map(([key, entry]) => [key, entry.value])) as Record<Field, number | null>;
         const { widthFeet: w, depthFeet: d, webFeet: web, flangeFeet: flange, centroidXFeet: x, centroidYFeet: y } = values;
         if ([w, d, web, flange, x, y].some(value => value == null) || !(w! > 0 && d! > 0 && web! > 0 && web! < w! && flange! > 0 && 2 * flange! < d!)) continue;
-        const shapeCode = shapes.get(typeId) ?? null;
+        // Section shape is a family classification. Some symbols store their
+        // own value, others store only section metrics and reference the
+        // family owning the integer. A present 0/invalid/conflict cannot inherit.
+        const sourceFamilyRelation = familyBySymbol.get(typeId) ?? undefined;
+        const familyRelation = shapes.has(typeId) ? undefined : sourceFamilyRelation;
+        const shapeOwnerElementId = familyRelation?.familyId ?? typeId;
+        const conflictsWithFamily = shapes.has(typeId) && sourceFamilyRelation && shapes.has(sourceFamilyRelation.familyId) &&
+          shapes.get(typeId) !== shapes.get(sourceFamilyRelation.familyId);
+        const shapeCode = conflictsWithFamily ? null : shapes.get(shapeOwnerElementId) ?? null;
         // Autodesk API defines parallel-flange I=6 and wide-flange I=8.
         // Centered metrics alone also fit other symmetric section families.
         const provenI = [6, 8].includes(shapeCode ?? 0) && Math.abs(x! - w! / 2) <= 1e-4 && Math.abs(y! - d! / 2) <= 1e-4;
-        result.push({ typeId, shape: provenI ? "symmetric-I" : "unresolved", shapeCode, ...(provenI ? { shapeSource: "owned-integer-STRUCTURAL_SECTION_SHAPE" as const } : {}), widthFeet: w!, depthFeet: d!, webFeet: web!, flangeFeet: flange!, centroidXFeet: x!, centroidYFeet: y!, revitVersion: options.revitVersion!, source: "declared-type-value-block-six-section-parameters", witnesses: [...row.values()].flatMap(entry => entry.witnesses) });
+        result.push({ typeId, shape: provenI ? "symmetric-I" : "unresolved", shapeCode, ...(provenI ? {
+          shapeSource: familyRelation ? "native-symbol-family-owned-STRUCTURAL_SECTION_SHAPE" as const : "owned-integer-STRUCTURAL_SECTION_SHAPE" as const,
+          shapeOwnerElementId, shapeResolution: familyRelation ? "inherited-family" as const : "present-type" as const,
+          ...(familyRelation ? { shapeFamilyRelation: { ...familyRelation } } : {}),
+          shapeWitnesses: shapeWitnesses.get(shapeOwnerElementId)?.map(witness => ({ ...witness })) ?? [],
+        } : {}), widthFeet: w!, depthFeet: d!, webFeet: web!, flangeFeet: flange!, centroidXFeet: x!, centroidYFeet: y!, revitVersion: options.revitVersion!, source: "declared-type-value-block-six-section-parameters", witnesses: [...row.values()].flatMap(entry => entry.witnesses) });
       }
       return result.sort((a, b) => a.typeId - b.typeId);
     },

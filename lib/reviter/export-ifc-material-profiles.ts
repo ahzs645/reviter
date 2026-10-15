@@ -28,7 +28,11 @@ export function planNativeMaterialProfiles(result: ConvertResult): NativeMateria
     if (!record || ![-2001320, -2001330].includes(record.categoryId ?? 0)) continue;
     const type = record.typeId ?? record.familySymbolId;
     const section = type === undefined ? undefined : sections.get(type), ids = assignments.get(elementId);
-    if (!section || (ids && (ids.size !== 1 || !Number.isSafeInteger([...ids][0]!) || [...ids][0]! <= 0 || !materials.has([...ids][0]!))) || section.source !== "declared-type-value-block-six-section-parameters" || section.shape !== "symmetric-I" || section.shapeSource !== "owned-integer-STRUCTURAL_SECTION_SHAPE" || ![6, 8].includes(section.shapeCode ?? 0) ||
+    if (!section || (ids && (ids.size !== 1 || !Number.isSafeInteger([...ids][0]!) || [...ids][0]! <= 0 || !materials.has([...ids][0]!))) || section.source !== "declared-type-value-block-six-section-parameters" || section.shape !== "symmetric-I" || !(section.shapeSource === "owned-integer-STRUCTURAL_SECTION_SHAPE" ||
+        (section.shapeSource === "native-symbol-family-owned-STRUCTURAL_SECTION_SHAPE" && section.shapeResolution === "inherited-family" &&
+          section.shapeFamilyRelation?.symbolId === section.typeId && section.shapeFamilyRelation.familyId === section.shapeOwnerElementId &&
+          ["framed-family-symbol-family-id", "framed-family-symbol-static-tail"].includes(section.shapeFamilyRelation.evidence) &&
+          section.shapeWitnesses?.some(witness => witness.ownerElementId === section.shapeOwnerElementId && witness.parameterId === -1005501 && witness.value === section.shapeCode))) || ![6, 8].includes(section.shapeCode ?? 0) ||
       ![section.widthFeet, section.depthFeet, section.webFeet, section.flangeFeet].every(value => Number.isFinite(value) && value > 0) ||
       section.webFeet >= section.widthFeet || 2 * section.flangeFeet >= section.depthFeet ||
       !Number.isFinite(section.centroidXFeet) || !Number.isFinite(section.centroidYFeet) ||

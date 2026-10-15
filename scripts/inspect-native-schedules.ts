@@ -4,11 +4,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { readNativeSourceEvidence, type NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
 import { buildNativeScheduleInventory, makeNativeScheduleInventoryCsv } from "../lib/reviter/native-schedule-inventory.ts";
+import { makeNativeScheduleHtml } from "../lib/reviter/native-schedule-html.ts";
 import type { RvtWasmModule } from "../lib/reviter/standards-reader.ts";
-import { declareUsage, isEntryPoint, optionValue, positionals } from "./lib/rvt-harness.ts";
+import { declareUsage, hasFlag, isEntryPoint, optionValue, positionals } from "./lib/rvt-harness.ts";
 async function run() {
-  declareUsage("inspect-native-schedules.ts model.rvt [--evidence source-evidence.json] [--out inventory.json] [--csv inventory.csv] [--evidence-out source-evidence.json]");
-  const [input] = positionals("--evidence", "--out", "--csv", "--evidence-out"); if (!input) throw new Error("Supply a source RVT file.");
+  declareUsage("inspect-native-schedules.ts model.rvt [--evidence source-evidence.json] [--out inventory.json] [--csv inventory.csv] [--evidence-out source-evidence.json] [--html schedule.html --schedule-id 123] [--include-hidden-sections] [--preview-json preview.json]");
+  const [input] = positionals("--evidence", "--out", "--csv", "--evidence-out", "--html", "--schedule-id", "--preview-json"); if (!input) throw new Error("Supply a source RVT file.");
   const bytes = new Uint8Array(readFileSync(input)), evidencePath = optionValue("--evidence");
   const report: NativeEvidenceReport = evidencePath ? JSON.parse(readFileSync(evidencePath, "utf8")) : await readNativeSourceEvidence(bytes, { selectedClasses: ["DBViewSchedule"], maxRecords: 512 }, async () => {
     const wasm = await import("../lib/rvt-wasm/rvt.js");
@@ -19,6 +20,14 @@ async function run() {
   const evidenceOutput = optionValue("--evidence-out"); if (evidenceOutput) writeFileSync(evidenceOutput, JSON.stringify(report, null, 2) + "\n");
   const inventory = buildNativeScheduleInventory(report), csv = optionValue("--csv"), output = optionValue("--out");
   if (csv) writeFileSync(csv, makeNativeScheduleInventoryCsv(inventory, { excelBom: true }));
+  const htmlPath = optionValue("--html");
+  if (htmlPath) {
+    const scheduleId = optionValue("--schedule-id"); if (!scheduleId) throw new Error("--html requires an exact --schedule-id.");
+    const preview = makeNativeScheduleHtml(inventory, { scheduleId, includeHiddenSections: hasFlag("--include-hidden-sections") });
+    if (!preview.html) throw new Error(`Cached schedule HTML is ${preview.status}: ${[...preview.diagnostics, ...preview.omittedSections.map(s => s.reason)].join(" ")}`);
+    writeFileSync(htmlPath, preview.html);
+    const previewPath = optionValue("--preview-json"); if (previewPath) writeFileSync(previewPath, JSON.stringify({ ...preview, html: undefined }, null, 2) + "\n");
+  }
   const json = JSON.stringify(inventory, null, 2) + "\n";
   if (output) { writeFileSync(output, json); console.log(JSON.stringify({ status: inventory.status, schedules: inventory.schedules.length, fields: inventory.schedules.reduce((n, s) => n + s.fields.length, 0), storedCells: inventory.schedules.reduce((n, s) => n + s.cells.length, 0), sourceSha256: inventory.sourceSha256 })); }
   else console.log(json);
