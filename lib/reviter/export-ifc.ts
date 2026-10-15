@@ -25,11 +25,13 @@ import { spacePredefinedType } from "./room-review.ts";
 import { designOptionExportDecision, type DesignOptionSelectionMode } from "./design-options.ts";
 import { emitNativeMepIfc } from "./export-ifc-mep.ts";
 import { emitNativeRoomsIfc } from "./export-ifc-native-rooms.ts";
+import { emitSourceOrganizationIfc, sourceIfcCoordinateMetadata } from "./export-ifc-source-organization.ts";
 import { emitNativePhaseSpatialIfc } from "./export-ifc-phase-spatial.ts";
 import { emitNativePipeShape, type NativePipeShape } from "./export-ifc-mep-geometry.ts";
 import { IFC_GUID_PARAMETER, IFC_TYPE_GUID_PARAMETER, isIfcGlobalId, nativeIfcGlobalIds, revitProjectedTypeGlobalId, storedIfcGlobalId } from "./ifc-global-id.ts";
+import { planNativeMaterialProfiles } from "./export-ifc-material-profiles.ts";
 import { nativeFamilyTypeGlobalId } from "./native-ifc-type-identity.ts";
-import { planMappedGeometry, type MappedGeometryPlan } from "./export-ifc-mapped-geometry.ts";
+import { planMappedGeometry, mappedLocalFragments, type MappedGeometryPlan } from "./export-ifc-mapped-geometry.ts";
 
 import type {
   ConvertResult,
@@ -61,6 +63,10 @@ type IfcClass = {
 };
 
 export type IfcExportOptions = {
+  /** Source Areas/MEP-space identities and organization metadata; no inferred bodies. */
+  includeSourceSpatial?: boolean;
+  /** Source active-site orientation/geodetic metadata; canonical placements stay unchanged. */
+  sourceCoordinateMetadata?: boolean;
   /** Include source-authored room identities/outlines separately from reviewed spaces. */
   nativeRooms?: boolean;
   /** All alternatives by default; primary selection requires proven source evidence. */
@@ -377,9 +383,7 @@ function emitMappedTessellatedShape(
 ): number | null {
   let representationMap = maps.get(plan.group);
   if (representationMap == null) {
-    const local = fragments.map(fragment => ({ ...fragment,
-      positions: fragment.positions.map((position, index) => position - plan.translation[index % 3]!),
-    }));
+    const local = mappedLocalFragments(fragments, plan);
     const representation = emitTessellatedRepresentation(writer, context, local, styleByMaterial);
     if (representation == null) return null;
     const point = writer.add("IFCCARTESIANPOINT((0.,0.,0.))");
@@ -388,7 +392,8 @@ function emitMappedTessellatedShape(
     maps.set(plan.group, representationMap);
   }
   const point = writer.add(`IFCCARTESIANPOINT((${plan.translation.map(ifcNumber).join(",")}))`);
-  const transformation = writer.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${point},1.,$)`);
+  const axes = plan.basis ? [0, 1, 2].map(axis => writer.add(`IFCDIRECTION((${[plan.basis![axis], plan.basis![axis + 3], plan.basis![axis + 6]].map(value => ifcNumber(value!)).join(",")}))`)) : [];
+  const transformation = writer.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D(${axes[0] ? `#${axes[0]}` : "$"},${axes[1] ? `#${axes[1]}` : "$"},#${point},1.,${axes[2] ? `#${axes[2]}` : "$"})`);
   const mapped = writer.add(`IFCMAPPEDITEM(#${representationMap},#${transformation})`);
   const representation = writer.add(`IFCSHAPEREPRESENTATION(#${context},'Body','MappedRepresentation',(#${mapped}))`);
   return writer.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${representation}))`);
@@ -949,6 +954,9 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     return value;
   };
   const nativeGuids = nativeIfcGlobalIds(result.nativeIdentity?.identities ?? []);
+  const sourceOrganization = result.nativeSpatialOrganization;
+  const sourceCoordinates = options.sourceCoordinateMetadata === true
+    ? sourceIfcCoordinateMetadata(sourceOrganization, result.sourceSha256) : null;
   const nativeGuidOwners = new Map([...nativeGuids].map(([id, value]) => [value, id]));
   const rootGuid = (kind: string, key: string | number, nativeElementId?: number | null, candidate?: string | null): string => {
     const native = nativeElementId == null ? undefined : nativeGuids.get(nativeElementId);
@@ -1050,8 +1058,9 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   );
   const worldPoint = writer.add("IFCCARTESIANPOINT((0.,0.,0.))");
   const worldAxis = writer.add(`IFCAXIS2PLACEMENT3D(#${worldPoint},$,$)`);
+  const trueNorth = sourceCoordinates ? writer.add(`IFCDIRECTION(${sourceCoordinates.northStep})`) : null;
   const context = writer.add(
-    `IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#${worldAxis},$)`,
+    `IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#${worldAxis},${trueNorth ? `#${trueNorth}` : "$"})`,
   );
   const bodyContext = writer.add(
     `IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${context},$,.MODEL_VIEW.,$)`,
@@ -1062,7 +1071,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
 
   const zeroPlacement = writer.add(`IFCLOCALPLACEMENT($,#${worldAxis})`);
   const site = writer.add(
-    `IFCSITE(${quoted(guid("site", 1))},#${ownerHistory},'Recovered site',$,$,#${zeroPlacement},$,$,.ELEMENT.,$,$,$,$,$)`,
+    `IFCSITE(${quoted(guid("site", 1))},#${ownerHistory},'Recovered site',$,$,#${zeroPlacement},$,$,.ELEMENT.,${sourceCoordinates?.latitudeStep ?? "$"},${sourceCoordinates?.longitudeStep ?? "$"},$,$,$)`,
   );
   const buildingPlacement = writer.add(`IFCLOCALPLACEMENT(#${zeroPlacement},#${worldAxis})`);
   const building = writer.add(
@@ -1533,6 +1542,17 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     levelNames: new Map(result.levels.flatMap(level => level.levelId == null || !level.name ? [] : [[level.levelId, level.name]])),
     guid, quoted,
   });
+  if (options.includeSourceSpatial === true || options.sourceCoordinateMetadata === true) {
+    const sourceSpatial = emitSourceOrganizationIfc(writer, sourceOrganization, {
+      sourceSha256: result.sourceSha256, ownerHistory, projectEntity: project, siteEntity: site,
+      buildingEntity: building, storeyByLevelId,
+      representedElementIds: new Set(semanticProductEntities.keys()), suppressedElementIds,
+      includeSpatial: options.includeSourceSpatial === true, includeCoordinates: options.sourceCoordinateMetadata === true,
+      nativeGlobalId: elementId => nativeGuids.get(elementId),
+      globalId: elementId => rootGuid("source-spatial", elementId, elementId), guid, quoted,
+    });
+    for (const [elementId, entity] of sourceSpatial.entityByElementId) semanticProductEntities.set(elementId, entity);
+  }
   if (options.mep === true && result.nativeMepEvidence) {
     emitNativeMepIfc(writer, result.nativeMepEvidence, {
       ownerHistory, elementEntities: productByElement, quoted,
@@ -1598,6 +1618,35 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
     }
   }
 
+  // Profiles add source-authored cross-section semantics without replacing
+  // certified triangles. Cardinal point/length stay unset: they are not read.
+  const profileAssociatedElements = new Set<number>();
+  const profileSets = new Map<string, number>();
+  const profileTypeAssociations = new Set<string>();
+  for (const plan of planNativeMaterialProfiles(result)) {
+    const product = productByElement.get(plan.elementId);
+    if (!product || compoundByElement.has(plan.elementId) || !["IFCBEAM", "IFCCOLUMN", "IFCMEMBER"].includes(classByElement.get(plan.elementId)?.entity ?? "")) continue;
+    const section = plan.section;
+    const key = `${section.typeId}:${plan.materialId}:${section.widthFeet}:${section.depthFeet}:${section.webFeet}:${section.flangeFeet}`;
+    let profileSet = profileSets.get(key);
+    if (!profileSet) {
+      const name = `Revit section type ${section.typeId}`;
+      const profile = writer.add(`IFCISHAPEPROFILEDEF(.AREA.,${quoted(name)},$,${feet(section.widthFeet)},${feet(section.depthFeet)},${feet(section.webFeet)},${feet(section.flangeFeet)},$,$,$)`);
+      const materialProfile = writer.add(`IFCMATERIALPROFILE(${quoted(name)},${quoted(plan.materialId == null ? "Persisted section descriptor; material unresolved" : "Persisted section descriptor and material")},${plan.materialId == null ? "$" : `#${materialEntity(plan.materialId)}`},#${profile},$,$)`);
+      profileSet = writer.add(`IFCMATERIALPROFILESET(${quoted(name)},'Source-owned symmetric I section',(#${materialProfile}),$)`);
+      profileSets.set(key, profileSet);
+    }
+    const usage = writer.add(`IFCMATERIALPROFILESETUSAGE(#${profileSet},$,$)`);
+    writer.add(`IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-profile-usage", plan.elementId))},#${ownerHistory},$,$,(#${product}),#${usage})`);
+    if (plan.materialId != null) profileAssociatedElements.add(plan.elementId);
+    const typeObject = typeObjectByElement.get(plan.elementId);
+    const typeKey = typeObject ? `${typeObject}:${profileSet}` : null;
+    if (typeObject && typeKey && !profileTypeAssociations.has(typeKey)) {
+      profileTypeAssociations.add(typeKey);
+      writer.add(`IFCRELASSOCIATESMATERIAL(${quoted(guid("rel-profile-type", typeKey))},#${ownerHistory},$,$,(#${typeObject}),#${profileSet})`);
+    }
+  }
+
   const assignmentsByElement = new Map<number, Set<number>>();
   for (const assignment of result.nativeElementMaterialAssignments ?? []) {
     const materials = assignmentsByElement.get(assignment.elementId) ?? new Set<number>();
@@ -1606,7 +1655,7 @@ export function makeIfcCenterlines(result: ConvertResult, options: IfcExportOpti
   }
   for (const [elementId, materialIds] of assignmentsByElement) {
     const product = productByElement.get(elementId);
-    if (!product || !materialIds.size || compoundByElement.has(elementId)) continue;
+    if (!product || !materialIds.size || compoundByElement.has(elementId) || profileAssociatedElements.has(elementId)) continue;
     const ids = [...materialIds].sort((left, right) => left - right);
     let relatingMaterial: number;
     if (ids.length === 1) {

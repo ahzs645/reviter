@@ -76,7 +76,7 @@ for (const model of source.models) {
       if (!existsSync(path)) return undefined;
       const bytes = readFileSync(path);
       return { sha256: createHash("sha256").update(bytes).digest("hex"), byteLength: bytes.length,
-        ...analyzeGlbDocument(readGlbDocument(bytes)), scope: "Reference topology/extent inventory only; the baseline hash proves unchanged Reviter scene, not agreement with these reference surfaces." };
+        ...analyzeGlbDocument(readGlbDocument(bytes)), scope: "Reference topology/extent inventory only; recorded baseline checks distinguish preserved data from measured source-body selection changes. They do not establish agreement with these reference surfaces." };
     })() });
   process.stdout.write(`Reopened ${basename(model.input)} outputs\n`);
 }

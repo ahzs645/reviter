@@ -14,12 +14,18 @@ export function IfcExportControls({ result, value, onChange, disabled }: {
   const ports = result.nativeMepEvidence?.ports?.length ?? 0;
   const pipes = result.nativeMepEvidence?.dimensions?.filter(dimension => dimension.pipeAxis && dimension.pipeInnerDiameterFeet != null && dimension.pipeOuterDiameterFeet != null).length ?? 0;
   const alternatives = result.nativeDesignOptionMembership?.length ?? 0;
+  const organization = result.nativeSpatialOrganization;
   const hasMeshes = result.meshes.length > 0;
   const storedGuids = (result.nativeIfcGuidParameters?.length ?? 0) > 0 || result.elementBounds.some(record =>
     [...record.parameters ?? [], ...record.typeParameters ?? []].some(parameter => parameter.parameterId === -1019000 || parameter.parameterId === -1019001));
-  if (!rooms && !systems && !joins && !ports && !alternatives && !storedGuids && !pipes && !hasMeshes) return null;
+  if (!rooms && !systems && !joins && !ports && !alternatives && !storedGuids && !pipes && !hasMeshes && !organization) return null;
   return <fieldset className="ifc-export-controls" disabled={disabled}>
     <legend>IFC content</legend>
+    {organization && <>
+      <label><input type="checkbox" checked={value.includeSourceSpatial === true} onChange={event => onChange({ ...value, includeSourceSpatial: event.target.checked })} />Include source Areas and MEP spaces</label>
+      {organization.coordinates.status === "proven" && <label><input type="checkbox" checked={value.sourceCoordinateMetadata === true} onChange={event => onChange({ ...value, sourceCoordinateMetadata: event.target.checked })} />Include source True North and site coordinates</label>}
+      <p>Source spaces carry identity only. Coordinate metadata preserves current geometry placements.</p>
+    </>}
     {hasMeshes && <label><input type="checkbox" checked={value.reuseMappedGeometry === true}
       onChange={event => onChange({ ...value, reuseMappedGeometry: event.target.checked })} />
       Share identical source type geometry in IFC</label>}

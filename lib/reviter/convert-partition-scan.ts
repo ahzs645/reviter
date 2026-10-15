@@ -121,6 +121,7 @@ import { createDesignOptionCollector, type NativeDesignOptions } from "./design-
 import type { SchemaSummary } from "./schema.ts";
 import { createNativePhaseSpatialCollector } from "./native-phase-spatial.ts";
 import { createNativeOriginalSymbolCollector, type NativeOriginalSymbolReference } from "./native-ifc-type-identity.ts";
+import { createNativeStructuralSectionCollector } from "./native-structural-profiles.ts";
 
 import type { OpenedRevitContainer } from "./convert-container.ts";
 import type { NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
@@ -203,10 +204,13 @@ export type PartitionScanInput = {
   declaredElementIds?: ReadonlySet<number>;
   /** Current ids plus validated creation histories, for original symbols only. */
   nativeTypeIdentityElementIds?: ReadonlySet<number>;
+  /** Complete source declaration domain for section metadata only. */
+  nativeSectionElementIds?: ReadonlySet<number>;
 };
 
 export type PartitionScan = {
   nativePhaseCollector: ReturnType<typeof createNativePhaseSpatialCollector>;
+  nativeStructuralSectionCollector: ReturnType<typeof createNativeStructuralSectionCollector>;
   nativeOriginalSymbols: NativeOriginalSymbolReference[];
   nativeRoomCollector: ReturnType<typeof createNativeRoomCollector>;
   nativeMepEvidence: NativeMepEvidence;
@@ -294,6 +298,10 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   } = input;
   const ifcExportCollector = createIfcExportParameterCollector(decoderPlan.revitVersion, input.declaredElementIds ?? new Set());
   const nativeRoomCollector = createNativeRoomCollector(decoderPlan.revitVersion);
+  const nativeStructuralSectionCollector = createNativeStructuralSectionCollector({
+    revitVersion: decoderPlan.revitVersion ?? 0,
+    elementIds: input.nativeSectionElementIds ?? input.nativeTypeIdentityElementIds ?? input.declaredElementIds ?? new Set<number>(),
+  });
   const nativeMepCollector = createNativeMepCollector({
     revitVersion: decoderPlan.revitVersion ?? 0,
     classes: input.schema?.taggedClasses ?? [],
@@ -441,6 +449,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       if (!inflated) continue;
       const semanticLocation = { stream: partition.path.replace(/^Root Entry\//, ""), chunkIndex: index, rawOffset: offsets[index]!, complete: Boolean(read) };
       nativeRoomCollector.consumePage(inflated, semanticLocation);
+      nativeStructuralSectionCollector.consume(inflated, semanticLocation);
       nativeMepCollector.pushPage(inflated, semanticLocation);
       designOptionCollector.pushPage(semanticLocation.stream, inflated);
       if (read) window = revitWindowTail(read);
@@ -666,6 +675,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       for (const table of collectElementParameters(inflated)) {
         ifcGuidWitnessCollector.consume(table, semanticLocation);
         ifcExportCollector.consumeOwnedParameters(table);
+        if (read) nativeStructuralSectionCollector.consumeOwnedParameters(table);
         const existing = elementParameters.get(table.elementId);
         if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
         else elementParameters.set(
@@ -824,6 +834,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   return {
     nativeIfcGuidParameters: ifcGuidWitnessCollector.snapshot(),
     nativePhaseCollector,
+    nativeStructuralSectionCollector,
     nativeOriginalSymbols: originalSymbolCollector.finish(),
     nativeRoomCollector,
     nativeMepEvidence: nativeMepCollector.finish(),

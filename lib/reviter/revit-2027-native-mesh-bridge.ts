@@ -5,6 +5,7 @@ import {
   type Revit2027PolyMeshFace,
 } from "./revit-2027-polymesh-owner-mesh.ts";
 import { revit2027UndrawnReplayIndices } from "./revit-2027-undrawn-geometry.ts";
+import { mergeDefault3dCutSelection } from "./revit-2027-default-3d-selection.ts";
 import { frameHeaderBytes } from "./element-id-width.ts";
 import { scanFramedElementObjects } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
@@ -1868,8 +1869,8 @@ export function createRevit2027NativeMeshCollector(
 
     // What the saved view leaves undrawn is neither drawn nor owed a mesh.
     // See `revit-2027-undrawn-geometry.ts`.
-    const undrawn = revit2027UndrawnReplayIndices(replayed.value.spans);
-    if (!undrawn) {
+    const savedUndrawn = revit2027UndrawnReplayIndices(replayed.value.spans);
+    if (!savedUndrawn) {
       state.definitionFailures.set(
         ownerElementId,
         "GRep replay parent links do not resolve to its own nodes",
@@ -1877,6 +1878,7 @@ export function createRevit2027NativeMeshCollector(
       if (directRoot) state.failedOwners += 1;
       return;
     }
+    const undrawn = mergeDefault3dCutSelection(replayed.value, savedUndrawn);
     const faceSpans = classifyRevit2027FaceSpans(replayed.value.spans);
     const drawnTokens = new Set(
       [...faceSpans.drawableTokens].filter((token) => {
@@ -2423,6 +2425,7 @@ export function buildRevit2027NativeMeshScene(
 
   const meshes: MeshData[] = [];
   const coveredElementIds = new Set<number>();
+  const admittedOwnBodyIds = new Set<number>();
   const reconstructedElementIds = new Set<number>();
   let triangles = 0;
   let faceMeshes = 0;
@@ -2479,6 +2482,14 @@ export function buildRevit2027NativeMeshScene(
   };
 
   for (const item of items) {
+    // A placed family can carry its own complete, instance-specific body
+    // (for example a column trimmed by its joined walls) and also reference
+    // the reusable untrimmed symbol. The symbol is a fallback, not another
+    // solid belonging to that same element. Keep it only when the preceding
+    // own-body candidate failed the independent envelope/budget admission.
+    // Provisional bodies still need cleanup/revalidation and cannot suppress
+    // a fallback here. Other placed elements using the symbol remain intact.
+    if (item.placement && admittedOwnBodyIds.has(item.elementId)) continue;
     // A complete GRep owner is not necessarily a placed model element. Revit
     // also persists reusable family definitions and nested symbol components.
     // Without an element-table record there is no placement/category/bounds to
@@ -2581,6 +2592,10 @@ export function buildRevit2027NativeMeshScene(
     triangles += item.owner.triangles;
     faceMeshes += item.owner.faces.length;
     coveredElementIds.add(item.elementId);
+    if (!item.placement && !provisionalElementIds.has(item.elementId) &&
+      !collection.reconstructedOwnerIds.has(item.owner.ownerElementId)) {
+      admittedOwnBodyIds.add(item.elementId);
+    }
     if (collection.reconstructedOwnerIds.has(item.owner.ownerElementId)) {
       reconstructedElementIds.add(item.elementId);
     }

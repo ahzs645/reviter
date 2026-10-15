@@ -2,11 +2,12 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { compareIfcIdentities, inventoryIfc, type IfcInventory } from "./lib/ifc-comparison-stats.ts";
 import { compareIfcTypeGlobalIds } from "./lib/ifc-type-comparison.ts";
+import { compareGeometrySnapshot, geometrySnapshot } from "./lib/geometry-baseline.ts";
 
 type Engine = "upstream" | "reviter" | "reference";
 const PINNED_UPSTREAM_COMMIT = "1c3d337dbd2a6810e9dfad68fe99857843d67387";
@@ -161,6 +162,7 @@ async function worker(engine: Engine, path: string, output: string, config: Conf
       const converted = convertRvtBytes(bytes, basename(path), config.reviterOptions);
       if (!converted.ok) { result.state = "refused"; result.error = converted.error; return result; }
       input.release = converted.decoderCoverage.revitVersion;
+      const beforeEnrichment = geometrySnapshot(converted);
       result.binaryProvenance = verifyPinnedWasm(config.reviterWasmJs, "reviter");
       const enrichment = await enrichConvertResultWithStandardsReader(converted, bytes, async () => {
         const wasm = await import(pathToFileURL(config.reviterWasmJs).href);
@@ -168,12 +170,23 @@ async function worker(engine: Engine, path: string, output: string, config: Conf
         return wasm;
       });
       result.diagnostics = enrichment.diagnostics;
+      const scene = geometrySnapshot(converted);
+      const baselinePath = join(config.baselineDirectory ?? dirname(path), `${basename(path, extname(path))}-base.json`);
+      const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, unknown> : undefined;
       const sources: Record<string, number> = {}, provenance: Record<string, number> = {};
       for (const element of elementManifest(converted)) {
         sources[element.geometry.source] = (sources[element.geometry.source] ?? 0) + 1;
         provenance[element.geometry.finalProvenance] = (provenance[element.geometry.finalProvenance] ?? 0) + 1;
       }
       result.conversion = {
+        ...scene,
+        geometryPreservedByEnrichment: beforeEnrichment.geometryHash === scene.geometryHash,
+        geometryBaseline: baseline ? {
+          path: baselinePath, checks: compareGeometrySnapshot(scene, baseline),
+          sourceHashMatches: typeof baseline.sourceSha256 === "string" ? baseline.sourceSha256 === input.sha256 : null,
+          inputIdentityScope: typeof baseline.sourceSha256 === "string" ? "Baseline declares its source SHA-256" : "Older baseline has no source SHA-256; byte length/release/path are context, not authenticated source identity",
+          interpretation: "Exact prior mesh bytes/counts/origin/bounds preservation; this is not proof of Revit shape accuracy.",
+        } : { path: baselinePath, state: "not-provided" },
         method: converted.method, stats: converted.stats,
         decoderCoverage: converted.decoderCoverage, warnings: converted.warnings,
         meshes: converted.meshes.length, triangles: converted.meshes.reduce((sum, mesh) => sum + mesh.indices.length / 3, 0),
@@ -191,7 +204,16 @@ async function worker(engine: Engine, path: string, output: string, config: Conf
         nativeSourceRooms: converted.nativeSourceRooms?.length ?? 0,
         nativeMepSystems: converted.nativeMepEvidence?.systems.length ?? 0,
         nativeMepConnections: converted.nativeMepEvidence?.connections.length ?? 0,
+        nativeMepPorts: converted.nativeMepEvidence?.ports?.length ?? 0,
+        nativeMepDimensions: converted.nativeMepEvidence?.dimensions?.length ?? 0,
         nativeDesignOptionSets: converted.nativeDesignOptions?.sets.length ?? 0,
+        nativePhaseDefinitions: converted.nativePhaseEvidence?.phases.length ?? 0,
+        nativePhaseElements: converted.nativePhaseEvidence?.elementPhases.length ?? 0,
+        nativeExtraLevelParameters: converted.nativePhaseEvidence?.levelParameters.length ?? 0,
+        nativeRoomFloorFinishes: converted.nativePhaseEvidence?.roomFloorFinishes.length ?? 0,
+        nativeOriginalTypeIdentityEvidence: converted.nativeIfcTypeIdentityEvidence?.length ?? 0,
+        nativeIfcGuidParameterTables: converted.nativeIfcGuidParameters?.length ?? 0,
+        nativeIfcSemanticElements: converted.nativeIfcSemanticEvidence?.elements.length ?? 0,
         geometrySources: sources, geometryProvenance: provenance,
       };
       text = makeIfc(converted, config.ifcOptions);

@@ -12,6 +12,9 @@ import type { RevitTransmissionData } from "./transmission-data.ts";
 import type { WorkerEnvelope, WorkerProgress } from "./worker-client.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
+import type { InstancePlacement } from "./instanced-geometry.ts";
+import type { NativeSpatialOrganization } from "./native-spatial-organization.ts";
+import type { NativeStructuralSection } from "./native-structural-profiles.ts";
 import type { FullElemTableInventory, FullElemTableInventoryFailure } from "./elem-table.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import type {
@@ -807,6 +810,11 @@ export type ConvertResult = {
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
+  /** Decoded source placement witnesses, retained for optional IFC sharing. */
+  nativeInstancePlacements?: InstancePlacement[];
+  nativeStructuralSections?: NativeStructuralSection[];
+  /** On-demand source organization; exact source hash required by IFC authoring. */
+  nativeSpatialOrganization?: NativeSpatialOrganization;
   /** Source-authored rooms; these do not certify navigation boundaries. */
   nativeSourceRooms?: NativeSourceRoom[];
   nativeMepEvidence?: NativeMepEvidence;

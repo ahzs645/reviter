@@ -21,15 +21,25 @@ attribution. Vendored WASM also carries the licence, notice and build provenance
 | `export-ifc-mep-geometry.ts` | RE-131/157 pipe axes and diameters | Optional IFC-only hollow sweep with six-face bounds checks and explicit reconstruction provenance |
 | `native-phase-spatial.ts` | Native phase, associated-level and room-finish readers | Source references and release-bounded fields; lifecycle order remains separately proved |
 | `document-metadata.ts`, `export-schedules.ts` | `rvt-info`, `rvt-schedule`, Atom/ProjectInformation metadata | Independent bounded safe-container inspection and formula-neutralized inventory CSV |
-| `viewpoint-links.ts` | Upstream viewer URL-fragment concept | Independent versioned SHA-256 binding using Reviter's existing live-camera/model-coordinate helpers |
+| `viewpoint-links.ts` | `ifc/share.rs`, upstream viewer URL-fragment concept | Independent v1/v2/v3 SHA-256/review-frame binding, bounded selection/render state and opt-in user markup in canonical Revit feet |
 | `lib/rvt-wasm/patches/native-evidence.patch` | `native_document`, native definitions, metadata and storage catalog | Reviter-owned WASM-only bridge; core Rust decoders unchanged, explicit source/output budgets and exact integer strings |
-| `native-parameter-inventory.ts` | `native_parameter_definitions.rs`, `native_metadata.rs` | Concrete storage and owner-edge contracts, stricter family ownership and conflicting-unit gates; formula-neutralized CSV |
+| `native-parameter-inventory.ts` | `native_parameter_definitions.rs`, `native_metadata.rs`, source family/symbol schema | Concrete storage/owner-edge contracts; exact retained instance→symbol→family/type-binding inheritance; present conflicts block fallback, no family-default substitution or formula evaluation |
 | `native-record-inventory.ts` | `native_document.rs`, `native_parameters.rs`, typed drafting/organization modules | File-local schema fields, exact root owners and source pointer paths; serialized inventory and raw fallbacks |
 | `elem-table.ts::parseFullElemTableInventory` | `elem_table.rs` | Complete u32 source inventory with exact framing, source aliases and acyclic owners; scene admission retained separately |
-| `export-ifc-mapped-geometry.ts`, exporter mapping emitter | `ifc/step_writer.rs` | Optional representation maps; native type, exact ordered vertices/topology/materials and translation gates |
+| `export-ifc-mapped-geometry.ts`, exporter mapping emitter | `ifc/step_writer.rs`, IFC-21/30 | Optional translation/rotation maps with decoded native type/geometry identity, proper source basis, full ordered vertices/topology/materials and independent placement checks |
+| `native-schedule-inventory.ts` | `native_document.rs`, `native_parameters.rs`, `elements/drafting.rs`; actual file-local ScheduleSchema/TableCellData fields | Source-owned schedule definitions/order/filter/sort records, cached text and bounded expression trees; native enum/operator codes remain unevaluated |
+| `native-drawing-svg.ts`, drawing record paths | `elements/drafting.rs`, `elements/annotations.rs`; actual file-local drawing/tag/dimension/curve schema | Exact owner/view/pointer/frame gates; bounded partial SVG text, straight leaders, tag-head markers and finite detail curves; no regenerated sheets or native glyph/layout equivalence |
+| `native-spatial-categories.ts`, `native-spatial-organization.ts`, `export-ifc-source-organization.ts` | `native_document.rs`, `native_parameters.rs`, `elements/zones.rs`, `elements/reference_points.rs`, `elements/project_organization.rs` | Same-source category-header joins, exact revision/visibility state, active-site/owned matrix and survey direction proof; optional identity-only spatial/site IFC metadata preserves canonical placements |
+| `native-structural-profiles.ts`, `export-ifc-material-profiles.ts` | `partition_type_parameters.rs` RE-103, `ifc/mod.rs::material_profile_sets_from_sections`, `ifc/step_writer.rs`; Autodesk Section Shape enum and IFC4 profile specifications | Six owned section metrics plus explicit integer shape code and occurrence/material gates; source types/fillets remain unresolved when absent. Actual audited models emit zero profiles |
+| `revit-2027-default-3d-selection.ts`, native mesh bridge own-body precedence | `native_graphics_traversal.rs::direction_condition`, descriptor-owned GConditionCut 6–8 | Bounded FIFO ancestry/shared-occurrence checks and qualified own-body admission; measured selection suppresses duplicate alternatives without applying guessed wall trims |
+| Type-recipe diagnostics and withholding reasons | Autodesk `revit-ifc` exporter at `3d7195e808a3f6a2e5f81041ec1524b0b49ad3e8`, public geometry-summary/GUID/flip contracts | Primary-source research and independently calculated hypotheses only; no Autodesk implementation copied. Embedded pointers/reference matches never authorize an unproved recipe |
 
 New IFC room and MEP emitters consume the recovered evidence without replacing
-Reviter's geometry or indoor review algorithms. Individual source files identify
+Reviter's indoor review algorithms. Separately, qualified own-body precedence
+and descriptor-owned default-3D selection intentionally change UNBC's rendered
+body selection. The source/native bytes are preserved; measured owner geometry
+improvements and remaining wall/selection residuals are documented in
+[rvt-native-geometry-selection.md](rvt-native-geometry-selection.md). Individual source files identify
 their provenance and substantive changes. The existing IFC semantic notice is
 also retained under `lib/reviter/vendor/`.
 
@@ -37,3 +47,5 @@ The expanded inventory retains Apache attribution for upstream declaration
 excerpts. The vendor patch manifest and provenance record both the unmodified
 upstream revision and local patch hash; the comparison uses a separately built
 unmodified bundle as its upstream baseline.
+
+Public Autodesk API/exporter and buildingSMART references are evidence for independently implemented contracts, not copied source contributions. Their exact links and scope are recorded in [authored schedules](native-authored-schedules.md), [source drawings](native-source-drawings.md), [maps/profiles](native-ifc-maps-profiles.md), and the [exporter identity contract](revit-ifc-exporter-identity-contract.md).

@@ -98,3 +98,35 @@ test("sharing refuses different topology, materials, source/type ownership and n
   assert.equal(planMappedGeometry(result, new Map([[10, [{ ...fragment, source: "display-proxy" }]], [11, [{ ...fragment, source: "display-proxy" }]]])).size, 0);
   assert.equal(planMappedGeometry(result, new Map([[998, [fragment]], [999, [fragment]]])).size, 0);
 });
+
+test("source-backed rotations reuse one asymmetric map while independently reopened placement and colors agree", async () => {
+  const fixture = repeatedFixture();
+  fixture.nativeInstancePlacements = [];
+  const mesh = fixture.meshes[0]!;
+  for (let instance = 0; instance < 16; instance++) {
+    const quarter = instance % 4, c = [1, 0, -1, 0][quarter]!, s = [0, 1, 0, -1][quarter]!;
+    const basis = [c, -s, 0, s, c, 0, 0, 0, 1];
+    fixture.nativeInstancePlacements.push({ elementId: 100 + instance, geometryId: 987, basis, origin: [instance * 8 + 100, 200, 10] });
+    for (let vertex = instance * 48; vertex < (instance + 1) * 48; vertex++) {
+      const x = mesh.positions[vertex * 3]! - instance * 8, y = mesh.positions[vertex * 3 + 1]!;
+      mesh.positions[vertex * 3] = instance * 8 + c * x - s * y;
+      mesh.positions[vertex * 3 + 1] = s * x + c * y;
+    }
+  }
+  const ordinary = makeIfc(fixture), mapped = makeIfc(fixture, { reuseMappedGeometry: true });
+  assert.equal((mapped.match(/=IFCREPRESENTATIONMAP\(/g) ?? []).length, 1);
+  assert.equal((mapped.match(/=IFCMAPPEDITEM\(/g) ?? []).length, 16);
+  assert.deepEqual(await reopenedGeometry(mapped), await reopenedGeometry(ordinary));
+  const parsed = await new IfcParser().parseColumnar(new TextEncoder().encode(mapped).buffer); assert.equal(parsed.schemaVersion, "IFC4");
+});
+
+test("rotation reuse needs matching native geometry identity and rigid source bases", () => {
+  const fixture = ifcExportFixture(); fixture.elementBounds[1]!.typeId = 20;
+  fixture.nativeInstancePlacements = [{ elementId: 10, geometryId: 7, origin: [0, 0, 0], basis: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, { elementId: 11, geometryId: 7, origin: [0, 0, 0], basis: [0, -1, 0, 1, 0, 0, 0, 0, 1] }];
+  const a = { positions: [0, 0, 0, 1, 0, 0, 0, 2, 1], indices: [1, 2, 3], materialIndex: 0, source: "native-brep" as const };
+  const b = { ...a, positions: [0, 0, 0, 0, 1, 0, -2, 0, 1] };
+  const fragments = new Map([[10, [a]], [11, [b]]]); assert.equal(planMappedGeometry(fixture, fragments).size, 2);
+  fixture.nativeInstancePlacements[1]!.geometryId = 8; assert.equal(planMappedGeometry(fixture, fragments).size, 0);
+  fixture.nativeInstancePlacements[1]!.geometryId = 7; fixture.nativeInstancePlacements[1]!.basis[0] = .01; assert.equal(planMappedGeometry(fixture, fragments).size, 0);
+  fixture.nativeInstancePlacements[1]!.basis = [0, 1, 0, 1, 0, 0, 0, 0, 1]; assert.equal(planMappedGeometry(fixture, fragments).size, 0);
+});

@@ -1,0 +1,203 @@
+{
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "scope": "Raw same-byte graph field/pointer/owner checks and standalone Chromium SVG rendering; no Autodesk rendering/layout equivalence claim. Tag head markers are source points, not family glyphs.",
+  "models": [
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "viewId": "312",
+      "sourceSelection": {
+        "status": "complete",
+        "retainedRecords": 191,
+        "projectedRecords": 191,
+        "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+        "revitVersion": 2025
+      },
+      "retainedClasses": {
+        "LinearDimString": 112,
+        "DBViewPlan": 1,
+        "IndependentTag": 54,
+        "TextNote": 10,
+        "RoomTag": 14
+      },
+      "projectedFieldsComparedAgainstRawGraph": 5029,
+      "fieldMismatches": [],
+      "ownedPointerEdgeComparisons": 2706,
+      "renderedPrimitiveOwnerAndRecordDigestComparisons": 22,
+      "renderedPrimitives": {
+        "tag-head-marker": 19,
+        "text": 3
+      },
+      "renderedOwners": 22,
+      "omittedOwnedAnnotations": 2,
+      "svgSha256": "11541a0e73b025ec914e8e110d1773c446bf1ca68f3cdcb67a28ea7555518330"
+    },
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "viewId": "245424",
+      "sourceSelection": {
+        "status": "complete",
+        "retainedRecords": 79,
+        "projectedRecords": 79,
+        "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+        "revitVersion": 2025
+      },
+      "retainedClasses": {
+        "DBViewPlan": 1,
+        "IndependentTag": 54,
+        "TextNote": 10,
+        "RoomTag": 14
+      },
+      "projectedFieldsComparedAgainstRawGraph": 1434,
+      "fieldMismatches": [],
+      "ownedPointerEdgeComparisons": 1270,
+      "renderedPrimitiveOwnerAndRecordDigestComparisons": 32,
+      "renderedPrimitives": {
+        "tag-head-marker": 26,
+        "straight-leader": 2,
+        "text": 4
+      },
+      "renderedOwners": 30,
+      "omittedOwnedAnnotations": 0,
+      "svgSha256": "03b87c88929a151a1caf83cb7bd439ec1a9df24ead25c049ecff077a78449da1"
+    },
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "viewId": "958303",
+      "sourceSelection": {
+        "status": "complete",
+        "retainedRecords": 257,
+        "projectedRecords": 257,
+        "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+        "revitVersion": 2025
+      },
+      "retainedClasses": {
+        "DBViewSection": 1,
+        "CurveElem": 256
+      },
+      "projectedFieldsComparedAgainstRawGraph": 3351,
+      "fieldMismatches": [],
+      "ownedPointerEdgeComparisons": 1544,
+      "renderedPrimitiveOwnerAndRecordDigestComparisons": 3,
+      "renderedPrimitives": {
+        "source-detail-line": 3
+      },
+      "renderedOwners": 3,
+      "omittedOwnedAnnotations": 0,
+      "svgSha256": "b804f68d73550874fdaf65350804ee98785f86a02512a4dc2892ea55a81afef3"
+    },
+    {
+      "model": "school.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "viewId": "312",
+      "sourceSelection": {
+        "status": "complete",
+        "retainedRecords": 857,
+        "projectedRecords": 857,
+        "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+        "revitVersion": 2025
+      },
+      "retainedClasses": {
+        "DBViewPlan": 1,
+        "LinearDimString": 613,
+        "IndependentTag": 112,
+        "TextNote": 15,
+        "RoomTag": 116
+      },
+      "projectedFieldsComparedAgainstRawGraph": 22654,
+      "fieldMismatches": [],
+      "ownedPointerEdgeComparisons": 10242,
+      "renderedPrimitiveOwnerAndRecordDigestComparisons": 77,
+      "renderedPrimitives": {
+        "tag-head-marker": 77
+      },
+      "renderedOwners": 77,
+      "omittedOwnedAnnotations": 5,
+      "svgSha256": "66afbe0e807fd08b2da110a59235618599b72ad7510c1b4599a4862afb2d69ba"
+    },
+    {
+      "model": "snowdon.rvt",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "viewId": "1350631",
+      "sourceSelection": {
+        "status": "partial",
+        "retainedRecords": 2049,
+        "projectedRecords": 2049,
+        "schemaSha256": "0bfb947b3c9a0cec2ea9692873e3b0325f1c9387caaffddbce4cc2509e77cf21",
+        "revitVersion": 2024
+      },
+      "retainedClasses": {
+        "DBViewPlan": 1,
+        "TextNote": 309,
+        "IndependentTag": 1558,
+        "RoomTag": 181
+      },
+      "projectedFieldsComparedAgainstRawGraph": 28276,
+      "fieldMismatches": [],
+      "ownedPointerEdgeComparisons": 8169,
+      "renderedPrimitiveOwnerAndRecordDigestComparisons": 58,
+      "renderedPrimitives": {
+        "text": 2,
+        "tag-head-marker": 56
+      },
+      "renderedOwners": 58,
+      "omittedOwnedAnnotations": 0,
+      "svgSha256": "d646ba1beb665f6ea472961f6df48eb37b09dc1f85828f7e4349ad11d1b2cea9"
+    }
+  ],
+  "browser": {
+    "checks": [
+      {
+        "model": "rac",
+        "renderedOwnerCount": 22,
+        "textCount": 3,
+        "finiteViewBox": true,
+        "scripts": 0
+      },
+      {
+        "model": "rac-upper",
+        "renderedOwnerCount": 30,
+        "textCount": 4,
+        "finiteViewBox": true,
+        "scripts": 0
+      },
+      {
+        "model": "rac-detail",
+        "renderedOwnerCount": 3,
+        "textCount": 0,
+        "finiteViewBox": true,
+        "scripts": 0
+      },
+      {
+        "model": "school",
+        "renderedOwnerCount": 77,
+        "textCount": 0,
+        "finiteViewBox": true,
+        "scripts": 0
+      },
+      {
+        "model": "snowdon",
+        "renderedOwnerCount": 58,
+        "textCount": 2,
+        "finiteViewBox": true,
+        "scripts": 0
+      }
+    ]
+  },
+  "negativeWitness": {
+    "model": "snowdon.rvt",
+    "selection": [
+      "AreaTag",
+      "IndependentTag",
+      "LinearDimString",
+      "RoomTag",
+      "TextNote"
+    ],
+    "maxDecodedRecords": 4096,
+    "status": "budget-blocked",
+    "result": "No source summary/schema context; drawing projection refused."
+  }
+}

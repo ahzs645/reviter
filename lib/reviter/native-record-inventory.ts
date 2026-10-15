@@ -11,11 +11,15 @@ export const NATIVE_RECORD_INVENTORY_CLASSES = [
   "DBViewPlan", "DBView3d", "DBViewProject", "DBViewSchedule", "DBViewSection",
   "DBViewDrafting", "DBViewLegend", "Grid", "RefPlane", "BasePoint", "TextNote",
   "Dimension", "DimWithSegRefs", "ProjectRevision", "AreaMeasureElem", "RoomElem",
-  "WorksetVisibilitySettingsElem", "Viewport", "ViewSheetSet",
+  "WorksetVisibilitySettingsElem", "Viewport", "ViewSheetSet", "DBDrawing",
 ] as const;
+/** Focused selection keeps annotation-heavy files inside the default 4096 decode
+ * budget. Detailed dimension records should be requested by class/ID separately. */
+export const NATIVE_DRAWING_ANNOTATION_CLASSES = ["TextNote", "IndependentTag", "RoomTag", "AreaTag"] as const;
+export const NATIVE_DRAWING_CURVE_CLASSES = ["CurveElem"] as const;
 type JsonObject = Record<string, unknown>;
-type FieldType = "string" | "boolean" | "number" | "integer" | "element-id" | "element-id-list" | "point-feet" | "vector" | "rtf-bytes";
-type FieldValue = string | number | boolean | string[] | number[];
+type FieldType = "string" | "boolean" | "number" | "integer" | "element-id" | "element-id-list" | "point-feet" | "vector" | "rtf-bytes" | "point-feet-list" | "number-list";
+type FieldValue = string | number | boolean | string[] | number[] | number[][];
 export type NativeRecordPointer = { sourceObjectIndex: number; field: string; pointerOffset: number; pointerToken: number; targetObjectIndex: number; targetClass: string };
 export type NativeRecordField = {
   value: FieldValue; type: FieldType;
@@ -49,6 +53,7 @@ const view: Descriptor[] = [
   ["verticalDirection", "m_vertDir", "vector"], ["viewDirection", "m_viewDir", "vector"],
   ["explicitlyHiddenElementIds", "m_explicitlyHiddenElements", "element-id-list"],
   ["dependentViewIds", "m_dependentViewIds", "element-id-list"],
+  ["drawingId", "m_dbDrawingId", "element-id"], ["sheetViewportId", "m_sheetViewportElemId", "element-id"],
   ["sheetNumber", "m_sheetNumber", "string"], ["issueDate", "m_issueDate", "string"],
 ];
 const datum: Descriptor[] = [
@@ -56,6 +61,15 @@ const datum: Descriptor[] = [
   ["freeEndFeet", "m_freeEnd", "point-feet"], ["cutVector", "m_cutVec", "vector"],
 ];
 const classDescriptors: Record<string, { kind: string; fields: Descriptor[] }> = {
+  CurveElem: { kind: "source-curve", fields: [["detailCurve", "m_detail", "boolean"], ["usesOffsetPosition", "m_useOffsetPos", "boolean"], ["sketchPlaneId", "m_sketchPlaneId", "element-id"], ["categoryId", "m_categoryId", "element-id"], ["referenceTypeCode", "m_referenceType", "integer"]] },
+  DBDrawing: { kind: "drawing", fields: [["viewportIds", "m_viewports", "element-id-list"]] },
+  IndependentTag: { kind: "tag", fields: [["symbolId", "m_symbolId", "element-id"], ["hideIn3DView", "m_hideTagIn3DView", "boolean"], ["relativePositionValid", "m_isRelPosValid", "boolean"], ["multiReferenceAnnotationId", "m_multiReferenceAnnotationId", "element-id"]] },
+  RoomTag: { kind: "spatial-tag", fields: [["symbolId", "m_symbolId", "element-id"], ["taggedHostId", "m_taggedRoomElemId.m_linkInstOrHostId", "element-id"], ["taggedLinkedId", "m_taggedRoomElemId.m_linkRef", "element-id"], ["hasLeader", "m_bLeader", "boolean"], ["leaderStraight", "m_bLeaderIsStraight", "boolean"], ["leaderAnchorFeet", "m_leaderAnchor", "point-feet"], ["tagOffsetFeet", "m_tagOffset", "point-feet"], ["zoneSchemeId", "m_zoneSchemeId", "element-id"]] },
+  AreaTag: { kind: "spatial-tag", fields: [["symbolId", "m_symbolId", "element-id"]] },
+  LinearDimString: { kind: "linear-dimension", fields: [["typeId", "m_styleSymbolId", "element-id"], ["locked", "m_locked", "boolean"], ["storedReferencePointsFeet", "m_refPnts", "point-feet-list"], ["storedOriginFeet", "m_oldOrigin", "point-feet"], ["planeNormal", "m_planeNormal", "vector"], ["usesEqualityFormula", "m_useEqualityFormula", "boolean"], ["directionTypeCode", "m_dirType", "integer"]] },
+  RadialDim: { kind: "radial-dimension", fields: [["typeId", "m_styleSymbolId", "element-id"], ["locked", "m_locked", "boolean"]] },
+  AngularDim: { kind: "angular-dimension", fields: [["typeId", "m_styleSymbolId", "element-id"], ["locked", "m_locked", "boolean"]] },
+  ArcLengthDim: { kind: "arc-length-dimension", fields: [["typeId", "m_styleSymbolId", "element-id"], ["locked", "m_locked", "boolean"]] },
   DBViewPlan: { kind: "plan-view", fields: [...view, ["planViewTypeCode", "m_planViewType", "integer"], ["usesTrueNorth", "m_bUseTrueNorth", "boolean"], ["cutPlaneElevationFeet", "m_cutPlaneElev", "number"], ["topClipElevationFeet", "m_topClipElev", "number"], ["bottomClipElevationFeet", "m_bottomClipElev", "number"]] },
   DBView3d: { kind: "3d-view", fields: view }, DBViewProject: { kind: "project-view", fields: view },
   DBViewSchedule: { kind: "schedule-view", fields: view }, DBViewSection: { kind: "section-view", fields: view },
@@ -78,7 +92,7 @@ const hash = (value: unknown): value is string => typeof value === "string" && /
 function savedField(fields: JsonObject, path: string): { value: unknown } | null {
   let current: unknown = fields;
   for (const key of path.split(".")) {
-    const node = object(current); if (!node || !Object.hasOwn(node, key)) return null;
+    const node = Array.isArray(current) ? current as unknown as JsonObject : object(current); if (!node || !Object.hasOwn(node, key)) return null;
     current = node[key];
   }
   return { value: current };
@@ -107,6 +121,12 @@ function fieldValue(value: unknown, type: FieldType): FieldValue | null {
   if (type === "point-feet" || type === "vector") {
     const xyz = object(value)?.m_xyz ?? value;
     return Array.isArray(xyz) && xyz.length === 3 && xyz.every(n => typeof n === "number" && Number.isFinite(n)) ? [...xyz] as number[] : null;
+  }
+  if (type === "number-list") return Array.isArray(value) && value.length <= 2048 && value.every(n => typeof n === "number" && Number.isFinite(n)) ? [...value] as number[] : null;
+  if (type === "point-feet-list") {
+    if (!Array.isArray(value) || value.length > 2048) return null;
+    const points = value.map(p => fieldValue(p, "point-feet"));
+    return points.every(p => p !== null) ? points as number[][] : null;
   }
   return Array.isArray(value) && value.length <= 262_144 && value.every(n => natural(n) && n <= 255) ? [...value] as number[] : null;
 }
@@ -148,21 +168,62 @@ export function buildNativeRecordInventory(report: NativeEvidenceReport): Native
         projected.values[key] = { value, type, source: { objectIndex, objectClass: String(node!.class_name), field, pointerPath } };
       }
     };
-    const through = (field: string, targetClass: string, descriptors: Descriptor[]) => {
-      const pointer = object(fields[field]); if (!pointer || pointer.pointer_token === 0) return;
-      const edges = (graph.edges as unknown[]).map(object).filter(edge => edge?.source_object_index === 0 && edge.pointer_offset === pointer.offset);
-      if (edges.length !== 1) { projected.diagnostics.push(`${field}: missing or ambiguous owned pointer edge.`); return; }
-      const edge = edges[0]!, targetIndex = edge.target_object_index;
-      const target = natural(targetIndex) ? nodes[targetIndex] : null;
-      if (!target || target.class_name !== targetClass || target.class_tag !== pointer.class_tag || edge.target_class_tag !== pointer.class_tag || edge.pointer_token !== pointer.pointer_token || target.token !== pointer.pointer_token || !natural(target.start) || !natural(target.fields_end) || target.start >= target.fields_end || target.fields_end > (source.body_bytes as number) || !natural(pointer.offset) || !natural(pointer.pointer_token) || !natural(root?.start) || !natural(root?.fields_end) || pointer.offset < root.start || pointer.offset >= root.fields_end) { projected.diagnostics.push(`${field}: owned pointer token/class/bounds disagree.`); return; }
-      const path: NativeRecordPointer[] = [{ sourceObjectIndex: 0, field, pointerOffset: pointer.offset, pointerToken: pointer.pointer_token, targetObjectIndex: targetIndex as number, targetClass }];
-      append(descriptors, targetIndex as number, path);
+    const owned = (objectIndex: number, field: string, targetClass: string, priorPath: NativeRecordPointer[] = []): { objectIndex: number; path: NativeRecordPointer[] } | null => {
+      const owner = nodes[objectIndex], ownerFields = object(owner?.fields), pointer = object(ownerFields && savedField(ownerFields, field)?.value);
+      if (!pointer || pointer.pointer_token === 0) return null;
+      const edges = (graph.edges as unknown[]).map(object).filter(edge => edge?.source_object_index === objectIndex && edge.pointer_offset === pointer.offset);
+      if (edges.length !== 1) { projected.diagnostics.push(`${objectIndex}.${field}: missing or ambiguous owned pointer edge.`); return null; }
+      const edge = edges[0]!, targetIndex = edge.target_object_index, target = natural(targetIndex) ? nodes[targetIndex] : null;
+      if (!target || target.class_name !== targetClass || target.class_tag !== pointer.class_tag || edge.target_class_tag !== pointer.class_tag || edge.pointer_token !== pointer.pointer_token || target.token !== pointer.pointer_token || !natural(target.start) || !natural(target.fields_end) || target.start >= target.fields_end || target.fields_end > (source.body_bytes as number) || !natural(pointer.offset) || !natural(pointer.pointer_token) || !natural(owner?.start) || !natural(owner?.fields_end) || pointer.offset < owner.start || pointer.offset >= owner.fields_end) { projected.diagnostics.push(`${objectIndex}.${field}: owned pointer token/class/bounds disagree.`); return null; }
+      return { objectIndex: targetIndex as number, path: [...priorPath, { sourceObjectIndex: objectIndex, field, pointerOffset: pointer.offset, pointerToken: pointer.pointer_token, targetObjectIndex: targetIndex as number, targetClass }] };
+    };
+    const through = (field: string, targetClass: string, descriptors: Descriptor[], objectIndex = 0, priorPath: NativeRecordPointer[] = []) => {
+      const target = owned(objectIndex, field, targetClass, priorPath); if (target) append(descriptors, target.objectIndex, target.path);
+      return target;
     };
     append([...common, ...descriptor.fields]);
     if (className === "BasePoint") through("m_oGPoint", "GPoint", [["storedGeometryPointFeet", "m_coord", "point-feet"]]);
     if (className === "TextNote") through("m_oSavedRtfData", "RtfData", [["storedRtfBytes", "m_arrRtfStream", "rtf-bytes"]]);
     if (className === "Grid" || className === "RefPlane") through("m_pSurface", "Plane", [["storedPlaneOriginFeet", "m_origin", "point-feet"], ["storedPlaneXDirection", "m_xVec", "vector"], ["storedPlaneYDirection", "m_yVec", "vector"]]);
     if (className === "DBViewSchedule") through("m_pSchema", "ScheduleSchema", [["categoryId", "m_categoryId", "element-id"], ["areaSchemeId", "m_areaSchemeId", "element-id"], ["includeLinkedFiles", "m_bIncludeLinkedFiles", "boolean"], ["materialSchedule", "m_bMaterialSchedule", "boolean"], ["alternateTitle", "m_altScheduleTitle", "string"]]);
+    if (className === "CurveElem") {
+      const driver = owned(0, "m_pCurveDriver", "CurveElemDriver");
+      const pointer = driver && object(object(nodes[driver.objectIndex]?.fields)?.m_pCrv);
+      const edge = driver && (graph.edges as unknown[]).map(object).find(e => e?.source_object_index === driver.objectIndex && e.pointer_offset === pointer?.offset);
+      const index = edge?.target_object_index, curveClass = natural(index) ? nodes[index]?.class_name : null;
+      if (driver && curveClass === "GLine") through("m_pCrv", "GLine", [["storedLineOriginFeet", "m_origin", "point-feet"], ["storedLineDirection", "m_dirVec", "vector"], ["storedLineEndParameters", "m_endParams", "number-list"]], driver.objectIndex, driver.path);
+      if (driver && curveClass === "GArc") through("m_pCrv", "GArc", [["storedArcCenterFeet", "m_center", "point-feet"], ["storedArcXDirection", "m_xVec", "vector"], ["storedArcYDirection", "m_yVec", "vector"], ["storedArcRadiusFeet", "m_radius", "number"], ["storedArcEndParameters", "m_endParams", "number-list"]], driver.objectIndex, driver.path);
+    }
+    if (className === "TextNote" && Array.isArray(fields.m_leaders) && fields.m_leaders.length <= 256) fields.m_leaders.forEach((_, i) => through(`m_leaders.${i}`, "Leader", [[`leader${i}AnchorFeet`, "m_anchor", "point-feet"], [`leader${i}ElbowFeet`, "m_elbow", "point-feet"], [`leader${i}EndFeet`, "m_end", "point-feet"], [`leader${i}Straight`, "m_bStraight", "boolean"]]));
+    if (["IndependentTag", "RoomTag", "AreaTag"].includes(className!)) {
+      through("m_oTagOrientationCell", "TagOrientationCell", [["headLocationFeet", "m_headLocation", "point-feet"], ["orientationCode", "m_orientation", "integer"], ["rotationRadians", "m_rotationAngle", "number"], ["isSpatialElementTag", "m_isSpatialElementTag", "boolean"]]);
+      const cells = owned(0, "m_cellList", "CellList");
+      const cellFields = cells && object(nodes[cells.objectIndex]?.fields), pointers = cellFields?.m_cells;
+      if (cells && Array.isArray(pointers) && pointers.length <= 256) pointers.forEach((pointer, i) => {
+        const edge = (graph.edges as unknown[]).map(object).find(e => e?.source_object_index === cells.objectIndex && e.pointer_offset === object(pointer)?.offset);
+        const index = edge?.target_object_index;
+        if (!natural(index) || nodes[index]?.class_name !== "TagReferencesWithLeaderCell") return;
+        const cell = owned(cells.objectIndex, `m_cells.${i}`, "TagReferencesWithLeaderCell", cells.path);
+        const refs = cell && object(nodes[cell.objectIndex]?.fields)?.m_references;
+        if (cell && Array.isArray(refs) && refs.length <= 256) refs.forEach((_, j) => through(`m_references.${j}`, "TagReferenceWithLeader", [[`reference${i}_${j}HostId`, "m_referenceIdKey.m_hostOrLinkElemId.m_linkInstOrHostId", "element-id"], [`reference${i}_${j}LinkedId`, "m_referenceIdKey.m_hostOrLinkElemId.m_linkRef", "element-id"], [`reference${i}_${j}LeaderEnabled`, "m_isLeaderEnabled", "boolean"], [`reference${i}_${j}StraightLeader`, "m_isStraightLeader", "boolean"], [`reference${i}_${j}EndOffsetFeet`, "m_endOffset", "point-feet"], [`reference${i}_${j}ElbowOffsetFeet`, "m_elbowOffset", "point-feet"]], cell.objectIndex, cell.path));
+      });
+    }
+    if (["LinearDimString", "RadialDim", "AngularDim", "ArcLengthDim"].includes(className!)) {
+      if (className === "LinearDimString") through("m_pDimLine", "GLine", [["storedLineOriginFeet", "m_origin", "point-feet"], ["storedLineDirection", "m_dirVec", "vector"], ["storedLineEndParameters", "m_endParams", "number-list"]]);
+      const witnesses = fields.m_witnessRefs;
+      if (Array.isArray(witnesses) && witnesses.length <= 2048) witnesses.forEach((_, i) => {
+        const field = `m_witnessRefs.${i}.m_pWitnessRef`, pointer = object(savedField(fields, field)?.value);
+        const edge = (graph.edges as unknown[]).map(object).find(e => e?.source_object_index === 0 && e.pointer_offset === pointer?.offset);
+        const index = edge?.target_object_index, targetClass = natural(index) ? nodes[index]?.class_name : null;
+        if (targetClass === "GeomSegInPlaneRef" || targetClass === "ArcRef") through(field, targetClass, [[`witness${i}ElementId`, "m_geomRef.m_elemId", "element-id"], [`witness${i}ForeignReferenceId`, "m_geomRef.m_foreignElemIdRef", "element-id"], [`witness${i}OwnerViewId`, "m_geomRef.m_ownerDBViewId", "element-id"], [`witness${i}SubTag`, "m_geomRef.m_subTag", "integer"]]);
+      });
+      const segments = fields.m_ArrSegInfo;
+      if (Array.isArray(segments) && segments.length <= 2048) segments.forEach((segment, i) => {
+        const values = object(segment)?.m_values;
+        if (Array.isArray(values) && values.length <= 16) values.forEach((_, j) => append([[`segment${i}StoredValue${j}`, `m_ArrSegInfo.${i}.m_values.${j}.m_value`, "number"]]));
+        append([[`segment${i}OriginFeet`, `m_ArrSegInfo.${i}.m_origin`, "point-feet"], [`segment${i}LockedValue`, `m_ArrSegInfo.${i}.m_lockedValue`, "number"]]);
+      });
+    }
     const prior = seen.get(elementId);
     if (prior && (prior.className !== projected.className || prior.source.bodySha256 !== projected.source.bodySha256)) { conflicting.add(elementId); fallback("Conflicting current records for the same owner."); return; }
     if (!prior) { seen.set(elementId, projected); inventory.records.push(projected); }
@@ -182,7 +243,7 @@ export function makeNativeRecordInventoryCsv(inventory: NativeRecordInventory, o
     const safe = /^[\s\u0000-\u001f]*[=+\-@]/u.test(text) || /^[\t\r\n]/u.test(text) ? `'${text}` : text;
     return `"${safe.replaceAll('"', '""')}"`;
   };
-  const scope = "Selected serialized source fields; raw graphs retained in evidence JSON; no drawing rendering or shared-coordinate transform.";
+  const scope = "Selected serialized source fields; raw graphs retained in evidence JSON; no regenerated Revit drawing or shared-coordinate transform.";
   const rows: unknown[][] = [["Inventory status", "Scope", "Retained source records", "Projected records", "Source SHA256", "Element ID", "Class", "Kind", "Field", "Type", "Stored value", "Stream", "Record offset", "Body SHA256", "Object index", "Object class", "Source field", "Pointer path", "Raw record index"]];
   for (const record of inventory.records) for (const [field, evidence] of Object.entries(record.values)) rows.push([
     inventory.status, scope, inventory.coverage.retainedRecords, inventory.coverage.projectedRecords,

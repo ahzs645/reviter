@@ -36,12 +36,22 @@ export type NativeUnresolvedParameterSlot = {
   ownerElementId: string; parameterId: string | null; sourceObject: number | null;
   reason: string; raw: unknown;
 };
+export type NativeParameterOwnerRelation = {
+  ownerElementId: string; ownerClass: "Family" | "FamilySymbol" | "FamilyInstance";
+  symbolId: string | null; familyId: string | null;
+  source: { stream: string; groupRecordOffset: number; bodySha256: string; sourceObject: 0; field: string; fieldByteOffset: null };
+};
+export type NativeResolvedParameterValue = {
+  ownerElementId: string; valueOwnerElementId: string; parameterId: string; rawValue: string | number; storageType: NativeParameterStorage;
+  resolution: "present-owner" | "inherited-symbol"; valueSemantics: "serialized-not-evaluated";
+  sourceValueIndex: number; relationshipWitnesses: NativeParameterOwnerRelation[];
+};
 export type NativeParameterInventory = {
   apiVersion: 1; kind: "native-parameter-inventory"; sourceSha256: string | null;
   readerCommit: string; schemaSha256: string | null; revitVersion: number | null;
   status: NativeEvidenceReport["source"]["status"];
   definitions: NativeParameterDefinition[]; bindings: NativeParameterBinding[];
-  values: NativeParameterValue[]; unresolvedSlots: NativeUnresolvedParameterSlot[];
+  values: NativeParameterValue[]; ownerRelations: NativeParameterOwnerRelation[]; resolvedValues: NativeResolvedParameterValue[]; unresolvedSlots: NativeUnresolvedParameterSlot[];
   diagnostics: string[]; limits: typeof LIMITS;
   scope: string;
 };
@@ -114,8 +124,8 @@ export function buildNativeParameterInventory(report: NativeEvidenceReport): Nat
   const inventory: NativeParameterInventory = {
     apiVersion: 1, kind: "native-parameter-inventory", sourceSha256: hash(report.sourceSha256), readerCommit: report.readerCommit,
     schemaSha256: hash(summary.schema_sha256), revitVersion: index(summary.revit_version), status: report.source.status,
-    definitions: [], bindings: [], values: [], unresolvedSlots: [], diagnostics: [], limits: LIMITS,
-    scope: "File-local native definitions, category bindings and present owner values from retained complete graphs. Values remain internal serialized units; display-unit identifiers do not convert them. No formula evaluation, type inheritance, built-in definition catalog or HasValue claim for absent values.",
+    definitions: [], bindings: [], values: [], ownerRelations: [], resolvedValues: [], unresolvedSlots: [], diagnostics: [], limits: LIMITS,
+    scope: "File-local native definitions, category bindings and present owner values from retained complete graphs. Values remain internal serialized units; display-unit identifiers do not convert them. Exact retained instance→symbol→family links can resolve proven symbol type values. No formula evaluation, family-default substitution, built-in definition catalog or HasValue claim for absent values.",
   };
   const diagnostic = (message: string) => { if (inventory.status === "complete") inventory.status = "partial"; if (inventory.diagnostics.length < LIMITS.diagnostics) inventory.diagnostics.push(message); };
   if (report.source.apiVersion !== 1 || report.source.kind !== "native-source-evidence" || !inventory.sourceSha256 || !inventory.schemaSha256 || report.readerPatch !== "native-evidence" || report.readerCommit !== "1c3d337dbd2a6810e9dfad68fe99857843d67387") {
@@ -209,6 +219,14 @@ export function buildNativeParameterInventory(report: NativeEvidenceReport): Nat
     }
     const ownerClass = str(root.class_name);
     if (!ownerClass || !["Family", "FamilySymbol", "FamilyInstance"].includes(ownerClass)) continue;
+    const ownerSource = obj(record.source);
+    if (index(root.start) !== null && index(root.fields_end) !== null && (root.start as number) < (root.fields_end as number) && (root.fields_end as number) <= (graph.consumed_bytes as number) && hash(ownerSource.body_sha256) && typeof ownerSource.stream === "string" && /^Partitions\/\d+$/.test(ownerSource.stream) && index(ownerSource.group_record_offset) !== null) {
+      inventory.ownerRelations.push({ ownerElementId, ownerClass: ownerClass as NativeParameterOwnerRelation["ownerClass"],
+        symbolId: ownerClass === "FamilyInstance" ? id(fields.m_masterSymbolId) : null,
+        familyId: ownerClass === "Family" ? ownerElementId : ownerClass === "FamilySymbol" ? id(fields.m_familyId) : null,
+        source: { stream: ownerSource.stream, groupRecordOffset: ownerSource.group_record_offset as number, bodySha256: ownerSource.body_sha256 as string, sourceObject: 0,
+          field: ownerClass === "FamilyInstance" ? "m_masterSymbolId" : ownerClass === "FamilySymbol" ? "m_familyId" : "m_id", fieldByteOffset: null } });
+    }
     let familyId: string | null = ownerClass === "Family" ? ownerElementId : ownerClass === "FamilySymbol" ? id(fields.m_familyId) : null;
     if (ownerClass === "FamilyInstance") {
       const symbolId = id(fields.m_masterSymbolId); familyId = symbolId ? id(obj(context.symbol_families)[symbolId]) : null;
@@ -246,14 +264,53 @@ export function buildNativeParameterInventory(report: NativeEvidenceReport): Nat
   if (report.source.records.length > LIMITS.records) { inventory.status = "partial"; diagnostic("Retained owner records truncated at the adapter limit."); }
   if (values.size >= LIMITS.values || inventory.unresolvedSlots.length >= LIMITS.values) diagnostic("Owner values/slots reached the adapter limit.");
   inventory.definitions = [...definitions.values()]; inventory.values = [...values.values()];
+  inventory.resolvedValues = resolveNativeParameterValues(inventory, context);
   if (Object.keys(obj(summary.definition_diagnostics)).length) diagnostic(`${Object.keys(obj(summary.definition_diagnostics)).length} native definition/units extraction diagnostics remain in the raw evidence.`);
   return inventory;
+}
+
+/** Resolve serialized type values only through exact retained owner links. A
+ * Family record proves the namespace; its defaults never substitute a symbol value.
+ * Conflicting/malformed present slots block inheritance rather than hiding failure.
+ */
+function resolveNativeParameterValues(inventory: NativeParameterInventory, context: Fields): NativeResolvedParameterValue[] {
+  const output: NativeResolvedParameterValue[] = inventory.values.map((v, sourceValueIndex) => ({
+    ownerElementId: v.ownerElementId, valueOwnerElementId: v.ownerElementId, parameterId: v.parameterId,
+    rawValue: v.rawValue, storageType: v.storageType, resolution: "present-owner", valueSemantics: "serialized-not-evaluated",
+    sourceValueIndex, relationshipWitnesses: [],
+  }));
+  const relations = new Map(inventory.ownerRelations.map(r => [r.ownerElementId, r]));
+  const definitions = new Map(inventory.definitions.map(d => [d.parameterId, d]));
+  const present = new Set(inventory.values.map(v => `${v.ownerElementId}:${v.parameterId}`));
+  const blocked = new Set(inventory.unresolvedSlots.filter(s => s.parameterId !== null).map(s => `${s.ownerElementId}:${s.parameterId}`));
+  const symbolValues = new Map<string, Array<{ value: NativeParameterValue; index: number }>>();
+  inventory.values.forEach((value, index) => { if (value.ownerClass === "FamilySymbol") { const a = symbolValues.get(value.ownerElementId) ?? []; a.push({ value, index }); symbolValues.set(value.ownerElementId, a); } });
+  for (const instance of inventory.ownerRelations) {
+    if (instance.ownerClass !== "FamilyInstance" || !positive(instance.symbolId)) continue;
+    const symbol = relations.get(instance.symbolId);
+    if (!symbol || symbol.ownerClass !== "FamilySymbol" || !positive(symbol.familyId) || id(obj(context.symbol_families)[instance.symbolId]) !== symbol.familyId) continue;
+    const family = relations.get(symbol.familyId);
+    if (!family || family.ownerClass !== "Family" || family.familyId !== symbol.familyId) continue;
+    for (const { value, index } of symbolValues.get(symbol.ownerElementId) ?? []) {
+      if (output.length >= LIMITS.values) { if (inventory.status === "complete") inventory.status = "partial"; return output; }
+      const key = `${instance.ownerElementId}:${value.parameterId}`, d = definitions.get(value.parameterId);
+      if (!d || present.has(key) || blocked.has(key) || d.instanceParameter === true || value.storedInstanceFlag === true) continue;
+      const familyTypeProof = d.ownerClass === "ParamElemFamily" && d.familyId === family.ownerElementId && (d.instanceParameter === false || value.storedInstanceFlag === false);
+      const categoryId = id(obj(context.family_categories)[family.ownerElementId]);
+      const projectTypeProof = ["ParamElemProject", "ParamElemExternal"].includes(d.ownerClass) && categoryId !== null && inventory.bindings.some(b => b.parameterId === d.parameterId && b.ownerKind === "symbol" && b.categoryId === categoryId);
+      if (!familyTypeProof && !projectTypeProof) continue;
+      output.push({ ownerElementId: instance.ownerElementId, valueOwnerElementId: symbol.ownerElementId, parameterId: value.parameterId,
+        rawValue: value.rawValue, storageType: value.storageType, resolution: "inherited-symbol", valueSemantics: "serialized-not-evaluated",
+        sourceValueIndex: index, relationshipWitnesses: [instance, symbol, family] });
+    }
+  }
+  return output;
 }
 
 /** CSV is a source inventory, not a Revit schedule/formula evaluation. */
 export function makeNativeParameterInventoryCsv(inventory: NativeParameterInventory, options: { excelBom?: boolean } = {}): string {
   const definitions = new Map(inventory.definitions.map(d => [d.parameterId, d]));
-  const rows: Array<Array<string | number | boolean | null | undefined>> = [["record_kind", "source_sha256", "schema_sha256", "inventory_status", "owner_element_id", "owner_class", "parameter_id", "caption", "storage_type", "raw_internal_value", "spec_type_id", "display_unit_type_id", "display_unit_resolution", "shared_guid", "binding_id", "category_id", "binding_owner_kind", "evidence", "value_semantics", "source_stream", "group_record_offset", "source_object", "pointer_field", "pointer_offset", "body_sha256", "stored_expression"]];
+  const rows: Array<Array<string | number | boolean | null | undefined>> = [["record_kind", "source_sha256", "schema_sha256", "inventory_status", "owner_element_id", "owner_class", "parameter_id", "caption", "storage_type", "raw_internal_value", "spec_type_id", "display_unit_type_id", "display_unit_resolution", "shared_guid", "binding_id", "category_id", "binding_owner_kind", "evidence", "value_semantics", "source_stream", "group_record_offset", "source_object", "pointer_field", "pointer_offset", "body_sha256", "stored_expression", "resolved_value_owner_element_id", "resolution", "relationship_witnesses"]];
   for (const d of inventory.definitions) {
     const s = d.source;
     rows.push(["definition", inventory.sourceSha256, inventory.schemaSha256, inventory.status, d.parameterId, d.ownerClass, d.parameterId, d.caption, d.storageType, null, d.specTypeId, d.displayUnitTypeId, d.displayUnitResolution, d.sharedGuid, null, null, null, d.evidence, null, s?.stream, s?.groupRecordOffset, d.sourceObject, s?.rootPointerField, s?.pointerOffset, s?.bodySha256, null]);
@@ -265,6 +322,16 @@ export function makeNativeParameterInventoryCsv(inventory: NativeParameterInvent
   for (const v of inventory.values) {
     const d = definitions.get(v.parameterId);
     rows.push(["value", inventory.sourceSha256, inventory.schemaSha256, inventory.status, v.ownerElementId, v.ownerClass, v.parameterId, d?.caption, v.storageType, v.rawValue, d?.specTypeId, d?.displayUnitTypeId, d?.displayUnitResolution, d?.sharedGuid, null, null, null, v.valueSource, v.valueSemantics, v.source.stream, v.source.groupRecordOffset, v.source.sourceObject, v.source.rootPointerField, v.source.pointerOffset, v.source.bodySha256, v.expressionPointer == null ? "" : JSON.stringify(v.expressionPointer)]);
+  }
+  for (const v of inventory.resolvedValues.filter(v => v.resolution === "inherited-symbol")) {
+    const d = definitions.get(v.parameterId), original = inventory.values[v.sourceValueIndex];
+    rows.push(["resolved-value", inventory.sourceSha256, inventory.schemaSha256, inventory.status,
+      v.ownerElementId, "FamilyInstance", v.parameterId, d?.caption, v.storageType, v.rawValue,
+      d?.specTypeId, d?.displayUnitTypeId, d?.displayUnitResolution, d?.sharedGuid, null, null, null,
+      original.valueSource, v.valueSemantics, original.source.stream, original.source.groupRecordOffset,
+      original.source.sourceObject, original.source.rootPointerField, original.source.pointerOffset,
+      original.source.bodySha256, original.expressionPointer == null ? "" : JSON.stringify(original.expressionPointer),
+      v.valueOwnerElementId, v.resolution, JSON.stringify(v.relationshipWitnesses)]);
   }
   if (rows.length === 1) rows.push(["inventory", inventory.sourceSha256, inventory.schemaSha256, inventory.status,
     null, null, null, null, null, null, null, null, null, null, null, null, null,

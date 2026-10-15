@@ -4,7 +4,7 @@
   "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
   "sourceStatus": "partial",
   "recordInventoryStatus": "partial",
-  "retainedTypedRecords": 10,
+  "retainedTypedRecords": 14,
   "definitions": 774,
   "bindings": 2,
   "downloads": [
@@ -19,10 +19,22 @@
     {
       "label": "Source evidence JSON",
       "fileName": "rac-recovered.source-evidence.json"
+    },
+    {
+      "label": "Source schedules CSV",
+      "fileName": "rac-recovered.source-schedules.csv"
+    },
+    {
+      "label": "Source organization CSV",
+      "fileName": "rac-recovered.source-organization.csv"
     }
   ],
   "desktopControls": true,
   "mobileControls": true,
+  "storedScheduleDownload": true,
+  "sourceOrganizationDownload": true,
+  "trueNorthIfcDownload": true,
+  "selectedSourceViewSvgDownload": true,
   "mobileHorizontalOverflow": false,
   "browserErrors": [],
   "scope": "Actual production worker and downloads; default bounded selections retain partial scope. Source graph and owner-value fidelity are checked separately."

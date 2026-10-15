@@ -10,7 +10,7 @@ import type { ElementObject } from "./element-objects.ts";
 import type { InstancePlacement } from "./instanced-geometry.ts";
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { ElementBoundsRecord } from "./types.ts";
-import { nativeIfcGlobalIds, revitDoorWindowTypeGlobalId, revitIfcSubElementGlobalId } from "./ifc-global-id.ts";
+import { isIfcGlobalId, nativeIfcGlobalIds, revitDoorWindowTypeGlobalId, revitIfcSubElementGlobalId } from "./ifc-global-id.ts";
 import type { NativeElementIdentity } from "./native-identity.ts";
 import { hypot } from "./deterministic-math.ts";
 import { canonicalClassTag } from "./revit-class-tags.ts";
@@ -50,7 +50,7 @@ export function nativeOriginalSymbolFromFifo(data: Uint8Array, frame: ElementObj
   if (!verified || verified.elementId !== frame.elementId || canonicalClassTag(verified.classTag) !== 2246) return null;
   const root = decodeRevit2027FramedGRepRoot(data, { ...frame, marker: 2246 }, revitVersion);
   if (!root.ok || root.value.children.length > 64 || root.value.children[0]?.sourceClassSlot !== 2215) return null;
-  const replay = replayRevit2027GRepFifo(data, root.value, undefined, { maxReplayEntries: 512, maxDescriptors: 2048 });
+  const replay = replayRevit2027GRepFifo(data, root.value, undefined, { maxReplayEntries: 1024, maxDescriptors: 4096 });
   if (!replay.ok) return null;
   const instanceSpan = replay.value.spans.find(span => span.path.length === 1 && span.path[0] === 0 && span.readerId === "Revit2027GInstance");
   const infoSpan = replay.value.spans.find(span => span.parentReplayIndex === instanceSpan?.replayIndex && span.path.length === 2 && span.path[1] === 0 && span.readerId === "Revit2027InstanceInfo");
@@ -243,28 +243,53 @@ export function resolveNativeIfcTypeIdentityEvidence(options: {
   });
 }
 
-export function nativeFamilyTypeGlobalId(options: {
+export type NativeFamilyTypeIdentityOptions = {
   evidence: NativeIfcTypeIdentityEvidence | undefined;
   nativeGuids: ReadonlyMap<number, string>;
   instanceEntity: string;
   exporterVersion: number;
   inAssembly?: boolean;
-}): string | null {
+};
+
+/** A withheld source recipe is distinguishable from an absent native GUID.
+ * In particular the stored embedded-symbol pointer does not prove Autodesk's
+ * UsesInstanceGeometry decision, which compares API geometry summaries. */
+export type NativeFamilyTypeIdentityResolution =
+  | { status: "resolved"; globalId: string; recipe: "original-symbol" | "instance-as-type" | "door-window-flip" }
+  | { status: "withheld"; reason: "missing-source-reference" | "invalid-source-reference" |
+      "embedded-geometry-summary-unproven" | "missing-native-creation-identity" |
+      "door-window-flip-unproven" | "unsupported-exporter-recipe" };
+
+export function resolveNativeFamilyTypeIdentity(options: NativeFamilyTypeIdentityOptions): NativeFamilyTypeIdentityResolution {
   const evidence = options.evidence;
-  if (!evidence || evidence.source !== "checksum-verified-GElement.original-symbol" ||
-    evidence.embeddedSymbolGeometry === true ||
+  if (!evidence) return { status: "withheld", reason: "missing-source-reference" };
+  if (evidence.source !== "checksum-verified-GElement.original-symbol" ||
     !Number.isInteger(evidence.revitVersion) || evidence.revitVersion < 2024 || evidence.revitVersion > 2027 ||
     !Number.isSafeInteger(evidence.elementId) || evidence.elementId < 1 ||
-    (evidence.originalSymbolId !== null && (!Number.isSafeInteger(evidence.originalSymbolId) || evidence.originalSymbolId < 1 || evidence.originalSymbolId > 0xffff_fffe))) return null;
+    (evidence.originalSymbolId !== null && (!Number.isSafeInteger(evidence.originalSymbolId) || evidence.originalSymbolId < 1 || evidence.originalSymbolId > 0xffff_fffe))) {
+    return { status: "withheld", reason: "invalid-source-reference" };
+  }
+  if (evidence.embeddedSymbolGeometry === true) return { status: "withheld", reason: "embedded-geometry-summary-unproven" };
   if (evidence.originalSymbolId == null) {
     const own = options.nativeGuids.get(evidence.elementId);
-    return own ? revitIfcSubElementGlobalId(own, 2048) : null;
+    const globalId = own ? revitIfcSubElementGlobalId(own, 2048) : null;
+    return globalId ? { status: "resolved", globalId, recipe: "instance-as-type" } :
+      { status: "withheld", reason: "missing-native-creation-identity" };
   }
   const original = options.nativeGuids.get(evidence.originalSymbolId);
-  if (!original) return null;
+  if (!isIfcGlobalId(original)) return { status: "withheld", reason: "missing-native-creation-identity" };
   if (options.instanceEntity === "IFCDOOR" || options.instanceEntity === "IFCWINDOW") {
-    if (typeof evidence.flipped !== "boolean" || evidence.flipSource !== "native-instance-facing+native-host-wall-axis") return null;
-    return revitDoorWindowTypeGlobalId(original, evidence.flipped, options.inAssembly ?? false, options.exporterVersion);
+    if (typeof evidence.flipped !== "boolean" || evidence.flipSource !== "native-instance-facing+native-host-wall-axis") {
+      return { status: "withheld", reason: "door-window-flip-unproven" };
+    }
+    const globalId = revitDoorWindowTypeGlobalId(original, evidence.flipped, options.inAssembly ?? false, options.exporterVersion);
+    return globalId ? { status: "resolved", globalId, recipe: "door-window-flip" } :
+      { status: "withheld", reason: "unsupported-exporter-recipe" };
   }
-  return original;
+  return { status: "resolved", globalId: original, recipe: "original-symbol" };
+}
+
+export function nativeFamilyTypeGlobalId(options: NativeFamilyTypeIdentityOptions): string | null {
+  const result = resolveNativeFamilyTypeIdentity(options);
+  return result.status === "resolved" ? result.globalId : null;
 }

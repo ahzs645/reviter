@@ -9,7 +9,7 @@
       "/workspace/models/snowdon.rvt",
       "/workspace/models/unbc.rvt"
     ],
-    "output": "/workspace/scratch/head-to-head-continuation.json",
+    "output": "/workspace/scratch/head-to-head-final-geometry-selection.json",
     "upstreamMode": "scaffold",
     "timeoutMs": 900000,
     "heapMiB": 6144,
@@ -31,8 +31,8 @@
       "mep": true,
       "designOptions": "all"
     },
-    "reuseUpstream": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
-    "baselineDirectory": "/workspace/models"
+    "baselineDirectory": "/workspace/models",
+    "reuseUpstream": "/workspace/scratch/rvt-reader-comparison-before-geometry-selection.json"
   },
   "models": [
     {
@@ -47,13 +47,13 @@
             "byteLength": 19750912,
             "release": 2025
           },
-          "elapsedMs": 559.108322,
+          "elapsedMs": 772.6818319999999,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
-            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
-            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/0-rac.rvt/upstream.ifc",
+            "proof": "/workspace/scratch/rvt-reader-comparison-before-geometry-selection.json",
+            "proofSha256": "489a530a60e398d636de84317925946818ce20c15ec2d01cf237c0f58ba86e3d",
+            "sourceIfc": "/workspace/scratch/head-to-head-continuation.json.artifacts/0-rac.rvt/upstream.ifc",
             "ifcSha256": "926451fc6d4e445c5b82af2e24b6d339c2c9588a1b4524dc64bb059eafd4cb82",
-            "originalElapsedMs": 245.22062200000002,
+            "originalElapsedMs": 559.108322,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -834,7 +834,7 @@
             "byteLength": 19750912,
             "release": 2025
           },
-          "elapsedMs": 89605.71076399999,
+          "elapsedMs": 67565.25122600001,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -888,8 +888,8 @@
               "candidatesFound": 959,
               "candidatesFocused": 449,
               "candidatesUsed": 461,
-              "vertexCount": 243847,
-              "triangleCount": 195555,
+              "vertexCount": 242959,
+              "triangleCount": 195167,
               "meshCount": 97,
               "boundsRecordsFound": 959,
               "solidBoundsRecords": 469,
@@ -937,7 +937,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 65098.495267000006
+              "durationMs": 49121.225626
             },
             "decoderCoverage": {
               "revitVersion": 2025,
@@ -968,7 +968,7 @@
               "nativeCurves": 0,
               "nativeProfiles": 0,
               "nativeMeshes": 84,
-              "nativeMeshFaces": 20081,
+              "nativeMeshFaces": 19905,
               "nativeMeshElements": 411,
               "nativeWallProxyReplacements": 0,
               "nativeMeshOwners": 1322,
@@ -981,15 +981,15 @@
               "nativeMeshEmbeddedGeometryCandidates": 13,
               "nativeMeshCompleteEmbeddedGeometryRoots": 12,
               "nativeMeshEmbeddedGeometryElements": 12,
-              "nativeMeshTriangles": 194555,
-              "nativeMeshDuplicateTrianglesRemoved": 1950,
+              "nativeMeshTriangles": 194167,
+              "nativeMeshDuplicateTrianglesRemoved": 1802,
               "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 736,
               "nativeRedundantWallShellTrianglesRemoved": 0,
               "nativeRedundantWallShellElements": 0,
               "nativeHostOpeningWallTrianglesClipped": 0,
               "nativeHostOpeningWallTrianglesGenerated": 0,
               "nativeMeshTruncated": false,
-              "nativeMeshStoredBytes": 31169544,
+              "nativeMeshStoredBytes": 30998952,
               "nativeMeshBoundsMismatches": 0,
               "nativeMeshCarrierComposedItems": 0,
               "nativeMeshCarrierComposedOutsideEnvelope": 0,
@@ -1002,12 +1002,12 @@
               "nativeMeshNestedRoots": 14,
               "nativeMeshCompleteNestedRoots": 8,
               "nativeMeshPartialNestedRoots": 6,
-              "nativeMeshNestedTriangles": 8428,
+              "nativeMeshNestedTriangles": 8212,
               "nativeMeshNestedFailures": 6,
               "nativeMeshRequestedOwnerDefinitions": 196,
               "nativeMeshCompleteRequestedOwners": 186,
               "nativeMeshPartialRequestedOwners": 10,
-              "nativeMeshRequestedOwnerTriangles": 83279,
+              "nativeMeshRequestedOwnerTriangles": 83219,
               "nativeMeshRequestedOwnerFailures": 10,
               "nativeMaterialDefinitions": 174,
               "nativeMaterialAssignments": 382,
@@ -1036,12 +1036,12 @@
               "174 native Revit material definitions were decoded; 174 expose a packed render colour, 174 a persisted transparency, and shared geometry, 97 FamilySymbol geometry-tag maps, and 11 compound wall structures persistently assign 382 placed elements. Texture channels and nested-layout transparency remain unresolved.",
               "95 loadable-family symbols resolve to persisted Family elements.",
               "304 persisted hosted-element relationships were decoded from InsertableInst.m_hostId.",
-              "1,950 coincident native triangles were removed before rendering (736 crossed material batches).",
+              "1,802 coincident native triangles were removed before rendering (736 crossed material batches).",
               "562 persisted associated-level relationships were decoded from Element.m_assocLevelId.",
-              "411 elements use complete certified Revit GRep/BRep face meshes (194,555 triangles); their display proxies were removed only after native admission.",
+              "411 elements use complete certified Revit GRep/BRep face meshes (194,167 triangles); their display proxies were removed only after native admission.",
               "257 GRep owners did not have a complete drawable Face mesh and remain on the proxy path.",
-              "8 of 14 nested-symbol GRep roots resolved atomically through 587 exact GInstance links (8,428 triangles); incomplete recursive roots remain on the proxy path.",
-              "186 of 196 exact placement-referenced GRep owners resolved to complete reusable local meshes (83,279 triangles); incomplete or absent definitions remain on the proxy path.",
+              "8 of 14 nested-symbol GRep roots resolved atomically through 587 exact GInstance links (8,212 triangles); incomplete recursive roots remain on the proxy path.",
+              "186 of 196 exact placement-referenced GRep owners resolved to complete reusable local meshes (83,219 triangles); incomplete or absent definitions remain on the proxy path.",
               "3 family instances whose type stores no geometry are drawn from their family's own document, which the project carries; 23 more keep their box because the document holds the family in a different type's size.",
               "95 complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.",
               "1,061 complete native definition items were not drawn because no placed RVT element record names them.",
@@ -1050,15 +1050,15 @@
               "83,648 records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: 6,814 owned by a view (annotation, tags, detail items), 67,505 inside a loaded family's own definition, 4 members of a group type that is not placed, 9 family types, 8,787 with no category, and 529 datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.",
               "3 unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.",
               "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements.",
-              "Decoder limits fitted to a single reference building rejected geometry in this model: 1 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures — the affected geometry may be recoverable with limits measured on a second building."
+              "Decoder limits fitted to a single reference building rejected geometry in this model: 1 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures \u2014 the affected geometry may be recoverable with limits measured on a second building."
             ],
             "meshes": 97,
-            "triangles": 195555,
+            "triangles": 195167,
             "recoveredRecords": 959,
             "geometry": {
-              "geometryHash": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+              "geometryHash": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
               "meshes": 97,
-              "triangles": 195555,
+              "triangles": 195167,
               "bounds": 959,
               "origin": {
                 "x": 6.454918501214529,
@@ -1312,8 +1312,8 @@
             "uniqueElementIds": 473
           },
           "ifc": {
-            "byteLength": 14751288,
-            "sha256": "83ecb05f0dd93bb8f46e628383d8325b421b305308ecaa22b753011a3cccc486"
+            "byteLength": 14715887,
+            "sha256": "b2bf8058485f4db63482807ae33a04b24e686d46c468551f883d2123fb0c8149"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -1413,13 +1413,13 @@
         "checks": {
           "geometryHash": {
             "expected": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
-            "actual": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
-            "matches": true
+            "actual": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
+            "matches": false
           },
           "triangles": {
             "expected": 195555,
-            "actual": 195555,
-            "matches": true
+            "actual": 195167,
+            "matches": false
           },
           "meshes": {
             "expected": 97,
@@ -1837,7 +1837,126 @@
           22.99463134913209,
           70.36435620117189
         ],
-        "scope": "Reference topology/extent inventory only; the baseline hash proves unchanged Reviter scene, not agreement with these reference surfaces."
+        "scope": "Reference topology/extent inventory only; recorded baseline checks distinguish preserved data from measured source-body selection changes. They do not establish agreement with these reference surfaces."
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "geometryReview": {
+        "baselineInterpretation": "Native source body selection deliberately changes mesh bytes and triangle counts. The other four original baseline fields remain unchanged.",
+        "originalBaseFieldsPreserved": [
+          "meshes",
+          "bounds",
+          "origin",
+          "bbox"
+        ],
+        "originalBaseFieldsChanged": [
+          "geometryHash",
+          "triangles"
+        ],
+        "ownerComparison": {
+          "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+          "priorIfcSha256": "83ecb05f0dd93bb8f46e628383d8325b421b305308ecaa22b753011a3cccc486",
+          "currentIfcSha256": "b2bf8058485f4db63482807ae33a04b24e686d46c468551f883d2123fb0c8149",
+          "coverage": {
+            "compared": 461,
+            "ambiguous": 0,
+            "identityDisagreements": 0,
+            "outputOnly": 0,
+            "referenceOnly": 0
+          },
+          "changedTriangleCountOwners": 10,
+          "changedOwnerClasses": {
+            "IfcColumn": 2,
+            "IfcRailing": 8
+          },
+          "maximumWorldBoundsDifferenceFeet": 0,
+          "changedOwnerSamples": [
+            {
+              "tag": "708715",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 204,
+              "currentTriangles": 100,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.45115475156111523
+            },
+            {
+              "tag": "709725",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 204,
+              "currentTriangles": 100,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.3922513737498977
+            },
+            {
+              "tag": "566588",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 968,
+              "currentTriangles": 948,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.09371599533532193
+            },
+            {
+              "tag": "567887",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 1020,
+              "currentTriangles": 1000,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.11395015418438306
+            },
+            {
+              "tag": "931377",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 1044,
+              "currentTriangles": 1024,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.06996615757344422
+            },
+            {
+              "tag": "931569",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 1044,
+              "currentTriangles": 1024,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.06996599325642998
+            },
+            {
+              "tag": "931630",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 892,
+              "currentTriangles": 872,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.10157613007141748
+            },
+            {
+              "tag": "932401",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 1122,
+              "currentTriangles": 1092,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.20517622710539532
+            },
+            {
+              "tag": "932862",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 996,
+              "currentTriangles": 976,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.2132818306112032
+            },
+            {
+              "tag": "933811",
+              "ifcClass": "IfcRailing",
+              "priorTriangles": 1170,
+              "currentTriangles": 1140,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.20485442261617617
+            }
+          ],
+          "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+        }
       }
     },
     {
@@ -1852,13 +1971,13 @@
             "byteLength": 17035264,
             "release": 2025
           },
-          "elapsedMs": 1266.5017589999916,
+          "elapsedMs": 2284.447659000012,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
-            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
-            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/1-school.rvt/upstream.ifc",
+            "proof": "/workspace/scratch/rvt-reader-comparison-before-geometry-selection.json",
+            "proofSha256": "489a530a60e398d636de84317925946818ce20c15ec2d01cf237c0f58ba86e3d",
+            "sourceIfc": "/workspace/scratch/head-to-head-continuation.json.artifacts/1-school.rvt/upstream.ifc",
             "ifcSha256": "2c82cad0075bb2cd27524e3eff116e76fd95c826136380b86a7191936b289308",
-            "originalElapsedMs": 934.3087579999992,
+            "originalElapsedMs": 1266.5017589999916,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -2589,7 +2708,7 @@
             "byteLength": 17035264,
             "release": 2025
           },
-          "elapsedMs": 127687.558665,
+          "elapsedMs": 162236.81086,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -2643,8 +2762,8 @@
               "candidatesFound": 6420,
               "candidatesFocused": 5509,
               "candidatesUsed": 5507,
-              "vertexCount": 554055,
-              "triangleCount": 393145,
+              "vertexCount": 533671,
+              "triangleCount": 378957,
               "meshCount": 47,
               "boundsRecordsFound": 6420,
               "solidBoundsRecords": 5545,
@@ -2692,7 +2811,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 83227.342015
+              "durationMs": 123581.525488
             },
             "decoderCoverage": {
               "revitVersion": 2025,
@@ -2724,7 +2843,7 @@
               "nativeCurves": 0,
               "nativeProfiles": 0,
               "nativeMeshes": 41,
-              "nativeMeshFaces": 70970,
+              "nativeMeshFaces": 70090,
               "nativeMeshElements": 5374,
               "nativeWallProxyReplacements": 0,
               "nativeMeshOwners": 1272,
@@ -2737,15 +2856,15 @@
               "nativeMeshEmbeddedGeometryCandidates": 2,
               "nativeMeshCompleteEmbeddedGeometryRoots": 0,
               "nativeMeshEmbeddedGeometryElements": 0,
-              "nativeMeshTriangles": 390949,
-              "nativeMeshDuplicateTrianglesRemoved": 7655,
+              "nativeMeshTriangles": 376761,
+              "nativeMeshDuplicateTrianglesRemoved": 3219,
               "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 3,
               "nativeRedundantWallShellTrianglesRemoved": 0,
               "nativeRedundantWallShellElements": 0,
               "nativeHostOpeningWallTrianglesClipped": 0,
               "nativeHostOpeningWallTrianglesGenerated": 0,
               "nativeMeshTruncated": false,
-              "nativeMeshStoredBytes": 41696668,
+              "nativeMeshStoredBytes": 41566972,
               "nativeMeshBoundsMismatches": 1,
               "nativeMeshCarrierComposedItems": 0,
               "nativeMeshCarrierComposedOutsideEnvelope": 0,
@@ -2793,10 +2912,10 @@
               "186 native Revit material definitions were decoded; 186 expose a packed render colour, 186 a persisted transparency, and shared geometry, 159 FamilySymbol geometry-tag maps, and 28 compound wall structures persistently assign 5,284 placed elements. Texture channels and nested-layout transparency remain unresolved.",
               "74 loadable-family symbols resolve to persisted Family elements.",
               "5,079 persisted hosted-element relationships were decoded from InsertableInst.m_hostId.",
-              "7,655 coincident native triangles were removed before rendering (3 crossed material batches).",
+              "3,219 coincident native triangles were removed before rendering (3 crossed material batches).",
               "6,206 persisted associated-level relationships were decoded from Element.m_assocLevelId.",
               "1 distinct DWG file names are retained in partition records; these names do not include an extractable original DWG payload.",
-              "5,374 elements use complete certified Revit GRep/BRep face meshes (390,949 triangles); their display proxies were removed only after native admission.",
+              "5,374 elements use complete certified Revit GRep/BRep face meshes (376,761 triangles); their display proxies were removed only after native admission.",
               "263 GRep owners did not have a complete drawable Face mesh and remain on the proxy path.",
               "18 of 18 nested-symbol GRep roots resolved atomically through 5,814 exact GInstance links (61,718 triangles); incomplete recursive roots remain on the proxy path.",
               "577 of 589 exact placement-referenced GRep owners resolved to complete reusable local meshes (22,974 triangles); incomplete or absent definitions remain on the proxy path.",
@@ -2810,15 +2929,15 @@
               "6 topography, planting, entourage and reinforcement elements have no decoded mesh and are not drawn: their envelope is not their shape (a terrain's is a block under the whole site, an RPC tree's a solid cube, a rebar set's the slab its bars run through).",
               "3 unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.",
               "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements.",
-              "Decoder limits fitted to a single reference building rejected geometry in this model: 26 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures — the affected geometry may be recoverable with limits measured on a second building."
+              "Decoder limits fitted to a single reference building rejected geometry in this model: 26 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures \u2014 the affected geometry may be recoverable with limits measured on a second building."
             ],
             "meshes": 47,
-            "triangles": 393145,
+            "triangles": 378957,
             "recoveredRecords": 6420,
             "geometry": {
-              "geometryHash": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
+              "geometryHash": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
               "meshes": 47,
-              "triangles": 393145,
+              "triangles": 378957,
               "bounds": 6420,
               "origin": {
                 "x": 66.8335267332647,
@@ -3060,8 +3179,8 @@
             "uniqueElementIds": 5542
           },
           "ifc": {
-            "byteLength": 48895756,
-            "sha256": "46802aef3ae53cd8ec2a174e81f223fdae6dc9d902ef950111d1f1bb1dab08fd"
+            "byteLength": 48051510,
+            "sha256": "db93871d67548db2e27cbf22450fc281ff8c2dfd4bbc36390c8c3cd028bec5ae"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -3156,13 +3275,13 @@
         "checks": {
           "geometryHash": {
             "expected": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
-            "actual": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
-            "matches": true
+            "actual": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
+            "matches": false
           },
           "triangles": {
             "expected": 393145,
-            "actual": 393145,
-            "matches": true
+            "actual": 378957,
+            "matches": false
           },
           "meshes": {
             "expected": 47,
@@ -3652,7 +3771,173 @@
           15.049946810452571,
           133.70331796875
         ],
-        "scope": "Reference topology/extent inventory only; the baseline hash proves unchanged Reviter scene, not agreement with these reference surfaces."
+        "scope": "Reference topology/extent inventory only; recorded baseline checks distinguish preserved data from measured source-body selection changes. They do not establish agreement with these reference surfaces."
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "geometryReview": {
+        "baselineInterpretation": "Native source body selection deliberately changes mesh bytes and triangle counts. The other four original baseline fields remain unchanged.",
+        "originalBaseFieldsPreserved": [
+          "meshes",
+          "bounds",
+          "origin",
+          "bbox"
+        ],
+        "originalBaseFieldsChanged": [
+          "geometryHash",
+          "triangles"
+        ],
+        "ownerComparison": {
+          "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+          "priorIfcSha256": "46802aef3ae53cd8ec2a174e81f223fdae6dc9d902ef950111d1f1bb1dab08fd",
+          "currentIfcSha256": "db93871d67548db2e27cbf22450fc281ff8c2dfd4bbc36390c8c3cd028bec5ae",
+          "coverage": {
+            "compared": 5507,
+            "ambiguous": 0,
+            "identityDisagreements": 0,
+            "outputOnly": 0,
+            "referenceOnly": 0
+          },
+          "changedTriangleCountOwners": 113,
+          "changedOwnerClasses": {
+            "IfcColumn": 113
+          },
+          "maximumWorldBoundsDifferenceFeet": 0,
+          "changedOwnerSamples": [
+            {
+              "tag": "140949",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172907147113
+            },
+            {
+              "tag": "140950",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831729071471063
+            },
+            {
+              "tag": "140951",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831730090364544
+            },
+            {
+              "tag": "140952",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831729289457853
+            },
+            {
+              "tag": "140953",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831729580937843
+            },
+            {
+              "tag": "140954",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172960094128
+            },
+            {
+              "tag": "140955",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831729591386274
+            },
+            {
+              "tag": "140956",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41831729699813286
+            },
+            {
+              "tag": "140957",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172960094117
+            },
+            {
+              "tag": "140958",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172932196044
+            },
+            {
+              "tag": "140960",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172907147115
+            },
+            {
+              "tag": "140961",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172907147109
+            },
+            {
+              "tag": "140962",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183173009036455
+            },
+            {
+              "tag": "140963",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.418317292894579
+            },
+            {
+              "tag": "140964",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172958093789
+            },
+            {
+              "tag": "140965",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 212,
+              "currentTriangles": 84,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4183172960094121
+            }
+          ],
+          "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+        }
       }
     },
     {
@@ -3667,13 +3952,13 @@
             "byteLength": 94691328,
             "release": 2024
           },
-          "elapsedMs": 3597.513191999984,
+          "elapsedMs": 3407.32939899998,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
-            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
-            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/2-snowdon.rvt/upstream.ifc",
+            "proof": "/workspace/scratch/rvt-reader-comparison-before-geometry-selection.json",
+            "proofSha256": "489a530a60e398d636de84317925946818ce20c15ec2d01cf237c0f58ba86e3d",
+            "sourceIfc": "/workspace/scratch/head-to-head-continuation.json.artifacts/2-snowdon.rvt/upstream.ifc",
             "ifcSha256": "5713005a22552d1beb64d68f54d51f2580a846bce7b61b19b71ae7cb907154f0",
-            "originalElapsedMs": 4137.424586000008,
+            "originalElapsedMs": 3597.513191999984,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -4541,7 +4826,7 @@
             "byteLength": 94691328,
             "release": 2024
           },
-          "elapsedMs": 354843.70252299996,
+          "elapsedMs": 502723.10868099995,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -4595,8 +4880,8 @@
               "candidatesFound": 12386,
               "candidatesFocused": 8812,
               "candidatesUsed": 8931,
-              "vertexCount": 1932049,
-              "triangleCount": 1596168,
+              "vertexCount": 1927071,
+              "triangleCount": 1594784,
               "meshCount": 143,
               "boundsRecordsFound": 12386,
               "solidBoundsRecords": 8920,
@@ -4644,7 +4929,7 @@
                   "description": "plane pairs further apart than the accepted wall thickness"
                 }
               ],
-              "durationMs": 248585.233781
+              "durationMs": 370975.17420999997
             },
             "decoderCoverage": {
               "revitVersion": 2024,
@@ -4679,7 +4964,7 @@
               "nativeCurves": 0,
               "nativeProfiles": 0,
               "nativeMeshes": 120,
-              "nativeMeshFaces": 134904,
+              "nativeMeshFaces": 134186,
               "nativeMeshElements": 8191,
               "nativeWallProxyReplacements": 6,
               "nativeMeshOwners": 5459,
@@ -4692,15 +4977,15 @@
               "nativeMeshEmbeddedGeometryCandidates": 92,
               "nativeMeshCompleteEmbeddedGeometryRoots": 92,
               "nativeMeshEmbeddedGeometryElements": 91,
-              "nativeMeshTriangles": 1581188,
-              "nativeMeshDuplicateTrianglesRemoved": 10621,
+              "nativeMeshTriangles": 1579804,
+              "nativeMeshDuplicateTrianglesRemoved": 10237,
               "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 6100,
               "nativeRedundantWallShellTrianglesRemoved": 321,
               "nativeRedundantWallShellElements": 14,
               "nativeHostOpeningWallTrianglesClipped": 0,
               "nativeHostOpeningWallTrianglesGenerated": 0,
               "nativeMeshTruncated": false,
-              "nativeMeshStoredBytes": 138356884,
+              "nativeMeshStoredBytes": 137089444,
               "nativeMeshBoundsMismatches": 3,
               "nativeMeshCarrierComposedItems": 0,
               "nativeMeshCarrierComposedOutsideEnvelope": 0,
@@ -4718,7 +5003,7 @@
               "nativeMeshRequestedOwnerDefinitions": 1388,
               "nativeMeshCompleteRequestedOwners": 1129,
               "nativeMeshPartialRequestedOwners": 259,
-              "nativeMeshRequestedOwnerTriangles": 273605,
+              "nativeMeshRequestedOwnerTriangles": 272299,
               "nativeMeshRequestedOwnerFailures": 259,
               "nativeMaterialDefinitions": 220,
               "nativeMaterialAssignments": 7160,
@@ -4748,14 +5033,14 @@
               "220 native Revit material definitions were decoded; 220 expose a packed render colour, 220 a persisted transparency, and shared geometry, 512 FamilySymbol geometry-tag maps, and 67 compound wall structures persistently assign 7,160 placed elements. Texture channels and nested-layout transparency remain unresolved.",
               "631 loadable-family symbols resolve to persisted Family elements.",
               "3,319 persisted hosted-element relationships were decoded from InsertableInst.m_hostId.",
-              "10,621 coincident native triangles were removed before rendering (6,100 crossed material batches).",
+              "10,237 coincident native triangles were removed before rendering (6,100 crossed material batches).",
               "321 generic envelope-shell triangles were removed from 14 walls whose complete sloped compound-layer body was independently present.",
               "6 native wall meshes whose plan spans overfilled a centre-corroborating location-line solid were replaced by that tighter RVT reconstruction.",
               "6,929 persisted associated-level relationships were decoded from Element.m_assocLevelId.",
-              "8,191 elements use complete certified Revit GRep/BRep face meshes (1,581,188 triangles); their display proxies were removed only after native admission.",
+              "8,191 elements use complete certified Revit GRep/BRep face meshes (1,579,804 triangles); their display proxies were removed only after native admission.",
               "855 GRep owners did not have a complete drawable Face mesh and remain on the proxy path.",
               "85 of 163 nested-symbol GRep roots resolved atomically through 17,189 exact GInstance links (144,010 triangles); incomplete recursive roots remain on the proxy path.",
-              "1,129 of 1,388 exact placement-referenced GRep owners resolved to complete reusable local meshes (273,605 triangles); incomplete or absent definitions remain on the proxy path.",
+              "1,129 of 1,388 exact placement-referenced GRep owners resolved to complete reusable local meshes (272,299 triangles); incomplete or absent definitions remain on the proxy path.",
               "3 complete native items were declined because their transformed AABB escaped the element's independent RVT envelope; their proxies remain.",
               "21 family instances whose type stores no geometry are drawn from their family's own document, which the project carries; 93 more keep their box because the document holds the family in a different type's size.",
               "759 complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.",
@@ -4764,15 +5049,15 @@
               "242,979 records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: 28,717 owned by a view (annotation, tags, detail items), 190,653 inside a loaded family's own definition, 603 members of a group type that is not placed, 72 family types, 16,825 with no category, and 6,109 datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.",
               "50 unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.",
               "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements.",
-              "Decoder limits fitted to a single reference building rejected geometry in this model: 1 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures — the affected geometry may be recoverable with limits measured on a second building."
+              "Decoder limits fitted to a single reference building rejected geometry in this model: 1 plane pairs further apart than the accepted wall thickness (max-half-thickness-feet). These are thresholds, not decode failures \u2014 the affected geometry may be recoverable with limits measured on a second building."
             ],
             "meshes": 143,
-            "triangles": 1596168,
+            "triangles": 1594784,
             "recoveredRecords": 12386,
             "geometry": {
-              "geometryHash": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
+              "geometryHash": "f8ec1a37de7b41db30938517ae1375630a31287dc27d4315f2f89e8a17865e72",
               "meshes": 143,
-              "triangles": 1596168,
+              "triangles": 1594784,
               "bounds": 12386,
               "origin": {
                 "x": -19.777534651013887,
@@ -4815,7 +5100,7 @@
             }
           },
           "inventory": {
-            "totalInstances": 392560,
+            "totalInstances": 392530,
             "classes": {
               "IFCPERSON": 1,
               "IFCORGANIZATION": 1,
@@ -4845,8 +5130,8 @@
               "IFCSHAPEREPRESENTATION": 8978,
               "IFCPRODUCTDEFINITIONSHAPE": 8978,
               "IFCWALL": 1086,
-              "IFCPROPERTYSINGLEVALUE": 197889,
-              "IFCPROPERTYSET": 58386,
+              "IFCPROPERTYSINGLEVALUE": 197874,
+              "IFCPROPERTYSET": 58381,
               "IFCRELDEFINESBYPROPERTIES": 57211,
               "IFCWALLTYPE": 49,
               "IFCSTAIRFLIGHT": 43,
@@ -4882,7 +5167,7 @@
               "IFCELECTRICAPPLIANCE": 26,
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCCOLUMN": 118,
-              "IFCCOLUMNTYPE": 19,
+              "IFCCOLUMNTYPE": 14,
               "IFCLIGHTFIXTURE": 447,
               "IFCLIGHTFIXTURETYPE": 41,
               "IFCCOVERING": 68,
@@ -4895,7 +5180,7 @@
               "IFCDISTRIBUTIONPORT": 533,
               "IFCRELNESTS": 364,
               "IFCRELCONTAINEDINSPATIALSTRUCTURE": 13,
-              "IFCRELDEFINESBYTYPE": 1175,
+              "IFCRELDEFINESBYTYPE": 1170,
               "IFCMATERIALLAYER": 125,
               "IFCMATERIALLAYERSET": 34,
               "IFCMATERIALLAYERSETUSAGE": 910,
@@ -4913,7 +5198,7 @@
               "IFCRELAGGREGATES": 33,
               "IFCBUILDINGSTOREY": 19,
               "IFCWALL": 1086,
-              "IFCPROPERTYSET": 58386,
+              "IFCPROPERTYSET": 58381,
               "IFCRELDEFINESBYPROPERTIES": 57211,
               "IFCWALLTYPE": 49,
               "IFCSTAIRFLIGHT": 43,
@@ -4949,7 +5234,7 @@
               "IFCELECTRICAPPLIANCE": 26,
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCCOLUMN": 118,
-              "IFCCOLUMNTYPE": 19,
+              "IFCCOLUMNTYPE": 14,
               "IFCLIGHTFIXTURE": 447,
               "IFCLIGHTFIXTURETYPE": 41,
               "IFCCOVERING": 68,
@@ -4958,7 +5243,7 @@
               "IFCDISTRIBUTIONPORT": 533,
               "IFCRELNESTS": 364,
               "IFCRELCONTAINEDINSPATIALSTRUCTURE": 13,
-              "IFCRELDEFINESBYTYPE": 1175,
+              "IFCRELDEFINESBYTYPE": 1170,
               "IFCRELASSOCIATESMATERIAL": 6648,
               "IFCOPENINGELEMENT": 195,
               "IFCRELVOIDSELEMENT": 195,
@@ -5002,7 +5287,7 @@
               "Pset_WallCommon": 1072,
               "Pset_QuantityTakeOff": 8629,
               "Pset_ReinforcementBarPitchOfWall": 1072,
-              "Other": 10178,
+              "Other": 10173,
               "Reviter_RevitInstanceParameters": 1555,
               "Pset_StairFlightCommon": 43,
               "Pset_MemberCommon": 1595,
@@ -5028,7 +5313,7 @@
               "Reviter_LevelParameters": 5201
             },
             "bodySources": {},
-            "roots": 135242,
+            "roots": 135227,
             "products": 9825,
             "productsWithRepresentation": 8978,
             "taggedElements": 9043,
@@ -5039,13 +5324,13 @@
               "ElementId joins use decimal common IfcElement.Tag only; source IDs stored exclusively in property sets are not joined.",
               "A representation reference or geometry entity count is not proof of a correct, complete or native-authored shape."
             ],
-            "uniqueRootGlobalIds": 135242,
+            "uniqueRootGlobalIds": 135227,
             "uniqueProductGlobalIds": 9825,
             "uniqueElementIds": 9043
           },
           "ifc": {
-            "byteLength": 132663175,
-            "sha256": "995f8cf60cf955132fe8cff33d9ba8051bc3cf0fb876ffb638e162b97eb963fc"
+            "byteLength": 132545737,
+            "sha256": "e86003dc9d7e7dbf9a0be3ba2dae52f51cf2137e6c70e18caeeb3b7baed257d6"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -5057,7 +5342,7 @@
               "IFCRELAGGREGATES": 33,
               "IFCUNITASSIGNMENT": 1,
               "IFCMATERIALLAYER": 125,
-              "IFCCOLUMNTYPE": 19,
+              "IFCCOLUMNTYPE": 14,
               "IFCSTAIR": 22,
               "IFCSTAIRTYPE": 4,
               "IFCDOOR": 141,
@@ -5068,7 +5353,7 @@
               "IFCELECTRICAPPLIANCETYPE": 18,
               "IFCPRODUCTDEFINITIONSHAPE": 8978,
               "IFCCOLOURRGB": 234,
-              "IFCRELDEFINESBYTYPE": 1175,
+              "IFCRELDEFINESBYTYPE": 1170,
               "IFCCOLUMN": 118,
               "IFCSURFACESTYLESHADING": 234,
               "IFCSTAIRFLIGHTTYPE": 7,
@@ -5081,7 +5366,7 @@
               "IFCSURFACESTYLE": 234,
               "IFCMATERIALLAYERSETUSAGE": 910,
               "IFCRELVOIDSELEMENT": 195,
-              "IFCPROPERTYSET": 58386,
+              "IFCPROPERTYSET": 58381,
               "IFCCURTAINWALLTYPE": 8,
               "IFCRAMPTYPE": 2,
               "IFCFURNITURE": 340,
@@ -5123,7 +5408,7 @@
               "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
               "IFCCURTAINWALL": 42,
               "IFCOPENINGELEMENT": 195,
-              "IFCPROPERTYSINGLEVALUE": 197889,
+              "IFCPROPERTYSINGLEVALUE": 197874,
               "IFCMATERIALCONSTITUENT": 2029,
               "IFCPOLYLINE": 77,
               "IFCARBITRARYCLOSEDPROFILEDEF": 31,
@@ -5150,13 +5435,13 @@
         "checks": {
           "geometryHash": {
             "expected": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
-            "actual": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
-            "matches": true
+            "actual": "f8ec1a37de7b41db30938517ae1375630a31287dc27d4315f2f89e8a17865e72",
+            "matches": false
           },
           "triangles": {
             "expected": 1596168,
-            "actual": 1596168,
-            "matches": true
+            "actual": 1594784,
+            "matches": false
           },
           "meshes": {
             "expected": 143,
@@ -5211,7 +5496,7 @@
         }
       },
       "identities": {
-        "sharedRootGlobalIds": 6841,
+        "sharedRootGlobalIds": 6836,
         "sharedProductGlobalIds": 5958,
         "sharedTaggedElementIds": 5941,
         "sharedProductGlobalIdSample": [
@@ -5324,8 +5609,8 @@
         "reviterAgainstUpstream": {
           "join": "IfcRelDefinesByType -> product's exact decimal Tag; duplicate products/relations excluded",
           "compared": 5823,
-          "matched": 5563,
-          "mismatched": 260,
+          "matched": 5558,
+          "mismatched": 265,
           "ambiguous": 0,
           "outputOnly": 3007,
           "referenceOnly": 119,
@@ -5419,8 +5704,8 @@
             },
             "IFCCOLUMNTYPE -> IFCCOLUMNTYPE": {
               "compared": 118,
-              "matched": 37,
-              "mismatched": 81
+              "matched": 32,
+              "mismatched": 86
             },
             "IFCLIGHTFIXTURETYPE -> IFCLIGHTFIXTURETYPE": {
               "compared": 447,
@@ -5681,7 +5966,175 @@
           28.70199980621338,
           31.152458953857426
         ],
-        "scope": "Reference topology/extent inventory only; the baseline hash proves unchanged Reviter scene, not agreement with these reference surfaces."
+        "scope": "Reference topology/extent inventory only; recorded baseline checks distinguish preserved data from measured source-body selection changes. They do not establish agreement with these reference surfaces."
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "geometryReview": {
+        "baselineInterpretation": "Native source body selection deliberately changes mesh bytes and triangle counts. The other four original baseline fields remain unchanged.",
+        "originalBaseFieldsPreserved": [
+          "meshes",
+          "bounds",
+          "origin",
+          "bbox"
+        ],
+        "originalBaseFieldsChanged": [
+          "geometryHash",
+          "triangles"
+        ],
+        "ownerComparison": {
+          "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+          "priorIfcSha256": "995f8cf60cf955132fe8cff33d9ba8051bc3cf0fb876ffb638e162b97eb963fc",
+          "currentIfcSha256": "e86003dc9d7e7dbf9a0be3ba2dae52f51cf2137e6c70e18caeeb3b7baed257d6",
+          "coverage": {
+            "compared": 8931,
+            "ambiguous": 0,
+            "identityDisagreements": 0,
+            "outputOnly": 0,
+            "referenceOnly": 0
+          },
+          "changedTriangleCountOwners": 26,
+          "changedOwnerClasses": {
+            "IfcColumn": 19,
+            "IfcFurniture": 6,
+            "IfcBuildingElementProxy": 1
+          },
+          "maximumWorldBoundsDifferenceFeet": 2.7161703997080622e-08,
+          "changedOwnerSamples": [
+            {
+              "tag": "1206189",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 142,
+              "currentTriangles": 56,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.40450700856638405
+            },
+            {
+              "tag": "1211583",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 142,
+              "currentTriangles": 56,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.42550851314043014
+            },
+            {
+              "tag": "2106254",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2106335",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2106392",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2106483",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2106556",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2106723",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2106858",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2106955",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2107118",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2107207",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2107300",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.4146341436658384
+            },
+            {
+              "tag": "2107454",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2107581",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 32,
+              "currentTriangles": 12,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.41463414366583834
+            },
+            {
+              "tag": "2220516",
+              "ifcClass": "IfcColumn",
+              "priorTriangles": 180,
+              "currentTriangles": 116,
+              "worldBoundsDifferenceFeet": 0,
+              "areaDifferenceRelativeToPrior": 0.32649210240985277
+            }
+          ],
+          "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+        }
       }
     },
     {
@@ -5696,13 +6149,13 @@
             "byteLength": 70336512,
             "release": 2027
           },
-          "elapsedMs": 505.37570199999027,
+          "elapsedMs": 873.3595529999584,
           "reusedFrom": {
-            "proof": "/workspace/reviter/docs/generated/rvt-reader-comparison-final.json",
-            "proofSha256": "3a232f0417409274375dd82ef985574799e0aac969ab7405978edc18624f49b9",
-            "sourceIfc": "/workspace/scratch/head-to-head-symbol-domain-final.json.artifacts/3-unbc.rvt/upstream.ifc",
+            "proof": "/workspace/scratch/rvt-reader-comparison-before-geometry-selection.json",
+            "proofSha256": "489a530a60e398d636de84317925946818ce20c15ec2d01cf237c0f58ba86e3d",
+            "sourceIfc": "/workspace/scratch/head-to-head-continuation.json.artifacts/3-unbc.rvt/upstream.ifc",
             "ifcSha256": "b152c6669b4cd822e1d3bd1a391e0413f6c4af1df20743695cea3a6e6f58ba24",
-            "originalElapsedMs": 650.7399329999462,
+            "originalElapsedMs": 505.37570199999027,
             "scope": "Only the unchanged upstream output is reused; exact input/binary/output hashes and mode/walker settings verified. Reviter is freshly converted."
           },
           "binaryProvenance": {
@@ -6088,7 +6541,7 @@
             "byteLength": 70336512,
             "release": 2027
           },
-          "elapsedMs": 205638.40934500005,
+          "elapsedMs": 166375.31320999993,
           "binaryProvenance": {
             "upstream": "https://github.com/helenkwok/rvt-rs.git",
             "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
@@ -6124,12 +6577,102 @@
             "productionElements": 0,
             "diagnosticCandidates": 0,
             "exportLevel": "unsupported-version",
-            "summary": "The Rust/WASM reader opened the container and inventoried 9,241 schema classes, but Revit 2027 is outside its verified 2016–2026 range. Reviter's own decoders are unaffected and are selected separately by release.",
+            "summary": "The Rust/WASM reader opened the container and inventoried 9,241 schema classes, but Revit 2027 is outside its verified 2016\u20132026 range. Reviter's own decoders are unaffected and are selected separately by release.",
             "warnings": [
               "Standards-aware element and material decoding was skipped for this unverified Revit version."
             ]
           },
           "conversion": {
+            "geometryHash": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+            "triangles": 858388,
+            "meshes": 32,
+            "bounds": 40611,
+            "origin": {
+              "x": -1.5131448815317867,
+              "y": 287.29482336869,
+              "z": -7.217847769028872
+            },
+            "bbox": {
+              "min": {
+                "x": -352.0067084305153,
+                "y": -614.2014975498594,
+                "z": 0
+              },
+              "max": {
+                "x": 352.0067084305153,
+                "y": 614.2014975498594,
+                "z": 62.335958005249346
+              }
+            },
+            "geometryPreservedByEnrichment": true,
+            "geometryBaseline": {
+              "path": "/workspace/models/unbc-base.json",
+              "checks": {
+                "geometryHash": {
+                  "expected": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+                  "actual": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+                  "matches": false
+                },
+                "triangles": {
+                  "expected": 901903,
+                  "actual": 858388,
+                  "matches": false
+                },
+                "meshes": {
+                  "expected": 32,
+                  "actual": 32,
+                  "matches": true
+                },
+                "bounds": {
+                  "expected": 40611,
+                  "actual": 40611,
+                  "matches": true
+                },
+                "origin": {
+                  "expected": {
+                    "x": -1.5131448815317867,
+                    "y": 287.29482336869,
+                    "z": -7.217847769028872
+                  },
+                  "actual": {
+                    "x": -1.5131448815317867,
+                    "y": 287.29482336869,
+                    "z": -7.217847769028872
+                  },
+                  "matches": true
+                },
+                "bbox": {
+                  "expected": {
+                    "min": {
+                      "x": -352.0067084305153,
+                      "y": -614.2014975498594,
+                      "z": 0
+                    },
+                    "max": {
+                      "x": 352.0067084305153,
+                      "y": 614.2014975498594,
+                      "z": 62.335958005249346
+                    }
+                  },
+                  "actual": {
+                    "min": {
+                      "x": -352.0067084305153,
+                      "y": -614.2014975498594,
+                      "z": 0
+                    },
+                    "max": {
+                      "x": 352.0067084305153,
+                      "y": 614.2014975498594,
+                      "z": 62.335958005249346
+                    }
+                  },
+                  "matches": true
+                }
+              },
+              "sourceHashMatches": null,
+              "inputIdentityScope": "Older baseline has no source SHA-256; byte length/release/path are context, not authenticated source identity",
+              "interpretation": "Exact prior mesh bytes/counts/origin/bounds preservation; this is not proof of Revit shape accuracy."
+            },
             "method": "partition-bounds-recovery",
             "stats": {
               "streamCount": 13,
@@ -6139,8 +6682,8 @@
               "candidatesFound": 40611,
               "candidatesFocused": 36244,
               "candidatesUsed": 36423,
-              "vertexCount": 1722191,
-              "triangleCount": 901903,
+              "vertexCount": 1651099,
+              "triangleCount": 858388,
               "meshCount": 32,
               "boundsRecordsFound": 40611,
               "solidBoundsRecords": 38297,
@@ -6188,7 +6731,7 @@
                   "description": "stair runs drawn as solid terraces by the fitted monumental depth/rise rule"
                 }
               ],
-              "durationMs": 163391.40600000002
+              "durationMs": 122429.061362
             },
             "decoderCoverage": {
               "revitVersion": 2027,
@@ -6222,7 +6765,7 @@
               "nativeCurves": 0,
               "nativeProfiles": 0,
               "nativeMeshes": 23,
-              "nativeMeshFaces": 385046,
+              "nativeMeshFaces": 378528,
               "nativeMeshElements": 34401,
               "nativeWallProxyReplacements": 0,
               "nativeMeshOwners": 16417,
@@ -6231,20 +6774,20 @@
               "nativeMeshBoundedTessellatorElements": 151,
               "nativeMeshConditionedGeometryCandidates": 3109,
               "nativeMeshCompleteConditionedGeometryRoots": 3007,
-              "nativeMeshConditionedGeometryElements": 2793,
+              "nativeMeshConditionedGeometryElements": 2594,
               "nativeMeshEmbeddedGeometryCandidates": 210,
               "nativeMeshCompleteEmbeddedGeometryRoots": 210,
               "nativeMeshEmbeddedGeometryElements": 210,
-              "nativeMeshTriangles": 859177,
-              "nativeMeshDuplicateTrianglesRemoved": 16208,
-              "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 3270,
+              "nativeMeshTriangles": 815662,
+              "nativeMeshDuplicateTrianglesRemoved": 1667,
+              "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 0,
               "nativeRedundantWallShellTrianglesRemoved": 224,
               "nativeRedundantWallShellElements": 28,
               "nativeHostOpeningWallTrianglesClipped": 0,
               "nativeHostOpeningWallTrianglesGenerated": 0,
               "nativeMeshTruncated": false,
-              "nativeMeshStoredBytes": 233108124,
-              "nativeMeshBoundsMismatches": 4,
+              "nativeMeshStoredBytes": 230192516,
+              "nativeMeshBoundsMismatches": 0,
               "nativeMeshCarrierComposedItems": 0,
               "nativeMeshCarrierComposedOutsideEnvelope": 0,
               "nativeMeshMissingBounds": 124,
@@ -6256,12 +6799,12 @@
               "nativeMeshNestedRoots": 361,
               "nativeMeshCompleteNestedRoots": 328,
               "nativeMeshPartialNestedRoots": 32,
-              "nativeMeshNestedTriangles": 225712,
+              "nativeMeshNestedTriangles": 219776,
               "nativeMeshNestedFailures": 32,
               "nativeMeshRequestedOwnerDefinitions": 7831,
               "nativeMeshCompleteRequestedOwners": 7760,
               "nativeMeshPartialRequestedOwners": 71,
-              "nativeMeshRequestedOwnerTriangles": 169124,
+              "nativeMeshRequestedOwnerTriangles": 160084,
               "nativeMeshRequestedOwnerFailures": 71,
               "nativeMaterialDefinitions": 94,
               "nativeMaterialAssignments": 35084,
@@ -6292,15 +6835,14 @@
               "94 native Revit material definitions were decoded; 94 expose a packed render colour, 94 a persisted transparency, and shared geometry, 361 FamilySymbol geometry-tag maps, and 45 compound wall structures persistently assign 35,084 placed elements. Texture channels and nested-layout transparency remain unresolved.",
               "2,177 loadable-family symbols resolve to persisted Family elements.",
               "27,568 persisted hosted-element relationships were decoded from InsertableInst.m_hostId.",
-              "16,208 coincident native triangles were removed before rendering (3,270 crossed material batches).",
+              "1,667 coincident native triangles were removed before rendering (0 crossed material batches).",
               "224 generic envelope-shell triangles were removed from 28 walls whose complete sloped compound-layer body was independently present.",
               "37,502 persisted associated-level relationships were decoded from Element.m_assocLevelId.",
               "30 distinct DWG file names are retained in partition records; these names do not include an extractable original DWG payload.",
-              "34,401 elements use complete certified Revit GRep/BRep face meshes (859,177 triangles); their display proxies were removed only after native admission.",
+              "34,401 elements use complete certified Revit GRep/BRep face meshes (815,662 triangles); their display proxies were removed only after native admission.",
               "266 GRep owners did not have a complete drawable Face mesh and remain on the proxy path.",
-              "328 of 361 nested-symbol GRep roots resolved atomically through 41,665 exact GInstance links (225,712 triangles); incomplete recursive roots remain on the proxy path.",
-              "7,760 of 7,831 exact placement-referenced GRep owners resolved to complete reusable local meshes (169,124 triangles); incomplete or absent definitions remain on the proxy path.",
-              "4 complete native items were declined because their transformed AABB escaped the element's independent RVT envelope; their proxies remain.",
+              "328 of 361 nested-symbol GRep roots resolved atomically through 41,665 exact GInstance links (219,776 triangles); incomplete recursive roots remain on the proxy path.",
+              "7,760 of 7,831 exact placement-referenced GRep owners resolved to complete reusable local meshes (160,084 triangles); incomplete or absent definitions remain on the proxy path.",
               "124 complete native items are drawn without an independent RVT envelope to cross-check them against, because those elements have no usable bounds record of their own.",
               "3,064 complete native definition items were not drawn because no placed RVT element record names them.",
               "2 rectangular curtain-panel proxies were clipped by unambiguous diagonal mullion boundaries; ambiguous and ordinary bays retain their placed boxes.",
@@ -6309,15 +6851,13 @@
               "57,866 records are not part of the 3D model and are not drawn, by each element's own ElementHeader or category: 4,127 owned by a view (annotation, tags, detail items), 33,326 inside a loaded family's own definition, 0 members of a group type that is not placed, 2 family types, 8,549 with no category, and 11,862 datums, sketches, spatial elements, containers, masses, openings, links and subcategory projections.",
               "170 unresolved stair/railing drawing-aid records are not rendered as envelope proxies; exact native or reconstructed geometry for the same element ids remains eligible.",
               "Geometry prefers complete certified RVT BRep faces and falls back to recovered element envelopes or analytic proxies for unsupported elements.",
-              "Decoder limits fitted to a single reference building rejected geometry in this model: 26 stair runs drawn as solid terraces by the fitted monumental depth/rise rule (monumental-solid-treads). These are thresholds, not decode failures — the affected geometry may be recoverable with limits measured on a second building."
+              "Decoder limits fitted to a single reference building rejected geometry in this model: 26 stair runs drawn as solid terraces by the fitted monumental depth/rise rule (monumental-solid-treads). These are thresholds, not decode failures \u2014 the affected geometry may be recoverable with limits measured on a second building."
             ],
-            "meshes": 32,
-            "triangles": 901903,
             "recoveredRecords": 40611,
             "geometry": {
-              "geometryHash": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+              "geometryHash": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
               "meshes": 32,
-              "triangles": 901903,
+              "triangles": 858388,
               "bounds": 40611,
               "origin": {
                 "x": -1.5131448815317867,
@@ -6340,7 +6880,16 @@
             "nativeSourceRooms": 0,
             "nativeMepSystems": 0,
             "nativeMepConnections": 0,
+            "nativeMepPorts": 0,
+            "nativeMepDimensions": 0,
             "nativeDesignOptionSets": 0,
+            "nativePhaseDefinitions": 0,
+            "nativePhaseElements": 8879,
+            "nativeExtraLevelParameters": 0,
+            "nativeRoomFloorFinishes": 0,
+            "nativeOriginalTypeIdentityEvidence": 27763,
+            "nativeIfcGuidParameterTables": 0,
+            "nativeIfcSemanticElements": 0,
             "geometrySources": {
               "validated-bounds-envelope": 2931,
               "analytic-plane-solid": 9093,
@@ -6362,7 +6911,7 @@
             }
           },
           "inventory": {
-            "totalInstances": 1346371,
+            "totalInstances": 1345786,
             "classes": {
               "IFCPERSON": 1,
               "IFCORGANIZATION": 1,
@@ -6386,9 +6935,9 @@
               "IFCSURFACESTYLESHADING": 108,
               "IFCSURFACESTYLE": 108,
               "IFCMATERIAL": 94,
-              "IFCCARTESIANPOINTLIST3D": 36982,
-              "IFCTRIANGULATEDFACESET": 36982,
-              "IFCSTYLEDITEM": 36982,
+              "IFCCARTESIANPOINTLIST3D": 36787,
+              "IFCTRIANGULATEDFACESET": 36787,
+              "IFCSTYLEDITEM": 36787,
               "IFCSHAPEREPRESENTATION": 36415,
               "IFCPRODUCTDEFINITIONSHAPE": 36415,
               "IFCWALL": 7529,
@@ -6486,7 +7035,7 @@
               "IFCOPENINGELEMENT": 1932
             },
             "geometryEntities": {
-              "IFCTRIANGULATEDFACESET": 36982
+              "IFCTRIANGULATEDFACESET": 36787
             },
             "representationTypes": {
               "Tessellation": 36415
@@ -6525,8 +7074,8 @@
             "uniqueElementIds": 38327
           },
           "ifc": {
-            "byteLength": 198754585,
-            "sha256": "ebfae4cd8af620f946d3d6325a522386a5ba2587b88f57e557840a3776cbad3a"
+            "byteLength": 195745359,
+            "sha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426"
           },
           "reopened": {
             "reader": "web-ifc",
@@ -6563,7 +7112,7 @@
               "IFCBUILDINGELEMENTPROXYTYPE": 26,
               "IFCCOVERING": 46,
               "IFCROOF": 20,
-              "IFCCARTESIANPOINTLIST3D": 36982,
+              "IFCCARTESIANPOINTLIST3D": 36787,
               "IFCPERSON": 1,
               "IFCRAILING": 215,
               "IFCDOORTYPE": 304,
@@ -6572,7 +7121,7 @@
               "IFCRELASSOCIATESMATERIAL": 35032,
               "IFCAXIS2PLACEMENT3D": 14,
               "IFCMATERIALCONSTITUENTSET": 1931,
-              "IFCTRIANGULATEDFACESET": 36982,
+              "IFCTRIANGULATEDFACESET": 36787,
               "IFCRAMP": 12,
               "IFCBUILDINGSTOREY": 12,
               "IFCPLATE": 6243,
@@ -6586,7 +7135,7 @@
               "IFCPROPERTYSINGLEVALUE": 678052,
               "IFCMATERIALCONSTITUENT": 3862,
               "IFCRELFILLSELEMENT": 1932,
-              "IFCSTYLEDITEM": 36982,
+              "IFCSTYLEDITEM": 36787,
               "IFCWINDOWTYPE": 9,
               "IFCPLATETYPE": 2195,
               "IFCBUILDING": 1,
@@ -6607,13 +7156,13 @@
         "checks": {
           "geometryHash": {
             "expected": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
-            "actual": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
-            "matches": true
+            "actual": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+            "matches": false
           },
           "triangles": {
             "expected": 901903,
-            "actual": 901903,
-            "matches": true
+            "actual": 858388,
+            "matches": false
           },
           "meshes": {
             "expected": 32,
@@ -7093,6 +7642,145 @@
             }
           ]
         }
+      },
+      "enrichmentGeometryVerification": {
+        "state": "verified",
+        "geometryHashPreserved": true,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "geometryReview": {
+        "baselineInterpretation": "Native source body selection deliberately changes mesh bytes and triangle counts. The other four original baseline fields remain unchanged.",
+        "originalBaseFieldsPreserved": [
+          "meshes",
+          "bounds",
+          "origin",
+          "bbox"
+        ],
+        "originalBaseFieldsChanged": [
+          "geometryHash",
+          "triangles"
+        ],
+        "ownerComparison": {
+          "referenceKind": "Supplied Autodesk IFC2x3 paired export; exact unique decimal Tag+GlobalId joins",
+          "referenceIfcSha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+          "currentIfcSha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426",
+          "coverage": {
+            "compared": 36048,
+            "ambiguous": 92,
+            "identityDisagreements": 2,
+            "outputOnly": 273,
+            "referenceOnly": 2
+          },
+          "priorColumnAgreement": {
+            "compared": 311,
+            "boundsWithin001Feet": 221,
+            "areaWithinOnePercent": 9,
+            "closedVolumePairs": 0,
+            "closedVolumeWithinOnePercent": 0
+          },
+          "currentColumnAgreement": {
+            "compared": 311,
+            "boundsWithin001Feet": 261,
+            "areaWithinOnePercent": 249,
+            "closedVolumePairs": 54,
+            "closedVolumeWithinOnePercent": 54
+          },
+          "priorRailingAgreement": {
+            "compared": 202,
+            "boundsWithin001Feet": 197,
+            "areaWithinOnePercent": 145,
+            "closedVolumePairs": 0,
+            "closedVolumeWithinOnePercent": 0
+          },
+          "currentRailingAgreement": {
+            "compared": 202,
+            "boundsWithin001Feet": 197,
+            "areaWithinOnePercent": 198,
+            "closedVolumePairs": 0,
+            "closedVolumeWithinOnePercent": 0
+          },
+          "surfaceSampling": {
+            "scope": "Exact-identity selected owners only. Every triangle's vertices, edge midpoints and centroid tested against all opposing triangles; a finite sample diagnostic, not a continuous Hausdorff bound.",
+            "maxTags": 32,
+            "maxTrianglesPerOwner": 2000,
+            "requestedTags": [
+              "694201",
+              "694735",
+              "1185924",
+              "801614",
+              "2236110"
+            ],
+            "unmatchedRequestedTags": [],
+            "results": [
+              {
+                "tag": "694201",
+                "globalId": "3q3eK5Zbb2NxtMMzRYU4gF",
+                "outputToReference": {
+                  "maximumFeet": 6.773266547677869e-06,
+                  "samples": 175
+                },
+                "referenceToOutput": {
+                  "maximumFeet": 6.658948848325963e-06,
+                  "samples": 182
+                }
+              },
+              {
+                "tag": "694735",
+                "globalId": "3q3eK5Zbb2NxtMMzRYU4Jv",
+                "outputToReference": {
+                  "maximumFeet": 1.3541016737234985e-05,
+                  "samples": 168
+                },
+                "referenceToOutput": {
+                  "maximumFeet": 1.3412513482080612e-05,
+                  "samples": 182
+                }
+              },
+              {
+                "tag": "2236110",
+                "globalId": "3$80Jb4C96ThbKDugcWiHp",
+                "outputToReference": {
+                  "maximumFeet": 0.4866388322993251,
+                  "samples": 84
+                },
+                "referenceToOutput": {
+                  "maximumFeet": 0.48663709953438167,
+                  "samples": 420
+                }
+              },
+              {
+                "tag": "801614",
+                "globalId": "3j5UD8SwDBcRETZaO4YP6Z",
+                "outputToReference": {
+                  "maximumFeet": 0.8002203057058352,
+                  "samples": 294
+                },
+                "referenceToOutput": {
+                  "maximumFeet": 5.2329667737052005e-05,
+                  "samples": 406
+                }
+              },
+              {
+                "tag": "1185924",
+                "globalId": "3NnPElt$TDiP3TKZm8fKQt",
+                "outputToReference": {
+                  "maximumFeet": 23.303759407117063,
+                  "samples": 504
+                },
+                "referenceToOutput": {
+                  "maximumFeet": 0.36909353763083175,
+                  "samples": 252
+                }
+              }
+            ]
+          },
+          "scope": [
+            "Bounds/area/volume agreement does not establish equal surfaces or decoded join order.",
+            "Volume is the sum of absolute oriented shell volumes only when every individual part has exact-coordinate closed manifold edges and consistent winding. No welding tolerance or hole filling is used. Self-intersection and overlap between parts are not validated; this is not union/material volume.",
+            "IFC exporter view, phase, tessellation and geometry-selection differences can change metrics; triangle count is descriptive, never an accuracy score.",
+            "Source decoder provenance must be established separately before changing a native body. This audit never replaces source geometry with reference geometry."
+          ]
+        }
       }
     }
   ],
@@ -7103,6 +7791,7 @@
     "Reference IFC remains an external observation; matching counts, IDs and representations do not establish geometric or semantic accuracy.",
     "No reference IFC geometry is fed into either converter.",
     "The two binary bundles are separate: untouched pinned upstream and locally patched Reviter optional evidence reader.",
-    "Fresh Reviter conversions use the unchanged upstream IFCs from a previous independently reopened run; input/binary/output hashes and mode/walker settings are verified and recorded. Reopens/reference joins do not reconvert RVT."
+    "Fresh Reviter conversions use the unchanged upstream IFCs from a previous independently reopened run; input/binary/output hashes and mode/walker settings are verified and recorded. Reopens/reference joins do not reconvert RVT.",
+    "Current native body precedence/default-3D cut selection deliberately changes mesh-buffer hashes and triangle counts. All four other original baseline fields remain preserved; per-owner measurements are attached with explicit prior-output versus paired-reference scopes."
   ]
 }

@@ -34,7 +34,10 @@
     "indoor:presentation": "node --experimental-strip-types scripts/prepare-room-presentation.ts",
     "cad:analyze": "node --experimental-strip-types scripts/analyze-dwg-floors.ts",
     "cad:paths": "node --experimental-strip-types scripts/analyze-dwg-paths.ts",
-    "inspect:rvt-evidence": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs scripts/inspect-native-evidence.ts"
+    "inspect:rvt-evidence": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs scripts/inspect-native-evidence.ts",
+    "inspect:rvt-schedules": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs scripts/inspect-native-schedules.ts",
+    "inspect:rvt-organization": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs scripts/inspect-native-spatial-organization.ts",
+    "export:rvt-annotations": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs scripts/export-native-drawing.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

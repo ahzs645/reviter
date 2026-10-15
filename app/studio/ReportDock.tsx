@@ -57,6 +57,7 @@ export function ReportDock({
   fileRecord,
   exports,
   exporting,
+  sourceViewControls,
   ifcExportOptions,
   onIfcExportOptions,
   recoveredElementIds,
@@ -82,6 +83,7 @@ export function ReportDock({
   fileRecord: FileRecord | null;
   exports: readonly ExportAction[];
   exporting: string | null;
+  sourceViewControls?: import("react").ReactNode;
   ifcExportOptions: IfcExportOptions;
   onIfcExportOptions: (value: IfcExportOptions) => void;
   recoveredElementIds: Set<number>;
@@ -408,6 +410,7 @@ export function ReportDock({
         {tab === "exports" && (
           <>
             <IfcExportControls result={result} value={ifcExportOptions} onChange={onIfcExportOptions} disabled={Boolean(exporting)} />
+            {sourceViewControls}
             <div className="export-grid">
               {exports.map((entry) => (
                 <button

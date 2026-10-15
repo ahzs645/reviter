@@ -10,7 +10,7 @@ import {
   createNativeOriginalSymbolCollector, doorWindowSymbolFlipped,
   nativeFamilyTypeGlobalId, verifiedOriginalSymbolObject,
   nativeOriginalSymbolElementIds, nativeOriginalSymbolFromFifo,
-  resolveNativeIfcTypeIdentityEvidence,
+  resolveNativeIfcTypeIdentityEvidence, resolveNativeFamilyTypeIdentity,
   type NativeIfcTypeIdentityEvidence,
 } from "../lib/reviter/native-ifc-type-identity.ts";
 import type { ElementObject } from "../lib/reviter/element-objects.ts";
@@ -329,4 +329,22 @@ test("a same-partition embedded graphics copy cannot lose its recipe ambiguity",
   const collector = createNativeOriginalSymbolCollector({ revitVersion: 2027, classes: [{ tag: 2246, name: "GElement" }, ...classes.filter(c => c.name !== "GElement")], elementIds: new Set([100, 200]) });
   for (const own of [object(100, 11), object(200, 12), deferredSymbolObject(200n, true), deferredSymbolObject(200n, false)]) collector.consumeObjects(own.bytes, location(1), [own.frame]);
   assert.equal(collector.finish()[0]?.embeddedSymbolGeometry, true);
+});
+
+
+test("type resolution distinguishes missing, unsupported and unproven exporter evidence", () => {
+  const evidence: NativeIfcTypeIdentityEvidence = { elementId: 100, originalSymbolId: 200,
+    source: "checksum-verified-GElement.original-symbol", revitVersion: 2027, ...location(1), objectOffset: 0 };
+  const options = { evidence, nativeGuids: new Map([[100, GLOBAL_ID], [200, GLOBAL_ID]]), instanceEntity: "IFCCOLUMN", exporterVersion: 2027 };
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, evidence: undefined }), { status: "withheld", reason: "missing-source-reference" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, evidence: { ...evidence, elementId: NaN } }), { status: "withheld", reason: "invalid-source-reference" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, evidence: { ...evidence, embeddedSymbolGeometry: true } }), { status: "withheld", reason: "embedded-geometry-summary-unproven" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, nativeGuids: new Map() }), { status: "withheld", reason: "missing-native-creation-identity" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, nativeGuids: new Map([[200, "invalid"]]) }), { status: "withheld", reason: "missing-native-creation-identity" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, instanceEntity: "IFCDOOR" }), { status: "withheld", reason: "door-window-flip-unproven" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, exporterVersion: 2023, instanceEntity: "IFCWINDOW",
+    evidence: { ...evidence, flipped: false, flipSource: "native-instance-facing+native-host-wall-axis" } }), { status: "withheld", reason: "unsupported-exporter-recipe" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity(options), { status: "resolved", globalId: GLOBAL_ID, recipe: "original-symbol" });
+  assert.deepEqual(resolveNativeFamilyTypeIdentity({ ...options, evidence: { ...evidence, originalSymbolId: null } }),
+    { status: "resolved", globalId: revitIfcSubElementGlobalId(GLOBAL_ID, 2048), recipe: "instance-as-type" });
 });

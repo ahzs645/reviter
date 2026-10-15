@@ -1,0 +1,1001 @@
+{
+  "schemaVersion": 1,
+  "scope": "Additional pristine pinned upstream geometry-content-policy runs only. No Reviter reconversion or converter change. Native CLI/Python quality validation is separate from the observed WASM binding.",
+  "upstreamBinary": {
+    "upstream": "https://github.com/helenkwok/rvt-rs.git",
+    "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "packageVersion": "0.4.0",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "wasmBindgen": "0.2.118",
+    "target": "web",
+    "wasmOpt": false,
+    "build": "cargo build --locked --release --target wasm32-unknown-unknown -p rvt-wasm",
+    "hashes": {
+      "rvt.js": "6ab0a2b3d388f202f7dc585634b6ccce87c9b20f68e80e4155d8bd033ad769e1",
+      "rvt.d.ts": "950b044a0a88b1f7997209773eb3b6ab529cc78bbb33f1114eb77429d7555178",
+      "rvt_bg.wasm": "dff0170996bfbeeb76b4a176b34235e20b5ebd676173284caee4d646b1464b06",
+      "rvt_bg.wasm.d.ts": "828f23ecabb3fae1ae1e75a35a9c31d170294476fd22c052c80d6e13650e14ef"
+    }
+  },
+  "resources": {
+    "execution": "Four isolated Node processes sequentially, then four sequential independent reopens",
+    "timeoutMs": 900000,
+    "heapMiB": 6144
+  },
+  "walkerLimits": {
+    "max_scan_bytes": 134217728,
+    "max_candidates": 100000,
+    "max_trial_offsets": 16000000,
+    "max_record_decode_bytes": 1048576,
+    "max_container_records": 1000
+  },
+  "sourceContractReferences": [
+    {
+      "path": "rvt-wasm/src/lib.rs",
+      "lines": "153-167",
+      "description": "WASM parses quality mode and exports content+diagnostics; does not call quality validation."
+    },
+    {
+      "path": "src/ifc/mod.rs",
+      "lines": "845-848",
+      "description": "Content exporter explicitly leaves validation to CLI/Python caller."
+    },
+    {
+      "path": "src/ifc/mod.rs",
+      "lines": "655-658,730-746",
+      "description": "Geometry validation requires typed elements and some exported geometry, not native/comprehensive accuracy."
+    },
+    {
+      "path": "src/ifc/export_content.rs",
+      "lines": "74-88",
+      "description": "Geometry content includes bodies and requires category mapping."
+    },
+    {
+      "path": "src/bin/rvt_ifc.rs",
+      "lines": "170-175",
+      "description": "Native CLI separately validates requested export quality and can refuse output."
+    },
+    {
+      "path": "rvt-py/src/lib.rs",
+      "lines": "92",
+      "description": "Python binding separately validates requested export quality."
+    }
+  ],
+  "models": [
+    {
+      "model": "rac.rvt",
+      "input": {
+        "sha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+        "byteLength": 19750912,
+        "release": 2025
+      },
+      "apiState": "converted",
+      "apiError": null,
+      "elapsedMs": 13246.209139,
+      "requestedMode": "geometry",
+      "qualityValidation": {
+        "sourceContract": "ExportQualityMode::Geometry requires has_typed_elements and has_geometry. It does not require every body to be native/complete.",
+        "appliedByWasmBinding": false,
+        "independentSourceContractCheck": "passed",
+        "failureReasons": []
+      },
+      "diagnostics": {
+        "documentExportStrategy": "default",
+        "decodedProductionWalkerElements": 638,
+        "exported": {
+          "building_elements": 464,
+          "building_elements_with_geometry": 452,
+          "building_elements_carried_by_parts": 12,
+          "body_sources": {
+            "partition_element_record_bbox": 377,
+            "partition_element_record_join_trimmed": 31,
+            "partition_family_instance_turned_box": 31,
+            "partition_wall_centreline": 5,
+            "partition_wall_centreline_layer_joins": 20
+          },
+          "bounding_box_bodies": 354
+        },
+        "boundingBoxCounterSource": "Unmodified upstream ExportDiagnostics.exported.bounding_box_bodies; not a reopened triangle/vertex heuristic.",
+        "warnings": [
+          "Unsupported or incomplete geometry was reported: unsupported_geometry_profile=12, unsupported_geometry_unresolved_host=7, unsupported_geometry_missing_level=11, unsupported_geometry_missing_dimensions=12.",
+          "Unmapped Revit unit identifiers were preserved in diagnostics: autodesk.unit.unit:amperes-1.0.0, autodesk.unit.unit:britishThermalUnits-1.0.1, autodesk.unit.unit:britishThermalUnitsPerDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHour-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourCubicFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourFootDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFootDegreeFahrenheit-1.0.1",
+          "6 building storey name(s) came from partition Level records; 448 building element(s) reached their storey through the Level ElementId their own element record names (#219, RE-27; the base constraint where it names two, RE-59), the rest through a measured elevation match.",
+          "Suppressed 39 low-confidence schema scan candidates from default export."
+        ],
+        "unsupportedFeatures": [
+          "partial_element_geometry",
+          "revit_compound_assemblies_and_walltype_widths",
+          "floor_slab_extrusion_thickness",
+          "door_window_host_wall_binding",
+          "opening_index_to_ifc_openingelement_host_join",
+          "schema_field_wall_instances",
+          "partial_revit_element_parameters"
+        ],
+        "skipped": [
+          {
+            "reason": "low_confidence_schema_scan_candidate",
+            "count": 39,
+            "classes": {
+              "HostObjAttr": 39
+            }
+          },
+          {
+            "reason": "unsupported_geometry_profile",
+            "count": 12,
+            "classes": {
+              "IFCCURTAINWALL": 9,
+              "IFCSTAIR": 3
+            }
+          },
+          {
+            "reason": "unsupported_geometry_unresolved_host",
+            "count": 7,
+            "classes": {
+              "IFCDOOR": 5,
+              "IFCWINDOW": 2
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_level",
+            "count": 11,
+            "classes": {
+              "IFCLIGHTFIXTURE": 8,
+              "IFCSTAIRFLIGHT": 1,
+              "IFCWINDOW": 2
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_dimensions",
+            "count": 12,
+            "classes": {
+              "IFCCURTAINWALL": 9,
+              "IFCSTAIR": 3
+            }
+          },
+          {
+            "reason": "element_record_without_volume",
+            "count": 3,
+            "classes": {
+              "PlumbingFixture": 3
+            }
+          }
+        ],
+        "confidence": {
+          "level": "geometry",
+          "score": 1,
+          "has_project_metadata": true,
+          "has_typed_elements": true,
+          "has_geometry": true,
+          "has_diagnostic_proxies": false,
+          "warning_count": 4,
+          "unexported_element_records": 0
+        },
+        "sourceCoverage": {
+          "status": "measured",
+          "notes": "Measured from export diagnostics counts only (production walker, exported building elements, ElementIds declared by Global/ElemTable). Not a converter-grade completeness claim.",
+          "decoded_element_fraction": 0.07661823183298111,
+          "exported_element_fraction": 0.7272727489471436,
+          "geometry_element_fraction": 0.9741379022598267
+        }
+      },
+      "inventory": {
+        "totalInstances": 21014,
+        "products": 550,
+        "productsWithRepresentation": 478,
+        "taggedElements": 476,
+        "productClasses": {
+          "IFCSPACE": 14,
+          "IFCWALL": 47,
+          "IFCCURTAINWALL": 9,
+          "IFCDOOR": 16,
+          "IFCOPENINGELEMENT": 26,
+          "IFCWINDOW": 17,
+          "IFCSLAB": 11,
+          "IFCFURNITURE": 32,
+          "IFCSANITARYTERMINAL": 9,
+          "IFCBUILDINGELEMENTPROXY": 65,
+          "IFCCOVERING": 2,
+          "IFCMEMBER": 144,
+          "IFCPLATE": 44,
+          "IFCRAILING": 10,
+          "IFCCOLUMN": 3,
+          "IFCFOOTING": 23,
+          "IFCLIGHTFIXTURE": 10,
+          "IFCSTAIR": 3,
+          "IFCSTAIRFLIGHT": 3,
+          "IFCROOF": 2,
+          "IFCDISTRIBUTIONPORT": 60
+        },
+        "geometryEntities": {
+          "IFCEXTRUDEDAREASOLID": 478
+        },
+        "representationTypes": {
+          "SweptSolid": 478
+        },
+        "bodySources": {
+          "partition_element_record_bbox": 377,
+          "partition_element_record_join_trimmed": 31,
+          "partition_wall_centreline_layer_joins": 20,
+          "partition_wall_centreline": 5,
+          "partition_family_instance_turned_box": 31
+        }
+      },
+      "reopen": {
+        "fileSha256": "fcd96e80a25dd4be90ef745d4a20171a658b899d597ff489059bb3a941401178",
+        "bytes": 1589399,
+        "webIfc": {
+          "schema": "IFC4",
+          "classesMatchLexicalInventory": true,
+          "entityCount": 21014,
+          "nonemptyRenderedProducts": 438,
+          "geometryParts": 438,
+          "triangles": 6296,
+          "invalidGeometryArrays": 0,
+          "renderedTypes": {
+            "IfcSlab": 11,
+            "IfcSanitaryTerminal": 9,
+            "IfcColumn": 3,
+            "IfcLightFixture": 10,
+            "IfcWall": 47,
+            "IfcStairFlight": 3,
+            "IfcRoof": 2,
+            "IfcFooting": 23,
+            "IfcRailing": 10,
+            "IfcFurniture": 32,
+            "IfcPlate": 44,
+            "IfcWindow": 17,
+            "IfcCovering": 2,
+            "IfcBuildingElementProxy": 65,
+            "IfcDoor": 16,
+            "IfcMember": 144
+          }
+        },
+        "ifcLite": {
+          "schema": "IFC4",
+          "catalogEntities": 1662,
+          "entitiesWithGeometry": 476,
+          "types": {
+            "IFCPROJECT": 1,
+            "IFCSITE": 1,
+            "IFCBUILDING": 1,
+            "IFCBUILDINGSTOREY": 6,
+            "IFCSPACE": 14,
+            "IFCWALL": 47,
+            "IFCCURTAINWALL": 9,
+            "IFCDOOR": 16,
+            "IFCOPENINGELEMENT": 26,
+            "IFCWINDOW": 17,
+            "IFCSLAB": 11,
+            "IFCFURNITURE": 32,
+            "IFCSANITARYTERMINAL": 9,
+            "IFCBUILDINGELEMENTPROXY": 65,
+            "IFCCOVERING": 2,
+            "IFCMEMBER": 144,
+            "IFCPLATE": 44,
+            "IFCRAILING": 10,
+            "IFCCOLUMN": 3,
+            "IFCFOOTING": 23,
+            "IFCLIGHTFIXTURE": 10,
+            "IFCSTAIR": 3,
+            "IFCSTAIRFLIGHT": 3,
+            "IFCROOF": 2,
+            "IFCSURFACESTYLE": 174,
+            "IFCWALLTYPE": 8,
+            "IFCDOORTYPE": 10,
+            "IFCWINDOWTYPE": 6,
+            "IFCSLABTYPE": 6,
+            "IFCFURNITURETYPE": 13,
+            "IFCSANITARYTERMINALTYPE": 6,
+            "IFCBUILDINGELEMENTPROXYTYPE": 28,
+            "IFCCOVERINGTYPE": 1,
+            "IFCMEMBERTYPE": 63,
+            "IFCPLATETYPE": 22,
+            "IFCRAILINGTYPE": 1,
+            "IFCCOLUMNTYPE": 3,
+            "IFCFOOTINGTYPE": 2,
+            "IFCLIGHTFIXTURETYPE": 7,
+            "IFCROOFTYPE": 2,
+            "IFCSPACETYPE": 14,
+            "IFCRELAGGREGATES": 17,
+            "IFCRELVOIDSELEMENT": 26,
+            "IFCRELFILLSELEMENT": 26,
+            "IFCRELNESTS": 39,
+            "IFCRELASSIGNSTOGROUP": 1,
+            "IFCRELDEFINESBYTYPE": 192,
+            "IFCRELCONTAINEDINSPATIALSTRUCTURE": 14,
+            "IFCSIUNIT": 6,
+            "IFCUNITASSIGNMENT": 1,
+            "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+            "IFCMATERIAL": 175,
+            "IFCMATERIALLAYER": 43,
+            "IFCMATERIALLAYERSET": 15,
+            "IFCMATERIALCONSTITUENT": 85,
+            "IFCMATERIALCONSTITUENTSET": 36,
+            "IFCMATERIALLAYERSETUSAGE": 58,
+            "IFCDISTRIBUTIONPORT": 60,
+            "IFCRELSERVICESBUILDINGS": 1,
+            "IFCSYSTEM": 1
+          }
+        },
+        "scope": "Independent schema/entity-catalog reopen and finite nonempty tessellation diagnostics only; no comparison to Autodesk surfaces, reconstruction accuracy, placement agreement or IFC template conformance claim."
+      },
+      "scaffoldComparison": {
+        "sameProductCounts": true,
+        "sameRepresentedProductCounts": true,
+        "sameNativeReportedBoundingBoxCount": true,
+        "scaffoldIfcSha256": "926451fc6d4e445c5b82af2e24b6d339c2c9588a1b4524dc64bb059eafd4cb82"
+      }
+    },
+    {
+      "model": "school.rvt",
+      "input": {
+        "sha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+        "byteLength": 17035264,
+        "release": 2025
+      },
+      "apiState": "converted",
+      "apiError": null,
+      "elapsedMs": 15298.055463,
+      "requestedMode": "geometry",
+      "qualityValidation": {
+        "sourceContract": "ExportQualityMode::Geometry requires has_typed_elements and has_geometry. It does not require every body to be native/complete.",
+        "appliedByWasmBinding": false,
+        "independentSourceContractCheck": "passed",
+        "failureReasons": []
+      },
+      "diagnostics": {
+        "documentExportStrategy": "default",
+        "decodedProductionWalkerElements": 5792,
+        "exported": {
+          "building_elements": 5606,
+          "building_elements_with_geometry": 5572,
+          "building_elements_carried_by_parts": 34,
+          "body_sources": {
+            "family_type_i_section": 6,
+            "partition_element_record_bbox": 5270,
+            "partition_element_record_join_trimmed": 61,
+            "partition_family_instance_oriented_box": 148,
+            "partition_family_instance_turned_box": 3,
+            "partition_wall_centreline_layer_joins": 118
+          },
+          "bounding_box_bodies": 5128
+        },
+        "boundingBoxCounterSource": "Unmodified upstream ExportDiagnostics.exported.bounding_box_bodies; not a reopened triangle/vertex heuristic.",
+        "warnings": [
+          "walker-max-record-decode-bytes: walker candidate decode stopped at max_per_record_decode_bytes",
+          "Unsupported or incomplete geometry was reported: unsupported_geometry_profile=34, unsupported_geometry_unresolved_host=17, unsupported_geometry_missing_level=24, unsupported_geometry_missing_dimensions=34.",
+          "Unmapped Revit unit identifiers were preserved in diagnostics: autodesk.unit.unit:amperes-1.0.0, autodesk.unit.unit:britishThermalUnits-1.0.1, autodesk.unit.unit:britishThermalUnitsPerDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHour-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourCubicFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourFootDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFootDegreeFahrenheit-1.0.1",
+          "5 building storey name(s) came from partition Level records; 5582 building element(s) reached their storey through the Level ElementId their own element record names (#219, RE-27; the base constraint where it names two, RE-59), the rest through a measured elevation match."
+        ],
+        "unsupportedFeatures": [
+          "partial_element_geometry",
+          "revit_compound_assemblies_and_walltype_widths",
+          "door_window_host_wall_binding",
+          "opening_index_to_ifc_openingelement_host_join",
+          "schema_field_wall_instances",
+          "partial_revit_element_parameters"
+        ],
+        "skipped": [
+          {
+            "reason": "unsupported_geometry_profile",
+            "count": 34,
+            "classes": {
+              "IFCCURTAINWALL": 34
+            }
+          },
+          {
+            "reason": "unsupported_geometry_unresolved_host",
+            "count": 17,
+            "classes": {
+              "IFCDOOR": 17
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_level",
+            "count": 24,
+            "classes": {
+              "IFCBEAM": 22,
+              "IFCBUILDINGELEMENTPROXY": 2
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_dimensions",
+            "count": 34,
+            "classes": {
+              "IFCCURTAINWALL": 34
+            }
+          }
+        ],
+        "confidence": {
+          "level": "geometry",
+          "score": 1,
+          "has_project_metadata": true,
+          "has_typed_elements": true,
+          "has_geometry": true,
+          "has_diagnostic_proxies": false,
+          "warning_count": 4,
+          "unexported_element_records": 0
+        },
+        "sourceCoverage": {
+          "status": "measured",
+          "notes": "Measured from export diagnostics counts only (production walker, exported building elements, ElementIds declared by Global/ElemTable). Not a converter-grade completeness claim.",
+          "decoded_element_fraction": 0.3305181562900543,
+          "exported_element_fraction": 0.967886745929718,
+          "geometry_element_fraction": 0.9939350485801697
+        }
+      },
+      "inventory": {
+        "totalInstances": 218248,
+        "products": 5743,
+        "productsWithRepresentation": 5679,
+        "taggedElements": 5622,
+        "productClasses": {
+          "IFCSPACE": 91,
+          "IFCWALL": 146,
+          "IFCCURTAINWALL": 34,
+          "IFCDOOR": 100,
+          "IFCOPENINGELEMENT": 107,
+          "IFCWINDOW": 24,
+          "IFCSLAB": 17,
+          "IFCFURNITURE": 104,
+          "IFCCOVERING": 65,
+          "IFCMEMBER": 3276,
+          "IFCPLATE": 1349,
+          "IFCRAILING": 22,
+          "IFCBUILDINGELEMENTPROXY": 112,
+          "IFCBEAM": 38,
+          "IFCCOLUMN": 176,
+          "IFCLIGHTFIXTURE": 41,
+          "IFCSTAIR": 5,
+          "IFCROOF": 6,
+          "IFCDISTRIBUTIONPORT": 30
+        },
+        "geometryEntities": {
+          "IFCEXTRUDEDAREASOLID": 5679
+        },
+        "representationTypes": {
+          "SweptSolid": 5679
+        },
+        "bodySources": {
+          "partition_element_record_bbox": 5270,
+          "partition_wall_centreline_layer_joins": 118,
+          "partition_element_record_join_trimmed": 61,
+          "partition_family_instance_oriented_box": 148,
+          "family_type_i_section": 6,
+          "partition_family_instance_turned_box": 3
+        }
+      },
+      "reopen": {
+        "fileSha256": "e2cfd2375faefacea4a2d1b175430abde8ac6c69e7dec76de1242b29d084fc6c",
+        "bytes": 16802612,
+        "webIfc": {
+          "schema": "IFC4",
+          "classesMatchLexicalInventory": true,
+          "entityCount": 218248,
+          "nonemptyRenderedProducts": 5481,
+          "geometryParts": 5481,
+          "triangles": 70822,
+          "invalidGeometryArrays": 0,
+          "renderedTypes": {
+            "IfcSlab": 17,
+            "IfcColumn": 176,
+            "IfcLightFixture": 41,
+            "IfcWall": 146,
+            "IfcStair": 5,
+            "IfcRoof": 6,
+            "IfcRailing": 22,
+            "IfcFurniture": 104,
+            "IfcPlate": 1349,
+            "IfcWindow": 24,
+            "IfcBeam": 38,
+            "IfcCovering": 65,
+            "IfcBuildingElementProxy": 112,
+            "IfcDoor": 100,
+            "IfcMember": 3276
+          }
+        },
+        "ifcLite": {
+          "schema": "IFC4",
+          "catalogEntities": 8160,
+          "entitiesWithGeometry": 5622,
+          "types": {
+            "IFCPROJECT": 1,
+            "IFCSITE": 1,
+            "IFCBUILDING": 1,
+            "IFCBUILDINGSTOREY": 5,
+            "IFCSPACE": 91,
+            "IFCWALL": 146,
+            "IFCCURTAINWALL": 34,
+            "IFCDOOR": 100,
+            "IFCOPENINGELEMENT": 107,
+            "IFCWINDOW": 24,
+            "IFCSLAB": 17,
+            "IFCFURNITURE": 104,
+            "IFCCOVERING": 65,
+            "IFCMEMBER": 3276,
+            "IFCPLATE": 1349,
+            "IFCRAILING": 22,
+            "IFCBUILDINGELEMENTPROXY": 112,
+            "IFCBEAM": 38,
+            "IFCCOLUMN": 176,
+            "IFCLIGHTFIXTURE": 41,
+            "IFCSTAIR": 5,
+            "IFCROOF": 6,
+            "IFCSURFACESTYLE": 186,
+            "IFCWALLTYPE": 5,
+            "IFCDOORTYPE": 24,
+            "IFCWINDOWTYPE": 1,
+            "IFCSLABTYPE": 5,
+            "IFCFURNITURETYPE": 12,
+            "IFCCOVERINGTYPE": 3,
+            "IFCMEMBERTYPE": 345,
+            "IFCPLATETYPE": 159,
+            "IFCRAILINGTYPE": 3,
+            "IFCBEAMTYPE": 36,
+            "IFCCOLUMNTYPE": 5,
+            "IFCBUILDINGELEMENTPROXYTYPE": 13,
+            "IFCLIGHTFIXTURETYPE": 3,
+            "IFCROOFTYPE": 3,
+            "IFCSPACETYPE": 91,
+            "IFCRELAGGREGATES": 40,
+            "IFCRELVOIDSELEMENT": 107,
+            "IFCRELFILLSELEMENT": 107,
+            "IFCRELNESTS": 30,
+            "IFCRELDEFINESBYTYPE": 708,
+            "IFCRELCONTAINEDINSPATIALSTRUCTURE": 8,
+            "IFCSIUNIT": 6,
+            "IFCUNITASSIGNMENT": 1,
+            "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+            "IFCMATERIAL": 187,
+            "IFCMATERIALLAYER": 23,
+            "IFCMATERIALLAYERSET": 11,
+            "IFCMATERIALPROFILE": 1,
+            "IFCMATERIALPROFILESET": 1,
+            "IFCMATERIALCONSTITUENT": 38,
+            "IFCMATERIALCONSTITUENTSET": 23,
+            "IFCMATERIALLAYERSETUSAGE": 223,
+            "IFCDISTRIBUTIONPORT": 30
+          }
+        },
+        "scope": "Independent schema/entity-catalog reopen and finite nonempty tessellation diagnostics only; no comparison to Autodesk surfaces, reconstruction accuracy, placement agreement or IFC template conformance claim."
+      },
+      "scaffoldComparison": {
+        "sameProductCounts": true,
+        "sameRepresentedProductCounts": true,
+        "sameNativeReportedBoundingBoxCount": true,
+        "scaffoldIfcSha256": "2c82cad0075bb2cd27524e3eff116e76fd95c826136380b86a7191936b289308"
+      }
+    },
+    {
+      "model": "snowdon.rvt",
+      "input": {
+        "sha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+        "byteLength": 94691328,
+        "release": 2024
+      },
+      "apiState": "converted",
+      "apiError": null,
+      "elapsedMs": 90275.814682,
+      "requestedMode": "geometry",
+      "qualityValidation": {
+        "sourceContract": "ExportQualityMode::Geometry requires has_typed_elements and has_geometry. It does not require every body to be native/complete.",
+        "appliedByWasmBinding": false,
+        "independentSourceContractCheck": "passed",
+        "failureReasons": []
+      },
+      "diagnostics": {
+        "documentExportStrategy": "default",
+        "decodedProductionWalkerElements": 6295,
+        "exported": {
+          "building_elements": 6056,
+          "building_elements_with_geometry": 5988,
+          "building_elements_carried_by_parts": 68,
+          "body_sources": {
+            "partition_element_record_bbox": 3634,
+            "partition_element_record_join_cut": 8,
+            "partition_element_record_join_trimmed": 400,
+            "partition_family_instance_oriented_box": 1019,
+            "partition_family_instance_turned_box": 239,
+            "partition_stair_run_sketch": 38,
+            "partition_wall_arc": 24,
+            "partition_wall_centreline": 48,
+            "partition_wall_centreline_layer_joins": 625,
+            "partition_wall_tapered_section": 21
+          },
+          "bounding_box_bodies": 3295
+        },
+        "boundingBoxCounterSource": "Unmodified upstream ExportDiagnostics.exported.bounding_box_bodies; not a reopened triangle/vertex heuristic.",
+        "warnings": [
+          "Unsupported or incomplete geometry was reported: unsupported_geometry_profile=68, unsupported_geometry_unresolved_host=6, unsupported_geometry_missing_level=48, unsupported_geometry_missing_dimensions=68.",
+          "Unmapped Revit unit identifiers were preserved in diagnostics: autodesk.unit.unit:amperes-1.0.0, autodesk.unit.unit:britishThermalUnits-1.0.1, autodesk.unit.unit:britishThermalUnitsPerDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHour-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourCubicFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourFootDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFootDegreeFahrenheit-1.0.1",
+          "18 building storey name(s) came from partition Level records; 5872 building element(s) reached their storey through the Level ElementId their own element record names (#219, RE-27; the base constraint where it names two, RE-59), the rest through a measured elevation match.",
+          "Suppressed 4 low-confidence schema scan candidates from default export."
+        ],
+        "unsupportedFeatures": [
+          "partial_element_geometry",
+          "revit_compound_assemblies_and_walltype_widths",
+          "floor_slab_extrusion_thickness",
+          "door_window_host_wall_binding",
+          "opening_index_to_ifc_openingelement_host_join",
+          "schema_field_wall_instances",
+          "partial_revit_element_parameters"
+        ],
+        "skipped": [
+          {
+            "reason": "low_confidence_schema_scan_candidate",
+            "count": 4,
+            "classes": {
+              "HostObjAttr": 4
+            }
+          },
+          {
+            "reason": "unsupported_geometry_profile",
+            "count": 68,
+            "classes": {
+              "IFCCURTAINWALL": 42,
+              "IFCSTAIR": 26
+            }
+          },
+          {
+            "reason": "unsupported_geometry_unresolved_host",
+            "count": 6,
+            "classes": {
+              "IFCDOOR": 6
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_level",
+            "count": 48,
+            "classes": {
+              "IFCBUILDINGELEMENTPROXY": 1,
+              "IFCMEMBER": 3,
+              "IFCSLAB": 5,
+              "IFCSTAIRFLIGHT": 39
+            }
+          },
+          {
+            "reason": "unsupported_geometry_missing_dimensions",
+            "count": 68,
+            "classes": {
+              "IFCCURTAINWALL": 42,
+              "IFCSTAIR": 26
+            }
+          },
+          {
+            "reason": "element_record_without_volume",
+            "count": 61,
+            "classes": {
+              "PlumbingFixture": 15,
+              "SpecialtyEquipment": 45,
+              "StairsStringer": 1
+            }
+          },
+          {
+            "reason": "element_record_in_non_primary_design_option",
+            "count": 27,
+            "classes": {
+              "Floor": 9,
+              "GenericModel": 1,
+              "SlabEdge": 9,
+              "Wall": 8
+            }
+          },
+          {
+            "reason": "element_record_empty_curtain_panel",
+            "count": 24,
+            "classes": {
+              "CurtainWallPanel": 24
+            }
+          }
+        ],
+        "confidence": {
+          "level": "geometry",
+          "score": 1,
+          "has_project_metadata": true,
+          "has_typed_elements": true,
+          "has_geometry": true,
+          "has_diagnostic_proxies": false,
+          "warning_count": 4,
+          "unexported_element_records": 0
+        },
+        "sourceCoverage": {
+          "status": "measured",
+          "notes": "Measured from export diagnostics counts only (production walker, exported building elements, ElementIds declared by Global/ElemTable). Not a converter-grade completeness claim.",
+          "decoded_element_fraction": 0.13303886353969574,
+          "exported_element_fraction": 0.9620333313941956,
+          "geometry_element_fraction": 0.9887714385986328
+        }
+      },
+      "inventory": {
+        "totalInstances": 312655,
+        "products": 6854,
+        "productsWithRepresentation": 6253,
+        "taggedElements": 6267,
+        "productClasses": {
+          "IFCSPACE": 54,
+          "IFCCOLUMN": 118,
+          "IFCWALL": 1078,
+          "IFCCURTAINWALL": 60,
+          "IFCDOOR": 132,
+          "IFCOPENINGELEMENT": 265,
+          "IFCWINDOW": 68,
+          "IFCSLAB": 224,
+          "IFCFURNITURE": 345,
+          "IFCSANITARYTERMINAL": 134,
+          "IFCBUILDINGELEMENTPROXY": 994,
+          "IFCCOVERING": 71,
+          "IFCMEMBER": 1595,
+          "IFCPLATE": 485,
+          "IFCRAILING": 131,
+          "IFCLIGHTFIXTURE": 447,
+          "IFCELECTRICAPPLIANCE": 26,
+          "IFCTRANSPORTELEMENT": 2,
+          "IFCRAMP": 2,
+          "IFCSTAIR": 27,
+          "IFCSTAIRFLIGHT": 43,
+          "IFCROOF": 20,
+          "IFCDISTRIBUTIONPORT": 533
+        },
+        "geometryEntities": {
+          "IFCEXTRUDEDAREASOLID": 6253
+        },
+        "representationTypes": {
+          "SweptSolid": 6253
+        },
+        "bodySources": {
+          "partition_element_record_bbox": 3676,
+          "partition_element_record_join_cut": 8,
+          "partition_element_record_join_trimmed": 400,
+          "partition_wall_centreline": 48,
+          "partition_wall_centreline_layer_joins": 625,
+          "partition_wall_tapered_section": 21,
+          "partition_wall_arc": 24,
+          "partition_family_instance_turned_box": 244,
+          "partition_family_instance_oriented_box": 1019,
+          "partition_stair_run_sketch": 38
+        }
+      },
+      "reopen": {
+        "fileSha256": "10f580c81adafa1c3adae1499c84588442148604f4d36f27a7d40cb58319bf65",
+        "bytes": 24363134,
+        "webIfc": {
+          "schema": "IFC4",
+          "classesMatchLexicalInventory": true,
+          "entityCount": 312655,
+          "nonemptyRenderedProducts": 5934,
+          "geometryParts": 5934,
+          "triangles": 117464,
+          "invalidGeometryArrays": 0,
+          "renderedTypes": {
+            "IfcSlab": 224,
+            "IfcElectricAppliance": 26,
+            "IfcSanitaryTerminal": 134,
+            "IfcColumn": 118,
+            "IfcLightFixture": 447,
+            "IfcWall": 1078,
+            "IfcStairFlight": 43,
+            "IfcStair": 1,
+            "IfcRoof": 20,
+            "IfcRamp": 2,
+            "IfcRailing": 131,
+            "IfcFurniture": 345,
+            "IfcPlate": 485,
+            "IfcWindow": 68,
+            "IfcCurtainWall": 18,
+            "IfcTransportElement": 2,
+            "IfcCovering": 71,
+            "IfcBuildingElementProxy": 994,
+            "IfcDoor": 132,
+            "IfcMember": 1595
+          }
+        },
+        "ifcLite": {
+          "schema": "IFC4",
+          "catalogEntities": 12068,
+          "entitiesWithGeometry": 6267,
+          "types": {
+            "IFCPROJECT": 1,
+            "IFCSITE": 1,
+            "IFCBUILDING": 1,
+            "IFCBUILDINGSTOREY": 18,
+            "IFCSPACE": 54,
+            "IFCCOLUMN": 118,
+            "IFCWALL": 1078,
+            "IFCCURTAINWALL": 60,
+            "IFCDOOR": 132,
+            "IFCOPENINGELEMENT": 265,
+            "IFCWINDOW": 68,
+            "IFCSLAB": 224,
+            "IFCFURNITURE": 345,
+            "IFCSANITARYTERMINAL": 134,
+            "IFCBUILDINGELEMENTPROXY": 994,
+            "IFCCOVERING": 71,
+            "IFCMEMBER": 1595,
+            "IFCPLATE": 485,
+            "IFCRAILING": 131,
+            "IFCLIGHTFIXTURE": 447,
+            "IFCELECTRICAPPLIANCE": 26,
+            "IFCTRANSPORTELEMENT": 2,
+            "IFCRAMP": 2,
+            "IFCSTAIR": 27,
+            "IFCSTAIRFLIGHT": 43,
+            "IFCROOF": 20,
+            "IFCSURFACESTYLE": 220,
+            "IFCCOLUMNTYPE": 93,
+            "IFCWALLTYPE": 43,
+            "IFCCURTAINWALLTYPE": 9,
+            "IFCDOORTYPE": 46,
+            "IFCWINDOWTYPE": 8,
+            "IFCSLABTYPE": 21,
+            "IFCFURNITURETYPE": 42,
+            "IFCSANITARYTERMINALTYPE": 40,
+            "IFCBUILDINGELEMENTPROXYTYPE": 121,
+            "IFCCOVERINGTYPE": 4,
+            "IFCMEMBERTYPE": 338,
+            "IFCPLATETYPE": 118,
+            "IFCRAILINGTYPE": 20,
+            "IFCLIGHTFIXTURETYPE": 38,
+            "IFCELECTRICAPPLIANCETYPE": 18,
+            "IFCTRANSPORTELEMENTTYPE": 1,
+            "IFCRAMPTYPE": 2,
+            "IFCSTAIRTYPE": 9,
+            "IFCSTAIRFLIGHTTYPE": 7,
+            "IFCROOFTYPE": 3,
+            "IFCSPACETYPE": 54,
+            "IFCRELAGGREGATES": 80,
+            "IFCRELVOIDSELEMENT": 265,
+            "IFCRELFILLSELEMENT": 194,
+            "IFCRELNESTS": 364,
+            "IFCRELDEFINESBYTYPE": 1035,
+            "IFCRELCONTAINEDINSPATIALSTRUCTURE": 57,
+            "IFCSIUNIT": 6,
+            "IFCUNITASSIGNMENT": 1,
+            "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+            "IFCMATERIAL": 221,
+            "IFCMATERIALLAYER": 164,
+            "IFCMATERIALLAYERSET": 62,
+            "IFCMATERIALCONSTITUENT": 173,
+            "IFCMATERIALCONSTITUENTSET": 78,
+            "IFCMATERIALLAYERSETUSAGE": 1237,
+            "IFCDISTRIBUTIONPORT": 533
+          }
+        },
+        "scope": "Independent schema/entity-catalog reopen and finite nonempty tessellation diagnostics only; no comparison to Autodesk surfaces, reconstruction accuracy, placement agreement or IFC template conformance claim."
+      },
+      "scaffoldComparison": {
+        "sameProductCounts": true,
+        "sameRepresentedProductCounts": true,
+        "sameNativeReportedBoundingBoxCount": true,
+        "scaffoldIfcSha256": "5713005a22552d1beb64d68f54d51f2580a846bce7b61b19b71ae7cb907154f0"
+      }
+    },
+    {
+      "model": "unbc.rvt",
+      "input": {
+        "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+        "byteLength": 70336512,
+        "release": 2027
+      },
+      "apiState": "converted",
+      "apiError": null,
+      "elapsedMs": 10078.340328,
+      "requestedMode": "geometry",
+      "qualityValidation": {
+        "sourceContract": "ExportQualityMode::Geometry requires has_typed_elements and has_geometry. It does not require every body to be native/complete.",
+        "appliedByWasmBinding": false,
+        "independentSourceContractCheck": "failed",
+        "failureReasons": [
+          "no validated typed IFC elements",
+          "no exported building element has geometry"
+        ]
+      },
+      "diagnostics": {
+        "documentExportStrategy": "default",
+        "decodedProductionWalkerElements": 178,
+        "exported": {
+          "building_elements": 0,
+          "building_elements_with_geometry": 0,
+          "building_elements_carried_by_parts": 0,
+          "body_sources": {},
+          "bounding_box_bodies": 0
+        },
+        "boundingBoxCounterSource": "Unmodified upstream ExportDiagnostics.exported.bounding_box_bodies; not a reopened triangle/vertex heuristic.",
+        "warnings": [
+          "walker-max-record-decode-bytes: walker candidate decode stopped at max_per_record_decode_bytes",
+          "No building elements were exported; output is scaffold-only.",
+          "Unmapped Revit unit identifiers were preserved in diagnostics: autodesk.unit.unit:amperes-1.0.0, autodesk.unit.unit:britishThermalUnits-1.0.1, autodesk.unit.unit:britishThermalUnitsPerDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHour-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourCubicFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourFootDegreeFahrenheit-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFoot-1.0.1, autodesk.unit.unit:britishThermalUnitsPerHourSquareFootDegreeFahrenheit-1.0.1",
+          "No Revit levels were recovered; STEP output uses the fallback spatial storey.",
+          "Suppressed 2 low-confidence schema scan candidates from default export."
+        ],
+        "unsupportedFeatures": [
+          "revit_levels_to_ifc_storeys",
+          "real_file_element_geometry",
+          "revit_compound_assemblies_and_walltype_widths",
+          "floor_plan_loop_slab_export",
+          "typed_door_window_discrimination_and_host_binding",
+          "opening_index_to_ifc_openingelement_host_join",
+          "schema_field_wall_instances",
+          "revit_element_parameters_to_ifc_property_sets"
+        ],
+        "skipped": [
+          {
+            "reason": "low_confidence_schema_scan_candidate",
+            "count": 2,
+            "classes": {
+              "HostObjAttr": 2
+            }
+          }
+        ],
+        "confidence": {
+          "level": "scaffold",
+          "score": 0.3499999940395355,
+          "has_project_metadata": true,
+          "has_typed_elements": false,
+          "has_geometry": false,
+          "has_diagnostic_proxies": false,
+          "warning_count": 5,
+          "unexported_element_records": 0
+        },
+        "sourceCoverage": {
+          "status": "measured",
+          "notes": "Measured from export diagnostics counts only (production walker, exported building elements, ElementIds declared by Global/ElemTable). Not a converter-grade completeness claim. geometry_element_fraction left null: exported building_elements is 0.",
+          "decoded_element_fraction": 0.0023912517353892326,
+          "exported_element_fraction": 0
+        }
+      },
+      "inventory": {
+        "totalInstances": 202,
+        "products": 0,
+        "productsWithRepresentation": 0,
+        "taggedElements": 0,
+        "productClasses": {},
+        "geometryEntities": {},
+        "representationTypes": {},
+        "bodySources": {}
+      },
+      "reopen": {
+        "fileSha256": "eb1a432610257021f29fe7356b06996934e690a12c5cb5640153f03a0d80ee1c",
+        "bytes": 10102,
+        "webIfc": {
+          "schema": "IFC4",
+          "classesMatchLexicalInventory": true,
+          "entityCount": 202,
+          "nonemptyRenderedProducts": 0,
+          "geometryParts": 0,
+          "triangles": 0,
+          "invalidGeometryArrays": 0,
+          "renderedTypes": {}
+        },
+        "ifcLite": {
+          "schema": "IFC4",
+          "catalogEntities": 191,
+          "entitiesWithGeometry": 0,
+          "types": {
+            "IFCPROJECT": 1,
+            "IFCSITE": 1,
+            "IFCBUILDING": 1,
+            "IFCRELAGGREGATES": 2,
+            "IFCSIUNIT": 6,
+            "IFCUNITASSIGNMENT": 1,
+            "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+            "IFCMATERIAL": 178
+          }
+        },
+        "scope": "Independent schema/entity-catalog reopen and finite nonempty tessellation diagnostics only; no comparison to Autodesk surfaces, reconstruction accuracy, placement agreement or IFC template conformance claim."
+      },
+      "scaffoldComparison": {
+        "sameProductCounts": true,
+        "sameRepresentedProductCounts": true,
+        "sameNativeReportedBoundingBoxCount": true,
+        "scaffoldIfcSha256": "b152c6669b4cd822e1d3bd1a391e0413f6c4af1df20743695cea3a6e6f58ba24"
+      }
+    }
+  ],
+  "limitations": [
+    "WASM API success is distinct from requested quality-contract satisfaction; UNBC returned sparse IFC rather than a refused result.",
+    "A geometry confidence level or product/triangle count does not establish native shape, full-model coverage, correct placement or Autodesk/reference surface accuracy.",
+    "Bounding-box counts are exact upstream diagnostics, not inferred from reopened mesh shape.",
+    "Independent reopens check schema/entity counts and finite tessellation; no IFC template validation or common-frame surface-equivalence claim.",
+    "All source RVTs/raw IFCs/private graphs remain outside Git; only input/output/binary hashes and compact counts are published."
+  ]
+}

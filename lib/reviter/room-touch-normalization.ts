@@ -1,4 +1,5 @@
 import pc from 'polygon-clipping';
+import { hypot } from './deterministic-math.ts';
 import{cleanRoomBoundary,containsRoomPoint,roomArea,validRoomBoundary,type RoomPoint}from'./room-directory.ts';
 type Rings=RoomPoint[][];
 const signed=(r:readonly RoomPoint[])=>{const origin=r[0]!;return r.reduce((s,p,i)=>{const q=r[(i+1)%r.length]!;return s+(p[0]-origin[0])*(q[1]-origin[1])-(q[0]-origin[0])*(p[1]-origin[1])},0)/2;};
@@ -16,7 +17,7 @@ export function normalizeRoomTouchRings(input:readonly (readonly RoomPoint[])[])
   for(let i=0;i<original.length;i++)for(let j=i+2;j<original.length;j++){if(i===0&&j===original.length-1)continue;const a=original[i]!,b=original[(i+1)%original.length]!,c=original[j]!,d=original[(j+1)%original.length]!;if(cross(a,b,c)*cross(a,b,d)<0&&cross(c,d,a)*cross(c,d,b)<0)return;}
   if((signed(original)>0)!==(ringIndex===0))original=original.toReversed();
   const representatives:RoomPoint[]=[];
-  const canonical=(p:RoomPoint)=>{const existing=representatives.find(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<=1e-9);if(existing)return existing;const q:[number,number]=[p[0],p[1]];representatives.push(q);return q;};
+  const canonical=(p:RoomPoint)=>{const existing=representatives.find(q=>hypot(p[0]-q[0],p[1]-q[1])<=1e-9);if(existing)return existing;const q:[number,number]=[p[0],p[1]];representatives.push(q);return q;};
   const points=original.map(canonical),expanded:RoomPoint[]=[];
   for(let i=0;i<points.length;i++){
    const a=points[i]!,b=points[(i+1)%points.length]!,dx=b[0]-a[0],dy=b[1]-a[1],length2=dx*dx+dy*dy;if(length2<1e-18)return;

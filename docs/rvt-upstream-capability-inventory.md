@@ -25,19 +25,19 @@ source metadata-only inspection, schedules, deeper native MEP graph ports and
 dimensions, stored/type IFC identity cases, additional entity/property mappings,
 and phase/room/level metadata. It also adds an on-demand bounded source-graph bridge for native definitions,
 units/bindings, saved metadata and Extensible Storage catalogs. Its partial
-graphs remain source evidence rather than evaluated model semantics.
+graphs remain source evidence rather than evaluated model semantics. The latest continuation adds authored schedule structure and stored inheritance, partial annotation SVGs, source spatial/site joins, rotated IFC maps, a gated profile writer, v3 viewer state, and measured native-body/default-3D selection.
 
 ## What remains beyond the selective integrations
 
 | Upstream behavior | Reviter comparison | Requirement for a faithful port |
 | --- | --- | --- |
 | General structural native records, `ObjectGraph` and ADocument typed fields | On-demand patched WASM exposes selected upstream native records and partial graphs, with explicit namespaces/budgets | Preserve pointer/owner evidence and raw fallbacks; the selected dump is not complete document recovery or evaluated Revit API values |
-| Custom/shared parameter definitions, binding tables and family value slots | Typed inventory now joins supported stored slots by exact definition/storage identity and native pointers; CSV exposes definitions, bindings and values | Formula evaluation, inherited values and unavailable built-in definitions remain unresolved; conflicting family/units evidence is withheld |
+| Custom/shared parameter definitions, binding tables and family value slots | Typed inventory now joins supported stored slots by exact definition/storage identity and native pointers; CSV exposes definitions, bindings and values | Exact retained symbol inheritance is now projected separately; formula evaluation and unavailable built-in definitions remain unresolved. Present conflicts, missing families/symbols/backlinks and conflicting units prohibit fallback |
 | File-local Extensible Storage schema catalogs and owner-attached payload inventories | Source-evidence bridge exposes catalog/owner payload summary state and diagnostics | Respect selected-record/output budgets; catalog presence is not evaluated entities or verified cross-document remapping |
-| Native View/Sheet/Schedule/Grid/Dimension/Tag/TextNote/ReferencePlane fields | Typed source inventory now recovers supported native view/schedule/grid/reference-plane/text fields with owner and pointer witnesses | Source drawing rendering, evaluated schedules, full sheet/tag/dimension interpretation remain unresolved |
-| Native Area/MEP Space, Workset/Revision and survey/base-point typed semantics | Typed inventory includes stored room/spatial fields, area schemes, revisions, workset visibility and base-point values | Area schemes are not spatial Areas; stored room fields do not prove MEP Space classification. Workset visibility is not a complete workset registry; base points do not establish shared-coordinate transforms |
-| IFC profile/material-profile descriptors and reusable mapped representations | Optional representation maps now share identical native typed bodies; School has seven measured maps with matching reader geometry/placements | Rotation-aware sharing and general material profiles remain unresolved; named profiles still require source section dimensions |
-| Full URL-fragment camera/category/section/annotation state | V2 source-hash-bound links now share camera, categories and section settings, with v1 compatibility | Annotation, selection and rendering-state exchange remain narrower; source/review identity and coordinate conventions are required |
+| Native View/Sheet/Schedule/Grid/Dimension/Tag/TextNote/ReferencePlane fields | Typed source inventory now recovers supported native view/schedule/grid/reference-plane/text fields with owner and pointer witnesses | Partial exact-view annotation previews render supported text/leaders/tag-heads/detail curves; regenerated sheets, native glyphs/dimension formatting, view visibility/crop/layout and recalculated schedules remain unresolved |
+| Native Area/MEP Space, Workset/Revision and survey/base-point typed semantics | Typed inventory includes stored room/spatial fields, area schemes, revisions, workset visibility and base-point values | Same-source native category headers now classify Area/MEP Space records and owned active-site/survey witnesses prove rigid transform direction. Boundaries/quantities/routing, full worksets, EPSG/datum and unsupported transform shapes remain unresolved |
+| IFC profile/material-profile descriptors and reusable mapped representations | Optional native translation/rotation maps now share 250 School products through 78 maps, including four rotation groups; structural Snowdon has 141 maps/460 products | Actual audited models emit zero profiles. Complete section metrics alone cannot classify I shape or supply eligible occurrence/material links; reflected/scaled/nonidentical sharing and general authored profiles remain missing |
+| Full URL-fragment camera/category/section/annotation state | V3 source/review-bound implementation adds present-source selection, technical/xray mode and opt-in user review markup; v1/v2 imports remain compatible | Whitelist and aggregate fragment/markup budgets remain explicit. User markup is separate from native annotation; prior nine browser checks cover v2 and current v3 validation is pending |
 
 Important source entry points are
 [`native_document.rs`](https://github.com/helenkwok/rvt-rs/blob/1c3d337/src/native_document.rs),
@@ -70,10 +70,10 @@ here means overlapping behavior, not the same parser, release coverage or output
 | Rooms/phases/options | Source rooms including boxless identities, measured stored outlines, phase/level references and primary-option selection | Source room extrusion is approximate evidence; no routing certification, lifecycle order guess or hidden unresolved option |
 | MEP | System membership references, measured counted joins, pinned native graph projection, unconnected ports and source dimension readers | Unknown direction/placement/classification and incomplete graphs remain explicit; no proximity-generated joins |
 | Materials | Native material identity, source face/type assignments, compound layers and constituent sets | Unjoined WASM definitions do not alter the scene by name; material assets and exact per-layer join visualization need separate evidence |
-| Geometry | Native queue replay, analytic surfaces, BRep/mesh recovery, instancing, sketch holes, stairs/rails and repairs | Independent saved-graphics selection, UV meshing, column/beam cuts, wall/layer joins and roof slope/axis semantics need owner-level comparison |
-| Exports | Typed IFC, GLB, plan/floor SVG, JSON evidence and element/room/raw-parameter/definition/typed-record CSV, with optional proven geometry maps | CSV is an inventory, not a native authored Schedule; representation count is not shape accuracy |
-| Viewer | Local-file workers, trees/picking/categories, sections, camera/walk, measurements, markup and hash-bound camera/category/section links; richer floor/campus/DWG/routing/review flows | Native source drawings/annotations and annotation/selection/render-state fragment exchange are separate |
-| Validation | Coverage/limit diagnostics, capability contracts, adversarial tests, seeded bounded TS fuzzing and paired IFC audits | Upstream strict/scaffold modes describe its own model. TS fuzzing excludes arbitrary CFB allocation metadata and native Rust fuzz targets |
+| Geometry | Native queue replay and source-body/default-3D selection improve 357 UNBC owner area errors; native surfaces, instancing, sketches and repairs remain | The completed current campaign records 16 preserved fields/eight expected digest/triangle changes and unchanged owner/identity coverage. Unknown predicates/formulas, native wall residuals, joins/cuts and selected parametric surfaces remain unresolved |
+| Exports | Typed IFC, GLB, plan/floor SVG, JSON evidence and element/room/raw-parameter/definition/typed-record CSV, with optional proven geometry maps | Authored schedule definitions/cached cells are now retained, but evaluated rows/formulas/layout remain unresolved; actual positive material-profile emission is zero and representation count is not shape accuracy |
+| Viewer | Local-file workers, trees/picking/categories, sections, camera/walk, measurements, markup and hash-bound camera/category/section links; richer floor/campus/DWG/routing/review flows | Native annotation previews are partial and separate from opt-in user markup. V3 current browser validation is pending; model bytes/assets are never embedded |
+| Validation | Coverage/limit diagnostics, capability contracts, adversarial tests, seeded bounded TS fuzzing and paired IFC audits | Pinned WASM content policies omit core quality validation; CLI/Python call it. API return, core validator outcome, finite tessellation and geometric accuracy are separate. TS fuzzing excludes arbitrary CFB allocation metadata and native Rust fuzz targets |
 
 Upstream `partition_*` helpers use measured, release-specific byte protocols.
 Reviter frequently obtains the displayed shape through an independent saved BRep,
@@ -149,15 +149,20 @@ budget and 1,000 container rows. App enrichment uses its independently bounded
 16 MiB/10,000/1,000,000/1 MiB/256 settings. Those walker limits constrain specific
 scans; they do not bound every upstream partition inflation or exporter operation.
 Both branches have isolated worker deadlines and recorded Node heap budgets.
-`--upstream-mode typed-no-geometry|geometry|strict` changes the upstream acceptance
-bar; a stronger mode can legitimately refuse rather than emit a sparse model.
+`--upstream-mode typed-no-geometry|geometry|strict` selects the pinned WASM
+content policy. That binding does not invoke the separate core quality validator,
+which native CLI/Python callers invoke. The [pristine geometry-policy campaign](rvt-upstream-geometry-mode-comparison.md)
+records all four actual API returns, independent validator checks, native
+producer bounding-box counters and eight independent reader reopens; sparse
+UNBC returns successfully but fails the independently checked geometry contract.
 
 The comparison tool explicitly enables native-room IFC evidence by default;
 the ordinary exporter remains opt-in. Optional pipe reconstruction remains off
 in this standard comparison, so source scene and reconstructed IFC behavior are
 measured separately. Use `--native-rooms false`, `--mep false`
 or `--design-options main-and-primary` to compare a different declared export
-policy. A reader's quality gate is not another reader's geometry support contract.
+policy. A content-policy result or separately evaluated core quality gate is
+not another reader's geometry support contract or an accuracy certificate.
 
 The report includes actual instance/entity/product class counts, represented
 product counts, duplicate root IDs, Pset names, geometry representation kinds,

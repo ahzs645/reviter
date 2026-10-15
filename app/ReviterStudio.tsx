@@ -6,6 +6,9 @@ import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
 import type { IfcExportOptions } from "../lib/reviter/export-ifc.ts";
 import { IfcExportControls } from "./studio/IfcExportControls.tsx";
 import type { NativeEvidenceRequest } from "../lib/reviter/native-evidence-worker.ts";
+import { makeNativeScheduleInventoryCsv } from "../lib/reviter/native-schedule-inventory.ts";
+import { NATIVE_SPATIAL_ORGANIZATION_CLASSES, makeNativeSpatialOrganizationCsv, type NativeSpatialOrganization } from "../lib/reviter/native-spatial-organization.ts";
+import { listNativeDrawingViews } from "../lib/reviter/native-drawing-svg.ts";
 import type { NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
 import { NATIVE_RECORD_INVENTORY_CLASSES, makeNativeRecordInventoryCsv } from "../lib/reviter/native-record-inventory.ts";
 import { NATIVE_PARAMETER_DEFINITION_CLASSES, makeNativeParameterInventoryCsv } from "../lib/reviter/native-parameter-inventory.ts";
@@ -80,7 +83,7 @@ import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
 import { ViewpointLinkControls } from "./studio/ViewpointLinkControls.tsx";
 import {
-  makeViewpointModelIdentity, portableViewpoint, resolveViewpointImport,
+  makeViewpointModelIdentity, portableViewpoint, resolveViewpointImport, captureViewpointMarkup, mergeViewpointMarkup,
   viewpointSourceFingerprint,
   VIEWPOINT_FRAGMENT_PREFIX, type PortableViewpoint, type PortableViewerState, type PortableSectionState,
 } from "./studio/viewpoint-links.ts";
@@ -345,6 +348,9 @@ export default function ReviterStudio() {
   const appliedViewpointFragmentRef = useRef<string | null>(null);
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [nativeSpatialState, setNativeSpatialState] = useState<{ file: File; inventory: NativeSpatialOrganization } | null>(null);
+  const [nativeViewState, setNativeViewState] = useState<{ file: File; views: ReturnType<typeof listNativeDrawingViews> } | null>(null);
+  const [nativeDrawingViewId, setNativeDrawingViewId] = useState("");
   const [ifcExportOptions, setIfcExportOptions] = useState<IfcExportOptions>({ nativeRooms: false, mep: false, designOptions: "all" });
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
@@ -397,19 +403,24 @@ export default function ReviterStudio() {
   }, []);
   const captureViewpointCamera = useCallback(() => cameraCaptureRef.current?.() ?? null, []);
   const bindSectionCapture = useCallback((capture: (() => PortableSectionState) | null) => { sectionCaptureRef.current = capture; }, []);
-  const captureViewpointState = useCallback((): PortableViewerState => {
+  const captureViewpointState = useCallback((includeMarkup = false): PortableViewerState => {
     if (directoryModel || isolateMapLevel) throw new Error("Close the floor view and level isolation before copying a viewpoint link.");
     const section = sectionCaptureRef.current?.();
     if (!section) throw new Error("The model section controls are not ready yet.");
-    return { hiddenCategories: [...hiddenCategories], section };
-  }, [directoryModel, hiddenCategories, isolateMapLevel]);
+    return { hiddenCategories: [...hiddenCategories], section, selectedElementId, renderMode,
+      ...(includeMarkup && viewpointIdentity ? { annotations: captureViewpointMarkup(markup, viewpointIdentity) } : {}) };
+  }, [directoryModel, hiddenCategories, isolateMapLevel, markup, renderMode, selectedElementId, viewpointIdentity]);
   const restorePortableCamera = useCallback((camera: ModelViewpoint, viewer?: PortableViewerState) => {
     if (!viewpointIdentity) return;
     try {
       const viewpoint = portableViewpoint(viewpointIdentity, camera, viewer);
+      const importedMarkup = viewer?.annotations ? mergeViewpointMarkup(markup, viewer.annotations, viewpointIdentity, new Date().toISOString()) : null;
       setNavTool("orbit");
       setActionTool(viewer?.section.enabled ? "section" : null);
       if (viewer) { setHiddenCategories(new Set(viewer.hiddenCategories)); setIsolateMapLevel(false); setDirectoryModel(null); }
+      if (viewer?.renderMode !== undefined) setRenderMode(viewer.renderMode);
+      if (viewer?.selectedElementId !== undefined) setSelectedElementId(viewer.selectedElementId);
+      if (importedMarkup) { setMarkup(importedMarkup); if (result) saveModelMarkup(result, importedMarkup); setMarkupUndo([]); setMarkupRedo([]); }
       setGeometrySource("recovered");
       setWorkspace("model");
       setSheet(null);
@@ -418,7 +429,7 @@ export default function ReviterStudio() {
     } catch (caught) {
       setViewpointImportMessage(caught instanceof Error ? caught.message : "This viewpoint could not be restored.");
     }
-  }, [viewpointIdentity]);
+  }, [markup, result, viewpointIdentity]);
   const portableViewpointApplied = useCallback((sequence: number) => {
     setPortableViewpointRequest(current => current.sequence === sequence ? { ...current, viewpoint: null } : current);
     setViewpointImportMessage("Viewpoint restored on the matching RVT model.");
@@ -1629,9 +1640,9 @@ export default function ReviterStudio() {
     }
   }, [result]);
 
-  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions") => {
+  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions" | "schedules" | "spatial" | "views" | "drawing") => {
     if (!file) return;
-    const id = kind === "json" ? "NATIVE_EVIDENCE" : kind === "records" ? "NATIVE_RECORDS_CSV" : "NATIVE_DEFINITIONS_CSV";
+    const id = ({ json: "NATIVE_EVIDENCE", records: "NATIVE_RECORDS_CSV", definitions: "NATIVE_DEFINITIONS_CSV", schedules: "NATIVE_SCHEDULES_CSV", spatial: "NATIVE_SPATIAL_CSV", views: "NATIVE_VIEWS", drawing: "NATIVE_DRAWING_SVG" })[kind];
     setExporting(id);
     const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
       spawn: () => {
@@ -1646,21 +1657,47 @@ export default function ReviterStudio() {
     try {
       const bytes = await file.arrayBuffer();
       const report = await new Promise<NativeEvidenceReport>((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 120_000);
+        timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 240_000);
         const selectedClasses = kind === "records" ? [...NATIVE_RECORD_INVENTORY_CLASSES]
           : kind === "definitions" ? [...NATIVE_PARAMETER_DEFINITION_CLASSES]
+          : kind === "schedules" ? ["DBViewSchedule"]
+          : kind === "spatial" ? [...NATIVE_SPATIAL_ORGANIZATION_CLASSES]
+          : kind === "views" ? ["DBViewPlan", "DBViewSection", "DBViewDrafting", "DBViewLegend"]
           : [...new Set([...NATIVE_RECORD_INVENTORY_CLASSES, ...NATIVE_PARAMETER_DEFINITION_CLASSES])];
-        client.send({ type: "inspect", bytes, options: { selectedClasses,
-          selectedIds: selectedElementId == null ? undefined : [selectedElementId] } },
+        const pickedIds = selectedElementId == null ? [] : [selectedElementId];
+        if (kind === "definitions" && selectedRecord) {
+          const typeId = selectedRecord.typeId ?? selectedRecord.familySymbolId;
+          if (typeId != null) {
+            pickedIds.push(typeId);
+            const familyIds = new Set(result?.nativeFamilySymbolRelations?.filter(row => row.symbolId === typeId).map(row => row.familyId));
+            if (familyIds.size === 1) pickedIds.push([...familyIds][0]!);
+          }
+        }
+        client.send({ type: "inspect", bytes, drawingViewId: kind === "drawing" ? nativeDrawingViewId : undefined,
+          options: { selectedClasses, selectedIds: ["json", "records", "definitions"].includes(kind) ? pickedIds : undefined,
+            maxRecords: ["schedules", "spatial", "views"].includes(kind) ? 2048 : undefined,
+            maxOutputBytes: ["schedules", "spatial", "views"].includes(kind) ? 64 * 1024 * 1024 : undefined } },
           { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
       });
-      if (kind === "json") {
+      if (kind === "views") {
+        const views = listNativeDrawingViews(report);
+        setNativeViewState({ file, views });
+        setNativeDrawingViewId(views[0]?.elementId ?? "");
+        if (!views.length) throw new Error("No supported stored source views were recovered within the selection budget.");
+      } else if (kind === "drawing") {
+        if (!report.drawingPreview?.svg) throw new Error("No supported annotations were recovered for this source view.");
+        downloadBlob(new Blob([report.drawingPreview.svg], { type: "image/svg+xml" }), outputName(file.name, `source-view-${nativeDrawingViewId}.svg`));
+      } else if (kind === "json") {
         downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), outputName(file.name, "source-evidence.json"));
       } else {
         const content = kind === "records"
           ? makeNativeRecordInventoryCsv(report.recordInventory!)
+          : kind === "schedules" ? makeNativeScheduleInventoryCsv(report.scheduleInventory!)
+          : kind === "spatial" ? makeNativeSpatialOrganizationCsv(report.spatialOrganization!)
           : makeNativeParameterInventoryCsv(report.parameterInventory!);
-        downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8" }), outputName(file.name, kind === "records" ? "source-records.csv" : "parameter-definitions.csv"));
+        if (kind === "spatial" && report.spatialOrganization) setNativeSpatialState({ file, inventory: report.spatialOrganization });
+        const suffix = ({ records: "source-records", definitions: "parameter-definitions", schedules: "source-schedules", spatial: "source-organization" })[kind];
+        downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8" }), outputName(file.name, `${suffix}.csv`));
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1669,7 +1706,18 @@ export default function ReviterStudio() {
       client.terminate();
       setExporting(null);
     }
-  }, [file, selectedElementId]);
+  }, [file, selectedElementId, selectedRecord, result, nativeDrawingViewId]);
+
+  const sourceOrganization = nativeSpatialState?.file === file && nativeSpatialState.inventory.sourceSha256 === result?.sourceSha256 ? nativeSpatialState.inventory : undefined;
+  const sourceExportResult = result ? { ...result, nativeSpatialOrganization: sourceOrganization } : null;
+  const sourceViewControls = nativeViewState?.file === file ? <fieldset className="ifc-export-controls" disabled={Boolean(exporting)}>
+    <legend>Stored source annotations</legend>
+    <label>Source view <select aria-label="Source view" value={nativeDrawingViewId} onChange={event => setNativeDrawingViewId(event.target.value)}>
+      {nativeViewState.views.map(view => <option key={view.elementId} value={view.elementId}>{view.name} · {view.elementId}</option>)}
+    </select></label>
+    <button type="button" disabled={!nativeDrawingViewId || Boolean(exporting)} onClick={() => exportNativeSource("drawing")}>Download source annotations SVG</button>
+    <p>Partial stored text, leaders and tag markers; model geometry and sheet layout are omitted.</p>
+  </fieldset> : null;
 
   const exportActions: ExportAction[] = useMemo(() => {
     if (!result) return [];
@@ -1730,7 +1778,7 @@ export default function ReviterStudio() {
         detail: referenceAssistedResult
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
           : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { ...ifcExportOptions, rooms: roomReview.rooms }), "application/x-step"),
+        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines({ ...geometryResult, nativeSpatialOrganization: sourceOrganization }, { ...ifcExportOptions, rooms: roomReview.rooms }), "application/x-step"),
       },
       {
         id: "ELEMENTS_CSV", format: "Elements CSV", detail: "Recovered inventory, types and geometry provenance",
@@ -1753,6 +1801,15 @@ export default function ReviterStudio() {
       }, {
         id: "NATIVE_DEFINITIONS_CSV", format: "Parameter definitions CSV", detail: "Definitions, bindings and supported values for the picked element",
         run: () => exportNativeSource("definitions"),
+      }, {
+        id: "NATIVE_SCHEDULES_CSV", format: "Source schedules CSV", detail: "Stored fields, cells, filters and unevaluated formulas",
+        run: () => exportNativeSource("schedules"),
+      }, {
+        id: "NATIVE_SPATIAL_CSV", format: "Source organization CSV", detail: "Rooms, Areas, MEP spaces, active coordinates and revisions",
+        run: () => exportNativeSource("spatial"),
+      }, {
+        id: "NATIVE_VIEWS", format: "Load source views", detail: "Choose a stored view for a partial annotation SVG",
+        run: () => exportNativeSource("views"),
       }] : []),
       {
         id: "PASCAL",
@@ -1775,7 +1832,7 @@ export default function ReviterStudio() {
         run: () => exportText(
           "JSON",
           "json",
-          () => makeReport(geometryResult, metadata as unknown as Record<string, unknown>),
+          () => makeReport({ ...geometryResult, nativeSpatialOrganization: sourceOrganization }, metadata as unknown as Record<string, unknown>),
           "application/json",
         ),
       },
@@ -1813,7 +1870,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportNativeSource, exportText, file, ifcExportOptions, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
+  }, [exportNativeSource, exportText, file, ifcExportOptions, sourceOrganization, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -2401,7 +2458,8 @@ export default function ReviterStudio() {
           onZoomSelection={() => { requestZoomToSelection(); setSheet(null); }}
           onExportComments={() => exportActions.find(action => action.id === "COMMENTS")?.run()}
           exportPanel={result && <>
-            <IfcExportControls result={result} value={ifcExportOptions} onChange={setIfcExportOptions} disabled={Boolean(exporting)} />
+            <IfcExportControls result={sourceExportResult!} value={ifcExportOptions} onChange={setIfcExportOptions} disabled={Boolean(exporting)} />
+            {sourceViewControls}
             <div className="export-grid">
               {exportActions.map(action => <button key={action.id} type="button" className="export-card" disabled={Boolean(exporting)} onClick={action.run}>
                 <span><strong>{action.format}</strong></span><small>{exporting === action.id ? "Writing…" : action.detail}</small>
@@ -2626,7 +2684,8 @@ export default function ReviterStudio() {
                   tab={reportTab}
                   onTab={setReportTab}
                   onClose={() => setDockOpen(false)}
-                  result={result}
+                  result={sourceExportResult!}
+                  sourceViewControls={sourceViewControls}
                   comparison={comparison}
                   privateFileInfo={privateFileInfo}
                   metricCards={metricCards}

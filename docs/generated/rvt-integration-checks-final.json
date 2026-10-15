@@ -1,8 +1,9 @@
 {
   "unitTests": {
-    "passed": 2017,
+    "passed": 2097,
     "skipped": 3,
-    "failed": 0
+    "failed": 0,
+    "total": 2100
   },
   "typecheck": "passed",
   "productionBuild": "passed",
@@ -47,25 +48,83 @@
   "modelComparison": {
     "freshReviterModels": 4,
     "verifiedUnchangedUpstreamReuses": 4,
-    "sceneBaselineMatches": 24,
-    "independentIfcReopens": 8
+    "sceneBaselineMatches": 16,
+    "expectedMeshHashAndTriangleChanges": 8,
+    "independentIfcOutputsReopened": 8,
+    "noPriorOwnerIdentityLossesOnRacSchoolSnowdon": true,
+    "unbcProductMatches": 35117,
+    "unbcProductCompared": 35117,
+    "unbcTypeMatches": 36886,
+    "unbcTypeCompared": 37132,
+    "evidence": "rvt-native-geometry-four-models.json"
   },
   "nativeTableInventory": {
     "exactUpstreamDeclarationMatches": 4,
     "actualCorpusAndMalformedChecksPassed": 10
   },
   "viewpointStateBrowser": {
-    "passed": 9,
+    "passed": 12,
     "errors": 0,
-    "desktopAndMobile": true
+    "desktopAndMobile": true,
+    "version": 3,
+    "optionalMarkupSelectionDisplayMode": true,
+    "restoredCanvasPngMatches": true,
+    "evidence": "rvt-viewpoint-v3-browser-validation.json"
   },
-  "scope": "Continuation execution; native WASM/Rust/fuzz/vanilla rebuild results below are carried from the earlier integration because their binaries/core/harness were unchanged.",
+  "scope": "Completed remaining source-backed integration and measured geometry selection campaign. Native WASM/Rust/fuzz/vanilla rebuild results retain the earlier execution because the corresponding binary/core/harness remained unchanged. Repository-wide lint is not claimed clean.",
   "nativeInventoryBrowser": {
     "passed": true,
     "desktopAndMobile": true,
     "errors": 0,
-    "csvDownloads": 3,
+    "csvDownloads": 5,
     "jsonDownloads": 1,
-    "mobileCsvMatchesDesktop": true
+    "ifcDownloads": 1,
+    "svgDownloads": 1,
+    "mobileCsvMatchesDesktop": true,
+    "storedSchedules": true,
+    "sourceOrganizationAndTrueNorth": true,
+    "selectedSourceView": "312",
+    "evidence": "rvt-native-inventory-browser-validation.json"
+  },
+  "additionalUpstreamGeometryMode": {
+    "freshModels": 4,
+    "apiConverted": 4,
+    "sourceGeometryQualityGatePasses": 3,
+    "sourceGeometryQualityGateFails": 1,
+    "wasmDoesNotInvokeQualityValidator": true,
+    "independentReaderReopens": 8,
+    "evidence": "rvt-upstream-geometry-mode-validation.json"
+  },
+  "postSuiteFocusedChecks": {
+    "sourceOrganizationAndIfcChecks": 14,
+    "updatedCoordinateCsvChecks": 8,
+    "scope": "Serialization-only coordinate/scope CSV addition and source-view accessible label followed the whole-suite run; their focused checks, changed-file lint and production build passed."
+  },
+  "sourceOrganizationIfc": {
+    "models": 3,
+    "outputsReopened": 6,
+    "readers": [
+      "web-ifc",
+      "IFC-Lite"
+    ],
+    "areaRecords": 25,
+    "mepSpaceRecords": 9,
+    "geometryAndPropertyDisagreements": 0,
+    "evidence": "rvt-source-organization-ifc-validation.json"
+  },
+  "nativeMapsProfiles": {
+    "schoolMaps": 78,
+    "schoolOccurrences": 250,
+    "schoolRotatedGroups": 4,
+    "structuralSnowdonMaps": 141,
+    "structuralSnowdonOccurrences": 460,
+    "actualModelProfiles": 0,
+    "scope": "Profiles withheld without admissible source occurrence/shape evidence; qualified source fixtures cover authoring.",
+    "evidence": "rvt-native-maps-profiles-validation.json"
+  },
+  "upstreamHeadVerified": {
+    "utcDate": "2026-10-14",
+    "head": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "branch": "fork/main"
   }
 }

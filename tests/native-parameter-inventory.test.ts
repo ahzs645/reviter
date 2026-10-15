@@ -169,3 +169,65 @@ test("unresolved-slot inventory cap preserves partial status rather than silentl
   assert.equal(i.unresolvedSlots.length, 100_000); assert.equal(i.status, "partial");
   assert.ok(i.diagnostics.some(s => s.includes("reached the adapter limit")));
 });
+function inheritanceFixture(): NativeEvidenceReport {
+  const f = fixture();
+  for (const [elementId, className, relation] of [[100, "Family", {}], [300, "FamilyInstance", { m_masterSymbolId: identifier(200) }]] as const) {
+    f.source.records.push({ status: "complete_bounded_graph", diagnostic: null, class_name: className, identity: { element_id: elementId }, source: { body_bytes: 40, body_sha256: SHA, stream: "Partitions/3", group_record_offset: elementId }, graph: { consumed_bytes: 40, objects: [{ class_name: className, class_tag: 500, token: 0, start: 2, fields_end: 40, fields: { m_id: identifier(elementId), ...relation } }], edges: [] } });
+  }
+  return f;
+}
+test("serialized symbol type values resolve through retained exact instance→symbol→family identity", () => {
+  const i = buildNativeParameterInventory(inheritanceFixture());
+  assert.equal(i.values.length, 1); assert.equal(i.resolvedValues.length, 2);
+  const v = i.resolvedValues[1]; assert.equal(v.resolution, "inherited-symbol"); assert.equal(v.ownerElementId, "300"); assert.equal(v.valueOwnerElementId, "200");
+  assert.equal(v.rawValue, 2.5); assert.equal(v.sourceValueIndex, 0); assert.deepEqual(v.relationshipWitnesses.map(r => r.ownerElementId), ["300", "200", "100"]);
+  assert.equal(v.relationshipWitnesses[0].source.fieldByteOffset, null);
+  assert.ok(makeNativeParameterInventoryCsv(i).includes("\r\nresolved-value,"));
+});
+test("missing/contradictory retained namespace or current symbol links do not infer inherited values", () => {
+  for (const mode of ["family-missing", "symbol-missing", "registry-mismatch", "instance-symbol-mismatch", "duplicate-instance", "invalid-instance-span"]) {
+    const f = inheritanceFixture();
+    if (mode === "family-missing") f.source.records.splice(2, 1);
+    if (mode === "symbol-missing") f.source.records.splice(1, 1);
+    if (mode === "registry-mismatch") raw(f.source.summary).parameter_binding_context.symbol_families[200] = 101;
+    if (mode === "instance-symbol-mismatch") raw(f.source.records[3]).graph.objects[0].fields.m_masterSymbolId = identifier(201);
+    if (mode === "duplicate-instance") f.source.records.push(structuredClone(f.source.records[3]));
+    if (mode === "invalid-instance-span") raw(f.source.records[3]).graph.objects[0].fields_end = 50;
+    assert.equal(buildNativeParameterInventory(f).resolvedValues.filter(v => v.resolution === "inherited-symbol").length, 0, mode);
+  }
+});
+test("stored instance flags and definition instance parameters block symbol type inheritance", () => {
+  for (const mode of ["slot-instance", "definition-instance", "no-type-proof"]) {
+    const f = inheritanceFixture();
+    if (mode === "slot-instance") raw(f.source.records[1]).graph.objects[1].fields.m_params[0].m_instance = true;
+    if (mode === "definition-instance") raw(f.source.summary).parameter_definitions[10].owner_fields.m_instanceParam = true;
+    if (mode === "no-type-proof") { raw(f.source.records[1]).graph.objects[1].fields.m_params[0].m_instance = null; raw(f.source.summary).parameter_definitions[10].owner_class = "ParamElemGlobal"; raw(f.source.summary).parameter_definitions[10].owner_fields.m_bindingIds = []; }
+    assert.equal(buildNativeParameterInventory(f).resolvedValues.filter(v => v.resolution === "inherited-symbol").length, 0, mode);
+  }
+});
+test("present instance values take precedence; contradictory present slots block fallback to a symbol", () => {
+  for (const conflict of [false, true]) {
+    const f = inheritanceFixture(), instance = raw(f.source.records[3]);
+    instance.graph = structuredClone(raw(f.source.records[1]).graph); instance.source.body_bytes = 60;
+    instance.graph.objects[0].class_name = "FamilyInstance"; instance.graph.objects[0].fields.m_id = identifier(300);
+    instance.graph.objects[0].fields.m_masterSymbolId = identifier(200);
+    instance.graph.objects[0].fields.m_pInstParams = instance.graph.objects[0].fields.m_pParams; delete instance.graph.objects[0].fields.m_pParams;
+    const slot = instance.graph.objects[1].fields.m_params[0]; slot.m_value = 7;
+    if (conflict) instance.graph.objects[1].fields.m_params.push({ ...slot, m_value: 8 });
+    const i = buildNativeParameterInventory(f);
+    assert.equal(i.resolvedValues.filter(v => v.resolution === "inherited-symbol").length, 0);
+    assert.equal(i.resolvedValues.find(v => v.ownerElementId === "300")?.rawValue, conflict ? undefined : 7);
+  }
+});
+test("project type binding requires exact native category and symbol-kind proof", () => {
+  for (const mode of ["valid", "instance-binding", "different-category", "missing-backlink"]) {
+    const f = inheritanceFixture(), summary = raw(f.source.summary);
+    summary.parameter_definitions[10].owner_class = "ParamElemProject";
+    delete summary.parameter_definitions[10].owner_fields.m_famId;
+    if (mode === "instance-binding") summary.parameter_binding_context.bindings[30].elem_or_symbol = 1;
+    if (mode === "different-category") summary.parameter_binding_context.family_categories[100] = -2000000;
+    if (mode === "missing-backlink") summary.parameter_definitions[10].owner_fields.m_bindingIds = [];
+    const i = buildNativeParameterInventory(f);
+    assert.equal(i.resolvedValues.filter(v => v.resolution === "inherited-symbol").length, mode === "valid" ? 1 : 0, mode);
+  }
+});

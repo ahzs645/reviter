@@ -132,6 +132,8 @@ export function convertRvtBytes(
       schema,
       declaredElementIds,
       nativeTypeIdentityElementIds: nativeOriginalSymbolElementIds(declaredElementIds, nativeIdentity?.identities ?? []),
+      nativeSectionElementIds: new Set(fullElementInventory?.status === "decoded" ? fullElementInventory.declaredElementIds :
+        nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds),
       partitions,
       decoderPlan,
       objectMarkers,
@@ -387,6 +389,8 @@ export function convertRvtBytes(
       documentMetadata: readDocumentMetadataContainer(cfb, partitionNames),
       nativeIfcGuidParameters: scan.nativeIfcGuidParameters,
       nativePhaseEvidence,
+      nativeStructuralSections: scan.nativeStructuralSectionCollector.finish(new Set(fullElementInventory?.status === "decoded" ?
+        fullElementInventory.declaredElementIds : nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds)),
       nativeIfcTypeIdentityEvidence: resolveNativeIfcTypeIdentityEvidence({
         references: scan.nativeOriginalSymbols, placements: instancePlacements.values(),
         elementBounds, hostRelations: nativeHostRelations, revitVersion: decoderPlan.revitVersion ?? 0,
@@ -443,6 +447,7 @@ export function convertRvtBytes(
       nativeIdentity,
       nativeMaterialDefinitions,
       fullElementInventory,
+      nativeInstancePlacements: [...instancePlacements.values()],
       nativeFamilySymbolRelations,
       nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
@@ -524,7 +529,7 @@ export function convertRvtBytes(
         ...decodedRelations(
           scene.report.meshCollection.spiralStairRunOwnerIds,
         ),
-        warnings: buildWarnings(basis, scene.report),
+        warnings: [...buildWarnings(basis, scene.report), ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
         stats: {
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
@@ -628,7 +633,7 @@ export function convertRvtBytes(
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
       ...decodedRelations(),
-      warnings: buildWarnings(basis, coordinateReport),
+      warnings: [...buildWarnings(basis, coordinateReport), ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
       stats: {
         streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
         partitionStreams: partitions.length,
