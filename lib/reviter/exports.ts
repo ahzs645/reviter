@@ -46,3 +46,4 @@ export type { IfcExportOptions } from "./export-ifc.ts";
 export { makePascalScene, makePascalSceneJson } from "./export-pascal.ts";
 export type { PascalExportOptions, PascalExtraElements, PascalNode, PascalScene, PascalSceneStats } from "./export-pascal.ts";
 export { elementManifest, makeReport } from "./export-report.ts";
+export { makeElementsCsv, makeNativeRoomsCsv, makeParametersCsv } from "./export-schedules.ts";

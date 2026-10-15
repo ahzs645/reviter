@@ -1,3 +1,4 @@
+import { hypot } from "./deterministic-math.ts";
 import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
@@ -113,8 +114,8 @@ export function decodeRevit2027GArc(
     };
   }
   if (
-    Math.hypot(...xDirection) <= Number.EPSILON ||
-    Math.hypot(...yDirection) <= Number.EPSILON
+    hypot(...xDirection) <= Number.EPSILON ||
+    hypot(...yDirection) <= Number.EPSILON
   ) {
     return {
       ok: false,

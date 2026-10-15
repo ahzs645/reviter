@@ -1,0 +1,108 @@
+{
+  "model": "school.rvt",
+  "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+  "revitVersion": 2025,
+  "rawEvidenceStatus": "complete",
+  "inventoryStatus": "complete",
+  "schedules": 10,
+  "checkedFields": 44,
+  "checkedCells": 47,
+  "checkedSortFields": 8,
+  "checkedFilters": 1,
+  "expressionFields": 0,
+  "nonEmptyCellText": 6,
+  "sourceProjectionMismatches": 0,
+  "sourceGraphClasses": {
+    "DBViewSchedule": 10,
+    "ScheduleData": 10,
+    "ScheduleSchema": 10,
+    "ScheduleSegmentRec": 10,
+    "ScheduleSectionData": 20,
+    "ScheduleField": 44,
+    "TableCellData": 47,
+    "ScheduleSortField": 8,
+    "ScheduleFilter": 1
+  },
+  "diagnostics": [],
+  "samples": [
+    {
+      "elementId": "134004",
+      "categoryId": "-2001180",
+      "fieldIds": [
+        "0"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [],
+      "filterFields": [],
+      "storedCells": 1,
+      "source": {
+        "stream": "Partitions/15",
+        "groupRecordOffset": 20984,
+        "bodySha256": "0234ff0a4325149c19157425bdd81553511ae17fae23618ea43df3e4e1832253",
+        "rawRecordIndex": 0
+      }
+    },
+    {
+      "elementId": "135424",
+      "categoryId": "-2001360",
+      "fieldIds": [
+        "0",
+        "1"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [
+        "0"
+      ],
+      "filterFields": [],
+      "storedCells": 2,
+      "source": {
+        "stream": "Partitions/15",
+        "groupRecordOffset": 69196,
+        "bodySha256": "a0992801e9f9727c5d36b1172beb97a2dd2fed09a268603070143d1278abf921",
+        "rawRecordIndex": 1
+      }
+    },
+    {
+      "elementId": "139753",
+      "categoryId": "-2003403",
+      "fieldIds": [
+        "0",
+        "1",
+        "2"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [],
+      "filterFields": [],
+      "storedCells": 3,
+      "source": {
+        "stream": "Partitions/15",
+        "groupRecordOffset": 74972,
+        "bodySha256": "c73e0a1440e59cda01db29d53ebcbc6cce2e7b66ad8fdca547a40ece130adc75",
+        "rawRecordIndex": 2
+      }
+    },
+    {
+      "elementId": "179158",
+      "categoryId": "-2003200",
+      "fieldIds": [
+        "0",
+        "1"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [
+        "0"
+      ],
+      "filterFields": [],
+      "storedCells": 2,
+      "source": {
+        "stream": "Partitions/15",
+        "groupRecordOffset": 85373,
+        "bodySha256": "d571d229fad9e3f1675168627d40ac066d7b0a26eb0a843d70a05624c531baa2",
+        "rawRecordIndex": 3
+      }
+    }
+  ],
+  "comparisonScope": "Exact source digest and independently reopened stored graph fields/IDs. Enum codes and formulas are unevaluated; cached cells are not independently regenerated Revit rows."
+}

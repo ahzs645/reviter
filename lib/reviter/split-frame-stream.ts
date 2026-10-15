@@ -40,6 +40,8 @@ export type StreamedFrame = {
   data: Uint8Array;
   /** Whether the frame crossed a page, i.e. no per-page scan could see it. */
   crossedPage: boolean;
+  /** Original offset on the page supplied by this push; null for split frames. */
+  pageOffset: number | null;
 };
 
 export type SplitFrameStreamOptions = {
@@ -55,6 +57,12 @@ export type SplitFrameStreamOptions = {
    * every one out again would be most of the work.
    */
   crossingOnly?: boolean;
+  /** Skip complete same-page objects below this stored object-length boundary.
+   * Crossing objects remain eligible. This avoids copying ordinary small
+   * objects when only the page scanner's oversized omissions are requested. */
+  minWholeObjectLength?: number;
+  /** Check a same-page frame through a borrowed view before copying it. */
+  acceptWholeFrame?: (frame: Readonly<{ data: Uint8Array; objectLength: number }>) => boolean;
 };
 
 export type SplitFrameStream = {
@@ -155,6 +163,7 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
           streamOffset < pageStart ||
           streamOffset + objectLength + frameSuffixBytes > streamEnd;
         if (options.crossingOnly && !crossedPage) continue;
+        if (!crossedPage && options.minWholeObjectLength != null && objectLength < options.minWholeObjectLength) continue;
         pending.set(streamOffset, { elementId, marker, objectLength, crossedPage });
       }
       nextScanOffset = Math.max(nextScanOffset, scanEnd + 1);
@@ -168,12 +177,17 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
         const echoAt = streamOffset + target.objectLength + header;
         const echo = new DataView(bytesBetween(echoAt, echoAt + 4).buffer).getUint32(0, true);
         if (echo !== target.objectLength) continue;
+        if (!target.crossedPage && options.acceptWholeFrame && !options.acceptWholeFrame({
+          data: page.subarray(streamOffset - pageStart, frameEnd - pageStart),
+          objectLength: target.objectLength,
+        })) continue;
         complete.push({
           elementId: target.elementId,
           marker: target.marker,
           objectLength: target.objectLength,
           data: bytesBetween(streamOffset, frameEnd),
           crossedPage: target.crossedPage,
+          pageOffset: target.crossedPage ? null : streamOffset - pageStart,
         });
       }
 

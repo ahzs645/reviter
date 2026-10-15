@@ -1,4 +1,5 @@
 import type pc from "polygon-clipping";
+import { hypot } from "./deterministic-math.ts";
 import {
   containsRoomPoint,
   nearestRoomBoundary,
@@ -60,7 +61,7 @@ export function registeredNativeInterior(
         b = outer[(i + 1) % outer.length]!,
         steps = Math.max(
           1,
-          Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.25),
+      Math.ceil(hypot(b[0] - a[0], b[1] - a[1]) / 0.25),
         );
       for (let j = 1; j < steps; j++)
         samples.push([

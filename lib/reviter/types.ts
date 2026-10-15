@@ -12,6 +12,10 @@ import type { RevitTransmissionData } from "./transmission-data.ts";
 import type { WorkerEnvelope, WorkerProgress } from "./worker-client.ts";
 import type { ElementOwnershipDecode } from "./element-relations.ts";
 import type { NativeIdentityDecode } from "./native-identity.ts";
+import type { InstancePlacement } from "./instanced-geometry.ts";
+import type { NativeSpatialOrganization } from "./native-spatial-organization.ts";
+import type { NativeStructuralSection } from "./native-structural-profiles.ts";
+import type { FullElemTableInventory, FullElemTableInventoryFailure } from "./elem-table.ts";
 import type { NativeMaterialDefinition } from "./material-records.ts";
 import type {
   NativeFamilyDefinition,
@@ -26,6 +30,14 @@ import type {
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
+import type { NativeSourceRoom } from "./native-source-rooms.ts";
+import type { NativeMepEvidence } from "./native-mep.ts";
+import type { NativeDesignOptions } from "./design-options.ts";
+import type { NativePhaseSpatialEvidence } from "./native-phase-spatial.ts";
+import type { NativeIfcTypeIdentityEvidence } from "./native-ifc-type-identity.ts";
+import type { ElementParameterTable } from "./element-parameters.ts";
+import type { DocumentMetadata } from "./document-metadata.ts";
+import type { NativeIfcSemanticEvidence } from "./native-ifc-semantic-model.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -271,8 +283,12 @@ export type ElementBoundsRecord = {
   categoryId?: number;
   categoryName?: string;
   categorySource?: NativeCategorySource;
+  /** Exact ElementHeader membership; null is the main model, absent is unknown. */
+  designOptionId?: number | null;
   /** Instance parameters decoded from the element's own parameter table. */
   parameters?: ElementParameter[];
+  /** Parameters recovered from the resolved native type, never inferred from its name. */
+  typeParameters?: ElementParameter[];
   /** Element id of this element's type element. */
   typeId?: number;
   /** Type name read from that type element, for system families. */
@@ -451,6 +467,15 @@ export type LevelBand = {
 };
 
 export type ConvertStats = {
+  /** Newly admitted >64-KiB whole-page GElement frames; final mesh admission
+   * remains subject to complete FIFO, face coverage, storage and bounds gates. */
+  largeWholeGElementFrames?: { admitted: number; rejectedChecksum: number; skippedChecksumBudget: number; checksumBytes: number; checksumLimitPerPartition: number;
+    nativeCompilation: { queued: number; replayed: number; existingOwnerPreserved: number; supersededWholeFrames: number; skippedBufferBudget: number; skippedDefinitionBudget: number; peakBufferedBytes: number; bufferLimitBytes: number } };
+  nativeOriginalSymbolDiagnostics?: {
+    legacyCapped: boolean;
+    historicalEnvelope: { checksumBytes: number; capped: boolean };
+    largeObjects: { checksumBytes: number; fifoBytes: number; capped: boolean };
+  };
   streamCount: number;
   partitionStreams: number;
   gzipChunks: number;
@@ -754,6 +779,8 @@ export type RvtRegressionInput = {
 };
 
 export type ConvertResult = {
+  /** Exact source byte identity, computed asynchronously by the app reader. */
+  sourceSha256?: string;
   ok: true;
   fileName: string;
   byteLength: number;
@@ -783,11 +810,31 @@ export type ConvertResult = {
   warnings: string[];
   method: "native-profile-recovery" | "partition-bounds-recovery" | "partition-coordinate-recovery";
   readerDiagnostics?: ReaderDiagnostics;
+  /** Unjoined optional-reader definitions; never overwrite scene materials. */
+  standardsReaderMaterials?: MaterialData[];
   elementIndex?: RvtElementIndex;
+  /** Complete validated source table, separate from scene decoder admission. */
+  fullElementInventory?: FullElemTableInventory | FullElemTableInventoryFailure;
   /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
   elementOwnership?: ElementOwnershipDecode;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
+  /** Decoded source placement witnesses, retained for optional IFC sharing. */
+  nativeInstancePlacements?: InstancePlacement[];
+  nativeStructuralSections?: NativeStructuralSection[];
+  /** On-demand source organization; exact source hash required by IFC authoring. */
+  nativeSpatialOrganization?: NativeSpatialOrganization;
+  /** Source-authored rooms; these do not certify navigation boundaries. */
+  nativeSourceRooms?: NativeSourceRoom[];
+  nativeMepEvidence?: NativeMepEvidence;
+  nativeDesignOptions?: NativeDesignOptions;
+  nativePhaseEvidence?: NativePhaseSpatialEvidence;
+  nativeIfcTypeIdentityEvidence?: NativeIfcTypeIdentityEvidence[];
+  nativeIfcGuidParameters?: ElementParameterTable[];
+  documentMetadata?: DocumentMetadata;
+  nativeIfcSemanticEvidence?: NativeIfcSemanticEvidence;
+  /** Exact alternative membership, including owners without a bounds record. */
+  nativeDesignOptionMembership?: Array<{ elementId: number; designOptionId: number }>;
   /** Persisted material identities/names and optional packed render colour. */
   nativeMaterialDefinitions?: LocatedNativeMaterialDefinition[];
   /** Loadable-family symbol to family relationships persisted in partition objects. */

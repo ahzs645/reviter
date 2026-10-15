@@ -1,0 +1,80 @@
+{
+  "seed": 5396052,
+  "cases": 256,
+  "maxInputBytes": 4096,
+  "corpusDigest": "67b054cdf75e66d8a8158f2af5dcab31bac4e1095839b02a56d15bdbcadacf8b",
+  "targets": [
+    {
+      "target": "basic-file-info",
+      "runs": 256,
+      "accepted": 9,
+      "absent": 247,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "element-table",
+      "runs": 256,
+      "accepted": 147,
+      "absent": 109,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "partition-names",
+      "runs": 256,
+      "accepted": 18,
+      "absent": 238,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "schema",
+      "runs": 256,
+      "accepted": 76,
+      "absent": 0,
+      "structuredRefusals": 180
+    },
+    {
+      "target": "history",
+      "runs": 256,
+      "accepted": 5,
+      "absent": 0,
+      "structuredRefusals": 251
+    },
+    {
+      "target": "element-framing-32",
+      "runs": 256,
+      "accepted": 9,
+      "absent": 247,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "element-framing-64",
+      "runs": 256,
+      "accepted": 11,
+      "absent": 245,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "gzip-chunks",
+      "runs": 256,
+      "accepted": 7,
+      "absent": 249,
+      "structuredRefusals": 0
+    },
+    {
+      "target": "conversion-raw-refusal",
+      "runs": 256,
+      "accepted": 0,
+      "absent": 0,
+      "structuredRefusals": 256
+    },
+    {
+      "target": "conversion-partition",
+      "runs": 256,
+      "accepted": 7,
+      "absent": 0,
+      "structuredRefusals": 249
+    }
+  ],
+  "failureCount": 0,
+  "failures": []
+}

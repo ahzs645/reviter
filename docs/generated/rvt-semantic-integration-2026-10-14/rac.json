@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-rvt-semantic-integration.ts",
+  "source": {
+    "file": "/workspace/models/rac.rvt",
+    "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+    "byteLength": 19750912,
+    "version": 2025,
+    "method": "partition-bounds-recovery",
+    "geometryHash": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+    "meshes": 97,
+    "triangles": 195555,
+    "bounds": 959,
+    "origin": {
+      "x": 6.454918501214529,
+      "y": 5.921607681818255,
+      "z": -23.300524934383194
+    },
+    "bbox": {
+      "min": {
+        "x": -76.6657086141688,
+        "y": -66.30085301837279,
+        "z": 0
+      },
+      "max": {
+        "x": 76.6657086141688,
+        "y": 66.30085301837279,
+        "z": 58.869422572178095
+      }
+    },
+    "identities": 8326
+  },
+  "baseline": {
+    "path": "/workspace/models/rac-base.json",
+    "checks": {
+      "geometryHash": {
+        "expected": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+        "actual": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+        "matches": true
+      },
+      "triangles": {
+        "expected": 195555,
+        "actual": 195555,
+        "matches": true
+      },
+      "meshes": {
+        "expected": 97,
+        "actual": 97,
+        "matches": true
+      },
+      "bounds": {
+        "expected": 959,
+        "actual": 959,
+        "matches": true
+      },
+      "origin": {
+        "expected": {
+          "x": 6.454918501214529,
+          "y": 5.921607681818255,
+          "z": -23.300524934383194
+        },
+        "actual": {
+          "x": 6.454918501214529,
+          "y": 5.921607681818255,
+          "z": -23.300524934383194
+        },
+        "matches": true
+      },
+      "bbox": {
+        "expected": {
+          "min": {
+            "x": -76.6657086141688,
+            "y": -66.30085301837279,
+            "z": 0
+          },
+          "max": {
+            "x": 76.6657086141688,
+            "y": 66.30085301837279,
+            "z": 58.869422572178095
+          }
+        },
+        "actual": {
+          "min": {
+            "x": -76.6657086141688,
+            "y": -66.30085301837279,
+            "z": 0
+          },
+          "max": {
+            "x": 76.6657086141688,
+            "y": 66.30085301837279,
+            "z": 58.869422572178095
+          }
+        },
+        "matches": true
+      }
+    }
+  },
+  "semantics": {
+    "rooms": {
+      "count": 14,
+      "withName": 14,
+      "withNumber": 14,
+      "withOutline": 14,
+      "withLevel": 0,
+      "withBounds": 14,
+      "outlineStatus": {
+        "recovered": 14
+      }
+    },
+    "parameters": {
+      "elementsWithOwnParameters": 289,
+      "ownParameterValues": 744,
+      "elementsWithTypeParameters": 183,
+      "typeParameterValuesPerElement": 663,
+      "exportOverrideCountsPerElement": {
+        "-1019014": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019015": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019016": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019017": {
+          "own": 0,
+          "type": 0
+        }
+      },
+      "scope": "Type values are counted as attached to each instance, so shared type parameters may repeat."
+    },
+    "designOptions": {
+      "source": "rvt-rs/RE-40@1c3d337",
+      "revitVersion": 2025,
+      "status": "decoded",
+      "positiveEvidence": "unvalidated-positive-2025",
+      "sets": {
+        "count": 0
+      },
+      "unresolvedSets": {
+        "count": 0
+      }
+    },
+    "mep": {
+      "revitVersion": 2025,
+      "systems": {
+        "count": 1
+      },
+      "connections": {
+        "count": 0
+      },
+      "limitations": [
+        "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+        "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+        "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+      ]
+    },
+    "coverage": {
+      "revitVersion": 2025,
+      "activeDecoders": [
+        "revit-2027-duplicated-bounds-v1",
+        "revit-element-header-category-v1",
+        "revit-2024-2027-elem-table-ownership-v1",
+        "revit-2027-native-identity-v1",
+        "revit-transmission-data-v1",
+        "revit-2027-material-element-name-v1",
+        "revit-2027-material-color-packed-v1",
+        "revit-2027-family-symbol-static-tail-v1",
+        "revit-2027-family-name-path-v1",
+        "revit-2027-geometry-material-id-v1",
+        "revit-2027-instance-geometry-material-v1",
+        "revit-2027-family-symbol-geometry-tag-material-v1",
+        "revit-2027-basic-wall-compound-material-v1",
+        "revit-2027-insertable-host-id-v1",
+        "revit-2027-native-mesh-visibility-cleanup-v1",
+        "revit-2027-associated-level-id-v1",
+        "revit-2027-certified-grep-brep-mesh-v1",
+        "revit-2027-bounded-tessellator-roots-v1",
+        "revit-2027-conditioned-geometry-roots-v1",
+        "revit-2027-embedded-gelement-v1",
+        "revit-2027-nested-symbol-composition-v1",
+        "revit-2027-placement-referenced-grep-composition-v1"
+      ],
+      "nativeCurves": 0,
+      "nativeProfiles": 0,
+      "nativeMeshes": 84,
+      "nativeMeshFaces": 20081,
+      "nativeMeshElements": 411,
+      "nativeWallProxyReplacements": 0,
+      "nativeMeshOwners": 1322,
+      "nativeMeshBoundedTessellatorCandidates": 11,
+      "nativeMeshCompleteBoundedTessellatorRoots": 9,
+      "nativeMeshBoundedTessellatorElements": 9,
+      "nativeMeshConditionedGeometryCandidates": 367,
+      "nativeMeshCompleteConditionedGeometryRoots": 278,
+      "nativeMeshConditionedGeometryElements": 146,
+      "nativeMeshEmbeddedGeometryCandidates": 13,
+      "nativeMeshCompleteEmbeddedGeometryRoots": 12,
+      "nativeMeshEmbeddedGeometryElements": 12,
+      "nativeMeshTriangles": 194555,
+      "nativeMeshDuplicateTrianglesRemoved": 1950,
+      "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 736,
+      "nativeRedundantWallShellTrianglesRemoved": 0,
+      "nativeRedundantWallShellElements": 0,
+      "nativeHostOpeningWallTrianglesClipped": 0,
+      "nativeHostOpeningWallTrianglesGenerated": 0,
+      "nativeMeshTruncated": false,
+      "nativeMeshStoredBytes": 31169544,
+      "nativeMeshBoundsMismatches": 0,
+      "nativeMeshCarrierComposedItems": 0,
+      "nativeMeshCarrierComposedOutsideEnvelope": 0,
+      "nativeMeshMissingBounds": 95,
+      "nativeMeshFamilyDocumentElements": 3,
+      "nativeMeshFamilyDocumentMismatches": 23,
+      "nativeMeshUnrepresentedElements": 1061,
+      "nativeMeshNestedDefinitions": 11527,
+      "nativeMeshNestedLinks": 587,
+      "nativeMeshNestedRoots": 14,
+      "nativeMeshCompleteNestedRoots": 8,
+      "nativeMeshPartialNestedRoots": 6,
+      "nativeMeshNestedTriangles": 8428,
+      "nativeMeshNestedFailures": 6,
+      "nativeMeshRequestedOwnerDefinitions": 196,
+      "nativeMeshCompleteRequestedOwners": 186,
+      "nativeMeshPartialRequestedOwners": 10,
+      "nativeMeshRequestedOwnerTriangles": 83279,
+      "nativeMeshRequestedOwnerFailures": 10,
+      "nativeMaterialDefinitions": 174,
+      "nativeMaterialAssignments": 382,
+      "nativeGeometryMaterialAssignments": 90,
+      "nativeCompoundStructureDefinitions": 11,
+      "nativeCompoundLayerMaterialAssignments": 123,
+      "nativeFamilySymbols": 196,
+      "nativeFamilyRelations": 95,
+      "nativeHostRelations": 304,
+      "nativeAssociatedLevelRelations": 562,
+      "nativeFamilyDefinitions": 46,
+      "nativeUniqueIds": 8326,
+      "nativeOwnershipRecords": 8326,
+      "nativeOwnershipRelations": 3732,
+      "approximateSolids": 50,
+      "nativeCategorisedElements": 855,
+      "geometryFidelity": "certified-native-brep-with-proxy-fallback",
+      "materialFidelity": "native-assigned",
+      "semanticFidelity": "native-categories-and-ownership"
+    }
+  },
+  "output": {
+    "path": "/workspace/models/rac-final.ifc",
+    "bytes": 13964401,
+    "exportOptions": {
+      "nativeRooms": true,
+      "designOptions": "all"
+    },
+    "evidencePath": "/workspace/models/rac-evidence.json",
+    "propertySetNames": {
+      "Reviter_Recovery": 473,
+      "Reviter_RevitInstanceParameters": 111,
+      "Reviter_RevitTypeParameters": 166,
+      "Pset_SlabCommon": 6,
+      "Pset_BuildingElementProxyCommon": 16,
+      "Reviter_NativeRoom": 14
+    },
+    "standardPropertySets": {
+      "Pset_SlabCommon": 6,
+      "Pset_BuildingElementProxyCommon": 16
+    },
+    "readerValidation": {
+      "reader": "web-ifc",
+      "schema": "IFC4",
+      "entities": {
+        "IFCDIRECTION": 1,
+        "IFCPERSONANDORGANIZATION": 1,
+        "IFCPROJECT": 1,
+        "IFCRELAGGREGATES": 7,
+        "IFCUNITASSIGNMENT": 1,
+        "IFCMATERIALLAYER": 26,
+        "IFCCOLUMNTYPE": 2,
+        "IFCSTAIR": 2,
+        "IFCDOOR": 16,
+        "IFCSIUNIT": 4,
+        "IFCEXTRUDEDAREASOLID": 14,
+        "IFCAPPLICATION": 1,
+        "IFCPRODUCTDEFINITIONSHAPE": 475,
+        "IFCCOLOURRGB": 188,
+        "IFCRELDEFINESBYTYPE": 183,
+        "IFCCOLUMN": 3,
+        "IFCSURFACESTYLESHADING": 188,
+        "IFCMEMBER": 154,
+        "IFCBUILDINGELEMENTPROXY": 122,
+        "IFCCARTESIANPOINT": 116,
+        "IFCOWNERHISTORY": 1,
+        "IFCFURNITURETYPE": 14,
+        "IFCSURFACESTYLE": 188,
+        "IFCMATERIALLAYERSETUSAGE": 42,
+        "IFCRELASSIGNSTOGROUP": 1,
+        "IFCRELVOIDSELEMENT": 31,
+        "IFCPROPERTYSET": 786,
+        "IFCFURNITURE": 33,
+        "IFCSLAB": 9,
+        "IFCMATERIAL": 174,
+        "IFCWALLTYPE": 10,
+        "IFCBUILDINGELEMENTPROXYTYPE": 46,
+        "IFCCOVERING": 2,
+        "IFCROOF": 2,
+        "IFCCARTESIANPOINTLIST3D": 695,
+        "IFCPERSON": 1,
+        "IFCSYSTEM": 1,
+        "IFCRAILING": 10,
+        "IFCDOORTYPE": 10,
+        "IFCWALL": 56,
+        "IFCLOCALPLACEMENT": 7,
+        "IFCRELASSOCIATESMATERIAL": 338,
+        "IFCAXIS2PLACEMENT3D": 20,
+        "IFCMATERIALCONSTITUENTSET": 73,
+        "IFCTRIANGULATEDFACESET": 695,
+        "IFCBUILDINGSTOREY": 4,
+        "IFCPLATE": 44,
+        "IFCMEMBERTYPE": 73,
+        "IFCRELCONTAINEDINSPATIALSTRUCTURE": 4,
+        "IFCMATERIALLAYERSET": 8,
+        "IFCWINDOW": 17,
+        "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+        "IFCOPENINGELEMENT": 31,
+        "IFCPROPERTYSINGLEVALUE": 5392,
+        "IFCMATERIALCONSTITUENT": 175,
+        "IFCPOLYLINE": 14,
+        "IFCARBITRARYCLOSEDPROFILEDEF": 14,
+        "IFCSPACE": 14,
+        "IFCRELFILLSELEMENT": 31,
+        "IFCSTYLEDITEM": 695,
+        "IFCWINDOWTYPE": 6,
+        "IFCPLATETYPE": 22,
+        "IFCBUILDING": 1,
+        "IFCSITE": 1,
+        "IFCGEOMETRICREPRESENTATIONSUBCONTEXT": 1,
+        "IFCRELDEFINESBYPROPERTIES": 786,
+        "IFCSHAPEREPRESENTATION": 475,
+        "IFCORGANIZATION": 1,
+        "IFCSTAIRFLIGHT": 3
+      },
+      "scope": "Schema/entity population reopen only; meshes are not tessellated by this check."
+    }
+  },
+  "referenceIfc": null,
+  "referenceGlb": {
+    "path": "/workspace/models/rac-reference.glb",
+    "statistics": {
+      "generator": "forge-convert-utils",
+      "materialCount": 67,
+      "meshDefinitions": 738,
+      "meshInstances": 738,
+      "trianglePrimitives": 722,
+      "linePrimitives": 16,
+      "storedTriangles": 414160,
+      "instantiatedTriangles": 414160,
+      "bounds": {
+        "min": [
+          -25.21646662902832,
+          -11.497315674566044,
+          -35.18217810058594
+        ],
+        "max": [
+          25.21646662902832,
+          11.497315674566044,
+          35.182178100585936
+        ]
+      },
+      "spans": [
+        50.43293325805664,
+        22.99463134913209,
+        70.36435620117189
+      ]
+    },
+    "asset": {
+      "version": "2.0",
+      "generator": "forge-convert-utils",
+      "copyright": "2019 (c) Autodesk"
+    },
+    "namedOrAnnotatedNodes": 738,
+    "namedOrAnnotatedMeshes": 0,
+    "metadataKeys": {
+      "autodeskDbId": 738,
+      "autodeskFragmentId": 738
+    },
+    "distinctAutodeskDbIds": 450,
+    "nodeMetadataExamples": [
+      {
+        "name": "2491",
+        "extras": {
+          "autodeskDbId": 2491,
+          "autodeskFragmentId": 0
+        }
+      },
+      {
+        "name": "2491",
+        "extras": {
+          "autodeskDbId": 2491,
+          "autodeskFragmentId": 1
+        }
+      },
+      {
+        "name": "2789",
+        "extras": {
+          "autodeskDbId": 2789,
+          "autodeskFragmentId": 2
+        }
+      },
+      {
+        "name": "2788",
+        "extras": {
+          "autodeskDbId": 2788,
+          "autodeskFragmentId": 3
+        }
+      },
+      {
+        "name": "2663",
+        "extras": {
+          "autodeskDbId": 2663,
+          "autodeskFragmentId": 4
+        }
+      },
+      {
+        "name": "3652",
+        "extras": {
+          "autodeskDbId": 3652,
+          "autodeskFragmentId": 5
+        }
+      },
+      {
+        "name": "2029",
+        "extras": {
+          "autodeskDbId": 2029,
+          "autodeskFragmentId": 6
+        }
+      },
+      {
+        "name": "2516",
+        "extras": {
+          "autodeskDbId": 2516,
+          "autodeskFragmentId": 7
+        }
+      },
+      {
+        "name": "2209",
+        "extras": {
+          "autodeskDbId": 2209,
+          "autodeskFragmentId": 8
+        }
+      },
+      {
+        "name": "2658",
+        "extras": {
+          "autodeskDbId": 2658,
+          "autodeskFragmentId": 9
+        }
+      },
+      {
+        "name": "2209",
+        "extras": {
+          "autodeskDbId": 2209,
+          "autodeskFragmentId": 10
+        }
+      },
+      {
+        "name": "2673",
+        "extras": {
+          "autodeskDbId": 2673,
+          "autodeskFragmentId": 11
+        }
+      }
+    ],
+    "meshMetadataExamples": [],
+    "scope": "Reference payload metadata, instancing and world bounds only. Autodesk dbId is not treated as a Revit ElementId. A scoped visual export is not assumed to have full-model coverage, shared coordinates, units or element tags."
+  },
+  "elapsedMs": 53232
+}

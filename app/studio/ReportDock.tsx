@@ -15,9 +15,11 @@ import type {
   ConvertResult,
   PairedRegressionResult,
 } from "../../lib/reviter";
-import { formatBytes, formatNumber, matchesFilter } from "./format.ts";
+import { formatBytes, formatNumber, matchesFilter, sourceSemanticReport } from "./format.ts";
 import { RegressionPanel } from "./panels.tsx";
 import { Toolkit } from "./Toolkit.tsx";
+import { IfcExportControls } from "./IfcExportControls.tsx";
+import type { IfcExportOptions } from "../../lib/reviter/export-ifc.ts";
 import type { ReportTab } from "./types.ts";
 
 export type ExportAction = { id: string; format: string; detail: string; run: () => void };
@@ -55,6 +57,9 @@ export function ReportDock({
   fileRecord,
   exports,
   exporting,
+  sourceViewControls,
+  ifcExportOptions,
+  onIfcExportOptions,
   recoveredElementIds,
   drawnElementIds,
   exportDisclaimer,
@@ -78,6 +83,9 @@ export function ReportDock({
   fileRecord: FileRecord | null;
   exports: readonly ExportAction[];
   exporting: string | null;
+  sourceViewControls?: import("react").ReactNode;
+  ifcExportOptions: IfcExportOptions;
+  onIfcExportOptions: (value: IfcExportOptions) => void;
   recoveredElementIds: Set<number>;
   drawnElementIds: Set<number>;
   exportDisclaimer: string;
@@ -93,6 +101,7 @@ export function ReportDock({
 }) {
   const [schemaSearch, setSchemaSearch] = useState("");
   const levels = result.levels.slice(0, 6);
+  const sourceSemantics = sourceSemanticReport(result);
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const initialTabRef = useRef(tab);
   const closeReport = useEffectEvent(onClose);
@@ -149,6 +158,21 @@ export function ReportDock({
                 </div>
               ))}
             </div>
+            {sourceSemantics.rows.length > 0 && <div className="report-block">
+              <p className="report-heading">Recovered source semantics</p>
+              <dl className="cad-recovery-status">
+                {sourceSemantics.rows.map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+              </dl>
+              {sourceSemantics.notes.map(note => <p className="report-disclaimer" key={note}>{note}</p>)}
+              {!!result.nativeSourceRooms?.length && <details>
+                <summary>Source room names ({result.nativeSourceRooms.length})</summary>
+                <ul>{result.nativeSourceRooms.slice(0, 50).map(room => <li key={room.elementId}>
+                  {room.number ? `${room.number} · ` : ""}{room.name ?? `Room ${room.elementId}`} · element {room.elementId}
+                  {room.levelId != null ? ` · level ${room.levelId}` : " · level unresolved"}
+                </li>)}</ul>
+                {result.nativeSourceRooms.length > 50 && <p className="report-disclaimer">Download Source rooms CSV for the full inventory.</p>}
+              </details>}
+            </div>}
             <div className="check-grid">
               {checks.map((check) => (
                 <div className={`check-card ${check.tone}`} key={check.label}>
@@ -385,6 +409,8 @@ export function ReportDock({
 
         {tab === "exports" && (
           <>
+            <IfcExportControls result={result} value={ifcExportOptions} onChange={onIfcExportOptions} disabled={Boolean(exporting)} />
+            {sourceViewControls}
             <div className="export-grid">
               {exports.map((entry) => (
                 <button

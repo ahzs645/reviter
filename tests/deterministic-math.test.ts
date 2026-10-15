@@ -9,9 +9,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import * as DMath from "../lib/reviter/deterministic-math.ts";
 import { nativeWallArcPolygon } from "../lib/reviter/architectural-plan.ts";
 
@@ -146,24 +148,70 @@ test("curved-wall tessellation keeps its vertex count and stays within 1e-12 ft 
  * including worker modules started through new URL(...). */
 export function compilerModuleGraph(base: string, entries: readonly string[]) {
   const seen = new Set<string>();
-  const pattern =
-    /(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|import\s*["']([^"']+)["']|new URL\(\s*["'](\.[^"']+\.(?:ts|mjs))["']/g;
   const visit = (path: string) => {
     if (seen.has(path)) return;
     seen.add(path);
-    for (const m of readFileSync(path, "utf8").matchAll(pattern)) {
-      const specifier = m[1] ?? m[2] ?? m[3] ?? m[4]!;
-      if (!specifier.startsWith(".")) continue;
+    const follow = (specifier: string) => {
+      if (!specifier.startsWith(".")) return;
       const target = resolve(dirname(path), specifier);
       const file = [target, `${target}.ts`, `${target}.tsx`, `${target}.mjs`, `${target}/index.ts`].find(
         (p) => existsSync(p) && statSync(p).isFile(),
       );
       if (file && /\.(?:ts|tsx|mjs|js)$/.test(file) && file.startsWith(base)) visit(file);
-    }
+    };
+    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true, path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    const walk = (node: ts.Node) => {
+      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+        const clause = node.importClause;
+        const typeSpecifiersOnly = clause?.namedBindings && ts.isNamedImports(clause.namedBindings) &&
+          clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every(specifier => specifier.isTypeOnly) && !clause.name;
+        if (!clause?.isTypeOnly && !typeSpecifiersOnly) follow(node.moduleSpecifier.text);
+      } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        const typeSpecifiersOnly = node.exportClause && ts.isNamedExports(node.exportClause) &&
+          node.exportClause.elements.length > 0 && node.exportClause.elements.every(specifier => specifier.isTypeOnly);
+        if (!node.isTypeOnly && !typeSpecifiersOnly) follow(node.moduleSpecifier.text);
+      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+        follow(node.arguments[0].text);
+      } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "URL" &&
+        node.arguments?.[0] && ts.isStringLiteral(node.arguments[0]) && /\.(?:ts|mjs)$/.test(node.arguments[0].text)) {
+        follow(node.arguments[0].text);
+      }
+      // Type-query import expressions are ImportType nodes, not runtime calls.
+      // AST traversal also avoids following import-looking comments/strings.
+      ts.forEachChild(node, walk);
+    };
+    walk(source);
   };
   for (const entry of entries) visit(resolve(base, entry));
   return [...seen].map((p) => relative(base, p)).sort();
 }
+
+test("compiler graph follows runtime imports/reexports/workers while excluding erased type dependencies", () => {
+  const directory = mkdtempSync(join(tmpdir(), "reviter-runtime-compiler-graph-"));
+  try {
+    writeFileSync(join(directory, "entry.ts"), `
+      import type { Shape } from './type-import.ts';
+      import { type Shape as OtherShape } from './inline-types.ts';
+      export type { Shape } from './type-export.ts';
+      export type * from './type-star.ts';
+      export { type Shape as Alias } from './inline-type-export.ts';
+      type Deferred = import('./type-query.ts').Shape;
+      import { type Shape as MixedShape, runtime } from './mixed.ts';
+      import './side-effect.ts';
+      export { runtime as forwarded } from './runtime-export.ts';
+      const later = () => import('./dynamic.ts');
+      const worker = new URL('./worker.ts', import.meta.url);
+      const text = "import('./quoted.ts')";
+      // import './commented.ts';
+    `);
+    for (const name of ["type-import", "inline-types", "type-export", "type-star", "inline-type-export", "type-query", "mixed", "side-effect", "runtime-export", "dynamic", "worker", "quoted", "commented"]) {
+      writeFileSync(join(directory, `${name}.ts`), "export type Shape = {}; export const runtime = 1;\n");
+    }
+    assert.deepEqual(compilerModuleGraph(directory, ["entry.ts"]), [
+      "dynamic.ts", "entry.ts", "mixed.ts", "runtime-export.ts", "side-effect.ts", "worker.ts",
+    ]);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 const APPROXIMATE =
   /(?<![\w$.])Math\.(?:sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|hypot|exp|expm1|log|log1p|log2|log10|pow|cbrt)\b/;
 /** `2 ** n` is an exact power of two; any other base needs Math.pow semantics. */

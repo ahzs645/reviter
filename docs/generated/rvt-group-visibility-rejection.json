@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "experiment": "Rejected upstream normal-mode graphics_visibility modes 1/3 on GGroup/GFilter headers, merged with current undrawn+default-cut selection. This experiment is not production behavior.",
+  "upstream": {
+    "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "source": "src/native_graphics_traversal.rs::graphics_visibility"
+  },
+  "scope": "Only complete checksum-verified page-scanned GElements with complete FIFO, no GInstance, and no meshing issues. Compare old/new face bounds against the same source GRep world extents. Existing ordinary filters retained; only additional hypothetical group visibility is measured. Large frames above general scanner ceiling are excluded from this experiment.",
+  "interpretation": "These are source-envelope coverage differences, not paired-reference physical-surface accuracy scores. Extra drawing aids can contribute to persisted extents. The same flags remove needed source-envelope coverage on multiple models, so flags alone do not justify globally changing body admission or selectively repairing UNBC 801614. The established bit-0x80 predicate and default-cut comparisons 6/7/8 remain production behavior.",
+  "models": [
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "counts": {
+        "frames": 11808,
+        "replays": 11502,
+        "newGroupOwners": 18,
+        "unresolvedAliases": 0,
+        "nestedSkipped": 0,
+        "meshingSkipped": 8,
+        "compared": 8,
+        "improved": 0,
+        "worsened": 8,
+        "equal": 0,
+        "newExact": 0,
+        "oldExact": 8
+      },
+      "examples": [
+        {
+          "owner": 423099,
+          "oldError": 3.552713678800501e-15,
+          "newError": 1.6404199475065617,
+          "oldTriangles": 22,
+          "newTriangles": 12,
+          "groups": [
+            {
+              "path": [
+                0
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                1
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                2
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                3
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                4
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                5
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                6
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                7
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                8
+              ],
+              "flags": 168329764
+            },
+            {
+              "path": [
+                0,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                1,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                4,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                5,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                6,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                7,
+                0
+              ],
+              "flags": 168330788
+            }
+          ]
+        },
+        {
+          "owner": 709245,
+          "oldError": 0,
+          "newError": 1.6404199475065617,
+          "oldTriangles": 22,
+          "newTriangles": 12,
+          "groups": [
+            {
+              "path": [
+                0
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                1
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                2
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                3
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                4
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                5
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                6
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                7
+              ],
+              "flags": 168329764
+            },
+            {
+              "path": [
+                0,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                3,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                4,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                5,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                6,
+                0
+              ],
+              "flags": 168330788
+            }
+          ]
+        }
+      ],
+      "privateAuditSha256": "2bef44edad15f23044bb50d7183d3810d69b26836b22c0533ffa533b8d4c8dc3"
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "counts": {
+        "frames": 12763,
+        "replays": 12630,
+        "newGroupOwners": 28,
+        "unresolvedAliases": 0,
+        "nestedSkipped": 0,
+        "meshingSkipped": 19,
+        "compared": 9,
+        "improved": 0,
+        "worsened": 9,
+        "equal": 0,
+        "newExact": 0,
+        "oldExact": 9
+      },
+      "examples": [
+        {
+          "owner": 139855,
+          "oldError": 0,
+          "newError": 1.6404199475065582,
+          "oldTriangles": 22,
+          "newTriangles": 12,
+          "groups": [
+            {
+              "path": [
+                0
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                1
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                2
+              ],
+              "flags": 573444
+            },
+            {
+              "path": [
+                3
+              ],
+              "flags": 573444
+            },
+            {
+              "path": [
+                4
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                5
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                6
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                7
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                8
+              ],
+              "flags": 168329764
+            },
+            {
+              "path": [
+                0,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                1,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                4,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                5,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                6,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                7,
+                0
+              ],
+              "flags": 168330788
+            }
+          ]
+        }
+      ],
+      "privateAuditSha256": "30d7895a5cf107b51592353e11dff9e2f2d45f98f9347530485f2bf0a5cd59fa"
+    },
+    {
+      "model": "snowdon",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "counts": {
+        "frames": 40205,
+        "replays": 39393,
+        "newGroupOwners": 86,
+        "unresolvedAliases": 0,
+        "nestedSkipped": 5,
+        "meshingSkipped": 27,
+        "compared": 49,
+        "improved": 0,
+        "worsened": 47,
+        "equal": 2,
+        "newExact": 2,
+        "oldExact": 48
+      },
+      "examples": [
+        {
+          "owner": 946544,
+          "oldError": 7.105427357601002e-15,
+          "newError": 0.5,
+          "oldTriangles": 22,
+          "newTriangles": 12,
+          "groups": [
+            {
+              "path": [
+                0
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                1
+              ],
+              "flags": 557056
+            },
+            {
+              "path": [
+                2
+              ],
+              "flags": 573444
+            },
+            {
+              "path": [
+                3
+              ],
+              "flags": 573444
+            },
+            {
+              "path": [
+                4
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                5
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                6
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                7
+              ],
+              "flags": 557060
+            },
+            {
+              "path": [
+                8
+              ],
+              "flags": 168329764
+            },
+            {
+              "path": [
+                0,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                1,
+                0
+              ],
+              "flags": 558244
+            },
+            {
+              "path": [
+                4,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                5,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                6,
+                0
+              ],
+              "flags": 168330788
+            },
+            {
+              "path": [
+                7,
+                0
+              ],
+              "flags": 168330788
+            }
+          ]
+        }
+      ],
+      "privateAuditSha256": "4c7d24664dc7eda0e3d7b731e44dc98eb9dfe43a9878a3db4d8668f96c2a1c23"
+    },
+    {
+      "model": "unbc",
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "counts": {
+        "frames": 63955,
+        "replays": 63711,
+        "newGroupOwners": 1882,
+        "unresolvedAliases": 0,
+        "nestedSkipped": 0,
+        "meshingSkipped": 58,
+        "compared": 1807,
+        "improved": 0,
+        "worsened": 1806,
+        "equal": 1,
+        "newExact": 1,
+        "oldExact": 1807
+      },
+      "examples": [],
+      "privateAuditSha256": "8b3d6cc24aff5441703b3350cf4072bdee458e827bf6ab8f4957d91047128d64"
+    }
+  ]
+}

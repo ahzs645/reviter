@@ -687,3 +687,72 @@ test("the envelope allowance grows with a building-sized envelope", () => {
   // One that fits is not provisional.
   assert.deepEqual([...within({ x: -500, y: -300, z: -1 }).provisionalElementIds], []);
 });
+
+function ownBodyAndSharedSymbol(ownMesh = triangle(11)) {
+  const collection: Revit2027NativeMeshCollection = {
+    ...createRevit2027NativeMeshCollector(2027).snapshot(),
+    owners: new Map([
+      [10, { ownerElementId: 10, faces: [{ faceToken: 1, mesh: ownMesh }], triangles: ownMesh.indices.length / 3 }],
+      [20, { ownerElementId: 20, faces: [{ faceToken: 1, mesh: triangle(22) }], triangles: 1 }],
+    ]),
+  };
+  const placement = {
+    elementId: 10, geometryId: 20, basis: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    origin: [0, 0, 0] as [number, number, number],
+  };
+  return { collection, placement };
+}
+
+test("complete own body replaces the shared-symbol fallback without duplicating material", () => {
+  const { collection, placement } = ownBodyAndSharedSymbol();
+  const scene = buildRevit2027NativeMeshScene(collection, [placement, { ...placement, elementId: 30 }], { x: 0, y: 0, z: 0 }, { materialElementIds: new Set([11, 22]) });
+  assert.equal(scene.triangles, 2, "one own triangle and one independently placed symbol");
+  assert.equal(scene.ownerElements, 1);
+  assert.equal(scene.placedElements, 1);
+  const ownerTriangles = scene.meshes.flatMap(mesh => [...mesh.elementIds!].map(id => ({ id, material: mesh.nativeMaterialElementId })));
+  assert.deepEqual(ownerTriangles.filter(row => row.id === 10), [{ id: 10, material: 11 }]);
+  assert.deepEqual(ownerTriangles.filter(row => row.id === 30), [{ id: 30, material: 22 }]);
+});
+
+test("rejected own body retains an independently admissible shared-symbol fallback", () => {
+  const mesh = triangle(11);
+  mesh.positions = Float64Array.from(mesh.positions, value => value + 100);
+  const { collection, placement } = ownBodyAndSharedSymbol(mesh);
+  const scene = buildRevit2027NativeMeshScene(collection, [placement], { x: 0, y: 0, z: 0 }, {
+    materialElementIds: new Set([11, 22]),
+    expectedBoundsByElement: new Map([[10, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } }]]),
+  });
+  assert.equal(scene.triangles, 1); assert.equal(scene.placedElements, 1);
+  assert.equal(scene.boundsMismatches, 1);
+  assert.equal(scene.meshes[0]!.nativeMaterialElementId, 22);
+});
+
+test("own body exceeding the output budget keeps the smaller source fallback", () => {
+  const mesh = triangle(11); mesh.indices = Uint32Array.from([0, 1, 2, 0, 2, 1]);
+  const { collection, placement } = ownBodyAndSharedSymbol(mesh);
+  const scene = buildRevit2027NativeMeshScene(collection, [placement], { x: 0, y: 0, z: 0 }, { maxOutputTriangles: 1, materialElementIds: new Set([11, 22]) });
+  assert.equal(scene.truncated, true); assert.equal(scene.triangles, 1);
+  assert.equal(scene.meshes[0]!.nativeMaterialElementId, 22);
+});
+
+test("provisional own body cannot suppress a fallback before later cleanup validation", () => {
+  const mesh = triangle(11); mesh.positions = Float64Array.from(mesh.positions, value => value + 100);
+  const { collection, placement } = ownBodyAndSharedSymbol(mesh);
+  const scene = buildRevit2027NativeMeshScene(collection, [placement], { x: 0, y: 0, z: 0 }, {
+    materialElementIds: new Set([11, 22]),
+    provisionalElementIds: new Set([10]),
+    expectedBoundsByElement: new Map([[10, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } }]]),
+  });
+  assert.equal(scene.provisionalElementIds.has(10), true);
+  assert.equal(scene.triangles, 2);
+});
+
+test("reconstructed own geometry and multiple placed parts do not gain fallback precedence", () => {
+  const { collection, placement } = ownBodyAndSharedSymbol();
+  const reconstructed = { ...collection, reconstructedOwnerIds: new Set([10]) };
+  const scene = buildRevit2027NativeMeshScene(reconstructed, [placement], { x: 0, y: 0, z: 0 });
+  assert.equal(scene.triangles, 2);
+  const onlySymbol = { ...collection, owners: new Map([[20, collection.owners.get(20)!]]) };
+  const multi = buildRevit2027NativeMeshScene(onlySymbol, [placement, placement], { x: 0, y: 0, z: 0 });
+  assert.equal(multi.triangles, 2);
+});

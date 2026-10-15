@@ -1,0 +1,161 @@
+{
+  "model": "snowdon.rvt",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "schemaSha256": "0bfb947b3c9a0cec2ea9692873e3b0325f1c9387caaffddbce4cc2509e77cf21",
+  "revitVersion": 2024,
+  "rawEvidenceStatus": "partial",
+  "inventoryStatus": "partial",
+  "schedules": 79,
+  "checkedFields": 383,
+  "checkedCells": 3274,
+  "checkedSortFields": 102,
+  "checkedFilters": 7,
+  "expressionFields": 4,
+  "nonEmptyCellText": 1051,
+  "sourceProjectionMismatches": 0,
+  "sourceGraphClasses": {
+    "DBViewSchedule": 79,
+    "ScheduleData": 79,
+    "ScheduleSchema": 79,
+    "ScheduleSegmentRec": 80,
+    "ScheduleSectionData": 158,
+    "ScheduleSortField": 102,
+    "ScheduleField": 383,
+    "TableCellData": 3274,
+    "ScheduleFilter": 7,
+    "NumberConstantExpression": 2,
+    "FunctionExpression": 2,
+    "BinaryOperatorExpression": 2,
+    "ScheduleFieldExpression": 4
+  },
+  "diagnostics": [
+    "Schedule 510933 lacks complete unambiguous source identity/bounds.",
+    "Schedule 510937 lacks complete unambiguous source identity/bounds.",
+    "Schedule 510941 lacks complete unambiguous source identity/bounds.",
+    "Schedule 851836 lacks complete unambiguous source identity/bounds.",
+    "Schedule 993565 lacks complete unambiguous source identity/bounds.",
+    "Schedule 1379175 lacks complete unambiguous source identity/bounds.",
+    "Schedule 1381951 lacks complete unambiguous source identity/bounds.",
+    "Schedule 1419758 lacks complete unambiguous source identity/bounds.",
+    "Schedule 1682894 lacks complete unambiguous source identity/bounds.",
+    "Schedule 2298825 lacks complete unambiguous source identity/bounds.",
+    "Schedule 2351982 lacks complete unambiguous source identity/bounds.",
+    "Schedule 2351994 lacks complete unambiguous source identity/bounds.",
+    "Schedule 2380930 lacks complete unambiguous source identity/bounds."
+  ],
+  "samples": [
+    {
+      "elementId": "2289240",
+      "categoryId": "-2001180",
+      "fieldIds": [
+        "0",
+        "5",
+        "6",
+        "3",
+        "2"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "0",
+        "5"
+      ],
+      "filterFields": [],
+      "storedCells": 12,
+      "source": {
+        "stream": "Partitions/68",
+        "groupRecordOffset": 67724,
+        "bodySha256": "f63d01ce18ddd168c2d537ac2547fa924eb831f4d1ec73d1e81f93b92cf9786b",
+        "rawRecordIndex": 0
+      }
+    },
+    {
+      "elementId": "2289983",
+      "categoryId": "-2001360",
+      "fieldIds": [
+        "6",
+        "3",
+        "0",
+        "2",
+        "4",
+        "5"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "2",
+        "6",
+        "4"
+      ],
+      "filterFields": [],
+      "storedCells": 15,
+      "source": {
+        "stream": "Partitions/68",
+        "groupRecordOffset": 79494,
+        "bodySha256": "b6efe677bda64831c695c72bee58b467515a9aeff10326721f9e2722d641ace6",
+        "rawRecordIndex": 1
+      }
+    },
+    {
+      "elementId": "511289",
+      "categoryId": "-2000023",
+      "fieldIds": [
+        "0",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "11",
+        "10",
+        "12",
+        "14",
+        "13",
+        "19",
+        "8",
+        "9",
+        "18",
+        "15"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [],
+      "filterFields": [],
+      "storedCells": 84,
+      "source": {
+        "stream": "Partitions/68",
+        "groupRecordOffset": 4278,
+        "bodySha256": "da8905d13c276cccb7cb507f385444f41997a06a8e10b589764be50c6ae9b342",
+        "rawRecordIndex": 5
+      }
+    },
+    {
+      "elementId": "842789",
+      "categoryId": "-2000160",
+      "fieldIds": [
+        "1",
+        "8",
+        "9",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "7"
+      ],
+      "hiddenFields": 0,
+      "sortingFields": [
+        "9",
+        "1"
+      ],
+      "filterFields": [],
+      "storedCells": 233,
+      "source": {
+        "stream": "Partitions/68",
+        "groupRecordOffset": 0,
+        "bodySha256": "b8b611bc153f6ff53148bbb67d508714bdcaa4f4060cdc0c705b921b4e2c2522",
+        "rawRecordIndex": 6
+      }
+    }
+  ],
+  "comparisonScope": "Exact source digest and independently reopened stored graph fields/IDs. Enum codes and formulas are unevaluated; cached cells are not independently regenerated Revit rows."
+}

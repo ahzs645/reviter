@@ -31,6 +31,7 @@
  * it for a snapshot once it knows which shapes were placed — so it is returned
  * rather than snapshotted here.
  */
+import { createIfcExportParameterCollector } from "./native-ifc-export-parameters.ts";
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
 import {
@@ -73,6 +74,8 @@ import {
   REVIT_2027_GSTYLE_ELEMENT_MARKER,
 } from "./revit-2027-gstyle-material.ts";
 import { collectElementParameters } from "./element-parameters.ts";
+import type { ElementParameterTable } from "./element-parameters.ts";
+import { createIfcGuidParameterWitnessCollector } from "./ifc-guid-parameter-witnesses.ts";
 import { collectTypeLinks } from "./element-types.ts";
 import { scanPersistedRelationshipCandidates } from "./family-material-relations.ts";
 import {
@@ -112,6 +115,13 @@ import { createRevit2027StairsRunCollector } from "./revit-2027-stairs-run-colle
 import { scanSegments } from "./segment-scan.ts";
 import { collectOwnedSurfaces } from "./surfaces.ts";
 import { collectSketchCurves } from "./sketch-curves.ts";
+import { createNativeRoomCollector } from "./native-source-rooms.ts";
+import { createNativeMepCollector, type NativeMepEvidence } from "./native-mep.ts";
+import { createDesignOptionCollector, type NativeDesignOptions } from "./design-options.ts";
+import type { SchemaSummary } from "./schema.ts";
+import { createNativePhaseSpatialCollector } from "./native-phase-spatial.ts";
+import { createNativeOriginalSymbolCollector, type NativeOriginalSymbolReference } from "./native-ifc-type-identity.ts";
+import { createNativeStructuralSectionCollector } from "./native-structural-profiles.ts";
 
 import type { OpenedRevitContainer } from "./convert-container.ts";
 import type { NativeCompoundStructureDefinition } from "./compound-structure-materials.ts";
@@ -150,6 +160,7 @@ import type {
   Segment,
 } from "./types";
 import { readsElementRecordLayout } from "./revit-class-tags.ts";
+import { frameHeaderBytes } from "./element-id-width.ts";
 
 /** Backstop so a pathological stream cannot turn category recovery quadratic. */
 const MAX_CATEGORY_TOKENS = 400_000;
@@ -179,6 +190,7 @@ const NATIVE_OBJECT_EVIDENCE_MARKERS = new Set([
 const MAX_SKETCH_CURVES = 400_000;
 
 export type PartitionScanInput = {
+  schema?: SchemaSummary;
   partitions: OpenedRevitContainer["partitions"];
   decoderPlan: OpenedRevitContainer["decoderPlan"];
   objectMarkers: number[];
@@ -190,9 +202,28 @@ export type PartitionScanInput = {
   onProgress?: (update: ProgressUpdate) => void;
   /** The loaded families' documents, from `Global/ContentDocuments`. */
   contentDocuments?: ReadonlyMap<string, ContentDocument>;
+  declaredElementIds?: ReadonlySet<number>;
+  /** Current ids plus validated creation histories, for original symbols only. */
+  nativeTypeIdentityElementIds?: ReadonlySet<number>;
+  /** Complete source declaration domain for section metadata only. */
+  nativeSectionElementIds?: ReadonlySet<number>;
 };
 
 export type PartitionScan = {
+  largeWholeGElementFrames: ReturnType<typeof createRevit2027SplitGElementCollector>["largeWholeFrameDiagnostics"] & {
+    nativeCompilation: ReturnType<typeof createRevit2027NativeMeshCollector>["deferredWholeFrameDiagnostics"];
+  };
+  nativePhaseCollector: ReturnType<typeof createNativePhaseSpatialCollector>;
+  nativeStructuralSectionCollector: ReturnType<typeof createNativeStructuralSectionCollector>;
+  nativeOriginalSymbols: NativeOriginalSymbolReference[];
+  nativeOriginalSymbolDiagnostics: {
+    legacyCapped: boolean;
+    historicalEnvelope: ReturnType<typeof createNativeOriginalSymbolCollector>["historicalEnvelopeWork"];
+    largeObjects: ReturnType<typeof createNativeOriginalSymbolCollector>["largeObjectWork"];
+  };
+  nativeRoomCollector: ReturnType<typeof createNativeRoomCollector>;
+  nativeMepEvidence: NativeMepEvidence;
+  nativeDesignOptions: NativeDesignOptions;
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
@@ -225,6 +256,8 @@ export type PartitionScan = {
   instancePlacements: Map<number, InstancePlacement>;
   localBounds: Map<number, LocalBounds>;
   elementParameters: Map<number, Map<number, ElementParameter>>;
+  nativeIfcGuidParameters: ElementParameterTable[];
+  ifcExportParameters: Map<number, ElementParameter[]>;
   surfaceCounts: { planes: number; cylinders: number; verticalPlanes: number };
   planesByElement: Map<number, PlanePatch[]>;
   cylindersByElement: Map<number, CylinderPatch[]>;
@@ -272,6 +305,27 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     onProgress,
     contentDocuments,
   } = input;
+  const ifcExportCollector = createIfcExportParameterCollector(decoderPlan.revitVersion, input.declaredElementIds ?? new Set());
+  const nativeRoomCollector = createNativeRoomCollector(decoderPlan.revitVersion);
+  const nativeStructuralSectionCollector = createNativeStructuralSectionCollector({
+    revitVersion: decoderPlan.revitVersion ?? 0,
+    elementIds: input.nativeSectionElementIds ?? input.nativeTypeIdentityElementIds ?? input.declaredElementIds ?? new Set<number>(),
+  });
+  const nativeMepCollector = createNativeMepCollector({
+    revitVersion: decoderPlan.revitVersion ?? 0,
+    classes: input.schema?.taggedClasses ?? [],
+    elementIds: input.declaredElementIds ?? new Set(),
+  });
+  const designOptionCollector = createDesignOptionCollector(decoderPlan.revitVersion);
+  const nativePhaseCollector = createNativePhaseSpatialCollector({
+    revitVersion: decoderPlan.revitVersion, schema: input.schema,
+    declaredElementIds: input.declaredElementIds ?? new Set(),
+  });
+  const originalSymbolCollector = createNativeOriginalSymbolCollector({
+    revitVersion: decoderPlan.revitVersion, classes: input.schema?.taggedClasses ?? [],
+    elementIds: input.declaredElementIds ?? new Set(),
+    historyElementIds: input.nativeTypeIdentityElementIds,
+  });
   const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
@@ -308,15 +362,6 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       },
       finishPartition: () => splitAlternateFrameCollector.finishPartition(),
     },
-    {
-      // Geometry frames the page scan saw only in part.
-      pushPage: (page) => {
-        for (const frame of splitGElementCollector.pushPage(page)) {
-          nativeMeshCollector.scanSplitGElementFrame(frame);
-        }
-      },
-      finishPartition: () => splitGElementCollector.finishPartition(),
-    },
     stairsRunCollector,
   ];
   const candidates: Segment[] = [];
@@ -336,6 +381,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
   const instancePlacements = new Map<number, InstancePlacement>();
   const localBounds = new Map<number, LocalBounds>();
   const elementParameters = new Map<number, Map<number, ElementParameter>>();
+  const ifcGuidWitnessCollector = createIfcGuidParameterWitnessCollector(input.declaredElementIds);
   const surfaceCounts = { planes: 0, cylinders: 0, verticalPlanes: 0 };
   const planesByElement = new Map<number, PlanePatch[]>();
   const cylindersByElement = new Map<number, CylinderPatch[]>();
@@ -399,7 +445,13 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       // short of that chunk's true trailing 32 KiB; see `salvageRevitChunk`.
       const read = inflateRevitChunk(data, offsets[index]!, offsets[index + 1], window);
       const inflated = read ?? salvageRevitChunk(data, offsets[index]!, offsets[index + 1], window);
+      if (!read) designOptionCollector.invalidate();
       if (!inflated) continue;
+      const semanticLocation = { stream: partition.path.replace(/^Root Entry\//, ""), chunkIndex: index, rawOffset: offsets[index]!, complete: Boolean(read) };
+      nativeRoomCollector.consumePage(inflated, semanticLocation);
+      nativeStructuralSectionCollector.consume(inflated, semanticLocation);
+      nativeMepCollector.pushPage(inflated, semanticLocation);
+      designOptionCollector.pushPage(semanticLocation.stream, inflated);
       if (read) window = revitWindowTail(read);
       gzipChunks += 1;
       inflatedBytes += inflated.byteLength;
@@ -423,6 +475,23 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const pageFrames = decoderPlan.elementBoundsDecoder
         ? indexPageFrames(inflated)
         : null;
+      nativePhaseCollector.pushPage(inflated, semanticLocation, pageFrames ?? undefined);
+      if (pageFrames) originalSymbolCollector.consumeObjects(inflated, semanticLocation, pageFrames.frames);
+      // Complete geometry omitted by the broad page scanner: crossing frames
+      // and checksum-verified same-page frames above its 64-KiB size ceiling.
+      for (const frame of splitGElementCollector.pushPageFrames(inflated)) {
+        if (frame.crossedPage) nativeMeshCollector.scanSplitGElementFrame(frame.data);
+        else nativeMeshCollector.deferWholeGElementFrame(frame.data);
+        // A whole frame retains its exact source page offset. Crossing frames
+        // cannot borrow the completion page's location as their provenance.
+        if (frame.pageOffset != null && frame.objectLength > 0xffff && read) {
+          originalSymbolCollector.consumeLargeObjects(inflated, semanticLocation, [{
+            offset: frame.pageOffset, elementId: frame.elementId, marker: frame.marker,
+            objectLength: frame.objectLength,
+            typeCode: new DataView(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength).getUint32(frameHeaderBytes() + 2, true),
+          }]);
+        }
+      }
       if (
         pageFrames &&
         (pageFrames.hasMarker(REVIT_2027_FAMILY_INSTANCE_CLASS) ||
@@ -617,7 +686,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
           else curvesByOwner.set(curve.owner, [curve]);
         }
       }
+      ifcExportCollector.pushPage(inflated);
       for (const table of collectElementParameters(inflated)) {
+        ifcGuidWitnessCollector.consume(table, semanticLocation);
+        ifcExportCollector.consumeOwnedParameters(table);
+        if (read) nativeStructuralSectionCollector.consumeOwnedParameters(table, semanticLocation);
         const existing = elementParameters.get(table.elementId);
         if (existing) for (const parameter of table.parameters) existing.set(parameter.parameterId, parameter);
         else elementParameters.set(
@@ -754,7 +827,9 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
     }
     for (const consumer of pageConsumers) consumer.finishPartition();
+    splitGElementCollector.finishPartition();
   }
+  nativeMeshCollector.finishDeferredWholeGElementFrames();
   const stairsRuns = stairsRunCollector.snapshot();
   const stairsAggregates = stairsRunCollector.stairsSnapshot();
   const persistedCadFileNames = finalisePersistedCadFileNames(
@@ -771,7 +846,23 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       definition.layers.reduce((sum, layer) => sum + layer.widthFeet, 0),
     ]),
   );
+  nativeMepCollector.observeElementHeaders(elementHeaders.values());
+  nativeMepCollector.observeElementBounds(elementBounds);
   return {
+    largeWholeGElementFrames: { ...splitGElementCollector.largeWholeFrameDiagnostics,
+      nativeCompilation: { ...nativeMeshCollector.deferredWholeFrameDiagnostics } },
+    nativeIfcGuidParameters: ifcGuidWitnessCollector.snapshot(),
+    nativePhaseCollector,
+    nativeStructuralSectionCollector,
+    nativeOriginalSymbols: originalSymbolCollector.finish(),
+    nativeOriginalSymbolDiagnostics: {
+      legacyCapped: originalSymbolCollector.capped,
+      historicalEnvelope: originalSymbolCollector.historicalEnvelopeWork,
+      largeObjects: originalSymbolCollector.largeObjectWork,
+    },
+    nativeRoomCollector,
+    nativeMepEvidence: nativeMepCollector.finish(),
+    nativeDesignOptions: designOptionCollector.finish(),
     candidates,
     categoryTokens,
     elementHeaders,
@@ -789,6 +880,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     instancePlacements,
     localBounds,
     elementParameters,
+    ifcExportParameters: ifcExportCollector.snapshot(),
     surfaceCounts,
     planesByElement,
     cylindersByElement,

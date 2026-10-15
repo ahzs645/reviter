@@ -1,0 +1,553 @@
+{
+  "apiVersion": 1,
+  "kind": "native-parameter-inventory-validation",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "unitTests": {
+    "passed": 16,
+    "failed": 0
+  },
+  "models": [
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+      "rawEvidenceStatus": "partial",
+      "inventoryStatus": "partial",
+      "retainedRecords": 128,
+      "definitions": 774,
+      "definitionsWithRetainedOwnerEdge": 1,
+      "backlinkValidatedBindings": 2,
+      "displayUnitResolvedDefinitions": 308,
+      "displayUnitConflictDefinitions": 0,
+      "acceptedValues": 543,
+      "acceptedFamilySlotsAgreeWithNativeReader": 543,
+      "acceptedFamilySlotsDisagreeWithNativeReader": 0,
+      "typedOwnerValues": 0,
+      "unresolvedReasons": {
+        "built-in-definition-catalog-unavailable": 351,
+        "native-definition-storage-unresolved": 11,
+        "definition-family-owner-mismatch": 128
+      },
+      "selectedNativeResolvedSlots": 671,
+      "diagnostics": [
+        "Parameter owner 754016 lacks consistent complete graph identity/body bounds.",
+        "Parameter owner 776839 lacks consistent complete graph identity/body bounds.",
+        "8 native definition/units extraction diagnostics remain in the raw evidence."
+      ],
+      "samples": [
+        {
+          "ownerElementId": "147064",
+          "parameterId": "141429",
+          "storageType": "Double",
+          "rawValue": 0.039370078740156744,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 25746,
+            "bodySha256": "230275b2402c3bad21ce5f3e096d9f55eb31d1a6ee066a06dbe28ebbd90d0084",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1591,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "147064",
+          "parameterId": "141422",
+          "storageType": "ElementId",
+          "rawValue": "141538",
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 25746,
+            "bodySha256": "230275b2402c3bad21ce5f3e096d9f55eb31d1a6ee066a06dbe28ebbd90d0084",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1629,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "147064",
+          "parameterId": "141477",
+          "storageType": "Double",
+          "rawValue": 0.01968503937007874,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 25746,
+            "bodySha256": "230275b2402c3bad21ce5f3e096d9f55eb31d1a6ee066a06dbe28ebbd90d0084",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1667,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "147064",
+          "parameterId": "141450",
+          "storageType": "Double",
+          "rawValue": 0.08202099737532809,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 25746,
+            "bodySha256": "230275b2402c3bad21ce5f3e096d9f55eb31d1a6ee066a06dbe28ebbd90d0084",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1705,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "147064",
+          "parameterId": "141440",
+          "storageType": "Double",
+          "rawValue": 0.03937007874015748,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 25746,
+            "bodySha256": "230275b2402c3bad21ce5f3e096d9f55eb31d1a6ee066a06dbe28ebbd90d0084",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": 616,
+            "offset": 1819,
+            "pointer_token": 4294967295
+          }
+        },
+        {
+          "ownerElementId": "152409",
+          "parameterId": "16210",
+          "storageType": "Double",
+          "rawValue": 0.16404199475065617,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 97708,
+            "bodySha256": "2f6d5dc2e8db876803106e63e3a2f935a763b690935b558f0a9529eb01df086e",
+            "sourceObject": 3,
+            "rootPointerField": "m_familyParams",
+            "pointerOffset": 109
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 589,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "152409",
+          "parameterId": "16209",
+          "storageType": "Double",
+          "rawValue": 0.16404199475065617,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 97708,
+            "bodySha256": "2f6d5dc2e8db876803106e63e3a2f935a763b690935b558f0a9529eb01df086e",
+            "sourceObject": 3,
+            "rootPointerField": "m_familyParams",
+            "pointerOffset": 109
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 627,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "198366",
+          "parameterId": "197320",
+          "storageType": "Double",
+          "rawValue": 0.19685039370078738,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 38540,
+            "bodySha256": "1ddc6d01fcf2bc7ab54d05bf06b7db7231772bcb022a677e163c48d0bfe68960",
+            "sourceObject": 8,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 183
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 4119,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "198366",
+          "parameterId": "197322",
+          "storageType": "Double",
+          "rawValue": 0.26246719160104987,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 38540,
+            "bodySha256": "1ddc6d01fcf2bc7ab54d05bf06b7db7231772bcb022a677e163c48d0bfe68960",
+            "sourceObject": 8,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 183
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 4157,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "198366",
+          "parameterId": "197321",
+          "storageType": "Double",
+          "rawValue": 0.26246719160104987,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 38540,
+            "bodySha256": "1ddc6d01fcf2bc7ab54d05bf06b7db7231772bcb022a677e163c48d0bfe68960",
+            "sourceObject": 8,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 183
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 4195,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "198366",
+          "parameterId": "197319",
+          "storageType": "Double",
+          "rawValue": 0.19685039370078738,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 38540,
+            "bodySha256": "1ddc6d01fcf2bc7ab54d05bf06b7db7231772bcb022a677e163c48d0bfe68960",
+            "sourceObject": 8,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 183
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 4233,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "198366",
+          "parameterId": "197326",
+          "storageType": "ElementId",
+          "rawValue": "801548",
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/14",
+            "groupRecordOffset": 38540,
+            "bodySha256": "1ddc6d01fcf2bc7ab54d05bf06b7db7231772bcb022a677e163c48d0bfe68960",
+            "sourceObject": 8,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 183
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 4271,
+            "pointer_token": 0
+          }
+        }
+      ],
+      "comparisonScope": "Same-byte native reader and independently validated owner pointer/concrete definition joins; this is serialized source evidence, not a Revit API or evaluated-formula oracle."
+    },
+    {
+      "model": "snowdon.rvt",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "schemaSha256": "0bfb947b3c9a0cec2ea9692873e3b0325f1c9387caaffddbce4cc2509e77cf21",
+      "rawEvidenceStatus": "complete",
+      "inventoryStatus": "partial",
+      "retainedRecords": 17,
+      "definitions": 1604,
+      "definitionsWithRetainedOwnerEdge": 8,
+      "backlinkValidatedBindings": 166,
+      "displayUnitResolvedDefinitions": 0,
+      "displayUnitConflictDefinitions": 1095,
+      "acceptedValues": 32,
+      "acceptedFamilySlotsAgreeWithNativeReader": 32,
+      "acceptedFamilySlotsDisagreeWithNativeReader": 0,
+      "typedOwnerValues": 0,
+      "unresolvedReasons": {
+        "built-in-definition-catalog-unavailable": 20
+      },
+      "selectedNativeResolvedSlots": 32,
+      "diagnostics": [
+        "Conflicting native UnitsElem registries: display units remain unresolved for the whole document.",
+        "2 native definition/units extraction diagnostics remain in the raw evidence."
+      ],
+      "samples": [
+        {
+          "ownerElementId": "31358",
+          "parameterId": "52283",
+          "storageType": "Double",
+          "rawValue": 0.25,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 26193,
+            "bodySha256": "1e9f14e08d82d195f8ed2ddc5056f92b05fe683c79da2fc6899934ca1245f34a",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": 597,
+            "offset": 1634,
+            "pointer_token": 4294967295
+          }
+        },
+        {
+          "ownerElementId": "31358",
+          "parameterId": "42865",
+          "storageType": "Double",
+          "rawValue": 0.08333333333333333,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 26193,
+            "bodySha256": "1e9f14e08d82d195f8ed2ddc5056f92b05fe683c79da2fc6899934ca1245f34a",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1788,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "31358",
+          "parameterId": "54171",
+          "storageType": "ElementId",
+          "rawValue": "-1",
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 26193,
+            "bodySha256": "1e9f14e08d82d195f8ed2ddc5056f92b05fe683c79da2fc6899934ca1245f34a",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1864,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "31360",
+          "parameterId": "52283",
+          "storageType": "Double",
+          "rawValue": 0.22916666666666666,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 32504,
+            "bodySha256": "742f3d8597902cda73061f187d1d500e1aca3fc0f75962437d1e5c69a0d6c792",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": 597,
+            "offset": 1638,
+            "pointer_token": 4294967295
+          }
+        },
+        {
+          "ownerElementId": "31360",
+          "parameterId": "42865",
+          "storageType": "Double",
+          "rawValue": 0.0625,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 32504,
+            "bodySha256": "742f3d8597902cda73061f187d1d500e1aca3fc0f75962437d1e5c69a0d6c792",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1792,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "31360",
+          "parameterId": "54171",
+          "storageType": "ElementId",
+          "rawValue": "-1",
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 32504,
+            "bodySha256": "742f3d8597902cda73061f187d1d500e1aca3fc0f75962437d1e5c69a0d6c792",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1868,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "36999",
+          "parameterId": "47286",
+          "storageType": "Double",
+          "rawValue": 1.570796326794895,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 51576,
+            "bodySha256": "84be8055098259cd9d6c7327e7c7a3db83c9d49bf51e2f4704849ee85f527c09",
+            "sourceObject": 6,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 147
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1193,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "36999",
+          "parameterId": "47290",
+          "storageType": "Double",
+          "rawValue": 18,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 51576,
+            "bodySha256": "84be8055098259cd9d6c7327e7c7a3db83c9d49bf51e2f4704849ee85f527c09",
+            "sourceObject": 6,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 147
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1231,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "36999",
+          "parameterId": "47289",
+          "storageType": "Double",
+          "rawValue": 9,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 51576,
+            "bodySha256": "84be8055098259cd9d6c7327e7c7a3db83c9d49bf51e2f4704849ee85f527c09",
+            "sourceObject": 6,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 147
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1269,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "36999",
+          "parameterId": "47287",
+          "storageType": "Double",
+          "rawValue": 18,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 51576,
+            "bodySha256": "84be8055098259cd9d6c7327e7c7a3db83c9d49bf51e2f4704849ee85f527c09",
+            "sourceObject": 6,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 147
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1307,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "36999",
+          "parameterId": "47288",
+          "storageType": "Double",
+          "rawValue": 9,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 51576,
+            "bodySha256": "84be8055098259cd9d6c7327e7c7a3db83c9d49bf51e2f4704849ee85f527c09",
+            "sourceObject": 6,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 147
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1345,
+            "pointer_token": 0
+          }
+        },
+        {
+          "ownerElementId": "37001",
+          "parameterId": "47286",
+          "storageType": "Double",
+          "rawValue": 1.0471975511965967,
+          "agreesWithNativeReader": true,
+          "source": {
+            "stream": "Partitions/68",
+            "groupRecordOffset": 55835,
+            "bodySha256": "b9a113c95bf16e82d63cbcff6621987b32efdc70acef7a1045c6f7113db5b642",
+            "sourceObject": 5,
+            "rootPointerField": "m_pParams",
+            "pointerOffset": 145
+          },
+          "expressionPointer": {
+            "class_tag": null,
+            "offset": 1169,
+            "pointer_token": 0
+          }
+        }
+      ],
+      "comparisonScope": "Same-byte native reader and independently validated owner pointer/concrete definition joins; this is serialized source evidence, not a Revit API or evaluated-formula oracle."
+    }
+  ],
+  "scope": "Same-byte native stored definitions and owner slot comparisons. This is not a Revit API/evaluated-formula comparison."
+}

@@ -1,0 +1,173 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2025,
+  "sourceStatus": "complete",
+  "inventoryStatus": "complete",
+  "retainedSourceRecords": 291,
+  "projectedRecords": 291,
+  "fallbackRecords": 0,
+  "comparedFields": 4620,
+  "comparedPointerEdges": 154,
+  "mismatches": 0,
+  "classCounts": {
+    "DBViewSchedule": 10,
+    "Viewport": 61,
+    "DBViewSection": 24,
+    "DBViewDrafting": 2,
+    "DBViewPlan": 19,
+    "RefPlane": 7,
+    "RoomElem": 116,
+    "DBView3d": 8,
+    "DBViewProject": 1,
+    "AreaMeasureElem": 2,
+    "Grid": 22,
+    "TextNote": 15,
+    "BasePoint": 2,
+    "WorksetVisibilitySettingsElem": 1,
+    "ProjectRevision": 1
+  },
+  "classFieldCounts": {
+    "DBViewSchedule": 220,
+    "Viewport": 915,
+    "DBViewSection": 408,
+    "DBViewDrafting": 38,
+    "DBViewPlan": 418,
+    "RefPlane": 98,
+    "RoomElem": 1856,
+    "DBView3d": 136,
+    "DBViewProject": 17,
+    "AreaMeasureElem": 18,
+    "Grid": 264,
+    "TextNote": 195,
+    "BasePoint": 18,
+    "WorksetVisibilitySettingsElem": 6,
+    "ProjectRevision": 13
+  },
+  "projectedValueAndWitnessSha256": "a0e44f4a0237e1e49a8d5d36794aa196a1fc016cbc29faa874513e386f7c4682",
+  "sourceClassCoverage": {
+    "AreaMeasureElem": {
+      "body_bytes": 636,
+      "complete_graph_body_bytes": 636,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "BasePoint": {
+      "body_bytes": 768,
+      "complete_graph_body_bytes": 768,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "DBView3d": {
+      "body_bytes": 44989,
+      "complete_graph_body_bytes": 44989,
+      "complete_graphs": 8,
+      "diagnostics": {},
+      "records": 8,
+      "unsupported_graphs": 0
+    },
+    "DBViewDrafting": {
+      "body_bytes": 5708,
+      "complete_graph_body_bytes": 5708,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "DBViewPlan": {
+      "body_bytes": 68797,
+      "complete_graph_body_bytes": 68797,
+      "complete_graphs": 19,
+      "diagnostics": {},
+      "records": 19,
+      "unsupported_graphs": 0
+    },
+    "DBViewProject": {
+      "body_bytes": 2290,
+      "complete_graph_body_bytes": 2290,
+      "complete_graphs": 1,
+      "diagnostics": {},
+      "records": 1,
+      "unsupported_graphs": 0
+    },
+    "DBViewSchedule": {
+      "body_bytes": 69546,
+      "complete_graph_body_bytes": 69546,
+      "complete_graphs": 10,
+      "diagnostics": {},
+      "records": 10,
+      "unsupported_graphs": 0
+    },
+    "DBViewSection": {
+      "body_bytes": 100638,
+      "complete_graph_body_bytes": 100638,
+      "complete_graphs": 24,
+      "diagnostics": {},
+      "records": 24,
+      "unsupported_graphs": 0
+    },
+    "Grid": {
+      "body_bytes": 16166,
+      "complete_graph_body_bytes": 16166,
+      "complete_graphs": 22,
+      "diagnostics": {},
+      "records": 22,
+      "unsupported_graphs": 0
+    },
+    "ProjectRevision": {
+      "body_bytes": 176,
+      "complete_graph_body_bytes": 176,
+      "complete_graphs": 1,
+      "diagnostics": {},
+      "records": 1,
+      "unsupported_graphs": 0
+    },
+    "RefPlane": {
+      "body_bytes": 5332,
+      "complete_graph_body_bytes": 5332,
+      "complete_graphs": 7,
+      "diagnostics": {},
+      "records": 7,
+      "unsupported_graphs": 0
+    },
+    "RoomElem": {
+      "body_bytes": 696082,
+      "complete_graph_body_bytes": 696082,
+      "complete_graphs": 116,
+      "diagnostics": {},
+      "records": 116,
+      "unsupported_graphs": 0
+    },
+    "TextNote": {
+      "body_bytes": 10937,
+      "complete_graph_body_bytes": 10937,
+      "complete_graphs": 15,
+      "diagnostics": {},
+      "records": 15,
+      "unsupported_graphs": 0
+    },
+    "Viewport": {
+      "body_bytes": 13310,
+      "complete_graph_body_bytes": 13310,
+      "complete_graphs": 61,
+      "diagnostics": {},
+      "records": 61,
+      "unsupported_graphs": 0
+    },
+    "WorksetVisibilitySettingsElem": {
+      "body_bytes": 109,
+      "complete_graph_body_bytes": 109,
+      "complete_graphs": 1,
+      "diagnostics": {},
+      "records": 1,
+      "unsupported_graphs": 0
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

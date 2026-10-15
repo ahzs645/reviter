@@ -1,0 +1,232 @@
+{
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "scope": "Source-native drawing detail circle positive and offset/family arc negative witnesses. No Autodesk sheet/crop/rendering equivalence claim.",
+  "results": [
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "viewId": "245424",
+      "status": "partial",
+      "sourceStatus": "complete",
+      "renderedKinds": {
+        "source-detail-circle": 1
+      },
+      "sourceArcFieldComparisons": 5,
+      "sourcePointerEdgeComparisons": 2,
+      "browserCircleCount": 1,
+      "browserArcCount": 0,
+      "browserRadialSamples": 4,
+      "maxRadiusErrorFeet": 3.1254736334029865e-06,
+      "unsupportedOwnedAnnotations": 0,
+      "svgSha256": "e90260572f22b096a00dcd2393c4084664dfa529f901ea370d09d788a375ab90"
+    },
+    {
+      "model": "school.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "viewId": "3390",
+      "status": "partial",
+      "sourceStatus": "complete",
+      "renderedKinds": {
+        "source-detail-line": 12
+      },
+      "sourceArcFieldComparisons": 0,
+      "sourcePointerEdgeComparisons": 0,
+      "browserCircleCount": 0,
+      "browserArcCount": 0,
+      "browserRadialSamples": 0,
+      "maxRadiusErrorFeet": 0,
+      "unsupportedOwnedAnnotations": 20,
+      "svgSha256": "cea7f08630b4cfc683e095969bb653081f4120da3878ba8fa1594a2f93db1529"
+    }
+  ],
+  "racCircleSourceFields": {
+    "curveDriverFlip": {
+      "value": false,
+      "type": "boolean",
+      "source": {
+        "objectIndex": 4,
+        "objectClass": "CurveElemDriver",
+        "field": "m_flip",
+        "pointerPath": [
+          {
+            "sourceObjectIndex": 0,
+            "field": "m_pCurveDriver",
+            "pointerOffset": 111,
+            "pointerToken": 4294967295,
+            "targetObjectIndex": 4,
+            "targetClass": "CurveElemDriver"
+          }
+        ]
+      }
+    },
+    "storedArcFlags": {
+      "value": 524292,
+      "type": "integer",
+      "source": {
+        "objectIndex": 8,
+        "objectClass": "GArc",
+        "field": "m_GInfo.m_flags",
+        "pointerPath": [
+          {
+            "sourceObjectIndex": 0,
+            "field": "m_pCurveDriver",
+            "pointerOffset": 111,
+            "pointerToken": 4294967295,
+            "targetObjectIndex": 4,
+            "targetClass": "CurveElemDriver"
+          },
+          {
+            "sourceObjectIndex": 4,
+            "field": "m_pCrv",
+            "pointerOffset": 304,
+            "pointerToken": 4,
+            "targetObjectIndex": 8,
+            "targetClass": "GArc"
+          }
+        ]
+      }
+    },
+    "storedArcFilled": {
+      "value": false,
+      "type": "boolean",
+      "source": {
+        "objectIndex": 8,
+        "objectClass": "GArc",
+        "field": "m_bFilled",
+        "pointerPath": [
+          {
+            "sourceObjectIndex": 0,
+            "field": "m_pCurveDriver",
+            "pointerOffset": 111,
+            "pointerToken": 4294967295,
+            "targetObjectIndex": 4,
+            "targetClass": "CurveElemDriver"
+          },
+          {
+            "sourceObjectIndex": 4,
+            "field": "m_pCrv",
+            "pointerOffset": 304,
+            "pointerToken": 4,
+            "targetObjectIndex": 8,
+            "targetClass": "GArc"
+          }
+        ]
+      }
+    },
+    "storedArcEndParameters": {
+      "value": [
+        0,
+        0
+      ],
+      "type": "number-list",
+      "source": {
+        "objectIndex": 8,
+        "objectClass": "GArc",
+        "field": "m_endParams",
+        "pointerPath": [
+          {
+            "sourceObjectIndex": 0,
+            "field": "m_pCurveDriver",
+            "pointerOffset": 111,
+            "pointerToken": 4294967295,
+            "targetObjectIndex": 4,
+            "targetClass": "CurveElemDriver"
+          },
+          {
+            "sourceObjectIndex": 4,
+            "field": "m_pCrv",
+            "pointerOffset": 304,
+            "pointerToken": 4,
+            "targetObjectIndex": 8,
+            "targetClass": "GArc"
+          }
+        ]
+      }
+    },
+    "storedArcRadiusFeet": {
+      "value": 0.4880464958558832,
+      "type": "number",
+      "source": {
+        "objectIndex": 8,
+        "objectClass": "GArc",
+        "field": "m_radius",
+        "pointerPath": [
+          {
+            "sourceObjectIndex": 0,
+            "field": "m_pCurveDriver",
+            "pointerOffset": 111,
+            "pointerToken": 4294967295,
+            "targetObjectIndex": 4,
+            "targetClass": "CurveElemDriver"
+          },
+          {
+            "sourceObjectIndex": 4,
+            "field": "m_pCrv",
+            "pointerOffset": 304,
+            "pointerToken": 4,
+            "targetObjectIndex": 8,
+            "targetClass": "GArc"
+          }
+        ]
+      }
+    }
+  },
+  "schoolWithheldArcWitnesses": [
+    {
+      "elementId": "3490",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3491",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3492",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3493",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3526",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3528",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3530",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    },
+    {
+      "elementId": "3532",
+      "ownerViewId": "3390",
+      "usesOffsetPosition": true,
+      "storedArcFlags": 16777220
+    }
+  ],
+  "scopedTests": {
+    "passed": 27,
+    "failed": 0,
+    "commands": [
+      "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs --test tests/native-drawing-arcs.test.ts tests/native-drawing-svg.test.ts tests/native-drawing-reader.test.ts tests/native-record-inventory.test.ts"
+    ]
+  }
+}

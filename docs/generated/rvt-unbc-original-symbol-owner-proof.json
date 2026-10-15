@@ -1,0 +1,25 @@
+{
+  "path": "/workspace/models/unbc.rvt",
+  "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "release": 2027,
+  "pages": 3666,
+  "physicalOwnerWitness": "Own converter numeric product Tags, independent of paired reference identities; subset of source bounds/certified native mesh owner admission.",
+  "preOwnerFilterReferences": 30301,
+  "references": 27554,
+  "instanceGeometry": 0,
+  "collectorCapped": false,
+  "compared": 25620,
+  "matched": 25620,
+  "mismatched": 0,
+  "unknownFlip": 1931,
+  "notTyped": 3,
+  "ambiguous": 0,
+  "mismatchExamples": [],
+  "baseline": {
+    "path": "/workspace/models/unbc-final.json",
+    "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "sameSourceBytes": true,
+    "previousGeometryHash": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+    "scope": "Source-only audit: source bytes are compared to earlier validated geometry audit; this run does not regenerate meshes."
+  }
+}

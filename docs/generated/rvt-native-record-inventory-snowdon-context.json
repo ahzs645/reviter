@@ -1,0 +1,109 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2024,
+  "sourceStatus": "partial",
+  "inventoryStatus": "partial",
+  "retainedSourceRecords": 1413,
+  "projectedRecords": 1408,
+  "fallbackRecords": 5,
+  "comparedFields": 19589,
+  "comparedPointerEdges": 3080,
+  "mismatches": 0,
+  "classCounts": {
+    "TextNote": 336,
+    "AreaMeasureElem": 2,
+    "BasePoint": 2,
+    "RefPlane": 886,
+    "Grid": 28,
+    "RoomElem": 150,
+    "WorksetVisibilitySettingsElem": 1,
+    "ProjectRevision": 3
+  },
+  "classFieldCounts": {
+    "TextNote": 4368,
+    "AreaMeasureElem": 18,
+    "BasePoint": 18,
+    "RefPlane": 12404,
+    "Grid": 336,
+    "RoomElem": 2400,
+    "WorksetVisibilitySettingsElem": 6,
+    "ProjectRevision": 39
+  },
+  "projectedValueAndWitnessSha256": "e91457da034f5bd0bed5c43f83d53df362dd4beb64d95f0a1918b195e48c1dde",
+  "sourceClassCoverage": {
+    "AreaMeasureElem": {
+      "body_bytes": 730,
+      "complete_graph_body_bytes": 730,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "BasePoint": {
+      "body_bytes": 760,
+      "complete_graph_body_bytes": 760,
+      "complete_graphs": 2,
+      "diagnostics": {},
+      "records": 2,
+      "unsupported_graphs": 0
+    },
+    "Grid": {
+      "body_bytes": 20578,
+      "complete_graph_body_bytes": 20578,
+      "complete_graphs": 28,
+      "diagnostics": {},
+      "records": 28,
+      "unsupported_graphs": 0
+    },
+    "ProjectRevision": {
+      "body_bytes": 584,
+      "complete_graph_body_bytes": 584,
+      "complete_graphs": 3,
+      "diagnostics": {},
+      "records": 3,
+      "unsupported_graphs": 0
+    },
+    "RefPlane": {
+      "body_bytes": 669870,
+      "complete_graph_body_bytes": 669870,
+      "complete_graphs": 886,
+      "diagnostics": {},
+      "records": 886,
+      "unsupported_graphs": 0
+    },
+    "RoomElem": {
+      "body_bytes": 1063997,
+      "complete_graph_body_bytes": 720800,
+      "complete_graphs": 150,
+      "diagnostics": {
+        "graph RoomCreate3dGeometryGStep starts10125: GeomGenerator.m_edgeHistTable at 47649: EdgeHistEntry.m_edgeHist at 47649: EdgeHist.m_keys at 47649: native field value budget exceeded (20000)": 1,
+        "graph RoomCreate3dGeometryGStep starts11441: GeomGenerator.m_edgeHistTable at 47009: EdgeHistEntry.m_id at 47009: native field value budget exceeded (20000)": 1,
+        "graph RoomCreate3dGeometryGStep starts12397: GeomGenerator.m_edgeHistTable at 45733: EdgeHistEntry.m_id at 45733: native field value budget exceeded (20000)": 1,
+        "graph RoomCreate3dGeometryGStep starts19761: GeomGenerator.m_faceHistTable at 43577: FaceHistEntry.m_faceHist at 43577: native field value budget exceeded (20000)": 1,
+        "graph RoomCreate3dGeometryGStep starts9563: GeomGenerator.m_edgeHistTable at 47671: native field value budget exceeded (20000)": 1
+      },
+      "records": 155,
+      "unsupported_graphs": 5
+    },
+    "TextNote": {
+      "body_bytes": 219221,
+      "complete_graph_body_bytes": 219221,
+      "complete_graphs": 336,
+      "diagnostics": {},
+      "records": 336,
+      "unsupported_graphs": 0
+    },
+    "WorksetVisibilitySettingsElem": {
+      "body_bytes": 109,
+      "complete_graph_body_bytes": 109,
+      "complete_graphs": 1,
+      "diagnostics": {},
+      "records": 1,
+      "unsupported_graphs": 0
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

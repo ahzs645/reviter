@@ -133,10 +133,9 @@ export function engineFor(result: ConvertResult): PlanEngine {
 function planClient(engine: PlanEngine): PlanClient {
   engine.client ??= new WorkerClient<FloorPlanWorkerRequest, FloorPlanResult>({
     spawn: () => {
-      const worker = new Worker(
-        staticPlanWorkerUrl() ?? new URL("./floor-plan.worker.ts", import.meta.url),
-        { type: "module" },
-      );
+      const deployed = staticPlanWorkerUrl();
+      const worker = deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("./floor-plan.worker.ts", import.meta.url), { type: "module" });
       // The model belongs to the worker rather than to any one request, so it
       // is primed here — which also means a replacement worker re-primes itself
       // instead of answering every request with "no model yet".

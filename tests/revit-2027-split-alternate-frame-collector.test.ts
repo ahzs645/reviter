@@ -78,7 +78,7 @@ function geometryFrame(elementId: number, objectLength = 120): Uint8Array {
   return bytes;
 }
 
-test("reassembles a GElement frame only when it crosses a page", () => {
+test("ordinary GElement frames are reassembled only when crossing a page", () => {
   const collector = createRevit2027SplitGElementCollector(2025);
   // Whole on one page, the page scan already has it.
   assert.deepEqual(collector.pushPage(geometryFrame(988_018)), []);
@@ -93,4 +93,58 @@ test("reassembles a GElement frame only when it crosses a page", () => {
   collector.finishPartition();
   assert.deepEqual(collector.pushPage(forged.subarray(0, 50)), []);
   assert.deepEqual(collector.pushPage(forged.subarray(50)), []);
+});
+
+function checksummedGeometryFrame(id: number, length: number): Uint8Array {
+  const data = geometryFrame(id, length), view = new DataView(data.buffer);
+  let a = 1, b = 0;
+  for (let i = 16; i < 16 + length; i++) { a = (a + data[i]!) % 65521; b = (b + a) % 65521; }
+  view.setUint32(8, (b * 65536 + a) >>> 0, true);
+  return data;
+}
+
+test("checksum-verified GElements above the page-scan ceiling are not lost on a whole page", () => {
+  const collector = createRevit2027SplitGElementCollector(2027);
+  const ordinary = checksummedGeometryFrame(10, 0xffff);
+  assert.deepEqual(collector.pushPage(ordinary), [], "ordinary ceiling is still handled by the page scan");
+  const large = checksummedGeometryFrame(11, 0x10000);
+  const whole = new Uint8Array(large.length + 90); whole.set(large, 40);
+  const frames = collector.pushPageFrames(whole);
+  assert.equal(frames.length, 1);
+  assert.deepEqual(frames[0]!.data, large);
+  assert.equal(frames[0]!.pageOffset, 40, "retain the original page location for source identity evidence");
+  assert.equal(frames[0]!.crossedPage, false);
+  assert.equal(frames[0]!.objectLength, 0x10000);
+  assert.equal(collector.largeWholeFrameDiagnostics.admitted, 1);
+  assert.equal(collector.largeWholeFrameDiagnostics.checksumBytes, 0x10000);
+});
+
+test("large whole GElements reject damaged payload, false ownership and bad echoes", () => {
+  const source = checksummedGeometryFrame(118, 70_000);
+  const damaged = source.slice(); damaged[1000] = 1;
+  const collector = createRevit2027SplitGElementCollector(2027);
+  assert.deepEqual(collector.pushPage(damaged), []);
+  assert.equal(collector.largeWholeFrameDiagnostics.rejectedChecksum, 1);
+  const wrongOwner = source.slice(); new DataView(wrongOwner.buffer).setUint32(26, 119, true);
+  assert.deepEqual(collector.pushPage(wrongOwner), []);
+  const wrongEcho = source.slice(); new DataView(wrongEcho.buffer).setUint32(70_016, 69_999, true);
+  assert.deepEqual(collector.pushPage(wrongEcho), []);
+  assert.equal(collector.largeWholeFrameDiagnostics.admitted, 0);
+});
+
+test("large whole checksum work is bounded per partition without blocking crossing frames", () => {
+  const large = checksummedGeometryFrame(10, 70_000);
+  const collector = createRevit2027SplitGElementCollector(2027, 70_000);
+  assert.deepEqual(collector.pushPage(large), [large]);
+  assert.deepEqual(collector.pushPage(large), []);
+  assert.equal(collector.largeWholeFrameDiagnostics.skippedChecksumBudget, 1);
+  assert.equal(collector.largeWholeFrameDiagnostics.checksumBytes, 70_000);
+  const small = geometryFrame(11);
+  assert.deepEqual(collector.pushPage(small.subarray(0, 50)), []);
+  const crossed = collector.pushPageFrames(small.subarray(50));
+  assert.deepEqual(crossed.map(frame => frame.data), [small]);
+  assert.equal(crossed[0]!.pageOffset, null, "a split frame must not invent a same-page identity location");
+  collector.finishPartition();
+  assert.deepEqual(collector.pushPage(large), [large]);
+  assert.equal(collector.largeWholeFrameDiagnostics.admitted, 2);
 });

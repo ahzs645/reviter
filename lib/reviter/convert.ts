@@ -52,6 +52,9 @@ import { resolveNativeRelations } from "./convert-native-relations.ts";
 import { resolveFamilyTypeNames } from "./family-type-names.ts";
 import { familyDocumentFormsBySymbol } from "./family-forms.ts";
 import { boundlessSceneElements } from "./model-elements.ts";
+import { nativeOriginalSymbolElementIds, resolveNativeIfcTypeIdentityEvidence } from "./native-ifc-type-identity.ts";
+import { resolveNativeSectionFamilyRelations } from "./native-structural-profiles.ts";
+import { readDocumentMetadataContainer } from "./document-metadata.ts";
 import { reconstructNativeSurfaces } from "./convert-native-surfaces.ts";
 import { scanPartitions } from "./convert-partition-scan.ts";
 import {
@@ -111,6 +114,7 @@ export function convertRvtBytes(
       objectMarkers,
       partAtom,
       elementIndex,
+      fullElementInventory,
       elementOwnership,
       nativeIdentity,
       transmissionData,
@@ -120,7 +124,17 @@ export function convertRvtBytes(
       contentDocuments,
     } = openRevitContainer(bytes, options);
 
+    // A structurally recognized table can still have no parsed rows. In that
+    // case use the independently validated history inventory, not an empty set.
+    const declaredElementIds = new Set(elementIndex?.uniqueElementIds.length
+      ? elementIndex.uniqueElementIds
+      : nativeIdentity?.identities.map(identity => identity.elementId) ?? []);
     const scan = scanPartitions({
+      schema,
+      declaredElementIds,
+      nativeTypeIdentityElementIds: nativeOriginalSymbolElementIds(declaredElementIds, nativeIdentity?.identities ?? []),
+      nativeSectionElementIds: new Set(fullElementInventory?.status === "decoded" ? fullElementInventory.declaredElementIds :
+        nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds),
       partitions,
       decoderPlan,
       objectMarkers,
@@ -148,6 +162,7 @@ export function convertRvtBytes(
       instancePlacements,
       localBounds,
       elementParameters,
+      ifcExportParameters,
       surfaceCounts,
       planesByElement,
       cylindersByElement,
@@ -279,6 +294,8 @@ export function convertRvtBytes(
       nativeCategories.directElements +
       nativeCategories.inheritedElements;
     for (const record of elementBounds) {
+      const header = elementHeaders.get(record.elementId);
+      if (header) record.designOptionId = header.designOptionId;
       const wallKind = wallKinds.get(record.elementId);
       if (wallKind) record.wallKind = wallKind;
       const wallTypeId = wallTypeIds.get(record.elementId);
@@ -288,6 +305,7 @@ export function convertRvtBytes(
         record.typeName = wallTypeName;
       }
     }
+
     const familyTypeNames = resolveFamilyTypeNames(
       instanceReferences,
       symbolReferences,
@@ -335,6 +353,25 @@ export function convertRvtBytes(
       nativeHostRelations,
       nativeAssociatedLevelRelations,
     } = relations;
+    for (const record of elementBounds) {
+      const ownOverrides = ifcExportParameters.get(record.elementId);
+      if (ownOverrides?.length) {
+        const parameters = [...(record.parameters ?? [])];
+        for (const parameter of ownOverrides) {
+          if (!parameters.some(existing => existing.parameterId === parameter.parameterId && existing.value === parameter.value)) parameters.push(parameter);
+        }
+        record.parameters = parameters;
+      }
+      const typeId = record.typeId ?? record.familySymbolId;
+      if (typeId != null) {
+        const typeValues = [...(elementParameters.get(typeId)?.values() ?? [])];
+        for (const parameter of ifcExportParameters.get(typeId) ?? []) {
+          if (!typeValues.some(existing => existing.parameterId === parameter.parameterId && existing.value === parameter.value)) typeValues.push(parameter);
+        }
+        if (typeValues.length) record.typeParameters = typeValues;
+      }
+    }
+
     const drawable = selectDrawableRecords({
       elementBounds,
       markersByElement,
@@ -348,7 +385,34 @@ export function convertRvtBytes(
     // The two branches below publish the same decoded file — the same records,
     // streams, identities and relations — and differ only in how the model was
     // drawn from it. Named once so the two result literals cannot drift.
+    const nativePhaseEvidence = scan.nativePhaseCollector.resolve({ elementHeaders, levelIds: new Set(levelDefinitions.keys()) });
+    // Metadata-only classification links include declared source types even
+    // when they have no shared render-geometry object. The separate resolver
+    // keeps all family contradictions visible without changing scene admission.
+    const nativeSectionOwnerIds = new Set(fullElementInventory?.status === "decoded" ?
+      fullElementInventory.declaredElementIds : nativeIdentity?.identities.map(identity => identity.elementId) ?? declaredElementIds);
+    const nativeSectionFamilyRelations = resolveNativeSectionFamilyRelations(familySymbolCandidates, familySymbolReferenceSets, familyElementIds, nativeSectionOwnerIds);
     const decodedFile = {
+      documentMetadata: readDocumentMetadataContainer(cfb, partitionNames),
+      nativeIfcGuidParameters: scan.nativeIfcGuidParameters,
+      nativePhaseEvidence,
+      nativeStructuralSections: scan.nativeStructuralSectionCollector.finish(nativeSectionOwnerIds, nativeSectionFamilyRelations),
+      nativeIfcTypeIdentityEvidence: resolveNativeIfcTypeIdentityEvidence({
+        references: scan.nativeOriginalSymbols, placements: instancePlacements.values(),
+        elementBounds, hostRelations: nativeHostRelations, revitVersion: decoderPlan.revitVersion ?? 0,
+      }),
+      nativeSourceRooms: scan.nativeRoomCollector.resolve({
+        elementHeaders,
+        elementBounds,
+        declaredElementIds: declaredElementIds.size ? declaredElementIds : undefined,
+        levelIds: new Set(levelDefinitions.keys()),
+        associatedLevelRelations: nativeAssociatedLevelRelations,
+        roomFloorFinishes: nativePhaseEvidence.roomFloorFinishes,
+      }),
+      nativeMepEvidence: scan.nativeMepEvidence,
+      nativeDesignOptions: scan.nativeDesignOptions,
+      nativeDesignOptionMembership: [...elementHeaders.values()].flatMap(header =>
+        header.designOptionId == null ? [] : [{ elementId: header.elementId, designOptionId: header.designOptionId }]),
       elementBounds,
       nativeProfiles,
       nativeCategories,
@@ -388,6 +452,8 @@ export function convertRvtBytes(
       elementOwnership,
       nativeIdentity,
       nativeMaterialDefinitions,
+      fullElementInventory,
+      nativeInstancePlacements: [...instancePlacements.values()],
       nativeFamilySymbolRelations,
       nativeFamilyDefinitions,
       nativeGeometryMaterialAssignments,
@@ -412,6 +478,17 @@ export function convertRvtBytes(
       nativeCompoundStructureDefinitions,
       ...relations,
     };
+    const largeFrameWarnings = [
+      ...(scan.largeWholeGElementFrames.skippedChecksumBudget
+        ? ["Large whole-page GElement checksum work exceeded its partition budget; additional large bodies were withheld."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedBufferBudget
+        ? ["Supplemental whole-page GElement buffers reached their 64 MiB limit; additional large bodies were withheld while original geometry retained priority."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedDefinitionBudget
+        ? ["Supplemental whole-page GElements reached the native definition budget; original native geometry retained priority and remaining large bodies were withheld."] : []),
+    ];
+    if (scan.nativeOriginalSymbolDiagnostics.legacyCapped) largeFrameWarnings.push("Native original-symbol identity reads reached their scan limit; source type recipes were withheld.");
+    if (scan.nativeOriginalSymbolDiagnostics.historicalEnvelope.capped) largeFrameWarnings.push("Stored original-symbol envelope comparisons reached their scan limit; some type flip conflicts could not be checked.");
+    if (scan.nativeOriginalSymbolDiagnostics.largeObjects.capped) largeFrameWarnings.push("Large original-symbol identity reads reached their scan limit; additional type recipes could not be checked.");
 
     // The bounds branch is the release's own record decoder. Records the
     // release-independent passes synthesised (a wall solid rebuilt from plane
@@ -469,8 +546,10 @@ export function convertRvtBytes(
         ...decodedRelations(
           scene.report.meshCollection.spiralStairRunOwnerIds,
         ),
-        warnings: buildWarnings(basis, scene.report),
+        warnings: [...buildWarnings(basis, scene.report), ...largeFrameWarnings, ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
         stats: {
+          largeWholeGElementFrames: scan.largeWholeGElementFrames,
+          nativeOriginalSymbolDiagnostics: scan.nativeOriginalSymbolDiagnostics,
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
           gzipChunks,
@@ -573,8 +652,10 @@ export function convertRvtBytes(
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
       ...decodedRelations(),
-      warnings: buildWarnings(basis, coordinateReport),
+      warnings: [...buildWarnings(basis, coordinateReport), ...largeFrameWarnings, ...(scan.nativeStructuralSectionCollector.capped ? ["Structural section metadata exceeded its scan budget; section profiles were withheld."] : [])],
       stats: {
+        largeWholeGElementFrames: scan.largeWholeGElementFrames,
+        nativeOriginalSymbolDiagnostics: scan.nativeOriginalSymbolDiagnostics,
         streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
         partitionStreams: partitions.length,
         gzipChunks,

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "input": {
+    "name": "unbc.rvt",
+    "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "release": 2027
+  },
+  "sourceFieldAudit": {
+    "pages": 3666,
+    "physicalOwnerWitness": "Own converter numeric product Tags, independent of paired reference identities; subset of source bounds/certified native mesh owner admission.",
+    "preOwnerFilterReferences": 30502,
+    "references": 27755,
+    "fifoReferences": 201,
+    "embeddedRecipeWithheld": 201,
+    "collectorCapped": false,
+    "compared": 25620,
+    "matched": 25620,
+    "mismatched": 0,
+    "notTyped": 3,
+    "ambiguous": 0
+  },
+  "unknownTypeRecipe": 2132,
+  "sourceExamples": [
+    {
+      "elementId": 665080,
+      "originalSymbolId": 665150,
+      "source": "checksum-verified-GElement.original-symbol",
+      "revitVersion": 2027,
+      "stream": "Partitions/325",
+      "chunkIndex": 1935,
+      "rawOffset": 37526316,
+      "objectOffset": 32416,
+      "symbolFieldOffset": 32813,
+      "embeddedSymbolGeometry": true
+    },
+    {
+      "elementId": 692182,
+      "originalSymbolId": 360469,
+      "source": "checksum-verified-GElement.original-symbol",
+      "revitVersion": 2027,
+      "stream": "Partitions/325",
+      "chunkIndex": 3021,
+      "rawOffset": 59532111,
+      "objectOffset": 53765,
+      "symbolFieldOffset": 54162,
+      "embeddedSymbolGeometry": true
+    },
+    {
+      "elementId": 692369,
+      "originalSymbolId": 360469,
+      "source": "checksum-verified-GElement.original-symbol",
+      "revitVersion": 2027,
+      "stream": "Partitions/325",
+      "chunkIndex": 3021,
+      "rawOffset": 59532111,
+      "objectOffset": 64507,
+      "symbolFieldOffset": 64904,
+      "embeddedSymbolGeometry": true
+    },
+    {
+      "elementId": 694317,
+      "originalSymbolId": 360469,
+      "source": "checksum-verified-GElement.original-symbol",
+      "revitVersion": 2027,
+      "stream": "Partitions/325",
+      "chunkIndex": 3022,
+      "rawOffset": 59546021,
+      "objectOffset": 0,
+      "symbolFieldOffset": 397,
+      "embeddedSymbolGeometry": true
+    }
+  ],
+  "scope": "Source-only field/identity audit. Own emitted product Tags establish physical-owner subset. Paired IFC only compares independently decoded GlobalIds. The source bytes equal the baseline; this audit does not regenerate scene geometry.",
+  "baseline": {
+    "path": "/workspace/models/unbc-final.json",
+    "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "sameSourceBytes": true,
+    "previousGeometryHash": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+    "scope": "Source-only audit: source bytes are compared to earlier validated geometry audit; this run does not regenerate meshes."
+  },
+  "limits": {
+    "additionalFifoBytes": 16777216,
+    "maxRootChildren": 64,
+    "maxReplayEntries": 512,
+    "maxDescriptors": 2048,
+    "totalChecksumBytes": 134217728
+  },
+  "tests": {
+    "command": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs --test tests/ifc-type-identity.test.ts",
+    "passed": 21,
+    "failed": 0
+  }
+}

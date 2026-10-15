@@ -90,6 +90,7 @@ export function MobileShell({
   onOpenFloorWorkspace,
   onZoomSelection,
   onExportComments,
+  exportPanel,
 }: {
   /** Both theme icons; the stylesheet shows whichever matches the theme. */
   themeIcons: ReactNode;
@@ -133,6 +134,7 @@ export function MobileShell({
   onOpenFloorWorkspace: () => void;
   onZoomSelection: () => void;
   onExportComments: () => void;
+  exportPanel?: ReactNode;
 }) {
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -314,6 +316,7 @@ export function MobileShell({
                 </>
               )}
 
+              {sheet === "report" && exportPanel}
               {sheet === "map" && <><button type="button" className="rv-button mobile-floor-review" onClick={onOpenFloorWorkspace}>Open floor review</button><p className="comment-empty">Building checks, room boundaries, doors and staircases.</p>{floorMap}</>}
             </div>
           </div>
