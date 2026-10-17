@@ -5,6 +5,36 @@ and the [consolidated OpenIndoorMaps handoff](https://github.com/ahzs645/openind
 That handoff owns the live viewer, exact receipts, remaining navigation work,
 test record and transfer instructions. Keep the repositories adjacent.
 
+October 17 viewer publication: private Site **version 12** is live, from Site
+source `dc165335885ff92e80540ae1d127fb0c17c3009b` and OpenIndoorMaps viewer
+`e41e4ae`. The downloadable shared-guide candidate is 45,519,753 bytes,
+SHA-256 `09d35032a47d4cde544207c5a83f28c061750dfdaf2b32e07f042362c164658a`.
+Original source geometry, nodes/edges and access remain unchanged from version
+10; all 28 full stair links remain held. The viewer adds `paths=1`, solid teal
+hallway guides and dotted amber room-door approaches. Internal passage/vestibule
+door branches are omitted from this optional overlay. The new geometry replay,
+earlier complete desktop/mobile cache/lift proof, partial new overlay probe,
+publication receipt and remaining source blockers are distinguished in the
+[October 17 pathway report](https://github.com/ahzs645/openindoormaps/blob/codex/unbc-corridor-analysis-20261017/docs/continuation/unbc-20261017/pathway-repairs/README.md).
+The older version-10 section below is the October 16 baseline. Native Sites
+deployment succeeded; signed-in production content verification is pending.
+
+October 17 availability update: this filesystem retains the repositories and
+visitor candidates, but the previously created `UNBC-data-handoff-20261017.tar.gz`,
+newer enriched cache and failed-run physical checkpoints are absent. Original
+chat commands confirm creation/readback of the 1,271,906,669-byte archive with
+SHA-256 `24119b663b78afc8250ceeefd13f5a0854a3c94a29f0d566d97961bd5f375253`;
+neither that archive nor its later Zstandard alternative was recovered from
+current scratch/shared files, attached artifacts or accessible Drive searches.
+Do not assume older scratch paths still exist. Source stair work needs those
+actual authoring inputs restored; the visitor ZIP cannot replace them.
+
+The focused ownership-fixture correction in [PR #17](https://github.com/ahzs645/reviter/pull/17)
+passes 15 local-transition/material-census tests and TypeScript. It adds the
+original finish-to-flight ownership record to the positive fixture and verifies
+missing, foreign, contradictory and escaped-bound refusals. Production
+qualification is unchanged, and no UNBC held link is approved by that test fix.
+
 ## Source state and failed rebuild
 
 All local source work was preserved before consolidation in Reviter commit
