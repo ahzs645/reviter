@@ -5,6 +5,22 @@ and the [consolidated OpenIndoorMaps handoff](https://github.com/ahzs645/openind
 That handoff owns the live viewer, exact receipts, remaining navigation work,
 test record and transfer instructions. Keep the repositories adjacent.
 
+October 17 availability update: this filesystem retains the repositories and
+visitor candidates, but the previously created `UNBC-data-handoff-20261017.tar.gz`,
+newer enriched cache and failed-run physical checkpoints are absent. Original
+chat commands confirm creation/readback of the 1,271,906,669-byte archive with
+SHA-256 `24119b663b78afc8250ceeefd13f5a0854a3c94a29f0d566d97961bd5f375253`;
+neither that archive nor its later Zstandard alternative was recovered from
+current scratch/shared files, attached artifacts or accessible Drive searches.
+Do not assume older scratch paths still exist. Source stair work needs those
+actual authoring inputs restored; the visitor ZIP cannot replace them.
+
+The focused ownership-fixture correction in [PR #17](https://github.com/ahzs645/reviter/pull/17)
+passes 15 local-transition/material-census tests and TypeScript. It adds the
+original finish-to-flight ownership record to the positive fixture and verifies
+missing, foreign, contradictory and escaped-bound refusals. Production
+qualification is unchanged, and no UNBC held link is approved by that test fix.
+
 ## Source state and failed rebuild
 
 All local source work was preserved before consolidation in Reviter commit
