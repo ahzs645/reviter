@@ -1,5 +1,9 @@
 # UNBC compiler continuation for the next AI
 
+Latest publication: **private Site version 13** and its 116.53 MB development
+snapshot are live. The publication receipt at the end records exact source refs
+and 37 successful normal-URL checks. The older version-12 section is historical.
+
 Read this repository's `AGENTS.md`, [the pipeline](indoor-project-pipeline.md),
 and the [consolidated OpenIndoorMaps handoff](https://github.com/ahzs645/openindoormaps/blob/main/docs/continuation/unbc-20261016/HANDOFF.md).
 That handoff owns the live viewer, exact receipts, remaining navigation work,
@@ -168,3 +172,17 @@ Connection inspection adds original saved ramps/lifts/local steps, solid
 passage thresholds and optional held-stair markers. It changes no graph or
 physical approval. The saved data still has 28 disabled full stair links;
 all-building and Floor 4 step-free route certification remain unresolved.
+
+Publication receipt: private Site **version 13** deployed successfully at
+2026-10-17T20:27:29Z from Site source
+`991048d32c3b9d61c4b8868456afee1d9602cad1`. The exact published source snapshot
+binds OpenIndoorMaps `55659c46de2ecb122112c74a69f5dc8a0bad12b7` and Reviter
+`1d9b2be824dd242fc316ea5478406536f8651556`. Its on-request development ZIP is
+116,526,015 bytes; fresh restoration matched all 3,774 tracked source files and
+the visitor checksum. All 37 normal production URLs matched expected bytes with
+authorized owner access and same-origin canonical redirects, without cache
+busting. That is HTTP content verification, not new browser rendering proof.
+This documentation-only receipt follows the published source commits. Repackage
+then-current clean source HEADs for the next publication. Native authoring inputs
+remain missing; all 28 full stairs remain disabled. Exact deployment and checks
+are in the sibling pathway report's publication-v13 JSON receipts.
