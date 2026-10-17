@@ -1,3 +1,5 @@
+> Latest UNBC continuation: [October 16 handoff](UNBC-HANDOFF-2026-10-16.md). Use it for current artifacts, failed rebuild and next steps. The report below is historical.
+
 # UNBC native indoor map: compiler handoff (2026-10-14)
 
 This covers the compiler (reviter) side of the UNBC native map work. The full project handoff covers the owner rules, the candidate pipeline, the promotion convention and the canonical files; it lives in the OpenIndoorMaps repo at `docs/continuation/unbc-20261014/HANDOFF.md`. Read that first.
