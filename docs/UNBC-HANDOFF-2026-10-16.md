@@ -5,13 +5,14 @@ and the [consolidated OpenIndoorMaps handoff](https://github.com/ahzs645/openind
 That handoff owns the live viewer, exact receipts, remaining navigation work,
 test record and transfer instructions. Keep the repositories adjacent.
 
-October 17 viewer publication: private Site **version 11** is live, from Site
-source `73155c6d65af034c0061699a60f4f92d013a9868` and OpenIndoorMaps viewer
-`612e37c`. The downloadable shared-guide candidate is 45,519,753 bytes,
+October 17 viewer publication: private Site **version 12** is live, from Site
+source `dc165335885ff92e80540ae1d127fb0c17c3009b` and OpenIndoorMaps viewer
+`e41e4ae`. The downloadable shared-guide candidate is 45,519,753 bytes,
 SHA-256 `09d35032a47d4cde544207c5a83f28c061750dfdaf2b32e07f042362c164658a`.
 Original source geometry, nodes/edges and access remain unchanged from version
 10; all 28 full stair links remain held. The viewer adds `paths=1`, solid teal
-hallway guides and dotted amber door approaches. The new geometry replay,
+hallway guides and dotted amber room-door approaches. Internal passage/vestibule
+door branches are omitted from this optional overlay. The new geometry replay,
 earlier complete desktop/mobile cache/lift proof, partial new overlay probe,
 publication receipt and remaining source blockers are distinguished in the
 [October 17 pathway report](https://github.com/ahzs645/openindoormaps/blob/codex/unbc-corridor-analysis-20261017/docs/continuation/unbc-20261017/pathway-repairs/README.md).
