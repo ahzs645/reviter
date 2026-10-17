@@ -145,3 +145,26 @@ The Pages lint step also reports 140 errors/82 warnings, spanning old and
 preserved changed files; the previous main already failed lint. No lint rule or
 material/determinism guard was disabled. Read the consolidated `CHECKS.md`
 post-push section and exact failure excerpts before subsequent native repairs.
+
+## Paired development download continuation
+
+The next viewer publication adds a source development download alongside the
+visitor ZIP. Read the sibling
+[portable development procedure](../../openindoormaps/docs/continuation/unbc-20261017/pathway-repairs/PORTABLE-DEVELOPMENT.md)
+for the exact source-pair packaging/restore/publication guard. Every publication
+must archive both clean committed source trees and match the current visitor
+checksum. It excludes reinstallable dependencies/history/caches, stores the map
+only once on the site and assembles the combined ZIP on request. Approximately
+117 MB is the initial source-plus-visitor estimate; use its release manifest for
+exact size and branch/commit identities.
+
+This is an application development snapshot, not the missing native rebuild
+archive. Original RVT bytes, latest authoring master/review companions, enriched
+cache and failed-run checkpoints are still absent. Keep nativeRebuildReady false
+and list the missing identities; do not declare the visitor ZIP sufficient for
+source geometry repairs or waive the lost-arrival guard.
+
+Connection inspection adds original saved ramps/lifts/local steps, solid
+passage thresholds and optional held-stair markers. It changes no graph or
+physical approval. The saved data still has 28 disabled full stair links;
+all-building and Floor 4 step-free route certification remain unresolved.
